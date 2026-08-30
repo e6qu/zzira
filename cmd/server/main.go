@@ -221,8 +221,10 @@ func seedUsers(ctx context.Context, st *store.Store) error {
 		if err := st.CreateAPIToken(ctx, store.NewID("tok"), userID, apiHash, "seed"); err != nil {
 			return err
 		}
+		// Credentials go to the gitignored data/ file only — never to stdout.
 		tokens[su.email] = plain
-		fmt.Printf("seeded %s (password: %s)\nAPI token (copy now): %s\n", su.email, su.password, plain)
+		tokens[su.email+".password"] = su.password
+		fmt.Printf("seeded %s\n", su.email)
 	}
 	// Dev convenience: e2e tests authenticate with these. Local artifact only.
 	if len(tokens) > 0 {

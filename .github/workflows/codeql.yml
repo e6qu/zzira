@@ -22,6 +22,11 @@ jobs:
         with:
           languages: ${{ matrix.language }}
           queries: security-extended
+          # Vendored upstream sqlite3-wasm worker files are excluded from
+          # analysis: their postMessage/redirect handlers are not executed in
+          # ZZIRA (we drive sqlite3 directly via installOpfsSAHPoolVfs).
+          paths-ignore: |
+            web/static/sqlite
       - uses: github/codeql-action/autobuild@v3
       - uses: github/codeql-action/analyze@v3
         with:
