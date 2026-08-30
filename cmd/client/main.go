@@ -705,6 +705,25 @@ func onMessage(_ js.Value, args []js.Value) any {
 	}
 	msg := args[0]
 	switch msg.Get("type").String() {
+	case "seed-view":
+		issue := msg.Get("issue")
+		id := issue.Get("id").String()
+		if id == "" {
+			return nil
+		}
+		description := issue.Get("description").String()
+		doc, err := json.Marshal(adfFor(description))
+		if err != nil {
+			return nil
+		}
+		// The SSR view is authoritative at navigation time. Store it only when
+		// absent; action-log sync will subsequently replace it with its full,
+		// versioned representation.
+		exec(`INSERT OR IGNORE INTO issues
+		      (id, key, summary, description, fields, status_id, status_name, status_category,
+		       issuetype_name, updated_seq, updated_at)
+		      VALUES ($1,$2,$3,$4,'{}','st_todo','To Do','new','Task',0,'')`,
+			[]any{id, issue.Get("key").String(), issue.Get("summary").String(), string(doc)})
 	case "view":
 		currentView = msg.Get("issueId").String()
 		pushCurrentView()

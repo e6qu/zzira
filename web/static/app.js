@@ -168,7 +168,22 @@
   }
 
   function pushView() {
-    if (currentIssueId()) postWorker({ type: 'view', issueId: currentIssueId() });
+    const issue = document.querySelector('.issue-view');
+    if (!issue) return;
+    const issueId = issue.getAttribute('data-issue-id');
+    if (!issueId) return;
+    // Seed the worker with the SSR issue before its first network sync. This
+    // is the explicit hand-off that makes an immediate offline edit possible.
+    postWorker({
+      type: 'seed-view',
+      issue: {
+        id: issueId,
+        key: issue.getAttribute('data-issue-key') || '',
+        summary: (issue.querySelector('.issue-summary') || {}).textContent || '',
+        description: (issue.querySelector('.issue-description') || {}).textContent || '',
+      },
+    });
+    postWorker({ type: 'view', issueId });
   }
   document.addEventListener('DOMContentLoaded', pushView);
   document.body.addEventListener('htmx:afterSettle', pushView);

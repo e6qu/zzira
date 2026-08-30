@@ -80,12 +80,6 @@ test('V1 done-when: offline edit queues, drain on reconnect, zero duplicates', a
   await login(page);
   await page.goto(`/browse/${key}`);
 
-  // Offline edits are served by the local replica, not the SSR page. Wait for
-  // its explicit sync confirmation before taking the browser offline.
-  await expect.poll(async () => (await page.locator('#sync-banner').textContent()) ?? '', {
-    timeout: 20_000,
-  }).toContain('synced');
-
   await page.context().setOffline(true);
   await page.click('text=Edit');
   await page.fill('input[name=summary]', `offline edit ${Date.now()}`);
