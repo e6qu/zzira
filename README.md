@@ -10,7 +10,15 @@ Linear's ["Rebuilding delta sync read path"](https://linear.app/now/rebuilding-d
 
 The full architecture, hard rules, slice history, and scaling story live in [PLAN.md](PLAN.md).
 
-## Quickstart
+## Quickstart (Docker)
+
+```bash
+docker compose up -d --build   # postgres + scratch-based zzira container
+docker compose exec zzira /zzira-server -mode=migrate
+docker compose exec zzira /zzira-server -mode=seed   # prints demo API token
+```
+
+## Quickstart (local Go)
 
 ```bash
 docker compose up -d postgres

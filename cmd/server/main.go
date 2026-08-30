@@ -27,9 +27,25 @@ import (
 
 func main() {
 	mode := flag.String("mode", "run", "run|migrate|seed")
+	healthcheck := flag.Bool("healthcheck", false, "verify the process can serve and exit")
 	addr := flag.String("addr", "", "listen address (default :$SERVER_PORT or :8080)")
 	staticDir := flag.String("static", "", "static dir (default web/static)")
 	flag.Parse()
+
+	if *healthcheck {
+		resp, err := http.Get("http://localhost:" + envOr("SERVER_PORT", "8080") + "/rest/api/3/serverInfo")
+		if err != nil {
+			os.Exit(1)
+		}
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			log.Printf("healthcheck body close: %v", closeErr)
+		}
+		if resp.StatusCode != 200 {
+			os.Exit(1)
+		}
+		fmt.Println("ok")
+		return
+	}
 
 	ctx := context.Background()
 	st, err := store.Open(ctx, store.DSNFromEnv())
@@ -160,6 +176,10 @@ func main() {
 	mux.HandleFunc("GET /rest/zzira/1/notifications", api.NotificationsHandler)
 	mux.Handle("/rest/agile/1.0/", agileAPI)
 	mux.Handle("/rest/api/3/", api)
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.Dir(static))))
 	mux.HandleFunc("GET /sw.js", func(w http.ResponseWriter, r *http.Request) {
 		// Root scope is required for the service worker to control page navigations.

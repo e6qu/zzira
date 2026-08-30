@@ -9,3 +9,5 @@ web/static/wasm/wasm_exec.js
 data/
 web/static/zzira-worker.wasm
 client/
+client
+server

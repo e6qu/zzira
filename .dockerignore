@@ -1,0 +1,14 @@
+.git
+.gitignore
+bin/
+data/
+docs/
+e2e/
+node_modules/
+specs/
+*.md
+*.log
+docker-compose.yml
+Dockerfile
+.github/
+web/static/zzira-worker.wasm

@@ -16,6 +16,7 @@ services:
       - pgdata:/var/lib/postgresql/data
 
   minio:
+    profiles: ["minio"]
     image: bitnami/minio:latest
     environment:
       MINIO_ROOT_USER: zzira
@@ -24,6 +25,19 @@ services:
       - "9000:9000"
     volumes:
       - miniodata:/bitnami/minio/data
+
+  zzira:
+    build: .
+    environment:
+      DATABASE_URL: postgres://zzira:zzira@postgres:5432/zzira?sslmode=disable
+      STATIC_DIR: /static
+      DATA_DIR: /data
+      BASE_URL: http://localhost:8080
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
 
 volumes:
   pgdata:
