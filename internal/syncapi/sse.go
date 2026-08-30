@@ -2,6 +2,7 @@ package syncapi
 
 import (
 	"io"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -39,6 +40,7 @@ func (h *SSEHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	ok, err := authz.CanSeeWorkspace(r.Context(), h.Store, workspaceID, userID)
 	if err != nil {
+		log.Printf("%s: %v", "sse.go", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -48,6 +50,7 @@ func (h *SSEHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	head, err := h.Store.Head(r.Context(), workspaceID)
 	if err != nil {
+		log.Printf("%s: %v", "sse.go", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}

@@ -5,6 +5,7 @@ package syncapi
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -43,6 +44,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	ok, err := authz.CanSeeWorkspace(r.Context(), h.Store, workspaceID, userID)
 	if err != nil {
+		log.Printf("%s: %v", "syncapi.go", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -59,6 +61,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	head, err := h.Store.Head(r.Context(), workspaceID)
 	if err != nil {
+		log.Printf("%s: %v", "syncapi.go", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -68,6 +71,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	actions, err := h.Store.ActionsSince(r.Context(), workspaceID, userID, since, limit)
 	if err != nil {
+		log.Printf("%s: %v", "syncapi.go", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}

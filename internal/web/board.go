@@ -1,6 +1,7 @@
 package web
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/e6qu/zzira/internal/models"
@@ -24,6 +25,7 @@ func (h *Handler) BoardPage(w http.ResponseWriter, r *http.Request, id string) {
 	}
 	columns, err := h.Store.BoardIssues(r.Context(), board.ID, user.ID)
 	if err != nil {
+		log.Printf("%s: %v", "board.go", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -31,6 +33,7 @@ func (h *Handler) BoardPage(w http.ResponseWriter, r *http.Request, id string) {
 	for _, st := range board.ColumnStatusIDs {
 		s, err := h.Store.StatusByID(r.Context(), st)
 		if err != nil {
+			log.Printf("%s: %v", "board.go", err)
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
@@ -65,6 +68,7 @@ func (h *Handler) BoardFragment(w http.ResponseWriter, r *http.Request, id strin
 	}
 	columns, err := h.Store.BoardIssues(r.Context(), board.ID, user.ID)
 	if err != nil {
+		log.Printf("%s: %v", "board.go", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -72,6 +76,7 @@ func (h *Handler) BoardFragment(w http.ResponseWriter, r *http.Request, id strin
 	for _, st := range board.ColumnStatusIDs {
 		s, err := h.Store.StatusByID(r.Context(), st)
 		if err != nil {
+			log.Printf("%s: %v", "board.go", err)
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
