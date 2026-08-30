@@ -34,8 +34,20 @@ importScripts('/static/sqlite/sqlite3.js', '/static/wasm/wasm_exec.js');
       },
     });
     boot('boot: sqlite3 module ready');
-    const pool = await sqlite3.installOpfsSAHPoolVfs();
-    boot('install result keys: ' + Object.keys(pool).join(',') + ' | oo1 keys: ' + Object.keys(sqlite3.oo1).join(','));
+    let pool;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        pool = await sqlite3.installOpfsSAHPoolVfs({
+          forceReinitIfPreviouslyFailed: attempt > 1,
+          clearOnInit: attempt > 1, // stale pool files from a killed session
+        });
+        break;
+      } catch (err) {
+        if (attempt >= 3) throw err;
+        boot('boot: pool install retry ' + attempt + ' (' + (err?.message ?? err) + ')');
+        await new Promise(r => setTimeout(r, 500 * attempt));
+      }
+    }
     sqlite3.oo1.OpfsSAHDb = pool.OpfsSAHPoolDb;
     boot('boot: OPFS SAH pool installed');
     self.sqlite3 = sqlite3;
