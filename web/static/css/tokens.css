@@ -133,6 +133,8 @@ body {
   left: 50%;
   transform: translate(-50%, -50%);
   width: min(560px, 92vw);
+  max-height: 85vh;
+  overflow-y: auto;
   background: var(--ds-surface);
   border-radius: 4px;
   box-shadow: 0 8px 28px rgba(9, 30, 66, 0.25);

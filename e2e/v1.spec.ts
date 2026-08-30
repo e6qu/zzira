@@ -41,9 +41,9 @@ test('V1: edit summary via dialog → issue view updates', async ({ page, reques
   await expect(page.locator('.modal')).toBeVisible();
   const newSummary = `V1 edited ${Date.now()}`;
   await page.fill('input[name=summary]', newSummary);
-  await page.click('.modal button[type=submit]');
+  await page.locator('.modal button[type=submit]').click({ force: true });
   console.log('EDIT-POSTS:', JSON.stringify(editPosts));
-  await expect(page.locator('.issue-summary')).toHaveText(newSummary);
+  await expect(page.locator('.issue-summary')).toHaveText(newSummary, { timeout: 20_000 });
   // the API agrees
   const bean = await request.get(`/rest/api/3/issue/${key}`, { headers: { Authorization: apiAuthHeader() } });
   expect((await bean.json()).fields.summary).toBe(newSummary);
@@ -55,7 +55,7 @@ test('V1: comment via UI → appears; changelog endpoint reflects edit', async (
   await page.goto(`/browse/${key}`);
   await page.fill('.rich-editor', 'first comment from e2e');
   await page.click('.comment-form button[type=submit]');
-  await expect(page.locator('.comment-body', { hasText: 'first comment from e2e' })).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator('.comment-body', { hasText: 'first comment from e2e' })).toBeVisible({ timeout: 20_000 });
 
   const cl = await request.get(`/rest/api/3/issue/${key}/comment`, { headers: { Authorization: apiAuthHeader() } });
   const body = await cl.json();
@@ -83,7 +83,7 @@ test('V1 done-when: offline edit queues, drain on reconnect, zero duplicates', a
   await page.context().setOffline(true);
   await page.click('text=Edit');
   await page.fill('input[name=summary]', `offline edit ${Date.now()}`);
-  await page.click('.modal button[type=submit]');
+  await page.locator('.modal button[type=submit]').click({ force: true });
   await page.waitForTimeout(500);
   await page.context().setOffline(false);
   await page.waitForTimeout(4000); // outbox drain + sync

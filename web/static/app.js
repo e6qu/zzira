@@ -90,7 +90,10 @@
     const editing = active && root.contains(active) &&
       (active.closest('[contenteditable]') ||
        ['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName));
-    if (editing) { pendingRootHtml = html; return; }
+    // Also defer if the create/edit dialog is open (the user is mid-edit)
+    const modalOpen = root.style.display === 'block' ||
+      (document.getElementById('modal-root') && document.getElementById('modal-root').style.display === 'block');
+    if (editing || modalOpen) { pendingRootHtml = html; return; }
     if (root.outerHTML === html) { pendingRootHtml = null; return; } // no-op render
     const incomingSeq = seqOf(html);
     if (incomingSeq > 0 && incomingSeq < seqOfDom()) {

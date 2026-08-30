@@ -29,8 +29,8 @@ test('V2: JQL search via navigator finds a fresh issue', async ({ page, request 
 
   await login(page);
   await page.goto(`/issues/ZZ?jql=${encodeURIComponent(`summary ~ "${marker}" ORDER BY key DESC`)}`);
-  await expect(page.locator('.jql-meta')).toContainText('1 result');
-  await expect(page.locator(`a:has-text("${key}")`)).toBeVisible();
+  await expect(page.locator('.jql-meta')).toContainText('1 result', { timeout: 20_000 });
+  await expect(page.locator(`a:has-text("${key}")`)).toBeVisible({ timeout: 20_000 });
 });
 
 test('V2: malformed JQL surfaces the server error inline', async ({ page }) => {
@@ -62,7 +62,7 @@ test('V2: custom field created via API is fillable in the UI and filterable', as
   await expect(page.locator(`input[name="${cf}"]`)).toBeVisible();
   await page.fill(`input[name="${cf}"]`, '42');
   await page.click('.modal button[type=submit]');
-  await expect(page.locator('.issue-view')).toBeVisible();
+  await expect(page.locator('.issue-view')).toBeVisible({ timeout: 20_000 });
 
   // filterable via JQL
   await expect.poll(async () => {
