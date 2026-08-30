@@ -74,7 +74,10 @@ test('V0 done-when: offline reload still renders the issue from local SQLite', a
   expect(summary).toBeTruthy();
 
   // Give the worker one sync cycle, then cut the network and reload.
-  await page.waitForTimeout(4_000);
+  const banner = page.locator('#sync-banner');
+  await expect
+    .poll(async () => (await banner.textContent()) ?? '', { timeout: 20_000 })
+    .toContain('synced');
   await page.context().setOffline(true);
   await page.reload();
   await expect(page.locator('.issue-summary')).toHaveText(summary!);

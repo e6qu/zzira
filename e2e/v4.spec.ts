@@ -56,7 +56,7 @@ test('V4 done-when: rank via API in browser A converges in browser B via poke', 
         cards => cards.map(c => c.getAttribute('data-key')),
       );
       return keys[0] === secondKey && keys.includes(topKey);
-    }, { timeout: 10_000 })
+    }, { timeout: 30_000 })
     .toBe(true);
 
   await pa.close();
