@@ -237,17 +237,13 @@ func (h *Handler) Home(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
-	notifications, err := h.Store.NotificationsByUser(r.Context(), wsID, user.ID, 5)
+	stats, err := h.Store.DashboardData(r.Context(), wsID, user.ID)
 	if err != nil {
-		log.Printf("notifications: %v", err)
+		log.Printf("dashboard: %v", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	writePage(w, "page_home", pageData{User: user, Data: homeData{Notifications: notifications}})
-}
-
-type homeData struct {
-	Notifications []*models.Notification
+	writePage(w, "page_home", pageData{User: user, Data: stats})
 }
 
 func (h *Handler) CreateDialog(w http.ResponseWriter, r *http.Request) {

@@ -72,3 +72,21 @@ type LinkType struct {
 	Inward  string `json:"inward"`
 	Outward string `json:"outward"`
 }
+
+// DashboardStats powers the home dashboard (server-rendered).
+type DashboardStats struct {
+	StatusCounts []struct {
+		Status Status
+		Count  int
+	}
+	MyOpenIssues int
+	Recent       []RecentActivity
+}
+
+type RecentActivity struct {
+	ActorName string
+	Summary   string
+	Op        string
+	IssueKey  string
+	Created   string
+}
