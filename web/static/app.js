@@ -235,10 +235,6 @@
     openEdit(key) {
       const root = document.getElementById('modal-root');
       if (!root) return;
-      if (!workerReady) {
-        announce('local replica is still initializing', 3000);
-        return;
-      }
       // Network first; on network failure the worker renders the dialog from
       // the local replica (designed offline path — the failure is announced).
       fetch(`/issues/${key}/edit`).then(r => {
