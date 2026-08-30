@@ -269,9 +269,9 @@
     <section class="home-notifications">
       <h2>Notifications</h2>
       {{with .Data}}
-      {{range .Notifications}}
+      {{range .Recent}}
       <div class="notification">
-        <strong>{{.ActorName}}</strong> {{.Message}}
+        <strong>{{if .ActorName}}{{.ActorName}}{{end}}</strong>
         <span class="muted">{{.Created}}</span>
       </div>
       {{else}}

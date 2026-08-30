@@ -1,28 +1,38 @@
 import { test, expect, Page } from '@playwright/test';
-
 import * as fs from 'fs';
 import * as path from 'path';
 
 const DEMO = { email: 'demo@zzira.dev', password: 'demo1234' };
 
-// The REST contract authenticates with email + API token (never the password).
 function apiAuthHeader(): string {
-  const tokenFile = path.join(__dirname, '..', 'data', 'seed-tokens.json');
-  const tokens = JSON.parse(fs.readFileSync(tokenFile, 'utf8'));
+  const tokens = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'seed-tokens.json'), 'utf8'));
   const token = process.env.ZZIRA_API_TOKEN ?? tokens[DEMO.email];
-  if (!token) throw new Error('no API token: run `go run ./cmd/server -mode=seed`');
   return 'Basic ' + Buffer.from(`${DEMO.email}:${token}`).toString('base64');
 }
 
-async function login(page: Page) {
+
+// Serial suite: one shared browser context boots the wasm worker ONCE for the
+// whole file (the expensive part). Tests build on the shared logged-in state.
+test.describe.configure({ mode: 'serial' });
+
+let browser: any;
+let context: any;
+let page: Page;
+
+test.beforeAll(async ({ browser: b }) => {
+  browser = b;
+  context = await browser.newContext();
+  page = await context.newPage();
   await page.goto('/login');
   await page.fill('input[name=email]', DEMO.email);
   await page.fill('input[name=password]', DEMO.password);
   await page.click('button[type=submit]');
   await expect(page).toHaveURL('/');
-}
+});
 
-
+test.afterAll(async () => {
+  await context?.close();
+});
 
 test('V0 station 4: Jira API contract smoke (serverInfo + create via REST)', async ({ request }) => {
   const info = await request.get('/rest/api/3/serverInfo');
@@ -31,23 +41,16 @@ test('V0 station 4: Jira API contract smoke (serverInfo + create via REST)', asy
 
   const created = await request.post('/rest/api/3/issue', {
     headers: { Authorization: apiAuthHeader() },
-    data: {
-      fields: {
-        project: { key: 'ZZ' },
-        summary: `E2E API issue ${Date.now()}`,
-        issuetype: { name: 'Task' },
-      },
-    },
+    data: { fields: { project: { key: 'ZZ' }, summary: `E2E API issue ${Date.now()}`, issuetype: { name: 'Task' } } },
   });
   expect(created.status()).toBe(201);
   const body = await created.json();
   expect(body.key).toMatch(/^ZZ-\d+$/);
 });
 
-test('V0 station 5: login → create via UI → lands on issue view', async ({ page }) => {
-  await login(page);
+test('V0 station 5: login → create via UI → lands on issue view', async () => {
   await page.click('text=Create');
-  await expect(page.locator('.modal input[name=summary]')).toBeVisible({ timeout: 60_000 });
+  await expect(page.locator('.modal input[name=summary]')).toBeVisible({ timeout: 15_000 });
   const summary = `E2E UI issue ${Date.now()}`;
   await page.fill('input[name=summary]', summary);
   await page.click('.modal button[type=submit]');
@@ -55,51 +58,51 @@ test('V0 station 5: login → create via UI → lands on issue view', async ({ p
   await expect(page.locator('.issue-summary')).toHaveText(summary);
 });
 
-test('V0 station 6: wasm worker boots and syncs (banner)', async ({ page }) => {
-  await login(page);
+test('V0 station 6: wasm worker boots and syncs (banner)', async () => {
   await page.goto('/');
   const banner = page.locator('#sync-banner');
   await expect
-    .poll(async () => (await banner.textContent()) ?? '', { timeout: 60_000 })
+    .poll(async () => (await banner.textContent()) ?? '', { timeout: 45_000 })
     .toContain('local sync ready');
 });
 
-test('V0 done-when: offline reload still renders the issue from local SQLite', async ({ page }) => {
-  await login(page);
-  // Visit an issue so the service worker caches the shell and the replica has data.
+test('V0 done-when: offline reload still renders the issue from local SQLite', async () => {
   await page.goto('/issues/ZZ');
   await page.click('tbody a >> nth=0');
   await expect(page).toHaveURL(/\/browse\/ZZ-\d+$/);
   const summary = await page.locator('.issue-summary').textContent();
   expect(summary).toBeTruthy();
 
-  // Give the worker one sync cycle, then cut the network and reload.
+  // wait for one sync cycle, then cut the network and reload
   const banner = page.locator('#sync-banner');
   await expect
     .poll(async () => (await banner.textContent()) ?? '', { timeout: 20_000 })
     .toContain('synced');
-  await page.context().setOffline(true);
+  await context.setOffline(true);
   await page.reload();
   await expect(page.locator('.issue-summary')).toHaveText(summary!);
-  await page.context().setOffline(false);
+  await context.setOffline(false);
 });
 
-test('V0 done-when: two browsers converge through the action log', async ({ browser }) => {
-  const a = await browser.newContext();
-  const b = await browser.newContext();
-  const pa = await a.newPage();
-  const pb = await b.newPage();
+test('V0 done-when: two browsers converge through the action log', async ({ browser: b }) => {
+  const ctxA = await b.newContext();
+  const ctxB = await b.newContext();
+  const pa = await ctxA.newPage();
+  const pb = await ctxB.newPage();
 
-  await login(pa);
-  await login(pb);
+  for (const p of [pa, pb]) {
+    await p.goto('/login');
+    await p.fill('input[name=email]', DEMO.email);
+    await p.fill('input[name=password]', DEMO.password);
+    await p.click('button[type=submit]');
+    await expect(p).toHaveURL('/');
+  }
   await pb.goto('/issues/ZZ');
 
   // A creates an issue through the REST contract edge.
   const created = await pa.request.post('/rest/api/3/issue', {
     headers: { Authorization: apiAuthHeader() },
-    data: {
-      fields: { project: { key: 'ZZ' }, summary: `Converge ${Date.now()}`, issuetype: { name: 'Task' } },
-    },
+    data: { fields: { project: { key: 'ZZ' }, summary: `Converge ${Date.now()}`, issuetype: { name: 'Task' } } },
   });
   const { key } = await created.json();
 
@@ -109,9 +112,9 @@ test('V0 done-when: two browsers converge through the action log', async ({ brow
     .poll(async () => {
       await pb.reload();
       return pb.locator(`text=${key}`).count();
-    }, { timeout: 60_000 })
+    }, { timeout: 30_000 })
     .toBeGreaterThan(0);
 
-  await a.close();
-  await b.close();
+  await ctxA.close();
+  await ctxB.close();
 });
