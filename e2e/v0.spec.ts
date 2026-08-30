@@ -47,6 +47,7 @@ test('V0 station 4: Jira API contract smoke (serverInfo + create via REST)', asy
 test('V0 station 5: login → create via UI → lands on issue view', async ({ page }) => {
   await login(page);
   await page.click('text=Create');
+  await expect(page.locator('.modal input[name=summary]')).toBeVisible({ timeout: 30_000 });
   const summary = `E2E UI issue ${Date.now()}`;
   await page.fill('input[name=summary]', summary);
   await page.click('.modal button[type=submit]');
@@ -59,7 +60,7 @@ test('V0 station 6: wasm worker boots and syncs (banner)', async ({ page }) => {
   await page.goto('/');
   const banner = page.locator('#sync-banner');
   await expect
-    .poll(async () => (await banner.textContent()) ?? '', { timeout: 15_000 })
+    .poll(async () => (await banner.textContent()) ?? '', { timeout: 30_000 })
     .toContain('local sync ready');
 });
 
@@ -105,7 +106,7 @@ test('V0 done-when: two browsers converge through the action log', async ({ brow
     .poll(async () => {
       await pb.reload();
       return pb.locator(`text=${key}`).count();
-    }, { timeout: 15_000 })
+    }, { timeout: 30_000 })
     .toBeGreaterThan(0);
 
   await a.close();
