@@ -75,6 +75,14 @@
   // applyRootHtml swaps in a re-render unless the user is typing inside the
   // issue view; in that case it is deferred until focus leaves (no clobbered
   // edits, no lost renders).
+  function seqOf(html) {
+    const m = /data-seq="(\d+)"/.exec(html);
+    return m ? Number(m[1]) : 0;
+  }
+  function seqOfDom() {
+    const el = document.querySelector('#issue-root');
+    return el ? Number(el.getAttribute('data-seq') || 0) : 0;
+  }
   function applyRootHtml(html) {
     const root = document.getElementById('issue-root');
     if (!root) return;
@@ -84,6 +92,11 @@
        ['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName));
     if (editing) { pendingRootHtml = html; return; }
     if (root.outerHTML === html) { pendingRootHtml = null; return; } // no-op render
+    const incomingSeq = seqOf(html);
+    if (incomingSeq > 0 && incomingSeq < seqOfDom()) {
+      pendingRootHtml = null;
+      return; // stale replica render: the DOM already has newer data
+    }
     root.outerHTML = html;
     pendingRootHtml = null;
     pushView();

@@ -54,7 +54,7 @@
 {{end}}
 
 {{define "issue_view"}}
-<div class="issue-view" id="issue-root" data-issue-id="{{.Issue.ID}}" data-issue-key="{{.Issue.Key}}">
+<div class="issue-view" id="issue-root" data-issue-id="{{.Issue.ID}}" data-issue-key="{{.Issue.Key}}" data-seq="{{.Issue.UpdatedSeq}}">
   <div class="issue-breadcrumbs">
     <a href="/issues/{{.ProjectKey}}">{{.ProjectKey}}</a> / {{.Issue.Key}}
   </div>
