@@ -226,8 +226,15 @@ func seedUsers(ctx context.Context, st *store.Store) error {
 	}
 	// Dev convenience: e2e tests authenticate with these. Local artifact only.
 	if len(tokens) > 0 {
-		if f, err := json.MarshalIndent(tokens, "", "  "); err == nil {
-			_ = os.WriteFile("data/seed-tokens.json", f, 0o600)
+		if err := os.MkdirAll("data", 0o700); err != nil {
+			return err
+		}
+		f, err := json.MarshalIndent(tokens, "", "  ")
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile("data/seed-tokens.json", f, 0o600); err != nil {
+			return err
 		}
 	}
 	return nil
