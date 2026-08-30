@@ -24,7 +24,14 @@ type Store struct {
 }
 
 func Open(ctx context.Context, dsn string) (*Store, error) {
-	pool, err := pgxpool.New(ctx, dsn)
+	cfg, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		return nil, err
+	}
+	// Server-side prepared statements: JSONB operators like @>/? must never
+	// pass through pgx's client-side SQL sanitizer (it rejects literal ?).
+	cfg.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeCacheStatement
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -408,7 +415,7 @@ func (s *Store) ActionsSince(ctx context.Context, workspaceID, userID string, si
 		          , jsonb_array_elements(ss.levels) lvl
 		          WHERE p.id = ci.project_id
 		            AND lvl->>'id' = ci.security_level_id
-		            AND NOT (lvl->'members' ? $3)
+		            AND NOT ((lvl->'members') @> jsonb_build_array($3))
 		        )
 		    )
 		  )

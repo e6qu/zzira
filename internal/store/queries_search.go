@@ -334,6 +334,6 @@ func VisibleIssuePredicate(alias string, userPlaceholder string) string {
 		" JOIN security_schemes ss ON ss.id = p.security_scheme_id" +
 		", jsonb_array_elements(ss.levels) lvl" +
 		" WHERE p.id = " + alias + ".project_id AND lvl->>'id' = " + alias + ".security_level_id" +
-		" AND lvl->'members' ? " + userPlaceholder +
+		" AND (lvl->'members') @> jsonb_build_array(" + userPlaceholder + ")" +
 		"))"
 }
