@@ -33,11 +33,16 @@ test('V1: edit summary via dialog → issue view updates', async ({ page, reques
   const key = await createIssueViaAPI(request, `V1 edit ${Date.now()}`);
   await login(page);
   await page.goto(`/browse/${key}`);
+  const editPosts: string[] = [];
+  page.on('response', r => {
+    if (r.request().method() === 'POST' && r.url().includes('/edit')) editPosts.push(`${r.status()} ${r.url()}`);
+  });
   await page.click('text=Edit');
   await expect(page.locator('.modal')).toBeVisible();
   const newSummary = `V1 edited ${Date.now()}`;
   await page.fill('input[name=summary]', newSummary);
   await page.click('.modal button[type=submit]');
+  console.log('EDIT-POSTS:', JSON.stringify(editPosts));
   await expect(page.locator('.issue-summary')).toHaveText(newSummary);
   // the API agrees
   const bean = await request.get(`/rest/api/3/issue/${key}`, { headers: { Authorization: apiAuthHeader() } });
