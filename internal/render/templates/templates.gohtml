@@ -1,0 +1,466 @@
+{{define "head"}}
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ZZIRA</title>
+<link rel="stylesheet" href="/static/css/tokens.css">
+<script src="/static/htmx/htmx.min.js" defer></script>
+<script src="/static/wasm/wasm_exec.js" defer></script>
+<script src="/static/app.js" defer></script>
+{{end}}
+
+{{define "avatar"}}
+<span class="avatar" title="{{.DisplayName}}">{{initials .DisplayName}}</span>
+{{end}}
+
+{{define "header"}}
+<header class="global-header">
+  <a class="logo" href="/">ZZIRA</a>
+  <nav class="header-nav">
+    <a href="/dashboard">Dashboard</a>
+    <a href="/issues/ZZ">Issues</a>
+  </nav>
+  <button class="btn btn-primary" hx-get="/issues/new" hx-target="#modal-root"
+          hx-swap="innerHTML" onclick="zzira.openModal()">Create</button>
+  {{if .User}}{{template "avatar" .User}}{{end}}
+</header>
+{{end}}
+
+{{define "create_dialog"}}
+<div class="modal-backdrop" onclick="if(event.target===this)zzira.closeModal()"></div>
+<div class="modal" role="dialog" aria-label="Create issue">
+  <h2>Create issue</h2>
+  <form hx-post="/issues" hx-target="#modal-root" hx-swap="innerHTML">
+    <label>Project
+      <input name="project" value="{{.Project.Key}}" readonly>
+    </label>
+    <label>Issue type
+      <select name="issuetype">
+        <option value="{{.IssueType.ID}}">{{.IssueType.Name}}</option>
+      </select>
+    </label>
+    <label>Summary
+      <input name="summary" required autofocus maxlength="255" placeholder="What needs to be done?">
+    </label>
+    <label>Description
+      <textarea name="description" rows="6" placeholder="Describe the task…"></textarea>
+    </label>
+    {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+    <div class="modal-actions">
+      <button type="button" class="btn" onclick="zzira.closeModal()">Cancel</button>
+      <button type="submit" class="btn btn-primary">Create</button>
+    </div>
+  </form>
+</div>
+{{end}}
+
+{{define "issue_view"}}
+<div class="issue-view" id="issue-root" data-issue-id="{{.Issue.ID}}" data-issue-key="{{.Issue.Key}}">
+  <div class="issue-breadcrumbs">
+    <a href="/issues/{{.ProjectKey}}">{{.ProjectKey}}</a> / {{.Issue.Key}}
+  </div>
+  <div class="issue-transitions">
+    {{range .Transitions}}
+    <form hx-post="/issues/{{$.Issue.Key}}/transition" hx-target="#issue-root" hx-swap="outerHTML">
+      <input type="hidden" name="transition" value="{{.ID}}">
+      <button type="submit" class="btn btn-transition">{{.Name}}</button>
+    </form>
+    {{end}}
+    {{if .CanEdit}}
+    <button class="btn" onclick="zzira.openEdit('{{.Issue.Key}}')">Edit</button>
+    <button class="btn btn-danger" hx-delete="/issues/{{.Issue.Key}}"
+            hx-confirm="Delete {{.Issue.Key}}?" hx-redirect="/issues/{{.ProjectKey}}">Delete</button>
+    {{end}}
+  </div>
+  <div class="issue-main">
+    <div class="issue-primary">
+      <h1 class="issue-summary" data-field="summary">{{.Issue.Summary}}</h1>
+      <section class="issue-description" data-field="description">
+        {{adfHTML .Issue.Description}}
+      </section>
+
+      <section class="issue-comments">
+        <h2>Comments</h2>
+        <div id="comments-list">
+          {{range .Comments}}
+          <div class="comment" id="{{.ID}}">
+            <div class="comment-head">
+              {{if .AuthorName}}<span class="avatar" title="{{.AuthorName}}">{{initials .AuthorName}}</span>{{end}}
+              <strong>{{if .AuthorName}}{{.AuthorName}}{{else}}Unknown{{end}}</strong>
+              <span class="muted">{{.Created}}</span>
+            </div>
+            <div class="comment-body">{{adfHTML .Body}}</div>
+          </div>
+          {{else}}
+          <p class="muted">No comments yet.</p>
+          {{end}}
+        </div>
+        {{if .CanEdit}}
+        <form class="comment-form" hx-post="/issues/{{.Issue.Key}}/comments" hx-target="#issue-root" hx-swap="outerHTML">
+          <div class="editor-toolbar" data-editor-toolbar>
+            <button type="button" data-cmd="bold" title="Bold"><strong>B</strong></button>
+            <button type="button" data-cmd="italic" title="Italic"><em>I</em></button>
+            <button type="button" data-cmd="insertUnorderedList" title="Bullet list">&bull;&equiv;</button>
+            <button type="button" data-cmd="code" title="Code">&lt;/&gt;</button>
+          </div>
+          <div class="rich-editor" contenteditable="true" data-rich-editor data-target-name="adf"
+               data-placeholder="Add a comment…"></div>
+          <input type="hidden" name="adf">
+          <button type="submit" class="btn btn-primary">Comment</button>
+        </form>
+        {{end}}
+      </section>
+
+      <section class="issue-attachments">
+        <h2>Attachments</h2>
+        <div id="attachments-list">
+          {{range .Attachments}}
+          <div class="attachment">
+            <span class="attachment-icon">&#128206;</span>
+            <a href="/rest/api/3/attachment/content/{{.ID}}">{{.Filename}}</a>
+            <span class="muted">{{humanSize .Size}}</span>
+          </div>
+          {{else}}
+          <p class="muted">No attachments.</p>
+          {{end}}
+        </div>
+        {{if .CanEdit}}
+        <form class="upload-form" method="post" action="/issues/{{.Issue.Key}}/attachments" enctype="multipart/form-data">
+          <input type="file" name="file" required>
+          <button type="submit" class="btn">Upload</button>
+        </form>
+        {{end}}
+      </section>
+
+      <section class="issue-worklogs">
+        <h2>Worklog</h2>
+        <div id="worklogs-list">
+          {{range .Worklogs}}
+          <div class="worklog">
+            <div class="comment-head">
+              {{if .AuthorName}}<span class="avatar" title="{{.AuthorName}}">{{initials .AuthorName}}</span>{{end}}
+              <strong>{{if .AuthorName}}{{.AuthorName}}{{end}}</strong>
+              <span class="lozenge">{{timeSpent .TimeSpentSeconds}}</span>
+              <span class="muted">{{.Created}}</span>
+            </div>
+            {{if .Comment}}<div class="comment-body">{{adfHTML .Comment}}</div>{{end}}
+          </div>
+          {{else}}
+          <p class="muted">No time logged.</p>
+          {{end}}
+        </div>
+        {{if .CanEdit}}
+        <form class="worklog-form" hx-post="/issues/{{.Issue.Key}}/worklogs" hx-target="#issue-root" hx-swap="outerHTML">
+          <input name="seconds" type="number" min="1" placeholder="Seconds" required class="worklog-seconds">
+          <input name="comment" placeholder="What did you work on? (optional)" class="worklog-comment">
+          <button type="submit" class="btn btn-primary">Log work</button>
+        </form>
+        {{end}}
+      </section>
+
+      <section class="issue-history">
+        <h2>History</h2>
+        {{range .History}}
+        <div class="history-entry">
+          <div class="comment-head">
+            {{if .Author}}<span class="avatar" title="{{.Author.DisplayName}}">{{initials .Author.DisplayName}}</span>{{end}}
+            <strong>{{if .Author}}{{.Author.DisplayName}}{{end}}</strong>
+            <span class="muted">{{.Created}}</span>
+          </div>
+          <ul>
+            {{range .Items}}<li><strong>{{.Field}}</strong> changed{{if .FromString}} from “{{.FromString}}”{{end}}{{if .ToString}} to “{{.ToString}}”{{end}}</li>{{end}}
+          </ul>
+        </div>
+        {{else}}
+        <p class="muted">No changes recorded.</p>
+        {{end}}
+      </section>
+    </div>
+    <aside class="issue-details">
+      <dl>
+        <dt>Status</dt>
+        <dd><span class="lozenge {{statusClass .Issue.Status.Category}}">{{.Issue.Status.Name}}</span></dd>
+        <dt>Type</dt>
+        <dd>{{.Issue.IssueType.Name}}</dd>
+        {{if .Issue.Priority}}<dt>Priority</dt><dd>{{.Issue.Priority.Name}}</dd>{{end}}
+        <dt>Assignee</dt>
+        <dd>{{if .Issue.Assignee}}{{template "avatar" .Issue.Assignee}}{{else}}Unassigned{{end}}</dd>
+        <dt>Reporter</dt>
+        <dd>{{if .Issue.Reporter}}{{template "avatar" .Issue.Reporter}}{{end}}</dd>
+      </dl>
+    </aside>
+  </div>
+</div>
+{{end}}
+
+{{define "edit_dialog"}}
+<div class="modal-backdrop" onclick="if(event.target===this)zzira.closeModal()"></div>
+<div class="modal" role="dialog" aria-label="Edit issue">
+  <h2>Edit {{.Issue.Key}}</h2>
+  <form hx-post="/issues/{{.Issue.Key}}/edit" hx-target="#issue-root" hx-swap="outerHTML" hx-on::after-request="zzira.closeModal()">
+    <label>Summary
+      <input name="summary" value="{{.Issue.Summary}}" required maxlength="255">
+    </label>
+    <label>Description
+      <textarea name="description" rows="6">{{adfToText .Issue.Description}}</textarea>
+    </label>
+    <label>Assignee
+      <select name="assignee">
+        <option value="">Unassigned</option>
+        {{$cur := ""}}{{if .Issue.Assignee}}{{$cur = .Issue.Assignee.ID}}{{end}}
+        {{range .Members}}
+        <option value="{{.ID}}" {{if eq .ID $cur}}selected{{end}}>{{.DisplayName}}</option>
+        {{end}}
+      </select>
+    </label>
+    {{if .SecurityLevels}}
+    <label>Security
+      <select name="security">
+        <option value="">Public</option>
+        {{$curSec := .Issue.SecurityLevelID}}
+        {{range .SecurityLevels}}
+        <option value="{{.ID}}" {{if eq .ID $curSec}}selected{{end}}>{{.Name}}</option>
+        {{end}}
+      </select>
+    </label>
+    {{end}}
+    {{range .CustomFields}}
+    <label>{{.Name}}
+      <input name="{{.ID}}" value="{{customFieldValue $.Issue .ID}}">
+    </label>
+    {{end}}
+    {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+    <div class="modal-actions">
+      <button type="button" class="btn" onclick="zzira.closeModal()">Cancel</button>
+      <button type="submit" class="btn btn-primary">Save</button>
+    </div>
+  </form>
+</div>
+{{end}}
+
+{{define "page_home"}}
+<!doctype html>
+<html lang="en">
+<head>{{template "head" .}}</head>
+<body>
+  {{template "header" .}}
+  <main class="page">
+    <h1>Welcome to ZZIRA</h1>
+    <p>Local-first, delta-synced issue tracking. Create an issue to see it sync.</p>
+
+    <section class="home-links">
+      <a class="btn" href="/issues/ZZ">Issue navigator</a>
+      <a class="btn" href="/board/brd_default">Board</a>
+    </section>
+
+    <section class="dashboard-cards">
+      {{$data := .Data}}
+      {{range $data.StatusCounts}}
+      <div class="dash-card">
+        <span class="lozenge {{statusClass .Status.Category}}">{{.Status.Name}}</span>
+        <div class="dash-count">{{.Count}}</div>
+      </div>
+      {{end}}
+      <div class="dash-card">
+        <span class="muted">My open</span>
+        <div class="dash-count">{{$data.MyOpenIssues}}</div>
+      </div>
+    </section>
+
+    <section class="home-notifications">
+      <h2>Notifications</h2>
+      {{with .Data}}
+      {{range .Notifications}}
+      <div class="notification">
+        <strong>{{.ActorName}}</strong> {{.Message}}
+        <span class="muted">{{.Created}}</span>
+      </div>
+      {{else}}
+      <p class="muted">Nothing yet.</p>
+      {{end}}
+      {{end}}
+    </section>
+  </main>
+  <div id="modal-root"></div>
+  <div id="sync-banner" class="sync-banner" hidden></div>
+</body>
+</html>
+{{end}}
+
+{{define "page_issue"}}
+<!doctype html>
+<html lang="en">
+<head>{{template "head" .}}</head>
+<body data-current-issue="{{.Data.Issue.ID}}">
+  {{template "header" .}}
+  <main class="page page-narrow" id="issue-root">
+    {{template "issue_view" .Data}}
+  </main>
+  <div id="modal-root"></div>
+  <div id="sync-banner" class="sync-banner" hidden></div>
+</body>
+</html>
+{{end}}
+
+{{define "issue_list_row"}}
+<tr>
+  <td><a href="/browse/{{.Key}}">{{.Key}}</a></td>
+  <td>{{.Summary}}</td>
+  <td><span class="lozenge {{statusClass .Status.Category}}">{{.Status.Name}}</span></td>
+  <td>{{if .Assignee}}{{template "avatar" .Assignee}}{{end}}</td>
+</tr>
+{{end}}
+
+{{define "page_project"}}
+<!doctype html>
+<html lang="en">
+<head>{{template "head" .}}</head>
+<body>
+  {{template "header" .}}
+  <main class="page">
+    <h1>{{.Data.Project.Name}} <span class="project-key">({{.Data.Project.Key}})</span></h1>
+    <form class="jql-bar" method="get" action="/issues/{{.Data.Project.Key}}">
+      <input name="jql" value="{{.Data.JQL}}" placeholder='Search with JQL: status = "In Progress" ORDER BY updated DESC' autocomplete="off">
+      <button type="submit" class="btn btn-primary">Search</button>
+    </form>
+    {{if .Data.JQL}}
+    <p class="muted jql-meta">
+      {{if .Data.JQLError}}<span class="error">{{.Data.JQLError}}</span>
+      {{else}}{{.Data.Total}} result{{if ne .Data.Total 1}}s{{end}} for <code>{{.Data.JQL}}</code>{{end}}
+    </p>
+    {{end}}
+    <table class="issue-list">
+      <thead><tr><th>Key</th><th>Summary</th><th>Status</th><th>Assignee</th></tr></thead>
+      <tbody>
+        {{range .Data.Issues}}{{template "issue_list_row" .}}{{else}}
+        <tr><td colspan="4" class="empty">{{if .Data.JQL}}No issues match this query.{{else}}No issues yet — hit <strong>Create</strong>.{{end}}</td></tr>
+        {{end}}
+      </tbody>
+    </table>
+  </main>
+  <div id="modal-root"></div>
+  <div id="sync-banner" class="sync-banner" hidden></div>
+</body>
+</html>
+{{end}}
+
+{{define "board_card"}}
+<div class="board-card" data-issue="{{.ID}}" data-key="{{.Key}}">
+  <div class="board-card-top">
+    <a href="/browse/{{.Key}}">{{.Key}}</a>
+    <span class="lozenge {{statusClass .Status.Category}}">{{.Status.Name}}</span>
+  </div>
+  <div class="board-card-summary">{{.Summary}}</div>
+  {{if .Assignee}}<div class="board-card-assignee">{{template "avatar" .Assignee}}</div>{{end}}
+</div>
+{{end}}
+
+{{define "board_fragment"}}
+<div class="board" id="board" data-board-ready="">
+  {{$board := .Board.ID}}
+  {{range .Columns}}
+  <div class="board-column" data-status="{{.StatusID}}">
+    <div class="board-column-head">
+      <span class="lozenge {{statusClass .Category}}">{{.Name}}</span>
+      <span class="muted">{{len .Issues}}</span>
+    </div>
+    <div class="board-column-body" data-column>
+      {{range .Issues}}{{template "board_card" .}}{{end}}
+    </div>
+  </div>
+  {{end}}
+</div>
+{{end}}
+
+{{define "page_board"}}
+<!doctype html>
+<html lang="en">
+<head>{{template "head" .}}
+<script src="/static/sortable.min.js" defer></script>
+</head>
+<body data-board="{{.Data.Board.ID}}">
+  {{template "header" .}}
+  <main class="page page-wide">
+    <h1>{{.Data.Board.Name}} <span class="project-key">board</span></h1>
+    <div class="board" id="board">
+      {{$board := .Data.Board.ID}}
+      {{range .Data.Columns}}
+      <div class="board-column" data-status="{{.StatusID}}">
+        <div class="board-column-head">
+          <span class="lozenge {{statusClass .Category}}">{{.Name}}</span>
+          <span class="muted">{{len .Issues}}</span>
+        </div>
+        <div class="board-column-body" data-column>
+          {{range .Issues}}{{template "board_card" .}}{{end}}
+        </div>
+      </div>
+      {{end}}
+    </div>
+  </main>
+  <div id="modal-root"></div>
+  <div id="sync-banner" class="sync-banner" hidden></div>
+</body>
+</html>
+{{end}}
+
+{{define "page_dashboard"}}
+<!doctype html>
+<html lang="en">
+<head>{{template "head" .}}</head>
+<body>
+  {{template "header" .}}
+  <main class="page">
+    <h1>Dashboard</h1>
+    <section class="dashboard-cards">
+      {{$data := .Data}}
+      {{range $data.StatusCounts}}
+      <div class="dash-card">
+        <span class="lozenge {{statusClass .Status.Category}}">{{.Status.Name}}</span>
+        <div class="dash-count">{{.Count}}</div>
+      </div>
+      {{end}}
+      <div class="dash-card">
+        <span class="muted">My open</span>
+        <div class="dash-count">{{$data.MyOpenIssues}}</div>
+      </div>
+    </section>
+
+    <section class="issue-history">
+      <h2>Recent activity</h2>
+      {{range .Data.Recent}}
+      <div class="history-entry">
+        <strong><a href="/browse/{{.IssueKey}}">{{.IssueKey}}</a></strong>
+        {{if eq .Op "upsert"}}updated{{else}}deleted{{end}} — {{.Summary}}
+        <span class="muted">{{if .ActorName}}{{.ActorName}} · {{end}}{{.Created}}</span>
+      </div>
+      {{else}}
+      <p class="muted">No activity yet.</p>
+      {{end}}
+    </section>
+  </main>
+  <div id="modal-root"></div>
+  <div id="sync-banner" class="sync-banner" hidden></div>
+</body>
+</html>
+{{end}}
+
+{{define "page_login"}}
+<!doctype html>
+<html lang="en">
+<head>{{template "head" .}}</head>
+<body class="login-body">
+  <main class="login-card">
+    <h1>ZZIRA</h1>
+    <form method="post" action="/login">
+      <label>Email
+        <input type="email" name="email" required autofocus>
+      </label>
+      <label>Password
+        <input type="password" name="password" required>
+      </label>
+      {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+      <button type="submit" class="btn btn-primary btn-block">Log in</button>
+    </form>
+  </main>
+</body>
+</html>
+{{end}}

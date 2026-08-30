@@ -1,0 +1,20 @@
+name: sast
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  semgrep:
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+    steps:
+      - uses: actions/checkout@v4
+      - name: semgrep scan (security rulesets)
+        run: semgrep scan --config p/golang --config p/secrets --config p/xss --error --severity ERROR

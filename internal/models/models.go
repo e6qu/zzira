@@ -1,0 +1,143 @@
+// Package models holds shared structs used by the renderer, the server, and the
+// wasm client. It must stay free of server-only imports (database, net/http).
+package models
+
+import "encoding/json"
+
+const (
+	SchemaVersion = 2
+
+	OpUpsert = "upsert"
+	OpDelete = "delete"
+
+	EntityIssue   = "issue"
+	EntityComment = "comment"
+)
+
+type User struct {
+	ID          string `json:"accountId"`
+	Email       string `json:"emailAddress,omitempty"`
+	DisplayName string `json:"displayName"`
+	TimeZone    string `json:"timeZone,omitempty"`
+	Active      bool   `json:"active"`
+	AccountType string `json:"accountType"`
+}
+
+type Status struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Category string `json:"category"`
+}
+
+type IssueType struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Icon string `json:"icon"`
+}
+
+type Priority struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type Project struct {
+	ID          string `json:"id"`
+	WorkspaceID string `json:"-"`
+	Key         string `json:"key"`
+	Name        string `json:"name"`
+	WorkflowID  string `json:"-"`
+
+	SecuritySchemeID string `json:"-"`
+}
+
+// Issue is the materialized issue. Description is an ADF document stored verbatim.
+type Issue struct {
+	ID          string          `json:"id"`
+	WorkspaceID string          `json:"-"`
+	ProjectID   string          `json:"-"`
+	Key         string          `json:"key"`
+	Summary     string          `json:"summary"`
+	Description json.RawMessage `json:"description"`
+	Status      Status          `json:"status"`
+	IssueType   IssueType       `json:"issuetype"`
+	Priority    *Priority       `json:"priority"`
+	Assignee    *User           `json:"assignee"`
+	Reporter    *User           `json:"reporter"`
+	Rank        string          `json:"rank"`
+
+	SecurityLevelID string                     `json:"securityLevelId,omitempty"`
+	Fields          map[string]json.RawMessage `json:"fields,omitempty"`
+
+	UpdatedSeq int64  `json:"-"`
+	UpdatedAt  string `json:"updated"`
+}
+
+// Action is one immutable ordered record of a change.
+type Action struct {
+	WorkspaceID string          `json:"-"`
+	Seq         int64           `json:"seq"`
+	EntityType  string          `json:"entityType"`
+	EntityID    string          `json:"entityId"`
+	Op          string          `json:"op"`
+	SchemaV     int             `json:"schemaV"`
+	Payload     json.RawMessage `json:"payload"`
+	ActorID     string          `json:"actorId"`
+	CreatedAt   string          `json:"createdAt,omitempty"`
+}
+
+// IssueUpsertPayload is the V0 payload shape: the full current value of the issue.
+// Field-level diffs arrive in V1; shape is versioned by SchemaV.
+type IssueUpsertPayload struct {
+	Issue Issue `json:"issue"`
+}
+
+type DeletePayload struct {
+	Reason string `json:"reason"`
+}
+
+// SyncResponse is the /sync wire contract.
+type SyncResponse struct {
+	Workspace       string   `json:"workspace"`
+	From            int64    `json:"from"`
+	To              int64    `json:"to"`
+	Head            int64    `json:"head"`
+	RendererVersion string   `json:"rendererVersion"`
+	Actions         []Action `json:"actions"`
+	Truncated       bool     `json:"truncated"`
+}
+
+// ---- View models (render-only) ----
+
+type IssueView struct {
+	Issue       Issue
+	ProjectKey  string
+	CanEdit     bool
+	Comments    []Comment
+	Transitions []WorkflowTransition
+	History     []ChangelogEntry
+	Attachments []Attachment
+	Worklogs    []Worklog
+}
+
+// WorkflowTransition decouples the view from the workflow package.
+type WorkflowTransition struct {
+	ID   string
+	Name string
+}
+
+// EditDialogView drives the edit-issue dialog; rendered by both server and
+// wasm worker (offline editing). Members/levels/fields may be empty offline.
+type EditDialogView struct {
+	Issue          Issue
+	Members        []User
+	SecurityLevels []WorkflowTransition // reuse shape: ID+Name pairs
+	CustomFields   []CustomFieldView
+	Error          string
+}
+
+// CustomFieldView is a render-only custom field descriptor with the value.
+type CustomFieldView struct {
+	ID    string
+	Name  string
+	Value string
+}

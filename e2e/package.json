@@ -1,0 +1,11 @@
+{
+  "name": "zzira-e2e",
+  "private": true,
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "axe-core": "^4.10.0"
+  }
+}
