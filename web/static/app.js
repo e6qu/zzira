@@ -7,6 +7,37 @@
 
   const worker = new Worker('/static/worker.js');
   const banner = () => document.getElementById('sync-banner');
+  let workerReady = false;
+  const pendingWorkerMessages = [];
+
+  // A page can be used before the SQLite/WASM worker finishes booting. Keep
+  // commands until it advertises readiness instead of dropping the first
+  // view or an offline edit on the floor.
+  function postWorker(message) {
+    if (!workerReady) {
+      pendingWorkerMessages.push(message);
+      return;
+    }
+    worker.postMessage(message);
+  }
+
+  // HTML returned by the Go renderer is inserted outside HTMX's own swap
+  // machinery. Hydrate it explicitly so forms in replica renders and fetched
+  // dialogs keep their hx-* behavior (including the offline outbox hook).
+  function hydrate(scope) {
+    if (!scope) return;
+    if (window.htmx) window.htmx.process(scope);
+    initRichEditors(scope);
+    initBoard(scope);
+  }
+
+  function setModalHTML(html) {
+    const root = document.getElementById('modal-root');
+    if (!root) return;
+    root.innerHTML = html;
+    root.style.display = 'block';
+    hydrate(root);
+  }
 
   function currentIssueId() {
     return document.body.getAttribute('data-current-issue') || '';
@@ -31,6 +62,8 @@
     const msg = e.data || {};
     switch (msg.type) {
       case 'ready':
+        workerReady = true;
+        while (pendingWorkerMessages.length) worker.postMessage(pendingWorkerMessages.shift());
         announce('local sync ready (renderer ' + (msg.renderer || '?') + ')', 2500);
         pushView();
         break;
@@ -58,10 +91,7 @@
         announce('worker: ' + (msg.message || ''), 4000);
         break;
       case 'dialog-html':
-        {
-          const root = document.getElementById('modal-root');
-          if (root) { root.innerHTML = msg.html; root.style.display = 'block'; initRichEditors(root); }
-        }
+        setModalHTML(msg.html);
         break;
       case 'error':
         announce('sync error: ' + (msg.message || 'unknown'), 5000);
@@ -71,6 +101,7 @@
 
   let pendingRootHtml = null;
   let sawSync = false;
+  let offlineMode = !navigator.onLine;
 
   // applyRootHtml swaps in a re-render unless the user is typing inside the
   // issue view; in that case it is deferred until focus leaves (no clobbered
@@ -102,6 +133,7 @@
     }
     root.outerHTML = html;
     pendingRootHtml = null;
+    hydrate(document.getElementById('issue-root'));
     pushView();
   }
 
@@ -113,6 +145,7 @@
         (!active.closest('[contenteditable]') && !['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName)))) {
       root.outerHTML = pendingRootHtml;
       pendingRootHtml = null;
+      hydrate(document.getElementById('issue-root'));
       pushView();
     }
   });
@@ -135,7 +168,7 @@
   }
 
   function pushView() {
-    if (currentIssueId()) worker.postMessage({ type: 'view', issueId: currentIssueId() });
+    if (currentIssueId()) postWorker({ type: 'view', issueId: currentIssueId() });
   }
   document.addEventListener('DOMContentLoaded', pushView);
   document.body.addEventListener('htmx:afterSettle', pushView);
@@ -154,20 +187,40 @@
     return null;
   }
 
+  function queueOfflineForm(form) {
+    const path = form.getAttribute('hx-post') || form.getAttribute('hx-delete');
+    const kind = outboxKind(path || '');
+    if (!kind) return false;
+    const body = new URLSearchParams(new FormData(form)).toString();
+    postWorker({ type: 'enqueue', method: 'POST', path, body, kind });
+    return true;
+  }
+
+  // Catch native submits as well as HTMX requests. This is important during
+  // first-load offline transitions, when a dialog can exist before HTMX has
+  // had a chance to process its dynamically inserted form.
+  document.body.addEventListener('submit', (evt) => {
+    const form = evt.target;
+    if (!(form instanceof HTMLFormElement) || (!offlineMode && navigator.onLine)) return;
+    if (!queueOfflineForm(form)) return;
+    evt.preventDefault();
+    evt.stopPropagation();
+  }, true);
+
   document.body.addEventListener('htmx:beforeRequest', (evt) => {
     const elt = evt.detail.elt;
     if (!elt || elt.tagName !== 'FORM') return;
-    if (navigator.onLine) return; // online: let htmx do its thing
-    const path = elt.getAttribute('hx-post') || elt.getAttribute('hx-delete');
-    const kind = outboxKind(path || '');
-    if (!kind) return; // reads fail naturally offline
+    if (!offlineMode && navigator.onLine) return; // online: let htmx do its thing
+    if (!queueOfflineForm(elt)) return; // reads fail naturally offline
     evt.preventDefault();
     evt.stopPropagation();
-    const body = new URLSearchParams(new FormData(elt)).toString();
-    worker.postMessage({ type: 'enqueue', method: 'POST', path, body, kind });
   }, true);
 
-  window.addEventListener('online', () => announce('back online \u2014 syncing\u2026', 2000));
+  window.addEventListener('online', () => {
+    offlineMode = false;
+    announce('back online \u2014 syncing\u2026', 2000);
+  });
+  window.addEventListener('offline', () => { offlineMode = true; });
 
   // ---- Modal helpers ----
   window.zzira = {
@@ -182,18 +235,20 @@
     openEdit(key) {
       const root = document.getElementById('modal-root');
       if (!root) return;
+      if (!workerReady) {
+        announce('local replica is still initializing', 3000);
+        return;
+      }
       // Network first; on network failure the worker renders the dialog from
       // the local replica (designed offline path — the failure is announced).
       fetch(`/issues/${key}/edit`).then(r => {
         if (!r.ok) throw new Error('HTTP ' + r.status);
         return r.text();
       }).then(html => {
-        root.innerHTML = html;
-        root.style.display = 'block';
-        window.zzira.initRichEditors(root);
+        setModalHTML(html);
       }).catch(err => {
         announce('offline — local editor', 3000);
-        worker.postMessage({ type: 'edit-dialog', issueId: currentIssueId() });
+        postWorker({ type: 'edit-dialog', issueId: currentIssueId() });
         root.style.display = 'block';
       });
     }
@@ -270,7 +325,20 @@
 
   function domToADF(root) {
     const blocks = [];
-    root.querySelectorAll(':scope > *').forEach((el) => {
+    root.childNodes.forEach((node) => {
+      // Plain typing in a contenteditable creates a direct text node in
+      // Chromium; querySelectorAll(':scope > *') misses it and used to turn
+      // a real comment into an empty ADF paragraph.
+      if (node.nodeType === Node.TEXT_NODE) {
+        if (node.textContent.trim()) {
+          const content = [];
+          serializeInline([node], [], content);
+          blocks.push({ type: 'paragraph', content });
+        }
+        return;
+      }
+      if (node.nodeType !== Node.ELEMENT_NODE) return;
+      const el = node;
       if (el.tagName === 'DIV' && !el.querySelector('p,div,ul,ol,h1,h2,h3,h4,h5,h6,pre,blockquote')) {
         // contenteditable often produces bare divs — treat as paragraphs
         const content = [];
@@ -327,7 +395,7 @@
   document.body.addEventListener('htmx:afterRequest', (evt) => {
     const elt = evt.detail.elt;
     if (evt.detail.successful && elt && elt.tagName === 'FORM') {
-      worker.postMessage({ type: 'sync-now' });
+      postWorker({ type: 'sync-now' });
       const path = elt.getAttribute('hx-post') || '';
       if (path.includes('/edit')) zzira.closeModal();
     }
@@ -335,7 +403,7 @@
 
   // ---- Board drag & drop: rank (+ transition) commands ----
   function initBoard(scope) {
-    const board = (scope || document).getElementById('board');
+    const board = (scope || document).querySelector('#board');
     if (!board || board.dataset.ready) return;
     board.dataset.ready = '1';
     const boardID = document.body.getAttribute('data-board') || '';
@@ -364,7 +432,7 @@
   document.body.addEventListener('htmx:afterSettle', () => initBoard(document));
 
   function sendOrQueue(method, path, body, kind) {
-    if (navigator.onLine) {
+    if (!offlineMode && navigator.onLine) {
       fetch(path, {
         method,
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -372,12 +440,12 @@
       }).then((res) => {
         if (!res.ok) announce('command failed: ' + res.status, 4000);
       }).catch(() => {
-        worker.postMessage({ type: 'enqueue', method, path, body, kind });
+        postWorker({ type: 'enqueue', method, path, body, kind });
         announce('offline \u2014 queued', 3000);
       });
       return;
     }
-    worker.postMessage({ type: 'enqueue', method, path, body, kind });
+    postWorker({ type: 'enqueue', method, path, body, kind });
   }
 
   // ---- Service worker for offline page shells ----
