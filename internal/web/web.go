@@ -45,7 +45,6 @@ type projectIssuesData struct {
 func writePage(w http.ResponseWriter, name string, data any) {
 	if err := render.Page(w, name, data); err != nil {
 		log.Printf("render %s: %v", name, err)
-		log.Printf("edit custom fields: %v", cfErr)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 	}
 }
@@ -54,7 +53,6 @@ func writePage(w http.ResponseWriter, name string, data any) {
 func writeFragment(w http.ResponseWriter, name string, data any) {
 	if err := render.Fragment(w, name, data); err != nil {
 		log.Printf("render %s: %v", name, err)
-		log.Printf("edit custom fields: %v", cfErr)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 	}
 }
@@ -179,14 +177,12 @@ func (h *Handler) serveIssue(w http.ResponseWriter, r *http.Request, user *model
 	if isHX(r) {
 		if err := render.Fragment(w, "issue_view", view); err != nil {
 			log.Printf("render issue_view: %v", err)
-			log.Printf("edit custom fields: %v", cfErr)
 			http.Error(w, "internal error", http.StatusInternalServerError)
 		}
 		return
 	}
 	if err := render.Page(w, "page_issue", pageData{User: user, Data: view}); err != nil {
 		log.Printf("render page_issue: %v", err)
-		log.Printf("edit custom fields: %v", cfErr)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 	}
 }
@@ -244,7 +240,6 @@ func (h *Handler) Home(w http.ResponseWriter, r *http.Request) {
 	notifications, err := h.Store.NotificationsByUser(r.Context(), wsID, user.ID, 5)
 	if err != nil {
 		log.Printf("notifications: %v", err)
-		log.Printf("edit custom fields: %v", cfErr)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -344,7 +339,6 @@ func (h *Handler) ProjectIssues(w http.ResponseWriter, r *http.Request, key stri
 	} else {
 		issues, err := h.Store.IssuesByProject(r.Context(), wsID, project.ID, user.ID)
 		if err != nil {
-			log.Printf("edit custom fields: %v", cfErr)
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
@@ -558,7 +552,6 @@ func (h *Handler) EditIssue(w http.ResponseWriter, r *http.Request, key string) 
 	}
 	customFields, cfErr := h.Store.CustomFields(r.Context())
 	if cfErr != nil {
-		log.Printf("edit custom fields: %v", cfErr)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
