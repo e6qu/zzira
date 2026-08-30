@@ -32,9 +32,9 @@ var (
 func main() {
 	window.Set("onmessage", js.FuncOf(onMessage))
 
-	if err := initDB(); err != nil {
-		post(map[string]any{"type": "error", "message": "sqlite init failed: " + err.Error()})
-		return
+	safeInstall("sqlite init", initDB)
+	if db.IsUndefined() {
+		return // initDB already surfaced the error; a dead DB cannot serve
 	}
 
 	post(map[string]any{"type": "ready", "renderer": build.Renderer})
@@ -50,6 +50,17 @@ func main() {
 		}
 		syncOnce()
 	}
+}
+
+// runProtected wraps a sync-cycle function so a panic surfaces as a banner
+// error instead of silently killing the worker.
+func runProtected(what string, fn func()) {
+	defer func() {
+		if r := recover(); r != nil {
+			post(map[string]any{"type": "error", "message": what + " crashed: " + fmt.Sprint(r)})
+		}
+	}()
+	fn()
 }
 
 // bootstrapIfEmpty installs a server snapshot when the replica is fresh,
@@ -225,6 +236,19 @@ func initDB() error {
 	db = sah.New(js.ValueOf("/zzira-v1.db"))
 	exec(schemaSQL, nil)
 	return nil
+}
+
+// safeInstall runs fn, recovering any JS-triggered panic (a trapped wasm or
+// thrown JS exception crashes the worker unless recovered here).
+func safeInstall(what string, fn func() error) {
+	defer func() {
+		if r := recover(); r != nil {
+			post(map[string]any{"type": "error", "message": what + " crashed: " + fmt.Sprint(r)})
+		}
+	}()
+	if err := fn(); err != nil {
+		post(map[string]any{"type": "error", "message": what + " failed: " + err.Error()})
+	}
 }
 
 func exec(sql string, bind []any) js.Value {
