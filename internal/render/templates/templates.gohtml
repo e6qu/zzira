@@ -3,9 +3,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ZZIRA</title>
 <link rel="stylesheet" href="/static/css/tokens.css">
+<link rel="preload" href="/static/zzira-worker.wasm" as="fetch" crossorigin>
+<link rel="preload" href="/static/sqlite/sqlite3.wasm" as="fetch" crossorigin>
 <script src="/static/htmx/htmx.min.js" defer></script>
 <script src="/static/wasm/wasm_exec.js" defer></script>
-<script src="/static/app.js" defer></script>
+<script src="/static/app.js?v=2" defer></script>
 {{end}}
 
 {{define "avatar"}}
@@ -188,7 +190,9 @@
         <dd>{{if .Issue.Reporter}}{{template "avatar" .Issue.Reporter}}{{end}}</dd>
       </dl>
     </aside>
-  </div>
+  </div>{{if .EditDialog}}
+  <template id="offline-edit-dialog">{{template "edit_dialog" .EditDialog}}</template>
+  {{end}}
 </div>
 {{end}}
 

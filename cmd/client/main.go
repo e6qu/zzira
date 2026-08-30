@@ -39,8 +39,11 @@ func main() {
 
 	post(map[string]any{"type": "ready", "renderer": build.Renderer})
 
-	bootstrapIfEmpty()
-	syncOnce()
+	// Yield to the browser event loop before doing any network work. An issue
+	// document can be opened and edited while this worker starts; synchronous
+	// bootstrap here would otherwise hold its command messages behind an
+	// offline HTTP request. The regular maintenance cycle owns bootstrap and
+	// sync after the command loop is live.
 	ticker := time.NewTicker(3 * time.Second)
 	for range ticker.C {
 		if draining, n := drainOutbox(); draining {
@@ -48,6 +51,7 @@ func main() {
 			syncOnce()
 			continue
 		}
+		bootstrapIfEmpty()
 		syncOnce()
 	}
 }
@@ -728,6 +732,12 @@ func onMessage(_ js.Value, args []js.Value) any {
 		currentView = msg.Get("issueId").String()
 		pushCurrentView()
 	case "sync-now":
+		for {
+			drained, remaining := drainOutbox()
+			if !drained || remaining == 0 {
+				break
+			}
+		}
 		syncOnce()
 	case "edit-dialog":
 		issueID := ""

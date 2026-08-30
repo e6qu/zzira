@@ -84,12 +84,12 @@ test('V1 done-when: offline edit queues, drain on reconnect, zero duplicates', a
   await page.click('text=Edit');
   await page.fill('input[name=summary]', `offline edit ${Date.now()}`);
   await page.locator('.modal button[type=submit]').click({ force: true });
-  await page.waitForTimeout(500);
   await page.context().setOffline(false);
-  await page.waitForTimeout(4000); // outbox drain + sync
 
-  const bean = await request.get(`/rest/api/3/issue/${key}`, { headers: { Authorization: apiAuthHeader() } });
-  expect((await bean.json()).fields.summary).toContain('offline edit');
+  await expect.poll(async () => {
+    const bean = await request.get(`/rest/api/3/issue/${key}`, { headers: { Authorization: apiAuthHeader() } });
+    return (await bean.json()).fields.summary;
+  }, { timeout: 10_000 }).toContain('offline edit');
 
   // no duplicates: exactly one action beyond creation for this edit path
   const cl = await request.get(`/rest/api/3/issue/${key}/changelog`, { headers: { Authorization: apiAuthHeader() } });

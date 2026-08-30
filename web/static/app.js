@@ -5,7 +5,7 @@
   'use strict';
   if (!('Worker' in window)) return;
 
-  const worker = new Worker('/static/worker.js');
+  const worker = new Worker('/static/worker.js?v=4');
   const banner = () => document.getElementById('sync-banner');
   let workerReady = false;
   const pendingWorkerMessages = [];
@@ -234,6 +234,9 @@
   window.addEventListener('online', () => {
     offlineMode = false;
     announce('back online \u2014 syncing\u2026', 2000);
+    // Reconnection is a protocol event, not an opportunity to wait for the
+    // next maintenance tick. This message follows buffered offline commands.
+    postWorker({ type: 'sync-now' });
   });
   window.addEventListener('offline', () => { offlineMode = true; });
 
@@ -250,18 +253,25 @@
     openEdit(key) {
       const root = document.getElementById('modal-root');
       if (!root) return;
-      // Network first; on network failure the worker renders the dialog from
-      // the local replica (designed offline path — the failure is announced).
+      // Offline editing is a declared capability of the SSR-to-replica
+      // hand-off: the current document carries the command schema and values
+      // that were current when it was rendered. It does not depend on either
+      // a network failure or the worker's boot time.
+      if (!navigator.onLine) {
+        const command = document.getElementById('offline-edit-dialog');
+        if (!command) {
+          announce('offline editing is unavailable for this view', 4000);
+          return;
+        }
+        setModalHTML(command.innerHTML);
+        return;
+      }
       fetch(`/issues/${key}/edit`).then(r => {
         if (!r.ok) throw new Error('HTTP ' + r.status);
         return r.text();
       }).then(html => {
         setModalHTML(html);
-      }).catch(err => {
-        announce('offline — local editor', 3000);
-        postWorker({ type: 'edit-dialog', issueId: currentIssueId() });
-        root.style.display = 'block';
-      });
+      }).catch(() => announce('could not open editor', 4000));
     }
   };
 

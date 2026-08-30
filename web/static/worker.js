@@ -11,11 +11,37 @@ self.addEventListener('unhandledrejection', (e) => {
 
 const boot = (msg) => { try { self.postMessage({ type: 'info', message: msg }); } catch (_) {} };
 
+async function requiredAsset(path, label) {
+  let lastError;
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    const controller = new AbortController();
+    const deadline = setTimeout(() => controller.abort(), 2_000);
+    try {
+      const response = await fetch(path, { signal: controller.signal });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.arrayBuffer();
+    } catch (error) {
+      lastError = error;
+      if (attempt === 5) break;
+      const delay = 250 * (2 ** (attempt - 1));
+      boot(`${label} retry ${attempt} in ${delay}ms (${error?.message ?? error})`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    } finally {
+      clearTimeout(deadline);
+    }
+  }
+  throw new Error(`${label} unavailable: ${lastError?.message ?? lastError}`);
+}
+
 importScripts('/static/sqlite/sqlite3.js', '/static/wasm/wasm_exec.js');
 
 (async () => {
   try {
     boot('boot: sqlite3.js + wasm_exec.js imported');
+    // The Go command runtime is a required part of the local-first client.
+    // Start loading it alongside SQLite so an immediate offline transition
+    // cannot interrupt a later, serial fetch after the page is usable.
+    const goWasm = requiredAsset('/static/zzira-worker.wasm', 'go worker wasm');
     const sqlite3 = await sqlite3InitModule({
       instantiateWasm(info, receive) {
         (async () => {
@@ -53,11 +79,7 @@ importScripts('/static/sqlite/sqlite3.js', '/static/wasm/wasm_exec.js');
     self.sqlite3 = sqlite3;
     boot('boot: instantiating go worker');
     const go = new Go();
-    const resp = await fetch('/static/zzira-worker.wasm');
-    if (!resp.ok) {
-      throw new Error('wasm fetch HTTP ' + resp.status + ' for /static/zzira-worker.wasm');
-    }
-    const bytes = await resp.arrayBuffer();
+    const bytes = await goWasm;
     const { instance } = await WebAssembly.instantiate(bytes, go.importObject);
     go.run(instance);
   } catch (err) {

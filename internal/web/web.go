@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -129,16 +130,62 @@ func (h *Handler) buildIssueView(r *http.Request, wsID, idOrKey string) (*models
 	for _, t := range wf.Available(issue.Status.ID) {
 		transitions = append(transitions, models.WorkflowTransition{ID: t.ID, Name: t.Name})
 	}
+	editDialog, err := h.buildEditDialogView(r.Context(), wsID, issue)
+	if err != nil {
+		return nil, err
+	}
 	return &models.IssueView{
 		Issue:       *issue,
 		ProjectKey:  projectKeyOf(issue.Key),
 		CanEdit:     true,
+		EditDialog:  editDialog,
 		Comments:    derefComments(comments),
 		Transitions: transitions,
 		History:     history,
 		Attachments: derefAttachments(attachments),
 		Worklogs:    derefWorklogs(worklogs),
 	}, nil
+}
+
+// buildEditDialogView produces the complete edit-command schema alongside an
+// issue snapshot. The same schema is used by the online endpoint and by an
+// already-rendered offline view, so an offline submission never invents or
+// silently drops editable fields.
+func (h *Handler) buildEditDialogView(ctx context.Context, wsID string, issue *models.Issue) (*models.EditDialogView, error) {
+	members, err := h.Store.MembersByWorkspace(ctx, wsID)
+	if err != nil {
+		return nil, err
+	}
+	scheme, err := h.Store.SecuritySchemeForProject(ctx, issue.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	customFields, err := h.Store.CustomFieldsForProject(ctx, issue.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	view := &models.EditDialogView{Issue: *issue}
+	for _, m := range members {
+		view.Members = append(view.Members, *m)
+	}
+	if scheme != nil {
+		for _, lvl := range scheme.Levels {
+			view.SecurityLevels = append(view.SecurityLevels, models.WorkflowTransition{ID: lvl.ID, Name: lvl.Name})
+		}
+	}
+	for _, cf := range customFields {
+		value := ""
+		if raw, ok := issue.Fields[cf.ID]; ok {
+			var text string
+			if json.Unmarshal(raw, &text) == nil {
+				value = text
+			} else {
+				value = string(raw)
+			}
+		}
+		view.CustomFields = append(view.CustomFields, models.CustomFieldView{ID: cf.ID, Name: cf.Name, Value: value})
+	}
+	return view, nil
 }
 
 func derefComments(in []*models.Comment) []models.Comment {
@@ -495,31 +542,12 @@ func (h *Handler) EditDialog(w http.ResponseWriter, r *http.Request, key string)
 		http.NotFound(w, r)
 		return
 	}
-	members, _ := h.Store.MembersByWorkspace(r.Context(), wsID)
-	scheme, _ := h.Store.SecuritySchemeForProject(r.Context(), issue.ProjectID)
-	customFields, _ := h.Store.CustomFieldsForProject(r.Context(), issue.ProjectID)
-	view := models.EditDialogView{Issue: *issue}
-	for _, m := range members {
-		view.Members = append(view.Members, *m)
+	view, err := h.buildEditDialogView(r.Context(), wsID, issue)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
-	if scheme != nil {
-		for _, lvl := range scheme.Levels {
-			view.SecurityLevels = append(view.SecurityLevels, models.WorkflowTransition{ID: lvl.ID, Name: lvl.Name})
-		}
-	}
-	for _, cf := range customFields {
-		value := ""
-		if raw, ok := issue.Fields[cf.ID]; ok {
-			var sv string
-			if json.Unmarshal(raw, &sv) == nil {
-				value = sv
-			} else {
-				value = string(raw)
-			}
-		}
-		view.CustomFields = append(view.CustomFields, models.CustomFieldView{ID: cf.ID, Name: cf.Name, Value: value})
-	}
-	writeFragment(w, "edit_dialog", view)
+	writeFragment(w, "edit_dialog", *view)
 }
 
 func (h *Handler) EditIssue(w http.ResponseWriter, r *http.Request, key string) {
