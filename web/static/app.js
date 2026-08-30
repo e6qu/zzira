@@ -5,7 +5,12 @@
   'use strict';
   if (!('Worker' in window)) return;
 
-  const worker = new Worker('/static/worker.js?v=4');
+  // The replica belongs to views that consume it. Starting one on the
+  // post-login home page and immediately replacing it on /browse races two
+  // OPFS access handles for the same database during navigation.
+  const replicaView = document.body.hasAttribute('data-current-issue') ||
+    document.body.hasAttribute('data-board');
+  const worker = replicaView ? new Worker('/static/worker.js?v=5') : null;
   const banner = () => document.getElementById('sync-banner');
   let workerReady = false;
   const pendingWorkerMessages = [];
@@ -14,6 +19,7 @@
   // commands until it advertises readiness instead of dropping the first
   // view or an offline edit on the floor.
   function postWorker(message) {
+    if (!worker) return;
     if (!workerReady) {
       pendingWorkerMessages.push(message);
       return;
@@ -58,7 +64,7 @@
     if (ms) setTimeout(() => { el.hidden = true; }, ms);
   }
 
-  worker.onmessage = (e) => {
+  if (worker) worker.onmessage = (e) => {
     const msg = e.data || {};
     switch (msg.type) {
       case 'ready':
