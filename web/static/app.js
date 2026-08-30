@@ -325,6 +325,8 @@
     const elt = evt.detail.elt;
     if (evt.detail.successful && elt && elt.tagName === 'FORM') {
       worker.postMessage({ type: 'sync-now' });
+      const path = elt.getAttribute('hx-post') || '';
+      if (path.includes('/edit')) zzira.closeModal();
     }
   });
 

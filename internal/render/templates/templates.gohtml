@@ -196,7 +196,7 @@
 <div class="modal-backdrop" onclick="if(event.target===this)zzira.closeModal()"></div>
 <div class="modal" role="dialog" aria-label="Edit issue">
   <h2>Edit {{.Issue.Key}}</h2>
-  <form hx-post="/issues/{{.Issue.Key}}/edit" hx-target="#issue-root" hx-swap="outerHTML" hx-on::after-request="zzira.closeModal()">
+  <form hx-post="/issues/{{.Issue.Key}}/edit" hx-target="#issue-root" hx-swap="outerHTML">
     <label>Summary
       <input name="summary" value="{{.Issue.Summary}}" required maxlength="255">
     </label>

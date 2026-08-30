@@ -1,5 +1,5 @@
 
-<div class="issue-view" id="issue-root" data-issue-id="iss_abc123" data-issue-key="ZZ-1">
+<div class="issue-view" id="issue-root" data-issue-id="iss_abc123" data-issue-key="ZZ-1" data-seq="0">
   <div class="issue-breadcrumbs">
     <a href="/issues/ZZ">ZZ</a> / ZZ-1
   </div>

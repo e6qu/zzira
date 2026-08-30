@@ -58,12 +58,12 @@ test('V0 station 5: login → create via UI → lands on issue view', async () =
   await expect(page.locator('.issue-summary')).toHaveText(summary);
 });
 
-test('V0 station 6: wasm worker boots and syncs (banner)', async () => {
+test('V0 station 6: wasm worker boots and syncs (banner shows synced)', async () => {
   await page.goto('/');
   const banner = page.locator('#sync-banner');
   await expect
     .poll(async () => (await banner.textContent()) ?? '', { timeout: 45_000 })
-    .toContain('local sync ready');
+    .toContain('synced');
 });
 
 test('V0 done-when: offline reload still renders the issue from local SQLite', async () => {
