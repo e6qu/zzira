@@ -3,6 +3,37 @@
 // offline (server-wins reconciliation on reconnect).
 (function () {
   'use strict';
+
+  function savedTheme() {
+    const value = localStorage.getItem('zzira-theme');
+    return value === 'light' || value === 'dark' ? value : null;
+  }
+
+  function applyTheme(theme) {
+    document.documentElement.dataset.theme = theme;
+    document.querySelectorAll('[data-theme-toggle]').forEach((button) => {
+      const dark = theme === 'dark';
+      button.setAttribute('aria-pressed', String(dark));
+      button.setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode');
+      button.innerHTML = `<span aria-hidden="true">${dark ? '🌙' : '☀️'}</span>`;
+    });
+  }
+
+  function initThemeToggle() {
+    const theme = savedTheme() || document.documentElement.dataset.theme;
+    applyTheme(theme);
+    document.querySelectorAll('[data-theme-toggle]').forEach((button) => {
+      if (button.dataset.ready) return;
+      button.dataset.ready = '1';
+      button.addEventListener('click', () => {
+        const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+        localStorage.setItem('zzira-theme', next);
+        applyTheme(next);
+      });
+    });
+  }
+  document.addEventListener('DOMContentLoaded', initThemeToggle);
+
   if (!('Worker' in window)) return;
 
   // The replica belongs to views that consume it. Starting one on the
@@ -10,7 +41,17 @@
   // OPFS access handles for the same database during navigation.
   const replicaView = document.body.hasAttribute('data-current-issue') ||
     document.body.hasAttribute('data-board');
-  const worker = replicaView ? new Worker('/static/worker.js?v=6') : null;
+  function replicaID() {
+    const key = 'zzira-replica-id';
+    const existing = sessionStorage.getItem(key);
+    if (existing) return existing;
+    const id = crypto.randomUUID();
+    sessionStorage.setItem(key, id);
+    return id;
+  }
+  const worker = replicaView
+    ? new Worker('/static/worker.js?v=7&replica=' + encodeURIComponent(replicaID()))
+    : null;
   const banner = () => document.getElementById('sync-banner');
   let workerReady = false;
   const pendingWorkerMessages = [];
@@ -35,6 +76,32 @@
     if (window.htmx) window.htmx.process(scope);
     initRichEditors(scope);
     initBoard(scope);
+    initModals(scope);
+  }
+
+  let modalReturnFocus = null;
+  function modalFocusable(modal) {
+    return Array.from(modal.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+  }
+  function initModals(scope) {
+    const root = scope || document;
+    const modal = root.querySelector ? root.querySelector('.modal[role="dialog"]') : null;
+    if (!modal || modal.dataset.ready) return;
+    modal.dataset.ready = '1';
+    root.querySelectorAll('[data-modal-backdrop]').forEach((backdrop) => {
+      backdrop.addEventListener('click', () => window.zzira.closeModal());
+    });
+    modal.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') { event.preventDefault(); window.zzira.closeModal(); return; }
+      if (event.key !== 'Tab') return;
+      const targets = modalFocusable(modal);
+      if (!targets.length) { event.preventDefault(); return; }
+      const first = targets[0], last = targets[targets.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    });
+    const autofocus = modal.querySelector('[autofocus]') || modalFocusable(modal)[0] || modal;
+    autofocus.focus();
   }
 
   function setModalHTML(html) {
@@ -42,6 +109,7 @@
     if (!root) return;
     root.innerHTML = html;
     root.style.display = 'block';
+    initModals(root);
     if (!navigator.onLine) {
       root.querySelectorAll('form[hx-post], form[hx-delete]').forEach((form) => {
         const path = form.getAttribute('hx-post') || form.getAttribute('hx-delete');
@@ -211,6 +279,7 @@
   }
   document.addEventListener('DOMContentLoaded', pushView);
   document.body.addEventListener('htmx:afterSettle', pushView);
+  document.body.addEventListener('htmx:afterSettle', () => initModals(document));
 
   // ---- Outbox: intercept command forms when offline ----
   const KIND_BY_PATH = [
@@ -266,13 +335,16 @@
 
   // ---- Modal helpers ----
   window.zzira = {
-    openModal() {
+    openModal(trigger) {
       const root = document.getElementById('modal-root');
+      modalReturnFocus = trigger instanceof HTMLElement ? trigger : document.activeElement;
       if (root) root.style.display = 'block';
     },
     closeModal() {
       const root = document.getElementById('modal-root');
       if (root) { root.style.display = 'none'; root.innerHTML = ''; }
+      if (modalReturnFocus instanceof HTMLElement) modalReturnFocus.focus();
+      modalReturnFocus = null;
     },
     openEdit(key) {
       const root = document.getElementById('modal-root');
@@ -293,6 +365,7 @@
         if (!r.ok) throw new Error('HTTP ' + r.status);
         return r.text();
       }).then(html => {
+        modalReturnFocus = document.activeElement;
         setModalHTML(html);
       }).catch(() => announce('could not open editor', 4000));
     }
@@ -451,6 +524,51 @@
     if (!board || board.dataset.ready) return;
     board.dataset.ready = '1';
     const boardID = document.body.getAttribute('data-board') || '';
+    let grabbedCard = null;
+
+    function rankCard(card, column, index) {
+      const target = column.querySelector('[data-column]');
+      const cards = Array.from(target.children).filter((item) => item !== card);
+      const before = cards[index] || null;
+      const after = index > 0 ? cards[index - 1] : null;
+      target.insertBefore(card, before);
+      const issue = card.getAttribute('data-issue') || '';
+      const status = column.getAttribute('data-status') || '';
+      sendOrQueue('POST', '/board/' + boardID + '/rank', new URLSearchParams({
+        issue, status,
+        before: before ? before.getAttribute('data-issue') || '' : '',
+        after: after ? after.getAttribute('data-issue') || '' : '',
+      }).toString(), 'rank');
+      announce('Moved ' + (card.getAttribute('data-key') || 'issue') + ' to ' + (column.getAttribute('aria-label') || 'column'), 2500);
+    }
+
+    board.querySelectorAll('.board-card').forEach((card) => {
+      card.addEventListener('keydown', (event) => {
+        if (event.key === ' ' || event.key === 'Enter') {
+          event.preventDefault();
+          if (grabbedCard && grabbedCard !== card) grabbedCard.setAttribute('aria-pressed', 'false');
+          grabbedCard = grabbedCard === card ? null : card;
+          card.setAttribute('aria-pressed', String(Boolean(grabbedCard)));
+          announce(grabbedCard ? 'Picked up ' + (card.getAttribute('data-key') || 'issue') + '. Use arrow keys to move it; press Space to drop.' : 'Dropped issue.', 2500);
+          return;
+        }
+        if (!grabbedCard || grabbedCard !== card || !['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+        event.preventDefault();
+        const source = card.closest('.board-column');
+        const columns = Array.from(board.querySelectorAll('.board-column'));
+        let targetColumn = source;
+        let targetIndex = Array.from(source.querySelector('[data-column]').children).indexOf(card);
+        if (event.key === 'ArrowUp') targetIndex = Math.max(0, targetIndex - 1);
+        if (event.key === 'ArrowDown') targetIndex += 1;
+        if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+          const direction = event.key === 'ArrowLeft' ? -1 : 1;
+          const sourceIndex = columns.indexOf(source);
+          targetColumn = columns[sourceIndex + direction] || source;
+          targetIndex = targetColumn.querySelector('[data-column]').children.length;
+        }
+        rankCard(card, targetColumn, targetIndex);
+      });
+    });
 
     board.querySelectorAll('[data-column]').forEach((col) => {
       new Sortable(col, {

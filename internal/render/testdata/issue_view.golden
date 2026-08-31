@@ -6,8 +6,8 @@
   <div class="issue-transitions">
     
     
-    <button class="btn" onclick="zzira.openEdit('ZZ-1')">Edit</button>
-    <button class="btn btn-danger" hx-delete="/issues/ZZ-1"
+    <button type="button" class="btn" onclick="zzira.openEdit('ZZ-1')">Edit</button>
+    <button type="button" class="btn btn-danger" hx-delete="/issues/ZZ-1"
             hx-confirm="Delete ZZ-1?" hx-redirect="/issues/ZZ">Delete</button>
     
   </div>
@@ -26,14 +26,15 @@
           
         </div>
         
-        <form class="comment-form" hx-post="/issues/ZZ-1/comments" hx-target="#issue-root" hx-swap="outerHTML">
-          <div class="editor-toolbar" data-editor-toolbar>
-            <button type="button" data-cmd="bold" title="Bold"><strong>B</strong></button>
-            <button type="button" data-cmd="italic" title="Italic"><em>I</em></button>
-            <button type="button" data-cmd="insertUnorderedList" title="Bullet list">&bull;&equiv;</button>
-            <button type="button" data-cmd="code" title="Code">&lt;/&gt;</button>
+        <form class="comment-form" method="post" action="/issues/ZZ-1/comments" hx-post="/issues/ZZ-1/comments" hx-target="#issue-root" hx-swap="outerHTML">
+          <div class="editor-toolbar" role="toolbar" aria-label="Comment formatting" data-editor-toolbar>
+            <button type="button" data-cmd="bold" aria-label="Bold"><strong aria-hidden="true">B</strong></button>
+            <button type="button" data-cmd="italic" aria-label="Italic"><em aria-hidden="true">I</em></button>
+            <button type="button" data-cmd="insertUnorderedList" aria-label="Bullet list"><span aria-hidden="true">&bull;&equiv;</span></button>
+            <button type="button" data-cmd="code" aria-label="Code"><span aria-hidden="true">&lt;/&gt;</span></button>
           </div>
-          <div class="rich-editor" contenteditable="true" data-rich-editor data-target-name="adf"
+          <span id="comment-editor-label" class="sr-only">Add a comment</span>
+          <div id="comment-editor" class="rich-editor" contenteditable="true" role="textbox" aria-multiline="true" aria-labelledby="comment-editor-label" data-rich-editor data-target-name="adf"
                data-placeholder="Add a comment…"></div>
           <input type="hidden" name="adf">
           <button type="submit" class="btn btn-primary">Comment</button>
@@ -50,7 +51,8 @@
         </div>
         
         <form class="upload-form" method="post" action="/issues/ZZ-1/attachments" enctype="multipart/form-data">
-          <input type="file" name="file" required>
+          <label class="sr-only" for="attachment-file">Choose attachment</label>
+          <input id="attachment-file" type="file" name="file" required>
           <button type="submit" class="btn">Upload</button>
         </form>
         
@@ -64,9 +66,11 @@
           
         </div>
         
-        <form class="worklog-form" hx-post="/issues/ZZ-1/worklogs" hx-target="#issue-root" hx-swap="outerHTML">
-          <input name="seconds" type="number" min="1" placeholder="Seconds" required class="worklog-seconds">
-          <input name="comment" placeholder="What did you work on? (optional)" class="worklog-comment">
+        <form class="worklog-form" method="post" action="/issues/ZZ-1/worklogs" hx-post="/issues/ZZ-1/worklogs" hx-target="#issue-root" hx-swap="outerHTML">
+          <label class="sr-only" for="worklog-seconds">Time spent in seconds</label>
+          <input id="worklog-seconds" name="seconds" type="number" min="1" placeholder="Seconds" required class="worklog-seconds">
+          <label class="sr-only" for="worklog-comment">Work description</label>
+          <input id="worklog-comment" name="comment" placeholder="What did you work on? (optional)" class="worklog-comment">
           <button type="submit" class="btn btn-primary">Log work</button>
         </form>
         
@@ -88,11 +92,11 @@
         <dt>Priority</dt><dd>Medium</dd>
         <dt>Assignee</dt>
         <dd>
-<span class="avatar" title="Demo User">DU</span>
+<span class="avatar" role="img" aria-label="Demo User"><span aria-hidden="true">DU</span></span>
 </dd>
         <dt>Reporter</dt>
         <dd>
-<span class="avatar" title="Demo User">DU</span>
+<span class="avatar" role="img" aria-label="Demo User"><span aria-hidden="true">DU</span></span>
 </dd>
       </dl>
     </aside>
