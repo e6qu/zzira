@@ -76,6 +76,7 @@ jobs:
       - name: Start server
         env:
           DATABASE_URL: postgres://zzira:zzira@localhost:5433/zzira?sslmode=disable
+          WORKSPACE_SLUG: zzira
         run: |
           go run ./cmd/server -mode=migrate
           go run ./cmd/server -mode=seed

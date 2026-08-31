@@ -30,13 +30,9 @@ func (h *Handler) projectBean(p *models.Project) map[string]any {
 }
 
 func (h *Handler) listProjects(w http.ResponseWriter, r *http.Request) {
-	if _, _, e := h.authWorkspace(r); e != nil {
+	wsID, _, e := h.authWorkspace(r)
+	if e != nil {
 		writeJerr(w, e)
-		return
-	}
-	wsID, _, err := h.Store.DefaultWorkspace(r.Context())
-	if err != nil {
-		jiraError(w, http.StatusInternalServerError, "no workspace")
 		return
 	}
 	projects, err := h.Store.ProjectsByWorkspace(r.Context(), wsID)
@@ -52,13 +48,9 @@ func (h *Handler) listProjects(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) searchProjects(w http.ResponseWriter, r *http.Request) {
-	if _, _, e := h.authWorkspace(r); e != nil {
+	wsID, _, e := h.authWorkspace(r)
+	if e != nil {
 		writeJerr(w, e)
-		return
-	}
-	wsID, _, err := h.Store.DefaultWorkspace(r.Context())
-	if err != nil {
-		jiraError(w, http.StatusInternalServerError, "no workspace")
 		return
 	}
 	projects, err := h.Store.ProjectsByWorkspace(r.Context(), wsID)
@@ -141,13 +133,9 @@ func (h *Handler) getUser(w http.ResponseWriter, r *http.Request) {
 // ---- createmeta ----
 
 func (h *Handler) createMeta(w http.ResponseWriter, r *http.Request) {
-	if _, _, e := h.authWorkspace(r); e != nil {
+	wsID, _, e := h.authWorkspace(r)
+	if e != nil {
 		writeJerr(w, e)
-		return
-	}
-	wsID, _, err := h.Store.DefaultWorkspace(r.Context())
-	if err != nil {
-		jiraError(w, http.StatusInternalServerError, "no workspace")
 		return
 	}
 	projects, err := h.Store.ProjectsByWorkspace(r.Context(), wsID)
