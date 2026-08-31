@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.2.1](https://github.com/e6qu/zzira/compare/v0.2.0...v0.2.1) (2026-08-31)
+
+
+### Bug Fixes
+
+* enforce agile boundaries and webhook retries ([b5ac745](https://github.com/e6qu/zzira/commit/b5ac74545e56fb97fb27117656e74e25c9800f19))
+* harden access boundaries and releases ([1427212](https://github.com/e6qu/zzira/commit/1427212c61dbb8605175763a05a43174453685d1))
+* protect browser mutations and visibility reads ([de91442](https://github.com/e6qu/zzira/commit/de9144242d9d74a94f5536675e08b3a5faa835ff))
+* scope filters and control-plane access ([477666d](https://github.com/e6qu/zzira/commit/477666d005deb81df0f835e596d3202a035342de))
+* serialize concurrent migrations ([d0e8b84](https://github.com/e6qu/zzira/commit/d0e8b84f5bc8ba5e7370d83166b33dacd6eb4b37))
+
 ## [0.2.0](https://github.com/e6qu/zzira/compare/v0.1.0...v0.2.0) (2026-08-31)
 
 
