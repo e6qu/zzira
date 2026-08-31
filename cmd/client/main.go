@@ -27,6 +27,7 @@ var (
 	db          js.Value
 	currentView string // issue id the page is currently showing
 	window      = js.Global()
+	syncTimer   js.Func
 )
 
 func main() {
@@ -39,21 +40,26 @@ func main() {
 
 	post(map[string]any{"type": "ready", "renderer": build.Renderer})
 
-	// Yield to the browser event loop before doing any network work. An issue
-	// document can be opened and edited while this worker starts; synchronous
-	// bootstrap here would otherwise hold its command messages behind an
-	// offline HTTP request. The regular maintenance cycle owns bootstrap and
-	// sync after the command loop is live.
-	ticker := time.NewTicker(3 * time.Second)
-	for range ticker.C {
+	// Browser workers dispatch messages and timers on one event loop. A
+	// blocking Go ticker loop can monopolize that loop in wasm and leave
+	// postMessage commands (notably a queued offline edit) undispatched. Make
+	// each maintenance cycle an independent browser timer callback instead.
+	// Keeping the callback in a package variable is required: Go otherwise may
+	// garbage-collect a js.Func still retained by JavaScript.
+	syncTimer = js.FuncOf(func(js.Value, []js.Value) any {
 		if draining, n := drainOutbox(); draining {
 			_ = n
 			syncOnce()
-			continue
+			return nil
 		}
 		bootstrapIfEmpty()
 		syncOnce()
-	}
+		return nil
+	})
+	window.Call("setInterval", syncTimer, 3_000)
+
+	// Keep the Go runtime alive; browser events invoke onMessage and syncTimer.
+	select {}
 }
 
 // runProtected wraps a sync-cycle function so a panic surfaces as a banner
