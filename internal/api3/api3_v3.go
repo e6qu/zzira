@@ -4,11 +4,12 @@ import (
 	"encoding/json"
 	"io"
 	"log"
+	"mime"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/e6qu/zzira/internal/adf"
+	"github.com/e6qu/zzira/internal/authz"
 	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/models"
 )
@@ -77,13 +78,18 @@ func (h *Handler) issueWorklogRoute(w http.ResponseWriter, r *http.Request, idOr
 		}
 		writeJSON(w, http.StatusCreated, h.worklogBean(wl))
 	case len(sub) == 1 && r.Method == http.MethodGet:
-		wl, err := h.Store.WorklogByID(r.Context(), sub[0])
+		wl, err := h.Store.WorklogByID(r.Context(), wsID, sub[0])
 		if err != nil || wl.IssueID != issue.ID {
 			jiraError(w, http.StatusNotFound, "Worklog does not exist.")
 			return
 		}
 		writeJSON(w, http.StatusOK, h.worklogBean(wl))
 	case len(sub) == 1 && r.Method == http.MethodDelete:
+		wl, err := h.Store.WorklogByID(r.Context(), wsID, sub[0])
+		if err != nil || wl.IssueID != issue.ID {
+			jiraError(w, http.StatusNotFound, "Worklog does not exist.")
+			return
+		}
 		if _, err := h.Commands.DeleteWorklog(r.Context(), userID, wsID, sub[0]); err != nil {
 			jiraError(w, http.StatusBadRequest, err.Error())
 			return
@@ -140,7 +146,7 @@ func (h *Handler) uploadAttachments(w http.ResponseWriter, r *http.Request, idOr
 			if err != nil {
 				continue
 			}
-			att, _, err := h.Commands.AddAttachment(r.Context(), userID, wsID, issue.ID, safeFilename(fh.Filename), fileMime(fh.Header.Get("Content-Type")), f)
+			att, _, err := h.Commands.AddAttachment(r.Context(), userID, wsID, issue.ID, fh.Filename, fh.Header.Get("Content-Type"), f)
 			if closeErr := f.Close(); closeErr != nil {
 				log.Printf("attachment close: %v", closeErr)
 			}
@@ -200,46 +206,31 @@ func cleanupMultipart(r *http.Request) {
 	}
 }
 
-func safeFilename(name string) string {
-	name = strings.ReplaceAll(name, "\\", "/")
-	if idx := strings.LastIndexByte(name, '/'); idx >= 0 {
-		name = name[idx+1:]
-	}
-	if name == "" {
-		name = "attachment"
-	}
-	return name
-}
-
-func fileMime(ct string) string {
-	if ct == "" {
-		return "application/octet-stream"
-	}
-	if idx := strings.IndexByte(ct, ';'); idx > 0 {
-		ct = strings.TrimSpace(ct[:idx])
-	}
-	return ct
-}
-
 func (h *Handler) attachmentMeta(w http.ResponseWriter, r *http.Request, id string) {
-	if _, _, e := h.authWorkspace(r); e != nil {
+	wsID, userID, e := h.authWorkspace(r)
+	if e != nil {
 		writeJerr(w, e)
 		return
 	}
-	att, err := h.Store.AttachmentByID(r.Context(), id)
-	if err != nil {
-		jiraError(w, http.StatusNotFound, "Attachment does not exist.")
+	att, e := h.attachmentForUser(r, wsID, userID, id)
+	if e != nil {
+		writeJerr(w, e)
 		return
 	}
 	writeJSON(w, http.StatusOK, h.attachmentBean(att))
 }
 
 func (h *Handler) attachmentContent(w http.ResponseWriter, r *http.Request, id string) {
-	if _, _, e := h.authWorkspace(r); e != nil {
+	wsID, userID, e := h.authWorkspace(r)
+	if e != nil {
 		writeJerr(w, e)
 		return
 	}
-	blobRef, filename, mimeType, err := h.Store.AttachmentBlobRef(r.Context(), id)
+	if _, e := h.attachmentForUser(r, wsID, userID, id); e != nil {
+		writeJerr(w, e)
+		return
+	}
+	blobRef, filename, mimeType, err := h.Store.AttachmentBlobRef(r.Context(), wsID, id)
 	if err != nil {
 		jiraError(w, http.StatusNotFound, "Attachment does not exist.")
 		return
@@ -251,9 +242,32 @@ func (h *Handler) attachmentContent(w http.ResponseWriter, r *http.Request, id s
 	}
 	defer rc.Close()
 	w.Header().Set("Content-Type", mimeType)
-	w.Header().Set("Content-Disposition", `attachment; filename="`+strings.ReplaceAll(filename, `"`, `_`)+`"`)
+	if disposition := mime.FormatMediaType("attachment", map[string]string{"filename": filename}); disposition != "" {
+		w.Header().Set("Content-Disposition", disposition)
+	}
 	if size > 0 {
 		w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
 	}
 	_, _ = io.Copy(w, rc)
+}
+
+// attachmentForUser keeps attachment metadata and bytes behind the same
+// workspace and issue-security checks as the issue itself.
+func (h *Handler) attachmentForUser(r *http.Request, workspaceID, userID, attachmentID string) (*models.Attachment, *jerr) {
+	att, err := h.Store.AttachmentByID(r.Context(), workspaceID, attachmentID)
+	if err != nil {
+		return nil, &jerr{status: http.StatusNotFound, message: "Attachment does not exist."}
+	}
+	issue, e := h.resolveIssue(r, workspaceID, att.IssueID)
+	if e != nil {
+		return nil, &jerr{status: http.StatusNotFound, message: "Attachment does not exist."}
+	}
+	visible, err := authz.CanSeeIssue(r.Context(), h.Store, workspaceID, issue.ProjectID, userID, issue.SecurityLevelID)
+	if err != nil {
+		return nil, &jerr{status: http.StatusInternalServerError, message: "internal error"}
+	}
+	if !visible {
+		return nil, &jerr{status: http.StatusNotFound, message: "Attachment does not exist."}
+	}
+	return att, nil
 }

@@ -3,8 +3,10 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -102,8 +104,20 @@ func (h *Handler) requireUser(w http.ResponseWriter, r *http.Request) string {
 }
 
 // buildIssueView assembles everything the issue_view fragment needs.
-func (h *Handler) buildIssueView(r *http.Request, wsID, idOrKey string) (*models.IssueView, error) {
+func (h *Handler) issueForUser(r *http.Request, user *models.User, wsID, idOrKey string) (*models.Issue, error) {
 	issue, err := h.Store.IssueByIDOrKey(r.Context(), wsID, idOrKey)
+	if err != nil {
+		return nil, err
+	}
+	visible, err := authz.CanSeeIssue(r.Context(), h.Store, wsID, issue.ProjectID, user.ID, issue.SecurityLevelID)
+	if err != nil || !visible {
+		return nil, fmt.Errorf("issue %q not found", idOrKey)
+	}
+	return issue, nil
+}
+
+func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrKey string) (*models.IssueView, error) {
+	issue, err := h.issueForUser(r, user, wsID, idOrKey)
 	if err != nil {
 		return nil, err
 	}
@@ -211,7 +225,7 @@ func isHX(r *http.Request) bool { return r.Header.Get("HX-Request") == "true" }
 
 // serveIssue renders the fragment (HTMX) or the full page.
 func (h *Handler) serveIssue(w http.ResponseWriter, r *http.Request, user *models.User, wsID, idOrKey string) {
-	view, err := h.buildIssueView(r, wsID, idOrKey)
+	view, err := h.buildIssueView(r, user, wsID, idOrKey)
 	if err != nil {
 		http.NotFound(w, r)
 		return
@@ -259,13 +273,38 @@ func (h *Handler) LoginSubmit(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
+	var idToken string
 	if c, err := r.Cookie(sessionCookieName()); err == nil {
+		if h.OIDC != nil && h.OIDC.endSessionEndpoint != "" {
+			idToken, err = h.Store.OIDCSessionToken(r.Context(), authn.SessionHash(c.Value))
+			if err != nil {
+				log.Printf("OIDC session token: %v", err)
+			}
+		}
 		if err := h.Store.DeleteSession(r.Context(), authn.SessionHash(c.Value)); err != nil {
 			log.Printf("delete session: %v", err)
 		}
 	}
 	authn.ClearSessionCookie(w)
-	http.Redirect(w, r, "/login", http.StatusSeeOther)
+	if idToken != "" {
+		logoutURL, err := url.Parse(h.OIDC.endSessionEndpoint)
+		if err != nil {
+			log.Printf("OIDC end-session URL: %v", err)
+		} else {
+			query := logoutURL.Query()
+			query.Set("id_token_hint", idToken)
+			query.Set("post_logout_redirect_uri", h.OIDC.postLogoutRedirectURL)
+			logoutURL.RawQuery = query.Encode()
+			http.Redirect(w, r, logoutURL.String(), http.StatusSeeOther)
+			return
+		}
+	}
+	http.Redirect(w, r, "/signed-out", http.StatusSeeOther)
+}
+
+func (h *Handler) SignedOut(w http.ResponseWriter, r *http.Request) {
+	authn.ClearSessionCookie(w)
+	writePage(w, "page_signed_out", map[string]string{})
 }
 
 func sessionCookieName() string { return "zzira_session" }
@@ -546,7 +585,7 @@ func (h *Handler) EditDialog(w http.ResponseWriter, r *http.Request, key string)
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
-	issue, err := h.Store.IssueByIDOrKey(r.Context(), wsID, key)
+	issue, err := h.issueForUser(r, user, wsID, key)
 	if err != nil {
 		http.NotFound(w, r)
 		return
@@ -614,7 +653,7 @@ func (h *Handler) DeleteIssue(w http.ResponseWriter, r *http.Request, key string
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
-	issue, err := h.Store.IssueByIDOrKey(r.Context(), wsID, key)
+	issue, err := h.issueForUser(r, user, wsID, key)
 	if err != nil {
 		http.NotFound(w, r)
 		return

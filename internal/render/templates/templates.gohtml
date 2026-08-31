@@ -507,3 +507,17 @@
 </body>
 </html>
 {{end}}
+
+{{define "page_signed_out"}}
+<!doctype html>
+<html lang="en">
+<head>{{template "head" .}}</head>
+<body class="login-body">
+  <main class="login-card">
+    <h1>Signed out</h1>
+    <p>You have been signed out of ZZIRA.</p>
+    <a class="btn btn-primary btn-block" href="/login">Log in</a>
+  </main>
+</body>
+</html>
+{{end}}

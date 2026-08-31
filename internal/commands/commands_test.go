@@ -232,6 +232,25 @@ func TestPlainTextToADF(t *testing.T) {
 	}
 }
 
+func TestNormalizeAttachmentMetadata(t *testing.T) {
+	filename, err := normalizedAttachmentFilename(`C:\\fakepath\\report.txt`)
+	if err != nil || filename != "report.txt" {
+		t.Fatalf("normalized filename = %q, %v", filename, err)
+	}
+	for _, name := range []string{"", "bad\r\nname.txt", "bad\x00name.txt"} {
+		if _, err := normalizedAttachmentFilename(name); err == nil {
+			t.Fatalf("invalid filename %q accepted", name)
+		}
+	}
+	mimeType, err := normalizedAttachmentMIMEType("text/plain; charset=utf-8")
+	if err != nil || mimeType != "text/plain" {
+		t.Fatalf("normalized MIME type = %q, %v", mimeType, err)
+	}
+	if _, err := normalizedAttachmentMIMEType("text/plain\r\nX-Injected: yes"); err == nil {
+		t.Fatal("invalid MIME type accepted")
+	}
+}
+
 func TestJQLSearchPipeline(t *testing.T) {
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	if dsn == "" {

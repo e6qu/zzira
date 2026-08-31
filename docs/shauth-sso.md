@@ -20,6 +20,7 @@ server from starting rather than silently changing authentication behavior.
 Register the client with the provider using:
 
 - Redirect URI: `<ZZIRA_EXTERNAL_URL>/auth/shauth/callback`
+- Post-logout redirect URI: `<ZZIRA_EXTERNAL_URL>/auth/shauth/logout/complete`
 - Grant: `authorization_code`
 - Scopes: `openid profile email`
 
@@ -32,4 +33,8 @@ preserves the existing workspace membership and API-token authorization model.
 
 The flow keeps state, nonce, and PKCE verifier server-side with a ten-minute,
 single-use lifetime. Browser cookies contain only ZZIRA’s opaque session token;
-the verified ID token is retained server-side for the session lifetime.
+the verified ID token is retained server-side for the session lifetime. If the
+provider advertises an `end_session_endpoint` in its discovery document, logout
+uses the standard RP-initiated logout parameters and then returns to the
+registered post-logout redirect URI. Providers without that endpoint still end
+the ZZIRA session and show the signed-out page.

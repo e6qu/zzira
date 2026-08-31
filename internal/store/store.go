@@ -175,7 +175,8 @@ func (s *Store) OIDCSessionToken(ctx context.Context, tokenHash string) (string,
 
 func (s *Store) CreateOIDCLoginState(ctx context.Context, state, nonce, codeVerifier string, ttl time.Duration) error {
 	_, err := s.Pool.Exec(ctx,
-		`INSERT INTO oidc_login_states (state_hash, nonce, code_verifier, expires_at) VALUES ($1,$2,$3,now() + $4::interval)`,
+		`WITH expired AS (DELETE FROM oidc_login_states WHERE expires_at <= now())
+		 INSERT INTO oidc_login_states (state_hash, nonce, code_verifier, expires_at) VALUES ($1,$2,$3,now() + $4::interval)`,
 		HashToken(state), nonce, codeVerifier, fmt.Sprintf("%d seconds", int(ttl.Seconds())))
 	return err
 }
