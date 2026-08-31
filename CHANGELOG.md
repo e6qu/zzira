@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/e6qu/zzira/compare/v0.2.1...v0.2.2) (2026-08-31)
+
+
+### Bug Fixes
+
+* isolate webhook delivery by workspace ([13650d9](https://github.com/e6qu/zzira/commit/13650d936ac51eb2ce0097b780951a4061d4a67e))
+
 ## [0.2.1](https://github.com/e6qu/zzira/compare/v0.2.0...v0.2.1) (2026-08-31)
 
 
