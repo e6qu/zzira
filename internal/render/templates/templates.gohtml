@@ -1,52 +1,61 @@
 {{define "head"}}
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
 <title>ZZIRA</title>
+<script>
+  (function () {
+    var saved = localStorage.getItem('zzira-theme');
+    var theme = saved === 'light' || saved === 'dark'
+      ? saved
+      : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    document.documentElement.dataset.theme = theme;
+  }());
+</script>
 <link rel="stylesheet" href="/static/css/tokens.css">
 <link rel="preload" href="/static/zzira-worker.wasm" as="fetch" crossorigin>
 <link rel="preload" href="/static/sqlite/sqlite3.wasm" as="fetch" crossorigin>
 <script src="/static/htmx/htmx.min.js" defer></script>
 <script src="/static/wasm/wasm_exec.js" defer></script>
-<script src="/static/app.js?v=7" defer></script>
+<script src="/static/app.js?v=9" defer></script>
 {{end}}
 
 {{define "avatar"}}
-<span class="avatar" title="{{.DisplayName}}">{{initials .DisplayName}}</span>
+<span class="avatar" role="img" aria-label="{{.DisplayName}}"><span aria-hidden="true">{{initials .DisplayName}}</span></span>
 {{end}}
 
 {{define "header"}}
 <header class="global-header">
   <a class="logo" href="/">ZZIRA</a>
-  <nav class="header-nav">
+  <nav class="header-nav" aria-label="Primary navigation">
     <a href="/dashboard">Dashboard</a>
     <a href="/issues/ZZ">Issues</a>
   </nav>
-  <button class="btn btn-primary" hx-get="/issues/new" hx-target="#modal-root"
-          hx-swap="innerHTML" onclick="zzira.openModal()">Create</button>
+  <button type="button" class="btn btn-primary header-create" hx-get="/issues/new" hx-target="#modal-root"
+          hx-swap="innerHTML" onclick="zzira.openModal(this)">Create</button>
   {{if .User}}{{template "avatar" .User}}{{end}}
+  <button type="button" class="theme-toggle" data-theme-toggle aria-label="Switch to dark mode" aria-pressed="false">
+    <span aria-hidden="true">☀️</span>
+  </button>
 </header>
 {{end}}
 
 {{define "create_dialog"}}
-<div class="modal-backdrop" onclick="if(event.target===this)zzira.closeModal()"></div>
-<div class="modal" role="dialog" aria-label="Create issue">
-  <h2>Create issue</h2>
-  <form hx-post="/issues" hx-target="#modal-root" hx-swap="innerHTML">
-    <label>Project
-      <input name="project" value="{{.Project.Key}}" readonly>
-    </label>
-    <label>Issue type
-      <select name="issuetype">
+<div class="modal-backdrop" data-modal-backdrop aria-hidden="true"></div>
+<div class="modal" role="dialog" aria-modal="true" aria-labelledby="create-issue-title" tabindex="-1">
+  <h2 id="create-issue-title">Create issue</h2>
+  <form method="post" action="/issues" hx-post="/issues" hx-target="#modal-root" hx-swap="innerHTML">
+    <label for="create-project">Project</label>
+    <input id="create-project" name="project" value="{{.Project.Key}}" readonly>
+    <label for="create-issuetype">Issue type</label>
+      <select id="create-issuetype" name="issuetype">
         <option value="{{.IssueType.ID}}">{{.IssueType.Name}}</option>
       </select>
-    </label>
-    <label>Summary
-      <input name="summary" required autofocus maxlength="255" placeholder="What needs to be done?">
-    </label>
-    <label>Description
-      <textarea name="description" rows="6" placeholder="Describe the task…"></textarea>
-    </label>
-    {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+    <label for="create-summary">Summary</label>
+    <input id="create-summary" name="summary" required autofocus maxlength="255" placeholder="What needs to be done?">
+    <label for="create-description">Description</label>
+    <textarea id="create-description" name="description" rows="6" placeholder="Describe the task…"></textarea>
+    {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
     <div class="modal-actions">
       <button type="button" class="btn" onclick="zzira.closeModal()">Cancel</button>
       <button type="submit" class="btn btn-primary">Create</button>
@@ -62,14 +71,14 @@
   </div>
   <div class="issue-transitions">
     {{range .Transitions}}
-    <form hx-post="/issues/{{$.Issue.Key}}/transition" hx-target="#issue-root" hx-swap="outerHTML">
+    <form method="post" action="/issues/{{$.Issue.Key}}/transition" hx-post="/issues/{{$.Issue.Key}}/transition" hx-target="#issue-root" hx-swap="outerHTML">
       <input type="hidden" name="transition" value="{{.ID}}">
       <button type="submit" class="btn btn-transition">{{.Name}}</button>
     </form>
     {{end}}
     {{if .CanEdit}}
-    <button class="btn" onclick="zzira.openEdit('{{.Issue.Key}}')">Edit</button>
-    <button class="btn btn-danger" hx-delete="/issues/{{.Issue.Key}}"
+    <button type="button" class="btn" onclick="zzira.openEdit('{{.Issue.Key}}')">Edit</button>
+    <button type="button" class="btn btn-danger" hx-delete="/issues/{{.Issue.Key}}"
             hx-confirm="Delete {{.Issue.Key}}?" hx-redirect="/issues/{{.ProjectKey}}">Delete</button>
     {{end}}
   </div>
@@ -86,7 +95,7 @@
           {{range .Comments}}
           <div class="comment" id="{{.ID}}">
             <div class="comment-head">
-              {{if .AuthorName}}<span class="avatar" title="{{.AuthorName}}">{{initials .AuthorName}}</span>{{end}}
+              {{if .AuthorName}}<span class="avatar" role="img" aria-label="{{.AuthorName}}"><span aria-hidden="true">{{initials .AuthorName}}</span></span>{{end}}
               <strong>{{if .AuthorName}}{{.AuthorName}}{{else}}Unknown{{end}}</strong>
               <span class="muted">{{.Created}}</span>
             </div>
@@ -97,14 +106,15 @@
           {{end}}
         </div>
         {{if .CanEdit}}
-        <form class="comment-form" hx-post="/issues/{{.Issue.Key}}/comments" hx-target="#issue-root" hx-swap="outerHTML">
-          <div class="editor-toolbar" data-editor-toolbar>
-            <button type="button" data-cmd="bold" title="Bold"><strong>B</strong></button>
-            <button type="button" data-cmd="italic" title="Italic"><em>I</em></button>
-            <button type="button" data-cmd="insertUnorderedList" title="Bullet list">&bull;&equiv;</button>
-            <button type="button" data-cmd="code" title="Code">&lt;/&gt;</button>
+        <form class="comment-form" method="post" action="/issues/{{.Issue.Key}}/comments" hx-post="/issues/{{.Issue.Key}}/comments" hx-target="#issue-root" hx-swap="outerHTML">
+          <div class="editor-toolbar" role="toolbar" aria-label="Comment formatting" data-editor-toolbar>
+            <button type="button" data-cmd="bold" aria-label="Bold"><strong aria-hidden="true">B</strong></button>
+            <button type="button" data-cmd="italic" aria-label="Italic"><em aria-hidden="true">I</em></button>
+            <button type="button" data-cmd="insertUnorderedList" aria-label="Bullet list"><span aria-hidden="true">&bull;&equiv;</span></button>
+            <button type="button" data-cmd="code" aria-label="Code"><span aria-hidden="true">&lt;/&gt;</span></button>
           </div>
-          <div class="rich-editor" contenteditable="true" data-rich-editor data-target-name="adf"
+          <span id="comment-editor-label" class="sr-only">Add a comment</span>
+          <div id="comment-editor" class="rich-editor" contenteditable="true" role="textbox" aria-multiline="true" aria-labelledby="comment-editor-label" data-rich-editor data-target-name="adf"
                data-placeholder="Add a comment…"></div>
           <input type="hidden" name="adf">
           <button type="submit" class="btn btn-primary">Comment</button>
@@ -127,7 +137,8 @@
         </div>
         {{if .CanEdit}}
         <form class="upload-form" method="post" action="/issues/{{.Issue.Key}}/attachments" enctype="multipart/form-data">
-          <input type="file" name="file" required>
+          <label class="sr-only" for="attachment-file">Choose attachment</label>
+          <input id="attachment-file" type="file" name="file" required>
           <button type="submit" class="btn">Upload</button>
         </form>
         {{end}}
@@ -139,7 +150,7 @@
           {{range .Worklogs}}
           <div class="worklog">
             <div class="comment-head">
-              {{if .AuthorName}}<span class="avatar" title="{{.AuthorName}}">{{initials .AuthorName}}</span>{{end}}
+              {{if .AuthorName}}<span class="avatar" role="img" aria-label="{{.AuthorName}}"><span aria-hidden="true">{{initials .AuthorName}}</span></span>{{end}}
               <strong>{{if .AuthorName}}{{.AuthorName}}{{end}}</strong>
               <span class="lozenge">{{timeSpent .TimeSpentSeconds}}</span>
               <span class="muted">{{.Created}}</span>
@@ -151,9 +162,11 @@
           {{end}}
         </div>
         {{if .CanEdit}}
-        <form class="worklog-form" hx-post="/issues/{{.Issue.Key}}/worklogs" hx-target="#issue-root" hx-swap="outerHTML">
-          <input name="seconds" type="number" min="1" placeholder="Seconds" required class="worklog-seconds">
-          <input name="comment" placeholder="What did you work on? (optional)" class="worklog-comment">
+        <form class="worklog-form" method="post" action="/issues/{{.Issue.Key}}/worklogs" hx-post="/issues/{{.Issue.Key}}/worklogs" hx-target="#issue-root" hx-swap="outerHTML">
+          <label class="sr-only" for="worklog-seconds">Time spent in seconds</label>
+          <input id="worklog-seconds" name="seconds" type="number" min="1" placeholder="Seconds" required class="worklog-seconds">
+          <label class="sr-only" for="worklog-comment">Work description</label>
+          <input id="worklog-comment" name="comment" placeholder="What did you work on? (optional)" class="worklog-comment">
           <button type="submit" class="btn btn-primary">Log work</button>
         </form>
         {{end}}
@@ -164,7 +177,7 @@
         {{range .History}}
         <div class="history-entry">
           <div class="comment-head">
-            {{if .Author}}<span class="avatar" title="{{.Author.DisplayName}}">{{initials .Author.DisplayName}}</span>{{end}}
+            {{if .Author}}<span class="avatar" role="img" aria-label="{{.Author.DisplayName}}"><span aria-hidden="true">{{initials .Author.DisplayName}}</span></span>{{end}}
             <strong>{{if .Author}}{{.Author.DisplayName}}{{end}}</strong>
             <span class="muted">{{.Created}}</span>
           </div>
@@ -195,42 +208,37 @@
 {{end}}
 
 {{define "edit_dialog"}}
-<div class="modal-backdrop" onclick="if(event.target===this)zzira.closeModal()"></div>
-<div class="modal" role="dialog" aria-label="Edit issue">
-  <h2>Edit {{.Issue.Key}}</h2>
-  <form hx-post="/issues/{{.Issue.Key}}/edit" hx-target="#issue-root" hx-swap="outerHTML">
-    <label>Summary
-      <input name="summary" value="{{.Issue.Summary}}" required maxlength="255">
-    </label>
-    <label>Description
-      <textarea name="description" rows="6">{{adfToText .Issue.Description}}</textarea>
-    </label>
-    <label>Assignee
-      <select name="assignee">
+<div class="modal-backdrop" data-modal-backdrop aria-hidden="true"></div>
+<div class="modal" role="dialog" aria-modal="true" aria-labelledby="edit-issue-title" tabindex="-1">
+  <h2 id="edit-issue-title">Edit {{.Issue.Key}}</h2>
+  <form method="post" action="/issues/{{.Issue.Key}}/edit" hx-post="/issues/{{.Issue.Key}}/edit" hx-target="#issue-root" hx-swap="outerHTML">
+    <label for="edit-summary">Summary</label>
+    <input id="edit-summary" name="summary" value="{{.Issue.Summary}}" required maxlength="255">
+    <label for="edit-description">Description</label>
+    <textarea id="edit-description" name="description" rows="6">{{adfToText .Issue.Description}}</textarea>
+    <label for="edit-assignee">Assignee</label>
+      <select id="edit-assignee" name="assignee">
         <option value="">Unassigned</option>
         {{$cur := ""}}{{if .Issue.Assignee}}{{$cur = .Issue.Assignee.ID}}{{end}}
         {{range .Members}}
         <option value="{{.ID}}" {{if eq .ID $cur}}selected{{end}}>{{.DisplayName}}</option>
         {{end}}
       </select>
-    </label>
     {{if .SecurityLevels}}
-    <label>Security
-      <select name="security">
+    <label for="edit-security">Security</label>
+      <select id="edit-security" name="security">
         <option value="">Public</option>
         {{$curSec := .Issue.SecurityLevelID}}
         {{range .SecurityLevels}}
         <option value="{{.ID}}" {{if eq .ID $curSec}}selected{{end}}>{{.Name}}</option>
         {{end}}
       </select>
-    </label>
     {{end}}
     {{range .CustomFields}}
-    <label>{{.Name}}
-      <input name="{{.ID}}" value="{{customFieldValue $.Issue .ID}}">
-    </label>
+    <label for="field-{{.ID}}">{{.Name}}</label>
+      <input id="field-{{.ID}}" name="{{.ID}}" value="{{customFieldValue $.Issue .ID}}">
     {{end}}
-    {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+    {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
     <div class="modal-actions">
       <button type="button" class="btn" onclick="zzira.closeModal()">Cancel</button>
       <button type="submit" class="btn btn-primary">Save</button>
@@ -283,7 +291,7 @@
     </section>
   </main>
   <div id="modal-root"></div>
-  <div id="sync-banner" class="sync-banner" hidden></div>
+  <div id="sync-banner" class="sync-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div>
 </body>
 </html>
 {{end}}
@@ -298,7 +306,7 @@
     {{template "issue_view" .Data}}
   </main>
   <div id="modal-root"></div>
-  <div id="sync-banner" class="sync-banner" hidden></div>
+  <div id="sync-banner" class="sync-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div>
 </body>
 </html>
 {{end}}
@@ -321,7 +329,8 @@
   <main class="page">
     <h1>{{.Data.Project.Name}} <span class="project-key">({{.Data.Project.Key}})</span></h1>
     <form class="jql-bar" method="get" action="/issues/{{.Data.Project.Key}}">
-      <input name="jql" value="{{.Data.JQL}}" placeholder='Search with JQL: status = "In Progress" ORDER BY updated DESC' autocomplete="off">
+      <label class="sr-only" for="jql-query">Search issues with JQL</label>
+      <input id="jql-query" name="jql" value="{{.Data.JQL}}" placeholder='Search with JQL: status = "In Progress" ORDER BY updated DESC' autocomplete="off">
       <button type="submit" class="btn btn-primary">Search</button>
     </form>
     {{if .Data.JQL}}
@@ -331,7 +340,8 @@
     </p>
     {{end}}
     <table class="issue-list">
-      <thead><tr><th>Key</th><th>Summary</th><th>Status</th><th>Assignee</th></tr></thead>
+      <caption class="sr-only">Issues in {{.Data.Project.Name}}</caption>
+      <thead><tr><th scope="col">Key</th><th scope="col">Summary</th><th scope="col">Status</th><th scope="col">Assignee</th></tr></thead>
       <tbody>
         {{range .Data.Issues}}{{template "issue_list_row" .}}{{else}}
         <tr><td colspan="4" class="empty">{{if .Data.JQL}}No issues match this query.{{else}}No issues yet — hit <strong>Create</strong>.{{end}}</td></tr>
@@ -340,13 +350,14 @@
     </table>
   </main>
   <div id="modal-root"></div>
-  <div id="sync-banner" class="sync-banner" hidden></div>
+  <div id="sync-banner" class="sync-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div>
 </body>
 </html>
 {{end}}
 
 {{define "board_card"}}
-<div class="board-card" data-issue="{{.ID}}" data-key="{{.Key}}">
+<div class="board-card" data-issue="{{.ID}}" data-key="{{.Key}}" tabindex="0" role="button"
+     aria-label="Issue {{.Key}}: {{.Summary}}. Press Space to pick up, then arrow keys to move it.">
   <div class="board-card-top">
     <a href="/browse/{{.Key}}">{{.Key}}</a>
     <span class="lozenge {{statusClass .Status.Category}}">{{.Status.Name}}</span>
@@ -357,10 +368,10 @@
 {{end}}
 
 {{define "board_fragment"}}
-<div class="board" id="board" data-board-ready="">
+<div class="board" id="board" aria-label="{{.Board.Name}} board" data-board-ready="">
   {{$board := .Board.ID}}
   {{range .Columns}}
-  <div class="board-column" data-status="{{.StatusID}}">
+    <section class="board-column" data-status="{{.StatusID}}" aria-label="{{.Name}}">
     <div class="board-column-head">
       <span class="lozenge {{statusClass .Category}}">{{.Name}}</span>
       <span class="muted">{{len .Issues}}</span>
@@ -368,7 +379,7 @@
     <div class="board-column-body" data-column>
       {{range .Issues}}{{template "board_card" .}}{{end}}
     </div>
-  </div>
+  </section>
   {{end}}
 </div>
 {{end}}
@@ -383,10 +394,10 @@
   {{template "header" .}}
   <main class="page page-wide">
     <h1>{{.Data.Board.Name}} <span class="project-key">board</span></h1>
-    <div class="board" id="board">
+    <div class="board" id="board" aria-label="{{.Data.Board.Name}} board">
       {{$board := .Data.Board.ID}}
       {{range .Data.Columns}}
-      <div class="board-column" data-status="{{.StatusID}}">
+      <section class="board-column" data-status="{{.StatusID}}" aria-label="{{.Name}}">
         <div class="board-column-head">
           <span class="lozenge {{statusClass .Category}}">{{.Name}}</span>
           <span class="muted">{{len .Issues}}</span>
@@ -394,12 +405,12 @@
         <div class="board-column-body" data-column>
           {{range .Issues}}{{template "board_card" .}}{{end}}
         </div>
-      </div>
+      </section>
       {{end}}
     </div>
   </main>
   <div id="modal-root"></div>
-  <div id="sync-banner" class="sync-banner" hidden></div>
+  <div id="sync-banner" class="sync-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div>
 </body>
 </html>
 {{end}}
@@ -440,7 +451,7 @@
     </section>
   </main>
   <div id="modal-root"></div>
-  <div id="sync-banner" class="sync-banner" hidden></div>
+  <div id="sync-banner" class="sync-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div>
 </body>
 </html>
 {{end}}
@@ -453,13 +464,11 @@
   <main class="login-card">
     <h1>ZZIRA</h1>
     <form method="post" action="/login">
-      <label>Email
-        <input type="email" name="email" required autofocus>
-      </label>
-      <label>Password
-        <input type="password" name="password" required>
-      </label>
-      {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+      <label for="login-email">Email</label>
+      <input id="login-email" type="email" name="email" required autofocus>
+      <label for="login-password">Password</label>
+      <input id="login-password" type="password" name="password" required>
+      {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
       <button type="submit" class="btn btn-primary btn-block">Log in</button>
     </form>
   </main>

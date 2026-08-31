@@ -37,15 +37,26 @@ test('V4 done-when: rank via API in browser A converges in browser B via poke', 
   await pageA.goto('/board/brd_default');
   await pageB.goto('/board/brd_default');
   await expect(pageB.locator('.board-card').first()).toBeVisible();
+  // Live convergence can only be asserted once B's local-first replica has
+  // established its checkpoint; this is a protocol acknowledgement, not an
+  // elapsed-time guess.
+  await expect.poll(async () => (await pageB.locator('#sync-banner').textContent()) ?? '', {
+    timeout: 20_000,
+  }).toContain('synced');
 
   const firstCard = await pageA.locator('.board-column[data-status="st_todo"] .board-card').first();
   const topKey = await firstCard.getAttribute('data-key');
-  const secondKey = await pageA.locator('.board-column[data-status="st_todo"] .board-card').nth(1).getAttribute('data-key');
+  // Move the last card rather than the adjacent card. That guarantees this
+  // request changes the ordering even if a previous test leaves the first two
+  // cards already adjacent in the requested order.
+  const cards = pageA.locator('.board-column[data-status="st_todo"] .board-card');
+  const lastKey = await cards.last().getAttribute('data-key');
 
-  // Rank the second card to the top via the API (as a drag would).
+  // Jira's rankBeforeIssue places the issue ahead of the referenced card.
+  // Using rankAfterIssue here would deliberately preserve the existing order.
   const ranked = await request.post('/rest/agile/1.0/issue/rank', {
     headers: { Authorization: apiAuthHeader() },
-    data: { issues: [secondKey], rankAfterIssue: topKey },
+    data: { issues: [lastKey], rankBeforeIssue: topKey },
   });
   expect(ranked.status()).toBe(204);
 
@@ -55,7 +66,7 @@ test('V4 done-when: rank via API in browser A converges in browser B via poke', 
       const keys = await pageB.locator('.board-column[data-status="st_todo"] .board-card').evaluateAll(
         cards => cards.map(c => c.getAttribute('data-key')),
       );
-      return keys[0] === secondKey && keys.includes(topKey);
+      return keys[0] === lastKey && keys.includes(topKey);
     }, { timeout: 30_000 })
     .toBe(true);
 

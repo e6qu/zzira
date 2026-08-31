@@ -243,9 +243,34 @@ func initDB() error {
 	if sah.IsUndefined() {
 		return fmt.Errorf("OpfsSAHDb unavailable")
 	}
-	db = sah.New(js.ValueOf("/zzira-v1.db"))
+	replica, err := replicaID()
+	if err != nil {
+		return err
+	}
+	db = sah.New(js.ValueOf("/zzira-" + replica + ".db"))
 	exec(schemaSQL, nil)
 	return nil
+}
+
+// replicaID is supplied by the page from sessionStorage. It remains stable
+// across a tab reload (so offline data remains available) but intentionally
+// differs across tabs, avoiding concurrent OPFS handles on one SQLite file.
+func replicaID() (string, error) {
+	query := window.Get("location").Get("search").String()
+	values, err := url.ParseQuery(strings.TrimPrefix(query, "?"))
+	if err != nil {
+		return "", fmt.Errorf("replica query: %w", err)
+	}
+	id := values.Get("replica")
+	if len(id) != 36 {
+		return "", fmt.Errorf("replica id is missing or invalid")
+	}
+	for _, c := range id {
+		if !(c >= 'a' && c <= 'f' || c >= '0' && c <= '9' || c == '-') {
+			return "", fmt.Errorf("replica id is missing or invalid")
+		}
+	}
+	return id, nil
 }
 
 // safeInstall runs fn, recovering any JS-triggered panic (a trapped wasm or

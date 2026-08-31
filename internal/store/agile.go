@@ -54,8 +54,9 @@ func (s *Store) SetIssueRank(ctx context.Context, actorID, workspaceID, issueID,
 	return action, nil
 }
 
-// RankBetween computes the rank between two issues' current ranks (either may
-// be absent) inside a project+status column.
+// RankBetween computes a rank between adjacent issues in a project+status
+// column. beforeID is the next issue and afterID is the preceding issue, as
+// defined by Jira's rankBeforeIssue and rankAfterIssue API fields.
 func (s *Store) RankBetween(ctx context.Context, workspaceID, projectID, statusID, beforeID, afterID string) (string, error) {
 	fetch := func(id string) (string, error) {
 		var rank string
@@ -66,14 +67,14 @@ func (s *Store) RankBetween(ctx context.Context, workspaceID, projectID, statusI
 	}
 	var lo, hi string
 	var err error
-	if beforeID != "" {
-		if lo, err = fetch(beforeID); err != nil {
-			return "", fmt.Errorf("rank-before issue %q not found in column", beforeID)
+	if afterID != "" {
+		if lo, err = fetch(afterID); err != nil {
+			return "", fmt.Errorf("rank-after issue %q not found in column", afterID)
 		}
 	}
-	if afterID != "" {
-		if hi, err = fetch(afterID); err != nil {
-			return "", fmt.Errorf("rank-after issue %q not found in column", afterID)
+	if beforeID != "" {
+		if hi, err = fetch(beforeID); err != nil {
+			return "", fmt.Errorf("rank-before issue %q not found in column", beforeID)
 		}
 	}
 	rank, err := lexorank.Mid(lo, hi)
