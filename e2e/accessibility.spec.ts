@@ -32,6 +32,12 @@ test('accessible login, navigation, dialog, and dark theme', async ({ page }) =>
 
   await login(page);
   await expectNoWCAGViolations(page);
+  await expect(page.locator('.workspace-nav')).toHaveAttribute('aria-label', 'Workspace navigation');
+  await expect(page.getByRole('link', { name: 'Your work' })).toBeVisible();
+  await page.locator('.user-menu summary').click();
+  await expect(page.getByRole('button', { name: 'Log out' })).toBeVisible();
+  await expectNoWCAGViolations(page);
+  await page.locator('.user-menu summary').click();
 
   const toggle = page.locator('[data-theme-toggle]');
   await expect(toggle).toHaveAttribute('aria-label', 'Switch to dark mode');

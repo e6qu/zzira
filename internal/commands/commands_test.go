@@ -41,6 +41,7 @@ func TestCreateIssueToSyncPipeline(t *testing.T) {
 		ProjectKey:  "ZZ",
 		Summary:     "pipeline test issue",
 		Description: "desc body",
+		IssueTypeID: "it_task",
 	})
 	if err != nil {
 		t.Fatalf("CreateIssue: %v", err)
@@ -114,7 +115,7 @@ func TestUpdateTransitionCommentChangelogPipeline(t *testing.T) {
 
 	issue, _, err := svc.CreateIssue(ctx, CreateIssueInput{
 		ActorID: "usr_test", WorkspaceID: "ws_default", ProjectKey: "ZZ",
-		Summary: "V1 pipeline issue", Description: "original body",
+		Summary: "V1 pipeline issue", Description: "original body", IssueTypeID: "it_task",
 	})
 	if err != nil {
 		t.Fatalf("CreateIssue: %v", err)
@@ -247,7 +248,7 @@ func TestJQLSearchPipeline(t *testing.T) {
 	marker := fmt.Sprintf("jqlmarker%d", time.Now().UnixNano())
 	issue, _, err := svc.CreateIssue(ctx, CreateIssueInput{
 		ActorID: "usr_test", WorkspaceID: "ws_default", ProjectKey: "ZZ",
-		Summary: "issue with " + marker,
+		Summary: "issue with " + marker, IssueTypeID: "it_task",
 	})
 	if err != nil {
 		t.Fatalf("CreateIssue: %v", err)

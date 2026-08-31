@@ -36,17 +36,28 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 	if len(in.Summary) == 0 || len(in.Summary) > 255 {
 		return nil, nil, fmt.Errorf("summary is required (max 255 chars)")
 	}
+	if in.IssueTypeID == "" {
+		return nil, nil, fmt.Errorf("issue type is required")
+	}
 	project, err := s.Store.ProjectByKey(ctx, in.WorkspaceID, in.ProjectKey)
 	if err != nil {
 		return nil, nil, fmt.Errorf("project %q not found in workspace", in.ProjectKey)
 	}
-	description := plainTextToADF(in.Description)
-	issueTypeID := in.IssueTypeID
-	if issueTypeID == "" {
-		issueTypeID = "it_task"
+	issueType, err := s.Store.IssueTypeByIDOrName(ctx, in.IssueTypeID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("issue type %q not found", in.IssueTypeID)
 	}
+	priorityID := ""
+	if in.PriorityID != "" {
+		priority, err := s.Store.PriorityByIDOrName(ctx, in.PriorityID)
+		if err != nil {
+			return nil, nil, fmt.Errorf("priority %q not found", in.PriorityID)
+		}
+		priorityID = priority.ID
+	}
+	description := plainTextToADF(in.Description)
 	issue, action, err := s.Store.CreateIssue(ctx, in.ActorID, project.ID, in.Summary,
-		description, "st_todo", issueTypeID, in.PriorityID, in.AssigneeID, in.Fields)
+		description, "st_todo", issueType.ID, priorityID, in.AssigneeID, in.Fields)
 	if err != nil {
 		return nil, nil, err
 	}

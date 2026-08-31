@@ -222,14 +222,51 @@ func projectIDOrEmpty(projects []*models.Project) string {
 	return ""
 }
 
+const defaultSearchPageSize = 50
+const maximumSearchPageSize = 100
+
+func validateSearchPage(startAt, maxResults int) *jerr {
+	if startAt < 0 {
+		return &jerr{http.StatusBadRequest, "startAt must be a non-negative integer.", nil}
+	}
+	if maxResults < 0 || maxResults > maximumSearchPageSize {
+		return &jerr{http.StatusBadRequest, "maxResults must be between 0 and 100.", nil}
+	}
+	return nil
+}
+
+func querySearchPage(r *http.Request) (int, int, *jerr) {
+	startAt := 0
+	maxResults := defaultSearchPageSize
+	if raw := r.URL.Query().Get("startAt"); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil {
+			return 0, 0, &jerr{http.StatusBadRequest, "startAt must be a non-negative integer.", nil}
+		}
+		startAt = value
+	}
+	if raw := r.URL.Query().Get("maxResults"); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil {
+			return 0, 0, &jerr{http.StatusBadRequest, "maxResults must be between 0 and 100.", nil}
+		}
+		maxResults = value
+	}
+	if err := validateSearchPage(startAt, maxResults); err != nil {
+		return 0, 0, err
+	}
+	return startAt, maxResults, nil
+}
+
 func (h *Handler) runSearch(w http.ResponseWriter, r *http.Request, jqlText string, startAt, maxResults int) {
 	wsID, userID, e := h.authWorkspace(r)
 	if e != nil {
 		writeJerr(w, e)
 		return
 	}
-	if maxResults <= 0 || maxResults > 100 {
-		maxResults = 50
+	if e := validateSearchPage(startAt, maxResults); e != nil {
+		writeJerr(w, e)
+		return
 	}
 	c, e := h.compileJQL(r.Context(), jqlText, userID)
 	if e != nil {
@@ -256,16 +293,19 @@ func (h *Handler) runSearch(w http.ResponseWriter, r *http.Request, jqlText stri
 
 type searchRequest struct {
 	JQL           string   `json:"jql"`
-	StartAt       int      `json:"startAt"`
-	MaxResults    int      `json:"maxResults"`
+	StartAt       *int     `json:"startAt"`
+	MaxResults    *int     `json:"maxResults"`
 	Fields        []string `json:"fields"`
 	NextPageToken string   `json:"nextPageToken"`
 }
 
 func (h *Handler) search(w http.ResponseWriter, r *http.Request) {
 	jqlText := r.URL.Query().Get("jql")
-	startAt, _ := strconv.Atoi(r.URL.Query().Get("startAt"))
-	maxResults, _ := strconv.Atoi(r.URL.Query().Get("maxResults"))
+	startAt, maxResults, e := querySearchPage(r)
+	if e != nil {
+		writeJerr(w, e)
+		return
+	}
 	if r.Method == http.MethodPost {
 		var req searchRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -273,8 +313,14 @@ func (h *Handler) search(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		jqlText = req.JQL
-		startAt = req.StartAt
-		maxResults = req.MaxResults
+		startAt = 0
+		maxResults = defaultSearchPageSize
+		if req.StartAt != nil {
+			startAt = *req.StartAt
+		}
+		if req.MaxResults != nil {
+			maxResults = *req.MaxResults
+		}
 	}
 	h.runSearch(w, r, jqlText, startAt, maxResults)
 }
@@ -285,9 +331,13 @@ func (h *Handler) searchJQL(w http.ResponseWriter, r *http.Request) {
 		jiraFieldError(w, http.StatusBadRequest, map[string]string{"jql": "Invalid request payload."})
 		return
 	}
-	maxResults := req.MaxResults
-	if maxResults <= 0 || maxResults > 100 {
-		maxResults = 50
+	maxResults := defaultSearchPageSize
+	if req.MaxResults != nil {
+		maxResults = *req.MaxResults
+	}
+	if e := validateSearchPage(0, maxResults); e != nil {
+		writeJerr(w, e)
+		return
 	}
 	startAt := 0
 	if req.NextPageToken != "" {

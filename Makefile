@@ -28,8 +28,7 @@ migrate:
 	go run ./cmd/server -mode=migrate
 
 dev:
-	docker compose up -d postgres
-	@sleep 2
+	docker compose up -d --wait postgres
 	$(MAKE) migrate
 	$(MAKE) seed
 	DATABASE_URL='$(DATABASE_URL)' SERVER_PORT=$(SERVER_PORT) go run ./cmd/server

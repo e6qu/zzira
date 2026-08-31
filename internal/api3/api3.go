@@ -316,13 +316,20 @@ func (h *Handler) createIssue(w http.ResponseWriter, r *http.Request) {
 		jiraFieldError(w, http.StatusBadRequest, map[string]string{"summary": "You must specify a summary of the issue."})
 		return
 	}
-	issueTypeID := "it_task"
-	if req.Fields.IssueType != nil && req.Fields.IssueType.ID != "" {
-		issueTypeID = req.Fields.IssueType.ID
+	if req.Fields.IssueType == nil || (req.Fields.IssueType.ID == "" && req.Fields.IssueType.Name == "") {
+		jiraFieldError(w, http.StatusBadRequest, map[string]string{"issuetype": "Issue type is required."})
+		return
+	}
+	issueTypeID := req.Fields.IssueType.ID
+	if issueTypeID == "" {
+		issueTypeID = req.Fields.IssueType.Name
 	}
 	priorityID := ""
 	if req.Fields.Priority != nil {
 		priorityID = req.Fields.Priority.ID
+		if priorityID == "" {
+			priorityID = req.Fields.Priority.Name
+		}
 	}
 	description := ""
 	if len(req.Fields.Description) > 0 {

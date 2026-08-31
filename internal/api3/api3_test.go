@@ -2,6 +2,7 @@ package api3
 
 import (
 	"encoding/json"
+	"net/http/httptest"
 	"os"
 	"testing"
 
@@ -69,6 +70,34 @@ func TestCreateIssueRequestValidation(t *testing.T) {
 	}
 	if req.Fields.Summary != "" {
 		t.Fatal("summary should be empty")
+	}
+}
+
+func TestQuerySearchPageRejectsInvalidExplicitValues(t *testing.T) {
+	tests := []string{
+		"/rest/api/3/search?startAt=-1",
+		"/rest/api/3/search?startAt=invalid",
+		"/rest/api/3/search?maxResults=-1",
+		"/rest/api/3/search?maxResults=101",
+		"/rest/api/3/search?maxResults=invalid",
+	}
+	for _, target := range tests {
+		t.Run(target, func(t *testing.T) {
+			if _, _, err := querySearchPage(httptest.NewRequest("GET", target, nil)); err == nil {
+				t.Fatal("expected explicit invalid pagination value to be rejected")
+			}
+		})
+	}
+}
+
+func TestQuerySearchPageDefaultsOnlyWhenOmitted(t *testing.T) {
+	startAt, maxResults, err := querySearchPage(httptest.NewRequest("GET", "/rest/api/3/search", nil))
+	if err != nil || startAt != 0 || maxResults != defaultSearchPageSize {
+		t.Fatalf("omitted page values = (%d, %d, %v)", startAt, maxResults, err)
+	}
+	startAt, maxResults, err = querySearchPage(httptest.NewRequest("GET", "/rest/api/3/search?startAt=2&maxResults=0", nil))
+	if err != nil || startAt != 2 || maxResults != 0 {
+		t.Fatalf("explicit page values = (%d, %d, %v)", startAt, maxResults, err)
 	}
 }
 

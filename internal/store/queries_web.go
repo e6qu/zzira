@@ -17,6 +17,30 @@ func (s *Store) FirstIssueType(ctx context.Context) (*models.IssueType, error) {
 	return t, nil
 }
 
+// IssueTypeByIDOrName resolves the two Jira wire representations to the
+// canonical internal identifier. Issue types are workspace-independent today.
+func (s *Store) IssueTypeByIDOrName(ctx context.Context, idOrName string) (*models.IssueType, error) {
+	t := &models.IssueType{}
+	err := s.Pool.QueryRow(ctx, `SELECT id, name, COALESCE(icon,'') FROM issue_types WHERE id=$1 OR name=$1 LIMIT 1`, idOrName).
+		Scan(&t.ID, &t.Name, &t.Icon)
+	if err != nil {
+		return nil, err
+	}
+	return t, nil
+}
+
+// PriorityByIDOrName resolves the two Jira wire representations to the
+// canonical internal identifier. Priorities are workspace-independent today.
+func (s *Store) PriorityByIDOrName(ctx context.Context, idOrName string) (*models.Priority, error) {
+	p := &models.Priority{}
+	err := s.Pool.QueryRow(ctx, `SELECT id, name FROM priorities WHERE id=$1 OR name=$1 LIMIT 1`, idOrName).
+		Scan(&p.ID, &p.Name)
+	if err != nil {
+		return nil, err
+	}
+	return p, nil
+}
+
 // DefaultProject returns the seeded demo project (V0 has exactly one).
 func (s *Store) DefaultProject(ctx context.Context) (*models.Project, error) {
 	p := &models.Project{}
