@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.4](https://github.com/e6qu/zzira/compare/v0.2.3...v0.2.4) (2026-08-31)
+
+
+### Bug Fixes
+
+* scope user lookups to workspace members ([025983a](https://github.com/e6qu/zzira/commit/025983acbe81deae3abdf7823db845bb0a63f1f4))
+
 ## [0.2.3](https://github.com/e6qu/zzira/compare/v0.2.2...v0.2.3) (2026-08-31)
 
 
