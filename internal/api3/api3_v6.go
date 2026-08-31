@@ -217,9 +217,14 @@ func (h *Handler) myPermissions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) permissionsCheck(w http.ResponseWriter, r *http.Request) {
-	_, _, e := h.authWorkspace(r)
+	wsID, userID, e := h.authWorkspace(r)
 	if e != nil {
 		writeJerr(w, e)
+		return
+	}
+	admin, err := authz.IsWorkspaceAdmin(r.Context(), h.Store, wsID, userID)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	var req struct {
@@ -231,7 +236,11 @@ func (h *Handler) permissionsCheck(w http.ResponseWriter, r *http.Request) {
 	}
 	granted := map[string]any{}
 	for _, name := range req.Permissions {
-		granted[name] = map[string]any{"permitted": permissionKnown(name)}
+		permitted := permissionKnown(name)
+		if name == "ADMINISTER" {
+			permitted = admin
+		}
+		granted[name] = map[string]any{"permitted": permitted}
 	}
 	writeJSON(w, http.StatusOK, granted)
 }

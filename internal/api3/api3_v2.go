@@ -427,11 +427,12 @@ func (h *Handler) filterBean(f *models.Filter) map[string]any {
 }
 
 func (h *Handler) listFilters(w http.ResponseWriter, r *http.Request) {
-	if _, _, e := h.authWorkspace(r); e != nil {
+	wsID, userID, e := h.authWorkspace(r)
+	if e != nil {
 		writeJerr(w, e)
 		return
 	}
-	filters, err := h.Store.ListFilters(r.Context())
+	filters, err := h.Store.ListFilters(r.Context(), wsID, userID)
 	if err != nil {
 		log.Printf("listFilters: %v", err)
 		jiraError(w, http.StatusInternalServerError, "internal error")
@@ -445,11 +446,12 @@ func (h *Handler) listFilters(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) getFilter(w http.ResponseWriter, r *http.Request, id string) {
-	if _, _, e := h.authWorkspace(r); e != nil {
+	wsID, userID, e := h.authWorkspace(r)
+	if e != nil {
 		writeJerr(w, e)
 		return
 	}
-	f, err := h.Store.FilterByID(r.Context(), id)
+	f, err := h.Store.FilterByID(r.Context(), wsID, userID, id)
 	if err != nil {
 		jiraError(w, http.StatusNotFound, "Filter does not exist.")
 		return

@@ -656,31 +656,51 @@ func (s *Store) MarkWebhookDelivery(ctx context.Context, webhookID string, seq i
 
 // ---- filters CRUD (V5) ----
 
-func (s *Store) CreateFilter(ctx context.Context, id, name, jql, description, ownerID string) (*models.Filter, error) {
+func (s *Store) CreateFilter(ctx context.Context, id, workspaceID, name, jql, description, ownerID string) (*models.Filter, error) {
 	_, err := s.Pool.Exec(ctx,
-		`INSERT INTO filters (id, name, jql, description, owner_id, favourite) VALUES ($1,$2,$3,$4,$5,FALSE)`,
-		id, name, jql, description, nilIfEmpty(ownerID))
+		`INSERT INTO filters (id, workspace_id, name, jql, description, owner_id, favourite) VALUES ($1,$2,$3,$4,$5,$6,FALSE)`,
+		id, workspaceID, name, jql, description, nilIfEmpty(ownerID))
 	if err != nil {
 		return nil, err
 	}
-	return s.FilterByID(ctx, id)
+	return s.FilterByID(ctx, workspaceID, ownerID, id)
 }
 
-func (s *Store) UpdateFilter(ctx context.Context, id, name, jql, description string) (*models.Filter, error) {
-	if _, err := s.Pool.Exec(ctx,
-		`UPDATE filters SET name=$2, jql=$3, description=$4 WHERE id=$1`, id, name, jql, description); err != nil {
+func (s *Store) UpdateFilter(ctx context.Context, workspaceID, userID, id, name, jql, description string) (*models.Filter, error) {
+	result, err := s.Pool.Exec(ctx,
+		`UPDATE filters SET name=$4, jql=$5, description=$6 WHERE id=$1 AND workspace_id=$2 AND owner_id=$3`, id, workspaceID, userID, name, jql, description)
+	if err != nil {
 		return nil, err
 	}
-	return s.FilterByID(ctx, id)
+	if result.RowsAffected() == 0 {
+		return nil, pgx.ErrNoRows
+	}
+	return s.FilterByID(ctx, workspaceID, userID, id)
 }
 
-func (s *Store) DeleteFilter(ctx context.Context, id string) error {
-	_, err := s.Pool.Exec(ctx, `DELETE FROM filters WHERE id=$1`, id)
+func (s *Store) DeleteFilter(ctx context.Context, workspaceID, userID, id string) error {
+	result, err := s.Pool.Exec(ctx, `DELETE FROM filters WHERE id=$1 AND workspace_id=$2 AND owner_id=$3`, id, workspaceID, userID)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
 	return err
 }
 
-func (s *Store) SetFilterFavourite(ctx context.Context, id string, favourite bool) error {
-	_, err := s.Pool.Exec(ctx, `UPDATE filters SET favourite=$2 WHERE id=$1`, id, favourite)
+func (s *Store) SetFilterFavourite(ctx context.Context, workspaceID, userID, id string, favourite bool) error {
+	if favourite {
+		_, err := s.Pool.Exec(ctx, `
+			INSERT INTO filter_favourites (filter_id, user_id)
+			SELECT id, $3 FROM filters WHERE id=$1 AND workspace_id=$2
+			ON CONFLICT DO NOTHING`, id, workspaceID, userID)
+		return err
+	}
+	_, err := s.Pool.Exec(ctx, `
+		DELETE FROM filter_favourites ff
+		USING filters f
+		WHERE ff.filter_id=f.id AND f.id=$1 AND f.workspace_id=$2 AND ff.user_id=$3`, id, workspaceID, userID)
 	return err
 }
 

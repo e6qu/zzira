@@ -183,6 +183,24 @@ func (h *Handler) authWorkspace(r *http.Request) (wsID, userID string, j *jerr) 
 	return wsID, userID, nil
 }
 
+// authWorkspaceAdmin is the explicit gate for workspace control-plane
+// operations. Regular members may use project data; changing shared
+// configuration requires the workspace administrator role.
+func (h *Handler) authWorkspaceAdmin(r *http.Request) (wsID, userID string, j *jerr) {
+	wsID, userID, j = h.authWorkspace(r)
+	if j != nil {
+		return "", "", j
+	}
+	admin, err := authz.IsWorkspaceAdmin(r.Context(), h.Store, wsID, userID)
+	if err != nil {
+		return "", "", &jerr{http.StatusInternalServerError, "internal error", nil}
+	}
+	if !admin {
+		return "", "", &jerr{http.StatusForbidden, "You do not have permission to perform this operation.", nil}
+	}
+	return wsID, userID, nil
+}
+
 func (h *Handler) resolveIssue(r *http.Request, wsID, idOrKey string) (*models.Issue, *jerr) {
 	issue, err := h.Store.IssueByIDOrKey(r.Context(), wsID, idOrKey)
 	if err != nil {

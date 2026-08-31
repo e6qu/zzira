@@ -105,7 +105,7 @@ func (h *Handler) listFields(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) createField(w http.ResponseWriter, r *http.Request) {
-	if _, _, e := h.authWorkspace(r); e != nil {
+	if _, _, e := h.authWorkspaceAdmin(r); e != nil {
 		writeJerr(w, e)
 		return
 	}
@@ -145,7 +145,7 @@ func (h *Handler) createField(w http.ResponseWriter, r *http.Request) {
 // ---- webhooks (Atlassian registration shape) ----
 
 func (h *Handler) webhookRoute(w http.ResponseWriter, r *http.Request) {
-	if _, _, e := h.authWorkspace(r); e != nil {
+	if _, _, e := h.authWorkspaceAdmin(r); e != nil {
 		writeJerr(w, e)
 		return
 	}
@@ -176,7 +176,7 @@ func (h *Handler) webhookRoute(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) createWebhook(w http.ResponseWriter, r *http.Request) {
-	wsID, _, e := h.authWorkspace(r)
+	wsID, _, e := h.authWorkspaceAdmin(r)
 	if e != nil {
 		writeJerr(w, e)
 		return
@@ -231,7 +231,7 @@ func (h *Handler) listWebhooks(w http.ResponseWriter, r *http.Request) {
 // ---- filters CRUD ----
 
 func (h *Handler) createFilter(w http.ResponseWriter, r *http.Request) {
-	_, userID, e := h.authWorkspace(r)
+	wsID, userID, e := h.authWorkspace(r)
 	if e != nil {
 		writeJerr(w, e)
 		return
@@ -249,7 +249,7 @@ func (h *Handler) createFilter(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, http.StatusBadRequest, "Error in the JQL Query: "+err.Error())
 		return
 	}
-	f, err := h.Store.CreateFilter(r.Context(), store.NewID("flt"), req.Name, req.JQL, req.Description, userID)
+	f, err := h.Store.CreateFilter(r.Context(), store.NewID("flt"), wsID, req.Name, req.JQL, req.Description, userID)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -258,7 +258,8 @@ func (h *Handler) createFilter(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) putFilter(w http.ResponseWriter, r *http.Request, id string) {
-	if _, _, e := h.authWorkspace(r); e != nil {
+	wsID, userID, e := h.authWorkspace(r)
+	if e != nil {
 		writeJerr(w, e)
 		return
 	}
@@ -271,7 +272,7 @@ func (h *Handler) putFilter(w http.ResponseWriter, r *http.Request, id string) {
 		jiraFieldError(w, http.StatusBadRequest, map[string]string{"name": "A filter name is required."})
 		return
 	}
-	f, err := h.Store.UpdateFilter(r.Context(), id, req.Name, req.JQL, req.Description)
+	f, err := h.Store.UpdateFilter(r.Context(), wsID, userID, id, req.Name, req.JQL, req.Description)
 	if err != nil {
 		jiraError(w, http.StatusNotFound, "Filter does not exist.")
 		return
@@ -280,11 +281,12 @@ func (h *Handler) putFilter(w http.ResponseWriter, r *http.Request, id string) {
 }
 
 func (h *Handler) deleteFilter(w http.ResponseWriter, r *http.Request, id string) {
-	if _, _, e := h.authWorkspace(r); e != nil {
+	wsID, userID, e := h.authWorkspace(r)
+	if e != nil {
 		writeJerr(w, e)
 		return
 	}
-	if err := h.Store.DeleteFilter(r.Context(), id); err != nil {
+	if err := h.Store.DeleteFilter(r.Context(), wsID, userID, id); err != nil {
 		jiraError(w, http.StatusNotFound, "Filter does not exist.")
 		return
 	}
@@ -311,15 +313,20 @@ func (h *Handler) filterCRUD(w http.ResponseWriter, r *http.Request, rest string
 }
 
 func (h *Handler) setFilterFavourite(w http.ResponseWriter, r *http.Request, id string, favourite bool) {
-	if _, _, e := h.authWorkspace(r); e != nil {
+	wsID, userID, e := h.authWorkspace(r)
+	if e != nil {
 		writeJerr(w, e)
 		return
 	}
-	if err := h.Store.SetFilterFavourite(r.Context(), id, favourite); err != nil {
+	if _, err := h.Store.FilterByID(r.Context(), wsID, userID, id); err != nil {
 		jiraError(w, http.StatusNotFound, "Filter does not exist.")
 		return
 	}
-	f, err := h.Store.FilterByID(r.Context(), id)
+	if err := h.Store.SetFilterFavourite(r.Context(), wsID, userID, id, favourite); err != nil {
+		jiraError(w, http.StatusNotFound, "Filter does not exist.")
+		return
+	}
+	f, err := h.Store.FilterByID(r.Context(), wsID, userID, id)
 	if err != nil {
 		jiraError(w, http.StatusNotFound, "Filter does not exist.")
 		return
