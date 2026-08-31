@@ -145,7 +145,8 @@ func (h *Handler) createField(w http.ResponseWriter, r *http.Request) {
 // ---- webhooks (Atlassian registration shape) ----
 
 func (h *Handler) webhookRoute(w http.ResponseWriter, r *http.Request) {
-	if _, _, e := h.authWorkspaceAdmin(r); e != nil {
+	wsID, _, e := h.authWorkspaceAdmin(r)
+	if e != nil {
 		writeJerr(w, e)
 		return
 	}
@@ -167,7 +168,7 @@ func (h *Handler) webhookRoute(w http.ResponseWriter, r *http.Request) {
 			jiraError(w, http.StatusMethodNotAllowed, "method not allowed")
 			return
 		}
-		if err := h.Store.DeleteWebhook(r.Context(), id); err != nil {
+		if err := h.Store.DeleteWebhook(r.Context(), wsID, id); err != nil {
 			jiraError(w, http.StatusNotFound, "The webhook does not exist.")
 			return
 		}
@@ -209,7 +210,12 @@ func (h *Handler) createWebhook(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) listWebhooks(w http.ResponseWriter, r *http.Request) {
-	webhooks, err := h.Store.Webhooks(r.Context())
+	wsID, _, e := h.authWorkspaceAdmin(r)
+	if e != nil {
+		writeJerr(w, e)
+		return
+	}
+	webhooks, err := h.Store.Webhooks(r.Context(), wsID)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return

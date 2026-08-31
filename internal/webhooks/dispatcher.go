@@ -76,7 +76,7 @@ func (d *Dispatcher) drainOnce(ctx context.Context, workspaceID string) {
 		fmt.Printf("webhooks: head: %v\n", err)
 		return
 	}
-	if err := d.Store.ClaimNewWebhookSeqs(ctx, head); err != nil {
+	if err := d.Store.ClaimNewWebhookSeqs(ctx, workspaceID, head); err != nil {
 		fmt.Printf("webhooks: enroll: %v\n", err)
 		return
 	}
@@ -84,7 +84,7 @@ func (d *Dispatcher) drainOnce(ctx context.Context, workspaceID string) {
 		if ctx.Err() != nil {
 			return
 		}
-		webhook, seqs, ok, err := d.Store.ClaimPendingWebhookBatch(ctx, 100)
+		webhook, seqs, ok, err := d.Store.ClaimPendingWebhookBatch(ctx, workspaceID, 100)
 		if err != nil {
 			fmt.Printf("webhooks: claim: %v\n", err)
 			return
