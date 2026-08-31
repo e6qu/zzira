@@ -48,6 +48,18 @@
         form.setAttribute('data-outbox-path', path);
         form.removeAttribute('hx-post');
         form.removeAttribute('hx-delete');
+        // This is an offline command form, not an HTMX form with an error
+        // handler. Bind its submit control directly before hydration so one
+        // user action produces one outbox command.
+        const queue = (event) => {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          queueOfflineForm(form);
+        };
+        form.addEventListener('submit', queue);
+        form.querySelectorAll('button[type="submit"]').forEach((button) => {
+          button.addEventListener('click', queue, true);
+        });
       });
     }
     hydrate(root);
@@ -224,18 +236,6 @@
     postWorker({ type: 'enqueue', method: 'POST', path, body, kind });
     return true;
   }
-
-  // HTMX handles a submit button's click before the native submit event in
-  // some dynamically hydrated dialogs. Intercept at the owning form's button
-  // boundary so an offline command enters the outbox exactly once.
-  document.addEventListener('click', (evt) => {
-    const button = evt.target.closest('button[type="submit"]');
-    if (!button || (offlineMode === false && navigator.onLine)) return;
-    const form = button.form;
-    if (!form || !queueOfflineForm(form)) return;
-    evt.preventDefault();
-    evt.stopImmediatePropagation();
-  }, true);
 
   // Catch native submits as well as HTMX requests. This is important during
   // first-load offline transitions, when a dialog can exist before HTMX has
