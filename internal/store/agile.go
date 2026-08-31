@@ -22,11 +22,11 @@ func (s *Store) SetIssueRank(ctx context.Context, actorID, workspaceID, issueID,
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	if newStatusID != "" {
-		if _, err := tx.Exec(ctx, `UPDATE issues SET status_id=$2 WHERE id=$1`, issueID, newStatusID); err != nil {
+		if _, err := tx.Exec(ctx, `UPDATE issues SET status_id=$3 WHERE id=$1 AND workspace_id=$2`, issueID, workspaceID, newStatusID); err != nil {
 			return nil, err
 		}
 	}
-	if _, err := tx.Exec(ctx, `UPDATE issues SET rank=$2 WHERE id=$1`, issueID, rank); err != nil {
+	if _, err := tx.Exec(ctx, `UPDATE issues SET rank=$3 WHERE id=$1 AND workspace_id=$2`, issueID, workspaceID, rank); err != nil {
 		return nil, err
 	}
 	seq, err := nextSeq(ctx, tx, workspaceID)
@@ -162,6 +162,17 @@ func (s *Store) CreateSprint(ctx context.Context, actorID, workspaceID, boardID,
 		return nil, nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	var boardExists bool
+	if err := tx.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM boards b JOIN projects p ON p.id=b.project_id
+			WHERE b.id=$1 AND p.workspace_id=$2
+		)`, boardID, workspaceID).Scan(&boardExists); err != nil {
+		return nil, nil, err
+	}
+	if !boardExists {
+		return nil, nil, fmt.Errorf("board %q does not belong to workspace %q", boardID, workspaceID)
+	}
 	id := NewID("spr")
 	if _, err := tx.Exec(ctx,
 		`INSERT INTO sprints (id, board_id, name, state, goal) VALUES ($1,$2,$3,'future',$4)`,
@@ -244,6 +255,20 @@ func (s *Store) AddIssueToSprint(ctx context.Context, actorID, workspaceID, spri
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	var belongs bool
+	if err := tx.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM sprints s
+			JOIN boards b ON b.id=s.board_id
+			JOIN projects p ON p.id=b.project_id
+			JOIN issues i ON i.id=$2 AND i.workspace_id=$3
+			WHERE s.id=$1 AND p.workspace_id=$3
+		)`, sprintID, issueID, workspaceID).Scan(&belongs); err != nil {
+		return nil, err
+	}
+	if !belongs {
+		return nil, fmt.Errorf("sprint and issue must belong to workspace %q", workspaceID)
+	}
 	if _, err := tx.Exec(ctx,
 		`INSERT INTO sprint_issues (sprint_id, issue_id, rank) VALUES ($1,$2,$3)
 		 ON CONFLICT (sprint_id, issue_id) DO UPDATE SET rank=$4`, sprintID, issueID, rank, rank); err != nil {
@@ -411,10 +436,10 @@ func (s *Store) NotificationsByUser(ctx context.Context, workspaceID, userID str
 }
 
 // IssuesBySprint lists a sprint's issues in rank order.
-func (s *Store) IssuesBySprint(ctx context.Context, sprintID string) ([]*models.Issue, error) {
+func (s *Store) IssuesBySprint(ctx context.Context, sprintID, userID string) ([]*models.Issue, error) {
 	rows, err := s.Pool.Query(ctx, issueJoin+`
 		JOIN sprint_issues si ON si.issue_id = i.id
-		WHERE si.sprint_id=$1 ORDER BY si.rank`, sprintID)
+		WHERE si.sprint_id=$1 AND `+VisibleIssuePredicate("i", "$2")+` ORDER BY si.rank`, sprintID, userID)
 	if err != nil {
 		return nil, err
 	}

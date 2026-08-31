@@ -113,9 +113,17 @@ func (d *Dispatcher) deliver(ctx context.Context, workspaceID string, webhook *m
 		_ = d.Store.MarkWebhookDelivery(ctx, webhook.ID, seq, true, "")
 		return
 	}
-	if webhook.JQL != "" && action.EntityType == models.EntityIssue && d.Checker != nil {
+	if webhook.JQL != "" && action.EntityType == models.EntityIssue {
+		if d.Checker == nil || d.Checker.Search == nil {
+			_ = d.Store.MarkWebhookDelivery(ctx, webhook.ID, seq, false, "JQL checker is not configured")
+			return
+		}
 		match, err := d.Checker.Search(ctx, workspaceID, fmt.Sprintf(`(%s) AND key = "%s"`, webhook.JQL, actionKey(action)))
-		if err != nil || !match {
+		if err != nil {
+			_ = d.Store.MarkWebhookDelivery(ctx, webhook.ID, seq, false, err.Error())
+			return
+		}
+		if !match {
 			_ = d.Store.MarkWebhookDelivery(ctx, webhook.ID, seq, true, "")
 			return
 		}
@@ -136,11 +144,11 @@ func (d *Dispatcher) deliver(ctx context.Context, workspaceID string, webhook *m
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-ZZIRA-Event", event)
-	client := d.Client
-	if client == nil {
-		client = http.DefaultClient
+	if d.Client == nil {
+		_ = d.Store.MarkWebhookDelivery(ctx, webhook.ID, seq, false, "webhook HTTP client is not configured")
+		return
 	}
-	resp, err := client.Do(req)
+	resp, err := d.Client.Do(req)
 	if err != nil {
 		_ = d.Store.MarkWebhookDelivery(ctx, webhook.ID, seq, false, err.Error())
 		return

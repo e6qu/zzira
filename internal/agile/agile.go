@@ -21,6 +21,18 @@ type Handler struct {
 	BaseURL   string
 }
 
+func (h *Handler) visibleIssue(r *http.Request, workspaceID, userID, idOrKey string) (*models.Issue, error) {
+	issue, err := h.Store.IssueByIDOrKey(r.Context(), workspaceID, idOrKey)
+	if err != nil {
+		return nil, err
+	}
+	visible, err := authz.CanSeeIssue(r.Context(), h.Store, workspaceID, issue.ProjectID, userID, issue.SecurityLevelID)
+	if err != nil || !visible {
+		return nil, fmt.Errorf("issue %q does not exist", idOrKey)
+	}
+	return issue, nil
+}
+
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/rest/agile/1.0")
 	switch {
@@ -216,7 +228,7 @@ func (h *Handler) createSprint(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) sprintRoute(w http.ResponseWriter, r *http.Request, parts []string) {
 	id := parts[0]
-	wsID, _, status, msg := h.authWorkspace(r)
+	wsID, userID, status, msg := h.authWorkspace(r)
 	if status != 0 {
 		jiraError(w, status, msg)
 		return
@@ -230,7 +242,7 @@ func (h *Handler) sprintRoute(w http.ResponseWriter, r *http.Request, parts []st
 	case len(parts) == 1 && r.Method == http.MethodGet:
 		writeJSON(w, http.StatusOK, h.sprintBean(sprint))
 	case len(parts) == 2 && parts[1] == "issue" && r.Method == http.MethodGet:
-		h.sprintIssues(w, r, sprint)
+		h.sprintIssues(w, r, sprint, userID)
 	case len(parts) == 2 && parts[1] == "issue" && r.Method == http.MethodPost:
 		h.moveIssuesToSprint(w, r, wsID, sprint)
 	default:
@@ -238,8 +250,8 @@ func (h *Handler) sprintRoute(w http.ResponseWriter, r *http.Request, parts []st
 	}
 }
 
-func (h *Handler) sprintIssues(w http.ResponseWriter, r *http.Request, sprint *models.Sprint) {
-	issues, err := h.Store.IssuesBySprint(r.Context(), sprint.ID)
+func (h *Handler) sprintIssues(w http.ResponseWriter, r *http.Request, sprint *models.Sprint, userID string) {
+	issues, err := h.Store.IssuesBySprint(r.Context(), sprint.ID, userID)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -257,7 +269,7 @@ func (h *Handler) sprintIssues(w http.ResponseWriter, r *http.Request, sprint *m
 }
 
 func (h *Handler) moveIssuesToSprint(w http.ResponseWriter, r *http.Request, wsID string, sprint *models.Sprint) {
-	userID, _, status, msg := h.authWorkspace(r)
+	_, userID, status, msg := h.authWorkspace(r)
 	if status != 0 {
 		jiraError(w, status, msg)
 		return
@@ -270,7 +282,7 @@ func (h *Handler) moveIssuesToSprint(w http.ResponseWriter, r *http.Request, wsI
 		return
 	}
 	for _, key := range req.Issues {
-		issue, err := h.Store.IssueByIDOrKey(r.Context(), wsID, key)
+		issue, err := h.visibleIssue(r, wsID, userID, key)
 		if err != nil {
 			jiraError(w, http.StatusNotFound, "Issue "+key+" does not exist.")
 			return
@@ -311,13 +323,13 @@ func (h *Handler) rank(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, issueKey := range req.Issues {
-		issue, err := h.Store.IssueByIDOrKey(r.Context(), wsID, issueKey)
+		issue, err := h.visibleIssue(r, wsID, userID, issueKey)
 		if err != nil {
 			jiraError(w, http.StatusNotFound, "Issue "+issueKey+" does not exist.")
 			return
 		}
 		resolveID := func(keyOrID string) (string, error) {
-			ref, err := h.Store.IssueByIDOrKey(r.Context(), wsID, keyOrID)
+			ref, err := h.visibleIssue(r, wsID, userID, keyOrID)
 			if err != nil {
 				return "", fmt.Errorf("issue %q does not exist", keyOrID)
 			}

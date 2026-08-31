@@ -97,7 +97,8 @@ func main() {
 	sse := &syncapi.SSEHandler{Store: st, Bus: bus}
 	sync := &syncapi.Handler{Store: st}
 	dispatcher := &webhooks.Dispatcher{
-		Store: st,
+		Store:  st,
+		Client: &http.Client{Timeout: 10 * time.Second},
 		Checker: &webhooks.JQLChecker{Search: func(ctx context.Context, wsID, jqlText string) (bool, error) {
 			// webhooks are admin-configured: evaluate JQL as a workspace admin
 			adminID, err := st.FirstAdminID(ctx, wsID)
@@ -225,7 +226,10 @@ func seedUsers(ctx context.Context, st *store.Store) error {
 		if err != nil {
 			return err
 		}
-		plain, apiHash := authn.NewAPIToken()
+		plain, apiHash, err := authn.NewAPIToken()
+		if err != nil {
+			return err
+		}
 		if err := st.CreateAPIToken(ctx, store.NewID("tok"), userID, apiHash, "seed"); err != nil {
 			return err
 		}

@@ -42,7 +42,9 @@ func (s *Store) Close() { s.Pool.Close() }
 
 func NewID(prefix string) string {
 	b := make([]byte, 6)
-	_, _ = rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		panic(fmt.Sprintf("store: cryptographic randomness: %v", err))
+	}
 	return prefix + "_" + hex.EncodeToString(b)
 }
 
