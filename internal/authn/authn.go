@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -140,4 +141,37 @@ func Identify(ctx context.Context, st *store.Store, r *http.Request) (string, er
 		return "", ErrUnauthorized
 	}
 	return st.SessionUser(ctx, hashToken(c.Value))
+}
+
+// ProtectCookieMutations rejects cross-origin unsafe requests authenticated by
+// a browser session. API-token clients use Authorization and therefore do not
+// depend on ambient browser credentials. Requiring an explicit same-origin
+// Origin header avoids accepting a request merely because a session cookie was
+// attached to it.
+func ProtectCookieMutations(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !unsafeMethod(r.Method) || r.Header.Get("Authorization") != "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if _, err := r.Cookie(sessionCookie); err != nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+		origin, err := url.Parse(r.Header.Get("Origin"))
+		if err != nil || origin.Scheme == "" || origin.Host == "" || origin.Host != r.Host || (origin.Scheme != "http" && origin.Scheme != "https") {
+			http.Error(w, "cross-origin request blocked", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func unsafeMethod(method string) bool {
+	switch method {
+	case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+		return true
+	default:
+		return false
+	}
 }

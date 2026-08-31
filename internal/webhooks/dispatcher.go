@@ -1,7 +1,7 @@
 // Package webhooks delivers action-log events to registered webhooks. The
 // delivery ledger (webhook_deliveries) plus FOR UPDATE SKIP LOCKED claims make
-// delivery exactly-once-per-event across replicas; failures are retried by
-// remaining 'delivering' rows being re-claimed after a timeout.
+// each delivery attempt exclusive across replicas. Failed deliveries persist a
+// retry schedule, so retries remain durable across process restarts.
 package webhooks
 
 import (

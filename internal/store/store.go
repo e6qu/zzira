@@ -278,7 +278,7 @@ func (s *Store) IsMember(ctx context.Context, workspaceID, userID string) (bool,
 func (s *Store) AddMember(ctx context.Context, workspaceID, userID, role string) error {
 	_, err := s.Pool.Exec(ctx,
 		`INSERT INTO memberships (workspace_id, user_id, role) VALUES ($1,$2,$3)
-		 ON CONFLICT DO NOTHING`, workspaceID, userID, role)
+		 ON CONFLICT (workspace_id, user_id) DO UPDATE SET role=EXCLUDED.role`, workspaceID, userID, role)
 	return err
 }
 

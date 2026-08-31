@@ -175,8 +175,10 @@ func (s *Store) BootstrapSnapshot(ctx context.Context, workspaceID, userID strin
 	crows, err := tx.Query(ctx, `
 		SELECT c.id, c.issue_id, c.author_id, COALESCE(u.display_name,''), c.body,
 		       to_char(c.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
-		FROM comments c LEFT JOIN users u ON u.id = c.author_id
-		WHERE c.workspace_id=$1 ORDER BY c.created_at`, workspaceID)
+		FROM comments c
+		JOIN issues i ON i.id = c.issue_id AND i.workspace_id = c.workspace_id
+		LEFT JOIN users u ON u.id = c.author_id
+		WHERE c.workspace_id=$1 AND `+VisibleIssuePredicate("i", "$2")+` ORDER BY c.created_at`, workspaceID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -196,8 +198,10 @@ func (s *Store) BootstrapSnapshot(ctx context.Context, workspaceID, userID strin
 		SELECT a.id, a.issue_id, a.filename, a.mime_type, a.size, a.author_id,
 		       COALESCE(u.display_name,''),
 		       to_char(a.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
-		FROM attachments a LEFT JOIN users u ON u.id = a.author_id
-		WHERE a.workspace_id=$1 ORDER BY a.created_at`, workspaceID)
+		FROM attachments a
+		JOIN issues i ON i.id = a.issue_id AND i.workspace_id = a.workspace_id
+		LEFT JOIN users u ON u.id = a.author_id
+		WHERE a.workspace_id=$1 AND `+VisibleIssuePredicate("i", "$2")+` ORDER BY a.created_at`, workspaceID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -218,8 +222,10 @@ func (s *Store) BootstrapSnapshot(ctx context.Context, workspaceID, userID strin
 		SELECT w.id, w.issue_id, w.author_id, COALESCE(u.display_name,''),
 		       COALESCE(w.comment::text,''), w.time_spent_seconds,
 		       to_char(w.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
-		FROM worklogs w LEFT JOIN users u ON u.id = w.author_id
-		WHERE w.workspace_id=$1 ORDER BY w.created_at`, workspaceID)
+		FROM worklogs w
+		JOIN issues i ON i.id = w.issue_id AND i.workspace_id = w.workspace_id
+		LEFT JOIN users u ON u.id = w.author_id
+		WHERE w.workspace_id=$1 AND `+VisibleIssuePredicate("i", "$2")+` ORDER BY w.created_at`, workspaceID, userID)
 	if err != nil {
 		return nil, err
 	}

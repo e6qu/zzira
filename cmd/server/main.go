@@ -198,7 +198,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              address,
-		Handler:           mux,
+		Handler:           authn.ProtectCookieMutations(mux),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      60 * time.Second,
@@ -256,6 +256,9 @@ func seedUsers(ctx context.Context, st *store.Store) error {
 
 func ensureUser(ctx context.Context, st *store.Store, wsID, email, password, displayName, role string) (string, error) {
 	if id, _, _, err := st.UserByEmail(ctx, email); err == nil {
+		if err := st.AddMember(ctx, wsID, id, role); err != nil {
+			return "", err
+		}
 		return id, nil
 	}
 	hash, err := authn.HashPassword(password)
