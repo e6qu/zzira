@@ -130,15 +130,10 @@ func (h *Handler) buildIssueView(r *http.Request, wsID, idOrKey string) (*models
 	for _, t := range wf.Available(issue.Status.ID) {
 		transitions = append(transitions, models.WorkflowTransition{ID: t.ID, Name: t.Name})
 	}
-	editDialog, err := h.buildEditDialogView(r.Context(), wsID, issue)
-	if err != nil {
-		return nil, err
-	}
 	return &models.IssueView{
 		Issue:       *issue,
 		ProjectKey:  projectKeyOf(issue.Key),
 		CanEdit:     true,
-		EditDialog:  editDialog,
 		Comments:    derefComments(comments),
 		Transitions: transitions,
 		History:     history,
@@ -147,10 +142,9 @@ func (h *Handler) buildIssueView(r *http.Request, wsID, idOrKey string) (*models
 	}, nil
 }
 
-// buildEditDialogView produces the complete edit-command schema alongside an
-// issue snapshot. The same schema is used by the online endpoint and by an
-// already-rendered offline view, so an offline submission never invents or
-// silently drops editable fields.
+// buildEditDialogView produces the complete edit-command schema for the
+// online endpoint. The local replica renders the same fragment from its own
+// persisted issue state while offline.
 func (h *Handler) buildEditDialogView(ctx context.Context, wsID string, issue *models.Issue) (*models.EditDialogView, error) {
 	members, err := h.Store.MembersByWorkspace(ctx, wsID)
 	if err != nil {

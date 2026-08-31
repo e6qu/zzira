@@ -109,14 +109,9 @@ type SyncResponse struct {
 // ---- View models (render-only) ----
 
 type IssueView struct {
-	Issue      Issue
-	ProjectKey string
-	CanEdit    bool
-	// EditDialog is the command schema captured with this issue snapshot. It
-	// lets the page open an edit command while the local replica is starting.
-	// It is an explicit part of the local-first hand-off, not a network-error
-	// substitute.
-	EditDialog  *EditDialogView
+	Issue       Issue
+	ProjectKey  string
+	CanEdit     bool
 	Comments    []Comment
 	Transitions []WorkflowTransition
 	History     []ChangelogEntry

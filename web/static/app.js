@@ -10,7 +10,7 @@
   // OPFS access handles for the same database during navigation.
   const replicaView = document.body.hasAttribute('data-current-issue') ||
     document.body.hasAttribute('data-board');
-  const worker = replicaView ? new Worker('/static/worker.js?v=5') : null;
+  const worker = replicaView ? new Worker('/static/worker.js?v=6') : null;
   const banner = () => document.getElementById('sync-banner');
   let workerReady = false;
   const pendingWorkerMessages = [];
@@ -277,17 +277,16 @@
     openEdit(key) {
       const root = document.getElementById('modal-root');
       if (!root) return;
-      // Offline editing is a declared capability of the SSR-to-replica
-      // hand-off: the current document carries the command schema and values
-      // that were current when it was rendered. It does not depend on either
-      // a network failure or the worker's boot time.
+      // The replica owns offline commands. Request its locally rendered dialog
+      // instead of relying on an SSR-only template that a replica render can
+      // replace.
       if (!navigator.onLine) {
-        const command = document.getElementById('offline-edit-dialog');
-        if (!command) {
+        const issueId = currentIssueId();
+        if (!worker || !issueId) {
           announce('offline editing is unavailable for this view', 4000);
           return;
         }
-        setModalHTML(command.innerHTML);
+        postWorker({ type: 'edit-dialog', issueId });
         return;
       }
       fetch(`/issues/${key}/edit`).then(r => {

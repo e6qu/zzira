@@ -7,7 +7,7 @@
 <link rel="preload" href="/static/sqlite/sqlite3.wasm" as="fetch" crossorigin>
 <script src="/static/htmx/htmx.min.js" defer></script>
 <script src="/static/wasm/wasm_exec.js" defer></script>
-<script src="/static/app.js?v=6" defer></script>
+<script src="/static/app.js?v=7" defer></script>
 {{end}}
 
 {{define "avatar"}}
@@ -190,9 +190,7 @@
         <dd>{{if .Issue.Reporter}}{{template "avatar" .Issue.Reporter}}{{end}}</dd>
       </dl>
     </aside>
-  </div>{{if .EditDialog}}
-  <template id="offline-edit-dialog">{{template "edit_dialog" .EditDialog}}</template>
-  {{end}}
+  </div>
 </div>
 {{end}}
 
