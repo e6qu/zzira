@@ -80,6 +80,12 @@ test('V1 done-when: offline edit queues, drain on reconnect, zero duplicates', a
   await login(page);
   await page.goto(`/browse/${key}`);
 
+  // Offline mutations require an installed local replica. Wait for the
+  // protocol's explicit sync acknowledgement, never an elapsed-time guess.
+  await expect.poll(async () => (await page.locator('#sync-banner').textContent()) ?? '', {
+    timeout: 20_000,
+  }).toContain('synced');
+
   await page.context().setOffline(true);
   await page.click('text=Edit');
   await page.fill('input[name=summary]', `offline edit ${Date.now()}`);

@@ -59,7 +59,8 @@ test('V0 station 5: login → create via UI → lands on issue view', async () =
 });
 
 test('V0 station 6: wasm worker boots and syncs (banner shows synced)', async () => {
-  await page.goto('/');
+  await page.goto('/issues/ZZ');
+  await page.click('tbody a >> nth=0');
   const banner = page.locator('#sync-banner');
   await expect
     .poll(async () => (await banner.textContent()) ?? '', { timeout: 45_000 })

@@ -42,6 +42,14 @@
     if (!root) return;
     root.innerHTML = html;
     root.style.display = 'block';
+    if (!navigator.onLine) {
+      root.querySelectorAll('form[hx-post], form[hx-delete]').forEach((form) => {
+        const path = form.getAttribute('hx-post') || form.getAttribute('hx-delete');
+        form.setAttribute('data-outbox-path', path);
+        form.removeAttribute('hx-post');
+        form.removeAttribute('hx-delete');
+      });
+    }
     hydrate(root);
   }
 
@@ -209,7 +217,7 @@
   }
 
   function queueOfflineForm(form) {
-    const path = form.getAttribute('hx-post') || form.getAttribute('hx-delete');
+    const path = form.getAttribute('data-outbox-path') || form.getAttribute('hx-post') || form.getAttribute('hx-delete');
     const kind = outboxKind(path || '');
     if (!kind) return false;
     const body = new URLSearchParams(new FormData(form)).toString();
@@ -217,10 +225,22 @@
     return true;
   }
 
+  // HTMX handles a submit button's click before the native submit event in
+  // some dynamically hydrated dialogs. Intercept at the owning form's button
+  // boundary so an offline command enters the outbox exactly once.
+  document.addEventListener('click', (evt) => {
+    const button = evt.target.closest('button[type="submit"]');
+    if (!button || (offlineMode === false && navigator.onLine)) return;
+    const form = button.form;
+    if (!form || !queueOfflineForm(form)) return;
+    evt.preventDefault();
+    evt.stopImmediatePropagation();
+  }, true);
+
   // Catch native submits as well as HTMX requests. This is important during
   // first-load offline transitions, when a dialog can exist before HTMX has
   // had a chance to process its dynamically inserted form.
-  document.body.addEventListener('submit', (evt) => {
+  document.addEventListener('submit', (evt) => {
     const form = evt.target;
     if (!(form instanceof HTMLFormElement) || (!offlineMode && navigator.onLine)) return;
     if (!queueOfflineForm(form)) return;
