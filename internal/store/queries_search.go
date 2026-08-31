@@ -97,6 +97,23 @@ func (s *Store) MembersByWorkspace(ctx context.Context, workspaceID string) ([]*
 	return out, rows.Err()
 }
 
+// MemberByID returns an active user only when they belong to workspaceID.
+// User lookup at the API edge must retain this scope: user IDs are globally
+// addressable, but user profile data is visible only within a shared workspace.
+func (s *Store) MemberByID(ctx context.Context, workspaceID, userID string) (*models.User, error) {
+	u := &models.User{ID: userID, Active: true, AccountType: "atlassian"}
+	err := s.Pool.QueryRow(ctx, `
+		SELECT u.email, u.display_name, u.time_zone
+		FROM memberships m
+		JOIN users u ON u.id = m.user_id
+		WHERE m.workspace_id=$1 AND u.id=$2 AND u.active`, workspaceID, userID).
+		Scan(&u.Email, &u.DisplayName, &u.TimeZone)
+	if err != nil {
+		return nil, err
+	}
+	return u, nil
+}
+
 // SearchMembers filters workspace members by name/email substring.
 func (s *Store) SearchMembers(ctx context.Context, workspaceID, query string) ([]*models.User, error) {
 	rows, err := s.Pool.Query(ctx, `
