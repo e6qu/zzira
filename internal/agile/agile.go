@@ -95,12 +95,12 @@ func (h *Handler) listBoards(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) boardRoute(w http.ResponseWriter, r *http.Request, parts []string) {
 	id := parts[0]
-	_, userID, status, msg := h.authWorkspace(r)
+	wsID, userID, status, msg := h.authWorkspace(r)
 	if status != 0 {
 		jiraError(w, status, msg)
 		return
 	}
-	board, err := h.Store.BoardByID(r.Context(), id)
+	board, err := h.Store.BoardByIDInWorkspace(r.Context(), wsID, id)
 	if err != nil {
 		jiraError(w, http.StatusNotFound, "The board does not exist.")
 		return
@@ -202,7 +202,7 @@ func (h *Handler) createSprint(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, http.StatusBadRequest, "A sprint name is required.")
 		return
 	}
-	if _, err := h.Store.BoardByID(r.Context(), req.OriginBoardID); err != nil {
+	if _, err := h.Store.BoardByIDInWorkspace(r.Context(), wsID, req.OriginBoardID); err != nil {
 		jiraError(w, http.StatusBadRequest, "The board does not exist.")
 		return
 	}
@@ -221,7 +221,7 @@ func (h *Handler) sprintRoute(w http.ResponseWriter, r *http.Request, parts []st
 		jiraError(w, status, msg)
 		return
 	}
-	sprint, err := h.Store.SprintByID(r.Context(), id)
+	sprint, err := h.Store.SprintByIDInWorkspace(r.Context(), wsID, id)
 	if err != nil {
 		jiraError(w, http.StatusNotFound, "The sprint does not exist.")
 		return

@@ -14,11 +14,12 @@ func (h *Handler) BoardPage(w http.ResponseWriter, r *http.Request, id string) {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
-	if _, ok := h.memberWorkspace(r, user); !ok {
+	wsID, ok := h.memberWorkspace(r, user)
+	if !ok {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
-	board, err := h.Store.BoardByID(r.Context(), id)
+	board, err := h.Store.BoardByIDInWorkspace(r.Context(), wsID, id)
 	if err != nil {
 		http.NotFound(w, r)
 		return
@@ -56,12 +57,13 @@ func (h *Handler) BoardFragment(w http.ResponseWriter, r *http.Request, id strin
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
-	if _, ok := h.memberWorkspace(r, user); !ok {
+	wsID, ok := h.memberWorkspace(r, user)
+	if !ok {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 	_ = user
-	board, err := h.Store.BoardByID(r.Context(), id)
+	board, err := h.Store.BoardByIDInWorkspace(r.Context(), wsID, id)
 	if err != nil {
 		http.NotFound(w, r)
 		return
@@ -112,7 +114,7 @@ func (h *Handler) RankIssue(w http.ResponseWriter, r *http.Request, boardID stri
 	if !parseForm(w, r) {
 		return
 	}
-	board, err := h.Store.BoardByID(r.Context(), boardID)
+	board, err := h.Store.BoardByIDInWorkspace(r.Context(), wsID, boardID)
 	if err != nil {
 		http.NotFound(w, r)
 		return

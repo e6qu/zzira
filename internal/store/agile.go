@@ -100,6 +100,13 @@ func (s *Store) BoardByID(ctx context.Context, id string) (*models.Board, error)
 	return scanBoard(s.Pool.QueryRow(ctx, boardJoin+`WHERE b.id=$1`, id))
 }
 
+// BoardByIDInWorkspace returns a board only when its project belongs to the
+// requested workspace. Callers handling authenticated requests must use this
+// lookup instead of the global administrative lookup above.
+func (s *Store) BoardByIDInWorkspace(ctx context.Context, workspaceID, id string) (*models.Board, error) {
+	return scanBoard(s.Pool.QueryRow(ctx, boardJoin+`WHERE b.id=$1 AND p.workspace_id=$2`, id, workspaceID))
+}
+
 func (s *Store) BoardsByWorkspace(ctx context.Context, workspaceID string) ([]*models.Board, error) {
 	rows, err := s.Pool.Query(ctx, boardJoin+`WHERE p.workspace_id=$1 ORDER BY b.name`, workspaceID)
 	if err != nil {
@@ -184,10 +191,10 @@ func (s *Store) CreateSprint(ctx context.Context, actorID, workspaceID, boardID,
 
 func (s *Store) SprintsByBoard(ctx context.Context, boardID string) ([]*models.Sprint, error) {
 	rows, err := s.Pool.Query(ctx,
-		`SELECT id, board_id, name, state,
+		`SELECT s.id, s.board_id, s.name, s.state,
 		        COALESCE(to_char(start_date AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
 		        COALESCE(to_char(end_date AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
-		        goal
+		        s.goal
 		 FROM sprints WHERE board_id=$1 ORDER BY created_at, id`, boardID)
 	if err != nil {
 		return nil, err
@@ -205,13 +212,23 @@ func (s *Store) SprintsByBoard(ctx context.Context, boardID string) ([]*models.S
 }
 
 func (s *Store) SprintByID(ctx context.Context, id string) (*models.Sprint, error) {
+	return s.sprintByID(ctx, "WHERE s.id=$1", id)
+}
+
+// SprintByIDInWorkspace returns a sprint only when its board's project belongs
+// to the requested workspace.
+func (s *Store) SprintByIDInWorkspace(ctx context.Context, workspaceID, id string) (*models.Sprint, error) {
+	return s.sprintByID(ctx, "JOIN boards b ON b.id=s.board_id JOIN projects p ON p.id=b.project_id WHERE s.id=$1 AND p.workspace_id=$2", id, workspaceID)
+}
+
+func (s *Store) sprintByID(ctx context.Context, clause string, args ...any) (*models.Sprint, error) {
 	sp := &models.Sprint{}
 	err := s.Pool.QueryRow(ctx,
 		`SELECT id, board_id, name, state,
 		        COALESCE(to_char(start_date AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
 		        COALESCE(to_char(end_date AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
 		        goal
-		 FROM sprints WHERE id=$1`, id).
+		 FROM sprints s `+clause, args...).
 		Scan(&sp.ID, &sp.BoardID, &sp.Name, &sp.State, &sp.StartDate, &sp.EndDate, &sp.Goal)
 	if err != nil {
 		return nil, err
