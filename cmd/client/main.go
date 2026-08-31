@@ -83,7 +83,7 @@ func bootstrapIfEmpty() {
 	if len(rows) > 0 && int64Of(rows[0], "n") > 0 {
 		return
 	}
-	resp, err := http.Get("/bootstrap?workspace=zzira")
+	resp, err := http.Get("/bootstrap")
 	if err != nil {
 		return // offline fresh client: stays empty until online
 	}
@@ -355,7 +355,7 @@ func setKV(k, v string) {
 
 func syncOnce() {
 	cp := checkpoint()
-	url := fmt.Sprintf("/sync?workspace=zzira&since=%d&limit=500", cp)
+	url := fmt.Sprintf("/sync?since=%d&limit=500", cp)
 	resp, err := http.Get(url)
 	if err != nil {
 		post(map[string]any{"type": "offline"})

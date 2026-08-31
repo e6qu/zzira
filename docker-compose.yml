@@ -22,6 +22,7 @@ services:
       STATIC_DIR: /static
       DATA_DIR: /data
       BASE_URL: http://localhost:8080
+      WORKSPACE_SLUG: zzira
     ports:
       - "8080:8080"
     depends_on:

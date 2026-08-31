@@ -64,7 +64,7 @@ func main() {
 		fatal("blobs", err)
 	}
 	cmdSvc := &commands.Service{Store: st, Blobs: blobs}
-	api := &api3.Handler{Store: st, Commands: cmdSvc, Blobs: blobs, BaseURL: "http://loadtest"}
+	api := &api3.Handler{Store: st, Commands: cmdSvc, Blobs: blobs, BaseURL: "http://loadtest", WorkspaceSlug: "conc"}
 	server := httptest.NewServer(httpmux(st, cmdSvc, api))
 	defer server.Close()
 
@@ -243,7 +243,7 @@ func printReport(results []measurement) {
 func httpmux(st *store.Store, cmdSvc *commands.Service, api *api3.Handler) *http.ServeMux {
 	mux := http.NewServeMux()
 	sync := &syncapi.Handler{Store: st}
-	webHandler := &web.Handler{Store: st, Commands: cmdSvc}
+	webHandler := &web.Handler{Store: st, Commands: cmdSvc, WorkspaceSlug: "conc"}
 	mux.HandleFunc("GET /issues/new", webHandler.CreateDialog)
 	mux.Handle("GET /sync", sync)
 	mux.Handle("/rest/api/3/", api)

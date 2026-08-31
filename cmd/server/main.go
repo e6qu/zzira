@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -10,6 +11,9 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+	"unicode"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/e6qu/zzira/internal/agile"
 	"github.com/e6qu/zzira/internal/api3"
@@ -67,6 +71,17 @@ func main() {
 		}
 		return
 	}
+	workspaceSlug, err := servingWorkspaceSlug(os.Getenv)
+	if err != nil {
+		log.Fatal(err)
+	}
+	workspaceID, err := st.WorkspaceBySlug(ctx, workspaceSlug)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			log.Fatal("configured workspace does not exist")
+		}
+		log.Fatalf("load configured workspace: %v", err)
+	}
 
 	port := os.Getenv("SERVER_PORT")
 	if port == "" {
@@ -90,12 +105,12 @@ func main() {
 	if err != nil {
 		log.Fatalf("configure OIDC SSO: %v", err)
 	}
-	webHandler := &web.Handler{Store: st, Commands: cmdSvc, OIDC: oidcSSO}
-	api := &api3.Handler{Store: st, Commands: cmdSvc, Blobs: blobs, BaseURL: envOr("BASE_URL", "http://localhost:"+port)}
-	agileAPI := &agile.Handler{Store: st, IssueBean: api.IssueBean, BaseURL: envOr("BASE_URL", "http://localhost:"+port)}
+	webHandler := &web.Handler{Store: st, Commands: cmdSvc, OIDC: oidcSSO, WorkspaceSlug: workspaceSlug}
+	api := &api3.Handler{Store: st, Commands: cmdSvc, Blobs: blobs, BaseURL: envOr("BASE_URL", "http://localhost:"+port), WorkspaceSlug: workspaceSlug}
+	agileAPI := &agile.Handler{Store: st, IssueBean: api.IssueBean, BaseURL: envOr("BASE_URL", "http://localhost:"+port), WorkspaceSlug: workspaceSlug}
 	bus := notifybus.New()
-	sse := &syncapi.SSEHandler{Store: st, Bus: bus}
-	sync := &syncapi.Handler{Store: st}
+	sse := &syncapi.SSEHandler{Store: st, Bus: bus, WorkspaceSlug: workspaceSlug}
+	sync := &syncapi.Handler{Store: st, WorkspaceSlug: workspaceSlug}
 	dispatcher := &webhooks.Dispatcher{
 		Store:  st,
 		Client: &http.Client{Timeout: 10 * time.Second},
@@ -117,7 +132,7 @@ func main() {
 			return err == nil && len(issues) > 0, nil
 		}},
 	}
-	go dispatcher.Run(context.Background(), "ws_default")
+	go dispatcher.Run(context.Background(), workspaceID)
 	go func() {
 		for {
 			if err := bus.Listen(context.Background(), st.Pool); err != nil {
@@ -280,4 +295,20 @@ func envOr(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// servingWorkspaceSlug reads the one workspace an application instance may
+// serve. Control characters are rejected before the value reaches a log sink
+// or is used to select tenant data.
+func servingWorkspaceSlug(getenv func(string) string) (string, error) {
+	slug := getenv("WORKSPACE_SLUG")
+	if slug == "" {
+		return "", errors.New("WORKSPACE_SLUG must name the workspace served by this instance")
+	}
+	for _, r := range slug {
+		if unicode.IsControl(r) {
+			return "", errors.New("WORKSPACE_SLUG contains control characters")
+		}
+	}
+	return slug, nil
 }

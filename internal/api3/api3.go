@@ -22,10 +22,11 @@ import (
 )
 
 type Handler struct {
-	Store    *store.Store
-	Commands *commands.Service
-	Blobs    attachments.Store
-	BaseURL  string
+	Store         *store.Store
+	Commands      *commands.Service
+	Blobs         attachments.Store
+	BaseURL       string
+	WorkspaceSlug string
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -172,7 +173,10 @@ func (h *Handler) authWorkspace(r *http.Request) (wsID, userID string, j *jerr) 
 	if err != nil {
 		return "", "", &jerr{http.StatusUnauthorized, "You are not authenticated. Authentication required to perform this operation.", nil}
 	}
-	wsID, _, err = h.Store.DefaultWorkspace(r.Context())
+	if h.WorkspaceSlug == "" {
+		return "", "", &jerr{http.StatusInternalServerError, "workspace is not configured", nil}
+	}
+	wsID, err = h.Store.WorkspaceBySlug(r.Context(), h.WorkspaceSlug)
 	if err != nil {
 		return "", "", &jerr{http.StatusInternalServerError, "no workspace configured", nil}
 	}

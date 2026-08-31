@@ -1,5 +1,6 @@
 SERVER_PORT ?= 8080
 DATABASE_URL ?= postgres://zzira:zzira@localhost:5433/zzira?sslmode=disable
+WORKSPACE_SLUG ?= zzira
 VERSION ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 LDFLAGS = -s -w -X github.com/e6qu/zzira/internal/build.Version=$(VERSION)
 
@@ -31,7 +32,7 @@ dev:
 	docker compose up -d --wait postgres
 	$(MAKE) migrate
 	$(MAKE) seed
-	DATABASE_URL='$(DATABASE_URL)' SERVER_PORT=$(SERVER_PORT) go run ./cmd/server
+	DATABASE_URL='$(DATABASE_URL)' SERVER_PORT=$(SERVER_PORT) WORKSPACE_SLUG='$(WORKSPACE_SLUG)' go run ./cmd/server
 
 down:
 	docker compose down

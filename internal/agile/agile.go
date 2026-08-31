@@ -16,9 +16,10 @@ import (
 )
 
 type Handler struct {
-	Store     *store.Store
-	IssueBean func(*models.Issue) map[string]any
-	BaseURL   string
+	Store         *store.Store
+	IssueBean     func(*models.Issue) map[string]any
+	BaseURL       string
+	WorkspaceSlug string
 }
 
 func (h *Handler) visibleIssue(r *http.Request, workspaceID, userID, idOrKey string) (*models.Issue, error) {
@@ -56,7 +57,10 @@ func (h *Handler) authWorkspace(r *http.Request) (wsID, userID string, status in
 	if err != nil {
 		return "", "", http.StatusUnauthorized, "You are not authenticated. Authentication required to perform this operation."
 	}
-	wsID, _, err = h.Store.DefaultWorkspace(r.Context())
+	if h.WorkspaceSlug == "" {
+		return "", "", http.StatusInternalServerError, "workspace is not configured"
+	}
+	wsID, err = h.Store.WorkspaceBySlug(r.Context(), h.WorkspaceSlug)
 	if err != nil {
 		return "", "", http.StatusInternalServerError, "no workspace configured"
 	}
