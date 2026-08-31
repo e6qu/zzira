@@ -153,7 +153,8 @@ func (s *Store) DashboardData(ctx context.Context, workspaceID, userID string) (
 	rows, err := s.Pool.Query(ctx, `
 		SELECT st.id, st.name, st.category, COUNT(*)
 		FROM issues i JOIN statuses st ON st.id = i.status_id
-		WHERE i.workspace_id=$1 GROUP BY st.id, st.name, st.category ORDER BY st.id`, workspaceID)
+		WHERE i.workspace_id=$1 AND `+VisibleIssuePredicate("i", "$2")+`
+		GROUP BY st.id, st.name, st.category ORDER BY st.id`, workspaceID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -174,7 +175,8 @@ func (s *Store) DashboardData(ctx context.Context, workspaceID, userID string) (
 
 	if err := s.Pool.QueryRow(ctx, `
 		SELECT COUNT(*) FROM issues
-		WHERE workspace_id=$1 AND assignee_id=$2 AND status_id <> 'st_done'`,
+		WHERE workspace_id=$1 AND assignee_id=$2 AND status_id <> 'st_done'
+		  AND `+VisibleIssuePredicate("issues", "$2"),
 		workspaceID, userID).Scan(&stats.MyOpenIssues); err != nil {
 		return nil, err
 	}
@@ -186,7 +188,8 @@ func (s *Store) DashboardData(ctx context.Context, workspaceID, userID string) (
 		JOIN issues i ON i.id = a.entity_id AND i.workspace_id = a.workspace_id
 		LEFT JOIN users u ON u.id = a.actor_id
 		WHERE a.workspace_id=$1 AND a.entity_type='issue' AND a.op <> 'delete'
-		ORDER BY a.seq DESC LIMIT 10`, workspaceID)
+		  AND `+VisibleIssuePredicate("i", "$2")+`
+		ORDER BY a.seq DESC LIMIT 10`, workspaceID, userID)
 	if err != nil {
 		return nil, err
 	}

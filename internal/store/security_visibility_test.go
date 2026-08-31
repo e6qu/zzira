@@ -105,6 +105,21 @@ func TestSecurityVisibilityAcrossReadPaths(t *testing.T) {
 			t.Fatal("ana's bootstrap snapshot contains the restricted issue")
 		}
 	}
+	for _, c := range anaSnap.Comments {
+		if c.IssueID == restrictedID {
+			t.Fatal("ana's bootstrap snapshot contains comments on the restricted issue")
+		}
+	}
+	for _, a := range anaSnap.Attachments {
+		if a.IssueID == restrictedID {
+			t.Fatal("ana's bootstrap snapshot contains attachments on the restricted issue")
+		}
+	}
+	for _, w := range anaSnap.Worklogs {
+		if w.IssueID == restrictedID {
+			t.Fatal("ana's bootstrap snapshot contains worklogs on the restricted issue")
+		}
+	}
 	demoSnap, err := st.BootstrapSnapshot(ctx, "ws_default", demoID)
 	if err != nil {
 		t.Fatal(err)
@@ -117,6 +132,30 @@ func TestSecurityVisibilityAcrossReadPaths(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("demo's bootstrap snapshot lost the restricted issue")
+	}
+
+	// Dashboard aggregates must have the same visibility boundary as navigator
+	// and search; otherwise counts and activity leak confidential issue data.
+	stats, err := st.DashboardData(ctx, "ws_default", anaID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var visibleCount int
+	err = st.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM issues i WHERE i.workspace_id=$1 AND `+VisibleIssuePredicate("i", "$2"), "ws_default", anaID).Scan(&visibleCount)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var dashboardCount int
+	for _, count := range stats.StatusCounts {
+		dashboardCount += int(count.Count)
+	}
+	if dashboardCount != visibleCount {
+		t.Fatalf("ana dashboard count=%d, want visible count %d", dashboardCount, visibleCount)
+	}
+	for _, activity := range stats.Recent {
+		if activity.IssueKey == restrictedKey {
+			t.Fatal("ana's dashboard activity contains the restricted issue")
+		}
 	}
 
 	_ = models.SchemaVersion
