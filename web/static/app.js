@@ -160,7 +160,6 @@
     root.outerHTML = html;
     pendingRootHtml = null;
     hydrate(document.getElementById('issue-root'));
-    pushView();
   }
 
   document.addEventListener('focusout', () => {
@@ -172,7 +171,6 @@
       root.outerHTML = pendingRootHtml;
       pendingRootHtml = null;
       hydrate(document.getElementById('issue-root'));
-      pushView();
     }
   });
 
