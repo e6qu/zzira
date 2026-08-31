@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.2.3](https://github.com/e6qu/zzira/compare/v0.2.2...v0.2.3) (2026-08-31)
+
+
+### Bug Fixes
+
+* avoid logging configured workspace input ([bfafe73](https://github.com/e6qu/zzira/commit/bfafe7311cd290357ce01cfc4aa3f5ab318dae47))
+* bind sync to configured workspace ([f19377a](https://github.com/e6qu/zzira/commit/f19377aa45af687f42b5921aa0118ed9afbbed9d))
+* complete explicit workspace configuration ([16fa205](https://github.com/e6qu/zzira/commit/16fa205b52e1d387b8b821453dc79f9bd7dd2954))
+* require explicit serving workspace ([ea3d80d](https://github.com/e6qu/zzira/commit/ea3d80d43fbec763a363bdc2d6256521da621753))
+
 ## [0.2.2](https://github.com/e6qu/zzira/compare/v0.2.1...v0.2.2) (2026-08-31)
 
 
