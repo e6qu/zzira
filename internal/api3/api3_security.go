@@ -33,7 +33,7 @@ func securitySchemeBean(scheme *models.SecurityScheme) map[string]any {
 //	GET  /rest/api/3/issuesecurityschemes/{id}           → one scheme
 //	PUT  /rest/api/3/issuesecurityschemes/project/{key}  → assign scheme to project {id}
 func (h *Handler) securitySchemeRoute(w http.ResponseWriter, r *http.Request) {
-	wsID, _, e := h.authWorkspace(r)
+	wsID, _, e := h.authWorkspaceAdmin(r)
 	if e != nil {
 		writeJerr(w, e)
 		return

@@ -15,7 +15,7 @@ import (
 //	PUT  /rest/api/3/workflow/project/{keyOrId}?workflowId=… → assign
 //	GET  /rest/api/3/workflow/project/{keyOrId}              → current id
 func (h *Handler) workflowRoute(w http.ResponseWriter, r *http.Request) {
-	if _, _, e := h.authWorkspace(r); e != nil {
+	if _, _, e := h.authWorkspaceAdmin(r); e != nil {
 		writeJerr(w, e)
 		return
 	}
@@ -70,7 +70,7 @@ func (h *Handler) workflowRoute(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusCreated, map[string]any{"id": wf.ID, "name": wf.Name})
 	case strings.HasPrefix(rel, "/workflow/project/"):
 		keyOrID := strings.TrimPrefix(rel, "/workflow/project/")
-		wsID, _, e := h.authWorkspace(r)
+		wsID, _, e := h.authWorkspaceAdmin(r)
 		if e != nil {
 			writeJerr(w, e)
 			return
