@@ -15,6 +15,6 @@ jobs:
     container:
       image: semgrep/semgrep
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: semgrep scan (security rulesets)
         run: semgrep scan --config p/golang --config p/secrets --config p/xss --error --severity ERROR
