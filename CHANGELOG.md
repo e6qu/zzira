@@ -1,0 +1,31 @@
+# Changelog
+
+## [0.2.0](https://github.com/e6qu/zzira/compare/v0.1.0...v0.2.0) (2026-08-31)
+
+
+### Features
+
+* automate releases and add OIDC SSO ([a486b2e](https://github.com/e6qu/zzira/commit/a486b2e3adb97f99e41a732ce081f1451b89ea66))
+* make web UI accessible and themeable ([657e29b](https://github.com/e6qu/zzira/commit/657e29ba2c33e2b0c6e958a4ff50824a9bfeb3e1))
+
+
+### Bug Fixes
+
+* align navigation and API input handling ([6f42548](https://github.com/e6qu/zzira/commit/6f42548767e498c2640a3da8a9a6203df9936f0b))
+* allow online edits before replica sync ([529db98](https://github.com/e6qu/zzira/commit/529db98c4251e79f192c0e4bd71fa627b5af3933))
+* bind offline dialog commands before hydration ([f46eebd](https://github.com/e6qu/zzira/commit/f46eebde36d252e6ecadb057fb13a880d058a3b2))
+* correct broken log lines from previous commit ([ce16348](https://github.com/e6qu/zzira/commit/ce163486649c7cd01fd6a65bc2866bda98c950a9))
+* decode worker message events ([4d766d3](https://github.com/e6qu/zzira/commit/4d766d39722d332a05e27aefbc9754ff963853f7))
+* dispatch local sync worker commands ([96f5e93](https://github.com/e6qu/zzira/commit/96f5e93390cf383e77fb310cbd204258aa1b398d))
+* harden offline worker startup and scan scope ([5384a72](https://github.com/e6qu/zzira/commit/5384a7277387966c2dd88044296b04bf28ea4777))
+* hydrate replica-rendered issue forms ([69b66d2](https://github.com/e6qu/zzira/commit/69b66d24dd1a25e3430e396874df5d840314b37a))
+* make immediate offline edits durable ([a4ac6e8](https://github.com/e6qu/zzira/commit/a4ac6e8b2a983f79b2905e263323f96b3f3cce14))
+* render offline edit dialog from replica ([eb76b15](https://github.com/e6qu/zzira/commit/eb76b15a71134c0a8034de9f6c4350b1690bea1f))
+* retain wasm worker message handler ([8abfe9a](https://github.com/e6qu/zzira/commit/8abfe9a1bbf87f4ea4e18fb10775c782b916c6e9))
+* route offline dialog submits through outbox ([8871f45](https://github.com/e6qu/zzira/commit/8871f45eb3e70f8186da31106d9cfac0331e62be))
+* scope agile resources to workspace ([b03ff72](https://github.com/e6qu/zzira/commit/b03ff724192e4c545618ba9e4f1d0dd2202dd693))
+* scope project selection and surface upload errors ([da8d355](https://github.com/e6qu/zzira/commit/da8d3557b7397fd92afea50c6dc6fb7c8ffd4c62))
+* scope replica worker to replica views ([9156734](https://github.com/e6qu/zzira/commit/9156734eef808fe10a2e006225bfdb50a12a9871))
+* seed replica from server-rendered issue ([f7926f7](https://github.com/e6qu/zzira/commit/f7926f7588631e6d057c1674f955245329e7d46d))
+* stop replica view render feedback loop ([0ea9dc7](https://github.com/e6qu/zzira/commit/0ea9dc7ea4faa5501c1bafad9dd719709287fb5f))
+* upgrade go-jose security dependency ([11b19e9](https://github.com/e6qu/zzira/commit/11b19e9d00e323410b941da315571a8a5f97ce8f))
