@@ -293,11 +293,12 @@ func (h *Handler) CreateDialog(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
-	if _, ok := h.memberWorkspace(r, user); !ok {
+	wsID, ok := h.memberWorkspace(r, user)
+	if !ok {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
-	project, err := h.Store.DefaultProject(r.Context())
+	project, err := h.Store.DefaultProjectInWorkspace(r.Context(), wsID)
 	if err != nil {
 		http.Error(w, "no project", http.StatusInternalServerError)
 		return
@@ -335,7 +336,7 @@ func (h *Handler) CreateIssue(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		project, perr := h.Store.DefaultProject(r.Context())
+		project, perr := h.Store.DefaultProjectInWorkspace(r.Context(), wsID)
 		issueType, terr := h.Store.FirstIssueType(r.Context())
 		if perr == nil && terr == nil {
 			writeFragment(w, "create_dialog", createDialogData{Project: project, IssueType: issueType, Error: err.Error()})
@@ -478,21 +479,26 @@ func (h *Handler) UploadAttachment(w http.ResponseWriter, r *http.Request, key s
 		return
 	}
 	defer cleanupMultipart(r)
-	uploaded := 0
 	for _, files := range r.MultipartForm.File {
 		for _, fh := range files {
 			f, err := fh.Open()
 			if err != nil {
-				continue
+				http.Error(w, "could not read upload", http.StatusBadRequest)
+				return
 			}
 			_, _, err = h.Commands.AddAttachment(r.Context(), user.ID, wsID, key, fh.Filename, fh.Header.Get("Content-Type"), f)
 			if closeErr := f.Close(); closeErr != nil {
 				log.Printf("attachment file close: %v", closeErr)
 			}
-			if err == nil {
-				uploaded++
+			if err != nil {
+				http.Error(w, "upload failed", http.StatusBadRequest)
+				return
 			}
 		}
+	}
+	if r.MultipartForm == nil || len(r.MultipartForm.File) == 0 {
+		http.Error(w, "no file uploaded", http.StatusBadRequest)
+		return
 	}
 	http.Redirect(w, r, "/browse/"+key, http.StatusSeeOther)
 }

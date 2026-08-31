@@ -28,6 +28,18 @@ func (s *Store) DefaultProject(ctx context.Context) (*models.Project, error) {
 	return p, nil
 }
 
+// DefaultProjectInWorkspace returns the workspace's first project. Web flows
+// must use this scoped lookup rather than the administrative global helper.
+func (s *Store) DefaultProjectInWorkspace(ctx context.Context, workspaceID string) (*models.Project, error) {
+	p := &models.Project{}
+	err := s.Pool.QueryRow(ctx, `SELECT id, workspace_id, key, name, COALESCE(workflow_id,''), COALESCE(security_scheme_id,'') FROM projects WHERE workspace_id=$1 ORDER BY key LIMIT 1`, workspaceID).
+		Scan(&p.ID, &p.WorkspaceID, &p.Key, &p.Name, &p.WorkflowID, &p.SecuritySchemeID)
+	if err != nil {
+		return nil, err
+	}
+	return p, nil
+}
+
 // StatusByID returns one status (transitions beans, diff display names).
 func (s *Store) StatusByID(ctx context.Context, id string) (models.Status, error) {
 	var st models.Status
