@@ -27,8 +27,13 @@ func TestSecurityVisibilityAcrossReadPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	const demoID = "usr_a17298024363"
-	const anaID = "usr_075354b352eb"
+	var demoID, anaID string
+	if err := st.Pool.QueryRow(ctx, `SELECT id FROM users WHERE email='demo@zzira.dev'`).Scan(&demoID); err != nil {
+		t.Skip("demo user not seeded")
+	}
+	if err := st.Pool.QueryRow(ctx, `SELECT id FROM users WHERE email='ana@zzira.dev'`).Scan(&anaID); err != nil {
+		t.Skip("ana user not seeded")
+	}
 
 	// find a security-restricted issue (V5 live run applied lvl_private to ZZ-9,
 	// and the e2e suite creates more); skip gracefully when none exists

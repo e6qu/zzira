@@ -514,15 +514,15 @@ func (s *Store) CreateWebhook(ctx context.Context, workspaceID, url string, even
 	}
 	id := NewID("wh")
 	if _, err := s.Pool.Exec(ctx,
-		`INSERT INTO webhooks (id, url, events, jql, start_seq) VALUES ($1,$2,$3,$4,$5)`,
-		id, url, events, jql, head); err != nil {
+		`INSERT INTO webhooks (id, workspace_id, url, events, jql, start_seq) VALUES ($1,$2,$3,$4,$5,$6)`,
+		id, workspaceID, url, events, jql, head); err != nil {
 		return nil, err
 	}
 	return &models.Webhook{ID: id, URL: url, Events: events, JQL: jql, Active: true}, nil
 }
 
-func (s *Store) Webhooks(ctx context.Context) ([]*models.Webhook, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT id, url, events, jql, active, start_seq FROM webhooks ORDER BY created_at`)
+func (s *Store) Webhooks(ctx context.Context, workspaceID string) ([]*models.Webhook, error) {
+	rows, err := s.Pool.Query(ctx, `SELECT id, url, events, jql, active, start_seq FROM webhooks WHERE workspace_id=$1 ORDER BY created_at`, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -538,14 +538,20 @@ func (s *Store) Webhooks(ctx context.Context) ([]*models.Webhook, error) {
 	return out, rows.Err()
 }
 
-func (s *Store) DeleteWebhook(ctx context.Context, id string) error {
-	_, err := s.Pool.Exec(ctx, `DELETE FROM webhooks WHERE id=$1`, id)
-	return err
+func (s *Store) DeleteWebhook(ctx context.Context, workspaceID, id string) error {
+	result, err := s.Pool.Exec(ctx, `DELETE FROM webhooks WHERE id=$1 AND workspace_id=$2`, id, workspaceID)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
 }
 
 // ClaimNewWebhookSeqs registers (webhook, seq) pairs for delivery; idempotent.
-func (s *Store) ClaimNewWebhookSeqs(ctx context.Context, upto int64) error {
-	webhooks, err := s.Webhooks(ctx)
+func (s *Store) ClaimNewWebhookSeqs(ctx context.Context, workspaceID string, upto int64) error {
+	webhooks, err := s.Webhooks(ctx, workspaceID)
 	if err != nil {
 		return err
 	}
@@ -566,7 +572,7 @@ func (s *Store) ClaimNewWebhookSeqs(ctx context.Context, upto int64) error {
 // ClaimPendingWebhookBatch atomically claims one active webhook's pending
 // deliveries (FOR UPDATE SKIP LOCKED keeps replicas out of each other's way).
 // Returns ok=false when there is no claimable work.
-func (s *Store) ClaimPendingWebhookBatch(ctx context.Context, n int) (*models.Webhook, []int64, bool, error) {
+func (s *Store) ClaimPendingWebhookBatch(ctx context.Context, workspaceID string, n int) (*models.Webhook, []int64, bool, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return nil, nil, false, err
@@ -577,7 +583,7 @@ func (s *Store) ClaimPendingWebhookBatch(ctx context.Context, n int) (*models.We
 	err = tx.QueryRow(ctx, `
 		SELECT w.id, w.url, w.events, w.jql
 		FROM webhooks w
-		WHERE w.active
+		WHERE w.workspace_id=$1 AND w.active
 		  AND EXISTS (
 			SELECT 1 FROM webhook_deliveries d
 			WHERE d.webhook_id = w.id
@@ -589,7 +595,7 @@ func (s *Store) ClaimPendingWebhookBatch(ctx context.Context, n int) (*models.We
 			  AND (d.state = 'pending' OR (d.state = 'failed' AND d.next_attempt_at <= now()))
 		)
 		LIMIT 1
-		FOR UPDATE OF w SKIP LOCKED`).Scan(&w.ID, &w.URL, &w.Events, &w.JQL)
+		FOR UPDATE OF w SKIP LOCKED`, workspaceID).Scan(&w.ID, &w.URL, &w.Events, &w.JQL)
 	if err == pgx.ErrNoRows {
 		return nil, nil, false, nil
 	}
@@ -597,10 +603,21 @@ func (s *Store) ClaimPendingWebhookBatch(ctx context.Context, n int) (*models.We
 		return nil, nil, false, err
 	}
 	seqRows, err := tx.Query(ctx, `
-		UPDATE webhook_deliveries SET state='delivering', claimed_at=now(), next_attempt_at=NULL
-		WHERE webhook_id=$1
-		  AND (state='pending' OR (state='failed' AND next_attempt_at <= now()))
-		RETURNING seq`, w.ID)
+		WITH due AS (
+			SELECT webhook_id, seq FROM webhook_deliveries
+			WHERE webhook_id=$1
+			  AND (state='pending' OR (state='failed' AND next_attempt_at <= now()))
+			ORDER BY seq
+			LIMIT $2
+			FOR UPDATE SKIP LOCKED
+		), claimed AS (
+			UPDATE webhook_deliveries d
+			SET state='delivering', claimed_at=now(), next_attempt_at=NULL
+			FROM due
+			WHERE d.webhook_id=due.webhook_id AND d.seq=due.seq
+			RETURNING d.seq
+		)
+		SELECT seq FROM claimed ORDER BY seq`, w.ID, n)
 	if err != nil {
 		return nil, nil, false, err
 	}
