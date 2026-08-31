@@ -113,7 +113,8 @@ func (h *Handler) searchUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) getUser(w http.ResponseWriter, r *http.Request) {
-	if _, _, e := h.authWorkspace(r); e != nil {
+	wsID, _, e := h.authWorkspace(r)
+	if e != nil {
 		writeJerr(w, e)
 		return
 	}
@@ -122,7 +123,7 @@ func (h *Handler) getUser(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, http.StatusBadRequest, "The accountId parameter is required.")
 		return
 	}
-	u, err := h.Store.UserByID(r.Context(), accountID)
+	u, err := h.Store.MemberByID(r.Context(), wsID, accountID)
 	if err != nil {
 		jiraError(w, http.StatusNotFound, "The user does not exist.")
 		return
