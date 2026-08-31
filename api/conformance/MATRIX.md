@@ -1,7 +1,9 @@
 # ZZIRA × Atlassian Jira Cloud REST API — Compat Matrix
 
 Generated from the delivered surface (V0–V5). Legend: ✅ conformant · 🟡 subset
-(shape-conformant, reduced semantics) · ⛔ not implemented.
+(shape-conformant, reduced semantics) · ⛔ not implemented. Public compatibility
+is deliberately confined to `/rest/api/3` and `/rest/agile/1.0`; ZZIRA-owned
+control-plane endpoints use `/rest/zzira/1` and are never presented as Jira APIs.
 
 ## Tier A — Core issue tracking
 
@@ -11,7 +13,7 @@ Generated from the delivered surface (V0–V5). Legend: ✅ conformant · 🟡 s
 | GET /rest/api/3/myself | ✅ | |
 | GET /rest/api/3/user · /user/search | ✅ | workspace members |
 | GET/POST /rest/api/3/project · /project/search · /project/{keyOrId} | ✅ | |
-| POST /rest/api/3/issue | ✅ | ADF description, custom fields |
+| POST /rest/api/3/issue | ✅ | ADF description, custom fields; project, summary, and issue type are explicit |
 | GET/PUT/DELETE /rest/api/3/issue/{idOrKey} | ✅ | expand=renderedFields |
 | GET/PUT /rest/api/3/issue/{idOrKey}/assignee | ✅ | PUT fields.assignee + dedicated assignee endpoint |
 | GET /rest/api/3/issue/{idOrKey}/editmeta | 🟡 | system + custom fields |
@@ -21,7 +23,7 @@ Generated from the delivered surface (V0–V5). Legend: ✅ conformant · 🟡 s
 | GET /rest/api/3/issue/{idOrKey}/changelog | ✅ | derived from the action log |
 | /worklog CRUD | ✅ | author-only delete |
 | POST /issue/{idOrKey}/attachments · /attachment/{id} · /attachment/content/{id} | ✅ | X-Atlassian-Token semantics |
-| GET /rest/api/3/search · POST /search · /search/jql · /search/approximate-count | ✅ | JQL v1 subset |
+| GET /rest/api/3/search · POST /search · /search/jql · /search/approximate-count | ✅ | JQL v1 subset; explicit pagination is validated rather than rewritten |
 | GET /rest/api/3/mypermissions · POST /permissions/check | ✅ | evaluated from workspace role |
 | /issueLinkType · POST /issueLink · DELETE /issueLink/{id} | ✅ | links sync to replicas |
 | GET /rest/api/3/label | ✅ | distinct labels + query |

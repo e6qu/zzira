@@ -78,25 +78,41 @@ The authoritative endpoint ledger lives in `api/conformance/MATRIX.md`.
 
 ## 2. Architecture overview
 
+```mermaid
+flowchart LR
+    subgraph browser[Browser]
+        ui[Jira-like web UI<br/>navigator · board · issue view]
+        worker[Sync worker<br/>Go/WASM]
+        replica[(SQLite replica in OPFS<br/>issues · ranks · outbox)]
+        ui <--> worker
+        worker <--> replica
+    end
+
+    subgraph server[Stateless Go replicas]
+        web[HTMX web edge]
+        rest[Public Jira REST API v3 edge]
+        sync[Local-first sync edge<br/>bootstrap + polling deltas]
+        commands[Command core<br/>authenticate → authorize → validate → transaction]
+        web --> commands
+        rest --> commands
+        sync --> commands
+        hooks[Webhook dispatcher]
+    end
+
+    postgres[(Postgres source of truth<br/>current state + immutable action log)]
+    notify[Postgres NOTIFY]
+
+    ui <-->|HTML / JSON| web
+    ui <-->|JSON| rest
+    worker <-->|bootstrap + /sync deltas| sync
+    commands -->|state + actions in one transaction| postgres
+    commands --> notify
+    postgres --> hooks
 ```
-┌─ Browser ───────────────────────────────┐   ┌─ Stateless Go replicas (N ×) ────────────────┐
-│  Jira-like HTMX UI (navigator, board,   │   │  ┌──────────── edge ────────────┐            │
-│  backlog, issue view)                   │   │  │ REST API v3 edge (spec DTOs) │            │
-│  ┌─────────────────────────┐            │   │  │ HTMX web edge (forms)        │            │
-│  │ sync worker (Go WASM)   │            │   │  └──────────────┬───────────────┘            │
-│  │  SQLite (OPFS) replica  │            │   │  ┌──────────────▼───────────────┐            │
-│  │  actions + issues +     │  commands  │   │  │ COMMAND CORE                 │            │
-│  │  board ranks + outbox   ├────────────┼──►│  │ authz → validate → txn:      │            │
-│  │  └─ renderer.wasm       │            │   │  │ state + action(s) + pg_notify│            │
-│  └──────────┬──────────────┘            │   │  └───┬───────────────┬──────────┘            │
-│             │◄── structured JSON deltas ─┼───┤ /sync│          store│ (Postgres)            │
-└─────────────┴───────────────────────────┘   │      │   ┌───────────▼──────────────┐        │
-   static: app.js, renderer.<hash>.wasm       │      └──►│ Postgres: source of truth │        │
-   (CDN, immutable, content-hashed)           │ webhook  │ state + immutable log     │        │
-                                              │ dispatcher└───────────┬──────────────┘        │
-                                              │ (log consumer, later) │ (later: index)        │
-                                              └───────────────────────┴───────────────────────┘
-```
+
+Static UI assets, including the application JavaScript and WASM worker, are content-hashed
+and can be served from an immutable CDN. Postgres notifications are a server-side wake-up
+hint; the browser replica’s correctness path is its explicit bootstrap and delta polling.
 
 Two structural ideas carried from the Linear post, plus one forced by the API goal:
 

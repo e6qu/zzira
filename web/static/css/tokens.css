@@ -74,14 +74,43 @@ a { text-underline-offset: 0.15em; }
   text-decoration: none;
   letter-spacing: 0.5px;
 }
-.header-nav a {
-  color: var(--ds-text);
-  text-decoration: none;
-  padding: calc(var(--ds-space) * 2);
+.global-search { width: min(420px, 40vw); }
+.global-search input {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--ds-border);
   border-radius: var(--ds-radius);
+  color: var(--ds-text);
+  background: var(--ds-surface-sunken);
 }
-.header-nav a:hover { background: var(--ds-surface-sunken); }
+.global-search input:focus { border-color: var(--ds-primary); background: var(--ds-surface); }
 .header-create { margin-left: auto; }
+.user-menu { position: relative; }
+.user-menu summary { display: flex; cursor: pointer; list-style: none; }
+.user-menu summary::-webkit-details-marker { display: none; }
+.user-menu form {
+  position: absolute;
+  z-index: 12;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 120px;
+  padding: 4px;
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius);
+  background: var(--ds-surface);
+  box-shadow: 0 4px 12px var(--ds-shadow);
+}
+.user-menu button {
+  width: 100%;
+  border: 0;
+  border-radius: var(--ds-radius);
+  padding: 8px;
+  color: var(--ds-text);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.user-menu button:hover { background: var(--ds-surface-sunken); }
 .theme-toggle {
   display: inline-grid; place-items: center; width: 36px; height: 36px; padding: 0;
   border: 1px solid var(--ds-border); border-radius: 50%; background: var(--ds-surface-sunken);
@@ -118,7 +147,24 @@ a { text-underline-offset: 0.15em; }
   vertical-align: middle;
 }
 
-.page { max-width: 960px; margin: 0 auto; padding: calc(var(--ds-space) * 6); }
+.app-shell { display: flex; min-height: calc(100vh - 48px); }
+.workspace-nav {
+  width: 220px;
+  flex: 0 0 220px;
+  padding: calc(var(--ds-space) * 4) calc(var(--ds-space) * 3);
+  border-right: 1px solid var(--ds-border);
+  background: var(--ds-surface);
+}
+.workspace-nav nav { display: grid; gap: 2px; }
+.workspace-nav a {
+  border-radius: var(--ds-radius);
+  padding: 8px 10px;
+  color: var(--ds-text);
+  font-weight: 500;
+  text-decoration: none;
+}
+.workspace-nav a:hover { background: var(--ds-surface-sunken); color: var(--ds-primary); }
+.page { width: min(960px, 100%); margin: 0 auto; padding: calc(var(--ds-space) * 6); }
 .page-narrow { max-width: 860px; }
 
 .issue-breadcrumbs { color: var(--ds-text-subtle); margin-bottom: calc(var(--ds-space) * 4); }
@@ -430,8 +476,18 @@ a { text-underline-offset: 0.15em; }
 
 @media (max-width: 700px) {
   .global-header { gap: calc(var(--ds-space) * 2); }
-  .header-nav { display: flex; }
-  .header-nav a { padding: calc(var(--ds-space) * 1); }
+  .global-search { width: auto; flex: 1; min-width: 0; }
+  .global-search input { min-width: 0; }
+  .workspace-nav {
+    width: 100%;
+    flex-basis: auto;
+    padding: calc(var(--ds-space) * 2) calc(var(--ds-space) * 3);
+    border-right: 0;
+    border-bottom: 1px solid var(--ds-border);
+  }
+  .workspace-nav nav { display: flex; overflow-x: auto; }
+  .workspace-nav a { white-space: nowrap; }
+  .app-shell { display: block; min-height: 0; }
   .page { padding: calc(var(--ds-space) * 4); }
   .issue-main { flex-direction: column; gap: calc(var(--ds-space) * 5); }
   .issue-details { width: 100%; }
