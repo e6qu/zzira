@@ -23,6 +23,8 @@ type Store struct {
 	Pool *pgxpool.Pool
 }
 
+const migrationLockID int64 = 0x5A5A495241
+
 func Open(ctx context.Context, dsn string) (*Store, error) {
 	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
@@ -42,7 +44,9 @@ func (s *Store) Close() { s.Pool.Close() }
 
 func NewID(prefix string) string {
 	b := make([]byte, 6)
-	_, _ = rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		panic(fmt.Sprintf("store: cryptographic randomness: %v", err))
+	}
 	return prefix + "_" + hex.EncodeToString(b)
 }
 
@@ -60,7 +64,19 @@ func nilIfEmpty(s string) *string {
 }
 
 func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
-	_, err := pool.Exec(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Release()
+	if _, err := conn.Exec(ctx, `SELECT pg_advisory_lock($1)`, migrationLockID); err != nil {
+		return err
+	}
+	defer func() {
+		_, _ = conn.Exec(context.Background(), `SELECT pg_advisory_unlock($1)`, migrationLockID)
+	}()
+
+	_, err = pool.Exec(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
 		name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())`)
 	if err != nil {
 		return err

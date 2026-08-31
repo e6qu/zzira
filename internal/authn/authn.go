@@ -35,15 +35,25 @@ func hashToken(token string) string { return store.HashToken(token) }
 // SessionHash exposes the token hashing for logout handling.
 func SessionHash(token string) string { return hashToken(token) }
 
-func randomToken() string {
+func randomToken() (string, error) {
 	b := make([]byte, 24)
-	_, _ = rand.Read(b)
-	return base64.RawURLEncoding.EncodeToString(b)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
-func NewAPIToken() (plain string, hash string) {
-	plain = "zzira_" + randomToken() + randomToken()
-	return plain, hashToken(plain)
+func NewAPIToken() (plain string, hash string, err error) {
+	first, err := randomToken()
+	if err != nil {
+		return "", "", err
+	}
+	second, err := randomToken()
+	if err != nil {
+		return "", "", err
+	}
+	plain = "zzira_" + first + second
+	return plain, hashToken(plain), nil
 }
 
 // SetSessionCookie issues the session cookie. Secure is enabled when
@@ -80,7 +90,10 @@ func Login(ctx context.Context, st *store.Store, email, password string) (string
 	if !CheckPassword(hash, password) {
 		return "", ErrUnauthorized
 	}
-	token := randomToken()
+	token, err := randomToken()
+	if err != nil {
+		return "", err
+	}
 	if err := st.CreateSession(ctx, hashToken(token), id, sessionTTL); err != nil {
 		return "", err
 	}
@@ -92,7 +105,10 @@ func LoginOIDC(ctx context.Context, st *store.Store, userID, idToken string) (st
 	if userID == "" || idToken == "" {
 		return "", ErrUnauthorized
 	}
-	token := randomToken()
+	token, err := randomToken()
+	if err != nil {
+		return "", err
+	}
 	if err := st.CreateOIDCSession(ctx, hashToken(token), userID, idToken, sessionTTL); err != nil {
 		return "", err
 	}

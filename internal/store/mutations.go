@@ -578,9 +578,15 @@ func (s *Store) ClaimPendingWebhookBatch(ctx context.Context, n int) (*models.We
 		SELECT w.id, w.url, w.events, w.jql
 		FROM webhooks w
 		WHERE w.active
-		  AND EXISTS (SELECT 1 FROM webhook_deliveries d WHERE d.webhook_id = w.id AND d.state = 'pending')
+		  AND EXISTS (
+			SELECT 1 FROM webhook_deliveries d
+			WHERE d.webhook_id = w.id
+			  AND (d.state = 'pending' OR (d.state = 'failed' AND d.next_attempt_at <= now()))
+		  )
 		ORDER BY (
-			SELECT MIN(seq) FROM webhook_deliveries d WHERE d.webhook_id = w.id AND d.state = 'pending'
+			SELECT MIN(seq) FROM webhook_deliveries d
+			WHERE d.webhook_id = w.id
+			  AND (d.state = 'pending' OR (d.state = 'failed' AND d.next_attempt_at <= now()))
 		)
 		LIMIT 1
 		FOR UPDATE OF w SKIP LOCKED`).Scan(&w.ID, &w.URL, &w.Events, &w.JQL)
@@ -591,8 +597,9 @@ func (s *Store) ClaimPendingWebhookBatch(ctx context.Context, n int) (*models.We
 		return nil, nil, false, err
 	}
 	seqRows, err := tx.Query(ctx, `
-		UPDATE webhook_deliveries SET state='delivering', claimed_at=now()
-		WHERE webhook_id=$1 AND state='pending'
+		UPDATE webhook_deliveries SET state='delivering', claimed_at=now(), next_attempt_at=NULL
+		WHERE webhook_id=$1
+		  AND (state='pending' OR (state='failed' AND next_attempt_at <= now()))
 		RETURNING seq`, w.ID)
 	if err != nil {
 		return nil, nil, false, err
@@ -632,14 +639,18 @@ func (s *Store) ActionBySeq(ctx context.Context, workspaceID string, seq int64) 
 
 // MarkWebhookDelivery records a delivery attempt result.
 func (s *Store) MarkWebhookDelivery(ctx context.Context, webhookID string, seq int64, delivered bool, lastErr string) error {
-	state := "failed"
 	if delivered {
-		state = "delivered"
+		_, err := s.Pool.Exec(ctx, `
+			UPDATE webhook_deliveries
+			SET state='delivered', attempts=attempts+1, last_error=$3, next_attempt_at=NULL
+			WHERE webhook_id=$1 AND seq=$2`, webhookID, seq, lastErr)
+		return err
 	}
 	_, err := s.Pool.Exec(ctx, `
 		UPDATE webhook_deliveries
-		SET state=$3, attempts=attempts+1, last_error=$4
-		WHERE webhook_id=$1 AND seq=$2`, webhookID, seq, state, lastErr)
+		SET state='failed', attempts=attempts+1, last_error=$3,
+		    next_attempt_at=now() + make_interval(secs => LEAST(POWER(2, attempts)::int, 300))
+		WHERE webhook_id=$1 AND seq=$2`, webhookID, seq, lastErr)
 	return err
 }
 
