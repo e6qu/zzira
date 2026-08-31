@@ -1,0 +1,11 @@
+{
+  "release-type": "go",
+  "packages": {
+    ".": {
+      "release-type": "go",
+      "component": "zzira",
+      "include-component-in-tag": false,
+      "include-v-in-tag": true
+    }
+  }
+}

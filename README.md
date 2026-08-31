@@ -7,6 +7,9 @@ Linear's ["Rebuilding delta sync read path"](https://linear.app/now/rebuilding-d
 - **Local-first browser replica**: SQLite (WASM/OPFS) + an isomorphic Go renderer compiled to both server and client
 - **Go + Postgres backend**: stateless replicas, an immutable action log as the single write path, Postgres LISTEN/NOTIFY for live pokes
 - Frontend: HTMX + SortableJS, Jira-like UI
+- **Optional OIDC SSO**: ShAuth reference-provider configuration with Discovery,
+  Authorization Code + PKCE, verified claims, and server-side sessions — see
+  [ShAuth SSO](docs/shauth-sso.md)
 
 The full architecture, hard rules, slice history, and scaling story live in [PLAN.md](PLAN.md).
 
