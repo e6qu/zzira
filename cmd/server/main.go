@@ -67,6 +67,14 @@ func main() {
 		}
 		return
 	}
+	workspaceSlug := os.Getenv("WORKSPACE_SLUG")
+	if workspaceSlug == "" {
+		log.Fatal("WORKSPACE_SLUG must name the workspace served by this instance")
+	}
+	workspaceID, err := st.WorkspaceBySlug(ctx, workspaceSlug)
+	if err != nil {
+		log.Fatalf("configured workspace %q: %v", workspaceSlug, err)
+	}
 
 	port := os.Getenv("SERVER_PORT")
 	if port == "" {
@@ -90,9 +98,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("configure OIDC SSO: %v", err)
 	}
-	webHandler := &web.Handler{Store: st, Commands: cmdSvc, OIDC: oidcSSO}
-	api := &api3.Handler{Store: st, Commands: cmdSvc, Blobs: blobs, BaseURL: envOr("BASE_URL", "http://localhost:"+port)}
-	agileAPI := &agile.Handler{Store: st, IssueBean: api.IssueBean, BaseURL: envOr("BASE_URL", "http://localhost:"+port)}
+	webHandler := &web.Handler{Store: st, Commands: cmdSvc, OIDC: oidcSSO, WorkspaceSlug: workspaceSlug}
+	api := &api3.Handler{Store: st, Commands: cmdSvc, Blobs: blobs, BaseURL: envOr("BASE_URL", "http://localhost:"+port), WorkspaceSlug: workspaceSlug}
+	agileAPI := &agile.Handler{Store: st, IssueBean: api.IssueBean, BaseURL: envOr("BASE_URL", "http://localhost:"+port), WorkspaceSlug: workspaceSlug}
 	bus := notifybus.New()
 	sse := &syncapi.SSEHandler{Store: st, Bus: bus}
 	sync := &syncapi.Handler{Store: st}
@@ -117,7 +125,7 @@ func main() {
 			return err == nil && len(issues) > 0, nil
 		}},
 	}
-	go dispatcher.Run(context.Background(), "ws_default")
+	go dispatcher.Run(context.Background(), workspaceID)
 	go func() {
 		for {
 			if err := bus.Listen(context.Background(), st.Pool); err != nil {

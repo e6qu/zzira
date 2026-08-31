@@ -21,9 +21,10 @@ import (
 )
 
 type Handler struct {
-	Store    *store.Store
-	Commands *commands.Service
-	OIDC     *OIDC
+	Store         *store.Store
+	Commands      *commands.Service
+	OIDC          *OIDC
+	WorkspaceSlug string
 }
 
 type pageData struct {
@@ -83,7 +84,10 @@ func (h *Handler) currentUser(r *http.Request) *models.User {
 }
 
 func (h *Handler) memberWorkspace(r *http.Request, user *models.User) (string, bool) {
-	wsID, _, err := h.Store.DefaultWorkspace(r.Context())
+	if h.WorkspaceSlug == "" {
+		return "", false
+	}
+	wsID, err := h.Store.WorkspaceBySlug(r.Context(), h.WorkspaceSlug)
 	if err != nil {
 		return "", false
 	}
