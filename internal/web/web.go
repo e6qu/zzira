@@ -293,6 +293,10 @@ func (h *Handler) CreateDialog(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
+	if _, ok := h.memberWorkspace(r, user); !ok {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
 	project, err := h.Store.DefaultProject(r.Context())
 	if err != nil {
 		http.Error(w, "no project", http.StatusInternalServerError)
