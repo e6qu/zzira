@@ -19,7 +19,22 @@ import (
 const defaultLimit = 500
 
 type Handler struct {
-	Store *store.Store
+	Store         *store.Store
+	WorkspaceSlug string
+}
+
+// selectedWorkspaceSlug chooses the configured serving workspace when set.
+// The unconfigured form is retained for the load-test harness, which measures
+// several independently seeded workspaces through one in-process mux.
+func selectedWorkspaceSlug(configured string, r *http.Request) (string, bool) {
+	requested := r.URL.Query().Get("workspace")
+	if configured != "" {
+		return configured, requested == "" || requested == configured
+	}
+	if requested == "" {
+		requested = "zzira"
+	}
+	return requested, true
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -33,22 +48,23 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
-	wsSlug := r.URL.Query().Get("workspace")
-	if wsSlug == "" {
-		wsSlug = "zzira"
+	wsSlug, ok := selectedWorkspaceSlug(h.WorkspaceSlug, r)
+	if !ok {
+		http.Error(w, "workspace not found", http.StatusNotFound)
+		return
 	}
 	workspaceID, err := h.Store.WorkspaceBySlug(r.Context(), wsSlug)
 	if err != nil {
 		http.Error(w, "workspace not found", http.StatusNotFound)
 		return
 	}
-	ok, err := authz.CanSeeWorkspace(r.Context(), h.Store, workspaceID, userID)
+	member, err := authz.CanSeeWorkspace(r.Context(), h.Store, workspaceID, userID)
 	if err != nil {
 		log.Printf("%s: %v", "syncapi.go", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	if !ok {
+	if !member {
 		http.Error(w, `{"errorMessages":["You do not have permission to view this workspace."]}`, http.StatusForbidden)
 		return
 	}

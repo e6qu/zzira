@@ -15,8 +15,9 @@ import (
 // SSEHandler streams workspace head pokes (event: sync, data: <seq>). Any
 // replica can serve any connection: the poke bus is Postgres LISTEN/NOTIFY.
 type SSEHandler struct {
-	Store *store.Store
-	Bus   *notifybus.Bus
+	Store         *store.Store
+	Bus           *notifybus.Bus
+	WorkspaceSlug string
 }
 
 func (h *SSEHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -29,22 +30,23 @@ func (h *SSEHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
-	wsSlug := r.URL.Query().Get("workspace")
-	if wsSlug == "" {
-		wsSlug = "zzira"
+	wsSlug, ok := selectedWorkspaceSlug(h.WorkspaceSlug, r)
+	if !ok {
+		http.Error(w, "workspace not found", http.StatusNotFound)
+		return
 	}
 	workspaceID, err := h.Store.WorkspaceBySlug(r.Context(), wsSlug)
 	if err != nil {
 		http.Error(w, "workspace not found", http.StatusNotFound)
 		return
 	}
-	ok, err := authz.CanSeeWorkspace(r.Context(), h.Store, workspaceID, userID)
+	member, err := authz.CanSeeWorkspace(r.Context(), h.Store, workspaceID, userID)
 	if err != nil {
 		log.Printf("%s: %v", "sse.go", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	if !ok {
+	if !member {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
