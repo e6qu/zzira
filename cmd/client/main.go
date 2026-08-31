@@ -31,12 +31,12 @@ var (
 )
 
 func main() {
-	// Keep the callback alive for the worker lifetime. JavaScript retains the
-	// function as `onmessage`, but Go's garbage collector only sees Go values;
-	// an unretained js.Func can otherwise be released after startup and make
-	// page-to-worker commands disappear while periodic sync still runs.
+	// Keep the callback alive for the worker lifetime. Register it through the
+	// worker's event target rather than assigning the onmessage property: this
+	// is the stable dispatch API when the worker bootstrap and Go runtime share
+	// the same global scope.
 	messageFunc = js.FuncOf(onMessage)
-	window.Set("onmessage", messageFunc)
+	window.Call("addEventListener", "message", messageFunc)
 
 	safeInstall("sqlite init", initDB)
 	if db.IsUndefined() {
@@ -713,7 +713,13 @@ func onMessage(_ js.Value, args []js.Value) any {
 	if len(args) == 0 {
 		return nil
 	}
-	msg := args[0]
+	// Worker message listeners receive a MessageEvent; protocol commands live
+	// in its data field. Reading the event itself makes every command look like
+	// the browser event type "message" and silently drops it.
+	msg := args[0].Get("data")
+	if msg.IsUndefined() || msg.IsNull() {
+		return nil
+	}
 	switch msg.Get("type").String() {
 	case "seed-view":
 		issue := msg.Get("issue")
