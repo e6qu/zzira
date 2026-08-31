@@ -73,7 +73,7 @@ func main() {
 	}
 	workspaceID, err := st.WorkspaceBySlug(ctx, workspaceSlug)
 	if err != nil {
-		log.Fatalf("configured workspace %q: %v", workspaceSlug, err)
+		log.Fatal("configured workspace could not be loaded")
 	}
 
 	port := os.Getenv("SERVER_PORT")
