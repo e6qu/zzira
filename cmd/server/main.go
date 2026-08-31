@@ -86,7 +86,11 @@ func main() {
 	}
 	cmdSvc := &commands.Service{Store: st, Blobs: blobs}
 
-	webHandler := &web.Handler{Store: st, Commands: cmdSvc}
+	oidcSSO, err := web.NewOIDC(ctx)
+	if err != nil {
+		log.Fatalf("configure OIDC SSO: %v", err)
+	}
+	webHandler := &web.Handler{Store: st, Commands: cmdSvc, OIDC: oidcSSO}
 	api := &api3.Handler{Store: st, Commands: cmdSvc, Blobs: blobs, BaseURL: envOr("BASE_URL", "http://localhost:"+port)}
 	agileAPI := &agile.Handler{Store: st, IssueBean: api.IssueBean, BaseURL: envOr("BASE_URL", "http://localhost:"+port)}
 	bus := notifybus.New()
@@ -129,6 +133,8 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", webHandler.Home)
 	mux.HandleFunc("GET /login", webHandler.LoginForm)
+	mux.HandleFunc("GET /auth/shauth", webHandler.OIDCLogin)
+	mux.HandleFunc("GET /auth/shauth/callback", webHandler.OIDCCallback)
 	mux.HandleFunc("POST /login", webHandler.LoginSubmit)
 	mux.HandleFunc("POST /logout", webHandler.Logout)
 	mux.HandleFunc("GET /issues/new", webHandler.CreateDialog)

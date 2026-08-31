@@ -146,6 +146,15 @@ func (s *Store) CreateSession(ctx context.Context, tokenHash, userID string, ttl
 	return err
 }
 
+// CreateOIDCSession records an opaque browser session and its ID token server-side
+// so RP-initiated logout can send the provider an id_token_hint.
+func (s *Store) CreateOIDCSession(ctx context.Context, tokenHash, userID, idToken string, ttl time.Duration) error {
+	_, err := s.Pool.Exec(ctx,
+		`INSERT INTO sessions (token_hash, user_id, oidc_id_token, expires_at) VALUES ($1,$2,$3,now() + $4::interval)`,
+		tokenHash, userID, idToken, fmt.Sprintf("%d seconds", int(ttl.Seconds())))
+	return err
+}
+
 func (s *Store) SessionUser(ctx context.Context, tokenHash string) (string, error) {
 	var userID string
 	err := s.Pool.QueryRow(ctx,
@@ -156,6 +165,59 @@ func (s *Store) SessionUser(ctx context.Context, tokenHash string) (string, erro
 func (s *Store) DeleteSession(ctx context.Context, tokenHash string) error {
 	_, err := s.Pool.Exec(ctx, `DELETE FROM sessions WHERE token_hash=$1`, tokenHash)
 	return err
+}
+
+func (s *Store) OIDCSessionToken(ctx context.Context, tokenHash string) (string, error) {
+	var idToken string
+	err := s.Pool.QueryRow(ctx, `SELECT COALESCE(oidc_id_token, '') FROM sessions WHERE token_hash=$1 AND expires_at > now()`, tokenHash).Scan(&idToken)
+	return idToken, err
+}
+
+func (s *Store) CreateOIDCLoginState(ctx context.Context, state, nonce, codeVerifier string, ttl time.Duration) error {
+	_, err := s.Pool.Exec(ctx,
+		`INSERT INTO oidc_login_states (state_hash, nonce, code_verifier, expires_at) VALUES ($1,$2,$3,now() + $4::interval)`,
+		HashToken(state), nonce, codeVerifier, fmt.Sprintf("%d seconds", int(ttl.Seconds())))
+	return err
+}
+
+func (s *Store) ConsumeOIDCLoginState(ctx context.Context, state string) (nonce, codeVerifier string, err error) {
+	err = s.Pool.QueryRow(ctx,
+		`DELETE FROM oidc_login_states WHERE state_hash=$1 AND expires_at > now() RETURNING nonce, code_verifier`, HashToken(state)).
+		Scan(&nonce, &codeVerifier)
+	return nonce, codeVerifier, err
+}
+
+// ResolveOIDCUser binds the first verified sign-in to a pre-existing member by
+// email, then identifies all later sign-ins by the immutable issuer/subject
+// pair. It never creates users or grants workspace membership.
+func (s *Store) ResolveOIDCUser(ctx context.Context, issuer, subject, email string) (string, error) {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var userID string
+	err = tx.QueryRow(ctx, `SELECT user_id FROM oidc_identities WHERE issuer=$1 AND subject=$2`, issuer, subject).Scan(&userID)
+	if err == nil {
+		if err := tx.Commit(ctx); err != nil {
+			return "", err
+		}
+		return userID, nil
+	}
+	if err != pgx.ErrNoRows {
+		return "", err
+	}
+	err = tx.QueryRow(ctx, `SELECT id FROM users WHERE email=$1 AND active`, email).Scan(&userID)
+	if err != nil {
+		return "", err
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO oidc_identities (issuer, subject, user_id) VALUES ($1,$2,$3)`, issuer, subject, userID); err != nil {
+		return "", err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return "", err
+	}
+	return userID, nil
 }
 
 func (s *Store) CreateAPIToken(ctx context.Context, id, userID, tokenHash, label string) error {

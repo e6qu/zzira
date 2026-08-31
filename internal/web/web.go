@@ -21,6 +21,7 @@ import (
 type Handler struct {
 	Store    *store.Store
 	Commands *commands.Service
+	OIDC     *OIDC
 }
 
 type pageData struct {
@@ -233,6 +234,10 @@ func (h *Handler) serveIssue(w http.ResponseWriter, r *http.Request, user *model
 func (h *Handler) LoginForm(w http.ResponseWriter, r *http.Request) {
 	if h.currentUser(r) != nil {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+	if h.OIDC != nil {
+		http.Redirect(w, r, "/auth/shauth", http.StatusSeeOther)
 		return
 	}
 	writePage(w, "page_login", map[string]string{})
