@@ -188,6 +188,17 @@ func (h *Handler) resolveIssue(r *http.Request, wsID, idOrKey string) (*models.I
 	if err != nil {
 		return nil, &jerr{http.StatusNotFound, "Issue does not exist or you do not have permission to see it.", nil}
 	}
+	userID, err := authn.Identify(r.Context(), h.Store, r)
+	if err != nil {
+		return nil, &jerr{http.StatusUnauthorized, "You are not authenticated. Authentication required to perform this operation.", nil}
+	}
+	visible, err := authz.CanSeeIssue(r.Context(), h.Store, wsID, issue.ProjectID, userID, issue.SecurityLevelID)
+	if err != nil {
+		return nil, &jerr{http.StatusInternalServerError, "internal error", nil}
+	}
+	if !visible {
+		return nil, &jerr{http.StatusNotFound, "Issue does not exist or you do not have permission to see it.", nil}
+	}
 	return issue, nil
 }
 
@@ -452,7 +463,7 @@ func (h *Handler) deleteIssue(w http.ResponseWriter, r *http.Request, idOrKey st
 }
 
 func (h *Handler) getIssue(w http.ResponseWriter, r *http.Request, idOrKey string) {
-	wsID, userID, e := h.authWorkspace(r)
+	wsID, _, e := h.authWorkspace(r)
 	if e != nil {
 		if e.status == http.StatusUnauthorized {
 			w.Header().Set("WWW-Authenticate", `Basic realm="zzira"`)
@@ -463,15 +474,6 @@ func (h *Handler) getIssue(w http.ResponseWriter, r *http.Request, idOrKey strin
 	issue, e := h.resolveIssue(r, wsID, idOrKey)
 	if e != nil {
 		writeJerr(w, e)
-		return
-	}
-	visible, err := authz.CanSeeIssue(r.Context(), h.Store, wsID, issue.ProjectID, userID, issue.SecurityLevelID)
-	if err != nil {
-		jiraError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	if !visible {
-		jiraError(w, http.StatusNotFound, "Issue does not exist or you do not have permission to see it.")
 		return
 	}
 	bean := h.issueBean(issue)
@@ -636,12 +638,13 @@ func (h *Handler) getComment(w http.ResponseWriter, r *http.Request, idOrKey, co
 		writeJerr(w, e)
 		return
 	}
-	if _, e := h.resolveIssue(r, wsID, idOrKey); e != nil {
+	issue, e := h.resolveIssue(r, wsID, idOrKey)
+	if e != nil {
 		writeJerr(w, e)
 		return
 	}
-	c, err := h.Store.CommentByID(r.Context(), commentID)
-	if err != nil {
+	c, err := h.Store.CommentByID(r.Context(), wsID, commentID)
+	if err != nil || c.IssueID != issue.ID {
 		jiraError(w, http.StatusNotFound, "Comment does not exist.")
 		return
 	}
@@ -654,8 +657,14 @@ func (h *Handler) deleteComment(w http.ResponseWriter, r *http.Request, idOrKey,
 		writeJerr(w, e)
 		return
 	}
-	if _, e := h.resolveIssue(r, wsID, idOrKey); e != nil {
+	issue, e := h.resolveIssue(r, wsID, idOrKey)
+	if e != nil {
 		writeJerr(w, e)
+		return
+	}
+	c, err := h.Store.CommentByID(r.Context(), wsID, commentID)
+	if err != nil || c.IssueID != issue.ID {
+		jiraError(w, http.StatusNotFound, "Comment does not exist.")
 		return
 	}
 	if _, err := h.Commands.DeleteComment(r.Context(), userID, wsID, commentID); err != nil {

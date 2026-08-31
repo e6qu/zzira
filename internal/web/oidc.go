@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -23,8 +24,10 @@ const oidcStateTTL = 10 * time.Minute
 // with the reference deployment, but any standards-compliant OIDC provider is
 // accepted through discovery.
 type OIDC struct {
-	config   oauth2.Config
-	verifier *oidc.IDTokenVerifier
+	config                oauth2.Config
+	verifier              *oidc.IDTokenVerifier
+	endSessionEndpoint    string
+	postLogoutRedirectURL string
 }
 
 func NewOIDC(ctx context.Context) (*OIDC, error) {
@@ -55,22 +58,45 @@ func NewOIDC(ctx context.Context) (*OIDC, error) {
 	if err != nil {
 		return nil, fmt.Errorf("OIDC discovery: %w", err)
 	}
+	var metadata struct {
+		EndSessionEndpoint string `json:"end_session_endpoint"`
+	}
+	if err := provider.Claims(&metadata); err != nil {
+		return nil, fmt.Errorf("OIDC discovery claims: %w", err)
+	}
+	if metadata.EndSessionEndpoint != "" {
+		if err := validOIDCURL(metadata.EndSessionEndpoint); err != nil {
+			return nil, fmt.Errorf("OIDC end_session_endpoint: %w", err)
+		}
+	}
 	return &OIDC{
 		config: oauth2.Config{
 			ClientID: clientID, ClientSecret: clientSecret, Endpoint: provider.Endpoint(),
 			RedirectURL: externalURL + "/auth/shauth/callback", Scopes: []string{oidc.ScopeOpenID, "profile", "email"},
 		},
-		verifier: provider.Verifier(&oidc.Config{ClientID: clientID}),
+		verifier:              provider.Verifier(&oidc.Config{ClientID: clientID}),
+		endSessionEndpoint:    metadata.EndSessionEndpoint,
+		postLogoutRedirectURL: externalURL + "/auth/shauth/logout/complete",
 	}, nil
 }
 
 func validOIDCURL(raw string) error {
 	u, err := url.Parse(raw)
-	if err != nil || u.Host == "" {
+	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 		return fmt.Errorf("must be an absolute URL")
 	}
-	if u.Scheme != "https" && !(u.Scheme == "http" && os.Getenv("ZZIRA_ALLOW_INSECURE_OIDC") == "true") {
+	if u.Scheme == "https" {
+		return nil
+	}
+	if u.Scheme != "http" || os.Getenv("ZZIRA_ALLOW_INSECURE_OIDC") != "true" {
 		return fmt.Errorf("must use HTTPS (set ZZIRA_ALLOW_INSECURE_OIDC=true only for local development)")
+	}
+	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
+	if host != "localhost" {
+		ip := net.ParseIP(host)
+		if ip == nil || !ip.IsLoopback() {
+			return fmt.Errorf("HTTP is allowed only for a loopback provider in local development")
+		}
 	}
 	return nil
 }

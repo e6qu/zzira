@@ -268,8 +268,8 @@ func (s *Store) CommentsByIssue(ctx context.Context, issueID string) ([]*models.
 	return out, rows.Err()
 }
 
-func (s *Store) CommentByID(ctx context.Context, commentID string) (*models.Comment, error) {
-	return scanComment(s.Pool.QueryRow(ctx, commentJoin+`WHERE c.id=$1`, commentID))
+func (s *Store) CommentByID(ctx context.Context, workspaceID, commentID string) (*models.Comment, error) {
+	return scanComment(s.Pool.QueryRow(ctx, commentJoin+`WHERE c.id=$1 AND c.workspace_id=$2`, commentID, workspaceID))
 }
 
 func (s *Store) DeleteComment(ctx context.Context, actorID, workspaceID, commentID string) (*models.Action, error) {
@@ -278,7 +278,7 @@ func (s *Store) DeleteComment(ctx context.Context, actorID, workspaceID, comment
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	comment, err := scanComment(tx.QueryRow(ctx, commentJoin+`WHERE c.id=$1`, commentID))
+	comment, err := scanComment(tx.QueryRow(ctx, commentJoin+`WHERE c.id=$1 AND c.workspace_id=$2`, commentID, workspaceID))
 	if err != nil {
 		return nil, err
 	}
@@ -294,7 +294,7 @@ func (s *Store) DeleteComment(ctx context.Context, actorID, workspaceID, comment
 		WorkspaceID: workspaceID, Seq: seq, EntityType: models.EntityComment, EntityID: commentID,
 		Op: models.OpDelete, SchemaV: models.SchemaVersion, Payload: payload, ActorID: actorID,
 	}
-	if _, err := tx.Exec(ctx, `DELETE FROM comments WHERE id=$1`, commentID); err != nil {
+	if _, err := tx.Exec(ctx, `DELETE FROM comments WHERE id=$1 AND workspace_id=$2`, commentID, workspaceID); err != nil {
 		return nil, err
 	}
 	if err := appendAction(ctx, tx, action); err != nil {

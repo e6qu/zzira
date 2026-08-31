@@ -86,8 +86,8 @@ func (s *Store) WorklogsByIssue(ctx context.Context, issueID string) ([]*models.
 	return out, rows.Err()
 }
 
-func (s *Store) WorklogByID(ctx context.Context, id string) (*models.Worklog, error) {
-	return scanWorklog(s.Pool.QueryRow(ctx, worklogJoin+`WHERE w.id=$1`, id))
+func (s *Store) WorklogByID(ctx context.Context, workspaceID, id string) (*models.Worklog, error) {
+	return scanWorklog(s.Pool.QueryRow(ctx, worklogJoin+`WHERE w.id=$1 AND w.workspace_id=$2`, id, workspaceID))
 }
 
 func (s *Store) DeleteWorklog(ctx context.Context, actorID, workspaceID, worklogID string) (*models.Action, error) {
@@ -96,7 +96,7 @@ func (s *Store) DeleteWorklog(ctx context.Context, actorID, workspaceID, worklog
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	w, err := scanWorklog(tx.QueryRow(ctx, worklogJoin+`WHERE w.id=$1`, worklogID))
+	w, err := scanWorklog(tx.QueryRow(ctx, worklogJoin+`WHERE w.id=$1 AND w.workspace_id=$2`, worklogID, workspaceID))
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +112,7 @@ func (s *Store) DeleteWorklog(ctx context.Context, actorID, workspaceID, worklog
 		WorkspaceID: workspaceID, Seq: seq, EntityType: models.EntityWorklog, EntityID: worklogID,
 		Op: models.OpDelete, SchemaV: models.SchemaVersion, Payload: payload, ActorID: actorID,
 	}
-	if _, err := tx.Exec(ctx, `DELETE FROM worklogs WHERE id=$1`, worklogID); err != nil {
+	if _, err := tx.Exec(ctx, `DELETE FROM worklogs WHERE id=$1 AND workspace_id=$2`, worklogID, workspaceID); err != nil {
 		return nil, err
 	}
 	if err := appendAction(ctx, tx, action); err != nil {
@@ -194,12 +194,12 @@ func (s *Store) AttachmentsByIssue(ctx context.Context, issueID string) ([]*mode
 }
 
 // AttachmentBlobRef resolves the storage key for an attachment id.
-func (s *Store) AttachmentByID(ctx context.Context, id string) (*models.Attachment, error) {
-	return scanAttachment(s.Pool.QueryRow(ctx, attachmentJoin+`WHERE a.id=$1`, id))
+func (s *Store) AttachmentByID(ctx context.Context, workspaceID, id string) (*models.Attachment, error) {
+	return scanAttachment(s.Pool.QueryRow(ctx, attachmentJoin+`WHERE a.id=$1 AND a.workspace_id=$2`, id, workspaceID))
 }
 
-func (s *Store) AttachmentBlobRef(ctx context.Context, id string) (blobRef string, filename string, mimeType string, err error) {
-	err = s.Pool.QueryRow(ctx, `SELECT blob_ref, filename, mime_type FROM attachments WHERE id=$1`, id).
+func (s *Store) AttachmentBlobRef(ctx context.Context, workspaceID, id string) (blobRef string, filename string, mimeType string, err error) {
+	err = s.Pool.QueryRow(ctx, `SELECT blob_ref, filename, mime_type FROM attachments WHERE id=$1 AND workspace_id=$2`, id, workspaceID).
 		Scan(&blobRef, &filename, &mimeType)
 	return
 }
@@ -210,7 +210,7 @@ func (s *Store) DeleteAttachment(ctx context.Context, actorID, workspaceID, atta
 		return "", "", nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	err = tx.QueryRow(ctx, `SELECT blob_ref, issue_id FROM attachments WHERE id=$1`, attachmentID).Scan(&blobRef, &issueID)
+	err = tx.QueryRow(ctx, `SELECT blob_ref, issue_id FROM attachments WHERE id=$1 AND workspace_id=$2`, attachmentID, workspaceID).Scan(&blobRef, &issueID)
 	if err != nil {
 		return "", "", nil, err
 	}
@@ -226,7 +226,7 @@ func (s *Store) DeleteAttachment(ctx context.Context, actorID, workspaceID, atta
 		WorkspaceID: workspaceID, Seq: seq, EntityType: models.EntityAttachment, EntityID: attachmentID,
 		Op: models.OpDelete, SchemaV: models.SchemaVersion, Payload: payload, ActorID: actorID,
 	}
-	if _, err = tx.Exec(ctx, `DELETE FROM attachments WHERE id=$1`, attachmentID); err != nil {
+	if _, err = tx.Exec(ctx, `DELETE FROM attachments WHERE id=$1 AND workspace_id=$2`, attachmentID, workspaceID); err != nil {
 		return "", "", nil, err
 	}
 	if err = appendAction(ctx, tx, action); err != nil {

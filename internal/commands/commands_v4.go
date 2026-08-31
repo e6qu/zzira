@@ -2,14 +2,13 @@ package commands
 
 import (
 	"context"
-	"fmt"
 )
 
 // SetIssueRank repositions an issue in a board column, optionally changing status.
 func (s *Service) SetIssueRank(ctx context.Context, actorID, workspaceID, issueIDOrKey, beforeID, afterID, newStatusID string) error {
-	issue, err := s.Store.IssueByIDOrKey(ctx, workspaceID, issueIDOrKey)
+	issue, err := s.visibleIssue(ctx, actorID, workspaceID, issueIDOrKey)
 	if err != nil {
-		return fmt.Errorf("issue %q not found", issueIDOrKey)
+		return err
 	}
 	statusID := newStatusID
 	if statusID == "" {

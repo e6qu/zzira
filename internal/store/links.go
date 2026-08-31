@@ -39,6 +39,13 @@ func (s *Store) CreateIssueLink(ctx context.Context, actorID, workspaceID, typeI
 		return nil, nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	var issueCount int
+	if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM issues WHERE workspace_id=$1 AND id IN ($2,$3)`, workspaceID, inwardIssueID, outwardIssueID).Scan(&issueCount); err != nil {
+		return nil, nil, err
+	}
+	if issueCount != 2 {
+		return nil, nil, fmt.Errorf("linked issues must belong to workspace %q", workspaceID)
+	}
 	id := NewID("lnk")
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO issue_links (id, link_type_id, inward_id, outward_id, workspace_id)
@@ -91,7 +98,7 @@ func (s *Store) DeleteIssueLink(ctx context.Context, actorID, workspaceID, linkI
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	var issueID string
-	err = tx.QueryRow(ctx, `SELECT inward_id FROM issue_links WHERE id=$1`, linkID).Scan(&issueID)
+	err = tx.QueryRow(ctx, `SELECT inward_id FROM issue_links WHERE id=$1 AND workspace_id=$2`, linkID, workspaceID).Scan(&issueID)
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +114,7 @@ func (s *Store) DeleteIssueLink(ctx context.Context, actorID, workspaceID, linkI
 		WorkspaceID: workspaceID, Seq: seq, EntityType: models.EntityIssueLink, EntityID: linkID,
 		Op: models.OpDelete, SchemaV: models.SchemaVersion, Payload: payload, ActorID: actorID,
 	}
-	if _, err := tx.Exec(ctx, `DELETE FROM issue_links WHERE id=$1`, linkID); err != nil {
+	if _, err := tx.Exec(ctx, `DELETE FROM issue_links WHERE id=$1 AND workspace_id=$2`, linkID, workspaceID); err != nil {
 		return nil, err
 	}
 	if err := appendAction(ctx, tx, action); err != nil {

@@ -88,6 +88,5 @@ jobs:
           set -euo pipefail
           docker buildx imagetools create \
             --tag "$IMAGE:$VERSION" \
-            --tag "$IMAGE:latest" \
             "$IMAGE:$VERSION-amd64" \
             "$IMAGE:$VERSION-arm64"

@@ -135,8 +135,10 @@ func main() {
 	mux.HandleFunc("GET /login", webHandler.LoginForm)
 	mux.HandleFunc("GET /auth/shauth", webHandler.OIDCLogin)
 	mux.HandleFunc("GET /auth/shauth/callback", webHandler.OIDCCallback)
+	mux.HandleFunc("GET /auth/shauth/logout/complete", webHandler.SignedOut)
 	mux.HandleFunc("POST /login", webHandler.LoginSubmit)
 	mux.HandleFunc("POST /logout", webHandler.Logout)
+	mux.HandleFunc("GET /signed-out", webHandler.SignedOut)
 	mux.HandleFunc("GET /issues/new", webHandler.CreateDialog)
 	mux.HandleFunc("POST /issues", webHandler.CreateIssue)
 	mux.HandleFunc("GET /issues/{key}", func(w http.ResponseWriter, r *http.Request) {

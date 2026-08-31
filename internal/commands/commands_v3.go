@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
+	"strings"
 
 	"github.com/e6qu/zzira/internal/attachments"
 	"github.com/e6qu/zzira/internal/models"
@@ -12,9 +14,9 @@ import (
 )
 
 func (s *Service) AddWorklog(ctx context.Context, actorID, workspaceID, issueIDOrKey string, comment json.RawMessage, seconds int) (*models.Worklog, *models.Action, error) {
-	issue, err := s.Store.IssueByIDOrKey(ctx, workspaceID, issueIDOrKey)
+	issue, err := s.visibleIssue(ctx, actorID, workspaceID, issueIDOrKey)
 	if err != nil {
-		return nil, nil, fmt.Errorf("issue %q not found", issueIDOrKey)
+		return nil, nil, err
 	}
 	if seconds <= 0 {
 		return nil, nil, fmt.Errorf("timeSpentSeconds must be positive")
@@ -23,7 +25,7 @@ func (s *Service) AddWorklog(ctx context.Context, actorID, workspaceID, issueIDO
 }
 
 func (s *Service) DeleteWorklog(ctx context.Context, actorID, workspaceID, worklogID string) (*models.Action, error) {
-	w, err := s.Store.WorklogByID(ctx, worklogID)
+	w, err := s.Store.WorklogByID(ctx, workspaceID, worklogID)
 	if err != nil {
 		return nil, fmt.Errorf("worklog %q not found", worklogID)
 	}
@@ -36,12 +38,20 @@ func (s *Service) DeleteWorklog(ctx context.Context, actorID, workspaceID, workl
 // AddAttachment streams the blob to storage, then records metadata + action in
 // one transaction. On DB failure the blob is removed again.
 func (s *Service) AddAttachment(ctx context.Context, actorID, workspaceID, issueIDOrKey, filename, mimeType string, r io.Reader) (*models.Attachment, *models.Action, error) {
-	issue, err := s.Store.IssueByIDOrKey(ctx, workspaceID, issueIDOrKey)
+	issue, err := s.visibleIssue(ctx, actorID, workspaceID, issueIDOrKey)
 	if err != nil {
-		return nil, nil, fmt.Errorf("issue %q not found", issueIDOrKey)
+		return nil, nil, err
 	}
 	if s.Blobs == nil {
 		return nil, nil, fmt.Errorf("attachment storage not configured")
+	}
+	filename, err = normalizedAttachmentFilename(filename)
+	if err != nil {
+		return nil, nil, err
+	}
+	mimeType, err = normalizedAttachmentMIMEType(mimeType)
+	if err != nil {
+		return nil, nil, err
 	}
 	blobRef := store.NewID("blob")
 	size, err := s.Blobs.Put(ctx, blobRef, r)
@@ -54,6 +64,28 @@ func (s *Service) AddAttachment(ctx context.Context, actorID, workspaceID, issue
 		return nil, nil, err
 	}
 	return att, action, nil
+}
+
+func normalizedAttachmentFilename(name string) (string, error) {
+	name = strings.ReplaceAll(name, "\\", "/")
+	if idx := strings.LastIndexByte(name, '/'); idx >= 0 {
+		name = name[idx+1:]
+	}
+	if name == "" || strings.ContainsAny(name, "\r\n\x00") {
+		return "", fmt.Errorf("attachment filename is invalid")
+	}
+	return name, nil
+}
+
+func normalizedAttachmentMIMEType(value string) (string, error) {
+	if value == "" {
+		return "application/octet-stream", nil
+	}
+	mediaType, _, err := mime.ParseMediaType(value)
+	if err != nil {
+		return "", fmt.Errorf("attachment MIME type is invalid")
+	}
+	return mediaType, nil
 }
 
 func (s *Service) DeleteAttachment(ctx context.Context, actorID, workspaceID, attachmentID string) (*models.Action, error) {

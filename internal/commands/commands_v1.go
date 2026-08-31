@@ -26,10 +26,25 @@ type UpdateIssueInput struct {
 	Fields          map[string]json.RawMessage // custom fields
 }
 
-func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models.Issue, *models.Action, error) {
-	issue, err := s.Store.IssueByIDOrKey(ctx, in.WorkspaceID, in.IssueIDOrKey)
+func (s *Service) visibleIssue(ctx context.Context, actorID, workspaceID, issueIDOrKey string) (*models.Issue, error) {
+	issue, err := s.Store.IssueByIDOrKey(ctx, workspaceID, issueIDOrKey)
 	if err != nil {
-		return nil, nil, fmt.Errorf("issue %q not found", in.IssueIDOrKey)
+		return nil, fmt.Errorf("issue %q not found", issueIDOrKey)
+	}
+	visible, err := authz.CanSeeIssue(ctx, s.Store, workspaceID, issue.ProjectID, actorID, issue.SecurityLevelID)
+	if err != nil {
+		return nil, err
+	}
+	if !visible {
+		return nil, fmt.Errorf("issue %q not found", issueIDOrKey)
+	}
+	return issue, nil
+}
+
+func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models.Issue, *models.Action, error) {
+	issue, err := s.visibleIssue(ctx, in.ActorID, in.WorkspaceID, in.IssueIDOrKey)
+	if err != nil {
+		return nil, nil, err
 	}
 	if in.Summary != nil {
 		sum := *in.Summary
@@ -93,7 +108,7 @@ func (s *Service) notifyAssignee(ctx context.Context, in UpdateIssueInput, issue
 // TransitionIssue validates and applies a workflow transition using the
 // issue's project workflow (Default when unassigned).
 func (s *Service) TransitionIssue(ctx context.Context, actorID, workspaceID, issueIDOrKey, transitionID string) (*models.Issue, *models.Action, error) {
-	issue, err := s.Store.IssueByIDOrKey(ctx, workspaceID, issueIDOrKey)
+	issue, err := s.visibleIssue(ctx, actorID, workspaceID, issueIDOrKey)
 	if err != nil {
 		return nil, nil, fmt.Errorf("issue %q not found", issueIDOrKey)
 	}
@@ -118,9 +133,9 @@ type AddCommentInput struct {
 }
 
 func (s *Service) AddComment(ctx context.Context, in AddCommentInput) (*models.Comment, *models.Action, error) {
-	issue, err := s.Store.IssueByIDOrKey(ctx, in.WorkspaceID, in.IssueIDOrKey)
+	issue, err := s.visibleIssue(ctx, in.ActorID, in.WorkspaceID, in.IssueIDOrKey)
 	if err != nil {
-		return nil, nil, fmt.Errorf("issue %q not found", in.IssueIDOrKey)
+		return nil, nil, err
 	}
 	body := in.Body
 	if len(body) == 0 && in.PlainText != "" {
@@ -133,7 +148,7 @@ func (s *Service) AddComment(ctx context.Context, in AddCommentInput) (*models.C
 }
 
 func (s *Service) DeleteComment(ctx context.Context, actorID, workspaceID, commentID string) (*models.Action, error) {
-	c, err := s.Store.CommentByID(ctx, commentID)
+	c, err := s.Store.CommentByID(ctx, workspaceID, commentID)
 	if err != nil {
 		return nil, fmt.Errorf("comment %q not found", commentID)
 	}
