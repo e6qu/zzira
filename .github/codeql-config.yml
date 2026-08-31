@@ -1,0 +1,6 @@
+# SQLite's generated wasm distribution is a third-party runtime, not ZZIRA
+# source. ZZIRA uses only its SAH-pool API; its alternate worker implementation
+# is neither loaded nor reachable by this application. First-party code remains
+# covered by security-extended queries.
+paths-ignore:
+  - web/static/sqlite/**

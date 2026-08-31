@@ -1,0 +1,100 @@
+
+<div class="issue-view" id="issue-root" data-issue-id="iss_abc123" data-issue-key="ZZ-1" data-seq="0">
+  <div class="issue-breadcrumbs">
+    <a href="/issues/ZZ">ZZ</a> / ZZ-1
+  </div>
+  <div class="issue-transitions">
+    
+    
+    <button class="btn" onclick="zzira.openEdit('ZZ-1')">Edit</button>
+    <button class="btn btn-danger" hx-delete="/issues/ZZ-1"
+            hx-confirm="Delete ZZ-1?" hx-redirect="/issues/ZZ">Delete</button>
+    
+  </div>
+  <div class="issue-main">
+    <div class="issue-primary">
+      <h1 class="issue-summary" data-field="summary">Walking skeleton comes online</h1>
+      <section class="issue-description" data-field="description">
+        <p>First issue created through the Jira API.</p>
+      </section>
+
+      <section class="issue-comments">
+        <h2>Comments</h2>
+        <div id="comments-list">
+          
+          <p class="muted">No comments yet.</p>
+          
+        </div>
+        
+        <form class="comment-form" hx-post="/issues/ZZ-1/comments" hx-target="#issue-root" hx-swap="outerHTML">
+          <div class="editor-toolbar" data-editor-toolbar>
+            <button type="button" data-cmd="bold" title="Bold"><strong>B</strong></button>
+            <button type="button" data-cmd="italic" title="Italic"><em>I</em></button>
+            <button type="button" data-cmd="insertUnorderedList" title="Bullet list">&bull;&equiv;</button>
+            <button type="button" data-cmd="code" title="Code">&lt;/&gt;</button>
+          </div>
+          <div class="rich-editor" contenteditable="true" data-rich-editor data-target-name="adf"
+               data-placeholder="Add a comment…"></div>
+          <input type="hidden" name="adf">
+          <button type="submit" class="btn btn-primary">Comment</button>
+        </form>
+        
+      </section>
+
+      <section class="issue-attachments">
+        <h2>Attachments</h2>
+        <div id="attachments-list">
+          
+          <p class="muted">No attachments.</p>
+          
+        </div>
+        
+        <form class="upload-form" method="post" action="/issues/ZZ-1/attachments" enctype="multipart/form-data">
+          <input type="file" name="file" required>
+          <button type="submit" class="btn">Upload</button>
+        </form>
+        
+      </section>
+
+      <section class="issue-worklogs">
+        <h2>Worklog</h2>
+        <div id="worklogs-list">
+          
+          <p class="muted">No time logged.</p>
+          
+        </div>
+        
+        <form class="worklog-form" hx-post="/issues/ZZ-1/worklogs" hx-target="#issue-root" hx-swap="outerHTML">
+          <input name="seconds" type="number" min="1" placeholder="Seconds" required class="worklog-seconds">
+          <input name="comment" placeholder="What did you work on? (optional)" class="worklog-comment">
+          <button type="submit" class="btn btn-primary">Log work</button>
+        </form>
+        
+      </section>
+
+      <section class="issue-history">
+        <h2>History</h2>
+        
+        <p class="muted">No changes recorded.</p>
+        
+      </section>
+    </div>
+    <aside class="issue-details">
+      <dl>
+        <dt>Status</dt>
+        <dd><span class="lozenge lozenge-default">To Do</span></dd>
+        <dt>Type</dt>
+        <dd>Task</dd>
+        <dt>Priority</dt><dd>Medium</dd>
+        <dt>Assignee</dt>
+        <dd>
+<span class="avatar" title="Demo User">DU</span>
+</dd>
+        <dt>Reporter</dt>
+        <dd>
+<span class="avatar" title="Demo User">DU</span>
+</dd>
+      </dl>
+    </aside>
+  </div>
+</div>

@@ -1,0 +1,13 @@
+bin/
+/tmp/
+*.log
+.DS_Store
+node_modules/
+e2e/test-results/
+e2e/playwright-report/
+web/static/wasm/wasm_exec.js
+data/
+web/static/zzira-worker.wasm
+client/
+client
+server
