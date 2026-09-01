@@ -35,9 +35,9 @@
           hx-swap="innerHTML" onclick="zzira.openModal(this)">Create</button>
   {{if .User}}
   <details class="user-menu">
-    <summary aria-label="Open account menu">{{template "avatar" .User}}</summary>
+    <summary aria-label="Open account menu" data-shauth-user="{{.User.Username}}">{{template "avatar" .User}}</summary>
     <form method="post" action="/logout">
-      <button type="submit">Log out</button>
+      <button type="submit" data-shauth-sign-out>Log out</button>
     </form>
   </details>
   {{end}}

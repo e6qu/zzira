@@ -169,9 +169,10 @@ func (h *Handler) OIDCCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var claims struct {
-		Email         string `json:"email"`
-		EmailVerified bool   `json:"email_verified"`
-		Nonce         string `json:"nonce"`
+		Email             string `json:"email"`
+		EmailVerified     bool   `json:"email_verified"`
+		Nonce             string `json:"nonce"`
+		PreferredUsername string `json:"preferred_username"`
 	}
 	if err := idToken.Claims(&claims); err != nil || claims.Email == "" || !claims.EmailVerified || claims.Nonce != nonce {
 		http.Error(w, "identity token claims are not acceptable", http.StatusUnauthorized)
@@ -181,6 +182,12 @@ func (h *Handler) OIDCCallback(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "this identity is not a ZZIRA member", http.StatusForbidden)
 		return
+	}
+	if claims.PreferredUsername != "" {
+		if err := h.Store.SetOIDCUsername(r.Context(), userID, claims.PreferredUsername); err != nil {
+			http.Error(w, "could not create sign-in session", http.StatusInternalServerError)
+			return
+		}
 	}
 	session, err := authn.LoginOIDC(r.Context(), h.Store, userID, rawIDToken)
 	if err != nil {

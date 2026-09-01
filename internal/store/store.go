@@ -147,12 +147,20 @@ func (s *Store) UserByEmail(ctx context.Context, email string) (id, passwordHash
 func (s *Store) UserByID(ctx context.Context, id string) (*models.User, error) {
 	u := &models.User{ID: id, Active: true, AccountType: "atlassian"}
 	err := s.Pool.QueryRow(ctx,
-		`SELECT email, display_name, time_zone FROM users WHERE id=$1`, id).
-		Scan(&u.Email, &u.DisplayName, &u.TimeZone)
+		`SELECT email, display_name, time_zone, COALESCE(username, split_part(email, '@', 1)) FROM users WHERE id=$1`, id).
+		Scan(&u.Email, &u.DisplayName, &u.TimeZone, &u.Username)
 	if err != nil {
 		return nil, err
 	}
 	return u, nil
+}
+
+// SetOIDCUsername records the identity provider's preferred_username claim as
+// the account's display handle, refreshed on every sign-in so a provider-side
+// rename is reflected here too.
+func (s *Store) SetOIDCUsername(ctx context.Context, userID, username string) error {
+	_, err := s.Pool.Exec(ctx, `UPDATE users SET username=$1 WHERE id=$2`, username, userID)
+	return err
 }
 
 func (s *Store) CreateSession(ctx context.Context, tokenHash, userID string, ttl time.Duration) error {
