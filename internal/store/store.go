@@ -278,6 +278,44 @@ func (s *Store) ResolveOIDCUser(ctx context.Context, issuer, subject, email stri
 	return userID, nil
 }
 
+// EnsureBootstrapAdmin idempotently grants the given email admin membership
+// in the default workspace, creating the user first if none exists yet. An
+// OIDC-only identity signs in by its immutable (issuer, subject) pair, never
+// by password, so unusablePasswordHash only needs to satisfy the NOT NULL
+// column and never successfully compare. A user or membership that already
+// exists is left untouched -- this only ever adds, on every boot, matching
+// migrations/002_seed.sql's own idempotent shape.
+func (s *Store) EnsureBootstrapAdmin(ctx context.Context, email, displayName, unusablePasswordHash, role string) error {
+	workspaceID, _, err := s.DefaultWorkspace(ctx)
+	if err != nil {
+		return err
+	}
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var userID string
+	err = tx.QueryRow(ctx, `SELECT id FROM users WHERE email=$1`, email).Scan(&userID)
+	if err != nil {
+		if err != pgx.ErrNoRows {
+			return err
+		}
+		userID = NewID("usr")
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO users (id, email, password_hash, display_name) VALUES ($1,$2,$3,$4)`,
+			userID, email, unusablePasswordHash, displayName); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO memberships (workspace_id, user_id, role) VALUES ($1,$2,$3) ON CONFLICT (workspace_id, user_id) DO NOTHING`,
+		workspaceID, userID, role); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
 func (s *Store) CreateAPIToken(ctx context.Context, id, userID, tokenHash, label string) error {
 	_, err := s.Pool.Exec(ctx,
 		`INSERT INTO api_tokens (id, user_id, token_hash, label) VALUES ($1,$2,$3,$4)`,

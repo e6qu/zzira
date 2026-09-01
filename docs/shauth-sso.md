@@ -16,6 +16,7 @@ server from starting rather than silently changing authentication behavior.
 | `ZZIRA_SHAUTH_CLIENT_SECRET` | Registered OIDC client secret. |
 | `ZZIRA_EXTERNAL_URL` | Canonical externally reachable ZZIRA origin. |
 | `ZZIRA_ALLOW_INSECURE_OIDC=true` | Local-development only: permits an HTTP loopback issuer. Never set this in production. |
+| `ZZIRA_BOOTSTRAP_ADMIN_EMAIL` | Optional. Grants this email admin membership in the default workspace on every boot, creating the user first if none exists. ZZIRA's OIDC binding only ever matches a verified sign-in to a pre-existing member by email — set this to your identity provider's break-glass account so it has somewhere to bind to. |
 
 Register the client with the provider using:
 
