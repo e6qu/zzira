@@ -324,6 +324,18 @@ func (s *Store) EnsureBootstrapAdmin(ctx context.Context, email, displayName, un
 	return tx.Commit(ctx)
 }
 
+// MonitoringSnapshot reports the shared PostgreSQL's real reachability and a
+// real count of stored issues -- never a fabricated or cached figure.
+func (s *Store) MonitoringSnapshot(ctx context.Context) (dbHealthy bool, issueCount int64, err error) {
+	if pingErr := s.Pool.Ping(ctx); pingErr != nil {
+		return false, 0, nil
+	}
+	if err := s.Pool.QueryRow(ctx, `SELECT count(*) FROM issues`).Scan(&issueCount); err != nil {
+		return true, 0, err
+	}
+	return true, issueCount, nil
+}
+
 func (s *Store) CreateAPIToken(ctx context.Context, id, userID, tokenHash, label string) error {
 	_, err := s.Pool.Exec(ctx,
 		`INSERT INTO api_tokens (id, user_id, token_hash, label) VALUES ($1,$2,$3,$4)`,

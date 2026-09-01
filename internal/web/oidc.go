@@ -3,9 +3,11 @@ package web
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -221,6 +223,55 @@ const (
 	backChannelLogoutEvent    = "http://schemas.openid.net/event/backchannel-logout"
 	maxBackChannelLogoutBytes = 64 << 10 // 64 KiB: a single logout JWT, kilobytes at most.
 )
+
+// monitoringSchemaVersion is e6qu.monitoring/v2: the application-observation
+// variant of the shared monitoring contract, whose cost estimate is optional
+// because zzira is not itself a priced cloud resource.
+const monitoringSchemaVersion = "e6qu.monitoring/v2"
+
+// Monitoring publishes a real, live observation of zzira's own health for the
+// deployment's centralized monitoring to collect -- bearer-authenticated
+// against ZZIRA_MONITORING_TOKEN, never a cached or fabricated figure.
+func (h *Handler) Monitoring(w http.ResponseWriter, r *http.Request) {
+	token := strings.TrimSpace(os.Getenv("ZZIRA_MONITORING_TOKEN"))
+	const prefix = "Bearer "
+	auth := r.Header.Get("Authorization")
+	if token == "" || !strings.HasPrefix(auth, prefix) ||
+		subtle.ConstantTimeCompare([]byte(strings.TrimPrefix(auth, prefix)), []byte(token)) != 1 {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	dbHealthy, issueCount, err := h.Store.MonitoringSnapshot(r.Context())
+	if err != nil {
+		http.Error(w, "could not collect observation", http.StatusInternalServerError)
+		return
+	}
+	health := "healthy"
+	if !dbHealthy {
+		health = "unhealthy"
+	}
+	issueMetric := map[string]any{
+		"name": "issues_total", "label": "Issues", "unit": "count", "status": "available", "value": issueCount,
+	}
+	if !dbHealthy {
+		issueMetric = map[string]any{"name": "issues_total", "label": "Issues", "unit": "count", "status": "unavailable"}
+	}
+	body := map[string]any{
+		"schema_version": monitoringSchemaVersion,
+		"observed_at":    time.Now().UTC().Format(time.RFC3339),
+		"resources": []map[string]any{
+			{
+				"id": "zzira-database", "name": "ZZIRA PostgreSQL", "kind": "database", "health": health,
+				"metrics": []map[string]any{issueMetric},
+			},
+		},
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	if err := json.NewEncoder(w).Encode(body); err != nil {
+		log.Printf("encode monitoring observation: %v", err)
+	}
+}
 
 type oidcLogoutClaims struct {
 	Subject string                     `json:"sub"`
