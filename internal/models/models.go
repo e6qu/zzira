@@ -21,6 +21,9 @@ type User struct {
 	TimeZone    string `json:"timeZone,omitempty"`
 	Active      bool   `json:"active"`
 	AccountType string `json:"accountType"`
+	// Username is a display handle for the UI's account control, not a Jira
+	// Cloud REST API field (accountId is the API identity); excluded from JSON.
+	Username string `json:"-"`
 }
 
 type Status struct {

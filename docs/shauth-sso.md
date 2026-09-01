@@ -46,6 +46,11 @@ email; later sign-ins use the immutable pair, not a mutable email or username.
 The identity provider cannot create or silently grant project access. This
 preserves the existing workspace membership and API-token authorization model.
 
+If the ID token carries a `preferred_username` claim, it is recorded as the
+account’s display handle (`data-shauth-user` on the account control in the
+product header) and refreshed on every sign-in. Its absence is not an error —
+the account control falls back to the email’s local part.
+
 The flow keeps state, nonce, and PKCE verifier server-side with a ten-minute,
 single-use lifetime. Browser cookies contain only ZZIRA’s opaque session token;
 the verified ID token is retained server-side for the session lifetime. If the
