@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.0](https://github.com/e6qu/zzira/compare/v0.4.0...v0.5.0) (2026-09-01)
+
+
+### Features
+
+* publish a live monitoring observation ([b3dd9ac](https://github.com/e6qu/zzira/commit/b3dd9ace74d277318b28e384ad7c61ef0aede9ae))
+* render the shauth identity contract markers ([b2a73aa](https://github.com/e6qu/zzira/commit/b2a73aaf0cef0409eeeba192c3c6f529ab1ad3d4))
+
+
+### Bug Fixes
+
+* revoke sessions by the sid a back-channel logout token actually names ([056c980](https://github.com/e6qu/zzira/commit/056c980c4ace75e92045a39f32dace1e90a57870))
+* the post-logout redirect bridge must redirect, not render ([be40840](https://github.com/e6qu/zzira/commit/be408402fde2632f81151699c55ac98026f7707f))
+
 ## [0.4.0](https://github.com/e6qu/zzira/compare/v0.3.0...v0.4.0) (2026-09-01)
 
 
