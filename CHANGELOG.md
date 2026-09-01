@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/e6qu/zzira/compare/v0.2.4...v0.3.0) (2026-09-01)
+
+
+### Features
+
+* add /auth/validation and OIDC back-channel logout ([19a82f7](https://github.com/e6qu/zzira/commit/19a82f7350f8ddd1b6043de95a3603f7759830dc))
+
 ## [0.2.4](https://github.com/e6qu/zzira/compare/v0.2.3...v0.2.4) (2026-08-31)
 
 
