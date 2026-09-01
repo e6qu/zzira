@@ -158,7 +158,7 @@ func main() {
 	mux.HandleFunc("GET /login", webHandler.LoginForm)
 	mux.HandleFunc("GET /auth/shauth", webHandler.OIDCLogin)
 	mux.HandleFunc("GET /auth/shauth/callback", webHandler.OIDCCallback)
-	mux.HandleFunc("GET /auth/shauth/logout/complete", webHandler.SignedOut)
+	mux.HandleFunc("GET /auth/shauth/logout/complete", webHandler.OIDCLogoutComplete)
 	mux.HandleFunc("GET /auth/validation", webHandler.Validation)
 	mux.HandleFunc("POST /auth/shauth/backchannel-logout", webHandler.BackChannelLogout)
 	mux.HandleFunc("POST /login", webHandler.LoginSubmit)
