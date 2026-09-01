@@ -39,6 +39,11 @@ and a five-minute freshness window) and revokes every session bound to the
 token's subject. Each token's `jti` is claimed exactly once, so a replayed
 token is rejected rather than revoking sessions a second time.
 
+`GET /monitoring/observation`, bearer-authenticated against
+`ZZIRA_MONITORING_TOKEN`, publishes a live observation of ZZIRA's own health
+(`e6qu.monitoring/v2`) for centralized collection: real database reachability
+and a real stored-issue count, never a cached or fabricated figure.
+
 The ID token must include a stable subject, `nonce`, `aud`, and a verified
 `email` (`email_verified: true`). On the first sign-in ZZIRA binds the trusted
 provider’s immutable `(issuer, subject)` pair to an existing member with that
