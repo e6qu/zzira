@@ -1,0 +1,145 @@
+# Build and publish the zzira container image to ghcr.io/e6qu/zzira.
+#
+# Every main commit publishes exactly one immutable short-SHA manifest and its
+# two native architecture images. No mutable branch or latest tags are
+# emitted here; release.yml covers versioned (semver) publication separately
+# when release-please cuts a release.
+#
+# Multi-arch shape: each arch builds and pushes its own digest on a NATIVE
+# runner (linux/arm64 -> ubuntu-24.04-arm, linux/amd64 -> ubuntu-latest). A
+# trailing manifest-merge job composes both digests into a single multi-arch
+# manifest list. This avoids QEMU emulation entirely -- every build runs on
+# its target CPU architecture.
+name: Publish container image
+
+on:
+  push:
+    branches: [main]
+  # A commit can also be published by hand. Naming the commit here builds
+  # exactly what that commit would have built, for the case where a run was
+  # cancelled or a commit otherwise reached main with no image published.
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: >-
+          Full commit SHA to publish. Defaults to the tip of the ref this run
+          was dispatched from.
+        required: false
+        type: string
+
+# Keyed by commit, never by branch, so adjacent merges publish side by side
+# instead of one cancelling the other's in-flight image.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.repository }}-${{ inputs.commit || github.sha }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE: zzira
+
+jobs:
+  prepare:
+    timeout-minutes: 5
+    name: Release coordinates
+    runs-on: ubuntu-latest
+    outputs:
+      short_sha: ${{ steps.revision.outputs.short_sha }}
+      commit: ${{ steps.revision.outputs.commit }}
+    steps:
+      - id: revision
+        env:
+          REVISION: ${{ inputs.commit || github.sha }}
+        run: |
+          if [ ${#REVISION} -ne 40 ]; then
+            echo "publish needs a full 40-character commit SHA, got: $REVISION" >&2
+            exit 1
+          fi
+          echo "commit=$REVISION" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${REVISION:0:12}" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: prepare
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        arch:
+          - { platform: linux/amd64, runner: ubuntu-latest, suffix: amd64 }
+          - { platform: linux/arm64, runner: ubuntu-24.04-arm, suffix: arm64 }
+    name: zzira image (${{ matrix.arch.suffix }})
+    runs-on: ${{ matrix.arch.runner }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push (per-arch, by digest)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: ${{ matrix.arch.platform }}
+          push: true
+          provenance: false
+          build-args: |
+            VERSION=${{ needs.prepare.outputs.short_sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ needs.prepare.outputs.commit }}
+          tags: ${{ env.REGISTRY }}/e6qu/${{ env.IMAGE }}:${{ needs.prepare.outputs.short_sha }}-${{ matrix.arch.suffix }}
+          cache-from: type=gha,scope=zzira-sha-${{ matrix.arch.suffix }}
+          cache-to: type=gha,scope=zzira-sha-${{ matrix.arch.suffix }},mode=max
+
+  manifest:
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    name: zzira manifest
+    steps:
+      - uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compose multi-arch manifest list
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ env.REGISTRY }}/e6qu/${{ env.IMAGE }}:${{ needs.prepare.outputs.short_sha }}"
+          AMD64_REF="$TAG-amd64"
+          ARM64_REF="$TAG-arm64"
+          echo "assembling $TAG from $AMD64_REF + $ARM64_REF"
+          docker buildx imagetools create \
+            --tag "$TAG" \
+            "$AMD64_REF" \
+            "$ARM64_REF"
+
+          for REF in "$AMD64_REF" "$ARM64_REF"; do
+            MEDIA_TYPE=$(docker buildx imagetools inspect \
+              --format '{{.Manifest.MediaType}}' "$REF")
+            test "$MEDIA_TYPE" = "application/vnd.oci.image.manifest.v1+json"
+          done
+
+          MEDIA_TYPE=$(docker buildx imagetools inspect \
+            --format '{{.Manifest.MediaType}}' "$TAG")
+          test "$MEDIA_TYPE" = "application/vnd.oci.image.index.v1+json"
+          PLATFORMS=$(docker buildx imagetools inspect \
+            --format '{{range .Manifest.Manifests}}{{printf "%s/%s\n" .Platform.OS .Platform.Architecture}}{{end}}' \
+            "$TAG" | sort)
+          test "$PLATFORMS" = "$(printf 'linux/amd64\nlinux/arm64')"
