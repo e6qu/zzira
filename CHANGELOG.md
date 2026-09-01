@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/e6qu/zzira/compare/v0.3.0...v0.4.0) (2026-09-01)
+
+
+### Features
+
+* auto-provision an admin for ZZIRA_BOOTSTRAP_ADMIN_EMAIL ([5ce494e](https://github.com/e6qu/zzira/commit/5ce494e1ac9221656748ae9cc2875dc85b2b1c86))
+
 ## [0.3.0](https://github.com/e6qu/zzira/compare/v0.2.4...v0.3.0) (2026-09-01)
 
 
