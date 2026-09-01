@@ -521,3 +521,24 @@
 </body>
 </html>
 {{end}}
+
+{{/* The Shauth SSO validator (and any other relying-party auth check) loads
+     this page after login and asserts against the data-testid markers below.
+     It carries no form action beyond signing out, so it needs no CSRF token. */}}
+{{define "page_validation"}}
+<!doctype html>
+<html lang="en">
+<head>{{template "head" .}}</head>
+<body class="login-body">
+  <main class="login-card">
+    <h1>ZZIRA is authenticated</h1>
+    <p>Your ZZIRA browser session is active.</p>
+    <dl class="validation-identity">
+      <dt>Username</dt><dd data-testid="validation-username">{{.DisplayName}}</dd>
+      <dt>Email</dt><dd data-testid="validation-email">{{.Email}}</dd>
+    </dl>
+    <form method="post" action="/logout"><button class="btn btn-primary btn-block" type="submit">Sign out</button></form>
+  </main>
+</body>
+</html>
+{{end}}
