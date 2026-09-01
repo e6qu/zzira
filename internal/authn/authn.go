@@ -102,7 +102,7 @@ func Login(ctx context.Context, st *store.Store, email, password string) (string
 }
 
 // LoginOIDC creates a normal opaque session for a verified external identity.
-func LoginOIDC(ctx context.Context, st *store.Store, userID, idToken string) (string, error) {
+func LoginOIDC(ctx context.Context, st *store.Store, userID, idToken, sid string) (string, error) {
 	if userID == "" || idToken == "" {
 		return "", ErrUnauthorized
 	}
@@ -110,7 +110,7 @@ func LoginOIDC(ctx context.Context, st *store.Store, userID, idToken string) (st
 	if err != nil {
 		return "", err
 	}
-	if err := st.CreateOIDCSession(ctx, hashToken(token), userID, idToken, sessionTTL); err != nil {
+	if err := st.CreateOIDCSession(ctx, hashToken(token), userID, idToken, sid, sessionTTL); err != nil {
 		return "", err
 	}
 	return token, nil

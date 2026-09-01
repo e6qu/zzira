@@ -175,6 +175,7 @@ func (h *Handler) OIDCCallback(w http.ResponseWriter, r *http.Request) {
 		EmailVerified     bool   `json:"email_verified"`
 		Nonce             string `json:"nonce"`
 		PreferredUsername string `json:"preferred_username"`
+		SID               string `json:"sid"`
 	}
 	if err := idToken.Claims(&claims); err != nil || claims.Email == "" || !claims.EmailVerified || claims.Nonce != nonce {
 		http.Error(w, "identity token claims are not acceptable", http.StatusUnauthorized)
@@ -191,7 +192,7 @@ func (h *Handler) OIDCCallback(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	session, err := authn.LoginOIDC(r.Context(), h.Store, userID, rawIDToken)
+	session, err := authn.LoginOIDC(r.Context(), h.Store, userID, rawIDToken, claims.SID)
 	if err != nil {
 		http.Error(w, "could not create sign-in session", http.StatusInternalServerError)
 		return
@@ -331,7 +332,7 @@ func (h *Handler) BackChannelLogout(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "logout token is stale", http.StatusBadRequest)
 		return
 	}
-	claimed, err := h.Store.ClaimOIDCLogoutAndDeleteSessions(r.Context(), claims.JTI, time.Unix(claims.Expires, 0), logoutToken.Issuer, claims.Subject)
+	claimed, err := h.Store.ClaimOIDCLogoutAndDeleteSessions(r.Context(), claims.JTI, time.Unix(claims.Expires, 0), logoutToken.Issuer, claims.Subject, claims.SID)
 	if err != nil {
 		http.Error(w, "browser sessions could not be revoked", http.StatusInternalServerError)
 		return

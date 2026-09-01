@@ -170,12 +170,13 @@ func (s *Store) CreateSession(ctx context.Context, tokenHash, userID string, ttl
 	return err
 }
 
-// CreateOIDCSession records an opaque browser session and its ID token server-side
-// so RP-initiated logout can send the provider an id_token_hint.
-func (s *Store) CreateOIDCSession(ctx context.Context, tokenHash, userID, idToken string, ttl time.Duration) error {
+// CreateOIDCSession records an opaque browser session, its ID token (so
+// RP-initiated logout can send the provider an id_token_hint), and the
+// provider's sid so a later back-channel logout naming that sid can find it.
+func (s *Store) CreateOIDCSession(ctx context.Context, tokenHash, userID, idToken, sid string, ttl time.Duration) error {
 	_, err := s.Pool.Exec(ctx,
-		`INSERT INTO sessions (token_hash, user_id, oidc_id_token, expires_at) VALUES ($1,$2,$3,now() + $4::interval)`,
-		tokenHash, userID, idToken, fmt.Sprintf("%d seconds", int(ttl.Seconds())))
+		`INSERT INTO sessions (token_hash, user_id, oidc_id_token, oidc_session_id, expires_at) VALUES ($1,$2,$3,NULLIF($4,''),now() + $5::interval)`,
+		tokenHash, userID, idToken, sid, fmt.Sprintf("%d seconds", int(ttl.Seconds())))
 	return err
 }
 
@@ -192,13 +193,14 @@ func (s *Store) DeleteSession(ctx context.Context, tokenHash string) error {
 }
 
 // ClaimOIDCLogoutAndDeleteSessions atomically claims a Back-Channel Logout
-// token's jti (replay protection) and, only on a first claim, deletes every
-// session belonging to the (issuer, subject) identity the token names.
-// Returns false without error if the token was already claimed. zzira tracks
-// no per-session sid, so revocation is subject-scoped: a logout token that
-// names only a sid (no sub) claims cleanly but revokes nothing, which is
-// correct here since no zzira session could ever be selected by it.
-func (s *Store) ClaimOIDCLogoutAndDeleteSessions(ctx context.Context, jti string, expiresAt time.Time, issuer, subject string) (bool, error) {
+// token's jti (replay protection) and, only on a first claim, revokes the
+// session(s) it names. Per the OIDC Back-Channel Logout 1.0 spec, a sid names
+// one specific provider session and only sessions recorded under that sid are
+// revoked; a token naming no sid means every session for the (issuer,
+// subject) identity is revoked. Ory Hydra's real logout tokens carry sid
+// without sub (its documented example omits sub entirely), so the sid path is
+// the one production traffic actually takes.
+func (s *Store) ClaimOIDCLogoutAndDeleteSessions(ctx context.Context, jti string, expiresAt time.Time, issuer, subject, sid string) (bool, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return false, err
@@ -214,7 +216,11 @@ func (s *Store) ClaimOIDCLogoutAndDeleteSessions(ctx context.Context, jti string
 	if tag.RowsAffected() == 0 {
 		return false, nil
 	}
-	if subject != "" {
+	if sid != "" {
+		if _, err := tx.Exec(ctx, `DELETE FROM sessions WHERE oidc_session_id=$1`, sid); err != nil {
+			return false, err
+		}
+	} else if subject != "" {
 		var userID string
 		err = tx.QueryRow(ctx, `SELECT user_id FROM oidc_identities WHERE issuer=$1 AND subject=$2`, issuer, subject).Scan(&userID)
 		if err != nil && err != pgx.ErrNoRows {
