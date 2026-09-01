@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -188,4 +189,98 @@ func (h *Handler) OIDCCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	authn.SetSessionCookie(w, session)
 	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+// Validation is the shared relying-party contract endpoint the Shauth SSO
+// validator (and equivalent checks) loads after login to confirm the
+// identity a browser session actually carries. It fails closed to the
+// signed-out page rather than back into the sign-in flow: redirecting to
+// /auth/shauth on an absent session would silently re-enter the flow and
+// read as "remained authenticated" to a caller checking for that redirect.
+func (h *Handler) Validation(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	user := h.currentUser(r)
+	if user == nil {
+		http.Redirect(w, r, "/signed-out", http.StatusFound)
+		return
+	}
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	writePage(w, "page_validation", user)
+}
+
+const (
+	backChannelLogoutEvent    = "http://schemas.openid.net/event/backchannel-logout"
+	maxBackChannelLogoutBytes = 64 << 10 // 64 KiB: a single logout JWT, kilobytes at most.
+)
+
+type oidcLogoutClaims struct {
+	Subject string                     `json:"sub"`
+	SID     string                     `json:"sid"`
+	Nonce   json.RawMessage            `json:"nonce"`
+	JTI     string                     `json:"jti"`
+	Issued  int64                      `json:"iat"`
+	Expires int64                      `json:"exp"`
+	Events  map[string]json.RawMessage `json:"events"`
+}
+
+// BackChannelLogout implements OpenID Connect Back-Channel Logout 1.0: Shauth
+// posts a logout_token here when a session it owns ends, and this revokes
+// every zzira session bound to that token's subject. The verifier is the same
+// one OIDCCallback uses (same issuer, same client ID, so iss/aud already
+// match); a logout token additionally carries no nonce and must name a sid or
+// a sub, checked explicitly below since the ID-token verifier does not.
+func (h *Handler) BackChannelLogout(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	if h.OIDC == nil {
+		http.NotFound(w, r)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxBackChannelLogoutBytes)
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid logout request", http.StatusBadRequest)
+		return
+	}
+	rawLogoutToken := r.PostForm.Get("logout_token")
+	if rawLogoutToken == "" {
+		http.Error(w, "logout_token is required", http.StatusBadRequest)
+		return
+	}
+	logoutToken, err := h.OIDC.verifier.Verify(r.Context(), rawLogoutToken)
+	if err != nil {
+		http.Error(w, "logout token verification failed", http.StatusBadRequest)
+		return
+	}
+	var claims oidcLogoutClaims
+	if err := logoutToken.Claims(&claims); err != nil || claims.JTI == "" || claims.Issued == 0 || claims.Expires == 0 || len(claims.Nonce) != 0 || (claims.SID == "" && claims.Subject == "") {
+		http.Error(w, "logout token claims are invalid", http.StatusBadRequest)
+		return
+	}
+	rawEvent, ok := claims.Events[backChannelLogoutEvent]
+	if !ok {
+		http.Error(w, "logout token event is invalid", http.StatusBadRequest)
+		return
+	}
+	var eventClaims map[string]json.RawMessage
+	if err := json.Unmarshal(rawEvent, &eventClaims); err != nil || eventClaims == nil || len(eventClaims) != 0 {
+		http.Error(w, "logout token event is invalid", http.StatusBadRequest)
+		return
+	}
+	now := time.Now()
+	issuedAt := time.Unix(claims.Issued, 0)
+	if issuedAt.Before(now.Add(-5*time.Minute)) || issuedAt.After(now.Add(time.Minute)) {
+		http.Error(w, "logout token is stale", http.StatusBadRequest)
+		return
+	}
+	claimed, err := h.Store.ClaimOIDCLogoutAndDeleteSessions(r.Context(), claims.JTI, time.Unix(claims.Expires, 0), logoutToken.Issuer, claims.Subject)
+	if err != nil {
+		http.Error(w, "browser sessions could not be revoked", http.StatusInternalServerError)
+		return
+	}
+	if !claimed {
+		http.Error(w, "logout token was already used", http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

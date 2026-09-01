@@ -183,6 +183,47 @@ func (s *Store) DeleteSession(ctx context.Context, tokenHash string) error {
 	return err
 }
 
+// ClaimOIDCLogoutAndDeleteSessions atomically claims a Back-Channel Logout
+// token's jti (replay protection) and, only on a first claim, deletes every
+// session belonging to the (issuer, subject) identity the token names.
+// Returns false without error if the token was already claimed. zzira tracks
+// no per-session sid, so revocation is subject-scoped: a logout token that
+// names only a sid (no sub) claims cleanly but revokes nothing, which is
+// correct here since no zzira session could ever be selected by it.
+func (s *Store) ClaimOIDCLogoutAndDeleteSessions(ctx context.Context, jti string, expiresAt time.Time, issuer, subject string) (bool, error) {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	tag, err := tx.Exec(ctx,
+		`WITH expired AS (DELETE FROM oidc_logout_tokens WHERE expires_at <= now())
+		 INSERT INTO oidc_logout_tokens (jti, expires_at) VALUES ($1,$2) ON CONFLICT (jti) DO NOTHING`,
+		jti, expiresAt)
+	if err != nil {
+		return false, err
+	}
+	if tag.RowsAffected() == 0 {
+		return false, nil
+	}
+	if subject != "" {
+		var userID string
+		err = tx.QueryRow(ctx, `SELECT user_id FROM oidc_identities WHERE issuer=$1 AND subject=$2`, issuer, subject).Scan(&userID)
+		if err != nil && err != pgx.ErrNoRows {
+			return false, err
+		}
+		if err == nil {
+			if _, err := tx.Exec(ctx, `DELETE FROM sessions WHERE user_id=$1`, userID); err != nil {
+				return false, err
+			}
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func (s *Store) OIDCSessionToken(ctx context.Context, tokenHash string) (string, error) {
 	var idToken string
 	err := s.Pool.QueryRow(ctx, `SELECT COALESCE(oidc_id_token, '') FROM sessions WHERE token_hash=$1 AND expires_at > now()`, tokenHash).Scan(&idToken)
