@@ -259,10 +259,20 @@ func (s *Store) ConsumeOIDCLoginState(ctx context.Context, state string) (nonce,
 	return nonce, codeVerifier, err
 }
 
-// ResolveOIDCUser binds the first verified sign-in to a pre-existing member by
-// email, then identifies all later sign-ins by the immutable issuer/subject
-// pair. It never creates users or grants workspace membership.
-func (s *Store) ResolveOIDCUser(ctx context.Context, issuer, subject, email string) (string, error) {
+// ResolveOIDCUser binds a verified sign-in to its immutable (issuer, subject)
+// pair, identifying every later sign-in by that pair rather than the mutable
+// email. The first sign-in for a pair binds to an existing active user
+// matching the verified email if one exists; otherwise it provisions a new
+// member of the default workspace for that email. The identity provider is
+// the authorization boundary here (Shauth's own catalog registration and
+// GitHub-org role mapping already decided this person may reach ZZIRA at
+// all) -- ZZIRA does not additionally maintain its own separate invite list
+// an operator must remember to keep in sync, which otherwise silently locks
+// out every real member the identity provider has already vetted.
+// newPasswordHash is invoked only when a new account is actually being
+// created: password hashing is deliberately expensive and must not run on
+// the common existing-user sign-in path.
+func (s *Store) ResolveOIDCUser(ctx context.Context, issuer, subject, email, displayName string, newPasswordHash func() (string, error)) (string, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return "", err
@@ -281,7 +291,28 @@ func (s *Store) ResolveOIDCUser(ctx context.Context, issuer, subject, email stri
 	}
 	err = tx.QueryRow(ctx, `SELECT id FROM users WHERE email=$1 AND active`, email).Scan(&userID)
 	if err != nil {
-		return "", err
+		if err != pgx.ErrNoRows {
+			return "", err
+		}
+		hash, err := newPasswordHash()
+		if err != nil {
+			return "", err
+		}
+		userID = NewID("usr")
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO users (id, email, password_hash, display_name) VALUES ($1,$2,$3,$4)`,
+			userID, email, hash, displayName); err != nil {
+			return "", err
+		}
+		var workspaceID string
+		if err := tx.QueryRow(ctx, `SELECT id FROM workspaces ORDER BY id LIMIT 1`).Scan(&workspaceID); err != nil {
+			return "", err
+		}
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO memberships (workspace_id, user_id, role) VALUES ($1,$2,'member') ON CONFLICT (workspace_id, user_id) DO NOTHING`,
+			workspaceID, userID); err != nil {
+			return "", err
+		}
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO oidc_identities (issuer, subject, user_id) VALUES ($1,$2,$3)`, issuer, subject, userID); err != nil {
 		return "", err

@@ -181,9 +181,10 @@ func (h *Handler) OIDCCallback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "identity token claims are not acceptable", http.StatusUnauthorized)
 		return
 	}
-	userID, err := h.Store.ResolveOIDCUser(r.Context(), idToken.Issuer, idToken.Subject, claims.Email)
+	displayName, _, _ := strings.Cut(claims.Email, "@")
+	userID, err := h.Store.ResolveOIDCUser(r.Context(), idToken.Issuer, idToken.Subject, claims.Email, displayName, authn.UnusablePasswordHash)
 	if err != nil {
-		http.Error(w, "this identity is not a ZZIRA member", http.StatusForbidden)
+		http.Error(w, "could not create sign-in session", http.StatusInternalServerError)
 		return
 	}
 	if claims.PreferredUsername != "" {

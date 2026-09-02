@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -233,19 +231,14 @@ func main() {
 	log.Fatal(srv.ListenAndServe())
 }
 
-// ensureBootstrapAdmin grants ZZIRA_BOOTSTRAP_ADMIN_EMAIL admin membership so
-// an OIDC identity provider's break-glass account can sign in, matching the
-// pattern deployed apps in this ecosystem already use for that account.
-// zzira's OIDC binding only ever matches a verified sign-in to a pre-existing
-// member by email (ResolveOIDCUser never creates one itself), so without this
-// the configured identity provider's bootstrap admin has no ZZIRA account to
-// bind to. Runs on every boot; idempotent past the first.
+// ensureBootstrapAdmin grants ZZIRA_BOOTSTRAP_ADMIN_EMAIL admin membership,
+// matching the pattern deployed apps in this ecosystem already use for their
+// identity provider's break-glass account. A first OIDC sign-in provisions
+// only an ordinary member (ResolveOIDCUser), so this is still how the
+// break-glass account -- or any account that needs admin -- gets the admin
+// role. Runs on every boot; idempotent past the first.
 func ensureBootstrapAdmin(ctx context.Context, st *store.Store, email string) error {
-	unusable := make([]byte, 32)
-	if _, err := rand.Read(unusable); err != nil {
-		return err
-	}
-	hash, err := authn.HashPassword(base64.RawURLEncoding.EncodeToString(unusable))
+	hash, err := authn.UnusablePasswordHash()
 	if err != nil {
 		return err
 	}

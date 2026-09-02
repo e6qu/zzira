@@ -29,7 +29,7 @@ func TestClaimOIDCLogoutAndDeleteSessions(t *testing.T) {
 		t.Fatal(err)
 	}
 	subject := userID + "-sub"
-	if _, err := st.ResolveOIDCUser(ctx, issuer, subject, email); err != nil {
+	if _, err := st.ResolveOIDCUser(ctx, issuer, subject, email, "test", unusedPasswordHash(t)); err != nil {
 		t.Fatalf("bind OIDC identity: %v", err)
 	}
 	tokenHash := HashToken("logout-test-" + userID)
