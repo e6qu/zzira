@@ -31,6 +31,17 @@ func CheckPassword(hash, password string) bool {
 	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) == nil
 }
 
+// UnusablePasswordHash hashes a random value nothing will ever type, for an
+// account that only ever authenticates via OIDC (its password field is NOT
+// NULL and must never successfully compare).
+func UnusablePasswordHash() (string, error) {
+	token, err := randomToken()
+	if err != nil {
+		return "", err
+	}
+	return HashPassword(token)
+}
+
 func hashToken(token string) string { return store.HashToken(token) }
 
 // SessionHash exposes the token hashing for logout handling.

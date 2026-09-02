@@ -16,7 +16,7 @@ server from starting rather than silently changing authentication behavior.
 | `ZZIRA_SHAUTH_CLIENT_SECRET` | Registered OIDC client secret. |
 | `ZZIRA_EXTERNAL_URL` | Canonical externally reachable ZZIRA origin. |
 | `ZZIRA_ALLOW_INSECURE_OIDC=true` | Local-development only: permits an HTTP loopback issuer. Never set this in production. |
-| `ZZIRA_BOOTSTRAP_ADMIN_EMAIL` | Optional. Grants this email admin membership in the default workspace on every boot, creating the user first if none exists. ZZIRA's OIDC binding only ever matches a verified sign-in to a pre-existing member by email — set this to your identity provider's break-glass account so it has somewhere to bind to. |
+| `ZZIRA_BOOTSTRAP_ADMIN_EMAIL` | Optional. Grants this email admin membership in the default workspace on every boot, creating the user first if none exists. A first OIDC sign-in provisions an ordinary `member`; set this to your identity provider's break-glass account (or any account that needs admin) to give it the admin role instead. |
 
 Register the client with the provider using:
 
@@ -46,10 +46,14 @@ and a real stored-issue count, never a cached or fabricated figure.
 
 The ID token must include a stable subject, `nonce`, `aud`, and a verified
 `email` (`email_verified: true`). On the first sign-in ZZIRA binds the trusted
-provider’s immutable `(issuer, subject)` pair to an existing member with that
-email; later sign-ins use the immutable pair, not a mutable email or username.
-The identity provider cannot create or silently grant project access. This
-preserves the existing workspace membership and API-token authorization model.
+provider's immutable `(issuer, subject)` pair to an existing active member
+with that email if one exists, or otherwise provisions a new `member` of the
+default workspace for that email; later sign-ins use the immutable pair, not
+a mutable email or username. The identity provider is the authorization
+boundary: it already decided this person may reach ZZIRA at all (Shauth's own
+catalog registration, GitHub-org membership, and role mapping), so ZZIRA does
+not additionally require an operator to pre-invite every real member by hand
+before they can sign in.
 
 If the ID token carries a `preferred_username` claim, it is recorded as the
 account’s display handle (`data-shauth-user` on the account control in the
