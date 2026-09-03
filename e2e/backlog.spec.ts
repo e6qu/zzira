@@ -22,6 +22,12 @@ async function login(page: Page) {
   await expect(page).toHaveURL('/');
 }
 
+function sprintSection(page: Page, name: string) {
+  return page.locator('.sprint-section').filter({
+    has: page.locator(':scope > summary strong', { hasText: name }),
+  });
+}
+
 test.beforeAll(async ({ request }) => {
   const create = async (summary: string) => {
     const response = await request.post('/rest/api/3/issue', {
@@ -50,7 +56,7 @@ test('backlog journey creates, plans, ranks, starts, updates, and completes a sp
     page.waitForURL('/board/brd_default/backlog'),
     page.locator('.create-sprint form').getByRole('button', { name: 'Create sprint' }).click(),
   ]);
-  const sprint = page.locator('.sprint-section', { hasText: sprintName });
+  const sprint = sprintSection(page, sprintName);
   await expect(sprint).toBeVisible();
   await expect(sprint).toContainText('This sprint is empty');
 
@@ -62,10 +68,10 @@ test('backlog journey creates, plans, ranks, starts, updates, and completes a sp
       page.waitForURL('/board/brd_default/backlog'),
       item.getByRole('button', { name: 'Move', exact: true }).click(),
     ]);
-    await expect(page.locator('.sprint-section', { hasText: sprintName }).locator('.backlog-item', { hasText: key })).toBeVisible();
+    await expect(sprint.locator('.backlog-item', { hasText: key })).toBeVisible();
   }
 
-  const sprintItems = page.locator('.sprint-section', { hasText: sprintName }).locator('.backlog-item');
+  const sprintItems = sprint.locator('.backlog-item');
   await expect(sprintItems).toHaveCount(2);
   await expect(sprintItems.nth(0)).toContainText(firstIssueKey);
   const secondItem = sprintItems.filter({ hasText: secondIssueKey });
@@ -74,17 +80,17 @@ test('backlog journey creates, plans, ranks, starts, updates, and completes a sp
     page.waitForURL('/board/brd_default/backlog'),
     secondItem.getByRole('button', { name: 'Move up' }).click(),
   ]);
-  await expect(page.locator('.sprint-section', { hasText: sprintName }).locator('.backlog-item').nth(0)).toContainText(secondIssueKey);
+  await expect(sprint.locator('.backlog-item').nth(0)).toContainText(secondIssueKey);
 
-  await page.locator('.sprint-section', { hasText: sprintName }).locator('.backlog-summary').first().click();
+  await sprint.locator('.backlog-summary').first().click();
   await expect(page.locator('#backlog-preview .issue-preview-card')).toBeVisible();
 
-  await page.locator('.sprint-section', { hasText: sprintName }).locator('.start-sprint > summary').click();
+  await sprint.locator('.start-sprint > summary').click();
   await Promise.all([
     page.waitForURL('/board/brd_default/backlog'),
-    page.locator('.sprint-section', { hasText: sprintName }).locator('.start-sprint form').getByRole('button', { name: 'Start sprint' }).click(),
+    sprint.locator('.start-sprint form').getByRole('button', { name: 'Start sprint' }).click(),
   ]);
-  await expect(page.locator('.sprint-section', { hasText: sprintName })).toContainText('active');
+  await expect(sprint).toContainText('active');
 
   const sprintList = await request.get('/rest/agile/1.0/board/brd_default/sprint', {
     headers: { Authorization: apiAuthHeader() },
@@ -102,7 +108,7 @@ test('backlog journey creates, plans, ranks, starts, updates, and completes a sp
   expect(updated.status()).toBe(200);
   expect((await updated.json()).goal).toBe(updatedGoal);
   await page.reload();
-  await expect(page.locator('.sprint-section', { hasText: sprintName })).toContainText(updatedGoal);
+  await expect(sprint).toContainText(updatedGoal);
 
   const movedToBacklog = await request.post('/rest/agile/1.0/backlog/issue', {
     headers: { Authorization: apiAuthHeader() },
@@ -117,15 +123,23 @@ test('backlog journey creates, plans, ranks, starts, updates, and completes a sp
 
   await Promise.all([
     page.waitForURL('/board/brd_default/backlog'),
-    page.locator('.sprint-section', { hasText: sprintName }).getByRole('button', { name: 'Complete sprint' }).click(),
+    sprint.getByRole('button', { name: 'Complete sprint' }).click(),
   ]);
-  await expect(page.locator('.sprint-section', { hasText: sprintName })).toHaveCount(0);
+  await expect(sprint).toHaveCount(0);
   await expect(page.locator('.backlog-section').last().locator('.backlog-item', { hasText: firstIssueKey })).toBeVisible();
 
-  const apiBacklog = await request.get('/rest/agile/1.0/board/brd_default/backlog', {
-    headers: { Authorization: apiAuthHeader() },
-  });
-  expect(apiBacklog.status()).toBe(200);
-  const backlogKeys = (await apiBacklog.json()).issues.map((issue: any) => issue.key);
+  const backlogKeys: string[] = [];
+  let startAt = 0;
+  for (;;) {
+    const response = await request.get(`/rest/agile/1.0/board/brd_default/backlog?startAt=${startAt}&maxResults=100`, {
+      headers: { Authorization: apiAuthHeader() },
+    });
+    expect(response.status()).toBe(200);
+    const body = await response.json();
+    backlogKeys.push(...body.issues.map((issue: any) => issue.key));
+    if (backlogKeys.includes(firstIssueKey) && backlogKeys.includes(secondIssueKey)) break;
+    startAt += body.issues.length;
+    if (startAt >= body.total || body.issues.length === 0) break;
+  }
   expect(backlogKeys).toEqual(expect.arrayContaining([firstIssueKey, secondIssueKey]));
 });

@@ -4,9 +4,24 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/e6qu/zzira/internal/authz"
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
 )
+
+// UpdateBoardConfiguration is the shared administrative command for board
+// layout, quick filters, card fields, and column constraints.
+func (s *Service) UpdateBoardConfiguration(ctx context.Context, actorID, workspaceID, boardID string, input store.BoardConfigurationUpdate) (*models.Board, error) {
+	admin, err := authz.IsWorkspaceAdmin(ctx, s.Store, workspaceID, actorID)
+	if err != nil {
+		return nil, err
+	}
+	if !admin {
+		return nil, fmt.Errorf("workspace administrator permission is required")
+	}
+	board, _, err := s.Store.UpdateBoardConfiguration(ctx, actorID, workspaceID, boardID, input)
+	return board, err
+}
 
 func (s *Service) CreateSprint(ctx context.Context, actorID, workspaceID, boardID, name, goal string) (*models.Sprint, error) {
 	sprint, _, err := s.Store.CreateSprint(ctx, actorID, workspaceID, boardID, name, goal)

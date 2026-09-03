@@ -1,6 +1,6 @@
 # Jira UI, API, and Journey Parity
 
-Updated: 2026-09-03
+Updated: 2026-09-04
 
 This ledger defines “full parity” for ZZIRA as the daily Jira Software core:
 planning, finding, creating, updating, and administering software work through
@@ -20,7 +20,7 @@ The endpoint-level source of truth remains [the API matrix](../api/conformance/M
 | Find work with JQL | ✅ | Project-scoped basic/JQL search, removable filter chips, starred saved filters, sortable/configurable columns, pagination, keyboard navigation, and contextual issue preview are browser-tested |
 | Create work | ✅ | Shared createmeta schema drives project/type plus assignee, priority, labels, security and typed custom fields; validation recovery and create-another are browser/API tested |
 | Triage an issue | ✅ | Inline system/custom fields, labels, security, watchers, links, unified activity filters, attachments/worklogs, and their Jira-shaped API transitions are browser- and integration-tested |
-| Run a board | 🟡 | Mouse and keyboard rank/status changes, live updates, local card filtering, bounded column scrolling; quick filters, swimlanes, WIP limits and card configuration remain |
+| Run a board | ✅ | Mouse/keyboard ranking, live updates, text/quick/assignee filters, configurable assignee swimlanes, WIP-limit feedback, card fields, and in-place issue preview are browser/API tested |
 | Work offline | ✅ | Issue reads, edit outbox, reconnect drain and server-wins reconciliation are browser-proven; mutation UI is protected from in-flight replica refreshes |
 | Review a dashboard | 🟡 | Status counts, assigned work and recent activity; no configurable dashboards |
 | Plan a backlog/sprint | ✅ | Project backlog and open-sprint grouping, cross-group movement, rank controls, issue preview, sprint create/edit/start/complete, and equivalent Agile API lifecycle are browser/integration-tested; epic/version planning is a separate enhancement |
@@ -43,8 +43,9 @@ The endpoint-level source of truth remains [the API matrix](../api/conformance/M
 4. Backlog: ✅ delivered with backlog/open-sprint grouping, ranking, sprint
    create/edit/start/complete, issue detail preview, and one shared Agile
    command path across the UI and REST API.
-5. Board: quick filters, assignee filter, WIP limit feedback, swimlanes, card
-   configuration, and a detail drawer without losing board position.
+5. Board: ✅ delivered with shared quick filters, assignee filtering, WIP-limit
+   feedback based on unfiltered totals, assignee swimlanes, configurable card
+   fields, and issue preview without losing board position.
 
 ### P1 — team and admin journeys
 
@@ -83,6 +84,8 @@ movement. Primary references:
 - <https://support.atlassian.com/jira-software-cloud/docs/save-your-search-as-a-filter/>
 - <https://support.atlassian.com/jira-software-cloud/docs/what-are-the-different-types-of-activity-on-an-issue/>
 - <https://support.atlassian.com/jira-software-cloud/docs/monitor-work-in-a-kanban-project/>
+- <https://support.atlassian.com/jira-software-cloud/docs/customize-your-view-of-the-board-and-backlog/>
+- <https://developer.atlassian.com/cloud/jira/software/rest/api-group-board/>
 - <https://support.atlassian.com/jira-software-cloud/docs/use-your-kanban-backlog/>
 - <https://support.atlassian.com/jira-software-cloud/docs/create-a-work-item-and-a-subtask/>
 - <https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issues/>

@@ -13,14 +13,26 @@ const (
 )
 
 type Board struct {
-	ID              string   `json:"id"`
-	ProjectID       string   `json:"projectId"`
-	ProjectKey      string   `json:"-"`
-	ProjectName     string   `json:"-"`
-	Name            string   `json:"name"`
-	Type            string   `json:"type"`
-	ColumnStatusIDs []string `json:"columnStatusIds"`
-	FilterJQL       string   `json:"filterJql"`
+	ID               string             `json:"id"`
+	ProjectID        string             `json:"projectId"`
+	ProjectKey       string             `json:"-"`
+	ProjectName      string             `json:"-"`
+	Name             string             `json:"name"`
+	Type             string             `json:"type"`
+	ColumnStatusIDs  []string           `json:"columnStatusIds"`
+	FilterJQL        string             `json:"filterJql"`
+	QuickFilters     []BoardQuickFilter `json:"quickFilters,omitempty"`
+	SwimlaneStrategy string             `json:"swimlaneStrategy"`
+	CardFields       []string           `json:"cardFields,omitempty"`
+	ColumnLimits     map[string]int     `json:"columnLimits,omitempty"`
+}
+
+type BoardQuickFilter struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	JQL         string `json:"jql"`
+	Position    int    `json:"position"`
 }
 
 type Sprint struct {

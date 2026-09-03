@@ -11,6 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/e6qu/zzira/internal/jql"
 	"github.com/e6qu/zzira/internal/lexorank"
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/workflow"
@@ -19,6 +20,7 @@ import (
 var (
 	ErrSprintValidation = errors.New("invalid sprint")
 	ErrSprintConflict   = errors.New("sprint conflict")
+	ErrBoardValidation  = errors.New("invalid board configuration")
 )
 
 type SprintUpdate struct {
@@ -27,6 +29,13 @@ type SprintUpdate struct {
 	State     string
 	StartDate *time.Time
 	EndDate   *time.Time
+}
+
+type BoardConfigurationUpdate struct {
+	QuickFilters     []models.BoardQuickFilter
+	SwimlaneStrategy string
+	CardFields       []string
+	ColumnLimits     map[string]int
 }
 
 // SetIssueRank repositions an issue (and optionally moves it to a new status).
@@ -104,13 +113,25 @@ func (s *Store) RankBetween(ctx context.Context, workspaceID, projectID, statusI
 // ---- boards ----
 
 const boardJoin = `
-SELECT b.id, b.project_id, p.key, p.name, b.name, b.type, b.column_status_ids, b.filter_jql
+SELECT b.id, b.project_id, p.key, p.name, b.name, b.type, b.column_status_ids, b.filter_jql,
+       b.quick_filters, b.swimlane_strategy, b.card_fields, b.column_limits
 FROM boards b JOIN projects p ON p.id = b.project_id
 `
 
 func scanBoard(row pgx.Row) (*models.Board, error) {
 	b := &models.Board{}
-	err := row.Scan(&b.ID, &b.ProjectID, &b.ProjectKey, &b.ProjectName, &b.Name, &b.Type, &b.ColumnStatusIDs, &b.FilterJQL)
+	var quickFilters, columnLimits []byte
+	err := row.Scan(&b.ID, &b.ProjectID, &b.ProjectKey, &b.ProjectName, &b.Name, &b.Type, &b.ColumnStatusIDs, &b.FilterJQL,
+		&quickFilters, &b.SwimlaneStrategy, &b.CardFields, &columnLimits)
+	if err != nil {
+		return b, err
+	}
+	if err := json.Unmarshal(quickFilters, &b.QuickFilters); err != nil {
+		return b, fmt.Errorf("decode board quick filters: %w", err)
+	}
+	if err := json.Unmarshal(columnLimits, &b.ColumnLimits); err != nil {
+		return b, fmt.Errorf("decode board column limits: %w", err)
+	}
 	return b, err
 }
 
@@ -142,15 +163,78 @@ func (s *Store) BoardsByWorkspace(ctx context.Context, workspaceID string) ([]*m
 	return out, rows.Err()
 }
 
+func boardFilterQuery(board *models.Board, selectedQuickFilters []string, assignee string) (*jql.Query, error) {
+	terms := make([]jql.Node, 0, len(selectedQuickFilters)+2)
+	if strings.TrimSpace(board.FilterJQL) != "" {
+		query, err := jql.Parse(board.FilterJQL)
+		if err != nil {
+			return nil, fmt.Errorf("%w: board filter: %v", ErrBoardValidation, err)
+		}
+		terms = append(terms, query.Root)
+	}
+	quickFilters := make(map[string]models.BoardQuickFilter, len(board.QuickFilters))
+	for _, filter := range board.QuickFilters {
+		quickFilters[filter.ID] = filter
+	}
+	seen := map[string]bool{}
+	for _, id := range selectedQuickFilters {
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		filter, ok := quickFilters[id]
+		if !ok {
+			return nil, fmt.Errorf("%w: quick filter %q does not exist", ErrBoardValidation, id)
+		}
+		query, err := jql.Parse(filter.JQL)
+		if err != nil {
+			return nil, fmt.Errorf("%w: quick filter %q: %v", ErrBoardValidation, filter.Name, err)
+		}
+		terms = append(terms, query.Root)
+	}
+	switch assignee {
+	case "":
+	case "unassigned":
+		terms = append(terms, jql.Clause{Field: "assignee", Op: "empty"})
+	default:
+		terms = append(terms, jql.Clause{Field: "assignee", Op: "=", Values: []string{assignee}})
+	}
+	var root jql.Node = jql.Text{Value: ""}
+	if len(terms) == 1 {
+		root = terms[0]
+	} else if len(terms) > 1 {
+		root = jql.And{Terms: terms}
+	}
+	return &jql.Query{Root: root}, nil
+}
+
 // BoardIssues returns the board's issues ordered by status column then rank,
-// filtered to issues the user may see.
+// filtered to issues the user may see and by the board's base filter.
 func (s *Store) BoardIssues(ctx context.Context, boardID, userID string) (map[string][]*models.Issue, error) {
+	return s.BoardIssuesFiltered(ctx, boardID, userID, nil, "")
+}
+
+// BoardIssuesFiltered applies selected quick filters and an optional assignee
+// on top of the board's base filter. Multiple quick filters are combined with
+// AND, matching Jira's board control behavior.
+func (s *Store) BoardIssuesFiltered(ctx context.Context, boardID, userID string, selectedQuickFilters []string, assignee string) (map[string][]*models.Issue, error) {
 	board, err := s.BoardByID(ctx, boardID)
 	if err != nil {
 		return nil, err
 	}
+	query, err := boardFilterQuery(board, selectedQuickFilters, assignee)
+	if err != nil {
+		return nil, err
+	}
+	compiled := jql.CompileAt(query, userID, jql.DefaultResolver(), 3)
+	if compiled.Err != nil {
+		return nil, compiled.Err
+	}
+	args := []any{board.ProjectID, userID}
+	args = append(args, compiled.Args...)
 	rows, err := s.Pool.Query(ctx, issueJoin+`
-		WHERE i.project_id=$1 AND `+VisibleIssuePredicate("i", "$2")+` ORDER BY i.rank`, board.ProjectID, userID)
+		WHERE i.project_id=$1 AND `+VisibleIssuePredicate("i", "$2")+` AND (`+compiled.Where+`)
+		ORDER BY i.rank, i.key`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -169,6 +253,149 @@ func (s *Store) BoardIssues(ctx context.Context, boardID, userID string) (map[st
 		}
 	}
 	return out, rows.Err()
+}
+
+func validBoardFilterID(id string) bool {
+	if id == "" || len(id) > 128 {
+		return false
+	}
+	for _, r := range id {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '_' && r != '-' {
+			return false
+		}
+	}
+	return true
+}
+
+func normalizeBoardConfiguration(input BoardConfigurationUpdate, statusIDs []string) (BoardConfigurationUpdate, error) {
+	if input.SwimlaneStrategy != "none" && input.SwimlaneStrategy != "assignee" {
+		return input, fmt.Errorf("%w: swimlanes must be none or assignee", ErrBoardValidation)
+	}
+	if len(input.QuickFilters) > 20 {
+		return input, fmt.Errorf("%w: boards support at most 20 quick filters", ErrBoardValidation)
+	}
+	seenFilterIDs := map[string]bool{}
+	for index := range input.QuickFilters {
+		filter := &input.QuickFilters[index]
+		filter.ID = strings.TrimSpace(filter.ID)
+		filter.Name = strings.TrimSpace(filter.Name)
+		filter.Description = strings.TrimSpace(filter.Description)
+		filter.JQL = strings.TrimSpace(filter.JQL)
+		if filter.ID == "" {
+			filter.ID = NewID("qf")
+		}
+		if !validBoardFilterID(filter.ID) || seenFilterIDs[filter.ID] {
+			return input, fmt.Errorf("%w: quick filter IDs must be unique letters, numbers, dashes, or underscores", ErrBoardValidation)
+		}
+		seenFilterIDs[filter.ID] = true
+		if filter.Name == "" || utf8.RuneCountInString(filter.Name) > 64 {
+			return input, fmt.Errorf("%w: quick filter names are required and cannot exceed 64 characters", ErrBoardValidation)
+		}
+		if filter.JQL == "" || utf8.RuneCountInString(filter.JQL) > 2000 {
+			return input, fmt.Errorf("%w: quick filter JQL is required and cannot exceed 2000 characters", ErrBoardValidation)
+		}
+		if utf8.RuneCountInString(filter.Description) > 255 {
+			return input, fmt.Errorf("%w: quick filter descriptions cannot exceed 255 characters", ErrBoardValidation)
+		}
+		query, err := jql.Parse(filter.JQL)
+		if err != nil {
+			return input, fmt.Errorf("%w: %s: %v", ErrBoardValidation, filter.Name, err)
+		}
+		if compiled := jql.Compile(query, "validation-user", jql.DefaultResolver()); compiled.Err != nil {
+			return input, fmt.Errorf("%w: %s: %v", ErrBoardValidation, filter.Name, compiled.Err)
+		}
+		filter.Position = index
+	}
+	allowedFields := map[string]bool{"priority": true, "assignee": true, "labels": true}
+	seenFields := map[string]bool{}
+	cardFields := make([]string, 0, len(input.CardFields))
+	for _, field := range input.CardFields {
+		if !allowedFields[field] {
+			return input, fmt.Errorf("%w: unsupported card field %q", ErrBoardValidation, field)
+		}
+		if seenFields[field] {
+			return input, fmt.Errorf("%w: card fields must be unique", ErrBoardValidation)
+		}
+		seenFields[field] = true
+		cardFields = append(cardFields, field)
+	}
+	if len(cardFields) > 3 {
+		return input, fmt.Errorf("%w: cards support at most three optional fields", ErrBoardValidation)
+	}
+	input.CardFields = cardFields
+	allowedStatuses := make(map[string]bool, len(statusIDs))
+	for _, id := range statusIDs {
+		allowedStatuses[id] = true
+	}
+	limits := map[string]int{}
+	for statusID, limit := range input.ColumnLimits {
+		if !allowedStatuses[statusID] {
+			return input, fmt.Errorf("%w: a column limit references an unknown status", ErrBoardValidation)
+		}
+		if limit < 0 || limit > 999 {
+			return input, fmt.Errorf("%w: column limits must be between 1 and 999, or 0 for no limit", ErrBoardValidation)
+		}
+		if limit > 0 {
+			limits[statusID] = limit
+		}
+	}
+	input.ColumnLimits = limits
+	return input, nil
+}
+
+// UpdateBoardConfiguration stores board-level planning controls and emits a
+// board action so connected replicas observe the same configuration.
+func (s *Store) UpdateBoardConfiguration(ctx context.Context, actorID, workspaceID, boardID string, input BoardConfigurationUpdate) (*models.Board, *models.Action, error) {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	board, err := scanBoard(tx.QueryRow(ctx, boardJoin+`WHERE b.id=$1 AND p.workspace_id=$2 FOR UPDATE OF b`, boardID, workspaceID))
+	if err != nil {
+		return nil, nil, err
+	}
+	input, err = normalizeBoardConfiguration(input, board.ColumnStatusIDs)
+	if err != nil {
+		return nil, nil, err
+	}
+	quickFilters, err := json.Marshal(input.QuickFilters)
+	if err != nil {
+		return nil, nil, err
+	}
+	columnLimits, err := json.Marshal(input.ColumnLimits)
+	if err != nil {
+		return nil, nil, err
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE boards
+		SET quick_filters=$2, swimlane_strategy=$3, card_fields=$4, column_limits=$5
+		WHERE id=$1`, boardID, quickFilters, input.SwimlaneStrategy, input.CardFields, columnLimits); err != nil {
+		return nil, nil, err
+	}
+	board.QuickFilters = input.QuickFilters
+	board.SwimlaneStrategy = input.SwimlaneStrategy
+	board.CardFields = input.CardFields
+	board.ColumnLimits = input.ColumnLimits
+	seq, err := nextSeq(ctx, tx, workspaceID)
+	if err != nil {
+		return nil, nil, err
+	}
+	payload, err := json.Marshal(models.BoardUpsertPayload{Board: *board})
+	if err != nil {
+		return nil, nil, err
+	}
+	action := &models.Action{
+		WorkspaceID: workspaceID, Seq: seq, EntityType: models.EntityBoard, EntityID: boardID,
+		Op: models.OpUpsert, SchemaV: models.SchemaVersion, Payload: payload, ActorID: actorID,
+	}
+	if err := appendAction(ctx, tx, action); err != nil {
+		return nil, nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, nil, err
+	}
+	return board, action, nil
 }
 
 // ---- sprints ----
