@@ -199,11 +199,13 @@ test('controls meet WCAG 2.2 minimum target size', async ({ page }) => {
   await login(page);
   for (const path of ['/', '/issues/ZZ', '/board/brd_default']) {
     await page.goto(path);
+    const columnPicker = page.locator('.column-picker summary');
+    if (await columnPicker.count()) await columnPicker.click();
     const undersized = await page.locator('button, input, select, textarea, summary, .workspace-nav a').evaluateAll((nodes) =>
       nodes.flatMap((node) => {
         const rect = node.getBoundingClientRect();
         const style = getComputedStyle(node);
-        if (style.display === 'none' || style.visibility === 'hidden' || (node as HTMLElement).inert) return [];
+        if (!node.getClientRects().length || style.display === 'none' || style.visibility === 'hidden' || (node as HTMLElement).inert) return [];
         return rect.width < 24 || rect.height < 24
           ? [{ element: node.outerHTML.slice(0, 160), width: rect.width, height: rect.height }]
           : [];

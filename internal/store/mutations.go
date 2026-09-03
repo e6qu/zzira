@@ -728,6 +728,29 @@ func (s *Store) CreateFilter(ctx context.Context, id, workspaceID, name, jql, de
 	return s.FilterByID(ctx, workspaceID, ownerID, id)
 }
 
+// CreateFavouriteFilter atomically creates a filter and stars it for its
+// owner. The browser save-search journey must not leave a half-created filter
+// if the per-user favourite row cannot be written.
+func (s *Store) CreateFavouriteFilter(ctx context.Context, id, workspaceID, name, jql, description, ownerID string) (*models.Filter, error) {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO filters (id, workspace_id, name, jql, description, owner_id, favourite) VALUES ($1,$2,$3,$4,$5,$6,FALSE)`,
+		id, workspaceID, name, jql, description, nilIfEmpty(ownerID)); err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO filter_favourites (filter_id, user_id) VALUES ($1,$2)`, id, ownerID); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return s.FilterByID(ctx, workspaceID, ownerID, id)
+}
+
 func (s *Store) UpdateFilter(ctx context.Context, workspaceID, userID, id, name, jql, description string) (*models.Filter, error) {
 	result, err := s.Pool.Exec(ctx,
 		`UPDATE filters SET name=$4, jql=$5, description=$6 WHERE id=$1 AND workspace_id=$2 AND owner_id=$3`, id, workspaceID, userID, name, jql, description)

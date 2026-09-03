@@ -12,12 +12,12 @@
   }());
 </script>
 <link rel="stylesheet" href="/static/css/tokens.css?v=4">
-<link rel="stylesheet" href="/static/css/workspace.css?v=2">
+<link rel="stylesheet" href="/static/css/workspace.css?v=3">
 <link rel="preload" href="/static/zzira-worker.wasm?v=2" as="fetch" crossorigin>
 <link rel="preload" href="/static/sqlite/sqlite3.wasm" as="fetch" crossorigin>
 <script src="/static/htmx/htmx.min.js" defer></script>
 <script src="/static/wasm/wasm_exec.js" defer></script>
-<script src="/static/app.js?v=15" defer></script>
+<script src="/static/app.js?v=16" defer></script>
 {{end}}
 
 {{define "avatar"}}
@@ -360,14 +360,35 @@
 {{end}}
 
 {{define "issue_list_row"}}
-<tr>
-  <td class="type-cell"><span class="issue-type-mini" role="img" aria-label="{{.IssueType.Name}}">✓</span></td>
+<tr data-navigator-row data-key="{{.Key}}" data-preview-url="/browse/{{.Key}}/preview">
+  <td class="type-cell" data-column="type"><span class="issue-type-mini" role="img" aria-label="{{.IssueType.Name}}">✓</span></td>
   <td class="key-cell"><a href="/browse/{{.Key}}">{{.Key}}</a></td>
-  <td class="summary-cell"><a href="/browse/{{.Key}}">{{.Summary}}</a></td>
-  <td><span class="lozenge {{statusClass .Status.Category}}">{{.Status.Name}}</span></td>
-  <td>{{if .Priority}}<span class="priority-value"><span aria-hidden="true">=</span>{{.Priority.Name}}</span>{{else}}<span class="muted">—</span>{{end}}</td>
-  <td>{{if .Assignee}}<span class="person-value compact">{{template "avatar" .Assignee}}<span>{{.Assignee.DisplayName}}</span></span>{{else}}<span class="muted">Unassigned</span>{{end}}</td>
+  <td class="summary-cell"><a href="/browse/{{.Key}}" data-preview-link hx-get="/browse/{{.Key}}/preview" hx-target="#navigator-preview" hx-swap="innerHTML">{{.Summary}}</a></td>
+  <td data-column="status"><span class="lozenge {{statusClass .Status.Category}}">{{.Status.Name}}</span></td>
+  <td data-column="priority">{{if .Priority}}<span class="priority-value"><span aria-hidden="true">=</span>{{.Priority.Name}}</span>{{else}}<span class="muted">—</span>{{end}}</td>
+  <td data-column="assignee">{{if .Assignee}}<span class="person-value compact">{{template "avatar" .Assignee}}<span>{{.Assignee.DisplayName}}</span></span>{{else}}<span class="muted">Unassigned</span>{{end}}</td>
+  <td data-column="updated"><time datetime="{{.UpdatedAt}}">{{.UpdatedAt}}</time></td>
 </tr>
+{{end}}
+
+{{define "issue_preview"}}
+<article class="issue-preview-card" data-preview-key="{{.Key}}" aria-labelledby="issue-preview-title">
+  <header>
+    <div><span class="eyebrow">{{.Key}} · {{.IssueType.Name}}</span><h2 id="issue-preview-title">{{.Summary}}</h2></div>
+    <a class="btn" href="/browse/{{.Key}}">Open issue</a>
+  </header>
+  <div class="issue-preview-description">
+    <h3>Description</h3>
+    <div class="description-text">{{adfHTML .Description}}</div>
+  </div>
+  <dl>
+    <dt>Status</dt><dd><span class="lozenge {{statusClass .Status.Category}}">{{.Status.Name}}</span></dd>
+    <dt>Priority</dt><dd>{{if .Priority}}{{.Priority.Name}}{{else}}None{{end}}</dd>
+    <dt>Assignee</dt><dd>{{if .Assignee}}<span class="person-value compact">{{template "avatar" .Assignee}}<span>{{.Assignee.DisplayName}}</span></span>{{else}}Unassigned{{end}}</dd>
+    <dt>Reporter</dt><dd>{{if .Reporter}}{{.Reporter.DisplayName}}{{else}}Unknown{{end}}</dd>
+    <dt>Updated</dt><dd><time datetime="{{.UpdatedAt}}">{{.UpdatedAt}}</time></dd>
+  </dl>
+</article>
 {{end}}
 
 {{define "page_project"}}
@@ -380,29 +401,44 @@
   <div class="app-shell">
   {{template "workspace_nav" .}}
   <main class="page page-fluid" id="main-content" tabindex="-1">
-    <header class="page-header"><div><span class="eyebrow">{{.Data.Project.Name}} · {{.Data.Project.Key}}</span><h1>All work</h1><p>Search, scan, and open every issue in this project.</p></div><button type="button" class="btn btn-primary" hx-get="/issues/new" hx-target="#modal-root" hx-swap="innerHTML" onclick="zzira.openModal(this)">Create issue</button></header>
-    <form class="jql-bar" method="get" action="/issues/{{.Data.Project.Key}}">
-      <label class="sr-only" for="jql-query">Search issues with JQL</label>
-      <div class="jql-input"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg><input id="jql-query" name="jql" value="{{.Data.JQL}}" placeholder='Filter with JQL, for example: status = "In Progress"' autocomplete="off"></div>
-      <button type="submit" class="btn">Search</button>
-      {{if .Data.JQL}}<a class="btn" href="/issues/{{.Data.Project.Key}}">Clear</a>{{end}}
-    </form>
-    {{if .Data.JQL}}
-    <p class="muted jql-meta">
-      {{if .Data.JQLError}}<span class="error">{{.Data.JQLError}}</span>
-      {{else}}{{.Data.Total}} result{{if ne .Data.Total 1}}s{{end}} for <code>{{.Data.JQL}}</code>{{end}}
-    </p>
-    {{end}}
-    <div class="list-toolbar"><div><strong>{{.Data.Total}} work item{{if ne .Data.Total 1}}s{{end}}</strong><span class="muted">Ordered by key</span></div><span class="view-mode"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 6h13M7 12h13M7 18h13"/><circle cx="4" cy="6" r=".8"/><circle cx="4" cy="12" r=".8"/><circle cx="4" cy="18" r=".8"/></svg> List</span></div>
+    <header class="page-header"><div><span class="eyebrow">{{.Data.Project.Name}} · {{.Data.Project.Key}}</span><h1>All work</h1><p>Find and triage work without losing the issue context.</p></div><button type="button" class="btn btn-primary" hx-get="/issues/new" hx-target="#modal-root" hx-swap="innerHTML" onclick="zzira.openModal(this)">Create issue</button></header>
+    <section class="navigator-search" aria-labelledby="navigator-search-title">
+      <div class="navigator-search-heading"><h2 id="navigator-search-title">Search work</h2><div class="navigator-search-tools"><form class="saved-filter-picker" method="get" action="/issues/{{.Data.Project.Key}}"><label class="sr-only" for="saved-filter">Saved filter</label><select id="saved-filter" name="filter"><option value="">Saved filters</option>{{range .Data.Filters}}<option value="{{.ID}}" {{if eq .ID $.Data.ActiveFilter}}selected{{end}}>{{if .Favourite}}★ {{end}}{{.Name}}</option>{{end}}</select><button class="btn" type="submit">Open</button></form><nav class="search-mode" aria-label="Search mode"><a href="{{.Data.BasicURL}}" {{if eq .Data.Mode "basic"}}aria-current="page"{{end}}>Basic</a><a href="{{.Data.AdvancedURL}}" {{if eq .Data.Mode "advanced"}}aria-current="page"{{end}}>JQL</a></nav></div></div>
+      {{if eq .Data.Mode "advanced"}}
+      <form class="jql-bar" method="get" action="/issues/{{.Data.Project.Key}}">
+        <input type="hidden" name="mode" value="advanced">
+        <label class="sr-only" for="jql-query">Search issues with JQL</label>
+        <div class="jql-input"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg><input id="jql-query" name="jql" value="{{.Data.JQL}}" placeholder='For example: status = "In Progress" ORDER BY updated DESC' autocomplete="off" spellcheck="false" aria-describedby="jql-scope-hint"></div>
+        <button type="submit" class="btn btn-primary">Search</button>
+      </form>
+      <p class="field-hint" id="jql-scope-hint">This search is always limited to {{.Data.Project.Key}}.</p>
+      {{else}}
+      <form class="basic-search" method="get" action="/issues/{{.Data.Project.Key}}">
+        <input type="hidden" name="mode" value="basic"><input type="hidden" name="sort" value="{{.Data.Sort}}"><input type="hidden" name="direction" value="{{.Data.Direction}}">
+        <label class="basic-search-text" for="navigator-text"><span>Contains text</span><input id="navigator-text" type="search" name="text" value="{{.Data.Text}}" placeholder="Search summary or description"></label>
+        <label for="navigator-status"><span>Status</span><select id="navigator-status" name="status"><option value="">Any status</option>{{range .Data.Statuses}}<option value="{{.Name}}" {{if eq .Name $.Data.Status}}selected{{end}}>{{.Name}}</option>{{end}}</select></label>
+        <label for="navigator-assignee"><span>Assignee</span><select id="navigator-assignee" name="assignee"><option value="">Anyone</option><option value="currentUser()" {{if eq .Data.Assignee "currentUser()"}}selected{{end}}>Current user</option><option value="unassigned" {{if eq .Data.Assignee "unassigned"}}selected{{end}}>Unassigned</option>{{range .Data.Members}}<option value="{{.ID}}" {{if eq .ID $.Data.Assignee}}selected{{end}}>{{.DisplayName}}</option>{{end}}</select></label>
+        <div class="basic-search-actions"><button type="submit" class="btn btn-primary">Search</button><a class="btn" href="{{.Data.BasicURL}}">Clear</a></div>
+      </form>
+      {{end}}
+      {{if .Data.JQLError}}<p class="error navigator-error" role="alert">{{.Data.JQLError}}</p>{{end}}
+      {{if or .Data.Chips (not .Data.JQLError)}}<div class="navigator-filter-footer">{{if .Data.Chips}}<div class="filter-chips" role="group" aria-label="Active filters">{{range .Data.Chips}}<a href="{{.URL}}" aria-label="Remove {{.Label}} filter"><span>{{.Label}}</span><span aria-hidden="true">×</span></a>{{end}}</div>{{end}}{{if not .Data.JQLError}}<details class="save-search"><summary class="btn">Save search</summary><form method="post" action="/issues/{{.Data.Project.Key}}/filters"><label for="save-filter-name">Filter name</label><input id="save-filter-name" name="name" maxlength="255" required placeholder="For example: Release blockers"><input type="hidden" name="jql" value="{{.Data.SaveJQL}}"><button type="submit" class="btn btn-primary">Save filter</button></form></details>{{end}}</div>{{end}}
+    </section>
+    <div class="list-toolbar"><div><strong>{{.Data.Total}} work item{{if ne .Data.Total 1}}s{{end}}</strong>{{if .Data.ResultStart}}<span class="muted">Showing {{.Data.ResultStart}}–{{.Data.ResultEnd}}</span>{{end}}</div><div class="navigator-view-tools"><span class="view-mode"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 6h13M7 12h13M7 18h13"/><circle cx="4" cy="6" r=".8"/><circle cx="4" cy="12" r=".8"/><circle cx="4" cy="18" r=".8"/></svg> List</span><details class="column-picker"><summary class="btn">Columns</summary><fieldset><legend>Visible columns</legend><label><input type="checkbox" value="type" data-navigator-column checked> Type</label><label><input type="checkbox" value="status" data-navigator-column checked> Status</label><label><input type="checkbox" value="priority" data-navigator-column checked> Priority</label><label><input type="checkbox" value="assignee" data-navigator-column checked> Assignee</label><label><input type="checkbox" value="updated" data-navigator-column checked> Updated</label></fieldset></details></div></div>
+    <p class="sr-only" id="navigator-keyboard-help">Use J or Down Arrow for the next issue, K or Up Arrow for the previous issue, and O or Enter to open the selected issue.</p>
+    <div class="navigator-workbench" data-navigator tabindex="0" aria-label="Issue search results and preview" aria-describedby="navigator-keyboard-help">
     <div class="issue-table-wrap"><table class="issue-list">
       <caption class="sr-only">Issues in {{.Data.Project.Name}}</caption>
-      <thead><tr><th scope="col"><span class="sr-only">Type</span></th><th scope="col">Key</th><th scope="col">Summary</th><th scope="col">Status</th><th scope="col">Priority</th><th scope="col">Assignee</th></tr></thead>
+      <thead><tr><th scope="col" data-column="type"><span class="sr-only">Type</span></th><th scope="col" {{if eq .Data.Sort "key"}}aria-sort="{{if eq .Data.Direction "asc"}}ascending{{else}}descending{{end}}"{{end}}><a href="{{index .Data.SortURLs "key"}}">Key</a></th><th scope="col" {{if eq .Data.Sort "summary"}}aria-sort="{{if eq .Data.Direction "asc"}}ascending{{else}}descending{{end}}"{{end}}><a href="{{index .Data.SortURLs "summary"}}">Summary</a></th><th scope="col" data-column="status" {{if eq .Data.Sort "status"}}aria-sort="{{if eq .Data.Direction "asc"}}ascending{{else}}descending{{end}}"{{end}}><a href="{{index .Data.SortURLs "status"}}">Status</a></th><th scope="col" data-column="priority" {{if eq .Data.Sort "priority"}}aria-sort="{{if eq .Data.Direction "asc"}}ascending{{else}}descending{{end}}"{{end}}><a href="{{index .Data.SortURLs "priority"}}">Priority</a></th><th scope="col" data-column="assignee" {{if eq .Data.Sort "assignee"}}aria-sort="{{if eq .Data.Direction "asc"}}ascending{{else}}descending{{end}}"{{end}}><a href="{{index .Data.SortURLs "assignee"}}">Assignee</a></th><th scope="col" data-column="updated" {{if eq .Data.Sort "updated"}}aria-sort="{{if eq .Data.Direction "asc"}}ascending{{else}}descending{{end}}"{{end}}><a href="{{index .Data.SortURLs "updated"}}">Updated</a></th></tr></thead>
       <tbody>
         {{range .Data.Issues}}{{template "issue_list_row" .}}{{else}}
-        <tr><td colspan="6" class="empty"><div class="empty-state"><strong>{{if .Data.JQL}}No work matches this query{{else}}No work here yet{{end}}</strong><small>{{if .Data.JQL}}Try removing a filter or changing your JQL.{{else}}Create the first issue to start tracking work.{{end}}</small></div></td></tr>
+        <tr><td colspan="7" class="empty"><div class="empty-state"><strong>{{if .Data.JQLError}}Search could not run{{else}}No work matches these filters{{end}}</strong><small>{{if .Data.JQLError}}Correct the search above and try again.{{else}}Clear a filter or broaden the query.{{end}}</small></div></td></tr>
         {{end}}
       </tbody>
     </table></div>
+    <aside class="navigator-preview" id="navigator-preview" aria-label="Issue preview" aria-live="polite" aria-busy="false">{{if .Data.Selected}}{{template "issue_preview" .Data.Selected}}{{else}}<div class="empty-state"><strong>No issue selected</strong><small>Choose an issue to see its details here.</small></div>{{end}}</aside>
+    </div>
+    {{if gt .Data.PageCount 1}}<nav class="pagination" aria-label="Search results pages"><span>Page {{.Data.Page}} of {{.Data.PageCount}}</span><div>{{if .Data.PreviousURL}}<a class="btn" rel="prev" href="{{.Data.PreviousURL}}">Previous</a>{{else}}<span class="btn" aria-disabled="true">Previous</span>{{end}}{{if .Data.NextURL}}<a class="btn" rel="next" href="{{.Data.NextURL}}">Next</a>{{else}}<span class="btn" aria-disabled="true">Next</span>{{end}}</div></nav>{{end}}
   </main>
   </div>
   <div id="modal-root"></div>

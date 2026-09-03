@@ -179,6 +179,12 @@ func main() {
 	mux.HandleFunc("GET /issues/{key}", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.ProjectIssues(w, r, r.PathValue("key"))
 	})
+	mux.HandleFunc("POST /issues/{key}/filters", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.SaveNavigatorFilter(w, r, r.PathValue("key"))
+	})
+	mux.HandleFunc("GET /browse/{key}/preview", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.IssuePreview(w, r, r.PathValue("key"))
+	})
 	mux.HandleFunc("GET /browse/{key}", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.BrowseIssue(w, r, r.PathValue("key"))
 	})

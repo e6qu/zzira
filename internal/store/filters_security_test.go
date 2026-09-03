@@ -47,11 +47,19 @@ func TestFiltersAreWorkspaceScopedOwnedAndPerUserFavourites(t *testing.T) {
 		}
 	}()
 	filterID := NewID("flt")
+	favouriteFilterID := NewID("flt")
 	defer func() {
-		if _, err := st.Pool.Exec(ctx, `DELETE FROM filters WHERE id=$1`, filterID); err != nil {
+		if _, err := st.Pool.Exec(ctx, `DELETE FROM filters WHERE id IN ($1,$2)`, filterID, favouriteFilterID); err != nil {
 			t.Errorf("cleanup filter: %v", err)
 		}
 	}()
+	favouriteFilter, err := st.CreateFavouriteFilter(ctx, favouriteFilterID, workspaceID, "Starred on creation", `project = ZZ`, "", ownerID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !favouriteFilter.Favourite {
+		t.Fatal("new browser filter was not starred atomically")
+	}
 
 	if _, err := st.CreateFilter(ctx, filterID, workspaceID, "Owned filter", `project = ZZ`, "", ownerID); err != nil {
 		t.Fatal(err)

@@ -95,7 +95,7 @@ func (s *Store) IssuesByProject(ctx context.Context, workspaceID, projectID, use
 
 // Priorities lists the registry.
 func (s *Store) Priorities(ctx context.Context) ([]*models.Priority, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT id, name, COALESCE(icon_url,'') FROM priorities ORDER BY id`)
+	rows, err := s.Pool.Query(ctx, `SELECT id, name FROM priorities ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +103,7 @@ func (s *Store) Priorities(ctx context.Context) ([]*models.Priority, error) {
 	var out []*models.Priority
 	for rows.Next() {
 		p := &models.Priority{}
-		if err := rows.Scan(&p.ID, &p.Name, &p.ID); err != nil {
+		if err := rows.Scan(&p.ID, &p.Name); err != nil {
 			return nil, err
 		}
 		out = append(out, p)
