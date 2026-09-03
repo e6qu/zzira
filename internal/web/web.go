@@ -535,9 +535,17 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/signed-out", http.StatusSeeOther)
 }
 
+// signedOutData tells the template which sign-in control to offer: when
+// Shauth SSO is configured, /login only ever redirects straight through to
+// it (LoginForm), so the signed-out page's own control must say exactly
+// "Sign in with Shauth" and link there directly -- a generic "Log in" link
+// gives an anonymous caller (and Shauth's own SSO validator, which asserts
+// on that exact accessible name) no visible way back into the app.
+type signedOutData struct{ OIDCEnabled bool }
+
 func (h *Handler) SignedOut(w http.ResponseWriter, r *http.Request) {
 	authn.ClearSessionCookie(w)
-	writePage(w, "page_signed_out", map[string]string{})
+	writePage(w, "page_signed_out", signedOutData{OIDCEnabled: h.OIDC != nil})
 }
 
 // OIDCLogoutComplete is the registered post-logout redirect bridge Shauth

@@ -122,6 +122,48 @@ func TestValidationRendersTheAuthenticatedUsernameNotDisplayName(t *testing.T) {
 	}
 }
 
+// TestSignedOutOffersTheExactShauthSignInControlWhenOIDCIsConfigured covers
+// the other half of failing closed: reaching the signed-out page must leave a
+// real, visible way back in, not just an absent session. When Shauth SSO is
+// configured, LoginForm's own "/login" never renders anything -- it always
+// redirects straight through to "/auth/shauth" -- so the signed-out page's
+// own control is the only place that link can appear, and it must say
+// exactly "Sign in with Shauth": Shauth's SSO validator (and an anonymous
+// human) has nothing else to click otherwise.
+func TestSignedOutOffersTheExactShauthSignInControlWhenOIDCIsConfigured(t *testing.T) {
+	h := &Handler{OIDC: &OIDC{}}
+	req := httptest.NewRequest("GET", "/signed-out", nil)
+	rec := httptest.NewRecorder()
+	h.SignedOut(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("signed-out status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `href="/auth/shauth">Sign in with Shauth<`) {
+		t.Fatalf("signed-out page did not offer a \"Sign in with Shauth\" link to /auth/shauth: %s", body)
+	}
+}
+
+// Without SSO configured, the signed-out page must still offer ZZIRA's own
+// password login rather than linking to an OIDC entry point that does not
+// exist for this deployment.
+func TestSignedOutOffersLocalLoginWithoutOIDCConfigured(t *testing.T) {
+	h := &Handler{}
+	req := httptest.NewRequest("GET", "/signed-out", nil)
+	rec := httptest.NewRecorder()
+	h.SignedOut(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("signed-out status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `href="/login">Log in<`) {
+		t.Fatalf("signed-out page did not offer a local \"Log in\" link: %s", body)
+	}
+	if strings.Contains(body, "Sign in with Shauth") {
+		t.Fatalf("signed-out page offered Shauth sign-in without OIDC configured: %s", body)
+	}
+}
+
 func TestBackChannelLogoutNotFoundWithoutOIDCConfigured(t *testing.T) {
 	h := &Handler{}
 	req := httptest.NewRequest("POST", "/auth/shauth/backchannel-logout", nil)

@@ -586,7 +586,11 @@
   <main class="login-card">
     <span class="logo-mark" aria-hidden="true">Z</span><h1>Signed out</h1>
     <p>You have been signed out of ZZIRA.</p>
+    {{if .OIDCEnabled}}
+    <a class="btn btn-primary btn-block" href="/auth/shauth">Sign in with Shauth</a>
+    {{else}}
     <a class="btn btn-primary btn-block" href="/login">Log in</a>
+    {{end}}
   </main>
 </body>
 </html>
