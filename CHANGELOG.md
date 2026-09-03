@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/e6qu/zzira/compare/v0.6.0...v0.7.0) (2026-09-03)
+
+
+### Features
+
+* complete Jira-style issue navigator ([725d13c](https://github.com/e6qu/zzira/commit/725d13c43b07956ce736d097f02f59c76647ba79))
+
 ## [0.6.0](https://github.com/e6qu/zzira/compare/v0.5.0...v0.6.0) (2026-09-03)
 
 
