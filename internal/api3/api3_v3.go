@@ -228,7 +228,9 @@ func (h *Handler) attachmentMeta(w http.ResponseWriter, r *http.Request, id stri
 			return
 		}
 		if _, err := h.Commands.DeleteAttachment(r.Context(), userID, wsID, id); err != nil {
-			log.Printf("attachment delete: %v", err)
+			// The command error can contain request-derived identifiers. Keep the
+			// failure observable without allowing forged log lines.
+			log.Print("attachment delete failed after authorization")
 			jiraError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
