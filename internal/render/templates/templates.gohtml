@@ -559,19 +559,36 @@
 {{/* The Shauth SSO validator (and any other relying-party auth check) loads
      this page after login and asserts against the data-testid markers below.
      It carries no form action beyond signing out, so it needs no CSRF token. */}}
+{{/* This page's CSP (set alongside the handler that serves it) is
+     default-src 'none'; style-src 'unsafe-inline' -- deliberately locked down
+     since it discloses a live session's identity. It must never pull in the
+     shared "head" template's external stylesheets, WASM, and scripts; the
+     browser blocks all of them under that policy, which used to leave
+     data-testid="validation-username" populated in the DOM but the page
+     visually and functionally broken for anything depending on those assets. */}}
 {{define "page_validation"}}
 <!doctype html>
 <html lang="en">
-<head><title>Authenticated · ZZIRA</title>{{template "head" .}}</head>
-<body class="login-body">
-  <main class="login-card">
-    <span class="logo-mark" aria-hidden="true">Z</span><h1>ZZIRA is authenticated</h1>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Authenticated · ZZIRA</title>
+<style>
+  body { font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 28rem; margin: 3rem auto; padding: 0 1rem; }
+  dt { font-weight: 600; margin-top: .75rem; }
+  dd { margin: 0; }
+  button { margin-top: 1.5rem; font: inherit; padding: .5rem 1rem; }
+</style>
+</head>
+<body>
+  <main>
+    <h1>ZZIRA is authenticated</h1>
     <p>Your ZZIRA browser session is active.</p>
-    <dl class="validation-identity">
-      <dt>Username</dt><dd data-testid="validation-username">{{.DisplayName}}</dd>
+    <dl>
+      <dt>Username</dt><dd data-testid="validation-username">{{.Username}}</dd>
       <dt>Email</dt><dd data-testid="validation-email">{{.Email}}</dd>
     </dl>
-    <form method="post" action="/logout"><button class="btn btn-primary btn-block" type="submit">Sign out</button></form>
+    <form method="post" action="/logout"><button type="submit">Sign out</button></form>
   </main>
 </body>
 </html>
