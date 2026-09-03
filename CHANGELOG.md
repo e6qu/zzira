@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.0](https://github.com/e6qu/zzira/compare/v0.5.0...v0.6.0) (2026-09-03)
+
+
+### Features
+
+* redesign Jira workspace and harden accessibility ([b75afbf](https://github.com/e6qu/zzira/commit/b75afbf3172dbe4461385e81775f0e057fa307f3))
+
+
+### Bug Fixes
+
+* address CodeQL review findings ([7380386](https://github.com/e6qu/zzira/commit/7380386314c9ebbd73f240138d47e29a1faf5d4d))
+* harden security, sync, and offline reliability ([84d1a5a](https://github.com/e6qu/zzira/commit/84d1a5a30ffea09709891f1df7b4b3363345cf34))
+
 ## [0.5.0](https://github.com/e6qu/zzira/compare/v0.4.0...v0.5.0) (2026-09-01)
 
 
