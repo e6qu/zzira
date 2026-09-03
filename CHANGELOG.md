@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.11.0](https://github.com/e6qu/zzira/compare/v0.10.0...v0.11.0) (2026-09-03)
+
+
+### Features
+
+* add backlog and sprint planning journey ([e382cfb](https://github.com/e6qu/zzira/commit/e382cfbf39320cada72c73741d7fdc07e6161d66))
+* add backlog and sprint planning journey ([42a0571](https://github.com/e6qu/zzira/commit/42a0571243d239d7393a0e30e7e1bb0afe3fb8cb))
+
+
+### Bug Fixes
+
+* omit user data from backlog logs ([cd3268a](https://github.com/e6qu/zzira/commit/cd3268ae348b74348406b90c5124e6a0b8209537))
+* sanitize backlog log values ([9bd3e80](https://github.com/e6qu/zzira/commit/9bd3e80839c20d10386636c5e18360ab1f4ed42b))
+
 ## [0.10.0](https://github.com/e6qu/zzira/compare/v0.9.0...v0.10.0) (2026-09-03)
 
 
