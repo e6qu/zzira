@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.10.0](https://github.com/e6qu/zzira/compare/v0.9.0...v0.10.0) (2026-09-03)
+
+
+### Features
+
+* add project people and workflow journeys ([317a49b](https://github.com/e6qu/zzira/commit/317a49b2a5e6f239697c61d2497e9b8b38d1be3b))
+
+
+### Bug Fixes
+
+* validate final OIDC redirect targets ([1e2f6c3](https://github.com/e6qu/zzira/commit/1e2f6c31fbf983bb68a61ce61f6c78015f1c2075))
+
 ## [0.9.0](https://github.com/e6qu/zzira/compare/v0.8.0...v0.9.0) (2026-09-03)
 
 
