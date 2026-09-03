@@ -23,6 +23,7 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/e6qu/zzira/internal/authn"
+	"github.com/e6qu/zzira/internal/build"
 	"github.com/e6qu/zzira/internal/store"
 )
 
@@ -283,6 +284,7 @@ func (h *Handler) OIDCCallback(w http.ResponseWriter, r *http.Request) {
 		PreferredUsername string `json:"preferred_username"`
 		SID               string `json:"sid"`
 		AuthorizedParty   string `json:"azp"`
+		Role              string `json:"role"`
 	}
 	if err := idToken.Claims(&claims); err != nil || idToken.Subject == "" || !claims.EmailVerified ||
 		!validOIDCAuthorizedParty(idToken.Audience, claims.AuthorizedParty, h.OIDC.config.ClientID) ||
@@ -313,6 +315,12 @@ func (h *Handler) OIDCCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	if username := strings.TrimSpace(claims.PreferredUsername); username != "" {
 		if err := h.Store.SetOIDCUsername(r.Context(), userID, username); err != nil {
+			http.Error(w, "could not create sign-in session", http.StatusInternalServerError)
+			return
+		}
+	}
+	if role := strings.TrimSpace(claims.Role); role != "" {
+		if err := h.Store.SetOIDCRole(r.Context(), userID, role); err != nil {
 			http.Error(w, "could not create sign-in session", http.StatusInternalServerError)
 			return
 		}
@@ -354,6 +362,17 @@ func validOIDCAuthorizedParty(audience []string, authorizedParty, clientID strin
 // signed-out page rather than back into the sign-in flow: redirecting to
 // /auth/shauth on an absent session would silently re-enter the flow and
 // read as "remained authenticated" to a caller checking for that redirect.
+// validationPageData is deliberately its own type, not models.User: the
+// identity provider's role claim and this build's release revision are
+// validation-contract concerns, not Jira-API-shaped user data the shared
+// renderer/wasm-client model carries elsewhere.
+type validationPageData struct {
+	Username string
+	Email    string
+	Role     string
+	Release  string
+}
+
 func (h *Handler) Validation(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	user := h.currentUser(r)
@@ -361,10 +380,20 @@ func (h *Handler) Validation(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/signed-out", http.StatusFound)
 		return
 	}
+	role, err := h.Store.OIDCRole(r.Context(), user.ID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	writePage(w, "page_validation", user)
+	writePage(w, "page_validation", validationPageData{
+		Username: user.Username,
+		Email:    user.Email,
+		Role:     role,
+		Release:  build.Version,
+	})
 }
 
 const (

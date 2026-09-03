@@ -16,6 +16,7 @@ import (
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/e6qu/zzira/internal/authn"
+	"github.com/e6qu/zzira/internal/build"
 	"github.com/e6qu/zzira/internal/store"
 	jose "github.com/go-jose/go-jose/v4"
 )
@@ -134,17 +135,25 @@ func TestValidationRedirectsAnonymousCallerToSignedOut(t *testing.T) {
 	}
 }
 
-// TestValidationRendersTheAuthenticatedUsernameNotDisplayName covers the page
-// Shauth (and equivalent SSO validators) load after login to confirm the
-// identity a session actually carries: data-testid="validation-username" must
-// hold the account's login handle, not an arbitrary display name -- a real
-// person's display name and an OIDC provider's preferred_username routinely
-// differ, and a validator comparing this field against the identity it just
-// authenticated needs the handle. The page's CSP (default-src 'none';
+// TestValidationRendersTheFullIdentityContract covers the page Shauth (and
+// equivalent SSO validators) load after login to confirm the identity a
+// session actually carries. Shauth's validator asserts on all four of
+// data-testid="validation-username", "validation-email", "validation-role",
+// and "validation-release" (see e6qu/shauth validator/validate.mjs
+// assertValidationIdentity) -- a page exposing only two of the four still
+// fails every check, exactly as this page did before validation-role and
+// validation-release existed at all. Username must hold the account's login
+// handle, not an arbitrary display name -- a real person's display name and
+// an OIDC provider's preferred_username routinely differ, and a validator
+// comparing this field against the identity it just authenticated needs the
+// handle. Role must hold the identity provider's role claim, not ZZIRA's own
+// workspace membership role -- they are different axes. Release must hold
+// this build's own version, matching what the identity provider's catalog
+// has registered for this deployment. The page's CSP (default-src 'none';
 // style-src 'unsafe-inline') must also never depend on the shared app-shell
 // template's external stylesheets, WASM, or scripts, since the browser blocks
 // all of them under that policy.
-func TestValidationRendersTheAuthenticatedUsernameNotDisplayName(t *testing.T) {
+func TestValidationRendersTheFullIdentityContract(t *testing.T) {
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	if dsn == "" {
 		t.Skip("TEST_DATABASE_URL not set")
@@ -165,6 +174,9 @@ func TestValidationRendersTheAuthenticatedUsernameNotDisplayName(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := st.SetOIDCUsername(ctx, userID, "shauth-validator-2"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetOIDCRole(ctx, userID, "developer"); err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
@@ -192,6 +204,15 @@ func TestValidationRendersTheAuthenticatedUsernameNotDisplayName(t *testing.T) {
 	}
 	if strings.Contains(body, "Arbitrary Display Name") {
 		t.Fatalf("validation page rendered the display name instead of the username: %s", body)
+	}
+	if !strings.Contains(body, `data-testid="validation-email">`+email+`<`) {
+		t.Fatalf("validation-email did not render the account email: %s", body)
+	}
+	if !strings.Contains(body, `data-testid="validation-role">developer<`) {
+		t.Fatalf("validation-role did not render the identity provider's role claim: %s", body)
+	}
+	if !strings.Contains(body, `data-testid="validation-release">`+build.Version+`<`) {
+		t.Fatalf("validation-release did not render this build's version (%s): %s", build.Version, body)
 	}
 	for _, blocked := range []string{"/static/css/tokens.css", "/static/htmx/htmx.min.js", "/static/wasm/wasm_exec.js", "/static/app.js", "/static/zzira-worker.wasm", "/static/sqlite/sqlite3.wasm"} {
 		if strings.Contains(body, blocked) {
