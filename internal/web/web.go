@@ -655,7 +655,13 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 			query.Set("id_token_hint", idToken)
 			query.Set("post_logout_redirect_uri", h.OIDC.postLogoutRedirectURL)
 			logoutURL.RawQuery = query.Encode()
-			http.Redirect(w, r, logoutURL.String(), http.StatusSeeOther)
+			target := logoutURL.String()
+			if err := validOIDCEndpointURL(target); err != nil {
+				log.Printf("OIDC end-session redirect: %v", err)
+				http.Redirect(w, r, "/signed-out", http.StatusSeeOther)
+				return
+			}
+			http.Redirect(w, r, target, http.StatusSeeOther) // #nosec G710 -- final URL is HTTPS/loopback validated above; cross-origin IdP logout is intentional.
 			return
 		}
 	}
