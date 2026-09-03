@@ -39,14 +39,6 @@ type backlogPageData struct {
 	Error    string
 }
 
-// sanitizeLogValue keeps untrusted route, form, and database values on a
-// single physical log line. Escaping rather than dropping the separators also
-// preserves enough context to diagnose validation and storage failures.
-func sanitizeLogValue(value string) string {
-	value = strings.ReplaceAll(value, "\r", `\r`)
-	return strings.ReplaceAll(value, "\n", `\n`)
-}
-
 func backlogRows(issues []*models.Issue, boardID, sprintID string, sprints []*models.Sprint) []backlogIssueRow {
 	rows := make([]backlogIssueRow, len(issues))
 	for index, issue := range issues {
@@ -135,7 +127,7 @@ func (h *Handler) BacklogPage(w http.ResponseWriter, r *http.Request, boardID st
 	}
 	data, err := h.buildBacklogData(r, user, board)
 	if err != nil {
-		log.Printf("backlog %s: %s", sanitizeLogValue(boardID), sanitizeLogValue(err.Error()))
+		log.Print("backlog: build failed")
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -173,7 +165,7 @@ func (h *Handler) CreateBacklogSprint(w http.ResponseWriter, r *http.Request, bo
 		return
 	}
 	if _, err := h.Commands.CreateSprint(r.Context(), user.ID, wsID, boardID, name, goal); err != nil {
-		log.Printf("create sprint on %s: %s", sanitizeLogValue(boardID), sanitizeLogValue(err.Error()))
+		log.Print("backlog: create sprint failed")
 		redirectBacklog(w, r, boardID, "The sprint could not be created.")
 		return
 	}
@@ -227,7 +219,7 @@ func (h *Handler) UpdateBacklogSprint(w http.ResponseWriter, r *http.Request, bo
 		return
 	}
 	if err != nil {
-		log.Printf("update sprint %s: %s", sanitizeLogValue(sprintID), sanitizeLogValue(err.Error()))
+		log.Print("backlog: update sprint failed")
 		redirectBacklog(w, r, boardID, "The sprint could not be updated.")
 		return
 	}
@@ -245,7 +237,7 @@ func (h *Handler) MoveBacklogIssue(w http.ResponseWriter, r *http.Request, board
 	err := h.Commands.PlanIssue(r.Context(), user.ID, wsID, boardID, r.PostFormValue("issue"),
 		r.PostFormValue("sprint"), r.PostFormValue("before"), r.PostFormValue("after"))
 	if err != nil {
-		log.Printf("plan issue on board %s: %s", sanitizeLogValue(boardID), sanitizeLogValue(err.Error()))
+		log.Print("backlog: plan issue failed")
 		redirectBacklog(w, r, boardID, "The work item could not be moved.")
 		return
 	}
