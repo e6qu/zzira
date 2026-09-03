@@ -1,33 +1,40 @@
 
 <div class="issue-view" id="issue-root" data-issue-id="iss_abc123" data-issue-key="ZZ-1" data-seq="0">
-  <div class="issue-breadcrumbs">
-    <a href="/issues/ZZ">ZZ</a> / ZZ-1
-  </div>
-  <div class="issue-transitions">
-    
-    
-    <button type="button" class="btn" onclick="zzira.openEdit('ZZ-1')">Edit</button>
-    <button type="button" class="btn btn-danger" hx-delete="/issues/ZZ-1"
-            hx-confirm="Delete ZZ-1?" hx-redirect="/issues/ZZ">Delete</button>
-    
-  </div>
+  <nav class="issue-breadcrumbs" aria-label="Breadcrumb">
+    <a href="/issues/ZZ">Projects</a><span aria-hidden="true">/</span><a href="/issues/ZZ">ZZ</a><span aria-hidden="true">/</span><span aria-current="page">ZZ-1</span>
+  </nav>
+  <header class="issue-header">
+    <div class="issue-heading">
+      <span class="issue-type-glyph" aria-hidden="true">✓</span>
+      <div><span class="eyebrow">ZZ-1 · Task</span><h1 class="issue-summary" data-field="summary">Walking skeleton comes online</h1></div>
+    </div>
+    <div class="issue-transitions" role="group" aria-label="Issue actions">
+
+
+      <button type="button" class="btn" id="edit-issue-button" onclick="zzira.openEdit('ZZ-1', this)">Edit</button>
+      <details class="more-menu"><summary class="btn" aria-label="More issue actions">•••</summary><div><button type="button" class="menu-danger" hx-delete="/issues/ZZ-1" hx-confirm="Delete ZZ-1?" hx-redirect="/issues/ZZ">Delete issue</button></div></details>
+
+    </div>
+  </header>
   <div class="issue-main">
     <div class="issue-primary">
-      <h1 class="issue-summary" data-field="summary">Walking skeleton comes online</h1>
-      <section class="issue-description" data-field="description">
-        <p>First issue created through the Jira API.</p>
+      <section class="issue-section issue-description" data-field="description">
+        <div class="section-heading"><h2>Description</h2></div>
+        <div class="description-text"><p>First issue created through the Jira API.</p></div>
       </section>
 
-      <section class="issue-comments">
-        <h2>Comments</h2>
+      <div class="activity-heading"><div><span class="eyebrow">Timeline</span><h2>Activity</h2></div><nav aria-label="Activity sections"><a href="#comments-list">Comments</a><a href="#worklogs-list">Work log</a><a href="#history-list">History</a></nav></div>
+
+      <section class="issue-section issue-comments">
+        <div class="section-heading"><h3>Comments <span class="section-count">0</span></h3></div>
         <div id="comments-list">
           
-          <p class="muted">No comments yet.</p>
+          <div class="empty-state"><span aria-hidden="true">💬</span><strong>No comments yet</strong><small>Start the conversation with context or a question.</small></div>
           
         </div>
         
         <form class="comment-form" method="post" action="/issues/ZZ-1/comments" hx-post="/issues/ZZ-1/comments" hx-target="#issue-root" hx-swap="outerHTML">
-          <div class="editor-toolbar" role="toolbar" aria-label="Comment formatting" data-editor-toolbar>
+          <div class="editor-toolbar" role="group" aria-label="Comment formatting" data-editor-toolbar>
             <button type="button" data-cmd="bold" aria-label="Bold"><strong aria-hidden="true">B</strong></button>
             <button type="button" data-cmd="italic" aria-label="Italic"><em aria-hidden="true">I</em></button>
             <button type="button" data-cmd="insertUnorderedList" aria-label="Bullet list"><span aria-hidden="true">&bull;&equiv;</span></button>
@@ -37,32 +44,32 @@
           <div id="comment-editor" class="rich-editor" contenteditable="true" role="textbox" aria-multiline="true" aria-labelledby="comment-editor-label" data-rich-editor data-target-name="adf"
                data-placeholder="Add a comment…"></div>
           <input type="hidden" name="adf">
-          <button type="submit" class="btn btn-primary">Comment</button>
+          <div class="form-actions"><small class="muted">Use the toolbar to format your update.</small><button type="submit" class="btn btn-primary">Add comment</button></div>
         </form>
         
       </section>
 
-      <section class="issue-attachments">
-        <h2>Attachments</h2>
+      <section class="issue-section issue-attachments">
+        <div class="section-heading"><h3>Attachments <span class="section-count">0</span></h3></div>
         <div id="attachments-list">
           
-          <p class="muted">No attachments.</p>
+          <p class="muted">No attachments added.</p>
           
         </div>
         
         <form class="upload-form" method="post" action="/issues/ZZ-1/attachments" enctype="multipart/form-data">
           <label class="sr-only" for="attachment-file">Choose attachment</label>
           <input id="attachment-file" type="file" name="file" required>
-          <button type="submit" class="btn">Upload</button>
+          <button type="submit" class="btn">Attach file</button>
         </form>
         
       </section>
 
-      <section class="issue-worklogs">
-        <h2>Worklog</h2>
+      <section class="issue-section issue-worklogs">
+        <div class="section-heading"><h3>Work log <span class="section-count">0</span></h3></div>
         <div id="worklogs-list">
           
-          <p class="muted">No time logged.</p>
+          <p class="muted">No time logged yet.</p>
           
         </div>
         
@@ -71,34 +78,34 @@
           <input id="worklog-seconds" name="seconds" type="number" min="1" placeholder="Seconds" required class="worklog-seconds">
           <label class="sr-only" for="worklog-comment">Work description</label>
           <input id="worklog-comment" name="comment" placeholder="What did you work on? (optional)" class="worklog-comment">
-          <button type="submit" class="btn btn-primary">Log work</button>
+          <button type="submit" class="btn">Log time</button>
         </form>
         
       </section>
 
-      <section class="issue-history">
-        <h2>History</h2>
+      <section class="issue-section issue-history" id="history-list">
+        <div class="section-heading"><h3>History <span class="section-count">0</span></h3></div>
         
         <p class="muted">No changes recorded.</p>
         
       </section>
     </div>
-    <aside class="issue-details">
+    <aside class="issue-details" aria-label="Issue details">
+      <div class="details-heading"><h2>Details</h2><span class="lozenge lozenge-default">To Do</span></div>
       <dl>
-        <dt>Status</dt>
-        <dd><span class="lozenge lozenge-default">To Do</span></dd>
         <dt>Type</dt>
-        <dd>Task</dd>
-        <dt>Priority</dt><dd>Medium</dd>
+        <dd><span class="field-value"><span class="issue-type-mini" aria-hidden="true">✓</span>Task</span></dd>
+        <dt>Priority</dt><dd><span class="field-value"><span class="priority-icon" aria-hidden="true">=</span>Medium</span></dd>
         <dt>Assignee</dt>
-        <dd>
-<span class="avatar" role="img" aria-label="Demo User"><span aria-hidden="true">DU</span></span>
-</dd>
+        <dd><span class="person-value">
+<span class="avatar" aria-hidden="true"><span>DU</span></span>
+<span>Demo User</span></span></dd>
         <dt>Reporter</dt>
-        <dd>
-<span class="avatar" role="img" aria-label="Demo User"><span aria-hidden="true">DU</span></span>
-</dd>
+        <dd><span class="person-value">
+<span class="avatar" aria-hidden="true"><span>DU</span></span>
+<span>Demo User</span></span></dd>
       </dl>
+      <div class="details-meta"><span>Updated</span><time datetime="2026-08-28T09:00:00Z">2026-08-28T09:00:00Z</time></div>
     </aside>
   </div>
 </div>

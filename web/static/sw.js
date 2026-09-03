@@ -1,6 +1,6 @@
 // ZZIRA service worker: cache-first for static assets, network-first with
 // cache fallback for page navigations (offline reload support for V0).
-const CACHE = 'zzira-v4';
+const CACHE = 'zzira-v6';
 const STATIC_PREFIX = '/static/';
 
 self.addEventListener('install', (event) => self.skipWaiting());

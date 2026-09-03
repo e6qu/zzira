@@ -47,7 +47,7 @@ func (h *Handler) BoardPage(w http.ResponseWriter, r *http.Request, id string) {
 			StatusID: st, Name: s.Name, Category: s.Category, Issues: columns[st],
 		})
 	}
-	writePage(w, "page_board", pageData{User: user, Data: boardData})
+	writePage(w, "page_board", pageData{User: user, Data: boardData, Active: "board"})
 }
 
 // BoardFragment serves GET /board/{id}/fragment — the live-swap region.

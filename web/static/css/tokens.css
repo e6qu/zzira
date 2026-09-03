@@ -450,7 +450,6 @@ a { text-underline-offset: 0.15em; }
   margin-bottom: calc(var(--ds-space) * 2);
   cursor: grab;
 }
-.board-card[aria-pressed="true"] { outline: 3px solid var(--ds-focus); cursor: grabbing; }
 .board-card-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
 .board-card-top a { color: var(--ds-primary); text-decoration: none; font-size: 12px; }
 .board-card-summary { font-size: 13px; }

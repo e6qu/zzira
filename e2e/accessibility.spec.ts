@@ -15,44 +15,175 @@ async function expectNoWCAGViolations(page: Page) {
   await page.addScriptTag({ content: axe.source });
   const violations = await page.evaluate(async () => {
     const result = await (window as any).axe.run(document, {
-      runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'] },
+      runOnly: {
+        type: 'tag',
+        values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'],
+      },
     });
     return result.violations.map((violation: any) => ({
       id: violation.id,
+      impact: violation.impact,
       help: violation.help,
-      nodes: violation.nodes.map((node: any) => node.target),
+      nodes: violation.nodes.map((node: any) => ({
+        target: node.target,
+        failureSummary: node.failureSummary,
+      })),
     }));
   });
   expect(violations).toEqual([]);
 }
 
-test('accessible login, navigation, dialog, and dark theme', async ({ page }) => {
+async function firstIssueHref(page: Page) {
+  await page.goto('/issues/ZZ');
+  const href = await page.locator('.issue-list .key-cell a').first().getAttribute('href');
+  expect(href).toMatch(/^\/browse\/ZZ-/);
+  return href!;
+}
+
+test('WCAG A/AA: every primary page passes axe in light and dark themes', async ({ page }) => {
   await page.goto('/login');
+  await expect(page).toHaveTitle('Log in · ZZIRA');
+  await expect(page.locator('h1')).toHaveCount(1);
   await expectNoWCAGViolations(page);
 
   await login(page);
-  await expectNoWCAGViolations(page);
-  await expect(page.locator('.workspace-nav')).toHaveAttribute('aria-label', 'Workspace navigation');
-  await expect(page.getByRole('link', { name: 'Your work' })).toBeVisible();
-  await page.locator('.user-menu summary').click();
-  await expect(page.getByRole('button', { name: 'Log out' })).toBeVisible();
-  await expectNoWCAGViolations(page);
-  await page.locator('.user-menu summary').click();
+  const issueHref = await firstIssueHref(page);
+  const pages = ['/', '/dashboard', '/issues/ZZ', '/board/brd_default', issueHref];
 
-  const toggle = page.locator('[data-theme-toggle]');
-  await expect(toggle).toHaveAttribute('aria-label', 'Switch to dark mode');
-  await toggle.click();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  await expect(toggle).toHaveAttribute('aria-label', 'Switch to light mode');
-  await expectNoWCAGViolations(page);
+  for (const path of pages) {
+    await page.goto(path);
+    await expect(page.locator('h1')).toHaveCount(1);
+    await expect(page).not.toHaveTitle('ZZIRA');
+    await expectNoWCAGViolations(page);
 
-  await page.click('.header-create');
-  const dialog = page.locator('[role=dialog]');
+    const toggle = page.locator('[data-theme-toggle]');
+    if (await toggle.getAttribute('aria-pressed') === 'false') await toggle.click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await expectNoWCAGViolations(page);
+  }
+});
+
+test('ARIA dialog pattern: inert background, contained focus, Escape, and focus return', async ({ page }) => {
+  await login(page);
+  const trigger = page.locator('.header-create');
+  await trigger.click();
+
+  const dialog = page.getByRole('dialog', { name: 'Create issue' });
   await expect(dialog).toBeVisible();
   await expect(page.locator('#create-summary')).toBeFocused();
+  await expect(page.locator('.app-shell')).toHaveJSProperty('inert', true);
+  await expect(page.locator('.global-header')).toHaveJSProperty('inert', true);
   await expectNoWCAGViolations(page);
+
+  for (let index = 0; index < 12; index += 1) {
+    await page.keyboard.press('Tab');
+    expect(await page.evaluate(() =>
+      document.querySelector('[role="dialog"]')?.contains(document.activeElement),
+    )).toBe(true);
+  }
 
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
-  await expect(page.locator('.header-create')).toBeFocused();
+  await expect(trigger).toBeFocused();
+  await expect(page.locator('.app-shell')).toHaveJSProperty('inert', false);
+});
+
+test('dynamic menus, validation errors, and edit dialog remain accessible', async ({ page }) => {
+  await page.goto('/login');
+  await page.fill('#login-email', DEMO.email);
+  await page.fill('#login-password', 'not-the-password');
+  await page.click('button[type=submit]');
+  await expect(page.getByRole('alert')).toBeVisible();
+  await expectNoWCAGViolations(page);
+
+  await login(page);
+  await page.locator('.user-menu summary').click();
+  await expect(page.getByRole('button', { name: 'Log out' })).toBeVisible();
+  await expectNoWCAGViolations(page);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.user-menu')).not.toHaveAttribute('open', '');
+  await expect(page.locator('.user-menu summary')).toBeFocused();
+
+  const issueHref = await firstIssueHref(page);
+  await page.goto(issueHref);
+  const edit = page.getByRole('button', { name: 'Edit', exact: true });
+  await edit.click();
+  await expect(page.getByRole('dialog', { name: 'Edit issue' })).toBeVisible();
+  await expect(page.locator('#edit-summary')).toBeFocused();
+  await expect(page.locator('.app-shell')).toHaveJSProperty('inert', true);
+  await expectNoWCAGViolations(page);
+  await page.keyboard.press('Escape');
+  await expect(edit).toBeFocused();
+});
+
+test('keyboard navigation: skip link, active location, and responsive sidebar state', async ({ page }) => {
+  await login(page);
+  await page.goto('/dashboard');
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('link', { name: 'Skip to content' })).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#main-content')).toBeFocused();
+  await expect(page.getByRole('link', { name: 'Your work' })).toHaveAttribute('aria-current', 'page');
+
+  await page.setViewportSize({ width: 320, height: 720 });
+  const sidebar = page.locator('#workspace-navigation');
+  const toggle = page.locator('[data-nav-toggle]');
+  await expect(sidebar).toHaveJSProperty('inert', true);
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await toggle.click();
+  await expect(sidebar).toHaveJSProperty('inert', false);
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await page.keyboard.press('Escape');
+  await expect(sidebar).toHaveJSProperty('inert', true);
+  await expect(toggle).toBeFocused();
+
+  const viewportDoesNotOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1,
+  );
+  expect(viewportDoesNotOverflow).toBe(true);
+  await expectNoWCAGViolations(page);
+});
+
+test('board cards expose keyboard and non-drag movement controls without nested controls', async ({ page }) => {
+  await login(page);
+  await page.goto('/board/brd_default');
+
+  const card = page.locator('.board-card').first();
+  const moveButton = card.locator('[data-card-drag]');
+  await expect(card).toHaveAttribute('aria-labelledby', /board-card-title-/);
+  await expect(moveButton).toHaveAttribute('aria-describedby', 'board-keyboard-help');
+  await moveButton.focus();
+  await page.keyboard.press('Space');
+  await expect(moveButton).toHaveAttribute('aria-pressed', 'true');
+  await expect(card).toHaveClass(/is-grabbed/);
+  await page.keyboard.press('Space');
+  await expect(moveButton).toHaveAttribute('aria-pressed', 'false');
+
+  await card.locator('.board-card-move summary').click();
+  await expect(card.getByRole('button', { name: 'Move to next status' })).toBeVisible();
+  const nestedInteractive = await card.evaluate((node) =>
+    Array.from(node.querySelectorAll('a,button,summary')).filter((control) =>
+      control.querySelector('a,button,summary'),
+    ).length,
+  );
+  expect(nestedInteractive).toBe(0);
+  await expectNoWCAGViolations(page);
+});
+
+test('controls meet WCAG 2.2 minimum target size', async ({ page }) => {
+  await login(page);
+  for (const path of ['/', '/issues/ZZ', '/board/brd_default']) {
+    await page.goto(path);
+    const undersized = await page.locator('button, input, select, textarea, summary, .workspace-nav a').evaluateAll((nodes) =>
+      nodes.flatMap((node) => {
+        const rect = node.getBoundingClientRect();
+        const style = getComputedStyle(node);
+        if (style.display === 'none' || style.visibility === 'hidden' || (node as HTMLElement).inert) return [];
+        return rect.width < 24 || rect.height < 24
+          ? [{ element: node.outerHTML.slice(0, 160), width: rect.width, height: rect.height }]
+          : [];
+      }),
+    );
+    expect(undersized).toEqual([]);
+  }
 });

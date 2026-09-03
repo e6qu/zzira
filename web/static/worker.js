@@ -41,7 +41,7 @@ importScripts('/static/sqlite/sqlite3.js', '/static/wasm/wasm_exec.js');
     // The Go command runtime is a required part of the local-first client.
     // Start loading it alongside SQLite so an immediate offline transition
     // cannot interrupt a later, serial fetch after the page is usable.
-    const goWasm = requiredAsset('/static/zzira-worker.wasm', 'go worker wasm');
+    const goWasm = requiredAsset('/static/zzira-worker.wasm?v=2', 'go worker wasm');
     const sqlite3 = await sqlite3InitModule({
       instantiateWasm(info, receive) {
         (async () => {
@@ -69,9 +69,12 @@ importScripts('/static/sqlite/sqlite3.js', '/static/wasm/wasm_exec.js');
         });
         break;
       } catch (err) {
-        if (attempt >= 3) throw err;
+        // Chromium can take a moment to release OPFS access handles after a
+        // tab or test context closes. The pool is still required, so retry
+        // explicitly instead of falling through to a non-local replica.
+        if (attempt >= 12) throw err;
         boot('boot: pool install retry ' + attempt + ' (' + (err?.message ?? err) + ')');
-        await new Promise(r => setTimeout(r, 500 * attempt));
+        await new Promise(r => setTimeout(r, 500));
       }
     }
     sqlite3.oo1.OpfsSAHDb = pool.OpfsSAHPoolDb;
