@@ -108,7 +108,7 @@
     });
     document.addEventListener('pointerdown', (event) => {
       const target = event.target;
-      document.querySelectorAll('details.user-menu[open], details.more-menu[open], details.column-picker[open], details.save-search[open], details.board-card-move[open]').forEach((details) => {
+      document.querySelectorAll('details.user-menu[open], details.more-menu[open], details.column-picker[open], details.save-search[open], details.board-card-move[open], details.backlog-item-menu[open], details.create-sprint[open], details.edit-sprint[open], details.start-sprint[open]').forEach((details) => {
         if (!(target instanceof Node) || !details.contains(target)) details.open = false;
       });
     });

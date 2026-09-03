@@ -23,6 +23,9 @@ baseline and regression policy, not a third-party accessibility certification.
 - Board cards avoid nested interactive roles. A dedicated move button supports
   keyboard pickup/arrow/drop, while a native disclosure provides up, down,
   previous-status, and next-status actions without dragging.
+- Backlog planning uses native disclosure sections and forms; every move and
+  rank operation has a non-drag control, sprint lifecycle controls have
+  programmatic labels, and issue previews update a named complementary region.
 - Form controls have programmatic labels, authentication fields advertise their
   autocomplete purpose, validation failures use an alert, and changing board
   filter results are announced through a polite status region.
@@ -35,7 +38,7 @@ baseline and regression policy, not a third-party accessibility certification.
 ## Regression coverage
 
 `e2e/accessibility.spec.ts` runs axe against login and all primary authenticated
-screens—including project, people/profile, and workflow pages—in light and dark
+screens—including backlog, project, people/profile, and workflow pages—in light and dark
 themes. It also directly exercises behavior that a
 DOM scanner cannot prove:
 
@@ -45,6 +48,7 @@ DOM scanner cannot prove:
 - skip-link and active-navigation behavior;
 - off-canvas navigation at a 320px viewport;
 - board keyboard controls and non-drag movement controls;
+- backlog menu dismissal, minimum target sizes, and narrow-screen reflow;
 - issue activity filter state and the keyboard watch journey;
 - minimum control target dimensions.
 

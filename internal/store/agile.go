@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 
@@ -13,6 +15,19 @@ import (
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/workflow"
 )
+
+var (
+	ErrSprintValidation = errors.New("invalid sprint")
+	ErrSprintConflict   = errors.New("sprint conflict")
+)
+
+type SprintUpdate struct {
+	Name      string
+	Goal      string
+	State     string
+	StartDate *time.Time
+	EndDate   *time.Time
+}
 
 // SetIssueRank repositions an issue (and optionally moves it to a new status).
 // Rank changes materialize but stay out of the changelog.
@@ -159,6 +174,17 @@ func (s *Store) BoardIssues(ctx context.Context, boardID, userID string) (map[st
 // ---- sprints ----
 
 func (s *Store) CreateSprint(ctx context.Context, actorID, workspaceID, boardID, name, goal string) (*models.Sprint, *models.Action, error) {
+	name = strings.TrimSpace(name)
+	goal = strings.TrimSpace(goal)
+	if name == "" {
+		return nil, nil, fmt.Errorf("%w: a sprint name is required", ErrSprintValidation)
+	}
+	if utf8.RuneCountInString(name) > 255 {
+		return nil, nil, fmt.Errorf("%w: sprint names cannot exceed 255 characters", ErrSprintValidation)
+	}
+	if utf8.RuneCountInString(goal) > 2000 {
+		return nil, nil, fmt.Errorf("%w: sprint goals cannot exceed 2000 characters", ErrSprintValidation)
+	}
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return nil, nil, err
@@ -209,7 +235,7 @@ func (s *Store) SprintsByBoard(ctx context.Context, boardID string) ([]*models.S
 		        COALESCE(to_char(start_date AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
 		        COALESCE(to_char(end_date AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
 		        s.goal
-		 FROM sprints WHERE board_id=$1 ORDER BY created_at, id`, boardID)
+			 FROM sprints s WHERE s.board_id=$1 ORDER BY s.created_at, s.id`, boardID)
 	if err != nil {
 		return nil, err
 	}
@@ -225,6 +251,100 @@ func (s *Store) SprintsByBoard(ctx context.Context, boardID string) ([]*models.S
 	return out, rows.Err()
 }
 
+// UpdateSprint changes sprint metadata or advances its lifecycle. Sprint state
+// is monotonic: future -> active -> closed. A board may only have one active
+// sprint because ZZIRA does not expose Jira's parallel-sprints setting.
+func (s *Store) UpdateSprint(ctx context.Context, actorID, workspaceID, sprintID string, input SprintUpdate) (*models.Sprint, *models.Action, error) {
+	input.Name = strings.TrimSpace(input.Name)
+	input.Goal = strings.TrimSpace(input.Goal)
+	if input.Name == "" {
+		return nil, nil, fmt.Errorf("%w: a sprint name is required", ErrSprintValidation)
+	}
+	if utf8.RuneCountInString(input.Name) > 255 {
+		return nil, nil, fmt.Errorf("%w: sprint names cannot exceed 255 characters", ErrSprintValidation)
+	}
+	if utf8.RuneCountInString(input.Goal) > 2000 {
+		return nil, nil, fmt.Errorf("%w: sprint goals cannot exceed 2000 characters", ErrSprintValidation)
+	}
+	if input.State != "future" && input.State != "active" && input.State != "closed" {
+		return nil, nil, fmt.Errorf("%w: state must be future, active, or closed", ErrSprintValidation)
+	}
+	if input.State == "active" {
+		if input.StartDate == nil || input.EndDate == nil {
+			return nil, nil, fmt.Errorf("%w: active sprints require start and end dates", ErrSprintValidation)
+		}
+		if !input.EndDate.After(*input.StartDate) {
+			return nil, nil, fmt.Errorf("%w: the end date must be after the start date", ErrSprintValidation)
+		}
+	}
+
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var boardID, currentState string
+	if err := tx.QueryRow(ctx, `
+		SELECT s.board_id, s.state
+		FROM sprints s
+		JOIN boards b ON b.id=s.board_id
+		JOIN projects p ON p.id=b.project_id
+		WHERE s.id=$1 AND p.workspace_id=$2
+		FOR UPDATE OF s, b`, sprintID, workspaceID).Scan(&boardID, &currentState); err != nil {
+		return nil, nil, err
+	}
+	allowed := input.State == currentState ||
+		(currentState == "future" && input.State == "active") ||
+		(currentState == "active" && input.State == "closed")
+	if !allowed {
+		return nil, nil, fmt.Errorf("%w: sprint state cannot move from %s to %s", ErrSprintValidation, currentState, input.State)
+	}
+	if input.State == "active" && currentState != "active" {
+		var anotherActive bool
+		if err := tx.QueryRow(ctx,
+			`SELECT EXISTS(SELECT 1 FROM sprints WHERE board_id=$1 AND state='active' AND id<>$2)`,
+			boardID, sprintID).Scan(&anotherActive); err != nil {
+			return nil, nil, err
+		}
+		if anotherActive {
+			return nil, nil, fmt.Errorf("%w: complete the active sprint before starting another", ErrSprintConflict)
+		}
+	}
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE sprints SET name=$2, goal=$3, state=$4, start_date=$5, end_date=$6
+		WHERE id=$1`, sprintID, input.Name, input.Goal, input.State, input.StartDate, input.EndDate); err != nil {
+		return nil, nil, err
+	}
+	updated := &models.Sprint{ID: sprintID, BoardID: boardID, Name: input.Name, Goal: input.Goal, State: input.State}
+	if input.StartDate != nil {
+		updated.StartDate = input.StartDate.UTC().Format(time.RFC3339)
+	}
+	if input.EndDate != nil {
+		updated.EndDate = input.EndDate.UTC().Format(time.RFC3339)
+	}
+	seq, err := nextSeq(ctx, tx, workspaceID)
+	if err != nil {
+		return nil, nil, err
+	}
+	payload, err := json.Marshal(models.SprintUpsertPayload{Sprint: *updated})
+	if err != nil {
+		return nil, nil, err
+	}
+	action := &models.Action{
+		WorkspaceID: workspaceID, Seq: seq, EntityType: models.EntitySprint, EntityID: sprintID,
+		Op: models.OpUpsert, SchemaV: models.SchemaVersion, Payload: payload, ActorID: actorID,
+	}
+	if err := appendAction(ctx, tx, action); err != nil {
+		return nil, nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, nil, err
+	}
+	return updated, action, nil
+}
+
 func (s *Store) SprintByID(ctx context.Context, id string) (*models.Sprint, error) {
 	return s.sprintByID(ctx, "WHERE s.id=$1", id)
 }
@@ -238,10 +358,10 @@ func (s *Store) SprintByIDInWorkspace(ctx context.Context, workspaceID, id strin
 func (s *Store) sprintByID(ctx context.Context, clause string, args ...any) (*models.Sprint, error) {
 	sp := &models.Sprint{}
 	err := s.Pool.QueryRow(ctx,
-		`SELECT id, board_id, name, state,
-		        COALESCE(to_char(start_date AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
-		        COALESCE(to_char(end_date AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
-		        goal
+		`SELECT s.id, s.board_id, s.name, s.state,
+		        COALESCE(to_char(s.start_date AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
+		        COALESCE(to_char(s.end_date AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
+		        s.goal
 		 FROM sprints s `+clause, args...).
 		Scan(&sp.ID, &sp.BoardID, &sp.Name, &sp.State, &sp.StartDate, &sp.EndDate, &sp.Goal)
 	if err != nil {
@@ -266,6 +386,121 @@ func (s *Store) NextSprintRank(ctx context.Context, sprintID string) (string, er
 	return rank, nil
 }
 
+// SprintRankBetween computes an ordering key between two issues already in the
+// same sprint. The moving issue may be supplied as excludeID so dropping next
+// to itself remains well-defined.
+func (s *Store) SprintRankBetween(ctx context.Context, sprintID, beforeID, afterID, excludeID string) (string, error) {
+	fetch := func(id string) (string, error) {
+		if id == "" || id == excludeID {
+			return "", nil
+		}
+		var rank string
+		err := s.Pool.QueryRow(ctx,
+			`SELECT rank FROM sprint_issues WHERE sprint_id=$1 AND issue_id=$2`, sprintID, id).Scan(&rank)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", fmt.Errorf("issue %q is not in the sprint", id)
+		}
+		return rank, err
+	}
+	lo, err := fetch(afterID)
+	if err != nil {
+		return "", err
+	}
+	hi, err := fetch(beforeID)
+	if err != nil {
+		return "", err
+	}
+	rank, err := lexorank.Mid(lo, hi)
+	if err != nil {
+		return "", fmt.Errorf("sprint rank: %w", err)
+	}
+	return rank, nil
+}
+
+// PlanningRankBetween computes the project-wide backlog ordering key. Board
+// columns still display this same rank within each status, while backlog
+// planning is allowed to compare issues across statuses.
+func (s *Store) PlanningRankBetween(ctx context.Context, workspaceID, projectID, beforeID, afterID, excludeID string) (string, error) {
+	fetch := func(id string) (string, error) {
+		if id == "" || id == excludeID {
+			return "", nil
+		}
+		var rank string
+		err := s.Pool.QueryRow(ctx,
+			`SELECT rank FROM issues WHERE workspace_id=$1 AND project_id=$2 AND id=$3`,
+			workspaceID, projectID, id).Scan(&rank)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", fmt.Errorf("issue %q is not in the project", id)
+		}
+		return rank, err
+	}
+	lo, err := fetch(afterID)
+	if err != nil {
+		return "", err
+	}
+	hi, err := fetch(beforeID)
+	if err != nil {
+		return "", err
+	}
+	rank, err := lexorank.Mid(lo, hi)
+	if err != nil {
+		return "", fmt.Errorf("backlog rank: %w", err)
+	}
+	return rank, nil
+}
+
+// BacklogIssues lists work not assigned to an active or future sprint. Closed
+// sprint membership is historical and does not keep an issue out of backlog.
+func (s *Store) BacklogIssues(ctx context.Context, boardID, userID string) ([]*models.Issue, error) {
+	board, err := s.BoardByID(ctx, boardID)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.Pool.Query(ctx, issueJoin+`
+		WHERE i.project_id=$1 AND `+VisibleIssuePredicate("i", "$2")+`
+		  AND NOT EXISTS (
+			SELECT 1 FROM sprint_issues si JOIN sprints s ON s.id=si.sprint_id
+			WHERE si.issue_id=i.id AND s.state IN ('future','active')
+		  )
+		ORDER BY i.rank, i.key`, board.ProjectID, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	issues := make([]*models.Issue, 0)
+	for rows.Next() {
+		issue, err := scanIssue(rows)
+		if err != nil {
+			return nil, err
+		}
+		issues = append(issues, issue)
+	}
+	return issues, rows.Err()
+}
+
+func appendSprintMembershipAction(ctx context.Context, tx pgx.Tx, actorID, workspaceID, sprintID, issueID, rank string, removed bool) (*models.Action, error) {
+	seq, err := nextSeq(ctx, tx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	payload, err := json.Marshal(models.SprintIssuePayload{SprintID: sprintID, IssueID: issueID, Rank: rank, Removed: removed})
+	if err != nil {
+		return nil, err
+	}
+	op := models.OpUpsert
+	if removed {
+		op = models.OpDelete
+	}
+	action := &models.Action{
+		WorkspaceID: workspaceID, Seq: seq, EntityType: models.EntitySprintIssue, EntityID: sprintID,
+		Op: op, SchemaV: models.SchemaVersion, Payload: payload, ActorID: actorID,
+	}
+	if err := appendAction(ctx, tx, action); err != nil {
+		return nil, err
+	}
+	return action, nil
+}
+
 // AddIssueToSprint places an issue at the supplied backlog rank.
 func (s *Store) AddIssueToSprint(ctx context.Context, actorID, workspaceID, sprintID, issueID, rank string) (*models.Action, error) {
 	tx, err := s.Pool.Begin(ctx)
@@ -273,6 +508,9 @@ func (s *Store) AddIssueToSprint(ctx context.Context, actorID, workspaceID, spri
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('sprint-issue:' || $1, 0))`, issueID); err != nil {
+		return nil, err
+	}
 	var belongs bool
 	if err := tx.QueryRow(ctx, `
 		SELECT EXISTS(
@@ -280,37 +518,105 @@ func (s *Store) AddIssueToSprint(ctx context.Context, actorID, workspaceID, spri
 			JOIN boards b ON b.id=s.board_id
 			JOIN projects p ON p.id=b.project_id
 				JOIN issues i ON i.id=$2 AND i.workspace_id=$3 AND i.project_id=b.project_id
-			WHERE s.id=$1 AND p.workspace_id=$3
+			WHERE s.id=$1 AND p.workspace_id=$3 AND s.state IN ('future','active')
 		)`, sprintID, issueID, workspaceID).Scan(&belongs); err != nil {
 		return nil, err
 	}
 	if !belongs {
 		return nil, fmt.Errorf("sprint and issue must belong to the same project in workspace %q", workspaceID)
 	}
+	rows, err := tx.Query(ctx, `
+		SELECT si.sprint_id, si.rank
+		FROM sprint_issues si JOIN sprints s ON s.id=si.sprint_id
+		WHERE si.issue_id=$1 AND s.state IN ('future','active') AND si.sprint_id<>$2
+		FOR UPDATE OF si`, issueID, sprintID)
+	if err != nil {
+		return nil, err
+	}
+	type previousMembership struct{ sprintID, rank string }
+	previous := make([]previousMembership, 0)
+	for rows.Next() {
+		var membership previousMembership
+		if err := rows.Scan(&membership.sprintID, &membership.rank); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		previous = append(previous, membership)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	rows.Close()
+	for _, membership := range previous {
+		if _, err := tx.Exec(ctx, `DELETE FROM sprint_issues WHERE sprint_id=$1 AND issue_id=$2`, membership.sprintID, issueID); err != nil {
+			return nil, err
+		}
+		if _, err := appendSprintMembershipAction(ctx, tx, actorID, workspaceID, membership.sprintID, issueID, membership.rank, true); err != nil {
+			return nil, err
+		}
+	}
 	if _, err := tx.Exec(ctx,
 		`INSERT INTO sprint_issues (sprint_id, issue_id, rank) VALUES ($1,$2,$3)
 		 ON CONFLICT (sprint_id, issue_id) DO UPDATE SET rank=$4`, sprintID, issueID, rank, rank); err != nil {
 		return nil, err
 	}
-	seq, err := nextSeq(ctx, tx, workspaceID)
+	action, err := appendSprintMembershipAction(ctx, tx, actorID, workspaceID, sprintID, issueID, rank, false)
 	if err != nil {
-		return nil, err
-	}
-	payload, err := json.Marshal(models.SprintIssuePayload{SprintID: sprintID, IssueID: issueID, Rank: rank})
-	if err != nil {
-		return nil, err
-	}
-	action := &models.Action{
-		WorkspaceID: workspaceID, Seq: seq, EntityType: models.EntitySprintIssue, EntityID: sprintID,
-		Op: models.OpUpsert, SchemaV: models.SchemaVersion, Payload: payload, ActorID: actorID,
-	}
-	if err := appendAction(ctx, tx, action); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
 	return action, nil
+}
+
+// RemoveIssueFromPlanning moves an issue back to the backlog by deleting all
+// active/future sprint memberships while retaining closed-sprint history.
+func (s *Store) RemoveIssueFromPlanning(ctx context.Context, actorID, workspaceID, issueID string) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('sprint-issue:' || $1, 0))`, issueID); err != nil {
+		return err
+	}
+	rows, err := tx.Query(ctx, `
+		SELECT si.sprint_id, si.rank
+		FROM sprint_issues si
+		JOIN sprints s ON s.id=si.sprint_id
+		JOIN boards b ON b.id=s.board_id
+		JOIN projects p ON p.id=b.project_id
+		WHERE si.issue_id=$1 AND p.workspace_id=$2 AND s.state IN ('future','active')
+		FOR UPDATE OF si`, issueID, workspaceID)
+	if err != nil {
+		return err
+	}
+	type membership struct{ sprintID, rank string }
+	memberships := make([]membership, 0)
+	for rows.Next() {
+		var item membership
+		if err := rows.Scan(&item.sprintID, &item.rank); err != nil {
+			rows.Close()
+			return err
+		}
+		memberships = append(memberships, item)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	for _, item := range memberships {
+		if _, err := tx.Exec(ctx, `DELETE FROM sprint_issues WHERE sprint_id=$1 AND issue_id=$2`, item.sprintID, issueID); err != nil {
+			return err
+		}
+		if _, err := appendSprintMembershipAction(ctx, tx, actorID, workspaceID, item.sprintID, issueID, item.rank, true); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
 }
 
 // ---- watchers ----

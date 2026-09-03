@@ -230,7 +230,8 @@ CREATE TABLE IF NOT EXISTS boards (
   id TEXT PRIMARY KEY, project_id TEXT, name TEXT, type TEXT
 );
 CREATE TABLE IF NOT EXISTS sprints (
-  id TEXT PRIMARY KEY, board_id TEXT, name TEXT, state TEXT, goal TEXT
+  id TEXT PRIMARY KEY, board_id TEXT, name TEXT, state TEXT, goal TEXT,
+  start_date TEXT, end_date TEXT
 );
 CREATE TABLE IF NOT EXISTS sprint_issues (
   sprint_id TEXT NOT NULL, issue_id TEXT NOT NULL, rank TEXT,
@@ -264,6 +265,8 @@ func initDB() error {
 	ensureColumn("issues", "labels", "TEXT NOT NULL DEFAULT '[]'")
 	ensureColumn("issue_links", "inward", "TEXT")
 	ensureColumn("issue_links", "outward", "TEXT")
+	ensureColumn("sprints", "start_date", "TEXT")
+	ensureColumn("sprints", "end_date", "TEXT")
 	return nil
 }
 
@@ -545,8 +548,8 @@ func applySprint(a models.Action) ([]string, error) {
 	if err := json.Unmarshal(a.Payload, &p); err != nil {
 		return nil, fmt.Errorf("decode sprint payload: %w", err)
 	}
-	exec(`INSERT OR REPLACE INTO sprints (id, board_id, name, state, goal) VALUES ($1,$2,$3,$4,$5)`,
-		[]any{p.Sprint.ID, p.Sprint.BoardID, p.Sprint.Name, p.Sprint.State, p.Sprint.Goal})
+	exec(`INSERT OR REPLACE INTO sprints (id, board_id, name, state, goal, start_date, end_date) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+		[]any{p.Sprint.ID, p.Sprint.BoardID, p.Sprint.Name, p.Sprint.State, p.Sprint.Goal, p.Sprint.StartDate, p.Sprint.EndDate})
 	return nil, nil
 }
 

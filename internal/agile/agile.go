@@ -4,19 +4,23 @@ package agile
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/e6qu/zzira/internal/authn"
 	"github.com/e6qu/zzira/internal/authz"
+	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
 )
 
 type Handler struct {
 	Store         *store.Store
+	Commands      *commands.Service
 	IssueBean     func(*models.Issue) map[string]any
 	BaseURL       string
 	WorkspaceSlug string
@@ -45,6 +49,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.createSprint(w, r)
 	case strings.HasPrefix(path, "/sprint/"):
 		h.sprintRoute(w, r, strings.Split(strings.TrimPrefix(path, "/sprint/"), "/"))
+	case path == "/backlog/issue" && r.Method == http.MethodPost:
+		h.moveIssuesToBacklog(w, r)
 	case path == "/issue/rank" && r.Method == http.MethodPost:
 		h.rank(w, r)
 	default:
@@ -127,7 +133,7 @@ func (h *Handler) boardRoute(w http.ResponseWriter, r *http.Request, parts []str
 	case len(parts) == 2 && parts[1] == "issue" && r.Method == http.MethodGet:
 		h.boardIssues(w, r, board, userID)
 	case len(parts) == 2 && parts[1] == "backlog" && r.Method == http.MethodGet:
-		h.boardIssues(w, r, board, userID)
+		h.boardBacklog(w, r, board, userID)
 	case len(parts) == 2 && parts[1] == "sprint" && r.Method == http.MethodGet:
 		h.boardSprints(w, r, board)
 	default:
@@ -141,6 +147,23 @@ func (h *Handler) boardIssues(w http.ResponseWriter, r *http.Request, board *mod
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	issues := []*models.Issue{}
+	for _, st := range board.ColumnStatusIDs {
+		issues = append(issues, columns[st]...)
+	}
+	h.writeIssuePage(w, r, issues)
+}
+
+func (h *Handler) boardBacklog(w http.ResponseWriter, r *http.Request, board *models.Board, userID string) {
+	issues, err := h.Store.BacklogIssues(r.Context(), board.ID, userID)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	h.writeIssuePage(w, r, issues)
+}
+
+func (h *Handler) writeIssuePage(w http.ResponseWriter, r *http.Request, issues []*models.Issue) {
 	startAt := 0
 	if v := r.URL.Query().Get("startAt"); v != "" {
 		var err error
@@ -148,10 +171,6 @@ func (h *Handler) boardIssues(w http.ResponseWriter, r *http.Request, board *mod
 			jiraError(w, http.StatusBadRequest, "startAt must be a non-negative integer.")
 			return
 		}
-	}
-	issues := []*models.Issue{}
-	for _, st := range board.ColumnStatusIDs {
-		issues = append(issues, columns[st]...)
 	}
 	total := len(issues)
 	if startAt > total {
@@ -194,13 +213,21 @@ func (h *Handler) boardSprints(w http.ResponseWriter, r *http.Request, board *mo
 }
 
 func (h *Handler) sprintBean(s *models.Sprint) map[string]any {
-	return map[string]any{
-		"id":    s.ID,
-		"name":  s.Name,
-		"state": s.State,
-		"goal":  s.Goal,
-		"self":  h.BaseURL + "/rest/agile/1.0/sprint/" + s.ID,
+	bean := map[string]any{
+		"id":            s.ID,
+		"name":          s.Name,
+		"state":         s.State,
+		"goal":          s.Goal,
+		"originBoardId": s.BoardID,
+		"self":          h.BaseURL + "/rest/agile/1.0/sprint/" + s.ID,
 	}
+	if s.StartDate != "" {
+		bean["startDate"] = s.StartDate
+	}
+	if s.EndDate != "" {
+		bean["endDate"] = s.EndDate
+	}
+	return bean
 }
 
 func (h *Handler) createSprint(w http.ResponseWriter, r *http.Request) {
@@ -227,12 +254,52 @@ func (h *Handler) createSprint(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, http.StatusBadRequest, "The board does not exist.")
 		return
 	}
-	sprint, _, err := h.Store.CreateSprint(r.Context(), userID, wsID, req.OriginBoardID, req.Name, req.Goal)
+	sprint, err := h.Commands.CreateSprint(r.Context(), userID, wsID, req.OriginBoardID, req.Name, req.Goal)
+	if errors.Is(err, store.ErrSprintValidation) {
+		jiraError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	writeJSON(w, http.StatusCreated, h.sprintBean(sprint))
+}
+
+func (h *Handler) moveIssuesToBacklog(w http.ResponseWriter, r *http.Request) {
+	wsID, userID, status, msg := h.authWorkspace(r)
+	if status != 0 {
+		jiraError(w, status, msg)
+		return
+	}
+	var req struct {
+		Issues []string `json:"issues"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.Issues) == 0 {
+		jiraFieldError(w, http.StatusBadRequest, map[string]string{"issues": "At least one issue key or id is required."})
+		return
+	}
+	planned := make([]*models.Issue, 0, len(req.Issues))
+	seen := make(map[string]bool, len(req.Issues))
+	for _, idOrKey := range req.Issues {
+		issue, err := h.visibleIssue(r, wsID, userID, idOrKey)
+		if err != nil {
+			jiraError(w, http.StatusNotFound, "Issue "+idOrKey+" does not exist.")
+			return
+		}
+		if seen[issue.ID] {
+			continue
+		}
+		seen[issue.ID] = true
+		planned = append(planned, issue)
+	}
+	for _, issue := range planned {
+		if err := h.Commands.MoveIssueToBacklog(r.Context(), userID, wsID, issue.ID); err != nil {
+			jiraError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) sprintRoute(w http.ResponseWriter, r *http.Request, parts []string) {
@@ -250,6 +317,8 @@ func (h *Handler) sprintRoute(w http.ResponseWriter, r *http.Request, parts []st
 	switch {
 	case len(parts) == 1 && r.Method == http.MethodGet:
 		writeJSON(w, http.StatusOK, h.sprintBean(sprint))
+	case len(parts) == 1 && r.Method == http.MethodPut:
+		h.updateSprint(w, r, wsID, userID, sprint)
 	case len(parts) == 2 && parts[1] == "issue" && r.Method == http.MethodGet:
 		h.sprintIssues(w, r, sprint, userID)
 	case len(parts) == 2 && parts[1] == "issue" && r.Method == http.MethodPost:
@@ -257,6 +326,70 @@ func (h *Handler) sprintRoute(w http.ResponseWriter, r *http.Request, parts []st
 	default:
 		jiraError(w, http.StatusNotFound, "No resource found")
 	}
+}
+
+func parseSprintDate(value string) (*time.Time, error) {
+	if strings.TrimSpace(value) == "" {
+		return nil, nil
+	}
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return nil, fmt.Errorf("dates must use RFC 3339 format")
+	}
+	return &parsed, nil
+}
+
+func (h *Handler) updateSprint(w http.ResponseWriter, r *http.Request, wsID, userID string, current *models.Sprint) {
+	var req struct {
+		Name      *string `json:"name"`
+		Goal      *string `json:"goal"`
+		State     *string `json:"state"`
+		StartDate *string `json:"startDate"`
+		EndDate   *string `json:"endDate"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jiraError(w, http.StatusBadRequest, "Invalid request payload.")
+		return
+	}
+	name, goal, state := current.Name, current.Goal, current.State
+	if req.Name != nil {
+		name = *req.Name
+	}
+	if req.Goal != nil {
+		goal = *req.Goal
+	}
+	if req.State != nil {
+		state = *req.State
+	}
+	startValue, endValue := current.StartDate, current.EndDate
+	if req.StartDate != nil {
+		startValue = *req.StartDate
+	}
+	if req.EndDate != nil {
+		endValue = *req.EndDate
+	}
+	startDate, err := parseSprintDate(startValue)
+	if err != nil {
+		jiraFieldError(w, http.StatusBadRequest, map[string]string{"startDate": err.Error()})
+		return
+	}
+	endDate, err := parseSprintDate(endValue)
+	if err != nil {
+		jiraFieldError(w, http.StatusBadRequest, map[string]string{"endDate": err.Error()})
+		return
+	}
+	updated, err := h.Commands.UpdateSprint(r.Context(), userID, wsID, current.ID, store.SprintUpdate{
+		Name: name, Goal: goal, State: state, StartDate: startDate, EndDate: endDate,
+	})
+	if errors.Is(err, store.ErrSprintValidation) || errors.Is(err, store.ErrSprintConflict) {
+		jiraError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, h.sprintBean(updated))
 }
 
 func (h *Handler) sprintIssues(w http.ResponseWriter, r *http.Request, sprint *models.Sprint, userID string) {
@@ -317,12 +450,7 @@ func (h *Handler) moveIssuesToSprint(w http.ResponseWriter, r *http.Request, wsI
 		}
 	}
 	for _, issue := range issues {
-		rank, err := h.Store.NextSprintRank(r.Context(), sprint.ID)
-		if err != nil {
-			jiraError(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		if _, err := h.Store.AddIssueToSprint(r.Context(), userID, wsID, sprint.ID, issue.ID, rank); err != nil {
+		if err := h.Commands.PlanIssue(r.Context(), userID, wsID, board.ID, issue.ID, sprint.ID, "", ""); err != nil {
 			jiraError(w, http.StatusBadRequest, err.Error())
 			return
 		}
@@ -406,12 +534,7 @@ func (h *Handler) rank(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	rankOne := func(issue *models.Issue) bool {
-		rank, err := h.Store.RankBetween(r.Context(), wsID, issue.ProjectID, issue.Status.ID, beforeID, afterID)
-		if err != nil {
-			jiraError(w, http.StatusBadRequest, err.Error())
-			return false
-		}
-		if _, err := h.Store.SetIssueRank(r.Context(), userID, wsID, issue.ID, rank, ""); err != nil {
+		if err := h.Commands.SetIssueRank(r.Context(), userID, wsID, issue.ID, beforeID, afterID, ""); err != nil {
 			jiraError(w, http.StatusInternalServerError, "internal error")
 			return false
 		}

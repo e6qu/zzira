@@ -14,7 +14,7 @@ const (
 
 type Board struct {
 	ID              string   `json:"id"`
-	ProjectID       string   `json:"-"`
+	ProjectID       string   `json:"projectId"`
 	ProjectKey      string   `json:"-"`
 	ProjectName     string   `json:"-"`
 	Name            string   `json:"name"`
@@ -25,7 +25,7 @@ type Board struct {
 
 type Sprint struct {
 	ID        string `json:"id"`
-	BoardID   string `json:"-"`
+	BoardID   string `json:"boardId"`
 	Name      string `json:"name"`
 	State     string `json:"state"` // future | active | closed
 	StartDate string `json:"startDate,omitempty"`

@@ -23,7 +23,7 @@ The endpoint-level source of truth remains [the API matrix](../api/conformance/M
 | Run a board | 🟡 | Mouse and keyboard rank/status changes, live updates, local card filtering, bounded column scrolling; quick filters, swimlanes, WIP limits and card configuration remain |
 | Work offline | ✅ | Issue reads, edit outbox, reconnect drain and server-wins reconciliation are browser-proven; mutation UI is protected from in-flight replica refreshes |
 | Review a dashboard | 🟡 | Status counts, assigned work and recent activity; no configurable dashboards |
-| Plan a backlog/sprint | ⛔ | Agile endpoints exist but there is no browser backlog, sprint planning, start/complete flow or epic/version panel |
+| Plan a backlog/sprint | ✅ | Project backlog and open-sprint grouping, cross-group movement, rank controls, issue preview, sprint create/edit/start/complete, and equivalent Agile API lifecycle are browser/integration-tested; epic/version planning is a separate enhancement |
 | Administer workflows | 🟡 | Workflow directory, read-only built-in diagram, custom workflow creation, transition add/remove, and project assignment are browser-tested; status creation and full schemes/conditions remain |
 | Administer a project | ⛔ | The workflow assignment slice is delivered; details, roles, fields, security, boards, and webhooks still lack a coherent settings journey |
 
@@ -40,8 +40,9 @@ The endpoint-level source of truth remains [the API matrix](../api/conformance/M
 3. Create: ✅ delivered from a shared createmeta schema with project/type,
    assignee, priority, labels, security and typed custom fields, preserved
    validation state, and a repeatable “create another” loop.
-4. Backlog: backlog/selected/sprint grouping, ranking, sprint create/edit/start/
-   complete, and issue detail preview, backed by the existing Agile command path.
+4. Backlog: ✅ delivered with backlog/open-sprint grouping, ranking, sprint
+   create/edit/start/complete, issue detail preview, and one shared Agile
+   command path across the UI and REST API.
 5. Board: quick filters, assignee filter, WIP limit feedback, swimlanes, card
    configuration, and a detail drawer without losing board position.
 
@@ -56,7 +57,7 @@ The endpoint-level source of truth remains [the API matrix](../api/conformance/M
    project settings for details, people/roles, work types, fields, issue security,
    boards, webhooks, and audit-friendly validation.
 5. Close remaining API matrix subsets for editmeta, role semantics, permission
-   schemes, screens/schemes, and missing Agile update/state operations before
+   schemes, screens/schemes, and remaining Agile operations before
    labeling the Jira Software API boundary conformant.
 
 ## Quality gate for every parity slice
