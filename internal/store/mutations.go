@@ -428,7 +428,9 @@ func securityDisplayName(ctx context.Context, tx pgx.Tx, projectID, levelID stri
 
 // mergeFields overlays custom-field values onto the issue's current fields.
 func mergeFields(current map[string]json.RawMessage, updates map[string]json.RawMessage) (map[string]json.RawMessage, error) {
-	out := make(map[string]json.RawMessage, len(current)+len(updates))
+	// Size from the trusted current map only. Adding two attacker-influenced
+	// lengths can overflow the capacity hint; maps grow safely as updates land.
+	out := make(map[string]json.RawMessage, len(current))
 	for k, v := range current {
 		out[k] = v
 	}

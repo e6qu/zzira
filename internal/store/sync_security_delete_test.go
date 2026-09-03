@@ -59,7 +59,7 @@ func TestSyncKeepsRestrictedHistoryHiddenAfterIssueDelete(t *testing.T) {
 	if err := st.AssignSecurityScheme(ctx, projectID, schemeID); err != nil {
 		t.Fatal(err)
 	}
-	issue, _, err := st.CreateIssue(ctx, memberID, projectID, "secret", json.RawMessage(`{"type":"doc","version":1}`), "st_todo", "it_task", "", "", nil, nil)
+	issue, _, err := st.CreateIssue(ctx, memberID, projectID, "secret", json.RawMessage(`{"type":"doc","version":1}`), "st_todo", "it_task", "", "", nil, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -78,7 +78,7 @@ func (h *Handler) securitySchemeRoute(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusCreated, securitySchemeBean(&scheme))
 	case strings.HasPrefix(rel, "/issuesecurityschemes/project/"):
 		keyOrID := strings.TrimPrefix(rel, "/issuesecurityschemes/project/")
-		project, err := h.Store.ProjectByKey(r.Context(), wsID, keyOrID)
+		project, err := h.Store.ProjectByIDOrKey(r.Context(), wsID, keyOrID)
 		if err != nil {
 			jiraError(w, http.StatusNotFound, "The project does not exist.")
 			return

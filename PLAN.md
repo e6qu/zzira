@@ -480,11 +480,11 @@ visual resemblance alone does not count.
 | Jira screen | Status | Delivered surface / next gap |
 |---|---:|---|
 | **Global shell** | ✅ | Sidebar, global JQL search (`/`), create, account, theme, responsive collapse (`Ctrl+[`), live replica state |
-| **Issue navigator** | 🟡 | JQL, dense list, type/key/summary/status/priority/assignee; basic-search builder, saved filters, columns, sorting, preview and pagination remain |
+| **Issue navigator** | ✅ | Basic/JQL search, removable chips, saved filters, columns, sorting, pagination, keyboard navigation and contextual preview |
 | **Backlog** | ⛔ | Agile APIs exist; no backlog planning UI yet |
 | **Board** | 🟡 | Rank/status drag, keyboard move, live convergence, local filter, scroll-contained columns; quick filters, swimlanes, WIP rules and card detail remain |
-| **Issue view** | 🟡 | Description, details, transitions, edit/delete, comments, attachments, worklog, history; inline fields, activity filter, links/watchers and custom-field display remain |
-| **Create issue** | 🟡 | Project/type/summary/description; full createmeta fields, create-another and field configuration remain |
+| **Issue view** | ✅ | Inline system/custom fields, unified activity, comments, attachments, worklogs, history, links, watchers and security-aware actions |
+| **Create issue** | ✅ | Shared createmeta schema, project/type, assignment, priority, labels, security, typed custom fields, validation recovery and create-another |
 | **Dashboard** | 🟡 | Status/assignment snapshot and activity; saved dashboards/gadgets remain out of the supported core boundary |
 | **Project settings** | ⛔ | APIs exist for several admin entities; no coherent settings journey yet |
 | **Quick search** | ⛔ | Global JQL submit exists; recent/starred command palette remains |

@@ -15,7 +15,8 @@ baseline and regression policy, not a third-party accessibility certification.
   or with `Control+[`, and is removed from the focus order while off-canvas.
 - Create and edit dialogs have an accessible name, inert background, initial
   focus, contained `Tab` navigation, `Escape` dismissal, and resilient focus
-  return even when the live issue fragment refreshes.
+  return even when the live issue fragment refreshes. Long metadata-driven
+  create forms keep their actions visible while the field region scrolls.
 - Native disclosures back account and action menus; `Escape` closes an open menu
   and returns focus to its summary.
 - Board cards avoid nested interactive roles. A dedicated move button supports
@@ -37,7 +38,8 @@ screens in light and dark themes. It also directly exercises behavior that a
 DOM scanner cannot prove:
 
 - dialog inertness, focus containment, dismissal, and focus restoration;
-- menu dismissal and validation-error states;
+- menu dismissal and create-form validation-error states, including expanded
+  metadata fields;
 - skip-link and active-navigation behavior;
 - off-canvas navigation at a 320px viewport;
 - board keyboard controls and non-drag movement controls;

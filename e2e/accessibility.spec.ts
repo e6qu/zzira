@@ -134,6 +134,15 @@ test('dynamic menus, validation errors, and edit dialog remain accessible', asyn
   await expect(page.locator('.user-menu')).not.toHaveAttribute('open', '');
   await expect(page.locator('.user-menu summary')).toBeFocused();
 
+  await page.locator('#global-create-issue').click();
+  await page.fill('#create-summary', 'Accessible validation state');
+  await page.locator('.create-more summary').click();
+  await page.fill('#create-labels', 'two words');
+  await page.getByRole('dialog', { name: 'Create issue' }).getByRole('button', { name: 'Create issue' }).click();
+  await expect(page.getByRole('alert')).toContainText('labels must be');
+  await expectNoWCAGViolations(page);
+  await page.keyboard.press('Escape');
+
   const issueHref = await firstIssueHref(page);
   await page.goto(issueHref);
   const edit = page.getByRole('button', { name: 'Edit', exact: true });

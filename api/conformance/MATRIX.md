@@ -13,11 +13,11 @@ control-plane endpoints use `/rest/zzira/1` and are never presented as Jira APIs
 | GET /rest/api/3/myself | ✅ | |
 | GET /rest/api/3/user · /user/search | ✅ | workspace members |
 | GET/POST /rest/api/3/project · /project/search · /project/{keyOrId} | ✅ | |
-| POST /rest/api/3/issue | ✅ | ADF description, custom fields; project, summary, and issue type are explicit |
+| POST /rest/api/3/issue | ✅ | Project key/id, ADF description, assignee, priority, labels, security and typed context-aware custom fields; unsupported fields are explicit errors |
 | GET/PUT/DELETE /rest/api/3/issue/{idOrKey} | ✅ | expand=renderedFields |
 | GET/PUT /rest/api/3/issue/{idOrKey}/assignee | ✅ | PUT fields.assignee + dedicated assignee endpoint |
 | GET /rest/api/3/issue/{idOrKey}/editmeta | 🟡 | system + custom fields |
-| GET /rest/api/3/issue/createmeta (+ per-type) | 🟡 | project/issuetype/fields |
+| GET /rest/api/3/issue/createmeta (+ paginated project/type routes) | ✅ | legacy filters/expanded fields plus current per-project issue-type and field metadata shapes |
 | GET/POST /rest/api/3/issue/{idOrKey}/transitions | ✅ | project workflow enforced |
 | GET/POST/DELETE /rest/api/3/issue/{idOrKey}/watchers | 🟡 | complete self-subscription and watcher reads; managing other users is intentionally not exposed without a broader permission model |
 | /comment CRUD | ✅ | ADF bodies, author-only delete |
@@ -69,8 +69,8 @@ control-plane endpoints use `/rest/zzira/1` and are never presented as Jira APIs
 
 | Spec | Status |
 |---|---|
-| API contract smoke (serverInfo + create) | ✅ |
-| UI login → create → issue view | ✅ |
+| API contract smoke (serverInfo + metadata-driven create) | ✅ |
+| UI login → full-field create → validation recovery → create another → issue view | ✅ |
 | WASM worker boots + syncs | ✅ |
 | Offline reload renders from local SQLite | ✅ |
 | Two-browser convergence via the action log | ✅ |

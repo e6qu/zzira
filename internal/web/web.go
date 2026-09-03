@@ -35,9 +35,11 @@ type pageData struct {
 }
 
 type createDialogData struct {
-	Project   *models.Project
-	IssueType *models.IssueType
-	Error     string
+	Metadata   *models.IssueCreateMetadata
+	Selected   models.CreateProjectMeta
+	Values     map[string]string
+	Error      string
+	CreatedKey string
 }
 
 type projectIssuesData struct {
@@ -518,6 +520,10 @@ func (h *Handler) buildEditDialogView(ctx context.Context, wsID string, issue *m
 	for _, cf := range customFields {
 		value := ""
 		if raw, ok := issue.Fields[cf.ID]; ok {
+			if string(raw) == "null" {
+				view.CustomFields = append(view.CustomFields, models.CustomFieldView{ID: cf.ID, Name: cf.Name, Type: cf.Type, Description: cf.Description})
+				continue
+			}
 			var text string
 			if json.Unmarshal(raw, &text) == nil {
 				value = text
@@ -525,7 +531,7 @@ func (h *Handler) buildEditDialogView(ctx context.Context, wsID string, issue *m
 				value = string(raw)
 			}
 		}
-		view.CustomFields = append(view.CustomFields, models.CustomFieldView{ID: cf.ID, Name: cf.Name, Value: value})
+		view.CustomFields = append(view.CustomFields, models.CustomFieldView{ID: cf.ID, Name: cf.Name, Type: cf.Type, Description: cf.Description, Value: value})
 	}
 	return view, nil
 }
@@ -700,17 +706,13 @@ func (h *Handler) CreateDialog(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
-	project, err := h.Store.DefaultProjectInWorkspace(r.Context(), wsID)
+	values := firstFormValues(r)
+	data, err := h.buildCreateDialogData(r.Context(), wsID, user.ID, values)
 	if err != nil {
-		http.Error(w, "no project", http.StatusInternalServerError)
+		http.Error(w, "create metadata unavailable", http.StatusInternalServerError)
 		return
 	}
-	issueType, err := h.Store.FirstIssueType(r.Context())
-	if err != nil {
-		http.Error(w, "no issue type", http.StatusInternalServerError)
-		return
-	}
-	writeFragment(w, "create_dialog", createDialogData{Project: project, IssueType: issueType})
+	writeFragment(w, "create_dialog", data)
 }
 
 func (h *Handler) CreateIssue(w http.ResponseWriter, r *http.Request) {
@@ -728,25 +730,138 @@ func (h *Handler) CreateIssue(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad form", http.StatusBadRequest)
 		return
 	}
+	values := firstFormValues(r)
+	data, err := h.buildCreateDialogData(r.Context(), wsID, user.ID, values)
+	if err != nil {
+		http.Error(w, "create metadata unavailable", http.StatusInternalServerError)
+		return
+	}
+	customFields, err := createFieldsFromForm(data.Selected.Fields, values)
+	if err != nil {
+		data.Error = err.Error()
+		writeFragment(w, "create_dialog", data)
+		return
+	}
 	issue, _, err := h.Commands.CreateIssue(r.Context(), commands.CreateIssueInput{
-		ActorID:     user.ID,
-		WorkspaceID: wsID,
-		ProjectKey:  r.PostFormValue("project"),
-		Summary:     strings.TrimSpace(r.PostFormValue("summary")),
-		Description: r.PostFormValue("description"),
-		IssueTypeID: r.PostFormValue("issuetype"),
+		ActorID:         user.ID,
+		WorkspaceID:     wsID,
+		ProjectIDOrKey:  values["project"],
+		Summary:         values["summary"],
+		Description:     values["description"],
+		IssueTypeID:     values["issuetype"],
+		PriorityID:      values["priority"],
+		AssigneeID:      values["assignee"],
+		SecurityLevelID: values["security"],
+		Labels:          strings.Split(values["labels"], ","),
+		Fields:          customFields,
 	})
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		project, perr := h.Store.DefaultProjectInWorkspace(r.Context(), wsID)
-		issueType, terr := h.Store.FirstIssueType(r.Context())
-		if perr == nil && terr == nil {
-			writeFragment(w, "create_dialog", createDialogData{Project: project, IssueType: issueType, Error: err.Error()})
+		data.Error = err.Error()
+		writeFragment(w, "create_dialog", data)
+		return
+	}
+	if values["createAnother"] == "true" {
+		nextValues := map[string]string{"project": data.Selected.Project.Key, "issuetype": values["issuetype"], "createAnother": "true"}
+		data, err = h.buildCreateDialogData(r.Context(), wsID, user.ID, nextValues)
+		if err != nil {
+			http.Error(w, "create metadata unavailable", http.StatusInternalServerError)
+			return
 		}
+		data.CreatedKey = issue.Key
+		writeFragment(w, "create_dialog", data)
 		return
 	}
 	w.Header().Set("HX-Redirect", "/browse/"+issue.Key)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func firstFormValues(r *http.Request) map[string]string {
+	_ = r.ParseForm()
+	values := make(map[string]string, len(r.Form))
+	for key, entries := range r.Form {
+		if len(entries) > 0 {
+			values[key] = entries[0]
+		}
+	}
+	return values
+}
+
+func (h *Handler) buildCreateDialogData(ctx context.Context, workspaceID, userID string, requested map[string]string) (createDialogData, error) {
+	meta, err := h.Store.IssueCreateMetadata(ctx, workspaceID, userID)
+	if err != nil {
+		return createDialogData{}, err
+	}
+	if len(meta.Projects) == 0 {
+		return createDialogData{}, fmt.Errorf("no project is available")
+	}
+	selected := meta.Projects[0]
+	for _, project := range meta.Projects {
+		if project.Project.ID == requested["project"] || strings.EqualFold(project.Project.Key, requested["project"]) {
+			selected = project
+			break
+		}
+	}
+	values := map[string]string{"project": selected.Project.Key}
+	for _, key := range []string{"summary", "description", "createAnother"} {
+		values[key] = requested[key]
+	}
+	for _, field := range selected.Fields {
+		if field.Section == "details" {
+			values[field.ID] = requested[field.ID]
+		}
+	}
+	if requestedType := requested["issuetype"]; requestedType != "" {
+		for _, issueType := range selected.IssueTypes {
+			if issueType.ID == requestedType {
+				values["issuetype"] = issueType.ID
+				break
+			}
+		}
+	}
+	if values["issuetype"] == "" && len(selected.IssueTypes) > 0 {
+		values["issuetype"] = selected.IssueTypes[0].ID
+	}
+	if values["issuetype"] == "" {
+		return createDialogData{}, fmt.Errorf("no issue type is available")
+	}
+	return createDialogData{Metadata: meta, Selected: selected, Values: values}, nil
+}
+
+func createFieldsFromForm(fields []models.CreateFieldMeta, values map[string]string) (map[string]json.RawMessage, error) {
+	custom := map[string]json.RawMessage{}
+	for _, field := range fields {
+		if !field.Custom || values[field.ID] == "" {
+			continue
+		}
+		encoded, err := encodeWebCustomField(field.Type, values[field.ID])
+		if err != nil {
+			return nil, fmt.Errorf("%s %w", field.Name, err)
+		}
+		custom[field.ID] = encoded
+	}
+	if len(custom) == 0 {
+		return nil, nil
+	}
+	return custom, nil
+}
+
+func encodeWebCustomField(fieldType, value string) (json.RawMessage, error) {
+	switch fieldType {
+	case models.CustomFieldNumber:
+		if _, err := strconv.ParseFloat(value, 64); err != nil {
+			return nil, fmt.Errorf("must be a number")
+		}
+		encoded, err := json.Marshal(json.Number(value))
+		if err != nil {
+			return nil, fmt.Errorf("must be a finite number")
+		}
+		return encoded, nil
+	case "string", models.CustomFieldText, models.CustomFieldDatetime:
+		encoded, err := json.Marshal(value)
+		return encoded, err
+	default:
+		return nil, fmt.Errorf("has unsupported type %q", fieldType)
+	}
 }
 
 // ProjectIssues serves /issues/{projectKey} — the issue navigator with JQL.
@@ -1250,6 +1365,11 @@ func (h *Handler) EditIssue(w http.ResponseWriter, r *http.Request, key string) 
 	if !parseForm(w, r) {
 		return
 	}
+	issue, err := h.issueForUser(r, user, wsID, key)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
 	summary := strings.TrimSpace(r.PostFormValue("summary"))
 	description := adf.ParagraphDoc(r.PostFormValue("description"))
 	assignee := r.PostFormValue("assignee")
@@ -1260,17 +1380,32 @@ func (h *Handler) EditIssue(w http.ResponseWriter, r *http.Request, key string) 
 	if sec, ok := r.PostForm["security"]; ok {
 		in.SecurityLevelID = &sec[0] // "" = public
 	}
-	customFields, cfErr := h.Store.CustomFields(r.Context())
+	customFields, cfErr := h.Store.CustomFieldsForProject(r.Context(), issue.ProjectID)
 	if cfErr != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 	for _, cf := range customFields {
 		if v, ok := r.PostForm[cf.ID]; ok {
+			if v[0] == "" {
+				if _, existed := issue.Fields[cf.ID]; !existed {
+					continue
+				}
+				if in.Fields == nil {
+					in.Fields = map[string]json.RawMessage{}
+				}
+				in.Fields[cf.ID] = json.RawMessage("null")
+				continue
+			}
 			if in.Fields == nil {
 				in.Fields = map[string]json.RawMessage{}
 			}
-			in.Fields[cf.ID] = json.RawMessage(strconv.Quote(v[0]))
+			encoded, err := encodeWebCustomField(cf.Type, v[0])
+			if err != nil {
+				http.Error(w, cf.Name+" "+err.Error(), http.StatusBadRequest)
+				return
+			}
+			in.Fields[cf.ID] = encoded
 		}
 	}
 	if _, _, err := h.Commands.UpdateIssue(r.Context(), in); err != nil {

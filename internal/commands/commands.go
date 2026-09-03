@@ -7,8 +7,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/e6qu/zzira/internal/attachments"
+	"github.com/e6qu/zzira/internal/authz"
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
 )
@@ -19,16 +21,17 @@ type Service struct {
 }
 
 type CreateIssueInput struct {
-	ActorID     string
-	WorkspaceID string
-	ProjectKey  string
-	Summary     string
-	Description string // plain text in V0; stored as an ADF paragraph
-	IssueTypeID string
-	PriorityID  string
-	AssigneeID  string
-	Labels      []string
-	Fields      map[string]json.RawMessage
+	ActorID         string
+	WorkspaceID     string
+	ProjectIDOrKey  string
+	Summary         string
+	Description     string // plain text in V0; stored as an ADF paragraph
+	IssueTypeID     string
+	PriorityID      string
+	AssigneeID      string
+	SecurityLevelID string
+	Labels          []string
+	Fields          map[string]json.RawMessage
 }
 
 // DeleteIssue removes the issue transactionally, then cleans up attachment
@@ -58,15 +61,19 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 	if in.ActorID == "" {
 		return nil, nil, fmt.Errorf("no actor")
 	}
+	in.Summary = strings.TrimSpace(in.Summary)
 	if len(in.Summary) == 0 || len(in.Summary) > 255 {
 		return nil, nil, fmt.Errorf("summary is required (max 255 chars)")
+	}
+	if len(in.Description) > 1<<20 {
+		return nil, nil, fmt.Errorf("description must be at most 1 MiB")
 	}
 	if in.IssueTypeID == "" {
 		return nil, nil, fmt.Errorf("issue type is required")
 	}
-	project, err := s.Store.ProjectByKey(ctx, in.WorkspaceID, in.ProjectKey)
+	project, err := s.Store.ProjectByIDOrKey(ctx, in.WorkspaceID, in.ProjectIDOrKey)
 	if err != nil {
-		return nil, nil, fmt.Errorf("project %q not found in workspace", in.ProjectKey)
+		return nil, nil, fmt.Errorf("project %q not found in workspace", in.ProjectIDOrKey)
 	}
 	issueType, err := s.Store.IssueTypeByIDOrName(ctx, in.IssueTypeID)
 	if err != nil {
@@ -85,13 +92,41 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 			return nil, nil, fmt.Errorf("assignee is not an active workspace member")
 		}
 	}
+	if in.SecurityLevelID != "" {
+		scheme, err := s.Store.SecuritySchemeForProject(ctx, project.ID)
+		if err != nil {
+			return nil, nil, err
+		}
+		valid := false
+		if scheme != nil {
+			for _, level := range scheme.Levels {
+				if level.ID == in.SecurityLevelID {
+					valid = true
+					break
+				}
+			}
+		}
+		if !valid {
+			return nil, nil, fmt.Errorf("security level is not available for this project")
+		}
+		visible, err := authz.CanSeeIssue(ctx, s.Store, in.WorkspaceID, project.ID, in.ActorID, in.SecurityLevelID)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !visible {
+			return nil, nil, fmt.Errorf("security level would hide this issue from you")
+		}
+	}
+	if err := s.validateCustomFields(ctx, project.ID, in.Fields); err != nil {
+		return nil, nil, err
+	}
 	labels, err := normalizeLabels(in.Labels)
 	if err != nil {
 		return nil, nil, err
 	}
 	description := plainTextToADF(in.Description)
 	issue, action, err := s.Store.CreateIssue(ctx, in.ActorID, project.ID, in.Summary,
-		description, "st_todo", issueType.ID, priorityID, in.AssigneeID, labels, in.Fields)
+		description, "st_todo", issueType.ID, priorityID, in.AssigneeID, labels, in.Fields, in.SecurityLevelID)
 	if err != nil {
 		return nil, nil, err
 	}

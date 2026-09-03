@@ -40,13 +40,13 @@ func TestIssueTriageCommands(t *testing.T) {
 	}
 	svc := &Service{Store: st}
 	first, _, err := svc.CreateIssue(ctx, CreateIssueInput{
-		ActorID: "usr_test", WorkspaceID: "ws_default", ProjectKey: "ZZ", Summary: "triage first", IssueTypeID: "it_task",
+		ActorID: "usr_test", WorkspaceID: "ws_default", ProjectIDOrKey: "ZZ", Summary: "triage first", IssueTypeID: "it_task",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	second, _, err := svc.CreateIssue(ctx, CreateIssueInput{
-		ActorID: "usr_test", WorkspaceID: "ws_default", ProjectKey: "ZZ", Summary: "triage second", IssueTypeID: "it_task",
+		ActorID: "usr_test", WorkspaceID: "ws_default", ProjectIDOrKey: "ZZ", Summary: "triage second", IssueTypeID: "it_task",
 	})
 	if err != nil {
 		t.Fatal(err)

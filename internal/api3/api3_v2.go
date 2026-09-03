@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/e6qu/zzira/internal/jql"
 	"github.com/e6qu/zzira/internal/models"
@@ -134,52 +135,219 @@ func (h *Handler) getUser(w http.ResponseWriter, r *http.Request) {
 // ---- createmeta ----
 
 func (h *Handler) createMeta(w http.ResponseWriter, r *http.Request) {
-	wsID, _, e := h.authWorkspace(r)
+	wsID, userID, e := h.authWorkspace(r)
 	if e != nil {
 		writeJerr(w, e)
 		return
 	}
-	projects, err := h.Store.ProjectsByWorkspace(r.Context(), wsID)
+	meta, err := h.Store.IssueCreateMetadata(r.Context(), wsID, userID)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	issueType, _ := h.Store.FirstIssueType(r.Context())
-	customFields, _ := h.Store.CustomFieldsForProject(r.Context(), projectIDOrEmpty(projects))
-	projectValues := make([]map[string]any, 0, len(projects))
-	for _, p := range projects {
-		its := []map[string]any{}
-		if issueType != nil {
-			its = append(its, map[string]any{
-				"id":          issueType.ID,
-				"name":        issueType.Name,
-				"subtask":     false,
-				"description": "",
-				"iconUrl":     h.BaseURL + "/static/img/issuetype-task.svg",
-			})
+	projectFilter := commaQuerySet(r, "projectIds", "projectKeys")
+	typeFilter := commaQuerySet(r, "issuetypeIds", "issuetypeNames")
+	includeFields := strings.Contains(r.URL.Query().Get("expand"), "fields")
+	projectValues := make([]map[string]any, 0, len(meta.Projects))
+	for _, project := range meta.Projects {
+		if len(projectFilter) > 0 && !querySetContains(projectFilter, project.Project.ID, project.Project.Key) {
+			continue
 		}
-		cfs := make([]map[string]any, 0, len(customFields))
-		for _, cf := range customFields {
-			cfs = append(cfs, map[string]any{
-				"key":      cf.ID,
-				"name":     cf.Name,
-				"required": false,
-				"schema":   map[string]any{"type": cf.Type, "custom": cf.ID, "customId": cf.ID},
-			})
+		issueTypes := make([]map[string]any, 0, len(project.IssueTypes))
+		for _, issueType := range project.IssueTypes {
+			if len(typeFilter) > 0 && !querySetContains(typeFilter, issueType.ID, issueType.Name) {
+				continue
+			}
+			bean := h.createMetaIssueTypeBean(issueType)
+			if includeFields {
+				fields := make(map[string]any, len(project.Fields))
+				for _, field := range project.Fields {
+					fields[field.ID] = h.legacyCreateFieldBean(field)
+				}
+				bean["fields"] = fields
+			}
+			issueTypes = append(issueTypes, bean)
 		}
+		projectBean := h.projectBean(&project.Project)
+		projectBean["issuetypes"] = issueTypes
 		projectValues = append(projectValues, map[string]any{
-			"id":         p.ID,
-			"key":        p.Key,
-			"name":       p.Name,
-			"avatarUrls": map[string]string{"48x48": h.BaseURL + "/static/img/avatar-default.svg"},
-			"issuetypes": its,
-			"fields":     cfs,
+			"id": projectBean["id"], "key": projectBean["key"], "name": projectBean["name"],
+			"self": projectBean["self"], "avatarUrls": projectBean["avatarUrls"], "issuetypes": issueTypes,
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"expand":   "projects",
 		"projects": projectValues,
 	})
+}
+
+func (h *Handler) createMetaIssueTypes(w http.ResponseWriter, r *http.Request, projectIDOrKey string) {
+	project, e := h.createMetaProject(r, projectIDOrKey)
+	if e != nil {
+		writeJerr(w, e)
+		return
+	}
+	start, limit, e := metadataPage(r)
+	if e != nil {
+		writeJerr(w, e)
+		return
+	}
+	safeStart := min(start, len(project.IssueTypes))
+	end := min(safeStart+limit, len(project.IssueTypes))
+	values := make([]map[string]any, 0, end-safeStart)
+	for _, issueType := range project.IssueTypes[safeStart:end] {
+		values = append(values, h.createMetaIssueTypeBean(issueType))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"startAt": start, "maxResults": limit, "total": len(project.IssueTypes), "issueTypes": values,
+	})
+}
+
+func (h *Handler) createMetaFields(w http.ResponseWriter, r *http.Request, projectIDOrKey, issueTypeID string) {
+	project, e := h.createMetaProject(r, projectIDOrKey)
+	if e != nil {
+		writeJerr(w, e)
+		return
+	}
+	found := false
+	for _, issueType := range project.IssueTypes {
+		if issueType.ID == issueTypeID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		jiraError(w, http.StatusBadRequest, "The issue type is not available in this project.")
+		return
+	}
+	start, limit, e := metadataPage(r)
+	if e != nil {
+		writeJerr(w, e)
+		return
+	}
+	safeStart := min(start, len(project.Fields))
+	end := min(safeStart+limit, len(project.Fields))
+	values := make([]map[string]any, 0, end-safeStart)
+	for _, field := range project.Fields[safeStart:end] {
+		values = append(values, h.createFieldBean(field))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"startAt": start, "maxResults": limit, "total": len(project.Fields), "fields": values,
+	})
+}
+
+func (h *Handler) createMetaProject(r *http.Request, projectIDOrKey string) (*models.CreateProjectMeta, *jerr) {
+	wsID, userID, e := h.authWorkspace(r)
+	if e != nil {
+		return nil, e
+	}
+	meta, err := h.Store.IssueCreateMetadata(r.Context(), wsID, userID)
+	if err != nil {
+		return nil, &jerr{http.StatusInternalServerError, "internal error", nil}
+	}
+	for i := range meta.Projects {
+		project := &meta.Projects[i]
+		if project.Project.ID == projectIDOrKey || strings.EqualFold(project.Project.Key, projectIDOrKey) {
+			return project, nil
+		}
+	}
+	return nil, &jerr{http.StatusBadRequest, "You cannot create issues in this project.", nil}
+}
+
+func (h *Handler) createMetaIssueTypeBean(issueType models.IssueType) map[string]any {
+	return map[string]any{
+		"id": issueType.ID, "name": issueType.Name, "description": "", "subtask": false,
+		"iconUrl": h.BaseURL + "/static/img/issuetype-task.svg",
+		"self":    h.BaseURL + "/rest/api/3/issuetype/" + issueType.ID,
+	}
+}
+
+func (h *Handler) createFieldBean(field models.CreateFieldMeta) map[string]any {
+	return map[string]any{
+		"fieldId": field.ID, "key": field.ID, "name": field.Name, "required": field.Required,
+		"schema": createFieldSchema(field), "allowedValues": createAllowedValues(field.Options),
+	}
+}
+
+func (h *Handler) legacyCreateFieldBean(field models.CreateFieldMeta) map[string]any {
+	bean := h.createFieldBean(field)
+	delete(bean, "fieldId")
+	bean["hasDefaultValue"] = false
+	bean["operations"] = []string{"set"}
+	return bean
+}
+
+func createFieldSchema(field models.CreateFieldMeta) map[string]any {
+	schema := map[string]any{"type": field.Type}
+	if field.ID == "description" {
+		schema["system"] = field.ID
+	} else if field.Custom {
+		schema["custom"] = "com.zzira:" + field.Type
+		customID := strings.TrimPrefix(field.ID, "customfield_")
+		if numericID, err := strconv.Atoi(customID); err == nil {
+			schema["customId"] = numericID
+		} else {
+			schema["customId"] = customID
+		}
+	} else {
+		schema["system"] = field.ID
+	}
+	if field.Type == "array" {
+		schema["items"] = "string"
+	}
+	return schema
+}
+
+func createAllowedValues(options []models.CreateFieldOption) []map[string]any {
+	values := make([]map[string]any, 0, len(options))
+	for _, option := range options {
+		value := map[string]any{"name": option.Name}
+		if option.ID != "" {
+			value["id"] = option.ID
+		}
+		if option.Key != "" {
+			value["key"] = option.Key
+		}
+		values = append(values, value)
+	}
+	return values
+}
+
+func metadataPage(r *http.Request) (int, int, *jerr) {
+	start, limit := 0, 50
+	for name, target := range map[string]*int{"startAt": &start, "maxResults": &limit} {
+		if raw := r.URL.Query().Get(name); raw != "" {
+			value, err := strconv.Atoi(raw)
+			if err != nil || value < 0 || (name == "maxResults" && value > 100) {
+				return 0, 0, &jerr{http.StatusBadRequest, name + " must be between 0 and 100.", nil}
+			}
+			*target = value
+		}
+	}
+	return start, limit, nil
+}
+
+func commaQuerySet(r *http.Request, names ...string) map[string]struct{} {
+	out := map[string]struct{}{}
+	for _, name := range names {
+		for _, raw := range r.URL.Query()[name] {
+			for _, value := range strings.Split(raw, ",") {
+				if value = strings.TrimSpace(value); value != "" {
+					out[strings.ToLower(value)] = struct{}{}
+				}
+			}
+		}
+	}
+	return out
+}
+
+func querySetContains(values map[string]struct{}, candidates ...string) bool {
+	for _, candidate := range candidates {
+		if _, ok := values[strings.ToLower(candidate)]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 // ---- search ----
@@ -202,13 +370,6 @@ func (h *Handler) compileJQL(ctx context.Context, raw, currentUser string) (jql.
 		return jql.Compiled{}, &jerr{http.StatusBadRequest, "Error in the JQL Query: " + c.Err.Error(), nil}
 	}
 	return c, nil
-}
-
-func projectIDOrEmpty(projects []*models.Project) string {
-	if len(projects) > 0 {
-		return projects[0].ID
-	}
-	return ""
 }
 
 const defaultSearchPageSize = 50

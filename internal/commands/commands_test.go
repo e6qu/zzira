@@ -36,12 +36,12 @@ func TestCreateIssueToSyncPipeline(t *testing.T) {
 
 	svc := &Service{Store: st}
 	issue, action, err := svc.CreateIssue(ctx, CreateIssueInput{
-		ActorID:     "usr_test",
-		WorkspaceID: "ws_default",
-		ProjectKey:  "ZZ",
-		Summary:     "pipeline test issue",
-		Description: "desc body",
-		IssueTypeID: "it_task",
+		ActorID:        "usr_test",
+		WorkspaceID:    "ws_default",
+		ProjectIDOrKey: "ZZ",
+		Summary:        "pipeline test issue",
+		Description:    "desc body",
+		IssueTypeID:    "it_task",
 	})
 	if err != nil {
 		t.Fatalf("CreateIssue: %v", err)
@@ -114,7 +114,7 @@ func TestUpdateTransitionCommentChangelogPipeline(t *testing.T) {
 	svc := &Service{Store: st}
 
 	issue, _, err := svc.CreateIssue(ctx, CreateIssueInput{
-		ActorID: "usr_test", WorkspaceID: "ws_default", ProjectKey: "ZZ",
+		ActorID: "usr_test", WorkspaceID: "ws_default", ProjectIDOrKey: "ZZ",
 		Summary: "V1 pipeline issue", Description: "original body", IssueTypeID: "it_task",
 	})
 	if err != nil {
@@ -232,6 +232,94 @@ func TestPlainTextToADF(t *testing.T) {
 	}
 }
 
+func TestCreateDatetimeValidation(t *testing.T) {
+	for _, value := range []string{"", "2026-09-03T15:30", "2026-09-03T15:30:45", "2026-09-03T15:30:45+03:00"} {
+		if !validCreateDatetime(value) {
+			t.Fatalf("validCreateDatetime(%q) = false", value)
+		}
+	}
+	for _, value := range []string{"tomorrow", "2026-99-99T15:30", "2026-09-03"} {
+		if validCreateDatetime(value) {
+			t.Fatalf("validCreateDatetime(%q) = true", value)
+		}
+	}
+}
+
+func TestCreateIssuePersistsAndValidatesMetadataFields(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	st, err := store.Open(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := store.Migrate(ctx, st.Pool); err != nil {
+		t.Fatal(err)
+	}
+	actorID := "usr_" + store.NewID("create")
+	actorEmail := actorID + "@example.test"
+	if _, err := st.Pool.Exec(ctx, `INSERT INTO users (id,email,password_hash,display_name) VALUES ($1,$2,'x','Create Test')`, actorID, actorEmail); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AddMember(ctx, "ws_default", actorID, "admin"); err != nil {
+		t.Fatal(err)
+	}
+	projectID := store.NewID("project")
+	projectKey := "CT" + fmt.Sprint(time.Now().UnixNano())
+	if _, err := st.Pool.Exec(ctx, `INSERT INTO projects (id,workspace_id,key,name) VALUES ($1,'ws_default',$2,'Create test')`, projectID, projectKey); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM actions WHERE workspace_id='ws_default' AND actor_id=$1`, actorID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM issues WHERE workspace_id='ws_default' AND reporter_id=$1`, actorID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM projects WHERE id=$1`, projectID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM memberships WHERE workspace_id='ws_default' AND user_id=$1`, actorID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM users WHERE id=$1`, actorID)
+	}()
+	fieldID := "customfield_" + fmt.Sprint(time.Now().UnixNano())
+	schemeID := "scheme_" + store.NewID("test")
+	if _, err := st.CreateCustomField(ctx, fieldID, "Create score", models.CustomFieldNumber, ""); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = st.Pool.Exec(ctx, `DELETE FROM custom_fields WHERE id=$1`, fieldID) }()
+	if err := st.CreateSecurityScheme(ctx, models.SecurityScheme{ID: schemeID, Name: "Create test", Levels: []models.SecurityLevel{{ID: "level_" + schemeID, Name: "Private", Members: []string{actorID}}}}); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, _ = st.Pool.Exec(ctx, `UPDATE projects SET security_scheme_id=NULL WHERE id=$1`, projectID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM security_schemes WHERE id=$1`, schemeID)
+	}()
+	levelID := "level_" + schemeID
+	if err := st.AssignSecurityScheme(ctx, projectID, schemeID); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := &Service{Store: st}
+	issue, _, err := svc.CreateIssue(ctx, CreateIssueInput{
+		ActorID: actorID, WorkspaceID: "ws_default", ProjectIDOrKey: projectID, Summary: "  Metadata create  ", IssueTypeID: "it_task",
+		PriorityID: "pr_medium", AssigneeID: actorID, SecurityLevelID: levelID, Labels: []string{"create", "parity"},
+		Fields: map[string]json.RawMessage{fieldID: json.RawMessage(`8`)},
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue: %v", err)
+	}
+	if issue.Summary != "Metadata create" || issue.SecurityLevelID != levelID || issue.Assignee == nil || issue.Assignee.ID != actorID {
+		t.Fatalf("created issue fields = %+v", issue)
+	}
+	if string(issue.Fields[fieldID]) != "8" {
+		t.Fatalf("custom field = %s", issue.Fields[fieldID])
+	}
+	if _, _, err := svc.CreateIssue(ctx, CreateIssueInput{
+		ActorID: actorID, WorkspaceID: "ws_default", ProjectIDOrKey: projectKey, Summary: "Invalid field", IssueTypeID: "it_task",
+		Fields: map[string]json.RawMessage{fieldID: json.RawMessage(`"not a number"`)},
+	}); err == nil {
+		t.Fatal("CreateIssue accepted a string for a number field")
+	}
+}
+
 func TestNormalizeAttachmentMetadata(t *testing.T) {
 	filename, err := normalizedAttachmentFilename(`C:\\fakepath\\report.txt`)
 	if err != nil || filename != "report.txt" {
@@ -266,7 +354,7 @@ func TestJQLSearchPipeline(t *testing.T) {
 
 	marker := fmt.Sprintf("jqlmarker%d", time.Now().UnixNano())
 	issue, _, err := svc.CreateIssue(ctx, CreateIssueInput{
-		ActorID: "usr_test", WorkspaceID: "ws_default", ProjectKey: "ZZ",
+		ActorID: "usr_test", WorkspaceID: "ws_default", ProjectIDOrKey: "ZZ",
 		Summary: "issue with " + marker, IssueTypeID: "it_task",
 	})
 	if err != nil {

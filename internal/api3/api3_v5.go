@@ -14,6 +14,7 @@ import (
 )
 
 var customFieldIDPattern = regexp.MustCompile(`^customfield_[0-9]+$`)
+var customFieldInMessagePattern = regexp.MustCompile(`customfield_[0-9]+`)
 
 // customFieldsFromBody extracts customfield_NNNNN entries from the raw
 // request body; create and update share this extraction path.

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
@@ -498,8 +499,11 @@ func (s *Store) SecuritySchemeForProject(ctx context.Context, projectID string) 
 		SELECT ss.id, ss.name, ss.levels
 		FROM projects p JOIN security_schemes ss ON ss.id = p.security_scheme_id
 		WHERE p.id=$1`, projectID).Scan(&id, &name, &levels)
-	if err != nil {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil // no scheme assigned
+	}
+	if err != nil {
+		return nil, err
 	}
 	scheme := &models.SecurityScheme{ID: id, Name: name}
 	if err := json.Unmarshal(levels, &scheme.Levels); err != nil {

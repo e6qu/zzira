@@ -2,6 +2,7 @@ package api3
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -71,6 +72,45 @@ func TestCreateIssueRequestValidation(t *testing.T) {
 	}
 	if req.Fields.Summary != "" {
 		t.Fatal("summary should be empty")
+	}
+}
+
+func TestCreateFieldMetadataUsesJiraShapes(t *testing.T) {
+	h := goldenHandler()
+	bean := h.createFieldBean(models.CreateFieldMeta{
+		ID: "customfield_10000", Name: "Story points", Type: "number", Custom: true,
+		Options: []models.CreateFieldOption{{ID: "8", Name: "Eight"}},
+	})
+	if bean["fieldId"] != "customfield_10000" || bean["required"] != false {
+		t.Fatalf("field bean = %#v", bean)
+	}
+	schema, ok := bean["schema"].(map[string]any)
+	if !ok || schema["type"] != "number" || schema["customId"] != 10000 {
+		t.Fatalf("schema = %#v", bean["schema"])
+	}
+	allowed, ok := bean["allowedValues"].([]map[string]any)
+	if !ok || len(allowed) != 1 || allowed[0]["id"] != "8" {
+		t.Fatalf("allowedValues = %#v", bean["allowedValues"])
+	}
+}
+
+func TestCreateIssueRejectsUnsupportedAndMapsFieldErrors(t *testing.T) {
+	body := []byte(`{"fields":{"project":{"key":"ZZ"},"summary":"x","environment":"prod"}}`)
+	if errors := unsupportedCreateFields(body); errors["environment"] == "" {
+		t.Fatalf("unsupportedCreateFields = %#v", errors)
+	}
+	if errors := createIssueFieldError(fmt.Errorf("custom field %q must be a number", "customfield_10000")); errors["customfield_10000"] == "" {
+		t.Fatalf("createIssueFieldError = %#v", errors)
+	}
+}
+
+func TestMetadataPageValidationAndBounds(t *testing.T) {
+	start, limit, issueErr := metadataPage(httptest.NewRequest("GET", "/?startAt=7&maxResults=2", nil))
+	if issueErr != nil || start != 7 || limit != 2 {
+		t.Fatalf("metadataPage = (%d,%d,%v)", start, limit, issueErr)
+	}
+	if _, _, issueErr = metadataPage(httptest.NewRequest("GET", "/?maxResults=101", nil)); issueErr == nil {
+		t.Fatal("metadataPage accepted maxResults above 100")
 	}
 }
 
