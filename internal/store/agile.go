@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 
@@ -543,8 +544,11 @@ func (s *Store) WorkflowForProject(ctx context.Context, projectID string) (workf
 	err := s.Pool.QueryRow(ctx, `
 		SELECT w.def FROM projects p JOIN workflows w ON w.id = p.workflow_id
 		WHERE p.id=$1`, projectID).Scan(&def)
-	if err != nil {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return workflow.Default(), nil
+	}
+	if err != nil {
+		return workflow.Workflow{}, err
 	}
 	var wf workflow.Workflow
 	if err := json.Unmarshal(def, &wf); err != nil {
@@ -558,6 +562,35 @@ func (s *Store) WorkflowForProject(ctx context.Context, projectID string) (workf
 
 // CreateWorkflow stores a workflow definition.
 func (s *Store) CreateWorkflow(ctx context.Context, wf workflow.Workflow) error {
+	if strings.TrimSpace(wf.ID) == "" || strings.TrimSpace(wf.Name) == "" || len(wf.Transitions) == 0 {
+		return fmt.Errorf("workflow id, name, and at least one transition are required")
+	}
+	statuses, err := s.AllStatuses(ctx)
+	if err != nil {
+		return err
+	}
+	knownStatuses := make(map[string]struct{}, len(statuses))
+	for _, status := range statuses {
+		knownStatuses[status.ID] = struct{}{}
+	}
+	transitionIDs := make(map[string]struct{}, len(wf.Transitions))
+	for _, transition := range wf.Transitions {
+		if strings.TrimSpace(transition.ID) == "" || strings.TrimSpace(transition.Name) == "" || transition.To == "" || len(transition.From) == 0 {
+			return fmt.Errorf("every workflow transition requires an id, name, source, and destination")
+		}
+		if _, duplicate := transitionIDs[transition.ID]; duplicate {
+			return fmt.Errorf("workflow transition id %q is duplicated", transition.ID)
+		}
+		transitionIDs[transition.ID] = struct{}{}
+		if _, ok := knownStatuses[transition.To]; !ok {
+			return fmt.Errorf("workflow transition %q has unknown destination status %q", transition.ID, transition.To)
+		}
+		for _, from := range transition.From {
+			if _, ok := knownStatuses[from]; !ok {
+				return fmt.Errorf("workflow transition %q has unknown source status %q", transition.ID, from)
+			}
+		}
+	}
 	def, err := json.Marshal(wf)
 	if err != nil {
 		return err
@@ -566,6 +599,20 @@ func (s *Store) CreateWorkflow(ctx context.Context, wf workflow.Workflow) error 
 		`INSERT INTO workflows (id, name, def) VALUES ($1,$2,$3)
 		 ON CONFLICT (id) DO UPDATE SET name=$2, def=$3`, wf.ID, wf.Name, def)
 	return err
+}
+
+// WorkflowByID returns one stored workflow definition.
+func (s *Store) WorkflowByID(ctx context.Context, id string) (workflow.Workflow, error) {
+	var wf workflow.Workflow
+	var def []byte
+	err := s.Pool.QueryRow(ctx, `SELECT def FROM workflows WHERE id=$1`, id).Scan(&def)
+	if err != nil {
+		return wf, err
+	}
+	if err := json.Unmarshal(def, &wf); err != nil {
+		return workflow.Workflow{}, err
+	}
+	return wf, nil
 }
 
 // ListWorkflows returns all stored workflow definitions.
@@ -592,8 +639,14 @@ func (s *Store) ListWorkflows(ctx context.Context) ([]workflow.Workflow, error) 
 
 // AssignWorkflowToProject points a project at a stored workflow.
 func (s *Store) AssignWorkflowToProject(ctx context.Context, projectID, workflowID string) error {
-	_, err := s.Pool.Exec(ctx, `UPDATE projects SET workflow_id=$2 WHERE id=$1`, projectID, workflowID)
-	return err
+	result, err := s.Pool.Exec(ctx, `UPDATE projects SET workflow_id=$2 WHERE id=$1`, projectID, workflowID)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return fmt.Errorf("project %q does not exist", projectID)
+	}
+	return nil
 }
 
 // CreateSecurityScheme upserts a security scheme definition.

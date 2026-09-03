@@ -140,7 +140,7 @@ func (s *Store) SearchMembers(ctx context.Context, workspaceID, query string) ([
 // ProjectsByWorkspace lists all projects in a workspace (V2: all visible to members).
 func (s *Store) ProjectsByWorkspace(ctx context.Context, workspaceID string) ([]*models.Project, error) {
 	rows, err := s.Pool.Query(ctx,
-		`SELECT id, workspace_id, key, name FROM projects WHERE workspace_id=$1 ORDER BY key`, workspaceID)
+		`SELECT id, workspace_id, key, name, COALESCE(workflow_id,''), COALESCE(security_scheme_id,'') FROM projects WHERE workspace_id=$1 ORDER BY key`, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -148,7 +148,7 @@ func (s *Store) ProjectsByWorkspace(ctx context.Context, workspaceID string) ([]
 	var out []*models.Project
 	for rows.Next() {
 		p := &models.Project{}
-		if err := rows.Scan(&p.ID, &p.WorkspaceID, &p.Key, &p.Name); err != nil {
+		if err := rows.Scan(&p.ID, &p.WorkspaceID, &p.Key, &p.Name, &p.WorkflowID, &p.SecuritySchemeID); err != nil {
 			return nil, err
 		}
 		out = append(out, p)

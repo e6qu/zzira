@@ -1,7 +1,8 @@
 
 <div class="issue-view" id="issue-root" data-issue-id="iss_abc123" data-issue-key="ZZ-1" data-seq="0">
+  <nav class="project-tabs" aria-label="ZZIRA Demo project"><a href="/projects/ZZ">Overview</a><a href="/board/brd_default">Board</a><a href="/issues/ZZ">Work items</a></nav>
   <nav class="issue-breadcrumbs" aria-label="Breadcrumb">
-    <a href="/issues/ZZ">Projects</a><span aria-hidden="true">/</span><a href="/issues/ZZ">ZZ</a><span aria-hidden="true">/</span><span aria-current="page">ZZ-1</span>
+    <a href="/projects">Projects</a><span aria-hidden="true">/</span><a href="/projects/ZZ">ZZIRA Demo</a><span aria-hidden="true">/</span><span aria-current="page">ZZ-1</span>
   </nav>
   <header class="issue-header">
     <div class="issue-heading">
@@ -59,8 +60,8 @@
 
       <div class="activity-heading"><div><span class="eyebrow">One chronological record</span><h2 id="activity-title">Activity</h2></div>
         <div class="activity-tools"><div class="activity-filters" role="group" aria-label="Filter activity">
-          <button type="button" data-activity-filter="all" aria-pressed="true">All <span>2</span></button>
-          <button type="button" data-activity-filter="comment" aria-pressed="false">Comments <span>1</span></button>
+          <button type="button" data-activity-filter="all" aria-pressed="false">All <span>2</span></button>
+          <button type="button" data-activity-filter="comment" aria-pressed="true">Comments <span>1</span></button>
           <button type="button" data-activity-filter="worklog" aria-pressed="false">Work log <span>1</span></button>
           <button type="button" data-activity-filter="history" aria-pressed="false">History <span>0</span></button>
         </div><button type="button" class="activity-sort" data-activity-sort aria-label="Sort activity oldest first" aria-pressed="false">Newest first ↓</button></div>
@@ -87,7 +88,7 @@
           <label for="worklog-comment">Work description <span class="muted">optional</span></label><input id="worklog-comment" name="comment" placeholder="What did you work on?" class="worklog-comment"><button type="submit" class="btn">Log time</button></fieldset>
         </form></details>
         <div class="activity-ledger" data-activity-ledger>
-        <article class="activity-entry activity-worklog worklog" data-activity-kind="worklog" data-created="2026-08-28T12:00:00Z" id="activity-worklog-wl_1">
+        <article class="activity-entry activity-worklog worklog" data-activity-kind="worklog" data-created="2026-08-28T12:00:00Z" id="activity-worklog-wl_1" hidden>
           <div class="activity-marker" aria-hidden="true">T</div>
           <div class="activity-content"><header><span class="avatar" aria-hidden="true"><span>DU</span></span><strong>Demo User</strong><span class="activity-verb">logged <span class="lozenge">1h </span></span><time datetime="2026-08-28T12:00:00Z">2026-08-28T12:00:00Z</time>
           <form method="post" action="/issues/ZZ-1/worklogs/wl_1/delete" hx-delete="/issues/ZZ-1/worklogs/wl_1" hx-target="#issue-root" hx-swap="outerHTML" hx-confirm="Delete this work log?"><button type="submit" class="icon-danger" aria-label="Delete work log from 2026-08-28T12:00:00Z">×</button></form></header>
@@ -110,9 +111,9 @@
         <dt><label for="field-priority">Priority</label></dt><dd><form class="inline-field" method="post" action="/issues/ZZ-1/fields" hx-post="/issues/ZZ-1/fields" hx-target="#issue-root" hx-swap="outerHTML"><input type="hidden" name="field" value="priority"><select id="field-priority" name="value"><option value="">None</option><option value="pr_medium" selected>Medium</option></select><button class="field-save" type="submit">Save priority</button></form></dd>
         <dt><label for="field-assignee">Assignee</label></dt><dd><form class="inline-field" method="post" action="/issues/ZZ-1/fields" hx-post="/issues/ZZ-1/fields" hx-target="#issue-root" hx-swap="outerHTML"><input type="hidden" name="field" value="assignee"><select id="field-assignee" name="value"><option value="">Unassigned</option><option value="usr_1" selected>Demo User</option></select><button class="field-save" type="submit">Save assignee</button></form></dd>
         <dt>Reporter</dt>
-        <dd><span class="person-value">
+        <dd><a class="person-value person-link" href="/people/usr_1">
 <span class="avatar" aria-hidden="true"><span>DU</span></span>
-<span>Demo User</span></span></dd>
+<span>Demo User</span></a></dd>
         <dt><label for="field-labels">Labels</label></dt><dd><form class="inline-field" method="post" action="/issues/ZZ-1/fields" hx-post="/issues/ZZ-1/fields" hx-target="#issue-root" hx-swap="outerHTML"><input type="hidden" name="field" value="labels"><input id="field-labels" name="value" value="frontend, parity" placeholder="None" aria-describedby="labels-help"><small id="labels-help" class="sr-only">Comma-separated labels; spaces are not allowed within a label.</small><button class="field-save" type="submit">Save labels</button></form></dd>
 
       </dl>

@@ -174,6 +174,29 @@ func main() {
 	mux.HandleFunc("POST /login", webHandler.LoginSubmit)
 	mux.HandleFunc("POST /logout", webHandler.Logout)
 	mux.HandleFunc("GET /signed-out", webHandler.SignedOut)
+	mux.HandleFunc("GET /projects", webHandler.ProjectsPage)
+	mux.HandleFunc("GET /projects/{key}", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.ProjectOverview(w, r, r.PathValue("key"))
+	})
+	mux.HandleFunc("GET /people", webHandler.PeoplePage)
+	mux.HandleFunc("GET /profile", webHandler.SelfProfile)
+	mux.HandleFunc("GET /people/{id}", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.ProfilePage(w, r, r.PathValue("id"))
+	})
+	mux.HandleFunc("GET /settings/workflows", webHandler.WorkflowsPage)
+	mux.HandleFunc("POST /settings/workflows", webHandler.CreateWorkflow)
+	mux.HandleFunc("GET /settings/workflows/{id}", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.WorkflowPage(w, r, r.PathValue("id"))
+	})
+	mux.HandleFunc("POST /settings/workflows/{id}/transitions", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.AddWorkflowTransition(w, r, r.PathValue("id"))
+	})
+	mux.HandleFunc("POST /settings/workflows/{id}/transitions/{transition}/delete", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.DeleteWorkflowTransition(w, r, r.PathValue("id"), r.PathValue("transition"))
+	})
+	mux.HandleFunc("POST /settings/workflows/{id}/projects", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.AssignProjectWorkflow(w, r, r.PathValue("id"))
+	})
 	mux.HandleFunc("GET /issues/new", webHandler.CreateDialog)
 	mux.HandleFunc("POST /issues", webHandler.CreateIssue)
 	mux.HandleFunc("GET /issues/{key}", func(w http.ResponseWriter, r *http.Request) {

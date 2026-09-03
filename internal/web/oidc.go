@@ -143,6 +143,19 @@ func validOIDCTransport(u *url.URL) error {
 	return nil
 }
 
+// authorizationURL constructs the intentional cross-origin handoff to the
+// identity provider and validates the final URL, including OAuth parameters,
+// immediately before it reaches the redirect sink. Discovery endpoints are
+// remote configuration and must not be trusted solely because discovery used
+// TLS successfully.
+func (o *OIDC) authorizationURL(state, nonce, verifier string) (string, error) {
+	target := o.config.AuthCodeURL(state, oidc.Nonce(nonce), oauth2.S256ChallengeOption(verifier))
+	if err := validOIDCEndpointURL(target); err != nil {
+		return "", fmt.Errorf("authorization redirect: %w", err)
+	}
+	return target, nil
+}
+
 func oidcRandom() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
@@ -233,7 +246,12 @@ func (h *Handler) OIDCLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not begin sign-in", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, h.OIDC.config.AuthCodeURL(state, oidc.Nonce(nonce), oauth2.S256ChallengeOption(verifier)), http.StatusFound)
+	authorizationURL, err := h.OIDC.authorizationURL(state, nonce, verifier)
+	if err != nil {
+		http.Error(w, "could not begin sign-in", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, authorizationURL, http.StatusFound) // #nosec G710 -- final URL is HTTPS/loopback validated above; cross-origin IdP redirect is the intended OIDC flow.
 }
 
 func (h *Handler) OIDCCallback(w http.ResponseWriter, r *http.Request) {

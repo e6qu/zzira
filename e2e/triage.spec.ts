@@ -40,6 +40,9 @@ test('issue triage journey: inline fields, labels API, watchers, links, activity
   await login(page);
   await page.goto(`/browse/${key}`);
 
+  await expect(page.getByRole('button', { name: /^Comments/ })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: /^All/ })).toHaveAttribute('aria-pressed', 'false');
+
   await page.locator('.inline-summary-editor > summary').click();
   const summary = `Triage updated ${marker}`;
   await page.fill('#issue-summary-input', summary);
@@ -77,12 +80,12 @@ test('issue triage journey: inline fields, labels API, watchers, links, activity
   await page.fill('#worklog-seconds', '3600');
   await page.fill('#worklog-comment', 'Triage verification');
   await page.locator('.worklog-form button[type=submit]').click();
-  await expect(page.locator('[data-activity-kind=worklog]', { hasText: 'logged 1h' })).toBeVisible();
+  await expect(page.locator('[data-activity-kind=worklog]', { hasText: 'logged 1h' })).toBeHidden();
+  await expect(page.getByRole('button', { name: /^Comments/ })).toHaveAttribute('aria-pressed', 'true');
 
-  await page.getByRole('button', { name: /^Comments/ }).click();
-  await expect(page.locator('[data-activity-kind=comment]')).toBeVisible();
-  await expect(page.locator('[data-activity-kind=worklog]')).toBeHidden();
   await page.getByRole('button', { name: /^All/ }).click();
+  await expect(page.locator('[data-activity-kind=comment]')).toBeVisible();
+  await expect(page.locator('[data-activity-kind=worklog]', { hasText: 'logged 1h' })).toBeVisible();
   const sort = page.locator('[data-activity-sort]');
   await sort.click();
   await expect(sort).toHaveAttribute('aria-pressed', 'true');
@@ -100,6 +103,7 @@ test('issue triage journey: inline fields, labels API, watchers, links, activity
   await page.getByRole('button', { name: 'Delete attachment triage-note.txt' }).click();
   await expect(page.getByRole('link', { name: 'triage-note.txt' })).toHaveCount(0);
 
+  await page.getByRole('button', { name: /^All/ }).click();
   await page.getByRole('button', { name: /^Delete work log/ }).click();
   await expect(page.locator('[data-activity-kind=worklog]')).toHaveCount(0);
   await page.getByRole('button', { name: `Remove link to ${linkedKey}` }).click();

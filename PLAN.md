@@ -480,13 +480,16 @@ visual resemblance alone does not count.
 | Jira screen | Status | Delivered surface / next gap |
 |---|---:|---|
 | **Global shell** | ✅ | Sidebar, global JQL search (`/`), create, account, theme, responsive collapse (`Ctrl+[`), live replica state |
+| **Projects** | ✅ | Workspace directory, project overview, board/work-item tabs, recent work and workflow context |
+| **People and profiles** | ✅ | Workspace people directory plus self/other profiles with visibility-filtered assigned and reported work |
 | **Issue navigator** | ✅ | Basic/JQL search, removable chips, saved filters, columns, sorting, pagination, keyboard navigation and contextual preview |
 | **Backlog** | ⛔ | Agile APIs exist; no backlog planning UI yet |
 | **Board** | 🟡 | Rank/status drag, keyboard move, live convergence, local filter, scroll-contained columns; quick filters, swimlanes, WIP rules and card detail remain |
 | **Issue view** | ✅ | Inline system/custom fields, unified activity, comments, attachments, worklogs, history, links, watchers and security-aware actions |
 | **Create issue** | ✅ | Shared createmeta schema, project/type, assignment, priority, labels, security, typed custom fields, validation recovery and create-another |
 | **Dashboard** | 🟡 | Status/assignment snapshot and activity; saved dashboards/gadgets remain out of the supported core boundary |
-| **Project settings** | ⛔ | APIs exist for several admin entities; no coherent settings journey yet |
+| **Workflow settings** | 🟡 | Workflow directory and diagram, protected default, custom workflow creation, transition editing and project assignment; conditions, statuses and full schemes remain |
+| **Project settings** | ⛔ | Workflow assignment is delivered; details, roles, work types, fields, security, boards and webhooks remain |
 | **Quick search** | ⛔ | Global JQL submit exists; recent/starred command palette remains |
 
 Keyboard shortcuts currently cover `/` for search and `Ctrl+[` for the sidebar.

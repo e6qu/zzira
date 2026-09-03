@@ -73,7 +73,10 @@ the verified ID token is retained server-side for the session lifetime. If the
 provider advertises an `end_session_endpoint` in its discovery document, logout
 uses the standard RP-initiated logout parameters and then returns to the
 registered post-logout redirect URI. Providers without that endpoint still end
-the ZZIRA session and show the signed-out page.
+the ZZIRA session and show the signed-out page. Discovered authorization and
+logout endpoints are transport-validated during startup, and each final URL is
+validated again after its OAuth/OIDC query parameters are assembled immediately
+before the intentional cross-origin redirect.
 
 Standards references:
 

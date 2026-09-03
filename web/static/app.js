@@ -106,6 +106,12 @@
         if (button) button.focus();
       }
     });
+    document.addEventListener('pointerdown', (event) => {
+      const target = event.target;
+      document.querySelectorAll('details.user-menu[open], details.more-menu[open], details.column-picker[open], details.save-search[open], details.board-card-move[open]').forEach((details) => {
+        if (!(target instanceof Node) || !details.contains(target)) details.open = false;
+      });
+    });
   }
 
   function setSyncRail(state, label, detail) {
@@ -238,6 +244,9 @@
     });
   }
 
+  let activityFilter = 'comment';
+  let activityOldestFirst = false;
+
   function initIssueTriage(scope) {
     const root = (scope || document).querySelector('#issue-root');
     if (!root || root.dataset.triageReady) return;
@@ -247,8 +256,8 @@
     const entries = Array.from(ledger.querySelectorAll('[data-activity-kind]'));
     const empty = ledger.querySelector('[data-activity-filter-empty]');
     const filters = Array.from(root.querySelectorAll('[data-activity-filter]'));
-    let selected = 'all';
-    let oldestFirst = false;
+    let selected = activityFilter;
+    let oldestFirst = activityOldestFirst;
 
     function applyActivityView() {
       let visible = 0;
@@ -264,8 +273,10 @@
     }
 
     filters.forEach((button) => {
+      button.setAttribute('aria-pressed', String(button.dataset.activityFilter === selected));
       button.addEventListener('click', () => {
         selected = button.dataset.activityFilter || 'all';
+        activityFilter = selected;
         filters.forEach((candidate) => candidate.setAttribute('aria-pressed', String(candidate === button)));
         applyActivityView();
       });
@@ -274,12 +285,19 @@
     if (sortButton) {
       sortButton.addEventListener('click', () => {
         oldestFirst = !oldestFirst;
+        activityOldestFirst = oldestFirst;
         sortButton.setAttribute('aria-pressed', String(oldestFirst));
         sortButton.setAttribute('aria-label', oldestFirst ? 'Sort activity newest first' : 'Sort activity oldest first');
         sortButton.textContent = oldestFirst ? 'Oldest first ↑' : 'Newest first ↓';
         applyActivityView();
       });
     }
+    if (sortButton && oldestFirst) {
+      sortButton.setAttribute('aria-pressed', 'true');
+      sortButton.setAttribute('aria-label', 'Sort activity newest first');
+      sortButton.textContent = 'Oldest first ↑';
+    }
+    applyActivityView();
   }
 
   document.addEventListener('DOMContentLoaded', () => {
@@ -317,7 +335,7 @@
     return id;
   }
   const worker = replicaView
-    ? new Worker('/static/worker.js?v=10&replica=' + encodeURIComponent(replicaID()))
+    ? new Worker('/static/worker.js?v=11&replica=' + encodeURIComponent(replicaID()))
     : null;
   const banner = () => document.getElementById('sync-banner');
   let workerReady = false;

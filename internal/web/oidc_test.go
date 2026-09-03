@@ -19,6 +19,7 @@ import (
 	"github.com/e6qu/zzira/internal/build"
 	"github.com/e6qu/zzira/internal/store"
 	jose "github.com/go-jose/go-jose/v4"
+	"golang.org/x/oauth2"
 )
 
 func TestValidOIDCURL(t *testing.T) {
@@ -48,6 +49,27 @@ func TestValidOIDCURL(t *testing.T) {
 	}
 	if err := validOIDCEndpointURL("https://sso.example.test/authorize#fragment"); err == nil {
 		t.Fatal("discovered endpoint fragment accepted")
+	}
+}
+
+func TestOIDCAuthorizationURLValidatesTheFinalRedirect(t *testing.T) {
+	t.Setenv("ZZIRA_ALLOW_INSECURE_OIDC", "")
+	o := &OIDC{config: oauth2.Config{Endpoint: oauth2.Endpoint{AuthURL: "https://sso.example.test/authorize"}}}
+	target, err := o.authorizationURL("state-value", "nonce-value", "verifier-value")
+	if err != nil {
+		t.Fatalf("authorization URL: %v", err)
+	}
+	parsed, err := url.Parse(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Scheme != "https" || parsed.Host != "sso.example.test" || parsed.Query().Get("state") != "state-value" || parsed.Query().Get("nonce") != "nonce-value" {
+		t.Fatalf("authorization URL = %q", target)
+	}
+
+	o.config.Endpoint.AuthURL = "javascript:alert(1)"
+	if _, err := o.authorizationURL("state", "nonce", "verifier"); err == nil {
+		t.Fatal("unsafe authorization redirect was accepted")
 	}
 }
 

@@ -18,7 +18,8 @@ baseline and regression policy, not a third-party accessibility certification.
   return even when the live issue fragment refreshes. Long metadata-driven
   create forms keep their actions visible while the field region scrolls.
 - Native disclosures back account and action menus; `Escape` closes an open menu
-  and returns focus to its summary.
+  and returns focus to its summary, while pointer interaction outside any open
+  menu dismisses it.
 - Board cards avoid nested interactive roles. A dedicated move button supports
   keyboard pickup/arrow/drop, while a native disclosure provides up, down,
   previous-status, and next-status actions without dragging.
@@ -34,7 +35,8 @@ baseline and regression policy, not a third-party accessibility certification.
 ## Regression coverage
 
 `e2e/accessibility.spec.ts` runs axe against login and all primary authenticated
-screens in light and dark themes. It also directly exercises behavior that a
+screens—including project, people/profile, and workflow pages—in light and dark
+themes. It also directly exercises behavior that a
 DOM scanner cannot prove:
 
 - dialog inertness, focus containment, dismissal, and focus restoration;

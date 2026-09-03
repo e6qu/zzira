@@ -31,3 +31,23 @@ test('sign-out clears authenticated page caches and rotates the local replica', 
     (await (await caches.open('zzira-pages-v7')).keys()).length,
   )).toBe(0);
 });
+
+test('rapid navigation serializes OPFS access handles for one replica', async ({ page }) => {
+  await login(page);
+  await page.goto('/issues/ZZ');
+  const issueHref = await page.locator('.issue-list .key-cell a').first().getAttribute('href');
+  expect(issueHref).toMatch(/^\/browse\/ZZ-/);
+
+  for (let pass = 0; pass < 3; pass += 1) {
+    await page.goto(issueHref!);
+    await expect.poll(() => page.locator('[data-sync-label]').textContent(), { timeout: 30_000 }).toBe('Synced');
+    await expect(page.locator('[data-sync-label]')).not.toHaveText('Sync needs attention');
+    expect(await page.evaluate(() => (window as any).__bannerLog || [])).not.toEqual(
+      expect.arrayContaining([expect.stringContaining('createSyncAccessHandle')]),
+    );
+
+    await page.goto('/board/brd_default');
+    await expect.poll(() => page.locator('[data-sync-label]').textContent(), { timeout: 30_000 }).toBe('Synced');
+    await expect(page.locator('[data-sync-label]')).not.toHaveText('Sync needs attention');
+  }
+});

@@ -12,12 +12,12 @@
   }());
 </script>
 <link rel="stylesheet" href="/static/css/tokens.css?v=4">
-<link rel="stylesheet" href="/static/css/workspace.css?v=4">
+<link rel="stylesheet" href="/static/css/workspace.css?v=5">
 <link rel="preload" href="/static/zzira-worker.wasm?v=2" as="fetch" crossorigin>
 <link rel="preload" href="/static/sqlite/sqlite3.wasm" as="fetch" crossorigin>
 <script src="/static/htmx/htmx.min.js" defer></script>
 <script src="/static/wasm/wasm_exec.js" defer></script>
-<script src="/static/app.js?v=16" defer></script>
+<script src="/static/app.js?v=18" defer></script>
 {{end}}
 
 {{define "avatar"}}
@@ -47,6 +47,7 @@
     <summary aria-label="Account menu for {{.User.DisplayName}}" data-shauth-user="{{.User.Username}}">{{template "avatar" .User}}</summary>
     <div class="user-popover">
       <div class="user-popover-head">{{template "avatar" .User}}<span><strong>{{.User.DisplayName}}</strong><small>{{.User.Email}}</small></span></div>
+      <nav aria-label="Account"><a href="/profile">Profile</a><a href="/people">People and teams</a></nav>
       <form method="post" action="/logout"><button type="submit" data-shauth-sign-out>Log out</button></form>
     </div>
   </details>
@@ -59,16 +60,19 @@
 
 {{define "workspace_nav"}}
 <aside class="workspace-nav" id="workspace-navigation" aria-label="Workspace navigation">
-  <div class="workspace-identity">
+  <a class="workspace-identity" href="/projects">
     <span class="workspace-avatar" aria-hidden="true">ZZ</span>
-    <span class="workspace-copy"><strong>ZZIRA Software</strong><small>Software project</small></span>
-  </div>
+    <span class="workspace-copy"><strong>ZZIRA</strong><small>Browse projects</small></span>
+  </a>
   <nav aria-label="Primary">
     <a class="nav-dashboard" href="/dashboard" {{if eq .Active "dashboard"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h6v7H4zM14 4h6v16h-6zM4 4h6v5H4z"/></svg><span>Your work</span></a>
-    <div class="nav-label">Plan</div>
+    <a class="nav-projects" href="/projects" {{if eq .Active "projects"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5h7l2 2h8v10h-17z"/></svg><span>Projects</span></a>
+    <a class="nav-people" href="/people" {{if eq .Active "people"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3.5 19c.5-4 2.2-6 5.5-6s5 2 5.5 6M15 6.5a3 3 0 0 1 0 5.8M16 14c2.7.4 4.1 2 4.5 5"/></svg><span>People</span></a>
+    <div class="nav-label">Recent project</div>
     <a class="nav-board" href="/board/brd_default" {{if eq .Active "board"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="5" height="14" rx="1"/><rect x="9.5" y="5" width="5" height="9" rx="1"/><rect x="15.5" y="5" width="5" height="11" rx="1"/></svg><span>Board</span></a>
-    <div class="nav-label">Work</div>
     <a class="nav-issues" href="/issues/ZZ" {{if eq .Active "issues"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 6h13M7 12h13M7 18h13"/><circle cx="4" cy="6" r=".8"/><circle cx="4" cy="12" r=".8"/><circle cx="4" cy="18" r=".8"/></svg><span>All work</span></a>
+    <div class="nav-label">Settings</div>
+    <a class="nav-workflows" href="/settings/workflows" {{if eq .Active "workflows"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M7 6h10M18 8l-5 8M11 16 6 8"/></svg><span>Workflows</span></a>
   </nav>
   <div class="sync-rail" id="sync-rail" data-state="online">
     <span class="sync-dot" aria-hidden="true"></span>
@@ -147,8 +151,9 @@
 
 {{define "issue_view"}}
 <div class="issue-view" id="issue-root" data-issue-id="{{.Issue.ID}}" data-issue-key="{{.Issue.Key}}" data-seq="{{.Issue.UpdatedSeq}}">
+  <nav class="project-tabs" aria-label="{{.ProjectName}} project"><a href="/projects/{{.ProjectKey}}">Overview</a>{{if .BoardID}}<a href="/board/{{.BoardID}}">Board</a>{{end}}<a href="/issues/{{.ProjectKey}}">Work items</a></nav>
   <nav class="issue-breadcrumbs" aria-label="Breadcrumb">
-    <a href="/issues/{{.ProjectKey}}">Projects</a><span aria-hidden="true">/</span><a href="/issues/{{.ProjectKey}}">{{.ProjectKey}}</a><span aria-hidden="true">/</span><span aria-current="page">{{.Issue.Key}}</span>
+    <a href="/projects">Projects</a><span aria-hidden="true">/</span><a href="/projects/{{.ProjectKey}}">{{.ProjectName}}</a><span aria-hidden="true">/</span><span aria-current="page">{{.Issue.Key}}</span>
   </nav>
   <header class="issue-header">
     <div class="issue-heading">
@@ -211,8 +216,8 @@
 
       <div class="activity-heading"><div><span class="eyebrow">One chronological record</span><h2 id="activity-title">Activity</h2></div>
         <div class="activity-tools"><div class="activity-filters" role="group" aria-label="Filter activity">
-          <button type="button" data-activity-filter="all" aria-pressed="true">All <span>{{len .Activity}}</span></button>
-          <button type="button" data-activity-filter="comment" aria-pressed="false">Comments <span>{{len .Comments}}</span></button>
+          <button type="button" data-activity-filter="all" aria-pressed="false">All <span>{{len .Activity}}</span></button>
+          <button type="button" data-activity-filter="comment" aria-pressed="true">Comments <span>{{len .Comments}}</span></button>
           <button type="button" data-activity-filter="worklog" aria-pressed="false">Work log <span>{{len .Worklogs}}</span></button>
           <button type="button" data-activity-filter="history" aria-pressed="false">History <span>{{len .History}}</span></button>
         </div><button type="button" class="activity-sort" data-activity-sort aria-label="Sort activity oldest first" aria-pressed="false">Newest first ↓</button></div>
@@ -239,13 +244,13 @@
           <label for="worklog-comment">Work description <span class="muted">optional</span></label><input id="worklog-comment" name="comment" placeholder="What did you work on?" class="worklog-comment"><button type="submit" class="btn">Log time</button></fieldset>
         </form>{{end}}</details>{{end}}
         <div class="activity-ledger" data-activity-ledger>
-        {{range .Activity}}<article class="activity-entry activity-{{.Kind}}{{if eq .Kind "worklog"}} worklog{{end}}" data-activity-kind="{{.Kind}}" data-created="{{.Created}}" id="activity-{{.Kind}}-{{.ID}}">
+        {{range .Activity}}<article class="activity-entry activity-{{.Kind}}{{if eq .Kind "worklog"}} worklog{{end}}" data-activity-kind="{{.Kind}}" data-created="{{.Created}}" id="activity-{{.Kind}}-{{.ID}}"{{if ne .Kind "comment"}} hidden{{end}}>
           <div class="activity-marker" aria-hidden="true">{{if eq .Kind "comment"}}C{{else if eq .Kind "worklog"}}T{{else}}H{{end}}</div>
           <div class="activity-content"><header><span class="avatar" aria-hidden="true"><span>{{initials .AuthorName}}</span></span><strong>{{.AuthorName}}</strong><span class="activity-verb">{{if eq .Kind "comment"}}commented{{else if eq .Kind "worklog"}}logged <span class="lozenge">{{timeSpent .TimeSpentSeconds}}</span>{{else}}changed this work item{{end}}</span><time datetime="{{.Created}}">{{.Created}}</time>
           {{if and $.CanTriage (and (eq .Kind "worklog") .CanDelete)}}<form method="post" action="/issues/{{$.Issue.Key}}/worklogs/{{.ID}}/delete" hx-delete="/issues/{{$.Issue.Key}}/worklogs/{{.ID}}" hx-target="#issue-root" hx-swap="outerHTML" hx-confirm="Delete this work log?"><button type="submit" class="icon-danger" aria-label="Delete work log from {{.Created}}">×</button></form>{{end}}</header>
           {{if eq .Kind "history"}}<ul class="change-list">{{range .Items}}<li><strong>{{.Field}}</strong> changed{{if .FromString}} from “{{.FromString}}”{{end}}{{if .ToString}} to “{{.ToString}}”{{end}}</li>{{end}}</ul>{{else if .Body}}<div class="comment-body">{{adfHTML .Body}}</div>{{end}}</div>
         </article>{{else}}<div class="empty-state" data-activity-empty><strong>No activity yet</strong><small>Comments, work logs, and field changes will appear here.</small></div>{{end}}
-        <div class="empty-state" data-activity-filter-empty hidden><strong>No matching activity</strong><small>Choose another activity filter.</small></div>
+        <div class="empty-state" data-activity-filter-empty {{if .Comments}}hidden{{end}}><strong>No matching activity</strong><small>Choose another activity filter.</small></div>
         </div>
       </section>
     </div>
@@ -257,7 +262,7 @@
         <dt>{{if .CanTriage}}<label for="field-priority">Priority</label>{{else}}Priority{{end}}</dt><dd>{{if .CanTriage}}<form class="inline-field" method="post" action="/issues/{{.Issue.Key}}/fields" hx-post="/issues/{{.Issue.Key}}/fields" hx-target="#issue-root" hx-swap="outerHTML"><input type="hidden" name="field" value="priority"><select id="field-priority" name="value"><option value="">None</option>{{$priority := ""}}{{if .Issue.Priority}}{{$priority = .Issue.Priority.ID}}{{end}}{{range .Priorities}}<option value="{{.ID}}" {{if eq .ID $priority}}selected{{end}}>{{.Name}}</option>{{end}}</select><button class="field-save" type="submit">Save priority</button></form>{{else}}{{if .Issue.Priority}}{{.Issue.Priority.Name}}{{else}}None{{end}}{{end}}</dd>
         <dt>{{if .CanTriage}}<label for="field-assignee">Assignee</label>{{else}}Assignee{{end}}</dt><dd>{{if .CanTriage}}<form class="inline-field" method="post" action="/issues/{{.Issue.Key}}/fields" hx-post="/issues/{{.Issue.Key}}/fields" hx-target="#issue-root" hx-swap="outerHTML"><input type="hidden" name="field" value="assignee"><select id="field-assignee" name="value"><option value="">Unassigned</option>{{$assignee := ""}}{{if .Issue.Assignee}}{{$assignee = .Issue.Assignee.ID}}{{end}}{{range .Members}}<option value="{{.ID}}" {{if eq .ID $assignee}}selected{{end}}>{{.DisplayName}}</option>{{end}}</select><button class="field-save" type="submit">Save assignee</button></form>{{else}}{{if .Issue.Assignee}}{{.Issue.Assignee.DisplayName}}{{else}}Unassigned{{end}}{{end}}</dd>
         <dt>Reporter</dt>
-        <dd>{{if .Issue.Reporter}}<span class="person-value">{{template "avatar" .Issue.Reporter}}<span>{{.Issue.Reporter.DisplayName}}</span></span>{{end}}</dd>
+        <dd>{{if .Issue.Reporter}}<a class="person-value person-link" href="/people/{{.Issue.Reporter.ID}}">{{template "avatar" .Issue.Reporter}}<span>{{.Issue.Reporter.DisplayName}}</span></a>{{end}}</dd>
         <dt>{{if .CanTriage}}<label for="field-labels">Labels</label>{{else}}Labels{{end}}</dt><dd>{{if .CanTriage}}<form class="inline-field" method="post" action="/issues/{{.Issue.Key}}/fields" hx-post="/issues/{{.Issue.Key}}/fields" hx-target="#issue-root" hx-swap="outerHTML"><input type="hidden" name="field" value="labels"><input id="field-labels" name="value" value="{{join .Issue.Labels ", "}}" placeholder="None" aria-describedby="labels-help"><small id="labels-help" class="sr-only">Comma-separated labels; spaces are not allowed within a label.</small><button class="field-save" type="submit">Save labels</button></form>{{else}}{{if .Issue.Labels}}{{join .Issue.Labels ", "}}{{else}}None{{end}}{{end}}</dd>
 {{if .SecurityLevels}}        <dt><label for="field-security">Security</label></dt><dd><form class="inline-field" method="post" action="/issues/{{.Issue.Key}}/fields" hx-post="/issues/{{.Issue.Key}}/fields" hx-target="#issue-root" hx-swap="outerHTML"><input type="hidden" name="field" value="security"><select id="field-security" name="value"><option value="">Public</option>{{$security := .Issue.SecurityLevelID}}{{range .SecurityLevels}}<option value="{{.ID}}" {{if eq .ID $security}}selected{{end}}>{{.Name}}</option>{{end}}</select><button class="field-save" type="submit">Save security</button></form></dd>{{end}}
       </dl>
@@ -418,6 +423,7 @@
   <div class="app-shell">
   {{template "workspace_nav" .}}
   <main class="page page-fluid" id="main-content" tabindex="-1">
+    <nav class="project-tabs" aria-label="{{.Data.Project.Name}} project"><a href="/projects/{{.Data.Project.Key}}">Overview</a>{{if .Data.BoardID}}<a href="/board/{{.Data.BoardID}}">Board</a>{{end}}<a href="/issues/{{.Data.Project.Key}}" aria-current="page">Work items</a></nav>
     <header class="page-header"><div><span class="eyebrow">{{.Data.Project.Name}} · {{.Data.Project.Key}}</span><h1>All work</h1><p>Find and triage work without losing the issue context.</p></div><button type="button" class="btn btn-primary" hx-get="/issues/new" hx-target="#modal-root" hx-swap="innerHTML" onclick="zzira.openModal(this)">Create issue</button></header>
     <section class="navigator-search" aria-labelledby="navigator-search-title">
       <div class="navigator-search-heading"><h2 id="navigator-search-title">Search work</h2><div class="navigator-search-tools"><form class="saved-filter-picker" method="get" action="/issues/{{.Data.Project.Key}}"><label class="sr-only" for="saved-filter">Saved filter</label><select id="saved-filter" name="filter"><option value="">Saved filters</option>{{range .Data.Filters}}<option value="{{.ID}}" {{if eq .ID $.Data.ActiveFilter}}selected{{end}}>{{if .Favourite}}★ {{end}}{{.Name}}</option>{{end}}</select><button class="btn" type="submit">Open</button></form><nav class="search-mode" aria-label="Search mode"><a href="{{.Data.BasicURL}}" {{if eq .Data.Mode "basic"}}aria-current="page"{{end}}>Basic</a><a href="{{.Data.AdvancedURL}}" {{if eq .Data.Mode "advanced"}}aria-current="page"{{end}}>JQL</a></nav></div></div>
@@ -506,6 +512,7 @@
   <div class="app-shell">
   {{template "workspace_nav" .}}
   <main class="page page-fluid board-page" id="main-content" tabindex="-1">
+    <nav class="project-tabs" aria-label="{{.Data.Board.ProjectName}} project"><a href="/projects/{{.Data.Board.ProjectKey}}">Overview</a><a href="/board/{{.Data.Board.ID}}" aria-current="page">Board</a><a href="/issues/{{.Data.Board.ProjectKey}}">Work items</a></nav>
     <header class="page-header board-page-header"><div><span class="eyebrow">ZZIRA Software · {{.Data.Board.Type}} board</span><h1>{{.Data.Board.Name}}</h1></div><button type="button" class="btn btn-primary" hx-get="/issues/new" hx-target="#modal-root" hx-swap="innerHTML" onclick="zzira.openModal(this)">Create issue</button></header>
     <div class="board-toolbar"><label class="board-search"><span class="sr-only">Filter board</span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg><input type="search" placeholder="Filter this board" data-board-filter></label><span class="toolbar-divider"></span><span class="muted">Drag cards or use their move controls to update status</span><span class="sr-only" role="status" aria-live="polite" data-board-filter-status></span></div>
     <div class="board" id="board" role="region" aria-label="{{.Data.Board.Name}} board">
@@ -570,6 +577,121 @@
   <div id="sync-banner" class="sync-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div>
 </body>
 </html>
+{{end}}
+
+{{define "page_projects"}}
+<!doctype html>
+<html lang="en">
+<head><title>Projects · ZZIRA</title>{{template "head" .}}</head>
+<body class="page-projects">
+  <a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}
+  <div class="app-shell">{{template "workspace_nav" .}}
+  <main class="page page-directory" id="main-content" tabindex="-1">
+    <nav class="issue-breadcrumbs" aria-label="Breadcrumb"><span aria-current="page">Projects</span></nav>
+    <header class="page-header"><div><span class="eyebrow">Spaces</span><h1>Projects</h1><p>Browse every software project, its board, work items, and active workflow.</p></div></header>
+    <div class="directory-grid">
+    {{range .Data.Projects}}<article class="directory-card project-card">
+      <header><span class="project-card-avatar" aria-hidden="true">{{.Project.Key}}</span><div><h2><a href="/projects/{{.Project.Key}}">{{.Project.Name}}</a></h2><p>{{.Project.Key}} · Software project</p></div></header>
+      <dl><div><dt>Work items</dt><dd>{{.IssueCount}}</dd></div><div><dt>Workflow</dt><dd>{{.WorkflowName}}</dd></div><div><dt>Boards</dt><dd>{{len .Boards}}</dd></div></dl>
+      <footer><a href="/projects/{{.Project.Key}}">Open project</a><a href="/issues/{{.Project.Key}}">View work</a>{{with .PrimaryBoard}}<a href="/board/{{.ID}}">Open board</a>{{end}}</footer>
+    </article>{{else}}<div class="empty-state"><strong>No projects yet</strong><small>Projects available to this workspace will appear here.</small></div>{{end}}
+    </div>
+  </main></div><div id="modal-root"></div><div id="sync-banner" class="sync-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+</body></html>
+{{end}}
+
+{{define "page_project_overview"}}
+<!doctype html>
+<html lang="en">
+<head><title>{{.Data.Project.Name}} · ZZIRA</title>{{template "head" .}}</head>
+<body class="page-project-overview">
+  <a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}
+  <div class="app-shell">{{template "workspace_nav" .}}
+  <main class="page page-fluid" id="main-content" tabindex="-1">
+    <nav class="project-tabs" aria-label="{{.Data.Project.Name}} project"><a href="/projects/{{.Data.Project.Key}}" aria-current="page">Overview</a>{{with .Data.PrimaryBoard}}<a href="/board/{{.ID}}">Board</a>{{end}}<a href="/issues/{{.Data.Project.Key}}">Work items</a></nav>
+    <nav class="issue-breadcrumbs" aria-label="Breadcrumb"><a href="/projects">Projects</a><span aria-hidden="true">/</span><span aria-current="page">{{.Data.Project.Name}}</span></nav>
+    <header class="project-hero"><span class="project-hero-avatar" aria-hidden="true">{{.Data.Project.Key}}</span><div><span class="eyebrow">Software project</span><h1>{{.Data.Project.Name}}</h1><p>{{.Data.Project.Key}} · Organize delivery across the board, work list, and workflow.</p></div><button type="button" class="btn btn-primary" hx-get="/issues/new?project={{.Data.Project.Key}}" hx-target="#modal-root" hx-swap="innerHTML" onclick="zzira.openModal(this)">Create work item</button></header>
+    <div class="project-overview-grid">
+      <section class="surface-card" aria-labelledby="project-work-title"><div class="section-heading"><div><span class="eyebrow">Work</span><h2 id="project-work-title">Recent work items</h2></div><a href="/issues/{{.Data.Project.Key}}">View all</a></div>
+        <ul class="compact-work-list">{{range .Data.Issues}}<li><a href="/browse/{{.Key}}"><strong>{{.Key}}</strong><span>{{.Summary}}</span></a><span class="lozenge {{statusClass .Status.Category}}">{{.Status.Name}}</span></li>{{else}}<li class="empty-state"><strong>No work yet</strong><small>Create the first work item for this project.</small></li>{{end}}</ul>
+      </section>
+      <aside class="project-side-stack"><section class="surface-card"><span class="eyebrow">Process</span><h2>Workflow</h2><p><strong>{{.Data.Workflow.Name}}</strong></p><p class="muted">{{len .Data.Workflow.Transitions}} transitions across the project lifecycle.</p><a href="/settings/workflows/{{.Data.Workflow.ID}}">View workflow →</a></section>
+      <section class="surface-card"><span class="eyebrow">Boards</span><h2>Plan and track</h2>{{range .Data.Boards}}<a class="board-directory-link" href="/board/{{.ID}}"><strong>{{.Name}}</strong><span>{{.Type}} board</span></a>{{else}}<p class="muted">No board is configured.</p>{{end}}</section></aside>
+    </div>
+  </main></div><div id="modal-root"></div><div id="sync-banner" class="sync-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+</body></html>
+{{end}}
+
+{{define "page_people"}}
+<!doctype html>
+<html lang="en">
+<head><title>People · ZZIRA</title>{{template "head" .}}</head>
+<body class="page-people">
+  <a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}
+  <div class="app-shell">{{template "workspace_nav" .}}
+  <main class="page page-directory" id="main-content" tabindex="-1">
+    <nav class="issue-breadcrumbs" aria-label="Breadcrumb"><span aria-current="page">People</span></nav>
+    <header class="page-header"><div><span class="eyebrow">Directory</span><h1>People</h1><p>Find teammates and understand the work they own and report.</p></div></header>
+    <div class="people-grid">{{range .Data.People}}<a class="person-card" href="/people/{{.ID}}">{{template "avatar" .}}<span><strong>{{.DisplayName}}</strong><small>{{.Email}}</small></span><span class="lozenge {{if .Active}}lozenge-success{{end}}">{{if .Active}}Active{{else}}Inactive{{end}}</span></a>{{else}}<div class="empty-state"><strong>No people found</strong></div>{{end}}</div>
+  </main></div><div id="modal-root"></div><div id="sync-banner" class="sync-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+</body></html>
+{{end}}
+
+{{define "page_profile"}}
+<!doctype html>
+<html lang="en">
+<head><title>{{.Data.Profile.DisplayName}} · ZZIRA</title>{{template "head" .}}</head>
+<body class="page-profile">
+  <a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}
+  <div class="app-shell">{{template "workspace_nav" .}}
+  <main class="page page-fluid" id="main-content" tabindex="-1">
+    <nav class="issue-breadcrumbs" aria-label="Breadcrumb"><a href="/people">People</a><span aria-hidden="true">/</span><span aria-current="page">{{if .Data.Self}}Your profile{{else}}{{.Data.Profile.DisplayName}}{{end}}</span></nav>
+    <header class="profile-hero"><span class="profile-avatar" aria-hidden="true">{{initials .Data.Profile.DisplayName}}</span><div><span class="eyebrow">{{if .Data.Self}}Your profile{{else}}Team member{{end}}</span><h1>{{.Data.Profile.DisplayName}}</h1><p>{{.Data.Profile.Email}}{{if .Data.Profile.TimeZone}} · {{.Data.Profile.TimeZone}}{{end}}</p></div></header>
+    <div class="profile-work-grid">
+      <section class="surface-card" aria-labelledby="assigned-work-title"><div class="section-heading"><div><span class="eyebrow">Ownership</span><h2 id="assigned-work-title">Assigned work <span class="section-count">{{len .Data.Assigned}}</span></h2></div></div><ul class="compact-work-list">{{range .Data.Assigned}}<li><a href="/browse/{{.Key}}"><strong>{{.Key}}</strong><span>{{.Summary}}</span></a><span class="lozenge {{statusClass .Status.Category}}">{{.Status.Name}}</span></li>{{else}}<li class="empty-state"><strong>No assigned work</strong></li>{{end}}</ul></section>
+      <section class="surface-card" aria-labelledby="reported-work-title"><div class="section-heading"><div><span class="eyebrow">Created</span><h2 id="reported-work-title">Reported work <span class="section-count">{{len .Data.Reported}}</span></h2></div></div><ul class="compact-work-list">{{range .Data.Reported}}<li><a href="/browse/{{.Key}}"><strong>{{.Key}}</strong><span>{{.Summary}}</span></a><span class="lozenge {{statusClass .Status.Category}}">{{.Status.Name}}</span></li>{{else}}<li class="empty-state"><strong>No reported work</strong></li>{{end}}</ul></section>
+    </div>
+  </main></div><div id="modal-root"></div><div id="sync-banner" class="sync-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+</body></html>
+{{end}}
+
+{{define "page_workflows"}}
+<!doctype html>
+<html lang="en">
+<head><title>Workflows · ZZIRA</title>{{template "head" .}}</head>
+<body class="page-workflows">
+  <a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}
+  <div class="app-shell">{{template "workspace_nav" .}}
+  <main class="page page-directory" id="main-content" tabindex="-1">
+    <nav class="issue-breadcrumbs" aria-label="Breadcrumb"><span>Settings</span><span aria-hidden="true">/</span><span aria-current="page">Workflows</span></nav>
+    <header class="page-header"><div><span class="eyebrow">Work item settings</span><h1>Workflows</h1><p>See the statuses and transitions that define how work moves through each project.</p></div></header>
+    {{if .Data.CanCreate}}<form class="workflow-create surface-card" method="post" action="/settings/workflows"><label for="workflow-name">Create a workflow from the default</label><div><input id="workflow-name" name="name" maxlength="255" required placeholder="For example: Delivery workflow"><button class="btn btn-primary" type="submit">Create workflow</button></div></form>{{end}}
+    <div class="workflow-list">{{range .Data.Workflows}}<article class="workflow-list-item"><div><span class="workflow-glyph" aria-hidden="true">↝</span><div><h2><a href="/settings/workflows/{{.Workflow.ID}}">{{.Workflow.Name}}</a></h2><p>{{len .Workflow.Transitions}} transitions · {{len .Projects}} project{{if ne (len .Projects) 1}}s{{end}}</p></div></div><div class="workflow-project-tags">{{range .Projects}}<a href="/projects/{{.Key}}">{{.Name}}</a>{{else}}<span class="muted">Inactive</span>{{end}}</div><a class="btn" href="/settings/workflows/{{.Workflow.ID}}">View{{if ne .Workflow.ID "wf_default"}} and edit{{end}}</a></article>{{else}}<div class="empty-state"><strong>No workflows found</strong></div>{{end}}</div>
+  </main></div><div id="modal-root"></div><div id="sync-banner" class="sync-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+</body></html>
+{{end}}
+
+{{define "page_workflow"}}
+<!doctype html>
+<html lang="en">
+<head><title>{{.Data.Workflow.Name}} workflow · ZZIRA</title>{{template "head" .}}</head>
+<body class="page-workflow-editor">
+  <a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}
+  <div class="app-shell">{{template "workspace_nav" .}}
+  <main class="page page-fluid" id="main-content" tabindex="-1">
+    <nav class="issue-breadcrumbs" aria-label="Breadcrumb"><a href="/settings/workflows">Workflows</a><span aria-hidden="true">/</span><span aria-current="page">{{.Data.Workflow.Name}}</span></nav>
+    <header class="workflow-editor-header"><div><span class="eyebrow">Workflow editor</span><h1>{{.Data.Workflow.Name}}</h1><p>{{len .Data.Workflow.Transitions}} transitions · Used by {{len .Data.Assigned}} project{{if ne (len .Data.Assigned) 1}}s{{end}}</p></div>{{if eq .Data.Workflow.ID "wf_default"}}<span class="lozenge">Built in · read only</span>{{end}}</header>
+    <div class="workflow-editor-layout">
+      <section class="workflow-canvas surface-card" aria-labelledby="workflow-diagram-title"><div class="section-heading"><div><span class="eyebrow">Diagram</span><h2 id="workflow-diagram-title">Statuses and transitions</h2></div></div>
+        <div class="workflow-lanes">{{range .Data.Lanes}}<article class="workflow-status"><header><span class="status-dot status-{{.Status.Category}}" aria-hidden="true"></span><div><h3>{{.Status.Name}}</h3><small>{{.Status.Category}}</small></div></header><ul>{{range .Transitions}}<li><span>{{.Name}}</span><span aria-hidden="true">→</span><strong>{{.To.Name}}</strong>{{if $.Data.CanEdit}}<form method="post" action="/settings/workflows/{{$.Data.Workflow.ID}}/transitions/{{.ID}}/delete"><button class="icon-danger" type="submit" aria-label="Delete {{.Name}} transition">×</button></form>{{end}}</li>{{else}}<li class="muted">No outgoing transitions</li>{{end}}</ul></article>{{end}}</div>
+      </section>
+      <aside class="workflow-inspector">
+        {{if .Data.CanEdit}}<form class="surface-card workflow-form" method="post" action="/settings/workflows/{{.Data.Workflow.ID}}/transitions"><span class="eyebrow">Edit workflow</span><h2>Add transition</h2><label for="transition-name">Name</label><input id="transition-name" name="name" maxlength="255" required placeholder="Ready for review"><label for="transition-from">From status</label><select id="transition-from" name="from" required>{{range .Data.Statuses}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select><label for="transition-to">To status</label><select id="transition-to" name="to" required>{{range .Data.Statuses}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select><button class="btn btn-primary" type="submit">Add transition</button></form>{{else if eq .Data.Workflow.ID "wf_default"}}<section class="surface-card"><span class="eyebrow">Protected workflow</span><h2>Create a copy to edit</h2><p class="muted">The built-in workflow stays stable. Create a workflow from the directory to customize its transitions.</p><a class="btn" href="/settings/workflows">Back to workflows</a></section>{{end}}
+        <section class="surface-card"><span class="eyebrow">Projects</span><h2>Workflow usage</h2><ul class="assigned-projects">{{range .Data.Assigned}}<li><a href="/projects/{{.Key}}">{{.Name}}</a><span>{{.Key}}</span></li>{{else}}<li class="muted">No projects use this workflow.</li>{{end}}</ul>{{if .Data.CanAssign}}<form class="workflow-assign" method="post" action="/settings/workflows/{{.Data.Workflow.ID}}/projects"><label for="workflow-project">Assign to project</label><select id="workflow-project" name="project" required>{{range .Data.Projects}}<option value="{{.ID}}">{{.Name}} ({{.Key}})</option>{{end}}</select><button class="btn" type="submit">Assign</button></form>{{end}}</section>
+      </aside>
+    </div>
+  </main></div><div id="modal-root"></div><div id="sync-banner" class="sync-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+</body></html>
 {{end}}
 
 {{define "page_login"}}

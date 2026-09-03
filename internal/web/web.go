@@ -44,6 +44,7 @@ type createDialogData struct {
 
 type projectIssuesData struct {
 	Project      *models.Project
+	BoardID      string
 	Issues       []*models.Issue
 	Selected     *models.Issue
 	Statuses     []models.Status
@@ -357,6 +358,21 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	if err != nil {
 		return nil, err
 	}
+	project, err := h.Store.ProjectByIDOrKey(r.Context(), wsID, issue.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	boards, err := h.Store.BoardsByWorkspace(r.Context(), wsID)
+	if err != nil {
+		return nil, err
+	}
+	boardID := ""
+	for _, board := range boards {
+		if board.ProjectID == issue.ProjectID {
+			boardID = board.ID
+			break
+		}
+	}
 	comments, err := h.Store.CommentsByIssue(r.Context(), issue.ID)
 	if err != nil {
 		return nil, err
@@ -470,7 +486,9 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	}
 	return &models.IssueView{
 		Issue:             *issue,
-		ProjectKey:        projectKeyOf(issue.Key),
+		ProjectKey:        project.Key,
+		ProjectName:       project.Name,
+		BoardID:           boardID,
 		CanEdit:           true,
 		CanTriage:         true,
 		CurrentUserID:     user.ID,
@@ -637,7 +655,13 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 			query.Set("id_token_hint", idToken)
 			query.Set("post_logout_redirect_uri", h.OIDC.postLogoutRedirectURL)
 			logoutURL.RawQuery = query.Encode()
-			http.Redirect(w, r, logoutURL.String(), http.StatusSeeOther)
+			target := logoutURL.String()
+			if err := validOIDCEndpointURL(target); err != nil {
+				log.Printf("OIDC end-session redirect: %v", err)
+				http.Redirect(w, r, "/signed-out", http.StatusSeeOther)
+				return
+			}
+			http.Redirect(w, r, target, http.StatusSeeOther) // #nosec G710 -- final URL is HTTPS/loopback validated above; cross-origin IdP logout is intentional.
 			return
 		}
 	}
@@ -881,6 +905,11 @@ func (h *Handler) ProjectIssues(w http.ResponseWriter, r *http.Request, key stri
 		http.NotFound(w, r)
 		return
 	}
+	boards, err := h.Store.BoardsByWorkspace(r.Context(), wsID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 	statuses, err := h.Store.AllStatuses(r.Context())
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -919,6 +948,12 @@ func (h *Handler) ProjectIssues(w http.ResponseWriter, r *http.Request, key stri
 		Project: project, Statuses: statuses, Members: members, Filters: filters, ActiveFilter: activeFilter,
 		Mode: params.Mode, JQL: params.JQL, Text: params.Text, Status: params.Status, Assignee: params.Assignee,
 		Sort: params.Sort, Direction: params.Direction, Page: params.Page, SortURLs: map[string]string{},
+	}
+	for _, board := range boards {
+		if board.ProjectID == project.ID {
+			data.BoardID = board.ID
+			break
+		}
 	}
 	data.Chips = navigatorChips(project.Key, params, members)
 	if params.Mode == "basic" {
