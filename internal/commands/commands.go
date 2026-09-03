@@ -5,6 +5,7 @@ package commands
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/e6qu/zzira/internal/attachments"
@@ -27,6 +28,29 @@ type CreateIssueInput struct {
 	PriorityID  string
 	AssigneeID  string
 	Fields      map[string]json.RawMessage
+}
+
+// DeleteIssue removes the issue transactionally, then cleans up attachment
+// blobs whose metadata was cascade-deleted with it.
+func (s *Service) DeleteIssue(ctx context.Context, actorID, workspaceID, issueIDOrKey, reason string) (*models.Action, error) {
+	issue, err := s.visibleIssue(ctx, actorID, workspaceID, issueIDOrKey)
+	if err != nil {
+		return nil, err
+	}
+	action, blobRefs, err := s.Store.DeleteIssue(ctx, actorID, workspaceID, issue.ID, reason)
+	if err != nil {
+		return nil, err
+	}
+	if s.Blobs == nil && len(blobRefs) > 0 {
+		return action, fmt.Errorf("issue deleted but %d attachment blobs could not be cleaned up: storage not configured", len(blobRefs))
+	}
+	var cleanupErr error
+	for _, ref := range blobRefs {
+		if err := s.Blobs.Delete(ctx, ref); err != nil {
+			cleanupErr = errors.Join(cleanupErr, fmt.Errorf("delete attachment blob %q: %w", ref, err))
+		}
+	}
+	return action, cleanupErr
 }
 
 func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models.Issue, *models.Action, error) {

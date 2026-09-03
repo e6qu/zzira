@@ -4,6 +4,9 @@
 (function () {
   'use strict';
 
+  const authPage = location.pathname === '/login' || location.pathname === '/signed-out';
+  if (authPage) sessionStorage.removeItem('zzira-replica-id');
+
   function savedTheme() {
     const value = localStorage.getItem('zzira-theme');
     return value === 'light' || value === 'dark' ? value : null;
@@ -159,7 +162,7 @@
     return id;
   }
   const worker = replicaView
-    ? new Worker('/static/worker.js?v=9&replica=' + encodeURIComponent(replicaID()))
+    ? new Worker('/static/worker.js?v=10&replica=' + encodeURIComponent(replicaID()))
     : null;
   const banner = () => document.getElementById('sync-banner');
   let workerReady = false;
@@ -465,6 +468,7 @@
     if (!queueOfflineForm(form)) return;
     evt.preventDefault();
     evt.stopPropagation();
+    if (form.closest('[role="dialog"]')) window.zzira.closeModal();
   }, true);
 
   document.body.addEventListener('htmx:beforeRequest', (evt) => {
@@ -480,6 +484,7 @@
     if (!queueOfflineForm(elt)) return; // reads fail naturally offline
     evt.preventDefault();
     evt.stopPropagation();
+    if (elt.closest('[role="dialog"]')) window.zzira.closeModal();
   }, true);
 
   window.addEventListener('online', () => {
@@ -849,7 +854,13 @@
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body,
       }).then((res) => {
-        if (!res.ok) announce('command failed: ' + res.status, 4000);
+        if (res.ok) return;
+        if ([408, 425, 429].includes(res.status) || res.status >= 500) {
+          postWorker({ type: 'enqueue', method, path, body, kind });
+          announce('server unavailable — command queued', 4000);
+          return;
+        }
+        announce('command failed: ' + res.status, 4000);
       }).catch(() => {
         postWorker({ type: 'enqueue', method, path, body, kind });
         announce('offline \u2014 queued', 3000);
@@ -861,6 +872,11 @@
 
   // ---- Service worker for offline page shells ----
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').catch((err) => console.error('sw registration failed:', err));
+    navigator.serviceWorker.register('/sw.js').then((registration) => {
+      if (authPage) {
+        const target = navigator.serviceWorker.controller || registration.active;
+        if (target) target.postMessage({ type: 'CLEAR_PRIVATE_CACHE' });
+      }
+    }).catch((err) => console.error('sw registration failed:', err));
   }
 })();

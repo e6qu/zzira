@@ -46,6 +46,16 @@ test('V3: attachment upload via UI → listed → content round-trips', async ({
   ]);
   const downloaded = await download.path();
   expect(fs.readFileSync(downloaded!, 'utf8')).toBe(payload);
+
+  const contentPath = await page.locator('.attachment a').getAttribute('href');
+  const attachmentId = contentPath!.split('/').pop()!;
+  const deleted = await request.delete(`/rest/api/3/attachment/${attachmentId}`, {
+    headers: { Authorization: apiAuthHeader() },
+  });
+  expect(deleted.status()).toBe(204);
+  expect((await request.get(contentPath!, {
+    headers: { Authorization: apiAuthHeader() },
+  })).status()).toBe(404);
 });
 
 test('V3: worklog via UI → listed with rendered time', async ({ page, request }) => {

@@ -85,20 +85,23 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotModified, nil)
 		return
 	}
-	actions, err := h.Store.ActionsSince(r.Context(), workspaceID, userID, since, limit)
+	actions, to, err := h.Store.ActionPageSince(r.Context(), workspaceID, userID, since, limit)
 	if err != nil {
 		log.Printf("%s: %v", "syncapi.go", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	from := since
-	to := since
-	if len(actions) > 0 {
-		to = actions[len(actions)-1].Seq
+	// Actions may commit between the first head read and the page query. Refresh
+	// the head so the response invariant from <= to <= head always holds.
+	head, err = h.Store.Head(r.Context(), workspaceID)
+	if err != nil {
+		log.Printf("%s: %v", "syncapi.go", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
 	}
 	resp := models.SyncResponse{
 		Workspace:       wsSlug,
-		From:            from,
+		From:            since,
 		To:              to,
 		Head:            head,
 		RendererVersion: build.Renderer,
@@ -117,5 +120,7 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 	}
 	enc := json.NewEncoder(w)
 	w.WriteHeader(status)
-	_ = enc.Encode(body)
+	if err := enc.Encode(body); err != nil {
+		log.Printf("syncapi: encode response: %v", err)
+	}
 }

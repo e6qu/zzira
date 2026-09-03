@@ -144,6 +144,7 @@ func (h *Handler) uploadAttachments(w http.ResponseWriter, r *http.Request, idOr
 		for _, fh := range files {
 			f, err := fh.Open()
 			if err != nil {
+				log.Printf("attachment open: %v", err)
 				continue
 			}
 			att, _, err := h.Commands.AddAttachment(r.Context(), userID, wsID, issue.ID, fh.Filename, fh.Header.Get("Content-Type"), f)
@@ -151,6 +152,7 @@ func (h *Handler) uploadAttachments(w http.ResponseWriter, r *http.Request, idOr
 				log.Printf("attachment close: %v", closeErr)
 			}
 			if err != nil {
+				log.Printf("attachment store: %v", err)
 				continue
 			}
 			beans = append(beans, h.attachmentBean(att))
@@ -217,10 +219,32 @@ func (h *Handler) attachmentMeta(w http.ResponseWriter, r *http.Request, id stri
 		writeJerr(w, e)
 		return
 	}
-	writeJSON(w, http.StatusOK, h.attachmentBean(att))
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, http.StatusOK, h.attachmentBean(att))
+	case http.MethodDelete:
+		if att.AuthorID != userID {
+			jiraError(w, http.StatusForbidden, "Only the author may delete an attachment.")
+			return
+		}
+		if _, err := h.Commands.DeleteAttachment(r.Context(), userID, wsID, id); err != nil {
+			log.Printf("attachment delete: %v", err)
+			jiraError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		w.Header().Set("Allow", "GET, DELETE")
+		jiraError(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
 }
 
 func (h *Handler) attachmentContent(w http.ResponseWriter, r *http.Request, id string) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", "GET")
+		jiraError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
 	wsID, userID, e := h.authWorkspace(r)
 	if e != nil {
 		writeJerr(w, e)
@@ -240,7 +264,11 @@ func (h *Handler) attachmentContent(w http.ResponseWriter, r *http.Request, id s
 		jiraError(w, http.StatusNotFound, "Attachment does not exist.")
 		return
 	}
-	defer rc.Close()
+	defer func() {
+		if err := rc.Close(); err != nil {
+			log.Printf("attachment content close: %v", err)
+		}
+	}()
 	w.Header().Set("Content-Type", mimeType)
 	if disposition := mime.FormatMediaType("attachment", map[string]string{"filename": filename}); disposition != "" {
 		w.Header().Set("Content-Disposition", disposition)
@@ -248,7 +276,9 @@ func (h *Handler) attachmentContent(w http.ResponseWriter, r *http.Request, id s
 	if size > 0 {
 		w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
 	}
-	_, _ = io.Copy(w, rc)
+	if _, err := io.Copy(w, rc); err != nil {
+		log.Printf("attachment content stream: %v", err)
+	}
 }
 
 // attachmentForUser keeps attachment metadata and bytes behind the same

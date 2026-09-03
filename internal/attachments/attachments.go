@@ -5,6 +5,8 @@ package attachments
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -13,6 +15,7 @@ import (
 )
 
 var ErrNotFound = errors.New("attachment blob not found")
+var ErrInvalidKey = errors.New("attachment blob key is invalid")
 
 type Store interface {
 	Put(ctx context.Context, key string, r io.Reader) (int64, error)
@@ -32,29 +35,49 @@ func NewFS(root string) (*FS, error) {
 	return &FS{Root: root}, nil
 }
 
-func (s *FS) path(key string) string {
+func (s *FS) path(key string) (string, error) {
 	if len(key) < 2 {
-		key = "00" + key
+		return "", ErrInvalidKey
 	}
-	return filepath.Join(s.Root, key[:2], key)
+	for _, r := range key {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' || r == '-') {
+			return "", ErrInvalidKey
+		}
+	}
+	return filepath.Join(key[:2], key), nil
 }
 
-func (s *FS) Put(ctx context.Context, key string, r io.Reader) (int64, error) {
-	p := s.path(key)
-	if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
-		return 0, err
-	}
-	f, err := os.CreateTemp(filepath.Dir(p), ".upload-*")
+func (s *FS) Put(ctx context.Context, key string, r io.Reader) (n int64, retErr error) {
+	p, err := s.path(key)
 	if err != nil {
 		return 0, err
 	}
-	tmp := f.Name()
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+	root, err := os.OpenRoot(s.Root)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { retErr = errors.Join(retErr, root.Close()) }()
+	if err := root.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+		return 0, err
+	}
+	var suffix [16]byte
+	if _, err := rand.Read(suffix[:]); err != nil {
+		return 0, err
+	}
+	tmp := filepath.Join(filepath.Dir(p), ".upload-"+hex.EncodeToString(suffix[:]))
+	f, err := root.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return 0, err
+	}
 	defer func() {
-		if rmErr := os.Remove(tmp); rmErr != nil && !os.IsNotExist(rmErr) {
+		if rmErr := root.Remove(tmp); rmErr != nil && !os.IsNotExist(rmErr) {
 			fmt.Fprintf(os.Stderr, "attachments: remove temp %s: %v\n", tmp, rmErr)
 		}
 	}()
-	n, err := io.Copy(f, r)
+	n, err = io.Copy(f, r)
 	if err != nil {
 		if closeErr := f.Close(); closeErr != nil {
 			return 0, fmt.Errorf("copy: %v; close: %w", err, closeErr)
@@ -64,32 +87,59 @@ func (s *FS) Put(ctx context.Context, key string, r io.Reader) (int64, error) {
 	if err := f.Close(); err != nil {
 		return 0, err
 	}
-	if err := os.Rename(tmp, p); err != nil {
+	if err := root.Rename(tmp, p); err != nil {
 		return 0, err
 	}
 	return n, nil
 }
 
 func (s *FS) Get(ctx context.Context, key string) (io.ReadCloser, int64, error) {
-	f, err := os.Open(s.path(key))
+	p, err := s.path(key)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, 0, ErrNotFound
-		}
 		return nil, 0, err
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, 0, err
+	}
+	root, err := os.OpenRoot(s.Root)
+	if err != nil {
+		return nil, 0, err
+	}
+	f, err := root.Open(p)
+	if err != nil {
+		closeErr := root.Close()
+		if os.IsNotExist(err) {
+			return nil, 0, errors.Join(ErrNotFound, closeErr)
+		}
+		return nil, 0, errors.Join(err, closeErr)
 	}
 	info, err := f.Stat()
 	if err != nil {
 		if closeErr := f.Close(); closeErr != nil {
-			return nil, 0, fmt.Errorf("stat: %v; close: %w", err, closeErr)
+			err = errors.Join(err, closeErr)
 		}
-		return nil, 0, err
+		return nil, 0, errors.Join(err, root.Close())
+	}
+	if err := root.Close(); err != nil {
+		return nil, 0, errors.Join(err, f.Close())
 	}
 	return f, info.Size(), nil
 }
 
-func (s *FS) Delete(ctx context.Context, key string) error {
-	err := os.Remove(s.path(key))
+func (s *FS) Delete(ctx context.Context, key string) (retErr error) {
+	p, err := s.path(key)
+	if err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	root, err := os.OpenRoot(s.Root)
+	if err != nil {
+		return err
+	}
+	defer func() { retErr = errors.Join(retErr, root.Close()) }()
+	err = root.Remove(p)
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}

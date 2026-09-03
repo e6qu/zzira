@@ -8,8 +8,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/e6qu/zzira/internal/models"
@@ -93,39 +96,35 @@ func (d *Dispatcher) drainOnce(ctx context.Context, workspaceID string) {
 			return
 		}
 		for _, seq := range seqs {
-			d.deliver(ctx, workspaceID, webhook, seq)
+			if err := d.deliver(ctx, workspaceID, webhook, seq); err != nil {
+				fmt.Printf("webhooks: deliver webhook=%s seq=%d: %v\n", webhook.ID, seq, err)
+			}
 		}
 	}
 }
 
-func (d *Dispatcher) deliver(ctx context.Context, workspaceID string, webhook *models.Webhook, seq int64) {
+func (d *Dispatcher) deliver(ctx context.Context, workspaceID string, webhook *models.Webhook, seq int64) error {
 	action, err := d.Store.ActionBySeq(ctx, workspaceID, seq)
 	if err != nil {
-		_ = d.Store.MarkWebhookDelivery(ctx, webhook.ID, seq, false, "action not found")
-		return
+		return d.markFailed(ctx, webhook.ID, seq, fmt.Errorf("load action: %w", err))
 	}
 	event, ok := EventFor(action)
 	if !ok {
-		_ = d.Store.MarkWebhookDelivery(ctx, webhook.ID, seq, true, "")
-		return
+		return d.mark(ctx, webhook.ID, seq, true, "")
 	}
 	if len(webhook.Events) > 0 && !containsString(webhook.Events, event) {
-		_ = d.Store.MarkWebhookDelivery(ctx, webhook.ID, seq, true, "")
-		return
+		return d.mark(ctx, webhook.ID, seq, true, "")
 	}
 	if webhook.JQL != "" && action.EntityType == models.EntityIssue {
 		if d.Checker == nil || d.Checker.Search == nil {
-			_ = d.Store.MarkWebhookDelivery(ctx, webhook.ID, seq, false, "JQL checker is not configured")
-			return
+			return d.markFailed(ctx, webhook.ID, seq, errors.New("JQL checker is not configured"))
 		}
-		match, err := d.Checker.Search(ctx, workspaceID, fmt.Sprintf(`(%s) AND key = "%s"`, webhook.JQL, actionKey(action)))
+		match, err := d.Checker.Search(ctx, workspaceID, fmt.Sprintf(`(%s) AND key = %s`, webhook.JQL, strconv.Quote(actionKey(action))))
 		if err != nil {
-			_ = d.Store.MarkWebhookDelivery(ctx, webhook.ID, seq, false, err.Error())
-			return
+			return d.markFailed(ctx, webhook.ID, seq, fmt.Errorf("evaluate JQL: %w", err))
 		}
 		if !match {
-			_ = d.Store.MarkWebhookDelivery(ctx, webhook.ID, seq, true, "")
-			return
+			return d.mark(ctx, webhook.ID, seq, true, "")
 		}
 	}
 	payload, err := json.Marshal(map[string]any{
@@ -134,35 +133,52 @@ func (d *Dispatcher) deliver(ctx context.Context, workspaceID string, webhook *m
 		"action":       action,
 	})
 	if err != nil {
-		_ = d.Store.MarkWebhookDelivery(ctx, webhook.ID, seq, false, err.Error())
-		return
+		return d.markFailed(ctx, webhook.ID, seq, fmt.Errorf("encode payload: %w", err))
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, webhook.URL, bytes.NewReader(payload))
 	if err != nil {
-		_ = d.Store.MarkWebhookDelivery(ctx, webhook.ID, seq, false, err.Error())
-		return
+		return d.markFailed(ctx, webhook.ID, seq, fmt.Errorf("create request: %w", err))
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-ZZIRA-Event", event)
 	if d.Client == nil {
-		_ = d.Store.MarkWebhookDelivery(ctx, webhook.ID, seq, false, "webhook HTTP client is not configured")
-		return
+		return d.markFailed(ctx, webhook.ID, seq, errors.New("webhook HTTP client is not configured"))
 	}
 	resp, err := d.Client.Do(req)
 	if err != nil {
-		_ = d.Store.MarkWebhookDelivery(ctx, webhook.ID, seq, false, err.Error())
-		return
+		return d.markFailed(ctx, webhook.ID, seq, fmt.Errorf("send request: %w", err))
 	}
-	defer resp.Body.Close()
+	_, readErr := io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
+	closeErr := resp.Body.Close()
+	if readErr != nil || closeErr != nil {
+		return d.markFailed(ctx, webhook.ID, seq, errors.Join(readErr, closeErr))
+	}
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		_ = d.Store.MarkWebhookDelivery(ctx, webhook.ID, seq, true, "")
-		return
+		return d.mark(ctx, webhook.ID, seq, true, "")
 	}
-	_ = d.Store.MarkWebhookDelivery(ctx, webhook.ID, seq, false, fmt.Sprintf("http %d", resp.StatusCode))
+	return d.markFailed(ctx, webhook.ID, seq, fmt.Errorf("http %d", resp.StatusCode))
+}
+
+func (d *Dispatcher) markFailed(ctx context.Context, webhookID string, seq int64, cause error) error {
+	if err := d.mark(ctx, webhookID, seq, false, cause.Error()); err != nil {
+		return errors.Join(cause, err)
+	}
+	return cause
+}
+
+func (d *Dispatcher) mark(ctx context.Context, webhookID string, seq int64, delivered bool, lastErr string) error {
+	if err := d.Store.MarkWebhookDelivery(ctx, webhookID, seq, delivered, lastErr); err != nil {
+		return fmt.Errorf("record delivery state: %w", err)
+	}
+	return nil
 }
 
 func actionKey(a *models.Action) string {
 	if a.EntityType == models.EntityIssue {
+		var p models.IssueUpdatePayload
+		if err := json.Unmarshal(a.Payload, &p); err == nil && p.Issue.Key != "" {
+			return p.Issue.Key
+		}
 		return a.EntityID
 	}
 	return ""

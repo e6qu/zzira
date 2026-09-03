@@ -62,7 +62,6 @@ func (h *Handler) BoardFragment(w http.ResponseWriter, r *http.Request, id strin
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
-	_ = user
 	board, err := h.Store.BoardByIDInWorkspace(r.Context(), wsID, id)
 	if err != nil {
 		http.NotFound(w, r)

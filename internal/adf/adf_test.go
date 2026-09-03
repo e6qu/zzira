@@ -83,8 +83,23 @@ func TestNormalizePassthroughOnSupportedDoc(t *testing.T) {
 func TestXSSEscape(t *testing.T) {
 	doc := Doc(Paragraph(Link("click", `javascript:alert("x")`)))
 	got := ToHTML(doc)
-	if !contains(got, `href="javascript:alert(&#34;x&#34;)"`) {
-		t.Fatalf("href not escaped: %s", got)
+	if contains(got, "href=") || contains(got, "javascript:") {
+		t.Fatalf("unsafe link rendered: %s", got)
+	}
+}
+
+func TestSafeLinkSchemes(t *testing.T) {
+	for _, href := range []string{"https://example.com/a?q=1", "http://example.com", "mailto:team@example.com", "/browse/ZZ-1", "#details"} {
+		got := ToHTML(Doc(Paragraph(Link("click", href))))
+		if !contains(got, `href="`) {
+			t.Errorf("safe href %q was removed: %s", href, got)
+		}
+	}
+	for _, href := range []string{"data:text/html,<script>alert(1)</script>", "vbscript:msgbox(1)", " javascript:alert(1)"} {
+		got := ToHTML(Doc(Paragraph(Link("click", href))))
+		if contains(got, "href=") {
+			t.Errorf("unsafe href %q rendered: %s", href, got)
+		}
 	}
 }
 

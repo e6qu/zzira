@@ -3,12 +3,12 @@ package commands
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
 	"strings"
 
-	"github.com/e6qu/zzira/internal/attachments"
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
 )
@@ -60,7 +60,9 @@ func (s *Service) AddAttachment(ctx context.Context, actorID, workspaceID, issue
 	}
 	att, action, err := s.Store.CreateAttachment(ctx, actorID, workspaceID, issue.ID, filename, mimeType, size, blobRef)
 	if err != nil {
-		_ = s.Blobs.Delete(ctx, blobRef)
+		if cleanupErr := s.Blobs.Delete(ctx, blobRef); cleanupErr != nil {
+			return nil, nil, errors.Join(err, fmt.Errorf("remove orphaned blob %q: %w", blobRef, cleanupErr))
+		}
 		return nil, nil, err
 	}
 	return att, action, nil
@@ -89,14 +91,24 @@ func normalizedAttachmentMIMEType(value string) (string, error) {
 }
 
 func (s *Service) DeleteAttachment(ctx context.Context, actorID, workspaceID, attachmentID string) (*models.Action, error) {
+	att, err := s.Store.AttachmentByID(ctx, workspaceID, attachmentID)
+	if err != nil {
+		return nil, fmt.Errorf("attachment %q not found", attachmentID)
+	}
+	if _, err := s.visibleIssue(ctx, actorID, workspaceID, att.IssueID); err != nil {
+		return nil, fmt.Errorf("attachment %q not found", attachmentID)
+	}
+	if att.AuthorID != actorID {
+		return nil, fmt.Errorf("only the author may delete an attachment")
+	}
 	blobRef, _, action, err := s.Store.DeleteAttachment(ctx, actorID, workspaceID, attachmentID)
 	if err != nil {
 		return nil, err
 	}
 	if s.Blobs != nil {
-		_ = s.Blobs.Delete(ctx, blobRef)
+		if err := s.Blobs.Delete(ctx, blobRef); err != nil {
+			return action, fmt.Errorf("attachment metadata deleted but blob %q cleanup failed: %w", blobRef, err)
+		}
 	}
 	return action, nil
 }
-
-var _ = attachments.ErrNotFound

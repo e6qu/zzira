@@ -178,6 +178,25 @@ func ProtectCookieMutations(next http.Handler) http.Handler {
 	})
 }
 
+// SecurityHeaders installs browser hardening that applies equally to HTML,
+// API, worker, and static responses. Inline handlers remain temporarily
+// allowed by the renderer, while remote scripts, plugins, framing, and foreign
+// form targets are denied.
+func SecurityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Security-Policy",
+			"default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; "+
+				"style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; "+
+				"worker-src 'self' blob:; object-src 'none'; base-uri 'self'; "+
+				"frame-ancestors 'none'; form-action 'self'")
+		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		next.ServeHTTP(w, r)
+	})
+}
+
 func unsafeMethod(method string) bool {
 	switch method {
 	case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:

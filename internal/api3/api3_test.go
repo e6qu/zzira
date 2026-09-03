@@ -2,6 +2,7 @@ package api3
 
 import (
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
@@ -114,5 +115,22 @@ func TestADFToPlainText(t *testing.T) {
 func TestProjectKeyOf(t *testing.T) {
 	if got := projectKeyOf(&models.Issue{Key: "ZZ-12"}); got != "ZZ" {
 		t.Fatalf("projectKeyOf = %q", got)
+	}
+}
+
+func TestMutationRoutesRequireTheirDeclaredMethod(t *testing.T) {
+	h := goldenHandler()
+	for _, tt := range []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, "/rest/api/3/issueLink/lnk_1"},
+		{http.MethodPost, "/rest/api/3/project/ZZ"},
+	} {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest(tt.method, tt.path, nil))
+		if w.Code != http.StatusNotFound {
+			t.Errorf("%s %s status=%d, want 404 without dispatch", tt.method, tt.path, w.Code)
+		}
 	}
 }

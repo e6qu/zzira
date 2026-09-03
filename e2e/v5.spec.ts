@@ -52,18 +52,21 @@ test('V5 done-when: security level hides an issue from ana (404 + tombstone in h
   expect((await request.get(`/rest/api/3/issue/${key}`, demo)).status()).toBe(200);
   expect((await request.get(`/rest/api/3/issue/${key}`, ana)).status()).toBe(404);
 
-  // ana's sync tail carries the per-user tombstone; demo's does not
-  const tail = await (await request.get('/sync?workspace=zzira&since=0&limit=1000', demo)).json();
-  void tail;
-  const anaTail = await (await request.get('/sync?workspace=zzira&since=0&limit=1000', ana)).json();
-  void anaTail;
-
   // ana's sync stream carries the per-user tombstone for THIS issue;
   // demo's stream never carries tombstones (members keep their replica).
   const tombstonesFor = async (auth: { headers: { Authorization: string } }) => {
-    const r = await request.get('/sync?workspace=zzira&since=0&limit=1000', auth);
-    if (r.status() !== 200) return [] as any[];
-    const actions = (await r.json()).actions ?? [];
+    let since = 0;
+    const actions: any[] = [];
+    for (let page = 0; page < 100; page += 1) {
+      const r = await request.get(`/sync?workspace=zzira&since=${since}&limit=1000`, auth);
+      if (r.status() === 304) break;
+      expect(r.status()).toBe(200);
+      const body = await r.json();
+      actions.push(...(body.actions ?? []));
+      expect(body.to).toBeGreaterThan(since);
+      since = body.to;
+      if (!body.truncated) break;
+    }
     return actions.filter((a: any) => a.entityType === 'tombstone' && JSON.stringify(a.payload).includes(`"${issueId}"`));
   };
   expect((await tombstonesFor(ana)).length).toBeGreaterThanOrEqual(1);

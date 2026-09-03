@@ -675,7 +675,7 @@ func (h *Handler) DeleteIssue(w http.ResponseWriter, r *http.Request, key string
 		http.NotFound(w, r)
 		return
 	}
-	if _, err := h.Store.DeleteIssue(r.Context(), user.ID, wsID, issue.ID, "deleted via UI"); err != nil {
+	if _, err := h.Commands.DeleteIssue(r.Context(), user.ID, wsID, issue.ID, "deleted via UI"); err != nil {
 		http.Error(w, "delete failed", http.StatusInternalServerError)
 		return
 	}

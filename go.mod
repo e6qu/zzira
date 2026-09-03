@@ -1,13 +1,13 @@
 module github.com/e6qu/zzira
 
-go 1.26
+go 1.26.0
 
 toolchain go1.26.6
 
 require (
 	github.com/coreos/go-oidc/v3 v3.20.0
 	github.com/jackc/pgx/v5 v5.10.0
-	golang.org/x/crypto v0.55.0
+	golang.org/x/crypto v0.56.0
 	golang.org/x/oauth2 v0.36.0
 )
 

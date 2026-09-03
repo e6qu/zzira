@@ -28,6 +28,7 @@ func New() *Bus {
 // Subscribe registers a listener for a workspace's head pokes.
 func (b *Bus) Subscribe(workspaceID string) (chan int64, func()) {
 	ch := make(chan int64, 8)
+	var cancelOnce sync.Once
 	b.mu.Lock()
 	if b.subs[workspaceID] == nil {
 		b.subs[workspaceID] = map[chan int64]struct{}{}
@@ -35,13 +36,15 @@ func (b *Bus) Subscribe(workspaceID string) (chan int64, func()) {
 	b.subs[workspaceID][ch] = struct{}{}
 	b.mu.Unlock()
 	return ch, func() {
-		b.mu.Lock()
-		delete(b.subs[workspaceID], ch)
-		if len(b.subs[workspaceID]) == 0 {
-			delete(b.subs, workspaceID)
-		}
-		b.mu.Unlock()
-		close(ch)
+		cancelOnce.Do(func() {
+			b.mu.Lock()
+			delete(b.subs[workspaceID], ch)
+			if len(b.subs[workspaceID]) == 0 {
+				delete(b.subs, workspaceID)
+			}
+			close(ch)
+			b.mu.Unlock()
+		})
 	}
 }
 

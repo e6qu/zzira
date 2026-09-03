@@ -49,4 +49,31 @@ func TestWebhookClaimsAreWorkspaceScopedAndBounded(t *testing.T) {
 	if err != nil || !ok || len(seqs) != 1 || seqs[0] != 2 {
 		t.Fatalf("second claim seqs=%v ok=%v err=%v", seqs, ok, err)
 	}
+	if _, err := st.Pool.Exec(ctx, `
+		INSERT INTO webhook_deliveries (webhook_id, seq, state, claimed_at)
+		VALUES ($1,3,'delivering',now() - interval '3 minutes')`, wh.ID); err != nil {
+		t.Fatal(err)
+	}
+	_, seqs, ok, err = st.ClaimPendingWebhookBatch(ctx, workspaceID, 1)
+	if err != nil || !ok || len(seqs) != 1 || seqs[0] != 3 {
+		t.Fatalf("stale claim seqs=%v ok=%v err=%v", seqs, ok, err)
+	}
+	if _, err := st.Pool.Exec(ctx, `
+		INSERT INTO webhook_deliveries (webhook_id, seq, state, attempts)
+		VALUES ($1,4,'delivering',100)`, wh.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.MarkWebhookDelivery(ctx, wh.ID, 4, false, "still unavailable"); err != nil {
+		t.Fatalf("high-attempt retry overflowed: %v", err)
+	}
+	var attempts int
+	var scheduled bool
+	if err := st.Pool.QueryRow(ctx, `
+		SELECT attempts, next_attempt_at IS NOT NULL
+		FROM webhook_deliveries WHERE webhook_id=$1 AND seq=4`, wh.ID).Scan(&attempts, &scheduled); err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 101 || !scheduled {
+		t.Fatalf("retry attempts=%d scheduled=%v, want 101/true", attempts, scheduled)
+	}
 }

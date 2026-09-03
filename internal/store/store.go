@@ -594,50 +594,95 @@ func (s *Store) Head(ctx context.Context, workspaceID string) (int64, error) {
 	return head, err
 }
 
-// ActionsSince returns the workspace's actions after the checkpoint. Per-user
-// entities (notifications, tombstones) are filtered to the caller, and actions
-// on security-restricted issues are hidden from non-members.
+// ActionsSince returns visible actions after the checkpoint. It is kept for
+// callers that do not need the scan boundary; sync handlers should use
+// ActionPageSince so a page containing only filtered actions can still advance.
 func (s *Store) ActionsSince(ctx context.Context, workspaceID, userID string, since, limit int64) ([]models.Action, error) {
-	issueRef := `CASE WHEN a.entity_type = 'issue' THEN a.entity_id ELSE NULLIF(a.payload->>'issueId','') END`
+	actions, _, err := s.ActionPageSince(ctx, workspaceID, userID, since, limit)
+	return actions, err
+}
+
+// ActionPageSince scans at most limit workspace actions, then filters that
+// bounded page for the caller. The returned boundary is the last scanned
+// sequence even when every action was hidden. Without it a client can become
+// permanently stuck behind another user's notifications or tombstones.
+func (s *Store) ActionPageSince(ctx context.Context, workspaceID, userID string, since, limit int64) ([]models.Action, int64, error) {
+	to := since
+	if err := s.Pool.QueryRow(ctx, `
+		SELECT COALESCE(MAX(seq), $2)
+		FROM (
+			SELECT seq FROM actions
+			WHERE workspace_id=$1 AND seq > $2
+			ORDER BY seq
+			LIMIT $3
+		) page`, workspaceID, since, limit).Scan(&to); err != nil {
+		return nil, since, err
+	}
+	if to == since {
+		return nil, to, nil
+	}
+	issueRef := `CASE a.entity_type
+		WHEN 'issue' THEN a.entity_id
+		WHEN 'comment' THEN COALESCE(a.payload->'comment'->>'issueId', a.payload->>'issueId')
+		WHEN 'attachment' THEN COALESCE(a.payload->'attachment'->>'issueId', a.payload->>'issueId')
+		WHEN 'worklog' THEN COALESCE(a.payload->'worklog'->>'issueId', a.payload->>'issueId')
+		WHEN 'watcher' THEN a.payload->>'issueId'
+		WHEN 'sprint_issue' THEN a.payload->>'issueId'
+		WHEN 'issue_link' THEN COALESCE(a.payload->'link'->>'inwardIssueId', a.payload->>'inwardIssueId')
+		ELSE NULL
+	END`
+	linkOtherIssueRef := `COALESCE(a.payload->'link'->>'outwardIssueId', a.payload->>'outwardIssueId')`
+	canSeeIssue := func(ref string) string {
+		return `EXISTS (
+			SELECT 1
+			FROM (
+				SELECT i.project_id, i.security_level_id
+				FROM issues i
+				WHERE i.workspace_id=$1 AND i.id = ` + ref + `
+				UNION ALL
+				SELECT d.project_id, d.security_level_id
+				FROM deleted_issue_visibility d
+				WHERE d.workspace_id=$1 AND d.issue_id = ` + ref + `
+			) scoped_issue
+			WHERE scoped_issue.security_level_id IS NULL
+			   OR EXISTS (
+				 SELECT 1 FROM memberships m
+				 WHERE m.workspace_id=$1 AND m.user_id=$3 AND m.role='admin'
+			   )
+			   OR EXISTS (
+				 SELECT 1
+				 FROM projects p
+				 JOIN security_schemes ss ON ss.id=p.security_scheme_id
+				 , jsonb_array_elements(ss.levels) lvl
+				 WHERE p.id=scoped_issue.project_id
+				   AND lvl->>'id'=scoped_issue.security_level_id
+				   AND (lvl->'members') @> jsonb_build_array($3)
+			   )
+		)`
+	}
 	rows, err := s.Pool.Query(ctx, `
 		SELECT a.workspace_id, a.seq, a.entity_type, a.entity_id, a.op, a.schema_v, a.payload, a.actor_id,
 		       to_char(a.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
 		FROM actions a
-		WHERE a.workspace_id=$1 AND a.seq > $2
+		WHERE a.workspace_id=$1 AND a.seq > $2 AND a.seq <= $6
 		  AND (
 		    CASE a.entity_type
 		      WHEN $4 THEN a.payload->'notification'->>'userId'
 		      WHEN $5 THEN a.payload->>'userId'
 		      ELSE $3
 		    END = $3
-		  )
-		  AND (
-		    a.entity_type NOT IN ('issue','comment','attachment','worklog')
-		    OR NOT EXISTS (SELECT 1 FROM issues ci WHERE ci.id = `+issueRef+`)
-		    OR NOT EXISTS (
-		      SELECT 1
-		      FROM issues ci
-		      WHERE ci.id = `+issueRef+`
-		        AND ci.security_level_id IS NOT NULL
-		        AND NOT EXISTS (
-		          SELECT 1 FROM memberships m
-		          WHERE m.workspace_id = $1 AND m.user_id = $3 AND m.role = 'admin'
-		        )
-		        AND EXISTS (
-		          SELECT 1
-		          FROM projects p
-		          JOIN security_schemes ss ON ss.id = p.security_scheme_id
-		          , jsonb_array_elements(ss.levels) lvl
-		          WHERE p.id = ci.project_id
-		            AND lvl->>'id' = ci.security_level_id
-		            AND NOT ((lvl->'members') @> jsonb_build_array($3))
-		        )
-		    )
-		  )
-		ORDER BY a.seq LIMIT $6`,
-		workspaceID, since, userID, models.EntityNotification, models.EntityTombstone, limit)
+			  )
+			  AND (
+			    a.entity_type NOT IN ('issue','comment','attachment','worklog','watcher','sprint_issue','issue_link')
+			    OR (
+			      `+canSeeIssue(issueRef)+`
+			      AND (a.entity_type <> 'issue_link' OR `+canSeeIssue(linkOtherIssueRef)+`)
+			    )
+			  )
+		ORDER BY a.seq`,
+		workspaceID, since, userID, models.EntityNotification, models.EntityTombstone, to)
 	if err != nil {
-		return nil, err
+		return nil, since, err
 	}
 	defer rows.Close()
 	var out []models.Action
@@ -645,11 +690,11 @@ func (s *Store) ActionsSince(ctx context.Context, workspaceID, userID string, si
 		var a models.Action
 		if err := rows.Scan(&a.WorkspaceID, &a.Seq, &a.EntityType, &a.EntityID,
 			&a.Op, &a.SchemaV, &a.Payload, &a.ActorID, &a.CreatedAt); err != nil {
-			return nil, err
+			return nil, since, err
 		}
 		out = append(out, a)
 	}
-	return out, rows.Err()
+	return out, to, rows.Err()
 }
 
 func DSNFromEnv() string {

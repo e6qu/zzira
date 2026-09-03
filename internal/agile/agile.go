@@ -79,7 +79,7 @@ func (h *Handler) boardBean(b *models.Board) map[string]any {
 		"self": h.BaseURL + "/rest/agile/1.0/board/" + b.ID,
 		"location": map[string]any{
 			"projectKey":  b.ProjectKey,
-			"projectName": b.ProjectKey,
+			"projectName": b.ProjectName,
 			"projectId":   b.ProjectID,
 		},
 	}
@@ -214,7 +214,12 @@ func (h *Handler) createSprint(w http.ResponseWriter, r *http.Request) {
 		Goal          string `json:"goal"`
 		OriginBoardID string `json:"originBoardId"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jiraError(w, http.StatusBadRequest, "Invalid request payload.")
+		return
+	}
+	req.Name = strings.TrimSpace(req.Name)
+	if req.Name == "" {
 		jiraError(w, http.StatusBadRequest, "A sprint name is required.")
 		return
 	}
@@ -278,6 +283,10 @@ func (h *Handler) moveIssuesToSprint(w http.ResponseWriter, r *http.Request, wsI
 		jiraError(w, status, msg)
 		return
 	}
+	if sprint.State == "closed" {
+		jiraError(w, http.StatusBadRequest, "Issues cannot be added to a closed sprint.")
+		return
+	}
 	var req struct {
 		Issues []string `json:"issues"`
 	}
@@ -285,19 +294,36 @@ func (h *Handler) moveIssuesToSprint(w http.ResponseWriter, r *http.Request, wsI
 		jiraFieldError(w, http.StatusBadRequest, map[string]string{"issues": "At least one issue key or id is required."})
 		return
 	}
+	board, err := h.Store.BoardByIDInWorkspace(r.Context(), wsID, sprint.BoardID)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	issues := make([]*models.Issue, 0, len(req.Issues))
+	seen := make(map[string]bool, len(req.Issues))
 	for _, key := range req.Issues {
 		issue, err := h.visibleIssue(r, wsID, userID, key)
 		if err != nil {
 			jiraError(w, http.StatusNotFound, "Issue "+key+" does not exist.")
 			return
 		}
-		rank, err := h.Store.RankBetween(r.Context(), wsID, issue.ProjectID, issue.Status.ID, "", "")
+		if issue.ProjectID != board.ProjectID {
+			jiraFieldError(w, http.StatusBadRequest, map[string]string{"issues": "All issues must belong to the sprint's project."})
+			return
+		}
+		if !seen[issue.ID] {
+			seen[issue.ID] = true
+			issues = append(issues, issue)
+		}
+	}
+	for _, issue := range issues {
+		rank, err := h.Store.NextSprintRank(r.Context(), sprint.ID)
 		if err != nil {
 			jiraError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		if _, err := h.Store.AddIssueToSprint(r.Context(), userID, wsID, sprint.ID, issue.ID, rank); err != nil {
-			jiraError(w, http.StatusInternalServerError, "internal error")
+			jiraError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 	}
@@ -320,47 +346,93 @@ func (h *Handler) rank(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, http.StatusBadRequest, "Invalid request payload.")
 		return
 	}
+	if len(req.Issues) == 0 {
+		jiraFieldError(w, http.StatusBadRequest, map[string]string{"issues": "At least one issue key or id is required."})
+		return
+	}
 	if req.RankBeforeIssue == "" && req.RankAfterIssue == "" {
 		jiraFieldError(w, http.StatusBadRequest, map[string]string{
 			"rankBeforeIssue": "Either rankBeforeIssue or rankAfterIssue is required.",
 		})
 		return
 	}
+	if req.RankBeforeIssue != "" && req.RankAfterIssue != "" {
+		jiraError(w, http.StatusBadRequest, "Specify only one of rankBeforeIssue or rankAfterIssue.")
+		return
+	}
+	issues := make([]*models.Issue, 0, len(req.Issues))
+	seenIssues := make(map[string]bool, len(req.Issues))
 	for _, issueKey := range req.Issues {
 		issue, err := h.visibleIssue(r, wsID, userID, issueKey)
 		if err != nil {
 			jiraError(w, http.StatusNotFound, "Issue "+issueKey+" does not exist.")
 			return
 		}
-		resolveID := func(keyOrID string) (string, error) {
-			ref, err := h.visibleIssue(r, wsID, userID, keyOrID)
-			if err != nil {
-				return "", fmt.Errorf("issue %q does not exist", keyOrID)
-			}
-			return ref.ID, nil
+		if !seenIssues[issue.ID] {
+			seenIssues[issue.ID] = true
+			issues = append(issues, issue)
 		}
-		beforeID := ""
-		afterID := ""
-		if req.RankBeforeIssue != "" {
-			if beforeID, err = resolveID(req.RankBeforeIssue); err != nil {
-				jiraError(w, http.StatusNotFound, err.Error())
-				return
-			}
+	}
+	resolveIssue := func(keyOrID string) (*models.Issue, error) {
+		ref, err := h.visibleIssue(r, wsID, userID, keyOrID)
+		if err != nil {
+			return nil, fmt.Errorf("issue %q does not exist", keyOrID)
 		}
-		if req.RankAfterIssue != "" {
-			if afterID, err = resolveID(req.RankAfterIssue); err != nil {
-				jiraError(w, http.StatusNotFound, err.Error())
-				return
-			}
+		return ref, nil
+	}
+	beforeID := ""
+	afterID := ""
+	var reference *models.Issue
+	var err error
+	if req.RankBeforeIssue != "" {
+		if reference, err = resolveIssue(req.RankBeforeIssue); err != nil {
+			jiraError(w, http.StatusNotFound, err.Error())
+			return
 		}
+		beforeID = reference.ID
+	} else {
+		if reference, err = resolveIssue(req.RankAfterIssue); err != nil {
+			jiraError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		afterID = reference.ID
+	}
+	for _, issue := range issues {
+		if issue.ProjectID != reference.ProjectID || issue.Status.ID != reference.Status.ID {
+			jiraFieldError(w, http.StatusBadRequest, map[string]string{
+				"issues": "All ranked issues and the reference issue must be in the same board column.",
+			})
+			return
+		}
+	}
+	rankOne := func(issue *models.Issue) bool {
 		rank, err := h.Store.RankBetween(r.Context(), wsID, issue.ProjectID, issue.Status.ID, beforeID, afterID)
 		if err != nil {
 			jiraError(w, http.StatusBadRequest, err.Error())
-			return
+			return false
 		}
 		if _, err := h.Store.SetIssueRank(r.Context(), userID, wsID, issue.ID, rank, ""); err != nil {
 			jiraError(w, http.StatusInternalServerError, "internal error")
-			return
+			return false
+		}
+		if beforeID != "" {
+			beforeID = issue.ID
+		} else {
+			afterID = issue.ID
+		}
+		return true
+	}
+	if beforeID != "" {
+		for i := len(issues) - 1; i >= 0; i-- {
+			if !rankOne(issues[i]) {
+				return
+			}
+		}
+	} else {
+		for _, issue := range issues {
+			if !rankOne(issue) {
+				return
+			}
 		}
 	}
 	w.WriteHeader(http.StatusNoContent)

@@ -91,14 +91,18 @@ func (s *Store) LinksByIssue(ctx context.Context, issueID string) ([]*models.Iss
 	return out, rows.Err()
 }
 
+func (s *Store) IssueLinkByID(ctx context.Context, workspaceID, id string) (*models.IssueLink, error) {
+	return scanLink(s.Pool.QueryRow(ctx, linkJoin+`WHERE l.id=$1 AND l.workspace_id=$2`, id, workspaceID))
+}
+
 func (s *Store) DeleteIssueLink(ctx context.Context, actorID, workspaceID, linkID string) (*models.Action, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	var issueID string
-	err = tx.QueryRow(ctx, `SELECT inward_id FROM issue_links WHERE id=$1 AND workspace_id=$2`, linkID, workspaceID).Scan(&issueID)
+	var inwardID, outwardID string
+	err = tx.QueryRow(ctx, `SELECT inward_id, outward_id FROM issue_links WHERE id=$1 AND workspace_id=$2`, linkID, workspaceID).Scan(&inwardID, &outwardID)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +110,7 @@ func (s *Store) DeleteIssueLink(ctx context.Context, actorID, workspaceID, linkI
 	if err != nil {
 		return nil, err
 	}
-	payload, err := json.Marshal(models.IssueLinkDeletePayload{LinkID: linkID})
+	payload, err := json.Marshal(models.IssueLinkDeletePayload{LinkID: linkID, InwardID: inwardID, OutwardID: outwardID})
 	if err != nil {
 		return nil, err
 	}
@@ -129,11 +133,12 @@ func (s *Store) DeleteIssueLink(ctx context.Context, actorID, workspaceID, linkI
 // ---- labels ----
 
 // Labels lists distinct labels across the workspace with counts.
-func (s *Store) Labels(ctx context.Context, workspaceID string, query string) (totalCount int64, labels []string, err error) {
+func (s *Store) Labels(ctx context.Context, workspaceID, userID string, query string) (totalCount int64, labels []string, err error) {
 	rows, err := s.Pool.Query(ctx, `
-		SELECT DISTINCT l FROM issues, unnest(labels) AS l
-		WHERE workspace_id=$1 AND l ILIKE '%'||$2||'%'
-		ORDER BY l`, workspaceID, query)
+		SELECT DISTINCT l FROM issues i, unnest(i.labels) AS l
+		WHERE i.workspace_id=$1 AND `+VisibleIssuePredicate("i", "$2")+`
+		  AND l ILIKE '%'||$3||'%'
+		ORDER BY l`, workspaceID, userID, query)
 	if err != nil {
 		return 0, nil, err
 	}
