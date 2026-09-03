@@ -1,7 +1,32 @@
 import { expect, test, Page } from '@playwright/test';
 import axe from 'axe-core';
+import * as fs from 'fs';
+import * as path from 'path';
 
 const DEMO = { email: 'demo@zzira.dev', password: 'demo1234' };
+
+function apiAuthHeader(): string {
+  const tokens = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'seed-tokens.json'), 'utf8'));
+  const token = process.env.ZZIRA_API_TOKEN ?? tokens[DEMO.email];
+  return 'Basic ' + Buffer.from(`${DEMO.email}:${token}`).toString('base64');
+}
+
+// Accessibility specs run before the journey files on a fresh CI database.
+// Own the minimum issue/board fixture instead of relying on another spec's
+// side effects or a developer database that happens to contain issues.
+test.beforeAll(async ({ request }) => {
+  const created = await request.post('/rest/api/3/issue', {
+    headers: { Authorization: apiAuthHeader() },
+    data: {
+      fields: {
+        project: { key: 'ZZ' },
+        summary: `Accessibility fixture ${Date.now()}`,
+        issuetype: { name: 'Task' },
+      },
+    },
+  });
+  expect(created.status()).toBe(201);
+});
 
 async function login(page: Page) {
   await page.goto('/login');
