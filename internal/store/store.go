@@ -166,6 +166,29 @@ func (s *Store) SetOIDCUsername(ctx context.Context, userID, username string) er
 	return err
 }
 
+// SetOIDCRole persists the identity provider's role claim (developer/admin),
+// refreshed on every sign-in the same way SetOIDCUsername refreshes the
+// display handle. This is the value /auth/validation exposes as
+// data-testid="validation-role" -- distinct from a user's ZZIRA workspace
+// membership role.
+func (s *Store) SetOIDCRole(ctx context.Context, userID, role string) error {
+	_, err := s.Pool.Exec(ctx, `UPDATE users SET oidc_role=$1 WHERE id=$2`, role, userID)
+	return err
+}
+
+// OIDCRole reads the identity provider's role claim persisted by
+// SetOIDCRole, or "" if the account never signed in via OIDC.
+func (s *Store) OIDCRole(ctx context.Context, userID string) (string, error) {
+	var role *string
+	if err := s.Pool.QueryRow(ctx, `SELECT oidc_role FROM users WHERE id=$1`, userID).Scan(&role); err != nil {
+		return "", err
+	}
+	if role == nil {
+		return "", nil
+	}
+	return *role, nil
+}
+
 func (s *Store) CreateSession(ctx context.Context, tokenHash, userID string, ttl time.Duration) error {
 	_, err := s.Pool.Exec(ctx,
 		`INSERT INTO sessions (token_hash, user_id, expires_at) VALUES ($1,$2,now() + $3::interval)`,
