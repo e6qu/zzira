@@ -161,6 +161,11 @@ func (h *Handler) webhookRoute(w http.ResponseWriter, r *http.Request) {
 			jiraError(w, http.StatusMethodNotAllowed, "method not allowed")
 		}
 	case "/rest/api/3/webhook/refresh":
+		if r.Method != http.MethodPut && r.Method != http.MethodPost {
+			w.Header().Set("Allow", "PUT, POST")
+			jiraError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 	default:
 		id := strings.TrimPrefix(r.URL.Path, "/rest/api/3/webhook/")
@@ -192,6 +197,15 @@ func (h *Handler) createWebhook(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.URL == "" || len(req.Webhooks) == 0 {
 		jiraFieldError(w, http.StatusBadRequest, map[string]string{"url": "A webhook URL and at least one webhook spec are required."})
 		return
+	}
+	for _, spec := range req.Webhooks {
+		if spec.JQL == "" {
+			continue
+		}
+		if _, err := jql.Parse(spec.JQL); err != nil {
+			jiraFieldError(w, http.StatusBadRequest, map[string]string{"jqlFilter": "Error in the JQL Query: " + err.Error()})
+			return
+		}
 	}
 	statuses := []map[string]any{}
 	for _, spec := range req.Webhooks {

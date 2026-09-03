@@ -28,8 +28,9 @@ type Handler struct {
 }
 
 type pageData struct {
-	User *models.User
-	Data any
+	User   *models.User
+	Data   any
+	Active string
 }
 
 type createDialogData struct {
@@ -241,7 +242,7 @@ func (h *Handler) serveIssue(w http.ResponseWriter, r *http.Request, user *model
 		}
 		return
 	}
-	if err := render.Page(w, "page_issue", pageData{User: user, Data: view}); err != nil {
+	if err := render.Page(w, "page_issue", pageData{User: user, Data: view, Active: "issues"}); err != nil {
 		log.Printf("render page_issue: %v", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 	}
@@ -344,7 +345,7 @@ func (h *Handler) Home(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	writePage(w, "page_home", pageData{User: user, Data: stats})
+	writePage(w, "page_home", pageData{User: user, Data: stats, Active: "dashboard"})
 }
 
 func (h *Handler) CreateDialog(w http.ResponseWriter, r *http.Request) {
@@ -447,7 +448,7 @@ func (h *Handler) ProjectIssues(w http.ResponseWriter, r *http.Request, key stri
 		data.Issues = issues
 		data.Total = len(issues)
 	}
-	writePage(w, "page_project", pageData{User: user, Data: data})
+	writePage(w, "page_project", pageData{User: user, Data: data, Active: "issues"})
 }
 
 // BrowseIssue serves /browse/{key} — the Jira-style issue URL.
@@ -674,7 +675,7 @@ func (h *Handler) DeleteIssue(w http.ResponseWriter, r *http.Request, key string
 		http.NotFound(w, r)
 		return
 	}
-	if _, err := h.Store.DeleteIssue(r.Context(), user.ID, wsID, issue.ID, "deleted via UI"); err != nil {
+	if _, err := h.Commands.DeleteIssue(r.Context(), user.ID, wsID, issue.ID, "deleted via UI"); err != nil {
 		http.Error(w, "delete failed", http.StatusInternalServerError)
 		return
 	}

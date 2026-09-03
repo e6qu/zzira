@@ -9,7 +9,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
 	"unicode"
 
@@ -37,7 +39,8 @@ func main() {
 	flag.Parse()
 
 	if *healthcheck {
-		resp, err := http.Get("http://localhost:" + envOr("SERVER_PORT", "8080") + "/rest/api/3/serverInfo")
+		client := &http.Client{Timeout: 5 * time.Second}
+		resp, err := client.Get("http://localhost:" + envOr("SERVER_PORT", "8080") + "/rest/api/3/serverInfo")
 		if err != nil {
 			os.Exit(1)
 		}
@@ -51,7 +54,8 @@ func main() {
 		return
 	}
 
-	ctx := context.Background()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 	st, err := store.Open(ctx, store.DSNFromEnv())
 	if err != nil {
 		log.Fatalf("open store: %v", err)
@@ -137,16 +141,23 @@ func main() {
 			return err == nil && len(issues) > 0, nil
 		}},
 	}
-	go dispatcher.Run(context.Background(), workspaceID)
+	go dispatcher.Run(ctx, workspaceID)
 	go func() {
 		for {
-			if err := bus.Listen(context.Background(), st.Pool); err != nil {
+			if err := bus.Listen(ctx, st.Pool); err != nil && ctx.Err() == nil {
 				log.Printf("notifybus listen: %v (retrying in 2s)", err)
 			}
+			timer := time.NewTimer(2 * time.Second)
 			select {
-			case <-context.Background().Done():
+			case <-ctx.Done():
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
+				}
 				return
-			case <-time.After(2 * time.Second):
+			case <-timer.C:
 			}
 		}
 	}()
@@ -221,14 +232,24 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              address,
-		Handler:           authn.ProtectCookieMutations(mux),
+		Handler:           http.MaxBytesHandler(authn.SecurityHeaders(authn.ProtectCookieMutations(mux)), 34<<20),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      60 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
 	fmt.Printf("%s %s listening on %s\n", build.Product, build.Version, address)
-	log.Fatal(srv.ListenAndServe())
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			log.Printf("server shutdown: %v", err)
+		}
+	}()
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		log.Fatalf("serve: %v", err)
+	}
 }
 
 // ensureBootstrapAdmin grants ZZIRA_BOOTSTRAP_ADMIN_EMAIL admin membership,

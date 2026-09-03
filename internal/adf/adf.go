@@ -7,6 +7,7 @@ package adf
 import (
 	"encoding/json"
 	"html"
+	"net/url"
 	"strconv"
 	"strings"
 )
@@ -145,7 +146,7 @@ func renderText(b *strings.Builder, n Node, marks map[string]bool) {
 			active["code"] = true
 		case "link":
 			if href, ok := m.Attrs["href"].(string); ok {
-				link = href
+				link = safeHref(href)
 			}
 		}
 	}
@@ -162,6 +163,22 @@ func renderText(b *strings.Builder, n Node, marks map[string]bool) {
 		text = "<em>" + text + "</em>"
 	}
 	b.WriteString(text)
+}
+
+func safeHref(raw string) string {
+	if strings.TrimSpace(raw) != raw || raw == "" {
+		return ""
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	switch strings.ToLower(parsed.Scheme) {
+	case "", "http", "https", "mailto":
+		return raw
+	default:
+		return ""
+	}
 }
 
 func collectText(n Node) string {

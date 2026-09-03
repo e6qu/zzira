@@ -33,16 +33,15 @@ test('V1: edit summary via dialog → issue view updates', async ({ page, reques
   const key = await createIssueViaAPI(request, `V1 edit ${Date.now()}`);
   await login(page);
   await page.goto(`/browse/${key}`);
-  const editPosts: string[] = [];
-  page.on('response', r => {
-    if (r.request().method() === 'POST' && r.url().includes('/edit')) editPosts.push(`${r.status()} ${r.url()}`);
-  });
-  await page.click('text=Edit');
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
   await expect(page.locator('.modal')).toBeVisible();
   const newSummary = `V1 edited ${Date.now()}`;
   await page.fill('input[name=summary]', newSummary);
-  await page.locator('.modal button[type=submit]').click({ force: true });
-  console.log('EDIT-POSTS:', JSON.stringify(editPosts));
+  const editResponse = page.waitForResponse(r =>
+    r.request().method() === 'POST' && r.url().includes('/edit'),
+  );
+  await page.locator('.modal button[type=submit]').click();
+  expect((await editResponse).ok()).toBe(true);
   await expect(page.locator('.issue-summary')).toHaveText(newSummary, { timeout: 20_000 });
   // the API agrees
   const bean = await request.get(`/rest/api/3/issue/${key}`, { headers: { Authorization: apiAuthHeader() } });
@@ -87,9 +86,9 @@ test('V1 done-when: offline edit queues, drain on reconnect, zero duplicates', a
   }).toContain('synced');
 
   await page.context().setOffline(true);
-  await page.click('text=Edit');
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
   await page.fill('input[name=summary]', `offline edit ${Date.now()}`);
-  await page.locator('.modal button[type=submit]').click({ force: true });
+  await page.locator('.modal button[type=submit]').click();
   await page.context().setOffline(false);
 
   await expect.poll(async () => {

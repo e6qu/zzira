@@ -48,7 +48,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.listLinkTypes(w, r)
 	case path == "/issueLink" && r.Method == http.MethodPost:
 		h.createIssueLink(w, r)
-	case strings.HasPrefix(path, "/issueLink/"):
+	case strings.HasPrefix(path, "/issueLink/") && r.Method == http.MethodDelete:
 		h.deleteIssueLink(w, r, strings.TrimPrefix(path, "/issueLink/"))
 	case path == "/label" && r.Method == http.MethodGet:
 		h.labelsEndpoint(w, r)
@@ -86,7 +86,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.listProjects(w, r)
 	case path == "/project/search" && r.Method == http.MethodGet:
 		h.searchProjects(w, r)
-	case strings.HasPrefix(path, "/project/"):
+	case strings.HasPrefix(path, "/project/") && r.Method == http.MethodGet:
 		h.getProject(w, r, strings.TrimPrefix(path, "/project/"))
 	case path == "/user/search" && r.Method == http.MethodGet:
 		h.searchUsers(w, r)
@@ -222,14 +222,6 @@ func (h *Handler) resolveIssue(r *http.Request, wsID, idOrKey string) (*models.I
 		return nil, &jerr{http.StatusNotFound, "Issue does not exist or you do not have permission to see it.", nil}
 	}
 	return issue, nil
-}
-
-func (h *Handler) storeStatus(r *http.Request, id string) models.Status {
-	st, err := h.Store.StatusByID(r.Context(), id)
-	if err != nil {
-		return models.Status{ID: id}
-	}
-	return st
 }
 
 func (h *Handler) statusBean(s models.Status) map[string]any {
@@ -443,10 +435,12 @@ func (h *Handler) putIssue(w http.ResponseWriter, r *http.Request, idOrKey strin
 		if string(*req.Fields.Assignee) == "null" {
 			empty := ""
 			up.AssigneeID = &empty // explicit null = unassign
-		} else if err := json.Unmarshal(*req.Fields.Assignee, &a); err == nil && a != nil {
+		} else if err := json.Unmarshal(*req.Fields.Assignee, &a); err != nil || a == nil {
+			jiraFieldError(w, http.StatusBadRequest, map[string]string{"assignee": "Invalid assignee payload."})
+			return
+		} else {
 			up.AssigneeID = &a.AccountID
 		}
-		_ = a
 	}
 	fields := customFieldsFromBody(body)
 	var securityID *string
@@ -477,7 +471,7 @@ func (h *Handler) deleteIssue(w http.ResponseWriter, r *http.Request, idOrKey st
 		writeJerr(w, e)
 		return
 	}
-	if _, err := h.Store.DeleteIssue(r.Context(), userID, wsID, issue.ID, "deleted via API"); err != nil {
+	if _, err := h.Commands.DeleteIssue(r.Context(), userID, wsID, issue.ID, "deleted via API"); err != nil {
 		jiraError(w, http.StatusInternalServerError, "delete failed")
 		return
 	}
@@ -716,7 +710,11 @@ func (h *Handler) listTransitions(w http.ResponseWriter, r *http.Request, idOrKe
 	}
 	beans := []map[string]any{}
 	for _, t := range wf.Available(issue.Status.ID) {
-		status := h.storeStatus(r, t.To)
+		status, err := h.Store.StatusByID(r.Context(), t.To)
+		if err != nil {
+			jiraError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
 		beans = append(beans, map[string]any{
 			"id":            t.ID,
 			"name":          t.Name,

@@ -63,7 +63,9 @@ type IssueLinkPayload struct {
 }
 
 type IssueLinkDeletePayload struct {
-	LinkID string `json:"linkId"`
+	LinkID    string `json:"linkId"`
+	InwardID  string `json:"inwardIssueId"`
+	OutwardID string `json:"outwardIssueId"`
 }
 
 type LinkType struct {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	neturl "net/url"
 
 	"github.com/jackc/pgx/v5"
 
@@ -167,34 +168,66 @@ func (s *Store) UpdateIssue(ctx context.Context, actorID, workspaceID, issueID s
 	return updated, action, nil
 }
 
-func (s *Store) DeleteIssue(ctx context.Context, actorID, workspaceID, issueID, reason string) (*models.Action, error) {
+func (s *Store) DeleteIssue(ctx context.Context, actorID, workspaceID, issueID, reason string) (*models.Action, []string, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	var projectID string
+	var securityLevelID *string
+	if err := tx.QueryRow(ctx,
+		`SELECT project_id, security_level_id FROM issues WHERE id=$1 AND workspace_id=$2 FOR UPDATE`,
+		issueID, workspaceID).Scan(&projectID, &securityLevelID); err != nil {
+		return nil, nil, err
+	}
+	rows, err := tx.Query(ctx, `SELECT blob_ref FROM attachments WHERE issue_id=$1 ORDER BY id`, issueID)
+	if err != nil {
+		return nil, nil, err
+	}
+	var blobRefs []string
+	for rows.Next() {
+		var ref string
+		if err := rows.Scan(&ref); err != nil {
+			rows.Close()
+			return nil, nil, err
+		}
+		blobRefs = append(blobRefs, ref)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
 	seq, err := nextSeq(ctx, tx, workspaceID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	payload, err := json.Marshal(models.DeletePayload{Reason: reason})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	action := &models.Action{
 		WorkspaceID: workspaceID, Seq: seq, EntityType: models.EntityIssue, EntityID: issueID,
 		Op: models.OpDelete, SchemaV: models.SchemaVersion, Payload: payload, ActorID: actorID,
 	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO deleted_issue_visibility (workspace_id, issue_id, project_id, security_level_id)
+		VALUES ($1,$2,$3,$4)
+		ON CONFLICT (workspace_id, issue_id) DO UPDATE
+		SET project_id=EXCLUDED.project_id, security_level_id=EXCLUDED.security_level_id`,
+		workspaceID, issueID, projectID, securityLevelID); err != nil {
+		return nil, nil, err
+	}
 	if _, err := tx.Exec(ctx, `DELETE FROM issues WHERE id=$1 AND workspace_id=$2`, issueID, workspaceID); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if err := appendAction(ctx, tx, action); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return action, nil
+	return action, blobRefs, nil
 }
 
 // ---- Comments (V1) ----
@@ -508,6 +541,10 @@ func (s *Store) CustomFieldsForProject(ctx context.Context, projectID string) ([
 // CreateWebhook registers the hook with a watermark at the workspace's
 // current head: only actions committed after registration are delivered.
 func (s *Store) CreateWebhook(ctx context.Context, workspaceID, url string, events []string, jql string) (*models.Webhook, error) {
+	parsed, err := neturl.ParseRequestURI(url)
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.User != nil {
+		return nil, fmt.Errorf("webhook URL must be an absolute HTTP(S) URL without user information")
+	}
 	head, err := s.Head(ctx, workspaceID)
 	if err != nil {
 		return nil, err
@@ -587,12 +624,16 @@ func (s *Store) ClaimPendingWebhookBatch(ctx context.Context, workspaceID string
 		  AND EXISTS (
 			SELECT 1 FROM webhook_deliveries d
 			WHERE d.webhook_id = w.id
-			  AND (d.state = 'pending' OR (d.state = 'failed' AND d.next_attempt_at <= now()))
+				  AND (d.state = 'pending'
+				    OR (d.state = 'failed' AND d.next_attempt_at <= now())
+				    OR (d.state = 'delivering' AND d.claimed_at <= now() - interval '2 minutes'))
 		  )
 		ORDER BY (
 			SELECT MIN(seq) FROM webhook_deliveries d
 			WHERE d.webhook_id = w.id
-			  AND (d.state = 'pending' OR (d.state = 'failed' AND d.next_attempt_at <= now()))
+				  AND (d.state = 'pending'
+				    OR (d.state = 'failed' AND d.next_attempt_at <= now())
+				    OR (d.state = 'delivering' AND d.claimed_at <= now() - interval '2 minutes'))
 		)
 		LIMIT 1
 		FOR UPDATE OF w SKIP LOCKED`, workspaceID).Scan(&w.ID, &w.URL, &w.Events, &w.JQL)
@@ -606,7 +647,9 @@ func (s *Store) ClaimPendingWebhookBatch(ctx context.Context, workspaceID string
 		WITH due AS (
 			SELECT webhook_id, seq FROM webhook_deliveries
 			WHERE webhook_id=$1
-			  AND (state='pending' OR (state='failed' AND next_attempt_at <= now()))
+				  AND (state='pending'
+				    OR (state='failed' AND next_attempt_at <= now())
+				    OR (state='delivering' AND claimed_at <= now() - interval '2 minutes'))
 			ORDER BY seq
 			LIMIT $2
 			FOR UPDATE SKIP LOCKED
@@ -666,7 +709,9 @@ func (s *Store) MarkWebhookDelivery(ctx context.Context, webhookID string, seq i
 	_, err := s.Pool.Exec(ctx, `
 		UPDATE webhook_deliveries
 		SET state='failed', attempts=attempts+1, last_error=$3,
-		    next_attempt_at=now() + make_interval(secs => LEAST(POWER(2, attempts)::int, 300))
+		    next_attempt_at=now() + make_interval(
+		      secs => LEAST(POWER(2, LEAST(attempts, 9))::int, 300)
+		    )
 		WHERE webhook_id=$1 AND seq=$2`, webhookID, seq, lastErr)
 	return err
 }

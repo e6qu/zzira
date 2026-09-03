@@ -4,6 +4,9 @@
 (function () {
   'use strict';
 
+  const authPage = location.pathname === '/login' || location.pathname === '/signed-out';
+  if (authPage) sessionStorage.removeItem('zzira-replica-id');
+
   function savedTheme() {
     const value = localStorage.getItem('zzira-theme');
     return value === 'light' || value === 'dark' ? value : null;
@@ -34,6 +37,115 @@
   }
   document.addEventListener('DOMContentLoaded', initThemeToggle);
 
+  // ---- Application shell: persistent sidebar + Jira-style search shortcut ----
+  function setNavigationState(open) {
+    const mobile = window.matchMedia('(max-width: 960px)').matches;
+    const sidebar = document.getElementById('workspace-navigation');
+    if (mobile) {
+      document.body.classList.toggle('nav-open', open);
+      document.body.classList.remove('nav-collapsed');
+      if (sidebar) sidebar.inert = !open;
+    } else {
+      document.body.classList.remove('nav-open');
+      document.body.classList.toggle('nav-collapsed', !open);
+      if (sidebar) sidebar.inert = false;
+      localStorage.setItem('zzira-sidebar', open ? 'open' : 'collapsed');
+    }
+    document.querySelectorAll('[data-nav-toggle]').forEach((button) => {
+      button.setAttribute('aria-expanded', String(open));
+      button.setAttribute('aria-label', open ? 'Collapse sidebar' : 'Expand sidebar');
+    });
+  }
+
+  function initShell() {
+    const media = window.matchMedia('(max-width: 960px)');
+    const startOpen = media.matches ? false : localStorage.getItem('zzira-sidebar') !== 'collapsed';
+    setNavigationState(startOpen);
+    document.querySelectorAll('[data-nav-toggle]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const open = media.matches
+          ? !document.body.classList.contains('nav-open')
+          : document.body.classList.contains('nav-collapsed');
+        setNavigationState(open);
+      });
+    });
+    document.querySelectorAll('#workspace-navigation a').forEach((link) => {
+      link.addEventListener('click', () => { if (media.matches) setNavigationState(false); });
+    });
+    media.addEventListener('change', (event) => {
+      setNavigationState(event.matches ? false : localStorage.getItem('zzira-sidebar') !== 'collapsed');
+    });
+    document.addEventListener('keydown', (event) => {
+      const target = event.target;
+      const typing = target && (target.matches('input, textarea, select') || target.closest('[contenteditable]'));
+      if (event.key === 'Escape' && target instanceof Element) {
+        const details = target.closest('details[open]');
+        if (details) {
+          event.preventDefault();
+          details.open = false;
+          const summary = details.querySelector('summary');
+          if (summary) summary.focus();
+          return;
+        }
+      }
+      if (event.key === '/' && !typing && !event.metaKey && !event.ctrlKey && !event.altKey) {
+        const search = document.getElementById('global-jql-query');
+        if (search) { event.preventDefault(); search.focus(); }
+      }
+      if (event.key === '[' && event.ctrlKey && !typing) {
+        event.preventDefault();
+        const open = media.matches
+          ? !document.body.classList.contains('nav-open')
+          : document.body.classList.contains('nav-collapsed');
+        setNavigationState(open);
+      }
+      if (event.key === 'Escape' && media.matches && document.body.classList.contains('nav-open')) {
+        event.preventDefault();
+        setNavigationState(false);
+        const button = document.querySelector('[data-nav-toggle]');
+        if (button) button.focus();
+      }
+    });
+  }
+
+  function setSyncRail(state, label, detail) {
+    const rail = document.getElementById('sync-rail');
+    if (!rail) return;
+    rail.dataset.state = state;
+    const labelNode = rail.querySelector('[data-sync-label]');
+    const detailNode = rail.querySelector('[data-sync-detail]');
+    if (labelNode) labelNode.textContent = label;
+    if (detailNode) detailNode.textContent = detail;
+  }
+
+  function initBoardFilter() {
+    const input = document.querySelector('[data-board-filter]');
+    if (!input || input.dataset.ready) return;
+    input.dataset.ready = '1';
+    input.addEventListener('input', () => {
+      const query = input.value.trim().toLocaleLowerCase();
+      document.querySelectorAll('.board-column').forEach((column) => {
+        let visible = 0;
+        column.querySelectorAll('.board-card').forEach((card) => {
+          const match = !query || card.textContent.toLocaleLowerCase().includes(query);
+          card.hidden = !match;
+          if (match) visible += 1;
+        });
+        const count = column.querySelector('.column-count');
+        if (count) count.textContent = String(visible);
+      });
+      const visible = document.querySelectorAll('.board-card:not([hidden])').length;
+      const status = document.querySelector('[data-board-filter-status]');
+      if (status) status.textContent = visible + (visible === 1 ? ' card shown' : ' cards shown');
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    initShell();
+    initBoardFilter();
+    setSyncRail(navigator.onLine ? 'online' : 'offline', navigator.onLine ? 'Ready' : 'Offline', navigator.onLine ? 'Local replica' : 'Showing local copy');
+  });
+
   if (!('Worker' in window)) return;
 
   // The replica belongs to views that consume it. Starting one on the
@@ -50,10 +162,12 @@
     return id;
   }
   const worker = replicaView
-    ? new Worker('/static/worker.js?v=7&replica=' + encodeURIComponent(replicaID()))
+    ? new Worker('/static/worker.js?v=10&replica=' + encodeURIComponent(replicaID()))
     : null;
   const banner = () => document.getElementById('sync-banner');
   let workerReady = false;
+  let mutationAwaitingSync = false;
+  let mutationMinSeq = 0;
   const pendingWorkerMessages = [];
 
   // A page can be used before the SQLite/WASM worker finishes booting. Keep
@@ -80,6 +194,20 @@
   }
 
   let modalReturnFocus = null;
+  let modalReturnFocusSelector = '';
+  const modalInertState = new Map();
+  function setBackgroundInert(inert) {
+    Array.from(document.body.children).forEach((child) => {
+      if (child.id === 'modal-root') return;
+      if (inert) {
+        if (!modalInertState.has(child)) modalInertState.set(child, child.inert);
+        child.inert = true;
+      } else if (modalInertState.has(child)) {
+        child.inert = modalInertState.get(child);
+        modalInertState.delete(child);
+      }
+    });
+  }
   function modalFocusable(modal) {
     return Array.from(modal.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'));
   }
@@ -88,6 +216,7 @@
     const modal = root.querySelector ? root.querySelector('.modal[role="dialog"]') : null;
     if (!modal || modal.dataset.ready) return;
     modal.dataset.ready = '1';
+    setBackgroundInert(true);
     root.querySelectorAll('[data-modal-backdrop]').forEach((backdrop) => {
       backdrop.addEventListener('click', () => window.zzira.closeModal());
     });
@@ -159,18 +288,27 @@
         workerReady = true;
         while (pendingWorkerMessages.length) worker.postMessage(pendingWorkerMessages.shift());
         announce('local sync ready (renderer ' + (msg.renderer || '?') + ')', 2500);
+        setSyncRail('syncing', 'Syncing', 'Opening local replica');
         pushView();
         break;
       case 'synced':
         sawSync = true;
+        if (mutationAwaitingSync && mutationMinSeq > 0 && msg.seq >= mutationMinSeq) {
+          mutationAwaitingSync = false;
+          mutationMinSeq = 0;
+          pendingRootHtml = null;
+        }
         announce('synced \u00b7 seq ' + msg.seq, 1500);
+        setSyncRail('online', 'Synced', 'Sequence ' + msg.seq);
         refreshBoardRegion();
         break;
       case 'queued':
         announce('offline \u2014 queued (' + msg.size + ')', 4000);
+        setSyncRail('offline', 'Queued offline', msg.size + ' pending');
         break;
       case 'offline':
         announce('offline \u2014 showing local copy', 4000);
+        setSyncRail('offline', 'Offline', 'Showing local copy');
         break;
       case 'html':
         // Skip the worker's redundant initial render: the server already
@@ -188,7 +326,11 @@
         setModalHTML(msg.html);
         break;
       case 'error':
+        mutationAwaitingSync = false;
+        mutationMinSeq = 0;
+        pendingRootHtml = null;
         announce('sync error: ' + (msg.message || 'unknown'), 5000);
+        setSyncRail('offline', 'Sync needs attention', msg.message || 'Unknown error');
         break;
     }
   };
@@ -215,10 +357,14 @@
     const editing = active && root.contains(active) &&
       (active.closest('[contenteditable]') ||
        ['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName));
+    // A sync can arrive between filling a field and clicking its submit
+    // button. Focus has moved by then, but replacing the root would still
+    // erase the user's command before HTMX can send it.
+    const dirtyForm = root.querySelector('form[data-dirty="true"]');
     // Also defer if the create/edit dialog is open (the user is mid-edit)
     const modalOpen = root.style.display === 'block' ||
       (document.getElementById('modal-root') && document.getElementById('modal-root').style.display === 'block');
-    if (editing || modalOpen) { pendingRootHtml = html; return; }
+    if (editing || dirtyForm || modalOpen || mutationAwaitingSync) { pendingRootHtml = html; return; }
     if (root.outerHTML === html) { pendingRootHtml = null; return; } // no-op render
     const incomingSeq = seqOf(html);
     if (incomingSeq > 0 && incomingSeq < seqOfDom()) {
@@ -234,13 +380,22 @@
     if (!pendingRootHtml) return;
     const active = document.activeElement;
     const root = document.getElementById('issue-root');
-    if (root && (!active || !root.contains(active) ||
+    const dirtyForm = root && root.querySelector('form[data-dirty="true"]');
+    if (root && !dirtyForm && !mutationAwaitingSync && (!active || !root.contains(active) ||
         (!active.closest('[contenteditable]') && !['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName)))) {
       root.outerHTML = pendingRootHtml;
       pendingRootHtml = null;
       hydrate(document.getElementById('issue-root'));
     }
   });
+
+  document.addEventListener('input', (event) => {
+    const target = event.target;
+    if (!target || !target.closest) return;
+    const root = target.closest('#issue-root');
+    const form = target.closest('form');
+    if (root && form) form.dataset.dirty = 'true';
+  }, true);
 
   // Live board: after each sync, refresh the region so other users' rank and
   // transition actions appear without a reload.
@@ -313,48 +468,82 @@
     if (!queueOfflineForm(form)) return;
     evt.preventDefault();
     evt.stopPropagation();
+    if (form.closest('[role="dialog"]')) window.zzira.closeModal();
   }, true);
 
   document.body.addEventListener('htmx:beforeRequest', (evt) => {
     const elt = evt.detail.elt;
     if (!elt || elt.tagName !== 'FORM') return;
-    if (!offlineMode && navigator.onLine) return; // online: let htmx do its thing
+    if (!offlineMode && navigator.onLine) {
+      mutationAwaitingSync = true;
+      // An initial sync may already be in flight. Its acknowledgement must
+      // not be mistaken for acknowledgement of the command about to commit.
+      mutationMinSeq = Number.MAX_SAFE_INTEGER;
+      return; // online: let htmx do its thing
+    }
     if (!queueOfflineForm(elt)) return; // reads fail naturally offline
     evt.preventDefault();
     evt.stopPropagation();
+    if (elt.closest('[role="dialog"]')) window.zzira.closeModal();
   }, true);
 
   window.addEventListener('online', () => {
     offlineMode = false;
     announce('back online \u2014 syncing\u2026', 2000);
+    setSyncRail('syncing', 'Back online', 'Syncing changes');
     // Reconnection is a protocol event, not an opportunity to wait for the
     // next maintenance tick. This message follows buffered offline commands.
     postWorker({ type: 'sync-now' });
   });
-  window.addEventListener('offline', () => { offlineMode = true; });
+  window.addEventListener('offline', () => {
+    offlineMode = true;
+    setSyncRail('offline', 'Offline', 'Showing local copy');
+  });
 
   // ---- Modal helpers ----
   window.zzira = {
     openModal(trigger) {
       const root = document.getElementById('modal-root');
       modalReturnFocus = trigger instanceof HTMLElement ? trigger : document.activeElement;
+      modalReturnFocusSelector = modalReturnFocus instanceof HTMLElement && modalReturnFocus.id
+        ? '#' + CSS.escape(modalReturnFocus.id) : '';
       if (root) root.style.display = 'block';
     },
     closeModal() {
       const root = document.getElementById('modal-root');
       if (root) { root.style.display = 'none'; root.innerHTML = ''; }
-      if (modalReturnFocus instanceof HTMLElement) modalReturnFocus.focus();
+      setBackgroundInert(false);
+      const returnReference = modalReturnFocus;
+      const returnSelector = modalReturnFocusSelector;
+      const restoreFocus = () => {
+        const target = returnReference instanceof HTMLElement && returnReference.isConnected
+          ? returnReference
+          : (returnSelector ? document.querySelector(returnSelector) : null);
+        if (target instanceof HTMLElement) target.focus();
+      };
+      restoreFocus();
+      // A deferred replica render may replace the issue fragment as the
+      // dialog closes. Restore against its stable trigger once that swap has
+      // had a chance to complete as well.
+      setTimeout(restoreFocus, 0);
       modalReturnFocus = null;
+      modalReturnFocusSelector = '';
     },
-    openEdit(key) {
+    openEdit(key, trigger) {
       const root = document.getElementById('modal-root');
       if (!root) return;
+      modalReturnFocus = trigger instanceof HTMLElement ? trigger : document.activeElement;
+      modalReturnFocusSelector = '#edit-issue-button';
+      // Mark the modal region as active before the asynchronous renderer
+      // responds so a replica refresh cannot replace the return-focus target.
+      root.style.display = 'block';
       // The replica owns offline commands. Request its locally rendered dialog
       // instead of relying on an SSR-only template that a replica render can
       // replace.
       if (!navigator.onLine) {
         const issueId = currentIssueId();
         if (!worker || !issueId) {
+          root.style.display = 'none';
           announce('offline editing is unavailable for this view', 4000);
           return;
         }
@@ -365,9 +554,11 @@
         if (!r.ok) throw new Error('HTTP ' + r.status);
         return r.text();
       }).then(html => {
-        modalReturnFocus = document.activeElement;
         setModalHTML(html);
-      }).catch(() => announce('could not open editor', 4000));
+      }).catch(() => {
+        window.zzira.closeModal();
+        announce('could not open editor', 4000);
+      });
     }
   };
 
@@ -512,9 +703,16 @@
   document.body.addEventListener('htmx:afterRequest', (evt) => {
     const elt = evt.detail.elt;
     if (evt.detail.successful && elt && elt.tagName === 'FORM') {
+      // The server response is newer than any replica render deferred while
+      // this form was dirty; never let that stale render win after the swap.
+      pendingRootHtml = null;
+      mutationMinSeq = seqOf((evt.detail.xhr && evt.detail.xhr.responseText) || '');
       postWorker({ type: 'sync-now' });
       const path = elt.getAttribute('hx-post') || '';
       if (path.includes('/edit')) zzira.closeModal();
+    } else if (elt && elt.tagName === 'FORM') {
+      mutationAwaitingSync = false;
+      mutationMinSeq = 0;
     }
   });
 
@@ -525,6 +723,18 @@
     board.dataset.ready = '1';
     const boardID = document.body.getAttribute('data-board') || '';
     let grabbedCard = null;
+
+    function columnName(column) {
+      const name = column.querySelector('.lozenge-column');
+      return name ? name.textContent.trim() : 'column';
+    }
+
+    function updateColumnCounts() {
+      board.querySelectorAll('.board-column').forEach((column) => {
+        const count = column.querySelector('.column-count');
+        if (count) count.textContent = String(column.querySelectorAll('[data-column] > .board-card').length);
+      });
+    }
 
     function rankCard(card, column, index) {
       const target = column.querySelector('[data-column]');
@@ -539,52 +749,96 @@
         before: before ? before.getAttribute('data-issue') || '' : '',
         after: after ? after.getAttribute('data-issue') || '' : '',
       }).toString(), 'rank');
-      announce('Moved ' + (card.getAttribute('data-key') || 'issue') + ' to ' + (column.getAttribute('aria-label') || 'column'), 2500);
+      updateColumnCounts();
+      announce('Moved ' + (card.getAttribute('data-key') || 'issue') + ' to ' + columnName(column), 2500);
     }
 
     board.querySelectorAll('.board-card').forEach((card) => {
-      card.addEventListener('keydown', (event) => {
-        if (event.key === ' ' || event.key === 'Enter') {
-          event.preventDefault();
-          if (grabbedCard && grabbedCard !== card) grabbedCard.setAttribute('aria-pressed', 'false');
-          grabbedCard = grabbedCard === card ? null : card;
-          card.setAttribute('aria-pressed', String(Boolean(grabbedCard)));
-          announce(grabbedCard ? 'Picked up ' + (card.getAttribute('data-key') || 'issue') + '. Use arrow keys to move it; press Space to drop.' : 'Dropped issue.', 2500);
-          return;
+      const handle = card.querySelector('[data-card-drag]');
+      if (!handle) return;
+      handle.addEventListener('click', () => {
+        if (grabbedCard && grabbedCard !== card) {
+          grabbedCard.classList.remove('is-grabbed');
+          const previousHandle = grabbedCard.querySelector('[data-card-drag]');
+          if (previousHandle) previousHandle.setAttribute('aria-pressed', 'false');
         }
+        grabbedCard = grabbedCard === card ? null : card;
+        card.classList.toggle('is-grabbed', Boolean(grabbedCard));
+        handle.setAttribute('aria-pressed', String(Boolean(grabbedCard)));
+        announce(grabbedCard ? 'Picked up ' + (card.getAttribute('data-key') || 'issue') + '. Use arrow keys to move it; press the move button again to drop.' : 'Dropped issue.', 2500);
+      });
+      handle.addEventListener('keydown', (event) => {
         if (!grabbedCard || grabbedCard !== card || !['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) return;
         event.preventDefault();
         const source = card.closest('.board-column');
         const columns = Array.from(board.querySelectorAll('.board-column'));
         let targetColumn = source;
         let targetIndex = Array.from(source.querySelector('[data-column]').children).indexOf(card);
-        if (event.key === 'ArrowUp') targetIndex = Math.max(0, targetIndex - 1);
-        if (event.key === 'ArrowDown') targetIndex += 1;
+        if (event.key === 'ArrowUp') {
+          if (targetIndex === 0) return;
+          targetIndex -= 1;
+        }
+        if (event.key === 'ArrowDown') {
+          if (targetIndex === source.querySelector('[data-column]').children.length - 1) return;
+          targetIndex += 1;
+        }
         if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
           const direction = event.key === 'ArrowLeft' ? -1 : 1;
           const sourceIndex = columns.indexOf(source);
-          targetColumn = columns[sourceIndex + direction] || source;
+          targetColumn = columns[sourceIndex + direction];
+          if (!targetColumn) return;
           targetIndex = targetColumn.querySelector('[data-column]').children.length;
         }
         rankCard(card, targetColumn, targetIndex);
+      });
+
+      card.querySelectorAll('[data-card-move]').forEach((button) => {
+        button.addEventListener('click', () => {
+          const direction = button.getAttribute('data-card-move');
+          const source = card.closest('.board-column');
+          const columns = Array.from(board.querySelectorAll('.board-column'));
+          const sourceCards = Array.from(source.querySelector('[data-column]').children);
+          const sourceIndex = sourceCards.indexOf(card);
+          let targetColumn = source;
+          let targetIndex = sourceIndex;
+          if (direction === 'up') {
+            if (sourceIndex === 0) return;
+            targetIndex -= 1;
+          } else if (direction === 'down') {
+            if (sourceIndex === sourceCards.length - 1) return;
+            targetIndex += 1;
+          } else {
+            const offset = direction === 'left' ? -1 : 1;
+            targetColumn = columns[columns.indexOf(source) + offset];
+            if (!targetColumn) return;
+            targetIndex = targetColumn.querySelector('[data-column]').children.length;
+          }
+          rankCard(card, targetColumn, targetIndex);
+          const details = button.closest('details');
+          if (details) details.open = false;
+          handle.focus();
+        });
       });
     });
 
     board.querySelectorAll('[data-column]').forEach((col) => {
       new Sortable(col, {
         group: 'board',
+        handle: '[data-card-drag]',
         animation: 150,
         onEnd: (evt) => {
           const card = evt.item;
           const issue = card.getAttribute('data-issue');
           const status = card.closest('[data-column]').closest('.board-column')
             .getAttribute('data-status');
-          const siblings = Array.from(card.parentElement.children).filter((c) => c !== card);
-          const idx = siblings.indexOf(card);
-          const after = idx > 0 ? siblings[idx - 1].getAttribute('data-issue') : '';
-          const before = idx < siblings.length - 1 ? siblings[idx + 1].getAttribute('data-issue') : '';
+          const cards = Array.from(card.parentElement.children);
+          const idx = cards.indexOf(card);
+          const after = idx > 0 ? cards[idx - 1].getAttribute('data-issue') : '';
+          const before = idx < cards.length - 1 ? cards[idx + 1].getAttribute('data-issue') : '';
           const body = new URLSearchParams({ issue, status, before, after }).toString();
           sendOrQueue('POST', '/board/' + boardID + '/rank', body, 'rank');
+          updateColumnCounts();
+          announce('Moved ' + (card.getAttribute('data-key') || 'issue') + ' to ' + columnName(card.closest('.board-column')), 2500);
         },
       });
     });
@@ -600,7 +854,13 @@
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body,
       }).then((res) => {
-        if (!res.ok) announce('command failed: ' + res.status, 4000);
+        if (res.ok) return;
+        if ([408, 425, 429].includes(res.status) || res.status >= 500) {
+          postWorker({ type: 'enqueue', method, path, body, kind });
+          announce('server unavailable — command queued', 4000);
+          return;
+        }
+        announce('command failed: ' + res.status, 4000);
       }).catch(() => {
         postWorker({ type: 'enqueue', method, path, body, kind });
         announce('offline \u2014 queued', 3000);
@@ -612,6 +872,11 @@
 
   // ---- Service worker for offline page shells ----
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').catch((err) => console.error('sw registration failed:', err));
+    navigator.serviceWorker.register('/sw.js').then((registration) => {
+      if (authPage) {
+        const target = navigator.serviceWorker.controller || registration.active;
+        if (target) target.postMessage({ type: 'CLEAR_PRIVATE_CACHE' });
+      }
+    }).catch((err) => console.error('sw registration failed:', err));
   }
 })();

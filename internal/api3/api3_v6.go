@@ -91,6 +91,19 @@ func (h *Handler) deleteIssueLink(w http.ResponseWriter, r *http.Request, id str
 		writeJerr(w, e)
 		return
 	}
+	link, err := h.Store.IssueLinkByID(r.Context(), wsID, id)
+	if err != nil {
+		jiraError(w, http.StatusNotFound, "Link does not exist.")
+		return
+	}
+	if _, e := h.resolveIssue(r, wsID, link.InwardID); e != nil {
+		jiraError(w, http.StatusNotFound, "Link does not exist.")
+		return
+	}
+	if _, e := h.resolveIssue(r, wsID, link.OutwardID); e != nil {
+		jiraError(w, http.StatusNotFound, "Link does not exist.")
+		return
+	}
 	if _, err := h.Store.DeleteIssueLink(r.Context(), userID, wsID, id); err != nil {
 		jiraError(w, http.StatusNotFound, "Link does not exist.")
 		return
@@ -101,13 +114,13 @@ func (h *Handler) deleteIssueLink(w http.ResponseWriter, r *http.Request, id str
 // ---- labels ----
 
 func (h *Handler) labelsEndpoint(w http.ResponseWriter, r *http.Request) {
-	wsID, _, e := h.authWorkspace(r)
+	wsID, userID, e := h.authWorkspace(r)
 	if e != nil {
 		writeJerr(w, e)
 		return
 	}
 	query := r.URL.Query().Get("query")
-	total, labels, err := h.Store.Labels(r.Context(), wsID, query)
+	total, labels, err := h.Store.Labels(r.Context(), wsID, userID, query)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return

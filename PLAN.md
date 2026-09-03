@@ -459,32 +459,38 @@ dev-status (SCM links), service-management surfaces (explicitly out).
 
 ---
 
-## 13. UI that resembles Jira
+## 13. Jira-parity UI program
 
-### Design tokens (own CSS, Jira's visual language — no proprietary assets)
+The live gap/status ledger is [docs/UI_PARITY.md](docs/UI_PARITY.md). A parity
+claim means the user journey and its API-backed state changes are browser-tested;
+visual resemblance alone does not count.
 
-- Color: `--ds-text: #172B4D`, primary `#0C66E4`, danger `#CA3521`, neutral surface
-  `#F7F8F9`, white cards; status lozenges (grey/blue/yellow/green) matching Jira's
-  category colors; subtle `2px` radius, `4px`-grid spacing, Atlassian-style focus ring.
-- Type: Inter (self-hosted, metric-similar to Jira's stack), 14px base, 500-weight UI labels.
-- Components as pure CSS classes used inside fragments: lozenge, avatar (initials
-  renderer), dropdown, modal (htmx `<dialog>`), tooltip, breadcrumb, sidebar nav.
+### Design system (own CSS and assets — no proprietary Atlassian assets)
+
+- Palette: ink `#172033`, canvas `#F7F8FA`, surface `#FFFFFF`, action blue
+  `#1769E0`, local-replica violet `#6658D3`, navigation `#101828`.
+- Type roles: Avenir Next/Segoe UI Variable Display for headings, Inter/system UI
+  for body copy, and SFMono/Consolas for keys, counts, JQL, and utility labels.
+- Structure: sidebar-first navigation, dense work lists, scroll-contained board
+  columns, two-column issue view, status lozenges, accessible modal dialogs, and
+  a persistent local-replica status rail. Dark mode uses the same semantic tokens.
 
 ### Screen inventory (each screen = fragments + worker events)
 
-| Jira screen | ZZIRA implementation |
-|---|---|
-| **Global header** | Logo, projects dropdown, search (`/`), create button (`c`), avatar menu — static shell fragment + HTMX dropdowns |
-| **Issue navigator** | JQL bar (live-validate via `/jql/parse` preview), saved-filter sidebar, results table (key, summary, status, priority, assignee, updated), column chooser; polls/syncs like any view |
-| **Backlog** | Two-pane: epics panel + sprints panel; issue rows grouped by sprint, `SortableJS` drag between backlog/sprint/epics → rank & sprint commands; gutter drag to reorder |
-| **Active sprints board** | Columns from `boards.column_status_ids`, cards (key, summary, type icon, priority, avatar, lozenge); drag across columns → `TransitionIssue` + rank; WIP badge; card click → issue view |
-| **Issue view** | Overlay-style detail: left column (summary inline-edit, description ADF editor, details fields incl. custom fields), right column (comments, history tab rendered from changelog actions, worklogs tab); transitions bar |
-| **Create issue dialog** | `createmeta`-driven fields (project, type, summary, description ADF, assignee, labels), stays open for batch entry like Jira |
-| **Project summary / settings** | Project card page; v1 settings read-only, Tier C adds admin |
-| **Search quick dialog** | `.` → recent issues (from local SQLite `updated_seq` order — free offline) |
+| Jira screen | Status | Delivered surface / next gap |
+|---|---:|---|
+| **Global shell** | ✅ | Sidebar, global JQL search (`/`), create, account, theme, responsive collapse (`Ctrl+[`), live replica state |
+| **Issue navigator** | 🟡 | JQL, dense list, type/key/summary/status/priority/assignee; basic-search builder, saved filters, columns, sorting, preview and pagination remain |
+| **Backlog** | ⛔ | Agile APIs exist; no backlog planning UI yet |
+| **Board** | 🟡 | Rank/status drag, keyboard move, live convergence, local filter, scroll-contained columns; quick filters, swimlanes, WIP rules and card detail remain |
+| **Issue view** | 🟡 | Description, details, transitions, edit/delete, comments, attachments, worklog, history; inline fields, activity filter, links/watchers and custom-field display remain |
+| **Create issue** | 🟡 | Project/type/summary/description; full createmeta fields, create-another and field configuration remain |
+| **Dashboard** | 🟡 | Status/assignment snapshot and activity; saved dashboards/gadgets remain out of the supported core boundary |
+| **Project settings** | ⛔ | APIs exist for several admin entities; no coherent settings journey yet |
+| **Quick search** | ⛔ | Global JQL submit exists; recent/starred command palette remains |
 
-Keyboard shortcuts (`c`, `/`, `.`, `j/k` on navigator) via a tiny `app.js` keymap
-invoking HTMX requests. Drag-and-drop = SortableJS → `hx-post` commands.
+Keyboard shortcuts currently cover `/` for search and `Ctrl+[` for the sidebar.
+Drag-and-drop uses SortableJS → command endpoints and preserves keyboard movement.
 
 ---
 

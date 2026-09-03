@@ -32,3 +32,23 @@ func TestProtectCookieMutations(t *testing.T) {
 		})
 	}
 }
+
+func TestSecurityHeaders(t *testing.T) {
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "https://zzira.example/", nil)
+	SecurityHeaders(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})).ServeHTTP(w, r)
+
+	for _, header := range []string{
+		"Content-Security-Policy",
+		"Permissions-Policy",
+		"Referrer-Policy",
+		"X-Content-Type-Options",
+		"X-Frame-Options",
+	} {
+		if w.Header().Get(header) == "" {
+			t.Errorf("%s is missing", header)
+		}
+	}
+}

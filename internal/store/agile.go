@@ -87,13 +87,13 @@ func (s *Store) RankBetween(ctx context.Context, workspaceID, projectID, statusI
 // ---- boards ----
 
 const boardJoin = `
-SELECT b.id, b.project_id, p.key, b.name, b.type, b.column_status_ids, b.filter_jql
+SELECT b.id, b.project_id, p.key, p.name, b.name, b.type, b.column_status_ids, b.filter_jql
 FROM boards b JOIN projects p ON p.id = b.project_id
 `
 
 func scanBoard(row pgx.Row) (*models.Board, error) {
 	b := &models.Board{}
-	err := row.Scan(&b.ID, &b.ProjectID, &b.ProjectKey, &b.Name, &b.Type, &b.ColumnStatusIDs, &b.FilterJQL)
+	err := row.Scan(&b.ID, &b.ProjectID, &b.ProjectKey, &b.ProjectName, &b.Name, &b.Type, &b.ColumnStatusIDs, &b.FilterJQL)
 	return b, err
 }
 
@@ -248,7 +248,23 @@ func (s *Store) sprintByID(ctx context.Context, clause string, args ...any) (*mo
 	return sp, nil
 }
 
-// AddIssueToSprint places an issue in a sprint at the top of the backlog order.
+// NextSprintRank returns a rank after the sprint's current final issue.
+func (s *Store) NextSprintRank(ctx context.Context, sprintID string) (string, error) {
+	var last string
+	err := s.Pool.QueryRow(ctx,
+		`SELECT rank FROM sprint_issues WHERE sprint_id=$1 ORDER BY rank DESC LIMIT 1`,
+		sprintID).Scan(&last)
+	if err != nil && err != pgx.ErrNoRows {
+		return "", err
+	}
+	rank, err := lexorank.Mid(last, "")
+	if err != nil {
+		return "", fmt.Errorf("sprint rank: %w", err)
+	}
+	return rank, nil
+}
+
+// AddIssueToSprint places an issue at the supplied backlog rank.
 func (s *Store) AddIssueToSprint(ctx context.Context, actorID, workspaceID, sprintID, issueID, rank string) (*models.Action, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
@@ -261,13 +277,13 @@ func (s *Store) AddIssueToSprint(ctx context.Context, actorID, workspaceID, spri
 			SELECT 1 FROM sprints s
 			JOIN boards b ON b.id=s.board_id
 			JOIN projects p ON p.id=b.project_id
-			JOIN issues i ON i.id=$2 AND i.workspace_id=$3
+				JOIN issues i ON i.id=$2 AND i.workspace_id=$3 AND i.project_id=b.project_id
 			WHERE s.id=$1 AND p.workspace_id=$3
 		)`, sprintID, issueID, workspaceID).Scan(&belongs); err != nil {
 		return nil, err
 	}
 	if !belongs {
-		return nil, fmt.Errorf("sprint and issue must belong to workspace %q", workspaceID)
+		return nil, fmt.Errorf("sprint and issue must belong to the same project in workspace %q", workspaceID)
 	}
 	if _, err := tx.Exec(ctx,
 		`INSERT INTO sprint_issues (sprint_id, issue_id, rank) VALUES ($1,$2,$3)

@@ -47,7 +47,7 @@ func (h *Handler) BoardPage(w http.ResponseWriter, r *http.Request, id string) {
 			StatusID: st, Name: s.Name, Category: s.Category, Issues: columns[st],
 		})
 	}
-	writePage(w, "page_board", pageData{User: user, Data: boardData})
+	writePage(w, "page_board", pageData{User: user, Data: boardData, Active: "board"})
 }
 
 // BoardFragment serves GET /board/{id}/fragment — the live-swap region.
@@ -62,7 +62,6 @@ func (h *Handler) BoardFragment(w http.ResponseWriter, r *http.Request, id strin
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
-	_ = user
 	board, err := h.Store.BoardByIDInWorkspace(r.Context(), wsID, id)
 	if err != nil {
 		http.NotFound(w, r)

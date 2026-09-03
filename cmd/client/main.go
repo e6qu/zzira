@@ -9,6 +9,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -20,6 +21,7 @@ import (
 	"github.com/e6qu/zzira/internal/build"
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/render"
+	"github.com/e6qu/zzira/internal/syncclient"
 	"github.com/e6qu/zzira/internal/workflow"
 )
 
@@ -52,8 +54,7 @@ func main() {
 	// sync after the command loop is live.
 	ticker := time.NewTicker(3 * time.Second)
 	for range ticker.C {
-		if draining, n := drainOutbox(); draining {
-			_ = n
+		if draining, _ := drainOutbox(); draining {
 			syncOnce()
 			continue
 		}
@@ -87,8 +88,7 @@ func bootstrapIfEmpty() {
 	if err != nil {
 		return // offline fresh client: stays empty until online
 	}
-	body, err := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	body, err := readAndClose(resp)
 	if err != nil || resp.StatusCode != http.StatusOK {
 		return
 	}
@@ -104,11 +104,17 @@ func bootstrapIfEmpty() {
 		return
 	}
 	exec(`BEGIN`, nil)
-	defer exec(`COMMIT`, nil)
+	committed := false
+	defer func() {
+		if !committed {
+			exec(`ROLLBACK`, nil)
+		}
+	}()
 	for _, p := range snap.Issues {
 		raw, err := json.Marshal(p)
 		if err != nil {
-			continue
+			post(map[string]any{"type": "error", "message": "encode bootstrap issue: " + err.Error()})
+			return
 		}
 		if _, err := apply(models.Action{
 			EntityType: models.EntityIssue, Op: models.OpUpsert,
@@ -120,7 +126,8 @@ func bootstrapIfEmpty() {
 	for _, p := range snap.Comments {
 		raw, err := json.Marshal(p)
 		if err != nil {
-			continue
+			post(map[string]any{"type": "error", "message": "encode bootstrap comment: " + err.Error()})
+			return
 		}
 		if _, err := apply(models.Action{
 			EntityType: models.EntityComment, Op: models.OpUpsert,
@@ -132,7 +139,8 @@ func bootstrapIfEmpty() {
 	for _, p := range snap.Attachments {
 		raw, err := json.Marshal(p)
 		if err != nil {
-			continue
+			post(map[string]any{"type": "error", "message": "encode bootstrap attachment: " + err.Error()})
+			return
 		}
 		if _, err := apply(models.Action{
 			EntityType: models.EntityAttachment, Op: models.OpUpsert,
@@ -144,7 +152,8 @@ func bootstrapIfEmpty() {
 	for _, p := range snap.Worklogs {
 		raw, err := json.Marshal(p)
 		if err != nil {
-			continue
+			post(map[string]any{"type": "error", "message": "encode bootstrap worklog: " + err.Error()})
+			return
 		}
 		if _, err := apply(models.Action{
 			EntityType: models.EntityWorklog, Op: models.OpUpsert,
@@ -155,6 +164,8 @@ func bootstrapIfEmpty() {
 	}
 	setKV("checkpoint", fmt.Sprintf("%d", snap.Seq))
 	setKV("server_head", fmt.Sprintf("%d", snap.Seq))
+	exec(`COMMIT`, nil)
+	committed = true
 	post(map[string]any{"type": "bootstrapped", "seq": snap.Seq, "issues": len(snap.Issues)})
 }
 
@@ -361,8 +372,7 @@ func syncOnce() {
 		post(map[string]any{"type": "offline"})
 		return
 	}
-	body, err := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	body, err := readAndClose(resp)
 	if err != nil {
 		post(map[string]any{"type": "offline"})
 		return
@@ -380,9 +390,25 @@ func syncOnce() {
 		post(map[string]any{"type": "error", "message": "bad sync payload"})
 		return
 	}
+	if delta.From != cp || delta.To < cp || delta.To > delta.Head {
+		post(map[string]any{"type": "error", "message": "invalid sync checkpoint range"})
+		return
+	}
 
 	changedIssues := make(map[string]bool)
+	exec(`BEGIN`, nil)
+	committed := false
+	defer func() {
+		if !committed {
+			exec(`ROLLBACK`, nil)
+		}
+	}()
+	lastSeq := cp
 	for _, a := range delta.Actions {
+		if a.Seq <= lastSeq || a.Seq > delta.To {
+			post(map[string]any{"type": "error", "message": "invalid sync action order"})
+			return
+		}
 		ids, err := apply(a)
 		if err != nil {
 			post(map[string]any{"type": "error", "message": "apply failed: " + err.Error()})
@@ -391,12 +417,22 @@ func syncOnce() {
 		for _, id := range ids {
 			changedIssues[id] = true
 		}
-		setKV("checkpoint", fmt.Sprintf("%d", a.Seq))
+		lastSeq = a.Seq
 	}
+	setKV("checkpoint", fmt.Sprintf("%d", delta.To))
+	setKV("server_head", fmt.Sprintf("%d", delta.Head))
+	exec(`COMMIT`, nil)
+	committed = true
 	post(map[string]any{"type": "synced", "seq": delta.To})
 	if currentView != "" && changedIssues[currentView] {
 		pushCurrentView()
 	}
+}
+
+func readAndClose(resp *http.Response) ([]byte, error) {
+	body, readErr := io.ReadAll(resp.Body)
+	closeErr := resp.Body.Close()
+	return body, errors.Join(readErr, closeErr)
 }
 
 // apply materializes one action; returns issue ids whose view may have changed.
@@ -461,6 +497,9 @@ func applyTombstone(a models.Action) ([]string, error) {
 	exec(`DELETE FROM comments WHERE issue_id=$1`, []any{p.IssueID})
 	exec(`DELETE FROM attachments WHERE issue_id=$1`, []any{p.IssueID})
 	exec(`DELETE FROM worklogs WHERE issue_id=$1`, []any{p.IssueID})
+	exec(`DELETE FROM sprint_issues WHERE issue_id=$1`, []any{p.IssueID})
+	exec(`DELETE FROM watchers WHERE issue_id=$1`, []any{p.IssueID})
+	exec(`DELETE FROM issue_links WHERE inward_id=$1 OR outward_id=$1`, []any{p.IssueID})
 	return []string{p.IssueID}, nil
 }
 
@@ -554,10 +593,14 @@ func applyAttachment(a models.Action) ([]string, error) {
 		return []string{att.IssueID}, nil
 	case models.OpDelete:
 		var p models.AttachmentDeletePayload
-		if err := json.Unmarshal(a.Payload, &p); err == nil && p.IssueID != "" {
-			exec(`DELETE FROM attachments WHERE id=$1`, []any{p.AttachmentID})
-			return []string{p.IssueID}, nil
+		if err := json.Unmarshal(a.Payload, &p); err != nil {
+			return nil, fmt.Errorf("decode attachment delete payload: %w", err)
 		}
+		if p.AttachmentID == "" || p.IssueID == "" {
+			return nil, fmt.Errorf("attachment delete payload is incomplete")
+		}
+		exec(`DELETE FROM attachments WHERE id=$1`, []any{p.AttachmentID})
+		return []string{p.IssueID}, nil
 	}
 	return nil, nil
 }
@@ -583,10 +626,14 @@ func applyWorklog(a models.Action) ([]string, error) {
 		return []string{w.IssueID}, nil
 	case models.OpDelete:
 		var p models.WorklogDeletePayload
-		if err := json.Unmarshal(a.Payload, &p); err == nil && p.IssueID != "" {
-			exec(`DELETE FROM worklogs WHERE id=$1`, []any{p.WorklogID})
-			return []string{p.IssueID}, nil
+		if err := json.Unmarshal(a.Payload, &p); err != nil {
+			return nil, fmt.Errorf("decode worklog delete payload: %w", err)
 		}
+		if p.WorklogID == "" || p.IssueID == "" {
+			return nil, fmt.Errorf("worklog delete payload is incomplete")
+		}
+		exec(`DELETE FROM worklogs WHERE id=$1`, []any{p.WorklogID})
+		return []string{p.IssueID}, nil
 	}
 	return nil, nil
 }
@@ -596,6 +643,11 @@ func applyIssue(a models.Action) ([]string, error) {
 	case models.OpDelete:
 		exec(`DELETE FROM issues WHERE id=$1`, []any{a.EntityID})
 		exec(`DELETE FROM comments WHERE issue_id=$1`, []any{a.EntityID})
+		exec(`DELETE FROM attachments WHERE issue_id=$1`, []any{a.EntityID})
+		exec(`DELETE FROM worklogs WHERE issue_id=$1`, []any{a.EntityID})
+		exec(`DELETE FROM sprint_issues WHERE issue_id=$1`, []any{a.EntityID})
+		exec(`DELETE FROM watchers WHERE issue_id=$1`, []any{a.EntityID})
+		exec(`DELETE FROM issue_links WHERE inward_id=$1 OR outward_id=$1`, []any{a.EntityID})
 		return []string{a.EntityID}, nil
 	case models.OpUpsert:
 		var p models.IssueUpdatePayload // covers create snapshots too (diff empty)
@@ -612,9 +664,11 @@ func applyIssue(a models.Action) ([]string, error) {
 		}
 		fieldsJSON := "{}"
 		if len(i.Fields) > 0 {
-			if b, err := json.Marshal(i.Fields); err == nil {
-				fieldsJSON = string(b)
+			b, err := json.Marshal(i.Fields)
+			if err != nil {
+				return nil, fmt.Errorf("encode issue fields: %w", err)
 			}
+			fieldsJSON = string(b)
 		}
 		exec(`INSERT OR REPLACE INTO issues
 		      (id, project_id, key, summary, description, fields,
@@ -651,10 +705,14 @@ func applyComment(a models.Action) ([]string, error) {
 		return []string{c.IssueID}, nil
 	case models.OpDelete:
 		var p models.CommentDeletePayload
-		if err := json.Unmarshal(a.Payload, &p); err == nil && p.IssueID != "" {
-			exec(`DELETE FROM comments WHERE id=$1`, []any{p.CommentID})
-			return []string{p.IssueID}, nil
+		if err := json.Unmarshal(a.Payload, &p); err != nil {
+			return nil, fmt.Errorf("decode comment delete payload: %w", err)
 		}
+		if p.CommentID == "" || p.IssueID == "" {
+			return nil, fmt.Errorf("comment delete payload is incomplete")
+		}
+		exec(`DELETE FROM comments WHERE id=$1`, []any{p.CommentID})
+		return []string{p.IssueID}, nil
 	}
 	return nil, nil
 }
@@ -721,15 +779,21 @@ func drainOutbox() (bool, int64) {
 		post(map[string]any{"type": "offline"})
 		return false, n
 	}
-	resp.Body.Close()
-	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+	if err := resp.Body.Close(); err != nil {
+		post(map[string]any{"type": "error", "message": "close outbox response: " + err.Error()})
+	}
+	switch syncclient.DispositionForStatus(resp.StatusCode) {
+	case syncclient.OutboxAccepted:
 		exec(`DELETE FROM outbox WHERE id=$1`, []any{id})
 		return true, n - 1
+	case syncclient.OutboxRejected:
+		exec(`DELETE FROM outbox WHERE id=$1`, []any{id})
+		post(map[string]any{"type": "error", "message": fmt.Sprintf("outbox cmd rejected (%d)", resp.StatusCode)})
+		return true, n - 1
+	default:
+		post(map[string]any{"type": "error", "message": fmt.Sprintf("outbox cmd will retry (%d)", resp.StatusCode)})
+		return false, n
 	}
-	// 4xx/5xx: command rejected by the server — drop it (server-wins).
-	exec(`DELETE FROM outbox WHERE id=$1`, []any{id})
-	post(map[string]any{"type": "error", "message": fmt.Sprintf("outbox cmd rejected (%d)", resp.StatusCode)})
-	return true, n - 1
 }
 
 // ---- local rendering (isomorphic path) ----
@@ -812,7 +876,14 @@ func applyOptimistic(kind, body string) {
 	switch kind {
 	case "comment":
 		id := "local_" + fmt.Sprintf("%d", time.Now().UnixNano())
-		doc, _ := json.Marshal(adfFor(vals.Get("body")))
+		doc := []byte(vals.Get("adf"))
+		if !json.Valid(doc) {
+			doc, err = json.Marshal(adfFor(vals.Get("body")))
+			if err != nil {
+				post(map[string]any{"type": "error", "message": "encode offline comment: " + err.Error()})
+				return
+			}
+		}
 		exec(`INSERT INTO comments (id, issue_id, author_id, author_name, body, created, local)
 		      VALUES ($1,$2,$3,$4,$5,$6,1)`,
 			[]any{id, currentView, "", "You (offline)", string(doc), now})
@@ -826,7 +897,11 @@ func applyOptimistic(kind, body string) {
 			exec(`UPDATE issues SET summary=$2 WHERE id=$1`, []any{currentView, s})
 		}
 		if d := vals.Get("description"); d != "" {
-			doc, _ := json.Marshal(adfFor(d))
+			doc, err := json.Marshal(adfFor(d))
+			if err != nil {
+				post(map[string]any{"type": "error", "message": "encode offline description: " + err.Error()})
+				return
+			}
 			exec(`UPDATE issues SET description=$2 WHERE id=$1`, []any{currentView, string(doc)})
 		}
 	}
