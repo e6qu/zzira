@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.8.0](https://github.com/e6qu/zzira/compare/v0.7.0...v0.8.0) (2026-09-03)
+
+
+### Features
+
+* complete Jira-style issue triage ([1ddff9c](https://github.com/e6qu/zzira/commit/1ddff9cf541bbc6007f0cd32b20d15508f5435bc))
+
+
+### Bug Fixes
+
+* document secure OIDC flow cookie ([ae6dea1](https://github.com/e6qu/zzira/commit/ae6dea1553ddcd29e07b2c2dc39f68db26daa922))
+* harden Shauth OIDC session boundaries ([43a4ee9](https://github.com/e6qu/zzira/commit/43a4ee9a242fc5be527ed64b3eb7004ead11c507))
+
 ## [0.7.0](https://github.com/e6qu/zzira/compare/v0.6.0...v0.7.0) (2026-09-03)
 
 
