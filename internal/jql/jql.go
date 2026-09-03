@@ -208,6 +208,42 @@ func Parse(src string) (*Query, error) {
 	return q, nil
 }
 
+// SetOrder replaces the top-level ORDER BY clause while preserving the user's
+// query text. Quoted text and parenthesized expressions containing the words
+// "order by" are not mistaken for the query's ordering clause.
+func SetOrder(src, field string, desc bool) (string, error) {
+	if _, err := Parse(src); err != nil {
+		return "", err
+	}
+	toks, err := lex(src)
+	if err != nil {
+		return "", err
+	}
+	cut := len(src)
+	depth := 0
+	for i, token := range toks {
+		switch token.kind {
+		case "lparen":
+			depth++
+		case "rparen":
+			depth--
+		case "word":
+			if depth == 0 && strings.EqualFold(token.text, "order") && i+1 < len(toks) && toks[i+1].kind == "word" && strings.EqualFold(toks[i+1].text, "by") {
+				cut = token.pos
+			}
+		}
+	}
+	base := strings.TrimSpace(src[:cut])
+	if base != "" {
+		base += " "
+	}
+	direction := "ASC"
+	if desc {
+		direction = "DESC"
+	}
+	return base + "ORDER BY " + field + " " + direction, nil
+}
+
 // splitOrderClause cuts the token stream at a depth-0 "ORDER BY".
 func splitOrderClause(toks []token) (main, order []token) {
 	depth := 0
@@ -452,8 +488,11 @@ func DefaultResolver() FieldResolver {
 			"updated":   "i.updated_at",
 			"created":   "i.created_at",
 		},
-		TextColumns:  []string{"i.summary", "i.description::text"},
-		DefaultOrder: map[string]string{"updated": "i.updated_at", "created": "i.created_at", "key": "i.key", "summary": "i.summary", "priority": "pr2.name"},
+		TextColumns: []string{"i.summary", "i.description::text"},
+		DefaultOrder: map[string]string{
+			"updated": "i.updated_at", "created": "i.created_at", "key": "i.key", "summary": "i.summary",
+			"status": "st.name", "priority": "pr2.name", "assignee": "a.display_name", "issuetype": "it.name",
+		},
 	}
 }
 

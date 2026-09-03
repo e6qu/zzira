@@ -140,9 +140,108 @@
     });
   }
 
+  function initNavigator() {
+    const navigatorRoot = document.querySelector('[data-navigator]');
+    if (!navigatorRoot || navigatorRoot.dataset.ready) return;
+    navigatorRoot.dataset.ready = '1';
+    const rows = Array.from(navigatorRoot.querySelectorAll('[data-navigator-row]'));
+    const preview = document.getElementById('navigator-preview');
+    let selectedIndex = rows.length ? 0 : -1;
+
+    function selectRow(index, loadPreview) {
+      if (!rows.length) return;
+      selectedIndex = Math.max(0, Math.min(index, rows.length - 1));
+      rows.forEach((row, rowIndex) => {
+        const link = row.querySelector('[data-preview-link]');
+        if (rowIndex === selectedIndex) {
+          row.setAttribute('data-selected', 'true');
+          if (link) link.setAttribute('aria-current', 'true');
+        } else {
+          row.removeAttribute('data-selected');
+          if (link) link.removeAttribute('aria-current');
+        }
+      });
+      const row = rows[selectedIndex];
+      row.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      if (!loadPreview) return;
+      const path = row.getAttribute('data-preview-url');
+      if (path && window.htmx && preview) {
+        preview.setAttribute('aria-busy', 'true');
+        window.htmx.ajax('GET', path, { target: '#navigator-preview', swap: 'innerHTML' });
+      }
+    }
+
+    selectRow(selectedIndex, false);
+    rows.forEach((row, index) => {
+      row.addEventListener('click', () => selectRow(index, false));
+      row.addEventListener('focusin', () => selectRow(index, false));
+    });
+
+    document.addEventListener('keydown', (event) => {
+      const target = event.target;
+      const typing = target instanceof Element && (target.matches('input, textarea, select') || target.closest('[contenteditable]'));
+      if (typing || event.metaKey || event.ctrlKey || event.altKey || !rows.length) return;
+      const key = event.key.toLocaleLowerCase();
+      const navigatorFocused = target instanceof Element && Boolean(target.closest('[data-navigator]'));
+      if (key === 'j' || (event.key === 'ArrowDown' && navigatorFocused)) {
+        event.preventDefault();
+        selectRow(selectedIndex + 1, true);
+      } else if (key === 'k' || (event.key === 'ArrowUp' && navigatorFocused)) {
+        event.preventDefault();
+        selectRow(selectedIndex - 1, true);
+      } else if (key === 'o' || (event.key === 'Enter' && target === navigatorRoot)) {
+        event.preventDefault();
+        const link = rows[selectedIndex].querySelector('.key-cell a');
+        if (link) location.assign(link.href);
+      }
+    });
+
+    const columnInputs = Array.from(document.querySelectorAll('[data-navigator-column]'));
+    const knownColumns = new Set(columnInputs.map((input) => input.value));
+    let visibleColumns = new Set(knownColumns);
+    try {
+      const storedColumns = localStorage.getItem('zzira-navigator-columns');
+      const saved = JSON.parse(storedColumns || 'null');
+      if (Array.isArray(saved)) visibleColumns = new Set(saved.filter((column) => knownColumns.has(column)));
+      else if (!storedColumns && window.matchMedia('(max-width: 680px)').matches) visibleColumns = new Set(['type']);
+    } catch (_) {
+      localStorage.removeItem('zzira-navigator-columns');
+    }
+    function applyColumns() {
+      columnInputs.forEach((input) => { input.checked = visibleColumns.has(input.value); });
+      knownColumns.forEach((column) => {
+        document.querySelectorAll(`[data-column="${CSS.escape(column)}"]`).forEach((cell) => {
+          cell.hidden = !visibleColumns.has(column);
+        });
+      });
+    }
+    columnInputs.forEach((input) => {
+      input.addEventListener('change', () => {
+        if (input.checked) visibleColumns.add(input.value);
+        else visibleColumns.delete(input.value);
+        localStorage.setItem('zzira-navigator-columns', JSON.stringify(Array.from(visibleColumns)));
+        applyColumns();
+      });
+    });
+    applyColumns();
+
+    document.body.addEventListener('htmx:beforeRequest', (event) => {
+      if (preview && event.detail.elt && event.detail.elt.matches('[data-preview-link]')) preview.setAttribute('aria-busy', 'true');
+    });
+    document.body.addEventListener('htmx:afterRequest', (event) => {
+      if (!preview || !event.detail.elt || !event.detail.elt.matches('[data-preview-link]')) return;
+      preview.setAttribute('aria-busy', 'false');
+      if (!event.detail.successful) announce('could not load issue preview', 4000);
+    });
+    document.body.addEventListener('htmx:afterSwap', (event) => {
+      if (preview && event.detail.target === preview) preview.setAttribute('aria-busy', 'false');
+    });
+  }
+
   document.addEventListener('DOMContentLoaded', () => {
     initShell();
     initBoardFilter();
+    initNavigator();
     setSyncRail(navigator.onLine ? 'online' : 'offline', navigator.onLine ? 'Ready' : 'Offline', navigator.onLine ? 'Local replica' : 'Showing local copy');
   });
 

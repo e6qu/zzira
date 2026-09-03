@@ -40,11 +40,239 @@ type createDialogData struct {
 }
 
 type projectIssuesData struct {
-	Project  *models.Project
-	Issues   []*models.Issue
-	JQL      string
-	Total    int
-	JQLError string
+	Project      *models.Project
+	Issues       []*models.Issue
+	Selected     *models.Issue
+	Statuses     []models.Status
+	Members      []*models.User
+	Filters      []*models.Filter
+	ActiveFilter string
+	Chips        []navigatorChip
+	SaveJQL      string
+	Mode         string
+	JQL          string
+	Text         string
+	Status       string
+	Assignee     string
+	Sort         string
+	Direction    string
+	Total        int
+	ResultStart  int
+	ResultEnd    int
+	Page         int
+	PageCount    int
+	PreviousURL  string
+	NextURL      string
+	BasicURL     string
+	AdvancedURL  string
+	SortURLs     map[string]string
+	JQLError     string
+}
+
+type navigatorChip struct {
+	Label string
+	URL   string
+}
+
+const navigatorPageSize = 50
+
+var navigatorSortFields = map[string]struct{}{
+	"key": {}, "summary": {}, "status": {}, "priority": {}, "assignee": {}, "updated": {},
+}
+
+type navigatorParams struct {
+	Mode      string
+	JQL       string
+	Text      string
+	Status    string
+	Assignee  string
+	Sort      string
+	Direction string
+	Page      int
+	SortSet   bool
+}
+
+func parseNavigatorParams(values url.Values) navigatorParams {
+	mode := values.Get("mode")
+	if mode != "basic" && mode != "advanced" {
+		if values.Get("jql") != "" {
+			mode = "advanced"
+		} else {
+			mode = "basic"
+		}
+	}
+	sortField := strings.ToLower(values.Get("sort"))
+	if _, ok := navigatorSortFields[sortField]; !ok {
+		sortField = "updated"
+	}
+	direction := strings.ToLower(values.Get("direction"))
+	if direction != "asc" && direction != "desc" {
+		direction = "desc"
+	}
+	page := 1
+	if requested, err := strconv.Atoi(values.Get("page")); err == nil && requested > 1 {
+		// Bound offsets supplied by an untrusted URL while still allowing far
+		// more pages than a human-operated navigator can realistically reach.
+		page = min(requested, 1_000_000)
+	}
+	params := navigatorParams{
+		Mode: mode, JQL: strings.TrimSpace(values.Get("jql")), Text: strings.TrimSpace(values.Get("text")),
+		Status: values.Get("status"), Assignee: values.Get("assignee"),
+		Sort: sortField, Direction: direction, Page: page, SortSet: values.Has("sort") || values.Has("direction"),
+	}
+	if mode == "advanced" && !params.SortSet {
+		if parsed, err := jql.Parse(params.JQL); err == nil && parsed.OrderBy != nil {
+			if _, ok := navigatorSortFields[parsed.OrderBy.Field]; ok {
+				params.Sort = parsed.OrderBy.Field
+				if parsed.OrderBy.Desc {
+					params.Direction = "desc"
+				} else {
+					params.Direction = "asc"
+				}
+			}
+		}
+	}
+	return params
+}
+
+func compileNavigatorSearch(projectKey, userID string, p navigatorParams) (jql.Compiled, error) {
+	var query *jql.Query
+	if p.Mode == "advanced" {
+		parsed, err := jql.Parse(p.JQL)
+		if err != nil {
+			return jql.Compiled{}, err
+		}
+		query = parsed
+	} else {
+		terms := []jql.Node{}
+		if p.Text != "" {
+			terms = append(terms, jql.Text{Value: p.Text})
+		}
+		if p.Status != "" {
+			terms = append(terms, jql.Clause{Field: "status", Op: "=", Values: []string{p.Status}})
+		}
+		switch p.Assignee {
+		case "":
+		case "currentUser()":
+			terms = append(terms, jql.Clause{Field: "assignee", Op: "=", Values: []string{"currentUser()"}})
+		case "unassigned":
+			terms = append(terms, jql.Clause{Field: "assignee", Op: "empty"})
+		default:
+			terms = append(terms, jql.Clause{Field: "assignee", Op: "=", Values: []string{p.Assignee}})
+		}
+		var root jql.Node = jql.Text{Value: ""}
+		if len(terms) == 1 {
+			root = terms[0]
+		} else if len(terms) > 1 {
+			root = jql.And{Terms: terms}
+		}
+		query = &jql.Query{Root: root}
+	}
+
+	// A project navigator is a project-scoped view even when advanced JQL
+	// names a different project (or none). Enforce that boundary structurally
+	// instead of trusting user-entered query text.
+	query.Root = jql.And{Terms: []jql.Node{
+		jql.Clause{Field: "project", Op: "=", Values: []string{projectKey}},
+		query.Root,
+	}}
+	if p.Mode == "basic" || p.SortSet {
+		query.OrderBy = &jql.Order{Field: p.Sort, Desc: p.Direction == "desc"}
+	}
+	compiled := jql.CompileAt(query, userID, jql.DefaultResolver(), 2)
+	if compiled.Err != nil {
+		return jql.Compiled{}, compiled.Err
+	}
+	return compiled, nil
+}
+
+func basicAsJQL(p navigatorParams) string {
+	parts := make([]string, 0, 4)
+	if p.Text != "" {
+		parts = append(parts, strconv.Quote(p.Text))
+	}
+	if p.Status != "" {
+		parts = append(parts, "status = "+strconv.Quote(p.Status))
+	}
+	switch p.Assignee {
+	case "currentUser()":
+		parts = append(parts, "assignee = currentUser()")
+	case "unassigned":
+		parts = append(parts, "assignee IS EMPTY")
+	case "":
+	default:
+		parts = append(parts, "assignee = "+strconv.Quote(p.Assignee))
+	}
+	query := strings.Join(parts, " AND ")
+	if query == "" {
+		query = "ORDER BY " + p.Sort + " " + strings.ToUpper(p.Direction)
+	} else {
+		query += " ORDER BY " + p.Sort + " " + strings.ToUpper(p.Direction)
+	}
+	return query
+}
+
+func navigatorURL(projectKey string, p navigatorParams, page int) string {
+	values := url.Values{}
+	values.Set("mode", p.Mode)
+	if p.Mode == "advanced" {
+		if p.JQL != "" {
+			values.Set("jql", p.JQL)
+		}
+	} else {
+		if p.Text != "" {
+			values.Set("text", p.Text)
+		}
+		if p.Status != "" {
+			values.Set("status", p.Status)
+		}
+		if p.Assignee != "" {
+			values.Set("assignee", p.Assignee)
+		}
+	}
+	values.Set("sort", p.Sort)
+	values.Set("direction", p.Direction)
+	if page > 1 {
+		values.Set("page", strconv.Itoa(page))
+	}
+	return "/issues/" + url.PathEscape(projectKey) + "?" + values.Encode()
+}
+
+func navigatorChips(projectKey string, p navigatorParams, members []*models.User) []navigatorChip {
+	if p.Mode != "basic" {
+		return nil
+	}
+	chips := make([]navigatorChip, 0, 3)
+	if p.Text != "" {
+		without := p
+		without.Text = ""
+		chips = append(chips, navigatorChip{Label: "Text: " + p.Text, URL: navigatorURL(projectKey, without, 1)})
+	}
+	if p.Status != "" {
+		without := p
+		without.Status = ""
+		chips = append(chips, navigatorChip{Label: "Status: " + p.Status, URL: navigatorURL(projectKey, without, 1)})
+	}
+	if p.Assignee != "" {
+		name := p.Assignee
+		switch p.Assignee {
+		case "currentUser()":
+			name = "Current user"
+		case "unassigned":
+			name = "Unassigned"
+		default:
+			for _, member := range members {
+				if member.ID == p.Assignee {
+					name = member.DisplayName
+					break
+				}
+			}
+		}
+		without := p
+		without.Assignee = ""
+		chips = append(chips, navigatorChip{Label: "Assignee: " + name, URL: navigatorURL(projectKey, without, 1)})
+	}
+	return chips
 }
 
 // writePage renders a full page; template failures are loud 500s.
@@ -425,30 +653,177 @@ func (h *Handler) ProjectIssues(w http.ResponseWriter, r *http.Request, key stri
 		http.NotFound(w, r)
 		return
 	}
-	data := projectIssuesData{Project: project, JQL: r.URL.Query().Get("jql")}
-	if data.JQL != "" {
-		q, err := jql.Parse(data.JQL)
-		if err != nil {
-			data.JQLError = err.Error()
-		} else {
-			compiled := jql.CompileAt(q, user.ID, jql.DefaultResolver(), 2)
-			issues, total, err := h.Store.Search(r.Context(), wsID, user.ID, compiled, 200, 0)
-			if err != nil {
-				data.JQLError = err.Error()
-			} else {
-				data.Issues, data.Total = issues, total
+	statuses, err := h.Store.AllStatuses(r.Context())
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	members, err := h.Store.MembersByWorkspace(r.Context(), wsID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	filters, err := h.Store.ListFilters(r.Context(), wsID, user.ID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	values := r.URL.Query()
+	activeFilter := values.Get("filter")
+	filterError := ""
+	if activeFilter != "" {
+		var selected *models.Filter
+		for _, filter := range filters {
+			if filter.ID == activeFilter {
+				selected = filter
+				break
 			}
 		}
-	} else {
-		issues, err := h.Store.IssuesByProject(r.Context(), wsID, project.ID, user.ID)
-		if err != nil {
-			http.Error(w, "internal error", http.StatusInternalServerError)
-			return
+		if selected == nil {
+			filterError = "Saved filter not found."
+		} else {
+			values.Set("mode", "advanced")
+			values.Set("jql", selected.JQL)
 		}
-		data.Issues = issues
-		data.Total = len(issues)
+	}
+	params := parseNavigatorParams(values)
+	data := projectIssuesData{
+		Project: project, Statuses: statuses, Members: members, Filters: filters, ActiveFilter: activeFilter,
+		Mode: params.Mode, JQL: params.JQL, Text: params.Text, Status: params.Status, Assignee: params.Assignee,
+		Sort: params.Sort, Direction: params.Direction, Page: params.Page, SortURLs: map[string]string{},
+	}
+	data.Chips = navigatorChips(project.Key, params, members)
+	if params.Mode == "basic" {
+		data.SaveJQL = basicAsJQL(params)
+	} else {
+		data.SaveJQL = params.JQL
+	}
+	compiled, err := compileNavigatorSearch(project.Key, user.ID, params)
+	if filterError != "" {
+		data.JQLError = filterError
+	} else if err != nil {
+		data.JQLError = err.Error()
+	} else {
+		offset := (params.Page - 1) * navigatorPageSize
+		issues, total, searchErr := h.Store.Search(r.Context(), wsID, user.ID, compiled, navigatorPageSize, offset)
+		if searchErr != nil {
+			data.JQLError = searchErr.Error()
+		} else {
+			data.PageCount = max(1, (total+navigatorPageSize-1)/navigatorPageSize)
+			if total > 0 && params.Page > data.PageCount {
+				params.Page = data.PageCount
+				data.Page = params.Page
+				offset = (params.Page - 1) * navigatorPageSize
+				issues, total, searchErr = h.Store.Search(r.Context(), wsID, user.ID, compiled, navigatorPageSize, offset)
+			}
+			if searchErr != nil {
+				data.JQLError = searchErr.Error()
+			} else {
+				data.Issues, data.Total = issues, total
+				if len(issues) > 0 {
+					data.Selected = issues[0]
+					data.ResultStart = offset + 1
+					data.ResultEnd = offset + len(issues)
+				}
+			}
+		}
+	}
+	if params.Page > 1 {
+		data.PreviousURL = navigatorURL(project.Key, params, params.Page-1)
+	}
+	if data.JQLError == "" && params.Page < data.PageCount {
+		data.NextURL = navigatorURL(project.Key, params, params.Page+1)
+	}
+	data.BasicURL = "/issues/" + url.PathEscape(project.Key) + "?mode=basic"
+	advanced := params
+	advanced.Mode = "advanced"
+	if params.Mode == "basic" {
+		advanced.JQL = basicAsJQL(params)
+	}
+	data.AdvancedURL = navigatorURL(project.Key, advanced, 1)
+	for field := range navigatorSortFields {
+		sortParams := params
+		sortParams.Page = 1
+		sortParams.SortSet = true
+		if params.Sort == field {
+			if params.Direction == "asc" {
+				sortParams.Direction = "desc"
+			} else {
+				sortParams.Direction = "asc"
+			}
+		} else {
+			sortParams.Direction = "asc"
+		}
+		sortParams.Sort = field
+		if sortParams.Mode == "advanced" {
+			orderedJQL, orderErr := jql.SetOrder(sortParams.JQL, field, sortParams.Direction == "desc")
+			if orderErr == nil {
+				sortParams.JQL = orderedJQL
+			}
+		}
+		data.SortURLs[field] = navigatorURL(project.Key, sortParams, 1)
 	}
 	writePage(w, "page_project", pageData{User: user, Data: data, Active: "issues"})
+}
+
+// SaveNavigatorFilter persists the current, already-valid search and stars it
+// for the creator so it appears in the navigator's saved-filter control.
+func (h *Handler) SaveNavigatorFilter(w http.ResponseWriter, r *http.Request, projectKey string) {
+	if !parseForm(w, r) {
+		return
+	}
+	user := h.currentUser(r)
+	if user == nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+	wsID, ok := h.memberWorkspace(r, user)
+	if !ok {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	project, err := h.Store.ProjectByKey(r.Context(), wsID, projectKey)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	name := strings.TrimSpace(r.PostFormValue("name"))
+	filterJQL := strings.TrimSpace(r.PostFormValue("jql"))
+	if name == "" {
+		http.Error(w, "filter name is required", http.StatusBadRequest)
+		return
+	}
+	if _, err := compileNavigatorSearch(project.Key, user.ID, navigatorParams{Mode: "advanced", JQL: filterJQL, Sort: "updated", Direction: "desc"}); err != nil {
+		http.Error(w, "invalid JQL: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	filter, err := h.Store.CreateFavouriteFilter(r.Context(), store.NewID("flt"), wsID, name, filterJQL, "", user.ID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/issues/"+url.PathEscape(project.Key)+"?mode=advanced&filter="+url.QueryEscape(filter.ID), http.StatusSeeOther)
+}
+
+// IssuePreview renders the permission-checked contextual panel used by the
+// issue navigator. The canonical browse link remains available without HTMX.
+func (h *Handler) IssuePreview(w http.ResponseWriter, r *http.Request, issueKey string) {
+	user := h.currentUser(r)
+	if user == nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+	wsID, ok := h.memberWorkspace(r, user)
+	if !ok {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	issue, err := h.issueForUser(r, user, wsID, issueKey)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	writeFragment(w, "issue_preview", issue)
 }
 
 // BrowseIssue serves /browse/{key} — the Jira-style issue URL.

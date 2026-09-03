@@ -29,14 +29,55 @@ test('V2: JQL search via navigator finds a fresh issue', async ({ page, request 
 
   await login(page);
   await page.goto(`/issues/ZZ?jql=${encodeURIComponent(`summary ~ "${marker}" ORDER BY key DESC`)}`);
-  await expect(page.locator('.jql-meta')).toContainText('1 result', { timeout: 20_000 });
+  await expect(page.locator('.list-toolbar strong')).toHaveText('1 work item', { timeout: 20_000 });
   await expect(page.locator(`a:has-text("${key}")`)).toBeVisible({ timeout: 20_000 });
 });
 
 test('V2: malformed JQL surfaces the server error inline', async ({ page }) => {
   await login(page);
   await page.goto(`/issues/ZZ?jql=${encodeURIComponent('bogus = 1')}`);
-  await expect(page.locator('.jql-meta')).toContainText('field does not exist');
+  await expect(page.getByRole('alert')).toContainText('field does not exist');
+});
+
+test('V2: navigator filters, sorts, previews, and remembers visible columns', async ({ page, request }) => {
+  const marker = `navigator${Date.now()}`;
+  for (const suffix of ['alpha', 'beta']) {
+    const created = await request.post('/rest/api/3/issue', {
+      headers: { Authorization: apiAuthHeader() },
+      data: { fields: { project: { key: 'ZZ' }, summary: `${marker} ${suffix}`, issuetype: { name: 'Task' } } },
+    });
+    expect(created.status()).toBe(201);
+  }
+
+  await login(page);
+  await page.goto(`/issues/ZZ?mode=basic&text=${encodeURIComponent(marker)}`);
+  await expect(page.locator('[data-navigator-row]')).toHaveCount(2);
+  const keys = await page.locator('[data-navigator-row]').evaluateAll((rows) => rows.map((row) => row.getAttribute('data-key')));
+  await expect(page.locator('.issue-preview-card')).toHaveAttribute('data-preview-key', keys[0]!);
+
+  await page.locator('[data-navigator]').focus();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.locator('.issue-preview-card')).toHaveAttribute('data-preview-key', keys[1]!);
+  await expect(page.locator('[data-navigator-row]').nth(1).locator('[data-preview-link]')).toHaveAttribute('aria-current', 'true');
+
+  await page.getByText('Columns', { exact: true }).click();
+  await page.locator('[data-navigator-column][value="updated"]').uncheck();
+  await expect(page.locator('th[data-column="updated"]')).toBeHidden();
+  await page.reload();
+  await expect(page.locator('th[data-column="updated"]')).toBeHidden();
+
+  await page.getByRole('link', { name: 'JQL', exact: true }).click();
+  await page.getByRole('columnheader', { name: 'Summary' }).getByRole('link').click();
+  await expect(page.locator('#jql-query')).toHaveValue(/ORDER BY summary ASC$/);
+  await expect(page.getByRole('columnheader', { name: 'Summary' })).toHaveAttribute('aria-sort', 'ascending');
+
+  const filterName = `Navigator filter ${Date.now()}`;
+  await page.getByText('Save search', { exact: true }).click();
+  await page.fill('#save-filter-name', filterName);
+  await page.getByRole('button', { name: 'Save filter' }).click();
+  await expect(page).toHaveURL(/filter=flt_/);
+  await expect(page.locator('#saved-filter option:checked')).toContainText(filterName);
+  await expect(page.locator('[data-navigator-row]')).toHaveCount(2);
 });
 
 test('V2: custom field created via API is fillable in the UI and filterable', async ({ page, request }) => {

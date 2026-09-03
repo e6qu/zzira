@@ -76,8 +76,8 @@ func TestCompileUnknownFieldAndOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c := Compile(q, "u", DefaultResolver()); c.Err == nil {
-		t.Fatal("unknown order field must fail")
+	if c := Compile(q, "u", DefaultResolver()); c.Err != nil || c.OrderSQL != "st.name ASC" {
+		t.Fatalf("status sort = %q, %v", c.OrderSQL, c.Err)
 	}
 	q, err = Parse("ORDER BY bogus")
 	if err != nil {
@@ -93,5 +93,19 @@ func TestCompileProjectUpper(t *testing.T) {
 	c := Compile(q, "u", DefaultResolver())
 	if c.Err != nil || c.Args[0] != "ZZ" {
 		t.Fatalf("project value = %#v err=%v", c.Args, c.Err)
+	}
+}
+
+func TestSetOrderPreservesQuotedAndNestedText(t *testing.T) {
+	got, err := SetOrder(`summary ~ "order by design" AND (status = Done) ORDER BY updated DESC`, "priority", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != `summary ~ "order by design" AND (status = Done) ORDER BY priority ASC` {
+		t.Fatalf("SetOrder = %q", got)
+	}
+	got, err = SetOrder(`status = "To Do"`, "key", true)
+	if err != nil || got != `status = "To Do" ORDER BY key DESC` {
+		t.Fatalf("SetOrder append = %q, %v", got, err)
 	}
 }
