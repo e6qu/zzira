@@ -175,7 +175,7 @@ func newOIDCState(w http.ResponseWriter, r *http.Request) (string, error) {
 			return "", err
 		}
 	}
-	http.SetCookie(w, &http.Cookie{
+	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- SecureCookies defaults to true for an HTTPS external URL and is covered by regression tests.
 		Name: oidcFlowCookieName(), Value: binding, Path: "/", HttpOnly: true,
 		Secure: authn.SecureCookies(), SameSite: http.SameSiteLaxMode,
 		MaxAge: int(oidcStateTTL.Seconds()), Expires: time.Now().Add(oidcStateTTL),
