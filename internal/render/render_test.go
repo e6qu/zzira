@@ -27,6 +27,8 @@ func fixtureIssue() models.IssueView {
 			UpdatedAt:   "2026-08-28T09:00:00Z",
 		},
 		ProjectKey:    "ZZ",
+		ProjectName:   "ZZIRA Demo",
+		BoardID:       "brd_default",
 		CanEdit:       true,
 		CanTriage:     true,
 		CurrentUserID: "usr_1",

@@ -1117,6 +1117,7 @@ func pushCurrentView() {
 	view := models.IssueView{
 		Issue:       issue,
 		ProjectKey:  projectKeyOf(issue.Key),
+		ProjectName: projectKeyOf(issue.Key),
 		CanEdit:     true,
 		Comments:    comments,
 		Transitions: transitions,

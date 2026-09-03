@@ -78,7 +78,11 @@ test('WCAG A/AA: every primary page passes axe in light and dark themes', async 
 
   await login(page);
   const issueHref = await firstIssueHref(page);
-  const pages = ['/', '/dashboard', '/issues/ZZ', '/board/brd_default', issueHref];
+  const pages = [
+    '/', '/dashboard', '/projects', '/projects/ZZ', '/people', '/profile',
+    '/settings/workflows', '/settings/workflows/wf_default',
+    '/issues/ZZ', '/board/brd_default', issueHref,
+  ];
 
   for (const path of pages) {
     await page.goto(path);
@@ -134,6 +138,10 @@ test('dynamic menus, validation errors, and edit dialog remain accessible', asyn
   await expect(page.locator('.user-menu')).not.toHaveAttribute('open', '');
   await expect(page.locator('.user-menu summary')).toBeFocused();
 
+  await page.locator('.user-menu summary').click();
+  await page.locator('#main-content').click({ position: { x: 5, y: 5 } });
+  await expect(page.locator('.user-menu')).not.toHaveAttribute('open', '');
+
   await page.locator('#global-create-issue').click();
   await page.fill('#create-summary', 'Accessible validation state');
   await page.locator('.create-more summary').click();
@@ -145,11 +153,20 @@ test('dynamic menus, validation errors, and edit dialog remain accessible', asyn
 
   const issueHref = await firstIssueHref(page);
   await page.goto(issueHref);
+  await page.locator('.more-menu summary').click();
+  await expect(page.getByRole('button', { name: 'Delete issue' })).toBeVisible();
+  await page.locator('.issue-summary').click();
+  await expect(page.locator('.more-menu')).not.toHaveAttribute('open', '');
+
   const edit = page.getByRole('button', { name: 'Edit', exact: true });
   await edit.click();
   await expect(page.getByRole('dialog', { name: 'Edit issue' })).toBeVisible();
   await expect(page.locator('#edit-summary')).toBeFocused();
   await expect(page.locator('.app-shell')).toHaveJSProperty('inert', true);
+  const box = await page.getByRole('dialog', { name: 'Edit issue' }).boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.y).toBeGreaterThanOrEqual(0);
+  expect(box!.y + box!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
   await expectNoWCAGViolations(page);
   await page.keyboard.press('Escape');
   await expect(edit).toBeFocused();
@@ -212,7 +229,11 @@ test('board cards expose keyboard and non-drag movement controls without nested 
 test('controls meet WCAG 2.2 minimum target size', async ({ page }) => {
   await login(page);
   const issueHref = await firstIssueHref(page);
-  for (const path of ['/', '/issues/ZZ', '/board/brd_default', issueHref]) {
+  for (const path of [
+    '/', '/projects', '/projects/ZZ', '/people', '/profile',
+    '/settings/workflows', '/settings/workflows/wf_default',
+    '/issues/ZZ', '/board/brd_default', issueHref,
+  ]) {
     await page.goto(path);
     const columnPicker = page.locator('.column-picker summary');
     if (await columnPicker.count()) await columnPicker.click();
@@ -227,5 +248,22 @@ test('controls meet WCAG 2.2 minimum target size', async ({ page }) => {
       }),
     );
     expect(undersized).toEqual([]);
+  }
+});
+
+test('primary pages reflow without document-level horizontal scrolling at 320px', async ({ page }) => {
+  await login(page);
+  const issueHref = await firstIssueHref(page);
+  await page.setViewportSize({ width: 320, height: 720 });
+  for (const path of [
+    '/', '/projects', '/projects/ZZ', '/people', '/profile',
+    '/settings/workflows', '/settings/workflows/wf_default',
+    '/issues/ZZ', '/board/brd_default', issueHref,
+  ]) {
+    await page.goto(path);
+    const viewportDoesNotOverflow = await page.evaluate(
+      () => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1,
+    );
+    expect(viewportDoesNotOverflow, `${path} should reflow at 320px`).toBe(true);
   }
 });

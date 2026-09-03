@@ -93,6 +93,58 @@ func (s *Store) IssuesByProject(ctx context.Context, workspaceID, projectID, use
 	return out, rows.Err()
 }
 
+// IssueCountByProject returns the complete visible count for a project. It is
+// intentionally separate from IssuesByProject, whose 200-row cap is for list
+// rendering and must not leak into directory totals.
+func (s *Store) IssueCountByProject(ctx context.Context, workspaceID, projectID, userID string) (int, error) {
+	var count int
+	err := s.Pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM issues i
+		WHERE i.workspace_id=$1 AND i.project_id=$2 AND `+VisibleIssuePredicate("i", "$3"),
+		workspaceID, projectID, userID).Scan(&count)
+	return count, err
+}
+
+// IssuesAssignedToUser and IssuesReportedByUser power workspace-scoped profile
+// pages while preserving the viewer's issue-security boundary.
+func (s *Store) IssuesAssignedToUser(ctx context.Context, workspaceID, targetUserID, viewerUserID string) ([]*models.Issue, error) {
+	rows, err := s.Pool.Query(ctx, issueJoin+`
+		WHERE i.workspace_id=$1 AND i.assignee_id=$2 AND `+VisibleIssuePredicate("i", "$3")+`
+		ORDER BY i.updated_seq DESC LIMIT 50`, workspaceID, targetUserID, viewerUserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*models.Issue
+	for rows.Next() {
+		issue, err := scanIssue(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, issue)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) IssuesReportedByUser(ctx context.Context, workspaceID, targetUserID, viewerUserID string) ([]*models.Issue, error) {
+	rows, err := s.Pool.Query(ctx, issueJoin+`
+		WHERE i.workspace_id=$1 AND i.reporter_id=$2 AND `+VisibleIssuePredicate("i", "$3")+`
+		ORDER BY i.updated_seq DESC LIMIT 50`, workspaceID, targetUserID, viewerUserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*models.Issue
+	for rows.Next() {
+		issue, err := scanIssue(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, issue)
+	}
+	return out, rows.Err()
+}
+
 // Priorities lists the registry.
 func (s *Store) Priorities(ctx context.Context) ([]*models.Priority, error) {
 	rows, err := s.Pool.Query(ctx, `SELECT id, name FROM priorities ORDER BY id`)

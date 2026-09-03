@@ -12,7 +12,7 @@ import (
 //
 //	GET  /rest/api/3/workflow/search  → list stored workflows
 //	POST /rest/api/3/workflow         → create/replace a workflow definition
-//	PUT  /rest/api/3/workflow/project/{keyOrId}?workflowId=… → assign
+//	PUT  /rest/api/3/workflow/project/{keyOrId} {workflowId: …} → assign
 //	GET  /rest/api/3/workflow/project/{keyOrId}              → current id
 func (h *Handler) workflowRoute(w http.ResponseWriter, r *http.Request) {
 	if _, _, e := h.authWorkspaceAdmin(r); e != nil {
@@ -75,15 +75,19 @@ func (h *Handler) workflowRoute(w http.ResponseWriter, r *http.Request) {
 			writeJerr(w, e)
 			return
 		}
-		project, err := h.Store.ProjectByKey(r.Context(), wsID, keyOrID)
+		project, err := h.Store.ProjectByIDOrKey(r.Context(), wsID, keyOrID)
 		if err != nil {
 			jiraError(w, http.StatusNotFound, "The project does not exist.")
 			return
 		}
 		if r.Method == http.MethodGet {
+			workflowID := project.WorkflowID
+			if workflowID == "" {
+				workflowID = workflow.Default().ID
+			}
 			writeJSON(w, http.StatusOK, map[string]any{
 				"projectKeyOrId": keyOrID,
-				"workflowId":     project.WorkflowID,
+				"workflowId":     workflowID,
 			})
 			return
 		}
@@ -93,6 +97,10 @@ func (h *Handler) workflowRoute(w http.ResponseWriter, r *http.Request) {
 			}
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.WorkflowID == "" {
 				jiraFieldError(w, http.StatusBadRequest, map[string]string{"workflowId": "workflowId is required."})
+				return
+			}
+			if _, err := h.Store.WorkflowByID(r.Context(), req.WorkflowID); err != nil {
+				jiraFieldError(w, http.StatusBadRequest, map[string]string{"workflowId": "The workflow does not exist."})
 				return
 			}
 			if err := h.Store.AssignWorkflowToProject(r.Context(), project.ID, req.WorkflowID); err != nil {

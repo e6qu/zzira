@@ -35,8 +35,7 @@ async function requiredAsset(path, label) {
 
 importScripts('/static/sqlite/sqlite3.js', '/static/wasm/wasm_exec.js');
 
-(async () => {
-  try {
+async function startReplica() {
     boot('boot: sqlite3.js + wasm_exec.js imported');
     // The Go command runtime is a required part of the local-first client.
     // Start loading it alongside SQLite so an immediate offline transition
@@ -84,7 +83,22 @@ importScripts('/static/sqlite/sqlite3.js', '/static/wasm/wasm_exec.js');
     const go = new Go();
     const bytes = await goWasm;
     const { instance } = await WebAssembly.instantiate(bytes, go.importObject);
-    go.run(instance);
+    // Keep this promise (and therefore the exclusive Web Lock) alive for the
+    // lifetime of the Go runtime. The browser releases it if this worker is
+    // terminated during a full-page navigation.
+    await go.run(instance);
+}
+
+(async () => {
+  try {
+    const replica = new URL(self.location.href).searchParams.get('replica');
+    if (!replica || !/^[a-f0-9-]{36}$/.test(replica)) throw new Error('replica id is missing or invalid');
+    if (self.navigator.locks) {
+      boot('boot: waiting for replica lock');
+      await self.navigator.locks.request('zzira-opfs-' + replica, { mode: 'exclusive' }, startReplica);
+    } else {
+      await startReplica();
+    }
   } catch (err) {
     self.postMessage({ type: 'error', message: String(err) });
   }

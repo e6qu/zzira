@@ -16,6 +16,7 @@ The endpoint-level source of truth remains [the API matrix](../api/conformance/M
 | Journey | Status | Evidence / gap |
 |---|---:|---|
 | Sign in and orient | ✅ | Responsive sidebar-first shell, account menu, dark mode, visible local-replica state |
+| Browse projects and people | ✅ | Workspace project directory and overview, project tabs, people directory, self profile, and security-filtered assigned/reported work are browser-tested |
 | Find work with JQL | ✅ | Project-scoped basic/JQL search, removable filter chips, starred saved filters, sortable/configurable columns, pagination, keyboard navigation, and contextual issue preview are browser-tested |
 | Create work | ✅ | Shared createmeta schema drives project/type plus assignee, priority, labels, security and typed custom fields; validation recovery and create-another are browser/API tested |
 | Triage an issue | ✅ | Inline system/custom fields, labels, security, watchers, links, unified activity filters, attachments/worklogs, and their Jira-shaped API transitions are browser- and integration-tested |
@@ -23,7 +24,8 @@ The endpoint-level source of truth remains [the API matrix](../api/conformance/M
 | Work offline | ✅ | Issue reads, edit outbox, reconnect drain and server-wins reconciliation are browser-proven; mutation UI is protected from in-flight replica refreshes |
 | Review a dashboard | 🟡 | Status counts, assigned work and recent activity; no configurable dashboards |
 | Plan a backlog/sprint | ⛔ | Agile endpoints exist but there is no browser backlog, sprint planning, start/complete flow or epic/version panel |
-| Administer a project | ⛔ | Some workflow, field, security and webhook APIs exist; project settings has no end-to-end UI |
+| Administer workflows | 🟡 | Workflow directory, read-only built-in diagram, custom workflow creation, transition add/remove, and project assignment are browser-tested; status creation and full schemes/conditions remain |
+| Administer a project | ⛔ | The workflow assignment slice is delivered; details, roles, fields, security, boards, and webhooks still lack a coherent settings journey |
 
 ## Delivery order
 
@@ -45,11 +47,14 @@ The endpoint-level source of truth remains [the API matrix](../api/conformance/M
 
 ### P1 — team and admin journeys
 
-1. Replace the hard-coded `ZZ` shell routes with a workspace project switcher.
+1. ✅ Add project and people directories, project overviews/tabs, and self/other
+   user profiles. Next, replace the hard-coded recent `ZZ` shell routes with a
+   workspace project switcher.
 2. Add filter management and sharing/favourites UI over the delivered APIs.
 3. Add notifications inbox and read state over `/rest/zzira/1/notifications`.
-4. Add project settings for details, people/roles, work types, fields, workflows,
-   issue security, boards, webhooks, and audit-friendly validation.
+4. 🟡 Workflow browse/edit/project-assignment UI is delivered. Add the remaining
+   project settings for details, people/roles, work types, fields, issue security,
+   boards, webhooks, and audit-friendly validation.
 5. Close remaining API matrix subsets for editmeta, role semantics, permission
    schemes, screens/schemes, and missing Agile update/state operations before
    labeling the Jira Software API boundary conformant.

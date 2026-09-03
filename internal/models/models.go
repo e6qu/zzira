@@ -115,6 +115,8 @@ type SyncResponse struct {
 type IssueView struct {
 	Issue             Issue
 	ProjectKey        string
+	ProjectName       string
+	BoardID           string
 	CanEdit           bool
 	CanTriage         bool
 	CurrentUserID     string
