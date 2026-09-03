@@ -18,7 +18,7 @@ The endpoint-level source of truth remains [the API matrix](../api/conformance/M
 | Sign in and orient | ✅ | Responsive sidebar-first shell, account menu, dark mode, visible local-replica state |
 | Find work with JQL | ✅ | Project-scoped basic/JQL search, removable filter chips, starred saved filters, sortable/configurable columns, pagination, keyboard navigation, and contextual issue preview are browser-tested |
 | Create work | 🟡 | Project, type, summary, description; not yet fully driven by createmeta and no create-another flow |
-| Triage an issue | 🟡 | Details, workflow actions, edit/delete, comments, attachments, worklogs and history work; inline field editing, links, labels, watchers and custom-field presentation remain |
+| Triage an issue | ✅ | Inline system/custom fields, labels, security, watchers, links, unified activity filters, attachments/worklogs, and their Jira-shaped API transitions are browser- and integration-tested |
 | Run a board | 🟡 | Mouse and keyboard rank/status changes, live updates, local card filtering, bounded column scrolling; quick filters, swimlanes, WIP limits and card configuration remain |
 | Work offline | ✅ | Issue reads, edit outbox, reconnect drain and server-wins reconciliation are browser-proven; mutation UI is protected from in-flight replica refreshes |
 | Review a dashboard | 🟡 | Status counts, assigned work and recent activity; no configurable dashboards |
@@ -32,8 +32,9 @@ The endpoint-level source of truth remains [the API matrix](../api/conformance/M
 1. Navigator: ✅ delivered with basic/JQL switching, removable filter chips,
    saved-filter navigation, sortable/configurable columns, pagination,
    keyboard navigation, and side-panel preview.
-2. Issue: inline editable system/custom fields, labels, security, watchers,
-   links, unified Activity filters, and attachment/worklog management actions.
+2. Issue: ✅ delivered with inline editable system/custom fields, labels,
+   security, watchers, links, unified Activity filters, and attachment/worklog
+   management actions.
 3. Create: use createmeta/editmeta as the only form schema; add assignee,
    priority, labels, security/custom fields, validation, and “create another”.
 4. Backlog: backlog/selected/sprint grouping, ranking, sprint create/edit/start/

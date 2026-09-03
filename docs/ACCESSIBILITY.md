@@ -24,6 +24,8 @@ baseline and regression policy, not a third-party accessibility certification.
 - Form controls have programmatic labels, authentication fields advertise their
   autocomplete purpose, validation failures use an alert, and changing board
   filter results are announced through a polite status region.
+- Issue activity filters expose pressed state, newest/oldest sorting remains a
+  real button, and the watch shortcut is suppressed while focus is in an editor.
 - Focus indicators, 24 CSS-pixel control targets, 320 CSS-pixel reflow, dark
   theme contrast, reduced-motion behavior, increased contrast, and forced-colors
   affordances are part of the design system baseline.
@@ -39,6 +41,7 @@ DOM scanner cannot prove:
 - skip-link and active-navigation behavior;
 - off-canvas navigation at a 320px viewport;
 - board keyboard controls and non-drag movement controls;
+- issue activity filter state and the keyboard watch journey;
 - minimum control target dimensions.
 
 Run the automated gate against a seeded local server:

@@ -19,6 +19,7 @@ control-plane endpoints use `/rest/zzira/1` and are never presented as Jira APIs
 | GET /rest/api/3/issue/{idOrKey}/editmeta | 🟡 | system + custom fields |
 | GET /rest/api/3/issue/createmeta (+ per-type) | 🟡 | project/issuetype/fields |
 | GET/POST /rest/api/3/issue/{idOrKey}/transitions | ✅ | project workflow enforced |
+| GET/POST/DELETE /rest/api/3/issue/{idOrKey}/watchers | 🟡 | complete self-subscription and watcher reads; managing other users is intentionally not exposed without a broader permission model |
 | /comment CRUD | ✅ | ADF bodies, author-only delete |
 | GET /rest/api/3/issue/{idOrKey}/changelog | ✅ | derived from the action log |
 | /worklog CRUD | ✅ | author-only delete |

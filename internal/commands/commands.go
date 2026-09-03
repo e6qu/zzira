@@ -27,6 +27,7 @@ type CreateIssueInput struct {
 	IssueTypeID string
 	PriorityID  string
 	AssigneeID  string
+	Labels      []string
 	Fields      map[string]json.RawMessage
 }
 
@@ -79,9 +80,18 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 		}
 		priorityID = priority.ID
 	}
+	if in.AssigneeID != "" {
+		if _, err := s.Store.MemberByID(ctx, in.WorkspaceID, in.AssigneeID); err != nil {
+			return nil, nil, fmt.Errorf("assignee is not an active workspace member")
+		}
+	}
+	labels, err := normalizeLabels(in.Labels)
+	if err != nil {
+		return nil, nil, err
+	}
 	description := plainTextToADF(in.Description)
 	issue, action, err := s.Store.CreateIssue(ctx, in.ActorID, project.ID, in.Summary,
-		description, "st_todo", issueType.ID, priorityID, in.AssigneeID, in.Fields)
+		description, "st_todo", issueType.ID, priorityID, in.AssigneeID, labels, in.Fields)
 	if err != nil {
 		return nil, nil, err
 	}

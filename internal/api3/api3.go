@@ -151,6 +151,8 @@ func (h *Handler) issueRoute(w http.ResponseWriter, r *http.Request, parts []str
 		h.putAssignee(w, r, idOrKey)
 	case len(parts) == 2 && parts[1] == "attachments" && r.Method == http.MethodPost:
 		h.uploadAttachments(w, r, idOrKey)
+	case len(parts) == 2 && parts[1] == "watchers":
+		h.issueWatchers(w, r, idOrKey)
 	case len(parts) == 2 && parts[1] == "changelog" && r.Method == http.MethodGet:
 		h.changelog(w, r, idOrKey)
 	case len(parts) == 2 && parts[1] == "editmeta" && r.Method == http.MethodGet:
@@ -311,6 +313,7 @@ type createIssueRequest struct {
 		Security *struct {
 			ID string `json:"id"`
 		} `json:"security"`
+		Labels *[]string `json:"labels"`
 	} `json:"fields"`
 }
 
@@ -364,6 +367,10 @@ func (h *Handler) createIssue(w http.ResponseWriter, r *http.Request) {
 	if req.Fields.Assignee != nil {
 		assigneeID = req.Fields.Assignee.AccountID
 	}
+	labels := []string{}
+	if req.Fields.Labels != nil {
+		labels = *req.Fields.Labels
+	}
 	issue, _, err := h.Commands.CreateIssue(r.Context(), commands.CreateIssueInput{
 		ActorID:     userID,
 		WorkspaceID: wsID,
@@ -373,6 +380,7 @@ func (h *Handler) createIssue(w http.ResponseWriter, r *http.Request) {
 		IssueTypeID: issueTypeID,
 		PriorityID:  priorityID,
 		AssigneeID:  assigneeID,
+		Labels:      labels,
 		Fields:      customFieldsFromBody(body),
 	})
 	if err != nil {
@@ -397,6 +405,7 @@ type putIssueRequest struct {
 		Security *struct {
 			ID string `json:"id"`
 		} `json:"security"`
+		Labels *[]string `json:"labels"`
 	} `json:"fields"`
 }
 
@@ -452,7 +461,7 @@ func (h *Handler) putIssue(w http.ResponseWriter, r *http.Request, idOrKey strin
 		ActorID: userID, WorkspaceID: wsID, IssueIDOrKey: idOrKey,
 		Summary: up.Summary, Description: up.Description,
 		PriorityID: up.PriorityID, AssigneeID: up.AssigneeID,
-		SecurityLevelID: securityID, Fields: fields,
+		SecurityLevelID: securityID, Labels: req.Fields.Labels, Fields: fields,
 	}); err != nil {
 		jiraFieldError(w, http.StatusBadRequest, map[string]string{"fields": err.Error()})
 		return
@@ -515,7 +524,7 @@ func (h *Handler) issueBean(i *models.Issue) map[string]any {
 	fields := map[string]any{
 		"summary":     i.Summary,
 		"description": i.Description,
-		"labels":      []string{},
+		"labels":      i.Labels,
 		"created":     i.UpdatedAt,
 		"updated":     i.UpdatedAt,
 		"project": map[string]any{

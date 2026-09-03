@@ -238,11 +238,67 @@
     });
   }
 
+  function initIssueTriage(scope) {
+    const root = (scope || document).querySelector('#issue-root');
+    if (!root || root.dataset.triageReady) return;
+    root.dataset.triageReady = '1';
+    const ledger = root.querySelector('[data-activity-ledger]');
+    if (!ledger) return;
+    const entries = Array.from(ledger.querySelectorAll('[data-activity-kind]'));
+    const empty = ledger.querySelector('[data-activity-filter-empty]');
+    const filters = Array.from(root.querySelectorAll('[data-activity-filter]'));
+    let selected = 'all';
+    let oldestFirst = false;
+
+    function applyActivityView() {
+      let visible = 0;
+      entries.forEach((entry) => {
+        entry.hidden = selected !== 'all' && entry.dataset.activityKind !== selected;
+        if (!entry.hidden) visible += 1;
+      });
+      entries.sort((left, right) => {
+        const order = (left.dataset.created || '').localeCompare(right.dataset.created || '');
+        return oldestFirst ? order : -order;
+      }).forEach((entry) => ledger.insertBefore(entry, empty));
+      if (empty) empty.hidden = visible !== 0 || entries.length === 0;
+    }
+
+    filters.forEach((button) => {
+      button.addEventListener('click', () => {
+        selected = button.dataset.activityFilter || 'all';
+        filters.forEach((candidate) => candidate.setAttribute('aria-pressed', String(candidate === button)));
+        applyActivityView();
+      });
+    });
+    const sortButton = root.querySelector('[data-activity-sort]');
+    if (sortButton) {
+      sortButton.addEventListener('click', () => {
+        oldestFirst = !oldestFirst;
+        sortButton.setAttribute('aria-pressed', String(oldestFirst));
+        sortButton.setAttribute('aria-label', oldestFirst ? 'Sort activity newest first' : 'Sort activity oldest first');
+        sortButton.textContent = oldestFirst ? 'Oldest first ↑' : 'Newest first ↓';
+        applyActivityView();
+      });
+    }
+  }
+
   document.addEventListener('DOMContentLoaded', () => {
     initShell();
     initBoardFilter();
     initNavigator();
+    initIssueTriage(document);
     setSyncRail(navigator.onLine ? 'online' : 'offline', navigator.onLine ? 'Ready' : 'Offline', navigator.onLine ? 'Local replica' : 'Showing local copy');
+  });
+  document.body.addEventListener('htmx:afterSettle', () => initIssueTriage(document));
+  document.addEventListener('keydown', (event) => {
+    const target = event.target;
+    const typing = target instanceof Element && (target.matches('input, textarea, select') || target.closest('[contenteditable]'));
+    if (typing || event.metaKey || event.ctrlKey || event.altKey || event.key.toLocaleLowerCase() !== 'w') return;
+    const watchButton = document.querySelector('#issue-root .watch-button');
+    if (watchButton instanceof HTMLButtonElement) {
+      event.preventDefault();
+      watchButton.click();
+    }
   });
 
   if (!('Worker' in window)) return;
@@ -290,6 +346,7 @@
     initRichEditors(scope);
     initBoard(scope);
     initModals(scope);
+    initIssueTriage(scope);
   }
 
   let modalReturnFocus = null;
@@ -413,9 +470,21 @@
         // Skip the worker's redundant initial render: the server already
         // SSR-rendered this view. Offline reloads have an empty root (cached
         // shell) and MUST apply.
-        if (!sawSync && document.querySelector('#issue-root .issue-view')) break;
+        if (!sawSync && document.querySelector('.issue-view#issue-root')) break;
         if (msg.issueId && msg.issueId === currentIssueId()) {
-          applyRootHtml(msg.html);
+          if (!offlineMode && navigator.onLine) {
+            const key = currentIssueKey();
+            if (!key) break;
+            fetch('/browse/' + encodeURIComponent(key), { headers: { 'HX-Request': 'true' } })
+              .then((response) => {
+                if (!response.ok) throw new Error('HTTP ' + response.status);
+                return response.text();
+              })
+              .then(applyRootHtml)
+              .catch(() => { /* a later sync or reconnect will retry */ });
+          } else {
+            applyRootHtml(msg.html);
+          }
         }
         break;
       case 'info':

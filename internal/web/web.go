@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -378,15 +379,114 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	for _, t := range wf.Available(issue.Status.ID) {
 		transitions = append(transitions, models.WorkflowTransition{ID: t.ID, Name: t.Name})
 	}
+	editView, err := h.buildEditDialogView(r.Context(), wsID, issue)
+	if err != nil {
+		return nil, err
+	}
+	priorities, err := h.Store.Priorities(r.Context())
+	if err != nil {
+		return nil, err
+	}
+	watcherIDs, err := h.Store.WatchersByIssue(r.Context(), issue.ID)
+	if err != nil {
+		return nil, err
+	}
+	watchers := make([]models.User, 0, len(watcherIDs))
+	isWatching := false
+	for _, watcherID := range watcherIDs {
+		if watcherID == user.ID {
+			isWatching = true
+		}
+		watcher, err := h.Store.MemberByID(r.Context(), wsID, watcherID)
+		if err == nil {
+			watchers = append(watchers, *watcher)
+		}
+	}
+	links, err := h.Store.LinksByIssue(r.Context(), issue.ID)
+	if err != nil {
+		return nil, err
+	}
+	linkViews := make([]models.IssueLinkView, 0, len(links))
+	for _, link := range links {
+		otherID, relationship := link.OutwardID, link.Inward
+		if link.OutwardID == issue.ID {
+			otherID, relationship = link.InwardID, link.Outward
+		}
+		other, err := h.issueForUser(r, user, wsID, otherID)
+		if err != nil {
+			continue
+		}
+		linkViews = append(linkViews, models.IssueLinkView{
+			ID: link.ID, Relationship: relationship, IssueKey: other.Key,
+			Summary: other.Summary, Status: other.Status,
+		})
+	}
+	linkTypes, err := h.Store.LinkTypes(r.Context())
+	if err != nil {
+		return nil, err
+	}
+	activity := make([]models.IssueActivityItem, 0, len(comments)+len(worklogs)+len(history))
+	for _, comment := range comments {
+		authorName := comment.AuthorName
+		if authorName == "" {
+			authorName = "Unknown"
+		}
+		activity = append(activity, models.IssueActivityItem{
+			Kind: "comment", ID: comment.ID, AuthorID: comment.AuthorID, AuthorName: authorName,
+			Created: comment.Created, Body: comment.Body,
+		})
+	}
+	for _, worklog := range worklogs {
+		authorName := worklog.AuthorName
+		if authorName == "" {
+			authorName = "Unknown"
+		}
+		activity = append(activity, models.IssueActivityItem{
+			Kind: "worklog", ID: worklog.ID, AuthorID: worklog.AuthorID, AuthorName: authorName,
+			Created: worklog.Created, Body: worklog.Comment, TimeSpentSeconds: worklog.TimeSpentSeconds,
+			CanDelete: worklog.AuthorID == user.ID,
+		})
+	}
+	for _, entry := range history {
+		authorName := "Unknown"
+		if entry.Author != nil && entry.Author.DisplayName != "" {
+			authorName = entry.Author.DisplayName
+		}
+		activity = append(activity, models.IssueActivityItem{
+			Kind: "history", ID: strconv.FormatInt(entry.Seq, 10), AuthorID: entry.AuthorID,
+			AuthorName: authorName, Created: entry.Created, Items: entry.Items,
+		})
+	}
+	sort.SliceStable(activity, func(i, j int) bool { return activity[i].Created > activity[j].Created })
+	priorityValues := make([]models.Priority, 0, len(priorities))
+	for _, priority := range priorities {
+		priorityValues = append(priorityValues, *priority)
+	}
+	linkTypeValues := make([]models.LinkType, 0, len(linkTypes))
+	for _, linkType := range linkTypes {
+		linkTypeValues = append(linkTypeValues, *linkType)
+	}
 	return &models.IssueView{
-		Issue:       *issue,
-		ProjectKey:  projectKeyOf(issue.Key),
-		CanEdit:     true,
-		Comments:    derefComments(comments),
-		Transitions: transitions,
-		History:     history,
-		Attachments: derefAttachments(attachments),
-		Worklogs:    derefWorklogs(worklogs),
+		Issue:             *issue,
+		ProjectKey:        projectKeyOf(issue.Key),
+		CanEdit:           true,
+		CanTriage:         true,
+		CurrentUserID:     user.ID,
+		Comments:          derefComments(comments),
+		Transitions:       transitions,
+		History:           history,
+		Attachments:       derefAttachments(attachments),
+		Worklogs:          derefWorklogs(worklogs),
+		Activity:          activity,
+		Members:           editView.Members,
+		Priorities:        priorityValues,
+		SecurityLevels:    editView.SecurityLevels,
+		SecurityLevelName: h.Store.SecurityLevelName(r.Context(), issue.ProjectID, issue.SecurityLevelID),
+		CustomFields:      editView.CustomFields,
+		Watchers:          watchers,
+		IsWatching:        isWatching,
+		Links:             linkViews,
+		LinkTypes:         linkTypeValues,
 	}, nil
 }
 
@@ -972,6 +1072,139 @@ func (h *Handler) AddWorklog(w http.ResponseWriter, r *http.Request, key string)
 		return
 	}
 	h.serveIssue(w, r, user, wsID, key)
+}
+
+func (h *Handler) DeleteWorklog(w http.ResponseWriter, r *http.Request, key, worklogID string) {
+	user, wsID, ok := h.issueMutationContext(w, r, key)
+	if !ok {
+		return
+	}
+	issue, _ := h.issueForUser(r, user, wsID, key)
+	worklog, err := h.Store.WorklogByID(r.Context(), wsID, worklogID)
+	if err != nil || worklog.IssueID != issue.ID {
+		http.NotFound(w, r)
+		return
+	}
+	if _, err := h.Commands.DeleteWorklog(r.Context(), user.ID, wsID, worklogID); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	h.serveIssue(w, r, user, wsID, key)
+}
+
+func (h *Handler) DeleteAttachment(w http.ResponseWriter, r *http.Request, key, attachmentID string) {
+	user, wsID, ok := h.issueMutationContext(w, r, key)
+	if !ok {
+		return
+	}
+	issue, _ := h.issueForUser(r, user, wsID, key)
+	attachment, err := h.Store.AttachmentByID(r.Context(), wsID, attachmentID)
+	if err != nil || attachment.IssueID != issue.ID {
+		http.NotFound(w, r)
+		return
+	}
+	if _, err := h.Commands.DeleteAttachment(r.Context(), user.ID, wsID, attachmentID); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	h.serveIssue(w, r, user, wsID, key)
+}
+
+func (h *Handler) UpdateIssueField(w http.ResponseWriter, r *http.Request, key string) {
+	user, wsID, ok := h.issueMutationContext(w, r, key)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	field, value := r.PostFormValue("field"), r.PostFormValue("value")
+	in := commands.UpdateIssueInput{ActorID: user.ID, WorkspaceID: wsID, IssueIDOrKey: key}
+	switch field {
+	case "summary":
+		value = strings.TrimSpace(value)
+		in.Summary = &value
+	case "priority":
+		in.PriorityID = &value
+	case "assignee":
+		in.AssigneeID = &value
+	case "security":
+		in.SecurityLevelID = &value
+	case "labels":
+		labels := strings.Split(value, ",")
+		if strings.TrimSpace(value) == "" {
+			labels = []string{}
+		}
+		in.Labels = &labels
+	default:
+		const prefix = "custom:"
+		if !strings.HasPrefix(field, prefix) || len(field) == len(prefix) {
+			http.Error(w, "unknown issue field", http.StatusBadRequest)
+			return
+		}
+		in.Fields = map[string]json.RawMessage{strings.TrimPrefix(field, prefix): json.RawMessage(strconv.Quote(value))}
+	}
+	if _, _, err := h.Commands.UpdateIssue(r.Context(), in); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	h.serveIssue(w, r, user, wsID, key)
+}
+
+func (h *Handler) SetWatching(w http.ResponseWriter, r *http.Request, key string) {
+	user, wsID, ok := h.issueMutationContext(w, r, key)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	if _, err := h.Commands.SetWatching(r.Context(), user.ID, wsID, key, r.PostFormValue("watching") == "true"); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	h.serveIssue(w, r, user, wsID, key)
+}
+
+func (h *Handler) LinkIssue(w http.ResponseWriter, r *http.Request, key string) {
+	user, wsID, ok := h.issueMutationContext(w, r, key)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	otherKey := strings.TrimSpace(r.PostFormValue("issue"))
+	if otherKey == "" {
+		http.Error(w, "linked issue key is required", http.StatusBadRequest)
+		return
+	}
+	if _, _, err := h.Commands.LinkIssue(r.Context(), user.ID, wsID, key, r.PostFormValue("type"), otherKey); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	h.serveIssue(w, r, user, wsID, key)
+}
+
+func (h *Handler) DeleteIssueLink(w http.ResponseWriter, r *http.Request, key, linkID string) {
+	user, wsID, ok := h.issueMutationContext(w, r, key)
+	if !ok {
+		return
+	}
+	if _, err := h.Commands.DeleteIssueLink(r.Context(), user.ID, wsID, key, linkID); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	h.serveIssue(w, r, user, wsID, key)
+}
+
+func (h *Handler) issueMutationContext(w http.ResponseWriter, r *http.Request, key string) (*models.User, string, bool) {
+	user := h.currentUser(r)
+	if user == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return nil, "", false
+	}
+	wsID, ok := h.memberWorkspace(r, user)
+	if !ok {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return nil, "", false
+	}
+	if _, err := h.issueForUser(r, user, wsID, key); err != nil {
+		http.NotFound(w, r)
+		return nil, "", false
+	}
+	return user, wsID, true
 }
 
 func (h *Handler) EditDialog(w http.ResponseWriter, r *http.Request, key string) {

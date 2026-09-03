@@ -113,7 +113,11 @@
   <header class="issue-header">
     <div class="issue-heading">
       <span class="issue-type-glyph" aria-hidden="true">✓</span>
-      <div><span class="eyebrow">{{.Issue.Key}} · {{.Issue.IssueType.Name}}</span><h1 class="issue-summary" data-field="summary">{{.Issue.Summary}}</h1></div>
+      <div class="issue-title-block"><span class="eyebrow">{{.Issue.Key}} · {{.Issue.IssueType.Name}}</span>
+{{if .CanTriage}}
+      <div class="summary-line"><h1 class="issue-summary" data-field="summary">{{.Issue.Summary}}</h1><details class="inline-summary-editor"><summary aria-label="Edit summary">✎</summary><form method="post" action="/issues/{{.Issue.Key}}/fields" hx-post="/issues/{{.Issue.Key}}/fields" hx-target="#issue-root" hx-swap="outerHTML"><input type="hidden" name="field" value="summary"><label for="issue-summary-input">Summary</label><input id="issue-summary-input" class="issue-summary-input" name="value" value="{{.Issue.Summary}}" maxlength="255" required><button type="submit" class="btn btn-primary">Save</button></form></details></div>
+{{else}}<h1 class="issue-summary" data-field="summary">{{.Issue.Summary}}</h1>{{end}}
+      </div>
     </div>
     <div class="issue-transitions" role="group" aria-label="Issue actions">
 {{range .Transitions}}
@@ -123,6 +127,12 @@
       </form>
 {{end}}
 {{if .CanEdit}}
+{{if .CanTriage}}
+      <form method="post" action="/issues/{{.Issue.Key}}/watch" hx-post="/issues/{{.Issue.Key}}/watch" hx-target="#issue-root" hx-swap="outerHTML">
+        <input type="hidden" name="watching" value="{{if .IsWatching}}false{{else}}true{{end}}">
+        <button type="submit" class="btn watch-button" aria-pressed="{{.IsWatching}}" aria-keyshortcuts="W"><span aria-hidden="true">◉</span>{{if .IsWatching}}Watching{{else}}Watch{{end}} <span class="action-count">{{len .Watchers}}</span></button>
+      </form>
+{{end}}
       <button type="button" class="btn" id="edit-issue-button" onclick="zzira.openEdit('{{.Issue.Key}}', this)">Edit</button>
       <details class="more-menu"><summary class="btn" aria-label="More issue actions">•••</summary><div><button type="button" class="menu-danger" hx-delete="/issues/{{.Issue.Key}}" hx-confirm="Delete {{.Issue.Key}}?" hx-redirect="/issues/{{.ProjectKey}}">Delete issue</button></div></details>
 {{end}}
@@ -135,25 +145,41 @@
         <div class="description-text">{{adfHTML .Issue.Description}}</div>
       </section>
 
-      <div class="activity-heading"><div><span class="eyebrow">Timeline</span><h2>Activity</h2></div><nav aria-label="Activity sections"><a href="#comments-list">Comments</a><a href="#worklogs-list">Work log</a><a href="#history-list">History</a></nav></div>
+      <section class="issue-section linked-work" aria-labelledby="linked-work-title">
+        <div class="section-heading"><h2 id="linked-work-title">Linked work <span class="section-count">{{len .Links}}</span></h2>
+        {{if .CanTriage}}<details class="link-create"><summary class="quiet-action">Link work item</summary>
+          <form method="post" action="/issues/{{.Issue.Key}}/links" hx-post="/issues/{{.Issue.Key}}/links" hx-target="#issue-root" hx-swap="outerHTML">
+            <label for="link-type">Relationship</label><select id="link-type" name="type" required>{{range .LinkTypes}}<option value="{{.ID}}">{{.Outward}}</option>{{end}}</select>
+            <label for="link-issue">Work item key</label><input id="link-issue" name="issue" placeholder="{{.ProjectKey}}-123" autocomplete="off" required>
+            <button type="submit" class="btn btn-primary">Link</button>
+          </form>
+        </details>{{end}}</div>
+        {{if .Links}}<ul class="linked-work-list">{{range .Links}}
+          <li><span class="link-relationship">{{.Relationship}}</span><a href="/browse/{{.IssueKey}}"><strong>{{.IssueKey}}</strong> {{.Summary}}</a><span class="lozenge {{statusClass .Status.Category}}">{{.Status.Name}}</span>
+          {{if $.CanTriage}}<form method="post" action="/issues/{{$.Issue.Key}}/links/{{.ID}}/delete" hx-delete="/issues/{{$.Issue.Key}}/links/{{.ID}}" hx-target="#issue-root" hx-swap="outerHTML" hx-confirm="Remove the link to {{.IssueKey}}?"><button type="submit" class="icon-danger" aria-label="Remove link to {{.IssueKey}}">×</button></form>{{end}}</li>
+        {{end}}</ul>{{else}}<p class="muted">No linked work items.</p>{{end}}
+      </section>
 
-      <section class="issue-section issue-comments">
-        <div class="section-heading"><h3>Comments <span class="section-count">{{len .Comments}}</span></h3></div>
-        <div id="comments-list">
-          {{range .Comments}}
-          <div class="comment" id="{{.ID}}">
-            <div class="comment-head">
-              {{if .AuthorName}}<span class="avatar" aria-hidden="true"><span>{{initials .AuthorName}}</span></span>{{end}}
-              <strong>{{if .AuthorName}}{{.AuthorName}}{{else}}Unknown{{end}}</strong>
-              <time class="muted" datetime="{{.Created}}">{{.Created}}</time>
-            </div>
-            <div class="comment-body">{{adfHTML .Body}}</div>
-          </div>
-          {{else}}
-          <div class="empty-state"><span aria-hidden="true">💬</span><strong>No comments yet</strong><small>Start the conversation with context or a question.</small></div>
-          {{end}}
-        </div>
-        {{if .CanEdit}}
+      <section class="issue-section issue-attachments" aria-labelledby="attachments-title">
+        <div class="section-heading"><h2 id="attachments-title">Attachments <span class="section-count">{{len .Attachments}}</span></h2></div>
+        {{if .Attachments}}<ul id="attachments-list" class="attachment-list">
+          {{range .Attachments}}<li class="attachment"><span class="attachment-icon" aria-hidden="true">&#128206;</span><span class="attachment-copy"><a href="/rest/api/3/attachment/content/{{.ID}}">{{.Filename}}</a><small>{{humanSize .Size}}{{if .AuthorName}} · added by {{.AuthorName}}{{end}}</small></span>
+          {{if and $.CanTriage (eq .AuthorID $.CurrentUserID)}}<form method="post" action="/issues/{{$.Issue.Key}}/attachments/{{.ID}}/delete" hx-delete="/issues/{{$.Issue.Key}}/attachments/{{.ID}}" hx-target="#issue-root" hx-swap="outerHTML" hx-confirm="Delete attachment {{.Filename}}?"><button type="submit" class="icon-danger" aria-label="Delete attachment {{.Filename}}">×</button></form>{{end}}</li>{{end}}
+        </ul>{{else}}<p class="muted">No attachments added.</p>{{end}}
+        {{if .CanTriage}}<form class="upload-form" method="post" action="/issues/{{.Issue.Key}}/attachments" enctype="multipart/form-data"><label for="attachment-file">Add attachment</label><input id="attachment-file" type="file" name="file" required><button type="submit" class="btn">Attach file</button></form>{{end}}
+      </section>
+
+      <div class="activity-heading"><div><span class="eyebrow">One chronological record</span><h2 id="activity-title">Activity</h2></div>
+        <div class="activity-tools"><div class="activity-filters" role="group" aria-label="Filter activity">
+          <button type="button" data-activity-filter="all" aria-pressed="true">All <span>{{len .Activity}}</span></button>
+          <button type="button" data-activity-filter="comment" aria-pressed="false">Comments <span>{{len .Comments}}</span></button>
+          <button type="button" data-activity-filter="worklog" aria-pressed="false">Work log <span>{{len .Worklogs}}</span></button>
+          <button type="button" data-activity-filter="history" aria-pressed="false">History <span>{{len .History}}</span></button>
+        </div><button type="button" class="activity-sort" data-activity-sort aria-label="Sort activity oldest first" aria-pressed="false">Newest first ↓</button></div>
+      </div>
+
+      <section class="issue-section issue-activity" aria-labelledby="activity-title">
+        {{if .CanEdit}}<details class="activity-composer" open><summary>Add an update</summary>
         <form class="comment-form" method="post" action="/issues/{{.Issue.Key}}/comments" hx-post="/issues/{{.Issue.Key}}/comments" hx-target="#issue-root" hx-swap="outerHTML">
           <div class="editor-toolbar" role="group" aria-label="Comment formatting" data-editor-toolbar>
             <button type="button" data-cmd="bold" aria-label="Bold"><strong aria-hidden="true">B</strong></button>
@@ -167,75 +193,20 @@
           <input type="hidden" name="adf">
           <div class="form-actions"><small class="muted">Use the toolbar to format your update.</small><button type="submit" class="btn btn-primary">Add comment</button></div>
         </form>
-        {{end}}
-      </section>
-
-      <section class="issue-section issue-attachments">
-        <div class="section-heading"><h3>Attachments <span class="section-count">{{len .Attachments}}</span></h3></div>
-        <div id="attachments-list">
-          {{range .Attachments}}
-          <div class="attachment">
-            <span class="attachment-icon">&#128206;</span>
-            <a href="/rest/api/3/attachment/content/{{.ID}}">{{.Filename}}</a>
-            <span class="muted">{{humanSize .Size}}</span>
-          </div>
-          {{else}}
-          <p class="muted">No attachments added.</p>
-          {{end}}
+        {{if .CanTriage}}<form class="worklog-form" method="post" action="/issues/{{.Issue.Key}}/worklogs" hx-post="/issues/{{.Issue.Key}}/worklogs" hx-target="#issue-root" hx-swap="outerHTML">
+          <fieldset><legend>Or log work</legend><label for="worklog-seconds">Time in seconds</label>
+          <input id="worklog-seconds" name="seconds" type="number" min="1" placeholder="3600" required class="worklog-seconds">
+          <label for="worklog-comment">Work description <span class="muted">optional</span></label><input id="worklog-comment" name="comment" placeholder="What did you work on?" class="worklog-comment"><button type="submit" class="btn">Log time</button></fieldset>
+        </form>{{end}}</details>{{end}}
+        <div class="activity-ledger" data-activity-ledger>
+        {{range .Activity}}<article class="activity-entry activity-{{.Kind}}{{if eq .Kind "worklog"}} worklog{{end}}" data-activity-kind="{{.Kind}}" data-created="{{.Created}}" id="activity-{{.Kind}}-{{.ID}}">
+          <div class="activity-marker" aria-hidden="true">{{if eq .Kind "comment"}}C{{else if eq .Kind "worklog"}}T{{else}}H{{end}}</div>
+          <div class="activity-content"><header><span class="avatar" aria-hidden="true"><span>{{initials .AuthorName}}</span></span><strong>{{.AuthorName}}</strong><span class="activity-verb">{{if eq .Kind "comment"}}commented{{else if eq .Kind "worklog"}}logged <span class="lozenge">{{timeSpent .TimeSpentSeconds}}</span>{{else}}changed this work item{{end}}</span><time datetime="{{.Created}}">{{.Created}}</time>
+          {{if and $.CanTriage (and (eq .Kind "worklog") .CanDelete)}}<form method="post" action="/issues/{{$.Issue.Key}}/worklogs/{{.ID}}/delete" hx-delete="/issues/{{$.Issue.Key}}/worklogs/{{.ID}}" hx-target="#issue-root" hx-swap="outerHTML" hx-confirm="Delete this work log?"><button type="submit" class="icon-danger" aria-label="Delete work log from {{.Created}}">×</button></form>{{end}}</header>
+          {{if eq .Kind "history"}}<ul class="change-list">{{range .Items}}<li><strong>{{.Field}}</strong> changed{{if .FromString}} from “{{.FromString}}”{{end}}{{if .ToString}} to “{{.ToString}}”{{end}}</li>{{end}}</ul>{{else if .Body}}<div class="comment-body">{{adfHTML .Body}}</div>{{end}}</div>
+        </article>{{else}}<div class="empty-state" data-activity-empty><strong>No activity yet</strong><small>Comments, work logs, and field changes will appear here.</small></div>{{end}}
+        <div class="empty-state" data-activity-filter-empty hidden><strong>No matching activity</strong><small>Choose another activity filter.</small></div>
         </div>
-        {{if .CanEdit}}
-        <form class="upload-form" method="post" action="/issues/{{.Issue.Key}}/attachments" enctype="multipart/form-data">
-          <label class="sr-only" for="attachment-file">Choose attachment</label>
-          <input id="attachment-file" type="file" name="file" required>
-          <button type="submit" class="btn">Attach file</button>
-        </form>
-        {{end}}
-      </section>
-
-      <section class="issue-section issue-worklogs">
-        <div class="section-heading"><h3>Work log <span class="section-count">{{len .Worklogs}}</span></h3></div>
-        <div id="worklogs-list">
-          {{range .Worklogs}}
-          <div class="worklog">
-            <div class="comment-head">
-              {{if .AuthorName}}<span class="avatar" aria-hidden="true"><span>{{initials .AuthorName}}</span></span>{{end}}
-              <strong>{{if .AuthorName}}{{.AuthorName}}{{end}}</strong>
-              <span class="lozenge">{{timeSpent .TimeSpentSeconds}}</span>
-              <time class="muted" datetime="{{.Created}}">{{.Created}}</time>
-            </div>
-            {{if .Comment}}<div class="comment-body">{{adfHTML .Comment}}</div>{{end}}
-          </div>
-          {{else}}
-          <p class="muted">No time logged yet.</p>
-          {{end}}
-        </div>
-        {{if .CanEdit}}
-        <form class="worklog-form" method="post" action="/issues/{{.Issue.Key}}/worklogs" hx-post="/issues/{{.Issue.Key}}/worklogs" hx-target="#issue-root" hx-swap="outerHTML">
-          <label class="sr-only" for="worklog-seconds">Time spent in seconds</label>
-          <input id="worklog-seconds" name="seconds" type="number" min="1" placeholder="Seconds" required class="worklog-seconds">
-          <label class="sr-only" for="worklog-comment">Work description</label>
-          <input id="worklog-comment" name="comment" placeholder="What did you work on? (optional)" class="worklog-comment">
-          <button type="submit" class="btn">Log time</button>
-        </form>
-        {{end}}
-      </section>
-
-      <section class="issue-section issue-history" id="history-list">
-        <div class="section-heading"><h3>History <span class="section-count">{{len .History}}</span></h3></div>
-        {{range .History}}
-        <div class="history-entry">
-          <div class="comment-head">
-            {{if .Author}}<span class="avatar" aria-hidden="true"><span>{{initials .Author.DisplayName}}</span></span>{{end}}
-            <strong>{{if .Author}}{{.Author.DisplayName}}{{end}}</strong>
-            <time class="muted" datetime="{{.Created}}">{{.Created}}</time>
-          </div>
-          <ul>
-            {{range .Items}}<li><strong>{{.Field}}</strong> changed{{if .FromString}} from “{{.FromString}}”{{end}}{{if .ToString}} to “{{.ToString}}”{{end}}</li>{{end}}
-          </ul>
-        </div>
-        {{else}}
-        <p class="muted">No changes recorded.</p>
-        {{end}}
       </section>
     </div>
     <aside class="issue-details" aria-label="Issue details">
@@ -243,12 +214,15 @@
       <dl>
         <dt>Type</dt>
         <dd><span class="field-value"><span class="issue-type-mini" aria-hidden="true">✓</span>{{.Issue.IssueType.Name}}</span></dd>
-        {{if .Issue.Priority}}<dt>Priority</dt><dd><span class="field-value"><span class="priority-icon" aria-hidden="true">=</span>{{.Issue.Priority.Name}}</span></dd>{{end}}
-        <dt>Assignee</dt>
-        <dd>{{if .Issue.Assignee}}<span class="person-value">{{template "avatar" .Issue.Assignee}}<span>{{.Issue.Assignee.DisplayName}}</span></span>{{else}}<span class="unassigned">Unassigned</span>{{end}}</dd>
+        <dt>{{if .CanTriage}}<label for="field-priority">Priority</label>{{else}}Priority{{end}}</dt><dd>{{if .CanTriage}}<form class="inline-field" method="post" action="/issues/{{.Issue.Key}}/fields" hx-post="/issues/{{.Issue.Key}}/fields" hx-target="#issue-root" hx-swap="outerHTML"><input type="hidden" name="field" value="priority"><select id="field-priority" name="value"><option value="">None</option>{{$priority := ""}}{{if .Issue.Priority}}{{$priority = .Issue.Priority.ID}}{{end}}{{range .Priorities}}<option value="{{.ID}}" {{if eq .ID $priority}}selected{{end}}>{{.Name}}</option>{{end}}</select><button class="field-save" type="submit">Save priority</button></form>{{else}}{{if .Issue.Priority}}{{.Issue.Priority.Name}}{{else}}None{{end}}{{end}}</dd>
+        <dt>{{if .CanTriage}}<label for="field-assignee">Assignee</label>{{else}}Assignee{{end}}</dt><dd>{{if .CanTriage}}<form class="inline-field" method="post" action="/issues/{{.Issue.Key}}/fields" hx-post="/issues/{{.Issue.Key}}/fields" hx-target="#issue-root" hx-swap="outerHTML"><input type="hidden" name="field" value="assignee"><select id="field-assignee" name="value"><option value="">Unassigned</option>{{$assignee := ""}}{{if .Issue.Assignee}}{{$assignee = .Issue.Assignee.ID}}{{end}}{{range .Members}}<option value="{{.ID}}" {{if eq .ID $assignee}}selected{{end}}>{{.DisplayName}}</option>{{end}}</select><button class="field-save" type="submit">Save assignee</button></form>{{else}}{{if .Issue.Assignee}}{{.Issue.Assignee.DisplayName}}{{else}}Unassigned{{end}}{{end}}</dd>
         <dt>Reporter</dt>
         <dd>{{if .Issue.Reporter}}<span class="person-value">{{template "avatar" .Issue.Reporter}}<span>{{.Issue.Reporter.DisplayName}}</span></span>{{end}}</dd>
+        <dt>{{if .CanTriage}}<label for="field-labels">Labels</label>{{else}}Labels{{end}}</dt><dd>{{if .CanTriage}}<form class="inline-field" method="post" action="/issues/{{.Issue.Key}}/fields" hx-post="/issues/{{.Issue.Key}}/fields" hx-target="#issue-root" hx-swap="outerHTML"><input type="hidden" name="field" value="labels"><input id="field-labels" name="value" value="{{join .Issue.Labels ", "}}" placeholder="None" aria-describedby="labels-help"><small id="labels-help" class="sr-only">Comma-separated labels; spaces are not allowed within a label.</small><button class="field-save" type="submit">Save labels</button></form>{{else}}{{if .Issue.Labels}}{{join .Issue.Labels ", "}}{{else}}None{{end}}{{end}}</dd>
+{{if .SecurityLevels}}        <dt><label for="field-security">Security</label></dt><dd><form class="inline-field" method="post" action="/issues/{{.Issue.Key}}/fields" hx-post="/issues/{{.Issue.Key}}/fields" hx-target="#issue-root" hx-swap="outerHTML"><input type="hidden" name="field" value="security"><select id="field-security" name="value"><option value="">Public</option>{{$security := .Issue.SecurityLevelID}}{{range .SecurityLevels}}<option value="{{.ID}}" {{if eq .ID $security}}selected{{end}}>{{.Name}}</option>{{end}}</select><button class="field-save" type="submit">Save security</button></form></dd>{{end}}
       </dl>
+{{if .CustomFields}}      <details class="more-fields"><summary>More fields <span>{{len .CustomFields}}</span></summary><dl>{{range .CustomFields}}<dt><label for="detail-field-{{.ID}}">{{.Name}}</label></dt><dd><form class="inline-field" method="post" action="/issues/{{$.Issue.Key}}/fields" hx-post="/issues/{{$.Issue.Key}}/fields" hx-target="#issue-root" hx-swap="outerHTML"><input type="hidden" name="field" value="custom:{{.ID}}"><input id="detail-field-{{.ID}}" name="value" value="{{.Value}}" placeholder="None"><button class="field-save" type="submit">Save {{.Name}}</button></form></dd>{{end}}</dl></details>{{end}}
+      <section class="watcher-summary" aria-labelledby="watchers-title"><h3 id="watchers-title">Watchers <span>{{len .Watchers}}</span></h3>{{if .Watchers}}<ul>{{range .Watchers}}<li>{{template "avatar" .}}<span>{{.DisplayName}}</span></li>{{end}}</ul>{{else}}<p>No one is watching yet.</p>{{end}}</section>
       <div class="details-meta"><span>Updated</span><time datetime="{{.Issue.UpdatedAt}}">{{.Issue.UpdatedAt}}</time></div>
     </aside>
   </div>

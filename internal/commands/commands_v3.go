@@ -32,6 +32,9 @@ func (s *Service) DeleteWorklog(ctx context.Context, actorID, workspaceID, workl
 	if w.AuthorID != actorID {
 		return nil, fmt.Errorf("only the author may delete a worklog")
 	}
+	if _, err := s.visibleIssue(ctx, actorID, workspaceID, w.IssueID); err != nil {
+		return nil, fmt.Errorf("worklog %q not found", worklogID)
+	}
 	return s.Store.DeleteWorklog(ctx, actorID, workspaceID, worklogID)
 }
 

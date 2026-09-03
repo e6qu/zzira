@@ -200,6 +200,33 @@ func main() {
 	mux.HandleFunc("POST /issues/{key}/worklogs", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.AddWorklog(w, r, r.PathValue("key"))
 	})
+	mux.HandleFunc("DELETE /issues/{key}/worklogs/{id}", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.DeleteWorklog(w, r, r.PathValue("key"), r.PathValue("id"))
+	})
+	mux.HandleFunc("POST /issues/{key}/worklogs/{id}/delete", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.DeleteWorklog(w, r, r.PathValue("key"), r.PathValue("id"))
+	})
+	mux.HandleFunc("DELETE /issues/{key}/attachments/{id}", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.DeleteAttachment(w, r, r.PathValue("key"), r.PathValue("id"))
+	})
+	mux.HandleFunc("POST /issues/{key}/attachments/{id}/delete", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.DeleteAttachment(w, r, r.PathValue("key"), r.PathValue("id"))
+	})
+	mux.HandleFunc("POST /issues/{key}/fields", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.UpdateIssueField(w, r, r.PathValue("key"))
+	})
+	mux.HandleFunc("POST /issues/{key}/watch", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.SetWatching(w, r, r.PathValue("key"))
+	})
+	mux.HandleFunc("POST /issues/{key}/links", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.LinkIssue(w, r, r.PathValue("key"))
+	})
+	mux.HandleFunc("DELETE /issues/{key}/links/{id}", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.DeleteIssueLink(w, r, r.PathValue("key"), r.PathValue("id"))
+	})
+	mux.HandleFunc("POST /issues/{key}/links/{id}/delete", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.DeleteIssueLink(w, r, r.PathValue("key"), r.PathValue("id"))
+	})
 	mux.HandleFunc("GET /issues/{key}/edit", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.EditDialog(w, r, r.PathValue("key"))
 	})

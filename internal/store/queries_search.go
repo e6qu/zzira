@@ -29,10 +29,10 @@ SELECT i.id, i.workspace_id, i.project_id, i.key, i.summary, i.description,
        it.id, it.name, it.icon,
        pr2.id, pr2.name,
        a.id, a.display_name,
-       r.id, r.display_name,
-       i.rank,
-       i.security_level_id, i.fields,
-       i.updated_seq, i.updated_at
+	       r.id, r.display_name,
+	       i.rank,
+	       i.security_level_id, i.fields, i.labels,
+	       i.updated_seq, i.updated_at
 `
 
 // Search runs a compiled JQL query within one workspace. The workspace

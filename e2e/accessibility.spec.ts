@@ -197,7 +197,8 @@ test('board cards expose keyboard and non-drag movement controls without nested 
 
 test('controls meet WCAG 2.2 minimum target size', async ({ page }) => {
   await login(page);
-  for (const path of ['/', '/issues/ZZ', '/board/brd_default']) {
+  const issueHref = await firstIssueHref(page);
+  for (const path of ['/', '/issues/ZZ', '/board/brd_default', issueHref]) {
     await page.goto(path);
     const columnPicker = page.locator('.column-picker summary');
     if (await columnPicker.count()) await columnPicker.click();

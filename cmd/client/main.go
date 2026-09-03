@@ -14,6 +14,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"syscall/js"
 	"time"
@@ -184,7 +185,7 @@ CREATE TABLE IF NOT EXISTS actions (
 );
 CREATE TABLE IF NOT EXISTS issues (
   id TEXT PRIMARY KEY,
-  project_id TEXT, key TEXT, summary TEXT, description TEXT, fields TEXT,
+  project_id TEXT, key TEXT, summary TEXT, description TEXT, fields TEXT, labels TEXT NOT NULL DEFAULT '[]',
   status_id TEXT, status_name TEXT, status_category TEXT,
   issuetype_name TEXT, priority_name TEXT,
   assignee_id TEXT, assignee_name TEXT,
@@ -237,7 +238,7 @@ CREATE TABLE IF NOT EXISTS sprint_issues (
 );
 CREATE TABLE IF NOT EXISTS issue_links (
   id TEXT PRIMARY KEY, type_name TEXT,
-  inward_id TEXT, outward_id TEXT
+  inward TEXT, outward TEXT, inward_id TEXT, outward_id TEXT
 );
 CREATE TABLE IF NOT EXISTS outbox (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -260,7 +261,19 @@ func initDB() error {
 	}
 	db = sah.New(js.ValueOf("/zzira-" + replica + ".db"))
 	exec(schemaSQL, nil)
+	ensureColumn("issues", "labels", "TEXT NOT NULL DEFAULT '[]'")
+	ensureColumn("issue_links", "inward", "TEXT")
+	ensureColumn("issue_links", "outward", "TEXT")
 	return nil
+}
+
+func ensureColumn(table, column, definition string) {
+	for _, row := range selectObjects("PRAGMA table_info("+table+")", nil) {
+		if str(row, "name") == column {
+			return
+		}
+	}
+	exec("ALTER TABLE "+table+" ADD COLUMN "+column+" "+definition, nil)
 }
 
 // replicaID is supplied by the page from sessionStorage. It remains stable
@@ -475,10 +488,16 @@ func applyIssueLink(a models.Action) ([]string, error) {
 		if err := json.Unmarshal(a.Payload, &p); err != nil {
 			return nil, fmt.Errorf("decode link payload: %w", err)
 		}
-		exec(`INSERT OR REPLACE INTO issue_links (id, type_name, inward_id, outward_id) VALUES ($1,$2,$3,$4)`,
-			[]any{p.Link.ID, p.Link.TypeName, p.Link.InwardID, p.Link.OutwardID})
+		exec(`INSERT OR REPLACE INTO issue_links (id, type_name, inward, outward, inward_id, outward_id) VALUES ($1,$2,$3,$4,$5,$6)`,
+			[]any{p.Link.ID, p.Link.TypeName, p.Link.Inward, p.Link.Outward, p.Link.InwardID, p.Link.OutwardID})
+		return []string{p.Link.InwardID, p.Link.OutwardID}, nil
 	case models.OpDelete:
+		var p models.IssueLinkDeletePayload
+		if err := json.Unmarshal(a.Payload, &p); err != nil {
+			return nil, fmt.Errorf("decode link delete payload: %w", err)
+		}
 		exec(`DELETE FROM issue_links WHERE id=$1`, []any{a.EntityID})
+		return []string{p.InwardID, p.OutwardID}, nil
 	}
 	return nil, nil
 }
@@ -670,14 +689,18 @@ func applyIssue(a models.Action) ([]string, error) {
 			}
 			fieldsJSON = string(b)
 		}
+		labelsJSON, err := json.Marshal(i.Labels)
+		if err != nil {
+			return nil, fmt.Errorf("encode issue labels: %w", err)
+		}
 		exec(`INSERT OR REPLACE INTO issues
-		      (id, project_id, key, summary, description, fields,
+		      (id, project_id, key, summary, description, fields, labels,
 		       status_id, status_name, status_category,
 		       issuetype_name, priority_name,
 		       assignee_id, assignee_name, reporter_id, reporter_name,
 		       updated_seq, updated_at)
-		      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
-			[]any{i.ID, i.ProjectID, i.Key, i.Summary, desc, fieldsJSON,
+		      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
+			[]any{i.ID, i.ProjectID, i.Key, i.Summary, desc, fieldsJSON, string(labelsJSON),
 				i.Status.ID, i.Status.Name, i.Status.Category,
 				i.IssueType.Name, priorityName(i),
 				userID(i.Assignee), userName(i.Assignee),
@@ -983,7 +1006,11 @@ func pushCurrentView() {
 		Description: json.RawMessage(orEmptyJSON(str(r, "description"))),
 		Status:      models.Status{ID: str(r, "status_id"), Name: str(r, "status_name"), Category: str(r, "status_category")},
 		IssueType:   models.IssueType{Name: str(r, "issuetype_name")},
+		UpdatedSeq:  int64Of(r, "updated_seq"),
 		UpdatedAt:   str(r, "updated_at"),
+	}
+	if err := json.Unmarshal([]byte(orEmptyJSONArray(str(r, "labels"))), &issue.Labels); err != nil {
+		issue.Labels = []string{}
 	}
 	if p := str(r, "priority_name"); p != "" {
 		issue.Priority = &models.Priority{Name: p}
@@ -1033,7 +1060,7 @@ func pushCurrentView() {
 
 	history := []models.ChangelogEntry{}
 	for _, a := range selectObjects(`
-			SELECT payload, actor_id, created_at FROM actions
+			SELECT seq, payload, actor_id, created_at FROM actions
 			WHERE entity_type='issue' AND entity_id=$1 AND op='upsert' AND schema_v>=2
 			  AND json_extract(payload,'$.diff') IS NOT NULL
 			ORDER BY seq`, []any{currentView}) {
@@ -1043,6 +1070,7 @@ func pushCurrentView() {
 		}
 		author := ""
 		history = append(history, models.ChangelogEntry{
+			Seq:      int64Of(a, "seq"),
 			AuthorID: str(a, "actor_id"),
 			Author:   &models.User{DisplayName: author},
 			Created:  str(a, "created_at"),
@@ -1054,6 +1082,37 @@ func pushCurrentView() {
 	for _, t := range workflow.Default().Available(issue.Status.ID) {
 		transitions = append(transitions, models.WorkflowTransition{ID: t.ID, Name: t.Name})
 	}
+	activity := make([]models.IssueActivityItem, 0, len(comments)+len(worklogs)+len(history))
+	for _, comment := range comments {
+		author := comment.AuthorName
+		if author == "" {
+			author = "Unknown"
+		}
+		activity = append(activity, models.IssueActivityItem{Kind: "comment", ID: comment.ID, AuthorID: comment.AuthorID, AuthorName: author, Created: comment.Created, Body: comment.Body})
+	}
+	for _, worklog := range worklogs {
+		author := worklog.AuthorName
+		if author == "" {
+			author = "Unknown"
+		}
+		activity = append(activity, models.IssueActivityItem{Kind: "worklog", ID: worklog.ID, AuthorName: author, Created: worklog.Created, Body: worklog.Comment, TimeSpentSeconds: worklog.TimeSpentSeconds})
+	}
+	for _, entry := range history {
+		activity = append(activity, models.IssueActivityItem{Kind: "history", ID: fmt.Sprintf("%d", entry.Seq), AuthorID: entry.AuthorID, AuthorName: "Unknown", Created: entry.Created, Items: entry.Items})
+	}
+	sort.SliceStable(activity, func(i, j int) bool { return activity[i].Created > activity[j].Created })
+	linkViews := []models.IssueLinkView{}
+	for _, link := range selectObjects(`
+		SELECT l.id, CASE WHEN l.outward_id=$1 THEN l.outward ELSE l.inward END AS relationship,
+		       i.key, i.summary, i.status_id, i.status_name, i.status_category
+		FROM issue_links l
+		JOIN issues i ON i.id=CASE WHEN l.outward_id=$1 THEN l.inward_id ELSE l.outward_id END
+		WHERE l.inward_id=$1 OR l.outward_id=$1 ORDER BY l.id`, []any{currentView}) {
+		linkViews = append(linkViews, models.IssueLinkView{
+			ID: str(link, "id"), Relationship: str(link, "relationship"), IssueKey: str(link, "key"), Summary: str(link, "summary"),
+			Status: models.Status{ID: str(link, "status_id"), Name: str(link, "status_name"), Category: str(link, "status_category")},
+		})
+	}
 
 	view := models.IssueView{
 		Issue:       issue,
@@ -1064,6 +1123,8 @@ func pushCurrentView() {
 		History:     history,
 		Attachments: attachmentsOut,
 		Worklogs:    worklogs,
+		Activity:    activity,
+		Links:       linkViews,
 	}
 	var buf bytes.Buffer
 	if err := render.Fragment(&buf, "issue_view", view); err != nil {
@@ -1076,6 +1137,13 @@ func pushCurrentView() {
 func orEmptyJSON(s string) string {
 	if s == "" {
 		return "{}"
+	}
+	return s
+}
+
+func orEmptyJSONArray(s string) string {
+	if s == "" {
+		return "[]"
 	}
 	return s
 }

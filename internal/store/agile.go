@@ -319,10 +319,14 @@ func (s *Store) AddWatcher(ctx context.Context, actorID, workspaceID, issueID, u
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if _, err := tx.Exec(ctx,
+	result, err := tx.Exec(ctx,
 		`INSERT INTO watchers (issue_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
-		issueID, userID); err != nil {
+		issueID, userID)
+	if err != nil {
 		return nil, err
+	}
+	if result.RowsAffected() == 0 {
+		return nil, nil
 	}
 	seq, err := nextSeq(ctx, tx, workspaceID)
 	if err != nil {
@@ -351,8 +355,12 @@ func (s *Store) RemoveWatcher(ctx context.Context, actorID, workspaceID, issueID
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if _, err := tx.Exec(ctx, `DELETE FROM watchers WHERE issue_id=$1 AND user_id=$2`, issueID, userID); err != nil {
+	result, err := tx.Exec(ctx, `DELETE FROM watchers WHERE issue_id=$1 AND user_id=$2`, issueID, userID)
+	if err != nil {
 		return nil, err
+	}
+	if result.RowsAffected() == 0 {
+		return nil, nil
 	}
 	seq, err := nextSeq(ctx, tx, workspaceID)
 	if err != nil {

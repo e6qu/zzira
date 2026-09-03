@@ -66,6 +66,7 @@ type Issue struct {
 	Priority    *Priority       `json:"priority"`
 	Assignee    *User           `json:"assignee"`
 	Reporter    *User           `json:"reporter"`
+	Labels      []string        `json:"labels"`
 	Rank        string          `json:"rank"`
 
 	SecurityLevelID string                     `json:"securityLevelId,omitempty"`
@@ -112,14 +113,48 @@ type SyncResponse struct {
 // ---- View models (render-only) ----
 
 type IssueView struct {
-	Issue       Issue
-	ProjectKey  string
-	CanEdit     bool
-	Comments    []Comment
-	Transitions []WorkflowTransition
-	History     []ChangelogEntry
-	Attachments []Attachment
-	Worklogs    []Worklog
+	Issue             Issue
+	ProjectKey        string
+	CanEdit           bool
+	CanTriage         bool
+	CurrentUserID     string
+	Comments          []Comment
+	Transitions       []WorkflowTransition
+	History           []ChangelogEntry
+	Attachments       []Attachment
+	Worklogs          []Worklog
+	Activity          []IssueActivityItem
+	Members           []User
+	Priorities        []Priority
+	SecurityLevels    []WorkflowTransition
+	SecurityLevelName string
+	CustomFields      []CustomFieldView
+	Watchers          []User
+	IsWatching        bool
+	Links             []IssueLinkView
+	LinkTypes         []LinkType
+}
+
+// IssueActivityItem is one entry in the issue's chronological activity ledger.
+type IssueActivityItem struct {
+	Kind             string
+	ID               string
+	AuthorID         string
+	AuthorName       string
+	Created          string
+	Body             json.RawMessage
+	TimeSpentSeconds int
+	Items            []ChangeItem
+	CanDelete        bool
+}
+
+// IssueLinkView resolves an issue link from the current issue's perspective.
+type IssueLinkView struct {
+	ID           string
+	Relationship string
+	IssueKey     string
+	Summary      string
+	Status       Status
 }
 
 // WorkflowTransition decouples the view from the workflow package.

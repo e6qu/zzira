@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
+	"strings"
+	"unicode"
 
 	"github.com/e6qu/zzira/internal/adf"
 	"github.com/e6qu/zzira/internal/authz"
@@ -23,6 +26,7 @@ type UpdateIssueInput struct {
 	StatusID     *string // transitions only
 
 	SecurityLevelID *string                    // "" = public, nil = unchanged
+	Labels          *[]string                  // empty = clear, nil = unchanged
 	Fields          map[string]json.RawMessage // custom fields
 }
 
@@ -52,6 +56,51 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 			return nil, nil, fmt.Errorf("summary is required (max 255 chars)")
 		}
 	}
+	if in.AssigneeID != nil && *in.AssigneeID != "" {
+		if _, err := s.Store.MemberByID(ctx, in.WorkspaceID, *in.AssigneeID); err != nil {
+			return nil, nil, fmt.Errorf("assignee is not an active workspace member")
+		}
+	}
+	if in.SecurityLevelID != nil && *in.SecurityLevelID != "" {
+		scheme, err := s.Store.SecuritySchemeForProject(ctx, issue.ProjectID)
+		if err != nil {
+			return nil, nil, err
+		}
+		valid := false
+		if scheme != nil {
+			for _, level := range scheme.Levels {
+				if level.ID == *in.SecurityLevelID {
+					valid = true
+					break
+				}
+			}
+		}
+		if !valid {
+			return nil, nil, fmt.Errorf("security level is not available for this project")
+		}
+	}
+	if in.Fields != nil {
+		fields, err := s.Store.CustomFieldsForProject(ctx, issue.ProjectID)
+		if err != nil {
+			return nil, nil, err
+		}
+		valid := make(map[string]struct{}, len(fields))
+		for _, field := range fields {
+			valid[field.ID] = struct{}{}
+		}
+		for id := range in.Fields {
+			if _, ok := valid[id]; !ok {
+				return nil, nil, fmt.Errorf("custom field %q is not available for this project", id)
+			}
+		}
+	}
+	if in.Labels != nil {
+		labels, err := normalizeLabels(*in.Labels)
+		if err != nil {
+			return nil, nil, err
+		}
+		in.Labels = &labels
+	}
 	issue, action, err := s.Store.UpdateIssue(ctx, in.ActorID, in.WorkspaceID, issue.ID, store.IssueUpdate{
 		Summary:         in.Summary,
 		Description:     in.Description,
@@ -59,6 +108,7 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 		AssigneeID:      in.AssigneeID,
 		StatusID:        in.StatusID,
 		SecurityLevelID: in.SecurityLevelID,
+		Labels:          in.Labels,
 		Fields:          in.Fields,
 	})
 	if err != nil {
@@ -79,6 +129,27 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 		return nil, nil, err
 	}
 	return issue, action, nil
+}
+
+func normalizeLabels(values []string) ([]string, error) {
+	labels := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		label := strings.TrimSpace(value)
+		if label == "" {
+			continue
+		}
+		if len(label) > 255 || strings.IndexFunc(label, unicode.IsSpace) >= 0 {
+			return nil, fmt.Errorf("labels must be at most 255 characters and contain no spaces")
+		}
+		if _, ok := seen[label]; ok {
+			continue
+		}
+		seen[label] = struct{}{}
+		labels = append(labels, label)
+	}
+	slices.Sort(labels)
+	return labels, nil
 }
 
 // notifyAssignee emits a per-user notification action when an issue is

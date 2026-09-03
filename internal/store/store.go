@@ -439,10 +439,10 @@ SELECT i.id, i.workspace_id, i.project_id, i.key, i.summary, i.description,
        it.id, it.name, it.icon,
        pr.id, pr.name,
        a.id, a.display_name,
-       r.id, r.display_name,
-       i.rank,
-       i.security_level_id, i.fields,
-       i.updated_seq, i.updated_at
+	       r.id, r.display_name,
+	       i.rank,
+	       i.security_level_id, i.fields, i.labels,
+	       i.updated_seq, i.updated_at
 FROM issues i
 JOIN statuses st ON st.id = i.status_id
 JOIN issue_types it ON it.id = i.issuetype_id
@@ -466,7 +466,7 @@ func scanIssue(row pgx.Row) (*models.Issue, error) {
 		&assigneeID, &assigneeName,
 		&reporterID, &reporterName,
 		&i.Rank,
-		&securityLevelID, &fieldsJSON,
+		&securityLevelID, &fieldsJSON, &i.Labels,
 		&i.UpdatedSeq, &updatedAt)
 	if err != nil {
 		return nil, err
@@ -478,6 +478,9 @@ func scanIssue(row pgx.Row) (*models.Issue, error) {
 		if err := json.Unmarshal(fieldsJSON, &i.Fields); err != nil {
 			return nil, fmt.Errorf("issue fields: %w", err)
 		}
+	}
+	if i.Labels == nil {
+		i.Labels = []string{}
 	}
 	if err != nil {
 		return nil, err
@@ -502,7 +505,10 @@ func (s *Store) IssueByIDOrKey(ctx context.Context, workspaceID, idOrKey string)
 
 // CreateIssue runs the canonical write transaction: state change + action append +
 // notify, all-or-nothing. Returns the persisted issue and its action.
-func (s *Store) CreateIssue(ctx context.Context, actorID, projectID, summary string, description json.RawMessage, statusID, issueTypeID, priorityID, assigneeID string, fields map[string]json.RawMessage) (*models.Issue, *models.Action, error) {
+func (s *Store) CreateIssue(ctx context.Context, actorID, projectID, summary string, description json.RawMessage, statusID, issueTypeID, priorityID, assigneeID string, labels []string, fields map[string]json.RawMessage) (*models.Issue, *models.Action, error) {
+	if labels == nil {
+		labels = []string{}
+	}
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return nil, nil, err
@@ -539,10 +545,10 @@ func (s *Store) CreateIssue(ctx context.Context, actorID, projectID, summary str
 		return nil, nil, err
 	}
 	_, err = tx.Exec(ctx, `
-		INSERT INTO issues (id, workspace_id, project_id, key, summary, description, fields,
+		INSERT INTO issues (id, workspace_id, project_id, key, summary, description, fields, labels,
 		                    status_id, issuetype_id, priority_id, assignee_id, reporter_id, updated_seq)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,0)`,
-		issueID, wsID, projectID, issueKey, summary, description, fieldsJSON, statusID, issueTypeID, nilIfEmpty(priorityID), nilIfEmpty(assigneeID), reporter)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,0)`,
+		issueID, wsID, projectID, issueKey, summary, description, fieldsJSON, labels, statusID, issueTypeID, nilIfEmpty(priorityID), nilIfEmpty(assigneeID), reporter)
 	if err != nil {
 		return nil, nil, err
 	}
