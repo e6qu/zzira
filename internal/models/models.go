@@ -175,7 +175,41 @@ type EditDialogView struct {
 
 // CustomFieldView is a render-only custom field descriptor with the value.
 type CustomFieldView struct {
-	ID    string
-	Name  string
-	Value string
+	ID          string
+	Name        string
+	Type        string
+	Description string
+	Value       string
+}
+
+// CreateFieldOption is one selectable value exposed by create metadata.
+// Key is populated for project options; ID is used by every other registry.
+type CreateFieldOption struct {
+	ID   string `json:"id,omitempty"`
+	Key  string `json:"key,omitempty"`
+	Name string `json:"name"`
+}
+
+// CreateFieldMeta is the canonical create-form schema shared by the browser
+// and Jira-compatible REST endpoints. Section controls presentation only; the
+// field ID, type, requirement and options remain the validation contract.
+type CreateFieldMeta struct {
+	ID          string              `json:"fieldId"`
+	Name        string              `json:"name"`
+	Type        string              `json:"type"`
+	Description string              `json:"description,omitempty"`
+	Required    bool                `json:"required"`
+	Custom      bool                `json:"custom,omitempty"`
+	Section     string              `json:"-"`
+	Options     []CreateFieldOption `json:"allowedValues,omitempty"`
+}
+
+type CreateProjectMeta struct {
+	Project    Project           `json:"project"`
+	IssueTypes []IssueType       `json:"issueTypes"`
+	Fields     []CreateFieldMeta `json:"fields"`
+}
+
+type IssueCreateMetadata struct {
+	Projects []CreateProjectMeta `json:"projects"`
 }

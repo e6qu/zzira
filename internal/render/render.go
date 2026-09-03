@@ -48,17 +48,6 @@ func init() {
 			// attribute value (see internal/adf tests); output is golden-locked.
 			return template.HTML(adf.ToHTML(raw)) // #nosec G203 -- reviewed trust boundary
 		},
-		"customFieldValue": func(issue models.Issue, fieldID string) string {
-			raw, ok := issue.Fields[fieldID]
-			if !ok {
-				return ""
-			}
-			var s string
-			if err := json.Unmarshal(raw, &s); err == nil {
-				return s
-			}
-			return string(raw)
-		},
 		"timeSpent": func(seconds int) string {
 			return models.TimeSpentLabel(seconds)
 		},

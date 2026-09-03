@@ -122,6 +122,12 @@ func (h *Handler) issueRoute(w http.ResponseWriter, r *http.Request, parts []str
 	case len(parts) == 1 && idOrKey == "createmeta" && r.Method == http.MethodGet:
 		h.createMeta(w, r)
 		return
+	case len(parts) == 3 && idOrKey == "createmeta" && parts[2] == "issuetypes" && r.Method == http.MethodGet:
+		h.createMetaIssueTypes(w, r, parts[1])
+		return
+	case len(parts) == 4 && idOrKey == "createmeta" && parts[2] == "issuetypes" && r.Method == http.MethodGet:
+		h.createMetaFields(w, r, parts[1], parts[3])
+		return
 	case len(parts) == 1:
 		switch r.Method {
 		case http.MethodGet:
@@ -295,6 +301,7 @@ type createIssueRequest struct {
 	Update json.RawMessage `json:"update"`
 	Fields struct {
 		Project *struct {
+			ID  string `json:"id"`
 			Key string `json:"key"`
 		} `json:"project"`
 		Summary     string          `json:"summary"`
@@ -336,8 +343,16 @@ func (h *Handler) createIssue(w http.ResponseWriter, r *http.Request) {
 		jiraFieldError(w, http.StatusBadRequest, map[string]string{"fields": "Invalid request payload."})
 		return
 	}
-	if req.Fields.Project == nil || req.Fields.Project.Key == "" {
-		jiraFieldError(w, http.StatusBadRequest, map[string]string{"project": "Project key is required."})
+	if fieldErrors := unsupportedCreateFields(body); len(fieldErrors) > 0 {
+		jiraFieldError(w, http.StatusBadRequest, fieldErrors)
+		return
+	}
+	if len(req.Update) > 0 && string(req.Update) != "null" && string(req.Update) != "{}" {
+		jiraFieldError(w, http.StatusBadRequest, map[string]string{"update": "The update operations object is not supported when creating an issue."})
+		return
+	}
+	if req.Fields.Project == nil || (req.Fields.Project.Key == "" && req.Fields.Project.ID == "") {
+		jiraFieldError(w, http.StatusBadRequest, map[string]string{"project": "Project key or id is required."})
 		return
 	}
 	if req.Fields.Summary == "" {
@@ -371,20 +386,30 @@ func (h *Handler) createIssue(w http.ResponseWriter, r *http.Request) {
 	if req.Fields.Labels != nil {
 		labels = *req.Fields.Labels
 	}
+	projectIDOrKey := req.Fields.Project.Key
+	if projectIDOrKey == "" {
+		projectIDOrKey = req.Fields.Project.ID
+	}
 	issue, _, err := h.Commands.CreateIssue(r.Context(), commands.CreateIssueInput{
-		ActorID:     userID,
-		WorkspaceID: wsID,
-		ProjectKey:  req.Fields.Project.Key,
-		Summary:     req.Fields.Summary,
-		Description: description,
-		IssueTypeID: issueTypeID,
-		PriorityID:  priorityID,
-		AssigneeID:  assigneeID,
-		Labels:      labels,
-		Fields:      customFieldsFromBody(body),
+		ActorID:        userID,
+		WorkspaceID:    wsID,
+		ProjectIDOrKey: projectIDOrKey,
+		Summary:        req.Fields.Summary,
+		Description:    description,
+		IssueTypeID:    issueTypeID,
+		PriorityID:     priorityID,
+		AssigneeID:     assigneeID,
+		SecurityLevelID: func() string {
+			if req.Fields.Security == nil {
+				return ""
+			}
+			return req.Fields.Security.ID
+		}(),
+		Labels: labels,
+		Fields: customFieldsFromBody(body),
 	})
 	if err != nil {
-		jiraFieldError(w, http.StatusBadRequest, map[string]string{"fields": err.Error()})
+		jiraFieldError(w, http.StatusBadRequest, createIssueFieldError(err))
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{
@@ -392,6 +417,42 @@ func (h *Handler) createIssue(w http.ResponseWriter, r *http.Request) {
 		"key":  issue.Key,
 		"self": h.BaseURL + "/rest/api/3/issue/" + issue.ID,
 	})
+}
+
+func unsupportedCreateFields(body []byte) map[string]string {
+	var raw struct {
+		Fields map[string]json.RawMessage `json:"fields"`
+	}
+	if json.Unmarshal(body, &raw) != nil {
+		return nil
+	}
+	supported := map[string]struct{}{
+		"project": {}, "summary": {}, "description": {}, "issuetype": {}, "priority": {},
+		"assignee": {}, "security": {}, "labels": {},
+	}
+	for field := range raw.Fields {
+		if _, ok := supported[field]; ok || customFieldIDPattern.MatchString(field) {
+			continue
+		}
+		return map[string]string{field: "Field is not available on the create screen."}
+	}
+	return nil
+}
+
+func createIssueFieldError(err error) map[string]string {
+	message := err.Error()
+	for _, field := range []string{"summary", "project", "priority", "assignee", "security", "labels", "description"} {
+		if strings.Contains(message, field) {
+			return map[string]string{field: message}
+		}
+	}
+	if strings.Contains(message, "issue type") {
+		return map[string]string{"issuetype": message}
+	}
+	if match := customFieldInMessagePattern.FindString(message); match != "" {
+		return map[string]string{match: message}
+	}
+	return map[string]string{"fields": message}
 }
 
 type putIssueRequest struct {

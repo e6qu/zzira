@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/e6qu/zzira/internal/models"
@@ -78,5 +79,40 @@ func TestADFToText(t *testing.T) {
 	}
 	if got := adfToText(nil); got != "" {
 		t.Fatalf("adfToText(nil) = %q", got)
+	}
+}
+
+func TestCreateDialogRendersMetadataFieldsAndPreservesValues(t *testing.T) {
+	project := models.CreateProjectMeta{
+		Project:    models.Project{ID: "prj_default", Key: "ZZ", Name: "ZZIRA Demo"},
+		IssueTypes: []models.IssueType{{ID: "it_task", Name: "Task"}},
+		Fields: []models.CreateFieldMeta{
+			{ID: "assignee", Name: "Assignee", Type: "user", Section: "details", Options: []models.CreateFieldOption{{ID: "usr_1", Name: "Demo User"}}},
+			{ID: "customfield_10000", Name: "Story points", Type: "number", Custom: true, Section: "details"},
+		},
+	}
+	data := struct {
+		Metadata   *models.IssueCreateMetadata
+		Selected   models.CreateProjectMeta
+		Values     map[string]string
+		Error      string
+		CreatedKey string
+	}{
+		Metadata: &models.IssueCreateMetadata{Projects: []models.CreateProjectMeta{project}}, Selected: project,
+		Values: map[string]string{"project": "ZZ", "issuetype": "it_task", "summary": "Preserved summary", "assignee": "usr_1", "customfield_10000": "8"},
+		Error:  "labels must contain no spaces",
+	}
+	var buf bytes.Buffer
+	if err := Fragment(&buf, "create_dialog", data); err != nil {
+		t.Fatalf("render create dialog: %v", err)
+	}
+	html := buf.String()
+	for _, want := range []string{
+		`aria-labelledby="create-issue-title"`, `value="Preserved summary"`, `id="create-customfield_10000"`,
+		`value="8"`, `role="alert"`, `labels must contain no spaces`, `Create another`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("create dialog missing %q\n%s", want, html)
+		}
 	}
 }

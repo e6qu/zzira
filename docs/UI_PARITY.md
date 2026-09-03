@@ -17,7 +17,7 @@ The endpoint-level source of truth remains [the API matrix](../api/conformance/M
 |---|---:|---|
 | Sign in and orient | ✅ | Responsive sidebar-first shell, account menu, dark mode, visible local-replica state |
 | Find work with JQL | ✅ | Project-scoped basic/JQL search, removable filter chips, starred saved filters, sortable/configurable columns, pagination, keyboard navigation, and contextual issue preview are browser-tested |
-| Create work | 🟡 | Project, type, summary, description; not yet fully driven by createmeta and no create-another flow |
+| Create work | ✅ | Shared createmeta schema drives project/type plus assignee, priority, labels, security and typed custom fields; validation recovery and create-another are browser/API tested |
 | Triage an issue | ✅ | Inline system/custom fields, labels, security, watchers, links, unified activity filters, attachments/worklogs, and their Jira-shaped API transitions are browser- and integration-tested |
 | Run a board | 🟡 | Mouse and keyboard rank/status changes, live updates, local card filtering, bounded column scrolling; quick filters, swimlanes, WIP limits and card configuration remain |
 | Work offline | ✅ | Issue reads, edit outbox, reconnect drain and server-wins reconciliation are browser-proven; mutation UI is protected from in-flight replica refreshes |
@@ -35,8 +35,9 @@ The endpoint-level source of truth remains [the API matrix](../api/conformance/M
 2. Issue: ✅ delivered with inline editable system/custom fields, labels,
    security, watchers, links, unified Activity filters, and attachment/worklog
    management actions.
-3. Create: use createmeta/editmeta as the only form schema; add assignee,
-   priority, labels, security/custom fields, validation, and “create another”.
+3. Create: ✅ delivered from a shared createmeta schema with project/type,
+   assignee, priority, labels, security and typed custom fields, preserved
+   validation state, and a repeatable “create another” loop.
 4. Backlog: backlog/selected/sprint grouping, ranking, sprint create/edit/start/
    complete, and issue detail preview, backed by the existing Agile command path.
 5. Board: quick filters, assignee filter, WIP limit feedback, swimlanes, card
@@ -49,7 +50,7 @@ The endpoint-level source of truth remains [the API matrix](../api/conformance/M
 3. Add notifications inbox and read state over `/rest/zzira/1/notifications`.
 4. Add project settings for details, people/roles, work types, fields, workflows,
    issue security, boards, webhooks, and audit-friendly validation.
-5. Close API matrix subsets for createmeta/editmeta, role semantics, permission
+5. Close remaining API matrix subsets for editmeta, role semantics, permission
    schemes, screens/schemes, and missing Agile update/state operations before
    labeling the Jira Software API boundary conformant.
 
@@ -77,3 +78,5 @@ movement. Primary references:
 - <https://support.atlassian.com/jira-software-cloud/docs/what-are-the-different-types-of-activity-on-an-issue/>
 - <https://support.atlassian.com/jira-software-cloud/docs/monitor-work-in-a-kanban-project/>
 - <https://support.atlassian.com/jira-software-cloud/docs/use-your-kanban-backlog/>
+- <https://support.atlassian.com/jira-software-cloud/docs/create-a-work-item-and-a-subtask/>
+- <https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issues/>

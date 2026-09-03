@@ -28,7 +28,7 @@ func TestDeleteIssueCleansAttachmentBlob(t *testing.T) {
 	}
 	svc := &Service{Store: st, Blobs: blobStore}
 	issue, _, err := svc.CreateIssue(ctx, CreateIssueInput{
-		ActorID: "usr_test", WorkspaceID: "ws_default", ProjectKey: "ZZ",
+		ActorID: "usr_test", WorkspaceID: "ws_default", ProjectIDOrKey: "ZZ",
 		Summary: "attachment cleanup", IssueTypeID: "it_task",
 	})
 	if err != nil {

@@ -12,7 +12,7 @@
   }());
 </script>
 <link rel="stylesheet" href="/static/css/tokens.css?v=4">
-<link rel="stylesheet" href="/static/css/workspace.css?v=3">
+<link rel="stylesheet" href="/static/css/workspace.css?v=4">
 <link rel="preload" href="/static/zzira-worker.wasm?v=2" as="fetch" crossorigin>
 <link rel="preload" href="/static/sqlite/sqlite3.wasm" as="fetch" crossorigin>
 <script src="/static/htmx/htmx.min.js" defer></script>
@@ -79,27 +79,67 @@
 
 {{define "create_dialog"}}
 <div class="modal-backdrop" data-modal-backdrop aria-hidden="true"></div>
-<div class="modal" role="dialog" aria-modal="true" aria-labelledby="create-issue-title" tabindex="-1">
-  <div class="modal-header"><div><span class="eyebrow">New work item</span><h2 id="create-issue-title">Create issue</h2></div><button type="button" class="icon-button modal-close" onclick="zzira.closeModal()" aria-label="Close dialog">×</button></div>
+<div class="modal create-modal" role="dialog" aria-modal="true" aria-labelledby="create-issue-title" aria-describedby="create-issue-help" tabindex="-1">
+  <div class="modal-header"><div><span class="eyebrow">New work item</span><h2 id="create-issue-title">Create issue</h2><p id="create-issue-help">Capture the work now; refine it with the team later.</p></div><button type="button" class="icon-button modal-close" onclick="zzira.closeModal()" aria-label="Close dialog">×</button></div>
+  {{if .CreatedKey}}<div class="create-success" role="status" aria-atomic="true"><span aria-hidden="true">✓</span><span><strong>{{.CreatedKey}} created</strong><a href="/browse/{{.CreatedKey}}">Open issue</a></span></div>{{end}}
   <form method="post" action="/issues" hx-post="/issues" hx-target="#modal-root" hx-swap="innerHTML">
-    <div class="form-grid">
-    <div>
-    <label for="create-project">Project</label>
-    <input id="create-project" name="project" value="{{.Project.Key}}" readonly>
-    </div><div>
-    <label for="create-issuetype">Issue type</label>
-      <select id="create-issuetype" name="issuetype">
-        <option value="{{.IssueType.ID}}">{{.IssueType.Name}}</option>
-      </select>
-    </div></div>
-    <label for="create-summary">Summary</label>
-    <input id="create-summary" name="summary" required autofocus maxlength="255" placeholder="What needs to be done?">
-    <label for="create-description">Description</label>
-    <textarea id="create-description" name="description" rows="7" placeholder="Add context, acceptance criteria, or links…"></textarea>
-    {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
-    <div class="modal-actions">
-      <button type="button" class="btn" onclick="zzira.closeModal()">Cancel</button>
-      <button type="submit" class="btn btn-primary">Create issue</button>
+    <div class="create-form-body">
+    <fieldset class="create-context">
+      <legend class="sr-only">Issue context</legend>
+      <div>
+        <label for="create-project">Project <span aria-hidden="true">*</span></label>
+        <select id="create-project" name="project" required hx-get="/issues/new" hx-trigger="change" hx-target="#modal-root" hx-swap="innerHTML" hx-include="closest form">
+          {{range .Metadata.Projects}}<option value="{{.Project.Key}}" {{if eq $.Values.project .Project.Key}}selected{{end}}>{{.Project.Name}} ({{.Project.Key}})</option>{{end}}
+        </select>
+      </div>
+      <div>
+        <label for="create-issuetype">Issue type <span aria-hidden="true">*</span></label>
+        <select id="create-issuetype" name="issuetype" required>
+          {{range .Selected.IssueTypes}}<option value="{{.ID}}" {{if eq $.Values.issuetype .ID}}selected{{end}}>{{.Name}}</option>{{end}}
+        </select>
+      </div>
+    </fieldset>
+
+    <div class="create-primary">
+      <label for="create-summary">Summary <span aria-hidden="true">*</span></label>
+      <input id="create-summary" name="summary" value="{{.Values.summary}}" required autofocus maxlength="255" autocomplete="off" placeholder="What needs to be done?" aria-describedby="create-summary-help">
+      <small id="create-summary-help">Use a short outcome the team can scan in a backlog.</small>
+      <label for="create-description">Description</label>
+      <textarea id="create-description" name="description" rows="6" maxlength="1048576" placeholder="Add context, acceptance criteria, or links…">{{.Values.description}}</textarea>
+    </div>
+
+    <details class="create-more" {{if .Error}}open{{end}}>
+      <summary><span>More fields</span><small>Assignment, priority, labels, security, and project fields</small></summary>
+      <div class="create-details-grid">
+      {{range .Selected.Fields}}{{if eq .Section "details"}}
+        {{$value := index $.Values .ID}}
+        <div class="create-field {{if .Custom}}create-field-custom{{end}}">
+          <label for="create-{{.ID}}">{{.Name}}{{if .Required}} <span aria-hidden="true">*</span>{{end}}</label>
+          {{if eq .Type "user"}}
+          <select id="create-{{.ID}}" name="{{.ID}}" {{if .Required}}required{{end}}><option value="">Unassigned</option>{{range .Options}}<option value="{{.ID}}" {{if eq $value .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select>
+          {{else if eq .Type "priority"}}
+          <select id="create-{{.ID}}" name="{{.ID}}" {{if .Required}}required{{end}}><option value="">None</option>{{range .Options}}<option value="{{.ID}}" {{if eq $value .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select>
+          {{else if eq .Type "securitylevel"}}
+          <select id="create-{{.ID}}" name="{{.ID}}" {{if .Required}}required{{end}}><option value="">Open to everyone in the workspace</option>{{range .Options}}<option value="{{.ID}}" {{if eq $value .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select>
+          {{else if eq .Type "array"}}
+          <input id="create-{{.ID}}" name="{{.ID}}" value="{{$value}}" maxlength="2048" autocomplete="off" placeholder="frontend, needs-review" {{if .Required}}required{{end}} {{if .Description}}aria-describedby="create-help-{{.ID}}"{{end}}>
+          {{else if eq .Type "number"}}
+          <input id="create-{{.ID}}" name="{{.ID}}" value="{{$value}}" type="number" step="any" inputmode="decimal" {{if .Required}}required{{end}} {{if .Description}}aria-describedby="create-help-{{.ID}}"{{end}}>
+          {{else if eq .Type "datetime"}}
+          <input id="create-{{.ID}}" name="{{.ID}}" value="{{$value}}" type="datetime-local" {{if .Required}}required{{end}} {{if .Description}}aria-describedby="create-help-{{.ID}}"{{end}}>
+          {{else}}
+          <input id="create-{{.ID}}" name="{{.ID}}" value="{{$value}}" maxlength="32767" {{if .Required}}required{{end}} {{if .Description}}aria-describedby="create-help-{{.ID}}"{{end}}>
+          {{end}}
+          {{if .Description}}<small id="create-help-{{.ID}}">{{.Description}}</small>{{end}}
+        </div>
+      {{end}}{{end}}
+      </div>
+    </details>
+    {{if .Error}}<p class="error create-error" role="alert" aria-atomic="true">{{.Error}}</p>{{end}}
+    </div>
+    <div class="modal-actions create-actions">
+      <label class="create-another"><input type="checkbox" name="createAnother" value="true" {{if eq .Values.createAnother "true"}}checked{{end}}> Create another</label>
+      <span><button type="button" class="btn" onclick="zzira.closeModal()">Cancel</button><button type="submit" class="btn btn-primary">Create issue</button></span>
     </div>
   </form>
 </div>
@@ -231,9 +271,10 @@
 
 {{define "edit_dialog"}}
 <div class="modal-backdrop" data-modal-backdrop aria-hidden="true"></div>
-<div class="modal" role="dialog" aria-modal="true" aria-labelledby="edit-issue-title" tabindex="-1">
+<div class="modal edit-modal" role="dialog" aria-modal="true" aria-labelledby="edit-issue-title" tabindex="-1">
   <div class="modal-header"><div><span class="eyebrow">{{.Issue.Key}}</span><h2 id="edit-issue-title">Edit issue</h2></div><button type="button" class="icon-button modal-close" onclick="zzira.closeModal()" aria-label="Close dialog">×</button></div>
   <form method="post" action="/issues/{{.Issue.Key}}/edit" hx-post="/issues/{{.Issue.Key}}/edit" hx-target="#issue-root" hx-swap="outerHTML">
+    <div class="edit-form-body">
     <label for="edit-summary">Summary</label>
     <input id="edit-summary" name="summary" value="{{.Issue.Summary}}" required autofocus maxlength="255">
     <label for="edit-description">Description</label>
@@ -258,9 +299,11 @@
     {{end}}
     {{range .CustomFields}}
     <label for="field-{{.ID}}">{{.Name}}</label>
-      <input id="field-{{.ID}}" name="{{.ID}}" value="{{customFieldValue $.Issue .ID}}">
+      <input id="field-{{.ID}}" name="{{.ID}}" value="{{.Value}}" {{if eq .Type "number"}}type="number" step="any" inputmode="decimal"{{else if eq .Type "datetime"}}type="datetime-local"{{end}} {{if .Description}}aria-describedby="edit-help-{{.ID}}"{{end}}>
+      {{if .Description}}<small id="edit-help-{{.ID}}" class="muted">{{.Description}}</small>{{end}}
     {{end}}
     {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
+    </div>
     <div class="modal-actions">
       <button type="button" class="btn" onclick="zzira.closeModal()">Cancel</button>
       <button type="submit" class="btn btn-primary">Save changes</button>

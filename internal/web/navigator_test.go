@@ -2,6 +2,7 @@ package web
 
 import (
 	"bytes"
+	"encoding/json"
 	"net/url"
 	"strings"
 	"testing"
@@ -21,6 +22,23 @@ func TestCompileNavigatorSearchAlwaysScopesProject(t *testing.T) {
 	}
 	if len(compiled.Args) != 3 || compiled.Args[0] != "ZZ" || compiled.Args[1] != "OTHER" || compiled.Args[2] != "Done" {
 		t.Fatalf("compiled args = %#v", compiled.Args)
+	}
+}
+
+func TestEncodeWebCustomFieldPreservesTypes(t *testing.T) {
+	number, err := encodeWebCustomField(models.CustomFieldNumber, "42.5")
+	if err != nil || string(number) != "42.5" {
+		t.Fatalf("number = %s, %v", number, err)
+	}
+	text, err := encodeWebCustomField(models.CustomFieldText, "42")
+	if err != nil || string(text) != `"42"` {
+		t.Fatalf("text = %s, %v", text, err)
+	}
+	if _, err := encodeWebCustomField(models.CustomFieldNumber, "NaN"); err == nil {
+		t.Fatal("NaN accepted as JSON number")
+	}
+	if !json.Valid(number) || !json.Valid(text) {
+		t.Fatal("encoded values must be valid JSON")
 	}
 }
 

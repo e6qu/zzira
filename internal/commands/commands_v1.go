@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"slices"
+	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/e6qu/zzira/internal/adf"
@@ -78,21 +81,16 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 		if !valid {
 			return nil, nil, fmt.Errorf("security level is not available for this project")
 		}
-	}
-	if in.Fields != nil {
-		fields, err := s.Store.CustomFieldsForProject(ctx, issue.ProjectID)
+		visible, err := authz.CanSeeIssue(ctx, s.Store, in.WorkspaceID, issue.ProjectID, in.ActorID, *in.SecurityLevelID)
 		if err != nil {
 			return nil, nil, err
 		}
-		valid := make(map[string]struct{}, len(fields))
-		for _, field := range fields {
-			valid[field.ID] = struct{}{}
+		if !visible {
+			return nil, nil, fmt.Errorf("security level would hide this issue from you")
 		}
-		for id := range in.Fields {
-			if _, ok := valid[id]; !ok {
-				return nil, nil, fmt.Errorf("custom field %q is not available for this project", id)
-			}
-		}
+	}
+	if err := s.validateCustomFields(ctx, issue.ProjectID, in.Fields); err != nil {
+		return nil, nil, err
 	}
 	if in.Labels != nil {
 		labels, err := normalizeLabels(*in.Labels)
@@ -129,6 +127,68 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 		return nil, nil, err
 	}
 	return issue, action, nil
+}
+
+func (s *Service) validateCustomFields(ctx context.Context, projectID string, values map[string]json.RawMessage) error {
+	if values == nil {
+		return nil
+	}
+	fields, err := s.Store.CustomFieldsForProject(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	valid := make(map[string]*models.CustomField, len(fields))
+	for _, field := range fields {
+		valid[field.ID] = field
+	}
+	for id, raw := range values {
+		field, ok := valid[id]
+		if !ok {
+			return fmt.Errorf("custom field %q is not available for this project", id)
+		}
+		if len(raw) > 64<<10 {
+			return fmt.Errorf("custom field %q exceeds 64 KiB", id)
+		}
+		if string(raw) == "null" {
+			continue
+		}
+		switch field.Type {
+		case models.CustomFieldText:
+			var value string
+			if err := json.Unmarshal(raw, &value); err != nil {
+				return fmt.Errorf("custom field %q must be text", id)
+			}
+		case models.CustomFieldNumber:
+			var number json.Number
+			if err := json.Unmarshal(raw, &number); err != nil {
+				return fmt.Errorf("custom field %q must be a number", id)
+			}
+			value, err := strconv.ParseFloat(number.String(), 64)
+			if err != nil || math.IsInf(value, 0) || math.IsNaN(value) {
+				return fmt.Errorf("custom field %q must be a finite number", id)
+			}
+		case models.CustomFieldDatetime:
+			var value string
+			if err := json.Unmarshal(raw, &value); err != nil || !validCreateDatetime(value) {
+				return fmt.Errorf("custom field %q must be an RFC 3339 or local date-time", id)
+			}
+		default:
+			return fmt.Errorf("custom field %q has unsupported type %q", id, field.Type)
+		}
+	}
+	return nil
+}
+
+func validCreateDatetime(value string) bool {
+	if value == "" {
+		return true
+	}
+	for _, layout := range []string{time.RFC3339, "2006-01-02T15:04", "2006-01-02T15:04:05"} {
+		if _, err := time.Parse(layout, value); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizeLabels(values []string) ([]string, error) {
