@@ -579,6 +579,7 @@ func (h *Handler) serveIssue(w http.ResponseWriter, r *http.Request, user *model
 // ---- auth ----
 
 func (h *Handler) LoginForm(w http.ResponseWriter, r *http.Request) {
+	noStoreAuthResponse(w)
 	if h.currentUser(r) != nil {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
@@ -591,6 +592,7 @@ func (h *Handler) LoginForm(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) LoginSubmit(w http.ResponseWriter, r *http.Request) {
+	noStoreAuthResponse(w)
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "bad form", http.StatusBadRequest)
 		return
@@ -606,6 +608,7 @@ func (h *Handler) LoginSubmit(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
+	noStoreAuthResponse(w)
 	var idToken string
 	if c, err := r.Cookie(sessionCookieName()); err == nil {
 		if h.OIDC != nil && h.OIDC.endSessionEndpoint != "" {
@@ -644,6 +647,7 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 type signedOutData struct{ OIDCEnabled bool }
 
 func (h *Handler) SignedOut(w http.ResponseWriter, r *http.Request) {
+	noStoreAuthResponse(w)
 	authn.ClearSessionCookie(w)
 	writePage(w, "page_signed_out", signedOutData{OIDCEnabled: h.OIDC != nil})
 }
@@ -656,6 +660,7 @@ func (h *Handler) SignedOut(w http.ResponseWriter, r *http.Request) {
 // checking for one committed page at this bridge, rather than a redirect
 // through it, would be checking the wrong thing).
 func (h *Handler) OIDCLogoutComplete(w http.ResponseWriter, r *http.Request) {
+	noStoreAuthResponse(w)
 	authn.ClearSessionCookie(w)
 	http.Redirect(w, r, "/signed-out", http.StatusSeeOther)
 }

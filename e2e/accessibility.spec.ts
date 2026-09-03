@@ -66,6 +66,11 @@ async function firstIssueHref(page: Page) {
 }
 
 test('WCAG A/AA: every primary page passes axe in light and dark themes', async ({ page }) => {
+  await page.goto('/signed-out');
+  await expect(page).toHaveTitle('Signed out · ZZIRA');
+  await expect(page.locator('h1')).toHaveCount(1);
+  await expectNoWCAGViolations(page);
+
   await page.goto('/login');
   await expect(page).toHaveTitle('Log in · ZZIRA');
   await expect(page.locator('h1')).toHaveCount(1);

@@ -2,14 +2,22 @@ package web
 
 import (
 	"context"
+	"crypto"
+	"crypto/rand"
+	"crypto/rsa"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/e6qu/zzira/internal/authn"
 	"github.com/e6qu/zzira/internal/store"
+	jose "github.com/go-jose/go-jose/v4"
 )
 
 func TestValidOIDCURL(t *testing.T) {
@@ -32,6 +40,77 @@ func TestValidOIDCURL(t *testing.T) {
 	for _, raw := range []string{"https://user:pass@sso.example.test", "https://sso.example.test?x=1", "https://sso.example.test#fragment"} {
 		if err := validOIDCURL(raw); err == nil {
 			t.Fatalf("ambiguous OIDC URL %q accepted", raw)
+		}
+	}
+	if err := validOIDCEndpointURL("https://sso.example.test/authorize?tenant=one"); err != nil {
+		t.Fatalf("discovered endpoint query rejected: %v", err)
+	}
+	if err := validOIDCEndpointURL("https://sso.example.test/authorize#fragment"); err == nil {
+		t.Fatal("discovered endpoint fragment accepted")
+	}
+}
+
+func TestOIDCStateIsBoundToTheInitiatingBrowser(t *testing.T) {
+	t.Setenv("COOKIE_SECURE", "true")
+	firstRequest := httptest.NewRequest(http.MethodGet, "/auth/shauth", nil)
+	firstResponse := httptest.NewRecorder()
+	state, err := newOIDCState(firstResponse, firstRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cookies := firstResponse.Result().Cookies()
+	if len(cookies) != 1 {
+		t.Fatalf("state cookie count = %d, want 1", len(cookies))
+	}
+	cookie := cookies[0]
+	if cookie.Name != oidcSecureFlowCookie || !cookie.Secure || !cookie.HttpOnly || cookie.SameSite != http.SameSiteLaxMode || cookie.Path != "/" {
+		t.Fatalf("state cookie is not host-only hardened: %#v", cookie)
+	}
+	callback := httptest.NewRequest(http.MethodGet, "/auth/shauth/callback?state="+url.QueryEscape(state), nil)
+	callback.AddCookie(cookie)
+	if !validOIDCStateBinding(callback, state) {
+		t.Fatal("state did not validate in the initiating browser")
+	}
+	otherBrowser := httptest.NewRequest(http.MethodGet, "/auth/shauth/callback?state="+url.QueryEscape(state), nil)
+	otherResponse := httptest.NewRecorder()
+	if _, err := newOIDCState(otherResponse, otherBrowser); err != nil {
+		t.Fatal(err)
+	}
+	otherBrowser.AddCookie(otherResponse.Result().Cookies()[0])
+	if validOIDCStateBinding(otherBrowser, state) {
+		t.Fatal("state from one browser validated with another browser's binding")
+	}
+	replacement := byte('x')
+	if state[0] == replacement {
+		replacement = 'y'
+	}
+	tampered := string(replacement) + state[1:]
+	if validOIDCStateBinding(callback, tampered) {
+		t.Fatal("tampered state validated")
+	}
+}
+
+func TestOIDCClaimValidationHelpers(t *testing.T) {
+	for _, test := range []struct {
+		audience []string
+		azp      string
+		want     bool
+	}{
+		{[]string{"client"}, "", true},
+		{[]string{"client", "api"}, "client", true},
+		{[]string{"client", "api"}, "", false},
+		{[]string{"client"}, "other", false},
+	} {
+		if got := validOIDCAuthorizedParty(test.audience, test.azp, "client"); got != test.want {
+			t.Errorf("validOIDCAuthorizedParty(%v, %q) = %t, want %t", test.audience, test.azp, got, test.want)
+		}
+	}
+	if email, err := normalizeOIDCEmail(" User@Example.COM "); err != nil || email != "user@example.com" {
+		t.Fatalf("normalizeOIDCEmail() = %q, %v", email, err)
+	}
+	for _, invalid := range []string{"", "Display Name <user@example.com>", "not an email"} {
+		if _, err := normalizeOIDCEmail(invalid); err == nil {
+			t.Errorf("normalizeOIDCEmail(%q) succeeded", invalid)
 		}
 	}
 }
@@ -88,9 +167,12 @@ func TestValidationRendersTheAuthenticatedUsernameNotDisplayName(t *testing.T) {
 	if err := st.SetOIDCUsername(ctx, userID, "shauth-validator-2"); err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _, _ = st.Pool.Exec(ctx, `DELETE FROM users WHERE id=$1`, userID) }()
+	defer func() {
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM sessions WHERE user_id=$1`, userID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM users WHERE id=$1`, userID)
+	}()
 
-	token, err := authn.LoginOIDC(ctx, st, userID, "id-token", "")
+	token, err := authn.LoginOIDC(ctx, st, userID, "id-token", "https://issuer.example.invalid", userID+"-subject", "")
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -138,6 +220,9 @@ func TestSignedOutOffersTheExactShauthSignInControlWhenOIDCIsConfigured(t *testi
 	if rec.Code != 200 {
 		t.Fatalf("signed-out status = %d, want 200", rec.Code)
 	}
+	if cache := rec.Header().Get("Cache-Control"); cache != "no-store" {
+		t.Fatalf("signed-out Cache-Control = %q, want no-store", cache)
+	}
 	body := rec.Body.String()
 	if !strings.Contains(body, `href="/auth/shauth">Sign in with Shauth<`) {
 		t.Fatalf("signed-out page did not offer a \"Sign in with Shauth\" link to /auth/shauth: %s", body)
@@ -161,6 +246,80 @@ func TestSignedOutOffersLocalLoginWithoutOIDCConfigured(t *testing.T) {
 	}
 	if strings.Contains(body, "Sign in with Shauth") {
 		t.Fatalf("signed-out page offered Shauth sign-in without OIDC configured: %s", body)
+	}
+}
+
+func TestBackChannelLogoutVerifiesAndRevokesTheIssuerScopedSession(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	st, err := store.Open(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := store.Migrate(ctx, st.Pool); err != nil {
+		t.Fatal(err)
+	}
+
+	const issuer = "https://issuer.example.invalid"
+	const clientID = "zzira-test-client"
+	userID := store.NewID("usr")
+	if _, err := st.CreateUser(ctx, userID, userID+"@example.invalid", "test", "Logout test"); err != nil {
+		t.Fatal(err)
+	}
+	subject := userID + "-subject"
+	sid := userID + "-sid"
+	tokenHash := store.HashToken("backchannel-session-" + userID)
+	if err := st.CreateOIDCSession(ctx, tokenHash, userID, "id-token", issuer, subject, sid, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	jti := store.NewID("jti")
+	defer func() {
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM sessions WHERE user_id=$1`, userID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM oidc_logout_tokens WHERE jti=$1`, jti)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM users WHERE id=$1`, userID)
+	}()
+
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.RS256, Key: privateKey}, (&jose.SignerOptions{}).WithType("logout+jwt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	payload, err := json.Marshal(map[string]any{
+		"iss": issuer, "aud": clientID, "sub": subject, "sid": sid,
+		"iat": now.Unix(), "exp": now.Add(5 * time.Minute).Unix(), "jti": jti,
+		"events": map[string]any{backChannelLogoutEvent: map[string]any{"provider_extension": true}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	signed, err := signer.Sign(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compact, err := signed.CompactSerialize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	verifier := oidc.NewVerifier(issuer, &oidc.StaticKeySet{PublicKeys: []crypto.PublicKey{privateKey.Public()}}, &oidc.Config{ClientID: clientID})
+	h := &Handler{Store: st, OIDC: &OIDC{verifier: verifier}}
+	form := url.Values{"logout_token": {compact}}
+	req := httptest.NewRequest(http.MethodPost, "/auth/shauth/backchannel-logout", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	h.BackChannelLogout(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("back-channel logout status=%d, want 204: %s", rec.Code, rec.Body.String())
+	}
+	if _, err := st.SessionUser(ctx, tokenHash); err == nil {
+		t.Fatal("verified back-channel logout did not revoke its session")
 	}
 }
 

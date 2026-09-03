@@ -68,9 +68,18 @@ func NewAPIToken() (plain string, hash string, err error) {
 	return plain, hashToken(plain), nil
 }
 
-// SetSessionCookie issues the session cookie. Secure is enabled when
-// COOKIE_SECURE=true (TLS termination in front); local plain-HTTP dev sets
-// it explicitly to false.
+// SecureCookies reports whether browser cookies must be HTTPS-only. An
+// explicit COOKIE_SECURE value wins; otherwise an HTTPS external URL enables
+// the safe production default while local HTTP development remains usable.
+func SecureCookies() bool {
+	if configured := os.Getenv("COOKIE_SECURE"); configured != "" {
+		return configured == "true"
+	}
+	externalURL, err := url.Parse(os.Getenv("ZZIRA_EXTERNAL_URL"))
+	return err == nil && strings.EqualFold(externalURL.Scheme, "https") && externalURL.Host != ""
+}
+
+// SetSessionCookie issues the opaque session cookie.
 func SetSessionCookie(w http.ResponseWriter, token string) {
 	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- Secure is deployment-configured via COOKIE_SECURE
 
@@ -78,7 +87,7 @@ func SetSessionCookie(w http.ResponseWriter, token string) {
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   os.Getenv("COOKIE_SECURE") == "true", // #nosec G124 -- deployment-configured; TLS-terminated deployments set COOKIE_SECURE=true
+		Secure:   SecureCookies(),
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   int(sessionTTL.Seconds()),
 	})
@@ -89,7 +98,7 @@ func ClearSessionCookie(w http.ResponseWriter) {
 
 		Name: sessionCookie, Value: "", Path: "/", MaxAge: -1,
 		HttpOnly: true, SameSite: http.SameSiteLaxMode,
-		Secure: os.Getenv("COOKIE_SECURE") == "true", // #nosec G124 -- deployment-configured
+		Secure: SecureCookies(),
 	})
 }
 
@@ -113,15 +122,15 @@ func Login(ctx context.Context, st *store.Store, email, password string) (string
 }
 
 // LoginOIDC creates a normal opaque session for a verified external identity.
-func LoginOIDC(ctx context.Context, st *store.Store, userID, idToken, sid string) (string, error) {
-	if userID == "" || idToken == "" {
+func LoginOIDC(ctx context.Context, st *store.Store, userID, idToken, issuer, subject, sid string) (string, error) {
+	if userID == "" || idToken == "" || issuer == "" || subject == "" {
 		return "", ErrUnauthorized
 	}
 	token, err := randomToken()
 	if err != nil {
 		return "", err
 	}
-	if err := st.CreateOIDCSession(ctx, hashToken(token), userID, idToken, sid, sessionTTL); err != nil {
+	if err := st.CreateOIDCSession(ctx, hashToken(token), userID, idToken, issuer, subject, sid, sessionTTL); err != nil {
 		return "", err
 	}
 	return token, nil
