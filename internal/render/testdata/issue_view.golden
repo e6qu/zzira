@@ -1,6 +1,6 @@
 
 <div class="issue-view" id="issue-root" data-issue-id="iss_abc123" data-issue-key="ZZ-1" data-seq="0">
-  <nav class="project-tabs" aria-label="ZZIRA Demo project"><a href="/projects/ZZ">Overview</a><a href="/board/brd_default">Board</a><a href="/issues/ZZ">Work items</a></nav>
+  <nav class="project-tabs" aria-label="ZZIRA Demo project"><a href="/projects/ZZ">Overview</a><a href="/board/brd_default/backlog">Backlog</a><a href="/board/brd_default">Board</a><a href="/issues/ZZ">Work items</a></nav>
   <nav class="issue-breadcrumbs" aria-label="Breadcrumb">
     <a href="/projects">Projects</a><span aria-hidden="true">/</span><a href="/projects/ZZ">ZZIRA Demo</a><span aria-hidden="true">/</span><span aria-current="page">ZZ-1</span>
   </nav>

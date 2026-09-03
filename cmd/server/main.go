@@ -116,7 +116,7 @@ func main() {
 	}
 	webHandler := &web.Handler{Store: st, Commands: cmdSvc, OIDC: oidcSSO, WorkspaceSlug: workspaceSlug}
 	api := &api3.Handler{Store: st, Commands: cmdSvc, Blobs: blobs, BaseURL: envOr("BASE_URL", "http://localhost:"+port), WorkspaceSlug: workspaceSlug}
-	agileAPI := &agile.Handler{Store: st, IssueBean: api.IssueBean, BaseURL: envOr("BASE_URL", "http://localhost:"+port), WorkspaceSlug: workspaceSlug}
+	agileAPI := &agile.Handler{Store: st, Commands: cmdSvc, IssueBean: api.IssueBean, BaseURL: envOr("BASE_URL", "http://localhost:"+port), WorkspaceSlug: workspaceSlug}
 	bus := notifybus.New()
 	sse := &syncapi.SSEHandler{Store: st, Bus: bus, WorkspaceSlug: workspaceSlug}
 	sync := &syncapi.Handler{Store: st, WorkspaceSlug: workspaceSlug}
@@ -262,6 +262,18 @@ func main() {
 	mux.HandleFunc("GET /dashboard", webHandler.DashboardPage)
 	mux.HandleFunc("GET /board/{id}", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.BoardPage(w, r, r.PathValue("id"))
+	})
+	mux.HandleFunc("GET /board/{id}/backlog", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.BacklogPage(w, r, r.PathValue("id"))
+	})
+	mux.HandleFunc("POST /board/{id}/backlog/sprints", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.CreateBacklogSprint(w, r, r.PathValue("id"))
+	})
+	mux.HandleFunc("POST /board/{id}/backlog/sprints/{sprint}", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.UpdateBacklogSprint(w, r, r.PathValue("id"), r.PathValue("sprint"))
+	})
+	mux.HandleFunc("POST /board/{id}/backlog/move", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.MoveBacklogIssue(w, r, r.PathValue("id"))
 	})
 	mux.HandleFunc("GET /board/{id}/fragment", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.BoardFragment(w, r, r.PathValue("id"))

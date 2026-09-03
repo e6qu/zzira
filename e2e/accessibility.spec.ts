@@ -81,7 +81,7 @@ test('WCAG A/AA: every primary page passes axe in light and dark themes', async 
   const pages = [
     '/', '/dashboard', '/projects', '/projects/ZZ', '/people', '/profile',
     '/settings/workflows', '/settings/workflows/wf_default',
-    '/issues/ZZ', '/board/brd_default', issueHref,
+    '/issues/ZZ', '/board/brd_default/backlog', '/board/brd_default', issueHref,
   ];
 
   for (const path of pages) {
@@ -170,6 +170,13 @@ test('dynamic menus, validation errors, and edit dialog remain accessible', asyn
   await expectNoWCAGViolations(page);
   await page.keyboard.press('Escape');
   await expect(edit).toBeFocused();
+
+  await page.goto('/board/brd_default/backlog');
+  const backlogMenu = page.locator('.backlog-item-menu').first();
+  await backlogMenu.locator('summary').click();
+  await expect(backlogMenu).toHaveAttribute('open', '');
+  await page.getByRole('heading', { name: 'Backlog', level: 1 }).click();
+  await expect(backlogMenu).not.toHaveAttribute('open', '');
 });
 
 test('keyboard navigation: skip link, active location, and responsive sidebar state', async ({ page }) => {
@@ -232,7 +239,7 @@ test('controls meet WCAG 2.2 minimum target size', async ({ page }) => {
   for (const path of [
     '/', '/projects', '/projects/ZZ', '/people', '/profile',
     '/settings/workflows', '/settings/workflows/wf_default',
-    '/issues/ZZ', '/board/brd_default', issueHref,
+    '/issues/ZZ', '/board/brd_default/backlog', '/board/brd_default', issueHref,
   ]) {
     await page.goto(path);
     const columnPicker = page.locator('.column-picker summary');
@@ -258,7 +265,7 @@ test('primary pages reflow without document-level horizontal scrolling at 320px'
   for (const path of [
     '/', '/projects', '/projects/ZZ', '/people', '/profile',
     '/settings/workflows', '/settings/workflows/wf_default',
-    '/issues/ZZ', '/board/brd_default', issueHref,
+    '/issues/ZZ', '/board/brd_default/backlog', '/board/brd_default', issueHref,
   ]) {
     await page.goto(path);
     const viewportDoesNotOverflow = await page.evaluate(

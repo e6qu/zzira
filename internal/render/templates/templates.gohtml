@@ -12,12 +12,12 @@
   }());
 </script>
 <link rel="stylesheet" href="/static/css/tokens.css?v=4">
-<link rel="stylesheet" href="/static/css/workspace.css?v=5">
+<link rel="stylesheet" href="/static/css/workspace.css?v=6">
 <link rel="preload" href="/static/zzira-worker.wasm?v=2" as="fetch" crossorigin>
 <link rel="preload" href="/static/sqlite/sqlite3.wasm" as="fetch" crossorigin>
 <script src="/static/htmx/htmx.min.js" defer></script>
 <script src="/static/wasm/wasm_exec.js" defer></script>
-<script src="/static/app.js?v=18" defer></script>
+<script src="/static/app.js?v=19" defer></script>
 {{end}}
 
 {{define "avatar"}}
@@ -69,6 +69,7 @@
     <a class="nav-projects" href="/projects" {{if eq .Active "projects"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5h7l2 2h8v10h-17z"/></svg><span>Projects</span></a>
     <a class="nav-people" href="/people" {{if eq .Active "people"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3.5 19c.5-4 2.2-6 5.5-6s5 2 5.5 6M15 6.5a3 3 0 0 1 0 5.8M16 14c2.7.4 4.1 2 4.5 5"/></svg><span>People</span></a>
     <div class="nav-label">Recent project</div>
+    <a class="nav-backlog" href="/board/brd_default/backlog" {{if eq .Active "backlog"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v4H5zM5 12h14v7H5z"/><path d="M8 15h5M8 17h8"/></svg><span>Backlog</span></a>
     <a class="nav-board" href="/board/brd_default" {{if eq .Active "board"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="5" height="14" rx="1"/><rect x="9.5" y="5" width="5" height="9" rx="1"/><rect x="15.5" y="5" width="5" height="11" rx="1"/></svg><span>Board</span></a>
     <a class="nav-issues" href="/issues/ZZ" {{if eq .Active "issues"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 6h13M7 12h13M7 18h13"/><circle cx="4" cy="6" r=".8"/><circle cx="4" cy="12" r=".8"/><circle cx="4" cy="18" r=".8"/></svg><span>All work</span></a>
     <div class="nav-label">Settings</div>
@@ -151,7 +152,7 @@
 
 {{define "issue_view"}}
 <div class="issue-view" id="issue-root" data-issue-id="{{.Issue.ID}}" data-issue-key="{{.Issue.Key}}" data-seq="{{.Issue.UpdatedSeq}}">
-  <nav class="project-tabs" aria-label="{{.ProjectName}} project"><a href="/projects/{{.ProjectKey}}">Overview</a>{{if .BoardID}}<a href="/board/{{.BoardID}}">Board</a>{{end}}<a href="/issues/{{.ProjectKey}}">Work items</a></nav>
+  <nav class="project-tabs" aria-label="{{.ProjectName}} project"><a href="/projects/{{.ProjectKey}}">Overview</a>{{if .BoardID}}<a href="/board/{{.BoardID}}/backlog">Backlog</a><a href="/board/{{.BoardID}}">Board</a>{{end}}<a href="/issues/{{.ProjectKey}}">Work items</a></nav>
   <nav class="issue-breadcrumbs" aria-label="Breadcrumb">
     <a href="/projects">Projects</a><span aria-hidden="true">/</span><a href="/projects/{{.ProjectKey}}">{{.ProjectName}}</a><span aria-hidden="true">/</span><span aria-current="page">{{.Issue.Key}}</span>
   </nav>
@@ -423,7 +424,7 @@
   <div class="app-shell">
   {{template "workspace_nav" .}}
   <main class="page page-fluid" id="main-content" tabindex="-1">
-    <nav class="project-tabs" aria-label="{{.Data.Project.Name}} project"><a href="/projects/{{.Data.Project.Key}}">Overview</a>{{if .Data.BoardID}}<a href="/board/{{.Data.BoardID}}">Board</a>{{end}}<a href="/issues/{{.Data.Project.Key}}" aria-current="page">Work items</a></nav>
+    <nav class="project-tabs" aria-label="{{.Data.Project.Name}} project"><a href="/projects/{{.Data.Project.Key}}">Overview</a>{{if .Data.BoardID}}<a href="/board/{{.Data.BoardID}}/backlog">Backlog</a><a href="/board/{{.Data.BoardID}}">Board</a>{{end}}<a href="/issues/{{.Data.Project.Key}}" aria-current="page">Work items</a></nav>
     <header class="page-header"><div><span class="eyebrow">{{.Data.Project.Name}} · {{.Data.Project.Key}}</span><h1>All work</h1><p>Find and triage work without losing the issue context.</p></div><button type="button" class="btn btn-primary" hx-get="/issues/new" hx-target="#modal-root" hx-swap="innerHTML" onclick="zzira.openModal(this)">Create issue</button></header>
     <section class="navigator-search" aria-labelledby="navigator-search-title">
       <div class="navigator-search-heading"><h2 id="navigator-search-title">Search work</h2><div class="navigator-search-tools"><form class="saved-filter-picker" method="get" action="/issues/{{.Data.Project.Key}}"><label class="sr-only" for="saved-filter">Saved filter</label><select id="saved-filter" name="filter"><option value="">Saved filters</option>{{range .Data.Filters}}<option value="{{.ID}}" {{if eq .ID $.Data.ActiveFilter}}selected{{end}}>{{if .Favourite}}★ {{end}}{{.Name}}</option>{{end}}</select><button class="btn" type="submit">Open</button></form><nav class="search-mode" aria-label="Search mode"><a href="{{.Data.BasicURL}}" {{if eq .Data.Mode "basic"}}aria-current="page"{{end}}>Basic</a><a href="{{.Data.AdvancedURL}}" {{if eq .Data.Mode "advanced"}}aria-current="page"{{end}}>JQL</a></nav></div></div>
@@ -512,7 +513,7 @@
   <div class="app-shell">
   {{template "workspace_nav" .}}
   <main class="page page-fluid board-page" id="main-content" tabindex="-1">
-    <nav class="project-tabs" aria-label="{{.Data.Board.ProjectName}} project"><a href="/projects/{{.Data.Board.ProjectKey}}">Overview</a><a href="/board/{{.Data.Board.ID}}" aria-current="page">Board</a><a href="/issues/{{.Data.Board.ProjectKey}}">Work items</a></nav>
+    <nav class="project-tabs" aria-label="{{.Data.Board.ProjectName}} project"><a href="/projects/{{.Data.Board.ProjectKey}}">Overview</a><a href="/board/{{.Data.Board.ID}}/backlog">Backlog</a><a href="/board/{{.Data.Board.ID}}" aria-current="page">Board</a><a href="/issues/{{.Data.Board.ProjectKey}}">Work items</a></nav>
     <header class="page-header board-page-header"><div><span class="eyebrow">ZZIRA Software · {{.Data.Board.Type}} board</span><h1>{{.Data.Board.Name}}</h1></div><button type="button" class="btn btn-primary" hx-get="/issues/new" hx-target="#modal-root" hx-swap="innerHTML" onclick="zzira.openModal(this)">Create issue</button></header>
     <div class="board-toolbar"><label class="board-search"><span class="sr-only">Filter board</span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg><input type="search" placeholder="Filter this board" data-board-filter></label><span class="toolbar-divider"></span><span class="muted">Drag cards or use their move controls to update status</span><span class="sr-only" role="status" aria-live="polite" data-board-filter-status></span></div>
     <div class="board" id="board" role="region" aria-label="{{.Data.Board.Name}} board">
@@ -529,6 +530,94 @@
         </div>
       </section>
       {{end}}
+    </div>
+  </main>
+  </div>
+  <div id="modal-root"></div>
+  <div id="sync-banner" class="sync-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+</body>
+</html>
+{{end}}
+
+{{define "backlog_issue"}}
+{{$row := .}}
+<article class="backlog-item" data-issue="{{.Issue.ID}}" aria-labelledby="backlog-summary-{{.Issue.ID}}">
+  <span class="backlog-grip issue-type-mini" role="img" aria-label="{{.Issue.IssueType.Name}}">✓</span>
+  <a class="backlog-key" href="/browse/{{.Issue.Key}}">{{.Issue.Key}}</a>
+  <button class="backlog-summary" id="backlog-summary-{{.Issue.ID}}" type="button" hx-get="/browse/{{.Issue.Key}}/preview" hx-target="#backlog-preview" hx-swap="innerHTML" hx-push-url="false">{{.Issue.Summary}}</button>
+  <span class="lozenge {{statusClass .Issue.Status.Category}}">{{.Issue.Status.Name}}</span>
+  <span class="backlog-priority">{{if .Issue.Priority}}<span class="priority-mark" aria-hidden="true">=</span><span class="sr-only">Priority:</span> {{.Issue.Priority.Name}}{{else}}<span class="muted">No priority</span>{{end}}</span>
+  {{if .Issue.Assignee}}{{template "avatar_labeled" .Issue.Assignee}}{{else}}<span class="avatar avatar-empty" role="img" aria-label="Unassigned"><span aria-hidden="true">?</span></span>{{end}}
+  <details class="backlog-item-menu">
+    <summary aria-label="Plan {{.Issue.Key}}">•••</summary>
+    <div>
+      <form method="post" action="/board/{{.BoardID}}/backlog/move" class="backlog-move-form" data-board-action>
+        <label for="backlog-destination-{{.Issue.ID}}">Move to</label>
+        <select id="backlog-destination-{{.Issue.ID}}" name="sprint">
+          <option value="" {{if eq .SprintID ""}}selected{{end}}>Backlog</option>
+          {{range .Sprints}}<option value="{{.ID}}" {{if eq .ID $row.SprintID}}selected{{end}}>{{.Name}}{{if eq .State "active"}} (active){{end}}</option>{{end}}
+        </select>
+        <input type="hidden" name="issue" value="{{.Issue.ID}}">
+        <button class="btn btn-primary" type="submit">Move</button>
+      </form>
+      <div class="backlog-rank-actions" aria-label="Rank {{.Issue.Key}}">
+        {{if .MoveUpBeforeID}}<form method="post" action="/board/{{.BoardID}}/backlog/move" data-board-action><input type="hidden" name="issue" value="{{.Issue.ID}}"><input type="hidden" name="sprint" value="{{.SprintID}}"><input type="hidden" name="before" value="{{.MoveUpBeforeID}}"><button type="submit">Move up</button></form>{{end}}
+        {{if .MoveDownAfterID}}<form method="post" action="/board/{{.BoardID}}/backlog/move" data-board-action><input type="hidden" name="issue" value="{{.Issue.ID}}"><input type="hidden" name="sprint" value="{{.SprintID}}"><input type="hidden" name="after" value="{{.MoveDownAfterID}}"><button type="submit">Move down</button></form>{{end}}
+      </div>
+    </div>
+  </details>
+</article>
+{{end}}
+
+{{define "page_backlog"}}
+<!doctype html>
+<html lang="en">
+<head><title>{{.Data.Board.ProjectName}} backlog · ZZIRA</title>{{template "head" .}}</head>
+<body class="page-backlog">
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  {{template "header" .}}
+  <div class="app-shell">
+  {{template "workspace_nav" .}}
+  <main class="page page-fluid backlog-page" id="main-content" tabindex="-1">
+    <nav class="project-tabs" aria-label="{{.Data.Board.ProjectName}} project"><a href="/projects/{{.Data.Board.ProjectKey}}">Overview</a><a href="/board/{{.Data.Board.ID}}/backlog" aria-current="page">Backlog</a><a href="/board/{{.Data.Board.ID}}">Board</a><a href="/issues/{{.Data.Board.ProjectKey}}">Work items</a></nav>
+    <header class="page-header backlog-page-header">
+      <div><span class="eyebrow">{{.Data.Board.ProjectName}} · Plan</span><h1>Backlog</h1><p>Shape upcoming work, commit a sprint, and keep priorities explicit.</p></div>
+      <div class="backlog-header-actions">
+        <details class="create-sprint">
+          <summary class="btn">Create sprint</summary>
+          <form method="post" action="/board/{{.Data.Board.ID}}/backlog/sprints">
+            <label for="new-sprint-name">Sprint name</label><input id="new-sprint-name" name="name" maxlength="255" required placeholder="For example: Platform sprint 12">
+            <label for="new-sprint-goal">Goal</label><textarea id="new-sprint-goal" name="goal" rows="3" maxlength="2000" placeholder="What outcome should this sprint achieve?"></textarea>
+            <button class="btn btn-primary" type="submit">Create sprint</button>
+          </form>
+        </details>
+        <button type="button" class="btn btn-primary" hx-get="/issues/new?project={{.Data.Board.ProjectKey}}" hx-target="#modal-root" hx-swap="innerHTML" onclick="zzira.openModal(this)">Create issue</button>
+      </div>
+    </header>
+    {{if .Data.Error}}<p class="error backlog-error" role="alert">{{.Data.Error}}</p>{{end}}
+    <div class="backlog-workbench">
+      <section class="backlog-plan" id="backlog-plan" aria-label="Sprint plan">
+        <div class="backlog-plan-summary"><strong>{{.Data.Total}} planned work item{{if ne .Data.Total 1}}s{{end}}</strong><span>{{len .Data.Sections}} open sprint{{if ne (len .Data.Sections) 1}}s{{end}}</span></div>
+        {{$board := .Data.Board.ID}}
+        {{range .Data.Sections}}
+        <details class="backlog-section sprint-section" open data-sprint="{{.Sprint.ID}}">
+          <summary><span><span class="sprint-state sprint-state-{{.Sprint.State}}">{{.Sprint.State}}</span><strong>{{.Sprint.Name}}</strong></span><span>{{len .Issues}} work item{{if ne (len .Issues) 1}}s{{end}}</span></summary>
+          <div class="sprint-toolbar">
+            <div class="sprint-copy">{{if .Sprint.Goal}}<p><strong>Goal</strong> {{.Sprint.Goal}}</p>{{else}}<p class="muted">Add a goal so the team knows what success means.</p>{{end}}{{if .StartDate}}<small>{{.StartDate}} → {{.EndDate}}</small>{{end}}</div>
+            <div class="sprint-actions">
+              <details class="edit-sprint"><summary class="btn">Edit sprint</summary><form method="post" action="/board/{{$board}}/backlog/sprints/{{.Sprint.ID}}"><input type="hidden" name="state" value="{{.Sprint.State}}"><label for="edit-sprint-name-{{.Sprint.ID}}">Name</label><input id="edit-sprint-name-{{.Sprint.ID}}" name="name" value="{{.Sprint.Name}}" required maxlength="255"><label for="edit-sprint-goal-{{.Sprint.ID}}">Goal</label><textarea id="edit-sprint-goal-{{.Sprint.ID}}" name="goal" rows="3" maxlength="2000">{{.Sprint.Goal}}</textarea>{{if eq .Sprint.State "active"}}<label for="edit-sprint-start-{{.Sprint.ID}}">Start date</label><input id="edit-sprint-start-{{.Sprint.ID}}" type="date" name="startDate" value="{{.StartDate}}" required><label for="edit-sprint-end-{{.Sprint.ID}}">End date</label><input id="edit-sprint-end-{{.Sprint.ID}}" type="date" name="endDate" value="{{.EndDate}}" required>{{end}}<button class="btn btn-primary" type="submit">Save sprint</button></form></details>
+              {{if eq .Sprint.State "future"}}<details class="start-sprint"><summary class="btn btn-primary">Start sprint</summary><form method="post" action="/board/{{$board}}/backlog/sprints/{{.Sprint.ID}}"><input type="hidden" name="name" value="{{.Sprint.Name}}"><input type="hidden" name="goal" value="{{.Sprint.Goal}}"><input type="hidden" name="state" value="active"><p>Choose the sprint dates before the team commits.</p><label for="start-sprint-date-{{.Sprint.ID}}">Start date</label><input id="start-sprint-date-{{.Sprint.ID}}" type="date" name="startDate" value="{{.SuggestedStart}}" required><label for="end-sprint-date-{{.Sprint.ID}}">End date</label><input id="end-sprint-date-{{.Sprint.ID}}" type="date" name="endDate" value="{{.SuggestedEnd}}" required><button class="btn btn-primary" type="submit">Start sprint</button></form></details>{{else}}<form method="post" action="/board/{{$board}}/backlog/sprints/{{.Sprint.ID}}"><input type="hidden" name="name" value="{{.Sprint.Name}}"><input type="hidden" name="goal" value="{{.Sprint.Goal}}"><input type="hidden" name="state" value="closed"><input type="hidden" name="startDate" value="{{.StartDate}}"><input type="hidden" name="endDate" value="{{.EndDate}}"><button class="btn btn-primary" type="submit">Complete sprint</button></form>{{end}}
+            </div>
+          </div>
+          <div class="backlog-items">{{range .Issues}}{{template "backlog_issue" .}}{{else}}<div class="empty-state compact"><strong>This sprint is empty</strong><small>Move work here when it is ready for commitment.</small></div>{{end}}</div>
+        </details>
+        {{end}}
+        <details class="backlog-section" open>
+          <summary><span><span class="sprint-state">queue</span><strong>Backlog</strong></span><span>{{len .Data.Backlog}} work item{{if ne (len .Data.Backlog) 1}}s{{end}}</span></summary>
+          <div class="backlog-items">{{range .Data.Backlog}}{{template "backlog_issue" .}}{{else}}<div class="empty-state"><strong>The backlog is clear</strong><small>Create work or move an item out of a sprint to plan it here.</small></div>{{end}}</div>
+        </details>
+      </section>
+      <aside class="backlog-preview" id="backlog-preview" aria-label="Issue preview" aria-live="polite" aria-busy="false"><div class="empty-state"><strong>Select a work item</strong><small>Open a summary to inspect details without leaving the plan.</small></div></aside>
     </div>
   </main>
   </div>
@@ -593,7 +682,7 @@
     {{range .Data.Projects}}<article class="directory-card project-card">
       <header><span class="project-card-avatar" aria-hidden="true">{{.Project.Key}}</span><div><h2><a href="/projects/{{.Project.Key}}">{{.Project.Name}}</a></h2><p>{{.Project.Key}} · Software project</p></div></header>
       <dl><div><dt>Work items</dt><dd>{{.IssueCount}}</dd></div><div><dt>Workflow</dt><dd>{{.WorkflowName}}</dd></div><div><dt>Boards</dt><dd>{{len .Boards}}</dd></div></dl>
-      <footer><a href="/projects/{{.Project.Key}}">Open project</a><a href="/issues/{{.Project.Key}}">View work</a>{{with .PrimaryBoard}}<a href="/board/{{.ID}}">Open board</a>{{end}}</footer>
+      <footer><a href="/projects/{{.Project.Key}}">Open project</a><a href="/issues/{{.Project.Key}}">View work</a>{{with .PrimaryBoard}}<a href="/board/{{.ID}}/backlog">Plan backlog</a><a href="/board/{{.ID}}">Open board</a>{{end}}</footer>
     </article>{{else}}<div class="empty-state"><strong>No projects yet</strong><small>Projects available to this workspace will appear here.</small></div>{{end}}
     </div>
   </main></div><div id="modal-root"></div><div id="sync-banner" class="sync-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div>
@@ -608,7 +697,7 @@
   <a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}
   <div class="app-shell">{{template "workspace_nav" .}}
   <main class="page page-fluid" id="main-content" tabindex="-1">
-    <nav class="project-tabs" aria-label="{{.Data.Project.Name}} project"><a href="/projects/{{.Data.Project.Key}}" aria-current="page">Overview</a>{{with .Data.PrimaryBoard}}<a href="/board/{{.ID}}">Board</a>{{end}}<a href="/issues/{{.Data.Project.Key}}">Work items</a></nav>
+    <nav class="project-tabs" aria-label="{{.Data.Project.Name}} project"><a href="/projects/{{.Data.Project.Key}}" aria-current="page">Overview</a>{{with .Data.PrimaryBoard}}<a href="/board/{{.ID}}/backlog">Backlog</a><a href="/board/{{.ID}}">Board</a>{{end}}<a href="/issues/{{.Data.Project.Key}}">Work items</a></nav>
     <nav class="issue-breadcrumbs" aria-label="Breadcrumb"><a href="/projects">Projects</a><span aria-hidden="true">/</span><span aria-current="page">{{.Data.Project.Name}}</span></nav>
     <header class="project-hero"><span class="project-hero-avatar" aria-hidden="true">{{.Data.Project.Key}}</span><div><span class="eyebrow">Software project</span><h1>{{.Data.Project.Name}}</h1><p>{{.Data.Project.Key}} · Organize delivery across the board, work list, and workflow.</p></div><button type="button" class="btn btn-primary" hx-get="/issues/new?project={{.Data.Project.Key}}" hx-target="#modal-root" hx-swap="innerHTML" onclick="zzira.openModal(this)">Create work item</button></header>
     <div class="project-overview-grid">

@@ -35,10 +35,11 @@ control-plane endpoints use `/rest/zzira/1` and are never presented as Jira APIs
 | Endpoint | Status | Notes |
 |---|---|---|
 | GET /rest/agile/1.0/board · /board/{id} | ✅ | seeded board |
-| GET /board/{id}/issue · /board/{id}/backlog | ✅ | rank-ordered per column |
+| GET /board/{id}/issue · /board/{id}/backlog | ✅ | board columns and true unsprinted backlog are separately rank-ordered |
 | GET /board/{id}/sprint | ✅ | |
-| POST /rest/agile/1.0/sprint · GET /sprint/{id} · GET /sprint/{id}/issue | ✅ | |
-| POST /sprint/{id}/issue | ✅ | moves issues into sprint (ranked) |
+| POST /rest/agile/1.0/sprint · GET/PUT /sprint/{id} · GET /sprint/{id}/issue | ✅ | metadata plus validated future → active → closed lifecycle |
+| POST /sprint/{id}/issue | ✅ | moves issues into one open sprint (ranked), preserving closed-sprint history |
+| POST /backlog/issue | ✅ | moves issues out of open sprints and retains closed-sprint history |
 | POST /rest/agile/1.0/issue/rank | ✅ | LexoRank, column-scoped |
 
 ## Tier C — Platform & admin
