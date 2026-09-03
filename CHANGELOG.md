@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.9.0](https://github.com/e6qu/zzira/compare/v0.8.0...v0.9.0) (2026-09-03)
+
+
+### Features
+
+* complete metadata-driven issue creation ([55e6f32](https://github.com/e6qu/zzira/commit/55e6f324c0fe462ab6cc0b82ce832fb980e533d7))
+
+
+### Bug Fixes
+
+* avoid overflow in custom field merge ([ba7cc45](https://github.com/e6qu/zzira/commit/ba7cc451642b6da1f9aeee956a864a72b0ae4c74))
+
 ## [0.8.0](https://github.com/e6qu/zzira/compare/v0.7.0...v0.8.0) (2026-09-03)
 
 
