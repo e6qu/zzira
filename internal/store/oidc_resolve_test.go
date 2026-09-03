@@ -2,7 +2,10 @@ package store
 
 import (
 	"context"
+	"errors"
 	"os"
+	"sync"
+	"sync/atomic"
 	"testing"
 )
 
@@ -130,5 +133,109 @@ func TestResolveOIDCUserBindsAnExistingActiveMemberWithoutHashing(t *testing.T) 
 	}
 	if bound != userID {
 		t.Fatalf("bound user = %q, want the existing user %q", bound, userID)
+	}
+}
+
+func TestResolveOIDCUserRejectsAnInactiveBoundIdentity(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	st, err := Open(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := Migrate(ctx, st.Pool); err != nil {
+		t.Fatal(err)
+	}
+
+	const issuer = "https://auth.dev.e6qu.dev"
+	userID := NewID("usr")
+	email := userID + "@example.invalid"
+	if _, err := st.CreateUser(ctx, userID, email, "test", userID); err != nil {
+		t.Fatal(err)
+	}
+	subject := userID + "-sub"
+	if _, err := st.ResolveOIDCUser(ctx, issuer, subject, email, userID, unusedPasswordHash(t)); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM oidc_identities WHERE issuer=$1 AND subject=$2`, issuer, subject)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM users WHERE id=$1`, userID)
+	}()
+	if _, err := st.Pool.Exec(ctx, `UPDATE users SET active=false WHERE id=$1`, userID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.ResolveOIDCUser(ctx, issuer, subject, email, userID, unusedPasswordHash(t)); !errors.Is(err, ErrInactiveUser) {
+		t.Fatalf("inactive identity resolution err=%v, want ErrInactiveUser", err)
+	}
+}
+
+func TestResolveOIDCUserSerializesConcurrentFirstSignIns(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	st, err := Open(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := Migrate(ctx, st.Pool); err != nil {
+		t.Fatal(err)
+	}
+
+	const issuer = "https://auth.dev.e6qu.dev"
+	subject := NewID("sub")
+	email := subject + "@example.invalid"
+	var hashCalls atomic.Int32
+	newHash := func() (string, error) {
+		hashCalls.Add(1)
+		return "$2a$10$unusable", nil
+	}
+
+	const signIns = 8
+	results := make(chan string, signIns)
+	errorsOut := make(chan error, signIns)
+	var group sync.WaitGroup
+	for range signIns {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			userID, err := st.ResolveOIDCUser(ctx, issuer, subject, email, "Concurrent member", newHash)
+			if err != nil {
+				errorsOut <- err
+				return
+			}
+			results <- userID
+		}()
+	}
+	group.Wait()
+	close(results)
+	close(errorsOut)
+	for err := range errorsOut {
+		t.Errorf("concurrent sign-in: %v", err)
+	}
+	var userID string
+	for result := range results {
+		if userID == "" {
+			userID = result
+		} else if result != userID {
+			t.Errorf("concurrent sign-ins resolved different users %q and %q", userID, result)
+		}
+	}
+	if userID == "" {
+		t.Fatal("no concurrent sign-in succeeded")
+	}
+	defer func() {
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM oidc_identities WHERE issuer=$1 AND subject=$2`, issuer, subject)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM memberships WHERE user_id=$1`, userID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM users WHERE id=$1`, userID)
+	}()
+	if calls := hashCalls.Load(); calls != 1 {
+		t.Fatalf("password hash generator called %d times, want 1", calls)
 	}
 }

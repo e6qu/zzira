@@ -33,11 +33,16 @@ func TestClaimOIDCLogoutAndDeleteSessions(t *testing.T) {
 		t.Fatalf("bind OIDC identity: %v", err)
 	}
 	tokenHash := HashToken("logout-test-" + userID)
-	if err := st.CreateOIDCSession(ctx, tokenHash, userID, "id-token", "", time.Hour); err != nil {
+	if err := st.CreateOIDCSession(ctx, tokenHash, userID, "id-token", issuer, subject, "", time.Hour); err != nil {
 		t.Fatalf("create session: %v", err)
+	}
+	localTokenHash := HashToken("logout-test-local-" + userID)
+	if err := st.CreateSession(ctx, localTokenHash, userID, time.Hour); err != nil {
+		t.Fatalf("create local session: %v", err)
 	}
 	jti := NewID("jti")
 	defer func() {
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM sessions WHERE user_id=$1`, userID)
 		_, _ = st.Pool.Exec(ctx, `DELETE FROM oidc_logout_tokens WHERE jti=$1`, jti)
 		_, _ = st.Pool.Exec(ctx, `DELETE FROM oidc_identities WHERE issuer=$1 AND subject=$2`, issuer, subject)
 		_, _ = st.Pool.Exec(ctx, `DELETE FROM users WHERE id=$1`, userID)
@@ -57,6 +62,9 @@ func TestClaimOIDCLogoutAndDeleteSessions(t *testing.T) {
 	}
 	if _, err := st.SessionUser(ctx, tokenHash); err == nil {
 		t.Fatal("session must be revoked after a sub-only back-channel logout")
+	}
+	if _, err := st.SessionUser(ctx, localTokenHash); err != nil {
+		t.Fatalf("password session must survive an OIDC subject logout: %v", err)
 	}
 
 	claimedAgain, err := st.ClaimOIDCLogoutAndDeleteSessions(ctx, jti, expiresAt, issuer, subject, "")
@@ -97,19 +105,26 @@ func TestClaimOIDCLogoutAndDeleteSessionsBySID(t *testing.T) {
 	survivingSID := userID + "-sid-b"
 	loggedOutHash := HashToken("logout-test-sid-a-" + userID)
 	survivingHash := HashToken("logout-test-sid-b-" + userID)
-	if err := st.CreateOIDCSession(ctx, loggedOutHash, userID, "id-token", loggedOutSID, time.Hour); err != nil {
+	const issuer = "https://auth.dev.e6qu.dev"
+	subject := userID + "-subject"
+	if err := st.CreateOIDCSession(ctx, loggedOutHash, userID, "id-token", issuer, subject, loggedOutSID, time.Hour); err != nil {
 		t.Fatalf("create session for sid a: %v", err)
 	}
-	if err := st.CreateOIDCSession(ctx, survivingHash, userID, "id-token", survivingSID, time.Hour); err != nil {
+	if err := st.CreateOIDCSession(ctx, survivingHash, userID, "id-token", issuer, subject, survivingSID, time.Hour); err != nil {
 		t.Fatalf("create session for sid b: %v", err)
+	}
+	foreignHash := HashToken("logout-test-foreign-sid-" + userID)
+	if err := st.CreateOIDCSession(ctx, foreignHash, userID, "id-token", "https://other-issuer.example", subject, loggedOutSID, time.Hour); err != nil {
+		t.Fatalf("create same-sid session from another issuer: %v", err)
 	}
 	jti := NewID("jti")
 	defer func() {
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM sessions WHERE user_id=$1`, userID)
 		_, _ = st.Pool.Exec(ctx, `DELETE FROM oidc_logout_tokens WHERE jti=$1`, jti)
 		_, _ = st.Pool.Exec(ctx, `DELETE FROM users WHERE id=$1`, userID)
 	}()
 
-	claimed, err := st.ClaimOIDCLogoutAndDeleteSessions(ctx, jti, time.Now().Add(time.Hour), "https://auth.dev.e6qu.dev", "", loggedOutSID)
+	claimed, err := st.ClaimOIDCLogoutAndDeleteSessions(ctx, jti, time.Now().Add(time.Hour), issuer, "", loggedOutSID)
 	if err != nil {
 		t.Fatalf("claim sid-only logout token: %v", err)
 	}
@@ -121,6 +136,9 @@ func TestClaimOIDCLogoutAndDeleteSessionsBySID(t *testing.T) {
 	}
 	if _, err := st.SessionUser(ctx, survivingHash); err != nil {
 		t.Fatalf("a session bound to a different sid must survive: %v", err)
+	}
+	if _, err := st.SessionUser(ctx, foreignHash); err != nil {
+		t.Fatalf("same sid from a different issuer must survive: %v", err)
 	}
 }
 

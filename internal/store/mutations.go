@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	neturl "net/url"
+	"slices"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 
@@ -41,6 +43,7 @@ type IssueUpdate struct {
 	AssigneeID      *string         // "" = unassign, nil = unchanged
 	StatusID        *string         // transitions only; "" invalid
 	SecurityLevelID *string         // "" = public, nil = unchanged
+	Labels          *[]string       // empty = clear, nil = unchanged
 	Fields          map[string]json.RawMessage
 }
 
@@ -76,6 +79,10 @@ func (s *Store) UpdateIssue(ctx context.Context, actorID, workspaceID, issueID s
 	if up.SecurityLevelID != nil && *up.SecurityLevelID != current.SecurityLevelID {
 		diff["security"] = diffItem("security", current.SecurityLevelID, securityDisplayName(ctx, tx, current.ProjectID, current.SecurityLevelID), *up.SecurityLevelID, securityDisplayName(ctx, tx, current.ProjectID, *up.SecurityLevelID))
 		sets = append(sets, "security_level_id = "+arg(nilIfEmpty(*up.SecurityLevelID)))
+	}
+	if up.Labels != nil && !slices.Equal(*up.Labels, current.Labels) {
+		diff["labels"] = diffItem("labels", "", strings.Join(current.Labels, ", "), "", strings.Join(*up.Labels, ", "))
+		sets = append(sets, "labels = "+arg(*up.Labels))
 	}
 	if up.Fields != nil {
 		merged, err := mergeFields(current.Fields, up.Fields)

@@ -42,6 +42,7 @@
 
 * { box-sizing: border-box; }
 html { background: var(--ds-surface); }
+[hidden] { display: none !important; }
 body {
   margin: 0;
   font-family: Inter, -apple-system, "Segoe UI", sans-serif;

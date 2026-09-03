@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -22,6 +23,8 @@ import (
 type Store struct {
 	Pool *pgxpool.Pool
 }
+
+var ErrInactiveUser = errors.New("user account is inactive")
 
 const migrationLockID int64 = 0x5A5A495241
 
@@ -147,7 +150,7 @@ func (s *Store) UserByEmail(ctx context.Context, email string) (id, passwordHash
 func (s *Store) UserByID(ctx context.Context, id string) (*models.User, error) {
 	u := &models.User{ID: id, Active: true, AccountType: "atlassian"}
 	err := s.Pool.QueryRow(ctx,
-		`SELECT email, display_name, time_zone, COALESCE(username, split_part(email, '@', 1)) FROM users WHERE id=$1`, id).
+		`SELECT email, display_name, time_zone, COALESCE(username, split_part(email, '@', 1)) FROM users WHERE id=$1 AND active`, id).
 		Scan(&u.Email, &u.DisplayName, &u.TimeZone, &u.Username)
 	if err != nil {
 		return nil, err
@@ -173,17 +176,19 @@ func (s *Store) CreateSession(ctx context.Context, tokenHash, userID string, ttl
 // CreateOIDCSession records an opaque browser session, its ID token (so
 // RP-initiated logout can send the provider an id_token_hint), and the
 // provider's sid so a later back-channel logout naming that sid can find it.
-func (s *Store) CreateOIDCSession(ctx context.Context, tokenHash, userID, idToken, sid string, ttl time.Duration) error {
+func (s *Store) CreateOIDCSession(ctx context.Context, tokenHash, userID, idToken, issuer, subject, sid string, ttl time.Duration) error {
 	_, err := s.Pool.Exec(ctx,
-		`INSERT INTO sessions (token_hash, user_id, oidc_id_token, oidc_session_id, expires_at) VALUES ($1,$2,$3,NULLIF($4,''),now() + $5::interval)`,
-		tokenHash, userID, idToken, sid, fmt.Sprintf("%d seconds", int(ttl.Seconds())))
+		`INSERT INTO sessions (token_hash, user_id, oidc_id_token, oidc_issuer, oidc_subject, oidc_session_id, expires_at)
+		 VALUES ($1,$2,$3,$4,$5,NULLIF($6,''),now() + $7::interval)`,
+		tokenHash, userID, idToken, issuer, subject, sid, fmt.Sprintf("%d seconds", int(ttl.Seconds())))
 	return err
 }
 
 func (s *Store) SessionUser(ctx context.Context, tokenHash string) (string, error) {
 	var userID string
 	err := s.Pool.QueryRow(ctx,
-		`SELECT user_id FROM sessions WHERE token_hash=$1 AND expires_at > now()`, tokenHash).Scan(&userID)
+		`SELECT s.user_id FROM sessions s JOIN users u ON u.id=s.user_id
+		 WHERE s.token_hash=$1 AND s.expires_at > now() AND u.active`, tokenHash).Scan(&userID)
 	return userID, err
 }
 
@@ -195,11 +200,12 @@ func (s *Store) DeleteSession(ctx context.Context, tokenHash string) error {
 // ClaimOIDCLogoutAndDeleteSessions atomically claims a Back-Channel Logout
 // token's jti (replay protection) and, only on a first claim, revokes the
 // session(s) it names. Per the OIDC Back-Channel Logout 1.0 spec, a sid names
-// one specific provider session and only sessions recorded under that sid are
-// revoked; a token naming no sid means every session for the (issuer,
-// subject) identity is revoked. Ory Hydra's real logout tokens carry sid
-// without sub (its documented example omits sub entirely), so the sid path is
-// the one production traffic actually takes.
+// one specific provider session within its issuer and only OIDC sessions
+// recorded under that pair are revoked; a token naming no sid means every
+// OIDC session for the (issuer, subject) identity is revoked, without touching
+// a password session for the same local account. Ory Hydra's real logout
+// tokens carry sid without sub (its documented example omits sub entirely),
+// so the sid path is the one production traffic actually takes.
 func (s *Store) ClaimOIDCLogoutAndDeleteSessions(ctx context.Context, jti string, expiresAt time.Time, issuer, subject, sid string) (bool, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
@@ -208,7 +214,7 @@ func (s *Store) ClaimOIDCLogoutAndDeleteSessions(ctx context.Context, jti string
 	defer func() { _ = tx.Rollback(ctx) }()
 	tag, err := tx.Exec(ctx,
 		`WITH expired AS (DELETE FROM oidc_logout_tokens WHERE expires_at <= now())
-		 INSERT INTO oidc_logout_tokens (jti, expires_at) VALUES ($1,$2) ON CONFLICT (jti) DO NOTHING`,
+		 INSERT INTO oidc_logout_tokens (jti, expires_at) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
 		jti, expiresAt)
 	if err != nil {
 		return false, err
@@ -217,19 +223,12 @@ func (s *Store) ClaimOIDCLogoutAndDeleteSessions(ctx context.Context, jti string
 		return false, nil
 	}
 	if sid != "" {
-		if _, err := tx.Exec(ctx, `DELETE FROM sessions WHERE oidc_session_id=$1`, sid); err != nil {
+		if _, err := tx.Exec(ctx, `DELETE FROM sessions WHERE oidc_issuer=$1 AND oidc_session_id=$2`, issuer, sid); err != nil {
 			return false, err
 		}
 	} else if subject != "" {
-		var userID string
-		err = tx.QueryRow(ctx, `SELECT user_id FROM oidc_identities WHERE issuer=$1 AND subject=$2`, issuer, subject).Scan(&userID)
-		if err != nil && err != pgx.ErrNoRows {
+		if _, err := tx.Exec(ctx, `DELETE FROM sessions WHERE oidc_issuer=$1 AND oidc_subject=$2`, issuer, subject); err != nil {
 			return false, err
-		}
-		if err == nil {
-			if _, err := tx.Exec(ctx, `DELETE FROM sessions WHERE user_id=$1`, userID); err != nil {
-				return false, err
-			}
 		}
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -278,9 +277,20 @@ func (s *Store) ResolveOIDCUser(ctx context.Context, issuer, subject, email, dis
 		return "", err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	lockKey := fmt.Sprintf("oidc-identity:%d:%s%s", len(issuer), issuer, subject)
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, lockKey); err != nil {
+		return "", err
+	}
 	var userID string
-	err = tx.QueryRow(ctx, `SELECT user_id FROM oidc_identities WHERE issuer=$1 AND subject=$2`, issuer, subject).Scan(&userID)
+	var active bool
+	err = tx.QueryRow(ctx, `
+		SELECT i.user_id, u.active
+		FROM oidc_identities i JOIN users u ON u.id=i.user_id
+		WHERE i.issuer=$1 AND i.subject=$2`, issuer, subject).Scan(&userID, &active)
 	if err == nil {
+		if !active {
+			return "", ErrInactiveUser
+		}
 		if err := tx.Commit(ctx); err != nil {
 			return "", err
 		}
@@ -406,7 +416,10 @@ func (s *Store) WorkspaceBySlug(ctx context.Context, slug string) (string, error
 func (s *Store) IsMember(ctx context.Context, workspaceID, userID string) (bool, error) {
 	var ok bool
 	err := s.Pool.QueryRow(ctx,
-		`SELECT EXISTS(SELECT 1 FROM memberships WHERE workspace_id=$1 AND user_id=$2)`,
+		`SELECT EXISTS(
+			SELECT 1 FROM memberships m JOIN users u ON u.id=m.user_id
+			WHERE m.workspace_id=$1 AND m.user_id=$2 AND u.active
+		)`,
 		workspaceID, userID).Scan(&ok)
 	return ok, err
 }
@@ -439,10 +452,10 @@ SELECT i.id, i.workspace_id, i.project_id, i.key, i.summary, i.description,
        it.id, it.name, it.icon,
        pr.id, pr.name,
        a.id, a.display_name,
-       r.id, r.display_name,
-       i.rank,
-       i.security_level_id, i.fields,
-       i.updated_seq, i.updated_at
+	       r.id, r.display_name,
+	       i.rank,
+	       i.security_level_id, i.fields, i.labels,
+	       i.updated_seq, i.updated_at
 FROM issues i
 JOIN statuses st ON st.id = i.status_id
 JOIN issue_types it ON it.id = i.issuetype_id
@@ -466,7 +479,7 @@ func scanIssue(row pgx.Row) (*models.Issue, error) {
 		&assigneeID, &assigneeName,
 		&reporterID, &reporterName,
 		&i.Rank,
-		&securityLevelID, &fieldsJSON,
+		&securityLevelID, &fieldsJSON, &i.Labels,
 		&i.UpdatedSeq, &updatedAt)
 	if err != nil {
 		return nil, err
@@ -478,6 +491,9 @@ func scanIssue(row pgx.Row) (*models.Issue, error) {
 		if err := json.Unmarshal(fieldsJSON, &i.Fields); err != nil {
 			return nil, fmt.Errorf("issue fields: %w", err)
 		}
+	}
+	if i.Labels == nil {
+		i.Labels = []string{}
 	}
 	if err != nil {
 		return nil, err
@@ -502,7 +518,10 @@ func (s *Store) IssueByIDOrKey(ctx context.Context, workspaceID, idOrKey string)
 
 // CreateIssue runs the canonical write transaction: state change + action append +
 // notify, all-or-nothing. Returns the persisted issue and its action.
-func (s *Store) CreateIssue(ctx context.Context, actorID, projectID, summary string, description json.RawMessage, statusID, issueTypeID, priorityID, assigneeID string, fields map[string]json.RawMessage) (*models.Issue, *models.Action, error) {
+func (s *Store) CreateIssue(ctx context.Context, actorID, projectID, summary string, description json.RawMessage, statusID, issueTypeID, priorityID, assigneeID string, labels []string, fields map[string]json.RawMessage) (*models.Issue, *models.Action, error) {
+	if labels == nil {
+		labels = []string{}
+	}
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return nil, nil, err
@@ -539,10 +558,10 @@ func (s *Store) CreateIssue(ctx context.Context, actorID, projectID, summary str
 		return nil, nil, err
 	}
 	_, err = tx.Exec(ctx, `
-		INSERT INTO issues (id, workspace_id, project_id, key, summary, description, fields,
+		INSERT INTO issues (id, workspace_id, project_id, key, summary, description, fields, labels,
 		                    status_id, issuetype_id, priority_id, assignee_id, reporter_id, updated_seq)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,0)`,
-		issueID, wsID, projectID, issueKey, summary, description, fieldsJSON, statusID, issueTypeID, nilIfEmpty(priorityID), nilIfEmpty(assigneeID), reporter)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,0)`,
+		issueID, wsID, projectID, issueKey, summary, description, fieldsJSON, labels, statusID, issueTypeID, nilIfEmpty(priorityID), nilIfEmpty(assigneeID), reporter)
 	if err != nil {
 		return nil, nil, err
 	}

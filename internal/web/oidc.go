@@ -2,14 +2,18 @@ package web
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
+	"net/mail"
 	"net/url"
 	"os"
 	"strings"
@@ -19,9 +23,15 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/e6qu/zzira/internal/authn"
+	"github.com/e6qu/zzira/internal/store"
 )
 
-const oidcStateTTL = 10 * time.Minute
+const (
+	oidcStateTTL         = 10 * time.Minute
+	oidcFlowCookie       = "zzira_oidc_flow"
+	oidcSecureFlowCookie = "__Host-zzira_oidc_flow"
+	oidcStateSeparator   = "."
+)
 
 // OIDC is optional browser SSO. The SHAUTH prefix is retained for consistency
 // with the reference deployment, but any standards-compliant OIDC provider is
@@ -57,24 +67,38 @@ func NewOIDC(ctx context.Context) (*OIDC, error) {
 	if err := validOIDCURL(externalURL); err != nil {
 		return nil, fmt.Errorf("ZZIRA_EXTERNAL_URL: %w", err)
 	}
+	if parsed, _ := url.Parse(externalURL); parsed.Path != "" && parsed.Path != "/" {
+		return nil, fmt.Errorf("ZZIRA_EXTERNAL_URL: must be an origin without a path")
+	}
 	provider, err := oidc.NewProvider(ctx, issuer)
 	if err != nil {
 		return nil, fmt.Errorf("OIDC discovery: %w", err)
 	}
 	var metadata struct {
 		EndSessionEndpoint string `json:"end_session_endpoint"`
+		JWKSURI            string `json:"jwks_uri"`
 	}
 	if err := provider.Claims(&metadata); err != nil {
 		return nil, fmt.Errorf("OIDC discovery claims: %w", err)
 	}
 	if metadata.EndSessionEndpoint != "" {
-		if err := validOIDCURL(metadata.EndSessionEndpoint); err != nil {
+		if err := validOIDCEndpointURL(metadata.EndSessionEndpoint); err != nil {
 			return nil, fmt.Errorf("OIDC end_session_endpoint: %w", err)
+		}
+	}
+	endpoint := provider.Endpoint()
+	for name, raw := range map[string]string{
+		"authorization_endpoint": endpoint.AuthURL,
+		"token_endpoint":         endpoint.TokenURL,
+		"jwks_uri":               metadata.JWKSURI,
+	} {
+		if err := validOIDCEndpointURL(raw); err != nil {
+			return nil, fmt.Errorf("OIDC %s: %w", name, err)
 		}
 	}
 	return &OIDC{
 		config: oauth2.Config{
-			ClientID: clientID, ClientSecret: clientSecret, Endpoint: provider.Endpoint(),
+			ClientID: clientID, ClientSecret: clientSecret, Endpoint: endpoint,
 			RedirectURL: externalURL + "/auth/shauth/callback", Scopes: []string{oidc.ScopeOpenID, "profile", "email"},
 		},
 		verifier:              provider.Verifier(&oidc.Config{ClientID: clientID}),
@@ -88,6 +112,20 @@ func validOIDCURL(raw string) error {
 	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 		return fmt.Errorf("must be an absolute URL")
 	}
+	return validOIDCTransport(u)
+}
+
+// Discovery permits endpoint URLs to carry a query component. They retain
+// the same credential, fragment, and transport restrictions as the issuer.
+func validOIDCEndpointURL(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" || u.User != nil || u.Fragment != "" {
+		return fmt.Errorf("must be an absolute URL")
+	}
+	return validOIDCTransport(u)
+}
+
+func validOIDCTransport(u *url.URL) error {
 	if u.Scheme == "https" {
 		return nil
 	}
@@ -112,12 +150,70 @@ func oidcRandom() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
+func oidcFlowCookieName() string {
+	if authn.SecureCookies() {
+		return oidcSecureFlowCookie
+	}
+	return oidcFlowCookie
+}
+
+// newOIDCState binds a fresh, single-use transaction to a short-lived secret
+// held only by the initiating browser. The database still owns replay
+// prevention; the HMAC prevents a callback started in another browser from
+// logging its identity into this one (login CSRF/session swapping).
+func newOIDCState(w http.ResponseWriter, r *http.Request) (string, error) {
+	binding := ""
+	if cookie, err := r.Cookie(oidcFlowCookieName()); err == nil {
+		if decoded, decodeErr := base64.RawURLEncoding.DecodeString(cookie.Value); decodeErr == nil && len(decoded) == 32 {
+			binding = cookie.Value
+		}
+	}
+	if binding == "" {
+		var err error
+		binding, err = oidcRandom()
+		if err != nil {
+			return "", err
+		}
+	}
+	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- SecureCookies defaults to true for an HTTPS external URL and is covered by regression tests.
+		Name: oidcFlowCookieName(), Value: binding, Path: "/", HttpOnly: true,
+		Secure: authn.SecureCookies(), SameSite: http.SameSiteLaxMode,
+		MaxAge: int(oidcStateTTL.Seconds()), Expires: time.Now().Add(oidcStateTTL),
+	})
+	transaction, err := oidcRandom()
+	if err != nil {
+		return "", err
+	}
+	mac := hmac.New(sha256.New, []byte(binding))
+	_, _ = mac.Write([]byte(transaction))
+	return transaction + oidcStateSeparator + base64.RawURLEncoding.EncodeToString(mac.Sum(nil)), nil
+}
+
+func validOIDCStateBinding(r *http.Request, state string) bool {
+	transaction, encodedMAC, ok := strings.Cut(state, oidcStateSeparator)
+	if !ok || transaction == "" || encodedMAC == "" || strings.Contains(encodedMAC, oidcStateSeparator) {
+		return false
+	}
+	cookie, err := r.Cookie(oidcFlowCookieName())
+	if err != nil {
+		return false
+	}
+	provided, err := base64.RawURLEncoding.DecodeString(encodedMAC)
+	if err != nil {
+		return false
+	}
+	mac := hmac.New(sha256.New, []byte(cookie.Value))
+	_, _ = mac.Write([]byte(transaction))
+	return hmac.Equal(provided, mac.Sum(nil))
+}
+
 func (h *Handler) OIDCLogin(w http.ResponseWriter, r *http.Request) {
+	noStoreAuthResponse(w)
 	if h.OIDC == nil {
 		http.NotFound(w, r)
 		return
 	}
-	state, err := oidcRandom()
+	state, err := newOIDCState(w, r)
 	if err != nil {
 		http.Error(w, "could not begin sign-in", http.StatusInternalServerError)
 		return
@@ -140,19 +236,28 @@ func (h *Handler) OIDCLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) OIDCCallback(w http.ResponseWriter, r *http.Request) {
+	noStoreAuthResponse(w)
 	if h.OIDC == nil {
 		http.NotFound(w, r)
 		return
 	}
 	state := r.URL.Query().Get("state")
-	code := r.URL.Query().Get("code")
-	if state == "" || code == "" {
+	if state == "" || !validOIDCStateBinding(r, state) {
 		http.Error(w, "invalid sign-in callback", http.StatusBadRequest)
 		return
 	}
 	nonce, verifier, err := h.Store.ConsumeOIDCLoginState(r.Context(), state)
 	if err != nil {
 		http.Error(w, "invalid or expired sign-in state", http.StatusBadRequest)
+		return
+	}
+	if r.URL.Query().Get("error") != "" {
+		http.Error(w, "sign-in was declined or could not be completed", http.StatusUnauthorized)
+		return
+	}
+	code := r.URL.Query().Get("code")
+	if code == "" {
+		http.Error(w, "invalid sign-in callback", http.StatusBadRequest)
 		return
 	}
 	token, err := h.OIDC.config.Exchange(r.Context(), code, oauth2.VerifierOption(verifier))
@@ -173,33 +278,74 @@ func (h *Handler) OIDCCallback(w http.ResponseWriter, r *http.Request) {
 	var claims struct {
 		Email             string `json:"email"`
 		EmailVerified     bool   `json:"email_verified"`
+		Name              string `json:"name"`
 		Nonce             string `json:"nonce"`
 		PreferredUsername string `json:"preferred_username"`
 		SID               string `json:"sid"`
+		AuthorizedParty   string `json:"azp"`
 	}
-	if err := idToken.Claims(&claims); err != nil || claims.Email == "" || !claims.EmailVerified || claims.Nonce != nonce {
+	if err := idToken.Claims(&claims); err != nil || idToken.Subject == "" || !claims.EmailVerified ||
+		!validOIDCAuthorizedParty(idToken.Audience, claims.AuthorizedParty, h.OIDC.config.ClientID) ||
+		subtle.ConstantTimeCompare([]byte(claims.Nonce), []byte(nonce)) != 1 {
 		http.Error(w, "identity token claims are not acceptable", http.StatusUnauthorized)
 		return
 	}
-	displayName, _, _ := strings.Cut(claims.Email, "@")
-	userID, err := h.Store.ResolveOIDCUser(r.Context(), idToken.Issuer, idToken.Subject, claims.Email, displayName, authn.UnusablePasswordHash)
+	email, err := normalizeOIDCEmail(claims.Email)
 	if err != nil {
+		http.Error(w, "identity token claims are not acceptable", http.StatusUnauthorized)
+		return
+	}
+	displayName := strings.TrimSpace(claims.Name)
+	if displayName == "" {
+		displayName = strings.TrimSpace(claims.PreferredUsername)
+	}
+	if displayName == "" {
+		displayName, _, _ = strings.Cut(email, "@")
+	}
+	userID, err := h.Store.ResolveOIDCUser(r.Context(), idToken.Issuer, idToken.Subject, email, displayName, authn.UnusablePasswordHash)
+	if err != nil {
+		if errors.Is(err, store.ErrInactiveUser) {
+			http.Error(w, "this account is inactive", http.StatusForbidden)
+			return
+		}
 		http.Error(w, "could not create sign-in session", http.StatusInternalServerError)
 		return
 	}
-	if claims.PreferredUsername != "" {
-		if err := h.Store.SetOIDCUsername(r.Context(), userID, claims.PreferredUsername); err != nil {
+	if username := strings.TrimSpace(claims.PreferredUsername); username != "" {
+		if err := h.Store.SetOIDCUsername(r.Context(), userID, username); err != nil {
 			http.Error(w, "could not create sign-in session", http.StatusInternalServerError)
 			return
 		}
 	}
-	session, err := authn.LoginOIDC(r.Context(), h.Store, userID, rawIDToken, claims.SID)
+	session, err := authn.LoginOIDC(r.Context(), h.Store, userID, rawIDToken, idToken.Issuer, idToken.Subject, claims.SID)
 	if err != nil {
 		http.Error(w, "could not create sign-in session", http.StatusInternalServerError)
 		return
 	}
 	authn.SetSessionCookie(w, session)
 	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+func noStoreAuthResponse(w http.ResponseWriter) {
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+}
+
+func normalizeOIDCEmail(raw string) (string, error) {
+	email := strings.ToLower(strings.TrimSpace(raw))
+	address, err := mail.ParseAddress(email)
+	if err != nil || address.Name != "" || address.Address != email {
+		return "", fmt.Errorf("email claim is not a plain address")
+	}
+	return email, nil
+}
+
+func validOIDCAuthorizedParty(audience []string, authorizedParty, clientID string) bool {
+	if authorizedParty != "" {
+		return authorizedParty == clientID
+	}
+	return len(audience) == 1
 }
 
 // Validation is the shared relying-party contract endpoint the Shauth SSO
@@ -276,21 +422,13 @@ func (h *Handler) Monitoring(w http.ResponseWriter, r *http.Request) {
 }
 
 type oidcLogoutClaims struct {
-	Subject string                     `json:"sub"`
-	SID     string                     `json:"sid"`
-	Nonce   json.RawMessage            `json:"nonce"`
-	JTI     string                     `json:"jti"`
-	Issued  int64                      `json:"iat"`
-	Expires int64                      `json:"exp"`
-	Events  map[string]json.RawMessage `json:"events"`
+	Events map[string]json.RawMessage `json:"events"`
 }
 
 // BackChannelLogout implements OpenID Connect Back-Channel Logout 1.0: Shauth
-// posts a logout_token here when a session it owns ends, and this revokes
-// every zzira session bound to that token's subject. The verifier is the same
-// one OIDCCallback uses (same issuer, same client ID, so iss/aud already
-// match); a logout token additionally carries no nonce and must name a sid or
-// a sub, checked explicitly below since the ID-token verifier does not.
+// posts a logout_token here when a session it owns ends. The dedicated logout
+// verifier checks the signature, issuer, audience, expiry, event, prohibited
+// nonce, jti, and required sid/sub shape before issuer-scoped revocation.
 func (h *Handler) BackChannelLogout(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	if h.OIDC == nil {
@@ -307,13 +445,13 @@ func (h *Handler) BackChannelLogout(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "logout_token is required", http.StatusBadRequest)
 		return
 	}
-	logoutToken, err := h.OIDC.verifier.Verify(r.Context(), rawLogoutToken)
+	logoutToken, err := h.OIDC.verifier.VerifyLogout(r.Context(), rawLogoutToken)
 	if err != nil {
 		http.Error(w, "logout token verification failed", http.StatusBadRequest)
 		return
 	}
 	var claims oidcLogoutClaims
-	if err := logoutToken.Claims(&claims); err != nil || claims.JTI == "" || claims.Issued == 0 || claims.Expires == 0 || len(claims.Nonce) != 0 || (claims.SID == "" && claims.Subject == "") {
+	if err := logoutToken.Claims(&claims); err != nil || logoutToken.IssuedAt.IsZero() {
 		http.Error(w, "logout token claims are invalid", http.StatusBadRequest)
 		return
 	}
@@ -323,17 +461,17 @@ func (h *Handler) BackChannelLogout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var eventClaims map[string]json.RawMessage
-	if err := json.Unmarshal(rawEvent, &eventClaims); err != nil || eventClaims == nil || len(eventClaims) != 0 {
+	if err := json.Unmarshal(rawEvent, &eventClaims); err != nil || eventClaims == nil {
 		http.Error(w, "logout token event is invalid", http.StatusBadRequest)
 		return
 	}
 	now := time.Now()
-	issuedAt := time.Unix(claims.Issued, 0)
+	issuedAt := logoutToken.IssuedAt
 	if issuedAt.Before(now.Add(-5*time.Minute)) || issuedAt.After(now.Add(time.Minute)) {
 		http.Error(w, "logout token is stale", http.StatusBadRequest)
 		return
 	}
-	claimed, err := h.Store.ClaimOIDCLogoutAndDeleteSessions(r.Context(), claims.JTI, time.Unix(claims.Expires, 0), logoutToken.Issuer, claims.Subject, claims.SID)
+	claimed, err := h.Store.ClaimOIDCLogoutAndDeleteSessions(r.Context(), logoutToken.TokenID, logoutToken.Expiry, logoutToken.Issuer, logoutToken.Subject, logoutToken.SessionID)
 	if err != nil {
 		http.Error(w, "browser sessions could not be revoked", http.StatusInternalServerError)
 		return

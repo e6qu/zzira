@@ -66,6 +66,11 @@ async function firstIssueHref(page: Page) {
 }
 
 test('WCAG A/AA: every primary page passes axe in light and dark themes', async ({ page }) => {
+  await page.goto('/signed-out');
+  await expect(page).toHaveTitle('Signed out · ZZIRA');
+  await expect(page.locator('h1')).toHaveCount(1);
+  await expectNoWCAGViolations(page);
+
   await page.goto('/login');
   await expect(page).toHaveTitle('Log in · ZZIRA');
   await expect(page.locator('h1')).toHaveCount(1);
@@ -197,7 +202,8 @@ test('board cards expose keyboard and non-drag movement controls without nested 
 
 test('controls meet WCAG 2.2 minimum target size', async ({ page }) => {
   await login(page);
-  for (const path of ['/', '/issues/ZZ', '/board/brd_default']) {
+  const issueHref = await firstIssueHref(page);
+  for (const path of ['/', '/issues/ZZ', '/board/brd_default', issueHref]) {
     await page.goto(path);
     const columnPicker = page.locator('.column-picker summary');
     if (await columnPicker.count()) await columnPicker.click();

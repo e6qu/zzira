@@ -62,6 +62,7 @@ func init() {
 		"timeSpent": func(seconds int) string {
 			return models.TimeSpentLabel(seconds)
 		},
+		"join": strings.Join,
 		"humanSize": func(n int64) string {
 			const kb, mb = 1 << 10, 1 << 20
 			switch {

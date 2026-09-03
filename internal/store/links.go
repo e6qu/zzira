@@ -26,8 +26,8 @@ func scanLink(row pgx.Row) (*models.IssueLink, error) {
 
 // CreateIssueLink links two issues; direction is semantic (inward ← outward).
 func (s *Store) CreateIssueLink(ctx context.Context, actorID, workspaceID, typeID, inwardIssueID, outwardIssueID string) (*models.IssueLink, *models.Action, error) {
-	var ltName string
-	err := s.Pool.QueryRow(ctx, `SELECT name FROM issue_link_types WHERE id=$1`, typeID).Scan(&ltName)
+	var ltName, inward, outward string
+	err := s.Pool.QueryRow(ctx, `SELECT name, inward, outward FROM issue_link_types WHERE id=$1`, typeID).Scan(&ltName, &inward, &outward)
 	if err != nil {
 		return nil, nil, fmt.Errorf("link type %q does not exist", typeID)
 	}
@@ -56,7 +56,7 @@ func (s *Store) CreateIssueLink(ctx context.Context, actorID, workspaceID, typeI
 	if err != nil {
 		return nil, nil, err
 	}
-	link := &models.IssueLink{ID: id, TypeID: typeID, TypeName: ltName, InwardID: inwardIssueID, OutwardID: outwardIssueID, WorkspaceID: workspaceID}
+	link := &models.IssueLink{ID: id, TypeID: typeID, TypeName: ltName, Inward: inward, Outward: outward, InwardID: inwardIssueID, OutwardID: outwardIssueID, WorkspaceID: workspaceID}
 	payload, err := json.Marshal(models.IssueLinkPayload{Link: *link})
 	if err != nil {
 		return nil, nil, err

@@ -6,10 +6,20 @@
   <header class="issue-header">
     <div class="issue-heading">
       <span class="issue-type-glyph" aria-hidden="true">✓</span>
-      <div><span class="eyebrow">ZZ-1 · Task</span><h1 class="issue-summary" data-field="summary">Walking skeleton comes online</h1></div>
+      <div class="issue-title-block"><span class="eyebrow">ZZ-1 · Task</span>
+
+      <div class="summary-line"><h1 class="issue-summary" data-field="summary">Walking skeleton comes online</h1><details class="inline-summary-editor"><summary aria-label="Edit summary">✎</summary><form method="post" action="/issues/ZZ-1/fields" hx-post="/issues/ZZ-1/fields" hx-target="#issue-root" hx-swap="outerHTML"><input type="hidden" name="field" value="summary"><label for="issue-summary-input">Summary</label><input id="issue-summary-input" class="issue-summary-input" name="value" value="Walking skeleton comes online" maxlength="255" required><button type="submit" class="btn btn-primary">Save</button></form></details></div>
+
+      </div>
     </div>
     <div class="issue-transitions" role="group" aria-label="Issue actions">
 
+
+
+      <form method="post" action="/issues/ZZ-1/watch" hx-post="/issues/ZZ-1/watch" hx-target="#issue-root" hx-swap="outerHTML">
+        <input type="hidden" name="watching" value="false">
+        <button type="submit" class="btn watch-button" aria-pressed="true" aria-keyshortcuts="W"><span aria-hidden="true">◉</span>Watching <span class="action-count">1</span></button>
+      </form>
 
       <button type="button" class="btn" id="edit-issue-button" onclick="zzira.openEdit('ZZ-1', this)">Edit</button>
       <details class="more-menu"><summary class="btn" aria-label="More issue actions">•••</summary><div><button type="button" class="menu-danger" hx-delete="/issues/ZZ-1" hx-confirm="Delete ZZ-1?" hx-redirect="/issues/ZZ">Delete issue</button></div></details>
@@ -23,16 +33,41 @@
         <div class="description-text"><p>First issue created through the Jira API.</p></div>
       </section>
 
-      <div class="activity-heading"><div><span class="eyebrow">Timeline</span><h2>Activity</h2></div><nav aria-label="Activity sections"><a href="#comments-list">Comments</a><a href="#worklogs-list">Work log</a><a href="#history-list">History</a></nav></div>
+      <section class="issue-section linked-work" aria-labelledby="linked-work-title">
+        <div class="section-heading"><h2 id="linked-work-title">Linked work <span class="section-count">1</span></h2>
+        <details class="link-create"><summary class="quiet-action">Link work item</summary>
+          <form method="post" action="/issues/ZZ-1/links" hx-post="/issues/ZZ-1/links" hx-target="#issue-root" hx-swap="outerHTML">
+            <label for="link-type">Relationship</label><select id="link-type" name="type" required><option value="lt_blocks">blocks</option></select>
+            <label for="link-issue">Work item key</label><input id="link-issue" name="issue" placeholder="ZZ-123" autocomplete="off" required>
+            <button type="submit" class="btn btn-primary">Link</button>
+          </form>
+        </details></div>
+        <ul class="linked-work-list">
+          <li><span class="link-relationship">blocks</span><a href="/browse/ZZ-2"><strong>ZZ-2</strong> Dependent work</a><span class="lozenge lozenge-default">To Do</span>
+          <form method="post" action="/issues/ZZ-1/links/lnk_1/delete" hx-delete="/issues/ZZ-1/links/lnk_1" hx-target="#issue-root" hx-swap="outerHTML" hx-confirm="Remove the link to ZZ-2?"><button type="submit" class="icon-danger" aria-label="Remove link to ZZ-2">×</button></form></li>
+        </ul>
+      </section>
 
-      <section class="issue-section issue-comments">
-        <div class="section-heading"><h3>Comments <span class="section-count">0</span></h3></div>
-        <div id="comments-list">
-          
-          <div class="empty-state"><span aria-hidden="true">💬</span><strong>No comments yet</strong><small>Start the conversation with context or a question.</small></div>
-          
-        </div>
-        
+      <section class="issue-section issue-attachments" aria-labelledby="attachments-title">
+        <div class="section-heading"><h2 id="attachments-title">Attachments <span class="section-count">1</span></h2></div>
+        <ul id="attachments-list" class="attachment-list">
+          <li class="attachment"><span class="attachment-icon" aria-hidden="true">&#128206;</span><span class="attachment-copy"><a href="/rest/api/3/attachment/content/att_1">design.png</a><small>2.0 KB · added by Demo User</small></span>
+          <form method="post" action="/issues/ZZ-1/attachments/att_1/delete" hx-delete="/issues/ZZ-1/attachments/att_1" hx-target="#issue-root" hx-swap="outerHTML" hx-confirm="Delete attachment design.png?"><button type="submit" class="icon-danger" aria-label="Delete attachment design.png">×</button></form></li>
+        </ul>
+        <form class="upload-form" method="post" action="/issues/ZZ-1/attachments" enctype="multipart/form-data"><label for="attachment-file">Add attachment</label><input id="attachment-file" type="file" name="file" required><button type="submit" class="btn">Attach file</button></form>
+      </section>
+
+      <div class="activity-heading"><div><span class="eyebrow">One chronological record</span><h2 id="activity-title">Activity</h2></div>
+        <div class="activity-tools"><div class="activity-filters" role="group" aria-label="Filter activity">
+          <button type="button" data-activity-filter="all" aria-pressed="true">All <span>2</span></button>
+          <button type="button" data-activity-filter="comment" aria-pressed="false">Comments <span>1</span></button>
+          <button type="button" data-activity-filter="worklog" aria-pressed="false">Work log <span>1</span></button>
+          <button type="button" data-activity-filter="history" aria-pressed="false">History <span>0</span></button>
+        </div><button type="button" class="activity-sort" data-activity-sort aria-label="Sort activity oldest first" aria-pressed="false">Newest first ↓</button></div>
+      </div>
+
+      <section class="issue-section issue-activity" aria-labelledby="activity-title">
+        <details class="activity-composer" open><summary>Add an update</summary>
         <form class="comment-form" method="post" action="/issues/ZZ-1/comments" hx-post="/issues/ZZ-1/comments" hx-target="#issue-root" hx-swap="outerHTML">
           <div class="editor-toolbar" role="group" aria-label="Comment formatting" data-editor-toolbar>
             <button type="button" data-cmd="bold" aria-label="Bold"><strong aria-hidden="true">B</strong></button>
@@ -46,48 +81,25 @@
           <input type="hidden" name="adf">
           <div class="form-actions"><small class="muted">Use the toolbar to format your update.</small><button type="submit" class="btn btn-primary">Add comment</button></div>
         </form>
-        
-      </section>
-
-      <section class="issue-section issue-attachments">
-        <div class="section-heading"><h3>Attachments <span class="section-count">0</span></h3></div>
-        <div id="attachments-list">
-          
-          <p class="muted">No attachments added.</p>
-          
-        </div>
-        
-        <form class="upload-form" method="post" action="/issues/ZZ-1/attachments" enctype="multipart/form-data">
-          <label class="sr-only" for="attachment-file">Choose attachment</label>
-          <input id="attachment-file" type="file" name="file" required>
-          <button type="submit" class="btn">Attach file</button>
-        </form>
-        
-      </section>
-
-      <section class="issue-section issue-worklogs">
-        <div class="section-heading"><h3>Work log <span class="section-count">0</span></h3></div>
-        <div id="worklogs-list">
-          
-          <p class="muted">No time logged yet.</p>
-          
-        </div>
-        
         <form class="worklog-form" method="post" action="/issues/ZZ-1/worklogs" hx-post="/issues/ZZ-1/worklogs" hx-target="#issue-root" hx-swap="outerHTML">
-          <label class="sr-only" for="worklog-seconds">Time spent in seconds</label>
-          <input id="worklog-seconds" name="seconds" type="number" min="1" placeholder="Seconds" required class="worklog-seconds">
-          <label class="sr-only" for="worklog-comment">Work description</label>
-          <input id="worklog-comment" name="comment" placeholder="What did you work on? (optional)" class="worklog-comment">
-          <button type="submit" class="btn">Log time</button>
-        </form>
-        
-      </section>
-
-      <section class="issue-section issue-history" id="history-list">
-        <div class="section-heading"><h3>History <span class="section-count">0</span></h3></div>
-        
-        <p class="muted">No changes recorded.</p>
-        
+          <fieldset><legend>Or log work</legend><label for="worklog-seconds">Time in seconds</label>
+          <input id="worklog-seconds" name="seconds" type="number" min="1" placeholder="3600" required class="worklog-seconds">
+          <label for="worklog-comment">Work description <span class="muted">optional</span></label><input id="worklog-comment" name="comment" placeholder="What did you work on?" class="worklog-comment"><button type="submit" class="btn">Log time</button></fieldset>
+        </form></details>
+        <div class="activity-ledger" data-activity-ledger>
+        <article class="activity-entry activity-worklog worklog" data-activity-kind="worklog" data-created="2026-08-28T12:00:00Z" id="activity-worklog-wl_1">
+          <div class="activity-marker" aria-hidden="true">T</div>
+          <div class="activity-content"><header><span class="avatar" aria-hidden="true"><span>DU</span></span><strong>Demo User</strong><span class="activity-verb">logged <span class="lozenge">1h </span></span><time datetime="2026-08-28T12:00:00Z">2026-08-28T12:00:00Z</time>
+          <form method="post" action="/issues/ZZ-1/worklogs/wl_1/delete" hx-delete="/issues/ZZ-1/worklogs/wl_1" hx-target="#issue-root" hx-swap="outerHTML" hx-confirm="Delete this work log?"><button type="submit" class="icon-danger" aria-label="Delete work log from 2026-08-28T12:00:00Z">×</button></form></header>
+          </div>
+        </article><article class="activity-entry activity-comment" data-activity-kind="comment" data-created="2026-08-28T11:00:00Z" id="activity-comment-cmt_1">
+          <div class="activity-marker" aria-hidden="true">C</div>
+          <div class="activity-content"><header><span class="avatar" aria-hidden="true"><span>DU</span></span><strong>Demo User</strong><span class="activity-verb">commented</span><time datetime="2026-08-28T11:00:00Z">2026-08-28T11:00:00Z</time>
+          </header>
+          <div class="comment-body"><p>Ready for review.</p></div></div>
+        </article>
+        <div class="empty-state" data-activity-filter-empty hidden><strong>No matching activity</strong><small>Choose another activity filter.</small></div>
+        </div>
       </section>
     </div>
     <aside class="issue-details" aria-label="Issue details">
@@ -95,16 +107,19 @@
       <dl>
         <dt>Type</dt>
         <dd><span class="field-value"><span class="issue-type-mini" aria-hidden="true">✓</span>Task</span></dd>
-        <dt>Priority</dt><dd><span class="field-value"><span class="priority-icon" aria-hidden="true">=</span>Medium</span></dd>
-        <dt>Assignee</dt>
-        <dd><span class="person-value">
-<span class="avatar" aria-hidden="true"><span>DU</span></span>
-<span>Demo User</span></span></dd>
+        <dt><label for="field-priority">Priority</label></dt><dd><form class="inline-field" method="post" action="/issues/ZZ-1/fields" hx-post="/issues/ZZ-1/fields" hx-target="#issue-root" hx-swap="outerHTML"><input type="hidden" name="field" value="priority"><select id="field-priority" name="value"><option value="">None</option><option value="pr_medium" selected>Medium</option></select><button class="field-save" type="submit">Save priority</button></form></dd>
+        <dt><label for="field-assignee">Assignee</label></dt><dd><form class="inline-field" method="post" action="/issues/ZZ-1/fields" hx-post="/issues/ZZ-1/fields" hx-target="#issue-root" hx-swap="outerHTML"><input type="hidden" name="field" value="assignee"><select id="field-assignee" name="value"><option value="">Unassigned</option><option value="usr_1" selected>Demo User</option></select><button class="field-save" type="submit">Save assignee</button></form></dd>
         <dt>Reporter</dt>
         <dd><span class="person-value">
 <span class="avatar" aria-hidden="true"><span>DU</span></span>
 <span>Demo User</span></span></dd>
+        <dt><label for="field-labels">Labels</label></dt><dd><form class="inline-field" method="post" action="/issues/ZZ-1/fields" hx-post="/issues/ZZ-1/fields" hx-target="#issue-root" hx-swap="outerHTML"><input type="hidden" name="field" value="labels"><input id="field-labels" name="value" value="frontend, parity" placeholder="None" aria-describedby="labels-help"><small id="labels-help" class="sr-only">Comma-separated labels; spaces are not allowed within a label.</small><button class="field-save" type="submit">Save labels</button></form></dd>
+
       </dl>
+
+      <section class="watcher-summary" aria-labelledby="watchers-title"><h3 id="watchers-title">Watchers <span>1</span></h3><ul><li>
+<span class="avatar" aria-hidden="true"><span>DU</span></span>
+<span>Demo User</span></li></ul></section>
       <div class="details-meta"><span>Updated</span><time datetime="2026-08-28T09:00:00Z">2026-08-28T09:00:00Z</time></div>
     </aside>
   </div>

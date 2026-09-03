@@ -52,3 +52,24 @@ func TestSecurityHeaders(t *testing.T) {
 		}
 	}
 }
+
+func TestSecureCookiesDefaultToTheExternalURL(t *testing.T) {
+	t.Setenv("COOKIE_SECURE", "")
+	t.Setenv("ZZIRA_EXTERNAL_URL", "https://zzira.example")
+	if !SecureCookies() {
+		t.Fatal("HTTPS external URL did not enable secure cookies")
+	}
+	t.Setenv("ZZIRA_EXTERNAL_URL", "http://localhost:8080")
+	if SecureCookies() {
+		t.Fatal("local HTTP URL unexpectedly enabled secure cookies")
+	}
+	t.Setenv("COOKIE_SECURE", "true")
+	if !SecureCookies() {
+		t.Fatal("explicit COOKIE_SECURE=true was ignored")
+	}
+	t.Setenv("COOKIE_SECURE", "false")
+	t.Setenv("ZZIRA_EXTERNAL_URL", "https://zzira.example")
+	if SecureCookies() {
+		t.Fatal("explicit COOKIE_SECURE=false was ignored")
+	}
+}
