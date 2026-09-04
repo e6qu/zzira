@@ -114,6 +114,32 @@
     });
   }
 
+  function setNotificationBadge(count) {
+    const value = Number.isFinite(count) ? Math.max(0, count) : 0;
+    document.querySelectorAll('[data-notification-count]').forEach((badge) => {
+      badge.textContent = value > 99 ? '99+' : String(value);
+      badge.hidden = value === 0;
+    });
+    const headerLink = document.querySelector('.header-notifications');
+    if (headerLink) {
+      headerLink.setAttribute('aria-label', value ? `Notifications, ${value} unread` : 'Notifications');
+    }
+  }
+
+  function refreshNotificationBadge() {
+    if (!document.querySelector('[data-notification-count]')) return;
+    const renderedCount = document.body.getAttribute('data-notification-unread');
+    if (renderedCount !== null && renderedCount !== '') setNotificationBadge(Number(renderedCount));
+    if (!navigator.onLine) return;
+    fetch('/rest/zzira/1/notifications?maxResults=1', { headers: { Accept: 'application/json' } })
+      .then((response) => {
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return response.json();
+      })
+      .then((payload) => setNotificationBadge(Number(payload.unreadCount) || 0))
+      .catch(() => { /* retain the server-rendered count while offline */ });
+  }
+
   function setSyncRail(state, label, detail) {
     const rail = document.getElementById('sync-rail');
     if (!rail) return;
@@ -303,61 +329,64 @@
   let activityFilter = 'comment';
   let activityOldestFirst = false;
 
-  function initIssueTriage(scope) {
-    const root = (scope || document).querySelector('#issue-root');
-    if (!root || root.dataset.triageReady) return;
-    root.dataset.triageReady = '1';
+  function applyActivityView(root) {
     const ledger = root.querySelector('[data-activity-ledger]');
     if (!ledger) return;
     const entries = Array.from(ledger.querySelectorAll('[data-activity-kind]'));
     const empty = ledger.querySelector('[data-activity-filter-empty]');
-    const filters = Array.from(root.querySelectorAll('[data-activity-filter]'));
-    let selected = activityFilter;
-    let oldestFirst = activityOldestFirst;
-
-    function applyActivityView() {
-      let visible = 0;
-      entries.forEach((entry) => {
-        entry.hidden = selected !== 'all' && entry.dataset.activityKind !== selected;
-        if (!entry.hidden) visible += 1;
-      });
-      entries.sort((left, right) => {
-        const order = (left.dataset.created || '').localeCompare(right.dataset.created || '');
-        return oldestFirst ? order : -order;
-      }).forEach((entry) => ledger.insertBefore(entry, empty));
-      if (empty) empty.hidden = visible !== 0 || entries.length === 0;
-    }
-
-    filters.forEach((button) => {
-      button.setAttribute('aria-pressed', String(button.dataset.activityFilter === selected));
-      button.addEventListener('click', () => {
-        selected = button.dataset.activityFilter || 'all';
-        activityFilter = selected;
-        filters.forEach((candidate) => candidate.setAttribute('aria-pressed', String(candidate === button)));
-        applyActivityView();
-      });
+    let visible = 0;
+    entries.forEach((entry) => {
+      entry.hidden = activityFilter !== 'all' && entry.dataset.activityKind !== activityFilter;
+      if (!entry.hidden) visible += 1;
+    });
+    entries.sort((left, right) => {
+      const order = (left.dataset.created || '').localeCompare(right.dataset.created || '');
+      return activityOldestFirst ? order : -order;
+    }).forEach((entry) => ledger.insertBefore(entry, empty));
+    if (empty) empty.hidden = visible !== 0 || entries.length === 0;
+    root.querySelectorAll('[data-activity-filter]').forEach((button) => {
+      button.setAttribute('aria-pressed', String(button.dataset.activityFilter === activityFilter));
     });
     const sortButton = root.querySelector('[data-activity-sort]');
     if (sortButton) {
-      sortButton.addEventListener('click', () => {
-        oldestFirst = !oldestFirst;
-        activityOldestFirst = oldestFirst;
-        sortButton.setAttribute('aria-pressed', String(oldestFirst));
-        sortButton.setAttribute('aria-label', oldestFirst ? 'Sort activity newest first' : 'Sort activity oldest first');
-        sortButton.textContent = oldestFirst ? 'Oldest first ↑' : 'Newest first ↓';
-        applyActivityView();
-      });
+      sortButton.setAttribute('aria-pressed', String(activityOldestFirst));
+      sortButton.setAttribute('aria-label', activityOldestFirst ? 'Sort activity newest first' : 'Sort activity oldest first');
+      sortButton.textContent = activityOldestFirst ? 'Oldest first ↑' : 'Newest first ↓';
     }
-    if (sortButton && oldestFirst) {
-      sortButton.setAttribute('aria-pressed', 'true');
-      sortButton.setAttribute('aria-label', 'Sort activity newest first');
-      sortButton.textContent = 'Oldest first ↑';
-    }
-    applyActivityView();
   }
+
+  function initIssueTriage(scope) {
+    const root = (scope || document).querySelector('#issue-root');
+    if (!root || root.dataset.triageReady) return;
+    root.dataset.triageReady = '1';
+    applyActivityView(root);
+  }
+
+  // Delegation keeps these controls interactive during the interval between
+  // an HTMX root swap and its hydration event.
+  document.addEventListener('click', (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target) return;
+    const filter = target.closest('[data-activity-filter]');
+    if (filter) {
+      const root = filter.closest('#issue-root');
+      if (!root) return;
+      activityFilter = filter.dataset.activityFilter || 'all';
+      applyActivityView(root);
+      return;
+    }
+    const sort = target.closest('[data-activity-sort]');
+    if (sort) {
+      const root = sort.closest('#issue-root');
+      if (!root) return;
+      activityOldestFirst = !activityOldestFirst;
+      applyActivityView(root);
+    }
+  });
 
   document.addEventListener('DOMContentLoaded', () => {
     initShell();
+    refreshNotificationBadge();
     initBoardFilter();
     initBoardSettings();
     initNavigator();
@@ -530,6 +559,7 @@
         announce('synced \u00b7 seq ' + msg.seq, 1500);
         setSyncRail('online', 'Synced', 'Sequence ' + msg.seq);
         refreshBoardRegion();
+        refreshNotificationBadge();
         break;
       case 'queued':
         announce('offline \u2014 queued (' + msg.size + ')', 4000);

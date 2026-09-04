@@ -260,6 +260,14 @@ func main() {
 		webHandler.DeleteIssue(w, r, r.PathValue("key"))
 	})
 	mux.HandleFunc("GET /dashboard", webHandler.DashboardPage)
+	mux.HandleFunc("GET /notifications", webHandler.NotificationsPage)
+	mux.HandleFunc("POST /notifications/read-all", webHandler.MarkAllNotificationsReadPage)
+	mux.HandleFunc("POST /notifications/{id}/read", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.SetNotificationReadPage(w, r, r.PathValue("id"))
+	})
+	mux.HandleFunc("POST /notifications/{id}/open", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.OpenNotification(w, r, r.PathValue("id"))
+	})
 	mux.HandleFunc("GET /board/{id}", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.BoardPage(w, r, r.PathValue("id"))
 	})
@@ -291,6 +299,10 @@ func main() {
 	mux.HandleFunc("GET /bootstrap", api.BootstrapHandler)
 	mux.Handle("GET /sse", sse)
 	mux.HandleFunc("GET /rest/zzira/1/notifications", api.NotificationsHandler)
+	mux.HandleFunc("PUT /rest/zzira/1/notifications/{id}", func(w http.ResponseWriter, r *http.Request) {
+		api.NotificationHandler(w, r, r.PathValue("id"))
+	})
+	mux.HandleFunc("POST /rest/zzira/1/notifications/read-all", api.MarkAllNotificationsReadHandler)
 	mux.Handle("/rest/agile/1.0/", agileAPI)
 	mux.Handle("/rest/api/3/", api)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {

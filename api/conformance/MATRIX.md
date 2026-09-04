@@ -58,7 +58,7 @@ control-plane endpoints use `/rest/zzira/1` and are never presented as Jira APIs
 | Issue security: scheme admin APIs, assignment, enforcement | ✅ | tombstones + per-user sync filtering + visibility on search/board/navigator/bootstrap |
 | Permissionscheme admin APIs | ⛔ | workspace-role enforcement live |
 | Screens/schemes APIs | ⛔ | editmeta serves the form contract |
-| Notifications (custom) GET /rest/zzira/1/notifications | ✅ | synced per-user entity |
+| Notifications (custom) GET/PUT /rest/zzira/1/notifications · POST /notifications/read-all | ✅ | Private per-user entities with synchronized read state, unread count, and idempotent mutations |
 
 ## Tier D — long tail
 
@@ -78,6 +78,7 @@ control-plane endpoints use `/rest/zzira/1` and are never presented as Jira APIs
 | Offline reload renders from local SQLite | ✅ |
 | Two-browser convergence via the action log | ✅ |
 | Board controls/settings, issue preview, Agile configuration and quick-filter APIs | ✅ |
+| Notifications inbox, private API mutations, unread filtering, and open-to-work flow | ✅ |
 | WCAG 2.2 A/AA axe sweep, target sizes, keyboard movement and 320px reflow | ✅ |
 
 ## Load measurement
