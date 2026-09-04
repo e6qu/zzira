@@ -292,6 +292,40 @@ func TestSignedOutOffersLocalLoginWithoutOIDCConfigured(t *testing.T) {
 	}
 }
 
+// The bridge must ignore every query parameter on the incoming request and
+// always land on Shauth's own /oauth/logout/complete: Shauth's SSO validator
+// asserts this by requesting the exact bridge URL with an injected next and
+// redirect_uri pointed at an attacker origin, and zzira's own session cookie
+// is already cleared by Logout before the browser ever leaves for Shauth, so
+// this bridge has nothing local left to finish.
+func TestOIDCLogoutCompleteHandsOffToShauthIgnoringQueryInjection(t *testing.T) {
+	h := &Handler{OIDC: &OIDC{endSessionEndpoint: "https://auth.example.test/oauth2/sessions/logout"}}
+	req := httptest.NewRequest("GET", "/auth/shauth/logout/complete?next=https://attacker.example/&redirect_uri=https://attacker.example/", nil)
+	rec := httptest.NewRecorder()
+	h.OIDCLogoutComplete(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("logout complete status = %d, want %d", rec.Code, http.StatusSeeOther)
+	}
+	if location := rec.Header().Get("Location"); location != "https://auth.example.test/oauth/logout/complete" {
+		t.Fatalf("logout complete Location = %q, want the exact Shauth completion URL with no query", location)
+	}
+	if cache := rec.Header().Get("Cache-Control"); cache != "no-store" {
+		t.Fatalf("logout complete Cache-Control = %q, want no-store", cache)
+	}
+}
+
+// Without OIDC configured, the bridge cannot hand off to Shauth at all and
+// falls back to the app's own signed-out page.
+func TestOIDCLogoutCompleteFallsBackToLocalSignedOutWithoutOIDCConfigured(t *testing.T) {
+	h := &Handler{}
+	req := httptest.NewRequest("GET", "/auth/shauth/logout/complete", nil)
+	rec := httptest.NewRecorder()
+	h.OIDCLogoutComplete(rec, req)
+	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/signed-out" {
+		t.Fatalf("logout complete without OIDC = %d %q, want %d /signed-out", rec.Code, rec.Header().Get("Location"), http.StatusSeeOther)
+	}
+}
+
 func TestBackChannelLogoutVerifiesAndRevokesTheIssuerScopedSession(t *testing.T) {
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	if dsn == "" {
