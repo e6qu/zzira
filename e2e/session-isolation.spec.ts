@@ -58,7 +58,7 @@ test('the service worker does not intercept a cross-origin redirect into the Sha
   // trigger the process-swap conditions the worker-interception bug depends
   // on. fake-hydra.mjs on :8100 stands in for that redirecting IdP hop.
   const bridgeURL = new URL('/auth/shauth/logout/complete', baseURL!).toString();
-  await page.goto(`http://localhost:8100/simulated-logout?to=${encodeURIComponent(bridgeURL)}`);
+  await page.goto(`http://127.0.0.1:8100/simulated-logout?to=${encodeURIComponent(bridgeURL)}`);
   await expect(page).toHaveURL('/signed-out');
 
   // A service worker that intercepts this navigation and answers with
