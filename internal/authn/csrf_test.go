@@ -3,6 +3,7 @@ package authn
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -38,7 +39,7 @@ func TestSecurityHeaders(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "https://zzira.example/", nil)
 	SecurityHeaders(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
-	})).ServeHTTP(w, r)
+	}), "").ServeHTTP(w, r)
 
 	for _, header := range []string{
 		"Content-Security-Policy",
@@ -50,6 +51,27 @@ func TestSecurityHeaders(t *testing.T) {
 		if w.Header().Get(header) == "" {
 			t.Errorf("%s is missing", header)
 		}
+	}
+}
+
+// TestSecurityHeadersAllowsTheOIDCProviderInFormAction covers RP-initiated
+// OIDC logout: the sign-out form posts to this same origin's own /logout,
+// which then redirects the browser to the identity provider to end the SSO
+// session before returning. Chrome enforces form-action against a form
+// submission's full redirect chain, not just its literal same-origin action
+// target, so the provider's origin must be explicitly allowed or that
+// redirect is silently blocked (net::ERR_ABORTED, no further navigation at
+// all) -- exactly what a live deployment reproduced before this existed.
+func TestSecurityHeadersAllowsTheOIDCProviderInFormAction(t *testing.T) {
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "https://zzira.example/", nil)
+	SecurityHeaders(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}), "https://auth.example.test").ServeHTTP(w, r)
+
+	csp := w.Header().Get("Content-Security-Policy")
+	if !strings.Contains(csp, "form-action 'self' https://auth.example.test") {
+		t.Fatalf("Content-Security-Policy = %q, want form-action to allow the OIDC provider's origin", csp)
 	}
 }
 

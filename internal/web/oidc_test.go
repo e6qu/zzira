@@ -366,6 +366,27 @@ func TestBackChannelLogoutVerifiesAndRevokesTheIssuerScopedSession(t *testing.T)
 	}
 }
 
+// TestFormActionOriginReturnsTheEndSessionEndpointOrigin covers the value
+// SecurityHeaders' form-action directive must allow so a browser can follow
+// RP-initiated OIDC logout's redirect to the identity provider without it
+// being silently blocked.
+func TestFormActionOriginReturnsTheEndSessionEndpointOrigin(t *testing.T) {
+	var nilOIDC *OIDC
+	if got := nilOIDC.FormActionOrigin(); got != "" {
+		t.Fatalf("nil OIDC FormActionOrigin() = %q, want empty", got)
+	}
+
+	unconfigured := &OIDC{}
+	if got := unconfigured.FormActionOrigin(); got != "" {
+		t.Fatalf("OIDC with no end_session_endpoint FormActionOrigin() = %q, want empty", got)
+	}
+
+	configured := &OIDC{endSessionEndpoint: "https://auth.example.test/oauth2/sessions/logout?foo=bar"}
+	if got := configured.FormActionOrigin(); got != "https://auth.example.test" {
+		t.Fatalf("FormActionOrigin() = %q, want %q", got, "https://auth.example.test")
+	}
+}
+
 func TestBackChannelLogoutNotFoundWithoutOIDCConfigured(t *testing.T) {
 	h := &Handler{}
 	req := httptest.NewRequest("POST", "/auth/shauth/backchannel-logout", nil)

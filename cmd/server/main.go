@@ -306,7 +306,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              address,
-		Handler:           http.MaxBytesHandler(authn.SecurityHeaders(authn.ProtectCookieMutations(mux)), 34<<20),
+		Handler:           http.MaxBytesHandler(authn.SecurityHeaders(authn.ProtectCookieMutations(mux), oidcSSO.FormActionOrigin()), 34<<20),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      60 * time.Second,

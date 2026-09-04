@@ -190,14 +190,26 @@ func ProtectCookieMutations(next http.Handler) http.Handler {
 // SecurityHeaders installs browser hardening that applies equally to HTML,
 // API, worker, and static responses. Inline handlers remain temporarily
 // allowed by the renderer, while remote scripts, plugins, framing, and foreign
-// form targets are denied.
-func SecurityHeaders(next http.Handler) http.Handler {
+// form targets are denied. oidcFormActionOrigin, when non-empty, is added to
+// form-action alongside 'self': Chrome enforces form-action against a form
+// submission's full redirect chain, not just its literal action target, so
+// RP-initiated OIDC logout -- the sign-out form posts to this same origin's
+// own /logout, which then 303s the browser to the identity provider to end
+// the SSO session -- is itself a same-origin form action but every provider
+// redirect after it left 'self' and got silently blocked (net::ERR_ABORTED,
+// with no further navigation at all) until the provider's origin was
+// explicitly allowed here.
+func SecurityHeaders(next http.Handler, oidcFormActionOrigin string) http.Handler {
+	formAction := "form-action 'self'"
+	if oidcFormActionOrigin != "" {
+		formAction += " " + oidcFormActionOrigin
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Security-Policy",
 			"default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; "+
 				"style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; "+
 				"worker-src 'self' blob:; object-src 'none'; base-uri 'self'; "+
-				"frame-ancestors 'none'; form-action 'self'")
+				"frame-ancestors 'none'; "+formAction)
 		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
