@@ -691,15 +691,22 @@ func (h *Handler) SignedOut(w http.ResponseWriter, r *http.Request) {
 }
 
 // OIDCLogoutComplete is the registered post-logout redirect bridge Shauth
-// sends the browser to after RP-initiated logout finishes. It is a
-// completion step, not the user-facing destination: it finalizes the local
-// session and hands off to the real signed-out page, matching the bridge/
-// destination split every other app in this deployment uses (a validator
-// checking for one committed page at this bridge, rather than a redirect
-// through it, would be checking the wrong thing).
+// sends the browser to after RP-initiated logout finishes. It hands off to
+// Shauth's own /oauth/logout/complete rather than finishing the flow here:
+// zzira's own session cookie is already cleared by Logout before the browser
+// ever left for Shauth, and Shauth still needs its turn at this same-site hop
+// to clear its own first-party session cookie, which zzira's origin cannot
+// touch. The target ignores every query parameter on the incoming request
+// (there is a real one, next, but it is Shauth's own /oauth/logout/complete
+// that reads it, never this bridge) so a crafted next or redirect_uri here
+// cannot steer the browser anywhere but back to Shauth.
 func (h *Handler) OIDCLogoutComplete(w http.ResponseWriter, r *http.Request) {
 	noStoreAuthResponse(w)
 	authn.ClearSessionCookie(w)
+	if origin := h.OIDC.FormActionOrigin(); origin != "" {
+		http.Redirect(w, r, origin+"/oauth/logout/complete", http.StatusSeeOther)
+		return
+	}
 	http.Redirect(w, r, "/signed-out", http.StatusSeeOther)
 }
 
