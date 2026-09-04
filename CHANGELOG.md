@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.13.0](https://github.com/e6qu/zzira/compare/v0.12.0...v0.13.0) (2026-09-04)
+
+
+### Features
+
+* add synchronized notifications inbox ([630aaf4](https://github.com/e6qu/zzira/commit/630aaf4adb340e6db621038f8345510a1da388e3))
+* add synchronized notifications inbox ([a2420f3](https://github.com/e6qu/zzira/commit/a2420f3c6954a2ca1e7123c3f182e87f12834dd0))
+
 ## [0.12.0](https://github.com/e6qu/zzira/compare/v0.11.0...v0.12.0) (2026-09-04)
 
 
