@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.14.0](https://github.com/e6qu/zzira/compare/v0.13.0...v0.14.0) (2026-09-04)
+
+
+### Features
+
+* add workspace project navigation ([e025924](https://github.com/e6qu/zzira/commit/e0259247bd7eabc889224b65efd06b7571700437))
+* add workspace project navigation ([eed1999](https://github.com/e6qu/zzira/commit/eed19994f5d042262f54ac87027357986b8395b5))
+
 ## [0.13.0](https://github.com/e6qu/zzira/compare/v0.12.0...v0.13.0) (2026-09-04)
 
 
