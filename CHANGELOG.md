@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.12.0](https://github.com/e6qu/zzira/compare/v0.11.0...v0.12.0) (2026-09-04)
+
+
+### Features
+
+* add Jira-style board configuration ([a07883e](https://github.com/e6qu/zzira/commit/a07883e8b2c1030fe96c795e70c747ace4873f45))
+* add Jira-style board configuration ([437767e](https://github.com/e6qu/zzira/commit/437767e0a4f3548a91ad231709b63c52f05eac51))
+
 ## [0.11.0](https://github.com/e6qu/zzira/compare/v0.10.0...v0.11.0) (2026-09-03)
 
 
