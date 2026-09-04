@@ -22,5 +22,5 @@ func (h *Handler) DashboardPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	writePage(w, "page_dashboard", pageData{User: user, Data: stats, Active: "dashboard"})
+	h.writeWorkspacePage(w, r, "page_dashboard", user, wsID, stats, "dashboard", "")
 }

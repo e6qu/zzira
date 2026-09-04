@@ -118,7 +118,7 @@ func (h *Handler) ProjectsPage(w http.ResponseWriter, r *http.Request) {
 		}
 		data.Projects = append(data.Projects, card)
 	}
-	writePage(w, "page_projects", pageData{User: user, Data: data, Active: "projects"})
+	h.writeWorkspacePage(w, r, "page_projects", user, wsID, data, "projects", "")
 }
 
 func (h *Handler) ProjectOverview(w http.ResponseWriter, r *http.Request, idOrKey string) {
@@ -159,9 +159,9 @@ func (h *Handler) ProjectOverview(w http.ResponseWriter, r *http.Request, idOrKe
 	if len(issues) > 10 {
 		issues = issues[:10]
 	}
-	writePage(w, "page_project_overview", pageData{User: user, Data: projectOverviewData{
+	h.writeWorkspacePage(w, r, "page_project_overview", user, wsID, projectOverviewData{
 		Project: project, Issues: issues, Boards: boards, PrimaryBoard: primaryBoard, Workflow: wf,
-	}, Active: "projects"})
+	}, "project-overview", project.ID)
 }
 
 func (h *Handler) PeoplePage(w http.ResponseWriter, r *http.Request) {
@@ -174,7 +174,7 @@ func (h *Handler) PeoplePage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	writePage(w, "page_people", pageData{User: user, Data: peoplePageData{People: people}, Active: "people"})
+	h.writeWorkspacePage(w, r, "page_people", user, wsID, peoplePageData{People: people}, "people", "")
 }
 
 func (h *Handler) SelfProfile(w http.ResponseWriter, r *http.Request) {
@@ -206,9 +206,9 @@ func (h *Handler) ProfilePage(w http.ResponseWriter, r *http.Request, accountID 
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	writePage(w, "page_profile", pageData{User: user, Data: profilePageData{
+	h.writeWorkspacePage(w, r, "page_profile", user, wsID, profilePageData{
 		Profile: profile, Self: profile.ID == user.ID, Assigned: assigned, Reported: reported,
-	}, Active: "people"})
+	}, "people", "")
 }
 
 func (h *Handler) WorkflowsPage(w http.ResponseWriter, r *http.Request) {
@@ -237,7 +237,7 @@ func (h *Handler) WorkflowsPage(w http.ResponseWriter, r *http.Request) {
 		cards = append(cards, card)
 	}
 	admin, _ := h.Store.IsAdmin(r.Context(), wsID, user.ID)
-	writePage(w, "page_workflows", pageData{User: user, Data: workflowsPageData{Workflows: cards, CanCreate: admin}, Active: "workflows"})
+	h.writeWorkspacePage(w, r, "page_workflows", user, wsID, workflowsPageData{Workflows: cards, CanCreate: admin}, "workflows", "")
 }
 
 func (h *Handler) WorkflowPage(w http.ResponseWriter, r *http.Request, id string) {
@@ -284,10 +284,10 @@ func (h *Handler) WorkflowPage(w http.ResponseWriter, r *http.Request, id string
 		}
 	}
 	admin, _ := h.Store.IsAdmin(r.Context(), wsID, user.ID)
-	writePage(w, "page_workflow", pageData{User: user, Data: workflowEditorData{
+	h.writeWorkspacePage(w, r, "page_workflow", user, wsID, workflowEditorData{
 		Workflow: wf, Lanes: lanes, Statuses: statuses, Projects: projects, Assigned: assigned,
 		CanEdit: admin && wf.ID != workflow.Default().ID, CanAssign: admin,
-	}, Active: "workflows"})
+	}, "workflows", "")
 }
 
 func (h *Handler) CreateWorkflow(w http.ResponseWriter, r *http.Request) {

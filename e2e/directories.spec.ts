@@ -36,6 +36,43 @@ test('project and people directories provide Jira-style navigation journeys', as
   await expect(page.getByRole('navigation', { name: 'Breadcrumb' })).toContainText('Your profile');
 });
 
+test('project switcher keeps the shell and generic pages in the current project', async ({ page }) => {
+  await login(page);
+  await page.goto('/projects/ZZ');
+
+  const switcher = page.locator('.project-switcher');
+  const summary = switcher.locator('summary');
+  await expect(summary).toHaveAttribute('aria-label', 'Switch project. Current project: ZZIRA Demo');
+  await expect(page.locator('.global-search')).toHaveAttribute('action', '/issues/ZZ');
+  await expect(page.locator('#global-create-issue')).toHaveAttribute('hx-get', '/issues/new?project=ZZ');
+  await expect(page.locator('.nav-project-overview')).toHaveAttribute('aria-current', 'page');
+  await expect(page.locator('.nav-backlog')).toHaveAttribute('href', '/board/brd_default/backlog');
+  await expect(page.locator('.nav-board')).toHaveAttribute('href', '/board/brd_default');
+  await expect(page.locator('.nav-issues')).toHaveAttribute('href', '/issues/ZZ');
+
+  await summary.click();
+  await expect(switcher).toHaveAttribute('open', '');
+  await expect(switcher.getByRole('navigation', { name: 'Projects' }).getByRole('link', { name: /ZZIRA Demo/ }))
+    .toHaveAttribute('aria-current', 'true');
+  await page.getByRole('heading', { name: 'ZZIRA Demo', level: 1 }).click();
+  await expect(switcher).not.toHaveAttribute('open', '');
+
+  await summary.click();
+  await page.keyboard.press('Escape');
+  await expect(switcher).not.toHaveAttribute('open', '');
+  await expect(summary).toBeFocused();
+
+  await page.getByRole('link', { name: 'Your work' }).click();
+  await expect(page).toHaveURL('/dashboard');
+  await expect(page.getByRole('link', { name: 'View all work' })).toHaveAttribute('href', '/issues/ZZ');
+  await expect(page.getByRole('link', { name: /Open board/ })).toHaveAttribute('href', '/board/brd_default');
+  await expect(page.locator('.global-search')).toHaveAttribute('action', '/issues/ZZ');
+
+  await page.locator('#global-create-issue').click();
+  await expect(page.locator('#create-project')).toHaveValue('ZZ');
+  await page.keyboard.press('Escape');
+});
+
 test('workflow directory, editor, transition changes, and project assignment work', async ({ page }) => {
   await login(page);
   await page.getByRole('link', { name: 'Workflows', exact: true }).click();

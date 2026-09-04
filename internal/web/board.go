@@ -279,7 +279,7 @@ func (h *Handler) BoardPage(w http.ResponseWriter, r *http.Request, id string) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	writePage(w, "page_board", pageData{User: user, Data: data, Active: "board"})
+	h.writeWorkspacePage(w, r, "page_board", user, wsID, data, "board", board.ProjectID)
 }
 
 // BoardFragment serves GET /board/{id}/fragment — the live-swap region.
@@ -344,7 +344,7 @@ func (h *Handler) BoardSettingsPage(w http.ResponseWriter, r *http.Request, boar
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	writePage(w, "page_board_settings", pageData{User: user, Data: data, Active: "board"})
+	h.writeWorkspacePage(w, r, "page_board_settings", user, wsID, data, "board", board.ProjectID)
 }
 
 func boardConfigurationForm(r *http.Request, board *models.Board) (store.BoardConfigurationUpdate, error) {
@@ -414,9 +414,7 @@ func (h *Handler) UpdateBoardSettings(w http.ResponseWriter, r *http.Request, bo
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.WriteHeader(http.StatusBadRequest)
-		writePage(w, "page_board_settings", pageData{User: user, Data: data, Active: "board"})
+		h.writeWorkspacePageStatus(w, r, "page_board_settings", user, wsID, data, "board", board.ProjectID, http.StatusBadRequest)
 		return
 	}
 	if err != nil {

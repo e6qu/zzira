@@ -20,12 +20,12 @@
   }());
 </script>
 <link rel="stylesheet" href="/static/css/tokens.css?v=4">
-<link rel="stylesheet" href="/static/css/workspace.css?v=8">
+<link rel="stylesheet" href="/static/css/workspace.css?v=9">
 <link rel="preload" href="/static/zzira-worker.wasm?v=2" as="fetch" crossorigin>
 <link rel="preload" href="/static/sqlite/sqlite3.wasm" as="fetch" crossorigin>
 <script src="/static/htmx/htmx.min.js" defer></script>
 <script src="/static/wasm/wasm_exec.js" defer></script>
-<script src="/static/app.js?v=25" defer></script>
+<script src="/static/app.js?v=26" defer></script>
 {{end}}
 
 {{define "avatar"}}
@@ -42,7 +42,7 @@
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h16"/></svg>
   </button>
   <a class="logo" href="/" aria-label="ZZIRA home"><span class="logo-mark" aria-hidden="true">Z</span><span>ZZIRA</span></a>
-  <form class="global-search" method="get" action="/issues/ZZ" role="search">
+  <form class="global-search" method="get" action="{{with .Navigation}}{{with .Current}}{{.WorkURL}}{{else}}/projects{{end}}{{else}}/projects{{end}}" role="search">
     <label class="sr-only" for="global-jql-query">Search issues with JQL</label>
     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
     <input id="global-jql-query" name="jql" placeholder="Search work" autocomplete="off">
@@ -52,7 +52,7 @@
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 8h18c0-1-3-1-3-8M9.5 20h5"/></svg>
     <span class="notification-badge" data-notification-count hidden></span>
   </a>
-  <button type="button" class="btn btn-primary header-create" id="global-create-issue" hx-get="/issues/new" hx-target="#modal-root"
+  <button type="button" class="btn btn-primary header-create" id="global-create-issue" hx-get="{{with .Navigation}}{{with .Current}}{{.CreateURL}}{{else}}/issues/new{{end}}{{else}}/issues/new{{end}}" hx-target="#modal-root"
           hx-swap="innerHTML" onclick="window.zzira.openModal(this)"><span aria-hidden="true">+</span> Create</button>
   {{if .User}}
   <details class="user-menu">
@@ -72,19 +72,38 @@
 
 {{define "workspace_nav"}}
 <aside class="workspace-nav" id="workspace-navigation" aria-label="Workspace navigation">
-  <a class="workspace-identity" href="/projects">
-    <span class="workspace-avatar" aria-hidden="true">ZZ</span>
-    <span class="workspace-copy"><strong>ZZIRA</strong><small>Browse projects</small></span>
-  </a>
+  {{with .Navigation}}{{with .Projects}}
+  {{$current := $.Navigation.Current}}
+  <details class="project-switcher">
+    <summary aria-label="Switch project. Current project: {{with $current}}{{.Project.Name}}{{else}}none{{end}}">
+      {{with $current}}<span class="workspace-avatar" aria-hidden="true">{{initials .Project.Name}}</span><span class="workspace-copy"><strong>{{.Project.Name}}</strong><small>{{.Project.Key}} · Switch project</small></span>{{end}}
+      <svg class="project-switcher-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg>
+    </summary>
+    <div class="project-switcher-panel">
+      <strong>Switch project</strong>
+      <nav aria-label="Projects">
+        {{range .}}<a href="{{.OverviewURL}}" {{if $current}}{{if eq .Project.ID $current.Project.ID}}aria-current="true"{{end}}{{end}}><span class="workspace-avatar" aria-hidden="true">{{initials .Project.Name}}</span><span><strong>{{.Project.Name}}</strong><small>{{.Project.Key}}</small></span>{{if $current}}{{if eq .Project.ID $current.Project.ID}}<span class="sr-only">Current project</span>{{end}}{{end}}</a>{{end}}
+      </nav>
+      <a class="project-directory-link" href="/projects">View all projects</a>
+    </div>
+  </details>
+  {{else}}
+  <a class="workspace-identity" href="/projects"><span class="workspace-avatar" aria-hidden="true">ZZ</span><span class="workspace-copy"><strong>ZZIRA</strong><small>Create a project to begin</small></span></a>
+  {{end}}{{else}}
+  <a class="workspace-identity" href="/projects"><span class="workspace-avatar" aria-hidden="true">ZZ</span><span class="workspace-copy"><strong>ZZIRA</strong><small>Browse projects</small></span></a>
+  {{end}}
   <nav aria-label="Primary">
     <a class="nav-dashboard" href="/dashboard" {{if eq .Active "dashboard"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h6v7H4zM14 4h6v16h-6zM4 4h6v5H4z"/></svg><span>Your work</span></a>
     <a class="nav-projects" href="/projects" {{if eq .Active "projects"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5h7l2 2h8v10h-17z"/></svg><span>Projects</span></a>
     <a class="nav-people" href="/people" {{if eq .Active "people"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3.5 19c.5-4 2.2-6 5.5-6s5 2 5.5 6M15 6.5a3 3 0 0 1 0 5.8M16 14c2.7.4 4.1 2 4.5 5"/></svg><span>People</span></a>
     <a class="nav-notifications" href="/notifications" {{if eq .Active "notifications"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 8h18c0-1-3-1-3-8M9.5 20h5"/></svg><span>Notifications</span><span class="nav-notification-count" data-notification-count hidden></span></a>
-    <div class="nav-label">Recent project</div>
-    <a class="nav-backlog" href="/board/brd_default/backlog" {{if eq .Active "backlog"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v4H5zM5 12h14v7H5z"/><path d="M8 15h5M8 17h8"/></svg><span>Backlog</span></a>
-    <a class="nav-board" href="/board/brd_default" {{if eq .Active "board"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="5" height="14" rx="1"/><rect x="9.5" y="5" width="5" height="9" rx="1"/><rect x="15.5" y="5" width="5" height="11" rx="1"/></svg><span>Board</span></a>
-    <a class="nav-issues" href="/issues/ZZ" {{if eq .Active "issues"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 6h13M7 12h13M7 18h13"/><circle cx="4" cy="6" r=".8"/><circle cx="4" cy="12" r=".8"/><circle cx="4" cy="18" r=".8"/></svg><span>All work</span></a>
+    {{with .Navigation}}{{with .Current}}
+    <div class="nav-label">Current project</div>
+    <a class="nav-project-overview" href="{{.OverviewURL}}" {{if eq $.Active "project-overview"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4zM8 8h8M8 12h8M8 16h5"/></svg><span>Project overview</span></a>
+    {{if .Board}}<a class="nav-backlog" href="{{.BacklogURL}}" {{if eq $.Active "backlog"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v4H5zM5 12h14v7H5z"/><path d="M8 15h5M8 17h8"/></svg><span>Backlog</span></a>
+    <a class="nav-board" href="{{.BoardURL}}" {{if eq $.Active "board"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="5" height="14" rx="1"/><rect x="9.5" y="5" width="5" height="9" rx="1"/><rect x="15.5" y="5" width="5" height="11" rx="1"/></svg><span>Board</span></a>{{end}}
+    <a class="nav-issues" href="{{.WorkURL}}" {{if eq $.Active "issues"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 6h13M7 12h13M7 18h13"/><circle cx="4" cy="6" r=".8"/><circle cx="4" cy="12" r=".8"/><circle cx="4" cy="18" r=".8"/></svg><span>All work</span></a>
+    {{end}}{{end}}
     <div class="nav-label">Settings</div>
     <a class="nav-workflows" href="/settings/workflows" {{if eq .Active "workflows"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M7 6h10M18 8l-5 8M11 16 6 8"/></svg><span>Workflows</span></a>
   </nav>
@@ -343,9 +362,9 @@
   <main class="page" id="main-content" tabindex="-1">
     <section class="welcome-panel">
       <div><span class="eyebrow">Your work</span><h1>Welcome back{{if .User}}, {{.User.DisplayName}}{{end}}</h1><p>See what is moving, find the next priority, or create new work.</p></div>
-      <div class="welcome-actions"><a class="btn" href="/issues/ZZ">View all work</a><button type="button" class="btn btn-primary" id="home-create-issue" hx-get="/issues/new" hx-target="#modal-root" hx-swap="innerHTML" onclick="window.zzira.openModal(this)">Create issue</button></div>
+      <div class="welcome-actions">{{with .Navigation}}{{with .Current}}<a class="btn" href="{{.WorkURL}}">View all work</a>{{else}}<a class="btn" href="/projects">Browse projects</a>{{end}}{{else}}<a class="btn" href="/projects">Browse projects</a>{{end}}<button type="button" class="btn btn-primary" id="home-create-issue" hx-get="{{with .Navigation}}{{with .Current}}{{.CreateURL}}{{else}}/issues/new{{end}}{{else}}/issues/new{{end}}" hx-target="#modal-root" hx-swap="innerHTML" onclick="window.zzira.openModal(this)">Create issue</button></div>
     </section>
-    <div class="dashboard-layout"><section class="dashboard-main"><div class="section-heading"><div><span class="eyebrow">Overview</span><h2>Work by status</h2></div><a href="/board/brd_default">Open board →</a></div><div class="dashboard-cards">
+    <div class="dashboard-layout"><section class="dashboard-main"><div class="section-heading"><div><span class="eyebrow">Overview</span><h2>Work by status</h2></div>{{with .Navigation}}{{with .Current}}{{if .Board}}<a href="{{.BoardURL}}">Open board →</a>{{end}}{{end}}{{end}}</div><div class="dashboard-cards">
       {{$data := .Data}}
       {{range $data.StatusCounts}}
       <div class="dash-card">
@@ -438,7 +457,7 @@
   {{template "workspace_nav" .}}
   <main class="page page-fluid" id="main-content" tabindex="-1">
     <nav class="project-tabs" aria-label="{{.Data.Project.Name}} project"><a href="/projects/{{.Data.Project.Key}}">Overview</a>{{if .Data.BoardID}}<a href="/board/{{.Data.BoardID}}/backlog">Backlog</a><a href="/board/{{.Data.BoardID}}">Board</a>{{end}}<a href="/issues/{{.Data.Project.Key}}" aria-current="page">Work items</a></nav>
-    <header class="page-header"><div><span class="eyebrow">{{.Data.Project.Name}} · {{.Data.Project.Key}}</span><h1>All work</h1><p>Find and triage work without losing the issue context.</p></div><button type="button" class="btn btn-primary" hx-get="/issues/new" hx-target="#modal-root" hx-swap="innerHTML" onclick="window.zzira.openModal(this)">Create issue</button></header>
+    <header class="page-header"><div><span class="eyebrow">{{.Data.Project.Name}} · {{.Data.Project.Key}}</span><h1>All work</h1><p>Find and triage work without losing the issue context.</p></div><button type="button" class="btn btn-primary" hx-get="{{with .Navigation}}{{with .Current}}{{.CreateURL}}{{else}}/issues/new{{end}}{{else}}/issues/new{{end}}" hx-target="#modal-root" hx-swap="innerHTML" onclick="window.zzira.openModal(this)">Create issue</button></header>
     <section class="navigator-search" aria-labelledby="navigator-search-title">
       <div class="navigator-search-heading"><h2 id="navigator-search-title">Search work</h2><div class="navigator-search-tools"><form class="saved-filter-picker" method="get" action="/issues/{{.Data.Project.Key}}"><label class="sr-only" for="saved-filter">Saved filter</label><select id="saved-filter" name="filter"><option value="">Saved filters</option>{{range .Data.Filters}}<option value="{{.ID}}" {{if eq .ID $.Data.ActiveFilter}}selected{{end}}>{{if .Favourite}}★ {{end}}{{.Name}}</option>{{end}}</select><button class="btn" type="submit">Open</button></form><nav class="search-mode" aria-label="Search mode"><a href="{{.Data.BasicURL}}" {{if eq .Data.Mode "basic"}}aria-current="page"{{end}}>Basic</a><a href="{{.Data.AdvancedURL}}" {{if eq .Data.Mode "advanced"}}aria-current="page"{{end}}>JQL</a></nav></div></div>
       {{if eq .Data.Mode "advanced"}}
@@ -698,8 +717,8 @@
   <div class="app-shell">
   {{template "workspace_nav" .}}
   <main class="page" id="main-content" tabindex="-1">
-    <header class="page-header"><div><span class="eyebrow">Your work</span><h1>Dashboard</h1><p>A live view of delivery across ZZIRA Software.</p></div><a class="btn" href="/issues/ZZ">View all work</a></header>
-    <section class="dashboard-main"><div class="section-heading"><div><span class="eyebrow">Snapshot</span><h2>Work by status</h2></div><a href="/board/brd_default">Open board →</a></div><div class="dashboard-cards">
+    <header class="page-header"><div><span class="eyebrow">Your work</span><h1>Dashboard</h1><p>A live view of delivery across your workspace.</p></div>{{with .Navigation}}{{with .Current}}<a class="btn" href="{{.WorkURL}}">View all work</a>{{else}}<a class="btn" href="/projects">Browse projects</a>{{end}}{{else}}<a class="btn" href="/projects">Browse projects</a>{{end}}</header>
+    <section class="dashboard-main"><div class="section-heading"><div><span class="eyebrow">Snapshot</span><h2>Work by status</h2></div>{{with .Navigation}}{{with .Current}}{{if .Board}}<a href="{{.BoardURL}}">Open board →</a>{{end}}{{end}}{{end}}</div><div class="dashboard-cards">
       {{$data := .Data}}
       {{range $data.StatusCounts}}
       <div class="dash-card">

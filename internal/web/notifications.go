@@ -144,7 +144,7 @@ func (h *Handler) NotificationsPage(w http.ResponseWriter, r *http.Request) {
 			CreatedLabel: notificationTimeLabel(notification.Created, now),
 		})
 	}
-	writePage(w, "page_notifications", pageData{User: user, Data: data, Active: "notifications"})
+	h.writeWorkspacePage(w, r, "page_notifications", user, wsID, data, "notifications", "")
 }
 
 func notificationReturnURL(r *http.Request) string {
