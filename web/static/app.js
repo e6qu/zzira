@@ -130,20 +130,76 @@
     input.dataset.ready = '1';
     input.addEventListener('input', () => {
       const query = input.value.trim().toLocaleLowerCase();
-      document.querySelectorAll('.board-column').forEach((column) => {
+      document.querySelectorAll('.board-card').forEach((card) => {
+        const match = !query || card.textContent.toLocaleLowerCase().includes(query);
+        card.hidden = !match;
+      });
+      document.querySelectorAll('.board-column-head[data-status]').forEach((header) => {
+        const statusID = header.getAttribute('data-status');
         let visible = 0;
-        column.querySelectorAll('.board-card').forEach((card) => {
-          const match = !query || card.textContent.toLocaleLowerCase().includes(query);
-          card.hidden = !match;
-          if (match) visible += 1;
+        document.querySelectorAll('.board-column[data-status]').forEach((column) => {
+          if (column.getAttribute('data-status') === statusID) {
+            visible += column.querySelectorAll('.board-card:not([hidden])').length;
+          }
         });
-        const count = column.querySelector('.column-count');
+        const count = header.querySelector('.column-count');
         if (count) count.textContent = String(visible);
       });
       const visible = document.querySelectorAll('.board-card:not([hidden])').length;
       const status = document.querySelector('[data-board-filter-status]');
       if (status) status.textContent = visible + (visible === 1 ? ' card shown' : ' cards shown');
     });
+  }
+
+  function initBoardSettings() {
+    const form = document.querySelector('[data-board-settings]');
+    if (!form || form.dataset.ready) return;
+    form.dataset.ready = '1';
+    const list = form.querySelector('[data-quick-filter-list]');
+    const template = form.querySelector('[data-quick-filter-template]');
+    const add = form.querySelector('[data-add-quick-filter]');
+    if (list && template && add) {
+      add.addEventListener('click', () => {
+        const fragment = template.content.cloneNode(true);
+        const firstInput = fragment.querySelector('input[name="quickFilterName"]');
+        list.appendChild(fragment);
+        if (firstInput) firstInput.focus();
+      });
+      list.addEventListener('click', (event) => {
+        const remove = event.target.closest('[data-remove-quick-filter]');
+        if (!remove) return;
+        const row = remove.closest('[data-quick-filter-row]');
+        if (row) row.remove();
+      });
+    }
+  }
+
+  let issuePreviewRequest = null;
+  function loadIssuePreview(trigger) {
+    const selector = trigger.getAttribute('data-preview-target');
+    const path = trigger.getAttribute('data-issue-preview');
+    if (!selector || !path) return;
+    const target = document.querySelector(selector);
+    if (!target) return;
+    if (issuePreviewRequest) issuePreviewRequest.abort();
+    issuePreviewRequest = new AbortController();
+    target.setAttribute('aria-busy', 'true');
+    fetch(path, { headers: { 'HX-Request': 'true' }, signal: issuePreviewRequest.signal })
+      .then((response) => {
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return response.text();
+      })
+      .then((html) => {
+        target.innerHTML = html;
+        target.setAttribute('aria-busy', 'false');
+        issuePreviewRequest = null;
+      })
+      .catch((error) => {
+        if (error.name === 'AbortError') return;
+        target.setAttribute('aria-busy', 'false');
+        issuePreviewRequest = null;
+        announce('could not load issue preview', 4000);
+      });
   }
 
   function initNavigator() {
@@ -303,6 +359,7 @@
   document.addEventListener('DOMContentLoaded', () => {
     initShell();
     initBoardFilter();
+    initBoardSettings();
     initNavigator();
     initIssueTriage(document);
     setSyncRail(navigator.onLine ? 'online' : 'offline', navigator.onLine ? 'Ready' : 'Offline', navigator.onLine ? 'Local replica' : 'Showing local copy');
@@ -319,8 +376,6 @@
     }
   });
 
-  if (!('Worker' in window)) return;
-
   // The replica belongs to views that consume it. Starting one on the
   // post-login home page and immediately replacing it on /browse races two
   // OPFS access handles for the same database during navigation.
@@ -334,7 +389,7 @@
     sessionStorage.setItem(key, id);
     return id;
   }
-  const worker = replicaView
+  const worker = replicaView && typeof Worker === 'function'
     ? new Worker('/static/worker.js?v=11&replica=' + encodeURIComponent(replicaID()))
     : null;
   const banner = () => document.getElementById('sync-banner');
@@ -588,7 +643,7 @@
   function refreshBoardRegion() {
     const boardID = document.body.getAttribute('data-board');
     if (!boardID) return;
-    fetch(`/board/${boardID}/fragment`).then(r => {
+    fetch(`/board/${boardID}/fragment${window.location.search}`).then(r => {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.text();
     }).then(html => {
@@ -687,7 +742,11 @@
   });
 
   // ---- Modal helpers ----
+  const pendingUIActions = Array.isArray(window.zzira?._pending)
+    ? window.zzira._pending.slice()
+    : [];
   window.zzira = {
+    loadIssuePreview,
     openModal(trigger) {
       const root = document.getElementById('modal-root');
       modalReturnFocus = trigger instanceof HTMLElement ? trigger : document.activeElement;
@@ -747,6 +806,16 @@
       });
     }
   };
+  pendingUIActions.forEach(([name, args]) => {
+    const trigger = args[args.length - 1];
+    if (trigger instanceof HTMLElement && !trigger.isConnected) return;
+    if (name === 'activate') {
+      if (trigger instanceof HTMLElement) trigger.click();
+      return;
+    }
+    const handler = window.zzira[name];
+    if (typeof handler === 'function') handler(...args);
+  });
 
   // ---- Rich editor: contenteditable + DOM → ADF ----
   function adfText(text, marks) {
@@ -911,14 +980,24 @@
     let grabbedCard = null;
 
     function columnName(column) {
-      const name = column.querySelector('.lozenge-column');
+      const statusID = column.getAttribute('data-status');
+      const name = Array.from(board.querySelectorAll('.board-column-head[data-status]'))
+        .find((header) => header.getAttribute('data-status') === statusID)
+        ?.querySelector('.lozenge-column');
       return name ? name.textContent.trim() : 'column';
     }
 
     function updateColumnCounts() {
-      board.querySelectorAll('.board-column').forEach((column) => {
-        const count = column.querySelector('.column-count');
-        if (count) count.textContent = String(column.querySelectorAll('[data-column] > .board-card').length);
+      board.querySelectorAll('.board-column-head[data-status]').forEach((header) => {
+        const statusID = header.getAttribute('data-status');
+        let visible = 0;
+        board.querySelectorAll('.board-column[data-status]').forEach((column) => {
+          if (column.getAttribute('data-status') === statusID) {
+            visible += column.querySelectorAll('[data-column] > .board-card:not([hidden])').length;
+          }
+        });
+        const count = header.querySelector('.column-count');
+        if (count) count.textContent = String(visible);
       });
     }
 
@@ -957,7 +1036,7 @@
         if (!grabbedCard || grabbedCard !== card || !['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) return;
         event.preventDefault();
         const source = card.closest('.board-column');
-        const columns = Array.from(board.querySelectorAll('.board-column'));
+        const columns = Array.from(source.closest('[data-board-row]').querySelectorAll('.board-column'));
         let targetColumn = source;
         let targetIndex = Array.from(source.querySelector('[data-column]').children).indexOf(card);
         if (event.key === 'ArrowUp') {
@@ -982,7 +1061,7 @@
         button.addEventListener('click', () => {
           const direction = button.getAttribute('data-card-move');
           const source = card.closest('.board-column');
-          const columns = Array.from(board.querySelectorAll('.board-column'));
+          const columns = Array.from(source.closest('[data-board-row]').querySelectorAll('.board-column'));
           const sourceCards = Array.from(source.querySelector('[data-column]').children);
           const sourceIndex = sourceCards.indexOf(card);
           let targetColumn = source;
@@ -1008,8 +1087,9 @@
     });
 
     board.querySelectorAll('[data-column]').forEach((col) => {
+      const row = col.closest('[data-board-row]');
       new Sortable(col, {
-        group: 'board',
+        group: 'board-' + (row ? row.getAttribute('data-lane') : 'all'),
         handle: '[data-card-drag]',
         animation: 150,
         onEnd: (evt) => {

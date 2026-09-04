@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -136,9 +137,110 @@ func (h *Handler) boardRoute(w http.ResponseWriter, r *http.Request, parts []str
 		h.boardBacklog(w, r, board, userID)
 	case len(parts) == 2 && parts[1] == "sprint" && r.Method == http.MethodGet:
 		h.boardSprints(w, r, board)
+	case len(parts) == 2 && parts[1] == "configuration" && r.Method == http.MethodGet:
+		h.boardConfiguration(w, r, board)
+	case len(parts) == 2 && parts[1] == "quickfilter" && r.Method == http.MethodGet:
+		h.boardQuickFilters(w, r, board)
+	case len(parts) == 3 && parts[1] == "quickfilter" && r.Method == http.MethodGet:
+		h.boardQuickFilter(w, board, parts[2])
 	default:
 		jiraError(w, http.StatusNotFound, "No resource found")
 	}
+}
+
+func (h *Handler) boardConfiguration(w http.ResponseWriter, r *http.Request, board *models.Board) {
+	columns := make([]map[string]any, 0, len(board.ColumnStatusIDs))
+	constraintType := "none"
+	for _, statusID := range board.ColumnStatusIDs {
+		status, err := h.Store.StatusByID(r.Context(), statusID)
+		if err != nil {
+			jiraError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		column := map[string]any{
+			"name": status.Name,
+			"statuses": []map[string]any{{
+				"id": status.ID, "self": h.BaseURL + "/rest/api/3/status/" + status.ID,
+			}},
+		}
+		if limit := board.ColumnLimits[statusID]; limit > 0 {
+			column["max"] = limit
+			constraintType = "issueCount"
+		}
+		columns = append(columns, column)
+	}
+	response := map[string]any{
+		"id": board.ID, "name": board.Name, "type": board.Type,
+		"self": h.BaseURL + "/rest/agile/1.0/board/" + board.ID + "/configuration",
+		"filter": map[string]any{
+			"id": board.ID + "_filter", "self": h.BaseURL + "/rest/api/3/filter/" + board.ID + "_filter",
+		},
+		"location": map[string]any{
+			"id": board.ProjectID, "key": board.ProjectKey, "name": board.ProjectName,
+			"projectId": board.ProjectID, "projectKey": board.ProjectKey, "projectName": board.ProjectName,
+			"displayName": board.ProjectName, "type": "project",
+			"self": h.BaseURL + "/rest/api/3/project/" + board.ProjectID,
+		},
+		"columnConfig": map[string]any{"constraintType": constraintType, "columns": columns},
+		"ranking":      map[string]any{"rankCustomFieldId": "rank"},
+	}
+	if board.Type == "scrum" {
+		response["estimation"] = map[string]any{"type": "issueCount"}
+	} else if board.FilterJQL != "" {
+		response["subQuery"] = map[string]any{"query": board.FilterJQL}
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+func (h *Handler) quickFilterBean(boardID string, filter models.BoardQuickFilter) map[string]any {
+	return map[string]any{
+		"id": filter.ID, "boardId": boardID, "name": filter.Name, "description": filter.Description,
+		"jql": filter.JQL, "position": filter.Position,
+	}
+}
+
+func (h *Handler) boardQuickFilters(w http.ResponseWriter, r *http.Request, board *models.Board) {
+	startAt := 0
+	maxResults := 50
+	var err error
+	if value := r.URL.Query().Get("startAt"); value != "" {
+		startAt, err = strconv.Atoi(value)
+		if err != nil || startAt < 0 {
+			jiraError(w, http.StatusBadRequest, "startAt must be a non-negative integer.")
+			return
+		}
+	}
+	if value := r.URL.Query().Get("maxResults"); value != "" {
+		maxResults, err = strconv.Atoi(value)
+		if err != nil || maxResults < 1 || maxResults > 100 {
+			jiraError(w, http.StatusBadRequest, "maxResults must be between 1 and 100.")
+			return
+		}
+	}
+	filters := append([]models.BoardQuickFilter(nil), board.QuickFilters...)
+	sort.SliceStable(filters, func(i, j int) bool { return filters[i].Position < filters[j].Position })
+	total := len(filters)
+	if startAt > total {
+		startAt = total
+	}
+	end := min(startAt+maxResults, total)
+	values := make([]map[string]any, 0, end-startAt)
+	for _, filter := range filters[startAt:end] {
+		values = append(values, h.quickFilterBean(board.ID, filter))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"startAt": startAt, "maxResults": maxResults, "total": total, "isLast": end == total, "values": values,
+	})
+}
+
+func (h *Handler) boardQuickFilter(w http.ResponseWriter, board *models.Board, quickFilterID string) {
+	for _, filter := range board.QuickFilters {
+		if filter.ID == quickFilterID {
+			writeJSON(w, http.StatusOK, h.quickFilterBean(board.ID, filter))
+			return
+		}
+	}
+	jiraError(w, http.StatusNotFound, "The quick filter does not exist.")
 }
 
 func (h *Handler) boardIssues(w http.ResponseWriter, r *http.Request, board *models.Board, userID string) {
@@ -165,6 +267,7 @@ func (h *Handler) boardBacklog(w http.ResponseWriter, r *http.Request, board *mo
 
 func (h *Handler) writeIssuePage(w http.ResponseWriter, r *http.Request, issues []*models.Issue) {
 	startAt := 0
+	maxResults := 50
 	if v := r.URL.Query().Get("startAt"); v != "" {
 		var err error
 		if startAt, err = strconv.Atoi(v); err != nil || startAt < 0 {
@@ -172,11 +275,18 @@ func (h *Handler) writeIssuePage(w http.ResponseWriter, r *http.Request, issues 
 			return
 		}
 	}
+	if v := r.URL.Query().Get("maxResults"); v != "" {
+		var err error
+		if maxResults, err = strconv.Atoi(v); err != nil || maxResults < 1 || maxResults > 100 {
+			jiraError(w, http.StatusBadRequest, "maxResults must be between 1 and 100.")
+			return
+		}
+	}
 	total := len(issues)
 	if startAt > total {
 		startAt = total
 	}
-	end := startAt + 50
+	end := startAt + maxResults
 	if end > total {
 		end = total
 	}
@@ -187,7 +297,7 @@ func (h *Handler) writeIssuePage(w http.ResponseWriter, r *http.Request, issues 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"expand":         "schema,names",
 		"startAt":        startAt,
-		"maxResults":     50,
+		"maxResults":     maxResults,
 		"total":          total,
 		"issues":         beans,
 		"jqlInformation": map[string]any{},

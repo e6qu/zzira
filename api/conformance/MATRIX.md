@@ -1,6 +1,6 @@
 # ZZIRA × Atlassian Jira Cloud REST API — Compat Matrix
 
-Generated from the delivered surface (V0–V5). Legend: ✅ conformant · 🟡 subset
+Generated from the delivered surface. Legend: ✅ conformant · 🟡 subset
 (shape-conformant, reduced semantics) · ⛔ not implemented. Public compatibility
 is deliberately confined to `/rest/api/3` and `/rest/agile/1.0`; ZZIRA-owned
 control-plane endpoints use `/rest/zzira/1` and are never presented as Jira APIs.
@@ -35,6 +35,8 @@ control-plane endpoints use `/rest/zzira/1` and are never presented as Jira APIs
 | Endpoint | Status | Notes |
 |---|---|---|
 | GET /rest/agile/1.0/board · /board/{id} | ✅ | seeded board |
+| GET /board/{id}/configuration | ✅ | ordered status mapping, constraints, location, estimation/subquery and ranking metadata |
+| GET /board/{id}/quickfilter · /quickfilter/{id} | ✅ | position-ordered and paginated board quick filters |
 | GET /board/{id}/issue · /board/{id}/backlog | ✅ | board columns and true unsprinted backlog are separately rank-ordered |
 | GET /board/{id}/sprint | ✅ | |
 | POST /rest/agile/1.0/sprint · GET/PUT /sprint/{id} · GET /sprint/{id}/issue | ✅ | metadata plus validated future → active → closed lifecycle |
@@ -75,6 +77,8 @@ control-plane endpoints use `/rest/zzira/1` and are never presented as Jira APIs
 | WASM worker boots + syncs | ✅ |
 | Offline reload renders from local SQLite | ✅ |
 | Two-browser convergence via the action log | ✅ |
+| Board controls/settings, issue preview, Agile configuration and quick-filter APIs | ✅ |
+| WCAG 2.2 A/AA axe sweep, target sizes, keyboard movement and 320px reflow | ✅ |
 
 ## Load measurement
 

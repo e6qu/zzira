@@ -22,7 +22,7 @@
         <button type="submit" class="btn watch-button" aria-pressed="true" aria-keyshortcuts="W"><span aria-hidden="true">◉</span>Watching <span class="action-count">1</span></button>
       </form>
 
-      <button type="button" class="btn" id="edit-issue-button" onclick="zzira.openEdit('ZZ-1', this)">Edit</button>
+      <button type="button" class="btn" id="edit-issue-button" onclick="window.zzira.openEdit('ZZ-1', this)">Edit</button>
       <details class="more-menu"><summary class="btn" aria-label="More issue actions">•••</summary><div><button type="button" class="menu-danger" hx-delete="/issues/ZZ-1" hx-confirm="Delete ZZ-1?" hx-redirect="/issues/ZZ">Delete issue</button></div></details>
 
     </div>

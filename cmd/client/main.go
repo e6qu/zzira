@@ -227,7 +227,9 @@ CREATE TABLE IF NOT EXISTS notifications (
   message TEXT, created TEXT
 );
 CREATE TABLE IF NOT EXISTS boards (
-  id TEXT PRIMARY KEY, project_id TEXT, name TEXT, type TEXT
+  id TEXT PRIMARY KEY, project_id TEXT, name TEXT, type TEXT,
+  quick_filters TEXT NOT NULL DEFAULT '[]', swimlane_strategy TEXT NOT NULL DEFAULT 'none',
+  card_fields TEXT NOT NULL DEFAULT '[]', column_limits TEXT NOT NULL DEFAULT '{}'
 );
 CREATE TABLE IF NOT EXISTS sprints (
   id TEXT PRIMARY KEY, board_id TEXT, name TEXT, state TEXT, goal TEXT,
@@ -267,6 +269,10 @@ func initDB() error {
 	ensureColumn("issue_links", "outward", "TEXT")
 	ensureColumn("sprints", "start_date", "TEXT")
 	ensureColumn("sprints", "end_date", "TEXT")
+	ensureColumn("boards", "quick_filters", "TEXT NOT NULL DEFAULT '[]'")
+	ensureColumn("boards", "swimlane_strategy", "TEXT NOT NULL DEFAULT 'none'")
+	ensureColumn("boards", "card_fields", "TEXT NOT NULL DEFAULT '[]'")
+	ensureColumn("boards", "column_limits", "TEXT NOT NULL DEFAULT '{}'")
 	return nil
 }
 
@@ -534,8 +540,27 @@ func applyBoard(a models.Action) ([]string, error) {
 	if err := json.Unmarshal(a.Payload, &p); err != nil {
 		return nil, fmt.Errorf("decode board payload: %w", err)
 	}
-	exec(`INSERT OR REPLACE INTO boards (id, project_id, name, type) VALUES ($1,$2,$3,$4)`,
-		[]any{p.Board.ID, p.Board.ProjectID, p.Board.Name, p.Board.Type})
+	quickFilters, err := json.Marshal(p.Board.QuickFilters)
+	if err != nil {
+		return nil, fmt.Errorf("encode board quick filters: %w", err)
+	}
+	cardFields, err := json.Marshal(p.Board.CardFields)
+	if err != nil {
+		return nil, fmt.Errorf("encode board card fields: %w", err)
+	}
+	columnLimits, err := json.Marshal(p.Board.ColumnLimits)
+	if err != nil {
+		return nil, fmt.Errorf("encode board column limits: %w", err)
+	}
+	exec(`INSERT INTO boards
+		(id, project_id, name, type, quick_filters, swimlane_strategy, card_fields, column_limits)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+		ON CONFLICT(id) DO UPDATE SET
+		project_id=excluded.project_id, name=excluded.name, type=excluded.type,
+		quick_filters=excluded.quick_filters, swimlane_strategy=excluded.swimlane_strategy,
+		card_fields=excluded.card_fields, column_limits=excluded.column_limits`,
+		[]any{p.Board.ID, p.Board.ProjectID, p.Board.Name, p.Board.Type, string(quickFilters),
+			p.Board.SwimlaneStrategy, string(cardFields), string(columnLimits)})
 	return nil, nil
 }
 

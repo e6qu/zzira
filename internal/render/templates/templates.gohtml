@@ -9,15 +9,23 @@
       ? saved
       : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
     document.documentElement.dataset.theme = theme;
+    var pending = [];
+    window.zzira = {
+      _pending: pending,
+      loadIssuePreview: function (trigger) { pending.push(['loadIssuePreview', [trigger]]); },
+      openEdit: function (key, trigger) { pending.push(['openEdit', [key, trigger]]); },
+      openModal: function (trigger) { pending.push(['activate', [trigger]]); },
+      closeModal: function () {}
+    };
   }());
 </script>
 <link rel="stylesheet" href="/static/css/tokens.css?v=4">
-<link rel="stylesheet" href="/static/css/workspace.css?v=6">
+<link rel="stylesheet" href="/static/css/workspace.css?v=7">
 <link rel="preload" href="/static/zzira-worker.wasm?v=2" as="fetch" crossorigin>
 <link rel="preload" href="/static/sqlite/sqlite3.wasm" as="fetch" crossorigin>
 <script src="/static/htmx/htmx.min.js" defer></script>
 <script src="/static/wasm/wasm_exec.js" defer></script>
-<script src="/static/app.js?v=19" defer></script>
+<script src="/static/app.js?v=23" defer></script>
 {{end}}
 
 {{define "avatar"}}
@@ -41,7 +49,7 @@
     <kbd aria-hidden="true">/</kbd>
   </form>
   <button type="button" class="btn btn-primary header-create" id="global-create-issue" hx-get="/issues/new" hx-target="#modal-root"
-          hx-swap="innerHTML" onclick="zzira.openModal(this)"><span aria-hidden="true">+</span> Create</button>
+          hx-swap="innerHTML" onclick="window.zzira.openModal(this)"><span aria-hidden="true">+</span> Create</button>
   {{if .User}}
   <details class="user-menu">
     <summary aria-label="Account menu for {{.User.DisplayName}}" data-shauth-user="{{.User.Username}}">{{template "avatar" .User}}</summary>
@@ -85,7 +93,7 @@
 {{define "create_dialog"}}
 <div class="modal-backdrop" data-modal-backdrop aria-hidden="true"></div>
 <div class="modal create-modal" role="dialog" aria-modal="true" aria-labelledby="create-issue-title" aria-describedby="create-issue-help" tabindex="-1">
-  <div class="modal-header"><div><span class="eyebrow">New work item</span><h2 id="create-issue-title">Create issue</h2><p id="create-issue-help">Capture the work now; refine it with the team later.</p></div><button type="button" class="icon-button modal-close" onclick="zzira.closeModal()" aria-label="Close dialog">×</button></div>
+  <div class="modal-header"><div><span class="eyebrow">New work item</span><h2 id="create-issue-title">Create issue</h2><p id="create-issue-help">Capture the work now; refine it with the team later.</p></div><button type="button" class="icon-button modal-close" onclick="window.zzira.closeModal()" aria-label="Close dialog">×</button></div>
   {{if .CreatedKey}}<div class="create-success" role="status" aria-atomic="true"><span aria-hidden="true">✓</span><span><strong>{{.CreatedKey}} created</strong><a href="/browse/{{.CreatedKey}}">Open issue</a></span></div>{{end}}
   <form method="post" action="/issues" hx-post="/issues" hx-target="#modal-root" hx-swap="innerHTML">
     <div class="create-form-body">
@@ -144,7 +152,7 @@
     </div>
     <div class="modal-actions create-actions">
       <label class="create-another"><input type="checkbox" name="createAnother" value="true" {{if eq .Values.createAnother "true"}}checked{{end}}> Create another</label>
-      <span><button type="button" class="btn" onclick="zzira.closeModal()">Cancel</button><button type="submit" class="btn btn-primary">Create issue</button></span>
+      <span><button type="button" class="btn" onclick="window.zzira.closeModal()">Cancel</button><button type="submit" class="btn btn-primary">Create issue</button></span>
     </div>
   </form>
 </div>
@@ -179,7 +187,7 @@
         <button type="submit" class="btn watch-button" aria-pressed="{{.IsWatching}}" aria-keyshortcuts="W"><span aria-hidden="true">◉</span>{{if .IsWatching}}Watching{{else}}Watch{{end}} <span class="action-count">{{len .Watchers}}</span></button>
       </form>
 {{end}}
-      <button type="button" class="btn" id="edit-issue-button" onclick="zzira.openEdit('{{.Issue.Key}}', this)">Edit</button>
+      <button type="button" class="btn" id="edit-issue-button" onclick="window.zzira.openEdit('{{.Issue.Key}}', this)">Edit</button>
       <details class="more-menu"><summary class="btn" aria-label="More issue actions">•••</summary><div><button type="button" class="menu-danger" hx-delete="/issues/{{.Issue.Key}}" hx-confirm="Delete {{.Issue.Key}}?" hx-redirect="/issues/{{.ProjectKey}}">Delete issue</button></div></details>
 {{end}}
     </div>
@@ -278,7 +286,7 @@
 {{define "edit_dialog"}}
 <div class="modal-backdrop" data-modal-backdrop aria-hidden="true"></div>
 <div class="modal edit-modal" role="dialog" aria-modal="true" aria-labelledby="edit-issue-title" tabindex="-1">
-  <div class="modal-header"><div><span class="eyebrow">{{.Issue.Key}}</span><h2 id="edit-issue-title">Edit issue</h2></div><button type="button" class="icon-button modal-close" onclick="zzira.closeModal()" aria-label="Close dialog">×</button></div>
+  <div class="modal-header"><div><span class="eyebrow">{{.Issue.Key}}</span><h2 id="edit-issue-title">Edit issue</h2></div><button type="button" class="icon-button modal-close" onclick="window.zzira.closeModal()" aria-label="Close dialog">×</button></div>
   <form method="post" action="/issues/{{.Issue.Key}}/edit" hx-post="/issues/{{.Issue.Key}}/edit" hx-target="#issue-root" hx-swap="outerHTML">
     <div class="edit-form-body">
     <label for="edit-summary">Summary</label>
@@ -311,7 +319,7 @@
     {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
     </div>
     <div class="modal-actions">
-      <button type="button" class="btn" onclick="zzira.closeModal()">Cancel</button>
+      <button type="button" class="btn" onclick="window.zzira.closeModal()">Cancel</button>
       <button type="submit" class="btn btn-primary">Save changes</button>
     </div>
   </form>
@@ -330,7 +338,7 @@
   <main class="page" id="main-content" tabindex="-1">
     <section class="welcome-panel">
       <div><span class="eyebrow">Your work</span><h1>Welcome back{{if .User}}, {{.User.DisplayName}}{{end}}</h1><p>See what is moving, find the next priority, or create new work.</p></div>
-      <div class="welcome-actions"><a class="btn" href="/issues/ZZ">View all work</a><button type="button" class="btn btn-primary" id="home-create-issue" hx-get="/issues/new" hx-target="#modal-root" hx-swap="innerHTML" onclick="zzira.openModal(this)">Create issue</button></div>
+      <div class="welcome-actions"><a class="btn" href="/issues/ZZ">View all work</a><button type="button" class="btn btn-primary" id="home-create-issue" hx-get="/issues/new" hx-target="#modal-root" hx-swap="innerHTML" onclick="window.zzira.openModal(this)">Create issue</button></div>
     </section>
     <div class="dashboard-layout"><section class="dashboard-main"><div class="section-heading"><div><span class="eyebrow">Overview</span><h2>Work by status</h2></div><a href="/board/brd_default">Open board →</a></div><div class="dashboard-cards">
       {{$data := .Data}}
@@ -425,7 +433,7 @@
   {{template "workspace_nav" .}}
   <main class="page page-fluid" id="main-content" tabindex="-1">
     <nav class="project-tabs" aria-label="{{.Data.Project.Name}} project"><a href="/projects/{{.Data.Project.Key}}">Overview</a>{{if .Data.BoardID}}<a href="/board/{{.Data.BoardID}}/backlog">Backlog</a><a href="/board/{{.Data.BoardID}}">Board</a>{{end}}<a href="/issues/{{.Data.Project.Key}}" aria-current="page">Work items</a></nav>
-    <header class="page-header"><div><span class="eyebrow">{{.Data.Project.Name}} · {{.Data.Project.Key}}</span><h1>All work</h1><p>Find and triage work without losing the issue context.</p></div><button type="button" class="btn btn-primary" hx-get="/issues/new" hx-target="#modal-root" hx-swap="innerHTML" onclick="zzira.openModal(this)">Create issue</button></header>
+    <header class="page-header"><div><span class="eyebrow">{{.Data.Project.Name}} · {{.Data.Project.Key}}</span><h1>All work</h1><p>Find and triage work without losing the issue context.</p></div><button type="button" class="btn btn-primary" hx-get="/issues/new" hx-target="#modal-root" hx-swap="innerHTML" onclick="window.zzira.openModal(this)">Create issue</button></header>
     <section class="navigator-search" aria-labelledby="navigator-search-title">
       <div class="navigator-search-heading"><h2 id="navigator-search-title">Search work</h2><div class="navigator-search-tools"><form class="saved-filter-picker" method="get" action="/issues/{{.Data.Project.Key}}"><label class="sr-only" for="saved-filter">Saved filter</label><select id="saved-filter" name="filter"><option value="">Saved filters</option>{{range .Data.Filters}}<option value="{{.ID}}" {{if eq .ID $.Data.ActiveFilter}}selected{{end}}>{{if .Favourite}}★ {{end}}{{.Name}}</option>{{end}}</select><button class="btn" type="submit">Open</button></form><nav class="search-mode" aria-label="Search mode"><a href="{{.Data.BasicURL}}" {{if eq .Data.Mode "basic"}}aria-current="page"{{end}}>Basic</a><a href="{{.Data.AdvancedURL}}" {{if eq .Data.Mode "advanced"}}aria-current="page"{{end}}>JQL</a></nav></div></div>
       {{if eq .Data.Mode "advanced"}}
@@ -472,32 +480,45 @@
 {{end}}
 
 {{define "board_card"}}
-<article class="board-card" data-issue="{{.ID}}" data-key="{{.Key}}" aria-labelledby="board-card-title-{{.ID}}">
-  <div class="board-card-summary" id="board-card-title-{{.ID}}">{{.Summary}}</div>
+<article class="board-card" data-issue="{{.Issue.ID}}" data-key="{{.Issue.Key}}" aria-labelledby="board-card-title-{{.Issue.ID}}">
+  <button type="button" class="board-card-summary" id="board-card-title-{{.Issue.ID}}" data-issue-preview="/browse/{{.Issue.Key}}/preview" data-preview-target="#board-preview" onclick="window.zzira.loadIssuePreview(this)" aria-label="Preview {{.Issue.Key}}: {{.Issue.Summary}}">{{.Issue.Summary}}</button>
+  {{if .Fields}}<div class="board-card-fields">
+    {{range .Fields}}
+      {{if eq .Kind "priority"}}<span class="board-card-field board-card-priority"><span aria-hidden="true">↑</span>{{.Text}}</span>{{end}}
+      {{if eq .Kind "assignee"}}<span class="board-card-field">{{if .User}}{{template "avatar_labeled" .User}}{{else}}<span class="avatar avatar-empty" role="img" aria-label="Unassigned"><span aria-hidden="true">?</span></span><span>Unassigned</span>{{end}}</span>{{end}}
+      {{if eq .Kind "labels"}}<span class="board-card-labels" role="group" aria-label="Labels">{{range .Labels}}<span>{{.}}</span>{{end}}</span>{{end}}
+    {{end}}
+  </div>{{end}}
   <div class="board-card-footer">
-    <span><button type="button" class="board-card-drag" data-card-drag aria-label="Pick up {{.Key}} to move" aria-describedby="board-keyboard-help" aria-pressed="false"><span aria-hidden="true">↕</span></button><span class="issue-type-mini" aria-hidden="true">✓</span><a href="/browse/{{.Key}}">{{.Key}}</a></span>
-    <span class="board-card-people">{{if .Assignee}}{{template "avatar_labeled" .Assignee}}{{else}}<span class="avatar avatar-empty" role="img" aria-label="Unassigned"><span aria-hidden="true">?</span></span>{{end}}
-      <details class="board-card-move"><summary aria-label="Move {{.Key}} without dragging">•••</summary><div><button type="button" data-card-move="up">Move up</button><button type="button" data-card-move="down">Move down</button><button type="button" data-card-move="left">Move to previous status</button><button type="button" data-card-move="right">Move to next status</button></div></details>
+    <span><button type="button" class="board-card-drag" data-card-drag aria-label="Pick up {{.Issue.Key}} to move" aria-describedby="board-keyboard-help" aria-pressed="false"><span aria-hidden="true">↕</span></button><span class="issue-type-mini" role="img" aria-label="{{.Issue.IssueType.Name}}">✓</span><a href="/browse/{{.Issue.Key}}">{{.Issue.Key}}</a></span>
+    <span class="board-card-people">
+      <details class="board-card-move"><summary aria-label="Move {{.Issue.Key}} without dragging">•••</summary><div><button type="button" data-card-move="up">Move up</button><button type="button" data-card-move="down">Move down</button><button type="button" data-card-move="left">Move to previous status</button><button type="button" data-card-move="right">Move to next status</button></div></details>
     </span>
   </div>
 </article>
 {{end}}
 
 {{define "board_fragment"}}
-<div class="board" id="board" role="region" aria-label="{{.Board.Name}} board" data-board-ready="">
+<div class="board" id="board" role="region" aria-label="{{.Board.Name}} board" data-board-ready="" data-swimlanes="{{if .HasSwimlanes}}assignee{{else}}none{{end}}">
   <p id="board-keyboard-help" class="sr-only">Press the move button to pick up a card, use the arrow keys to move it, then press the button again to drop it. The card menu also provides movement without dragging.</p>
-  {{$board := .Board.ID}}
-  {{range .Columns}}
-    <section class="board-column" data-status="{{.StatusID}}" aria-labelledby="board-column-{{.StatusID}}">
-    <div class="board-column-head">
-      <h2 id="board-column-{{.StatusID}}"><span class="lozenge lozenge-column">{{.Name}}</span> <span class="column-count">{{len .Issues}}</span></h2>
-      <span class="column-menu" aria-hidden="true">•••</span>
-    </div>
-    <div class="board-column-body" data-column>
-      {{range .Issues}}{{template "board_card" .}}{{end}}
-    </div>
-  </section>
-  {{end}}
+  <div class="board-column-labels">
+    {{range .ColumnHeaders}}<div class="board-column-head{{if .OverLimit}} is-over-limit{{end}}" id="board-column-{{.StatusID}}" data-status="{{.StatusID}}" data-total="{{.TotalCount}}" data-limit="{{.Limit}}"{{if .OverLimit}} aria-describedby="board-limit-{{.StatusID}}"{{end}}>
+      <h2><span class="lozenge lozenge-column">{{.Name}}</span> <span class="column-count">{{.VisibleCount}}</span>{{if $.HasFilters}}<span class="column-total">of {{.TotalCount}}</span>{{end}}</h2>
+      {{if .Limit}}<span class="column-limit" id="board-limit-{{.StatusID}}"><span aria-hidden="true">{{.TotalCount}} / {{.Limit}}</span><span class="sr-only">{{.TotalCount}} of {{.Limit}} work item limit{{if .OverLimit}}; limit exceeded{{end}}</span></span>{{end}}
+    </div>{{end}}
+  </div>
+  {{range .Swimlanes}}{{$lane := .}}
+    <section class="board-swimlane" aria-label="{{$lane.Name}} swimlane">
+      {{if $.HasSwimlanes}}<h2 class="board-swimlane-title"><span class="avatar" aria-hidden="true">{{initials $lane.Name}}</span><span>{{$lane.Name}}</span></h2>{{end}}
+      <div class="board-row" data-board-row data-lane="{{$lane.ID}}">
+        {{range $lane.Columns}}<section class="board-column" data-status="{{.StatusID}}" aria-label="{{.Name}}, {{$lane.Name}}">
+          <div class="board-column-body" data-column>
+            {{range .Cards}}{{template "board_card" .}}{{end}}
+          </div>
+        </section>{{end}}
+      </div>
+    </section>
+  {{else}}<div class="board-filter-empty"><strong>No work matches these filters</strong><span>Clear a quick filter or choose another assignee.</span></div>{{end}}
 </div>
 {{end}}
 
@@ -514,26 +535,61 @@
   {{template "workspace_nav" .}}
   <main class="page page-fluid board-page" id="main-content" tabindex="-1">
     <nav class="project-tabs" aria-label="{{.Data.Board.ProjectName}} project"><a href="/projects/{{.Data.Board.ProjectKey}}">Overview</a><a href="/board/{{.Data.Board.ID}}/backlog">Backlog</a><a href="/board/{{.Data.Board.ID}}" aria-current="page">Board</a><a href="/issues/{{.Data.Board.ProjectKey}}">Work items</a></nav>
-    <header class="page-header board-page-header"><div><span class="eyebrow">ZZIRA Software · {{.Data.Board.Type}} board</span><h1>{{.Data.Board.Name}}</h1></div><button type="button" class="btn btn-primary" hx-get="/issues/new" hx-target="#modal-root" hx-swap="innerHTML" onclick="zzira.openModal(this)">Create issue</button></header>
-    <div class="board-toolbar"><label class="board-search"><span class="sr-only">Filter board</span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg><input type="search" placeholder="Filter this board" data-board-filter></label><span class="toolbar-divider"></span><span class="muted">Drag cards or use their move controls to update status</span><span class="sr-only" role="status" aria-live="polite" data-board-filter-status></span></div>
-    <div class="board" id="board" role="region" aria-label="{{.Data.Board.Name}} board">
-      <p id="board-keyboard-help" class="sr-only">Press the move button to pick up a card, use the arrow keys to move it, then press the button again to drop it. The card menu also provides movement without dragging.</p>
-      {{$board := .Data.Board.ID}}
-      {{range .Data.Columns}}
-      <section class="board-column" data-status="{{.StatusID}}" aria-labelledby="board-column-{{.StatusID}}">
-        <div class="board-column-head">
-          <h2 id="board-column-{{.StatusID}}"><span class="lozenge lozenge-column">{{.Name}}</span> <span class="column-count">{{len .Issues}}</span></h2>
-          <span class="column-menu" aria-hidden="true">•••</span>
-        </div>
-        <div class="board-column-body" data-column>
-          {{range .Issues}}{{template "board_card" .}}{{end}}
-        </div>
-      </section>
-      {{end}}
+    <header class="page-header board-page-header"><div><span class="eyebrow">ZZIRA Software · {{.Data.Board.Type}} board</span><h1>{{.Data.Board.Name}}</h1></div><div class="page-header-actions">{{if .Data.Admin}}<a class="btn" href="/board/{{.Data.Board.ID}}/settings">Configure board</a>{{end}}<button type="button" class="btn btn-primary" hx-get="/issues/new?project={{.Data.Board.ProjectKey}}" hx-target="#modal-root" hx-swap="innerHTML" onclick="window.zzira.openModal(this)">Create issue</button></div></header>
+    <div class="board-toolbar">
+      <label class="board-search"><span class="sr-only">Filter visible cards by text</span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg><input type="search" placeholder="Search this board" data-board-filter></label>
+      <nav class="board-quick-filters" aria-label="Quick filters">{{range .Data.QuickFilters}}<a href="{{.URL}}" class="board-filter-chip{{if .Active}} is-active{{end}}"{{if .Active}} aria-current="true"{{end}} title="{{.Filter.Description}}">{{.Filter.Name}}</a>{{end}}</nav>
+      <form method="get" action="/board/{{.Data.Board.ID}}" class="board-assignee-filter"><label><span>Assignee</span><select name="assignee" onchange="this.form.submit()"><option value="">Anyone</option><option value="unassigned"{{if eq .Data.SelectedAssignee "unassigned"}} selected{{end}}>Unassigned</option>{{range .Data.Members}}<option value="{{.ID}}"{{if eq $.Data.SelectedAssignee .ID}} selected{{end}}>{{.DisplayName}}</option>{{end}}</select></label>{{range .Data.SelectedFilters}}<input type="hidden" name="qf" value="{{.}}">{{end}}<button class="btn board-assignee-apply" type="submit">Apply</button></form>
+      {{if .Data.HasFilters}}<a class="board-clear-filters" href="{{.Data.ClearFiltersURL}}">Clear</a>{{end}}
+      <span class="sr-only" role="status" aria-live="polite" data-board-filter-status></span>
+    </div>
+    <div class="board-workbench">
+      {{template "board_fragment" .Data}}
+      <aside class="board-preview" id="board-preview" aria-label="Issue preview" aria-live="polite" aria-busy="false"><div class="empty-state"><strong>Select a work item</strong><small>Open a card to review its details without losing your board position.</small></div></aside>
     </div>
   </main>
   </div>
   <div id="modal-root"></div>
+  <div id="sync-banner" class="sync-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+</body>
+</html>
+{{end}}
+
+{{define "board_quick_filter_row"}}
+<div class="board-setting-filter-row" data-quick-filter-row>
+  <input type="hidden" name="quickFilterID" value="{{.ID}}">
+  <label><span>Name</span><input name="quickFilterName" maxlength="64" value="{{.Name}}" placeholder="For example: Bugs"></label>
+  <label><span>JQL</span><input name="quickFilterJQL" maxlength="2000" value="{{.JQL}}" placeholder="issuetype = Bug"></label>
+  <label><span>Description</span><input name="quickFilterDescription" maxlength="255" value="{{.Description}}" placeholder="What this filter shows"></label>
+  {{if .ID}}<label class="board-setting-remove"><input type="checkbox" name="deleteQuickFilter" value="{{.ID}}"><span>Remove</span></label>{{else}}<button type="button" class="btn btn-subtle" data-remove-quick-filter>Remove</button>{{end}}
+</div>
+{{end}}
+
+{{define "page_board_settings"}}
+<!doctype html>
+<html lang="en">
+<head><title>Configure {{.Data.Board.Name}} · ZZIRA</title>{{template "head" .}}</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  {{template "header" .}}
+  <div class="app-shell">
+  {{template "workspace_nav" .}}
+  <main class="page board-settings-page" id="main-content" tabindex="-1">
+    <nav class="project-tabs" aria-label="{{.Data.Board.ProjectName}} project"><a href="/projects/{{.Data.Board.ProjectKey}}">Overview</a><a href="/board/{{.Data.Board.ID}}/backlog">Backlog</a><a href="/board/{{.Data.Board.ID}}">Board</a><a href="/issues/{{.Data.Board.ProjectKey}}">Work items</a><a href="/board/{{.Data.Board.ID}}/settings" aria-current="page">Board settings</a></nav>
+    <header class="page-header"><div><span class="eyebrow">Board settings</span><h1>Configure {{.Data.Board.Name}}</h1><p>Set the shared controls your team uses to scan and manage work.</p></div></header>
+    {{if .Data.Error}}<div class="form-error" role="alert"><strong>Check the board settings</strong><span>{{.Data.Error}}</span></div>{{end}}
+    {{if .Data.Saved}}<div class="success-banner" role="status">Board settings saved.</div>{{end}}
+    <form method="post" action="/board/{{.Data.Board.ID}}/settings" class="board-settings-form" data-board-settings>
+      <section class="surface-card board-setting-section" aria-labelledby="board-view-heading"><div><span class="eyebrow">Layout</span><h2 id="board-view-heading">Board view</h2><p>Group work into horizontal lanes and choose up to three supporting fields for every card.</p></div><div class="board-setting-controls">
+        <label><span>Swimlanes</span><select name="swimlanes"><option value="none"{{if eq .Data.Board.SwimlaneStrategy "none"}} selected{{end}}>No swimlanes</option><option value="assignee"{{if eq .Data.Board.SwimlaneStrategy "assignee"}} selected{{end}}>Group by assignee</option></select></label>
+        <fieldset class="board-card-field-picker"><legend>Card fields</legend><label><input type="checkbox" name="cardField" value="priority"{{if .Data.ShowPriority}} checked{{end}}> Priority</label><label><input type="checkbox" name="cardField" value="assignee"{{if .Data.ShowAssignee}} checked{{end}}> Assignee</label><label><input type="checkbox" name="cardField" value="labels"{{if .Data.ShowLabels}} checked{{end}}> Labels</label></fieldset>
+      </div></section>
+      <section class="surface-card board-setting-section" aria-labelledby="board-limits-heading"><div><span class="eyebrow">Flow</span><h2 id="board-limits-heading">Column limits</h2><p>Show a visible warning when a column carries more work than the team intends. Leave a limit at zero for no constraint.</p></div><div class="board-limit-grid">{{range .Data.Columns}}<label><span>{{.Status.Name}}</span><input type="number" name="limit_{{.Status.ID}}" value="{{.Limit}}" min="0" max="999" inputmode="numeric"><small>Maximum work items</small></label>{{end}}</div></section>
+      <section class="surface-card board-setting-section board-quick-filter-settings" aria-labelledby="board-filters-heading"><div><span class="eyebrow">Focus</span><h2 id="board-filters-heading">Quick filters</h2><p>Give the whole team reusable JQL buttons for the questions they ask during planning.</p></div><div data-quick-filter-list>{{range .Data.Board.QuickFilters}}{{template "board_quick_filter_row" .}}{{end}}{{template "board_quick_filter_row" .Data.EmptyFilter}}</div><button type="button" class="btn" data-add-quick-filter>Add quick filter</button><template data-quick-filter-template>{{template "board_quick_filter_row" .Data.EmptyFilter}}</template></section>
+      <div class="board-settings-actions"><a class="btn" href="/board/{{.Data.Board.ID}}">Cancel</a><button class="btn btn-primary" type="submit">Save board settings</button></div>
+    </form>
+  </main>
+  </div>
   <div id="sync-banner" class="sync-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div>
 </body>
 </html>
@@ -544,7 +600,7 @@
 <article class="backlog-item" data-issue="{{.Issue.ID}}" aria-labelledby="backlog-summary-{{.Issue.ID}}">
   <span class="backlog-grip issue-type-mini" role="img" aria-label="{{.Issue.IssueType.Name}}">✓</span>
   <a class="backlog-key" href="/browse/{{.Issue.Key}}">{{.Issue.Key}}</a>
-  <button class="backlog-summary" id="backlog-summary-{{.Issue.ID}}" type="button" hx-get="/browse/{{.Issue.Key}}/preview" hx-target="#backlog-preview" hx-swap="innerHTML" hx-push-url="false">{{.Issue.Summary}}</button>
+  <button class="backlog-summary" id="backlog-summary-{{.Issue.ID}}" type="button" data-issue-preview="/browse/{{.Issue.Key}}/preview" data-preview-target="#backlog-preview" onclick="window.zzira.loadIssuePreview(this)">{{.Issue.Summary}}</button>
   <span class="lozenge {{statusClass .Issue.Status.Category}}">{{.Issue.Status.Name}}</span>
   <span class="backlog-priority">{{if .Issue.Priority}}<span class="priority-mark" aria-hidden="true">=</span><span class="sr-only">Priority:</span> {{.Issue.Priority.Name}}{{else}}<span class="muted">No priority</span>{{end}}</span>
   {{if .Issue.Assignee}}{{template "avatar_labeled" .Issue.Assignee}}{{else}}<span class="avatar avatar-empty" role="img" aria-label="Unassigned"><span aria-hidden="true">?</span></span>{{end}}
@@ -591,7 +647,7 @@
             <button class="btn btn-primary" type="submit">Create sprint</button>
           </form>
         </details>
-        <button type="button" class="btn btn-primary" hx-get="/issues/new?project={{.Data.Board.ProjectKey}}" hx-target="#modal-root" hx-swap="innerHTML" onclick="zzira.openModal(this)">Create issue</button>
+        <button type="button" class="btn btn-primary" hx-get="/issues/new?project={{.Data.Board.ProjectKey}}" hx-target="#modal-root" hx-swap="innerHTML" onclick="window.zzira.openModal(this)">Create issue</button>
       </div>
     </header>
     {{if .Data.Error}}<p class="error backlog-error" role="alert">{{.Data.Error}}</p>{{end}}
@@ -699,7 +755,7 @@
   <main class="page page-fluid" id="main-content" tabindex="-1">
     <nav class="project-tabs" aria-label="{{.Data.Project.Name}} project"><a href="/projects/{{.Data.Project.Key}}" aria-current="page">Overview</a>{{with .Data.PrimaryBoard}}<a href="/board/{{.ID}}/backlog">Backlog</a><a href="/board/{{.ID}}">Board</a>{{end}}<a href="/issues/{{.Data.Project.Key}}">Work items</a></nav>
     <nav class="issue-breadcrumbs" aria-label="Breadcrumb"><a href="/projects">Projects</a><span aria-hidden="true">/</span><span aria-current="page">{{.Data.Project.Name}}</span></nav>
-    <header class="project-hero"><span class="project-hero-avatar" aria-hidden="true">{{.Data.Project.Key}}</span><div><span class="eyebrow">Software project</span><h1>{{.Data.Project.Name}}</h1><p>{{.Data.Project.Key}} · Organize delivery across the board, work list, and workflow.</p></div><button type="button" class="btn btn-primary" hx-get="/issues/new?project={{.Data.Project.Key}}" hx-target="#modal-root" hx-swap="innerHTML" onclick="zzira.openModal(this)">Create work item</button></header>
+    <header class="project-hero"><span class="project-hero-avatar" aria-hidden="true">{{.Data.Project.Key}}</span><div><span class="eyebrow">Software project</span><h1>{{.Data.Project.Name}}</h1><p>{{.Data.Project.Key}} · Organize delivery across the board, work list, and workflow.</p></div><button type="button" class="btn btn-primary" hx-get="/issues/new?project={{.Data.Project.Key}}" hx-target="#modal-root" hx-swap="innerHTML" onclick="window.zzira.openModal(this)">Create work item</button></header>
     <div class="project-overview-grid">
       <section class="surface-card" aria-labelledby="project-work-title"><div class="section-heading"><div><span class="eyebrow">Work</span><h2 id="project-work-title">Recent work items</h2></div><a href="/issues/{{.Data.Project.Key}}">View all</a></div>
         <ul class="compact-work-list">{{range .Data.Issues}}<li><a href="/browse/{{.Key}}"><strong>{{.Key}}</strong><span>{{.Summary}}</span></a><span class="lozenge {{statusClass .Status.Category}}">{{.Status.Name}}</span></li>{{else}}<li class="empty-state"><strong>No work yet</strong><small>Create the first work item for this project.</small></li>{{end}}</ul>

@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -281,18 +282,26 @@ func navigatorChips(projectKey string, p navigatorParams, members []*models.User
 
 // writePage renders a full page; template failures are loud 500s.
 func writePage(w http.ResponseWriter, name string, data any) {
-	if err := render.Page(w, name, data); err != nil {
+	var output bytes.Buffer
+	if err := render.Page(&output, name, data); err != nil {
 		log.Printf("render %s: %v", name, err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
 	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = output.WriteTo(w)
 }
 
 // writeFragment renders an HTMX fragment; template failures are loud 500s.
 func writeFragment(w http.ResponseWriter, name string, data any) {
-	if err := render.Fragment(w, name, data); err != nil {
+	var output bytes.Buffer
+	if err := render.Fragment(&output, name, data); err != nil {
 		log.Printf("render %s: %v", name, err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
 	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = output.WriteTo(w)
 }
 
 // parseForm reads the request form or answers 400 on malformed bodies.

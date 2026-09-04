@@ -81,7 +81,7 @@ test('WCAG A/AA: every primary page passes axe in light and dark themes', async 
   const pages = [
     '/', '/dashboard', '/projects', '/projects/ZZ', '/people', '/profile',
     '/settings/workflows', '/settings/workflows/wf_default',
-    '/issues/ZZ', '/board/brd_default/backlog', '/board/brd_default', issueHref,
+    '/issues/ZZ', '/board/brd_default/backlog', '/board/brd_default', '/board/brd_default/settings', issueHref,
   ];
 
   for (const path of pages) {
@@ -239,7 +239,7 @@ test('controls meet WCAG 2.2 minimum target size', async ({ page }) => {
   for (const path of [
     '/', '/projects', '/projects/ZZ', '/people', '/profile',
     '/settings/workflows', '/settings/workflows/wf_default',
-    '/issues/ZZ', '/board/brd_default/backlog', '/board/brd_default', issueHref,
+    '/issues/ZZ', '/board/brd_default/backlog', '/board/brd_default', '/board/brd_default/settings', issueHref,
   ]) {
     await page.goto(path);
     const columnPicker = page.locator('.column-picker summary');
@@ -265,7 +265,7 @@ test('primary pages reflow without document-level horizontal scrolling at 320px'
   for (const path of [
     '/', '/projects', '/projects/ZZ', '/people', '/profile',
     '/settings/workflows', '/settings/workflows/wf_default',
-    '/issues/ZZ', '/board/brd_default/backlog', '/board/brd_default', issueHref,
+    '/issues/ZZ', '/board/brd_default/backlog', '/board/brd_default', '/board/brd_default/settings', issueHref,
   ]) {
     await page.goto(path);
     const viewportDoesNotOverflow = await page.evaluate(
