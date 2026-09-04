@@ -108,6 +108,26 @@ func NewOIDC(ctx context.Context) (*OIDC, error) {
 	}, nil
 }
 
+// FormActionOrigin returns the identity provider's end_session_endpoint
+// origin, for SecurityHeaders' form-action directive: RP-initiated OIDC
+// logout posts the sign-out form to this same origin's own /logout, which
+// then redirects the browser to this endpoint to end the SSO session before
+// returning. Chrome enforces form-action against that whole redirect chain,
+// not just the form's literal same-origin action target, so without this the
+// redirect is silently blocked. "" (including a nil receiver, or a provider
+// that advertises no end_session_endpoint) means no logout redirect ever
+// leaves this origin and nothing needs to be allowed.
+func (o *OIDC) FormActionOrigin() string {
+	if o == nil || o.endSessionEndpoint == "" {
+		return ""
+	}
+	parsed, err := url.Parse(o.endSessionEndpoint)
+	if err != nil {
+		return ""
+	}
+	return parsed.Scheme + "://" + parsed.Host
+}
+
 func validOIDCURL(raw string) error {
 	u, err := url.Parse(raw)
 	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
