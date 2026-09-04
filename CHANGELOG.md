@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.14.1](https://github.com/e6qu/zzira/compare/v0.14.0...v0.14.1) (2026-09-04)
+
+
+### Bug Fixes
+
+* hand off the logout bridge to Shauth's own completion endpoint ([7d3ab79](https://github.com/e6qu/zzira/commit/7d3ab79e3ba3c5e9e28bcab7934bbde0775a9056))
+* hand off the logout bridge to Shauth's own completion endpoint ([ecf5c49](https://github.com/e6qu/zzira/commit/ecf5c49e685c045e1ccee7969c8d8f03a9421ac4))
+
 ## [0.14.0](https://github.com/e6qu/zzira/compare/v0.13.0...v0.14.0) (2026-09-04)
 
 
