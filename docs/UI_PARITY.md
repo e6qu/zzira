@@ -15,7 +15,7 @@ The endpoint-level source of truth remains [the API matrix](../api/conformance/M
 
 | Journey | Status | Evidence / gap |
 |---|---:|---|
-| Sign in and orient | ✅ | Responsive sidebar-first shell, account menu, dark mode, visible local-replica state |
+| Sign in and orient | ✅ | Responsive sidebar-first shell, account and notification controls, dark mode, visible local-replica state |
 | Browse projects and people | ✅ | Workspace project directory and overview, project tabs, people directory, self profile, and security-filtered assigned/reported work are browser-tested |
 | Find work with JQL | ✅ | Project-scoped basic/JQL search, removable filter chips, starred saved filters, sortable/configurable columns, pagination, keyboard navigation, and contextual issue preview are browser-tested |
 | Create work | ✅ | Shared createmeta schema drives project/type plus assignee, priority, labels, security and typed custom fields; validation recovery and create-another are browser/API tested |
@@ -53,7 +53,9 @@ The endpoint-level source of truth remains [the API matrix](../api/conformance/M
    user profiles. Next, replace the hard-coded recent `ZZ` shell routes with a
    workspace project switcher.
 2. Add filter management and sharing/favourites UI over the delivered APIs.
-3. Add notifications inbox and read state over `/rest/zzira/1/notifications`.
+3. ✅ Add notifications inbox and synchronized read state over
+   `/rest/zzira/1/notifications`, including private item/all-read mutations,
+   unread navigation badges, and an all/unread browser journey.
 4. 🟡 Workflow browse/edit/project-assignment UI is delivered. Add the remaining
    project settings for details, people/roles, work types, fields, issue security,
    boards, webhooks, and audit-friendly validation.

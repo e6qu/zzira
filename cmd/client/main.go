@@ -224,7 +224,7 @@ CREATE TABLE IF NOT EXISTS notifications (
   id TEXT PRIMARY KEY,
   target_user TEXT, actor_name TEXT,
   kind TEXT, entity_type TEXT, entity_id TEXT,
-  message TEXT, created TEXT
+  message TEXT, created TEXT, read_at TEXT
 );
 CREATE TABLE IF NOT EXISTS boards (
   id TEXT PRIMARY KEY, project_id TEXT, name TEXT, type TEXT,
@@ -273,6 +273,7 @@ func initDB() error {
 	ensureColumn("boards", "swimlane_strategy", "TEXT NOT NULL DEFAULT 'none'")
 	ensureColumn("boards", "card_fields", "TEXT NOT NULL DEFAULT '[]'")
 	ensureColumn("boards", "column_limits", "TEXT NOT NULL DEFAULT '{}'")
+	ensureColumn("notifications", "read_at", "TEXT")
 	return nil
 }
 
@@ -617,9 +618,9 @@ func applyNotification(a models.Action) ([]string, error) {
 		return nil, fmt.Errorf("decode notification payload: %w", err)
 	}
 	n := p.Notification
-	exec(`INSERT OR REPLACE INTO notifications (id, target_user, actor_name, kind, entity_type, entity_id, message, created)
-	      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-		[]any{n.ID, n.TargetUser, n.ActorName, n.Kind, n.EntityType, n.EntityID, n.Message, n.Created})
+	exec(`INSERT OR REPLACE INTO notifications (id, target_user, actor_name, kind, entity_type, entity_id, message, created, read_at)
+	      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+		[]any{n.ID, n.TargetUser, n.ActorName, n.Kind, n.EntityType, n.EntityID, n.Message, n.Created, n.ReadAt})
 	return nil, nil
 }
 

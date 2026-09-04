@@ -10,15 +10,21 @@ async function login(page: Page) {
   await expect(page).toHaveURL('/');
 }
 
+async function privatePageCacheEntries(page: Page): Promise<number> {
+  return page.evaluate(async () => {
+    const names = (await caches.keys()).filter((name) => name.startsWith('zzira-pages-'));
+    const entries = await Promise.all(names.map(async (name) => (await caches.open(name)).keys()));
+    return entries.reduce((total, cacheEntries) => total + cacheEntries.length, 0);
+  });
+}
+
 test('sign-out clears authenticated page caches and rotates the local replica', async ({ page }) => {
   await login(page);
   await page.goto('/issues/ZZ');
   await page.locator('.issue-list .key-cell a').first().click();
   await expect(page).toHaveURL(/\/browse\/ZZ-\d+$/);
   await expect.poll(() => page.evaluate(() => navigator.serviceWorker.controller !== null)).toBe(true);
-  await expect.poll(() => page.evaluate(async () =>
-    (await (await caches.open('zzira-pages-v7')).keys()).length,
-  )).toBeGreaterThan(0);
+  await expect.poll(() => privatePageCacheEntries(page)).toBeGreaterThan(0);
   await expect.poll(() => page.evaluate(() =>
     sessionStorage.getItem('zzira-replica-id'),
   )).not.toBeNull();
@@ -27,9 +33,7 @@ test('sign-out clears authenticated page caches and rotates the local replica', 
   await page.getByRole('button', { name: 'Log out' }).click();
   await expect(page).toHaveURL('/signed-out');
   expect(await page.evaluate(() => sessionStorage.getItem('zzira-replica-id'))).toBeNull();
-  await expect.poll(() => page.evaluate(async () =>
-    (await (await caches.open('zzira-pages-v7')).keys()).length,
-  )).toBe(0);
+  await expect.poll(() => privatePageCacheEntries(page)).toBe(0);
 });
 
 test('rapid navigation serializes OPFS access handles for one replica', async ({ page }) => {

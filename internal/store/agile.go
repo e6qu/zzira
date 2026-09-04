@@ -944,12 +944,16 @@ func (s *Store) CreateNotification(ctx context.Context, workspaceID string, n *m
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if _, err := tx.Exec(ctx, `
+	if err := tx.QueryRow(ctx, `
 		INSERT INTO notifications (id, workspace_id, user_id, actor_id, kind, entity_type, entity_id, message)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-		n.ID, workspaceID, n.TargetUser, n.ActorID, n.Kind, n.EntityType, n.EntityID, n.Message); err != nil {
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+		RETURNING to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')`,
+		n.ID, workspaceID, n.TargetUser, n.ActorID, n.Kind, n.EntityType, n.EntityID, n.Message).Scan(&n.Created); err != nil {
 		return nil, err
 	}
+	n.WorkspaceID = workspaceID
+	n.Read = false
+	n.ReadAt = ""
 	seq, err := nextSeq(ctx, tx, workspaceID)
 	if err != nil {
 		return nil, err
@@ -973,25 +977,176 @@ func (s *Store) CreateNotification(ctx context.Context, workspaceID string, n *m
 
 // NotificationsByUser lists a user's notifications, newest first.
 func (s *Store) NotificationsByUser(ctx context.Context, workspaceID, userID string, limit int) ([]*models.Notification, error) {
+	notifications, _, err := s.NotificationsPageByUser(ctx, workspaceID, userID, false, 0, limit)
+	return notifications, err
+}
+
+// NotificationsPageByUser returns a stable, private page and applies unread
+// filtering in SQL before LIMIT/OFFSET so older unread work cannot disappear
+// behind a page of newer read notifications.
+func (s *Store) NotificationsPageByUser(ctx context.Context, workspaceID, userID string, unreadOnly bool, startAt, maxResults int) ([]*models.Notification, int, error) {
+	unreadClause := ""
+	if unreadOnly {
+		unreadClause = " AND n.read_at IS NULL"
+	}
+	var total int
+	if err := s.Pool.QueryRow(ctx, `SELECT count(*) FROM notifications n WHERE n.workspace_id=$1 AND n.user_id=$2`+unreadClause,
+		workspaceID, userID).Scan(&total); err != nil {
+		return nil, 0, err
+	}
 	rows, err := s.Pool.Query(ctx, `
 		SELECT n.id, n.user_id, n.actor_id, COALESCE(u.display_name,''), n.kind, n.entity_type, n.entity_id, n.message,
-		       to_char(n.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+		       to_char(n.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+		       n.read_at IS NOT NULL,
+		       COALESCE(to_char(n.read_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), '')
 		FROM notifications n LEFT JOIN users u ON u.id = n.actor_id
-		WHERE n.workspace_id=$1 AND n.user_id=$2
-		ORDER BY n.created_at DESC LIMIT $3`, workspaceID, userID, limit)
+		WHERE n.workspace_id=$1 AND n.user_id=$2`+unreadClause+`
+		ORDER BY n.created_at DESC, n.id DESC LIMIT $3 OFFSET $4`, workspaceID, userID, maxResults, startAt)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 	var out []*models.Notification
 	for rows.Next() {
 		n := &models.Notification{}
-		if err := rows.Scan(&n.ID, &n.TargetUser, &n.ActorID, &n.ActorName, &n.Kind, &n.EntityType, &n.EntityID, &n.Message, &n.Created); err != nil {
-			return nil, err
+		if err := rows.Scan(&n.ID, &n.TargetUser, &n.ActorID, &n.ActorName, &n.Kind, &n.EntityType, &n.EntityID, &n.Message, &n.Created, &n.Read, &n.ReadAt); err != nil {
+			return nil, 0, err
 		}
 		out = append(out, n)
 	}
-	return out, rows.Err()
+	return out, total, rows.Err()
+}
+
+// UnreadNotificationCount returns the badge count for one workspace member.
+func (s *Store) UnreadNotificationCount(ctx context.Context, workspaceID, userID string) (int, error) {
+	var count int
+	err := s.Pool.QueryRow(ctx, `
+		SELECT count(*) FROM notifications
+		WHERE workspace_id=$1 AND user_id=$2 AND read_at IS NULL`, workspaceID, userID).Scan(&count)
+	return count, err
+}
+
+const notificationByIDQuery = `
+	SELECT n.id, n.user_id, n.actor_id, COALESCE(u.display_name,''), n.kind, n.entity_type, n.entity_id, n.message,
+	       to_char(n.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+	       n.read_at IS NOT NULL,
+	       COALESCE(to_char(n.read_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), '')
+	FROM notifications n LEFT JOIN users u ON u.id=n.actor_id
+	WHERE n.workspace_id=$1 AND n.user_id=$2 AND n.id=$3`
+
+func scanNotification(row pgx.Row) (*models.Notification, error) {
+	n := &models.Notification{}
+	err := row.Scan(&n.ID, &n.TargetUser, &n.ActorID, &n.ActorName, &n.Kind, &n.EntityType, &n.EntityID,
+		&n.Message, &n.Created, &n.Read, &n.ReadAt)
+	return n, err
+}
+
+// NotificationByIDForUser prevents notification IDs from becoming a
+// cross-user disclosure primitive.
+func (s *Store) NotificationByIDForUser(ctx context.Context, workspaceID, userID, notificationID string) (*models.Notification, error) {
+	return scanNotification(s.Pool.QueryRow(ctx, notificationByIDQuery, workspaceID, userID, notificationID))
+}
+
+// SetNotificationRead changes one member-owned notification and publishes the
+// full current value so every local replica converges on the same read state.
+// Repeating the current state is idempotent and does not grow the action log.
+func (s *Store) SetNotificationRead(ctx context.Context, workspaceID, userID, notificationID string, read bool) (*models.Notification, *models.Action, error) {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	current, err := scanNotification(tx.QueryRow(ctx, notificationByIDQuery, workspaceID, userID, notificationID))
+	if err != nil {
+		return nil, nil, err
+	}
+	if current.Read == read {
+		return current, nil, nil
+	}
+	if read {
+		_, err = tx.Exec(ctx, `UPDATE notifications SET read_at=now() WHERE workspace_id=$1 AND user_id=$2 AND id=$3`, workspaceID, userID, notificationID)
+	} else {
+		_, err = tx.Exec(ctx, `UPDATE notifications SET read_at=NULL WHERE workspace_id=$1 AND user_id=$2 AND id=$3`, workspaceID, userID, notificationID)
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	updated, err := scanNotification(tx.QueryRow(ctx, notificationByIDQuery, workspaceID, userID, notificationID))
+	if err != nil {
+		return nil, nil, err
+	}
+	payload, err := json.Marshal(models.NotificationPayload{Notification: *updated})
+	if err != nil {
+		return nil, nil, err
+	}
+	seq, err := nextSeq(ctx, tx, workspaceID)
+	if err != nil {
+		return nil, nil, err
+	}
+	action := &models.Action{WorkspaceID: workspaceID, Seq: seq, EntityType: models.EntityNotification,
+		EntityID: updated.ID, Op: models.OpUpsert, SchemaV: models.SchemaVersion, Payload: payload, ActorID: userID}
+	if err := appendAction(ctx, tx, action); err != nil {
+		return nil, nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, nil, err
+	}
+	return updated, action, nil
+}
+
+// MarkAllNotificationsRead records each changed notification as its own
+// targeted action, preserving the existing entity-level sync contract.
+func (s *Store) MarkAllNotificationsRead(ctx context.Context, workspaceID, userID string) (int, error) {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	rows, err := tx.Query(ctx, `
+		UPDATE notifications SET read_at=now()
+		WHERE workspace_id=$1 AND user_id=$2 AND read_at IS NULL
+		RETURNING id`, workspaceID, userID)
+	if err != nil {
+		return 0, err
+	}
+	ids := make([]string, 0)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return 0, err
+	}
+	rows.Close()
+	for _, id := range ids {
+		notification, err := scanNotification(tx.QueryRow(ctx, notificationByIDQuery, workspaceID, userID, id))
+		if err != nil {
+			return 0, err
+		}
+		payload, err := json.Marshal(models.NotificationPayload{Notification: *notification})
+		if err != nil {
+			return 0, err
+		}
+		seq, err := nextSeq(ctx, tx, workspaceID)
+		if err != nil {
+			return 0, err
+		}
+		action := &models.Action{WorkspaceID: workspaceID, Seq: seq, EntityType: models.EntityNotification,
+			EntityID: notification.ID, Op: models.OpUpsert, SchemaV: models.SchemaVersion, Payload: payload, ActorID: userID}
+		if err := appendAction(ctx, tx, action); err != nil {
+			return 0, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return 0, err
+	}
+	return len(ids), nil
 }
 
 // IssuesBySprint lists a sprint's issues in rank order.

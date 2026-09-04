@@ -63,6 +63,8 @@ type Notification struct {
 	EntityID    string `json:"entityId"`
 	Message     string `json:"message"`
 	Created     string `json:"created"`
+	Read        bool   `json:"read"`
+	ReadAt      string `json:"readAt,omitempty"`
 }
 
 type NotificationPayload struct {

@@ -1,8 +1,8 @@
 // ZZIRA service worker: successful static assets are cached independently from
 // authenticated page shells. Login/sign-out responses purge private HTML so a
 // later user on the same browser cannot inherit the previous user's workspace.
-const STATIC_CACHE = 'zzira-static-v7';
-const PAGE_CACHE = 'zzira-pages-v7';
+const STATIC_CACHE = 'zzira-static-v8';
+const PAGE_CACHE = 'zzira-pages-v8';
 const CURRENT_CACHES = new Set([STATIC_CACHE, PAGE_CACHE]);
 const STATIC_PREFIX = '/static/';
 const AUTH_PATHS = new Set(['/login', '/signed-out']);

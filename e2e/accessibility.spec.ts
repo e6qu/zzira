@@ -79,7 +79,7 @@ test('WCAG A/AA: every primary page passes axe in light and dark themes', async 
   await login(page);
   const issueHref = await firstIssueHref(page);
   const pages = [
-    '/', '/dashboard', '/projects', '/projects/ZZ', '/people', '/profile',
+    '/', '/dashboard', '/notifications', '/projects', '/projects/ZZ', '/people', '/profile',
     '/settings/workflows', '/settings/workflows/wf_default',
     '/issues/ZZ', '/board/brd_default/backlog', '/board/brd_default', '/board/brd_default/settings', issueHref,
   ];
