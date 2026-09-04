@@ -49,9 +49,10 @@ The endpoint-level source of truth remains [the API matrix](../api/conformance/M
 
 ### P1 — team and admin journeys
 
-1. ✅ Add project and people directories, project overviews/tabs, and self/other
-   user profiles. Next, replace the hard-coded recent `ZZ` shell routes with a
-   workspace project switcher.
+1. ✅ Add project and people directories, project overviews/tabs, self/other
+   user profiles, and an accessible workspace project switcher. Search, create,
+   overview, backlog, board, and all-work links now follow the current project,
+   and project context persists on workspace-level pages.
 2. Add filter management and sharing/favourites UI over the delivered APIs.
 3. ✅ Add notifications inbox and synchronized read state over
    `/rest/zzira/1/notifications`, including private item/all-read mutations,

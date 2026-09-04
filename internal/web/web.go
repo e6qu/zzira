@@ -30,9 +30,10 @@ type Handler struct {
 }
 
 type pageData struct {
-	User   *models.User
-	Data   any
-	Active string
+	User       *models.User
+	Data       any
+	Active     string
+	Navigation *workspaceNavigation
 }
 
 type createDialogData struct {
@@ -282,6 +283,10 @@ func navigatorChips(projectKey string, p navigatorParams, members []*models.User
 
 // writePage renders a full page; template failures are loud 500s.
 func writePage(w http.ResponseWriter, name string, data any) {
+	writePageStatus(w, name, data, http.StatusOK)
+}
+
+func writePageStatus(w http.ResponseWriter, name string, data any, status int) {
 	var output bytes.Buffer
 	if err := render.Page(&output, name, data); err != nil {
 		log.Printf("render %s: %v", name, err)
@@ -289,6 +294,7 @@ func writePage(w http.ResponseWriter, name string, data any) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
 	_, _ = output.WriteTo(w)
 }
 
@@ -597,16 +603,10 @@ func (h *Handler) serveIssue(w http.ResponseWriter, r *http.Request, user *model
 		return
 	}
 	if isHX(r) {
-		if err := render.Fragment(w, "issue_view", view); err != nil {
-			log.Printf("render issue_view: %v", err)
-			http.Error(w, "internal error", http.StatusInternalServerError)
-		}
+		writeFragment(w, "issue_view", view)
 		return
 	}
-	if err := render.Page(w, "page_issue", pageData{User: user, Data: view, Active: "issues"}); err != nil {
-		log.Printf("render page_issue: %v", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
-	}
+	h.writeWorkspacePage(w, r, "page_issue", user, wsID, view, "issues", view.Issue.ProjectID)
 }
 
 // ---- auth ----
@@ -632,8 +632,7 @@ func (h *Handler) LoginSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	token, err := authn.Login(r.Context(), h.Store, r.PostFormValue("email"), r.PostFormValue("password"))
 	if err != nil {
-		w.WriteHeader(http.StatusUnauthorized)
-		writePage(w, "page_login", map[string]string{"Error": "Incorrect email or password."})
+		writePageStatus(w, "page_login", map[string]string{"Error": "Incorrect email or password."}, http.StatusUnauthorized)
 		return
 	}
 	authn.SetSessionCookie(w, token)
@@ -725,7 +724,7 @@ func (h *Handler) Home(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	writePage(w, "page_home", pageData{User: user, Data: stats, Active: "dashboard"})
+	h.writeWorkspacePage(w, r, "page_home", user, wsID, stats, "dashboard", "")
 }
 
 func (h *Handler) CreateDialog(w http.ResponseWriter, r *http.Request) {
@@ -1035,7 +1034,7 @@ func (h *Handler) ProjectIssues(w http.ResponseWriter, r *http.Request, key stri
 		}
 		data.SortURLs[field] = navigatorURL(project.Key, sortParams, 1)
 	}
-	writePage(w, "page_project", pageData{User: user, Data: data, Active: "issues"})
+	h.writeWorkspacePage(w, r, "page_project", user, wsID, data, "issues", project.ID)
 }
 
 // SaveNavigatorFilter persists the current, already-valid search and stars it

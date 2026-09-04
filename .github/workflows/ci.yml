@@ -1,8 +1,6 @@
 name: ci
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
 
@@ -125,6 +123,7 @@ jobs:
 
   npm-audit:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -132,9 +131,37 @@ jobs:
           node-version: "22"
       - name: npm dependency audit
         working-directory: e2e
+        env:
+          # npm's defaults can spend seven minutes on a single unavailable
+          # audit request. Keep each request bounded; the loop below retries
+          # only registry/network failures, never vulnerability findings.
+          npm_config_fetch_retries: "1"
+          npm_config_fetch_retry_mintimeout: "1000"
+          npm_config_fetch_retry_maxtimeout: "5000"
+          npm_config_fetch_timeout: "30000"
         run: |
-          npm install --no-fund --no-audit
-          npm audit --audit-level=high
+          npm ci --no-fund --no-audit
+
+          audit_log="$(mktemp)"
+          trap 'rm -f "$audit_log"' EXIT
+
+          for attempt in 1 2 3; do
+            if npm audit --audit-level=high 2>&1 | tee "$audit_log"; then
+              exit 0
+            fi
+
+            if ! grep -Eqi 'audit endpoint returned an error|EAI_AGAIN|ECONN|ETIMEDOUT|429 Too Many Requests|50[0234] (Bad Gateway|Service Unavailable|Gateway Timeout)' "$audit_log"; then
+              exit 1
+            fi
+
+            if [ "$attempt" -eq 3 ]; then
+              echo "npm audit registry request failed after $attempt attempts" >&2
+              exit 1
+            fi
+
+            echo "npm audit registry request failed; retrying (attempt $((attempt + 1))/3)" >&2
+            sleep "$((attempt * 5))"
+          done
 
   gosec:
     runs-on: ubuntu-latest

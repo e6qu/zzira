@@ -131,7 +131,7 @@ func (h *Handler) BacklogPage(w http.ResponseWriter, r *http.Request, boardID st
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	writePage(w, "page_backlog", pageData{User: user, Data: data, Active: "backlog"})
+	h.writeWorkspacePage(w, r, "page_backlog", user, wsID, data, "backlog", board.ProjectID)
 }
 
 func backlogURL(boardID, message string) string {

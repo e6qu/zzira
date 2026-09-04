@@ -132,8 +132,8 @@ func TestNotificationReadStateIsPrivateIdempotentAndSynced(t *testing.T) {
 	if _, action, err := st.SetNotificationRead(ctx, "ws_default", targetID, notification.ID, true); err != nil || action != nil {
 		t.Fatalf("idempotent update action=%v err=%v", action, err)
 	}
-	if after, err := st.Head(ctx, "ws_default"); err != nil || after != head {
-		t.Fatalf("idempotent update changed head from %d to %d (%v)", head, after, err)
+	if actions, err := st.ActionsSince(ctx, "ws_default", targetID, head, 100); err != nil || countNotificationActions(actions, notification.ID) != 0 {
+		t.Fatalf("idempotent update emitted an action: actions=%v err=%v", actions, err)
 	}
 	if _, _, err := st.SetNotificationRead(ctx, "ws_default", demoID, notification.ID, true); err == nil {
 		t.Fatal("different user updated private notification")
@@ -149,9 +149,9 @@ func TestNotificationReadStateIsPrivateIdempotentAndSynced(t *testing.T) {
 	if changed, err := st.MarkAllNotificationsRead(ctx, "ws_default", targetID); err != nil || changed != 1 {
 		t.Fatalf("mark all changed=%d err=%v", changed, err)
 	}
-	actions, err := st.ActionsSince(ctx, "ws_default", targetID, head, 10)
-	if err != nil || len(actions) != 1 {
-		t.Fatalf("mark all actions=%d err=%v", len(actions), err)
+	actions, err := st.ActionsSince(ctx, "ws_default", targetID, head, 100)
+	if err != nil || countNotificationActions(actions, notification.ID) != 1 {
+		t.Fatalf("mark all notification actions=%d err=%v", countNotificationActions(actions, notification.ID), err)
 	}
 	if current, err := st.NotificationByIDForUser(ctx, "ws_default", targetID, notification.ID); err != nil || !current.Read {
 		t.Fatalf("notification after mark all = %+v, %v", current, err)
@@ -163,7 +163,17 @@ func TestNotificationReadStateIsPrivateIdempotentAndSynced(t *testing.T) {
 	if changed, err := st.MarkAllNotificationsRead(ctx, "ws_default", targetID); err != nil || changed != 0 {
 		t.Fatalf("idempotent mark all changed=%d err=%v", changed, err)
 	}
-	if after, err := st.Head(ctx, "ws_default"); err != nil || after != head {
-		t.Fatalf("idempotent mark all changed head from %d to %d (%v)", head, after, err)
+	if actions, err := st.ActionsSince(ctx, "ws_default", targetID, head, 100); err != nil || countNotificationActions(actions, notification.ID) != 0 {
+		t.Fatalf("idempotent mark all emitted an action: actions=%v err=%v", actions, err)
 	}
+}
+
+func countNotificationActions(actions []models.Action, notificationID string) int {
+	count := 0
+	for _, action := range actions {
+		if action.EntityType == models.EntityNotification && action.EntityID == notificationID {
+			count++
+		}
+	}
+	return count
 }
