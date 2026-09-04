@@ -1,11 +1,21 @@
 // ZZIRA service worker: successful static assets are cached independently from
-// authenticated page shells. Login/sign-out responses purge private HTML so a
-// later user on the same browser cannot inherit the previous user's workspace.
-const STATIC_CACHE = 'zzira-static-v9';
-const PAGE_CACHE = 'zzira-pages-v9';
+// authenticated page shells. Navigations into the Shauth SSO flow (/login,
+// /signed-out, and everything under /auth/, including the RP-initiated
+// logout bridge) bypass this worker entirely rather than going through
+// fetch()-and-inspect: fetch() follows redirects internally, so intercepting
+// those navigations collapses the SSO provider's redirect chain into a
+// single opaque response and hides every intermediate hop from the browser's
+// own navigation history and network observability. The private page cache
+// is instead purged by app.js posting CLEAR_PRIVATE_CACHE once it detects it
+// landed on /login or /signed-out, independent of how that page was reached.
+const STATIC_CACHE = 'zzira-static-v10';
+const PAGE_CACHE = 'zzira-pages-v10';
 const CURRENT_CACHES = new Set([STATIC_CACHE, PAGE_CACHE]);
 const STATIC_PREFIX = '/static/';
-const AUTH_PATHS = new Set(['/login', '/signed-out']);
+
+function bypassesServiceWorker(pathname) {
+  return pathname === '/login' || pathname === '/signed-out' || pathname.startsWith('/auth/');
+}
 
 self.addEventListener('install', (event) => {
   event.waitUntil(self.skipWaiting());
@@ -46,14 +56,11 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  if (req.mode === 'navigate') {
+  if (req.mode === 'navigate' && !bypassesServiceWorker(url.pathname)) {
     event.respondWith((async () => {
       try {
         const res = await fetch(req);
-        const responsePath = res.url ? new URL(res.url).pathname : url.pathname;
-        if (AUTH_PATHS.has(responsePath)) {
-          await caches.delete(PAGE_CACHE);
-        } else if (res.ok && (res.headers.get('Content-Type') || '').includes('text/html')) {
+        if (res.ok && (res.headers.get('Content-Type') || '').includes('text/html')) {
           const cache = await caches.open(PAGE_CACHE);
           await cache.put(req, res.clone());
         }

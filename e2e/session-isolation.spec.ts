@@ -36,6 +36,38 @@ test('sign-out clears authenticated page caches and rotates the local replica', 
   await expect.poll(() => privatePageCacheEntries(page)).toBe(0);
 });
 
+test('the service worker does not intercept a cross-origin redirect into the Shauth logout bridge', async ({ page, baseURL }) => {
+  await login(page);
+  await expect.poll(() => page.evaluate(() => navigator.serviceWorker.controller !== null)).toBe(true);
+
+  const seenPaths: string[] = [];
+  page.on('request', (request) => {
+    if (request.isNavigationRequest()) {
+      try {
+        seenPaths.push(new URL(request.url()).pathname);
+      } catch {
+        // ignore
+      }
+    }
+  });
+
+  // Mirrors how the browser actually arrives at the bridge in production:
+  // Shauth's Hydra instance (a different origin) 303s the top-level
+  // navigation here after finishing RP-initiated logout, so this must be a
+  // genuine cross-origin landing -- not a same-origin page.goto() -- to
+  // trigger the process-swap conditions the worker-interception bug depends
+  // on. fake-hydra.mjs on :8100 stands in for that redirecting IdP hop.
+  const bridgeURL = new URL('/auth/shauth/logout/complete', baseURL!).toString();
+  await page.goto(`http://127.0.0.1:8100/simulated-logout?to=${encodeURIComponent(bridgeURL)}`);
+  await expect(page).toHaveURL('/signed-out');
+
+  // A service worker that intercepts this navigation and answers with
+  // fetch(req) resolves the redirect internally, so only the final URL is
+  // ever visible to the page's own navigation events. Seeing the bridge
+  // path itself proves the browser (not the worker) followed the redirect.
+  expect(seenPaths).toContain('/auth/shauth/logout/complete');
+});
+
 test('rapid navigation serializes OPFS access handles for one replica', async ({ page }) => {
   await login(page);
   await page.goto('/issues/ZZ');
