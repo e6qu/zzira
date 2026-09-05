@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -108,7 +109,7 @@ func (h *Handler) AutomationCreate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	http.Redirect(w, r, "/settings/automation/"+uuid, http.StatusSeeOther)
+	redirectAutomationRule(w, uuid)
 }
 
 func (h *Handler) AutomationRule(w http.ResponseWriter, r *http.Request) {
@@ -164,7 +165,12 @@ func (h *Handler) AutomationUpdate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	http.Redirect(w, r, "/settings/automation/"+uuid, http.StatusSeeOther)
+	redirectAutomationRule(w, uuid)
+}
+
+func redirectAutomationRule(w http.ResponseWriter, uuid string) {
+	w.Header().Set("Location", "/settings/automation/"+url.PathEscape(uuid))
+	w.WriteHeader(http.StatusSeeOther)
 }
 
 func (h *Handler) automationEditorData(r *http.Request, workspaceID string, rule *automation.Rule) (automationEditorData, error) {
