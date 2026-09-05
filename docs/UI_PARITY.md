@@ -1,12 +1,12 @@
 # Jira UI, API, and Journey Parity
 
-Updated: 2026-09-04
+Updated: 2026-09-05
 
-This ledger defines “full parity” for ZZIRA as the daily Jira Software core:
-planning, finding, creating, updating, and administering software work through
-both the browser and Jira-compatible APIs. Jira Service Management, Marketplace
-apps, proprietary gadgets, and Atlassian AI are separate product surfaces and
-are outside this boundary unless the product scope changes explicitly.
+The target is now the whole Jira Cloud surface plus wiki/Confluence, diagrams,
+reports, metrics, releases, custom dashboards, scheduled automation and apps.
+[The Cloud parity ledger](CLOUD_PARITY.md) defines the expanded scope and known
+compatibility gaps. The completed journeys below describe individual slices,
+not full product fidelity.
 
 Status: ✅ journey is complete and browser/API tested · 🟡 usable subset · ⛔ gap.
 The endpoint-level source of truth remains [the API matrix](../api/conformance/MATRIX.md).
@@ -25,7 +25,8 @@ The endpoint-level source of truth remains [the API matrix](../api/conformance/M
 | Review a dashboard | 🟡 | Status counts, assigned work and recent activity; no configurable dashboards |
 | Plan a backlog/sprint | ✅ | Project backlog and open-sprint grouping, cross-group movement, rank controls, issue preview, sprint create/edit/start/complete, and equivalent Agile API lifecycle are browser/integration-tested; epic/version planning is a separate enhancement |
 | Administer workflows | 🟡 | Workflow directory, read-only built-in diagram, custom workflow creation, transition add/remove, and project assignment are browser-tested; status creation and full schemes/conditions remain |
-| Administer a project | ⛔ | The workflow assignment slice is delivered; details, roles, fields, security, boards, and webhooks still lack a coherent settings journey |
+| Administer a project | 🟡 | Create Scrum/Kanban projects, edit details/lead/default assignment, and navigate to board/workflow settings; roles, schemes, fields, security and lifecycle remain |
+| Wiki | 🟡 | Space/page creation, storage editor, drafts, version checks/history, parent pages, search and trash/restore; see CLOUD_PARITY.md for API and permission limits |
 
 ## Delivery order
 

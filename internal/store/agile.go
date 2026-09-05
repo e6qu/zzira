@@ -232,7 +232,7 @@ func (s *Store) BoardIssuesFiltered(ctx context.Context, boardID, userID string,
 	}
 	args := []any{board.ProjectID, userID}
 	args = append(args, compiled.Args...)
-	rows, err := s.Pool.Query(ctx, issueJoin+`
+	rows, err := s.Pool.Query(ctx, searchSelect+" "+issueJoinTables()+`
 		WHERE i.project_id=$1 AND `+VisibleIssuePredicate("i", "$2")+` AND (`+compiled.Where+`)
 		ORDER BY i.rank, i.key`, args...)
 	if err != nil {

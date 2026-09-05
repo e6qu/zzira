@@ -15,6 +15,21 @@ func goldenHandler() *Handler {
 	return &Handler{BaseURL: "http://localhost:8080"}
 }
 
+func TestServerInfoCloudDeploymentType(t *testing.T) {
+	w := httptest.NewRecorder()
+	goldenHandler().ServeHTTP(w, httptest.NewRequest("GET", "/rest/api/3/serverInfo", nil))
+	var info struct {
+		DeploymentType string `json:"deploymentType"`
+		BaseURL        string `json:"baseUrl"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &info); err != nil {
+		t.Fatal(err)
+	}
+	if info.DeploymentType != "Cloud" || info.BaseURL != "http://localhost:8080" {
+		t.Fatal(w.Body.String())
+	}
+}
+
 func TestIssueBeanGolden(t *testing.T) {
 	h := goldenHandler()
 	issue := &models.Issue{
@@ -139,16 +154,6 @@ func TestQuerySearchPageDefaultsOnlyWhenOmitted(t *testing.T) {
 	startAt, maxResults, err = querySearchPage(httptest.NewRequest("GET", "/rest/api/3/search?startAt=2&maxResults=0", nil))
 	if err != nil || startAt != 2 || maxResults != 0 {
 		t.Fatalf("explicit page values = (%d, %d, %v)", startAt, maxResults, err)
-	}
-}
-
-func TestADFToPlainText(t *testing.T) {
-	raw := json.RawMessage(`{"type":"doc","version":1,"content":[
-		{"type":"paragraph","content":[{"type":"text","text":"hello "},{"type":"text","text":"world"}]},
-		{"type":"paragraph","content":[{"type":"text","text":"second"}]}
-	]}`)
-	if got := adfToPlainText(raw); got != "hello world\nsecond" {
-		t.Fatalf("adfToPlainText = %q", got)
 	}
 }
 

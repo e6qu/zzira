@@ -23,6 +23,7 @@ import (
 	"github.com/e6qu/zzira/internal/authn"
 	"github.com/e6qu/zzira/internal/build"
 	"github.com/e6qu/zzira/internal/commands"
+	"github.com/e6qu/zzira/internal/confluence"
 	"github.com/e6qu/zzira/internal/jql"
 	"github.com/e6qu/zzira/internal/notifybus"
 	"github.com/e6qu/zzira/internal/store"
@@ -175,6 +176,20 @@ func main() {
 	mux.HandleFunc("POST /logout", webHandler.Logout)
 	mux.HandleFunc("GET /signed-out", webHandler.SignedOut)
 	mux.HandleFunc("GET /projects", webHandler.ProjectsPage)
+	mux.HandleFunc("GET /wiki", webHandler.WikiHome)
+	mux.HandleFunc("POST /wiki/spaces", webHandler.WikiHome)
+	mux.HandleFunc("GET /wiki/spaces/{space}", webHandler.WikiSpacePage)
+	mux.HandleFunc("GET /wiki/spaces/{space}/pages/new", webHandler.WikiEdit)
+	mux.HandleFunc("POST /wiki/spaces/{space}/pages/new", webHandler.WikiEdit)
+	mux.HandleFunc("GET /wiki/spaces/{space}/pages/{page}", webHandler.WikiPage)
+	mux.HandleFunc("GET /wiki/spaces/{space}/pages/{page}/edit", webHandler.WikiEdit)
+	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/edit", webHandler.WikiEdit)
+	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/trash", webHandler.WikiTrash)
+	mux.Handle("/wiki/api/v2/", &confluence.Handler{Store: st, Commands: api.Commands, WorkspaceSlug: workspaceSlug, BaseURL: api.BaseURL})
+	mux.HandleFunc("GET /projects/new", webHandler.NewProject)
+	mux.HandleFunc("POST /projects/new", webHandler.NewProject)
+	mux.HandleFunc("GET /projects/{key}/settings", webHandler.ProjectSettings)
+	mux.HandleFunc("POST /projects/{key}/settings", webHandler.ProjectSettings)
 	mux.HandleFunc("GET /projects/{key}", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.ProjectOverview(w, r, r.PathValue("key"))
 	})
@@ -384,14 +399,15 @@ func seedUsers(ctx context.Context, st *store.Store) error {
 	}
 	// Dev convenience: e2e tests authenticate with these. Local artifact only.
 	if len(tokens) > 0 {
-		if err := os.MkdirAll("data", 0o700); err != nil {
+		seedDir := envOr("DATA_DIR", "data")
+		if err := os.MkdirAll(seedDir, 0o700); err != nil {
 			return err
 		}
 		f, err := json.MarshalIndent(tokens, "", "  ")
 		if err != nil {
 			return err
 		}
-		if err := os.WriteFile("data/seed-tokens.json", f, 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(seedDir, "seed-tokens.json"), f, 0o600); err != nil {
 			return err
 		}
 	}

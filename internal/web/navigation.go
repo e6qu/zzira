@@ -27,6 +27,7 @@ type projectNavigationItem struct {
 type workspaceNavigation struct {
 	Projects []projectNavigationItem
 	Current  *projectNavigationItem
+	CanAdmin bool
 }
 
 // workspaceNavigation builds the project-aware application shell. preferred
@@ -50,6 +51,12 @@ func (h *Handler) workspaceNavigation(r *http.Request, workspaceID, preferred st
 	}
 
 	navigation := &workspaceNavigation{Projects: make([]projectNavigationItem, 0, len(projects))}
+	if user := h.currentUser(r); user != nil {
+		navigation.CanAdmin, err = h.Store.IsAdmin(r.Context(), workspaceID, user.ID)
+		if err != nil {
+			return nil, err
+		}
+	}
 	for _, project := range projects {
 		item := projectNavigationItem{
 			Project:     project,

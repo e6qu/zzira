@@ -13,6 +13,7 @@ import (
 
 	"github.com/e6qu/zzira/internal/adf"
 	"github.com/e6qu/zzira/internal/models"
+	"github.com/e6qu/zzira/internal/wikimarkup"
 )
 
 //go:embed templates/*.gohtml
@@ -22,6 +23,10 @@ var set *template.Template
 
 func init() {
 	funcs := template.FuncMap{
+		"wikiHTML": func(storage string) (template.HTML, error) {
+			value, err := wikimarkup.Render(storage)
+			return template.HTML(value), err // #nosec G203 -- strict tag/attribute validation and escaping in wikimarkup.
+		},
 		"statusClass": func(category string) string {
 			switch category {
 			case "done":

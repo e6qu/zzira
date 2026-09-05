@@ -41,7 +41,8 @@ seed:
 	go run ./cmd/server -mode=seed
 
 conformance: build
-	go test ./internal/api3 -run TestGolden -v
+	python3 api/conformance/inventory.py --check
+	go test ./internal/api3 ./internal/confluence -v
 
 loadtest: build
 	./bin/loadtest

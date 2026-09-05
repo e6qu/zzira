@@ -75,6 +75,7 @@ test('create journey and createmeta share every supported field', async ({ page,
   expect(apiIssue.fields).toMatchObject({ labels: ['api-create'], security: { id: levelID }, [customFieldID]: 5 });
 
   await login(page);
+  await page.goto('/projects/ZZ');
   await page.locator('#global-create-issue').click();
   const dialog = page.getByRole('dialog', { name: 'Create issue' });
   await expect(dialog).toBeVisible();

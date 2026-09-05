@@ -3,7 +3,7 @@
 A Jira-style issue tracker rebuilt on the delta-sync architecture from
 Linear's ["Rebuilding delta sync read path"](https://linear.app/now/rebuilding-delta-sync-read-path).
 
-- **API-compatible with Atlassian's Jira Cloud REST API v3** (`/rest/api/3/...`) and Agile 1.0 — see `api/conformance/MATRIX.md`
+- **Targets Jira Cloud compatibility**: implemented subsets of REST v3 and Agile 1.0, plus initial Confluence Cloud v2 wiki APIs. Full base-URL-only compatibility is not yet achieved — see [scope and gaps](docs/CLOUD_PARITY.md).
 - **Local-first browser replica**: SQLite (WASM/OPFS) + an isomorphic Go renderer compiled to both server and client
 - **Go + Postgres backend**: stateless replicas, an immutable action log as the single write path, Postgres LISTEN/NOTIFY for live pokes
 - Frontend: HTMX + SortableJS, Jira-like UI

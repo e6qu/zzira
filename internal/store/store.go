@@ -459,8 +459,8 @@ func (s *Store) AddMember(ctx context.Context, workspaceID, userID, role string)
 func (s *Store) ProjectByKey(ctx context.Context, workspaceID, key string) (*models.Project, error) {
 	p := &models.Project{WorkspaceID: workspaceID, Key: key}
 	err := s.Pool.QueryRow(ctx,
-		`SELECT id, name, COALESCE(workflow_id,''), COALESCE(security_scheme_id,'') FROM projects WHERE workspace_id=$1 AND upper(key)=upper($2)`,
-		workspaceID, key).Scan(&p.ID, &p.Name, &p.WorkflowID, &p.SecuritySchemeID)
+		`SELECT id, name, COALESCE(workflow_id,''), COALESCE(security_scheme_id,''), description, url, COALESCE(lead_account_id,''), assignee_type FROM projects WHERE workspace_id=$1 AND upper(key)=upper($2)`,
+		workspaceID, key).Scan(&p.ID, &p.Name, &p.WorkflowID, &p.SecuritySchemeID, &p.Description, &p.URL, &p.LeadAccountID, &p.AssigneeType)
 	if err != nil {
 		return nil, err
 	}
@@ -707,6 +707,13 @@ func (s *Store) ActionPageSince(ctx context.Context, workspaceID, userID string,
 		       to_char(a.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
 		FROM actions a
 		WHERE a.workspace_id=$1 AND a.seq > $2 AND a.seq <= $6
+		  AND (a.entity_type NOT IN ('wiki_space','wiki_page') OR EXISTS (
+		    SELECT 1 FROM wiki_spaces s WHERE s.workspace_id=$1
+		      AND s.id::text=a.payload->>'wikiSpaceId'
+		      AND (NOT s.private OR s.author_id=$3)
+		      AND (a.entity_type<>'wiki_page' OR a.payload->'wiki_page'->>'published'='true'
+		        OR a.payload->'wiki_page'->>'authorId'=$3)
+		  ))
 		  AND (
 		    CASE a.entity_type
 		      WHEN $4 THEN a.payload->'notification'->>'userId'

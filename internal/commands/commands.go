@@ -21,17 +21,19 @@ type Service struct {
 }
 
 type CreateIssueInput struct {
-	ActorID         string
-	WorkspaceID     string
-	ProjectIDOrKey  string
-	Summary         string
-	Description     string // plain text in V0; stored as an ADF paragraph
-	IssueTypeID     string
-	PriorityID      string
-	AssigneeID      string
-	SecurityLevelID string
-	Labels          []string
-	Fields          map[string]json.RawMessage
+	ActorID                   string
+	WorkspaceID               string
+	ProjectIDOrKey            string
+	Summary                   string
+	Description               string // plain text in V0; stored as an ADF paragraph
+	DescriptionADF            json.RawMessage
+	IssueTypeID               string
+	PriorityID                string
+	AssigneeID                string
+	UseProjectDefaultAssignee bool
+	SecurityLevelID           string
+	Labels                    []string
+	Fields                    map[string]json.RawMessage
 }
 
 // DeleteIssue removes the issue transactionally, then cleans up attachment
@@ -87,10 +89,19 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 		}
 		priorityID = priority.ID
 	}
+	if in.UseProjectDefaultAssignee && in.AssigneeID == "-1" {
+		in.AssigneeID = ""
+	}
 	if in.AssigneeID != "" {
 		if _, err := s.Store.MemberByID(ctx, in.WorkspaceID, in.AssigneeID); err != nil {
 			return nil, nil, fmt.Errorf("assignee is not an active workspace member")
 		}
+	}
+	if in.UseProjectDefaultAssignee && project.AssigneeType == "PROJECT_LEAD" {
+		if _, err := s.Store.MemberByID(ctx, in.WorkspaceID, project.LeadAccountID); err != nil {
+			return nil, nil, fmt.Errorf("project lead is not an active workspace member")
+		}
+		in.AssigneeID = project.LeadAccountID
 	}
 	if in.SecurityLevelID != "" {
 		scheme, err := s.Store.SecuritySchemeForProject(ctx, project.ID)
@@ -125,6 +136,22 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 		return nil, nil, err
 	}
 	description := plainTextToADF(in.Description)
+	if in.DescriptionADF != nil {
+		if len(in.DescriptionADF) > 1<<20 {
+			return nil, nil, fmt.Errorf("description must be at most 1 MiB")
+		}
+		if string(in.DescriptionADF) != "null" {
+			var doc struct {
+				Type    string            `json:"type"`
+				Version int               `json:"version"`
+				Content []json.RawMessage `json:"content"`
+			}
+			if err := json.Unmarshal(in.DescriptionADF, &doc); err != nil || doc.Type != "doc" || doc.Version != 1 {
+				return nil, nil, fmt.Errorf("description must be an ADF document with type doc and version 1")
+			}
+		}
+		description = in.DescriptionADF
+	}
 	issue, action, err := s.Store.CreateIssue(ctx, in.ActorID, project.ID, in.Summary,
 		description, "st_todo", issueType.ID, priorityID, in.AssigneeID, labels, in.Fields, in.SecurityLevelID)
 	if err != nil {

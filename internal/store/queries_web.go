@@ -44,8 +44,8 @@ func (s *Store) PriorityByIDOrName(ctx context.Context, idOrName string) (*model
 // DefaultProject returns the seeded demo project (V0 has exactly one).
 func (s *Store) DefaultProject(ctx context.Context) (*models.Project, error) {
 	p := &models.Project{}
-	err := s.Pool.QueryRow(ctx, `SELECT id, workspace_id, key, name, COALESCE(workflow_id,''), COALESCE(security_scheme_id,'') FROM projects LIMIT 1`).
-		Scan(&p.ID, &p.WorkspaceID, &p.Key, &p.Name, &p.WorkflowID, &p.SecuritySchemeID)
+	err := s.Pool.QueryRow(ctx, `SELECT id, workspace_id, key, name, COALESCE(workflow_id,''), COALESCE(security_scheme_id,''), description, url, COALESCE(lead_account_id,''), assignee_type FROM projects LIMIT 1`).
+		Scan(&p.ID, &p.WorkspaceID, &p.Key, &p.Name, &p.WorkflowID, &p.SecuritySchemeID, &p.Description, &p.URL, &p.LeadAccountID, &p.AssigneeType)
 	if err != nil {
 		return nil, err
 	}
@@ -56,8 +56,8 @@ func (s *Store) DefaultProject(ctx context.Context) (*models.Project, error) {
 // must use this scoped lookup rather than the administrative global helper.
 func (s *Store) DefaultProjectInWorkspace(ctx context.Context, workspaceID string) (*models.Project, error) {
 	p := &models.Project{}
-	err := s.Pool.QueryRow(ctx, `SELECT id, workspace_id, key, name, COALESCE(workflow_id,''), COALESCE(security_scheme_id,'') FROM projects WHERE workspace_id=$1 ORDER BY key LIMIT 1`, workspaceID).
-		Scan(&p.ID, &p.WorkspaceID, &p.Key, &p.Name, &p.WorkflowID, &p.SecuritySchemeID)
+	err := s.Pool.QueryRow(ctx, `SELECT id, workspace_id, key, name, COALESCE(workflow_id,''), COALESCE(security_scheme_id,''), description, url, COALESCE(lead_account_id,''), assignee_type FROM projects WHERE workspace_id=$1 ORDER BY key LIMIT 1`, workspaceID).
+		Scan(&p.ID, &p.WorkspaceID, &p.Key, &p.Name, &p.WorkflowID, &p.SecuritySchemeID, &p.Description, &p.URL, &p.LeadAccountID, &p.AssigneeType)
 	if err != nil {
 		return nil, err
 	}
