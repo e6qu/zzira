@@ -710,6 +710,7 @@ func (s *Store) ActionPageSince(ctx context.Context, workspaceID, userID string,
 		       to_char(a.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
 		FROM actions a
 		WHERE a.workspace_id=$1 AND a.seq > $2 AND a.seq <= $6
+		  AND (a.entity_type <> 'dashboard' OR EXISTS (SELECT 1 FROM dashboards d WHERE d.workspace_id=$1 AND d.id=a.entity_id AND `+strings.ReplaceAll(dashboardAccess, "$2", "$3")+`))
 		  AND (a.entity_type NOT IN ('wiki_space','wiki_page') OR EXISTS (
 		    SELECT 1 FROM wiki_spaces s WHERE s.workspace_id=$1
 		      AND s.id::text=a.payload->>'wikiSpaceId'

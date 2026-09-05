@@ -67,7 +67,7 @@ ZZIRA-owned control-plane endpoints use `/rest/zzira/1`.
 
 | Endpoint | Status | Notes |
 |---|---|---|
-| Dashboards (minimal) | ✅ custom | /dashboard: status counts, my-open, recent activity — Jira gadget API not implemented (⛔; included in the expanded scope) |
+| Dashboards | 🟡 16/17 pinned operations + custom UI | Fixed `/dashboard` plus `/dashboards`: CRUD, ownership/sharing, copy, gadget catalog/lifecycle/properties, favourites, layouts, refresh, JQL/filter lists and permission-filtered charts. Bulk edit and external gadget runtimes remain; see `docs/DASHBOARDS.md` |
 | dev-status (SCM links) | ⛔ | requires SCM integration APIs and client tests |
 | Service management surfaces | ⛔ | separate product surface included in the full-surface ledger |
 | Automation and schedules | ⛔ | durable scheduler, rule editor, execution/audit and API contracts remain |

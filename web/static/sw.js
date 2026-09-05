@@ -8,13 +8,13 @@
 // own navigation history and network observability. The private page cache
 // is instead purged by app.js posting CLEAR_PRIVATE_CACHE once it detects it
 // landed on /login or /signed-out, independent of how that page was reached.
-const STATIC_CACHE = 'zzira-static-v10';
-const PAGE_CACHE = 'zzira-pages-v10';
+const STATIC_CACHE = 'zzira-static-v11';
+const PAGE_CACHE = 'zzira-pages-v11';
 const CURRENT_CACHES = new Set([STATIC_CACHE, PAGE_CACHE]);
 const STATIC_PREFIX = '/static/';
 
 function bypassesServiceWorker(pathname) {
-  return pathname === '/login' || pathname === '/signed-out' || pathname.startsWith('/auth/');
+  return pathname === '/dashboards' || pathname.startsWith('/dashboards/') || pathname === '/login' || pathname === '/signed-out' || pathname.startsWith('/auth/');
 }
 
 self.addEventListener('install', (event) => {

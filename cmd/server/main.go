@@ -278,6 +278,11 @@ func main() {
 	mux.HandleFunc("DELETE /issues/{key}", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.DeleteIssue(w, r, r.PathValue("key"))
 	})
+	mux.HandleFunc("GET /dashboards", webHandler.CustomDashboards)
+	mux.HandleFunc("POST /dashboards", webHandler.CustomDashboards)
+	mux.HandleFunc("GET /dashboards/{id}", webHandler.CustomDashboard)
+	mux.HandleFunc("POST /dashboards/{id}", webHandler.CustomDashboard)
+	mux.HandleFunc("GET /dashboards/{id}/content", webHandler.CustomDashboard)
 	mux.HandleFunc("GET /dashboard", webHandler.DashboardPage)
 	mux.HandleFunc("GET /notifications", webHandler.NotificationsPage)
 	mux.HandleFunc("POST /notifications/read-all", webHandler.MarkAllNotificationsReadPage)
