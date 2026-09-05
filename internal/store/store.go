@@ -576,6 +576,9 @@ func (s *Store) CreateIssue(ctx context.Context, actorID, projectID, summary str
 		}
 	}
 
+	if err := normalizeVersionFields(ctx, tx, projectID, fields); err != nil {
+		return nil, nil, err
+	}
 	fieldsJSON, err := json.Marshal(fields)
 	if err != nil {
 		return nil, nil, err

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"slices"
 	"strings"
 
 	"github.com/e6qu/zzira/internal/adf"
@@ -56,7 +57,8 @@ func init() {
 		"timeSpent": func(seconds int) string {
 			return models.TimeSpentLabel(seconds)
 		},
-		"join": strings.Join,
+		"join":            strings.Join,
+		"selectedVersion": func(csv, id string) bool { return slices.Contains(strings.Split(csv, ","), id) },
 		"humanSize": func(n int64) string {
 			const kb, mb = 1 << 10, 1 << 20
 			switch {

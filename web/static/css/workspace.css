@@ -333,3 +333,28 @@ body.nav-collapsed .project-switcher-panel a { padding-inline: 9px; }
 .wiki-page-tree li > div { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--ds-border); }
 .wiki-page-tree a { overflow-wrap: anywhere; }
 .wiki-page-tree small { color: var(--ds-text-subtle); }
+
+/* Releases keep dates and scope together, with progress readable without color. */
+.release-layout { display:grid; grid-template-columns:minmax(0,1fr) minmax(240px,320px); gap:24px; align-items:start; }
+.release-main,.release-side { display:grid; gap:20px; min-width:0; }
+.release-filters { display:flex; gap:16px; align-items:end; margin-bottom:24px; flex-wrap:wrap; }
+.release-filters label { display:block; margin-bottom:6px; }
+.release-filters input,.release-filters select { max-width:100%; }
+.release-row { display:grid; grid-template-columns:minmax(0,1fr) minmax(140px,220px); gap:20px; padding:20px 0; border-bottom:1px solid var(--ds-border); }
+.release-row:first-child { padding-top:0; }.release-row:last-child { border-bottom:0; padding-bottom:0; }
+.release-row p { margin:8px 0; overflow-wrap:anywhere; }.release-name { font-weight:650; margin-right:10px; overflow-wrap:anywhere; }
+.release-progress { display:grid; gap:6px; align-content:center; }.release-progress progress { width:100%; height:12px; accent-color:var(--ds-primary); }.release-progress span { font-size:12px; }
+.release-counts { display:flex; gap:32px; margin-bottom:0; }.release-counts dd { font-size:24px; margin:4px 0; font-variant-numeric:tabular-nums; }
+.release-section-heading { display:flex; align-items:baseline; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+.release-add { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:16px 0; }.release-add label { width:100%; }.release-add input { min-width:0; max-width:100%; }
+.release-issues { list-style:none; padding:0; }.release-issues li { display:flex; gap:12px; align-items:center; padding:12px 0; border-top:1px solid var(--ds-border); }.release-issues li>div { flex:1; min-width:0; overflow-wrap:anywhere; }.release-issues form { margin:0; }
+.release-secondary-action,.release-delete { margin-top:20px; }.release-delete summary { cursor:pointer; }.release-edit { max-width:650px; margin-bottom:24px; }.release-notes p { overflow-wrap:anywhere; }
+@media(max-width:900px) { .release-layout { grid-template-columns:1fr; } }
+@media(max-width:540px) { .release-row { grid-template-columns:1fr; }.release-issues li { flex-wrap:wrap; }.release-counts { gap:18px; }.release-add input { width:100%; } }
+
+.issue-version-links { display:flex; flex-wrap:wrap; gap:8px 16px; margin:12px 0; font-size:12px; }
+
+.release-filters input,.release-filters select,.release-add input { min-height:40px; padding:8px 10px; border:1px solid var(--ds-border); border-radius:var(--ds-radius); color:var(--ds-text); background:var(--ds-surface); font:inherit; }
+.release-side dt { color:var(--ds-text-subtle); font-size:12px; margin-top:12px; }.release-side dd { margin:4px 0 0; font-family:var(--utility-font); font-size:13px; }
+/* Keep board filters usable when keyboard focus scrolls a long board. */
+.board-toolbar { position:sticky; top:var(--topbar-height); z-index:10; }

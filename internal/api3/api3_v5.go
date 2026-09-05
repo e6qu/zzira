@@ -16,7 +16,7 @@ import (
 var customFieldIDPattern = regexp.MustCompile(`^customfield_[0-9]+$`)
 var customFieldInMessagePattern = regexp.MustCompile(`customfield_[0-9]+`)
 
-// customFieldsFromBody extracts customfield_NNNNN entries from the raw
+// customFieldsFromBody extracts custom fields and version references from the raw
 // request body; create and update share this extraction path.
 func customFieldsFromBody(body []byte) map[string]json.RawMessage {
 	var req struct {
@@ -27,7 +27,7 @@ func customFieldsFromBody(body []byte) map[string]json.RawMessage {
 	}
 	var out map[string]json.RawMessage
 	for k, v := range req.Fields {
-		if !customFieldIDPattern.MatchString(k) {
+		if !customFieldIDPattern.MatchString(k) && k != "fixVersions" && k != "versions" {
 			continue
 		}
 		if out == nil {
@@ -96,6 +96,8 @@ func (h *Handler) listFields(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := []map[string]any{
+		{"id": "fixVersions", "name": "Fix versions", "custom": false, "schema": map[string]any{"type": "array", "items": "version", "system": "fixVersions"}},
+		{"id": "versions", "name": "Affects versions", "custom": false, "schema": map[string]any{"type": "array", "items": "version", "system": "versions"}},
 		{"id": "summary", "name": "Summary", "custom": false, "schema": map[string]any{"type": "string"}},
 		{"id": "description", "name": "Description", "custom": false, "schema": map[string]any{"type": "doc"}},
 	}

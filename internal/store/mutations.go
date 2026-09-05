@@ -37,14 +37,15 @@ func appendAction(ctx context.Context, tx pgx.Tx, a *models.Action) error {
 // ---- Issue update / delete (V1) ----
 
 type IssueUpdate struct {
-	Summary         *string
-	Description     json.RawMessage // non-nil = replace
-	PriorityID      *string         // "" = clear, nil = unchanged
-	AssigneeID      *string         // "" = unassign, nil = unchanged
-	StatusID        *string         // transitions only; "" invalid
-	SecurityLevelID *string         // "" = public, nil = unchanged
-	Labels          *[]string       // empty = clear, nil = unchanged
-	Fields          map[string]json.RawMessage
+	VersionOperations map[string][]map[string]json.RawMessage
+	Summary           *string
+	Description       json.RawMessage // non-nil = replace
+	PriorityID        *string         // "" = clear, nil = unchanged
+	AssigneeID        *string         // "" = unassign, nil = unchanged
+	StatusID          *string         // transitions only; "" invalid
+	SecurityLevelID   *string         // "" = public, nil = unchanged
+	Labels            *[]string       // empty = clear, nil = unchanged
+	Fields            map[string]json.RawMessage
 }
 
 func diffItem(field, from, fromString, to, toString string) models.ChangeItem {
@@ -58,8 +59,21 @@ func (s *Store) UpdateIssue(ctx context.Context, actorID, workspaceID, issueID s
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	current, err := scanIssue(tx.QueryRow(ctx, issueJoin+`WHERE i.workspace_id=$1 AND i.id=$2`, workspaceID, issueID))
+	var projectID string
+	if err := tx.QueryRow(ctx, `SELECT p.id FROM projects p JOIN issues i ON i.project_id=p.id WHERE i.workspace_id=$1 AND i.id=$2 FOR UPDATE OF p`, workspaceID, issueID).Scan(&projectID); err != nil {
+		return nil, nil, err
+	}
+	current, err := scanIssue(tx.QueryRow(ctx, issueJoin+`WHERE i.workspace_id=$1 AND i.id=$2 FOR UPDATE OF i`, workspaceID, issueID))
 	if err != nil {
+		return nil, nil, err
+	}
+	if len(up.VersionOperations) > 0 {
+		up.Fields, err = applyVersionOperations(ctx, tx, projectID, current.Fields, up.Fields, up.VersionOperations)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	if err := normalizeVersionFields(ctx, tx, projectID, up.Fields); err != nil {
 		return nil, nil, err
 	}
 	diff := map[string]models.ChangeItem{}
@@ -85,6 +99,11 @@ func (s *Store) UpdateIssue(ctx context.Context, actorID, workspaceID, issueID s
 		sets = append(sets, "labels = "+arg(*up.Labels))
 	}
 	if up.Fields != nil {
+		for _, field := range []string{"fixVersions", "versions"} {
+			if value, ok := up.Fields[field]; ok && string(value) != string(current.Fields[field]) {
+				diff[field] = versionChange(field, current.Fields[field], value)
+			}
+		}
 		merged, err := mergeFields(current.Fields, up.Fields)
 		if err != nil {
 			return nil, nil, err
@@ -435,7 +454,7 @@ func mergeFields(current map[string]json.RawMessage, updates map[string]json.Raw
 		out[k] = v
 	}
 	for k, v := range updates {
-		if !isCustomFieldKey(k) {
+		if !isCustomFieldKey(k) && k != "fixVersions" && k != "versions" {
 			return nil, fmt.Errorf("field key %q is not a custom field", k)
 		}
 		if len(v) == 0 || string(v) == "null" {

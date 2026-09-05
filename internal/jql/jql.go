@@ -585,6 +585,9 @@ func (c *compiler) node(n Node) string {
 }
 
 func (c *compiler) clause(cl Clause) string {
+	if cl.Field == "fixversion" || cl.Field == "affectedversion" {
+		return c.versionClause(cl)
+	}
 	col, ok := c.res.Columns[cl.Field]
 	if !ok {
 		c.err = &SyntaxError{0, "field does not exist or is not searchable: " + cl.Field}
@@ -629,4 +632,35 @@ func (c *compiler) fieldValue(field, value string) any {
 		return strings.ToUpper(value)
 	}
 	return value
+}
+
+// versionClause searches every version reference by ID or name. Negated
+// membership excludes empty fields, matching Jira multi-value field semantics.
+func (c *compiler) versionClause(cl Clause) string {
+	field := "fixVersions"
+	if cl.Field == "affectedversion" {
+		field = "versions"
+	}
+	array := "COALESCE(i.fields->'" + field + "','[]'::jsonb)"
+	nonempty := "jsonb_array_length(" + array + ") > 0"
+	switch cl.Op {
+	case "empty":
+		return "jsonb_array_length(" + array + ") = 0"
+	case "notempty":
+		return nonempty
+	case "=", "!=", "in":
+		matches := []string{}
+		for _, value := range cl.Values {
+			ph := c.arg(value)
+			matches = append(matches, "(v->>'id' = "+ph+" OR lower(v->>'name') = lower("+ph+"))")
+		}
+		exists := "EXISTS (SELECT 1 FROM jsonb_array_elements(" + array + ") v WHERE " + strings.Join(matches, " OR ") + ")"
+		if cl.Op == "!=" {
+			return "(" + nonempty + " AND NOT " + exists + ")"
+		}
+		return exists
+	default:
+		c.err = &SyntaxError{0, "unsupported version operator " + cl.Op}
+		return ""
+	}
 }

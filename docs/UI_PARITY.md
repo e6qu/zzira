@@ -93,3 +93,11 @@ movement. Primary references:
 - <https://support.atlassian.com/jira-software-cloud/docs/use-your-kanban-backlog/>
 - <https://support.atlassian.com/jira-software-cloud/docs/create-a-work-item-and-a-subtask/>
 - <https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issues/>
+
+## Release journey follow-up
+
+Project releases now cover creation, editing, scope assignment, progress, notes,
+release/unrelease, archive/unarchive and confirmed deletion. Fix/affects version
+pickers are present in issue creation, and issue pages link to their versions.
+The browser journey covers light/dark accessibility and 320px reflow.
+[RELEASES.md](RELEASES.md) records remaining API, offline and permission limits.

@@ -65,10 +65,10 @@ slices and must be read with the limitations below.
 |---|---|---|
 | Identity and authentication | Partial | Jira OAuth 2.0/3LO, scopes, app principals, organization/site administration, product access, groups, account lifecycle and token administration |
 | Projects and administration | Partial | Project roles and permissions; permission/notification/security/workflow/screen/field schemes; work types; categories; avatars; key renames; archive/delete/restore; project templates beyond the delivered software pair |
-| Work items | Partial | Full ADF fidelity, hierarchy/epics/subtasks, components, fix/affected versions, dates, estimates, votes, issue properties, bulk operations, complete metadata/expansion and permission semantics |
+| Work items | Partial | Full ADF fidelity, hierarchy/epics/subtasks, components, complete version-picker semantics, dates, estimates, votes, issue properties, bulk operations, complete metadata/expansion and permission semantics |
 | Search and filters | Partial | Full JQL grammar/functions/history, enhanced-search expansions and stable cursors, v2 clients, sharing permissions, filter administration and subscriptions |
 | Agile planning | Partial | Board CRUD and filter ownership, epic planning, estimates/capacity, parallel sprints, complete sprint reporting, dependencies, roadmap/timeline, cross-project plans |
-| Releases and versions | Missing | Version lifecycle, release dates, issue membership, release notes, release hub, release progress and cross-project releases |
+| Releases and versions | Partial | Release hub, lifecycle, fix/affected membership, progress and basic notes delivered; ordering/move, related work, drivers/approvers, custom version fields, export, cross-project releases and complete resolution/permission semantics remain; see [RELEASES.md](RELEASES.md) |
 | Reports, charts and metrics | Missing beyond basic counts | Burndown/burnup, velocity, cumulative flow, control chart, cycle/lead time, throughput, created/resolved, time tracking, historical calculation rules, accessible chart tables and exports |
 | Custom dashboards | Missing beyond fixed dashboard | Dashboard CRUD, ownership/sharing/favourites, layouts, gadget catalog/configuration/reordering, refresh, filters and metric visualizations |
 | Automation and scheduled tasks | Missing | Rule editor, schedule/cron/time zones, triggers/conditions/actions, durable execution, leases/retries, actor permissions, idempotency, audit history and automation API compatibility |
@@ -80,6 +80,15 @@ slices and must be read with the limitations below.
 | Service/enterprise surfaces | Missing | Service Management and portal journeys, assets, approvals/SLAs, organization policies, auditing, import/export, data residency/retention and administration |
 | Local-first behavior | Partial | Existing issue replica/outbox remains; wiki and administrative pages currently require online navigation/editing; new entity bootstrap/materialization and permission revocation need full offline/two-client journeys |
 | Accessibility and interaction fidelity | Partial | Extend browser/a11y/responsive/dark-mode/keyboard coverage to each newly delivered surface; visual comparisons against current Cloud journeys |
+
+## Release delivery follow-up
+
+The next slice adds project version lifecycle APIs, a release hub with dates,
+progress and notes, fix/affected version assignment in issue APIs and the create
+UI, version search, and transactional replacement/merge semantics. Exact routes,
+consistency guarantees and remaining limitations are in [RELEASES.md](RELEASES.md).
+The original delivery's validation below describes the project/wiki PR; the
+release follow-up adds its own API integration and browser journey tests.
 
 ## Exact boundary of the new project slice
 
