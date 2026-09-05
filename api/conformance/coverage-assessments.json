@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "assessments": [
+    {
+      "operationId": "automation:POST:/gateway/api/automation/public/{product}/{cloudid}/rest/v1/rule",
+      "status": "partial",
+      "evidence": ["internal/automation/automation_test.go", "docs/AUTOMATION.md"],
+      "notes": "Create and round-trip behavior is tested; broader identity and cursor semantics remain."
+    },
+    {
+      "operationId": "automation:GET:/gateway/api/automation/public/{product}/{cloudid}/rest/v1/rule/summary",
+      "status": "partial",
+      "evidence": ["internal/automation/automation_test.go", "docs/AUTOMATION.md"],
+      "notes": "Listing is tested; cursor expiry and central-host authentication remain."
+    },
+    {
+      "operationId": "automation:POST:/gateway/api/automation/public/{product}/{cloudid}/rest/v1/rule/summary",
+      "status": "partial",
+      "evidence": ["internal/automation/automation_test.go", "docs/AUTOMATION.md"],
+      "notes": "Supported summary filters and pagination are tested."
+    },
+    {
+      "operationId": "automation:DELETE:/gateway/api/automation/public/{product}/{cloudid}/rest/v1/rule/{ruleUuid}",
+      "status": "partial",
+      "evidence": ["internal/automation/automation_test.go", "docs/AUTOMATION.md"],
+      "notes": "Disabled-rule deletion and error behavior are tested."
+    },
+    {
+      "operationId": "automation:GET:/gateway/api/automation/public/{product}/{cloudid}/rest/v1/rule/{ruleUuid}",
+      "status": "partial",
+      "evidence": ["internal/automation/automation_test.go", "docs/AUTOMATION.md"],
+      "notes": "Rule and connection round trips plus sensitive-field redaction are tested."
+    },
+    {
+      "operationId": "automation:PUT:/gateway/api/automation/public/{product}/{cloudid}/rest/v1/rule/{ruleUuid}",
+      "status": "partial",
+      "evidence": ["internal/automation/automation_test.go", "docs/AUTOMATION.md"],
+      "notes": "Replacement with path-UUID preservation is tested."
+    },
+    {
+      "operationId": "automation:PUT:/gateway/api/automation/public/{product}/{cloudid}/rest/v1/rule/{ruleUuid}/rule-scope",
+      "status": "partial",
+      "evidence": ["internal/automation/automation_test.go", "docs/AUTOMATION.md"],
+      "notes": "Scope replacement is tested for the Jira site gateway."
+    },
+    {
+      "operationId": "automation:PUT:/gateway/api/automation/public/{product}/{cloudid}/rest/v1/rule/{ruleUuid}/state",
+      "status": "partial",
+      "evidence": ["internal/automation/automation_test.go", "docs/AUTOMATION.md"],
+      "notes": "Enable and disable behavior is tested."
+    },
+    {
+      "operationId": "automation:GET:/gateway/api/automation/public/{product}/{cloudid}/rest/v1/rule/manual/search",
+      "status": "missing",
+      "evidence": [],
+      "notes": "Manual-rule search is not implemented."
+    },
+    {
+      "operationId": "automation:POST:/gateway/api/automation/public/{product}/{cloudid}/rest/v1/rule/manual/search",
+      "status": "missing",
+      "evidence": [],
+      "notes": "Manual-rule search is not implemented."
+    },
+    {
+      "operationId": "automation:POST:/gateway/api/automation/public/{product}/{cloudid}/rest/v1/rule/manual/{ruleId}/invocation",
+      "status": "missing",
+      "evidence": [],
+      "notes": "Manual-rule invocation is not implemented."
+    },
+    {
+      "operationId": "automation:POST:/gateway/api/automation/public/{product}/{cloudid}/rest/v1/template/create",
+      "status": "missing",
+      "evidence": [],
+      "notes": "Template-based rule creation is not implemented."
+    },
+    {
+      "operationId": "automation:GET:/gateway/api/automation/public/{product}/{cloudid}/rest/v1/template/search",
+      "status": "missing",
+      "evidence": [],
+      "notes": "Template search is not implemented."
+    },
+    {
+      "operationId": "automation:POST:/gateway/api/automation/public/{product}/{cloudid}/rest/v1/template/search",
+      "status": "missing",
+      "evidence": [],
+      "notes": "Template search is not implemented."
+    },
+    {
+      "operationId": "automation:GET:/gateway/api/automation/public/{product}/{cloudid}/rest/v1/template/{templateId}",
+      "status": "missing",
+      "evidence": [],
+      "notes": "Template retrieval is not implemented."
+    }
+  ]
+}

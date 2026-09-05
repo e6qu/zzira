@@ -36,7 +36,10 @@ jobs:
       - name: Vet
         run: go vet ./...
       - name: Verify pinned Cloud API inventory
-        run: python3 api/conformance/inventory.py --check
+        run: |
+          python3 -m unittest api/conformance/test_inventory.py api/conformance/test_coverage.py
+          python3 api/conformance/inventory.py --check
+          python3 api/conformance/coverage.py --check
       - name: Unit + integration tests
         env:
           TEST_DATABASE_URL: postgres://zzira:zzira@localhost:5433/zzira?sslmode=disable

@@ -1,12 +1,14 @@
 # ZZIRA × Atlassian Jira Cloud REST API — Compat Matrix
 
-This is a historical delivered-slice ledger, not a certification of full Jira
+This is a grouped delivered-slice ledger, not a certification of full Jira
 conformance. Legend: ✅ a tested delivered slice · 🟡 a known subset · ⛔ missing.
 A ✅ does not establish that every request option, wire type, permission rule or
-client behavior matches Jira. The broader review and [940-operation pinned
+client behavior matches Jira. The broader review and [1,207-operation pinned
 inventory](cloud-operations.json) are described in [CLOUD_PARITY.md](../../docs/CLOUD_PARITY.md).
-The public API targets `/rest/api/3`, `/rest/agile/1.0` and `/wiki/api/v2`.
-ZZIRA-owned control-plane endpoints use `/rest/zzira/1`.
+The pinned contracts cover `/rest/api/3`, `/rest/agile/1.0`,
+`/rest/servicedeskapi`, `/wiki/rest/api`, `/wiki/api/v2`, the Automation site
+gateway, and organization administration. ZZIRA-owned control-plane endpoints
+use `/rest/zzira/1`.
 
 ## Tier A — Core issue tracking
 

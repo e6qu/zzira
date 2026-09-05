@@ -3,6 +3,8 @@ bin/
 *.log
 .DS_Store
 node_modules/
+__pycache__/
+*.pyc
 e2e/test-results/
 e2e/playwright-report/
 web/static/wasm/wasm_exec.js

@@ -1,176 +1,123 @@
-# Jira Cloud and wiki compatibility
+# Jira Cloud compatibility ledger
 
-Scope updated 2026-09-05 at the product owner's request. This supersedes the
-earlier daily-core boundary and historical non-goals in PLAN.md and UI_PARITY.md.
+Updated: 2026-09-06
 
-**ZZIRA is not yet a full Jira Cloud or Confluence Cloud replacement.** Changing
-only a base URL works for some tested REST operations, not for every Jira client
-or app. A route returning success is not proof of matching semantics.
+ZZIRA is not yet a full Jira Cloud or Confluence Cloud replacement. This ledger
+states the current evidence and remaining product surfaces without treating a
+registered route as proof of compatible behavior. The execution order is in
+[PLAN.md](../PLAN.md), and the active handoff is in
+[CONTINUITY.md](CONTINUITY.md).
 
-## Reproducible API scope
+## Contract inventory
 
-The published OpenAPI documents are vendored in [api/specs](../api/specs), with
-retrieval URLs, versions and SHA-256 checksums in [pins.json](../api/specs/pins.json).
-The [generated inventory](../api/conformance/cloud-operations.json) contains:
+Published OpenAPI documents are vendored in [api/specs](../api/specs). Retrieval
+URLs, versions, route prefixes, and SHA-256 checksums are recorded in
+[pins.json](../api/specs/pins.json). The generated
+[operation inventory](../api/conformance/cloud-operations.json) currently has:
 
-| Published API | Operations |
+| Published contract | Operations |
 |---|---:|
-| Jira Cloud platform REST v3 | 617 |
-| Jira Software Cloud, including Agile and development integrations | 105 |
+| Jira Cloud Platform REST v3 | 617 |
+| Jira Software Cloud REST, including Agile and development integrations | 105 |
 | Confluence Cloud REST v2 | 218 |
-| Total in these three pins | 940 |
+| Jira Service Management Cloud REST | 75 |
+| Confluence Cloud REST v1 | 130 |
+| Automation REST | 15 |
+| Organizations REST | 47 |
+| **Current pinned total** | **1,207** |
 
-These counts include deprecated operations. They describe the pinned contracts,
-not implementation coverage. Jira REST v2, Confluence REST v1, Automation,
-Service Management and app runtimes require additional contracts; 940 is not the
-entire Atlassian ecosystem. Regenerate with `python3 api/conformance/inventory.py`;
-CI verifies pins and generated output with `--check`.
+These are contract operations, not delivered operations. App descriptors and
+module contracts are not published as one OpenAPI document, so they will use a
+separately versioned manual contract ledger. Regenerate the OpenAPI inventory
+with `python3 api/conformance/inventory.py`; CI runs the same program with
+`--check`.
 
-## Review findings and delivered changes
+The generated [operation coverage](../api/conformance/cloud-coverage.json)
+applies reviewed exact-operation assessments to that denominator. It currently
+assesses the 15 Automation operations: 8 partial and 7 missing. The remaining
+1,192 operations are explicitly unassessed at this stricter level. The grouped
+[API matrix](../api/conformance/MATRIX.md) records older tested slices; it is not
+divided by 1,207 because one row may represent several operations and does not
+certify every option or wire type.
 
-1. The historical API matrix claimed POST /project support, but no handler
-   existed. Project create and details update now share a command path with the
-   browser. Creation includes a usable Scrum or Kanban board in the same
-   transaction. New project IDs are numeric, including the integer ID required
-   by the create response; older identifiers remain valid.
-2. Project search returned every project with a hardcoded first page. It now
-   supports startAt/maxResults, key/ID/type/text filtering, key/name ordering,
-   total/isLast and navigable nextPage links. Unsupported parameters are errors.
-3. Board JQL used a join whose `pr` alias meant priority, while the JQL compiler
-   expected project. Newly created project-filtered boards exposed this bug.
-   Board filtering now uses the search query's matching joins.
-4. Wiki routes, models and storage were absent. A first wiki journey now covers
-   spaces, private spaces, storage-format pages, a rich-text editor, drafts,
-   published pages, parent selection and a nested page tree, title search, version history, optimistic
-   version checks, and trash/restore. Private wiki content is filtered from API
-   reads and the workspace action log.
-5. Issue creation flattened ADF into plain text. It now preserves incoming
-   document structure and formatting; a round-trip test covers headings/lists
-   and explicit unassignment. Rendering and complete ADF validation remain subsets.
-6. `serverInfo.deploymentType` was an object rather than the Cloud string used
-   by Jira clients. It now returns `"Cloud"`. Enhanced search now supports GET
-   as well as POST, bounded JQL, field projections, IDs-only defaults, `isLast`,
-   next-page tokens and limits up to 5000. Expansions/reconciliation options and
-   stable cursor semantics remain gaps.
-7. `make conformance` selected `TestGolden`, which matched no tests in api3.
-   It now runs the API test packages and verifies the pinned inventory.
+## Compatibility promise
 
-## Whole-surface delivery ledger
+For site-scoped Jira Platform, Jira Software, Jira Service Management, and
+Confluence APIs, a compatible client must be able to replace its base URL and
+retain its ordinary request behavior. Compatibility includes paths, methods,
+authentication, request and response bodies, status codes, headers, pagination,
+expansion, identifiers, permission failures, transitions, and concurrency rules.
 
-“Partial” means useful behavior exists and further work remains. Nothing in this
-ledger certifies full parity. The older API matrix describes individual delivered
-slices and must be read with the limitations below.
+Automation is available through the documented site gateway under
+`/gateway/api/automation/public/...`. ZZIRA also exposes local equivalents for
+documented central-host operations. Software that hardcodes
+`api.atlassian.com` or `auth.atlassian.com` needs a separate endpoint override;
+changing a site URL cannot redirect those hosts.
 
-| Surface | State | Remaining work needed for full fidelity |
-|---|---|---|
-| Identity and authentication | Partial | Jira OAuth 2.0/3LO, scopes, app principals, organization/site administration, product access, groups, account lifecycle and token administration |
-| Projects and administration | Partial | Project roles and permissions; permission/notification/security/workflow/screen/field schemes; work types; categories; avatars; key renames; archive/delete/restore; project templates beyond the delivered software pair |
-| Work items | Partial | Full ADF fidelity, hierarchy/epics/subtasks, components, complete version-picker semantics, dates, estimates, votes, issue properties, bulk operations, complete metadata/expansion and permission semantics |
-| Search and filters | Partial | Full JQL grammar/functions/history, enhanced-search expansions and stable cursors, v2 clients, sharing permissions, filter administration and subscriptions |
-| Agile planning | Partial | Board CRUD and filter ownership, epic planning, estimates/capacity, parallel sprints, complete sprint reporting, dependencies, roadmap/timeline, cross-project plans |
-| Releases and versions | Partial | Release hub, lifecycle, fix/affected membership, progress and basic notes delivered; ordering/move, related work, drivers/approvers, custom version fields, export, cross-project releases and complete resolution/permission semantics remain; see [RELEASES.md](RELEASES.md) |
-| Reports, charts and metrics | Partial | Dashboard issue statistics and accessible pie-chart tables delivered; burndown/burnup, velocity, cumulative flow, control chart, cycle/lead time, throughput, created/resolved, time tracking, historical calculation rules and exports remain |
-| Custom dashboards | Partial | CRUD, private/user/workspace sharing, favourites, five layouts, native gadget catalog/configuration/reordering, refresh, JQL/saved-filter lists and charts delivered; bulk edit, group/project shares, archive, system/Connect/Forge gadgets and offline materialization remain; see [DASHBOARDS.md](DASHBOARDS.md) |
-| Automation and scheduled tasks | Partial | Fixed-rate rule editor, full rule-management route set, payload round trips, durable leases/retries, actor permissions, three idempotent issue actions, audit history, run-now, and ten-failure disablement delivered; Cron, event/manual triggers, conditions, branches, smart values, connections and the full action catalog remain; see [AUTOMATION.md](AUTOMATION.md) |
-| Notifications and collaboration | Partial | Full notification schemes, email/subscriptions, mentions with identity, watching permissions, collaboration and preferences |
-| Wiki and knowledge | Partial | Confluence v1/CQL, space roles/restrictions, complete ADF/storage conversion and macros, comments, attachments, labels, watchers, complete tree/move APIs, revision viewing/restoring, templates, exports/imports, blogs, live documents and collaborative drafts |
-| Diagrams and graphs | Missing beyond workflow diagram | Whiteboards, diagram authoring, embed/export, graph links/dependencies, diagram app modules, historical charts and graph queries |
-| App/plugin system | Missing | Installation/lifecycle, Connect descriptors/JWT/qsh/scopes, Forge-compatible runtime and bridge, extension modules, custom fields, workflow rules, webhooks, storage, scheduled functions, isolation, upgrades/uninstall and app administration |
-| Development integrations | Missing | SCM/development info, builds, deployments, feature flags, remote links, security info, operations and component APIs |
-| Service/enterprise surfaces | Missing | Service Management and portal journeys, assets, approvals/SLAs, organization policies, auditing, import/export, data residency/retention and administration |
-| Local-first behavior | Partial | Existing issue replica/outbox remains; wiki and administrative pages currently require online navigation/editing; new entity bootstrap/materialization and permission revocation need full offline/two-client journeys |
-| Accessibility and interaction fidelity | Partial | Extend browser/a11y/responsive/dark-mode/keyboard coverage to each newly delivered surface; visual comparisons against current Cloud journeys |
+Atlassian billing, proprietary AI models, and Atlassian-hosted Forge compute are
+external services. Locally executable app modules belong to the ZZIRA app
+runtime. Capability discovery and errors must distinguish these cases precisely.
 
-## Release delivery follow-up
+## Current product status
 
-The next slice adds project version lifecycle APIs, a release hub with dates,
-progress and notes, fix/affected version assignment in issue APIs and the create
-UI, version search, and transactional replacement/merge semantics. Exact routes,
-consistency guarantees and remaining limitations are in [RELEASES.md](RELEASES.md).
-The original delivery's validation below describes the project/wiki PR; the
-release follow-up adds its own API integration and browser journey tests.
+“Partial” means a tested useful subset exists and the stated work remains.
 
-## Scheduled automation follow-up
+| Surface | State | Delivered evidence | Remaining completion work |
+|---|---:|---|---|
+| Identity and authentication | Partial | Password, sessions, API tokens, generic OIDC with PKCE/nonce and logout | Provider registry; Atlassian, Google and Microsoft login; identity linking; organization/site/product lifecycle |
+| Projects and administration | Partial | Project create/edit, Scrum/Kanban setup, project directory and settings entry points | Roles; permission, notification, security, workflow, screen and field schemes; templates; archive/delete/restore; admin APIs and journeys |
+| Work items | Partial | Issue CRUD, rich-text subset, comments, attachments, worklogs, links, watchers, versions, fields and security | Complete ADF and metadata; hierarchy, components, estimates, votes, properties, bulk operations, exact expansions and permissions |
+| Search and filters | Partial | Useful JQL subset, navigator, filter CRUD and favourites | Full JQL grammar/functions/history, stable cursors, sharing administration, subscriptions and remaining search options |
+| Agile planning | Partial | Boards, backlog, sprints, rank, quick filters, swimlanes, WIP and card configuration | Board CRUD/ownership, epics, estimation, capacity, teams, parallel sprints, dependencies, plans and report calculations |
+| Workflows | Partial | Directory, transition editing, project assignment and runtime enforcement | Status lifecycle, drafts/publish, workflow schemes, designer persistence, conditions, validators and post-functions |
+| Releases | Partial | Version lifecycle, fix/affects assignment, progress, notes, release/archive/delete | Ordering, related work, approvers, custom fields, exports, cross-project releases and full permissions; see [RELEASES.md](RELEASES.md) |
+| Reports and metrics | Partial | Dashboard statistics/pie tables and release progress | Jira and Agile report catalog, historical facts, DORA, service metrics, exports and scheduled delivery |
+| Dashboards | Partial | CRUD, favourites, layouts, private/user/workspace sharing and native work-item gadgets | Group/project sharing, archive/bulk edit, subscriptions, report/app gadgets and offline data; see [DASHBOARDS.md](DASHBOARDS.md) |
+| Automation | Partial | Eight management operations, fixed intervals, durable execution, JQL, three idempotent issue actions and audit | Cron/event/webhook/manual triggers, conditions, branches, smart values, connections, templates, quotas and action catalog; see [AUTOMATION.md](AUTOMATION.md) |
+| Notifications and collaboration | Partial | Synchronized in-app notifications, watching and activity | Notification schemes, preferences, mentions, email delivery and broader collaboration semantics |
+| Wiki and knowledge | Partial | Spaces, private spaces, page tree, storage subset, drafts, versions, trash/restore and UI | Confluence v1; other content types; complete ADF/storage/macros; roles/restrictions; comments, attachments, labels, watches, CQL, templates, exports/imports and collaboration |
+| Diagrams and graphs | Missing beyond workflow view | Read-only workflow diagram | Whiteboards, diagram editing, embeds/exports, object graphs, accessible descriptions and historical visualizations |
+| Service Management | Missing | Jira work-item foundation can be reused | Complete service project, portal, customer, agent, request, queue, SLA, approval, Assets, incident/problem/change, report and REST journeys |
+| Development integrations | Missing | Work-item links exist | Development info, builds, deployments, feature flags, security, operations and components needed for release and DORA evidence |
+| App runtime | Missing | Core webhooks and entity properties | Installation/lifecycle, principals/scopes, signed callbacks, modules, isolated storage, scheduled functions, upgrades/uninstall and administration |
+| Local-first behavior | Partial | Issue replica/outbox, offline issue work and two-client convergence | Permission-shaped service, knowledge, report and administration replicas plus safe queued writes and schema upgrades |
+| Accessibility and interaction | Partial | Core light/dark, keyboard, reflow and axe coverage | Equivalent coverage for each new persona journey, chart table, editor, diagram and administrative surface |
 
-Workspace administrators can now create, edit, enable, disable, run, inspect,
-and delete fixed-rate rules. The site gateway exposes all eight Jira Automation
-rule-management operations under `v1` and `latest`, including Cloud ID discovery,
-UUIDv7 creation, cursor summaries, rule scope updates, full component/connection
-payload round trips, and sensitive-field redaction. A durable multi-replica
-worker evaluates JQL as the rule actor and applies label, assignment, and valid
-workflow-transition actions. Exact execution and compatibility limits are in
-[AUTOMATION.md](AUTOMATION.md).
+## Delivered compatibility details
 
-## Exact boundary of the new project slice
+Precise behavior and remaining limitations for completed vertical slices are
+kept with their owning surface:
 
-- Create: name, key, description, URL, leadAccountId, assigneeType, software
-  projectTypeKey, and company-managed Scrum/Kanban template keys.
-- Update: name, description, URL, leadAccountId and assigneeType. Omitting a
-  field preserves it; unsupported request fields are rejected.
-- Workspace administrators create/update projects. This is a subset of Jira's
-  global and project permission model. Members can read workspace projects.
-- Default project-lead assignment applies when the issue API omits assignee;
-  explicit null remains unassigned. UI issue forms make an explicit selection.
-- Configuration mutations append actions atomically; live shell refresh and
-  offline project administration are not implemented.
+- [Scheduled automation](AUTOMATION.md)
+- [Custom dashboards](DASHBOARDS.md)
+- [Releases](RELEASES.md)
+- [Authentication and ShAuth reference configuration](shauth-sso.md)
+- [Accessibility](ACCESSIBILITY.md)
+- [User journeys](UI_PARITY.md)
 
-## Exact boundary of the new wiki slice
+The source code, contract fixtures, integration tests, browser tests, and action
+schemas are the final evidence when prose and implementation disagree.
 
-The delivered `/wiki/api/v2` routes are GET/POST spaces, GET space by ID,
-GET pages for a space, GET/POST pages, GET/PUT/DELETE page by ID, and GET page
-versions. Create-space returns 201; create/update-page returns 200; trash returns
-204. List responses provide results, `_links.next`, and the Link header.
+## Completion evidence
 
-- Space creation requires a workspace administrator. Public spaces are readable
-  and editable by workspace members; private spaces are accessible only to their
-  creator. Space-specific roles and mutable restrictions are not implemented.
-- Page bodies use a validated XHTML/storage subset: headings, paragraphs,
-  emphasis, lists, links, code, blockquotes and basic tables. Unsupported markup,
-  macros and alternate body representations are rejected before persistence.
-- Drafts are visible only to their creator. ZZIRA uses monotonic revisions for
-  draft edits as well as published edits; Confluence's separate draft-version and
-  merge semantics remain a gap. Published-to-draft conversion is rejected.
-- Parent pages must be published and belong to the same space. Cycles are
-  rejected. Child pages must be moved or trashed before their parent is trashed.
-- Trash preserves history. Restoring a trashed page retains its stored content.
-  Permanent deletion, historical content retrieval and revision restore are gaps.
-- Pagination currently uses opaque offsets, not Confluence's stable cursor
-  semantics under concurrent mutations. Search supports exact API titles and
-  title substring filtering in the UI; CQL and full-text search are gaps.
-- Wiki content is logged transactionally and private actions are filtered.
-  Wiki pages do not yet have local SQLite materialization or offline editing.
+A capability is complete only when it has:
 
-## Validation for this delivery
+- a pinned or manually versioned public contract;
+- schema and request/response golden tests;
+- permission, failure, pagination, and concurrency tests where relevant;
+- a browser journey for user-facing behavior;
+- action-log and browser-replica coverage when the entity is local-first;
+- keyboard, accessibility, responsive, dark-mode, and reduced-motion coverage;
+- a named base-URL client fixture for client compatibility claims.
 
-- The full Go suite passed with PostgreSQL integration tests enabled; changed
-  packages were checked again after final API fixes.
-- All 41 Playwright tests passed, including wiki/project journeys, accessibility
-  in light/dark themes, 320px reflow, existing offline issue edits and two-browser
-  convergence. Existing create fixtures now select their intended project.
-- Server and full WASM builds, `go vet`, pinned inventory checks and
-  `git diff --check` passed.
-- The test database and attachment data were temporary. The original seed command
-  regenerated the ignored `data/seed-tokens.json` test artifact; seeding now honors
-  `DATA_DIR` so future isolated runs can keep token artifacts outside the checkout.
+## Primary contract references
 
-## Completion gates
-
-Each capability needs request/response/schema tests against pinned specifications,
-permission and failure-path tests, a complete browser journey, and appropriate
-concurrency, offline and accessibility checks. Client compatibility additionally
-requires real SDK and integration fixtures with only the base URL changed.
-
-Forge apps execute on Atlassian's platform and depend on its runtime/services;
-Connect apps depend on installation, descriptors, modules and authenticated
-lifecycle events. Supporting a REST route does not supply either runtime.
-Compatibility must name and test supported app modules and runtime services.
-
-## Primary references
-
-- [Jira Cloud projects](https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-projects/)
-- [Jira Software boards](https://developer.atlassian.com/cloud/jira/software/rest/api-group-board/)
-- [Confluence Cloud spaces](https://developer.atlassian.com/cloud/confluence/rest/v2/api-group-space/)
-- [Confluence Cloud pages](https://developer.atlassian.com/cloud/confluence/rest/v2/api-group-page/)
-- [Forge platform](https://developer.atlassian.com/platform/forge/introduction/the-forge-platform/)
+- [Jira Cloud Platform REST v3](https://developer.atlassian.com/cloud/jira/platform/rest/v3/)
+- [Jira Software Cloud REST](https://developer.atlassian.com/cloud/jira/software/rest/)
+- [Jira Service Management Cloud REST](https://developer.atlassian.com/cloud/jira/service-desk/rest/)
+- [Confluence Cloud REST v2](https://developer.atlassian.com/cloud/confluence/rest/v2/)
+- [Confluence Cloud REST v1](https://developer.atlassian.com/cloud/confluence/rest/v1/)
+- [Automation REST](https://developer.atlassian.com/cloud/automation/rest/)
+- [Organizations REST](https://developer.atlassian.com/cloud/admin/organization/rest/)
+- [Forge platform boundary](https://developer.atlassian.com/platform/forge/introduction/the-forge-platform/)
 - [Connect app descriptor](https://developer.atlassian.com/cloud/jira/platform/connect-app-descriptor/)
-- [Automation REST API](https://developer.atlassian.com/cloud/automation/rest/)

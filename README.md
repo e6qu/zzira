@@ -3,15 +3,21 @@
 A Jira-style issue tracker rebuilt on the delta-sync architecture from
 Linear's ["Rebuilding delta sync read path"](https://linear.app/now/rebuilding-delta-sync-read-path).
 
-- **Targets Jira Cloud compatibility**: implemented subsets of REST v3 and Agile 1.0, plus initial Confluence Cloud v2 wiki APIs. Full base-URL-only compatibility is not yet achieved — see [scope and gaps](docs/CLOUD_PARITY.md).
+- **Targets the reproducible Jira Cloud product surface**: Jira Platform,
+  Software, Service Management, Confluence, Automation, administration, and
+  installable apps. Delivered coverage remains partial; see the current
+  [scope and evidence](docs/CLOUD_PARITY.md).
 - **Local-first browser replica**: SQLite (WASM/OPFS) + an isomorphic Go renderer compiled to both server and client
 - **Go + Postgres backend**: stateless replicas, an immutable action log as the single write path, Postgres LISTEN/NOTIFY for live pokes
 - Frontend: HTMX + SortableJS, Jira-like UI
-- **Optional OIDC SSO**: ShAuth reference-provider configuration with Discovery,
-  Authorization Code + PKCE, verified claims, and server-side sessions — see
-  [ShAuth SSO](docs/shauth-sso.md)
+- **Optional OIDC SSO**: one reference-provider configuration with Discovery,
+  Authorization Code + PKCE, verified claims, and server-side sessions. The
+  active plan adds Atlassian, Google, and Microsoft providers; see
+  [ShAuth SSO](docs/shauth-sso.md).
 
-The full architecture, hard rules, slice history, and scaling story live in [PLAN.md](PLAN.md).
+The current architecture, hard rules, one-PR execution map, and completion gates
+live in [PLAN.md](PLAN.md). Continue active work from
+[docs/CONTINUITY.md](docs/CONTINUITY.md).
 
 ## Quickstart (Docker)
 
@@ -49,7 +55,8 @@ cd e2e && npm i && npx playwright install chromium && npm test   # browser specs
 
 ## Layout
 
-`PLAN.md` (architecture + slices) · `api/` (pinned Atlassian specs + conformance) ·
+`PLAN.md` (architecture + execution map) · `docs/CONTINUITY.md` (active handoff) ·
+`api/` (pinned Atlassian specs + conformance) ·
 `internal/render` (the one HTML renderer, server + wasm) · `internal/commands`
 (the one mutation layer) · `cmd/client` (browser sync worker) · `e2e/` (Playwright).
 
