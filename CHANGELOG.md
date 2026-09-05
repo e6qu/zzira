@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.15.0](https://github.com/e6qu/zzira/compare/v0.14.0...v0.15.0) (2026-09-05)
+
+
+### Features
+
+* add project administration and initial Cloud wiki compatibility ([326f3d0](https://github.com/e6qu/zzira/commit/326f3d031c8a9506b41868a919ac88133980f287))
+* add project administration, wiki, and Cloud API fixes ([240f1e7](https://github.com/e6qu/zzira/commit/240f1e7d043cb54de44d7a85cb02e013078b210d))
+* add release hub and Jira project version APIs ([762c6c4](https://github.com/e6qu/zzira/commit/762c6c436c13c53ca380007c1c0cac1ca093086a))
+* add release management and Jira version APIs ([d2ff9fc](https://github.com/e6qu/zzira/commit/d2ff9fc36d4b7adcb9e9f559e45e332bf76f7e0e))
+
+
+### Bug Fixes
+
+* hand off the logout bridge to Shauth's own completion endpoint ([7d3ab79](https://github.com/e6qu/zzira/commit/7d3ab79e3ba3c5e9e28bcab7934bbde0775a9056))
+* hand off the logout bridge to Shauth's own completion endpoint ([ecf5c49](https://github.com/e6qu/zzira/commit/ecf5c49e685c045e1ccee7969c8d8f03a9421ac4))
+* validate local redirects and escape user-derived log errors ([9e8881d](https://github.com/e6qu/zzira/commit/9e8881db611977640381f7c8037f67012e798082))
+
 ## [0.14.0](https://github.com/e6qu/zzira/compare/v0.13.0...v0.14.0) (2026-09-04)
 
 
