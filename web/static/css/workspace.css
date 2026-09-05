@@ -88,6 +88,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .project-switcher-panel nav small { color: var(--ds-text-subtle); font: 10px var(--utility-font); }
 .workspace-nav .project-directory-link { min-height: 36px; margin-top: 5px; border-top: 1px solid var(--ds-border); border-radius: 0 0 6px 6px; color: var(--ds-primary); font-size: 11px; }
 .workspace-nav nav { display: grid; gap: 3px; }
+.workspace-nav>nav { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; scrollbar-color: var(--ds-border-strong) transparent; }
 .workspace-nav a { display: flex; align-items: center; gap: 11px; min-height: 38px; padding: 8px 10px; border-radius: 7px; color: var(--ds-text); font-size: 13px; font-weight: 550; text-decoration: none; white-space: nowrap; }
 .workspace-nav a svg { flex: 0 0 auto; width: 18px; height: 18px; color: var(--ds-text-subtle); }
 .workspace-nav a:hover { color: var(--ds-primary); background: var(--ds-primary-soft); }

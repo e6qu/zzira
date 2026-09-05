@@ -71,7 +71,7 @@ slices and must be read with the limitations below.
 | Releases and versions | Partial | Release hub, lifecycle, fix/affected membership, progress and basic notes delivered; ordering/move, related work, drivers/approvers, custom version fields, export, cross-project releases and complete resolution/permission semantics remain; see [RELEASES.md](RELEASES.md) |
 | Reports, charts and metrics | Partial | Dashboard issue statistics and accessible pie-chart tables delivered; burndown/burnup, velocity, cumulative flow, control chart, cycle/lead time, throughput, created/resolved, time tracking, historical calculation rules and exports remain |
 | Custom dashboards | Partial | CRUD, private/user/workspace sharing, favourites, five layouts, native gadget catalog/configuration/reordering, refresh, JQL/saved-filter lists and charts delivered; bulk edit, group/project shares, archive, system/Connect/Forge gadgets and offline materialization remain; see [DASHBOARDS.md](DASHBOARDS.md) |
-| Automation and scheduled tasks | Missing | Rule editor, schedule/cron/time zones, triggers/conditions/actions, durable execution, leases/retries, actor permissions, idempotency, audit history and automation API compatibility |
+| Automation and scheduled tasks | Partial | Fixed-rate rule editor, full rule-management route set, payload round trips, durable leases/retries, actor permissions, three idempotent issue actions, audit history, run-now, and ten-failure disablement delivered; Cron, event/manual triggers, conditions, branches, smart values, connections and the full action catalog remain; see [AUTOMATION.md](AUTOMATION.md) |
 | Notifications and collaboration | Partial | Full notification schemes, email/subscriptions, mentions with identity, watching permissions, collaboration and preferences |
 | Wiki and knowledge | Partial | Confluence v1/CQL, space roles/restrictions, complete ADF/storage conversion and macros, comments, attachments, labels, watchers, complete tree/move APIs, revision viewing/restoring, templates, exports/imports, blogs, live documents and collaborative drafts |
 | Diagrams and graphs | Missing beyond workflow diagram | Whiteboards, diagram authoring, embed/export, graph links/dependencies, diagram app modules, historical charts and graph queries |
@@ -89,6 +89,17 @@ UI, version search, and transactional replacement/merge semantics. Exact routes,
 consistency guarantees and remaining limitations are in [RELEASES.md](RELEASES.md).
 The original delivery's validation below describes the project/wiki PR; the
 release follow-up adds its own API integration and browser journey tests.
+
+## Scheduled automation follow-up
+
+Workspace administrators can now create, edit, enable, disable, run, inspect,
+and delete fixed-rate rules. The site gateway exposes all eight Jira Automation
+rule-management operations under `v1` and `latest`, including Cloud ID discovery,
+UUIDv7 creation, cursor summaries, rule scope updates, full component/connection
+payload round trips, and sensitive-field redaction. A durable multi-replica
+worker evaluates JQL as the rule actor and applies label, assignment, and valid
+workflow-transition actions. Exact execution and compatibility limits are in
+[AUTOMATION.md](AUTOMATION.md).
 
 ## Exact boundary of the new project slice
 
@@ -162,3 +173,4 @@ Compatibility must name and test supported app modules and runtime services.
 - [Confluence Cloud pages](https://developer.atlassian.com/cloud/confluence/rest/v2/api-group-page/)
 - [Forge platform](https://developer.atlassian.com/platform/forge/introduction/the-forge-platform/)
 - [Connect app descriptor](https://developer.atlassian.com/cloud/jira/platform/connect-app-descriptor/)
+- [Automation REST API](https://developer.atlassian.com/cloud/automation/rest/)

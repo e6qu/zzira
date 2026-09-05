@@ -15,6 +15,7 @@ import (
 	"github.com/e6qu/zzira/internal/adf"
 	"github.com/e6qu/zzira/internal/authn"
 	"github.com/e6qu/zzira/internal/authz"
+	"github.com/e6qu/zzira/internal/automation"
 	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/jql"
 	"github.com/e6qu/zzira/internal/models"
@@ -25,6 +26,7 @@ import (
 type Handler struct {
 	Store         *store.Store
 	Commands      *commands.Service
+	Automation    *automation.Service
 	OIDC          *OIDC
 	WorkspaceSlug string
 }

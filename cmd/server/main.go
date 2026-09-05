@@ -21,6 +21,7 @@ import (
 	"github.com/e6qu/zzira/internal/api3"
 	"github.com/e6qu/zzira/internal/attachments"
 	"github.com/e6qu/zzira/internal/authn"
+	"github.com/e6qu/zzira/internal/automation"
 	"github.com/e6qu/zzira/internal/build"
 	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/confluence"
@@ -110,14 +111,16 @@ func main() {
 		log.Fatalf("blob storage: %v", err)
 	}
 	cmdSvc := &commands.Service{Store: st, Blobs: blobs}
+	automationSvc := &automation.Service{Store: st, Commands: cmdSvc}
 
 	oidcSSO, err := web.NewOIDC(ctx)
 	if err != nil {
 		log.Fatalf("configure OIDC SSO: %v", err)
 	}
-	webHandler := &web.Handler{Store: st, Commands: cmdSvc, OIDC: oidcSSO, WorkspaceSlug: workspaceSlug}
+	webHandler := &web.Handler{Store: st, Commands: cmdSvc, Automation: automationSvc, OIDC: oidcSSO, WorkspaceSlug: workspaceSlug}
 	api := &api3.Handler{Store: st, Commands: cmdSvc, Blobs: blobs, BaseURL: envOr("BASE_URL", "http://localhost:"+port), WorkspaceSlug: workspaceSlug}
 	agileAPI := &agile.Handler{Store: st, Commands: cmdSvc, IssueBean: api.IssueBean, BaseURL: envOr("BASE_URL", "http://localhost:"+port), WorkspaceSlug: workspaceSlug}
+	automationAPI := &automation.Handler{Service: automationSvc, WorkspaceSlug: workspaceSlug}
 	bus := notifybus.New()
 	sse := &syncapi.SSEHandler{Store: st, Bus: bus, WorkspaceSlug: workspaceSlug}
 	sync := &syncapi.Handler{Store: st, WorkspaceSlug: workspaceSlug}
@@ -143,6 +146,7 @@ func main() {
 		}},
 	}
 	go dispatcher.Run(ctx, workspaceID)
+	go (&automation.Runner{Service: automationSvc}).Run(ctx, workspaceID)
 	go func() {
 		for {
 			if err := bus.Listen(ctx, st.Pool); err != nil && ctx.Err() == nil {
@@ -216,6 +220,11 @@ func main() {
 	mux.HandleFunc("POST /settings/workflows/{id}/projects", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.AssignProjectWorkflow(w, r, r.PathValue("id"))
 	})
+	mux.HandleFunc("GET /settings/automation", webHandler.AutomationRules)
+	mux.HandleFunc("POST /settings/automation", webHandler.AutomationCreate)
+	mux.HandleFunc("GET /settings/automation/new", webHandler.AutomationNew)
+	mux.HandleFunc("GET /settings/automation/{uuid}", webHandler.AutomationRule)
+	mux.HandleFunc("POST /settings/automation/{uuid}", webHandler.AutomationUpdate)
 	mux.HandleFunc("GET /issues/new", webHandler.CreateDialog)
 	mux.HandleFunc("POST /issues", webHandler.CreateIssue)
 	mux.HandleFunc("GET /issues/{key}", func(w http.ResponseWriter, r *http.Request) {
@@ -329,6 +338,8 @@ func main() {
 	mux.HandleFunc("POST /rest/zzira/1/notifications/read-all", api.MarkAllNotificationsReadHandler)
 	mux.Handle("/rest/agile/1.0/", agileAPI)
 	mux.Handle("/rest/api/3/", api)
+	mux.HandleFunc("GET /_edge/tenant_info", automationAPI.TenantInfo)
+	mux.Handle("/gateway/api/automation/public/jira/", automationAPI)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))

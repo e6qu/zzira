@@ -1,0 +1,51 @@
+{{define "page_automation_rules"}}
+<!doctype html><html lang="en"><head><title>Automation · ZZIRA</title>{{template "head" .}}<link rel="stylesheet" href="/static/css/automation.css?v=1"></head>
+<body><a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}<div class="app-shell">{{template "workspace_nav" .}}
+<main class="page page-fluid automation-directory" id="main-content" tabindex="-1">
+  <nav class="issue-breadcrumbs" aria-label="Breadcrumb"><span>Settings</span><span aria-hidden="true">/</span><span aria-current="page">Automation</span></nav>
+  <header class="page-header"><div><span class="eyebrow">Workspace automation</span><h1>Automation rules</h1><p>Run repeatable work on a schedule and inspect every execution.</p></div><a class="btn btn-primary" href="/settings/automation/new">Create rule</a></header>
+  <div class="automation-summary-strip"><span><strong>{{len .Data.Rules}}</strong> rules</span><span>Cloud ID <code>{{.Data.CloudID}}</code></span><a href="https://developer.atlassian.com/cloud/automation/rest/">Automation API reference</a></div>
+  <section class="surface-card automation-rule-list" aria-label="Automation rules">
+    {{range .Data.Rules}}<article class="automation-rule-row">
+      <span class="automation-rule-mark state-{{.Rule.State}}" aria-hidden="true"></span>
+      <div><h2><a href="/settings/automation/{{.Rule.UUID}}">{{.Rule.Name}}</a></h2><p>{{if .Rule.Description}}{{.Rule.Description}}{{else}}No description{{end}}</p><small>{{.Trigger}}{{if .Schedule}} · {{.Schedule}}{{end}}{{if .NextRun}} · Next run {{.NextRun}}{{end}}</small></div>
+      <span class="lozenge automation-state state-{{.Rule.State}}">{{.Rule.State}}</span><a class="btn" href="/settings/automation/{{.Rule.UUID}}">Open<span class="sr-only"> {{.Rule.Name}}</span></a>
+    </article>{{else}}<div class="empty-state"><h2>No automation rules</h2><p>Create a scheduled rule to update matching work items without manual steps.</p><a class="btn btn-primary" href="/settings/automation/new">Create your first rule</a></div>{{end}}
+  </section>
+</main></div><div id="modal-root"></div></body></html>
+{{end}}
+
+{{define "page_automation_rule"}}
+<!doctype html><html lang="en"><head><title>{{if .Data.IsNew}}Create automation rule{{else}}{{.Data.Rule.Name}}{{end}} · ZZIRA</title>{{template "head" .}}<link rel="stylesheet" href="/static/css/automation.css?v=1"></head>
+<body><a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}<div class="app-shell">{{template "workspace_nav" .}}
+<main class="page page-fluid automation-editor" id="main-content" tabindex="-1">
+  <nav class="issue-breadcrumbs" aria-label="Breadcrumb"><a href="/settings/automation">Automation</a><span aria-hidden="true">/</span><span aria-current="page">{{if .Data.IsNew}}Create rule{{else}}{{.Data.Rule.Name}}{{end}}</span></nav>
+  <header class="automation-editor-header"><div><span class="eyebrow">{{if .Data.IsNew}}New scheduled rule{{else}}Rule editor{{end}}</span><h1>{{if .Data.IsNew}}Create automation rule{{else}}{{.Data.Rule.Name}}{{end}}</h1><p>Review the trigger, scope, and actions as one flow before you enable it.</p></div>
+  {{if not .Data.IsNew}}<div class="automation-header-actions"><form method="post" action="{{.Data.FormAction}}"><input type="hidden" name="operation" value="run"><button class="btn" type="submit" {{if ne .Data.Rule.State "ENABLED"}}disabled{{end}}>Run now</button></form><form method="post" action="{{.Data.FormAction}}">{{if eq .Data.Rule.State "ENABLED"}}<input type="hidden" name="operation" value="disable"><button class="btn" type="submit">Disable</button>{{else}}<input type="hidden" name="operation" value="enable"><button class="btn btn-primary" type="submit">Enable</button>{{end}}</form></div>{{end}}</header>
+  {{if .Data.Error}}<p class="form-error" role="alert">{{.Data.Error}}</p>{{end}}
+  <form class="automation-rule-form" method="post" action="{{.Data.FormAction}}">
+    <input type="hidden" name="operation" value="save">
+    <section class="surface-card automation-rule-details"><div class="section-heading"><div><span class="eyebrow">Rule details</span><h2>Name and owner</h2></div>{{if not .Data.IsNew}}<span class="lozenge automation-state state-{{.Data.Rule.State}}">{{.Data.Rule.State}}</span>{{end}}</div>
+      <div class="automation-detail-grid"><label>Rule name<input name="name" value="{{.Data.Rule.Name}}" maxlength="255" required></label><label>Rule actor<select name="actor_id" required>{{range .Data.Members}}<option value="{{.ID}}" {{if eq $.Data.Rule.ActorID .ID}}selected{{end}}>{{.DisplayName}}</option>{{end}}</select></label></div>
+      <label>Description<textarea name="description" rows="2" maxlength="16000">{{.Data.Rule.Description}}</textarea></label>
+      <input type="hidden" name="state" value="{{.Data.Rule.State}}">
+    </section>
+    <div class="automation-flow" aria-label="Automation rule flow">
+      <section class="surface-card automation-flow-node"><header><span class="automation-step">1</span><div><span class="eyebrow">When</span><h2>Scheduled trigger</h2></div></header><div class="automation-node-fields"><label>Run every<input type="number" name="interval_minutes" min="1" max="43200" value="{{with .Data.Rule.IntervalMinutes}}{{.}}{{end}}" required><small>Minutes, from 1 to 43,200.</small></label><label>Timezone<input name="timezone" value="{{.Data.Rule.ScheduleTimezone}}" required placeholder="UTC"><small>Use an IANA name such as Europe/Bucharest.</small></label></div></section>
+      <span class="automation-connector" aria-hidden="true">→</span>
+      <section class="surface-card automation-flow-node"><header><span class="automation-step">2</span><div><span class="eyebrow">For</span><h2>Work item scope</h2></div></header><label>JQL query<textarea name="jql" rows="4" maxlength="16000" placeholder="project = ZZ AND status != Done">{{.Data.Rule.JQL}}</textarea><small>Blank matches every work item the rule actor can see. At most 1,000 items run at once.</small></label><details><summary>Rule scope ARIs</summary><textarea name="scope_aris" rows="3" placeholder="ari:cloud:jira:{{.Data.CloudID}}:project/10000">{{range .Data.Rule.RuleScopeARIs}}{{.}}
+{{end}}</textarea></details></section>
+      <span class="automation-connector" aria-hidden="true">→</span>
+      <section class="surface-card automation-flow-node automation-actions"><header><span class="automation-step">3</span><div><span class="eyebrow">Then</span><h2>Actions</h2></div></header>
+        {{range $action := .Data.Actions}}<div class="automation-action-row"><span class="automation-node-icon" aria-hidden="true">↳</span><div><label>Action<select name="action_type"><option value="">No action</option><option value="jira.issue.add-label" {{if eq $action.Type "jira.issue.add-label"}}selected{{end}}>Add label</option><option value="jira.issue.assign" {{if eq $action.Type "jira.issue.assign"}}selected{{end}}>Assign work item</option><option value="jira.issue.transition" {{if eq $action.Type "jira.issue.transition"}}selected{{end}}>Transition work item</option></select></label><label>Value<input name="action_value" value="{{$action.Value}}" list="automation-values" placeholder="Label, account ID, or status ID"></label></div></div>{{end}}
+        <div class="automation-action-row automation-action-empty"><span class="automation-node-icon" aria-hidden="true">+</span><div><label>Additional action<select name="action_type"><option value="">No additional action</option><option value="jira.issue.add-label">Add label</option><option value="jira.issue.assign">Assign work item</option><option value="jira.issue.transition">Transition work item</option></select></label><label>Value<input name="action_value" list="automation-values" placeholder="Label, account ID, or status ID"></label></div></div>
+        <small>Assignment accepts an account ID, <code>ACTOR</code>, or <code>UNASSIGNED</code>. Transition accepts a status ID.</small>
+      </section>
+    </div>
+    <datalist id="automation-values"><option value="ACTOR"><option value="UNASSIGNED">{{range .Data.Members}}<option value="{{.ID}}">{{.DisplayName}}</option>{{end}}{{range .Data.Statuses}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</datalist>
+    <div class="automation-save-bar"><a href="/settings/automation">Cancel</a><button class="btn btn-primary" type="submit">{{if .Data.IsNew}}Create rule{{else}}Save rule{{end}}</button></div>
+  </form>
+  {{if not .Data.IsNew}}<section class="surface-card automation-audit"><div class="section-heading"><div><span class="eyebrow">Audit log</span><h2>Recent runs</h2></div><span>Last 25</span></div><div class="automation-audit-table" role="region" aria-label="Automation audit log" tabindex="0"><table><thead><tr><th scope="col">Run</th><th scope="col">Status</th><th scope="col">Matched</th><th scope="col">Changed</th><th scope="col">Attempts</th><th scope="col">Duration</th></tr></thead><tbody>{{range .Data.Runs}}<tr><th scope="row">{{.When}}</th><td><span class="lozenge run-{{.Run.State}}">{{.Run.State}}</span>{{if .Run.Detail}}<details><summary>Error details</summary><code>{{.Run.Detail}}</code></details>{{end}}</td><td>{{.Run.MatchedCount}}</td><td>{{.Run.ChangedCount}}</td><td>{{.Run.Attempts}}</td><td>{{.Duration}}</td></tr>{{else}}<tr><td colspan="6">This rule has not run yet.</td></tr>{{end}}</tbody></table></div></section>
+  <details class="surface-card automation-danger"><summary>Delete rule</summary><p>Disable this rule before deleting it. Its audit history will also be removed.</p><form method="post" action="{{.Data.FormAction}}"><input type="hidden" name="operation" value="delete"><button class="btn btn-danger" type="submit" {{if ne .Data.Rule.State "DISABLED"}}disabled{{end}}>Delete rule permanently</button></form></details>{{end}}
+</main></div><div id="modal-root"></div></body></html>
+{{end}}
