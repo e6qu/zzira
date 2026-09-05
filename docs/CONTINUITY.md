@@ -51,7 +51,7 @@ does not publish them as one OpenAPI document.
   strict pin validation, and focused generator tests.
 - Added exact-operation coverage generation. The first reviewed assessment
   records Automation as 8 partial and 7 missing operations. The organization
-  slices add 24 partial assessments; 1,168 operations remain explicitly
+  slices add 31 partial assessments; 1,161 operations remain explicitly
   unassessed rather than being inferred from route names.
 - Added organization, site, product, internal-directory, directory-user, group,
   group-member, role-binding, and organization-audit persistence with automatic
@@ -75,6 +75,10 @@ does not publish them as one OpenAPI document.
 - Added managed-account list/detail/invite/suspend/restore/remove APIs and UI.
   Suspension and removal revoke sessions and API tokens atomically, mutations
   are audited, and administrators cannot suspend or remove themselves.
+- Added group detail, filtered count, search, statistics, and audited deletion,
+  plus directory-user search and statistics. Search supports documented
+  identity, directory, membership, lifecycle, resource, role, domain, sort,
+  expansion, all-directory, and opaque-pagination behavior.
 
 Validation after the organization foundation:
 
@@ -95,10 +99,19 @@ Validation after product access and role assignments:
   product grant, effective membership, audit, revocation, accessibility, and
   reflow coverage.
 
+Validation after group and directory search completion:
+
+- All Go packages pass with the PostgreSQL integration suite enabled.
+- `go vet ./...`, the WebAssembly build, and all conformance checks pass.
+- The focused Chromium administration journey passes group deletion, audit,
+  WCAG scans in light and dark themes, and 320 px reflow.
+- Exact coverage is 46 of 1,207 operations assessed: 39 partial, 7 missing,
+  and 1,161 explicitly unassessed.
+
 ## Current change
 
-1. Complete group detail/update/delete, directory-user search/stats, invitation
-   assignments/notifications, and richer managed-account profiles.
+1. Complete invitation assignments/notifications and richer managed-account
+   profiles.
 2. Add per-directory membership state for multi-site account suspension.
 3. Complete remaining directory-user operations from the
    pinned Organizations contract.

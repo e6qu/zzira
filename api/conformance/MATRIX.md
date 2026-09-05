@@ -60,7 +60,7 @@ use `/rest/zzira/1`.
 | /filter CRUD + /filter/{id}/favourite | ✅ | |
 | GET /rest/api/3/workflow/search · POST /workflow · GET/PUT /workflow/project/{key} | ✅ | **enforced**: transitions come from the project workflow |
 | GET /rest/api/3/role | 🟡 | registry list |
-| Organizations orgs · directories · users · groups · memberships · workspaces · roles | 🟡 | Bearer auth, site-admin permission, product ARIs, direct/effective roles, invitations, suspend/restore/remove with credential revocation, and audit delivered; broader 47-operation contract remains |
+| Organizations orgs · directories · users · groups · memberships · workspaces · roles | 🟡 | Bearer auth, site-admin permission, product ARIs, direct/effective roles, group detail/search/count/stats/delete, directory-user search/stats, invitations, suspend/restore/remove with credential revocation, and audit delivered; broader 47-operation contract remains |
 | Issue security: scheme admin APIs, assignment, enforcement | ✅ | tombstones + per-user sync filtering + visibility on search/board/navigator/bootstrap |
 | Permissionscheme admin APIs | ⛔ | workspace-role enforcement live |
 | Screens/schemes APIs | ⛔ | editmeta serves the form contract |

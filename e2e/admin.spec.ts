@@ -95,6 +95,11 @@ test('site admin manages a directory group and its audited membership', async ({
   const groupAfterRevoke = page.locator('.admin-group').filter({ has: page.getByRole('heading', { name: groupName }) });
   await groupAfterRevoke.getByRole('listitem').filter({ hasText: 'Ana Soursop' }).getByRole('button', { name: 'Remove' }).click();
   await expect(page).toHaveURL(/\/admin\?saved=Member\+removed$/);
-  await expect(page.locator('.admin-group').filter({ has: page.getByRole('heading', { name: groupName }) })).toContainText('0 members');
+  const emptyGroup = page.locator('.admin-group').filter({ has: page.getByRole('heading', { name: groupName }) });
+  await expect(emptyGroup).toContainText('0 members');
   await expect(page.locator('.admin-audit')).toContainText('group.member.removed');
+  await emptyGroup.getByRole('button', { name: 'Delete group' }).click();
+  await expect(page).toHaveURL(/\/admin\?saved=Group\+deleted$/);
+  await expect(page.locator('.admin-group').filter({ has: page.getByRole('heading', { name: groupName }) })).toHaveCount(0);
+  await expect(page.locator('.admin-audit')).toContainText('group.deleted');
 });

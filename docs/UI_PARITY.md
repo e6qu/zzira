@@ -32,7 +32,7 @@ Status: ✅ browser-tested complete journey · 🟡 usable tested subset · ⛔ 
 | Knowledge team collaborates live | Missing | Live documents, presence, concurrent operations, inline discussion, tasks and notifications remain |
 | Knowledge user diagrams or models data | Missing | Whiteboards, diagrams, databases, object links, embeds and exports remain |
 | Space manager governs knowledge | Partial | ✅ Public/private space creation and page lifecycle; roles, granular permissions, templates, analytics, archive/import/export remain |
-| Site admin manages people and access | Partial | ✅ Organization/site/product foundation, directory groups, per-product access, invitations, suspend/restore/remove, credential revocation and audit; account depth, policies, providers and remaining central APIs remain |
+| Site admin manages people and access | Partial | ✅ Organization/site/product foundation, directory group create/delete, per-product access, invitations, suspend/restore/remove, credential revocation and audit; account depth, policies, providers and remaining central APIs remain |
 | Site admin manages apps | Missing | Install/configure/suspend/upgrade/uninstall, scopes, storage and app audit remain |
 
 ## Required persona journeys

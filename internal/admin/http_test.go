@@ -78,6 +78,11 @@ func TestOrganizationAndGroupAPIJourney(t *testing.T) {
 	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories", handler.Directories)
 	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories/{directoryId}/groups", handler.Groups)
 	mux.HandleFunc("POST /admin/v2/orgs/{orgId}/directories/{directoryId}/groups", handler.Groups)
+	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories/{directoryId}/groups/count", handler.GroupCount)
+	mux.HandleFunc("POST /admin/v2/orgs/{orgId}/directories/{directoryId}/groups/search", handler.SearchGroups)
+	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories/{directoryId}/groups/stats", handler.GroupStats)
+	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}", handler.GroupDetails)
+	mux.HandleFunc("DELETE /admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}", handler.GroupDetails)
 	mux.HandleFunc("POST /admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/memberships", handler.GroupMembership)
 	mux.HandleFunc("DELETE /admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/memberships/{accountId}", handler.DeleteGroupMembership)
 	mux.HandleFunc("POST /admin/v2/orgs/{orgId}/workspaces", handler.Workspaces)
@@ -92,6 +97,8 @@ func TestOrganizationAndGroupAPIJourney(t *testing.T) {
 	mux.HandleFunc("GET /admin/v1/orgs/{orgId}/users", handler.ManagedUsers)
 	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories/{directoryId}/users", handler.DirectoryUsers)
 	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories/{directoryId}/users/count", handler.DirectoryUserCount)
+	mux.HandleFunc("POST /admin/v2/orgs/{orgId}/directories/{directoryId}/users/search", handler.SearchUsers)
+	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories/{directoryId}/users/stats", handler.UserStats)
 	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories/{directoryId}/users/{userId}", handler.DirectoryUserDetails)
 	mux.HandleFunc("DELETE /admin/v2/orgs/{orgId}/directories/{directoryId}/users/{accountId}", handler.DirectoryUserLifecycle)
 	mux.HandleFunc("POST /admin/v2/orgs/{orgId}/directories/{directoryId}/users/{accountId}/suspend", handler.DirectoryUserLifecycle)
@@ -153,6 +160,24 @@ func TestOrganizationAndGroupAPIJourney(t *testing.T) {
 		t.Fatalf("unexpected group page: %#v", groupsPage)
 	}
 	groupID := groups[0].(map[string]any)["id"].(string)
+	groupPath := groupsPath + "/" + groupID
+	groupCount := call(http.MethodGet, groupsPath+"/count", adminToken, nil, http.StatusOK)
+	if groupCount["count"].(float64) != 1 {
+		t.Fatalf("unexpected group count: %#v", groupCount)
+	}
+	groupStats := call(http.MethodGet, groupsPath+"/stats", adminToken, nil, http.StatusOK)
+	if groupStats["totals"].(map[string]any)["all"].(float64) != 1 {
+		t.Fatalf("unexpected group statistics: %#v", groupStats)
+	}
+	groupDetails := call(http.MethodGet, groupPath, adminToken, nil, http.StatusOK)
+	if groupDetails["data"].(map[string]any)["name"] != "support-leads" {
+		t.Fatalf("unexpected group details: %#v", groupDetails)
+	}
+	call(http.MethodPost, groupsPath+"/search", adminToken, map[string]any{"searchTerm": "support", "groupNames": []string{"support-leads"}}, http.StatusBadRequest)
+	groupSearch := call(http.MethodPost, groupsPath+"/search", adminToken, map[string]any{"groupNames": []string{"SUPPORT-LEADS"}, "expand": []string{"counts.users"}}, http.StatusOK)
+	if len(groupSearch["data"].([]any)) != 1 {
+		t.Fatalf("group search did not return exact case-insensitive name: %#v", groupSearch)
+	}
 	membershipPath := groupsPath + "/" + groupID + "/memberships"
 	call(http.MethodPost, membershipPath, adminToken, map[string]string{"accountId": memberID}, http.StatusNoContent)
 	call(http.MethodPost, membershipPath, adminToken, map[string]string{"accountId": memberID}, http.StatusConflict)
@@ -175,6 +200,16 @@ func TestOrganizationAndGroupAPIJourney(t *testing.T) {
 	}
 	groupRolesPath := groupsPath + "/" + groupID + "/role-assignments"
 	call(http.MethodPost, groupRolesPath+"/assign", adminToken, map[string]string{"resourceId": resourceID, "roleId": "atlassian/user"}, http.StatusOK)
+	groupSearch = call(http.MethodPost, groupsPath+"/search", adminToken, map[string]any{
+		"accountIds": []string{memberID}, "resourceIds": []string{resourceID}, "roleIds": []string{"atlassian/user"}, "expand": []string{"counts.resources", "counts.users"},
+	}, http.StatusOK)
+	if len(groupSearch["data"].([]any)) != 1 || groupSearch["data"].([]any)[0].(map[string]any)["counts"].(map[string]any)["resources"].(float64) != 1 {
+		t.Fatalf("group search filters or expanded counts failed: %#v", groupSearch)
+	}
+	groupCount = call(http.MethodGet, groupsPath+"/count?accountIds="+memberID+"&resourceIds="+resourceID+"&roleIds=atlassian/user", adminToken, nil, http.StatusOK)
+	if groupCount["count"].(float64) != 1 {
+		t.Fatalf("filtered group count failed: %#v", groupCount)
+	}
 	groupRoles := call(http.MethodGet, groupRolesPath+"?roleIds=atlassian/user", adminToken, nil, http.StatusOK)
 	if len(groupRoles["data"].([]any)) != 1 {
 		t.Fatalf("unexpected group role assignments: %#v", groupRoles)
@@ -194,6 +229,20 @@ func TestOrganizationAndGroupAPIJourney(t *testing.T) {
 	if !foundGroupMethod {
 		t.Fatalf("effective user assignment method is not group_direct: %#v", userRoles)
 	}
+	usersPath := "/admin/v2/orgs/" + organization.ID + "/directories/" + directoryID + "/users"
+	call(http.MethodPost, usersPath+"/search", adminToken, map[string]any{"searchTerm": memberID, "emails": []string{memberID + "@example.invalid"}}, http.StatusBadRequest)
+	userSearch := call(http.MethodPost, usersPath+"/search", adminToken, map[string]any{
+		"accountIds": []string{memberID}, "groupIds": []string{groupID}, "resourceIds": []string{resourceID}, "roleIds": []string{"atlassian/user"}, "expand": []string{"groups", "platformRoles", "counts.resources", "productAccess"},
+	}, http.StatusOK)
+	if len(userSearch["data"].([]any)) != 1 ||
+		len(userSearch["data"].([]any)[0].(map[string]any)["groups"].([]any)) != 1 ||
+		len(userSearch["data"].([]any)[0].(map[string]any)["productAccess"].([]any)) != 3 {
+		t.Fatalf("user search filters or expansions failed: %#v", userSearch)
+	}
+	userStats := call(http.MethodGet, usersPath+"/stats", adminToken, nil, http.StatusOK)
+	if len(userStats["accountStatus"].([]any)) != 3 {
+		t.Fatalf("unexpected user statistics: %#v", userStats)
+	}
 	call(http.MethodPost, groupRolesPath+"/revoke", adminToken, map[string]string{"resourceId": resourceID, "roleId": "atlassian/user"}, http.StatusNoContent)
 
 	userMutationPath := "/admin/v1/orgs/" + organization.ID + "/users/" + memberID + "/roles"
@@ -212,7 +261,6 @@ func TestOrganizationAndGroupAPIJourney(t *testing.T) {
 	invited := call(http.MethodPost, "/admin/v2/orgs/"+organization.ID+"/users/invite", adminToken, map[string]any{"emails": []string{inviteEmail}}, http.StatusOK)
 	invitedID := invited["data"].([]any)[0].(map[string]any)["id"].(string)
 	defer func() { _, _ = st.Pool.Exec(ctx, `DELETE FROM users WHERE id=$1`, invitedID) }()
-	usersPath := "/admin/v2/orgs/" + organization.ID + "/directories/" + directoryID + "/users"
 	call(http.MethodGet, usersPath+"?searchTerm="+inviteEmail, adminToken, nil, http.StatusOK)
 	call(http.MethodGet, usersPath+"/"+invitedID, adminToken, nil, http.StatusOK)
 	invitedToken := store.NewID("secret")
@@ -225,12 +273,22 @@ func TestOrganizationAndGroupAPIJourney(t *testing.T) {
 	}
 	call(http.MethodPost, usersPath+"/"+invitedID+"/restore", adminToken, nil, http.StatusNoContent)
 	call(http.MethodDelete, usersPath+"/"+invitedID, adminToken, nil, http.StatusNoContent)
+	call(http.MethodPost, groupRolesPath+"/assign", adminToken, map[string]string{"resourceId": resourceID, "roleId": "atlassian/user"}, http.StatusOK)
+	call(http.MethodDelete, groupPath, adminToken, nil, http.StatusNoContent)
+	call(http.MethodGet, groupPath, adminToken, nil, http.StatusNotFound)
+	var remainingGroupRoles int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM role_bindings WHERE principal_type='group' AND principal_id=$1`, groupID).Scan(&remainingGroupRoles); err != nil {
+		t.Fatal(err)
+	}
+	if remainingGroupRoles != 0 {
+		t.Fatalf("group deletion left %d role bindings", remainingGroupRoles)
+	}
 
 	audit, err := st.OrganizationAuditEvents(ctx, organization.ID, 20)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(audit) != 13 {
-		t.Fatalf("audit events=%d, want 13", len(audit))
+	if len(audit) != 15 {
+		t.Fatalf("audit events=%d, want 15", len(audit))
 	}
 }

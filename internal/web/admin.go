@@ -235,6 +235,28 @@ func (h *Handler) UpdateAdminGroupRole(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/admin?saved="+url.QueryEscape(message), http.StatusSeeOther)
 }
 
+func (h *Handler) DeleteAdminGroup(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok {
+		return
+	}
+	data, err := h.adminData(r, workspaceID, "")
+	if err != nil || data.Directory == nil {
+		http.Error(w, "load directory", http.StatusInternalServerError)
+		return
+	}
+	err = h.Store.DeleteDirectoryGroup(r.Context(), workspaceID, user.ID, data.Directory.ID, r.PathValue("groupId"))
+	if err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, pgx.ErrNoRows) {
+			status = http.StatusNotFound
+		}
+		http.Error(w, "delete group", status)
+		return
+	}
+	http.Redirect(w, r, "/admin?saved="+url.QueryEscape("Group deleted"), http.StatusSeeOther)
+}
+
 func (h *Handler) InviteAdminUser(w http.ResponseWriter, r *http.Request) {
 	user, workspaceID, ok := h.requireAdminPage(w, r)
 	if !ok {

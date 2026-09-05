@@ -30,9 +30,9 @@ workspace membership and administration through this model.
 
 Site administrators use `/admin` to inspect organization and Cloud IDs, enabled
 products, the internal directory, users, groups, and recent audit events. They
-can invite, suspend, restore, or remove managed accounts; create a group; add or
-remove directory users; and grant or revoke each group's Jira Software, Jira
-Service Management, and Confluence access. Suspension and removal revoke the
+can invite, suspend, restore, or remove managed accounts; create or delete a
+group; add or remove directory users; and grant or revoke each group's Jira
+Software, Jira Service Management, and Confluence access. Suspension and removal revoke the
 account's active sessions and API tokens. Every successful user, group,
 membership, or role mutation writes an organization audit event in the same
 transaction. Administrators cannot suspend or remove their own account.
@@ -50,6 +50,10 @@ implemented:
 | GET | `/admin/v1/orgs/{orgId}` |
 | GET | `/admin/v2/orgs/{orgId}/directories` |
 | GET/POST | `/admin/v2/orgs/{orgId}/directories/{directoryId}/groups` |
+| GET | `/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/count` |
+| POST | `/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/search` |
+| GET | `/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/stats` |
+| GET/DELETE | `/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}` |
 | POST | `/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/memberships` |
 | DELETE | `/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/memberships/{accountId}` |
 | POST | `/admin/v2/orgs/{orgId}/workspaces` |
@@ -61,6 +65,8 @@ implemented:
 | GET | `/admin/v1/orgs/{orgId}/users` |
 | GET | `/admin/v2/orgs/{orgId}/directories/{directoryId}/users` |
 | GET | `/admin/v2/orgs/{orgId}/directories/{directoryId}/users/count` |
+| POST | `/admin/v2/orgs/{orgId}/directories/{directoryId}/users/search` |
+| GET | `/admin/v2/orgs/{orgId}/directories/{directoryId}/users/stats` |
 | GET | `/admin/v2/orgs/{orgId}/directories/{directoryId}/users/{userId}` |
 | DELETE | `/admin/v2/orgs/{orgId}/directories/{directoryId}/users/{accountId}` |
 | POST | `/admin/v2/orgs/{orgId}/directories/{directoryId}/users/{accountId}/{suspend\|restore}` |
@@ -69,16 +75,18 @@ implemented:
 The API requires `Authorization: Bearer <api-token>` and an organization or site
 administrator role. Site Jira APIs continue to accept their existing Jira-style
 Basic authentication. Collection cursors are opaque encoded offsets; malformed
-cursors are rejected. Groups support `searchTerm` and limits from 1 through 100.
-Workspace discovery returns product ARIs. Role lookups support directory,
+cursors are rejected. Group and user searches implement the documented opaque
+pagination, sorting, exact-list, text, directory, membership, lifecycle,
+resource, role, domain, and expansion filters. `-` scopes search and statistics
+to every directory the caller can administer. Group count accepts its full
+documented filter set. Workspace discovery returns product ARIs. Role lookups support directory,
 resource-owner, resource-ID, and role-ID filters and report whether effective
 user access is direct or inherited from a group.
 
 The current server configuration serves one workspace/site. Organization
 discovery therefore returns the organization containing that site. Cross-site
 organization discovery, directory filters, SCIM lifecycle, user suspension,
-policy/domain/event endpoints, group detail/delete/statistics, advanced user
-search and stats, invitation notifications and assignment options, per-directory
+policy/domain/event endpoints, invitation notifications and assignment options, per-directory
 account suspension for multi-site deployments, license limits, and full
 central-host rate limiting remain in
 the active plan and are reported as unassessed or missing in operation coverage.
@@ -89,8 +97,9 @@ the active plan and are reported as unassessed or missing in operation coverage.
   direct roles, group-derived administration and product access, revocation,
   and audit events.
 - API integration tests cover bearer authentication, permission denial,
-  organization/directory/product discovery, group creation, membership and role
-  mutations, effective assignments, conflicts, and audit persistence.
+  organization/directory/product discovery, group creation/detail/search/count/
+  statistics/deletion, directory-user search/statistics, membership and role
+  mutations, effective assignments, conflicts, expansions, and audit persistence.
 - Playwright covers the complete group and product-access journey,
   account invitation/lifecycle, ordinary-user denial, WCAG scans, light/dark
   themes, and 320px reflow.

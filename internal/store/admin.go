@@ -195,6 +195,24 @@ func (s *Store) GroupsByDirectory(ctx context.Context, directoryID string) ([]*m
 	return groups, rows.Err()
 }
 
+func (s *Store) DirectoryGroup(ctx context.Context, directoryID, groupID string) (*models.Group, error) {
+	group := &models.Group{}
+	var createdAt, updatedAt time.Time
+	err := s.Pool.QueryRow(ctx, `
+		SELECT g.id::text,g.directory_id::text,g.name,g.description,g.created_at,g.updated_at,
+		       count(gm.user_id)::int
+		FROM groups g LEFT JOIN group_members gm ON gm.group_id=g.id
+		WHERE g.directory_id::text=$1 AND g.id::text=$2
+		GROUP BY g.id`, directoryID, groupID).
+		Scan(&group.ID, &group.DirectoryID, &group.Name, &group.Description, &createdAt, &updatedAt, &group.MemberCount)
+	if err != nil {
+		return nil, err
+	}
+	group.CreatedAt = formatAdminTime(createdAt)
+	group.UpdatedAt = formatAdminTime(updatedAt)
+	return group, nil
+}
+
 func (s *Store) DirectoryUsers(ctx context.Context, directoryID string) ([]*models.User, error) {
 	rows, err := s.Pool.Query(ctx, `
 		SELECT u.id,u.email,u.display_name,u.time_zone,u.active
@@ -608,6 +626,42 @@ func (s *Store) CreateDirectoryGroup(ctx context.Context, workspaceID, actorID, 
 	group.CreatedAt = formatAdminTime(createdAt)
 	group.UpdatedAt = formatAdminTime(updatedAt)
 	return group, nil
+}
+
+// DeleteDirectoryGroup removes memberships and direct role grants with the
+// group, and records the administrative change in the same transaction.
+func (s *Store) DeleteDirectoryGroup(ctx context.Context, workspaceID, actorID, directoryID, groupID string) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var organizationID, name string
+	if err := tx.QueryRow(ctx, `
+		SELECT d.organization_id::text,g.name
+		FROM groups g
+		JOIN directories d ON d.id=g.directory_id
+		JOIN sites si ON si.organization_id=d.organization_id
+		WHERE d.id::text=$1 AND g.id::text=$2 AND si.workspace_id=$3`, directoryID, groupID, workspaceID).
+		Scan(&organizationID, &name); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM role_bindings WHERE principal_type='group' AND principal_id=$1`, groupID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM groups WHERE id::text=$1 AND directory_id::text=$2`, groupID, directoryID); err != nil {
+		return err
+	}
+	detail, err := json.Marshal(map[string]any{"name": name, "directoryId": directoryID})
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO organization_audit_events(organization_id,actor_id,action,target_type,target_id,detail)
+		VALUES($1::uuid,$2,'group.deleted','group',$3,$4)`, organizationID, actorID, groupID, detail); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func (s *Store) SetGroupMember(ctx context.Context, workspaceID, actorID, directoryID, groupID, userID string, member bool) error {

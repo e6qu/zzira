@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 39,
+  "assessedTotal": 46,
   "counts": {
     "delivered": 0,
-    "partial": 32,
+    "partial": 39,
     "missing": 7,
-    "unassessed": 1168
+    "unassessed": 1161
   },
   "countsByFamily": {
     "automation": {
@@ -42,9 +42,9 @@
     },
     "organization-admin": {
       "delivered": 0,
-      "partial": 24,
+      "partial": 31,
       "missing": 0,
-      "unassessed": 23
+      "unassessed": 16
     }
   },
   "operations": [
@@ -9595,41 +9595,61 @@
       "operationId": "organization-admin:GET:/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/count",
       "family": "organization-admin",
       "hostClass": "central",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "e2e/admin.spec.ts",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Group count implements directory, member, group, resource-owner, resource-ID, role-ID, and name filters."
     },
     {
       "operationId": "organization-admin:POST:/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/search",
       "family": "organization-admin",
       "hostClass": "central",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "e2e/admin.spec.ts",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Group search implements documented filters, mutual exclusions, sorting, expansions, multi-directory scope, and opaque pagination."
     },
     {
       "operationId": "organization-admin:GET:/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/stats",
       "family": "organization-admin",
       "hostClass": "central",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "e2e/admin.spec.ts",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Group statistics report internal group-type and management totals for one or all authorized directories."
     },
     {
       "operationId": "organization-admin:DELETE:/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}",
       "family": "organization-admin",
       "hostClass": "central",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "e2e/admin.spec.ts",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Group deletion atomically removes memberships and role grants and records an audit event."
     },
     {
       "operationId": "organization-admin:GET:/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}",
       "family": "organization-admin",
       "hostClass": "central",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "e2e/admin.spec.ts",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Group details include management access and live user/resource counts."
     },
     {
       "operationId": "organization-admin:POST:/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/memberships",
@@ -9714,17 +9734,25 @@
       "operationId": "organization-admin:POST:/admin/v2/orgs/{orgId}/directories/{directoryId}/users/search",
       "family": "organization-admin",
       "hostClass": "central",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "e2e/admin.spec.ts",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Directory-user search implements identity, group, lifecycle, domain, resource, role, expansion, sort, and pagination fields; stored profile and activity depth remains."
     },
     {
       "operationId": "organization-admin:GET:/admin/v2/orgs/{orgId}/directories/{directoryId}/users/stats",
       "family": "organization-admin",
       "hostClass": "central",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "e2e/admin.spec.ts",
+        "docs/ADMIN.md"
+      ],
+      "notes": "User statistics report account lifecycle and effective role counts for one or all authorized directories."
     },
     {
       "operationId": "organization-admin:DELETE:/admin/v2/orgs/{orgId}/directories/{directoryId}/users/{accountId}",

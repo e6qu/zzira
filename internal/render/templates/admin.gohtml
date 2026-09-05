@@ -46,7 +46,7 @@
       {{$users := .Data.Users}}
       {{$products := .Data.Products}}
       {{range .Data.Groups}}{{$row := .}}<article class="admin-group">
-        <header><div><h3>{{.Group.Name}}</h3><p>{{.Group.Description}}</p></div><span>{{.Group.MemberCount}} member{{if ne .Group.MemberCount 1}}s{{end}}</span></header>
+        <header><div><h3>{{.Group.Name}}</h3><p>{{.Group.Description}}</p></div><div class="admin-group-summary"><span>{{.Group.MemberCount}} member{{if ne .Group.MemberCount 1}}s{{end}}</span><form method="post" action="/admin/groups/{{.Group.ID}}/delete"><button class="btn btn-danger" type="submit">Delete group</button></form></div></header>
         <div class="admin-product-access" aria-label="Product access for {{.Group.Name}}">
           {{range $products}}<div><span><strong>{{.Name}}</strong><small>{{if index $row.ProductAccess .ID}}Access granted{{else}}No group access{{end}}</small></span><form method="post" action="/admin/groups/{{$row.Group.ID}}/roles"><input type="hidden" name="productId" value="{{.ID}}">{{if index $row.ProductAccess .ID}}<input type="hidden" name="action" value="revoke"><button class="btn" type="submit">Revoke access</button>{{else}}<input type="hidden" name="action" value="assign"><button class="btn" type="submit">Grant access</button>{{end}}</form></div>{{end}}
         </div>

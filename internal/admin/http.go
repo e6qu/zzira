@@ -261,24 +261,12 @@ func (h *Handler) Groups(w http.ResponseWriter, r *http.Request) {
 		failure(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	organization, ok := h.organizationForRequest(w, r, workspaceID)
+	context, ok := h.loadRoleContext(w, r, workspaceID)
 	if !ok {
 		return
 	}
 	directoryID := r.PathValue("directoryId")
-	directories, err := h.Store.DirectoriesByOrganization(r.Context(), organization.ID)
-	if err != nil {
-		failure(w, http.StatusInternalServerError, "Directory lookup failed.")
-		return
-	}
-	found := false
-	for _, directory := range directories {
-		if directory.ID == directoryID {
-			found = true
-			break
-		}
-	}
-	if !found {
+	if !context.DirectoryIDs[directoryID] {
 		failure(w, http.StatusNotFound, "Directory was not found.")
 		return
 	}
@@ -328,13 +316,12 @@ func (h *Handler) Groups(w http.ResponseWriter, r *http.Request) {
 	page, next := pageSlice(groups, offset, limit)
 	data := make([]map[string]any, 0, len(page))
 	for _, group := range page {
-		data = append(data, map[string]any{
-			"id": group.ID, "name": group.Name, "description": group.Description,
-			"directoryId": group.DirectoryID, "externalSynced": false, "managedBy": "admins",
-			"managementAccess": map[string]bool{"deletable": true, "modifiable": true, "readable": true},
-			"counts":           map[string]int{"users": group.MemberCount, "resources": 0},
-			"links":            map[string]any{"self": cursorFor(offset)},
-		})
+		bindings, err := h.Store.RoleBindingsForPrincipal(r.Context(), workspaceID, "group", group.ID)
+		if err != nil {
+			failure(w, http.StatusInternalServerError, "Group role lookup failed.")
+			return
+		}
+		data = append(data, h.groupModel(context, group, groupResourceCount(context, bindings), true, true))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"data":  data,
@@ -843,18 +830,13 @@ func userStatus(user *models.User) string {
 }
 
 func multiDirectoryUser(user *models.User) map[string]any {
-	status := userStatus(user)
-	membershipStatus := "active"
-	if !user.Active {
-		membershipStatus = "suspended"
-	}
+	status, accountStatus, membershipStatus := userState(user)
 	return map[string]any{
 		"accountId": user.ID, "accountType": "atlassian", "status": status,
-		"accountStatus": status, "membershipStatus": membershipStatus,
+		"accountStatus": accountStatus, "membershipStatus": membershipStatus,
 		"name": user.DisplayName, "nickname": user.DisplayName, "email": user.Email,
 		"emailVerified": true, "claimStatus": "managed", "mfaEnabled": false,
 		"timeZone": user.TimeZone, "managementSource": "invited",
-		"counts": map[string]int{"groups": 0, "resources": 0},
 	}
 }
 
