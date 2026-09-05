@@ -417,6 +417,151 @@ func (s *Store) SetRoleBinding(ctx context.Context, workspaceID, actorID, princi
 	return tx.Commit(ctx)
 }
 
+func (s *Store) SetDirectoryUserActive(ctx context.Context, workspaceID, actorID, directoryID, userID string, active bool) error {
+	if actorID == userID && !active {
+		return fmt.Errorf("%w: you cannot suspend your own account", ErrAdminValidation)
+	}
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var organizationID string
+	err = tx.QueryRow(ctx, `
+		SELECT d.organization_id::text FROM directory_users du
+		JOIN directories d ON d.id=du.directory_id
+		JOIN sites si ON si.organization_id=d.organization_id
+		WHERE du.directory_id::text=$1 AND du.user_id=$2 AND si.workspace_id=$3`, directoryID, userID, workspaceID).Scan(&organizationID)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE users SET active=$1 WHERE id=$2`, active, userID); err != nil {
+		return err
+	}
+	if !active {
+		if _, err := tx.Exec(ctx, `DELETE FROM sessions WHERE user_id=$1`, userID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `DELETE FROM api_tokens WHERE user_id=$1`, userID); err != nil {
+			return err
+		}
+	}
+	action := "user.suspended"
+	if active {
+		action = "user.restored"
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO organization_audit_events(organization_id,actor_id,action,target_type,target_id)
+		VALUES($1::uuid,$2,$3,'user',$4)`, organizationID, actorID, action, userID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (s *Store) RemoveDirectoryUser(ctx context.Context, workspaceID, actorID, directoryID, userID string) error {
+	if actorID == userID {
+		return fmt.Errorf("%w: you cannot remove your own account", ErrAdminValidation)
+	}
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var organizationID string
+	err = tx.QueryRow(ctx, `
+		SELECT d.organization_id::text FROM directory_users du
+		JOIN directories d ON d.id=du.directory_id
+		JOIN sites si ON si.organization_id=d.organization_id
+		WHERE du.directory_id::text=$1 AND du.user_id=$2 AND si.workspace_id=$3`, directoryID, userID, workspaceID).Scan(&organizationID)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM memberships WHERE workspace_id=$1 AND user_id=$2`, workspaceID, userID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM group_members gm USING groups g WHERE gm.group_id=g.id AND g.directory_id=$1::uuid AND gm.user_id=$2`, directoryID, userID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		DELETE FROM role_bindings rb
+		WHERE rb.principal_type='user' AND rb.principal_id=$1
+		  AND (rb.scope_id=$2
+		    OR rb.scope_id IN (SELECT id::text FROM sites WHERE organization_id=$2::uuid)
+		    OR rb.scope_id IN (SELECT p.id::text FROM products p JOIN sites si ON si.id=p.site_id WHERE si.organization_id=$2::uuid))`, userID, organizationID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM directory_users WHERE directory_id=$1::uuid AND user_id=$2`, directoryID, userID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM sessions WHERE user_id=$1`, userID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM api_tokens WHERE user_id=$1`, userID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO organization_audit_events(organization_id,actor_id,action,target_type,target_id)
+		VALUES($1::uuid,$2,'user.removed','user',$3)`, organizationID, actorID, userID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (s *Store) InviteDirectoryUser(ctx context.Context, workspaceID, actorID, directoryID, email, displayName, passwordHash string) (*models.User, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	displayName = strings.TrimSpace(displayName)
+	if email == "" || !strings.Contains(email, "@") || displayName == "" {
+		return nil, fmt.Errorf("%w: valid email and display name are required", ErrAdminValidation)
+	}
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var organizationID string
+	if err := tx.QueryRow(ctx, `
+		SELECT d.organization_id::text FROM directories d JOIN sites si ON si.organization_id=d.organization_id
+		WHERE d.id::text=$1 AND si.workspace_id=$2 AND d.active`, directoryID, workspaceID).Scan(&organizationID); err != nil {
+		return nil, err
+	}
+	user := &models.User{Email: email, DisplayName: displayName, Active: true, AccountType: "atlassian"}
+	err = tx.QueryRow(ctx, `SELECT id,display_name,active FROM users WHERE lower(email)=lower($1)`, email).Scan(&user.ID, &user.DisplayName, &user.Active)
+	if errors.Is(err, pgx.ErrNoRows) {
+		user.ID = NewID("usr")
+		if _, err := tx.Exec(ctx, `INSERT INTO users(id,email,password_hash,display_name) VALUES($1,$2,$3,$4)`, user.ID, email, passwordHash, displayName); err != nil {
+			return nil, err
+		}
+	} else if err != nil {
+		return nil, err
+	}
+	if !user.Active {
+		return nil, fmt.Errorf("%w: this account is suspended", ErrAdminConflict)
+	}
+	tag, err := tx.Exec(ctx, `INSERT INTO directory_users(directory_id,user_id) VALUES($1::uuid,$2) ON CONFLICT DO NOTHING`, directoryID, user.ID)
+	if err != nil {
+		return nil, err
+	}
+	if tag.RowsAffected() == 0 {
+		return nil, fmt.Errorf("%w: this account is already in the directory", ErrAdminConflict)
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO memberships(workspace_id,user_id,role) VALUES($1,$2,'member') ON CONFLICT DO NOTHING`, workspaceID, user.ID); err != nil {
+		return nil, err
+	}
+	detail, err := json.Marshal(map[string]any{"email": email})
+	if err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO organization_audit_events(organization_id,actor_id,action,target_type,target_id,detail)
+		VALUES($1::uuid,$2,'user.invited','user',$3,$4)`, organizationID, actorID, user.ID, detail); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return user, nil
+}
+
 func (s *Store) CreateDirectoryGroup(ctx context.Context, workspaceID, actorID, directoryID, name, description string) (*models.Group, error) {
 	name = strings.TrimSpace(name)
 	description = strings.TrimSpace(description)

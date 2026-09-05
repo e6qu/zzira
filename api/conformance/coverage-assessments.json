@@ -258,6 +258,86 @@
         "docs/ADMIN.md"
       ],
       "notes": "Effective user assignments combine direct and group-derived roles and report assignment methods."
+    },
+    {
+      "operationId": "organization-admin:GET:/admin/v1/orgs/{orgId}/users",
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "e2e/admin.spec.ts",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Managed-account listing reports active and inactive directory accounts."
+    },
+    {
+      "operationId": "organization-admin:GET:/admin/v2/orgs/{orgId}/directories/{directoryId}/users",
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "e2e/admin.spec.ts",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Directory user listing supports searchTerm and opaque cursor pagination."
+    },
+    {
+      "operationId": "organization-admin:GET:/admin/v2/orgs/{orgId}/directories/{directoryId}/users/count",
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "e2e/admin.spec.ts",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Directory user counts support the implemented searchTerm filter."
+    },
+    {
+      "operationId": "organization-admin:GET:/admin/v2/orgs/{orgId}/directories/{directoryId}/users/{userId}",
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "e2e/admin.spec.ts",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Directory account details report identity and lifecycle state."
+    },
+    {
+      "operationId": "organization-admin:DELETE:/admin/v2/orgs/{orgId}/directories/{directoryId}/users/{accountId}",
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "e2e/admin.spec.ts",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Directory removal revokes memberships, group links, scoped direct roles, sessions, and API tokens atomically."
+    },
+    {
+      "operationId": "organization-admin:POST:/admin/v2/orgs/{orgId}/directories/{directoryId}/users/{accountId}/suspend",
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "e2e/admin.spec.ts",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Suspension immediately denies authentication and revokes browser sessions and API tokens."
+    },
+    {
+      "operationId": "organization-admin:POST:/admin/v2/orgs/{orgId}/directories/{directoryId}/users/{accountId}/restore",
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "e2e/admin.spec.ts",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Restoration reactivates the managed account and is audited."
+    },
+    {
+      "operationId": "organization-admin:POST:/admin/v2/orgs/{orgId}/users/invite",
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "e2e/admin.spec.ts",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Invitations provision provider-ready accounts in the internal directory; notifications and optional assignment payloads remain."
     }
   ]
 }

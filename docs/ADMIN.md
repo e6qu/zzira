@@ -30,10 +30,12 @@ workspace membership and administration through this model.
 
 Site administrators use `/admin` to inspect organization and Cloud IDs, enabled
 products, the internal directory, users, groups, and recent audit events. They
-can create a group, add or remove directory users, and grant or revoke each
-group's Jira Software, Jira Service Management, and Confluence access. Every
-successful group, membership, or role mutation writes an organization audit
-event in the same transaction.
+can invite, suspend, restore, or remove managed accounts; create a group; add or
+remove directory users; and grant or revoke each group's Jira Software, Jira
+Service Management, and Confluence access. Suspension and removal revoke the
+account's active sessions and API tokens. Every successful user, group,
+membership, or role mutation writes an organization audit event in the same
+transaction. Administrators cannot suspend or remove their own account.
 Ordinary users do not see the administration navigation item and receive 403 on
 direct access.
 
@@ -56,6 +58,13 @@ implemented:
 | GET | `/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/role-assignments` |
 | POST | `/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/role-assignments/{assign\|revoke}` |
 | GET | `/admin/v2/orgs/{orgId}/directories/{directoryId}/users/{accountId}/role-assignments` |
+| GET | `/admin/v1/orgs/{orgId}/users` |
+| GET | `/admin/v2/orgs/{orgId}/directories/{directoryId}/users` |
+| GET | `/admin/v2/orgs/{orgId}/directories/{directoryId}/users/count` |
+| GET | `/admin/v2/orgs/{orgId}/directories/{directoryId}/users/{userId}` |
+| DELETE | `/admin/v2/orgs/{orgId}/directories/{directoryId}/users/{accountId}` |
+| POST | `/admin/v2/orgs/{orgId}/directories/{directoryId}/users/{accountId}/{suspend\|restore}` |
+| POST | `/admin/v2/orgs/{orgId}/users/invite` |
 
 The API requires `Authorization: Bearer <api-token>` and an organization or site
 administrator role. Site Jira APIs continue to accept their existing Jira-style
@@ -68,8 +77,10 @@ user access is direct or inherited from a group.
 The current server configuration serves one workspace/site. Organization
 discovery therefore returns the organization containing that site. Cross-site
 organization discovery, directory filters, SCIM lifecycle, user suspension,
-policy/domain/event endpoints, group detail/delete/statistics, user lifecycle,
-license limits, and full central-host rate limiting remain in
+policy/domain/event endpoints, group detail/delete/statistics, advanced user
+search and stats, invitation notifications and assignment options, per-directory
+account suspension for multi-site deployments, license limits, and full
+central-host rate limiting remain in
 the active plan and are reported as unassessed or missing in operation coverage.
 
 ## Verification
@@ -81,4 +92,5 @@ the active plan and are reported as unassessed or missing in operation coverage.
   organization/directory/product discovery, group creation, membership and role
   mutations, effective assignments, conflicts, and audit persistence.
 - Playwright covers the complete group and product-access journey,
-  ordinary-user denial, WCAG scans, light/dark themes, and 320px reflow.
+  account invitation/lifecycle, ordinary-user denial, WCAG scans, light/dark
+  themes, and 320px reflow.

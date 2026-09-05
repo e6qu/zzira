@@ -89,6 +89,14 @@ func TestOrganizationAndGroupAPIJourney(t *testing.T) {
 	mux.HandleFunc("POST /admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/role-assignments/assign", handler.GroupRoleMutation)
 	mux.HandleFunc("POST /admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/role-assignments/revoke", handler.GroupRoleMutation)
 	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories/{directoryId}/users/{accountId}/role-assignments", handler.RoleAssignments)
+	mux.HandleFunc("GET /admin/v1/orgs/{orgId}/users", handler.ManagedUsers)
+	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories/{directoryId}/users", handler.DirectoryUsers)
+	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories/{directoryId}/users/count", handler.DirectoryUserCount)
+	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories/{directoryId}/users/{userId}", handler.DirectoryUserDetails)
+	mux.HandleFunc("DELETE /admin/v2/orgs/{orgId}/directories/{directoryId}/users/{accountId}", handler.DirectoryUserLifecycle)
+	mux.HandleFunc("POST /admin/v2/orgs/{orgId}/directories/{directoryId}/users/{accountId}/suspend", handler.DirectoryUserLifecycle)
+	mux.HandleFunc("POST /admin/v2/orgs/{orgId}/directories/{directoryId}/users/{accountId}/restore", handler.DirectoryUserLifecycle)
+	mux.HandleFunc("POST /admin/v2/orgs/{orgId}/users/invite", handler.InviteUsers)
 
 	call := func(method, path, token string, body any, want int) map[string]any {
 		t.Helper()
@@ -196,11 +204,33 @@ func TestOrganizationAndGroupAPIJourney(t *testing.T) {
 	call(http.MethodPost, organizationRolePath+"/revoke", adminToken, map[string]string{"role": "atlassian/org-admin"}, http.StatusNoContent)
 	call(http.MethodDelete, membershipPath+"/"+memberID, adminToken, nil, http.StatusNoContent)
 
+	managedUsers := call(http.MethodGet, "/admin/v1/orgs/"+organization.ID+"/users", adminToken, nil, http.StatusOK)
+	if managedUsers["meta"].(map[string]any)["total"].(float64) != 2 {
+		t.Fatalf("unexpected managed user page: %#v", managedUsers)
+	}
+	inviteEmail := store.NewID("invite") + "@example.invalid"
+	invited := call(http.MethodPost, "/admin/v2/orgs/"+organization.ID+"/users/invite", adminToken, map[string]any{"emails": []string{inviteEmail}}, http.StatusOK)
+	invitedID := invited["data"].([]any)[0].(map[string]any)["id"].(string)
+	defer func() { _, _ = st.Pool.Exec(ctx, `DELETE FROM users WHERE id=$1`, invitedID) }()
+	usersPath := "/admin/v2/orgs/" + organization.ID + "/directories/" + directoryID + "/users"
+	call(http.MethodGet, usersPath+"?searchTerm="+inviteEmail, adminToken, nil, http.StatusOK)
+	call(http.MethodGet, usersPath+"/"+invitedID, adminToken, nil, http.StatusOK)
+	invitedToken := store.NewID("secret")
+	if err := st.CreateAPIToken(ctx, store.NewID("tok"), invitedID, store.HashToken(invitedToken), "suspension-test"); err != nil {
+		t.Fatal(err)
+	}
+	call(http.MethodPost, usersPath+"/"+invitedID+"/suspend", adminToken, nil, http.StatusNoContent)
+	if _, err := st.UserByAPIToken(ctx, store.HashToken(invitedToken)); err == nil {
+		t.Fatal("suspension did not revoke the invited user's API token")
+	}
+	call(http.MethodPost, usersPath+"/"+invitedID+"/restore", adminToken, nil, http.StatusNoContent)
+	call(http.MethodDelete, usersPath+"/"+invitedID, adminToken, nil, http.StatusNoContent)
+
 	audit, err := st.OrganizationAuditEvents(ctx, organization.ID, 20)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(audit) != 9 {
-		t.Fatalf("audit events=%d, want 9", len(audit))
+	if len(audit) != 13 {
+		t.Fatalf("audit events=%d, want 13", len(audit))
 	}
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/e6qu/zzira/internal/authn"
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
 )
@@ -30,6 +31,7 @@ type adminPageData struct {
 	Saved            string
 	GroupName        string
 	GroupDescription string
+	CurrentUserID    string
 }
 
 func (h *Handler) adminData(r *http.Request, workspaceID, message string) (adminPageData, error) {
@@ -109,6 +111,7 @@ func (h *Handler) AdminPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "load administration", http.StatusInternalServerError)
 		return
 	}
+	data.CurrentUserID = user.ID
 	h.writeWorkspacePage(w, r, "page_admin", user, workspaceID, data, "admin", "")
 }
 
@@ -148,6 +151,7 @@ func (h *Handler) CreateAdminGroup(w http.ResponseWriter, r *http.Request) {
 		}
 		data.GroupName = r.FormValue("name")
 		data.GroupDescription = r.FormValue("description")
+		data.CurrentUserID = user.ID
 		h.writeWorkspacePageStatus(w, r, "page_admin", user, workspaceID, data, "admin", "", status)
 		return
 	}
@@ -229,4 +233,74 @@ func (h *Handler) UpdateAdminGroupRole(w http.ResponseWriter, r *http.Request) {
 		message = "Product access revoked"
 	}
 	http.Redirect(w, r, "/admin?saved="+url.QueryEscape(message), http.StatusSeeOther)
+}
+
+func (h *Handler) InviteAdminUser(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form", http.StatusBadRequest)
+		return
+	}
+	data, err := h.adminData(r, workspaceID, "")
+	if err != nil || data.Directory == nil {
+		http.Error(w, "load directory", http.StatusInternalServerError)
+		return
+	}
+	passwordHash, err := authn.UnusablePasswordHash()
+	if err == nil {
+		_, err = h.Store.InviteDirectoryUser(r.Context(), workspaceID, user.ID, data.Directory.ID, r.FormValue("email"), r.FormValue("displayName"), passwordHash)
+	}
+	if err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, store.ErrAdminValidation) {
+			status = http.StatusBadRequest
+		} else if errors.Is(err, store.ErrAdminConflict) {
+			status = http.StatusConflict
+		}
+		http.Error(w, err.Error(), status)
+		return
+	}
+	http.Redirect(w, r, "/admin?saved="+url.QueryEscape("User invited"), http.StatusSeeOther)
+}
+
+func (h *Handler) UpdateAdminUserStatus(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form", http.StatusBadRequest)
+		return
+	}
+	data, err := h.adminData(r, workspaceID, "")
+	if err != nil || data.Directory == nil {
+		http.Error(w, "load directory", http.StatusInternalServerError)
+		return
+	}
+	action := r.FormValue("action")
+	if action != "suspend" && action != "restore" && action != "remove" {
+		http.Error(w, "unsupported user action", http.StatusBadRequest)
+		return
+	}
+	accountID := r.PathValue("accountId")
+	if action == "remove" {
+		err = h.Store.RemoveDirectoryUser(r.Context(), workspaceID, user.ID, data.Directory.ID, accountID)
+	} else {
+		err = h.Store.SetDirectoryUserActive(r.Context(), workspaceID, user.ID, data.Directory.ID, accountID, action == "restore")
+	}
+	if err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, store.ErrAdminValidation) {
+			status = http.StatusBadRequest
+		} else if errors.Is(err, pgx.ErrNoRows) || errors.Is(err, store.ErrAdminNotFound) {
+			status = http.StatusNotFound
+		}
+		http.Error(w, err.Error(), status)
+		return
+	}
+	messages := map[string]string{"suspend": "User suspended", "restore": "User restored", "remove": "User removed"}
+	http.Redirect(w, r, "/admin?saved="+url.QueryEscape(messages[action]), http.StatusSeeOther)
 }

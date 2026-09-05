@@ -834,3 +834,253 @@ func (h *Handler) RoleAssignments(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": data, "links": map[string]any{"self": cursorFor(offset), "next": next}})
 }
+
+func userStatus(user *models.User) string {
+	if user.Active {
+		return "active"
+	}
+	return "inactive"
+}
+
+func multiDirectoryUser(user *models.User) map[string]any {
+	status := userStatus(user)
+	membershipStatus := "active"
+	if !user.Active {
+		membershipStatus = "suspended"
+	}
+	return map[string]any{
+		"accountId": user.ID, "accountType": "atlassian", "status": status,
+		"accountStatus": status, "membershipStatus": membershipStatus,
+		"name": user.DisplayName, "nickname": user.DisplayName, "email": user.Email,
+		"emailVerified": true, "claimStatus": "managed", "mfaEnabled": false,
+		"timeZone": user.TimeZone, "managementSource": "invited",
+		"counts": map[string]int{"groups": 0, "resources": 0},
+	}
+}
+
+func filterUsers(users []*models.User, query string) []*models.User {
+	query = strings.ToLower(strings.TrimSpace(query))
+	if query == "" {
+		return users
+	}
+	filtered := make([]*models.User, 0)
+	for _, user := range users {
+		if strings.Contains(strings.ToLower(user.DisplayName+" "+user.Email), query) {
+			filtered = append(filtered, user)
+		}
+	}
+	return filtered
+}
+
+func (h *Handler) DirectoryUsers(w http.ResponseWriter, r *http.Request) {
+	_, workspaceID, ok := h.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	if err := rejectUnknownQuery(r.URL.Query(), "cursor", "limit", "searchTerm"); err != nil {
+		failure(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	context, ok := h.loadRoleContext(w, r, workspaceID)
+	if !ok {
+		return
+	}
+	directoryID := r.PathValue("directoryId")
+	if !context.DirectoryIDs[directoryID] {
+		failure(w, http.StatusNotFound, "Directory was not found.")
+		return
+	}
+	users, err := h.Store.DirectoryUsers(r.Context(), directoryID)
+	if err != nil {
+		failure(w, http.StatusInternalServerError, "Directory user lookup failed.")
+		return
+	}
+	users = filterUsers(users, r.URL.Query().Get("searchTerm"))
+	offset, limit, err := parsePage(r.URL.Query())
+	if err != nil {
+		failure(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	page, next := pageSlice(users, offset, limit)
+	data := make([]map[string]any, 0, len(page))
+	for _, user := range page {
+		data = append(data, multiDirectoryUser(user))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": data, "links": map[string]any{"self": cursorFor(offset), "next": next}})
+}
+
+func (h *Handler) ManagedUsers(w http.ResponseWriter, r *http.Request) {
+	_, workspaceID, ok := h.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	if err := rejectUnknownQuery(r.URL.Query(), "cursor"); err != nil {
+		failure(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	context, ok := h.loadRoleContext(w, r, workspaceID)
+	if !ok {
+		return
+	}
+	if r.URL.Query().Get("cursor") != "" {
+		failure(w, http.StatusBadRequest, "The user cursor is invalid or expired.")
+		return
+	}
+	users := make([]*models.User, 0)
+	seen := map[string]bool{}
+	for directoryID := range context.DirectoryIDs {
+		directoryUsers, err := h.Store.DirectoryUsers(r.Context(), directoryID)
+		if err != nil {
+			failure(w, http.StatusInternalServerError, "Managed account lookup failed.")
+			return
+		}
+		for _, user := range directoryUsers {
+			if !seen[user.ID] {
+				seen[user.ID] = true
+				users = append(users, user)
+			}
+		}
+	}
+	data := make([]map[string]any, 0, len(users))
+	for _, user := range users {
+		data = append(data, map[string]any{
+			"account_id": user.ID, "account_type": "atlassian", "account_status": userStatus(user),
+			"name": user.DisplayName, "email": user.Email, "picture": strings.TrimRight(h.BaseURL, "/") + "/static/icons/user.svg",
+			"access_billable": user.Active,
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": data, "meta": map[string]int{"total": len(data)}, "links": map[string]string{"self": ""}})
+}
+
+func (h *Handler) DirectoryUserCount(w http.ResponseWriter, r *http.Request) {
+	_, workspaceID, ok := h.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	if err := rejectUnknownQuery(r.URL.Query(), "searchTerm"); err != nil {
+		failure(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	context, ok := h.loadRoleContext(w, r, workspaceID)
+	if !ok {
+		return
+	}
+	directoryID := r.PathValue("directoryId")
+	if !context.DirectoryIDs[directoryID] {
+		failure(w, http.StatusNotFound, "Directory was not found.")
+		return
+	}
+	users, err := h.Store.DirectoryUsers(r.Context(), directoryID)
+	if err != nil {
+		failure(w, http.StatusInternalServerError, "Directory user count failed.")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"count": len(filterUsers(users, r.URL.Query().Get("searchTerm")))})
+}
+
+func (h *Handler) DirectoryUserDetails(w http.ResponseWriter, r *http.Request) {
+	_, workspaceID, ok := h.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	context, ok := h.loadRoleContext(w, r, workspaceID)
+	if !ok {
+		return
+	}
+	directoryID := r.PathValue("directoryId")
+	if !context.DirectoryIDs[directoryID] {
+		failure(w, http.StatusNotFound, "Directory was not found.")
+		return
+	}
+	users, err := h.Store.DirectoryUsers(r.Context(), directoryID)
+	if err != nil {
+		failure(w, http.StatusInternalServerError, "Directory user lookup failed.")
+		return
+	}
+	for _, user := range users {
+		if user.ID == r.PathValue("userId") {
+			writeJSON(w, http.StatusOK, map[string]any{"data": multiDirectoryUser(user)})
+			return
+		}
+	}
+	failure(w, http.StatusNotFound, "User was not found.")
+}
+
+func (h *Handler) DirectoryUserLifecycle(w http.ResponseWriter, r *http.Request) {
+	actorID, workspaceID, ok := h.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	if _, ok := h.organizationForRequest(w, r, workspaceID); !ok {
+		return
+	}
+	directoryID, accountID := r.PathValue("directoryId"), r.PathValue("accountId")
+	var err error
+	switch {
+	case r.Method == http.MethodDelete:
+		err = h.Store.RemoveDirectoryUser(r.Context(), workspaceID, actorID, directoryID, accountID)
+	case strings.HasSuffix(r.URL.Path, "/suspend"):
+		err = h.Store.SetDirectoryUserActive(r.Context(), workspaceID, actorID, directoryID, accountID, false)
+	default:
+		err = h.Store.SetDirectoryUserActive(r.Context(), workspaceID, actorID, directoryID, accountID, true)
+	}
+	switch {
+	case errors.Is(err, store.ErrAdminValidation):
+		failure(w, http.StatusBadRequest, err.Error())
+	case errors.Is(err, pgx.ErrNoRows), errors.Is(err, store.ErrAdminNotFound):
+		failure(w, http.StatusNotFound, "Directory or user was not found.")
+	case err != nil:
+		failure(w, http.StatusInternalServerError, "User lifecycle update failed.")
+	default:
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func (h *Handler) InviteUsers(w http.ResponseWriter, r *http.Request) {
+	actorID, workspaceID, ok := h.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	context, ok := h.loadRoleContext(w, r, workspaceID)
+	if !ok {
+		return
+	}
+	var input struct {
+		Emails []string `json:"emails"`
+	}
+	if err := decodeJSONBody(r, &input); err != nil || len(input.Emails) < 1 || len(input.Emails) > 25 {
+		failure(w, http.StatusBadRequest, "Between 1 and 25 email addresses are required.")
+		return
+	}
+	directoryID := ""
+	for id := range context.DirectoryIDs {
+		directoryID = id
+		break
+	}
+	if directoryID == "" {
+		failure(w, http.StatusConflict, "Organization has no active directory.")
+		return
+	}
+	passwordHash, err := authn.UnusablePasswordHash()
+	if err != nil {
+		failure(w, http.StatusInternalServerError, "Invitation credential creation failed.")
+		return
+	}
+	data := make([]map[string]any, 0, len(input.Emails))
+	for _, email := range input.Emails {
+		name := strings.TrimSpace(strings.SplitN(email, "@", 2)[0])
+		user, err := h.Store.InviteDirectoryUser(r.Context(), workspaceID, actorID, directoryID, email, name, passwordHash)
+		if err != nil {
+			if errors.Is(err, store.ErrAdminValidation) {
+				failure(w, http.StatusBadRequest, err.Error())
+			} else if errors.Is(err, store.ErrAdminConflict) {
+				failure(w, http.StatusConflict, err.Error())
+			} else {
+				failure(w, http.StatusInternalServerError, "User invitation failed.")
+			}
+			return
+		}
+		data = append(data, map[string]any{"id": user.ID, "email": user.Email, "results": []any{}})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": data})
+}

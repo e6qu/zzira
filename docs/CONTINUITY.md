@@ -51,7 +51,7 @@ does not publish them as one OpenAPI document.
   strict pin validation, and focused generator tests.
 - Added exact-operation coverage generation. The first reviewed assessment
   records Automation as 8 partial and 7 missing operations. The organization
-  organization slices add 16 partial assessments; 1,176 operations remain explicitly
+  slices add 24 partial assessments; 1,168 operations remain explicitly
   unassessed rather than being inferred from route names.
 - Added organization, site, product, internal-directory, directory-user, group,
   group-member, role-binding, and organization-audit persistence with automatic
@@ -72,6 +72,9 @@ does not publish them as one OpenAPI document.
   reports direct and group-derived methods.
 - Extended `/admin` so site administrators grant and revoke each directory
   group's Jira Software, Jira Service Management, and Confluence access.
+- Added managed-account list/detail/invite/suspend/restore/remove APIs and UI.
+  Suspension and removal revoke sessions and API tokens atomically, mutations
+  are audited, and administrators cannot suspend or remove themselves.
 
 Validation after the organization foundation:
 
@@ -88,18 +91,20 @@ Validation after product access and role assignments:
 
 - All Go packages pass with the PostgreSQL integration suite enabled.
 - `go vet ./...`, the WebAssembly build, and all conformance checks pass.
-- The focused administration browser journey passes with product grant,
-  effective membership, audit, revocation, accessibility, and reflow coverage.
+- The focused administration browser journey passes with account lifecycle,
+  product grant, effective membership, audit, revocation, accessibility, and
+  reflow coverage.
 
 ## Current change
 
-1. Add managed-account status and profile administration, invitations, account
-   suspension/reactivation, and session/token revocation.
-2. Complete group detail/update/delete and directory-user operations from the
+1. Complete group detail/update/delete, directory-user search/stats, invitation
+   assignments/notifications, and richer managed-account profiles.
+2. Add per-directory membership state for multi-site account suspension.
+3. Complete remaining directory-user operations from the
    pinned Organizations contract.
-3. Add organization domains, authentication policies, identity-provider
+4. Add organization domains, authentication policies, identity-provider
    configuration, organization events, and the remaining central audit APIs.
-4. Extend revocation coverage from browser/API authorization to local replicas
+5. Extend revocation coverage from browser/API authorization to local replicas
    and queued mutations where the affected resource can already be cached.
 
 ## Resume here

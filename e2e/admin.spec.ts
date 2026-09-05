@@ -27,6 +27,24 @@ test('site admin manages a directory group and its audited membership', async ({
   await expect(page.getByRole('row', { name: /Jira Service Management/ })).toBeVisible();
   await expect(page.getByRole('row', { name: /Confluence/ })).toBeVisible();
 
+  const inviteEmail = `journey-${Date.now()}@example.invalid`;
+  await page.getByLabel('Display name').fill('Journey Invite');
+  await page.getByLabel('Email').fill(inviteEmail);
+  await page.getByRole('button', { name: 'Invite user' }).click();
+  await expect(page).toHaveURL(/\/admin\?saved=User\+invited$/);
+  let invitedRow = page.getByRole('row').filter({ hasText: inviteEmail });
+  await expect(invitedRow).toContainText('Active');
+  await invitedRow.getByRole('button', { name: 'Suspend' }).click();
+  await expect(page).toHaveURL(/\/admin\?saved=User\+suspended$/);
+  invitedRow = page.getByRole('row').filter({ hasText: inviteEmail });
+  await expect(invitedRow).toContainText('Suspended');
+  await invitedRow.getByRole('button', { name: 'Restore' }).click();
+  await expect(page).toHaveURL(/\/admin\?saved=User\+restored$/);
+  invitedRow = page.getByRole('row').filter({ hasText: inviteEmail });
+  await invitedRow.getByRole('button', { name: 'Remove' }).click();
+  await expect(page).toHaveURL(/\/admin\?saved=User\+removed$/);
+  await expect(page.getByRole('row').filter({ hasText: inviteEmail })).toHaveCount(0);
+
   const groupName = `delivery-managers-${Date.now()}`;
   await page.getByLabel('Group name').fill(groupName);
   await page.getByLabel('Description').fill('Coordinates plans, releases, and delivery evidence.');

@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 31,
+  "assessedTotal": 39,
   "counts": {
     "delivered": 0,
-    "partial": 24,
+    "partial": 32,
     "missing": 7,
-    "unassessed": 1176
+    "unassessed": 1168
   },
   "countsByFamily": {
     "automation": {
@@ -42,9 +42,9 @@
     },
     "organization-admin": {
       "delivered": 0,
-      "partial": 16,
+      "partial": 24,
       "missing": 0,
-      "unassessed": 31
+      "unassessed": 23
     }
   },
   "operations": [
@@ -9506,9 +9506,13 @@
       "operationId": "organization-admin:GET:/admin/v1/orgs/{orgId}/users",
       "family": "organization-admin",
       "hostClass": "central",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "e2e/admin.spec.ts",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Managed-account listing reports active and inactive directory accounts."
     },
     {
       "operationId": "organization-admin:POST:/admin/v1/orgs/{orgId}/users/{userId}/role-assignments/assign",
@@ -9686,17 +9690,25 @@
       "operationId": "organization-admin:GET:/admin/v2/orgs/{orgId}/directories/{directoryId}/users",
       "family": "organization-admin",
       "hostClass": "central",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "e2e/admin.spec.ts",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Directory user listing supports searchTerm and opaque cursor pagination."
     },
     {
       "operationId": "organization-admin:GET:/admin/v2/orgs/{orgId}/directories/{directoryId}/users/count",
       "family": "organization-admin",
       "hostClass": "central",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "e2e/admin.spec.ts",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Directory user counts support the implemented searchTerm filter."
     },
     {
       "operationId": "organization-admin:POST:/admin/v2/orgs/{orgId}/directories/{directoryId}/users/search",
@@ -9718,17 +9730,25 @@
       "operationId": "organization-admin:DELETE:/admin/v2/orgs/{orgId}/directories/{directoryId}/users/{accountId}",
       "family": "organization-admin",
       "hostClass": "central",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "e2e/admin.spec.ts",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Directory removal revokes memberships, group links, scoped direct roles, sessions, and API tokens atomically."
     },
     {
       "operationId": "organization-admin:POST:/admin/v2/orgs/{orgId}/directories/{directoryId}/users/{accountId}/restore",
       "family": "organization-admin",
       "hostClass": "central",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "e2e/admin.spec.ts",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Restoration reactivates the managed account and is audited."
     },
     {
       "operationId": "organization-admin:GET:/admin/v2/orgs/{orgId}/directories/{directoryId}/users/{accountId}/role-assignments",
@@ -9745,25 +9765,37 @@
       "operationId": "organization-admin:POST:/admin/v2/orgs/{orgId}/directories/{directoryId}/users/{accountId}/suspend",
       "family": "organization-admin",
       "hostClass": "central",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "e2e/admin.spec.ts",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Suspension immediately denies authentication and revokes browser sessions and API tokens."
     },
     {
       "operationId": "organization-admin:GET:/admin/v2/orgs/{orgId}/directories/{directoryId}/users/{userId}",
       "family": "organization-admin",
       "hostClass": "central",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "e2e/admin.spec.ts",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Directory account details report identity and lifecycle state."
     },
     {
       "operationId": "organization-admin:POST:/admin/v2/orgs/{orgId}/users/invite",
       "family": "organization-admin",
       "hostClass": "central",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "e2e/admin.spec.ts",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Invitations provision provider-ready accounts in the internal directory; notifications and optional assignment payloads remain."
     },
     {
       "operationId": "organization-admin:POST:/admin/v2/orgs/{orgId}/workspaces",
