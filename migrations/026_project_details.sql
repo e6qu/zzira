@@ -1,0 +1,6 @@
+ALTER TABLE projects
+  ADD COLUMN description TEXT NOT NULL DEFAULT '',
+  ADD COLUMN url TEXT NOT NULL DEFAULT '',
+  ADD COLUMN lead_account_id TEXT REFERENCES users(id),
+  ADD COLUMN assignee_type TEXT NOT NULL DEFAULT 'UNASSIGNED'
+    CHECK (assignee_type IN ('UNASSIGNED', 'PROJECT_LEAD'));

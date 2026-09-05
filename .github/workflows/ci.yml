@@ -35,6 +35,8 @@ jobs:
         run: GOOS=js GOARCH=wasm go build ./...
       - name: Vet
         run: go vet ./...
+      - name: Verify pinned Cloud API inventory
+        run: python3 api/conformance/inventory.py --check
       - name: Unit + integration tests
         env:
           TEST_DATABASE_URL: postgres://zzira:zzira@localhost:5433/zzira?sslmode=disable

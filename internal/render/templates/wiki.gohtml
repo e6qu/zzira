@@ -1,0 +1,48 @@
+{{define "wiki_start"}}
+<!doctype html><html lang="en"><head><title>Wiki · ZZIRA</title>{{template "head" .}}<script src="/static/wiki.js?v=1" defer></script></head><body class="page-wiki"><a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}<div class="app-shell">{{template "workspace_nav" .}}<main class="page page-fluid" id="main-content" tabindex="-1">
+{{end}}
+{{define "wiki_end"}}</main></div><div id="modal-root"></div><div id="sync-banner" class="sync-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div></body></html>{{end}}
+{{define "wiki_breadcrumbs"}}<nav class="issue-breadcrumbs" aria-label="Breadcrumb"><a href="/wiki">Wiki</a>{{with .Data.Space}}<span aria-hidden="true">/</span><a href="/wiki/spaces/{{.ID}}">{{.Name}}</a>{{end}}{{with .Data.Page}}<span aria-hidden="true">/</span><span aria-current="page">{{if .Title}}{{.Title}}{{else}}New page{{end}}</span>{{end}}</nav>{{end}}
+
+{{define "page_wiki_spaces"}}{{template "wiki_start" .}}
+<header class="page-header"><div><h1>Wiki</h1><p>Keep team knowledge, decisions, and project documentation together.</p></div></header>
+{{if .Data.Error}}<p class="form-error" role="alert">{{.Data.Error}}</p>{{end}}
+{{if .Data.CanAdmin}}<details class="surface-card wiki-create-space" {{if .Data.Error}}open{{end}}><summary class="btn">Create space</summary><form class="project-details-form" method="post" action="/wiki/spaces">
+<label for="space-name">Space name</label><input id="space-name" name="name" value="{{.Data.SpaceName}}" maxlength="255" required>
+<label for="space-key">Space key</label><input id="space-key" name="key" value="{{.Data.SpaceKey}}" pattern="[A-Za-z0-9]+" maxlength="255" required>
+<label for="space-description">Description</label><textarea id="space-description" name="description" rows="3">{{.Data.SpaceDescription}}</textarea>
+<label for="space-private"><input id="space-private" type="checkbox" name="private" value="true" {{if .Data.Private}}checked{{end}}> Private space — only you can access it</label>
+<button class="btn btn-primary" type="submit">Create space</button></form></details>{{end}}
+<div class="directory-grid">{{range .Data.Spaces}}<article class="directory-card"><header><div><h2><a href="/wiki/spaces/{{.ID}}">{{.Name}}</a></h2><p>{{.Key}} · {{if .Private}}Private{{else}}Workspace{{end}}</p></div></header><p>{{.Description}}</p><footer><a href="/wiki/spaces/{{.ID}}">Browse pages</a></footer></article>{{else}}<div class="empty-state"><strong>No spaces yet</strong><small>{{if .Data.CanAdmin}}Create a space to start writing.{{else}}Ask a workspace administrator to create your team's first space.{{end}}</small></div>{{end}}</div>
+{{template "wiki_end" .}}{{end}}
+
+{{define "page_wiki_space"}}{{template "wiki_start" .}}{{template "wiki_breadcrumbs" .}}
+<header class="page-header"><div><h1>{{.Data.Space.Name}}</h1><p>{{.Data.Space.Description}}</p></div><a class="btn btn-primary" href="/wiki/spaces/{{.Data.Space.ID}}/pages/new">Create page</a></header>
+<nav class="project-tabs" aria-label="Space pages"><a href="/wiki/spaces/{{.Data.Space.ID}}" {{if eq .Data.Status "current"}}aria-current="page"{{end}}>Published</a><a href="/wiki/spaces/{{.Data.Space.ID}}?status=draft" {{if eq .Data.Status "draft"}}aria-current="page"{{end}}>Your drafts</a><a href="/wiki/spaces/{{.Data.Space.ID}}?status=trashed" {{if eq .Data.Status "trashed"}}aria-current="page"{{end}}>Trash</a></nav>
+<form class="wiki-search" method="get" role="search"><label for="wiki-search">Find a page</label><input type="search" id="wiki-search" name="q" value="{{.Data.Query}}"><input type="hidden" name="status" value="{{.Data.Status}}"><button class="btn" type="submit">Search</button></form>
+<section class="surface-card" aria-label="Page tree">{{if .Data.Tree}}{{template "wiki_tree" .Data.Tree}}{{else}}<div class="empty-state"><strong>No pages found</strong><small>{{if .Data.Query}}Try another page title.{{else}}Create a page to share knowledge with your team.{{end}}</small></div>{{end}}</section>
+{{template "wiki_end" .}}{{end}}
+
+{{define "page_wiki_page"}}{{template "wiki_start" .}}{{template "wiki_breadcrumbs" .}}
+{{if .Data.Error}}<div class="form-error" role="alert"><strong>Page was not saved.</strong><p>{{.Data.Error}}</p><p>Your changes are still in the editor. Copy them before reloading the page.</p></div>{{end}}
+{{if .Data.Editing}}
+<header class="page-header"><h1>{{if .Data.Page.ID}}Edit page{{else}}Create page{{end}}</h1></header>
+<form class="surface-card project-details-form wiki-edit-form" method="post" action="{{if .Data.Page.ID}}/wiki/spaces/{{.Data.Space.ID}}/pages/{{.Data.Page.ID}}/edit{{else}}/wiki/spaces/{{.Data.Space.ID}}/pages/new{{end}}">
+<input type="hidden" name="version" value="{{.Data.Page.Version.Number}}">
+<label for="wiki-title">Page title</label><input id="wiki-title" name="title" value="{{.Data.Page.Title}}" maxlength="255" required>
+<label for="wiki-parent">Parent page</label><select id="wiki-parent" name="parentId"><option value="">Space root</option>{{range .Data.Pages}}{{if ne .ID $.Data.Page.ID}}<option value="{{.ID}}" {{if eq .ID $.Data.Page.ParentID}}selected{{end}}>{{.Title}}</option>{{end}}{{end}}</select>
+<label id="wiki-body-label" for="wiki-body">Page content</label>
+{{if not .Data.SourceMode}}<div class="wiki-editor-toolbar" data-wiki-toolbar hidden role="group" aria-label="Format page content"><button type="button" class="btn" data-wiki-command="bold">Bold</button><button type="button" class="btn" data-wiki-command="italic">Italic</button><button type="button" class="btn" data-wiki-command="insertUnorderedList">Bullet list</button><button type="button" class="btn" data-wiki-command="insertOrderedList">Numbered list</button></div><div class="wiki-editor" contenteditable="true" role="textbox" aria-multiline="true" aria-labelledby="wiki-body-label" data-wiki-editor hidden>{{wikiHTML .Data.Page.Body.Value}}</div>{{end}}
+<textarea id="wiki-body" name="body" rows="16" spellcheck="false">{{.Data.Page.Body.Value}}</textarea>
+<label for="wiki-status">Publish status</label><select id="wiki-status" name="status"><option value="current" {{if eq .Data.Page.Status "current"}}selected{{end}}>Published — visible to everyone with space access</option>{{if or (not .Data.Page.ID) (eq .Data.Page.Status "draft")}}<option value="draft" {{if eq .Data.Page.Status "draft"}}selected{{end}}>Draft — only you can view it</option>{{end}}</select>
+<label for="wiki-message">What changed?</label><input id="wiki-message" name="message" value="{{.Data.Page.Version.Message}}" maxlength="2000">
+<div class="project-form-actions"><button class="btn btn-primary" type="submit">Save page</button><a class="btn" href="{{if .Data.Page.ID}}/wiki/spaces/{{.Data.Space.ID}}/pages/{{.Data.Page.ID}}{{else}}/wiki/spaces/{{.Data.Space.ID}}{{end}}">Cancel</a></div>
+</form>
+{{else}}
+<header class="page-header"><div><h1>{{.Data.Page.Title}}</h1><p>{{.Data.Page.Status}} · Version {{.Data.Page.Version.Number}} · <time datetime="{{.Data.Page.Version.CreatedAt}}">{{.Data.Page.Version.CreatedAt}}</time></p></div>{{if ne .Data.Page.Status "trashed"}}<a class="btn btn-primary" href="/wiki/spaces/{{.Data.Space.ID}}/pages/{{.Data.Page.ID}}/edit">Edit page</a>{{end}}</header>
+<article class="wiki-document surface-card" aria-label="Page content">{{wikiHTML .Data.Page.Body.Value}}</article>
+<div class="project-form-actions">{{if eq .Data.Page.Status "current"}}<a class="btn" href="/wiki/spaces/{{.Data.Space.ID}}/pages/new?parent={{.Data.Page.ID}}">Create child page</a>{{end}}<details class="wiki-trash"><summary class="btn">{{if eq .Data.Page.Status "trashed"}}Restore page{{else}}Move to trash{{end}}</summary><form method="post" action="/wiki/spaces/{{.Data.Space.ID}}/pages/{{.Data.Page.ID}}/trash"><p>{{if eq .Data.Page.Status "trashed"}}Restore this page with its existing content and history.{{else}}This page will move to the space trash. You can restore it later.{{end}}</p><button class="btn" type="submit">{{if eq .Data.Page.Status "trashed"}}Confirm restore{{else}}Confirm move to trash{{end}}</button></form></details></div>
+<details class="surface-card wiki-history"><summary>Page history</summary><ol>{{range .Data.Versions}}<li><strong>Version {{.Number}}</strong> · <time datetime="{{.CreatedAt}}">{{.CreatedAt}}</time>{{if .Message}}<p>{{.Message}}</p>{{end}}</li>{{end}}</ol></details>
+{{end}}{{template "wiki_end" .}}{{end}}
+
+{{define "wiki_tree"}}<ul class="wiki-page-tree">{{range .}}<li><div><a href="/wiki/spaces/{{.Page.SpaceID}}/pages/{{.Page.ID}}">{{.Page.Title}}</a><small>Version {{.Page.Version.Number}} · <time datetime="{{.Page.Version.CreatedAt}}">{{.Page.Version.CreatedAt}}</time></small></div>{{if .Children}}{{template "wiki_tree" .Children}}{{end}}</li>{{end}}</ul>{{end}}

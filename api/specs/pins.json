@@ -1,0 +1,29 @@
+[
+  {
+    "name": "jira-v3",
+    "file": "api/specs/jira-v3.json",
+    "source": "https://dac-static.atlassian.com/cloud/jira/platform/swagger-v3.v3.json?_v=1.8516.101",
+    "retrieved": "2026-09-05",
+    "sha256": "5a549e4a1aec18210fe9bceb065c9bf13f7cd53105ac947d65958ac947be1d49",
+    "version": "1001.0.0-SNAPSHOT-82b018affa468e58f284fbe4df33536469d757df",
+    "prefix": ""
+  },
+  {
+    "name": "jira-software",
+    "file": "api/specs/jira-software.json",
+    "source": "https://dac-static.atlassian.com/cloud/jira/software/swagger.v3.json?_v=1.8516.101",
+    "retrieved": "2026-09-05",
+    "sha256": "4e108d54b99064475c6ba0f986cce46dcace81336e034b58a5400b93174b927a",
+    "version": "1001.0.0",
+    "prefix": ""
+  },
+  {
+    "name": "confluence-v2",
+    "file": "api/specs/confluence-v2.json",
+    "source": "https://dac-static.atlassian.com/cloud/confluence/openapi-v2.v3.json?_v=1.8516.101",
+    "retrieved": "2026-09-05",
+    "sha256": "451377c5a598ee8155acc11b611404f309bed4a4292ea87f88ed3bfed38fa0a8",
+    "version": "2.0.0",
+    "prefix": "/wiki/api/v2"
+  }
+]

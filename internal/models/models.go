@@ -44,11 +44,15 @@ type Priority struct {
 }
 
 type Project struct {
-	ID          string `json:"id"`
-	WorkspaceID string `json:"-"`
-	Key         string `json:"key"`
-	Name        string `json:"name"`
-	WorkflowID  string `json:"-"`
+	ID            string `json:"id"`
+	WorkspaceID   string `json:"-"`
+	Key           string `json:"key"`
+	Name          string `json:"name"`
+	WorkflowID    string `json:"-"`
+	Description   string `json:"description"`
+	URL           string `json:"url"`
+	LeadAccountID string `json:"leadAccountId,omitempty"`
+	AssigneeType  string `json:"assigneeType"`
 
 	SecuritySchemeID string `json:"-"`
 }

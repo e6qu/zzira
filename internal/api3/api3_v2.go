@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -20,10 +21,13 @@ func (h *Handler) projectBean(p *models.Project) map[string]any {
 		"id":             p.ID,
 		"key":            p.Key,
 		"name":           p.Name,
+		"description":    p.Description,
+		"url":            p.URL,
+		"assigneeType":   p.AssigneeType,
 		"self":           h.BaseURL + "/rest/api/3/project/" + p.Key,
 		"projectTypeKey": "software",
 		"simplified":     true,
-		"style":          "next-gen",
+		"style":          "classic",
 		"avatarUrls": map[string]string{
 			"48x48": h.BaseURL + "/static/img/avatar-default.svg",
 		},
@@ -59,17 +63,34 @@ func (h *Handler) searchProjects(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	values := make([]map[string]any, 0, len(projects))
-	for _, p := range projects {
+	start, limit, e := metadataPage(r)
+	if e != nil {
+		writeJerr(w, e)
+		return
+	}
+	projects, e = filterProjects(r, projects)
+	if e != nil {
+		writeJerr(w, e)
+		return
+	}
+	total := len(projects)
+	end := min(start, total) + min(limit, total-min(start, total))
+	values := make([]map[string]any, 0, end-min(start, total))
+	for _, p := range projects[min(start, total):end] {
 		values = append(values, h.projectBean(p))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"isLast":     true,
-		"maxResults": 50,
-		"startAt":    0,
-		"total":      len(values),
+	page := map[string]any{
+		"self":       h.projectPageURL(r, start, limit),
+		"isLast":     end >= total,
+		"maxResults": limit,
+		"startAt":    start,
+		"total":      total,
 		"values":     values,
-	})
+	}
+	if end < total && limit > 0 {
+		page["nextPage"] = h.projectPageURL(r, end, limit)
+	}
+	writeJSON(w, http.StatusOK, page)
 }
 
 func (h *Handler) getProject(w http.ResponseWriter, r *http.Request, keyOrID string) {
@@ -85,7 +106,7 @@ func (h *Handler) getProject(w http.ResponseWriter, r *http.Request, keyOrID str
 	}
 	for _, p := range projects {
 		if p.Key == keyOrID || p.ID == keyOrID {
-			writeJSON(w, http.StatusOK, h.projectBean(p))
+			h.writeProject(w, r, p)
 			return
 		}
 	}
@@ -477,16 +498,52 @@ func (h *Handler) search(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) searchJQL(w http.ResponseWriter, r *http.Request) {
 	var req searchRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		jiraFieldError(w, http.StatusBadRequest, map[string]string{"jql": "Invalid request payload."})
+	if r.Method == http.MethodGet {
+		q := r.URL.Query()
+		for key := range q {
+			switch key {
+			case "jql", "fields", "maxResults", "nextPageToken":
+			default:
+				jiraError(w, 400, "Unsupported enhanced search parameter: "+key)
+				return
+			}
+		}
+		req.JQL = q.Get("jql")
+		req.NextPageToken = q.Get("nextPageToken")
+		for _, raw := range q["fields"] {
+			req.Fields = append(req.Fields, strings.Split(raw, ",")...)
+		}
+		if q.Has("maxResults") {
+			n, err := strconv.Atoi(q.Get("maxResults"))
+			if err != nil {
+				jiraError(w, 400, "maxResults must be an integer.")
+				return
+			}
+			req.MaxResults = &n
+		}
+	} else {
+		r.Body = http.MaxBytesReader(w, r.Body, 2<<20)
+		decoder := json.NewDecoder(r.Body)
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&req); err != nil {
+			jiraError(w, 400, "Invalid enhanced search request: "+err.Error())
+			return
+		}
+		if err := decoder.Decode(new(any)); err != io.EOF {
+			jiraError(w, 400, "Expected one JSON object.")
+			return
+		}
+	}
+	if req.StartAt != nil {
+		jiraError(w, 400, "Use nextPageToken instead of startAt.")
 		return
 	}
 	maxResults := defaultSearchPageSize
 	if req.MaxResults != nil {
 		maxResults = *req.MaxResults
 	}
-	if e := validateSearchPage(0, maxResults); e != nil {
-		writeJerr(w, e)
+	if maxResults < 1 || maxResults > 5000 {
+		jiraError(w, 400, "maxResults must be between 1 and 5000.")
 		return
 	}
 	startAt := 0
@@ -497,7 +554,7 @@ func (h *Handler) searchJQL(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		startAt, err = strconv.Atoi(string(raw))
-		if err != nil {
+		if err != nil || startAt < 0 {
 			jiraError(w, http.StatusBadRequest, "Invalid nextPageToken.")
 			return
 		}
@@ -505,6 +562,15 @@ func (h *Handler) searchJQL(w http.ResponseWriter, r *http.Request) {
 	wsID, userID, e := h.authWorkspace(r)
 	if e != nil {
 		writeJerr(w, e)
+		return
+	}
+	parsed, err := jql.Parse(req.JQL)
+	if err != nil {
+		jiraError(w, 400, "Error in the JQL Query: "+err.Error())
+		return
+	}
+	if root, ok := parsed.Root.(jql.Text); ok && root.Value == "" {
+		jiraError(w, 400, "Enhanced search requires a bounded JQL query.")
 		return
 	}
 	c, e := h.compileJQL(r.Context(), req.JQL, userID)
@@ -523,9 +589,9 @@ func (h *Handler) searchJQL(w http.ResponseWriter, r *http.Request) {
 	}
 	beans := make([]map[string]any, 0, len(issues))
 	for _, i := range issues {
-		beans = append(beans, h.issueBean(i))
+		beans = append(beans, enhancedIssueFields(h.issueBean(i), req.Fields))
 	}
-	resp := map[string]any{"issues": beans}
+	resp := map[string]any{"issues": beans, "isLast": !hasMore}
 	if hasMore {
 		resp["nextPageToken"] = base64.URLEncoding.EncodeToString([]byte(strconv.Itoa(startAt + maxResults)))
 	}

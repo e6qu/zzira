@@ -84,17 +84,21 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.createFilter(w, r)
 	case path == "/project" && r.Method == http.MethodGet:
 		h.listProjects(w, r)
+	case path == "/project" && r.Method == http.MethodPost:
+		h.createProject(w, r)
 	case path == "/project/search" && r.Method == http.MethodGet:
 		h.searchProjects(w, r)
 	case strings.HasPrefix(path, "/project/") && r.Method == http.MethodGet:
 		h.getProject(w, r, strings.TrimPrefix(path, "/project/"))
+	case strings.HasPrefix(path, "/project/") && r.Method == http.MethodPut:
+		h.updateProject(w, r, strings.TrimPrefix(path, "/project/"))
 	case path == "/user/search" && r.Method == http.MethodGet:
 		h.searchUsers(w, r)
 	case path == "/user" && r.Method == http.MethodGet:
 		h.getUser(w, r)
 	case path == "/search" && (r.Method == http.MethodGet || r.Method == http.MethodPost):
 		h.search(w, r)
-	case path == "/search/jql" && r.Method == http.MethodPost:
+	case path == "/search/jql" && (r.Method == http.MethodPost || r.Method == http.MethodGet):
 		h.searchJQL(w, r)
 	case path == "/search/approximate-count" && r.Method == http.MethodPost:
 		h.searchCount(w, r)
@@ -253,15 +257,12 @@ func writeJerr(w http.ResponseWriter, e *jerr) {
 
 func (h *Handler) serverInfo(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
-		"baseUrl":     h.BaseURL,
-		"version":     build.Version,
-		"buildNumber": 0,
-		"scmInfo":     "",
-		"product":     build.Product,
-		"deploymentType": map[string]any{
-			"type":          "Cloud",
-			"remoteAddress": r.RemoteAddr,
-		},
+		"baseUrl":        h.BaseURL,
+		"version":        build.Version,
+		"buildNumber":    0,
+		"scmInfo":        "",
+		"product":        build.Product,
+		"deploymentType": "Cloud",
 	})
 }
 
@@ -374,11 +375,15 @@ func (h *Handler) createIssue(w http.ResponseWriter, r *http.Request) {
 			priorityID = req.Fields.Priority.Name
 		}
 	}
-	description := ""
-	if len(req.Fields.Description) > 0 {
-		description = adfToPlainText(req.Fields.Description)
-	}
 	assigneeID := ""
+	var rawRequest struct {
+		Fields map[string]json.RawMessage `json:"fields"`
+	}
+	if err := json.Unmarshal(body, &rawRequest); err != nil {
+		jiraError(w, 400, "Invalid issue fields.")
+		return
+	}
+	_, assigneeProvided := rawRequest.Fields["assignee"]
 	if req.Fields.Assignee != nil {
 		assigneeID = req.Fields.Assignee.AccountID
 	}
@@ -391,14 +396,15 @@ func (h *Handler) createIssue(w http.ResponseWriter, r *http.Request) {
 		projectIDOrKey = req.Fields.Project.ID
 	}
 	issue, _, err := h.Commands.CreateIssue(r.Context(), commands.CreateIssueInput{
-		ActorID:        userID,
-		WorkspaceID:    wsID,
-		ProjectIDOrKey: projectIDOrKey,
-		Summary:        req.Fields.Summary,
-		Description:    description,
-		IssueTypeID:    issueTypeID,
-		PriorityID:     priorityID,
-		AssigneeID:     assigneeID,
+		ActorID:                   userID,
+		WorkspaceID:               wsID,
+		ProjectIDOrKey:            projectIDOrKey,
+		Summary:                   req.Fields.Summary,
+		DescriptionADF:            req.Fields.Description,
+		IssueTypeID:               issueTypeID,
+		PriorityID:                priorityID,
+		AssigneeID:                assigneeID,
+		UseProjectDefaultAssignee: !assigneeProvided || assigneeID == "-1",
 		SecurityLevelID: func() string {
 			if req.Fields.Security == nil {
 				return ""
@@ -905,36 +911,6 @@ func (h *Handler) editMeta(w http.ResponseWriter, r *http.Request, idOrKey strin
 }
 
 // ---- shared helpers ----
-
-// adfToPlainText extracts raw text from an ADF doc (V1 normalizer).
-func adfToPlainText(raw json.RawMessage) string {
-	type adfNode struct {
-		Type    string    `json:"type"`
-		Text    string    `json:"text"`
-		Content []adfNode `json:"content"`
-	}
-	var doc struct {
-		Content []adfNode `json:"content"`
-	}
-	if err := json.Unmarshal(raw, &doc); err != nil {
-		return ""
-	}
-	var b strings.Builder
-	var walk func(nodes []adfNode)
-	walk = func(nodes []adfNode) {
-		for _, n := range nodes {
-			if n.Text != "" {
-				b.WriteString(n.Text)
-			}
-			walk(n.Content)
-		}
-	}
-	for _, block := range doc.Content {
-		walk(block.Content)
-		b.WriteString("\n")
-	}
-	return strings.TrimRight(b.String(), "\n")
-}
 
 func jiraError(w http.ResponseWriter, status int, message string) {
 	writeJSON(w, status, map[string]any{"errorMessages": []string{message}})

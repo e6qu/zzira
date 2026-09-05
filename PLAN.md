@@ -2,7 +2,7 @@
 
 A Jira-style issue tracker rebuilt on the delta-sync architecture described in
 [Linear's "Rebuilding delta sync read path"](https://linear.app/now/rebuilding-delta-sync-read-path),
-**API-compatible with Atlassian's published Jira Cloud REST API** and visually modeled on Jira.
+**Targeting compatibility with Atlassian's published Jira Cloud REST API** and visually modeled on Jira. Full conformance remains unfinished; see the current scope below.
 
 **Stack:** Go backend + Postgres · HTMX frontend · browser-local SQLite (WASM/OPFS) ·
 one isomorphic Go renderer compiled to both a server binary and a client `.wasm`.
@@ -21,7 +21,15 @@ one isomorphic Go renderer compiled to both a server binary and a client `.wasm`
 
 ---
 
-## Delivery status (updated as slices land)
+## Current product scope
+
+The 2026-09-05 request expands the target to the whole Jira Cloud surface plus
+wiki/Confluence, diagrams/graphs, reports/metrics, custom dashboards, releases,
+automation/schedules and app/plugin compatibility. [CLOUD_PARITY.md](docs/CLOUD_PARITY.md)
+supersedes the historical exclusions below. Slice completion is not full product
+or API conformance.
+
+## Delivery status (historical slices)
 
 | Slice | Status |
 |---|---|
@@ -66,7 +74,7 @@ The authoritative endpoint ledger lives in `api/conformance/MATRIX.md`.
   and Playwright E2E (offline, two-browser, multi-tab, a11y, visual diff) running in
   CI against the real stack. A red frontend gate blocks merge exactly like a backend gate.
 
-### Non-goals (for v1)
+### Historical non-goals (superseded by the current product scope)
 
 - Jira Service Management, mobile push, marketplace apps, dashboards/gadgets (last API tier).
 - Offline concurrent editing with CRDT merge — writes go through the server

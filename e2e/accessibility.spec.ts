@@ -80,7 +80,7 @@ test('WCAG A/AA: every primary page passes axe in light and dark themes', async 
   const issueHref = await firstIssueHref(page);
   const pages = [
     '/', '/dashboard', '/notifications', '/projects', '/projects/ZZ', '/people', '/profile',
-    '/settings/workflows', '/settings/workflows/wf_default',
+    '/settings/workflows', '/settings/workflows/wf_default', '/projects/new', '/projects/ZZ/settings', '/wiki',
     '/issues/ZZ', '/board/brd_default/backlog', '/board/brd_default', '/board/brd_default/settings', issueHref,
   ];
 
@@ -238,7 +238,7 @@ test('controls meet WCAG 2.2 minimum target size', async ({ page }) => {
   const issueHref = await firstIssueHref(page);
   for (const path of [
     '/', '/projects', '/projects/ZZ', '/people', '/profile',
-    '/settings/workflows', '/settings/workflows/wf_default',
+    '/settings/workflows', '/settings/workflows/wf_default', '/projects/new', '/projects/ZZ/settings', '/wiki',
     '/issues/ZZ', '/board/brd_default/backlog', '/board/brd_default', '/board/brd_default/settings', issueHref,
   ]) {
     await page.goto(path);
@@ -264,7 +264,7 @@ test('primary pages reflow without document-level horizontal scrolling at 320px'
   await page.setViewportSize({ width: 320, height: 720 });
   for (const path of [
     '/', '/projects', '/projects/ZZ', '/people', '/profile',
-    '/settings/workflows', '/settings/workflows/wf_default',
+    '/settings/workflows', '/settings/workflows/wf_default', '/projects/new', '/projects/ZZ/settings', '/wiki',
     '/issues/ZZ', '/board/brd_default/backlog', '/board/brd_default', '/board/brd_default/settings', issueHref,
   ]) {
     await page.goto(path);

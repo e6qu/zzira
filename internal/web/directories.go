@@ -19,7 +19,8 @@ type projectDirectoryCard struct {
 }
 
 type projectsPageData struct {
-	Projects []projectDirectoryCard
+	Projects  []projectDirectoryCard
+	CanCreate bool
 }
 
 type projectOverviewData struct {
@@ -97,6 +98,11 @@ func (h *Handler) ProjectsPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data := projectsPageData{Projects: make([]projectDirectoryCard, 0, len(projects))}
+	data.CanCreate, err = h.Store.IsAdmin(r.Context(), wsID, user.ID)
+	if err != nil {
+		http.Error(w, "internal error", 500)
+		return
+	}
 	for _, project := range projects {
 		issueCount, err := h.Store.IssueCountByProject(r.Context(), wsID, project.ID, user.ID)
 		if err != nil {

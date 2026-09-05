@@ -1,9 +1,12 @@
 # ZZIRA × Atlassian Jira Cloud REST API — Compat Matrix
 
-Generated from the delivered surface. Legend: ✅ conformant · 🟡 subset
-(shape-conformant, reduced semantics) · ⛔ not implemented. Public compatibility
-is deliberately confined to `/rest/api/3` and `/rest/agile/1.0`; ZZIRA-owned
-control-plane endpoints use `/rest/zzira/1` and are never presented as Jira APIs.
+This is a historical delivered-slice ledger, not a certification of full Jira
+conformance. Legend: ✅ a tested delivered slice · 🟡 a known subset · ⛔ missing.
+A ✅ does not establish that every request option, wire type, permission rule or
+client behavior matches Jira. The broader review and [940-operation pinned
+inventory](cloud-operations.json) are described in [CLOUD_PARITY.md](../../docs/CLOUD_PARITY.md).
+The public API targets `/rest/api/3`, `/rest/agile/1.0` and `/wiki/api/v2`.
+ZZIRA-owned control-plane endpoints use `/rest/zzira/1`.
 
 ## Tier A — Core issue tracking
 
@@ -12,7 +15,7 @@ control-plane endpoints use `/rest/zzira/1` and are never presented as Jira APIs
 | GET /rest/api/3/serverInfo | ✅ | |
 | GET /rest/api/3/myself | ✅ | |
 | GET /rest/api/3/user · /user/search | ✅ | workspace members |
-| GET/POST /rest/api/3/project · /project/search · /project/{keyOrId} | ✅ | |
+| GET/POST /rest/api/3/project · GET /project/search · GET/PUT /project/{keyOrId} | 🟡 | Shared create/details commands and browser journey; software Scrum/Kanban templates; pagination/filtering/order; schemes, project roles and lifecycle remain |
 | POST /rest/api/3/issue | ✅ | Project key/id, ADF description, assignee, priority, labels, security and typed context-aware custom fields; unsupported fields are explicit errors |
 | GET/PUT/DELETE /rest/api/3/issue/{idOrKey} | ✅ | expand=renderedFields |
 | GET/PUT /rest/api/3/issue/{idOrKey}/assignee | ✅ | PUT fields.assignee + dedicated assignee endpoint |
@@ -24,7 +27,7 @@ control-plane endpoints use `/rest/zzira/1` and are never presented as Jira APIs
 | GET /rest/api/3/issue/{idOrKey}/changelog | ✅ | derived from the action log |
 | /worklog CRUD | ✅ | author-only delete |
 | POST /issue/{idOrKey}/attachments · /attachment/{id} · /attachment/content/{id} | ✅ | X-Atlassian-Token semantics |
-| GET /rest/api/3/search · POST /search · /search/jql · /search/approximate-count | ✅ | JQL v1 subset; explicit pagination is validated rather than rewritten |
+| GET /rest/api/3/search · POST /search · GET/POST /search/jql · POST /search/approximate-count | 🟡 | JQL subset; enhanced search supports bounded queries, IDs-only defaults, field projections, isLast/tokens and 1–5000 result limits; expansions and stable cursor semantics remain |
 | GET /rest/api/3/mypermissions · POST /permissions/check | ✅ | evaluated from workspace role |
 | /issueLinkType · POST /issueLink · DELETE /issueLink/{id} | ✅ | links sync to replicas |
 | GET /rest/api/3/label | ✅ | distinct labels + query |
@@ -60,13 +63,17 @@ control-plane endpoints use `/rest/zzira/1` and are never presented as Jira APIs
 | Screens/schemes APIs | ⛔ | editmeta serves the form contract |
 | Notifications (custom) GET/PUT /rest/zzira/1/notifications · POST /notifications/read-all | ✅ | Private per-user entities with synchronized read state, unread count, and idempotent mutations |
 
-## Tier D — long tail
+## Tier D — expanded product surfaces
 
 | Endpoint | Status | Notes |
 |---|---|---|
-| Dashboards (minimal) | ✅ custom | /dashboard: status counts, my-open, recent activity — Jira gadget API not implemented (⛔, justified: widget framework is proprietary surface) |
-| dev-status (SCM links) | ⛔ | justified: requires real SCM integrations |
-| Service management surfaces | ⛔ | separate Atlassian product |
+| Dashboards (minimal) | ✅ custom | /dashboard: status counts, my-open, recent activity — Jira gadget API not implemented (⛔; included in the expanded scope) |
+| dev-status (SCM links) | ⛔ | requires SCM integration APIs and client tests |
+| Service management surfaces | ⛔ | separate product surface included in the full-surface ledger |
+| Automation and schedules | ⛔ | durable scheduler, rule editor, execution/audit and API contracts remain |
+| Releases, metrics and reports | ⛔ | version lifecycle, planning membership, historical calculations and chart journeys remain |
+| Apps/plugins, diagrams and graphs | ⛔ | installation/runtime modules, diagram authoring and graph/report surfaces remain |
+| Confluence Cloud /wiki/api/v2 spaces and pages | 🟡 | Initial space/page CRUD, parent validation, storage subset, drafts, versions, trash/restore and permission-filtered action log; exact limits in CLOUD_PARITY.md |
 
 ## E2E (browser-proven, Playwright/Chromium)
 

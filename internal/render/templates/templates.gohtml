@@ -20,7 +20,7 @@
   }());
 </script>
 <link rel="stylesheet" href="/static/css/tokens.css?v=4">
-<link rel="stylesheet" href="/static/css/workspace.css?v=9">
+<link rel="stylesheet" href="/static/css/workspace.css?v=10">
 <link rel="preload" href="/static/zzira-worker.wasm?v=2" as="fetch" crossorigin>
 <link rel="preload" href="/static/sqlite/sqlite3.wasm" as="fetch" crossorigin>
 <script src="/static/htmx/htmx.min.js" defer></script>
@@ -93,6 +93,7 @@
   <a class="workspace-identity" href="/projects"><span class="workspace-avatar" aria-hidden="true">ZZ</span><span class="workspace-copy"><strong>ZZIRA</strong><small>Browse projects</small></span></a>
   {{end}}
   <nav aria-label="Primary">
+    <a class="nav-wiki" href="/wiki" {{if eq .Active "wiki"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7l1 2 1-2h7v16h-7l-1-2-1 2H4zM12 6v12"/></svg><span>Wiki</span></a>
     <a class="nav-dashboard" href="/dashboard" {{if eq .Active "dashboard"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h6v7H4zM14 4h6v16h-6zM4 4h6v5H4z"/></svg><span>Your work</span></a>
     <a class="nav-projects" href="/projects" {{if eq .Active "projects"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5h7l2 2h8v10h-17z"/></svg><span>Projects</span></a>
     <a class="nav-people" href="/people" {{if eq .Active "people"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3.5 19c.5-4 2.2-6 5.5-6s5 2 5.5 6M15 6.5a3 3 0 0 1 0 5.8M16 14c2.7.4 4.1 2 4.5 5"/></svg><span>People</span></a>
@@ -105,6 +106,7 @@
     <a class="nav-issues" href="{{.WorkURL}}" {{if eq $.Active "issues"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 6h13M7 12h13M7 18h13"/><circle cx="4" cy="6" r=".8"/><circle cx="4" cy="12" r=".8"/><circle cx="4" cy="18" r=".8"/></svg><span>All work</span></a>
     {{end}}{{end}}
     <div class="nav-label">Settings</div>
+    {{with .Navigation}}{{if .CanAdmin}}{{with .Current}}<a class="nav-project-settings" href="/projects/{{.Project.Key}}/settings" {{if eq $.Active "project-settings"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6M16 14v6"/></svg><span>Project settings</span></a>{{end}}{{end}}{{end}}
     <a class="nav-workflows" href="/settings/workflows" {{if eq .Active "workflows"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M7 6h10M18 8l-5 8M11 16 6 8"/></svg><span>Workflows</span></a>
   </nav>
   <div class="sync-rail" id="sync-rail" data-state="online">
@@ -757,7 +759,7 @@
   <div class="app-shell">{{template "workspace_nav" .}}
   <main class="page page-directory" id="main-content" tabindex="-1">
     <nav class="issue-breadcrumbs" aria-label="Breadcrumb"><span aria-current="page">Projects</span></nav>
-    <header class="page-header"><div><span class="eyebrow">Spaces</span><h1>Projects</h1><p>Browse every software project, its board, work items, and active workflow.</p></div></header>
+    <header class="page-header"><div><span class="eyebrow">Spaces</span><h1>Projects</h1><p>Browse every software project, its board, work items, and active workflow.</p></div>{{if .Data.CanCreate}}<a class="btn btn-primary" href="/projects/new">Create project</a>{{end}}</header>
     <div class="directory-grid">
     {{range .Data.Projects}}<article class="directory-card project-card">
       <header><span class="project-card-avatar" aria-hidden="true">{{.Project.Key}}</span><div><h2><a href="/projects/{{.Project.Key}}">{{.Project.Name}}</a></h2><p>{{.Project.Key}} · Software project</p></div></header>
@@ -777,7 +779,7 @@
   <a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}
   <div class="app-shell">{{template "workspace_nav" .}}
   <main class="page page-fluid" id="main-content" tabindex="-1">
-    <nav class="project-tabs" aria-label="{{.Data.Project.Name}} project"><a href="/projects/{{.Data.Project.Key}}" aria-current="page">Overview</a>{{with .Data.PrimaryBoard}}<a href="/board/{{.ID}}/backlog">Backlog</a><a href="/board/{{.ID}}">Board</a>{{end}}<a href="/issues/{{.Data.Project.Key}}">Work items</a></nav>
+    <nav class="project-tabs" aria-label="{{.Data.Project.Name}} project"><a href="/projects/{{.Data.Project.Key}}" aria-current="page">Overview</a>{{with .Data.PrimaryBoard}}<a href="/board/{{.ID}}/backlog">Backlog</a><a href="/board/{{.ID}}">Board</a>{{end}}<a href="/issues/{{.Data.Project.Key}}">Work items</a>{{if .Navigation.CanAdmin}}<a href="/projects/{{.Data.Project.Key}}/settings">Settings</a>{{end}}</nav>
     <nav class="issue-breadcrumbs" aria-label="Breadcrumb"><a href="/projects">Projects</a><span aria-hidden="true">/</span><span aria-current="page">{{.Data.Project.Name}}</span></nav>
     <header class="project-hero"><span class="project-hero-avatar" aria-hidden="true">{{.Data.Project.Key}}</span><div><span class="eyebrow">Software project</span><h1>{{.Data.Project.Name}}</h1><p>{{.Data.Project.Key}} · Organize delivery across the board, work list, and workflow.</p></div><button type="button" class="btn btn-primary" hx-get="/issues/new?project={{.Data.Project.Key}}" hx-target="#modal-root" hx-swap="innerHTML" onclick="window.zzira.openModal(this)">Create work item</button></header>
     <div class="project-overview-grid">

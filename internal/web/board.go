@@ -275,7 +275,7 @@ func (h *Handler) BoardPage(w http.ResponseWriter, r *http.Request, id string) {
 		return
 	}
 	if err != nil {
-		log.Print("board: build failed")
+		log.Printf("board: build failed: %v", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}

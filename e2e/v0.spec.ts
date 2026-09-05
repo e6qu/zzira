@@ -49,6 +49,7 @@ test('V0 station 4: Jira API contract smoke (serverInfo + create via REST)', asy
 });
 
 test('V0 station 5: login → create via UI → lands on issue view', async () => {
+  await page.goto('/projects/ZZ');
   await page.click('text=Create');
   await expect(page.locator('.modal input[name=summary]')).toBeVisible({ timeout: 15_000 });
   const summary = `E2E UI issue ${Date.now()}`;
