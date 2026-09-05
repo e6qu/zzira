@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strconv"
 
 	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/models"
@@ -66,12 +67,12 @@ func (h *Handler) projectSettings(w http.ResponseWriter, r *http.Request, key st
 			if !data.Creating {
 				target += "/settings?saved=1"
 			}
-			http.Redirect(w, r, target, http.StatusSeeOther)
+			redirectLocal(w, r, target)
 			return
 		}
 		var validation *commands.ProjectValidationError
 		if !errors.As(err, &validation) {
-			log.Printf("save project settings: %v", err)
+			log.Print("save project settings: ", strconv.Quote(err.Error()))
 			http.Error(w, "Could not save project.", 500)
 			return
 		}

@@ -74,7 +74,7 @@ func wikiWebError(err error) (int, string) {
 	case errors.As(err, &pgerr) && pgerr.Code == "23505":
 		return 400, "A space with this key or a published page with this title already exists."
 	default:
-		log.Printf("wiki: %v", err)
+		log.Print("wiki: ", strconv.Quote(err.Error()))
 		return 500, "Could not complete the wiki operation."
 	}
 }
@@ -102,7 +102,7 @@ func (h *Handler) WikiHome(w http.ResponseWriter, r *http.Request) {
 		data.Private = r.PostFormValue("private") == "true"
 		space, err := h.Commands.CreateWikiSpace(r.Context(), ws, user.ID, data.SpaceKey, data.SpaceName, data.SpaceDescription, data.Private)
 		if err == nil {
-			http.Redirect(w, r, "/wiki/spaces/"+space.ID, 303)
+			redirectLocal(w, r, "/wiki/spaces/"+space.ID)
 			return
 		}
 		status, data.Error = wikiWebError(err)
@@ -198,7 +198,7 @@ func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 		page.Version.Number = version
 		saved, err := h.Commands.SaveWikiPage(r.Context(), ws, user.ID, *page)
 		if err == nil {
-			http.Redirect(w, r, "/wiki/spaces/"+space.ID+"/pages/"+saved.ID, 303)
+			redirectLocal(w, r, "/wiki/spaces/"+space.ID+"/pages/"+saved.ID)
 			return
 		}
 		status, data.Error = wikiWebError(err)
@@ -252,5 +252,5 @@ func (h *Handler) WikiTrash(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, msg, status)
 		return
 	}
-	http.Redirect(w, r, "/wiki/spaces/"+page.SpaceID, 303)
+	redirectLocal(w, r, "/wiki/spaces/"+page.SpaceID)
 }

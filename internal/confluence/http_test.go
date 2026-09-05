@@ -1,8 +1,11 @@
 package confluence
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"log"
 	"net/http/httptest"
 	"os"
 	"strings"
@@ -12,6 +15,22 @@ import (
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
 )
+
+func TestWriteErrorEscapesLogInput(t *testing.T) {
+	var output bytes.Buffer
+	previous := log.Writer()
+	log.SetOutput(&output)
+	t.Cleanup(func() { log.SetOutput(previous) })
+	rec := httptest.NewRecorder()
+	writeError(rec, errors.New("database value\r\nforged entry\x1b[31m"))
+	if rec.Code != 500 || strings.Contains(rec.Body.String(), "database value") {
+		t.Fatalf("unexpected error response: %d %s", rec.Code, rec.Body.String())
+	}
+	logged := output.String()
+	if strings.Count(logged, "\n") != 1 || strings.ContainsAny(logged, "\r\x1b") || !strings.Contains(logged, `database value\r\nforged entry\x1b[31m`) {
+		t.Fatalf("unsafe log entry: %q", logged)
+	}
+}
 
 func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	dsn := os.Getenv("TEST_DATABASE_URL")

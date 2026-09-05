@@ -55,7 +55,7 @@ func writeError(w http.ResponseWriter, err error) {
 	case errors.As(err, &pgerr) && pgerr.Code == "23505":
 		failure(w, 400, "A space with this key or a published page with this title already exists.")
 	default:
-		log.Printf("confluence operation: %v", err)
+		log.Print("confluence operation: ", strconv.Quote(err.Error()))
 		failure(w, 500, "Could not complete the wiki operation.")
 	}
 }
