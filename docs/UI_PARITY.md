@@ -22,7 +22,7 @@ The endpoint-level source of truth remains [the API matrix](../api/conformance/M
 | Triage an issue | ✅ | Inline system/custom fields, labels, security, watchers, links, unified activity filters, attachments/worklogs, and their Jira-shaped API transitions are browser- and integration-tested |
 | Run a board | ✅ | Mouse/keyboard ranking, live updates, text/quick/assignee filters, configurable assignee swimlanes, WIP-limit feedback, card fields, and in-place issue preview are browser/API tested |
 | Work offline | ✅ | Issue reads, edit outbox, reconnect drain and server-wins reconciliation are browser-proven; mutation UI is protected from in-flight replica refreshes |
-| Review a dashboard | 🟡 | Status counts, assigned work and recent activity; no configurable dashboards |
+| Review a dashboard | 🟡 | Fixed work overview plus configurable private/shared dashboards, favourites, layouts, JQL/filter gadgets, statistics, accessible pie charts and refresh; advanced reports and third-party gadgets remain |
 | Plan a backlog/sprint | ✅ | Project backlog and open-sprint grouping, cross-group movement, rank controls, issue preview, sprint create/edit/start/complete, and equivalent Agile API lifecycle are browser/integration-tested; epic/version planning is a separate enhancement |
 | Administer workflows | 🟡 | Workflow directory, read-only built-in diagram, custom workflow creation, transition add/remove, and project assignment are browser-tested; status creation and full schemes/conditions remain |
 | Administer a project | 🟡 | Create Scrum/Kanban projects, edit details/lead/default assignment, and navigate to board/workflow settings; roles, schemes, fields, security and lifecycle remain |

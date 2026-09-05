@@ -32,6 +32,10 @@ type Handler struct {
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/rest/api/3")
 	switch {
+	case path == "/dashboard":
+		h.dashboardRoute(w, r, nil)
+	case strings.HasPrefix(path, "/dashboard/"):
+		h.dashboardRoute(w, r, strings.Split(strings.TrimPrefix(path, "/dashboard/"), "/"))
 	case path == "/serverInfo" && r.Method == http.MethodGet:
 		h.serverInfo(w, r)
 	case path == "/myself" && r.Method == http.MethodGet:

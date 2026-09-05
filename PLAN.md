@@ -39,7 +39,7 @@ or API conformance.
 | V3 rich content | ✅ done — ADF subset + editor, attachments, worklogs, renderedFields |
 | V4 boards, agile & real-time | ✅ done — LexoRank, sprints, SSE pokes, watchers/notifications |
 | V5 platform & admin | ✅ done-proofs — security tombstones, custom fields E2E, webhooks, filters CRUD, workflow schemes + enforcement, roles list |
-| V6 long tail | ✅ minimal dashboards delivered; remaining ⛔s justified in `api/conformance/MATRIX.md` |
+| V6 long tail | 🟡 configurable dashboards and 16/17 pinned dashboard operations delivered; other long-tail surfaces remain in `api/conformance/MATRIX.md` |
 
 The authoritative endpoint ledger lives in `api/conformance/MATRIX.md`.
 
@@ -495,7 +495,7 @@ visual resemblance alone does not count.
 | **Board** | 🟡 | Rank/status drag, keyboard move, live convergence, local filter, scroll-contained columns; quick filters, swimlanes, WIP rules and card detail remain |
 | **Issue view** | ✅ | Inline system/custom fields, unified activity, comments, attachments, worklogs, history, links, watchers and security-aware actions |
 | **Create issue** | ✅ | Shared createmeta schema, project/type, assignment, priority, labels, security, typed custom fields, validation recovery and create-another |
-| **Dashboard** | 🟡 | Status/assignment snapshot and activity; saved dashboards/gadgets remain out of the supported core boundary |
+| **Dashboard** | 🟡 | Fixed work overview plus private/shared custom dashboards, favourites, five layouts, native JQL/filter gadgets, accessible charts and refresh; external gadget runtimes and advanced reports remain |
 | **Workflow settings** | 🟡 | Workflow directory and diagram, protected default, custom workflow creation, transition editing and project assignment; conditions, statuses and full schemes remain |
 | **Project settings** | ⛔ | Workflow assignment is delivered; details, roles, work types, fields, security, boards and webhooks remain |
 | **Quick search** | ⛔ | Global JQL submit exists; recent/starred command palette remains |
