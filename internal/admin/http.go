@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/mail"
 	"net/url"
 	"sort"
 	"strconv"
@@ -23,9 +24,10 @@ import (
 )
 
 type Handler struct {
-	Store         *store.Store
-	BaseURL       string
-	WorkspaceSlug string
+	Store                             *store.Store
+	BaseURL                           string
+	WorkspaceSlug                     string
+	InvitationNotificationsConfigured bool
 }
 
 type adminError struct {
@@ -1028,20 +1030,93 @@ func (h *Handler) InviteUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var input struct {
-		Emails []string `json:"emails"`
+		Emails          []string `json:"emails"`
+		PermissionRules []struct {
+			Resource string `json:"resource"`
+			Role     string `json:"role"`
+		} `json:"permissionRules"`
+		AdditionalGroups []string `json:"additionalGroups"`
+		SendNotification bool     `json:"sendNotification"`
+		NotificationText string   `json:"notificationText"`
 	}
 	if err := decodeJSONBody(r, &input); err != nil || len(input.Emails) < 1 || len(input.Emails) > 25 {
 		failure(w, http.StatusBadRequest, "Between 1 and 25 email addresses are required.")
 		return
 	}
-	directoryID := ""
-	for id := range context.DirectoryIDs {
-		directoryID = id
-		break
+	for _, email := range input.Emails {
+		address, err := mail.ParseAddress(strings.TrimSpace(email))
+		if err != nil || !strings.EqualFold(address.Address, strings.TrimSpace(email)) {
+			failure(w, http.StatusBadRequest, "Every invitation email address must be valid.")
+			return
+		}
 	}
-	if directoryID == "" {
+	if input.SendNotification && !h.InvitationNotificationsConfigured {
+		failure(w, http.StatusServiceUnavailable, "Invitation email delivery is not configured.")
+		return
+	}
+	if !input.SendNotification && strings.TrimSpace(input.NotificationText) != "" {
+		failure(w, http.StatusBadRequest, "notificationText requires sendNotification to be true.")
+		return
+	}
+	if len(input.NotificationText) > 4000 {
+		failure(w, http.StatusBadRequest, "notificationText must not exceed 4000 characters.")
+		return
+	}
+	directoryIDs := make([]string, 0, len(context.DirectoryIDs))
+	for id := range context.DirectoryIDs {
+		directoryIDs = append(directoryIDs, id)
+	}
+	sort.Strings(directoryIDs)
+	if len(directoryIDs) == 0 {
 		failure(w, http.StatusConflict, "Organization has no active directory.")
 		return
+	}
+	directoryID := directoryIDs[0]
+	groups, err := h.Store.GroupsByDirectory(r.Context(), directoryID)
+	if err != nil {
+		failure(w, http.StatusInternalServerError, "Invitation group lookup failed.")
+		return
+	}
+	availableGroups := make(map[string]bool, len(groups))
+	for _, group := range groups {
+		availableGroups[group.ID] = true
+	}
+	seenGroups := map[string]bool{}
+	for _, groupID := range input.AdditionalGroups {
+		if seenGroups[groupID] {
+			failure(w, http.StatusBadRequest, "additionalGroups must not contain duplicates.")
+			return
+		}
+		seenGroups[groupID] = true
+		if !availableGroups[groupID] {
+			failure(w, http.StatusNotFound, "An invitation group was not found in the organization directory.")
+			return
+		}
+	}
+	assignments := make([]store.InviteRoleAssignment, 0, len(input.PermissionRules))
+	seenRoles := map[string]bool{}
+	validInviteRoles := map[string]bool{
+		"atlassian/user": true, "atlassian/admin": true, "atlassian/guest": true,
+		"atlassian/contributor": true, "atlassian/customer": true, "atlassian/basic": true,
+		"atlassian/stakeholder": true, "atlassian/viewer": true,
+	}
+	for _, rule := range input.PermissionRules {
+		if !validInviteRoles[rule.Role] {
+			failure(w, http.StatusNotFound, "An invitation product resource or role was not found.")
+			return
+		}
+		scopeType, scopeID, err := roleTarget(context, rule.Role, rule.Resource, false)
+		if err != nil || scopeType != "product" {
+			failure(w, http.StatusNotFound, "An invitation product resource or role was not found.")
+			return
+		}
+		key := scopeType + "\x00" + scopeID + "\x00" + rule.Role
+		if seenRoles[key] {
+			failure(w, http.StatusBadRequest, "permissionRules must not contain duplicates.")
+			return
+		}
+		seenRoles[key] = true
+		assignments = append(assignments, store.InviteRoleAssignment{ScopeType: scopeType, ScopeID: scopeID, Role: rule.Role, Resource: rule.Resource})
 	}
 	passwordHash, err := authn.UnusablePasswordHash()
 	if err != nil {
@@ -1049,20 +1124,67 @@ func (h *Handler) InviteUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data := make([]map[string]any, 0, len(input.Emails))
+	partial := false
 	for _, email := range input.Emails {
 		name := strings.TrimSpace(strings.SplitN(email, "@", 2)[0])
-		user, err := h.Store.InviteDirectoryUser(r.Context(), workspaceID, actorID, directoryID, email, name, passwordHash)
-		if err != nil {
-			if errors.Is(err, store.ErrAdminValidation) {
-				failure(w, http.StatusBadRequest, err.Error())
-			} else if errors.Is(err, store.ErrAdminConflict) {
-				failure(w, http.StatusConflict, err.Error())
-			} else {
-				failure(w, http.StatusInternalServerError, "User invitation failed.")
-			}
-			return
+		options := store.InviteOptions{GroupIDs: input.AdditionalGroups, Roles: assignments}
+		if input.SendNotification {
+			options.EmailSubject = "Invitation to " + singleLine(context.Organization.Name)
+			options.EmailBody = invitationEmailBody(context.Organization.Name, h.BaseURL, input.NotificationText)
 		}
-		data = append(data, map[string]any{"id": user.ID, "email": user.Email, "results": []any{}})
+		user, err := h.Store.InviteDirectoryUserWithAccess(r.Context(), workspaceID, actorID, directoryID, email, name, passwordHash, options)
+		if err != nil {
+			if !errors.Is(err, store.ErrAdminValidation) && !errors.Is(err, store.ErrAdminConflict) && !errors.Is(err, store.ErrAdminNotFound) {
+				failure(w, http.StatusInternalServerError, "User invitation failed.")
+				return
+			}
+			partial = true
+			data = append(data, inviteResult("", email, input.PermissionRules, input.AdditionalGroups, "ERROR", err.Error()))
+			continue
+		}
+		data = append(data, inviteResult(user.ID, user.Email, input.PermissionRules, input.AdditionalGroups, "INVITED", ""))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"data": data})
+	status := http.StatusOK
+	if partial {
+		status = http.StatusPartialContent
+	}
+	writeJSON(w, status, map[string]any{"data": data})
+}
+
+func invitationEmailBody(organizationName, baseURL, custom string) string {
+	lines := []string{"You have been invited to " + organizationName + " on ZZIRA.", "", "Sign in at " + strings.TrimRight(baseURL, "/") + "/login"}
+	if custom = strings.TrimSpace(custom); custom != "" {
+		lines = append(lines, "", custom)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func singleLine(value string) string {
+	return strings.TrimSpace(strings.NewReplacer("\r", " ", "\n", " ").Replace(value))
+}
+
+func inviteResult(accountID, email string, rules []struct {
+	Resource string `json:"resource"`
+	Role     string `json:"role"`
+}, groups []string, status, reason string) map[string]any {
+	roleResults := make([]map[string]any, 0, len(rules))
+	for _, rule := range rules {
+		var statusReason any
+		if reason != "" {
+			statusReason = reason
+		}
+		roleResults = append(roleResults, map[string]any{"resource": rule.Resource, "role": rule.Role, "status": status, "statusReason": statusReason})
+	}
+	groupResults := make([]map[string]any, 0, len(groups))
+	for _, group := range groups {
+		var statusReason any
+		if reason != "" {
+			statusReason = reason
+		}
+		groupResults = append(groupResults, map[string]any{"group": group, "status": status, "statusReason": statusReason})
+	}
+	return map[string]any{
+		"id": accountID, "email": email,
+		"results": []map[string]any{{"roleAssignmentResult": roleResults, "groupAssignmentResult": groupResults}},
+	}
 }

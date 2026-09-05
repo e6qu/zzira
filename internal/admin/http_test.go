@@ -71,7 +71,7 @@ func TestOrganizationAndGroupAPIJourney(t *testing.T) {
 		_, _ = st.Pool.Exec(ctx, `DELETE FROM users WHERE id IN ($1,$2)`, adminID, memberID)
 	}()
 
-	handler := &Handler{Store: st, BaseURL: "https://zzira.example", WorkspaceSlug: workspaceID}
+	handler := &Handler{Store: st, BaseURL: "https://zzira.example", WorkspaceSlug: workspaceID, InvitationNotificationsConfigured: true}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /admin/v1/orgs", handler.Organizations)
 	mux.HandleFunc("GET /admin/v1/orgs/{orgId}", handler.Organization)
@@ -258,9 +258,39 @@ func TestOrganizationAndGroupAPIJourney(t *testing.T) {
 		t.Fatalf("unexpected managed user page: %#v", managedUsers)
 	}
 	inviteEmail := store.NewID("invite") + "@example.invalid"
-	invited := call(http.MethodPost, "/admin/v2/orgs/"+organization.ID+"/users/invite", adminToken, map[string]any{"emails": []string{inviteEmail}}, http.StatusOK)
+	invitePath := "/admin/v2/orgs/" + organization.ID + "/users/invite"
+	handler.InvitationNotificationsConfigured = false
+	call(http.MethodPost, invitePath, adminToken, map[string]any{"emails": []string{inviteEmail}, "sendNotification": true}, http.StatusServiceUnavailable)
+	handler.InvitationNotificationsConfigured = true
+	inviteRequest := map[string]any{
+		"emails": []string{inviteEmail},
+		"permissionRules": []map[string]string{{"resource": resourceID, "role": "atlassian/customer"}},
+		"additionalGroups": []string{groupID}, "sendNotification": true, "notificationText": "Welcome to the service team.",
+	}
+	invited := call(http.MethodPost, invitePath, adminToken, inviteRequest, http.StatusOK)
 	invitedID := invited["data"].([]any)[0].(map[string]any)["id"].(string)
+	inviteResults := invited["data"].([]any)[0].(map[string]any)["results"].([]any)[0].(map[string]any)
+	if inviteResults["roleAssignmentResult"].([]any)[0].(map[string]any)["status"] != "INVITED" ||
+		inviteResults["groupAssignmentResult"].([]any)[0].(map[string]any)["status"] != "INVITED" {
+		t.Fatalf("unexpected invitation assignment response: %#v", invited)
+	}
+	call(http.MethodPost, invitePath, adminToken, inviteRequest, http.StatusPartialContent)
 	defer func() { _, _ = st.Pool.Exec(ctx, `DELETE FROM users WHERE id=$1`, invitedID) }()
+	invitedRoles := call(http.MethodGet, usersPath+"/"+invitedID+"/role-assignments?resourceIds="+resourceID+"&roleIds=atlassian/customer", adminToken, nil, http.StatusOK)
+	if len(invitedRoles["data"].([]any)) != 1 {
+		t.Fatalf("invitation role was not applied: %#v", invitedRoles)
+	}
+	memberIDs, err := st.GroupMemberIDs(ctx, groupID)
+	if err != nil || !includesExact(memberIDs, invitedID) {
+		t.Fatalf("invitation group was not applied: members=%v err=%v", memberIDs, err)
+	}
+	delivery, err := st.ClaimEmailDelivery(ctx)
+	if err != nil || delivery == nil || delivery.Recipient != inviteEmail || !bytes.Contains([]byte(delivery.Body), []byte("Welcome to the service team.")) {
+		t.Fatalf("invitation email was not queued: delivery=%+v err=%v", delivery, err)
+	}
+	if err := st.CompleteEmailDelivery(ctx, delivery.ID, nil); err != nil {
+		t.Fatal(err)
+	}
 	call(http.MethodGet, usersPath+"?searchTerm="+inviteEmail, adminToken, nil, http.StatusOK)
 	call(http.MethodGet, usersPath+"/"+invitedID, adminToken, nil, http.StatusOK)
 	invitedToken := store.NewID("secret")

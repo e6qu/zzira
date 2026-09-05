@@ -20,18 +20,19 @@ type adminGroupRow struct {
 }
 
 type adminPageData struct {
-	Organization     *models.Organization
-	Site             *models.Site
-	Products         []*models.Product
-	Directory        *models.Directory
-	Groups           []adminGroupRow
-	Users            []*models.User
-	Audit            []*models.OrganizationAuditEvent
-	Error            string
-	Saved            string
-	GroupName        string
-	GroupDescription string
-	CurrentUserID    string
+	Organization                      *models.Organization
+	Site                              *models.Site
+	Products                          []*models.Product
+	Directory                         *models.Directory
+	Groups                            []adminGroupRow
+	Users                             []*models.User
+	Audit                             []*models.OrganizationAuditEvent
+	Error                             string
+	Saved                             string
+	GroupName                         string
+	GroupDescription                  string
+	CurrentUserID                     string
+	InvitationNotificationsConfigured bool
 }
 
 func (h *Handler) adminData(r *http.Request, workspaceID, message string) (adminPageData, error) {
@@ -52,14 +53,15 @@ func (h *Handler) adminData(r *http.Request, workspaceID, message string) (admin
 		return adminPageData{}, err
 	}
 	data := adminPageData{
-		Organization: organization,
-		Site:         site,
-		Products:     products,
-		Groups:       []adminGroupRow{},
-		Users:        []*models.User{},
-		Audit:        []*models.OrganizationAuditEvent{},
-		Error:        message,
-		Saved:        r.URL.Query().Get("saved"),
+		Organization:                      organization,
+		Site:                              site,
+		Products:                          products,
+		Groups:                            []adminGroupRow{},
+		Users:                             []*models.User{},
+		Audit:                             []*models.OrganizationAuditEvent{},
+		Error:                             message,
+		Saved:                             r.URL.Query().Get("saved"),
+		InvitationNotificationsConfigured: h.InvitationNotificationsConfigured,
 	}
 	if len(directories) == 0 {
 		return data, nil
@@ -271,9 +273,56 @@ func (h *Handler) InviteAdminUser(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "load directory", http.StatusInternalServerError)
 		return
 	}
+	groupIDs := r.Form["groupId"]
+	availableGroups := map[string]bool{}
+	for _, row := range data.Groups {
+		availableGroups[row.Group.ID] = true
+	}
+	for _, groupID := range groupIDs {
+		if !availableGroups[groupID] {
+			http.Error(w, "invitation group was not found", http.StatusNotFound)
+			return
+		}
+	}
+	availableProducts := map[string]*models.Product{}
+	for _, product := range data.Products {
+		availableProducts[product.ID] = product
+	}
+	assignments := make([]store.InviteRoleAssignment, 0, len(r.Form["productId"]))
+	for _, productID := range r.Form["productId"] {
+		product := availableProducts[productID]
+		if product == nil || !product.Enabled {
+			http.Error(w, "invitation product was not found", http.StatusNotFound)
+			return
+		}
+		assignments = append(assignments, store.InviteRoleAssignment{
+			ScopeType: "product", ScopeID: product.ID, Role: "atlassian/user",
+			Resource: "ari:cloud:" + product.Key + "::site/" + product.SiteID,
+		})
+	}
+	sendNotification := r.FormValue("sendNotification") == "true"
+	notificationText := r.FormValue("notificationText")
+	if sendNotification && !h.InvitationNotificationsConfigured {
+		http.Error(w, "invitation email delivery is not configured", http.StatusServiceUnavailable)
+		return
+	}
+	if !sendNotification && strings.TrimSpace(notificationText) != "" {
+		http.Error(w, "personal message requires invitation email", http.StatusBadRequest)
+		return
+	}
+	if len(notificationText) > 4000 {
+		http.Error(w, "personal message is too long", http.StatusBadRequest)
+		return
+	}
+	options := store.InviteOptions{GroupIDs: groupIDs, Roles: assignments}
+	if sendNotification {
+		organizationName := strings.TrimSpace(strings.NewReplacer("\r", " ", "\n", " ").Replace(data.Organization.Name))
+		options.EmailSubject = "Invitation to " + organizationName
+		options.EmailBody = webInvitationEmailBody(organizationName, h.BaseURL, notificationText)
+	}
 	passwordHash, err := authn.UnusablePasswordHash()
 	if err == nil {
-		_, err = h.Store.InviteDirectoryUser(r.Context(), workspaceID, user.ID, data.Directory.ID, r.FormValue("email"), r.FormValue("displayName"), passwordHash)
+		_, err = h.Store.InviteDirectoryUserWithAccess(r.Context(), workspaceID, user.ID, data.Directory.ID, r.FormValue("email"), r.FormValue("displayName"), passwordHash, options)
 	}
 	if err != nil {
 		status := http.StatusInternalServerError
@@ -286,6 +335,14 @@ func (h *Handler) InviteAdminUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/admin?saved="+url.QueryEscape("User invited"), http.StatusSeeOther)
+}
+
+func webInvitationEmailBody(organizationName, baseURL, custom string) string {
+	lines := []string{"You have been invited to " + organizationName + " on ZZIRA.", "", "Sign in at " + strings.TrimRight(baseURL, "/") + "/login"}
+	if custom = strings.TrimSpace(custom); custom != "" {
+		lines = append(lines, "", custom)
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (h *Handler) UpdateAdminUserStatus(w http.ResponseWriter, r *http.Request) {

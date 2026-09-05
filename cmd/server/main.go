@@ -27,6 +27,7 @@ import (
 	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/confluence"
 	"github.com/e6qu/zzira/internal/jql"
+	"github.com/e6qu/zzira/internal/mailer"
 	"github.com/e6qu/zzira/internal/notifybus"
 	"github.com/e6qu/zzira/internal/store"
 	"github.com/e6qu/zzira/internal/syncapi"
@@ -113,16 +114,27 @@ func main() {
 	}
 	cmdSvc := &commands.Service{Store: st, Blobs: blobs}
 	automationSvc := &automation.Service{Store: st, Commands: cmdSvc}
+	smtpSender, err := mailer.SMTPFromEnv()
+	if err != nil {
+		log.Fatalf("configure invitation email: %v", err)
+	}
 
 	oidcSSO, err := web.NewOIDC(ctx)
 	if err != nil {
 		log.Fatalf("configure OIDC SSO: %v", err)
 	}
-	webHandler := &web.Handler{Store: st, Commands: cmdSvc, Automation: automationSvc, OIDC: oidcSSO, WorkspaceSlug: workspaceSlug}
-	api := &api3.Handler{Store: st, Commands: cmdSvc, Blobs: blobs, BaseURL: envOr("BASE_URL", "http://localhost:"+port), WorkspaceSlug: workspaceSlug}
+	baseURL := envOr("BASE_URL", "http://localhost:"+port)
+	webHandler := &web.Handler{
+		Store: st, Commands: cmdSvc, Automation: automationSvc, OIDC: oidcSSO,
+		WorkspaceSlug: workspaceSlug, BaseURL: baseURL, InvitationNotificationsConfigured: smtpSender != nil,
+	}
+	api := &api3.Handler{Store: st, Commands: cmdSvc, Blobs: blobs, BaseURL: baseURL, WorkspaceSlug: workspaceSlug}
 	agileAPI := &agile.Handler{Store: st, Commands: cmdSvc, IssueBean: api.IssueBean, BaseURL: envOr("BASE_URL", "http://localhost:"+port), WorkspaceSlug: workspaceSlug}
 	automationAPI := &automation.Handler{Service: automationSvc, WorkspaceSlug: workspaceSlug}
-	adminAPI := &admin.Handler{Store: st, BaseURL: api.BaseURL, WorkspaceSlug: workspaceSlug}
+	adminAPI := &admin.Handler{
+		Store: st, BaseURL: api.BaseURL, WorkspaceSlug: workspaceSlug,
+		InvitationNotificationsConfigured: smtpSender != nil,
+	}
 	bus := notifybus.New()
 	sse := &syncapi.SSEHandler{Store: st, Bus: bus, WorkspaceSlug: workspaceSlug}
 	sync := &syncapi.Handler{Store: st, WorkspaceSlug: workspaceSlug}
@@ -149,6 +161,9 @@ func main() {
 	}
 	go dispatcher.Run(ctx, workspaceID)
 	go (&automation.Runner{Service: automationSvc}).Run(ctx, workspaceID)
+	if smtpSender != nil {
+		go (&mailer.Runner{Store: st, Sender: smtpSender}).Run(ctx)
+	}
 	go func() {
 		for {
 			if err := bus.Listen(ctx, st.Pool); err != nil && ctx.Err() == nil {

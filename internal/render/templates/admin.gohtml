@@ -28,7 +28,16 @@
 
   <section class="surface-card admin-section" aria-labelledby="admin-users-title">
     <header><div><span class="eyebrow">Managed accounts</span><h2 id="admin-users-title">People</h2></div><p>Invitations provision an account for provider sign-in. Suspension immediately revokes browser sessions and API tokens.</p></header>
-    {{with .Data.Directory}}<form class="admin-user-invite" method="post" action="/admin/users/invite"><label for="admin-user-name">Display name</label><input id="admin-user-name" name="displayName" required maxlength="255"><label for="admin-user-email">Email</label><input id="admin-user-email" name="email" type="email" required maxlength="320"><button class="btn btn-primary" type="submit">Invite user</button></form>{{end}}
+    {{with .Data.Directory}}<form class="admin-user-invite" method="post" action="/admin/users/invite">
+      <label for="admin-user-name">Display name</label><input id="admin-user-name" name="displayName" required maxlength="255">
+      <label for="admin-user-email">Email</label><input id="admin-user-email" name="email" type="email" required maxlength="320">
+      <button class="btn btn-primary" type="submit">Invite user</button>
+      <div class="admin-invite-options">
+        <fieldset><legend>Product access</legend>{{range $.Data.Products}}<label><input type="checkbox" name="productId" value="{{.ID}}"> {{.Name}}</label>{{end}}</fieldset>
+        <fieldset><legend>Group membership</legend>{{range $.Data.Groups}}<label><input type="checkbox" name="groupId" value="{{.Group.ID}}"> {{.Group.Name}}</label>{{else}}<small>Create a group to assign it during invitation.</small>{{end}}</fieldset>
+        <fieldset><legend>Invitation email</legend>{{if $.Data.InvitationNotificationsConfigured}}<label><input type="checkbox" name="sendNotification" value="true"> Send invitation email</label><label for="admin-invite-message">Personal message</label><textarea id="admin-invite-message" name="notificationText" maxlength="4000" rows="2"></textarea>{{else}}<small>Email delivery is unavailable until SMTP is configured.</small>{{end}}</fieldset>
+      </div>
+    </form>{{end}}
     <div class="table-scroll"><table><thead><tr><th scope="col">Person</th><th scope="col">Email</th><th scope="col">Status</th><th scope="col">Account actions</th></tr></thead><tbody>{{range .Data.Users}}<tr><th scope="row">{{.DisplayName}}</th><td>{{.Email}}</td><td><span class="lozenge {{if .Active}}lozenge-success{{else}}lozenge-default{{end}}">{{if .Active}}Active{{else}}Suspended{{end}}</span></td><td>{{if eq .ID $.Data.CurrentUserID}}Current administrator{{else}}<form class="admin-user-actions" method="post" action="/admin/users/{{.ID}}">{{if .Active}}<button class="btn" name="action" value="suspend" type="submit">Suspend</button>{{else}}<button class="btn" name="action" value="restore" type="submit">Restore</button>{{end}}<button class="btn" name="action" value="remove" type="submit">Remove</button></form>{{end}}</td></tr>{{end}}</tbody></table></div>
   </section>
 

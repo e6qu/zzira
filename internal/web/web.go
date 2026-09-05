@@ -24,11 +24,13 @@ import (
 )
 
 type Handler struct {
-	Store         *store.Store
-	Commands      *commands.Service
-	Automation    *automation.Service
-	OIDC          *OIDC
-	WorkspaceSlug string
+	Store                             *store.Store
+	Commands                          *commands.Service
+	Automation                        *automation.Service
+	OIDC                              *OIDC
+	WorkspaceSlug                     string
+	BaseURL                           string
+	InvitationNotificationsConfigured bool
 }
 
 type pageData struct {

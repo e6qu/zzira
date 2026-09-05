@@ -525,11 +525,50 @@ func (s *Store) RemoveDirectoryUser(ctx context.Context, workspaceID, actorID, d
 	return tx.Commit(ctx)
 }
 
+type InviteRoleAssignment struct {
+	ScopeType string
+	ScopeID   string
+	Role      string
+	Resource  string
+}
+
+type InviteOptions struct {
+	GroupIDs     []string
+	Roles        []InviteRoleAssignment
+	EmailSubject string
+	EmailBody    string
+}
+
 func (s *Store) InviteDirectoryUser(ctx context.Context, workspaceID, actorID, directoryID, email, displayName, passwordHash string) (*models.User, error) {
+	return s.InviteDirectoryUserWithAccess(ctx, workspaceID, actorID, directoryID, email, displayName, passwordHash, InviteOptions{})
+}
+
+// InviteDirectoryUserWithAccess provisions the directory membership, group
+// memberships, product roles, optional email delivery, and audit evidence in
+// one transaction so a successful invitation is never only partly applied.
+func (s *Store) InviteDirectoryUserWithAccess(ctx context.Context, workspaceID, actorID, directoryID, email, displayName, passwordHash string, options InviteOptions) (*models.User, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 	displayName = strings.TrimSpace(displayName)
 	if email == "" || !strings.Contains(email, "@") || displayName == "" {
 		return nil, fmt.Errorf("%w: valid email and display name are required", ErrAdminValidation)
+	}
+	if (options.EmailSubject == "") != (strings.TrimSpace(options.EmailBody) == "") {
+		return nil, fmt.Errorf("%w: invitation email subject and body must be provided together", ErrAdminValidation)
+	}
+	seenGroups := map[string]bool{}
+	for _, groupID := range options.GroupIDs {
+		if strings.TrimSpace(groupID) == "" || seenGroups[groupID] {
+			return nil, fmt.Errorf("%w: invitation groups must be unique and non-empty", ErrAdminValidation)
+		}
+		seenGroups[groupID] = true
+	}
+	seenRoles := map[string]bool{}
+	for _, assignment := range options.Roles {
+		key := assignment.ScopeType + "\x00" + assignment.ScopeID + "\x00" + assignment.Role
+		if strings.TrimSpace(assignment.ScopeType) == "" || strings.TrimSpace(assignment.ScopeID) == "" || strings.TrimSpace(assignment.Role) == "" || seenRoles[key] {
+			return nil, fmt.Errorf("%w: invitation roles must be unique and complete", ErrAdminValidation)
+		}
+		seenRoles[key] = true
 	}
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
@@ -565,7 +604,57 @@ func (s *Store) InviteDirectoryUser(ctx context.Context, workspaceID, actorID, d
 	if _, err := tx.Exec(ctx, `INSERT INTO memberships(workspace_id,user_id,role) VALUES($1,$2,'member') ON CONFLICT DO NOTHING`, workspaceID, user.ID); err != nil {
 		return nil, err
 	}
-	detail, err := json.Marshal(map[string]any{"email": email})
+	for _, groupID := range options.GroupIDs {
+		tag, err := tx.Exec(ctx, `
+			INSERT INTO group_members(group_id,user_id)
+			SELECT g.id,$2 FROM groups g WHERE g.id::text=$1 AND g.directory_id::text=$3
+			ON CONFLICT DO NOTHING`, groupID, user.ID, directoryID)
+		if err != nil {
+			return nil, err
+		}
+		if tag.RowsAffected() == 0 {
+			return nil, fmt.Errorf("%w: invitation group was not found in the directory", ErrAdminNotFound)
+		}
+	}
+	for _, assignment := range options.Roles {
+		valid := false
+		switch assignment.ScopeType {
+		case "organization":
+			valid = assignment.ScopeID == organizationID
+		case "site":
+			if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM sites WHERE id::text=$1 AND workspace_id=$2 AND organization_id::text=$3)`, assignment.ScopeID, workspaceID, organizationID).Scan(&valid); err != nil {
+				return nil, err
+			}
+		case "product":
+			if err := tx.QueryRow(ctx, `
+				SELECT EXISTS(SELECT 1 FROM products p JOIN sites si ON si.id=p.site_id
+				WHERE p.id::text=$1 AND si.workspace_id=$2 AND si.organization_id::text=$3 AND p.enabled)`, assignment.ScopeID, workspaceID, organizationID).Scan(&valid); err != nil {
+				return nil, err
+			}
+		}
+		if !valid || strings.TrimSpace(assignment.Role) == "" {
+			return nil, fmt.Errorf("%w: invitation role resource is invalid", ErrAdminNotFound)
+		}
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO role_bindings(scope_type,scope_id,role_key,principal_type,principal_id,source)
+			VALUES($1,$2,$3,'user',$4,'manual') ON CONFLICT DO NOTHING`, assignment.ScopeType, assignment.ScopeID, assignment.Role, user.ID); err != nil {
+			return nil, err
+		}
+	}
+	if options.EmailSubject != "" {
+		if strings.TrimSpace(options.EmailBody) == "" {
+			return nil, fmt.Errorf("%w: invitation email body is required", ErrAdminValidation)
+		}
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO email_outbox(workspace_id,recipient,subject,body)
+			VALUES($1,$2,$3,$4)`, workspaceID, email, options.EmailSubject, options.EmailBody); err != nil {
+			return nil, err
+		}
+	}
+	detail, err := json.Marshal(map[string]any{
+		"email": email, "groups": options.GroupIDs, "roles": options.Roles,
+		"notificationQueued": options.EmailSubject != "",
+	})
 	if err != nil {
 		return nil, err
 	}

@@ -334,10 +334,11 @@
       "status": "partial",
       "evidence": [
         "internal/admin/http_test.go",
+        "internal/mailer/mailer_test.go",
         "e2e/admin.spec.ts",
         "docs/ADMIN.md"
       ],
-      "notes": "Invitations provision provider-ready accounts in the internal directory; notifications and optional assignment payloads remain."
+      "notes": "Invitations atomically provision provider-ready accounts, product roles, groups, audit evidence, and optional durable SMTP delivery; paid-license limits remain."
     },
     {
       "operationId": "organization-admin:GET:/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/count",

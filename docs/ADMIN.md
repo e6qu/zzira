@@ -30,9 +30,10 @@ workspace membership and administration through this model.
 
 Site administrators use `/admin` to inspect organization and Cloud IDs, enabled
 products, the internal directory, users, groups, and recent audit events. They
-can invite, suspend, restore, or remove managed accounts; create or delete a
-group; add or remove directory users; and grant or revoke each group's Jira
-Software, Jira Service Management, and Confluence access. Suspension and removal revoke the
+can invite, suspend, restore, or remove managed accounts; assign product access
+and groups during invitation; create or delete a group; add or remove directory
+users; and grant or revoke each group's Jira Software, Jira Service Management,
+and Confluence access. Suspension and removal revoke the
 account's active sessions and API tokens. Every successful user, group,
 membership, or role mutation writes an organization audit event in the same
 transaction. Administrators cannot suspend or remove their own account.
@@ -83,10 +84,25 @@ documented filter set. Workspace discovery returns product ARIs. Role lookups su
 resource-owner, resource-ID, and role-ID filters and report whether effective
 user access is direct or inherited from a group.
 
+Invitation access, group membership, optional email enqueueing, and audit
+evidence commit atomically for each account. A multi-account request returns
+`206 Partial Content` with per-assignment `ERROR` results if an account cannot
+be invited while preserving successful invitations. Email requests return 503
+when SMTP is not configured. Configured delivery uses a durable PostgreSQL
+outbox with leases, bounded exponential retries, and a terminal state after
+eight failed attempts.
+
+| Environment variable | Purpose |
+|---|---|
+| `ZZIRA_SMTP_ADDR` | SMTP endpoint in `host:port` form |
+| `ZZIRA_SMTP_FROM` | Envelope and message sender |
+| `ZZIRA_SMTP_USERNAME` | Optional SMTP username; configure with the password |
+| `ZZIRA_SMTP_PASSWORD` | Optional SMTP password; configure with the username |
+
 The current server configuration serves one workspace/site. Organization
 discovery therefore returns the organization containing that site. Cross-site
 organization discovery, directory filters, SCIM lifecycle, user suspension,
-policy/domain/event endpoints, invitation notifications and assignment options, per-directory
+policy/domain/event endpoints, richer stored account profiles, per-directory
 account suspension for multi-site deployments, license limits, and full
 central-host rate limiting remain in
 the active plan and are reported as unassessed or missing in operation coverage.
@@ -98,8 +114,9 @@ the active plan and are reported as unassessed or missing in operation coverage.
   and audit events.
 - API integration tests cover bearer authentication, permission denial,
   organization/directory/product discovery, group creation/detail/search/count/
-  statistics/deletion, directory-user search/statistics, membership and role
-  mutations, effective assignments, conflicts, expansions, and audit persistence.
+  statistics/deletion, directory-user search/statistics, atomic invitation
+  assignments and delivery enqueueing, membership and role mutations, effective
+  assignments, partial results, conflicts, expansions, and audit persistence.
 - Playwright covers the complete group and product-access journey,
-  account invitation/lifecycle, ordinary-user denial, WCAG scans, light/dark
+  invitation-time product/group access, account lifecycle, ordinary-user denial, WCAG scans, light/dark
   themes, and 320px reflow.

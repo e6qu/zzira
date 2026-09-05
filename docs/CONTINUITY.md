@@ -79,6 +79,10 @@ does not publish them as one OpenAPI document.
   plus directory-user search and statistics. Search supports documented
   identity, directory, membership, lifecycle, resource, role, domain, sort,
   expansion, all-directory, and opaque-pagination behavior.
+- Completed invitation-time product roles and group membership with per-account
+  result details and 206 partial responses. Optional email delivery now uses a
+  configured SMTP sender and a durable, leased, bounded-retry outbox; absent or
+  partial SMTP configuration fails explicitly.
 
 Validation after the organization foundation:
 
@@ -108,10 +112,17 @@ Validation after group and directory search completion:
 - Exact coverage is 46 of 1,207 operations assessed: 39 partial, 7 missing,
   and 1,161 explicitly unassessed.
 
+Validation after invitation access and delivery:
+
+- All Go packages pass with migration 034 and the PostgreSQL integration suite
+  enabled; SMTP protocol delivery and durable outbox state are covered.
+- `go vet ./...`, the WebAssembly build, and all conformance checks pass.
+- The focused Chromium journey passes invitation-time product/group access,
+  account cleanup, WCAG scans, dark mode, and 320 px reflow.
+
 ## Current change
 
-1. Complete invitation assignments/notifications and richer managed-account
-   profiles.
+1. Complete richer managed-account profiles.
 2. Add per-directory membership state for multi-site account suspension.
 3. Complete remaining directory-user operations from the
    pinned Organizations contract.
