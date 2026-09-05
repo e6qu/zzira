@@ -38,8 +38,12 @@
       {{else}}<p>No active directory is available.</p>{{end}}
       <div class="admin-groups">
       {{$users := .Data.Users}}
+      {{$products := .Data.Products}}
       {{range .Data.Groups}}{{$row := .}}<article class="admin-group">
         <header><div><h3>{{.Group.Name}}</h3><p>{{.Group.Description}}</p></div><span>{{.Group.MemberCount}} member{{if ne .Group.MemberCount 1}}s{{end}}</span></header>
+        <div class="admin-product-access" aria-label="Product access for {{.Group.Name}}">
+          {{range $products}}<div><span><strong>{{.Name}}</strong><small>{{if index $row.ProductAccess .ID}}Access granted{{else}}No group access{{end}}</small></span><form method="post" action="/admin/groups/{{$row.Group.ID}}/roles"><input type="hidden" name="productId" value="{{.ID}}">{{if index $row.ProductAccess .ID}}<input type="hidden" name="action" value="revoke"><button class="btn" type="submit">Revoke access</button>{{else}}<input type="hidden" name="action" value="assign"><button class="btn" type="submit">Grant access</button>{{end}}</form></div>{{end}}
+        </div>
         <ul>{{range $users}}<li><span>{{template "avatar" .}}<span><strong>{{.DisplayName}}</strong><small>{{.Email}}</small></span></span>{{if index $row.MemberIDs .ID}}<form method="post" action="/admin/groups/{{$row.Group.ID}}/members"><input type="hidden" name="accountId" value="{{.ID}}"><input type="hidden" name="action" value="remove"><button class="btn" type="submit">Remove</button></form>{{else}}<form method="post" action="/admin/groups/{{$row.Group.ID}}/members"><input type="hidden" name="accountId" value="{{.ID}}"><input type="hidden" name="action" value="add"><button class="btn" type="submit">Add</button></form>{{end}}</li>{{end}}</ul>
       </article>{{else}}<div class="empty-state"><strong>No groups yet</strong><p>Create a group to manage access for several people together.</p></div>{{end}}
       </div>

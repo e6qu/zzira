@@ -267,6 +267,156 @@ func (s *Store) RolesForUserInWorkspace(ctx context.Context, workspaceID, userID
 	return roles, rows.Err()
 }
 
+// RoleBindingsForPrincipal returns the direct assignments on resources owned
+// by the workspace organization. For users, group-derived assignments are
+// included and labeled group_direct so effective access is visible.
+func (s *Store) RoleBindingsForPrincipal(ctx context.Context, workspaceID, principalType, principalID string) ([]*models.RoleBinding, error) {
+	if principalType != "user" && principalType != "group" {
+		return nil, fmt.Errorf("%w: principal type must be user or group", ErrAdminValidation)
+	}
+	rows, err := s.Pool.Query(ctx, `
+		WITH context AS (
+			SELECT si.id AS site_id,si.organization_id
+			FROM sites si WHERE si.workspace_id=$1
+		), principals AS (
+			SELECT $2::text AS principal_type,$3::text AS principal_id,'direct'::text AS assignment
+			UNION ALL
+			SELECT 'group',gm.group_id::text,'group_direct'
+			FROM group_members gm WHERE $2='user' AND gm.user_id=$3
+		)
+		SELECT rb.id,rb.scope_type,rb.scope_id,rb.role_key,rb.principal_type,
+		       rb.principal_id,rb.source,rb.created_at,pr.assignment
+		FROM role_bindings rb
+		JOIN principals pr ON pr.principal_type=rb.principal_type AND pr.principal_id=rb.principal_id
+		CROSS JOIN context c
+		WHERE (rb.scope_type='organization' AND rb.scope_id=c.organization_id::text)
+		   OR (rb.scope_type='site' AND rb.scope_id=c.site_id::text)
+		   OR (rb.scope_type='product' AND rb.scope_id IN (
+		     SELECT p.id::text FROM products p WHERE p.site_id=c.site_id))
+		ORDER BY rb.scope_type,rb.scope_id,rb.role_key,pr.assignment`, workspaceID, principalType, principalID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	bindings := make([]*models.RoleBinding, 0)
+	for rows.Next() {
+		binding := &models.RoleBinding{}
+		var createdAt time.Time
+		if err := rows.Scan(&binding.ID, &binding.ScopeType, &binding.ScopeID, &binding.RoleKey,
+			&binding.PrincipalType, &binding.PrincipalID, &binding.Source, &createdAt, &binding.Assignment); err != nil {
+			return nil, err
+		}
+		binding.CreatedAt = formatAdminTime(createdAt)
+		bindings = append(bindings, binding)
+	}
+	return bindings, rows.Err()
+}
+
+// SetRoleBinding changes one direct role assignment and records the mutation
+// in the organization audit log atomically. The scope and principal must both
+// belong to the workspace organization.
+func (s *Store) SetRoleBinding(ctx context.Context, workspaceID, actorID, principalType, principalID, scopeType, scopeID, roleKey string, assign bool) error {
+	if principalType != "user" && principalType != "group" {
+		return fmt.Errorf("%w: principal type must be user or group", ErrAdminValidation)
+	}
+	if scopeType != "organization" && scopeType != "site" && scopeType != "product" {
+		return fmt.Errorf("%w: unsupported role scope", ErrAdminValidation)
+	}
+	if strings.TrimSpace(roleKey) == "" {
+		return fmt.Errorf("%w: role is required", ErrAdminValidation)
+	}
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var organizationID string
+	if err := tx.QueryRow(ctx, `SELECT organization_id::text FROM sites WHERE workspace_id=$1`, workspaceID).Scan(&organizationID); err != nil {
+		return err
+	}
+	var principalExists, scopeExists bool
+	if principalType == "user" {
+		err = tx.QueryRow(ctx, `
+			SELECT EXISTS(
+			  SELECT 1 FROM directory_users du JOIN directories d ON d.id=du.directory_id
+			  WHERE d.organization_id=$1::uuid AND du.user_id=$2
+			)`, organizationID, principalID).Scan(&principalExists)
+	} else {
+		err = tx.QueryRow(ctx, `
+			SELECT EXISTS(
+			  SELECT 1 FROM groups g JOIN directories d ON d.id=g.directory_id
+			  WHERE d.organization_id=$1::uuid AND g.id::text=$2
+			)`, organizationID, principalID).Scan(&principalExists)
+	}
+	if err != nil {
+		return err
+	}
+	if !principalExists {
+		return fmt.Errorf("%w: principal was not found in this organization", ErrAdminNotFound)
+	}
+	switch scopeType {
+	case "organization":
+		scopeExists = scopeID == organizationID
+	case "site":
+		err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM sites WHERE workspace_id=$1 AND id::text=$2)`, workspaceID, scopeID).Scan(&scopeExists)
+	case "product":
+		err = tx.QueryRow(ctx, `
+			SELECT EXISTS(
+			  SELECT 1 FROM products p JOIN sites si ON si.id=p.site_id
+			  WHERE si.workspace_id=$1 AND p.id::text=$2 AND p.enabled
+			)`, workspaceID, scopeID).Scan(&scopeExists)
+	}
+	if err != nil {
+		return err
+	}
+	if !scopeExists {
+		return fmt.Errorf("%w: role resource was not found", ErrAdminNotFound)
+	}
+
+	changed := false
+	if assign {
+		tag, err := tx.Exec(ctx, `
+			INSERT INTO role_bindings(scope_type,scope_id,role_key,principal_type,principal_id,source)
+			VALUES($1,$2,$3,$4,$5,'manual') ON CONFLICT DO NOTHING`, scopeType, scopeID, roleKey, principalType, principalID)
+		if err != nil {
+			return err
+		}
+		changed = tag.RowsAffected() > 0
+	} else {
+		tag, err := tx.Exec(ctx, `
+			DELETE FROM role_bindings
+			WHERE scope_type=$1 AND scope_id=$2 AND role_key=$3
+			  AND principal_type=$4 AND principal_id=$5`, scopeType, scopeID, roleKey, principalType, principalID)
+		if err != nil {
+			return err
+		}
+		changed = tag.RowsAffected() > 0
+	}
+	if !changed {
+		return nil
+	}
+	detail, err := json.Marshal(map[string]any{
+		"principalType": principalType,
+		"principalId":   principalID,
+		"scopeType":     scopeType,
+		"scopeId":       scopeID,
+		"role":          roleKey,
+	})
+	if err != nil {
+		return err
+	}
+	action := "role.revoked"
+	if assign {
+		action = "role.assigned"
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO organization_audit_events(organization_id,actor_id,action,target_type,target_id,detail)
+		VALUES($1::uuid,$2,$3,$4,$5,$6)`, organizationID, actorID, action, principalType, principalID, detail); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
 func (s *Store) CreateDirectoryGroup(ctx context.Context, workspaceID, actorID, directoryID, name, description string) (*models.Group, error) {
 	name = strings.TrimSpace(name)
 	description = strings.TrimSpace(description)

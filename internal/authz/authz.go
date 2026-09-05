@@ -24,6 +24,14 @@ var permissionRoles = map[Permission]map[string]bool{
 		"atlassian/site-user":     true,
 		"atlassian/product-admin": true,
 		"atlassian/product-user":  true,
+		"atlassian/user":          true,
+		"atlassian/admin":         true,
+		"atlassian/guest":         true,
+		"atlassian/contributor":   true,
+		"atlassian/customer":      true,
+		"atlassian/basic":         true,
+		"atlassian/stakeholder":   true,
+		"atlassian/viewer":        true,
 	},
 	AdministerSite: {
 		"atlassian/org-admin":  true,
@@ -34,9 +42,11 @@ var permissionRoles = map[Permission]map[string]bool{
 		"atlassian/site-admin": true,
 	},
 	ManageProductAccess: {
-		"atlassian/org-admin":     true,
-		"atlassian/site-admin":    true,
-		"atlassian/product-admin": true,
+		"atlassian/org-admin":         true,
+		"atlassian/site-admin":        true,
+		"atlassian/product-admin":     true,
+		"atlassian/admin":             true,
+		"atlassian/user-access-admin": true,
 	},
 }
 

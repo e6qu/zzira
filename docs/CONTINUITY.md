@@ -51,7 +51,7 @@ does not publish them as one OpenAPI document.
   strict pin validation, and focused generator tests.
 - Added exact-operation coverage generation. The first reviewed assessment
   records Automation as 8 partial and 7 missing operations. The organization
-  foundation adds 7 partial assessments; 1,185 operations remain explicitly
+  organization slices add 16 partial assessments; 1,176 operations remain explicitly
   unassessed rather than being inferred from route names.
 - Added organization, site, product, internal-directory, directory-user, group,
   group-member, role-binding, and organization-audit persistence with automatic
@@ -67,6 +67,11 @@ does not publish them as one OpenAPI document.
   configured bootstrap identity already exists.
 - Made bootstrap and first-time OIDC assignment prefer `ws_default`
   deterministically when additional workspaces exist.
+- Added product-workspace discovery with Atlassian resource identifiers plus
+  direct and group role assignment/revocation APIs. Effective user access
+  reports direct and group-derived methods.
+- Extended `/admin` so site administrators grant and revoke each directory
+  group's Jira Software, Jira Service Management, and Confluence access.
 
 Validation after the organization foundation:
 
@@ -79,17 +84,22 @@ Validation after the organization foundation:
   dark themes and 320 px reflow for the new administration page.
 - `git diff --check` passes.
 
+Validation after product access and role assignments:
+
+- All Go packages pass with the PostgreSQL integration suite enabled.
+- `go vet ./...`, the WebAssembly build, and all conformance checks pass.
+- The focused administration browser journey passes with product grant,
+  effective membership, audit, revocation, accessibility, and reflow coverage.
+
 ## Current change
 
-1. Add product-access and role-assignment mutations, list their effective users
-   and groups, and expose them in the administration journey.
-2. Add managed-account status and profile administration, invitations, account
+1. Add managed-account status and profile administration, invitations, account
    suspension/reactivation, and session/token revocation.
-3. Complete group detail/update/delete and directory-user operations from the
+2. Complete group detail/update/delete and directory-user operations from the
    pinned Organizations contract.
-4. Add organization domains, authentication policies, identity-provider
+3. Add organization domains, authentication policies, identity-provider
    configuration, organization events, and the remaining central audit APIs.
-5. Extend revocation coverage from browser/API authorization to local replicas
+4. Extend revocation coverage from browser/API authorization to local replicas
    and queued mutations where the affected resource can already be cached.
 
 ## Resume here

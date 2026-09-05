@@ -35,7 +35,13 @@ test('site admin manages a directory group and its audited membership', async ({
   const group = page.locator('.admin-group').filter({ has: page.getByRole('heading', { name: groupName }) });
   await expect(group).toContainText('0 members');
 
-  const ana = group.getByRole('listitem').filter({ hasText: 'Ana Soursop' });
+  const serviceAccess = group.locator('.admin-product-access > div').filter({ hasText: 'Jira Service Management' });
+  await serviceAccess.getByRole('button', { name: 'Grant access' }).click();
+  await expect(page).toHaveURL(/\/admin\?saved=Product\+access\+granted$/);
+  const groupWithAccess = page.locator('.admin-group').filter({ has: page.getByRole('heading', { name: groupName }) });
+  await expect(groupWithAccess.locator('.admin-product-access > div').filter({ hasText: 'Jira Service Management' })).toContainText('Access granted');
+
+  const ana = groupWithAccess.getByRole('listitem').filter({ hasText: 'Ana Soursop' });
   await ana.getByRole('button', { name: 'Add' }).click();
   await expect(page).toHaveURL(/\/admin\?saved=Member\+added$/);
   const updatedGroup = page.locator('.admin-group').filter({ has: page.getByRole('heading', { name: groupName }) });
@@ -64,7 +70,12 @@ test('site admin manages a directory group and its audited membership', async ({
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/admin');
   const finalGroup = page.locator('.admin-group').filter({ has: page.getByRole('heading', { name: groupName }) });
-  await finalGroup.getByRole('listitem').filter({ hasText: 'Ana Soursop' }).getByRole('button', { name: 'Remove' }).click();
+  await finalGroup.locator('.admin-product-access > div').filter({ hasText: 'Jira Service Management' }).getByRole('button', { name: 'Revoke access' }).click();
+  await expect(page).toHaveURL(/\/admin\?saved=Product\+access\+revoked$/);
+  await expect(page.locator('.admin-audit')).toContainText('role.revoked');
+  await page.goto('/admin');
+  const groupAfterRevoke = page.locator('.admin-group').filter({ has: page.getByRole('heading', { name: groupName }) });
+  await groupAfterRevoke.getByRole('listitem').filter({ hasText: 'Ana Soursop' }).getByRole('button', { name: 'Remove' }).click();
   await expect(page).toHaveURL(/\/admin\?saved=Member\+removed$/);
   await expect(page.locator('.admin-group').filter({ has: page.getByRole('heading', { name: groupName }) })).toContainText('0 members');
   await expect(page.locator('.admin-audit')).toContainText('group.member.removed');

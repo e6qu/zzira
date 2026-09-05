@@ -4,49 +4,73 @@
     {
       "operationId": "automation:POST:/gateway/api/automation/public/{product}/{cloudid}/rest/v1/rule",
       "status": "partial",
-      "evidence": ["internal/automation/automation_test.go", "docs/AUTOMATION.md"],
+      "evidence": [
+        "internal/automation/automation_test.go",
+        "docs/AUTOMATION.md"
+      ],
       "notes": "Create and round-trip behavior is tested; broader identity and cursor semantics remain."
     },
     {
       "operationId": "automation:GET:/gateway/api/automation/public/{product}/{cloudid}/rest/v1/rule/summary",
       "status": "partial",
-      "evidence": ["internal/automation/automation_test.go", "docs/AUTOMATION.md"],
+      "evidence": [
+        "internal/automation/automation_test.go",
+        "docs/AUTOMATION.md"
+      ],
       "notes": "Listing is tested; cursor expiry and central-host authentication remain."
     },
     {
       "operationId": "automation:POST:/gateway/api/automation/public/{product}/{cloudid}/rest/v1/rule/summary",
       "status": "partial",
-      "evidence": ["internal/automation/automation_test.go", "docs/AUTOMATION.md"],
+      "evidence": [
+        "internal/automation/automation_test.go",
+        "docs/AUTOMATION.md"
+      ],
       "notes": "Supported summary filters and pagination are tested."
     },
     {
       "operationId": "automation:DELETE:/gateway/api/automation/public/{product}/{cloudid}/rest/v1/rule/{ruleUuid}",
       "status": "partial",
-      "evidence": ["internal/automation/automation_test.go", "docs/AUTOMATION.md"],
+      "evidence": [
+        "internal/automation/automation_test.go",
+        "docs/AUTOMATION.md"
+      ],
       "notes": "Disabled-rule deletion and error behavior are tested."
     },
     {
       "operationId": "automation:GET:/gateway/api/automation/public/{product}/{cloudid}/rest/v1/rule/{ruleUuid}",
       "status": "partial",
-      "evidence": ["internal/automation/automation_test.go", "docs/AUTOMATION.md"],
+      "evidence": [
+        "internal/automation/automation_test.go",
+        "docs/AUTOMATION.md"
+      ],
       "notes": "Rule and connection round trips plus sensitive-field redaction are tested."
     },
     {
       "operationId": "automation:PUT:/gateway/api/automation/public/{product}/{cloudid}/rest/v1/rule/{ruleUuid}",
       "status": "partial",
-      "evidence": ["internal/automation/automation_test.go", "docs/AUTOMATION.md"],
+      "evidence": [
+        "internal/automation/automation_test.go",
+        "docs/AUTOMATION.md"
+      ],
       "notes": "Replacement with path-UUID preservation is tested."
     },
     {
       "operationId": "automation:PUT:/gateway/api/automation/public/{product}/{cloudid}/rest/v1/rule/{ruleUuid}/rule-scope",
       "status": "partial",
-      "evidence": ["internal/automation/automation_test.go", "docs/AUTOMATION.md"],
+      "evidence": [
+        "internal/automation/automation_test.go",
+        "docs/AUTOMATION.md"
+      ],
       "notes": "Scope replacement is tested for the Jira site gateway."
     },
     {
       "operationId": "automation:PUT:/gateway/api/automation/public/{product}/{cloudid}/rest/v1/rule/{ruleUuid}/state",
       "status": "partial",
-      "evidence": ["internal/automation/automation_test.go", "docs/AUTOMATION.md"],
+      "evidence": [
+        "internal/automation/automation_test.go",
+        "docs/AUTOMATION.md"
+      ],
       "notes": "Enable and disable behavior is tested."
     },
     {
@@ -94,44 +118,146 @@
     {
       "operationId": "organization-admin:GET:/admin/v1/orgs",
       "status": "partial",
-      "evidence": ["internal/admin/http_test.go", "docs/ADMIN.md"],
+      "evidence": [
+        "internal/admin/http_test.go",
+        "docs/ADMIN.md"
+      ],
       "notes": "Bearer-authenticated discovery is implemented for the site served by this ZZIRA instance."
     },
     {
       "operationId": "organization-admin:GET:/admin/v1/orgs/{orgId}",
       "status": "partial",
-      "evidence": ["internal/admin/http_test.go", "docs/ADMIN.md"],
+      "evidence": [
+        "internal/admin/http_test.go",
+        "docs/ADMIN.md"
+      ],
       "notes": "The organization bean and related links are implemented for authorized site administrators."
     },
     {
       "operationId": "organization-admin:GET:/admin/v2/orgs/{orgId}/directories",
       "status": "partial",
-      "evidence": ["internal/admin/http_test.go", "docs/ADMIN.md"],
+      "evidence": [
+        "internal/admin/http_test.go",
+        "docs/ADMIN.md"
+      ],
       "notes": "Internal directory listing and opaque pagination are implemented; directory filters remain."
     },
     {
       "operationId": "organization-admin:GET:/admin/v2/orgs/{orgId}/directories/{directoryId}/groups",
       "status": "partial",
-      "evidence": ["internal/admin/http_test.go", "docs/ADMIN.md"],
+      "evidence": [
+        "internal/admin/http_test.go",
+        "docs/ADMIN.md"
+      ],
       "notes": "Group listing, searchTerm, counts, management access and opaque pagination are implemented."
     },
     {
       "operationId": "organization-admin:POST:/admin/v2/orgs/{orgId}/directories/{directoryId}/groups",
       "status": "partial",
-      "evidence": ["internal/admin/http_test.go", "docs/ADMIN.md"],
+      "evidence": [
+        "internal/admin/http_test.go",
+        "docs/ADMIN.md"
+      ],
       "notes": "Internal group creation and duplicate-name conflicts are implemented and audited."
     },
     {
       "operationId": "organization-admin:POST:/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/memberships",
       "status": "partial",
-      "evidence": ["internal/admin/http_test.go", "docs/ADMIN.md"],
+      "evidence": [
+        "internal/admin/http_test.go",
+        "docs/ADMIN.md"
+      ],
       "notes": "Directory-scoped membership addition, conflicts and auditing are implemented."
     },
     {
       "operationId": "organization-admin:DELETE:/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/memberships/{accountId}",
       "status": "partial",
-      "evidence": ["internal/admin/http_test.go", "docs/ADMIN.md"],
+      "evidence": [
+        "internal/admin/http_test.go",
+        "docs/ADMIN.md"
+      ],
       "notes": "Directory-scoped membership removal, not-found behavior and auditing are implemented."
+    },
+    {
+      "operationId": "organization-admin:POST:/admin/v2/orgs/{orgId}/workspaces",
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Product workspace discovery returns Jira Software, Jira Service Management, and Confluence ARIs with strict cursor paging."
+    },
+    {
+      "operationId": "organization-admin:POST:/admin/v1/orgs/{orgId}/users/{userId}/role-assignments/assign",
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Organization-admin assignment is validated, persisted immediately, and audited."
+    },
+    {
+      "operationId": "organization-admin:POST:/admin/v1/orgs/{orgId}/users/{userId}/role-assignments/revoke",
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Organization-admin revocation is persisted immediately and audited."
+    },
+    {
+      "operationId": "organization-admin:POST:/admin/v1/orgs/{orgId}/users/{userId}/roles/assign",
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Direct site and product role assignment accepts Atlassian role IDs and discovered resource ARIs."
+    },
+    {
+      "operationId": "organization-admin:POST:/admin/v1/orgs/{orgId}/users/{userId}/roles/revoke",
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Direct site and product role revocation is implemented and audited."
+    },
+    {
+      "operationId": "organization-admin:GET:/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/role-assignments",
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Group role assignments support cursor paging and directory, resource owner, resource ID, and role filters."
+    },
+    {
+      "operationId": "organization-admin:POST:/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/role-assignments/assign",
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Group product access accepts Atlassian resource ARIs, updates effective access immediately, and is audited."
+    },
+    {
+      "operationId": "organization-admin:POST:/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/role-assignments/revoke",
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Group product access revocation updates effective access immediately and is audited."
+    },
+    {
+      "operationId": "organization-admin:GET:/admin/v2/orgs/{orgId}/directories/{directoryId}/users/{accountId}/role-assignments",
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Effective user assignments combine direct and group-derived roles and report assignment methods."
     }
   ]
 }

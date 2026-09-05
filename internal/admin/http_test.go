@@ -80,6 +80,15 @@ func TestOrganizationAndGroupAPIJourney(t *testing.T) {
 	mux.HandleFunc("POST /admin/v2/orgs/{orgId}/directories/{directoryId}/groups", handler.Groups)
 	mux.HandleFunc("POST /admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/memberships", handler.GroupMembership)
 	mux.HandleFunc("DELETE /admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/memberships/{accountId}", handler.DeleteGroupMembership)
+	mux.HandleFunc("POST /admin/v2/orgs/{orgId}/workspaces", handler.Workspaces)
+	mux.HandleFunc("POST /admin/v1/orgs/{orgId}/users/{userId}/role-assignments/assign", handler.UserRoleMutation)
+	mux.HandleFunc("POST /admin/v1/orgs/{orgId}/users/{userId}/role-assignments/revoke", handler.UserRoleMutation)
+	mux.HandleFunc("POST /admin/v1/orgs/{orgId}/users/{userId}/roles/assign", handler.UserRoleMutation)
+	mux.HandleFunc("POST /admin/v1/orgs/{orgId}/users/{userId}/roles/revoke", handler.UserRoleMutation)
+	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/role-assignments", handler.RoleAssignments)
+	mux.HandleFunc("POST /admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/role-assignments/assign", handler.GroupRoleMutation)
+	mux.HandleFunc("POST /admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/role-assignments/revoke", handler.GroupRoleMutation)
+	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories/{directoryId}/users/{accountId}/role-assignments", handler.RoleAssignments)
 
 	call := func(method, path, token string, body any, want int) map[string]any {
 		t.Helper()
@@ -139,13 +148,59 @@ func TestOrganizationAndGroupAPIJourney(t *testing.T) {
 	membershipPath := groupsPath + "/" + groupID + "/memberships"
 	call(http.MethodPost, membershipPath, adminToken, map[string]string{"accountId": memberID}, http.StatusNoContent)
 	call(http.MethodPost, membershipPath, adminToken, map[string]string{"accountId": memberID}, http.StatusConflict)
+
+	workspaces := call(http.MethodPost, "/admin/v2/orgs/"+organization.ID+"/workspaces", adminToken, map[string]any{"limit": 20}, http.StatusOK)
+	workspaceData := workspaces["data"].([]any)
+	if len(workspaceData) != 3 {
+		t.Fatalf("workspace resources=%d, want 3", len(workspaceData))
+	}
+	resourceID := ""
+	for _, item := range workspaceData {
+		workspace := item.(map[string]any)
+		attributes := workspace["attributes"].(map[string]any)
+		if attributes["typeKey"] == "jira-service-management" {
+			resourceID = workspace["id"].(string)
+		}
+	}
+	if resourceID == "" {
+		t.Fatal("Jira Service Management workspace resource was not returned")
+	}
+	groupRolesPath := groupsPath + "/" + groupID + "/role-assignments"
+	call(http.MethodPost, groupRolesPath+"/assign", adminToken, map[string]string{"resourceId": resourceID, "roleId": "atlassian/user"}, http.StatusOK)
+	groupRoles := call(http.MethodGet, groupRolesPath+"?roleIds=atlassian/user", adminToken, nil, http.StatusOK)
+	if len(groupRoles["data"].([]any)) != 1 {
+		t.Fatalf("unexpected group role assignments: %#v", groupRoles)
+	}
+	userRolesPath := "/admin/v2/orgs/" + organization.ID + "/directories/" + directoryID + "/users/" + memberID + "/role-assignments"
+	userRoles := call(http.MethodGet, userRolesPath+"?resourceIds="+resourceID, adminToken, nil, http.StatusOK)
+	if len(userRoles["data"].([]any)) != 1 {
+		t.Fatalf("effective user role assignments missing group role: %#v", userRoles)
+	}
+	assignments := userRoles["data"].([]any)[0].(map[string]any)["roleAssignments"].([]any)
+	foundGroupMethod := false
+	if len(assignments) == 1 {
+		for _, method := range assignments[0].(map[string]any)["roleAssignmentMethods"].([]any) {
+			foundGroupMethod = foundGroupMethod || method == "group_direct"
+		}
+	}
+	if !foundGroupMethod {
+		t.Fatalf("effective user assignment method is not group_direct: %#v", userRoles)
+	}
+	call(http.MethodPost, groupRolesPath+"/revoke", adminToken, map[string]string{"resourceId": resourceID, "roleId": "atlassian/user"}, http.StatusNoContent)
+
+	userMutationPath := "/admin/v1/orgs/" + organization.ID + "/users/" + memberID + "/roles"
+	call(http.MethodPost, userMutationPath+"/assign", adminToken, map[string]string{"resource": resourceID, "role": "atlassian/customer"}, http.StatusNoContent)
+	call(http.MethodPost, userMutationPath+"/revoke", adminToken, map[string]string{"resource": resourceID, "role": "atlassian/customer"}, http.StatusNoContent)
+	organizationRolePath := "/admin/v1/orgs/" + organization.ID + "/users/" + memberID + "/role-assignments"
+	call(http.MethodPost, organizationRolePath+"/assign", adminToken, map[string]string{"role": "atlassian/org-admin"}, http.StatusNoContent)
+	call(http.MethodPost, organizationRolePath+"/revoke", adminToken, map[string]string{"role": "atlassian/org-admin"}, http.StatusNoContent)
 	call(http.MethodDelete, membershipPath+"/"+memberID, adminToken, nil, http.StatusNoContent)
 
 	audit, err := st.OrganizationAuditEvents(ctx, organization.ID, 20)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(audit) != 3 {
-		t.Fatalf("audit events=%d, want 3", len(audit))
+	if len(audit) != 9 {
+		t.Fatalf("audit events=%d, want 9", len(audit))
 	}
 }

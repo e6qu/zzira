@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -390,4 +391,446 @@ func (h *Handler) DeleteGroupMembership(w http.ResponseWriter, r *http.Request) 
 	default:
 		w.WriteHeader(http.StatusNoContent)
 	}
+}
+
+type roleRequest struct {
+	Role       string `json:"role"`
+	RoleID     string `json:"roleId"`
+	Resource   string `json:"resource"`
+	ResourceID string `json:"resourceId"`
+}
+
+type roleContext struct {
+	Organization *models.Organization
+	Site         *models.Site
+	Products     []*models.Product
+	DirectoryIDs map[string]bool
+}
+
+func productResourceID(product *models.Product) string {
+	return "ari:cloud:" + product.Key + "::site/" + product.SiteID
+}
+
+func siteResourceID(siteID string) string {
+	return "ari:cloud:platform::site/" + siteID
+}
+
+func organizationResourceID(organizationID string) string {
+	return "ari:cloud:platform::org/" + organizationID
+}
+
+func (h *Handler) loadRoleContext(w http.ResponseWriter, r *http.Request, workspaceID string) (roleContext, bool) {
+	organization, ok := h.organizationForRequest(w, r, workspaceID)
+	if !ok {
+		return roleContext{}, false
+	}
+	site, err := h.Store.SiteByWorkspace(r.Context(), workspaceID)
+	if err != nil {
+		failure(w, http.StatusInternalServerError, "Site lookup failed.")
+		return roleContext{}, false
+	}
+	products, err := h.Store.ProductsBySite(r.Context(), site.ID)
+	if err != nil {
+		failure(w, http.StatusInternalServerError, "Product lookup failed.")
+		return roleContext{}, false
+	}
+	directories, err := h.Store.DirectoriesByOrganization(r.Context(), organization.ID)
+	if err != nil {
+		failure(w, http.StatusInternalServerError, "Directory lookup failed.")
+		return roleContext{}, false
+	}
+	directoryIDs := make(map[string]bool, len(directories))
+	for _, directory := range directories {
+		directoryIDs[directory.ID] = true
+	}
+	return roleContext{Organization: organization, Site: site, Products: products, DirectoryIDs: directoryIDs}, true
+}
+
+func (h *Handler) principalInDirectory(r *http.Request, directoryID, principalType, principalID string) (bool, error) {
+	if principalType == "group" {
+		groups, err := h.Store.GroupsByDirectory(r.Context(), directoryID)
+		if err != nil {
+			return false, err
+		}
+		for _, group := range groups {
+			if group.ID == principalID {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
+	users, err := h.Store.DirectoryUsers(r.Context(), directoryID)
+	if err != nil {
+		return false, err
+	}
+	for _, user := range users {
+		if user.ID == principalID {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (h *Handler) userStatusInDirectory(r *http.Request, directoryID, accountID string) (string, bool, error) {
+	users, err := h.Store.DirectoryUsers(r.Context(), directoryID)
+	if err != nil {
+		return "", false, err
+	}
+	for _, user := range users {
+		if user.ID == accountID {
+			if user.Active {
+				return "active", true, nil
+			}
+			return "suspended", true, nil
+		}
+	}
+	return "", false, nil
+}
+
+func roleTarget(context roleContext, role, resource string, organizationOnly bool) (string, string, error) {
+	role = strings.TrimSpace(role)
+	resource = strings.TrimSpace(resource)
+	if organizationOnly {
+		if role != "atlassian/org-admin" {
+			return "", "", errors.New("role must be atlassian/org-admin")
+		}
+		return "organization", context.Organization.ID, nil
+	}
+	if role == "atlassian/org-admin" {
+		return "organization", context.Organization.ID, nil
+	}
+	if role == "atlassian/site-admin" {
+		if resource != context.Site.ID && resource != siteResourceID(context.Site.ID) {
+			return "", "", errors.New("resource must identify this site")
+		}
+		return "site", context.Site.ID, nil
+	}
+	allowedProductRoles := map[string]bool{
+		"atlassian/user":              true,
+		"atlassian/user-access-admin": true,
+		"atlassian/admin":             true,
+		"atlassian/guest":             true,
+		"atlassian/contributor":       true,
+		"atlassian/customer":          true,
+		"atlassian/basic":             true,
+		"atlassian/stakeholder":       true,
+		"atlassian/viewer":            true,
+		"atlassian/ai-access":         true,
+	}
+	if !allowedProductRoles[role] {
+		return "", "", errors.New("role is not supported")
+	}
+	for _, product := range context.Products {
+		if resource == product.ID || resource == productResourceID(product) {
+			if (role == "atlassian/customer" || role == "atlassian/stakeholder") && product.Key != "jira-service-management" {
+				return "", "", errors.New("customer and stakeholder roles require Jira Service Management")
+			}
+			return "product", product.ID, nil
+		}
+	}
+	return "", "", errors.New("resource must identify an enabled product in this site")
+}
+
+func apiRole(role string) string {
+	switch role {
+	case "atlassian/product-user", "atlassian/site-user":
+		return "atlassian/user"
+	case "atlassian/product-admin":
+		return "atlassian/user-access-admin"
+	default:
+		return role
+	}
+}
+
+func queryMatches(values url.Values, name, candidate string) bool {
+	raw := values[name]
+	if len(raw) == 0 {
+		return true
+	}
+	for _, value := range raw {
+		for _, item := range strings.Split(value, ",") {
+			if strings.TrimSpace(item) == candidate {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func roleResource(context roleContext, binding *models.RoleBinding) (resourceID, owner string, ok bool) {
+	switch binding.ScopeType {
+	case "organization":
+		if binding.ScopeID == context.Organization.ID {
+			return organizationResourceID(context.Organization.ID), "platform", true
+		}
+	case "site":
+		if binding.ScopeID == context.Site.ID {
+			return siteResourceID(context.Site.ID), "platform", true
+		}
+	case "product":
+		for _, product := range context.Products {
+			if binding.ScopeID == product.ID {
+				return productResourceID(product), product.Key, true
+			}
+		}
+	}
+	return "", "", false
+}
+
+func (h *Handler) Workspaces(w http.ResponseWriter, r *http.Request) {
+	_, workspaceID, ok := h.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	context, ok := h.loadRoleContext(w, r, workspaceID)
+	if !ok {
+		return
+	}
+	var input struct {
+		Limit  int    `json:"limit"`
+		Cursor string `json:"cursor"`
+	}
+	if r.Body != nil && r.ContentLength != 0 {
+		if err := decodeJSONBody(r, &input); err != nil {
+			failure(w, http.StatusBadRequest, "Workspace search body is invalid.")
+			return
+		}
+	}
+	if input.Cursor != "" && input.Limit != 0 {
+		failure(w, http.StatusBadRequest, "A cursor cannot be combined with other workspace search fields.")
+		return
+	}
+	values := url.Values{}
+	if input.Limit > 0 {
+		values.Set("limit", strconv.Itoa(input.Limit))
+	}
+	if input.Cursor != "" {
+		values.Set("cursor", input.Cursor)
+	}
+	offset, limit, err := parsePage(values)
+	if err != nil {
+		failure(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	page, next := pageSlice(context.Products, offset, limit)
+	data := make([]map[string]any, 0, len(page))
+	for _, product := range page {
+		data = append(data, map[string]any{
+			"id":   productResourceID(product),
+			"type": "workspaces",
+			"attributes": map[string]any{
+				"name": product.Name, "typeKey": product.Key, "type": product.Key,
+				"status": "online", "hostUrl": strings.TrimRight(h.BaseURL, "/"),
+				"createdAt": product.CreatedAt,
+			},
+			"links": map[string]any{"self": strings.TrimRight(h.BaseURL, "/") + "/admin/v2/orgs/" + url.PathEscape(context.Organization.ID) + "/workspaces"},
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"data": data, "links": map[string]any{"self": cursorFor(offset), "next": next},
+		"meta": map[string]any{"total": len(context.Products)},
+	})
+}
+
+func (h *Handler) UserRoleMutation(w http.ResponseWriter, r *http.Request) {
+	actorID, workspaceID, ok := h.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	context, ok := h.loadRoleContext(w, r, workspaceID)
+	if !ok {
+		return
+	}
+	var input roleRequest
+	if err := decodeJSONBody(r, &input); err != nil {
+		failure(w, http.StatusBadRequest, "Role request is invalid.")
+		return
+	}
+	organizationOnly := strings.Contains(r.URL.Path, "/role-assignments/")
+	scopeType, scopeID, err := roleTarget(context, input.Role, input.Resource, organizationOnly)
+	if err != nil {
+		failure(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	assign := strings.HasSuffix(r.URL.Path, "/assign")
+	err = h.Store.SetRoleBinding(r.Context(), workspaceID, actorID, "user", r.PathValue("userId"), scopeType, scopeID, input.Role, assign)
+	switch {
+	case errors.Is(err, store.ErrAdminNotFound), errors.Is(err, pgx.ErrNoRows):
+		failure(w, http.StatusNotFound, "Organization, resource, or user was not found.")
+	case errors.Is(err, store.ErrAdminValidation):
+		failure(w, http.StatusBadRequest, err.Error())
+	case err != nil:
+		failure(w, http.StatusInternalServerError, "Role assignment failed.")
+	default:
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func (h *Handler) GroupRoleMutation(w http.ResponseWriter, r *http.Request) {
+	actorID, workspaceID, ok := h.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	context, ok := h.loadRoleContext(w, r, workspaceID)
+	if !ok {
+		return
+	}
+	directoryID := r.PathValue("directoryId")
+	if !context.DirectoryIDs[directoryID] {
+		failure(w, http.StatusNotFound, "Directory was not found.")
+		return
+	}
+	found, err := h.principalInDirectory(r, directoryID, "group", r.PathValue("groupId"))
+	if err != nil {
+		failure(w, http.StatusInternalServerError, "Group lookup failed.")
+		return
+	}
+	if !found {
+		failure(w, http.StatusNotFound, "Group was not found.")
+		return
+	}
+	var input roleRequest
+	if err := decodeJSONBody(r, &input); err != nil {
+		failure(w, http.StatusBadRequest, "Role request is invalid.")
+		return
+	}
+	scopeType, scopeID, err := roleTarget(context, input.RoleID, input.ResourceID, false)
+	if err != nil {
+		failure(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	assign := strings.HasSuffix(r.URL.Path, "/assign")
+	err = h.Store.SetRoleBinding(r.Context(), workspaceID, actorID, "group", r.PathValue("groupId"), scopeType, scopeID, input.RoleID, assign)
+	switch {
+	case errors.Is(err, store.ErrAdminNotFound), errors.Is(err, pgx.ErrNoRows):
+		failure(w, http.StatusNotFound, "Organization, directory, group, or resource was not found.")
+	case errors.Is(err, store.ErrAdminValidation):
+		failure(w, http.StatusBadRequest, err.Error())
+	case err != nil:
+		failure(w, http.StatusInternalServerError, "Role assignment failed.")
+	default:
+		if assign {
+			w.WriteHeader(http.StatusOK)
+		} else {
+			w.WriteHeader(http.StatusNoContent)
+		}
+	}
+}
+
+func (h *Handler) RoleAssignments(w http.ResponseWriter, r *http.Request) {
+	_, workspaceID, ok := h.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	if err := rejectUnknownQuery(r.URL.Query(), "cursor", "limit", "directoryIds", "resourceOwners", "resourceIds", "roleIds"); err != nil {
+		failure(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	context, ok := h.loadRoleContext(w, r, workspaceID)
+	if !ok {
+		return
+	}
+	principalType, principalID := "group", r.PathValue("groupId")
+	if accountID := r.PathValue("accountId"); accountID != "" {
+		principalType, principalID = "user", accountID
+	}
+	directoryID := r.PathValue("directoryId")
+	if !context.DirectoryIDs[directoryID] {
+		failure(w, http.StatusNotFound, "Directory was not found.")
+		return
+	}
+	userDirectoryStatus := ""
+	var found bool
+	var err error
+	if principalType == "user" {
+		userDirectoryStatus, found, err = h.userStatusInDirectory(r, directoryID, principalID)
+	} else {
+		found, err = h.principalInDirectory(r, directoryID, principalType, principalID)
+	}
+	if err != nil {
+		failure(w, http.StatusInternalServerError, "Directory principal lookup failed.")
+		return
+	}
+	if !found {
+		failure(w, http.StatusNotFound, "User or group was not found.")
+		return
+	}
+	bindings, err := h.Store.RoleBindingsForPrincipal(r.Context(), workspaceID, principalType, principalID)
+	if err != nil {
+		failure(w, http.StatusInternalServerError, "Role assignment lookup failed.")
+		return
+	}
+	type aggregate struct {
+		ResourceID    string
+		ResourceOwner string
+		Roles         map[string][]string
+	}
+	byResource := map[string]*aggregate{}
+	order := make([]string, 0)
+	if !queryMatches(r.URL.Query(), "directoryIds", directoryID) {
+		bindings = nil
+	}
+	for _, binding := range bindings {
+		resourceID, owner, found := roleResource(context, binding)
+		if !found {
+			continue
+		}
+		role := apiRole(binding.RoleKey)
+		if !queryMatches(r.URL.Query(), "resourceIds", resourceID) ||
+			!queryMatches(r.URL.Query(), "resourceOwners", owner) ||
+			!queryMatches(r.URL.Query(), "roleIds", role) {
+			continue
+		}
+		item := byResource[resourceID]
+		if item == nil {
+			item = &aggregate{ResourceID: resourceID, ResourceOwner: owner, Roles: map[string][]string{}}
+			byResource[resourceID] = item
+			order = append(order, resourceID)
+		}
+		methods := item.Roles[role]
+		method := binding.Assignment
+		seen := false
+		for _, existing := range methods {
+			seen = seen || existing == method
+		}
+		if !seen {
+			item.Roles[role] = append(methods, method)
+		}
+	}
+	sort.Strings(order)
+	offset, limit, err := parsePage(r.URL.Query())
+	if err != nil {
+		failure(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	page, next := pageSlice(order, offset, limit)
+	data := make([]map[string]any, 0, len(page))
+	for _, resourceID := range page {
+		item := byResource[resourceID]
+		if principalType == "group" {
+			roles := make([]string, 0, len(item.Roles))
+			for role := range item.Roles {
+				roles = append(roles, role)
+			}
+			sort.Strings(roles)
+			data = append(data, map[string]any{"resourceId": item.ResourceID, "resourceOwner": item.ResourceOwner, "roles": roles})
+			continue
+		}
+		assignments := make([]map[string]any, 0, len(item.Roles))
+		roles := make([]string, 0, len(item.Roles))
+		for role, methods := range item.Roles {
+			roles = append(roles, role)
+			assignments = append(assignments, map[string]any{"role": role, "roleAssignmentMethods": methods})
+		}
+		sort.Strings(roles)
+		sort.Slice(assignments, func(i, j int) bool {
+			return assignments[i]["role"].(string) < assignments[j]["role"].(string)
+		})
+		data = append(data, map[string]any{
+			"resourceId": item.ResourceID, "resourceOwner": item.ResourceOwner,
+			"roles": roles, "roleAssignments": assignments,
+			"directoryId": directoryID, "userDirectoryStatus": userDirectoryStatus,
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": data, "links": map[string]any{"self": cursorFor(offset), "next": next}})
 }

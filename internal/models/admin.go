@@ -53,6 +53,7 @@ type RoleBinding struct {
 	PrincipalID   string `json:"principalId"`
 	Source        string `json:"source"`
 	CreatedAt     string `json:"createdAt"`
+	Assignment    string `json:"assignment,omitempty"`
 }
 
 type OrganizationAuditEvent struct {

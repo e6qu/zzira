@@ -103,6 +103,22 @@ func TestOrganizationProvisioningAndGroupAuthorization(t *testing.T) {
 	if err := st.SetGroupMember(ctx, workspaceID, adminID, directories[0].ID, group.ID, memberID, true); err != nil {
 		t.Fatal(err)
 	}
+	if err := st.SetRoleBinding(ctx, workspaceID, adminID, "group", group.ID, "product", products[0].ID, "atlassian/user", true); err != nil {
+		t.Fatal(err)
+	}
+	bindings, err := st.RoleBindingsForPrincipal(ctx, workspaceID, "user", memberID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundGroupProductAccess := false
+	for _, binding := range bindings {
+		if binding.ScopeID == products[0].ID && binding.RoleKey == "atlassian/user" && binding.Assignment == "group_direct" {
+			foundGroupProductAccess = true
+		}
+	}
+	if !foundGroupProductAccess {
+		t.Fatalf("effective user assignments did not include group product access: %#v", bindings)
+	}
 	if _, err := st.Pool.Exec(ctx, `
 		INSERT INTO role_bindings(scope_type,scope_id,role_key,principal_type,principal_id)
 		VALUES('site',$1,'atlassian/site-admin','group',$2)`, site.ID, group.ID); err != nil {
@@ -119,11 +135,14 @@ func TestOrganizationProvisioningAndGroupAuthorization(t *testing.T) {
 	if err != nil || admin {
 		t.Fatalf("removed group member admin=%v, err=%v", admin, err)
 	}
+	if err := st.SetRoleBinding(ctx, workspaceID, adminID, "group", group.ID, "product", products[0].ID, "atlassian/user", false); err != nil {
+		t.Fatal(err)
+	}
 	audit, err := st.OrganizationAuditEvents(ctx, organization.ID, 20)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(audit) != 3 {
-		t.Fatalf("audit events=%d, want 3", len(audit))
+	if len(audit) != 5 {
+		t.Fatalf("audit events=%d, want 5", len(audit))
 	}
 }

@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 22,
+  "assessedTotal": 31,
   "counts": {
     "delivered": 0,
-    "partial": 15,
+    "partial": 24,
     "missing": 7,
-    "unassessed": 1185
+    "unassessed": 1176
   },
   "countsByFamily": {
     "automation": {
@@ -42,9 +42,9 @@
     },
     "organization-admin": {
       "delivered": 0,
-      "partial": 7,
+      "partial": 16,
       "missing": 0,
-      "unassessed": 40
+      "unassessed": 31
     }
   },
   "operations": [
@@ -9514,33 +9514,45 @@
       "operationId": "organization-admin:POST:/admin/v1/orgs/{orgId}/users/{userId}/role-assignments/assign",
       "family": "organization-admin",
       "hostClass": "central",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Organization-admin assignment is validated, persisted immediately, and audited."
     },
     {
       "operationId": "organization-admin:POST:/admin/v1/orgs/{orgId}/users/{userId}/role-assignments/revoke",
       "family": "organization-admin",
       "hostClass": "central",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Organization-admin revocation is persisted immediately and audited."
     },
     {
       "operationId": "organization-admin:POST:/admin/v1/orgs/{orgId}/users/{userId}/roles/assign",
       "family": "organization-admin",
       "hostClass": "central",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Direct site and product role assignment accepts Atlassian role IDs and discovered resource ARIs."
     },
     {
       "operationId": "organization-admin:POST:/admin/v1/orgs/{orgId}/users/{userId}/roles/revoke",
       "family": "organization-admin",
       "hostClass": "central",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Direct site and product role revocation is implemented and audited."
     },
     {
       "operationId": "organization-admin:GET:/admin/v2/orgs/{orgId}/directories",
@@ -9641,25 +9653,34 @@
       "operationId": "organization-admin:GET:/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/role-assignments",
       "family": "organization-admin",
       "hostClass": "central",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Group role assignments support cursor paging and directory, resource owner, resource ID, and role filters."
     },
     {
       "operationId": "organization-admin:POST:/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/role-assignments/assign",
       "family": "organization-admin",
       "hostClass": "central",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Group product access accepts Atlassian resource ARIs, updates effective access immediately, and is audited."
     },
     {
       "operationId": "organization-admin:POST:/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/role-assignments/revoke",
       "family": "organization-admin",
       "hostClass": "central",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Group product access revocation updates effective access immediately and is audited."
     },
     {
       "operationId": "organization-admin:GET:/admin/v2/orgs/{orgId}/directories/{directoryId}/users",
@@ -9713,9 +9734,12 @@
       "operationId": "organization-admin:GET:/admin/v2/orgs/{orgId}/directories/{directoryId}/users/{accountId}/role-assignments",
       "family": "organization-admin",
       "hostClass": "central",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Effective user assignments combine direct and group-derived roles and report assignment methods."
     },
     {
       "operationId": "organization-admin:POST:/admin/v2/orgs/{orgId}/directories/{directoryId}/users/{accountId}/suspend",
@@ -9745,9 +9769,12 @@
       "operationId": "organization-admin:POST:/admin/v2/orgs/{orgId}/workspaces",
       "family": "organization-admin",
       "hostClass": "central",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Product workspace discovery returns Jira Software, Jira Service Management, and Confluence ARIs with strict cursor paging."
     }
   ]
 }

@@ -19,6 +19,8 @@ target either a user or a group. The first supported roles are:
 | `atlassian/site-user` | Enters the site |
 | `atlassian/product-admin` | Enters and administers the bound product where a product permission uses it |
 | `atlassian/product-user` | Enters the bound enabled product |
+| `atlassian/user` and product roles | Atlassian-compatible direct or group access to the bound product |
+| `atlassian/user-access-admin` | Administers access for the bound product without receiving product use |
 
 Direct and group role bindings use the same evaluator. Disabled users cannot
 enter a site even if a role remains. Existing authorization calls now resolve
@@ -28,8 +30,10 @@ workspace membership and administration through this model.
 
 Site administrators use `/admin` to inspect organization and Cloud IDs, enabled
 products, the internal directory, users, groups, and recent audit events. They
-can create a group and add or remove directory users. Every successful group or
-membership mutation writes an organization audit event in the same transaction.
+can create a group, add or remove directory users, and grant or revoke each
+group's Jira Software, Jira Service Management, and Confluence access. Every
+successful group, membership, or role mutation writes an organization audit
+event in the same transaction.
 Ordinary users do not see the administration navigation item and receive 403 on
 direct access.
 
@@ -46,25 +50,35 @@ implemented:
 | GET/POST | `/admin/v2/orgs/{orgId}/directories/{directoryId}/groups` |
 | POST | `/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/memberships` |
 | DELETE | `/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/memberships/{accountId}` |
+| POST | `/admin/v2/orgs/{orgId}/workspaces` |
+| POST | `/admin/v1/orgs/{orgId}/users/{userId}/role-assignments/{assign\|revoke}` |
+| POST | `/admin/v1/orgs/{orgId}/users/{userId}/roles/{assign\|revoke}` |
+| GET | `/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/role-assignments` |
+| POST | `/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/role-assignments/{assign\|revoke}` |
+| GET | `/admin/v2/orgs/{orgId}/directories/{directoryId}/users/{accountId}/role-assignments` |
 
 The API requires `Authorization: Bearer <api-token>` and an organization or site
 administrator role. Site Jira APIs continue to accept their existing Jira-style
 Basic authentication. Collection cursors are opaque encoded offsets; malformed
 cursors are rejected. Groups support `searchTerm` and limits from 1 through 100.
+Workspace discovery returns product ARIs. Role lookups support directory,
+resource-owner, resource-ID, and role-ID filters and report whether effective
+user access is direct or inherited from a group.
 
 The current server configuration serves one workspace/site. Organization
 discovery therefore returns the organization containing that site. Cross-site
 organization discovery, directory filters, SCIM lifecycle, user suspension,
-product access mutation, policy/domain/event endpoints, role-assignment APIs,
-group detail/delete/statistics, and full central-host rate limiting remain in
+policy/domain/event endpoints, group detail/delete/statistics, user lifecycle,
+license limits, and full central-host rate limiting remain in
 the active plan and are reported as unassessed or missing in operation coverage.
 
 ## Verification
 
 - Store integration tests cover workspace provisioning, membership migration,
-  direct roles, group-derived administration, group removal, and audit events.
+  direct roles, group-derived administration and product access, revocation,
+  and audit events.
 - API integration tests cover bearer authentication, permission denial,
-  organization/directory discovery, group creation, membership add/remove,
-  conflicts, and audit persistence.
-- Playwright covers the complete admin group journey, ordinary-user denial,
-  WCAG scans, light/dark themes, and 320px reflow.
+  organization/directory/product discovery, group creation, membership and role
+  mutations, effective assignments, conflicts, and audit persistence.
+- Playwright covers the complete group and product-access journey,
+  ordinary-user denial, WCAG scans, light/dark themes, and 320px reflow.
