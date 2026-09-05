@@ -110,6 +110,7 @@
     <div class="nav-label">Settings</div>
     {{with .Navigation}}{{if .CanAdmin}}{{with .Current}}<a class="nav-project-settings" href="/projects/{{.Project.Key}}/settings" {{if eq $.Active "project-settings"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6M16 14v6"/></svg><span>Project settings</span></a>{{end}}{{end}}{{end}}
     <a class="nav-workflows" href="/settings/workflows" {{if eq .Active "workflows"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M7 6h10M18 8l-5 8M11 16 6 8"/></svg><span>Workflows</span></a>
+    {{with .Navigation}}{{if .CanAdmin}}<a class="nav-automation" href="/settings/automation" {{if eq $.Active "automation"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2M4 12H2M22 12h-2"/></svg><span>Automation</span></a>{{end}}{{end}}
   </nav>
   <div class="sync-rail" id="sync-rail" data-state="online">
     <span class="sync-dot" aria-hidden="true"></span>

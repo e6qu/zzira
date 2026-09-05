@@ -70,7 +70,7 @@ ZZIRA-owned control-plane endpoints use `/rest/zzira/1`.
 | Dashboards | 🟡 16/17 pinned operations + custom UI | Fixed `/dashboard` plus `/dashboards`: CRUD, ownership/sharing, copy, gadget catalog/lifecycle/properties, favourites, layouts, refresh, JQL/filter lists and permission-filtered charts. Bulk edit and external gadget runtimes remain; see `docs/DASHBOARDS.md` |
 | dev-status (SCM links) | ⛔ | requires SCM integration APIs and client tests |
 | Service management surfaces | ⛔ | separate product surface included in the full-surface ledger |
-| Automation and schedules | ⛔ | durable scheduler, rule editor, execution/audit and API contracts remain |
+| Automation and schedules | 🟡 | all eight Jira Automation rule-management routes, fixed-rate editor, durable execution/retries, actor-scoped JQL, label/assign/transition actions and audit UI delivered; see `docs/AUTOMATION.md` for Cron, trigger, component and runtime gaps |
 | Project versions and releases | 🟡 | Ten version operations, release hub/lifecycle, fix/affected membership, visible progress and notes; exact limits in [RELEASES.md](../../docs/RELEASES.md) |
 | Metrics and reports | ⛔ | Historical calculations and chart/report journeys remain |
 | Apps/plugins, diagrams and graphs | ⛔ | installation/runtime modules, diagram authoring and graph/report surfaces remain |

@@ -26,6 +26,7 @@ The endpoint-level source of truth remains [the API matrix](../api/conformance/M
 | Plan a backlog/sprint | ✅ | Project backlog and open-sprint grouping, cross-group movement, rank controls, issue preview, sprint create/edit/start/complete, and equivalent Agile API lifecycle are browser/integration-tested; epic/version planning is a separate enhancement |
 | Administer workflows | 🟡 | Workflow directory, read-only built-in diagram, custom workflow creation, transition add/remove, and project assignment are browser-tested; status creation and full schemes/conditions remain |
 | Administer a project | 🟡 | Create Scrum/Kanban projects, edit details/lead/default assignment, and navigate to board/workflow settings; roles, schemes, fields, security and lifecycle remain |
+| Administer scheduled automation | 🟡 | Admin-only rule directory/editor, schedule → JQL scope → action flow, enable/disable, run-now and detailed audit history; Cron, event triggers, conditions, branches, smart values and most Jira actions remain |
 | Wiki | 🟡 | Space/page creation, storage editor, drafts, version checks/history, parent pages, search and trash/restore; see CLOUD_PARITY.md for API and permission limits |
 
 ## Delivery order
