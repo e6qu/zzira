@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 15,
+  "assessedTotal": 22,
   "counts": {
     "delivered": 0,
-    "partial": 8,
+    "partial": 15,
     "missing": 7,
-    "unassessed": 1192
+    "unassessed": 1185
   },
   "countsByFamily": {
     "automation": {
@@ -42,9 +42,9 @@
     },
     "organization-admin": {
       "delivered": 0,
-      "partial": 0,
+      "partial": 7,
       "missing": 0,
-      "unassessed": 47
+      "unassessed": 40
     }
   },
   "operations": [
@@ -9356,17 +9356,23 @@
       "operationId": "organization-admin:GET:/admin/v1/orgs",
       "family": "organization-admin",
       "hostClass": "central",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Bearer-authenticated discovery is implemented for the site served by this ZZIRA instance."
     },
     {
       "operationId": "organization-admin:GET:/admin/v1/orgs/{orgId}",
       "family": "organization-admin",
       "hostClass": "central",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "docs/ADMIN.md"
+      ],
+      "notes": "The organization bean and related links are implemented for authorized site administrators."
     },
     {
       "operationId": "organization-admin:GET:/admin/v1/orgs/{orgId}/directory/users/{accountId}/last-active-dates",
@@ -9540,25 +9546,34 @@
       "operationId": "organization-admin:GET:/admin/v2/orgs/{orgId}/directories",
       "family": "organization-admin",
       "hostClass": "central",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Internal directory listing and opaque pagination are implemented; directory filters remain."
     },
     {
       "operationId": "organization-admin:GET:/admin/v2/orgs/{orgId}/directories/{directoryId}/groups",
       "family": "organization-admin",
       "hostClass": "central",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Group listing, searchTerm, counts, management access and opaque pagination are implemented."
     },
     {
       "operationId": "organization-admin:POST:/admin/v2/orgs/{orgId}/directories/{directoryId}/groups",
       "family": "organization-admin",
       "hostClass": "central",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Internal group creation and duplicate-name conflicts are implemented and audited."
     },
     {
       "operationId": "organization-admin:GET:/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/count",
@@ -9604,17 +9619,23 @@
       "operationId": "organization-admin:POST:/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/memberships",
       "family": "organization-admin",
       "hostClass": "central",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Directory-scoped membership addition, conflicts and auditing are implemented."
     },
     {
       "operationId": "organization-admin:DELETE:/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/memberships/{accountId}",
       "family": "organization-admin",
       "hostClass": "central",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Directory-scoped membership removal, not-found behavior and auditing are implemented."
     },
     {
       "operationId": "organization-admin:GET:/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/role-assignments",

@@ -95,3 +95,13 @@ func TestSecureCookiesDefaultToTheExternalURL(t *testing.T) {
 		t.Fatal("explicit COOKIE_SECURE=false was ignored")
 	}
 }
+
+func TestIdentifyBearerRejectsMalformedAuthorization(t *testing.T) {
+	for _, authorization := range []string{"", "Bearer", "Bearer one two", "Basic token"} {
+		r := httptest.NewRequest(http.MethodGet, "https://zzira.example/admin/v1/orgs", nil)
+		r.Header.Set("Authorization", authorization)
+		if _, err := IdentifyBearer(r.Context(), nil, r); err != ErrUnauthorized {
+			t.Errorf("Authorization %q returned %v, want ErrUnauthorized", authorization, err)
+		}
+	}
+}

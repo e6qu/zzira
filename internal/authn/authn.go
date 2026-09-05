@@ -156,11 +156,29 @@ func Identify(ctx context.Context, st *store.Store, r *http.Request) (string, er
 		}
 		return "", ErrUnauthorized
 	}
+	if strings.HasPrefix(strings.ToLower(r.Header.Get("Authorization")), "bearer ") {
+		return IdentifyBearer(ctx, st, r)
+	}
 	c, err := r.Cookie(sessionCookie)
 	if err != nil || c.Value == "" {
 		return "", ErrUnauthorized
 	}
 	return st.SessionUser(ctx, hashToken(c.Value))
+}
+
+// IdentifyBearer resolves an API token presented with the bearer scheme. Jira
+// site APIs commonly use email/token Basic authentication, while Atlassian's
+// organization administration API presents an admin API key as a bearer token.
+func IdentifyBearer(ctx context.Context, st *store.Store, r *http.Request) (string, error) {
+	parts := strings.Fields(r.Header.Get("Authorization"))
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") || parts[1] == "" {
+		return "", ErrUnauthorized
+	}
+	userID, err := st.UserByAPIToken(ctx, hashToken(parts[1]))
+	if err != nil {
+		return "", ErrUnauthorized
+	}
+	return userID, nil
 }
 
 // ProtectCookieMutations rejects cross-origin unsafe requests authenticated by

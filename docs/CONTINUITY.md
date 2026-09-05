@@ -50,26 +50,47 @@ does not publish them as one OpenAPI document.
 - Added contract family, host class, source metadata, stable operation IDs,
   strict pin validation, and focused generator tests.
 - Added exact-operation coverage generation. The first reviewed assessment
-  records Automation as 8 partial and 7 missing operations; 1,192 operations
-  remain explicitly unassessed rather than being inferred from route names.
+  records Automation as 8 partial and 7 missing operations. The organization
+  foundation adds 7 partial assessments; 1,185 operations remain explicitly
+  unassessed rather than being inferred from route names.
+- Added organization, site, product, internal-directory, directory-user, group,
+  group-member, role-binding, and organization-audit persistence with automatic
+  provisioning for new workspaces and a repair path for older workspaces.
+- Migrated legacy workspace roles into centrally evaluated site and product
+  bindings, including group-derived administration and immediate revocation.
+- Added bearer-authenticated organization discovery, directory/group listing,
+  group creation, and group-membership mutation endpoints with strict request,
+  pagination, conflict, and authorization behavior.
+- Added the `/admin` journey for organization context, product visibility,
+  group creation, member assignment/removal, and the resulting audit trail.
+- Fixed bootstrap administration so an existing member is promoted when the
+  configured bootstrap identity already exists.
+- Made bootstrap and first-time OIDC assignment prefer `ws_default`
+  deterministically when additional workspaces exist.
 
-Validation for this workstream:
+Validation after the organization foundation:
 
 - 7 focused Python conformance tests pass.
 - Inventory and coverage generated files pass their `--check` modes.
-- `go test ./...` passes.
+- All Go packages pass with the PostgreSQL integration suite enabled.
+- `go vet ./...` passes.
 - `GOOS=js GOARCH=wasm go build ./...` passes.
+- All 45 Chromium user-journey tests pass, including WCAG scans in light and
+  dark themes and 320 px reflow for the new administration page.
 - `git diff --check` passes.
 
 ## Current change
 
-1. Model organizations, sites, products, directories, groups, role bindings,
-   permission schemes, and audit events with additive migrations.
-2. Migrate existing workspace memberships into the new role-binding model.
-3. Centralize authorization evaluation for existing and new edges.
-4. Deliver the first organization/site administration APIs and complete admin
-   browser journey.
-5. Add permission-revocation action/tombstone coverage and multi-user tests.
+1. Add product-access and role-assignment mutations, list their effective users
+   and groups, and expose them in the administration journey.
+2. Add managed-account status and profile administration, invitations, account
+   suspension/reactivation, and session/token revocation.
+3. Complete group detail/update/delete and directory-user operations from the
+   pinned Organizations contract.
+4. Add organization domains, authentication policies, identity-provider
+   configuration, organization events, and the remaining central audit APIs.
+5. Extend revocation coverage from browser/API authorization to local replicas
+   and queued mutations where the affected resource can already be cached.
 
 ## Resume here
 

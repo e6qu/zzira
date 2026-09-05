@@ -1,0 +1,58 @@
+{{define "page_admin"}}
+<!doctype html>
+<html lang="en">
+<head><title>Administration · ZZIRA</title>{{template "head" .}}<link rel="stylesheet" href="/static/css/admin.css?v=1"></head>
+<body>
+<a class="skip-link" href="#main-content">Skip to content</a>
+{{template "header" .}}
+<div class="app-shell">
+{{template "workspace_nav" .}}
+<main class="page page-fluid admin-page" id="main-content" tabindex="-1">
+  <nav class="issue-breadcrumbs" aria-label="Breadcrumb"><span>Administration</span><span aria-hidden="true">/</span><span aria-current="page">Organization</span></nav>
+  <header class="page-header">
+    <div><span class="eyebrow">Organization administration</span><h1>{{.Data.Organization.Name}}</h1><p>Manage the site, product access, directory groups, and organization audit trail.</p></div>
+    <code class="admin-object-id" title="Organization ID">{{.Data.Organization.ID}}</code>
+  </header>
+  {{if .Data.Saved}}<div class="alert success" role="status">{{.Data.Saved}}</div>{{end}}
+  {{if .Data.Error}}<div class="alert error" role="alert">{{.Data.Error}}</div>{{end}}
+
+  <section class="admin-overview" aria-label="Organization overview">
+    <article class="surface-card"><span class="eyebrow">Site</span><h2>{{.Data.Site.Name}}</h2><dl><div><dt>Slug</dt><dd>{{.Data.Site.Slug}}</dd></div><div><dt>Cloud ID</dt><dd><code>{{.Data.Site.ID}}</code></dd></div></dl></article>
+    <article class="surface-card"><span class="eyebrow">Directory</span>{{with .Data.Directory}}<h2>{{.Name}}</h2><dl><div><dt>Type</dt><dd>{{.Type}}</dd></div><div><dt>Accounts</dt><dd>{{len $.Data.Users}}</dd></div></dl>{{else}}<h2>No active directory</h2>{{end}}</article>
+  </section>
+
+  <section class="surface-card admin-section" aria-labelledby="admin-products-title">
+    <header><div><span class="eyebrow">Access</span><h2 id="admin-products-title">Products</h2></div><p>Existing workspace memberships are mapped into explicit site and product roles.</p></header>
+    <div class="table-scroll"><table><thead><tr><th scope="col">Product</th><th scope="col">Key</th><th scope="col">State</th></tr></thead><tbody>{{range .Data.Products}}<tr><th scope="row">{{.Name}}</th><td><code>{{.Key}}</code></td><td><span class="lozenge {{if .Enabled}}lozenge-success{{else}}lozenge-default{{end}}">{{if .Enabled}}Enabled{{else}}Disabled{{end}}</span></td></tr>{{end}}</tbody></table></div>
+  </section>
+
+  <div class="admin-directory-layout">
+    <section class="surface-card admin-section" aria-labelledby="admin-groups-title">
+      <header><div><span class="eyebrow">Directory</span><h2 id="admin-groups-title">Groups</h2></div><p>Groups can receive organization, site, product, project, or space roles.</p></header>
+      {{with .Data.Directory}}
+      <form class="admin-group-create" method="post" action="/admin/groups">
+        <label for="admin-group-name">Group name</label><input id="admin-group-name" name="name" maxlength="255" required placeholder="For example: delivery-managers" value="{{$.Data.GroupName}}">
+        <label for="admin-group-description">Description</label><textarea id="admin-group-description" name="description" maxlength="1000" rows="2">{{$.Data.GroupDescription}}</textarea>
+        <button class="btn btn-primary" type="submit">Create group</button>
+      </form>
+      {{else}}<p>No active directory is available.</p>{{end}}
+      <div class="admin-groups">
+      {{$users := .Data.Users}}
+      {{range .Data.Groups}}{{$row := .}}<article class="admin-group">
+        <header><div><h3>{{.Group.Name}}</h3><p>{{.Group.Description}}</p></div><span>{{.Group.MemberCount}} member{{if ne .Group.MemberCount 1}}s{{end}}</span></header>
+        <ul>{{range $users}}<li><span>{{template "avatar" .}}<span><strong>{{.DisplayName}}</strong><small>{{.Email}}</small></span></span>{{if index $row.MemberIDs .ID}}<form method="post" action="/admin/groups/{{$row.Group.ID}}/members"><input type="hidden" name="accountId" value="{{.ID}}"><input type="hidden" name="action" value="remove"><button class="btn" type="submit">Remove</button></form>{{else}}<form method="post" action="/admin/groups/{{$row.Group.ID}}/members"><input type="hidden" name="accountId" value="{{.ID}}"><input type="hidden" name="action" value="add"><button class="btn" type="submit">Add</button></form>{{end}}</li>{{end}}</ul>
+      </article>{{else}}<div class="empty-state"><strong>No groups yet</strong><p>Create a group to manage access for several people together.</p></div>{{end}}
+      </div>
+    </section>
+
+    <section class="surface-card admin-section" aria-labelledby="admin-audit-title">
+      <header><div><span class="eyebrow">Evidence</span><h2 id="admin-audit-title">Audit log</h2></div><p>Directory changes are recorded with their actor and target.</p></header>
+      <ol class="admin-audit">{{range .Data.Audit}}<li><span class="admin-audit-mark" aria-hidden="true"></span><div><strong>{{.Action}}</strong><p>{{.TargetType}} · <code>{{.TargetID}}</code></p><small>{{.CreatedAt}} · actor {{.ActorID}}</small></div></li>{{else}}<li class="empty-state"><strong>No administration changes yet</strong></li>{{end}}</ol>
+    </section>
+  </div>
+</main>
+</div>
+<div id="modal-root"></div>
+</body>
+</html>
+{{end}}

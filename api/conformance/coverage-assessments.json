@@ -90,6 +90,48 @@
       "status": "missing",
       "evidence": [],
       "notes": "Template retrieval is not implemented."
+    },
+    {
+      "operationId": "organization-admin:GET:/admin/v1/orgs",
+      "status": "partial",
+      "evidence": ["internal/admin/http_test.go", "docs/ADMIN.md"],
+      "notes": "Bearer-authenticated discovery is implemented for the site served by this ZZIRA instance."
+    },
+    {
+      "operationId": "organization-admin:GET:/admin/v1/orgs/{orgId}",
+      "status": "partial",
+      "evidence": ["internal/admin/http_test.go", "docs/ADMIN.md"],
+      "notes": "The organization bean and related links are implemented for authorized site administrators."
+    },
+    {
+      "operationId": "organization-admin:GET:/admin/v2/orgs/{orgId}/directories",
+      "status": "partial",
+      "evidence": ["internal/admin/http_test.go", "docs/ADMIN.md"],
+      "notes": "Internal directory listing and opaque pagination are implemented; directory filters remain."
+    },
+    {
+      "operationId": "organization-admin:GET:/admin/v2/orgs/{orgId}/directories/{directoryId}/groups",
+      "status": "partial",
+      "evidence": ["internal/admin/http_test.go", "docs/ADMIN.md"],
+      "notes": "Group listing, searchTerm, counts, management access and opaque pagination are implemented."
+    },
+    {
+      "operationId": "organization-admin:POST:/admin/v2/orgs/{orgId}/directories/{directoryId}/groups",
+      "status": "partial",
+      "evidence": ["internal/admin/http_test.go", "docs/ADMIN.md"],
+      "notes": "Internal group creation and duplicate-name conflicts are implemented and audited."
+    },
+    {
+      "operationId": "organization-admin:POST:/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/memberships",
+      "status": "partial",
+      "evidence": ["internal/admin/http_test.go", "docs/ADMIN.md"],
+      "notes": "Directory-scoped membership addition, conflicts and auditing are implemented."
+    },
+    {
+      "operationId": "organization-admin:DELETE:/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/memberships/{accountId}",
+      "status": "partial",
+      "evidence": ["internal/admin/http_test.go", "docs/ADMIN.md"],
+      "notes": "Directory-scoped membership removal, not-found behavior and auditing are implemented."
     }
   ]
 }

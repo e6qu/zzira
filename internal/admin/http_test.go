@@ -1,0 +1,151 @@
+package admin
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"testing"
+
+	"github.com/e6qu/zzira/internal/store"
+)
+
+func TestOrganizationAndGroupAPIJourney(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	st, err := store.Open(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := store.Migrate(ctx, st.Pool); err != nil {
+		t.Fatal(err)
+	}
+
+	workspaceID := store.NewID("ws")
+	adminID := store.NewID("usr")
+	memberID := store.NewID("usr")
+	for _, userID := range []string{adminID, memberID} {
+		if _, err := st.Pool.Exec(ctx, `INSERT INTO users(id,email,password_hash,display_name) VALUES($1,$1 || '@example.invalid','unused',$1)`, userID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := st.Pool.Exec(ctx, `INSERT INTO workspaces(id,slug,name) VALUES($1,$1,'Admin API test')`, workspaceID); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AddMember(ctx, workspaceID, adminID, "admin"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AddMember(ctx, workspaceID, memberID, "member"); err != nil {
+		t.Fatal(err)
+	}
+	adminToken := store.NewID("secret")
+	memberToken := store.NewID("secret")
+	if err := st.CreateAPIToken(ctx, store.NewID("tok"), adminID, store.HashToken(adminToken), "admin-api-test"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.CreateAPIToken(ctx, store.NewID("tok"), memberID, store.HashToken(memberToken), "admin-api-test"); err != nil {
+		t.Fatal(err)
+	}
+	organization, err := st.OrganizationByWorkspace(ctx, workspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM api_tokens WHERE user_id IN ($1,$2)`, adminID, memberID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM memberships WHERE workspace_id=$1`, workspaceID)
+		_, _ = st.Pool.Exec(ctx, `
+			DELETE FROM role_bindings rb
+			WHERE rb.principal_id IN ($1,$2)
+			   OR rb.scope_id=$3
+			   OR rb.scope_id IN (SELECT id::text FROM sites WHERE organization_id=$3::uuid)
+			   OR rb.scope_id IN (SELECT p.id::text FROM products p JOIN sites s ON s.id=p.site_id WHERE s.organization_id=$3::uuid)
+			   OR rb.principal_id IN (SELECT g.id::text FROM groups g JOIN directories d ON d.id=g.directory_id WHERE d.organization_id=$3::uuid)`, adminID, memberID, organization.ID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM workspaces WHERE id=$1`, workspaceID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM organizations WHERE id::text=$1`, organization.ID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM users WHERE id IN ($1,$2)`, adminID, memberID)
+	}()
+
+	handler := &Handler{Store: st, BaseURL: "https://zzira.example", WorkspaceSlug: workspaceID}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /admin/v1/orgs", handler.Organizations)
+	mux.HandleFunc("GET /admin/v1/orgs/{orgId}", handler.Organization)
+	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories", handler.Directories)
+	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories/{directoryId}/groups", handler.Groups)
+	mux.HandleFunc("POST /admin/v2/orgs/{orgId}/directories/{directoryId}/groups", handler.Groups)
+	mux.HandleFunc("POST /admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/memberships", handler.GroupMembership)
+	mux.HandleFunc("DELETE /admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/memberships/{accountId}", handler.DeleteGroupMembership)
+
+	call := func(method, path, token string, body any, want int) map[string]any {
+		t.Helper()
+		var requestBody bytes.Buffer
+		if body != nil {
+			if err := json.NewEncoder(&requestBody).Encode(body); err != nil {
+				t.Fatal(err)
+			}
+		}
+		req := httptest.NewRequest(method, "https://zzira.example"+path, &requestBody)
+		if body != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+		response := httptest.NewRecorder()
+		mux.ServeHTTP(response, req)
+		if response.Code != want {
+			t.Fatalf("%s %s status=%d, want %d; body=%s", method, path, response.Code, want, response.Body.String())
+		}
+		if response.Body.Len() == 0 {
+			return nil
+		}
+		var decoded map[string]any
+		if err := json.Unmarshal(response.Body.Bytes(), &decoded); err != nil {
+			t.Fatalf("decode %s %s: %v; body=%s", method, path, err, response.Body.String())
+		}
+		return decoded
+	}
+
+	call(http.MethodGet, "/admin/v1/orgs", "", nil, http.StatusUnauthorized)
+	call(http.MethodGet, "/admin/v1/orgs", memberToken, nil, http.StatusForbidden)
+	orgs := call(http.MethodGet, "/admin/v1/orgs", adminToken, nil, http.StatusOK)
+	data := orgs["data"].([]any)
+	if len(data) != 1 || data[0].(map[string]any)["id"] != organization.ID {
+		t.Fatalf("unexpected organization page: %#v", orgs)
+	}
+	orgPath := "/admin/v1/orgs/" + organization.ID
+	call(http.MethodGet, orgPath, adminToken, nil, http.StatusOK)
+
+	directoryPage := call(http.MethodGet, "/admin/v2/orgs/"+organization.ID+"/directories", adminToken, nil, http.StatusOK)
+	directories := directoryPage["data"].([]any)
+	if len(directories) != 1 {
+		t.Fatalf("unexpected directory page: %#v", directoryPage)
+	}
+	directoryID := directories[0].(map[string]any)["directoryId"].(string)
+	groupsPath := "/admin/v2/orgs/" + organization.ID + "/directories/" + directoryID + "/groups"
+	call(http.MethodPost, groupsPath, adminToken, map[string]string{"name": "invalid", "unknown": "field"}, http.StatusBadRequest)
+	call(http.MethodPost, groupsPath, adminToken, map[string]string{"name": "support-leads", "description": "Service owners"}, http.StatusCreated)
+	groupsPage := call(http.MethodGet, groupsPath, adminToken, nil, http.StatusOK)
+	groups := groupsPage["data"].([]any)
+	if len(groups) != 1 {
+		t.Fatalf("unexpected group page: %#v", groupsPage)
+	}
+	groupID := groups[0].(map[string]any)["id"].(string)
+	membershipPath := groupsPath + "/" + groupID + "/memberships"
+	call(http.MethodPost, membershipPath, adminToken, map[string]string{"accountId": memberID}, http.StatusNoContent)
+	call(http.MethodPost, membershipPath, adminToken, map[string]string{"accountId": memberID}, http.StatusConflict)
+	call(http.MethodDelete, membershipPath+"/"+memberID, adminToken, nil, http.StatusNoContent)
+
+	audit, err := st.OrganizationAuditEvents(ctx, organization.ID, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(audit) != 3 {
+		t.Fatalf("audit events=%d, want 3", len(audit))
+	}
+}

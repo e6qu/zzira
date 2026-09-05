@@ -1,0 +1,397 @@
+package store
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+
+	"github.com/e6qu/zzira/internal/models"
+)
+
+var (
+	ErrAdminValidation = errors.New("admin validation")
+	ErrAdminConflict   = errors.New("admin conflict")
+	ErrAdminNotFound   = errors.New("admin object not found")
+)
+
+func isUniqueViolation(err error) bool {
+	var databaseError *pgconn.PgError
+	return errors.As(err, &databaseError) && databaseError.Code == "23505"
+}
+
+func formatAdminTime(value time.Time) string {
+	return value.UTC().Format(time.RFC3339Nano)
+}
+
+func scanOrganization(row pgx.Row) (*models.Organization, error) {
+	organization := &models.Organization{}
+	var createdAt, updatedAt time.Time
+	if err := row.Scan(&organization.ID, &organization.Name, &createdAt, &updatedAt); err != nil {
+		return nil, err
+	}
+	organization.CreatedAt = formatAdminTime(createdAt)
+	organization.UpdatedAt = formatAdminTime(updatedAt)
+	return organization, nil
+}
+
+func (s *Store) OrganizationByWorkspace(ctx context.Context, workspaceID string) (*models.Organization, error) {
+	return scanOrganization(s.Pool.QueryRow(ctx, `
+		SELECT o.id::text,o.name,o.created_at,o.updated_at
+		FROM organizations o JOIN sites si ON si.organization_id=o.id
+		WHERE si.workspace_id=$1`, workspaceID))
+}
+
+func (s *Store) OrganizationsForAdmin(ctx context.Context, userID string) ([]*models.Organization, error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT DISTINCT o.id::text,o.name,o.created_at,o.updated_at
+		FROM organizations o
+		LEFT JOIN sites si ON si.organization_id=o.id
+		WHERE EXISTS (
+			SELECT 1 FROM role_bindings rb
+			WHERE rb.role_key IN ('atlassian/org-admin','atlassian/site-admin')
+			  AND ((rb.principal_type='user' AND rb.principal_id=$1)
+			    OR (rb.principal_type='group' AND EXISTS (
+			      SELECT 1 FROM group_members gm WHERE gm.group_id::text=rb.principal_id AND gm.user_id=$1)))
+			  AND ((rb.scope_type='organization' AND rb.scope_id=o.id::text)
+			    OR (rb.scope_type='site' AND rb.scope_id=si.id::text))
+		)
+		ORDER BY o.name,o.id`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	organizations := make([]*models.Organization, 0)
+	for rows.Next() {
+		organization, err := scanOrganization(rows)
+		if err != nil {
+			return nil, err
+		}
+		organizations = append(organizations, organization)
+	}
+	return organizations, rows.Err()
+}
+
+func (s *Store) OrganizationByIDForAdmin(ctx context.Context, organizationID, userID string) (*models.Organization, error) {
+	return scanOrganization(s.Pool.QueryRow(ctx, `
+		SELECT o.id::text,o.name,o.created_at,o.updated_at
+		FROM organizations o
+		WHERE o.id::text=$1 AND EXISTS (
+			SELECT 1 FROM role_bindings rb
+			LEFT JOIN sites si ON si.id::text=rb.scope_id AND rb.scope_type='site'
+			WHERE rb.role_key IN ('atlassian/org-admin','atlassian/site-admin')
+			  AND ((rb.principal_type='user' AND rb.principal_id=$2)
+			    OR (rb.principal_type='group' AND EXISTS (
+			      SELECT 1 FROM group_members gm WHERE gm.group_id::text=rb.principal_id AND gm.user_id=$2)))
+			  AND ((rb.scope_type='organization' AND rb.scope_id=o.id::text)
+			    OR si.organization_id=o.id)
+		)`, organizationID, userID))
+}
+
+func (s *Store) SiteByWorkspace(ctx context.Context, workspaceID string) (*models.Site, error) {
+	site := &models.Site{WorkspaceID: workspaceID}
+	var createdAt time.Time
+	err := s.Pool.QueryRow(ctx, `
+		SELECT id::text,organization_id::text,slug,name,created_at
+		FROM sites WHERE workspace_id=$1`, workspaceID).
+		Scan(&site.ID, &site.OrganizationID, &site.Slug, &site.Name, &createdAt)
+	if err != nil {
+		return nil, err
+	}
+	site.CreatedAt = formatAdminTime(createdAt)
+	return site, nil
+}
+
+func (s *Store) SitesByOrganization(ctx context.Context, organizationID string) ([]*models.Site, error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT id::text,organization_id::text,workspace_id,slug,name,created_at
+		FROM sites WHERE organization_id::text=$1 ORDER BY name,id`, organizationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	sites := make([]*models.Site, 0)
+	for rows.Next() {
+		site := &models.Site{}
+		var createdAt time.Time
+		if err := rows.Scan(&site.ID, &site.OrganizationID, &site.WorkspaceID, &site.Slug, &site.Name, &createdAt); err != nil {
+			return nil, err
+		}
+		site.CreatedAt = formatAdminTime(createdAt)
+		sites = append(sites, site)
+	}
+	return sites, rows.Err()
+}
+
+func (s *Store) ProductsBySite(ctx context.Context, siteID string) ([]*models.Product, error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT id::text,site_id::text,product_key,name,enabled,created_at
+		FROM products WHERE site_id::text=$1 ORDER BY product_key`, siteID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	products := make([]*models.Product, 0)
+	for rows.Next() {
+		product := &models.Product{}
+		var createdAt time.Time
+		if err := rows.Scan(&product.ID, &product.SiteID, &product.Key, &product.Name, &product.Enabled, &createdAt); err != nil {
+			return nil, err
+		}
+		product.CreatedAt = formatAdminTime(createdAt)
+		products = append(products, product)
+	}
+	return products, rows.Err()
+}
+
+func (s *Store) DirectoriesByOrganization(ctx context.Context, organizationID string) ([]*models.Directory, error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT id::text,organization_id::text,name,directory_type,active,created_at
+		FROM directories WHERE organization_id::text=$1 ORDER BY name,id`, organizationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	directories := make([]*models.Directory, 0)
+	for rows.Next() {
+		directory := &models.Directory{}
+		var createdAt time.Time
+		if err := rows.Scan(&directory.ID, &directory.OrganizationID, &directory.Name, &directory.Type, &directory.Active, &createdAt); err != nil {
+			return nil, err
+		}
+		directory.CreatedAt = formatAdminTime(createdAt)
+		directories = append(directories, directory)
+	}
+	return directories, rows.Err()
+}
+
+func (s *Store) GroupsByDirectory(ctx context.Context, directoryID string) ([]*models.Group, error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT g.id::text,g.directory_id::text,g.name,g.description,g.created_at,g.updated_at,
+		       count(gm.user_id)::int
+		FROM groups g LEFT JOIN group_members gm ON gm.group_id=g.id
+		WHERE g.directory_id::text=$1
+		GROUP BY g.id ORDER BY g.name,g.id`, directoryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	groups := make([]*models.Group, 0)
+	for rows.Next() {
+		group := &models.Group{}
+		var createdAt, updatedAt time.Time
+		if err := rows.Scan(&group.ID, &group.DirectoryID, &group.Name, &group.Description, &createdAt, &updatedAt, &group.MemberCount); err != nil {
+			return nil, err
+		}
+		group.CreatedAt = formatAdminTime(createdAt)
+		group.UpdatedAt = formatAdminTime(updatedAt)
+		groups = append(groups, group)
+	}
+	return groups, rows.Err()
+}
+
+func (s *Store) DirectoryUsers(ctx context.Context, directoryID string) ([]*models.User, error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT u.id,u.email,u.display_name,u.time_zone,u.active
+		FROM directory_users du JOIN users u ON u.id=du.user_id
+		WHERE du.directory_id::text=$1 ORDER BY u.display_name,u.id`, directoryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	users := make([]*models.User, 0)
+	for rows.Next() {
+		user := &models.User{AccountType: "atlassian"}
+		if err := rows.Scan(&user.ID, &user.Email, &user.DisplayName, &user.TimeZone, &user.Active); err != nil {
+			return nil, err
+		}
+		users = append(users, user)
+	}
+	return users, rows.Err()
+}
+
+func (s *Store) GroupMemberIDs(ctx context.Context, groupID string) ([]string, error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT user_id FROM group_members WHERE group_id::text=$1 ORDER BY user_id`, groupID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	userIDs := make([]string, 0)
+	for rows.Next() {
+		var userID string
+		if err := rows.Scan(&userID); err != nil {
+			return nil, err
+		}
+		userIDs = append(userIDs, userID)
+	}
+	return userIDs, rows.Err()
+}
+
+func (s *Store) RolesForUserInWorkspace(ctx context.Context, workspaceID, userID string) ([]string, error) {
+	rows, err := s.Pool.Query(ctx, `
+		WITH context AS (
+			SELECT si.id AS site_id,si.organization_id FROM sites si WHERE si.workspace_id=$1
+		), principals AS (
+			SELECT 'user'::text AS principal_type,$2::text AS principal_id
+			UNION ALL
+			SELECT 'group',gm.group_id::text FROM group_members gm WHERE gm.user_id=$2
+		)
+		SELECT DISTINCT rb.role_key
+		FROM role_bindings rb
+		JOIN principals pr ON pr.principal_type=rb.principal_type AND pr.principal_id=rb.principal_id
+		JOIN users u ON u.id=$2 AND u.active
+		CROSS JOIN context c
+		WHERE (rb.scope_type='organization' AND rb.scope_id=c.organization_id::text)
+		   OR (rb.scope_type='site' AND rb.scope_id=c.site_id::text)
+		   OR (rb.scope_type='product' AND rb.scope_id IN (
+		     SELECT p.id::text FROM products p WHERE p.site_id=c.site_id AND p.enabled))
+		ORDER BY rb.role_key`, workspaceID, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	roles := make([]string, 0)
+	for rows.Next() {
+		var role string
+		if err := rows.Scan(&role); err != nil {
+			return nil, err
+		}
+		roles = append(roles, role)
+	}
+	return roles, rows.Err()
+}
+
+func (s *Store) CreateDirectoryGroup(ctx context.Context, workspaceID, actorID, directoryID, name, description string) (*models.Group, error) {
+	name = strings.TrimSpace(name)
+	description = strings.TrimSpace(description)
+	if name == "" || len(name) > 255 || len(description) > 1000 {
+		return nil, fmt.Errorf("%w: group name is required and fields must fit their limits", ErrAdminValidation)
+	}
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var organizationID string
+	if err := tx.QueryRow(ctx, `
+		SELECT d.organization_id::text FROM directories d
+		JOIN sites si ON si.organization_id=d.organization_id
+		WHERE d.id::text=$1 AND si.workspace_id=$2 AND d.active`, directoryID, workspaceID).
+		Scan(&organizationID); err != nil {
+		return nil, err
+	}
+	group := &models.Group{DirectoryID: directoryID, Name: name, Description: description}
+	var createdAt, updatedAt time.Time
+	err = tx.QueryRow(ctx, `
+		INSERT INTO groups(directory_id,name,description) VALUES($1::uuid,$2,$3)
+		RETURNING id::text,created_at,updated_at`, directoryID, name, description).
+		Scan(&group.ID, &createdAt, &updatedAt)
+	if err != nil {
+		if isUniqueViolation(err) {
+			return nil, fmt.Errorf("%w: a group with this name already exists", ErrAdminConflict)
+		}
+		return nil, err
+	}
+	detail, err := json.Marshal(map[string]any{"name": name, "directoryId": directoryID})
+	if err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO organization_audit_events(organization_id,actor_id,action,target_type,target_id,detail)
+		VALUES($1::uuid,$2,'group.created','group',$3,$4)`, organizationID, actorID, group.ID, detail); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	group.CreatedAt = formatAdminTime(createdAt)
+	group.UpdatedAt = formatAdminTime(updatedAt)
+	return group, nil
+}
+
+func (s *Store) SetGroupMember(ctx context.Context, workspaceID, actorID, directoryID, groupID, userID string, member bool) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var organizationID string
+	var valid bool
+	if err := tx.QueryRow(ctx, `
+		SELECT d.organization_id::text,
+		  EXISTS(SELECT 1 FROM directory_users du WHERE du.directory_id=d.id AND du.user_id=$4)
+		FROM directories d
+		JOIN sites si ON si.organization_id=d.organization_id
+		JOIN groups g ON g.directory_id=d.id
+		WHERE d.id::text=$1 AND g.id::text=$2 AND si.workspace_id=$3`, directoryID, groupID, workspaceID, userID).
+		Scan(&organizationID, &valid); err != nil {
+		return err
+	}
+	if !valid {
+		return fmt.Errorf("%w: user is not in this directory", ErrAdminValidation)
+	}
+	action := "group.member.added"
+	if member {
+		tag, err := tx.Exec(ctx, `INSERT INTO group_members(group_id,user_id) VALUES($1::uuid,$2) ON CONFLICT DO NOTHING`, groupID, userID)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			return fmt.Errorf("%w: user is already a group member", ErrAdminConflict)
+		}
+	} else {
+		action = "group.member.removed"
+		tag, err := tx.Exec(ctx, `DELETE FROM group_members WHERE group_id=$1::uuid AND user_id=$2`, groupID, userID)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			return fmt.Errorf("%w: group membership does not exist", ErrAdminNotFound)
+		}
+	}
+	detail, err := json.Marshal(map[string]any{"userId": userID})
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO organization_audit_events(organization_id,actor_id,action,target_type,target_id,detail)
+		VALUES($1::uuid,$2,$3,'group',$4,$5)`, organizationID, actorID, action, groupID, detail); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (s *Store) OrganizationAuditEvents(ctx context.Context, organizationID string, limit int) ([]*models.OrganizationAuditEvent, error) {
+	if limit < 1 || limit > 100 {
+		return nil, fmt.Errorf("%w: audit limit must be between 1 and 100", ErrAdminValidation)
+	}
+	rows, err := s.Pool.Query(ctx, `
+		SELECT id,organization_id::text,COALESCE(actor_id,''),action,target_type,target_id,detail,created_at
+		FROM organization_audit_events WHERE organization_id::text=$1
+		ORDER BY created_at DESC,id DESC LIMIT $2`, organizationID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	events := make([]*models.OrganizationAuditEvent, 0)
+	for rows.Next() {
+		event := &models.OrganizationAuditEvent{}
+		var detail []byte
+		var createdAt time.Time
+		if err := rows.Scan(&event.ID, &event.OrganizationID, &event.ActorID, &event.Action, &event.TargetType, &event.TargetID, &detail, &createdAt); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(detail, &event.Detail); err != nil {
+			return nil, err
+		}
+		event.CreatedAt = formatAdminTime(createdAt)
+		events = append(events, event)
+	}
+	return events, rows.Err()
+}

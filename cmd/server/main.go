@@ -17,6 +17,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/e6qu/zzira/internal/admin"
 	"github.com/e6qu/zzira/internal/agile"
 	"github.com/e6qu/zzira/internal/api3"
 	"github.com/e6qu/zzira/internal/attachments"
@@ -121,6 +122,7 @@ func main() {
 	api := &api3.Handler{Store: st, Commands: cmdSvc, Blobs: blobs, BaseURL: envOr("BASE_URL", "http://localhost:"+port), WorkspaceSlug: workspaceSlug}
 	agileAPI := &agile.Handler{Store: st, Commands: cmdSvc, IssueBean: api.IssueBean, BaseURL: envOr("BASE_URL", "http://localhost:"+port), WorkspaceSlug: workspaceSlug}
 	automationAPI := &automation.Handler{Service: automationSvc, WorkspaceSlug: workspaceSlug}
+	adminAPI := &admin.Handler{Store: st, BaseURL: api.BaseURL, WorkspaceSlug: workspaceSlug}
 	bus := notifybus.New()
 	sse := &syncapi.SSEHandler{Store: st, Bus: bus, WorkspaceSlug: workspaceSlug}
 	sync := &syncapi.Handler{Store: st, WorkspaceSlug: workspaceSlug}
@@ -180,6 +182,9 @@ func main() {
 	mux.HandleFunc("POST /logout", webHandler.Logout)
 	mux.HandleFunc("GET /signed-out", webHandler.SignedOut)
 	mux.HandleFunc("GET /projects", webHandler.ProjectsPage)
+	mux.HandleFunc("GET /admin", webHandler.AdminPage)
+	mux.HandleFunc("POST /admin/groups", webHandler.CreateAdminGroup)
+	mux.HandleFunc("POST /admin/groups/{groupId}/members", webHandler.UpdateAdminGroupMember)
 	mux.HandleFunc("GET /wiki", webHandler.WikiHome)
 	mux.HandleFunc("POST /wiki/spaces", webHandler.WikiHome)
 	mux.HandleFunc("GET /wiki/spaces/{space}", webHandler.WikiSpacePage)
@@ -340,6 +345,13 @@ func main() {
 	mux.Handle("/rest/api/3/", api)
 	mux.HandleFunc("GET /_edge/tenant_info", automationAPI.TenantInfo)
 	mux.Handle("/gateway/api/automation/public/jira/", automationAPI)
+	mux.HandleFunc("GET /admin/v1/orgs", adminAPI.Organizations)
+	mux.HandleFunc("GET /admin/v1/orgs/{orgId}", adminAPI.Organization)
+	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories", adminAPI.Directories)
+	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories/{directoryId}/groups", adminAPI.Groups)
+	mux.HandleFunc("POST /admin/v2/orgs/{orgId}/directories/{directoryId}/groups", adminAPI.Groups)
+	mux.HandleFunc("POST /admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/memberships", adminAPI.GroupMembership)
+	mux.HandleFunc("DELETE /admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/memberships/{accountId}", adminAPI.DeleteGroupMembership)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))

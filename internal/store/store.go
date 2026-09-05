@@ -338,7 +338,9 @@ func (s *Store) ResolveOIDCUser(ctx context.Context, issuer, subject, email, dis
 			return "", err
 		}
 		var workspaceID string
-		if err := tx.QueryRow(ctx, `SELECT id FROM workspaces ORDER BY id LIMIT 1`).Scan(&workspaceID); err != nil {
+		if err := tx.QueryRow(ctx, `
+			SELECT id FROM workspaces
+			ORDER BY (id='ws_default') DESC,id LIMIT 1`).Scan(&workspaceID); err != nil {
 			return "", err
 		}
 		if _, err := tx.Exec(ctx,
@@ -360,9 +362,10 @@ func (s *Store) ResolveOIDCUser(ctx context.Context, issuer, subject, email, dis
 // in the default workspace, creating the user first if none exists yet. An
 // OIDC-only identity signs in by its immutable (issuer, subject) pair, never
 // by password, so unusablePasswordHash only needs to satisfy the NOT NULL
-// column and never successfully compare. A user or membership that already
-// exists is left untouched -- this only ever adds, on every boot, matching
-// migrations/002_seed.sql's own idempotent shape.
+// column and never successfully compare. Existing user profile and credential
+// fields are left untouched; an existing membership is promoted to the
+// requested role so the configured break-glass administrator cannot silently
+// remain an ordinary member.
 func (s *Store) EnsureBootstrapAdmin(ctx context.Context, email, displayName, unusablePasswordHash, role string) error {
 	workspaceID, _, err := s.DefaultWorkspace(ctx)
 	if err != nil {
@@ -387,7 +390,8 @@ func (s *Store) EnsureBootstrapAdmin(ctx context.Context, email, displayName, un
 		}
 	}
 	if _, err := tx.Exec(ctx,
-		`INSERT INTO memberships (workspace_id, user_id, role) VALUES ($1,$2,$3) ON CONFLICT (workspace_id, user_id) DO NOTHING`,
+		`INSERT INTO memberships (workspace_id, user_id, role) VALUES ($1,$2,$3)
+		 ON CONFLICT (workspace_id, user_id) DO UPDATE SET role=EXCLUDED.role`,
 		workspaceID, userID, role); err != nil {
 		return err
 	}
@@ -425,7 +429,9 @@ func (s *Store) UserByAPIToken(ctx context.Context, tokenHash string) (string, e
 // ---- Workspace / authz ----
 
 func (s *Store) DefaultWorkspace(ctx context.Context) (id, slug string, err error) {
-	err = s.Pool.QueryRow(ctx, `SELECT id, slug FROM workspaces ORDER BY id LIMIT 1`).Scan(&id, &slug)
+	err = s.Pool.QueryRow(ctx, `
+		SELECT id,slug FROM workspaces
+		ORDER BY (id='ws_default') DESC,id LIMIT 1`).Scan(&id, &slug)
 	return
 }
 
@@ -435,16 +441,13 @@ func (s *Store) WorkspaceBySlug(ctx context.Context, slug string) (string, error
 	return id, err
 }
 
-// IsMember is the V0 authz scope: workspace membership grants the workspace log.
+// IsMember resolves membership from the organization/site/product role model.
+// The legacy memberships table is mirrored into role_bindings by migration
+// triggers so older command and fixture paths remain consistent during the
+// authorization migration.
 func (s *Store) IsMember(ctx context.Context, workspaceID, userID string) (bool, error) {
-	var ok bool
-	err := s.Pool.QueryRow(ctx,
-		`SELECT EXISTS(
-			SELECT 1 FROM memberships m JOIN users u ON u.id=m.user_id
-			WHERE m.workspace_id=$1 AND m.user_id=$2 AND u.active
-		)`,
-		workspaceID, userID).Scan(&ok)
-	return ok, err
+	roles, err := s.RolesForUserInWorkspace(ctx, workspaceID, userID)
+	return len(roles) > 0, err
 }
 
 func (s *Store) AddMember(ctx context.Context, workspaceID, userID, role string) error {

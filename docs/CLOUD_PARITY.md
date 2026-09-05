@@ -34,8 +34,8 @@ with `python3 api/conformance/inventory.py`; CI runs the same program with
 
 The generated [operation coverage](../api/conformance/cloud-coverage.json)
 applies reviewed exact-operation assessments to that denominator. It currently
-assesses the 15 Automation operations: 8 partial and 7 missing. The remaining
-1,192 operations are explicitly unassessed at this stricter level. The grouped
+assesses 22 operations: 15 partial and 7 missing. The remaining 1,185 operations
+are explicitly unassessed at this stricter level. The grouped
 [API matrix](../api/conformance/MATRIX.md) records older tested slices; it is not
 divided by 1,207 because one row may represent several operations and does not
 certify every option or wire type.
@@ -65,7 +65,7 @@ runtime. Capability discovery and errors must distinguish these cases precisely.
 | Surface | State | Delivered evidence | Remaining completion work |
 |---|---:|---|---|
 | Identity and authentication | Partial | Password, sessions, API tokens, generic OIDC with PKCE/nonce and logout | Provider registry; Atlassian, Google and Microsoft login; identity linking; organization/site/product lifecycle |
-| Projects and administration | Partial | Project create/edit, Scrum/Kanban setup, project directory and settings entry points | Roles; permission, notification, security, workflow, screen and field schemes; templates; archive/delete/restore; admin APIs and journeys |
+| Projects and administration | Partial | Project create/edit, Scrum/Kanban setup, project directory and settings entry points; organization/site/product/directory foundation and audited group administration | Permission, notification, security, workflow, screen and field schemes; product access; users/policies/domains/events; templates; project lifecycle; remaining admin APIs and journeys |
 | Work items | Partial | Issue CRUD, rich-text subset, comments, attachments, worklogs, links, watchers, versions, fields and security | Complete ADF and metadata; hierarchy, components, estimates, votes, properties, bulk operations, exact expansions and permissions |
 | Search and filters | Partial | Useful JQL subset, navigator, filter CRUD and favourites | Full JQL grammar/functions/history, stable cursors, sharing administration, subscriptions and remaining search options |
 | Agile planning | Partial | Boards, backlog, sprints, rank, quick filters, swimlanes, WIP and card configuration | Board CRUD/ownership, epics, estimation, capacity, teams, parallel sprints, dependencies, plans and report calculations |
@@ -92,6 +92,7 @@ kept with their owning surface:
 - [Custom dashboards](DASHBOARDS.md)
 - [Releases](RELEASES.md)
 - [Authentication and ShAuth reference configuration](shauth-sso.md)
+- [Organization and site administration](ADMIN.md)
 - [Accessibility](ACCESSIBILITY.md)
 - [User journeys](UI_PARITY.md)
 

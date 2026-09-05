@@ -6,6 +6,43 @@ import (
 	"testing"
 )
 
+func TestDefaultWorkspacePrefersSeededDefault(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	st, err := Open(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := Migrate(ctx, st.Pool); err != nil {
+		t.Fatal(err)
+	}
+
+	workspaceID := "ws_000_" + NewID("test")
+	if _, err := st.Pool.Exec(ctx, `INSERT INTO workspaces(id,slug,name) VALUES($1,$1,'Default selection test')`, workspaceID); err != nil {
+		t.Fatal(err)
+	}
+	var organizationID string
+	if err := st.Pool.QueryRow(ctx, `SELECT organization_id::text FROM sites WHERE workspace_id=$1`, workspaceID).Scan(&organizationID); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM workspaces WHERE id=$1`, workspaceID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM organizations WHERE id::text=$1`, organizationID)
+	}()
+
+	gotID, gotSlug, err := st.DefaultWorkspace(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotID != "ws_default" || gotSlug != "zzira" {
+		t.Fatalf("DefaultWorkspace()=(%q,%q), want (ws_default,zzira)", gotID, gotSlug)
+	}
+}
+
 func TestEnsureBootstrapAdmin(t *testing.T) {
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	if dsn == "" {
@@ -59,5 +96,18 @@ func TestEnsureBootstrapAdmin(t *testing.T) {
 	}
 	if displayName != "Bootstrap Admin" || passwordHash != "unusable-hash" {
 		t.Fatalf("re-running EnsureBootstrapAdmin must not modify an existing user, got display_name=%q password_hash=%q", displayName, passwordHash)
+	}
+
+	if _, err := st.Pool.Exec(ctx, `UPDATE memberships SET role='member' WHERE workspace_id=$1 AND user_id=$2`, wsID, userID); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.EnsureBootstrapAdmin(ctx, email, "Ignored", "ignored", "admin"); err != nil {
+		t.Fatalf("promote existing member: %v", err)
+	}
+	if err := st.Pool.QueryRow(ctx, `SELECT role FROM memberships WHERE workspace_id=$1 AND user_id=$2`, wsID, userID).Scan(&role); err != nil {
+		t.Fatal(err)
+	}
+	if role != "admin" {
+		t.Fatalf("bootstrap account role=%q after promotion, want admin", role)
 	}
 }

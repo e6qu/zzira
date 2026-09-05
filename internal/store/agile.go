@@ -1169,15 +1169,19 @@ func (s *Store) IssuesBySprint(ctx context.Context, sprintID, userID string) ([]
 	return out, rows.Err()
 }
 
-// IsAdmin reports the workspace admin role.
+// IsAdmin reports an organization or site administrator role from the shared
+// authorization model.
 func (s *Store) IsAdmin(ctx context.Context, workspaceID, userID string) (bool, error) {
-	var role string
-	err := s.Pool.QueryRow(ctx,
-		`SELECT role FROM memberships WHERE workspace_id=$1 AND user_id=$2`, workspaceID, userID).Scan(&role)
+	roles, err := s.RolesForUserInWorkspace(ctx, workspaceID, userID)
 	if err != nil {
 		return false, err
 	}
-	return role == "admin", nil
+	for _, role := range roles {
+		if role == "atlassian/org-admin" || role == "atlassian/site-admin" {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // SecuritySchemeForProject resolves the project's security scheme (nil = none).
@@ -1220,7 +1224,23 @@ func (s *Store) SecurityLevelName(ctx context.Context, projectID, levelID string
 func (s *Store) FirstAdminID(ctx context.Context, workspaceID string) (string, error) {
 	var id string
 	err := s.Pool.QueryRow(ctx, `
-		SELECT user_id FROM memberships WHERE workspace_id=$1 AND role='admin' ORDER BY user_id LIMIT 1`,
+		WITH context AS (
+			SELECT id AS site_id,organization_id FROM sites WHERE workspace_id=$1
+		), principals AS (
+			SELECT rb.principal_id AS user_id,rb.scope_type,rb.scope_id,rb.role_key
+			FROM role_bindings rb WHERE rb.principal_type='user'
+			UNION ALL
+			SELECT gm.user_id,rb.scope_type,rb.scope_id,rb.role_key
+			FROM role_bindings rb JOIN group_members gm ON gm.group_id::text=rb.principal_id
+			WHERE rb.principal_type='group'
+		)
+		SELECT DISTINCT p.user_id FROM principals p
+		JOIN users u ON u.id=p.user_id AND u.active
+		CROSS JOIN context c
+		WHERE p.role_key IN ('atlassian/org-admin','atlassian/site-admin')
+		  AND ((p.scope_type='organization' AND p.scope_id=c.organization_id::text)
+		    OR (p.scope_type='site' AND p.scope_id=c.site_id::text))
+		ORDER BY p.user_id LIMIT 1`,
 		workspaceID).Scan(&id)
 	return id, err
 }
