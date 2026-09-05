@@ -82,6 +82,17 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.webhookRoute(w, r)
 	case path == "/filter" && r.Method == http.MethodPost:
 		h.createFilter(w, r)
+	case path == "/version":
+		h.versionRoute(w, r, nil)
+	case strings.HasPrefix(path, "/version/"):
+		h.versionRoute(w, r, strings.Split(strings.TrimPrefix(path, "/version/"), "/"))
+	case strings.HasPrefix(path, "/project/") && (strings.HasSuffix(path, "/version") || strings.HasSuffix(path, "/versions")):
+		parts := strings.Split(strings.TrimPrefix(path, "/project/"), "/")
+		if len(parts) != 2 {
+			jiraError(w, 404, "No resource found")
+			return
+		}
+		h.projectVersions(w, r, parts[0], parts[1] == "version")
 	case path == "/project" && r.Method == http.MethodGet:
 		h.listProjects(w, r)
 	case path == "/project" && r.Method == http.MethodPost:
@@ -434,7 +445,7 @@ func unsupportedCreateFields(body []byte) map[string]string {
 	}
 	supported := map[string]struct{}{
 		"project": {}, "summary": {}, "description": {}, "issuetype": {}, "priority": {},
-		"assignee": {}, "security": {}, "labels": {},
+		"assignee": {}, "security": {}, "labels": {}, "fixVersions": {}, "versions": {},
 	}
 	for field := range raw.Fields {
 		if _, ok := supported[field]; ok || customFieldIDPattern.MatchString(field) {
@@ -462,6 +473,7 @@ func createIssueFieldError(err error) map[string]string {
 }
 
 type putIssueRequest struct {
+	Update map[string][]map[string]json.RawMessage `json:"update"`
 	Fields struct {
 		Summary     *string         `json:"summary"`
 		Description json.RawMessage `json:"description"`
@@ -528,7 +540,7 @@ func (h *Handler) putIssue(w http.ResponseWriter, r *http.Request, idOrKey strin
 		ActorID: userID, WorkspaceID: wsID, IssueIDOrKey: idOrKey,
 		Summary: up.Summary, Description: up.Description,
 		PriorityID: up.PriorityID, AssigneeID: up.AssigneeID,
-		SecurityLevelID: securityID, Labels: req.Fields.Labels, Fields: fields,
+		SecurityLevelID: securityID, Labels: req.Fields.Labels, Fields: fields, VersionOperations: req.Update,
 	}); err != nil {
 		jiraFieldError(w, http.StatusBadRequest, map[string]string{"fields": err.Error()})
 		return
@@ -592,6 +604,8 @@ func (h *Handler) issueBean(i *models.Issue) map[string]any {
 		"summary":     i.Summary,
 		"description": i.Description,
 		"labels":      i.Labels,
+		"fixVersions": []any{},
+		"versions":    []any{},
 		"created":     i.UpdatedAt,
 		"updated":     i.UpdatedAt,
 		"project": map[string]any{
@@ -621,6 +635,14 @@ func (h *Handler) issueBean(i *models.Issue) map[string]any {
 	}
 	for k, v := range i.Fields {
 		fields[k] = v
+	}
+	for _, field := range []string{"fixVersions", "versions"} {
+		values := []map[string]any{}
+		for _, version := range i.VersionRefs(field) {
+			version.ProjectID = i.ProjectID
+			values = append(values, h.versionBean(&version))
+		}
+		fields[field] = values
 	}
 	return map[string]any{
 		"expand": "renderedFields,names,schema,operations,editmeta,changelog,versionedRepresentations",
@@ -887,7 +909,8 @@ func (h *Handler) editMeta(w http.ResponseWriter, r *http.Request, idOrKey strin
 		writeJerr(w, e)
 		return
 	}
-	if _, e := h.resolveIssue(r, wsID, idOrKey); e != nil {
+	issue, e := h.resolveIssue(r, wsID, idOrKey)
+	if e != nil {
 		writeJerr(w, e)
 		return
 	}
@@ -900,8 +923,24 @@ func (h *Handler) editMeta(w http.ResponseWriter, r *http.Request, idOrKey strin
 			"operations": []string{"set"},
 		}
 	}
+	versions, err := h.Store.ProjectVersions(r.Context(), issue.ProjectID)
+	if err != nil {
+		versionError(w, err)
+		return
+	}
+	allowed := []map[string]any{}
+	for _, version := range versions {
+		if !version.Archived {
+			allowed = append(allowed, h.versionBean(version))
+		}
+	}
+	versionField := func(id, name string) map[string]any {
+		return map[string]any{"required": false, "schema": map[string]any{"type": "array", "items": "version", "system": id}, "name": name, "key": id, "operations": []string{"set", "add", "remove"}, "allowedValues": allowed}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"fields": map[string]any{
+			"fixVersions": versionField("fixVersions", "Fix versions"),
+			"versions":    versionField("versions", "Affects versions"),
 			"summary":     field("Summary", "string", true),
 			"description": map[string]any{"required": false, "schema": map[string]any{"type": "doc", "system": "description"}, "name": "Description", "key": "description", "operations": []string{"set"}},
 			"assignee":    field("Assignee", "user", false),

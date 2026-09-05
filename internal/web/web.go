@@ -820,6 +820,9 @@ func firstFormValues(r *http.Request) map[string]string {
 	for key, entries := range r.Form {
 		if len(entries) > 0 {
 			values[key] = entries[0]
+			if key == "fixVersions" || key == "versions" {
+				values[key] = strings.Join(entries, ",")
+			}
 		}
 	}
 	return values
@@ -869,6 +872,18 @@ func (h *Handler) buildCreateDialogData(ctx context.Context, workspaceID, userID
 func createFieldsFromForm(fields []models.CreateFieldMeta, values map[string]string) (map[string]json.RawMessage, error) {
 	custom := map[string]json.RawMessage{}
 	for _, field := range fields {
+		if field.Type == "versions" && values[field.ID] != "" {
+			refs := []map[string]string{}
+			for _, id := range strings.Split(values[field.ID], ",") {
+				refs = append(refs, map[string]string{"id": id})
+			}
+			raw, err := json.Marshal(refs)
+			if err != nil {
+				return nil, err
+			}
+			custom[field.ID] = raw
+			continue
+		}
 		if !field.Custom || values[field.ID] == "" {
 			continue
 		}

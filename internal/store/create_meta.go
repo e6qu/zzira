@@ -92,6 +92,20 @@ func (s *Store) IssueCreateMetadata(ctx context.Context, workspaceID, userID str
 			{ID: "labels", Name: "Labels", Type: "array", Description: "Separate labels with commas. Spaces are not allowed inside a label.", Section: "details"},
 		}
 
+		versions, err := s.ProjectVersions(ctx, project.ID)
+		if err != nil {
+			return nil, err
+		}
+		versionOptions := []models.CreateFieldOption{}
+		for _, version := range versions {
+			if !version.Archived {
+				versionOptions = append(versionOptions, models.CreateFieldOption{ID: version.ID, Name: version.Name})
+			}
+		}
+		fields = append(fields,
+			models.CreateFieldMeta{ID: "fixVersions", Name: "Fix versions", Type: "versions", Section: "details", Options: versionOptions},
+			models.CreateFieldMeta{ID: "versions", Name: "Affects versions", Type: "versions", Section: "details", Options: versionOptions})
+
 		scheme, err := s.SecuritySchemeForProject(ctx, project.ID)
 		if err != nil {
 			return nil, err

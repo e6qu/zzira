@@ -19,14 +19,15 @@ import (
 
 // UpdateIssue applies a partial update. nil pointers = unchanged.
 type UpdateIssueInput struct {
-	ActorID      string
-	WorkspaceID  string
-	IssueIDOrKey string
-	Summary      *string
-	Description  json.RawMessage // ADF; nil = unchanged
-	PriorityID   *string
-	AssigneeID   *string
-	StatusID     *string // transitions only
+	VersionOperations map[string][]map[string]json.RawMessage
+	ActorID           string
+	WorkspaceID       string
+	IssueIDOrKey      string
+	Summary           *string
+	Description       json.RawMessage // ADF; nil = unchanged
+	PriorityID        *string
+	AssigneeID        *string
+	StatusID          *string // transitions only
 
 	SecurityLevelID *string                    // "" = public, nil = unchanged
 	Labels          *[]string                  // empty = clear, nil = unchanged
@@ -100,14 +101,15 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 		in.Labels = &labels
 	}
 	issue, action, err := s.Store.UpdateIssue(ctx, in.ActorID, in.WorkspaceID, issue.ID, store.IssueUpdate{
-		Summary:         in.Summary,
-		Description:     in.Description,
-		PriorityID:      in.PriorityID,
-		AssigneeID:      in.AssigneeID,
-		StatusID:        in.StatusID,
-		SecurityLevelID: in.SecurityLevelID,
-		Labels:          in.Labels,
-		Fields:          in.Fields,
+		Summary:           in.Summary,
+		Description:       in.Description,
+		PriorityID:        in.PriorityID,
+		AssigneeID:        in.AssigneeID,
+		StatusID:          in.StatusID,
+		SecurityLevelID:   in.SecurityLevelID,
+		Labels:            in.Labels,
+		Fields:            in.Fields,
+		VersionOperations: in.VersionOperations,
 	})
 	if err != nil {
 		return nil, nil, err
@@ -142,6 +144,9 @@ func (s *Service) validateCustomFields(ctx context.Context, projectID string, va
 		valid[field.ID] = field
 	}
 	for id, raw := range values {
+		if id == "fixVersions" || id == "versions" {
+			continue
+		} // Validated transactionally by the store.
 		field, ok := valid[id]
 		if !ok {
 			return fmt.Errorf("custom field %q is not available for this project", id)

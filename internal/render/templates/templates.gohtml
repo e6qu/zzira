@@ -105,6 +105,7 @@
     <a class="nav-board" href="{{.BoardURL}}" {{if eq $.Active "board"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="5" height="14" rx="1"/><rect x="9.5" y="5" width="5" height="9" rx="1"/><rect x="15.5" y="5" width="5" height="11" rx="1"/></svg><span>Board</span></a>{{end}}
     <a class="nav-issues" href="{{.WorkURL}}" {{if eq $.Active "issues"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 6h13M7 12h13M7 18h13"/><circle cx="4" cy="6" r=".8"/><circle cx="4" cy="12" r=".8"/><circle cx="4" cy="18" r=".8"/></svg><span>All work</span></a>
     {{end}}{{end}}
+    {{with .Navigation}}{{with .Current}}<a class="nav-releases" href="/projects/{{.Project.Key}}/releases" {{if eq $.Active "releases"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4v17M6 5h13l-3 4 3 4H6"/></svg><span>Releases</span></a>{{end}}{{end}}
     <div class="nav-label">Settings</div>
     {{with .Navigation}}{{if .CanAdmin}}{{with .Current}}<a class="nav-project-settings" href="/projects/{{.Project.Key}}/settings" {{if eq $.Active "project-settings"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6M16 14v6"/></svg><span>Project settings</span></a>{{end}}{{end}}{{end}}
     <a class="nav-workflows" href="/settings/workflows" {{if eq .Active "workflows"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M7 6h10M18 8l-5 8M11 16 6 8"/></svg><span>Workflows</span></a>
@@ -160,6 +161,8 @@
           <select id="create-{{.ID}}" name="{{.ID}}" {{if .Required}}required{{end}}><option value="">None</option>{{range .Options}}<option value="{{.ID}}" {{if eq $value .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select>
           {{else if eq .Type "securitylevel"}}
           <select id="create-{{.ID}}" name="{{.ID}}" {{if .Required}}required{{end}}><option value="">Open to everyone in the workspace</option>{{range .Options}}<option value="{{.ID}}" {{if eq $value .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select>
+          {{else if eq .Type "versions"}}
+          <select id="create-{{.ID}}" name="{{.ID}}" multiple size="3">{{range .Options}}<option value="{{.ID}}" {{if selectedVersion $value .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select>
           {{else if eq .Type "array"}}
           <input id="create-{{.ID}}" name="{{.ID}}" value="{{$value}}" maxlength="2048" autocomplete="off" placeholder="frontend, needs-review" {{if .Required}}required{{end}} {{if .Description}}aria-describedby="create-help-{{.ID}}"{{end}}>
           {{else if eq .Type "number"}}
@@ -190,7 +193,8 @@
   <nav class="issue-breadcrumbs" aria-label="Breadcrumb">
     <a href="/projects">Projects</a><span aria-hidden="true">/</span><a href="/projects/{{.ProjectKey}}">{{.ProjectName}}</a><span aria-hidden="true">/</span><span aria-current="page">{{.Issue.Key}}</span>
   </nav>
-  <header class="issue-header">
+{{if or (.Issue.VersionRefs "fixVersions") (.Issue.VersionRefs "versions")}}<div class="issue-version-links">{{range .Issue.VersionRefs "fixVersions"}}<a href="/projects/{{$.ProjectKey}}/releases/{{.ID}}">Fix version: {{.Name}}</a> {{end}}{{range .Issue.VersionRefs "versions"}}<a href="/projects/{{$.ProjectKey}}/releases/{{.ID}}">Affects version: {{.Name}}</a> {{end}}</div>
+{{end}}  <header class="issue-header">
     <div class="issue-heading">
       <span class="issue-type-glyph" aria-hidden="true">✓</span>
       <div class="issue-title-block"><span class="eyebrow">{{.Issue.Key}} · {{.Issue.IssueType.Name}}</span>
@@ -779,7 +783,7 @@
   <a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}
   <div class="app-shell">{{template "workspace_nav" .}}
   <main class="page page-fluid" id="main-content" tabindex="-1">
-    <nav class="project-tabs" aria-label="{{.Data.Project.Name}} project"><a href="/projects/{{.Data.Project.Key}}" aria-current="page">Overview</a>{{with .Data.PrimaryBoard}}<a href="/board/{{.ID}}/backlog">Backlog</a><a href="/board/{{.ID}}">Board</a>{{end}}<a href="/issues/{{.Data.Project.Key}}">Work items</a>{{if .Navigation.CanAdmin}}<a href="/projects/{{.Data.Project.Key}}/settings">Settings</a>{{end}}</nav>
+    <nav class="project-tabs" aria-label="{{.Data.Project.Name}} project"><a href="/projects/{{.Data.Project.Key}}" aria-current="page">Overview</a>{{with .Data.PrimaryBoard}}<a href="/board/{{.ID}}/backlog">Backlog</a><a href="/board/{{.ID}}">Board</a>{{end}}<a href="/issues/{{.Data.Project.Key}}">Work items</a><a href="/projects/{{.Data.Project.Key}}/releases">Releases</a>{{if .Navigation.CanAdmin}}<a href="/projects/{{.Data.Project.Key}}/settings">Settings</a>{{end}}</nav>
     <nav class="issue-breadcrumbs" aria-label="Breadcrumb"><a href="/projects">Projects</a><span aria-hidden="true">/</span><span aria-current="page">{{.Data.Project.Name}}</span></nav>
     <header class="project-hero"><span class="project-hero-avatar" aria-hidden="true">{{.Data.Project.Key}}</span><div><span class="eyebrow">Software project</span><h1>{{.Data.Project.Name}}</h1><p>{{.Data.Project.Key}} · Organize delivery across the board, work list, and workflow.</p></div><button type="button" class="btn btn-primary" hx-get="/issues/new?project={{.Data.Project.Key}}" hx-target="#modal-root" hx-swap="innerHTML" onclick="window.zzira.openModal(this)">Create work item</button></header>
     <div class="project-overview-grid">

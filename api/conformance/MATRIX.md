@@ -16,7 +16,7 @@ ZZIRA-owned control-plane endpoints use `/rest/zzira/1`.
 | GET /rest/api/3/myself | ✅ | |
 | GET /rest/api/3/user · /user/search | ✅ | workspace members |
 | GET/POST /rest/api/3/project · GET /project/search · GET/PUT /project/{keyOrId} | 🟡 | Shared create/details commands and browser journey; software Scrum/Kanban templates; pagination/filtering/order; schemes, project roles and lifecycle remain |
-| POST /rest/api/3/issue | ✅ | Project key/id, ADF description, assignee, priority, labels, security and typed context-aware custom fields; unsupported fields are explicit errors |
+| POST /rest/api/3/issue | ✅ | Project key/id, ADF description, assignee, priority, labels, fix/affected versions, security and typed context-aware custom fields; unsupported fields are explicit errors |
 | GET/PUT/DELETE /rest/api/3/issue/{idOrKey} | ✅ | expand=renderedFields |
 | GET/PUT /rest/api/3/issue/{idOrKey}/assignee | ✅ | PUT fields.assignee + dedicated assignee endpoint |
 | GET /rest/api/3/issue/{idOrKey}/editmeta | 🟡 | system + custom fields |
@@ -71,7 +71,8 @@ ZZIRA-owned control-plane endpoints use `/rest/zzira/1`.
 | dev-status (SCM links) | ⛔ | requires SCM integration APIs and client tests |
 | Service management surfaces | ⛔ | separate product surface included in the full-surface ledger |
 | Automation and schedules | ⛔ | durable scheduler, rule editor, execution/audit and API contracts remain |
-| Releases, metrics and reports | ⛔ | version lifecycle, planning membership, historical calculations and chart journeys remain |
+| Project versions and releases | 🟡 | Ten version operations, release hub/lifecycle, fix/affected membership, visible progress and notes; exact limits in [RELEASES.md](../../docs/RELEASES.md) |
+| Metrics and reports | ⛔ | Historical calculations and chart/report journeys remain |
 | Apps/plugins, diagrams and graphs | ⛔ | installation/runtime modules, diagram authoring and graph/report surfaces remain |
 | Confluence Cloud /wiki/api/v2 spaces and pages | 🟡 | Initial space/page CRUD, parent validation, storage subset, drafts, versions, trash/restore and permission-filtered action log; exact limits in CLOUD_PARITY.md |
 
