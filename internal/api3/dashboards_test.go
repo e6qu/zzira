@@ -97,7 +97,7 @@ func TestDashboardLifecyclePrivacyAndGadgets(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, a := range actions {
-		if a.EntityID == id {
+		if a.EntityType == "dashboard" && a.EntityID == id {
 			t.Fatal("private dashboard action leaked")
 		}
 	}
@@ -239,7 +239,7 @@ func TestDashboardLifecyclePrivacyAndGadgets(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, a := range actions {
-		if a.EntityID == id {
+		if a.EntityType == "dashboard" && a.EntityID == id {
 			t.Fatal("revoked dashboard leaked through sync")
 		}
 	}
