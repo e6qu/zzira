@@ -77,6 +77,15 @@ func (s *Store) UpdateServiceSLAMetric(ctx context.Context, workspaceID, actorID
 		return fmt.Errorf("SLA metric does not exist")
 	}
 	if _, err := tx.Exec(ctx, `
+		UPDATE service_sla_goals SET goal_millis=$2 WHERE metric_id=$1 AND jql=''`, metricID, goalMillis); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE service_sla_cycles c SET goal_millis=$2
+		FROM service_sla_goals g WHERE c.goal_id=g.id AND g.metric_id=$1 AND g.jql='' AND c.stopped_at IS NULL`, metricID, goalMillis); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
 		INSERT INTO organization_audit_events(organization_id,actor_id,action,target_type,target_id,detail)
 		SELECT si.organization_id,$2,'service.sla.updated','service_sla',$4,jsonb_build_object('serviceDeskId',$3::text,'goalMillis',$5::bigint)
 		FROM sites si WHERE si.workspace_id=$1`, workspaceID, actorID, serviceDeskID, metricID, goalMillis); err != nil {
@@ -194,9 +203,10 @@ func (s *Store) CompleteServiceSLA(ctx context.Context, workspaceID, requestIssu
 
 func (s *Store) EnsureResolutionSLA(ctx context.Context, workspaceID, requestIssueID string, at time.Time) error {
 	_, err := s.Pool.Exec(ctx, `
-		INSERT INTO service_sla_cycles(request_issue_id,metric_id,cycle_number,started_at)
-		SELECT sr.issue_id,m.id,COALESCE((SELECT max(c.cycle_number)+1 FROM service_sla_cycles c WHERE c.request_issue_id=sr.issue_id AND c.metric_id=m.id),1),$3
+		INSERT INTO service_sla_cycles(request_issue_id,metric_id,cycle_number,started_at,goal_id,goal_name,goal_millis)
+		SELECT sr.issue_id,m.id,COALESCE((SELECT max(c.cycle_number)+1 FROM service_sla_cycles c WHERE c.request_issue_id=sr.issue_id AND c.metric_id=m.id),1),$3,g.id,g.name,g.goal_millis
 		FROM service_requests sr JOIN service_sla_metrics m ON m.service_desk_id=sr.service_desk_id AND m.kind='resolution'
+		JOIN service_sla_goals g ON g.metric_id=m.id AND g.jql=''
 		WHERE sr.workspace_id=$1 AND sr.issue_id=$2
 		  AND NOT EXISTS(SELECT 1 FROM service_sla_cycles c WHERE c.request_issue_id=sr.issue_id AND c.metric_id=m.id AND c.stopped_at IS NULL)
 		ON CONFLICT DO NOTHING`, workspaceID, requestIssueID, at)
@@ -336,23 +346,28 @@ func (s *Store) ServiceSLAs(ctx context.Context, workspaceID, requestIssueID str
 		values[index].CompletedCycles = make([]models.ServiceSLACycle, 0)
 		byID[metric.ID] = index
 	}
-	rows, err := s.Pool.Query(ctx, `SELECT id,metric_id,started_at,stopped_at FROM service_sla_cycles WHERE request_issue_id=$1 ORDER BY metric_id::bigint,cycle_number`, requestIssueID)
+	rows, err := s.Pool.Query(ctx, `
+		SELECT c.id,c.metric_id,COALESCE(c.goal_id,''),c.goal_name,COALESCE(c.goal_millis,m.goal_millis),c.started_at,c.stopped_at
+		FROM service_sla_cycles c JOIN service_sla_metrics m ON m.id=c.metric_id
+		WHERE c.request_issue_id=$1 ORDER BY c.metric_id::bigint,c.cycle_number`, requestIssueID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var id, metricID string
+		var id, metricID, goalID, goalName string
+		var goalMillis int64
 		var started time.Time
 		var stopped *time.Time
-		if err := rows.Scan(&id, &metricID, &started, &stopped); err != nil {
+		if err := rows.Scan(&id, &metricID, &goalID, &goalName, &goalMillis, &started, &stopped); err != nil {
 			return nil, err
 		}
 		index, ok := byID[metricID]
 		if !ok {
 			continue
 		}
-		cycle := calculateServiceSLACycle(calendar, location, id, started, stopped, values[index].GoalMillis, now)
+		cycle := calculateServiceSLACycle(calendar, location, id, started, stopped, goalMillis, now)
+		cycle.GoalID, cycle.GoalName = goalID, goalName
 		if stopped == nil {
 			values[index].OngoingCycle = &cycle
 		} else {

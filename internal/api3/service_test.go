@@ -542,6 +542,90 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	for _, metric := range metrics {
 		metricByKind[metric.Kind] = metric.ID
 	}
+	if _, err := handler.Commands.CreateServiceSLAGoal(ctx, customerID, workspaceID, serviceDeskID, metricByKind["first_response"], "Forbidden incident response", `labels = incident`, time.Hour.Milliseconds()); err == nil {
+		t.Fatal("customer configured a conditional SLA goal")
+	}
+	if _, err := handler.Commands.CreateServiceSLAGoal(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], "Invalid ordered goal", `labels = incident ORDER BY created ASC`, time.Hour.Milliseconds()); err == nil {
+		t.Fatal("conditional SLA goal accepted ORDER BY")
+	}
+	incidentGoal, err := handler.Commands.CreateServiceSLAGoal(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], "Incident response", `labels = incident`, time.Hour.Milliseconds())
+	if err != nil {
+		t.Fatal(err)
+	}
+	keywordGoal, err := handler.Commands.CreateServiceSLAGoal(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], "Keyword response", `summary ~ "conditional"`, (2 * time.Hour).Milliseconds())
+	if err != nil {
+		t.Fatal(err)
+	}
+	conditionalRequest := callAs(customerID, "POST", "/rest/servicedeskapi/request", `{"serviceDeskId":"`+serviceDeskID+`","requestTypeId":"`+incidentTypeID+`","requestFieldValues":{"summary":"Incident with conditional response target","description":"Verify selected goal snapshots.","`+customFieldID+`":7}}`, 201)
+	var conditionalRequestBean map[string]any
+	if err := json.Unmarshal(conditionalRequest.Body.Bytes(), &conditionalRequestBean); err != nil {
+		t.Fatal(err)
+	}
+	conditionalIssue, err := st.IssueByIDOrKey(ctx, workspaceID, conditionalRequestBean["issueKey"].(string))
+	if err != nil {
+		t.Fatal(err)
+	}
+	conditionalSLAs, err := st.ServiceSLAs(ctx, workspaceID, conditionalIssue.ID, time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var conditionalCycle *models.ServiceSLACycle
+	for index := range conditionalSLAs {
+		if conditionalSLAs[index].Kind == "first_response" {
+			conditionalCycle = conditionalSLAs[index].OngoingCycle
+		}
+	}
+	if conditionalCycle == nil || conditionalCycle.GoalID != incidentGoal.ID || conditionalCycle.GoalName != "Incident response" || conditionalCycle.GoalMillis != time.Hour.Milliseconds() {
+		t.Fatalf("selected conditional SLA cycle = %+v", conditionalCycle)
+	}
+	defaultRequest := callAs(customerID, "POST", "/rest/servicedeskapi/request", `{"serviceDeskId":"`+serviceDeskID+`","requestTypeId":"`+requestTypeID+`","requestFieldValues":{"summary":"General hardware request"}}`, 201)
+	var defaultRequestBean map[string]any
+	if err := json.Unmarshal(defaultRequest.Body.Bytes(), &defaultRequestBean); err != nil {
+		t.Fatal(err)
+	}
+	defaultIssue, err := st.IssueByIDOrKey(ctx, workspaceID, defaultRequestBean["issueKey"].(string))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defaultSLAs, err := st.ServiceSLAs(ctx, workspaceID, defaultIssue.ID, time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := range defaultSLAs {
+		if defaultSLAs[index].Kind == "first_response" && (defaultSLAs[index].OngoingCycle == nil || defaultSLAs[index].OngoingCycle.GoalName != "Default goal") {
+			t.Fatalf("default SLA fallback = %+v", defaultSLAs[index].OngoingCycle)
+		}
+	}
+	if err := handler.Commands.DeleteServiceSLAGoal(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], keywordGoal.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := handler.Commands.UpdateServiceSLAGoal(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], incidentGoal.ID, "Priority incident response", `labels = incident`, (90 * time.Minute).Milliseconds()); err != nil {
+		t.Fatal(err)
+	}
+	conditionalSLA := call("GET", "/rest/servicedeskapi/request/"+conditionalIssue.Key+"/sla/"+metricByKind["first_response"], "", 200)
+	if !strings.Contains(conditionalSLA.Body.String(), `"millis":5400000`) {
+		t.Fatal(conditionalSLA.Body.String())
+	}
+	if err := handler.Commands.DeleteServiceSLAGoal(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], incidentGoal.ID); err != nil {
+		t.Fatal(err)
+	}
+	conditionalSLAs, err = st.ServiceSLAs(ctx, workspaceID, conditionalIssue.ID, time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	conditionalCycle = nil
+	for index := range conditionalSLAs {
+		if conditionalSLAs[index].Kind == "first_response" {
+			conditionalCycle = conditionalSLAs[index].OngoingCycle
+		}
+	}
+	if conditionalCycle == nil || conditionalCycle.GoalID != "" || conditionalCycle.GoalName != "Priority incident response" || conditionalCycle.GoalMillis != (90*time.Minute).Milliseconds() {
+		t.Fatalf("deleted conditional SLA snapshot = %+v", conditionalCycle)
+	}
+	var conditionalGoalAudits int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM organization_audit_events WHERE actor_id=$1 AND target_id=$2 AND action LIKE 'service.sla.goal.%'`, actorID, incidentGoal.ID).Scan(&conditionalGoalAudits); err != nil || conditionalGoalAudits != 3 {
+		t.Fatalf("conditional SLA goal audits = %d, %v", conditionalGoalAudits, err)
+	}
 	callAs(customerID, "GET", "/rest/servicedeskapi/request/"+issueKey+"/sla", "", 403)
 	slaList := call("GET", "/rest/servicedeskapi/request/"+issueKey+"/sla", "", 200)
 	if !strings.Contains(slaList.Body.String(), "Time to first response") || !strings.Contains(slaList.Body.String(), `"ongoingCycle"`) {

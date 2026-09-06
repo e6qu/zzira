@@ -1,6 +1,10 @@
 package jql
 
-import "testing"
+import (
+	"reflect"
+	"strings"
+	"testing"
+)
 
 func TestParseBasic(t *testing.T) {
 	q, err := Parse(`status = "In Progress" AND assignee IS EMPTY ORDER BY updated DESC`)
@@ -85,6 +89,23 @@ func TestCompileUnknownFieldAndOrder(t *testing.T) {
 	}
 	if c := Compile(q, "u", DefaultResolver()); c.Err == nil {
 		t.Fatal("unknown order field must fail at compile")
+	}
+}
+
+func TestCompileLabelsAsMultiValueField(t *testing.T) {
+	query, err := Parse(`labels in (incident, urgent) AND labels != archived`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled := Compile(query, "u", DefaultResolver())
+	if compiled.Err != nil {
+		t.Fatal(compiled.Err)
+	}
+	if !strings.Contains(compiled.Where, "$1 = ANY(i.labels)") || !strings.Contains(compiled.Where, "$3 = ANY(i.labels)") {
+		t.Fatalf("labels SQL = %s", compiled.Where)
+	}
+	if !reflect.DeepEqual(compiled.Args, []any{"incident", "urgent", "archived"}) {
+		t.Fatalf("labels args = %#v", compiled.Args)
 	}
 }
 

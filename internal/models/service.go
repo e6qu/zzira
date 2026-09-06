@@ -118,12 +118,19 @@ type ServiceSLAMetric struct {
 	Position                                  int
 }
 
+type ServiceSLAGoal struct {
+	ID, MetricID, Name, JQL string
+	GoalMillis              int64
+	Position                int
+}
+
 type ServiceSLACycle struct {
-	ID, GoalLabel, ElapsedLabel, RemainingLabel string
-	StartTime, BreachTime                       time.Time
-	StopTime                                    *time.Time
-	GoalMillis, ElapsedMillis, RemainingMillis  int64
-	Breached, Paused, WithinCalendarHours       bool
+	ID, GoalID, GoalName                       string
+	GoalLabel, ElapsedLabel, RemainingLabel    string
+	StartTime, BreachTime                      time.Time
+	StopTime                                   *time.Time
+	GoalMillis, ElapsedMillis, RemainingMillis int64
+	Breached, Paused, WithinCalendarHours      bool
 }
 
 type ServiceSLA struct {

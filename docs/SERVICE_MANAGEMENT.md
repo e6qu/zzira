@@ -161,18 +161,23 @@ have now been reviewed and are represented by explicit partial assessments.
 Request creation accepts string or Atlassian document format descriptions and
 request-type-specific text, number, and date-time custom fields, then stores the
 backing issue through the shared command layer. Incident request types
-automatically receive the `incident` label. Failed metadata association is
+automatically receive the `incident` label. Managers can define ordered JQL
+conditions per SLA metric; the first matching condition wins and every cycle
+snapshots the chosen goal name and duration so completed history remains stable.
+Active cycles follow edits to their selected goal, and the default remains the
+fallback. Failed metadata association is
 compensated by a logged issue deletion, so no orphaned ticket remains.
 
 ## Remaining fidelity
 
 The implemented operations are assessed as partial. JQL support follows the
-documented ZZIRA search subset; conditional form logic, select, user, and
+documented ZZIRA search subset, including array-aware label matching;
+conditional form logic, select, user, and
 Assets-backed portal fields, participant notifications,
 approval workflow configuration, image thumbnail generation,
 email delivery and notification preference administration, CSAT configuration
 and advanced segmented service reports, complete Assets object/schema/import APIs, full
-status chronology, conditional SLA goal criteria,
+status chronology, SLA rule reordering and advanced criteria,
 portal invitation email delivery, Atlassian knowledge ranking/analytics, and
 incident/problem/change configuration remain. Customer creation grants only the
 site `atlassian/customer` role and never silently grants Jira product access.

@@ -71,6 +71,10 @@ func (s *Service) CreateServiceRequest(ctx context.Context, in CreateServiceRequ
 		_, cleanupErr := s.DeleteIssue(ctx, in.ActorID, in.WorkspaceID, issue.ID, "service request creation failed")
 		return nil, errors.Join(err, cleanupErr)
 	}
+	if err := s.Store.ApplyServiceSLAGoals(ctx, in.WorkspaceID, in.ActorID, in.ServiceDeskID, issue.ID); err != nil {
+		_, cleanupErr := s.DeleteIssue(ctx, in.ActorID, in.WorkspaceID, issue.ID, "service SLA goal selection failed")
+		return nil, errors.Join(err, cleanupErr)
+	}
 	if len(in.ParticipantIDs) > 0 {
 		if err := s.Store.UpdateServiceRequestParticipants(ctx, in.WorkspaceID, issue.ID, in.ParticipantIDs, false); err != nil {
 			_, cleanupErr := s.DeleteIssue(ctx, in.ActorID, in.WorkspaceID, issue.ID, "service request participant creation failed")
@@ -178,8 +182,13 @@ func (s *Service) TransitionServiceRequest(ctx context.Context, actorID, workspa
 		if err := s.Store.CompleteServiceSLA(ctx, workspaceID, request.Issue.ID, "resolution", time.Now().UTC()); err != nil {
 			return nil, err
 		}
-	} else if err := s.Store.EnsureResolutionSLA(ctx, workspaceID, request.Issue.ID, time.Now().UTC()); err != nil {
-		return nil, err
+	} else {
+		if err := s.Store.EnsureResolutionSLA(ctx, workspaceID, request.Issue.ID, time.Now().UTC()); err != nil {
+			return nil, err
+		}
+		if err := s.Store.ApplyServiceSLAGoals(ctx, workspaceID, actorID, request.ServiceDesk.ID, request.Issue.ID); err != nil {
+			return nil, err
+		}
 	}
 	request, err = s.Store.ServiceRequest(ctx, workspaceID, actorID, request.Issue.ID, canManage)
 	if err != nil {
@@ -211,6 +220,64 @@ func (s *Service) UpdateServiceSLAMetric(ctx context.Context, actorID, workspace
 		return fmt.Errorf("only an administrator may configure service SLAs")
 	}
 	return s.Store.UpdateServiceSLAMetric(ctx, workspaceID, actorID, serviceDeskID, metricID, goalMillis)
+}
+
+func (s *Service) validateServiceSLAGoal(ctx context.Context, name, query string, goalMillis int64) (string, string, error) {
+	name, query = strings.TrimSpace(name), strings.TrimSpace(query)
+	if name == "" || len(name) > 255 {
+		return "", "", fmt.Errorf("SLA goal name is required and accepts at most 255 characters")
+	}
+	if query == "" || len(query) > 2000 {
+		return "", "", fmt.Errorf("conditional SLA goal JQL is required and accepts at most 2000 characters")
+	}
+	if goalMillis < time.Minute.Milliseconds() || goalMillis > (365*24*time.Hour).Milliseconds() {
+		return "", "", fmt.Errorf("SLA goal must be between one minute and 365 days")
+	}
+	parsed, err := jql.Parse(query)
+	if err != nil {
+		return "", "", err
+	}
+	if parsed.OrderBy != nil {
+		return "", "", fmt.Errorf("conditional SLA goal JQL cannot contain ORDER BY")
+	}
+	resolver := jql.DefaultResolver()
+	fields, err := s.Store.CustomFields(ctx)
+	if err != nil {
+		return "", "", err
+	}
+	if compiled := jql.Compile(parsed, "validation", jql.WithCustomFields(resolver, fields)); compiled.Err != nil {
+		return "", "", compiled.Err
+	}
+	return name, query, nil
+}
+
+func (s *Service) CreateServiceSLAGoal(ctx context.Context, actorID, workspaceID, serviceDeskID, metricID, name, query string, goalMillis int64) (*models.ServiceSLAGoal, error) {
+	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
+		return nil, err
+	}
+	name, query, err := s.validateServiceSLAGoal(ctx, name, query, goalMillis)
+	if err != nil {
+		return nil, err
+	}
+	return s.Store.CreateServiceSLAGoal(ctx, workspaceID, actorID, serviceDeskID, metricID, name, query, goalMillis)
+}
+
+func (s *Service) UpdateServiceSLAGoal(ctx context.Context, actorID, workspaceID, serviceDeskID, metricID, goalID, name, query string, goalMillis int64) error {
+	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
+		return err
+	}
+	name, query, err := s.validateServiceSLAGoal(ctx, name, query, goalMillis)
+	if err != nil {
+		return err
+	}
+	return s.Store.UpdateServiceSLAGoal(ctx, workspaceID, actorID, serviceDeskID, metricID, goalID, name, query, goalMillis)
+}
+
+func (s *Service) DeleteServiceSLAGoal(ctx context.Context, actorID, workspaceID, serviceDeskID, metricID, goalID string) error {
+	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
+		return err
+	}
+	return s.Store.DeleteServiceSLAGoal(ctx, workspaceID, actorID, serviceDeskID, metricID, goalID)
 }
 
 func (s *Service) UpdateServiceCalendar(ctx context.Context, actorID, workspaceID, serviceDeskID, name, timeZone string, weekdays []int16, startMinute, endMinute int16) error {

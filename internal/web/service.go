@@ -64,6 +64,7 @@ type servicePageData struct {
 	Report                *models.ServiceReport
 	ReportDays            []serviceReportDayView
 	SLAMetrics            []models.ServiceSLAMetric
+	SLAGoals              map[string][]models.ServiceSLAGoal
 	SLAs                  []models.ServiceSLA
 	Customers             []*models.User
 	Organizations         []models.ServiceOrganization
@@ -158,6 +159,15 @@ func (h *Handler) ServiceAgent(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				http.Error(w, "Could not load SLA goals.", http.StatusInternalServerError)
 				return
+			}
+			data.SLAGoals = make(map[string][]models.ServiceSLAGoal, len(data.SLAMetrics))
+			for _, metric := range data.SLAMetrics {
+				goals, err := h.Store.ServiceSLAGoals(r.Context(), workspaceID, deskID, metric.ID)
+				if err != nil {
+					http.Error(w, "Could not load conditional SLA goals.", http.StatusInternalServerError)
+					return
+				}
+				data.SLAGoals[metric.ID] = goals
 			}
 			data.KnowledgeSpaces, err = h.Store.WikiSpaces(r.Context(), workspaceID, user.ID)
 			if err != nil {
@@ -570,6 +580,47 @@ func (h *Handler) ServiceSLASettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	redirectLocal(w, r, "/service/agent/"+r.PathValue("desk")+"#sla-settings")
+}
+
+func (h *Handler) ServiceSLAGoalSettings(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	admin, err := h.Store.IsAdmin(r.Context(), workspaceID, user.ID)
+	if err != nil {
+		http.Error(w, "Could not authorize service administration.", http.StatusInternalServerError)
+		return
+	}
+	if !admin {
+		http.Error(w, "Workspace admin access is required.", http.StatusForbidden)
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	deskID, metricID, goalID := r.PathValue("desk"), r.PathValue("metric"), r.PostFormValue("goalId")
+	action := r.PostFormValue("action")
+	err = nil
+	if action == "delete" {
+		err = h.Commands.DeleteServiceSLAGoal(r.Context(), user.ID, workspaceID, deskID, metricID, goalID)
+	} else {
+		goalMinutes, parseErr := strconv.ParseInt(r.PostFormValue("goalMinutes"), 10, 64)
+		if parseErr != nil || goalMinutes < 1 {
+			http.Error(w, "SLA goal must be a positive number of minutes.", http.StatusBadRequest)
+			return
+		}
+		if action == "update" {
+			err = h.Commands.UpdateServiceSLAGoal(r.Context(), user.ID, workspaceID, deskID, metricID, goalID, r.PostFormValue("name"), r.PostFormValue("jql"), goalMinutes*time.Minute.Milliseconds())
+		} else {
+			_, err = h.Commands.CreateServiceSLAGoal(r.Context(), user.ID, workspaceID, deskID, metricID, r.PostFormValue("name"), r.PostFormValue("jql"), goalMinutes*time.Minute.Milliseconds())
+		}
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	redirectLocal(w, r, "/service/agent/"+deskID+"#sla-settings")
 }
 
 func (h *Handler) ServiceCalendarHolidaySettings(w http.ResponseWriter, r *http.Request) {

@@ -1306,10 +1306,25 @@ Validation after the initial service report workspace:
   The Chromium manager journey verifies values, window selection, WCAG scans
   and 320 px reflow.
 
+Validation after conditional service SLA goals:
+
+- Migration 071 gives every SLA metric a durable default plus up to 50 ordered
+  JQL conditions. New and reopened cycles snapshot the first matching goal;
+  default goals provide the fallback, completed cycles retain their historical
+  target, and edits update only active cycles assigned to that goal.
+- The shared JQL engine now supports Jira's multi-value `labels` field for
+  equality, inequality, membership, text and empty checks. Criteria reject
+  query ordering; rule evaluation follows each goal's persisted creation order.
+- Manager create/update/delete operations enforce workspace administration and
+  emit searchable organization audit records. The request UI exposes the
+  selected goal name while JSM SLA responses retain their pinned DTO shape.
+  PostgreSQL and Chromium coverage prove the
+  manager configuration and customer request journey, including WCAG and
+  320 px reflow.
+
 ## Current change
 
 1. Complete Jira Service Management journeys beyond the pinned contract:
-   conditional SLA goals,
    incident/problem/change linkage and advanced service report segmentation.
 2. Continue into the Confluence v1/v2 contract and knowledge collaboration
    workstreams after the remaining service journeys are browser-proven.
