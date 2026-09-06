@@ -1112,6 +1112,39 @@
         "docs/CLOUD_PARITY.md"
       ],
       "notes": "Calculates required status mappings by issue type and source/target workflow from affected workspace project issues with deterministic status metadata; unused workflow-status differences remain."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/workflow/{workflowId}/projectUsages",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_usage.go",
+        "internal/store/workflow_usage.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Returns opaque-cursor pages of workspace project IDs whose published scheme resolves the workflow; additional project fields and Jira cursor encoding remain."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/workflow/{workflowId}/workflowSchemes",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_usage.go",
+        "internal/store/workflow_usage.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Returns opaque-cursor pages of workspace published scheme IDs that reference the workflow through default or issue-type mappings; draft usage remains."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/workflow/{workflowId}/project/{projectId}/issueTypeUsages",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_usage.go",
+        "internal/store/workflow_usage.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Returns opaque-cursor pages of issue type IDs that resolve to the workflow in a workspace-scoped project, including default mapping fallback."
     }
   ]
 }

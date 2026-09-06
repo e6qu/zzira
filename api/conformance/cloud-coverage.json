@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 111,
+  "assessedTotal": 114,
   "counts": {
     "delivered": 0,
-    "partial": 104,
+    "partial": 107,
     "missing": 7,
-    "unassessed": 1096
+    "unassessed": 1093
   },
   "countsByFamily": {
     "automation": {
@@ -24,9 +24,9 @@
     },
     "jira-platform": {
       "delivered": 0,
-      "partial": 49,
+      "partial": 52,
       "missing": 0,
-      "unassessed": 568
+      "unassessed": 565
     },
     "jira-service-management": {
       "delivered": 0,
@@ -4511,25 +4511,40 @@
       "operationId": "jira-v3:GET:/rest/api/3/workflow/{workflowId}/project/{projectId}/issueTypeUsages",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_usage.go",
+        "internal/store/workflow_usage.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Returns opaque-cursor pages of issue type IDs that resolve to the workflow in a workspace-scoped project, including default mapping fallback."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/workflow/{workflowId}/projectUsages",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_usage.go",
+        "internal/store/workflow_usage.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Returns opaque-cursor pages of workspace project IDs whose published scheme resolves the workflow; additional project fields and Jira cursor encoding remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/workflow/{workflowId}/workflowSchemes",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_usage.go",
+        "internal/store/workflow_usage.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Returns opaque-cursor pages of workspace published scheme IDs that reference the workflow through default or issue-type mappings; draft usage remains."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/workflows",

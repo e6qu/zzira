@@ -207,6 +207,20 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	if err := st.Pool.QueryRow(ctx, `SELECT i.status_id,p.workflow_scheme_id FROM issues i JOIN projects p ON p.id=i.project_id WHERE i.id=$1`, issueID).Scan(&issueStatus, &assignedScheme); err != nil || issueStatus != "st_todo" || assignedScheme != targetSchemeID {
 		t.Fatalf("switch result status=%q scheme=%q err=%v", issueStatus, assignedScheme, err)
 	}
+	projectUsage := call(actor, "GET", "/rest/api/3/workflow/"+workflowID+"/projectUsages?maxResults=1", "", 200)
+	if !strings.Contains(projectUsage.Body.String(), projectID) {
+		t.Fatal(projectUsage.Body.String())
+	}
+	schemeUsage := call(actor, "GET", "/rest/api/3/workflow/"+workflowID+"/workflowSchemes", "", 200)
+	if !strings.Contains(schemeUsage.Body.String(), targetSchemeID) {
+		t.Fatal(schemeUsage.Body.String())
+	}
+	issueTypeUsage := call(actor, "GET", "/rest/api/3/workflow/"+workflowID+"/project/"+projectID+"/issueTypeUsages", "", 200)
+	if !strings.Contains(issueTypeUsage.Body.String(), `"it_task"`) {
+		t.Fatal(issueTypeUsage.Body.String())
+	}
+	call(actor, "GET", "/rest/api/3/workflow/"+workflowID+"/project/prj_missing/issueTypeUsages", "", 404)
+	call(actor, "GET", "/rest/api/3/workflow/"+workflowID+"/projectUsages?maxResults=0", "", 400)
 	call(actor, "DELETE", "/rest/api/3/workflowscheme/"+targetSchemeID, "", 409)
 	unused := call(actor, "POST", "/rest/api/3/workflowscheme", `{"name":"Unused scheme","defaultWorkflow":"Default"}`, 201)
 	if err := json.Unmarshal(unused.Body.Bytes(), &scheme); err != nil {

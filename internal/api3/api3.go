@@ -92,6 +92,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.taskRoute(w, r, path)
 	case strings.HasPrefix(path, "/workflow/project/"):
 		h.workflowRoute(w, r)
+	case strings.HasPrefix(path, "/workflow/"):
+		h.workflowUsageRoute(w, r, path)
 	case path == "/issuesecurityschemes" && (r.Method == http.MethodGet || r.Method == http.MethodPost):
 		h.securitySchemeRoute(w, r)
 	case strings.HasPrefix(path, "/issuesecurityschemes/"):

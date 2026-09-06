@@ -440,6 +440,17 @@ Validation after workflow-scheme publish/update migration:
 - The full PostgreSQL Go suite, vet, WebAssembly build, seven conformance
   tests, regenerated inventory/coverage checks, and `git diff --check` pass.
 
+Validation after workflow usage resources:
+
+- PostgreSQL integration covers project, workflow-scheme, and project issue-type
+  usage responses for a workflow, including published default resolution,
+  workspace isolation, administrator authorization, opaque paging validation,
+  and missing project handling.
+- The full PostgreSQL Go suite, vet, WebAssembly build, seven conformance tests,
+  generated inventory/coverage checks, and `git diff --check` pass.
+- Exact reviewed API coverage is 114 of 1,207 operations: 107 partial, 7
+  missing, and 1,093 explicitly unassessed.
+
 ## Current change
 
 1. Add queued task execution and cancellation semantics, then workflow
