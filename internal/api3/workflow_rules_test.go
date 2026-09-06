@@ -1,0 +1,156 @@
+package api3
+
+import (
+	"context"
+	"encoding/json"
+	"net/http/httptest"
+	"os"
+	"strings"
+	"testing"
+
+	"github.com/e6qu/zzira/internal/adf"
+	"github.com/e6qu/zzira/internal/commands"
+	"github.com/e6qu/zzira/internal/store"
+)
+
+func TestWorkflowRulesPersistAndExecuteAcrossAPIJourney(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	st, err := store.Open(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(st.Close)
+	if err := store.Migrate(ctx, st.Pool); err != nil {
+		t.Fatal(err)
+	}
+	workspaceID, adminID, reporterID, otherID, projectID := store.NewID("ws"), store.NewID("usr"), store.NewID("usr"), store.NewID("usr"), store.NewID("project")
+	exec := func(query string, args ...any) {
+		t.Helper()
+		if _, err := st.Pool.Exec(ctx, query, args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	exec(`INSERT INTO workspaces(id,slug,name) VALUES($1,$1,'Workflow rules')`, workspaceID)
+	for _, userID := range []string{adminID, reporterID, otherID} {
+		exec(`INSERT INTO users(id,email,password_hash,display_name) VALUES($1,$2,'test',$3)`, userID, userID+"@example.test", "Rules "+userID)
+		role := "member"
+		if userID == adminID {
+			role = "admin"
+		}
+		exec(`INSERT INTO memberships(workspace_id,user_id,role) VALUES($1,$2,$3)`, workspaceID, userID, role)
+		exec(`INSERT INTO api_tokens(id,user_id,token_hash) VALUES($1,$1,$2)`, userID, store.HashToken(userID))
+	}
+	exec(`INSERT INTO projects(id,workspace_id,key,name,workflow_id) VALUES($1,$2,'WRK','Rule project','wf_default')`, projectID, workspaceID)
+	t.Cleanup(func() {
+		exec(`DELETE FROM actions WHERE workspace_id=$1`, workspaceID)
+		exec(`DELETE FROM issues WHERE workspace_id=$1`, workspaceID)
+		exec(`DELETE FROM projects WHERE workspace_id=$1`, workspaceID)
+		exec(`DELETE FROM workflow_schemes WHERE workspace_id=$1`, workspaceID)
+		exec(`DELETE FROM workflows WHERE workspace_id=$1`, workspaceID)
+		exec(`DELETE FROM organization_audit_events WHERE actor_id=ANY($1)`, []string{adminID, reporterID, otherID})
+		exec(`DELETE FROM memberships WHERE workspace_id=$1`, workspaceID)
+		exec(`DELETE FROM workspaces WHERE id=$1`, workspaceID)
+		for _, userID := range []string{adminID, reporterID, otherID} {
+			exec(`DELETE FROM api_tokens WHERE user_id=$1`, userID)
+			exec(`DELETE FROM users WHERE id=$1`, userID)
+		}
+	})
+
+	service := &commands.Service{Store: st}
+	handler := &Handler{Store: st, Commands: service, WorkspaceSlug: workspaceID, BaseURL: "https://zzira.test"}
+	call := func(userID, method, path, body string, want int) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		req.SetBasicAuth(userID+"@example.test", userID)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != want {
+			t.Fatalf("%s %s: %d want %d: %s", method, path, rec.Code, want, rec.Body.String())
+		}
+		return rec
+	}
+
+	capabilities := call(adminID, "GET", "/rest/api/3/workflows/capabilities?workflowId=wf_default", "", 200)
+	for _, ruleKey := range []string{"system:restrict-issue-transition", "system:validate-field-value", "system:change-assignee"} {
+		if !strings.Contains(capabilities.Body.String(), `"ruleKey":"`+ruleKey+`"`) {
+			t.Fatalf("capabilities omit %s: %s", ruleKey, capabilities.Body.String())
+		}
+	}
+
+	createBody := `{"scope":{"type":"GLOBAL"},"statuses":[{"id":"st_todo","name":"To Do","statusCategory":"TODO","statusReference":"todo"},{"id":"st_done","name":"Done","statusCategory":"DONE","statusReference":"done"}],"workflows":[{"name":"Executable rule workflow","statuses":[{"statusReference":"todo","properties":{}},{"statusReference":"done","properties":{}}],"transitions":[{"id":"complete","name":"Complete","type":"DIRECTED","toStatusReference":"done","links":[{"fromStatusReference":"todo"}],"conditions":{"operation":"ALL","conditions":[{"ruleKey":"system:restrict-issue-transition","parameters":{"accountIds":"allow-reporter"}}],"conditionGroups":[]},"validators":[{"ruleKey":"system:validate-field-value","parameters":{"ruleType":"fieldRequired","fieldsRequired":"description","errorMessage":"Add completion notes"}}],"actions":[{"ruleKey":"system:change-assignee","parameters":{"type":"to-current-user"}}]}]}]}`
+	created := call(adminID, "POST", "/rest/api/3/workflows/create", createBody, 200)
+	var result struct {
+		Workflows []struct {
+			ID string `json:"id"`
+		} `json:"workflows"`
+	}
+	if err := json.Unmarshal(created.Body.Bytes(), &result); err != nil || len(result.Workflows) != 1 {
+		t.Fatalf("created workflow: %v %s", err, created.Body.String())
+	}
+	workflowID := result.Workflows[0].ID
+	updateBody := `{"workflows":[{"id":"` + workflowID + `","version":{"id":"` + workflowID + `","versionNumber":1},"statuses":[{"statusReference":"st_todo","properties":{}},{"statusReference":"st_done","properties":{}}],"transitions":[{"id":"complete","name":"Complete","type":"DIRECTED","toStatusReference":"st_done","links":[{"fromStatusReference":"st_todo"}],"conditions":{"operation":"ALL","conditions":[{"ruleKey":"system:restrict-issue-transition","parameters":{"accountIds":"allow-reporter"}}],"conditionGroups":[]},"validators":[{"ruleKey":"system:validate-field-value","parameters":{"ruleType":"fieldRequired","fieldsRequired":"description","errorMessage":"Add completion notes"}}],"actions":[{"ruleKey":"system:change-assignee","parameters":{"type":"to-current-user"}}]}]}]}`
+	updatedWorkflow := call(adminID, "POST", "/rest/api/3/workflows/update", updateBody, 200)
+	if !strings.Contains(updatedWorkflow.Body.String(), `"versionNumber":2`) || !strings.Contains(updatedWorkflow.Body.String(), `"ruleKey":"system:change-assignee"`) {
+		t.Fatal(updatedWorkflow.Body.String())
+	}
+	if err := st.AssignWorkflowToProject(ctx, workspaceID, projectID, workflowID); err != nil {
+		t.Fatal(err)
+	}
+	issue, _, err := service.CreateIssue(ctx, commands.CreateIssueInput{ActorID: reporterID, WorkspaceID: workspaceID, ProjectIDOrKey: "WRK", Summary: "Rule journey", IssueTypeID: "it_task"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	hidden := call(otherID, "GET", "/rest/api/3/issue/"+issue.Key+"/transitions", "", 200)
+	if !strings.Contains(hidden.Body.String(), `"transitions":[]`) {
+		t.Fatal(hidden.Body.String())
+	}
+	call(otherID, "POST", "/rest/api/3/issue/"+issue.Key+"/transitions", `{"transition":{"id":"complete"}}`, 400)
+	visible := call(reporterID, "GET", "/rest/api/3/issue/"+issue.Key+"/transitions", "", 200)
+	if !strings.Contains(visible.Body.String(), `"id":"complete"`) || !strings.Contains(visible.Body.String(), `"isConditional":true`) {
+		t.Fatal(visible.Body.String())
+	}
+	failed := call(reporterID, "POST", "/rest/api/3/issue/"+issue.Key+"/transitions", `{"transition":{"id":"complete"}}`, 400)
+	if !strings.Contains(failed.Body.String(), "Add completion notes") {
+		t.Fatal(failed.Body.String())
+	}
+	if _, _, err := service.UpdateIssue(ctx, commands.UpdateIssueInput{ActorID: reporterID, WorkspaceID: workspaceID, IssueIDOrKey: issue.Key, Description: adf.ParagraphDoc("Released after review")}); err != nil {
+		t.Fatal(err)
+	}
+	staleStatus := "st_done"
+	if _, _, err := st.UpdateIssue(ctx, reporterID, workspaceID, issue.ID, store.IssueUpdate{StatusID: &staleStatus, ExpectedUpdatedSeq: &issue.UpdatedSeq}); err == nil {
+		t.Fatal("a transition based on a stale rule snapshot must fail")
+	}
+	call(reporterID, "POST", "/rest/api/3/issue/"+issue.Key+"/transitions", `{"transition":{"id":"complete"}}`, 204)
+	updated, err := st.IssueByIDOrKey(ctx, workspaceID, issue.ID)
+	if err != nil || updated.Status.ID != "st_done" || updated.Assignee == nil || updated.Assignee.ID != reporterID {
+		t.Fatalf("updated issue = %+v, %v", updated, err)
+	}
+	changes, err := st.IssueChangelog(ctx, workspaceID, issue.ID)
+	if err != nil || len(changes) < 2 {
+		t.Fatalf("changelog = %+v, %v", changes, err)
+	}
+	latest := changes[len(changes)-1]
+	fields := map[string]bool{}
+	for _, item := range latest.Items {
+		fields[item.Field] = true
+	}
+	if !fields["status"] || !fields["assignee"] {
+		t.Fatalf("transition changelog = %+v", latest.Items)
+	}
+
+	search := call(adminID, "GET", "/rest/api/3/workflows/search?queryString=Executable&expand=values.transitions", "", 200)
+	for _, fragment := range []string{`"conditions":{"operation":"ALL"`, `"ruleKey":"system:validate-field-value"`, `"ruleKey":"system:change-assignee"`} {
+		if !strings.Contains(search.Body.String(), fragment) {
+			t.Fatalf("search omits %s: %s", fragment, search.Body.String())
+		}
+	}
+	preview := call(adminID, "POST", "/rest/api/3/workflows/preview", `{"projectId":"`+projectID+`","workflowIds":["`+workflowID+`"]}`, 200)
+	if !strings.Contains(preview.Body.String(), `"ruleKey":"system:restrict-issue-transition"`) {
+		t.Fatal(preview.Body.String())
+	}
+}

@@ -23,7 +23,7 @@ use `/rest/zzira/1`.
 | GET/PUT /rest/api/3/issue/{idOrKey}/assignee | ✅ | PUT fields.assignee + dedicated assignee endpoint |
 | GET /rest/api/3/issue/{idOrKey}/editmeta | 🟡 | system + custom fields |
 | GET /rest/api/3/issue/createmeta (+ paginated project/type routes) | ✅ | legacy filters/expanded fields plus current per-project issue-type and field metadata shapes |
-| GET/POST /rest/api/3/issue/{idOrKey}/transitions | ✅ | project workflow enforced |
+| GET/POST /rest/api/3/issue/{idOrKey}/transitions | ✅ | Project workflow, nested actor conditions, required-field validators, and atomic assignee post-functions enforced |
 | GET/POST/DELETE /rest/api/3/issue/{idOrKey}/watchers | 🟡 | complete self-subscription and watcher reads; managing other users is intentionally not exposed without a broader permission model |
 | /comment CRUD | ✅ | ADF bodies, author-only delete |
 | GET /rest/api/3/issue/{idOrKey}/changelog | ✅ | derived from the action log |
@@ -58,7 +58,7 @@ use `/rest/zzira/1`.
 | Custom fields in issue beans + JQL | ✅ | incl. numeric compare |
 | POST/GET /rest/api/3/webhook · DELETE /webhook/{id} · GET /webhook/refresh | ✅ | log-driven dispatcher, watermark, exactly-once claims |
 | /filter CRUD + /filter/{id}/favourite | ✅ | |
-| GET /rest/api/3/workflow/search · POST /workflow · GET/PUT /workflow/project/{key} | ✅ | **enforced**: transitions come from the project workflow |
+| GET /rest/api/3/workflow/search · modern workflow create/update/search/preview/capabilities · POST /workflow · GET/PUT /workflow/project/{key} | ✅ | **enforced**: project workflows and executable transition rules round-trip through admin APIs and runtime |
 | GET /rest/api/3/role | 🟡 | registry list |
 | Organizations orgs · directories · users · groups · memberships · workspaces · roles · events · domains · policies | 🟡 | All 47 operations reviewed: group and directory-user administration, product roles/activity, invitations/email, directory lifecycle, audit query/poll/detail/actions, DNS claims, and policy/resource CRUD/validation are useful tested subsets; runtime policy enforcement, central rate limits, and remaining edge semantics remain |
 | Issue security: scheme admin APIs, assignment, enforcement | ✅ | tombstones + per-user sync filtering + visibility on search/board/navigator/bootstrap |

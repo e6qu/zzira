@@ -1,6 +1,12 @@
 package workflow
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+
+	"github.com/e6qu/zzira/internal/adf"
+	"github.com/e6qu/zzira/internal/models"
+)
 
 func TestAvailableFromTodo(t *testing.T) {
 	ids := map[string]bool{}
@@ -9,6 +15,59 @@ func TestAvailableFromTodo(t *testing.T) {
 	}
 	if !ids["21"] || !ids["31"] || len(ids) != 2 {
 		t.Fatalf("transitions from To Do must be {21,31}: %v", ids)
+	}
+}
+
+func TestNestedTransitionConditions(t *testing.T) {
+	transition := Transition{Conditions: &ConditionGroup{Operation: "ALL", Conditions: []Rule{{
+		RuleKey: RuleRestrictIssueTransition, Parameters: map[string]string{"accountIds": "allow-reporter"},
+	}}, ConditionGroups: []ConditionGroup{{Operation: "ANY", Conditions: []Rule{
+		{RuleKey: RuleRestrictIssueTransition, Parameters: map[string]string{"accountIds": "allow-assignee"}},
+		{RuleKey: RuleRestrictIssueTransition, Parameters: map[string]string{"accountIds": "usr_manager"}},
+	}}}}}
+	if !transition.ConditionsAllow(EvaluationContext{ActorID: "usr_manager", ReporterID: "usr_manager"}) {
+		t.Fatal("reporter matching the nested manager condition must be allowed")
+	}
+	if transition.ConditionsAllow(EvaluationContext{ActorID: "usr_other", ReporterID: "usr_other"}) {
+		t.Fatal("the outer reporter condition cannot bypass the nested ANY group")
+	}
+}
+
+func TestRequiredFieldValidatorUsesConfiguredMessage(t *testing.T) {
+	transition := Transition{Validators: []Rule{{RuleKey: RuleValidateFieldValue, Parameters: map[string]string{
+		"ruleType": "fieldRequired", "fieldsRequired": "assignee,customfield_10001", "errorMessage": "Complete ownership and review notes",
+	}}}}
+	context := EvaluationContext{FieldPresent: map[string]bool{"assignee": true}}
+	if err := transition.ValidateRules(context); err == nil || err.Error() != "Complete ownership and review notes" {
+		t.Fatalf("validator error = %v", err)
+	}
+	context.FieldPresent["customfield_10001"] = true
+	if err := transition.ValidateRules(context); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestChangeAssigneePostFunctions(t *testing.T) {
+	transition := Transition{Actions: []Rule{
+		{RuleKey: RuleChangeAssignee, Parameters: map[string]string{"type": "to-selected-user", "accountId": "usr_first"}},
+		{RuleKey: RuleChangeAssignee, Parameters: map[string]string{"type": "to-current-user"}},
+	}}
+	assigneeID, changed, err := transition.AssigneeEffect(EvaluationContext{ActorID: "usr_actor"})
+	if err != nil || !changed || assigneeID != "usr_actor" {
+		t.Fatalf("effect = %q, %t, %v", assigneeID, changed, err)
+	}
+}
+
+func TestContextForIssueRecognizesSystemAndCustomFields(t *testing.T) {
+	issue := &models.Issue{Summary: "Ready", Description: adf.ParagraphDoc("Acceptance notes"), Assignee: &models.User{ID: "usr_owner"}, Fields: map[string]json.RawMessage{
+		"customfield_empty": json.RawMessage(`[]`), "customfield_ready": json.RawMessage(`{"value":"yes"}`),
+	}}
+	context := ContextForIssue("usr_actor", issue)
+	if !context.FieldPresent["summary"] || !context.FieldPresent["description"] || !context.FieldPresent["assignee"] || !context.FieldPresent["customfield_ready"] {
+		t.Fatalf("missing field presence: %+v", context.FieldPresent)
+	}
+	if context.FieldPresent["customfield_empty"] || context.AssigneeID != "usr_owner" {
+		t.Fatalf("unexpected context: %+v", context)
 	}
 }
 

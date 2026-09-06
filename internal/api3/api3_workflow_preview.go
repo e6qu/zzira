@@ -32,14 +32,7 @@ func workflowPreviewBean(item workflowPreviewItem, projectID string) map[string]
 	})
 	transitions := make([]map[string]any, 0, len(item.Workflow.Transitions))
 	for _, transition := range item.Workflow.Transitions {
-		links := make([]map[string]any, 0, len(transition.From))
-		for _, from := range transition.From {
-			links = append(links, map[string]any{"fromStatusReference": from})
-		}
-		transitions = append(transitions, map[string]any{
-			"id": transition.ID, "name": transition.Name, "description": "", "type": "DIRECTED",
-			"toStatusReference": transition.To, "links": links, "actions": []any{}, "validators": []any{}, "triggers": []any{},
-		})
+		transitions = append(transitions, workflowTransitionBean(transition))
 	}
 	queryContext := []map[string]any{}
 	if len(item.IssueTypes) > 0 {

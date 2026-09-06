@@ -37,15 +37,16 @@ func appendAction(ctx context.Context, tx pgx.Tx, a *models.Action) error {
 // ---- Issue update / delete (V1) ----
 
 type IssueUpdate struct {
-	VersionOperations map[string][]map[string]json.RawMessage
-	Summary           *string
-	Description       json.RawMessage // non-nil = replace
-	PriorityID        *string         // "" = clear, nil = unchanged
-	AssigneeID        *string         // "" = unassign, nil = unchanged
-	StatusID          *string         // transitions only; "" invalid
-	SecurityLevelID   *string         // "" = public, nil = unchanged
-	Labels            *[]string       // empty = clear, nil = unchanged
-	Fields            map[string]json.RawMessage
+	VersionOperations  map[string][]map[string]json.RawMessage
+	ExpectedUpdatedSeq *int64
+	Summary            *string
+	Description        json.RawMessage // non-nil = replace
+	PriorityID         *string         // "" = clear, nil = unchanged
+	AssigneeID         *string         // "" = unassign, nil = unchanged
+	StatusID           *string         // transitions only; "" invalid
+	SecurityLevelID    *string         // "" = public, nil = unchanged
+	Labels             *[]string       // empty = clear, nil = unchanged
+	Fields             map[string]json.RawMessage
 }
 
 func diffItem(field, from, fromString, to, toString string) models.ChangeItem {
@@ -66,6 +67,9 @@ func (s *Store) UpdateIssue(ctx context.Context, actorID, workspaceID, issueID s
 	current, err := scanIssue(tx.QueryRow(ctx, issueJoin+`WHERE i.workspace_id=$1 AND i.id=$2 FOR UPDATE OF i`, workspaceID, issueID))
 	if err != nil {
 		return nil, nil, err
+	}
+	if up.ExpectedUpdatedSeq != nil && current.UpdatedSeq != *up.ExpectedUpdatedSeq {
+		return nil, nil, fmt.Errorf("issue changed while applying transition")
 	}
 	if len(up.VersionOperations) > 0 {
 		up.Fields, err = applyVersionOperations(ctx, tx, projectID, current.Fields, up.Fields, up.VersionOperations)

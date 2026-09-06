@@ -28,16 +28,28 @@ type workflowTransitionLinkRequest struct {
 	FromStatusReference string `json:"fromStatusReference"`
 }
 
+type workflowRuleUpdateRequest struct {
+	ID         string            `json:"id"`
+	RuleKey    string            `json:"ruleKey"`
+	Parameters map[string]string `json:"parameters"`
+}
+
+type workflowConditionGroupUpdateRequest struct {
+	Operation       string                                `json:"operation"`
+	Conditions      []workflowRuleUpdateRequest           `json:"conditions"`
+	ConditionGroups []workflowConditionGroupUpdateRequest `json:"conditionGroups"`
+}
+
 type workflowTransitionUpdateRequest struct {
-	ID                string                          `json:"id"`
-	Name              string                          `json:"name"`
-	Type              string                          `json:"type"`
-	ToStatusReference string                          `json:"toStatusReference"`
-	Links             []workflowTransitionLinkRequest `json:"links"`
-	Actions           []json.RawMessage               `json:"actions"`
-	Validators        []json.RawMessage               `json:"validators"`
-	Conditions        json.RawMessage                 `json:"conditions"`
-	Triggers          []json.RawMessage               `json:"triggers"`
+	ID                string                               `json:"id"`
+	Name              string                               `json:"name"`
+	Type              string                               `json:"type"`
+	ToStatusReference string                               `json:"toStatusReference"`
+	Links             []workflowTransitionLinkRequest      `json:"links"`
+	Actions           []workflowRuleUpdateRequest          `json:"actions"`
+	Validators        []workflowRuleUpdateRequest          `json:"validators"`
+	Conditions        *workflowConditionGroupUpdateRequest `json:"conditions"`
+	Triggers          []json.RawMessage                    `json:"triggers"`
 }
 
 type workflowCreateItemRequest struct {
@@ -252,14 +264,51 @@ func workflowDefinitionFromRequest(id, name string, statuses []workflowStatusLay
 			errors = append(errors, workflowValidationError("TRANSITION_INVALID", "A directed transition requires a name and at least one source.", "TRANSITION", map[string]any{"transitionId": transitionID}))
 			continue
 		}
-		conditions := strings.TrimSpace(string(item.Conditions))
-		if len(item.Actions) > 0 || len(item.Validators) > 0 || (conditions != "" && conditions != "null") || len(item.Triggers) > 0 {
-			errors = append(errors, workflowValidationError("TRANSITION_RULES_UNSUPPORTED", "Transition rules are not yet supported by this workflow payload.", "RULE", map[string]any{"transitionId": transitionID}))
+		if len(item.Triggers) > 0 {
+			errors = append(errors, workflowValidationError("TRANSITION_TRIGGERS_UNSUPPORTED", "Transition triggers are not yet executable.", "RULE", map[string]any{"transitionId": transitionID}))
 			continue
 		}
-		wf.Transitions = append(wf.Transitions, workflow.Transition{ID: transitionID, Name: strings.TrimSpace(item.Name), From: from, To: to})
+		transition := workflow.Transition{ID: transitionID, Name: strings.TrimSpace(item.Name), From: from, To: to}
+		for ruleIndex, rule := range item.Actions {
+			transition.Actions = append(transition.Actions, workflowRuleFromRequest(rule, fmt.Sprintf("%s-action-%d", transitionID, ruleIndex+1)))
+		}
+		for ruleIndex, rule := range item.Validators {
+			transition.Validators = append(transition.Validators, workflowRuleFromRequest(rule, fmt.Sprintf("%s-validator-%d", transitionID, ruleIndex+1)))
+		}
+		if item.Conditions != nil {
+			conditions := workflowConditionGroupFromRequest(*item.Conditions, transitionID, "condition")
+			transition.Conditions = &conditions
+		}
+		if err := workflow.ValidateTransitionRules(transition); err != nil {
+			errors = append(errors, workflowValidationError("TRANSITION_RULE_INVALID", err.Error(), "RULE", map[string]any{"transitionId": transitionID}))
+			continue
+		}
+		wf.Transitions = append(wf.Transitions, transition)
 	}
 	return wf, errors
+}
+
+func workflowRuleFromRequest(rule workflowRuleUpdateRequest, fallbackID string) workflow.Rule {
+	id := strings.TrimSpace(rule.ID)
+	if id == "" {
+		id = fallbackID
+	}
+	parameters := rule.Parameters
+	if parameters == nil {
+		parameters = map[string]string{}
+	}
+	return workflow.Rule{ID: id, RuleKey: strings.TrimSpace(rule.RuleKey), Parameters: parameters}
+}
+
+func workflowConditionGroupFromRequest(group workflowConditionGroupUpdateRequest, transitionID, path string) workflow.ConditionGroup {
+	converted := workflow.ConditionGroup{Operation: group.Operation, Conditions: make([]workflow.Rule, 0, len(group.Conditions)), ConditionGroups: make([]workflow.ConditionGroup, 0, len(group.ConditionGroups))}
+	for index, condition := range group.Conditions {
+		converted.Conditions = append(converted.Conditions, workflowRuleFromRequest(condition, fmt.Sprintf("%s-%s-%d", transitionID, path, index+1)))
+	}
+	for index, child := range group.ConditionGroups {
+		converted.ConditionGroups = append(converted.ConditionGroups, workflowConditionGroupFromRequest(child, transitionID, fmt.Sprintf("%s-group-%d", path, index+1)))
+	}
+	return converted
 }
 
 func workflowStatusMigrationsFromRequest(item workflowUpdateItemRequest, references map[string]string, wf workflow.Workflow) ([]store.WorkflowStatusMigration, []map[string]any) {

@@ -87,7 +87,7 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	}
 	call(member, "GET", "/rest/api/3/workflows/capabilities?workflowId="+workflowID, "", 403)
 	capabilities := call(actor, "GET", "/rest/api/3/workflows/capabilities?workflowId="+workflowID, "", 200)
-	if !strings.Contains(capabilities.Body.String(), `"editorScope":"GLOBAL"`) || !strings.Contains(capabilities.Body.String(), `"projectTypes":["software","business"]`) || !strings.Contains(capabilities.Body.String(), `"systemRules":[]`) {
+	if !strings.Contains(capabilities.Body.String(), `"editorScope":"GLOBAL"`) || !strings.Contains(capabilities.Body.String(), `"projectTypes":["software","business"]`) || !strings.Contains(capabilities.Body.String(), `"ruleKey":"system:change-assignee"`) {
 		t.Fatal(capabilities.Body.String())
 	}
 	call(actor, "GET", "/rest/api/3/workflows/capabilities?projectId="+projectID+"&issueTypeId=it_task", "", 200)

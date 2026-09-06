@@ -15,6 +15,7 @@ import (
 	"github.com/e6qu/zzira/internal/authz"
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
+	"github.com/e6qu/zzira/internal/workflow"
 )
 
 // UpdateIssue applies a partial update. nil pointers = unchanged.
@@ -256,8 +257,28 @@ func (s *Service) TransitionIssue(ctx context.Context, actorID, workspaceID, iss
 	if !ok {
 		return nil, nil, fmt.Errorf("transition %q is not valid from status %q", transitionID, issue.Status.Name)
 	}
+	context := workflow.ContextForIssue(actorID, issue)
+	if !t.ConditionsAllow(context) {
+		return nil, nil, fmt.Errorf("transition %q is not available to this user", transitionID)
+	}
+	if err := t.ValidateRules(context); err != nil {
+		return nil, nil, err
+	}
+	assigneeID, changeAssignee, err := t.AssigneeEffect(context)
+	if err != nil {
+		return nil, nil, err
+	}
+	if changeAssignee && assigneeID != "" {
+		if _, err := s.Store.MemberByID(ctx, workspaceID, assigneeID); err != nil {
+			return nil, nil, fmt.Errorf("workflow assignee is not an active workspace member")
+		}
+	}
 	newStatus := t.To
-	return s.Store.UpdateIssue(ctx, actorID, workspaceID, issue.ID, store.IssueUpdate{StatusID: &newStatus})
+	update := store.IssueUpdate{StatusID: &newStatus, ExpectedUpdatedSeq: &issue.UpdatedSeq}
+	if changeAssignee {
+		update.AssigneeID = &assigneeID
+	}
+	return s.Store.UpdateIssue(ctx, actorID, workspaceID, issue.ID, update)
 }
 
 type AddCommentInput struct {

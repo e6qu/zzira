@@ -548,11 +548,27 @@ Validation after workflow status mappings:
 - The full PostgreSQL Go suite, vet, WebAssembly build, seven conformance tests,
   generated inventory/coverage checks, and `git diff --check` pass.
 
+Validation after executable workflow rules:
+
+- Modern Jira workflow create/update validation accepts and persists recursive
+  `ALL`/`ANY` condition groups, required-field validators, and change-assignee
+  post-functions, generates omitted rule IDs, and rejects every rule or
+  parameter that the runtime cannot execute.
+- Issue REST and browser views hide actor-restricted transitions. The shared
+  command path rechecks the condition, returns configured validator errors,
+  validates selected assignees, rejects stale issue snapshots, and commits the
+  status and post-function assignee change as one issue update, changelog
+  record, and sync action.
+- PostgreSQL integration creates the rules through the modern Jira API, proves
+  reporter and non-reporter visibility, validator recovery, atomic execution,
+  capabilities, search, and project preview round-tripping.
+- The full PostgreSQL Go suite passes. Vet, WebAssembly, conformance, generated
+  evidence, and diff checks are run before the slice commit.
+
 ## Current change
 
-1. Add transition conditions, validators, post-functions, capability entries,
-   and visual designer persistence, followed by queued task execution and
-   cancellation semantics.
+1. Add visual workflow designer persistence, followed by queued task execution
+   and cancellation semantics.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 

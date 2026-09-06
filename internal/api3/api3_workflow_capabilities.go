@@ -8,7 +8,23 @@ func workflowCapabilitiesResponse() map[string]any {
 	return map[string]any{
 		"editorScope":  "GLOBAL",
 		"projectTypes": []string{"software", "business"},
-		"systemRules":  []any{},
+		"systemRules": []map[string]any{
+			{
+				"description": "Restrict a transition to selected users, the assignee, or the reporter.", "incompatibleRuleKeys": []string{},
+				"isAvailableForInitialTransition": false, "isVisible": true, "name": "Restrict issue transition",
+				"ruleKey": "system:restrict-issue-transition", "ruleType": "Condition",
+			},
+			{
+				"description": "Require a field to have a value before an issue can transition.", "incompatibleRuleKeys": []string{},
+				"isAvailableForInitialTransition": false, "isVisible": true, "name": "Validate a field value",
+				"ruleKey": "system:validate-field-value", "ruleType": "Validator",
+			},
+			{
+				"description": "Automatically assign an issue after moving it using a transition.", "incompatibleRuleKeys": []string{},
+				"isAvailableForInitialTransition": true, "isVisible": true, "name": "Assign an issue",
+				"ruleKey": "system:change-assignee", "ruleType": "Function",
+			},
+		},
 		"connectRules": []any{},
 		"forgeRules":   []any{},
 		"triggerRules": []any{},

@@ -1318,6 +1318,9 @@ func validateWorkflowAgainstStatuses(wf workflow.Workflow, statuses []models.Sta
 				return nil, fmt.Errorf("workflow transition %q has unknown source status %q", transition.ID, from)
 			}
 		}
+		if err := workflow.ValidateTransitionRules(transition); err != nil {
+			return nil, fmt.Errorf("workflow transition %q rules: %w", transition.ID, err)
+		}
 	}
 	def, err := json.Marshal(wf)
 	if err != nil {

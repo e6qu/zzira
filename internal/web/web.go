@@ -22,6 +22,7 @@ import (
 	"github.com/e6qu/zzira/internal/render"
 	"github.com/e6qu/zzira/internal/secretbox"
 	"github.com/e6qu/zzira/internal/store"
+	"github.com/e6qu/zzira/internal/workflow"
 )
 
 type Handler struct {
@@ -418,7 +419,7 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 		return nil, err
 	}
 	var transitions []models.WorkflowTransition
-	for _, t := range wf.Available(issue.Status.ID) {
+	for _, t := range wf.AvailableFor(issue.Status.ID, workflow.ContextForIssue(user.ID, issue)) {
 		transitions = append(transitions, models.WorkflowTransition{ID: t.ID, Name: t.Name})
 	}
 	editView, err := h.buildEditDialogView(r.Context(), wsID, issue)

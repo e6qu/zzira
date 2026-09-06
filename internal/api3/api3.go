@@ -19,6 +19,7 @@ import (
 	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
+	"github.com/e6qu/zzira/internal/workflow"
 )
 
 type Handler struct {
@@ -836,7 +837,7 @@ func (h *Handler) deleteComment(w http.ResponseWriter, r *http.Request, idOrKey,
 // ---- transitions ----
 
 func (h *Handler) listTransitions(w http.ResponseWriter, r *http.Request, idOrKey string) {
-	wsID, _, e := h.authWorkspace(r)
+	wsID, userID, e := h.authWorkspace(r)
 	if e != nil {
 		writeJerr(w, e)
 		return
@@ -852,7 +853,7 @@ func (h *Handler) listTransitions(w http.ResponseWriter, r *http.Request, idOrKe
 		return
 	}
 	beans := []map[string]any{}
-	for _, t := range wf.Available(issue.Status.ID) {
+	for _, t := range wf.AvailableFor(issue.Status.ID, workflow.ContextForIssue(userID, issue)) {
 		status, err := h.Store.StatusByID(r.Context(), t.To)
 		if err != nil {
 			jiraError(w, http.StatusInternalServerError, "internal error")
@@ -865,7 +866,7 @@ func (h *Handler) listTransitions(w http.ResponseWriter, r *http.Request, idOrKe
 			"hasScreen":     false,
 			"isGlobal":      false,
 			"isInitial":     false,
-			"isConditional": false,
+			"isConditional": t.Conditions != nil,
 			"isAvailable":   true,
 			"fields":        map[string]any{},
 		})

@@ -71,11 +71,23 @@ func workflowTransitionBean(transition workflow.Transition) map[string]any {
 	for _, from := range transition.From {
 		links = append(links, map[string]any{"fromStatusReference": from})
 	}
-	return map[string]any{
+	actions := transition.Actions
+	if actions == nil {
+		actions = []workflow.Rule{}
+	}
+	validators := transition.Validators
+	if validators == nil {
+		validators = []workflow.Rule{}
+	}
+	bean := map[string]any{
 		"id": transition.ID, "name": transition.Name, "description": "",
 		"type": "DIRECTED", "toStatusReference": transition.To, "links": links,
-		"properties": map[string]string{}, "actions": []any{}, "validators": []any{}, "triggers": []any{},
+		"properties": map[string]string{}, "actions": actions, "validators": validators, "triggers": []any{},
 	}
+	if transition.Conditions != nil {
+		bean["conditions"] = transition.Conditions
+	}
+	return bean
 }
 
 func workflowSearchBean(wf workflow.Workflow, expandTransitions bool) map[string]any {
