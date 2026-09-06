@@ -121,10 +121,17 @@ type workflowSchemeEditorData struct {
 	Projects            []*models.Project
 	Assigned            []*models.Project
 	PreviewProject      *models.Project
-	Impact              []store.WorkflowSchemeImpact
+	Impact              []workflowSchemeImpactView
 	CanEdit             bool
 	Saved               string
 	Error               string
+}
+
+type workflowSchemeImpactView struct {
+	IssueTypeID    string
+	Status         models.Status
+	IssueCount     int
+	TargetStatuses []models.Status
 }
 
 func (h *Handler) ProjectsPage(w http.ResponseWriter, r *http.Request) {
@@ -458,10 +465,32 @@ func (h *Handler) WorkflowSchemePage(w http.ResponseWriter, r *http.Request, sch
 			data.Error = "Project not found."
 		} else {
 			data.PreviewProject = project
-			data.Impact, err = h.Store.WorkflowSchemeImpact(r.Context(), workspaceID, project.ID, schemeID, false)
+			impacts, impactErr := h.Store.WorkflowSchemeImpact(r.Context(), workspaceID, project.ID, schemeID, false)
+			err = impactErr
 			if err != nil {
 				http.Error(w, "internal error", 500)
 				return
+			}
+			statuses, err := h.Store.StatusesForWorkspace(r.Context(), workspaceID)
+			if err != nil {
+				http.Error(w, "internal error", 500)
+				return
+			}
+			for _, impact := range impacts {
+				allowed := make(map[string]bool)
+				for _, transition := range impact.TargetWorkflow.Transitions {
+					allowed[transition.To] = true
+					for _, from := range transition.From {
+						allowed[from] = true
+					}
+				}
+				view := workflowSchemeImpactView{IssueTypeID: impact.IssueTypeID, Status: impact.Status, IssueCount: impact.IssueCount}
+				for _, status := range statuses {
+					if allowed[status.ID] {
+						view.TargetStatuses = append(view.TargetStatuses, status)
+					}
+				}
+				data.Impact = append(data.Impact, view)
 			}
 		}
 	}
@@ -542,7 +571,24 @@ func (h *Handler) AssignWorkflowScheme(w http.ResponseWriter, r *http.Request, s
 		return
 	}
 	projectID := r.PostFormValue("project")
-	if err := h.Store.AssignWorkflowScheme(r.Context(), workspaceID, user.ID, projectID, schemeID); err != nil {
+	project, err := h.Store.ProjectByIDOrKey(r.Context(), workspaceID, projectID)
+	if err != nil {
+		http.Error(w, "project not found", http.StatusNotFound)
+		return
+	}
+	impacts, err := h.Store.WorkflowSchemeImpact(r.Context(), workspaceID, project.ID, schemeID, false)
+	if err != nil {
+		statusAdminError(w, err)
+		return
+	}
+	mappings := make([]store.WorkflowStatusMapping, 0, len(impacts))
+	for _, impact := range impacts {
+		mappings = append(mappings, store.WorkflowStatusMapping{
+			IssueTypeID: impact.IssueTypeID, OldStatusID: impact.Status.ID,
+			NewStatusID: r.PostFormValue("mapping_" + impact.IssueTypeID + "_" + impact.Status.ID),
+		})
+	}
+	if err := h.Store.SwitchWorkflowScheme(r.Context(), workspaceID, user.ID, project.ID, schemeID, mappings); err != nil {
 		if errors.Is(err, store.ErrAdminConflict) {
 			http.Redirect(w, r, "/settings/workflow-schemes/"+url.PathEscape(schemeID)+"?project="+url.QueryEscape(projectID)+"&error="+url.QueryEscape("Assignment blocked until incompatible statuses are migrated."), http.StatusSeeOther)
 			return

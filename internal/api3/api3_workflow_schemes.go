@@ -114,6 +114,51 @@ func (h *Handler) workflowSchemeRoute(w http.ResponseWriter, r *http.Request, pa
 		}
 		return
 	}
+	if path == "/workflowscheme/project/switch" {
+		if r.Method != http.MethodPost {
+			jiraError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		var request struct {
+			ProjectID                   string `json:"projectId"`
+			TargetSchemeID              string `json:"targetSchemeId"`
+			MappingsByIssueTypeOverride []struct {
+				IssueTypeID    string `json:"issueTypeId"`
+				StatusMappings []struct {
+					OldStatusID string `json:"oldStatusId"`
+					NewStatusID string `json:"newStatusId"`
+				} `json:"statusMappings"`
+			} `json:"mappingsByIssueTypeOverride"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil || request.ProjectID == "" || request.TargetSchemeID == "" {
+			jiraError(w, http.StatusBadRequest, "projectId and targetSchemeId are required.")
+			return
+		}
+		project, err := h.Store.ProjectByIDOrKey(r.Context(), workspaceID, request.ProjectID)
+		if err != nil {
+			jiraError(w, http.StatusNotFound, "The project does not exist.")
+			return
+		}
+		var mappings []store.WorkflowStatusMapping
+		for _, override := range request.MappingsByIssueTypeOverride {
+			for _, mapping := range override.StatusMappings {
+				mappings = append(mappings, store.WorkflowStatusMapping{
+					IssueTypeID: override.IssueTypeID,
+					OldStatusID: mapping.OldStatusID,
+					NewStatusID: mapping.NewStatusID,
+				})
+			}
+		}
+		task, err := h.Store.SwitchWorkflowSchemeTask(r.Context(), workspaceID, userID, project.ID, request.TargetSchemeID, mappings)
+		if err != nil {
+			workflowSchemeAPIError(w, err)
+			return
+		}
+		self := h.BaseURL + "/rest/api/3/task/" + task.ID
+		w.Header().Set("Location", self)
+		writeJSON(w, http.StatusSeeOther, h.apiTaskBean(task))
+		return
+	}
 	if path == "/workflowscheme/project" {
 		if r.Method == http.MethodGet {
 			projectIDs := r.URL.Query()["projectId"]

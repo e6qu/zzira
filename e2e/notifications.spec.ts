@@ -21,7 +21,7 @@ async function login(page: Page, account = ANA) {
 
 test('notifications API and inbox keep private read state in sync', async ({ page, request }) => {
   const demo = authFor(DEMO.email);
-  const ana = authFor(ANA.email);
+  await login(page);
   const users = await (await request.get('/rest/api/3/user/search?query=ana', demo)).json();
   const anaID = users[0].accountId;
 
@@ -43,7 +43,7 @@ test('notifications API and inbox keep private read state in sync', async ({ pag
   });
   expect(assigned.status()).toBe(204);
 
-  const response = await request.get('/rest/zzira/1/notifications?limit=200', ana);
+  const response = await page.request.get('/rest/zzira/1/notifications?limit=200');
   expect(response.status()).toBe(200);
   const payload = await response.json();
   const notification = payload.notifications.find((item: any) => item.entityId === issue.id);
@@ -53,12 +53,12 @@ test('notifications API and inbox keep private read state in sync', async ({ pag
   expect(payload).toMatchObject({ startAt: 0, maxResults: 200 });
   expect(payload.total).toBeGreaterThanOrEqual(payload.notifications.length);
 
-  const unreadPage = await (await request.get('/rest/zzira/1/notifications?startAt=0&maxResults=1&unreadOnly=true', ana)).json();
+  const unreadPage = await (await page.request.get('/rest/zzira/1/notifications?startAt=0&maxResults=1&unreadOnly=true')).json();
   expect(unreadPage.notifications).toHaveLength(1);
   expect(unreadPage.total).toBe(payload.unreadCount);
-  expect((await request.get('/rest/zzira/1/notifications?maxResults=0', ana)).status()).toBe(400);
-  expect((await request.get('/rest/zzira/1/notifications?startAt=-1', ana)).status()).toBe(400);
-  expect((await request.get('/rest/zzira/1/notifications?unreadOnly=sometimes', ana)).status()).toBe(400);
+  expect((await page.request.get('/rest/zzira/1/notifications?maxResults=0')).status()).toBe(400);
+  expect((await page.request.get('/rest/zzira/1/notifications?startAt=-1')).status()).toBe(400);
+  expect((await page.request.get('/rest/zzira/1/notifications?unreadOnly=sometimes')).status()).toBe(400);
 
   const forbidden = await request.put(`/rest/zzira/1/notifications/${notification.id}`, {
     ...demo,
@@ -66,7 +66,6 @@ test('notifications API and inbox keep private read state in sync', async ({ pag
   });
   expect(forbidden.status()).toBe(404);
 
-  await login(page);
   await page.goto('/notifications');
   const item = page.locator('.notification-inbox-item', { hasText: issue.key });
   await expect(item).toHaveClass(/is-unread/);
@@ -82,10 +81,12 @@ test('notifications API and inbox keep private read state in sync', async ({ pag
   await unreadItem.locator('.notification-open').click();
   await expect(page.locator('#issue-root')).toHaveAttribute('data-issue-id', issue.id);
 
-  const afterOpen = await (await request.get('/rest/zzira/1/notifications?limit=200', ana)).json();
+  const afterOpen = await (await page.request.get('/rest/zzira/1/notifications?limit=200')).json();
   expect(afterOpen.notifications.find((item: any) => item.id === notification.id).read).toBe(true);
 
-  const marked = await request.post('/rest/zzira/1/notifications/read-all', ana);
+  const marked = await page.request.post('/rest/zzira/1/notifications/read-all', {
+    headers: { Origin: new URL(page.url()).origin },
+  });
   expect(marked.status()).toBe(200);
   expect(await marked.json()).toMatchObject({ unreadCount: 0 });
 });

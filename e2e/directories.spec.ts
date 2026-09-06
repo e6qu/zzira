@@ -1,6 +1,14 @@
 import { expect, test, Page } from '@playwright/test';
+import * as fs from 'fs';
+import * as path from 'path';
 
 const DEMO = { email: 'demo@zzira.dev', password: 'demo1234' };
+
+function apiAuthHeader(): string {
+  const tokens = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'seed-tokens.json'), 'utf8'));
+  const token = process.env.ZZIRA_API_TOKEN ?? tokens[DEMO.email];
+  return 'Basic ' + Buffer.from(`${DEMO.email}:${token}`).toString('base64');
+}
 
 async function login(page: Page) {
   await page.goto('/login');
@@ -143,7 +151,7 @@ test('status administrators can create, classify, edit, inspect, and safely dele
   await expect(page.getByRole('heading', { name: updatedName, exact: true })).toHaveCount(0);
 });
 
-test('workflow scheme drafts publish only after a safe project impact preview', async ({ page }) => {
+test('workflow schemes publish safely and migrate incompatible project statuses', async ({ page }) => {
   await login(page);
   await page.getByRole('link', { name: 'Workflow schemes', exact: true }).click();
   await expect(page).toHaveURL('/settings/workflow-schemes');
@@ -173,4 +181,48 @@ test('workflow scheme drafts publish only after a safe project impact preview', 
   await page.getByRole('button', { name: 'Assign scheme' }).click();
   await expect(page.getByRole('status')).toContainText('Project assigned');
   await expect(page.locator('.assigned-projects')).toContainText('ZZIRA Demo');
+
+  await page.goto('/settings/workflows');
+  const simpleWorkflowName = `Simple lifecycle ${Date.now()}`;
+  await page.fill('#workflow-name', simpleWorkflowName);
+  await page.getByRole('button', { name: 'Create workflow' }).click();
+  const workflowMatch = page.url().match(/\/settings\/workflows\/(workflow_[^/?]+)/);
+  expect(workflowMatch).toBeTruthy();
+  const simpleWorkflowID = workflowMatch![1];
+  await page.fill('#transition-name', 'Direct complete');
+  await page.selectOption('#transition-from', 'st_todo');
+  await page.selectOption('#transition-to', 'st_done');
+  await page.getByRole('button', { name: 'Add transition' }).click();
+  for (const transition of ['To Do', 'In Progress', 'Done']) {
+    await page.getByRole('button', { name: `Delete ${transition} transition`, exact: true }).first().click();
+  }
+  await page.getByRole('button', { name: 'Publish workflow' }).click();
+  await expect(page.getByText('Version 2')).toBeVisible();
+
+  const createdIssue = await page.request.post('/rest/api/3/issue', {
+    headers: { Authorization: apiAuthHeader() },
+    data: { fields: { project: { key: 'ZZ' }, summary: `Scheme migration ${Date.now()}`, issuetype: { name: 'Task' } } },
+  });
+  expect(createdIssue.status()).toBe(201);
+  const issueKey = (await createdIssue.json()).key;
+  const transitioned = await page.request.post(`/rest/api/3/issue/${issueKey}/transitions`, {
+    headers: { Authorization: apiAuthHeader() }, data: { transition: { id: '21' } },
+  });
+  expect(transitioned.status()).toBe(204);
+
+  await page.goto('/settings/workflow-schemes');
+  const migrationSchemeName = `Migration scheme ${Date.now()}`;
+  await page.fill('#scheme-name', migrationSchemeName);
+  await page.selectOption('#scheme-default', simpleWorkflowID);
+  await page.getByRole('button', { name: 'Create scheme' }).click();
+  await page.selectOption('#scheme-project', 'prj_default');
+  await page.getByRole('button', { name: 'Preview assignment' }).click();
+  await expect(page.getByText('Choose where existing work moves before assigning this scheme.')).toBeVisible();
+  await page.selectOption('#mapping-it_task-st_inprogress', 'st_todo');
+  await page.getByRole('button', { name: 'Migrate work and assign' }).click();
+  await expect(page.getByRole('status')).toContainText('Project assigned');
+
+  const migratedIssue = await page.request.get(`/rest/api/3/issue/${issueKey}`, { headers: { Authorization: apiAuthHeader() } });
+  expect(migratedIssue.status()).toBe(200);
+  expect((await migratedIssue.json()).fields.status.id).toBe('st_todo');
 });

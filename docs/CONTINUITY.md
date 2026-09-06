@@ -160,6 +160,13 @@ does not publish them as one OpenAPI document.
   administrator UI covers create, mapping edits, publish/discard, project usage,
   impact preview and assignment; seven core Jira workflow-scheme operations use
   the same storage and authorization boundaries.
+- Added atomic workflow-scheme switching with explicit status replacement. The
+  administrator preview offers only statuses in each target workflow; the Jira
+  switch request accepts per-issue-type mappings, updates affected work items
+  with synchronized status actions, assigns the published scheme in the same
+  transaction, and returns Jira's 303 completed-task representation. Migration
+  048 persists that task so the Location can be polled after redirects or a
+  server restart; task access is limited to its submitter and administrators.
 
 Validation after the organization foundation:
 
@@ -365,13 +372,26 @@ Validation after workflow schemes:
   compilation, seven conformance tests, generated inventory/coverage checks,
   and `git diff --check` pass. The scheme directory and a real scheme editor
   pass shared light/dark WCAG scans, WCAG 2.2 target sizing, and 320 px reflow.
-- Exact reviewed API coverage is 82 of 1,207 operations: 75 partial, 7 missing,
-  and 1,125 explicitly unassessed.
+Validation after workflow-scheme status migration:
+
+- PostgreSQL store and Jira REST integration tests prove unmapped switches are
+  rejected and mapped switches atomically migrate status, emit sync actions,
+  assign the scheme, and return the required 303 task fields and Location.
+- The Chromium administrator journey builds a workflow without In Progress,
+  creates an affected work item, previews the impact, chooses To Do as its
+  replacement, assigns the scheme, and verifies the migrated REST resource.
+- All 50 Chromium journeys pass in suite order, including shared light/dark
+  WCAG scans, target sizing, 320 px reflow, session revocation, and subsequent
+  password-authenticated member API journeys.
+- The full PostgreSQL Go suite, vet, WebAssembly build, seven conformance
+  tests, generated inventory/coverage checks, and `git diff --check` pass.
+- Exact reviewed API coverage is 84 of 1,207 operations: 77 partial, 7 missing,
+  and 1,123 explicitly unassessed.
 
 ## Current change
 
-1. Complete workflow-scheme draft/mapping/status-migration REST operations and
-   add explicit status replacement during project switches.
+1. Complete workflow-scheme draft and mapping REST operations plus queued task
+   execution and cancellation semantics.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 

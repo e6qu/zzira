@@ -10,6 +10,7 @@ import (
 
 	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/store"
+	"github.com/e6qu/zzira/internal/workflow"
 )
 
 func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
@@ -27,6 +28,7 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 		t.Fatal(err)
 	}
 	ws, actor, member, projectID := store.NewID("ws"), store.NewID("usr"), store.NewID("usr"), store.NewID("project")
+	issueID, workflowID := store.NewID("issue"), store.NewID("workflow")
 	exec := func(query string, args ...any) {
 		t.Helper()
 		if _, err := st.Pool.Exec(ctx, query, args...); err != nil {
@@ -44,9 +46,20 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 		exec(`INSERT INTO api_tokens(id,user_id,token_hash) VALUES($1,$1,$2)`, user, store.HashToken(user))
 	}
 	exec(`INSERT INTO projects(id,workspace_id,key,name,workflow_id) VALUES($1,$2,'WSA','Scheme API project','wf_default')`, projectID, ws)
+	simpleWorkflow := workflow.Workflow{ID: workflowID, Name: "Simple API lifecycle", Transitions: []workflow.Transition{
+		{ID: store.NewID("transition"), Name: "Complete", From: []string{"st_todo"}, To: "st_done"},
+		{ID: store.NewID("transition"), Name: "Reopen", From: []string{"st_done"}, To: "st_todo"},
+	}}
+	if err := st.CreateWorkflow(ctx, ws, simpleWorkflow); err != nil {
+		t.Fatal(err)
+	}
+	exec(`INSERT INTO issues(id,workspace_id,project_id,key,summary,status_id,issuetype_id,updated_seq) VALUES($1,$2,$3,'WSA-1','Switch me','st_inprogress','it_task',0)`, issueID, ws, projectID)
 	t.Cleanup(func() {
+		exec(`DELETE FROM actions WHERE workspace_id=$1 AND entity_id=$2`, ws, issueID)
+		exec(`DELETE FROM issues WHERE id=$1`, issueID)
 		exec(`DELETE FROM projects WHERE workspace_id=$1`, ws)
 		exec(`DELETE FROM workflow_schemes WHERE workspace_id=$1`, ws)
+		exec(`DELETE FROM workflows WHERE id=$1`, workflowID)
 		exec(`DELETE FROM memberships WHERE workspace_id=$1`, ws)
 		exec(`DELETE FROM workspaces WHERE id=$1`, ws)
 		for _, user := range []string{actor, member} {
@@ -86,7 +99,33 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	if !strings.Contains(association.Body.String(), schemeID) {
 		t.Fatal(association.Body.String())
 	}
-	call(actor, "DELETE", "/rest/api/3/workflowscheme/"+schemeID, "", 409)
+	switchable := call(actor, "POST", "/rest/api/3/workflowscheme", `{"name":"Switch target","defaultWorkflow":"Simple API lifecycle"}`, 201)
+	if err := json.Unmarshal(switchable.Body.Bytes(), &scheme); err != nil {
+		t.Fatal(err)
+	}
+	targetSchemeID := scheme["id"].(string)
+	call(actor, "POST", "/rest/api/3/workflowscheme/project/switch", `{"projectId":"`+projectID+`","targetSchemeId":"`+targetSchemeID+`"}`, 409)
+	switchResponse := call(actor, "POST", "/rest/api/3/workflowscheme/project/switch", `{"projectId":"`+projectID+`","targetSchemeId":"`+targetSchemeID+`","mappingsByIssueTypeOverride":[{"issueTypeId":"it_task","statusMappings":[{"oldStatusId":"st_inprogress","newStatusId":"st_todo"}]}]}`, 303)
+	if switchResponse.Header().Get("Location") == "" || !strings.Contains(switchResponse.Body.String(), `"status":"COMPLETE"`) || !strings.Contains(switchResponse.Body.String(), `"progress":100`) {
+		t.Fatalf("switch task = %s, location = %q", switchResponse.Body.String(), switchResponse.Header().Get("Location"))
+	}
+	var task map[string]any
+	if err := json.Unmarshal(switchResponse.Body.Bytes(), &task); err != nil {
+		t.Fatal(err)
+	}
+	taskPath := "/rest/api/3/task/" + task["id"].(string)
+	polledTask := call(actor, "GET", taskPath, "", 200)
+	if !strings.Contains(polledTask.Body.String(), targetSchemeID) {
+		t.Fatal(polledTask.Body.String())
+	}
+	call(member, "GET", taskPath, "", 403)
+	call(actor, "POST", taskPath+"/cancel", "", 400)
+	call(actor, "GET", "/rest/api/3/task/task_missing", "", 404)
+	var issueStatus, assignedScheme string
+	if err := st.Pool.QueryRow(ctx, `SELECT i.status_id,p.workflow_scheme_id FROM issues i JOIN projects p ON p.id=i.project_id WHERE i.id=$1`, issueID).Scan(&issueStatus, &assignedScheme); err != nil || issueStatus != "st_todo" || assignedScheme != targetSchemeID {
+		t.Fatalf("switch result status=%q scheme=%q err=%v", issueStatus, assignedScheme, err)
+	}
+	call(actor, "DELETE", "/rest/api/3/workflowscheme/"+targetSchemeID, "", 409)
 	unused := call(actor, "POST", "/rest/api/3/workflowscheme", `{"name":"Unused scheme","defaultWorkflow":"Default"}`, 201)
 	if err := json.Unmarshal(unused.Body.Bytes(), &scheme); err != nil {
 		t.Fatal(err)

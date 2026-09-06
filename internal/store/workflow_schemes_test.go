@@ -32,6 +32,7 @@ func TestWorkflowSchemeDraftRuntimeAndSafeAssignment(t *testing.T) {
 	schemeID, projectID, issueID := NewID("scheme_test"), NewID("project_scheme_test"), NewID("issue_scheme_test")
 	t.Cleanup(func() {
 		_, _ = st.Pool.Exec(ctx, `DELETE FROM issues WHERE id=$1`, issueID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM actions WHERE workspace_id=$1 AND entity_id=$2`, workspaceID, issueID)
 		_, _ = st.Pool.Exec(ctx, `DELETE FROM projects WHERE id=$1`, projectID)
 		_, _ = st.Pool.Exec(ctx, `DELETE FROM organization_audit_events WHERE target_id=$1`, schemeID)
 		_, _ = st.Pool.Exec(ctx, `DELETE FROM workflow_schemes WHERE id=$1`, schemeID)
@@ -66,11 +67,16 @@ func TestWorkflowSchemeDraftRuntimeAndSafeAssignment(t *testing.T) {
 	if err := st.AssignWorkflowScheme(ctx, workspaceID, actorID, projectID, schemeID); !errors.Is(err, ErrAdminConflict) {
 		t.Fatalf("unsafe assignment error = %v", err)
 	}
-	if _, err := st.Pool.Exec(ctx, `UPDATE issues SET status_id='st_todo' WHERE id=$1`, issueID); err != nil {
-		t.Fatal(err)
+	if err := st.SwitchWorkflowScheme(ctx, workspaceID, actorID, projectID, schemeID, []WorkflowStatusMapping{{IssueTypeID: "it_task", OldStatusID: "st_inprogress", NewStatusID: "st_todo"}}); err != nil {
+		t.Fatalf("mapped assignment: %v", err)
 	}
-	if err := st.AssignWorkflowScheme(ctx, workspaceID, actorID, projectID, schemeID); err != nil {
-		t.Fatalf("safe assignment: %v", err)
+	var migratedStatus string
+	var migrationActions int
+	if err := st.Pool.QueryRow(ctx, `SELECT status_id FROM issues WHERE id=$1`, issueID).Scan(&migratedStatus); err != nil || migratedStatus != "st_todo" {
+		t.Fatalf("migrated status = %q, %v", migratedStatus, err)
+	}
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM actions WHERE workspace_id=$1 AND entity_id=$2 AND payload->'diff' ? 'status'`, workspaceID, issueID).Scan(&migrationActions); err != nil || migrationActions != 1 {
+		t.Fatalf("migration actions = %d, %v", migrationActions, err)
 	}
 	runtime, err := st.WorkflowForProjectAndIssueType(ctx, projectID, "it_task")
 	if err != nil || runtime.ID != workflowBID {

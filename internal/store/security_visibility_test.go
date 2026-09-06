@@ -35,8 +35,9 @@ func TestSecurityVisibilityAcrossReadPaths(t *testing.T) {
 		t.Skip("ana user not seeded")
 	}
 
-	// find a security-restricted issue (V5 live run applied lvl_private to ZZ-9,
-	// and the e2e suite creates more); skip gracefully when none exists
+	// Find a security-restricted issue within the navigator's 200-row window
+	// (V5 applies lvl_private and the e2e suite creates more). A long-lived local
+	// database can push every such fixture outside that window, so skip then.
 	var restrictedID, restrictedKey, restrictedLevel, projectID string
 	err = st.Pool.QueryRow(ctx, `
 		SELECT i.id, i.key, i.security_level_id, i.project_id
@@ -44,7 +45,11 @@ func TestSecurityVisibilityAcrossReadPaths(t *testing.T) {
 		JOIN projects p ON p.id = i.project_id
 		JOIN security_schemes ss ON ss.id = p.security_scheme_id
 		, jsonb_array_elements(ss.levels) lvl
-		WHERE i.security_level_id IS NOT NULL AND lvl->>'id' = i.security_level_id
+		WHERE i.workspace_id='ws_default'
+		  AND i.security_level_id IS NOT NULL AND lvl->>'id' = i.security_level_id
+		  AND (SELECT count(*) FROM issues newer
+		       WHERE newer.workspace_id=i.workspace_id AND newer.project_id=i.project_id
+		         AND newer.updated_seq>i.updated_seq) < 200
 		ORDER BY i.updated_seq DESC LIMIT 1`).Scan(&restrictedID, &restrictedKey, &restrictedLevel, &projectID)
 	if err != nil {
 		t.Skip("no security-restricted issue present; run the V5 e2e spec first")

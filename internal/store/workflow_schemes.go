@@ -19,6 +19,12 @@ type WorkflowSchemeImpact struct {
 	TargetWorkflow workflow.Workflow
 }
 
+type WorkflowStatusMapping struct {
+	IssueTypeID string
+	OldStatusID string
+	NewStatusID string
+}
+
 type workflowSchemeDef struct {
 	DefaultWorkflowID string            `json:"defaultWorkflowId"`
 	IssueTypeMappings map[string]string `json:"issueTypeMappings"`
@@ -276,6 +282,22 @@ func (s *Store) WorkflowSchemeImpact(ctx context.Context, workspaceID, projectID
 }
 
 func (s *Store) AssignWorkflowScheme(ctx context.Context, workspaceID, actorID, projectID, schemeID string) error {
+	return s.SwitchWorkflowScheme(ctx, workspaceID, actorID, projectID, schemeID, nil)
+}
+
+func (s *Store) SwitchWorkflowScheme(ctx context.Context, workspaceID, actorID, projectID, schemeID string, mappings []WorkflowStatusMapping) error {
+	return s.switchWorkflowScheme(ctx, workspaceID, actorID, projectID, schemeID, mappings, nil)
+}
+
+func (s *Store) SwitchWorkflowSchemeTask(ctx context.Context, workspaceID, actorID, projectID, schemeID string, mappings []WorkflowStatusMapping) (APITask, error) {
+	task, err := completedAPITask(workspaceID, actorID, "Workflow scheme migration completed.", map[string]any{"projectId": projectID, "workflowSchemeId": schemeID})
+	if err != nil {
+		return task, err
+	}
+	return task, s.switchWorkflowScheme(ctx, workspaceID, actorID, projectID, schemeID, mappings, &task)
+}
+
+func (s *Store) switchWorkflowScheme(ctx context.Context, workspaceID, actorID, projectID, schemeID string, mappings []WorkflowStatusMapping, task *APITask) error {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -289,18 +311,95 @@ func (s *Store) AssignWorkflowScheme(ctx context.Context, workspaceID, actorID, 
 	if err != nil {
 		return ErrAdminNotFound
 	}
-	impacts, err := schemeImpact(ctx, tx, workspaceID, projectID, scheme, true)
+	rows, err := tx.Query(ctx, `SELECT id,issuetype_id,status_id FROM issues WHERE workspace_id=$1 AND project_id=$2 ORDER BY id FOR UPDATE`, workspaceID, projectID)
 	if err != nil {
 		return err
 	}
-	if len(impacts) > 0 {
-		return fmt.Errorf("%w: %d status mappings are required before assignment", ErrAdminConflict, len(impacts))
+	type issueState struct{ id, issueTypeID, statusID string }
+	var issues []issueState
+	for rows.Next() {
+		var issue issueState
+		if err := rows.Scan(&issue.id, &issue.issueTypeID, &issue.statusID); err != nil {
+			rows.Close()
+			return err
+		}
+		issues = append(issues, issue)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	replacements := make(map[string]string, len(mappings))
+	for _, mapping := range mappings {
+		if mapping.IssueTypeID == "" || mapping.OldStatusID == "" || mapping.NewStatusID == "" {
+			return fmt.Errorf("%w: every status mapping requires issueTypeId, oldStatusId, and newStatusId", ErrAdminValidation)
+		}
+		replacements[mapping.IssueTypeID+"\x00"+mapping.OldStatusID] = mapping.NewStatusID
+	}
+	workflowCache := make(map[string]workflow.Workflow)
+	statusNames := make(map[string]string)
+	migrated := 0
+	for _, issue := range issues {
+		workflowID := schemeWorkflowID(scheme, issue.issueTypeID)
+		wf, ok := workflowCache[workflowID]
+		if !ok {
+			wf, err = workflowByIDQuery(ctx, tx, workspaceID, workflowID)
+			if err != nil {
+				return err
+			}
+			workflowCache[workflowID] = wf
+		}
+		if workflowStatuses(wf)[issue.statusID] {
+			continue
+		}
+		newStatusID := replacements[issue.issueTypeID+"\x00"+issue.statusID]
+		if newStatusID == "" {
+			return fmt.Errorf("%w: status mapping required for issue type %s and status %s", ErrAdminConflict, issue.issueTypeID, issue.statusID)
+		}
+		if !workflowStatuses(wf)[newStatusID] {
+			return fmt.Errorf("%w: replacement status %s is not in target workflow %s", ErrAdminValidation, newStatusID, wf.Name)
+		}
+		for _, statusID := range []string{issue.statusID, newStatusID} {
+			if _, ok := statusNames[statusID]; !ok {
+				var statusName string
+				if err := tx.QueryRow(ctx, `SELECT name FROM statuses WHERE id=$1 AND (workspace_id IS NULL OR workspace_id=$2)`, statusID, workspaceID).Scan(&statusName); err != nil {
+					return fmt.Errorf("%w: status %s does not exist", ErrAdminValidation, statusID)
+				}
+				statusNames[statusID] = statusName
+			}
+		}
+		seq, err := nextSeq(ctx, tx, workspaceID)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `UPDATE issues SET status_id=$2,updated_seq=$3,updated_at=now() WHERE id=$1`, issue.id, newStatusID, seq); err != nil {
+			return err
+		}
+		updated, err := scanIssue(tx.QueryRow(ctx, issueJoin+`WHERE i.workspace_id=$1 AND i.id=$2`, workspaceID, issue.id))
+		if err != nil {
+			return err
+		}
+		diff := map[string]models.ChangeItem{"status": diffItem("status", issue.statusID, statusNames[issue.statusID], newStatusID, statusNames[newStatusID])}
+		payload, err := json.Marshal(models.IssueUpdatePayload{Diff: diff, Issue: *updated})
+		if err != nil {
+			return err
+		}
+		if err := appendAction(ctx, tx, &models.Action{WorkspaceID: workspaceID, Seq: seq, EntityType: models.EntityIssue, EntityID: issue.id, Op: models.OpUpsert, SchemaV: models.SchemaVersion, Payload: payload, ActorID: actorID}); err != nil {
+			return err
+		}
+		migrated++
 	}
 	if _, err := tx.Exec(ctx, `UPDATE projects SET workflow_scheme_id=$3,workflow_id=$4 WHERE id=$1 AND workspace_id=$2`, projectID, workspaceID, schemeID, scheme.DefaultWorkflowID); err != nil {
 		return err
 	}
-	if err := addWorkflowSchemeAudit(ctx, tx, workspaceID, actorID, "workflow.scheme.assigned", schemeID, map[string]any{"projectId": projectID, "projectName": projectName}); err != nil {
+	if err := addWorkflowSchemeAudit(ctx, tx, workspaceID, actorID, "workflow.scheme.assigned", schemeID, map[string]any{"projectId": projectID, "projectName": projectName, "migratedIssues": migrated}); err != nil {
 		return err
+	}
+	if task != nil {
+		if err := insertAPITask(ctx, tx, *task); err != nil {
+			return err
+		}
 	}
 	return tx.Commit(ctx)
 }

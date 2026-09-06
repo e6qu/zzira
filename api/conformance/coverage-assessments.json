@@ -759,7 +759,29 @@
         "e2e/directories.spec.ts",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Assigns a scheme transactionally only when every existing issue status is supported by its target workflow; explicit status migration mappings remain."
+      "notes": "Assigns a scheme transactionally when every existing issue status is already supported; clients use the switch operation when explicit replacement mappings are required."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/workflowscheme/project/switch",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/store/workflow_schemes_test.go",
+        "e2e/directories.spec.ts",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Atomically switches a workspace project to a published scheme, validates issue-type status overrides, migrates incompatible issues with sync actions, and returns a durable Jira 303 completed-task resource."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/task/{taskId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/store/api_tasks.go",
+        "migrations/048_api_tasks.sql",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Returns durable task progress and operation results to the submitter or a workspace administrator with Jira epoch-millisecond fields; queued and running task producers remain."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/workflowscheme/{id}",
