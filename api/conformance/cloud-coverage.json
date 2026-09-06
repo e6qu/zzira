@@ -3903,7 +3903,7 @@
         "e2e/directories.spec.ts",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Administrators can delete unused workspace statuses; built-ins and statuses referenced by work, boards, workflow drafts/published definitions, or automation are protected. Multi-item atomicity remains."
+      "notes": "Administrators can atomically delete 1 to 50 unused workspace statuses; built-ins and statuses referenced by work, boards, workflow drafts/published definitions, or automation reject and roll back the complete batch. Exact project-admin permissions remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/statuses",
@@ -3929,7 +3929,7 @@
         "e2e/directories.spec.ts",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Administrators can create validated GLOBAL or PROJECT statuses with descriptions, categories, scope-local duplicate detection, project ownership checks, and audit evidence. Multi-item atomicity remains."
+      "notes": "Administrators can atomically create validated GLOBAL or PROJECT status batches with descriptions, categories, scope-local duplicate detection, project ownership checks, rollback, and audit evidence. Exact project-admin permissions remain."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/statuses",
@@ -3942,7 +3942,7 @@
         "e2e/directories.spec.ts",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Administrators can update custom status names, descriptions, and categories while preserving GLOBAL or PROJECT ownership, with built-in protection and audit evidence. Multi-item atomicity remains."
+      "notes": "Administrators can atomically update custom status batches, including simultaneous name swaps, while preserving GLOBAL or PROJECT ownership with built-in protection, rollback, and audit evidence. Exact project-admin permissions remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/statuses/byNames",

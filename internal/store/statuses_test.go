@@ -86,3 +86,97 @@ func TestStatusLifecycleProtectsReferencesAndBuiltIns(t *testing.T) {
 		t.Fatalf("status audit events = %d, %v", events, err)
 	}
 }
+
+func TestStatusBatchesCommitAsOneMutation(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	st, err := Open(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	workspaceID, _, err := st.DefaultWorkspace(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actorID, err := st.FirstAdminID(ctx, workspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	firstID, secondID, rolledBackID := NewID("status_batch"), NewID("status_batch"), NewID("status_batch")
+	firstName, secondName := "Batch first "+firstID, "Batch second "+secondID
+	ids := []string{firstID, secondID, rolledBackID}
+	t.Cleanup(func() {
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM organization_audit_events WHERE target_id=ANY($1::text[])`, ids)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM statuses WHERE id=ANY($1::text[])`, ids)
+	})
+
+	created, err := st.CreateStatuses(ctx, workspaceID, actorID, []models.Status{
+		{ID: firstID, Name: firstName, Category: "new"},
+		{ID: secondID, Name: secondName, Category: "indeterminate"},
+	})
+	if err != nil || len(created) != 2 {
+		t.Fatalf("create batch = %+v, %v", created, err)
+	}
+	_, err = st.CreateStatuses(ctx, workspaceID, actorID, []models.Status{
+		{ID: rolledBackID, Name: "Must roll back " + rolledBackID, Category: "new"},
+		{Name: firstName, Category: "done"},
+	})
+	if !errors.Is(err, ErrAdminConflict) {
+		t.Fatalf("conflicting create batch error = %v", err)
+	}
+	var rolledBackRows, rolledBackAudit int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM statuses WHERE id=$1`, rolledBackID).Scan(&rolledBackRows); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM organization_audit_events WHERE target_id=$1`, rolledBackID).Scan(&rolledBackAudit); err != nil {
+		t.Fatal(err)
+	}
+	if rolledBackRows != 0 || rolledBackAudit != 0 {
+		t.Fatalf("create rollback rows=%d audit=%d", rolledBackRows, rolledBackAudit)
+	}
+
+	err = st.UpdateStatuses(ctx, workspaceID, actorID, []models.Status{
+		{ID: firstID, Name: "Must not persist", Category: "done"},
+		{ID: NewID("missing_status"), Name: "Missing", Category: "new"},
+	})
+	if !errors.Is(err, ErrAdminNotFound) {
+		t.Fatalf("missing update batch error = %v", err)
+	}
+	var unchanged string
+	if err := st.Pool.QueryRow(ctx, `SELECT name FROM statuses WHERE id=$1`, firstID).Scan(&unchanged); err != nil || unchanged != firstName {
+		t.Fatalf("rolled-back update name=%q err=%v", unchanged, err)
+	}
+
+	if err := st.UpdateStatuses(ctx, workspaceID, actorID, []models.Status{
+		{ID: firstID, Name: secondName, Category: "done"},
+		{ID: secondID, Name: firstName, Category: "new"},
+	}); err != nil {
+		t.Fatalf("swap names in update batch: %v", err)
+	}
+	var swappedFirst, swappedSecond string
+	if err := st.Pool.QueryRow(ctx, `SELECT name FROM statuses WHERE id=$1`, firstID).Scan(&swappedFirst); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Pool.QueryRow(ctx, `SELECT name FROM statuses WHERE id=$1`, secondID).Scan(&swappedSecond); err != nil {
+		t.Fatal(err)
+	}
+	if swappedFirst != secondName || swappedSecond != firstName {
+		t.Fatalf("swapped names = %q, %q", swappedFirst, swappedSecond)
+	}
+
+	if err := st.DeleteStatuses(ctx, workspaceID, actorID, []string{firstID, "st_todo"}); !errors.Is(err, ErrAdminConflict) {
+		t.Fatalf("protected delete batch error = %v", err)
+	}
+	var firstStillExists bool
+	if err := st.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM statuses WHERE id=$1)`, firstID).Scan(&firstStillExists); err != nil || !firstStillExists {
+		t.Fatalf("delete rollback exists=%v err=%v", firstStillExists, err)
+	}
+	if err := st.DeleteStatuses(ctx, workspaceID, actorID, []string{firstID, secondID}); err != nil {
+		t.Fatalf("delete batch: %v", err)
+	}
+}

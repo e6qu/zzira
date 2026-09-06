@@ -681,9 +681,23 @@ Validation after visual workflow rule editing:
   generated inventory and coverage checks, diff check, primary-page light/dark
   axe scan, and 320 px reflow gate pass.
 
+Validation after atomic multi-status writes:
+
+- Jira status create, update, and delete requests now execute through one store
+  transaction. Validation, scope locks, row locks, status writes, and audit
+  records either all commit or all roll back.
+- Batch updates preserve project ownership and support simultaneous status-name
+  swaps after checking the final name set. Deletes enforce Jira's 1-to-50 ID
+  request boundary and preflight built-in and usage protection for every item.
+- PostgreSQL store and REST integration tests prove failed create, update, and
+  delete batches leave earlier members and their audit records unchanged; they
+  also cover successful create/delete batches and simultaneous renames.
+- The full PostgreSQL Go suite, vet, WebAssembly build, seven conformance tests,
+  generated inventory and coverage checks, and diff check pass.
+
 ## Current change
 
-1. Add atomic multi-status writes, then continue the workflow rule catalog.
+1. Continue the workflow rule catalog and its visual editor controls.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 

@@ -127,14 +127,18 @@ func (h *Handler) bulkStatusesEndpoint(w http.ResponseWriter, r *http.Request) {
 			jiraError(w, http.StatusBadRequest, "Scope type must be GLOBAL or PROJECT.")
 			return
 		}
-		out := make([]map[string]any, 0, len(request.Statuses))
+		statuses := make([]models.Status, 0, len(request.Statuses))
 		for _, input := range request.Statuses {
-			created, err := h.Store.CreateStatus(r.Context(), workspaceID, userID, models.Status{Name: input.Name, Description: input.Description, Category: internalStatusCategory(input.StatusCategory), ProjectID: projectID})
-			if err != nil {
-				statusAPIError(w, err)
-				return
-			}
-			out = append(out, h.jiraStatusBean(created))
+			statuses = append(statuses, models.Status{Name: input.Name, Description: input.Description, Category: internalStatusCategory(input.StatusCategory), ProjectID: projectID})
+		}
+		created, err := h.Store.CreateStatuses(r.Context(), workspaceID, userID, statuses)
+		if err != nil {
+			statusAPIError(w, err)
+			return
+		}
+		out := make([]map[string]any, 0, len(created))
+		for _, createdStatus := range created {
+			out = append(out, h.jiraStatusBean(createdStatus))
 		}
 		writeJSON(w, http.StatusOK, out)
 	case http.MethodPut:
@@ -147,25 +151,24 @@ func (h *Handler) bulkStatusesEndpoint(w http.ResponseWriter, r *http.Request) {
 			jiraError(w, http.StatusBadRequest, "At least one status is required.")
 			return
 		}
+		statuses := make([]models.Status, 0, len(request.Statuses))
 		for _, input := range request.Statuses {
-			err := h.Store.UpdateStatus(r.Context(), workspaceID, userID, models.Status{ID: input.ID, Name: input.Name, Description: input.Description, Category: internalStatusCategory(input.StatusCategory)})
-			if err != nil {
-				statusAPIError(w, err)
-				return
-			}
+			statuses = append(statuses, models.Status{ID: input.ID, Name: input.Name, Description: input.Description, Category: internalStatusCategory(input.StatusCategory)})
+		}
+		if err := h.Store.UpdateStatuses(r.Context(), workspaceID, userID, statuses); err != nil {
+			statusAPIError(w, err)
+			return
 		}
 		w.WriteHeader(http.StatusNoContent)
 	case http.MethodDelete:
 		ids := r.URL.Query()["id"]
-		if len(ids) == 0 {
-			jiraError(w, http.StatusBadRequest, "At least one status id is required.")
+		if len(ids) == 0 || len(ids) > 50 {
+			jiraError(w, http.StatusBadRequest, "Between 1 and 50 status ids are required.")
 			return
 		}
-		for _, id := range ids {
-			if err := h.Store.DeleteStatus(r.Context(), workspaceID, userID, id); err != nil {
-				statusAPIError(w, err)
-				return
-			}
+		if err := h.Store.DeleteStatuses(r.Context(), workspaceID, userID, ids); err != nil {
+			statusAPIError(w, err)
+			return
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}

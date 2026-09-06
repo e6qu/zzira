@@ -91,6 +91,29 @@ func TestStatusAPILifecycleAndWorkspaceScope(t *testing.T) {
 	call(actor, "PUT", "/rest/api/3/statuses", update, 204)
 	call(member, "GET", "/rest/api/3/statuses/byNames?name=Review%20complete", "", 200)
 	call(member, "PUT", "/rest/api/3/statuses", update, 403)
+	rolledBackName := "Must roll back " + store.NewID("status")
+	call(actor, "POST", "/rest/api/3/statuses", `{"scope":{"type":"GLOBAL"},"statuses":[{"name":"`+rolledBackName+`","statusCategory":"TODO"},{"name":"Review complete","statusCategory":"DONE"}]}`, 409)
+	var rolledBackCreates int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM statuses WHERE workspace_id=$1 AND name=$2`, ws, rolledBackName).Scan(&rolledBackCreates); err != nil || rolledBackCreates != 0 {
+		t.Fatalf("rolled-back API creates=%d err=%v", rolledBackCreates, err)
+	}
+	call(actor, "PUT", "/rest/api/3/statuses", `{"statuses":[{"id":"`+id+`","name":"Must not persist","statusCategory":"TODO"},{"id":"missing-status","name":"Missing","statusCategory":"TODO"}]}`, 404)
+	var unchangedName string
+	if err := st.Pool.QueryRow(ctx, `SELECT name FROM statuses WHERE id=$1`, id).Scan(&unchangedName); err != nil || unchangedName != "Review complete" {
+		t.Fatalf("rolled-back API update name=%q err=%v", unchangedName, err)
+	}
+	deleteCreated := call(actor, "POST", "/rest/api/3/statuses", `{"scope":{"type":"GLOBAL"},"statuses":[{"name":"Delete batch survivor `+store.NewID("status")+`","statusCategory":"TODO"}]}`, 200)
+	var deleteStatuses []map[string]any
+	if err := json.Unmarshal(deleteCreated.Body.Bytes(), &deleteStatuses); err != nil || len(deleteStatuses) != 1 {
+		t.Fatalf("delete batch status response: %s (%v)", deleteCreated.Body.String(), err)
+	}
+	deleteStatusID := deleteStatuses[0]["id"].(string)
+	call(actor, "DELETE", "/rest/api/3/statuses?"+strings.Repeat("id=too-many&", 50)+"id=too-many", "", 400)
+	call(actor, "DELETE", "/rest/api/3/statuses?id="+deleteStatusID+"&id=st_todo", "", 409)
+	var deleteSurvivor bool
+	if err := st.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM statuses WHERE id=$1)`, deleteStatusID).Scan(&deleteSurvivor); err != nil || !deleteSurvivor {
+		t.Fatalf("rolled-back API delete exists=%v err=%v", deleteSurvivor, err)
+	}
 	projectBody := `{"scope":{"type":"PROJECT","project":{"id":"` + projectID + `"}},"statuses":[{"name":"Awaiting customer","description":"Waiting for a reply","statusCategory":"IN_PROGRESS"}]}`
 	projectCreated := call(actor, "POST", "/rest/api/3/statuses", projectBody, 200)
 	var projectStatuses []map[string]any
@@ -144,6 +167,7 @@ func TestStatusAPILifecycleAndWorkspaceScope(t *testing.T) {
 	call(actor, "DELETE", "/rest/api/3/statuses?id=st_todo", "", 409)
 	call(actor, "DELETE", "/rest/api/3/statuses?id="+projectStatusID, "", 204)
 	call(actor, "DELETE", "/rest/api/3/statuses?id="+otherStatusID, "", 204)
+	call(actor, "DELETE", "/rest/api/3/statuses?id="+deleteStatusID, "", 204)
 	call(actor, "DELETE", "/rest/api/3/statuses?id="+id, "", 204)
 	call(member, "GET", "/rest/api/3/status/"+id, "", 404)
 	call(member, "GET", "/rest/api/3/statuscategory/4", "", 200)

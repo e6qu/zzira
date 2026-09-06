@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -44,6 +45,10 @@ func statusNameAvailable(ctx context.Context, tx pgx.Tx, workspaceID, projectID,
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('status:' || $1 || ':' || $2))`, workspaceID, projectID); err != nil {
 		return err
 	}
+	return statusNameAvailableLocked(ctx, tx, workspaceID, projectID, name, exceptID)
+}
+
+func statusNameAvailableLocked(ctx context.Context, tx pgx.Tx, workspaceID, projectID, name, exceptID string) error {
 	var duplicate bool
 	if err := tx.QueryRow(ctx, `
 		SELECT EXISTS(SELECT 1 FROM statuses
@@ -55,6 +60,24 @@ func statusNameAvailable(ctx context.Context, tx pgx.Tx, workspaceID, projectID,
 	}
 	if duplicate {
 		return fmt.Errorf("%w: a visible status already uses that name", ErrAdminConflict)
+	}
+	return nil
+}
+
+func lockStatusScopes(ctx context.Context, tx pgx.Tx, workspaceID string, statuses []models.Status) error {
+	scopes := make(map[string]bool)
+	for _, status := range statuses {
+		scopes[status.ProjectID] = true
+	}
+	ordered := make([]string, 0, len(scopes))
+	for scope := range scopes {
+		ordered = append(ordered, scope)
+	}
+	sort.Strings(ordered)
+	for _, scope := range ordered {
+		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('status:' || $1 || ':' || $2))`, workspaceID, scope); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -72,82 +95,186 @@ func addStatusAudit(ctx context.Context, tx pgx.Tx, workspaceID, actorID, action
 }
 
 func (s *Store) CreateStatus(ctx context.Context, workspaceID, actorID string, status models.Status) (models.Status, error) {
-	status, err := validateStatus(status)
+	statuses, err := s.CreateStatuses(ctx, workspaceID, actorID, []models.Status{status})
 	if err != nil {
 		return status, err
 	}
-	if status.ID == "" {
-		status.ID = NewID("status")
+	return statuses[0], nil
+}
+
+func (s *Store) CreateStatuses(ctx context.Context, workspaceID, actorID string, statuses []models.Status) ([]models.Status, error) {
+	if len(statuses) == 0 {
+		return nil, fmt.Errorf("%w: at least one status is required", ErrAdminValidation)
+	}
+	validated := make([]models.Status, len(statuses))
+	for index, status := range statuses {
+		var err error
+		validated[index], err = validateStatus(status)
+		if err != nil {
+			return nil, err
+		}
+		if validated[index].ID == "" {
+			validated[index].ID = NewID("status")
+		}
 	}
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
-		return status, err
+		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if status.ProjectID != "" {
+	projectIDs := make(map[string]bool)
+	for _, status := range validated {
+		if status.ProjectID != "" {
+			projectIDs[status.ProjectID] = true
+		}
+	}
+	for projectID := range projectIDs {
 		var validProject bool
-		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM projects WHERE id=$1 AND workspace_id=$2)`, status.ProjectID, workspaceID).Scan(&validProject); err != nil {
-			return status, err
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM projects WHERE id=$1 AND workspace_id=$2)`, projectID, workspaceID).Scan(&validProject); err != nil {
+			return nil, err
 		}
 		if !validProject {
-			return status, fmt.Errorf("%w: project scope does not exist in this workspace", ErrAdminValidation)
+			return nil, fmt.Errorf("%w: project scope does not exist in this workspace", ErrAdminValidation)
 		}
 	}
-	if err := statusNameAvailable(ctx, tx, workspaceID, status.ProjectID, status.Name, ""); err != nil {
-		return status, err
+	if err := lockStatusScopes(ctx, tx, workspaceID, validated); err != nil {
+		return nil, err
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO statuses(id,name,description,category,workspace_id,project_id) VALUES($1,$2,$3,$4,$5,$6)`, status.ID, status.Name, status.Description, status.Category, workspaceID, nilIfEmpty(status.ProjectID)); err != nil {
-		if isUniqueViolation(err) {
-			return status, fmt.Errorf("%w: a status already uses that name", ErrAdminConflict)
+	for index := range validated {
+		status := &validated[index]
+		if err := statusNameAvailableLocked(ctx, tx, workspaceID, status.ProjectID, status.Name, ""); err != nil {
+			return nil, err
 		}
-		return status, err
+		if _, err := tx.Exec(ctx, `INSERT INTO statuses(id,name,description,category,workspace_id,project_id) VALUES($1,$2,$3,$4,$5,$6)`, status.ID, status.Name, status.Description, status.Category, workspaceID, nilIfEmpty(status.ProjectID)); err != nil {
+			if isUniqueViolation(err) {
+				return nil, fmt.Errorf("%w: a status already uses that name or id", ErrAdminConflict)
+			}
+			return nil, err
+		}
+		if err := addStatusAudit(ctx, tx, workspaceID, actorID, "status.created", status.ID, map[string]any{"name": status.Name, "category": status.Category, "projectId": status.ProjectID}); err != nil {
+			return nil, err
+		}
+		status.Protected = false
 	}
-	if err := addStatusAudit(ctx, tx, workspaceID, actorID, "status.created", status.ID, map[string]any{"name": status.Name, "category": status.Category, "projectId": status.ProjectID}); err != nil {
-		return status, err
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
 	}
-	status.Protected = false
-	return status, tx.Commit(ctx)
+	return validated, nil
 }
 
 func (s *Store) UpdateStatus(ctx context.Context, workspaceID, actorID string, status models.Status) error {
-	status, err := validateStatus(status)
-	if err != nil {
-		return err
+	return s.UpdateStatuses(ctx, workspaceID, actorID, []models.Status{status})
+}
+
+func (s *Store) UpdateStatuses(ctx context.Context, workspaceID, actorID string, statuses []models.Status) error {
+	if len(statuses) == 0 {
+		return fmt.Errorf("%w: at least one status is required", ErrAdminValidation)
+	}
+	validated := make([]models.Status, len(statuses))
+	seenIDs := make(map[string]bool, len(statuses))
+	for index, status := range statuses {
+		var err error
+		validated[index], err = validateStatus(status)
+		if err != nil {
+			return err
+		}
+		if status.ID == "" {
+			return fmt.Errorf("%w: status id is required", ErrAdminValidation)
+		}
+		if seenIDs[status.ID] {
+			return fmt.Errorf("%w: status ids must be unique", ErrAdminValidation)
+		}
+		seenIDs[status.ID] = true
 	}
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	var owner, projectID sql.NullString
-	if err := tx.QueryRow(ctx, `SELECT workspace_id,project_id FROM statuses WHERE id=$1`, status.ID).Scan(&owner, &projectID); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+	orderedIDs := make([]string, 0, len(seenIDs))
+	for id := range seenIDs {
+		orderedIDs = append(orderedIDs, id)
+	}
+	sort.Strings(orderedIDs)
+	projectsByID := make(map[string]string, len(validated))
+	for _, id := range orderedIDs {
+		var owner, projectID sql.NullString
+		if err := tx.QueryRow(ctx, `SELECT workspace_id,project_id FROM statuses WHERE id=$1`, id).Scan(&owner, &projectID); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return ErrAdminNotFound
+			}
+			return err
+		}
+		if !owner.Valid {
+			return fmt.Errorf("%w: built-in statuses are protected", ErrAdminConflict)
+		}
+		if owner.String != workspaceID {
 			return ErrAdminNotFound
 		}
+		projectsByID[id] = projectID.String
+	}
+	for index := range validated {
+		validated[index].ProjectID = projectsByID[validated[index].ID]
+	}
+	if err := lockStatusScopes(ctx, tx, workspaceID, validated); err != nil {
 		return err
 	}
-	if !owner.Valid {
-		return fmt.Errorf("%w: built-in statuses are protected", ErrAdminConflict)
-	}
-	if owner.String != workspaceID {
-		return ErrAdminNotFound
-	}
-	status.ProjectID = projectID.String
-	if err := statusNameAvailable(ctx, tx, workspaceID, status.ProjectID, status.Name, status.ID); err != nil {
-		return err
-	}
-	tag, err := tx.Exec(ctx, `UPDATE statuses SET name=$3,description=$4,category=$5,updated_at=now() WHERE id=$1 AND workspace_id=$2`, status.ID, workspaceID, status.Name, status.Description, status.Category)
-	if err != nil {
-		if isUniqueViolation(err) {
-			return fmt.Errorf("%w: a status already uses that name", ErrAdminConflict)
+	for _, id := range orderedIDs {
+		var owner, projectID sql.NullString
+		if err := tx.QueryRow(ctx, `SELECT workspace_id,project_id FROM statuses WHERE id=$1 FOR UPDATE`, id).Scan(&owner, &projectID); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return ErrAdminNotFound
+			}
+			return err
 		}
-		return err
+		if !owner.Valid {
+			return fmt.Errorf("%w: built-in statuses are protected", ErrAdminConflict)
+		}
+		if owner.String != workspaceID || projectID.String != projectsByID[id] {
+			return ErrAdminNotFound
+		}
 	}
-	if tag.RowsAffected() != 1 {
-		return statusMutationNotFound(ctx, tx, status.ID)
+	targetNames := make(map[string]bool, len(validated))
+	for _, status := range validated {
+		key := status.ProjectID + "\x00" + strings.ToLower(status.Name)
+		if targetNames[key] {
+			return fmt.Errorf("%w: a visible status already uses that name", ErrAdminConflict)
+		}
+		targetNames[key] = true
+		var duplicate bool
+		if err := tx.QueryRow(ctx, `
+			SELECT EXISTS(SELECT 1 FROM statuses
+			 WHERE lower(name)=lower($3) AND NOT (id=ANY($4::text[])) AND (
+			   ($2='' AND project_id IS NULL AND (workspace_id IS NULL OR workspace_id=$1)) OR
+			   ($2<>'' AND workspace_id=$1 AND project_id=$2)))`,
+			workspaceID, status.ProjectID, status.Name, orderedIDs).Scan(&duplicate); err != nil {
+			return err
+		}
+		if duplicate {
+			return fmt.Errorf("%w: a visible status already uses that name", ErrAdminConflict)
+		}
 	}
-	if err := addStatusAudit(ctx, tx, workspaceID, actorID, "status.updated", status.ID, map[string]any{"name": status.Name, "category": status.Category, "projectId": status.ProjectID}); err != nil {
-		return err
+	if len(validated) > 1 {
+		for _, status := range validated {
+			if _, err := tx.Exec(ctx, `UPDATE statuses SET name=$3 WHERE id=$1 AND workspace_id=$2`, status.ID, workspaceID, NewID("status_batch_tmp")); err != nil {
+				return err
+			}
+		}
+	}
+	for _, status := range validated {
+		tag, err := tx.Exec(ctx, `UPDATE statuses SET name=$3,description=$4,category=$5,updated_at=now() WHERE id=$1 AND workspace_id=$2`, status.ID, workspaceID, status.Name, status.Description, status.Category)
+		if err != nil {
+			if isUniqueViolation(err) {
+				return fmt.Errorf("%w: a status already uses that name", ErrAdminConflict)
+			}
+			return err
+		}
+		if tag.RowsAffected() != 1 {
+			return statusMutationNotFound(ctx, tx, status.ID)
+		}
+		if err := addStatusAudit(ctx, tx, workspaceID, actorID, "status.updated", status.ID, map[string]any{"name": status.Name, "category": status.Category, "projectId": status.ProjectID}); err != nil {
+			return err
+		}
 	}
 	return tx.Commit(ctx)
 }
@@ -206,33 +333,70 @@ func (s *Store) StatusDirectory(ctx context.Context, workspaceID string) ([]Stat
 }
 
 func (s *Store) DeleteStatus(ctx context.Context, workspaceID, actorID, statusID string) error {
+	return s.DeleteStatuses(ctx, workspaceID, actorID, []string{statusID})
+}
+
+func (s *Store) DeleteStatuses(ctx context.Context, workspaceID, actorID string, statusIDs []string) error {
+	if len(statusIDs) == 0 {
+		return fmt.Errorf("%w: at least one status id is required", ErrAdminValidation)
+	}
+	seenIDs := make(map[string]bool, len(statusIDs))
+	for _, id := range statusIDs {
+		if strings.TrimSpace(id) == "" {
+			return fmt.Errorf("%w: status id is required", ErrAdminValidation)
+		}
+		if seenIDs[id] {
+			return fmt.Errorf("%w: status ids must be unique", ErrAdminValidation)
+		}
+		seenIDs[id] = true
+	}
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	usage, err := statusUsage(ctx, tx, workspaceID, statusID)
-	if err != nil {
-		if err == pgx.ErrNoRows {
+	orderedIDs := append([]string(nil), statusIDs...)
+	sort.Strings(orderedIDs)
+	for _, statusID := range orderedIDs {
+		var owner sql.NullString
+		if err := tx.QueryRow(ctx, `SELECT workspace_id FROM statuses WHERE id=$1 FOR UPDATE`, statusID).Scan(&owner); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return ErrAdminNotFound
+			}
+			return err
+		}
+		if !owner.Valid {
+			return fmt.Errorf("%w: built-in statuses are protected", ErrAdminConflict)
+		}
+		if owner.String != workspaceID {
 			return ErrAdminNotFound
 		}
-		return err
 	}
-	if usage.Status.Protected {
-		return fmt.Errorf("%w: built-in statuses are protected", ErrAdminConflict)
+	usages := make(map[string]StatusUsage, len(statusIDs))
+	for _, statusID := range statusIDs {
+		usage, err := statusUsage(ctx, tx, workspaceID, statusID)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return ErrAdminNotFound
+			}
+			return err
+		}
+		if usage.Total() != 0 {
+			return fmt.Errorf("%w: status is still used by issues, boards, workflows, or automation", ErrAdminConflict)
+		}
+		usages[statusID] = usage
 	}
-	if usage.Total() != 0 {
-		return fmt.Errorf("%w: status is still used by issues, boards, workflows, or automation", ErrAdminConflict)
-	}
-	tag, err := tx.Exec(ctx, `DELETE FROM statuses WHERE id=$1 AND workspace_id=$2`, statusID, workspaceID)
-	if err != nil {
-		return err
-	}
-	if tag.RowsAffected() != 1 {
-		return ErrAdminNotFound
-	}
-	if err := addStatusAudit(ctx, tx, workspaceID, actorID, "status.deleted", statusID, map[string]any{"name": usage.Status.Name}); err != nil {
-		return err
+	for _, statusID := range statusIDs {
+		tag, err := tx.Exec(ctx, `DELETE FROM statuses WHERE id=$1 AND workspace_id=$2`, statusID, workspaceID)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() != 1 {
+			return ErrAdminNotFound
+		}
+		if err := addStatusAudit(ctx, tx, workspaceID, actorID, "status.deleted", statusID, map[string]any{"name": usages[statusID].Status.Name}); err != nil {
+			return err
+		}
 	}
 	return tx.Commit(ctx)
 }
