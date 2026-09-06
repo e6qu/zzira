@@ -90,6 +90,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.workflowDefaultEditor(w, r)
 	case path == "/workflows/search" && r.Method == http.MethodGet:
 		h.workflowSearch(w, r)
+	case path == "/workflows/capabilities" && r.Method == http.MethodGet:
+		h.workflowCapabilities(w, r)
 	case path == "/workflowscheme" || path == "/workflowscheme/project" || strings.HasPrefix(path, "/workflowscheme/"):
 		h.workflowSchemeRoute(w, r, path)
 	case strings.HasPrefix(path, "/task/"):

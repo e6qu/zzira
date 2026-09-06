@@ -1177,6 +1177,17 @@
         "docs/CLOUD_PARITY.md"
       ],
       "notes": "Searches published global workspace workflows with validated offset paging, query/name ordering, global scope, active and project filters, related statuses, document versions, and transition expansion; project-scoped workflows and created/updated ordering remain."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/workflows/capabilities",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_capabilities.go",
+        "internal/store/agile.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Resolves workspace workflows by workflow ID or project and issue type, validates mutually exclusive selectors, and truthfully reports the global editor scope, supported project types, and currently empty system/ecosystem rule catalogs; configurable rules and project scopes remain."
     }
   ]
 }

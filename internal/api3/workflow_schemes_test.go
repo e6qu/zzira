@@ -85,6 +85,15 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	if defaultEditor.Body.String() != "{\"value\":\"NEW\"}\n" {
 		t.Fatal(defaultEditor.Body.String())
 	}
+	call(member, "GET", "/rest/api/3/workflows/capabilities?workflowId="+workflowID, "", 403)
+	capabilities := call(actor, "GET", "/rest/api/3/workflows/capabilities?workflowId="+workflowID, "", 200)
+	if !strings.Contains(capabilities.Body.String(), `"editorScope":"GLOBAL"`) || !strings.Contains(capabilities.Body.String(), `"projectTypes":["software","business"]`) || !strings.Contains(capabilities.Body.String(), `"systemRules":[]`) {
+		t.Fatal(capabilities.Body.String())
+	}
+	call(actor, "GET", "/rest/api/3/workflows/capabilities?projectId="+projectID+"&issueTypeId=it_task", "", 200)
+	call(actor, "GET", "/rest/api/3/workflows/capabilities", "", 400)
+	call(actor, "GET", "/rest/api/3/workflows/capabilities?workflowId="+workflowID+"&projectId="+projectID+"&issueTypeId=it_task", "", 400)
+	call(actor, "GET", "/rest/api/3/workflows/capabilities?projectId="+projectID+"&issueTypeId=it_missing", "", 400)
 	call(member, "POST", "/rest/api/3/workflowscheme", body, 403)
 	created := call(actor, "POST", "/rest/api/3/workflowscheme", body, 201)
 	var scheme map[string]any

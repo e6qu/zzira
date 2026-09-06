@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 117,
+  "assessedTotal": 118,
   "counts": {
     "delivered": 0,
-    "partial": 110,
+    "partial": 111,
     "missing": 7,
-    "unassessed": 1090
+    "unassessed": 1089
   },
   "countsByFamily": {
     "automation": {
@@ -24,9 +24,9 @@
     },
     "jira-platform": {
       "delivered": 0,
-      "partial": 55,
+      "partial": 56,
       "missing": 0,
-      "unassessed": 562
+      "unassessed": 561
     },
     "jira-service-management": {
       "delivered": 0,
@@ -4563,9 +4563,14 @@
       "operationId": "jira-v3:GET:/rest/api/3/workflows/capabilities",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_capabilities.go",
+        "internal/store/agile.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Resolves workspace workflows by workflow ID or project and issue type, validates mutually exclusive selectors, and truthfully reports the global editor scope, supported project types, and currently empty system/ecosystem rule catalogs; configurable rules and project scopes remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/workflows/create",
