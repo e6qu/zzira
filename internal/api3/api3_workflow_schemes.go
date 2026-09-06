@@ -71,6 +71,9 @@ func (h *Handler) workflowSchemeRoute(w http.ResponseWriter, r *http.Request, pa
 		writeJerr(w, e)
 		return
 	}
+	if h.workflowSchemeBulkRoute(w, r, workspaceID, userID, path) {
+		return
+	}
 	if path == "/workflowscheme" {
 		switch r.Method {
 		case http.MethodGet:

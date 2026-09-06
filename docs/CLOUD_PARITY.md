@@ -34,7 +34,7 @@ with `python3 api/conformance/inventory.py`; CI runs the same program with
 
 The generated [operation coverage](../api/conformance/cloud-coverage.json)
 applies reviewed exact-operation assessments to that denominator. It currently
-assesses 108 operations: 101 partial and 7 missing. The remaining 1,099 operations
+assesses 111 operations: 104 partial and 7 missing. The remaining 1,096 operations
 are explicitly unassessed at this stricter level. The grouped
 [API matrix](../api/conformance/MATRIX.md) records older tested slices; it is not
 divided by 1,207 because one row may represent several operations and does not
@@ -69,7 +69,7 @@ runtime. Capability discovery and errors must distinguish these cases precisely.
 | Work items | Partial | Issue CRUD, rich-text subset, comments, attachments, worklogs, links, watchers, versions, fields and security | Complete ADF and metadata; hierarchy, components, estimates, votes, properties, bulk operations, exact expansions and permissions |
 | Search and filters | Partial | Useful JQL subset, navigator, filter CRUD and favourites | Full JQL grammar/functions/history, stable cursors, sharing administration, subscriptions and remaining search options |
 | Agile planning | Partial | Boards, backlog, sprints, rank, quick filters, swimlanes, WIP and card configuration | Board CRUD/ownership, epics, estimation, capacity, teams, parallel sprints, dependencies, plans and report calculations |
-| Workflows | Partial | Workspace-scoped custom status lifecycle, all thirteen Jira status/status-category/usage operations as reviewed subsets, workspace-owned workflows, versioned workflow and scheme drafts, Jira published/draft default/issue-type/workflow mappings and paged project usage, runtime scheme resolution, project impact preview, atomic status replacement and assignment, thirty-two workflow-scheme REST operations, durable completed-task polling and audit | Project status scopes, atomic bulk status writes, bulk workflow-scheme operations, publish-time status migration, queued/running tasks, designer persistence, conditions, validators and post-functions |
+| Workflows | Partial | Workspace-scoped custom status lifecycle, all thirteen Jira status/status-category/usage operations as reviewed subsets, workspace-owned workflows, versioned workflow and scheme drafts, Jira published/draft/bulk scheme resources, paged project usage, required-mapping analysis, optimistic document versions, runtime scheme resolution, project impact preview, atomic status replacement and assignment, all thirty-five pinned workflow-scheme REST operations as reviewed subsets, durable completed-task polling and audit | Project status scopes, atomic bulk status writes, publish/update-time status migration, queued/running tasks, designer persistence, conditions, validators and post-functions |
 | Releases | Partial | Version lifecycle, fix/affects assignment, progress, notes, release/archive/delete | Ordering, related work, approvers, custom fields, exports, cross-project releases and full permissions; see [RELEASES.md](RELEASES.md) |
 | Reports and metrics | Partial | Dashboard statistics/pie tables and release progress | Jira and Agile report catalog, historical facts, DORA, service metrics, exports and scheduled delivery |
 | Dashboards | Partial | CRUD, favourites, layouts, private/user/workspace sharing and native work-item gadgets | Group/project sharing, archive/bulk edit, subscriptions, report/app gadgets and offline data; see [DASHBOARDS.md](DASHBOARDS.md) |

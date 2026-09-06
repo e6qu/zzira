@@ -176,6 +176,11 @@ does not publish them as one OpenAPI document.
   and workflow-group mutations validate assigned project impact before they
   version and audit the live scheme; project usage returns workspace-scoped
   opaque cursor pages with Jira's 1–200 result limit.
+- Added Jira's three bulk workflow-scheme operations. Bulk reads deduplicate
+  explicit and project-derived scheme IDs and return workflow metadata and
+  document versions; required-mapping analysis reports the actual statuses
+  affected across assigned projects; updates enforce optimistic versions and
+  return durable tasks while refusing an unsafe unmapped change.
 
 Validation after the organization foundation:
 
@@ -409,16 +414,22 @@ Validation after published workflow-scheme mappings:
   project usage alongside the existing draft and switch paths.
 - The full PostgreSQL Go suite, vet, WebAssembly build, seven conformance
   tests, generated inventory/coverage checks, and `git diff --check` pass.
-- Exact reviewed API coverage is 108 of 1,207 operations: 101 partial, 7
-  missing, and 1,099 explicitly unassessed.
+
+Validation after bulk workflow-scheme operations:
+
+- PostgreSQL integration covers mixed project/scheme reads, required mapping
+  discovery, unsafe update rejection, safe durable-task update, and stale
+  document-version conflicts.
+- The full PostgreSQL Go suite, vet, WebAssembly build, seven conformance
+  tests, generated inventory/coverage checks, and `git diff --check` pass.
+- Exact reviewed API coverage is 111 of 1,207 operations: 104 partial, 7
+  missing, and 1,096 explicitly unassessed.
 
 ## Current change
 
-1. Complete bulk workflow-scheme read, update, and required-mapping REST
-   operations.
-2. Add publish-time status replacement plus queued task execution and
+1. Add publish/update-time status replacement plus queued task execution and
    cancellation semantics.
-3. Continue the reviewed Jira Platform contract operation ledger alongside the
+2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 
 ## Resume here

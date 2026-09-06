@@ -232,6 +232,18 @@ func (s *Store) CreateWorkflowSchemeDraft(ctx context.Context, workspaceID, acto
 }
 
 func (s *Store) SavePublishedWorkflowScheme(ctx context.Context, workspaceID, actorID string, scheme workflow.Scheme) error {
+	return s.savePublishedWorkflowScheme(ctx, workspaceID, actorID, scheme, 0, nil)
+}
+
+func (s *Store) UpdatePublishedWorkflowSchemeTask(ctx context.Context, workspaceID, actorID string, scheme workflow.Scheme, expectedVersion int) (APITask, error) {
+	task, err := completedAPITask(workspaceID, actorID, "Workflow scheme updated.", map[string]any{"workflowSchemeId": scheme.ID})
+	if err != nil {
+		return task, err
+	}
+	return task, s.savePublishedWorkflowScheme(ctx, workspaceID, actorID, scheme, expectedVersion, &task)
+}
+
+func (s *Store) savePublishedWorkflowScheme(ctx context.Context, workspaceID, actorID string, scheme workflow.Scheme, expectedVersion int, task *APITask) error {
 	scheme, err := validateScheme(scheme)
 	if err != nil {
 		return err
@@ -247,6 +259,9 @@ func (s *Store) SavePublishedWorkflowScheme(ctx context.Context, workspaceID, ac
 	var currentVersion int
 	if err := tx.QueryRow(ctx, `SELECT version FROM workflow_schemes WHERE id=$1 AND workspace_id=$2 FOR UPDATE`, scheme.ID, workspaceID).Scan(&currentVersion); err != nil {
 		return ErrAdminNotFound
+	}
+	if expectedVersion > 0 && currentVersion != expectedVersion {
+		return fmt.Errorf("%w: workflow scheme version is %d, expected %d", ErrAdminConflict, currentVersion, expectedVersion)
 	}
 	projectRows, err := tx.Query(ctx, `SELECT id FROM projects WHERE workspace_id=$1 AND workflow_scheme_id=$2 ORDER BY id`, workspaceID, scheme.ID)
 	if err != nil {
@@ -288,6 +303,11 @@ func (s *Store) SavePublishedWorkflowScheme(ctx context.Context, workspaceID, ac
 	}
 	if err := addWorkflowSchemeAudit(ctx, tx, workspaceID, actorID, "workflow.scheme.updated", scheme.ID, map[string]any{"version": currentVersion + 1}); err != nil {
 		return err
+	}
+	if task != nil {
+		if err := insertAPITask(ctx, tx, *task); err != nil {
+			return err
+		}
 	}
 	return tx.Commit(ctx)
 }
@@ -373,6 +393,25 @@ func (s *Store) WorkflowSchemeImpact(ctx context.Context, workspaceID, projectID
 		return nil, err
 	}
 	return schemeImpact(ctx, s.Pool, workspaceID, projectID, scheme, false)
+}
+
+func (s *Store) WorkflowSchemeDefinitionImpact(ctx context.Context, workspaceID, projectID string, scheme workflow.Scheme) ([]WorkflowSchemeImpact, error) {
+	scheme, err := validateScheme(scheme)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateSchemeWorkflows(ctx, s.Pool, workspaceID, scheme); err != nil {
+		return nil, err
+	}
+	return schemeImpact(ctx, s.Pool, workspaceID, projectID, scheme, false)
+}
+
+func (s *Store) ValidateWorkflowSchemeDefinition(ctx context.Context, workspaceID string, scheme workflow.Scheme) error {
+	scheme, err := validateScheme(scheme)
+	if err != nil {
+		return err
+	}
+	return validateSchemeWorkflows(ctx, s.Pool, workspaceID, scheme)
 }
 
 func (s *Store) AssignWorkflowScheme(ctx context.Context, workspaceID, actorID, projectID, schemeID string) error {

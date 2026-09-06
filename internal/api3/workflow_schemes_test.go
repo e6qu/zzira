@@ -3,6 +3,7 @@ package api3
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http/httptest"
 	"os"
 	"strings"
@@ -146,6 +147,21 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	if !strings.Contains(usage.Body.String(), projectID) {
 		t.Fatal(usage.Body.String())
 	}
+	bulkRead := call(actor, "POST", "/rest/api/3/workflowscheme/read", `{"projectIds":["`+projectID+`"],"workflowSchemeIds":["`+schemeID+`"]}`, 200)
+	var readSchemes []map[string]any
+	if err := json.Unmarshal(bulkRead.Body.Bytes(), &readSchemes); err != nil || len(readSchemes) != 1 {
+		t.Fatalf("bulk read = %s, %v", bulkRead.Body.String(), err)
+	}
+	version := int(readSchemes[0]["version"].(map[string]any)["versionNumber"].(float64))
+	requiredMappings := call(actor, "POST", "/rest/api/3/workflowscheme/update/mappings", `{"id":"`+schemeID+`","defaultWorkflowId":"`+workflowID+`","workflowsForIssueTypes":[]}`, 200)
+	if !strings.Contains(requiredMappings.Body.String(), `"st_inprogress"`) {
+		t.Fatal(requiredMappings.Body.String())
+	}
+	unsafeBulkUpdate := `{"id":"` + schemeID + `","name":"Unsafe bulk","description":"Unsafe","defaultWorkflowId":"` + workflowID + `","version":{"versionNumber":` + fmt.Sprint(version) + `},"workflowsForIssueTypes":[]}`
+	call(actor, "POST", "/rest/api/3/workflowscheme/update", unsafeBulkUpdate, 409)
+	safeBulkUpdate := `{"id":"` + schemeID + `","name":"Delivery bulk","description":"Bulk updated","defaultWorkflowId":"wf_default","version":{"versionNumber":` + fmt.Sprint(version) + `},"workflowsForIssueTypes":[]}`
+	call(actor, "POST", "/rest/api/3/workflowscheme/update", safeBulkUpdate, 303)
+	call(actor, "POST", "/rest/api/3/workflowscheme/update", safeBulkUpdate, 409)
 	call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/default", `{"workflow":"Simple API lifecycle"}`, 409)
 	switchable := call(actor, "POST", "/rest/api/3/workflowscheme", `{"name":"Switch target","defaultWorkflow":"Simple API lifecycle"}`, 201)
 	if err := json.Unmarshal(switchable.Body.Bytes(), &scheme); err != nil {

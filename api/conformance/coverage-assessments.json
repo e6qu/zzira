@@ -1079,6 +1079,39 @@
         "docs/CLOUD_PARITY.md"
       ],
       "notes": "Returns opaque-cursor pages of workspace project IDs assigned to the scheme with maxResults validation; additional project fields remain."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/workflowscheme/read",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_scheme_bulk.go",
+        "internal/store/workflow_schemes.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Reads deduplicated workspace schemes by scheme and project IDs with workflow metadata, scope, grouped issue types, and document versions; task-in-progress metadata remains."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/workflowscheme/update",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_scheme_bulk.go",
+        "internal/store/workflow_schemes.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Optimistically updates a validated published scheme at the requested version with assigned-project impact protection, audit, version increment, and a durable 303 task; supplied status migration mappings remain."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/workflowscheme/update/mappings",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_scheme_bulk.go",
+        "internal/store/workflow_schemes.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Calculates required status mappings by issue type and source/target workflow from affected workspace project issues with deterministic status metadata; unused workflow-status differences remain."
     }
   ]
 }

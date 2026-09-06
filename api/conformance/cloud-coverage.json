@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 108,
+  "assessedTotal": 111,
   "counts": {
     "delivered": 0,
-    "partial": 101,
+    "partial": 104,
     "missing": 7,
-    "unassessed": 1099
+    "unassessed": 1096
   },
   "countsByFamily": {
     "automation": {
@@ -24,9 +24,9 @@
     },
     "jira-platform": {
       "delivered": 0,
-      "partial": 46,
+      "partial": 49,
       "missing": 0,
-      "unassessed": 571
+      "unassessed": 568
     },
     "jira-service-management": {
       "delivered": 0,
@@ -4672,25 +4672,40 @@
       "operationId": "jira-v3:POST:/rest/api/3/workflowscheme/read",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_scheme_bulk.go",
+        "internal/store/workflow_schemes.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Reads deduplicated workspace schemes by scheme and project IDs with workflow metadata, scope, grouped issue types, and document versions; task-in-progress metadata remains."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/workflowscheme/update",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_scheme_bulk.go",
+        "internal/store/workflow_schemes.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Optimistically updates a validated published scheme at the requested version with assigned-project impact protection, audit, version increment, and a durable 303 task; supplied status migration mappings remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/workflowscheme/update/mappings",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_scheme_bulk.go",
+        "internal/store/workflow_schemes.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Calculates required status mappings by issue type and source/target workflow from affected workspace project issues with deterministic status metadata; unused workflow-status differences remain."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/workflowscheme/{id}",
