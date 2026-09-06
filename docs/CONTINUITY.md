@@ -988,11 +988,32 @@ Validation after Advanced Forms workflow validators:
   proves the Forms lifecycle drives transition failure and success; focused
   Chromium contributor and admin journeys pass.
 
+Validation after Jira Software development information:
+
+- Migration 054 adds workspace-scoped repositories and normalized commit,
+  branch, and pull-request entities with issue associations, provider
+  properties, current payloads, cascade deletion, time indexes, and monotonic
+  per-entity update sequences.
+- All six pinned `/rest/devinfo/0.10` operations are implemented: bulk ingest,
+  current repository read, repository/entity deletion, property existence, and
+  property bulk deletion. The `api.atlassian.com`-style
+  `/jira/devinfo/0.1/cloud/{cloudId}` alias validates the site cloud ID.
+- Replayed and stale updates are safe no-ops. Sequence-protected deletes cannot
+  remove newer data. Advisory transaction locks ensure concurrent updates fire
+  branch-created automation once, and `preventTransitions` suppresses it.
+- `system:development-triggers` round-trips the official branch-created type in
+  modern workflow create, update, search, and capability payloads. The admin
+  editor persists it and issue pages list linked repositories, commits,
+  branches, and pull requests.
+- PostgreSQL integration covers ingestion, issue-key associations, stale
+  updates, create-only triggering, suppression, current reads, property
+  queries, sequence-aware deletion, cloud-ID routing, and workflow wire data.
+  Focused Chromium contributor and admin journeys pass.
+
 ## Current change
 
-1. Implement Jira development triggers with persisted development events so
-   workflow triggers, release evidence, reports, and DORA metrics share one
-   real data foundation.
+1. Implement Jira Software builds and deployments on the development-event
+   foundation, including issue and release evidence needed by DORA metrics.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 

@@ -29,6 +29,8 @@ const (
 	RuleUpdateField              = "system:update-field"
 	RuleCopyFieldValue           = "system:copy-value-from-other-field"
 	RuleTriggerWebhook           = "system:trigger-webhook"
+	RuleDevelopmentTrigger       = "system:development-triggers"
+	DevelopmentBranchCreated     = "com.atlassian.jira.plugins.jira-development-integration-plugin:branch-created-trigger"
 	RuleTransitionScreen         = "system:transition-screen"
 )
 
@@ -94,6 +96,7 @@ type Transition struct {
 	To         string          `json:"to"`
 	Actions    []Rule          `json:"actions,omitempty"`
 	Validators []Rule          `json:"validators,omitempty"`
+	Triggers   []Rule          `json:"triggers,omitempty"`
 	Conditions *ConditionGroup `json:"conditions,omitempty"`
 	Screen     *Rule           `json:"transitionScreen,omitempty"`
 }
@@ -699,12 +702,34 @@ func ValidateTransitionRules(transition Transition) error {
 			return fmt.Errorf("workflow post-function %q is unsupported", action.RuleKey)
 		}
 	}
+	for _, trigger := range transition.Triggers {
+		if err := validateRuleID(trigger); err != nil {
+			return err
+		}
+		if trigger.RuleKey != RuleDevelopmentTrigger {
+			return fmt.Errorf("workflow trigger %q is unsupported", trigger.RuleKey)
+		}
+		if trigger.Parameters["triggerType"] != DevelopmentBranchCreated || len(trigger.Parameters) != 1 {
+			return fmt.Errorf("development trigger type is unsupported or incomplete")
+		}
+	}
 	if transition.Conditions != nil {
 		if err := validateConditionConfiguration(*transition.Conditions, seen); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// HasDevelopmentTrigger reports whether a transition is subscribed to a
+// specific Jira Software development event type.
+func (t Transition) HasDevelopmentTrigger(triggerType string) bool {
+	for _, trigger := range t.Triggers {
+		if trigger.RuleKey == RuleDevelopmentTrigger && trigger.Parameters["triggerType"] == triggerType {
+			return true
+		}
+	}
+	return false
 }
 
 var jiraPermissionKeys = map[string]bool{

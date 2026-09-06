@@ -52,7 +52,7 @@ type workflowTransitionUpdateRequest struct {
 	Validators        []workflowRuleUpdateRequest          `json:"validators"`
 	Conditions        *workflowConditionGroupUpdateRequest `json:"conditions"`
 	TransitionScreen  *workflowRuleUpdateRequest           `json:"transitionScreen"`
-	Triggers          []json.RawMessage                    `json:"triggers"`
+	Triggers          []workflowRuleUpdateRequest          `json:"triggers"`
 }
 
 type workflowCreateItemRequest struct {
@@ -347,10 +347,6 @@ func workflowDefinitionFromRequest(id, name, description string, startPointLayou
 			errors = append(errors, workflowValidationError("TRANSITION_INVALID", "A directed transition requires a name and at least one source.", "TRANSITION", map[string]any{"transitionId": transitionID}))
 			continue
 		}
-		if len(item.Triggers) > 0 {
-			errors = append(errors, workflowValidationError("TRANSITION_TRIGGERS_UNSUPPORTED", "Transition triggers are not yet executable.", "RULE", map[string]any{"transitionId": transitionID}))
-			continue
-		}
 		transition := workflow.Transition{ID: transitionID, Name: strings.TrimSpace(item.Name), From: from, To: to}
 		if item.TransitionScreen != nil {
 			screen := workflowRuleFromRequest(*item.TransitionScreen, transitionID+"-screen")
@@ -361,6 +357,9 @@ func workflowDefinitionFromRequest(id, name, description string, startPointLayou
 		}
 		for ruleIndex, rule := range item.Validators {
 			transition.Validators = append(transition.Validators, workflowRuleFromRequest(rule, fmt.Sprintf("%s-validator-%d", transitionID, ruleIndex+1)))
+		}
+		for ruleIndex, rule := range item.Triggers {
+			transition.Triggers = append(transition.Triggers, workflowRuleFromRequest(rule, fmt.Sprintf("%s-trigger-%d", transitionID, ruleIndex+1)))
 		}
 		if item.Conditions != nil {
 			conditions := workflowConditionGroupFromRequest(*item.Conditions, transitionID, "condition")

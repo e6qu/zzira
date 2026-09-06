@@ -471,6 +471,10 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	if err != nil {
 		return nil, err
 	}
+	development, err := h.Store.DevelopmentItemsForIssue(r.Context(), wsID, issue.Key)
+	if err != nil {
+		return nil, err
+	}
 	parentOptions := []models.CreateFieldOption{}
 	if issue.IssueType.Subtask {
 		meta, err := h.Store.IssueCreateMetadata(r.Context(), wsID, user.ID)
@@ -574,6 +578,7 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 		Children:          derefIssues(children),
 		ParentOptions:     parentOptions,
 		Forms:             derefForms(forms),
+		Development:       development,
 	}, nil
 }
 

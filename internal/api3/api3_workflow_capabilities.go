@@ -2,6 +2,8 @@ package api3
 
 import (
 	"net/http"
+
+	"github.com/e6qu/zzira/internal/workflow"
 )
 
 func workflowCapabilitiesResponse(editorScope string) map[string]any {
@@ -97,7 +99,14 @@ func workflowCapabilitiesResponse(editorScope string) map[string]any {
 		},
 		"connectRules": []any{},
 		"forgeRules":   []any{},
-		"triggerRules": []any{},
+		"triggerRules": []map[string]any{{
+			"ruleKey": workflow.RuleDevelopmentTrigger,
+			"availableTypes": []map[string]string{{
+				"type":        workflow.DevelopmentBranchCreated,
+				"name":        "Branch created",
+				"description": "Move a work item automatically when a linked source-control branch is created.",
+			}},
+		}},
 	}
 }
 

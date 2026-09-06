@@ -977,6 +977,12 @@ func (h *Handler) AddWorkflowTransition(w http.ResponseWriter, r *http.Request, 
 	if r.PostFormValue("forms_submitted_validator") != "" {
 		transition.Validators = append(transition.Validators, workflow.Rule{ID: store.NewID("rule"), RuleKey: workflow.RuleFormsSubmittedValidator, Parameters: map[string]string{}})
 	}
+	if triggerType := strings.TrimSpace(r.PostFormValue("development_trigger")); triggerType != "" {
+		transition.Triggers = append(transition.Triggers, workflow.Rule{
+			ID: store.NewID("trigger"), RuleKey: workflow.RuleDevelopmentTrigger,
+			Parameters: map[string]string{"triggerType": triggerType},
+		})
+	}
 	if effect := r.PostFormValue("assignee_effect"); effect != "" {
 		transition.Actions = append(transition.Actions, workflow.Rule{
 			ID: store.NewID("rule"), RuleKey: workflow.RuleChangeAssignee, Parameters: map[string]string{"type": effect},
@@ -1201,6 +1207,9 @@ func workflowDesignerMap(wf workflow.Workflow, statuses []models.Status) ([]work
 				}
 				if len(transition.Actions) > 0 {
 					rules = append(rules, "post-function")
+				}
+				if len(transition.Triggers) > 0 {
+					rules = append(rules, "trigger")
 				}
 				transitions = append(transitions, workflowTransitionView{ID: transition.ID, Name: transition.Name, To: statusByID[transition.To], ScreenFields: transition.ScreenFields(), RuleSummary: rules})
 			}

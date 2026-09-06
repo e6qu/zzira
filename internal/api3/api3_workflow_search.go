@@ -107,10 +107,14 @@ func workflowTransitionBean(transition workflow.Transition) map[string]any {
 	if validators == nil {
 		validators = []workflow.Rule{}
 	}
+	triggers := transition.Triggers
+	if triggers == nil {
+		triggers = []workflow.Rule{}
+	}
 	bean := map[string]any{
 		"id": transition.ID, "name": transition.Name, "description": "",
 		"type": "DIRECTED", "toStatusReference": transition.To, "links": links,
-		"properties": map[string]string{}, "actions": actions, "validators": validators, "triggers": []any{},
+		"properties": map[string]string{}, "actions": actions, "validators": validators, "triggers": triggers,
 	}
 	if transition.Conditions != nil {
 		bean["conditions"] = transition.Conditions

@@ -70,8 +70,9 @@ test('issue triage journey: inline fields, labels API, watchers, links, activity
 
   await page.getByText('Link work item', { exact: true }).click();
   await page.fill('#link-issue', linkedKey);
-  await page.locator('.link-create button[type=submit]').click();
-  await expect(page.locator('.linked-work-list')).toContainText(linkedKey);
+  const linkedWork = page.locator('.linked-work').filter({ has: page.getByRole('heading', { name: /Linked work/ }) });
+  await linkedWork.getByRole('button', { name: 'Link', exact: true }).click();
+  await expect(linkedWork.locator('.linked-work-list')).toContainText(linkedKey);
 
   await page.fill('.rich-editor', 'Unified activity comment');
   await page.locator('.comment-form button[type=submit]').click();

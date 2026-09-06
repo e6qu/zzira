@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 124,
+  "assessedTotal": 130,
   "counts": {
     "delivered": 0,
-    "partial": 117,
+    "partial": 123,
     "missing": 7,
-    "unassessed": 1083
+    "unassessed": 1077
   },
   "countsByFamily": {
     "automation": {
@@ -36,9 +36,9 @@
     },
     "jira-software": {
       "delivered": 0,
-      "partial": 0,
+      "partial": 6,
       "missing": 0,
-      "unassessed": 105
+      "unassessed": 99
     },
     "organization-admin": {
       "delivered": 0,
@@ -5785,49 +5785,79 @@
       "operationId": "jira-software:POST:/rest/devinfo/0.10/bulk",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/development_test.go",
+        "internal/api3/development.go",
+        "internal/store/development.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Stores repositories, commits, branches and pull requests with monotonic update ordering, issue-key/ID associations, unknown-key reporting, preventTransitions, browser evidence and branch-created workflow execution; Connect JWT scopes, rate limits and every field constraint remain."
     },
     {
       "operationId": "jira-software:DELETE:/rest/devinfo/0.10/bulkByProperties",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/development_test.go",
+        "internal/api3/development.go",
+        "internal/store/development.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Deletes repositories matching all validated provider properties with Jira-compatible accepted response; asynchronous execution and Connect JWT scopes remain."
     },
     {
       "operationId": "jira-software:GET:/rest/devinfo/0.10/existsByProperties",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/development_test.go",
+        "internal/api3/development.go",
+        "internal/store/development.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Checks property containment with optional update-sequence filtering and validated query cardinality; Connect JWT scopes and rate limits remain."
     },
     {
       "operationId": "jira-software:DELETE:/rest/devinfo/0.10/repository/{repositoryId}",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/development_test.go",
+        "internal/api3/development.go",
+        "internal/store/development.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Accepts idempotent repository deletion and honors optional monotonic deletion sequence; execution is immediate rather than asynchronous."
     },
     {
       "operationId": "jira-software:GET:/rest/devinfo/0.10/repository/{repositoryId}",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/development_test.go",
+        "internal/api3/development.go",
+        "internal/store/development.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Returns the currently persisted repository with its most recent current entities after ordered updates and deletes; exact response truncation ties remain."
     },
     {
       "operationId": "jira-software:DELETE:/rest/devinfo/0.10/repository/{repositoryId}/{entityType}/{entityId}",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/development_test.go",
+        "internal/api3/development.go",
+        "internal/store/development.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Accepts idempotent commit, branch and pull_request deletion with optional monotonic sequence protection; execution is immediate rather than asynchronous."
     },
     {
       "operationId": "jira-software:POST:/rest/devopscomponents/1.0/bulk",

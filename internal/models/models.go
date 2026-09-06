@@ -167,6 +167,7 @@ type IssueView struct {
 	Children          []Issue
 	ParentOptions     []CreateFieldOption
 	Forms             []IssueForm
+	Development       []DevelopmentItem
 }
 
 // IssueActivityItem is one entry in the issue's chronological activity ledger.

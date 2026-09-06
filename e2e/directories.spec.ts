@@ -107,6 +107,39 @@ test('issue forms can be attached, submitted, reopened, and removed', async ({ p
   await expect(forms).toContainText('No forms attached.');
 });
 
+test('development information appears on the linked issue', async ({ page }) => {
+  await login(page);
+  const created = await page.request.post('/rest/api/3/issue', {
+    headers: { Authorization: apiAuthHeader() },
+    data: { fields: { project: { key: 'ZZ' }, summary: `Development journey ${Date.now()}`, issuetype: { id: 'it_task' } } },
+  });
+  expect(created.status()).toBe(201);
+  const issue = await created.json();
+  const repositoryID = `repo-ui-${Date.now()}`;
+  const ingested = await page.request.post('/rest/devinfo/0.10/bulk', {
+    headers: { Authorization: apiAuthHeader() },
+    data: {
+      preventTransitions: true,
+      properties: { accountId: 'ui-e2e' }, repositories: [{
+        id: repositoryID, name: 'zzira-ui', url: 'https://git.example/zzira-ui', updateSequenceId: 1,
+        branches: [{ id: 'branch-ui', name: `feature/${issue.key}-journey`, url: 'https://git.example/zzira-ui/branch', updateSequenceId: 1, issueKeys: [issue.key] }],
+        commits: [{ id: 'commit-ui', displayId: 'd3v1nf0', message: `Implement ${issue.key}`, url: 'https://git.example/zzira-ui/commit', updateSequenceId: 1, issueKeys: [issue.key] }],
+        pullRequests: [{ id: 'pr-ui', name: `Review ${issue.key}`, url: 'https://git.example/zzira-ui/pull', status: 'OPEN', updateSequenceId: 1, issueKeys: [issue.key] }],
+      }],
+    },
+  });
+  expect(ingested.status()).toBe(202);
+
+  await page.goto(`/browse/${issue.key}`);
+  const development = page.locator('.issue-development');
+  await expect(development.getByRole('heading', { name: /Development/ })).toBeVisible();
+  await expect(development).toContainText('feature/');
+  await expect(development).toContainText(`Review ${issue.key}`);
+  await expect(development).toContainText('Implement');
+  await expect(development).toContainText('zzira-ui');
+  await expect(development.getByRole('link')).toHaveCount(3);
+});
+
 test('project workflow creation, editor, transition changes, and assignment work', async ({ page }) => {
   await login(page);
   const webhookResponse = await page.request.post('/rest/api/3/webhook', {
@@ -150,6 +183,7 @@ test('project workflow creation, editor, transition changes, and assignment work
   await page.selectOption('#transition-copy-source', 'summary');
 	await page.selectOption('#transition-copy-issue-source', 'PARENT');
   await page.selectOption('#transition-copy-target', 'description');
+	await page.selectOption('#transition-development-trigger', 'com.atlassian.jira.plugins.jira-development-integration-plugin:branch-created-trigger');
   await expect(page.locator('#transition-trigger-webhook')).toContainText('https://example.invalid/workflow-ui');
   await page.selectOption('#transition-trigger-webhook', webhookID);
   await page.selectOption('#transition-changed-field-validator', 'labels');
@@ -172,7 +206,7 @@ test('project workflow creation, editor, transition changes, and assignment work
   await page.selectOption('#transition-permission-validator', 'EDIT_ISSUES');
   await page.getByRole('button', { name: 'Add transition' }).click();
   await expect(page.getByText('Ready for review', { exact: true })).toBeVisible();
-  await expect(page.getByText('to Done · condition, validator, post-function · screen: labels', { exact: true })).toBeVisible();
+  await expect(page.getByText('to Done · condition, validator, post-function, trigger · screen: labels', { exact: true })).toBeVisible();
   await page.fill('#transition-name', 'Integration reopen');
   await page.selectOption('#transition-from', 'st_done');
   await page.selectOption('#transition-to', 'st_todo');
@@ -261,7 +295,7 @@ test('workflow schemes publish safely and migrate incompatible project statuses'
   await expect(page.getByText('Draft mappings are not active')).toBeVisible();
   await page.getByRole('button', { name: 'Publish scheme' }).click();
   await expect(page.getByText('Published', { exact: true })).toBeVisible();
-  await expect(page.getByText('Version 2')).toBeVisible();
+  await expect(page.locator('.workflow-editor-header')).toContainText('Version 2');
 
   await page.selectOption('#scheme-project', 'prj_default');
   await page.getByRole('button', { name: 'Preview assignment' }).click();
@@ -285,7 +319,7 @@ test('workflow schemes publish safely and migrate incompatible project statuses'
     await page.getByRole('button', { name: `Delete ${transition} transition`, exact: true }).first().click();
   }
   await page.getByRole('button', { name: 'Publish workflow' }).click();
-  await expect(page.getByText('Version 2')).toBeVisible();
+  await expect(page.locator('.workflow-editor-header')).toContainText('Version 2');
 
   const createdIssue = await page.request.post('/rest/api/3/issue', {
     headers: { Authorization: apiAuthHeader() },

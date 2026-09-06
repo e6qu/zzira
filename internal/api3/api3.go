@@ -35,6 +35,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.issueFormsRoute(w, r)
 		return
 	}
+	if strings.HasPrefix(r.URL.Path, "/rest/devinfo/0.10/") || strings.HasPrefix(r.URL.Path, "/jira/devinfo/0.1/cloud/") {
+		h.developmentRoute(w, r)
+		return
+	}
 	path := strings.TrimPrefix(r.URL.Path, "/rest/api/3")
 	switch {
 	case path == "/dashboard":

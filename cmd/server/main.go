@@ -427,6 +427,8 @@ func main() {
 	mux.Handle("/rest/agile/1.0/", agileAPI)
 	mux.Handle("/rest/api/3/", api)
 	mux.Handle("/jira/forms/cloud/", api)
+	mux.Handle("/rest/devinfo/0.10/", api)
+	mux.Handle("/jira/devinfo/0.1/cloud/", api)
 	mux.HandleFunc("GET /_edge/tenant_info", automationAPI.TenantInfo)
 	mux.Handle("/gateway/api/automation/public/jira/", automationAPI)
 	mux.HandleFunc("GET /admin/v1/orgs", adminAPI.Organizations)

@@ -1265,6 +1265,72 @@
         "docs/CLOUD_PARITY.md"
       ],
       "notes": "Previews project-associated global or project workflows by ID, name, and issue type, returning scoped resources, query contexts, layouts, topology, versions, statuses, and executable conditions, validators, post-functions and transition screens; remaining rules and approval configuration remain."
+    },
+    {
+      "operationId": "jira-software:POST:/rest/devinfo/0.10/bulk",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/development_test.go",
+        "internal/api3/development.go",
+        "internal/store/development.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Stores repositories, commits, branches and pull requests with monotonic update ordering, issue-key/ID associations, unknown-key reporting, preventTransitions, browser evidence and branch-created workflow execution; Connect JWT scopes, rate limits and every field constraint remain."
+    },
+    {
+      "operationId": "jira-software:DELETE:/rest/devinfo/0.10/bulkByProperties",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/development_test.go",
+        "internal/api3/development.go",
+        "internal/store/development.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Deletes repositories matching all validated provider properties with Jira-compatible accepted response; asynchronous execution and Connect JWT scopes remain."
+    },
+    {
+      "operationId": "jira-software:GET:/rest/devinfo/0.10/existsByProperties",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/development_test.go",
+        "internal/api3/development.go",
+        "internal/store/development.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Checks property containment with optional update-sequence filtering and validated query cardinality; Connect JWT scopes and rate limits remain."
+    },
+    {
+      "operationId": "jira-software:DELETE:/rest/devinfo/0.10/repository/{repositoryId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/development_test.go",
+        "internal/api3/development.go",
+        "internal/store/development.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Accepts idempotent repository deletion and honors optional monotonic deletion sequence; execution is immediate rather than asynchronous."
+    },
+    {
+      "operationId": "jira-software:GET:/rest/devinfo/0.10/repository/{repositoryId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/development_test.go",
+        "internal/api3/development.go",
+        "internal/store/development.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Returns the currently persisted repository with its most recent current entities after ordered updates and deletes; exact response truncation ties remain."
+    },
+    {
+      "operationId": "jira-software:DELETE:/rest/devinfo/0.10/repository/{repositoryId}/{entityType}/{entityId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/development_test.go",
+        "internal/api3/development.go",
+        "internal/store/development.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Accepts idempotent commit, branch and pull_request deletion with optional monotonic sequence protection; execution is immediate rather than asynchronous."
     }
   ]
 }
