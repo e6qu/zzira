@@ -95,6 +95,7 @@ func TestOrganizationAndGroupAPIJourney(t *testing.T) {
 	mux.HandleFunc("POST /admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/role-assignments/revoke", handler.GroupRoleMutation)
 	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories/{directoryId}/users/{accountId}/role-assignments", handler.RoleAssignments)
 	mux.HandleFunc("GET /admin/v1/orgs/{orgId}/users", handler.ManagedUsers)
+	mux.HandleFunc("GET /admin/v1/orgs/{orgId}/directory/users/{accountId}/last-active-dates", handler.UserLastActiveDates)
 	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories/{directoryId}/users", handler.DirectoryUsers)
 	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories/{directoryId}/users/count", handler.DirectoryUserCount)
 	mux.HandleFunc("POST /admin/v2/orgs/{orgId}/directories/{directoryId}/users/search", handler.SearchUsers)
@@ -151,6 +152,23 @@ func TestOrganizationAndGroupAPIJourney(t *testing.T) {
 		t.Fatalf("unexpected directory page: %#v", directoryPage)
 	}
 	directoryID := directories[0].(map[string]any)["directoryId"].(string)
+	activityPath := "/admin/v1/orgs/" + organization.ID + "/directory/users/" + memberID + "/last-active-dates"
+	call(http.MethodGet, activityPath+"?cursor=not-a-cursor", adminToken, nil, http.StatusBadRequest)
+	call(http.MethodGet, "/admin/v1/orgs/"+organization.ID+"/directory/users/missing/last-active-dates", adminToken, nil, http.StatusNotFound)
+	activityPage := call(http.MethodGet, activityPath, adminToken, nil, http.StatusOK)
+	activityData := activityPage["data"].(map[string]any)
+	if len(activityData["product_access"].([]any)) != 0 {
+		t.Fatalf("user with no recorded product view has activity: %#v", activityPage)
+	}
+	if err := st.RecordProductUserActivity(ctx, workspaceID, memberID, "jira-service-management"); err != nil {
+		t.Fatal(err)
+	}
+	activityPage = call(http.MethodGet, activityPath, adminToken, nil, http.StatusOK)
+	activityData = activityPage["data"].(map[string]any)
+	activityProducts := activityData["product_access"].([]any)
+	if len(activityProducts) != 1 || activityProducts[0].(map[string]any)["key"] != "jira-service-desk" || activityData["added_to_org"] == "" || activityData["added_to_org_timestamp"] == "" {
+		t.Fatalf("unexpected product activity page: %#v", activityPage)
+	}
 	if err := st.UpdateDirectoryUserProfile(ctx, workspaceID, adminID, directoryID, memberID, store.ManagedProfileUpdate{
 		DisplayName: memberID, Nickname: "Support specialist", JobTitle: "Service manager",
 		Department: "Customer operations", OrganizationName: "Example", Location: "Remote", TimeZone: "Europe/Bucharest",

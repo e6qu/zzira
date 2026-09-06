@@ -149,6 +149,73 @@ func (s *Store) ProductsBySite(ctx context.Context, siteID string) ([]*models.Pr
 	return products, rows.Err()
 }
 
+func (s *Store) RecordProductUserActivity(ctx context.Context, workspaceID, userID, productKey string) error {
+	var recorded bool
+	err := s.Pool.QueryRow(ctx, `
+		WITH accessible_product AS (
+		  SELECT p.id FROM products p
+		  JOIN sites si ON si.id=p.site_id
+		  JOIN users u ON u.id=$2 AND u.active
+		  WHERE si.workspace_id=$1 AND p.product_key=$3 AND p.enabled
+		    AND EXISTS (
+		      SELECT 1 FROM directories d JOIN directory_users du ON du.directory_id=d.id
+		      WHERE d.organization_id=si.organization_id AND d.active AND du.user_id=$2 AND du.active)
+		    AND EXISTS (
+		      SELECT 1 FROM role_bindings rb
+		      WHERE rb.scope_type='product' AND rb.scope_id=p.id::text
+		        AND rb.role_key IN ('atlassian/user','atlassian/admin','atlassian/guest','atlassian/customer',
+		          'atlassian/contributor','atlassian/basic','atlassian/stakeholder',
+		          'atlassian/product-user','atlassian/product-admin')
+		        AND (rb.principal_type='user' AND rb.principal_id=$2 OR
+		          rb.principal_type='group' AND EXISTS (
+		            SELECT 1 FROM group_members gm WHERE gm.group_id::text=rb.principal_id AND gm.user_id=$2)))
+		)
+		INSERT INTO product_user_activity(user_id,product_id,last_active_at)
+		SELECT $2,id,now() FROM accessible_product
+		ON CONFLICT (user_id,product_id) DO UPDATE SET last_active_at=GREATEST(product_user_activity.last_active_at,excluded.last_active_at)
+		RETURNING true`, workspaceID, userID, productKey).Scan(&recorded)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrAdminNotFound
+	}
+	return err
+}
+
+func (s *Store) ProductUserActivities(ctx context.Context, organizationID, userID string) (string, []*models.ProductUserActivity, error) {
+	var addedAt time.Time
+	if err := s.Pool.QueryRow(ctx, `
+		SELECT min(du.added_at) FROM directory_users du
+		JOIN directories d ON d.id=du.directory_id
+		WHERE d.organization_id=$1::uuid AND du.user_id=$2
+		HAVING count(*) > 0`, organizationID, userID).Scan(&addedAt); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", nil, ErrAdminNotFound
+		}
+		return "", nil, err
+	}
+	rows, err := s.Pool.Query(ctx, `
+		SELECT p.id::text,p.product_key,pua.last_active_at
+		FROM product_user_activity pua
+		JOIN products p ON p.id=pua.product_id
+		JOIN sites si ON si.id=p.site_id
+		WHERE si.organization_id=$1::uuid AND pua.user_id=$2
+		ORDER BY pua.last_active_at DESC,p.id`, organizationID, userID)
+	if err != nil {
+		return "", nil, err
+	}
+	defer rows.Close()
+	activities := make([]*models.ProductUserActivity, 0)
+	for rows.Next() {
+		activity := &models.ProductUserActivity{}
+		var lastActiveAt time.Time
+		if err := rows.Scan(&activity.ProductID, &activity.ProductKey, &lastActiveAt); err != nil {
+			return "", nil, err
+		}
+		activity.LastActiveAt = formatAdminTime(lastActiveAt)
+		activities = append(activities, activity)
+	}
+	return formatAdminTime(addedAt), activities, rows.Err()
+}
+
 func (s *Store) DirectoriesByOrganization(ctx context.Context, organizationID string) ([]*models.Directory, error) {
 	rows, err := s.Pool.Query(ctx, `
 		SELECT id::text,organization_id::text,name,directory_type,active,created_at

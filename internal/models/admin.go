@@ -25,6 +25,12 @@ type Product struct {
 	CreatedAt string `json:"createdAt"`
 }
 
+type ProductUserActivity struct {
+	ProductID    string
+	ProductKey   string
+	LastActiveAt string
+}
+
 type Directory struct {
 	ID             string `json:"id"`
 	OrganizationID string `json:"organizationId"`

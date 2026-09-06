@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -947,6 +948,70 @@ func (h *Handler) ManagedUsers(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": data, "meta": map[string]int{"total": len(data)}, "links": map[string]string{"self": ""}})
+}
+
+func (h *Handler) UserLastActiveDates(w http.ResponseWriter, r *http.Request) {
+	_, workspaceID, ok := h.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	if err := rejectUnknownQuery(r.URL.Query(), "cursor"); err != nil {
+		failure(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	organization, ok := h.organizationForRequest(w, r, workspaceID)
+	if !ok {
+		return
+	}
+	offset, limit, err := parsePage(r.URL.Query())
+	if err != nil {
+		failure(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	addedAt, activities, err := h.Store.ProductUserActivities(r.Context(), organization.ID, r.PathValue("accountId"))
+	if errors.Is(err, store.ErrAdminNotFound) {
+		failure(w, http.StatusNotFound, "Managed account was not found in this organization.")
+		return
+	}
+	if err != nil {
+		failure(w, http.StatusInternalServerError, "Product activity lookup failed.")
+		return
+	}
+	page, next := pageSlice(activities, offset, limit)
+	productAccess := make([]map[string]string, 0, len(page))
+	for _, activity := range page {
+		key := activity.ProductKey
+		if key == "jira-service-management" {
+			key = "jira-service-desk"
+		}
+		lastActive, err := time.Parse(time.RFC3339Nano, activity.LastActiveAt)
+		if err != nil {
+			failure(w, http.StatusInternalServerError, "Stored product activity is invalid.")
+			return
+		}
+		productAccess = append(productAccess, map[string]string{
+			"id": activity.ProductID, "key": key,
+			"last_active":           lastActive.UTC().Format("2006-01-02"),
+			"last_active_timestamp": lastActive.UTC().Format(time.RFC3339),
+		})
+	}
+	added, err := time.Parse(time.RFC3339Nano, addedAt)
+	if err != nil {
+		failure(w, http.StatusInternalServerError, "Stored organization membership date is invalid.")
+		return
+	}
+	links := map[string]string{}
+	if next != "" {
+		links["next"] = next
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"data": map[string]any{
+			"product_access":         productAccess,
+			"added_to_org":           added.UTC().Format("2006-01-02"),
+			"added_to_org_timestamp": added.UTC().Format(time.RFC3339),
+		},
+		"links": links,
+	})
 }
 
 func (h *Handler) DirectoryUserCount(w http.ResponseWriter, r *http.Request) {

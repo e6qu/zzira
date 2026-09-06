@@ -260,6 +260,16 @@
       "notes": "Effective user assignments combine direct and group-derived roles and report assignment methods."
     },
     {
+      "operationId": "organization-admin:GET:/admin/v1/orgs/{orgId}/directory/users/{accountId}/last-active-dates",
+      "status": "partial",
+      "evidence": [
+        "internal/admin/http_test.go",
+        "e2e/admin.spec.ts",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Visible browser use is recorded after two seconds and returned per product with exact IDs, mapped keys, UTC dates and timestamps, organization-add time, and opaque cursors; long-term aggregation and central-host rate limiting remain."
+    },
+    {
       "operationId": "organization-admin:GET:/admin/v1/orgs/{orgId}/users",
       "status": "partial",
       "evidence": [
@@ -267,7 +277,7 @@
         "e2e/admin.spec.ts",
         "docs/ADMIN.md"
       ],
-      "notes": "Managed-account listing reports active and inactive directory accounts."
+      "notes": "Managed-account listing reports global account state, directory-derived billable access, identity, and opaque paging validation."
     },
     {
       "operationId": "organization-admin:GET:/admin/v2/orgs/{orgId}/directories/{directoryId}/users",
@@ -297,7 +307,7 @@
         "e2e/admin.spec.ts",
         "docs/ADMIN.md"
       ],
-      "notes": "Directory account details report identity and lifecycle state."
+      "notes": "Directory account details report stored identity, profile, account state, and directory membership state."
     },
     {
       "operationId": "organization-admin:DELETE:/admin/v2/orgs/{orgId}/directories/{directoryId}/users/{accountId}",
@@ -307,7 +317,7 @@
         "e2e/admin.spec.ts",
         "docs/ADMIN.md"
       ],
-      "notes": "Directory removal revokes memberships, group links, scoped direct roles, sessions, and API tokens atomically."
+      "notes": "Directory removal revokes membership, group links, and scoped direct roles atomically; sessions and API tokens are revoked after the final active directory is removed."
     },
     {
       "operationId": "organization-admin:POST:/admin/v2/orgs/{orgId}/directories/{directoryId}/users/{accountId}/suspend",
@@ -317,7 +327,7 @@
         "e2e/admin.spec.ts",
         "docs/ADMIN.md"
       ],
-      "notes": "Suspension immediately denies authentication and revokes browser sessions and API tokens."
+      "notes": "Suspension immediately denies access through the selected directory while preserving other organizations; sessions and API tokens are revoked after the final active directory is suspended."
     },
     {
       "operationId": "organization-admin:POST:/admin/v2/orgs/{orgId}/directories/{directoryId}/users/{accountId}/restore",
@@ -327,7 +337,7 @@
         "e2e/admin.spec.ts",
         "docs/ADMIN.md"
       ],
-      "notes": "Restoration reactivates the managed account and is audited."
+      "notes": "Restoration reactivates the selected directory membership without changing global account state and is audited."
     },
     {
       "operationId": "organization-admin:POST:/admin/v2/orgs/{orgId}/users/invite",
@@ -398,7 +408,7 @@
         "e2e/admin.spec.ts",
         "docs/ADMIN.md"
       ],
-      "notes": "Directory-user search implements identity, group, lifecycle, domain, resource, role, expansion, sort, and pagination fields; stored profile and activity depth remains."
+      "notes": "Directory-user search implements stored profile, identity, group, lifecycle, MFA, domain, resource, role, expansion, sort, and pagination fields."
     },
     {
       "operationId": "organization-admin:GET:/admin/v2/orgs/{orgId}/directories/{directoryId}/users/stats",

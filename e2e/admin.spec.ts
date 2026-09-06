@@ -19,6 +19,8 @@ async function accessible(page: Page) {
 
 test('site admin manages a directory group and its audited membership', async ({ page, browser }) => {
   await login(page);
+  const activity = await page.waitForResponse((response) => response.url().endsWith('/rest/zzira/1/product-activity'));
+  expect(activity.status()).toBe(204);
   await page.getByRole('link', { name: 'Administration', exact: true }).click();
   await expect(page).toHaveURL('/admin');
   await expect(page.getByRole('heading', { name: 'ZZIRA', level: 1 })).toBeVisible();

@@ -65,6 +65,7 @@ implemented:
 | POST | `/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/role-assignments/{assign\|revoke}` |
 | GET | `/admin/v2/orgs/{orgId}/directories/{directoryId}/users/{accountId}/role-assignments` |
 | GET | `/admin/v1/orgs/{orgId}/users` |
+| GET | `/admin/v1/orgs/{orgId}/directory/users/{accountId}/last-active-dates` |
 | GET | `/admin/v2/orgs/{orgId}/directories/{directoryId}/users` |
 | GET | `/admin/v2/orgs/{orgId}/directories/{directoryId}/users/count` |
 | POST | `/admin/v2/orgs/{orgId}/directories/{directoryId}/users/search` |
@@ -84,6 +85,12 @@ to every directory the caller can administer. Group count accepts its full
 documented filter set. Workspace discovery returns product ARIs. Role lookups support directory,
 resource-owner, resource-ID, and role-ID filters and report whether effective
 user access is direct or inherited from a group.
+
+Product activity is recorded only after an authenticated product page remains
+visible for two seconds. The last-active endpoint returns the accessed product
+instance IDs, Jira-compatible product keys, UTC dates and timestamps, the first
+organization membership time, and opaque paging. A user who has never viewed a
+product has an empty `product_access` array.
 
 Invitation access, group membership, optional email enqueueing, and audit
 evidence commit atomically for each account. A multi-account request returns
@@ -116,9 +123,10 @@ the active plan and are reported as unassessed or missing in operation coverage.
 - API integration tests cover bearer authentication, permission denial,
   organization/directory/product discovery, group creation/detail/search/count/
   statistics/deletion, directory-user search/statistics, atomic invitation
-  assignments and delivery enqueueing, membership and role mutations, effective
-  assignments, partial results, conflicts, expansions, and audit persistence.
+  assignments and delivery enqueueing, product activity and last-active dates,
+  membership and role mutations, effective assignments, partial results,
+  conflicts, expansions, and audit persistence.
 - Playwright covers the complete group and product-access journey,
-  invitation-time product/group access, managed-profile editing, account
-  lifecycle, ordinary-user denial, WCAG scans, light/dark themes, and 320px
-  reflow.
+  invitation-time product/group access, two-second visible product activity,
+  managed-profile editing, account lifecycle, ordinary-user denial, WCAG scans,
+  light/dark themes, and 320px reflow.

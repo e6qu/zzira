@@ -37,6 +37,43 @@
   }
   document.addEventListener('DOMContentLoaded', initThemeToggle);
 
+  function productKeyForPage() {
+    if (location.pathname === '/login' || location.pathname === '/signed-out' || location.pathname.startsWith('/auth/') || location.pathname.startsWith('/admin')) return '';
+    if (location.pathname === '/wiki' || location.pathname.startsWith('/wiki/')) return 'confluence';
+    if (location.pathname === '/servicedesk' || location.pathname.startsWith('/servicedesk/')) return 'jira-service-management';
+    return 'jira-software';
+  }
+
+  function initProductActivity() {
+    const productKey = productKeyForPage();
+    if (!productKey) return;
+    let visibleTimer = 0;
+    const stop = () => {
+      if (visibleTimer) window.clearTimeout(visibleTimer);
+      visibleTimer = 0;
+    };
+    const start = () => {
+      stop();
+      if (document.visibilityState !== 'visible') return;
+      visibleTimer = window.setTimeout(() => {
+        visibleTimer = 0;
+        fetch('/rest/zzira/1/product-activity', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ productKey }),
+          keepalive: true,
+        }).then((response) => {
+          if (!response.ok) console.warn('ZZIRA product activity was not recorded:', response.status);
+        }).catch((error) => console.warn('ZZIRA product activity was not recorded:', error));
+      }, 2000);
+    };
+    document.addEventListener('visibilitychange', start);
+    window.addEventListener('pagehide', stop, { once: true });
+    start();
+  }
+  document.addEventListener('DOMContentLoaded', initProductActivity);
+
   // ---- Application shell: persistent sidebar + Jira-style search shortcut ----
   function setNavigationState(open) {
     const mobile = window.matchMedia('(max-width: 960px)').matches;

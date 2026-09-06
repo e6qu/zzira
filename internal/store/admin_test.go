@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"os"
 	"testing"
 )
@@ -180,6 +181,9 @@ func TestOrganizationProvisioningAndGroupAuthorization(t *testing.T) {
 	}
 	if allowed, err := st.IsMember(ctx, workspaceID, memberID); err != nil || allowed {
 		t.Fatalf("suspended directory access=%v, err=%v", allowed, err)
+	}
+	if err := st.RecordProductUserActivity(ctx, workspaceID, memberID, "jira-software"); !errors.Is(err, ErrAdminNotFound) {
+		t.Fatalf("suspended directory recorded product activity: %v", err)
 	}
 	if allowed, err := st.IsMember(ctx, secondWorkspaceID, memberID); err != nil || !allowed {
 		t.Fatalf("other directory access=%v, err=%v", allowed, err)
