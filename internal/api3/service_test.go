@@ -130,7 +130,7 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	}
 	call("GET", "/rest/servicedeskapi/servicedesk/"+serviceDeskID, "", 200)
 	requestTypes := call("GET", "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/requesttype", "", 200)
-	if !strings.Contains(requestTypes.Body.String(), `"name":"Get IT help"`) || !strings.Contains(requestTypes.Body.String(), `"name":"Report an incident"`) {
+	if !strings.Contains(requestTypes.Body.String(), `"name":"Get IT help"`) || !strings.Contains(requestTypes.Body.String(), `"name":"Report an incident"`) || !strings.Contains(requestTypes.Body.String(), `"name":"Investigate a problem"`) || !strings.Contains(requestTypes.Body.String(), `"name":"Request a change"`) {
 		t.Fatal(requestTypes.Body.String())
 	}
 	var requestTypeID string
@@ -162,7 +162,7 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 		t.Fatal(deprecatedAssets.Body.String())
 	}
 	groups := callAs(customerID, "GET", "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/requesttypegroup", "", 200)
-	if !strings.Contains(groups.Body.String(), `"name":"Help and support"`) || !strings.Contains(groups.Body.String(), `"name":"Incidents"`) {
+	if !strings.Contains(groups.Body.String(), `"name":"Help and support"`) || !strings.Contains(groups.Body.String(), `"name":"Incidents"`) || !strings.Contains(groups.Body.String(), `"name":"Problems"`) || !strings.Contains(groups.Body.String(), `"name":"Changes"`) {
 		t.Fatal(groups.Body.String())
 	}
 	call("GET", "/rest/servicedeskapi/servicedesk/missing/requesttypegroup", "", 404)
@@ -310,6 +310,43 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if err != nil || !strings.Contains(strings.Join(issue.Labels, ","), "incident") {
 		t.Fatalf("incident issue = %+v, %v", issue, err)
 	}
+	var problemTypeID, changeTypeID string
+	if err := st.Pool.QueryRow(ctx, `SELECT id FROM service_request_types WHERE service_desk_id=$1 AND name='Investigate a problem'`, serviceDeskID).Scan(&problemTypeID); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Pool.QueryRow(ctx, `SELECT id FROM service_request_types WHERE service_desk_id=$1 AND name='Request a change'`, serviceDeskID).Scan(&changeTypeID); err != nil {
+		t.Fatal(err)
+	}
+	callAs(customerID, "POST", "/rest/servicedeskapi/request", `{"serviceDeskId":"`+serviceDeskID+`","requestTypeId":"`+changeTypeID+`","requestFieldValues":{"summary":"Incomplete change"}}`, 400)
+	problemResponse := callAs(customerID, "POST", "/rest/servicedeskapi/request", `{"serviceDeskId":"`+serviceDeskID+`","requestTypeId":"`+problemTypeID+`","requestFieldValues":{"summary":"Recurring checkout timeout","description":"Investigate incidents caused by checkout worker exhaustion."}}`, 201)
+	changeResponse := callAs(customerID, "POST", "/rest/servicedeskapi/request", `{"serviceDeskId":"`+serviceDeskID+`","requestTypeId":"`+changeTypeID+`","requestFieldValues":{"summary":"Increase checkout worker capacity","description":"Scale workers after approval and roll back if latency rises."}}`, 201)
+	var problemBean, changeBean map[string]any
+	if err := json.Unmarshal(problemResponse.Body.Bytes(), &problemBean); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(changeResponse.Body.Bytes(), &changeBean); err != nil {
+		t.Fatal(err)
+	}
+	problemIssue, err := st.IssueByIDOrKey(ctx, workspaceID, problemBean["issueKey"].(string))
+	if err != nil || !slices.Equal(problemIssue.Labels, []string{"problem"}) {
+		t.Fatalf("problem issue = %+v, %v", problemIssue, err)
+	}
+	changeIssue, err := st.IssueByIDOrKey(ctx, workspaceID, changeBean["issueKey"].(string))
+	if err != nil || !slices.Equal(changeIssue.Labels, []string{"change"}) {
+		t.Fatalf("change issue = %+v, %v", changeIssue, err)
+	}
+	linkTypes, err := st.LinkTypes(ctx)
+	if err != nil || len(linkTypes) == 0 {
+		t.Fatalf("operations link types = %+v, %v", linkTypes, err)
+	}
+	operationsLink, _, err := handler.Commands.LinkIssue(ctx, actorID, workspaceID, issue.ID, linkTypes[0].ID, changeIssue.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operationsLinks, err := st.LinksByIssue(ctx, issue.ID)
+	if err != nil || len(operationsLinks) != 1 || operationsLinks[0].ID != operationsLink.ID {
+		t.Fatalf("linked operations work = %+v, %v", operationsLinks, err)
+	}
 	if _, err := st.CreateCustomField(ctx, customFieldID, "Business impact", models.CustomFieldNumber, "Affected orders per minute"); err != nil {
 		t.Fatal(err)
 	}
@@ -357,7 +394,7 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, customRequests, err := st.ServiceQueueRequests(ctx, workspaceID, actorID, serviceDeskID, customQueue.ID)
-	if err != nil || len(customRequests) != 1 || customRequests[0].Issue.ID != issue.ID {
+	if err != nil || !slices.ContainsFunc(customRequests, func(request *models.ServiceRequest) bool { return request.Issue.ID == issue.ID }) {
 		t.Fatalf("custom queue requests = %+v, %v", customRequests, err)
 	}
 	if err := handler.Commands.UpdateServiceQueue(ctx, actorID, workspaceID, serviceDeskID, customQueue.ID, "Checkout incidents now", `summary ~ "does not match"`); err != nil {

@@ -233,6 +233,8 @@ func main() {
 	mux.HandleFunc("POST /service/requests/{key}/feedback", webHandler.ServiceRequestFeedback)
 	mux.HandleFunc("POST /service/requests/{key}/transition", webHandler.ServiceRequestTransition)
 	mux.HandleFunc("POST /service/requests/{key}/participants", webHandler.ServiceRequestParticipant)
+	mux.HandleFunc("POST /service/requests/{key}/links", webHandler.ServiceRequestLink)
+	mux.HandleFunc("POST /service/requests/{key}/links/{link}/delete", webHandler.ServiceRequestLinkDelete)
 	mux.HandleFunc("GET /service/agent", webHandler.ServiceAgent)
 	mux.HandleFunc("GET /service/agent/{desk}", webHandler.ServiceAgent)
 	mux.HandleFunc("GET /service/agent/{desk}/reports", webHandler.ServiceReports)

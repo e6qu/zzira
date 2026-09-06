@@ -77,7 +77,7 @@ semantics.
 | Releases | Version lifecycle, fix/affects membership, progress and notes | Ordering, related work, approvals, custom fields, exports and cross-project releases |
 | Dashboards | CRUD, layouts, favourites, sharing and native issue gadgets | Full shares, subscriptions, report gadgets, app gadgets and offline data |
 | Knowledge | Spaces, page tree, page editing, drafts, versions and trash | Confluence v1, content types, collaboration, permissions, comments, attachments, macros, search and export |
-| Service management | Help center, service projects, request-type-specific forms with typed custom fields, customer requests, participants, public/private conversation and attachments, assigned-user approvals, request subscriptions and inbox notifications, completed-request CSAT, status transitions, per-desk agents, built-in and manager-defined JQL queues, business calendars with holiday administration, ordered JQL-based conditional/default first-response and resolution SLA goals with stable cycle snapshots, durable escalation notifications, customer-only accounts, open/closed portal access, customer organizations, linked knowledge suggestions, request-type metadata/properties/permissions, Assets workspace discovery, filterable volume/SLA/CSAT reports with request-type and channel breakdowns, and all 75 pinned REST operations reviewed | Conditional/advanced portal fields, complete JQL beyond labels, SLA rule reordering and advanced criteria, approval configuration, email delivery, CSAT configuration, comparisons, SLA goal distributions, exports and scheduled report delivery, complete Assets APIs and incident/problem/change management |
+| Service management | Help center, service projects, seeded help/incident/problem/change request types with deterministic labels and related-work links, request-type-specific forms with typed custom fields, customer requests, participants, public/private conversation and attachments, assigned-user approvals, request subscriptions and inbox notifications, completed-request CSAT, status transitions, per-desk agents, built-in and manager-defined JQL queues, business calendars with holiday administration, ordered JQL-based conditional/default first-response and resolution SLA goals with stable cycle snapshots, durable escalation notifications, customer-only accounts, open/closed portal access, customer organizations, linked knowledge suggestions, request-type metadata/properties/permissions, Assets workspace discovery, filterable volume/SLA/CSAT reports with request-type and channel breakdowns, and all 75 pinned REST operations reviewed | Conditional/advanced portal fields, complete JQL beyond labels, SLA rule reordering and advanced criteria, approval configuration, email delivery, CSAT configuration, comparisons, SLA goal distributions, exports and scheduled report delivery, complete Assets APIs and advanced incident/problem/change risk, approval, on-call and review management |
 | Analytics | Dashboard groupings and release progress | Historical reports, development facts, DORA, exports and scheduled delivery |
 | Administration | All 47 organization operations reviewed with tested organization/site/product/directory, DNS claim, policy/resource, event, group and managed-account subsets; limited project settings | Runtime policy enforcement, provider administration and Jira/Confluence schemes |
 | Apps | Webhooks and entity properties used by core features | Installation runtime, modules, isolation, storage, upgrades and app administration |
@@ -291,7 +291,7 @@ browser UI, sync behavior where applicable, and tests.
 11. **Service Management journeys.** Extend the delivered customer help center,
     typed request portal, owned request tracking, conversation, status flow and
     agent queue/assignment workspace with custom queues, an SLA timeline, service setup,
-    incident/problem/change experiences and service reporting.
+    incident/problem/change intake and linkage, conditional SLA goals and service reporting.
     Managers can now create, edit and delete validated JQL queues; agents use
     those views with permission-shaped service requests in JQL order, while
     built-in operational queues remain protected.
@@ -303,7 +303,10 @@ browser UI, sync behavior where applicable, and tests.
     clocks, attention ordering and escalations skip those dates.
     The service report workspace now exposes selectable 7/30/90 day request
     intake, open/resolved load, SLA-breach and CSAT measures with an accessible
-    daily chart and exact table.
+    daily chart, exact tables, request-type/channel breakdowns and persisted filters.
+    Existing and new desks seed help, incident, problem and change intake; the
+    latter two require descriptions, all operations requests receive stable Jira
+    labels, and agents link visible related work from the request journey.
 12. **Confluence contract completion.** Add the v1 and remaining v2 APIs, generic
     versioned content, ancestors/descendants, operations, comments, attachments,
     labels, likes, watches, tasks, properties, restrictions, space roles, CQL,

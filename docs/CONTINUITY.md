@@ -1335,12 +1335,26 @@ Validation after service report segmentation:
   preserves the filter while changing window, passes axe WCAG checks, and
   reflows without document overflow at 320 px.
 
+Validation after service operations intake and linkage:
+
+- Migration 072 backfills existing desks with ordered Problems and Changes
+  groups plus `Investigate a problem` and `Request a change` forms. New service
+  projects provision the same four help/incident/problem/change entry points.
+- Problem and change descriptions are required. Shared request creation assigns
+  exactly one deterministic operations label, keeping Jira JQL, automation,
+  queues, DORA and service reports on the canonical work item.
+- Agents link and unlink visible related Jira work from a request; portal
+  customers cannot see or mutate this internal operations graph. PostgreSQL
+  coverage proves provisioning, validation, labels and link persistence. The
+  Chromium journey discovers the new portal types, submits a change, links it
+  to an incident, and retains WCAG and 320 px checks.
+
 ## Current change
 
-1. Complete Jira Service Management journeys beyond the pinned contract:
-   incident/problem/change linkage.
-2. Continue into the Confluence v1/v2 contract and knowledge collaboration
-   workstreams after the remaining service journeys are browser-proven.
+1. Continue into the Confluence v1/v2 contract and knowledge collaboration
+   workstreams.
+2. Return to advanced service operations risk, CAB approval, on-call and
+   post-incident review configuration after the next knowledge slice.
 
 ## Resume here
 

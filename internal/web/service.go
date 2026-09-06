@@ -55,6 +55,8 @@ type servicePageData struct {
 	Queue                 *models.ServiceQueue
 	Comments              []models.ServiceRequestComment
 	Attachments           []models.ServiceRequestAttachment
+	Links                 []models.IssueLinkView
+	LinkTypes             []models.LinkType
 	Approvals             []models.ServiceApproval
 	Feedback              *models.ServiceRequestFeedback
 	Participants          []*models.User
@@ -963,6 +965,34 @@ func (h *Handler) ServiceRequestPage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	linkViews := []models.IssueLinkView{}
+	linkTypes := []models.LinkType{}
+	if canManage {
+		links, err := h.Store.LinksByIssue(r.Context(), request.Issue.ID)
+		if err != nil {
+			http.Error(w, "Could not load related operations work.", http.StatusInternalServerError)
+			return
+		}
+		for _, link := range links {
+			otherID, relationship := link.OutwardID, link.Inward
+			if link.OutwardID == request.Issue.ID {
+				otherID, relationship = link.InwardID, link.Outward
+			}
+			other, err := h.issueForUser(r, user, workspaceID, otherID)
+			if err != nil {
+				continue
+			}
+			linkViews = append(linkViews, models.IssueLinkView{ID: link.ID, Relationship: relationship, IssueKey: other.Key, Summary: other.Summary, Status: other.Status})
+		}
+		values, err := h.Store.LinkTypes(r.Context())
+		if err != nil {
+			http.Error(w, "Could not load operations relationship types.", http.StatusInternalServerError)
+			return
+		}
+		for _, value := range values {
+			linkTypes = append(linkTypes, *value)
+		}
+	}
 	configuredFields, err := h.Store.ServiceRequestTypeFields(r.Context(), workspaceID, request.ServiceDesk.ID, request.RequestType.ID)
 	if err != nil {
 		http.Error(w, "Could not load request fields.", http.StatusInternalServerError)
@@ -984,7 +1014,52 @@ func (h *Handler) ServiceRequestPage(w http.ResponseWriter, r *http.Request) {
 		}
 		requestFields = append(requestFields, serviceRequestFieldValueView{Name: field.Name, Value: fmt.Sprint(value)})
 	}
-	h.writeWorkspacePage(w, r, "page_service_request", user, workspaceID, servicePageData{Request: request, RequestFieldValues: requestFields, Comments: comments, Attachments: attachments, Approvals: approvals, Feedback: feedback, Participants: participants, Members: members, SLAs: slas, Transitions: transitions, CanAgent: canManage, CanManageParticipants: canManage || request.Customer.ID == user.ID, CurrentUserID: user.ID, Subscribed: subscribed, CanLeaveFeedback: request.Customer.ID == user.ID && request.Issue.Status.Category == "done"}, "service", request.Issue.ProjectID)
+	h.writeWorkspacePage(w, r, "page_service_request", user, workspaceID, servicePageData{Request: request, RequestFieldValues: requestFields, Comments: comments, Attachments: attachments, Links: linkViews, LinkTypes: linkTypes, Approvals: approvals, Feedback: feedback, Participants: participants, Members: members, SLAs: slas, Transitions: transitions, CanAgent: canManage, CanManageParticipants: canManage || request.Customer.ID == user.ID, CurrentUserID: user.ID, Subscribed: subscribed, CanLeaveFeedback: request.Customer.ID == user.ID && request.Issue.Status.Category == "done"}, "service", request.Issue.ProjectID)
+}
+
+func (h *Handler) ServiceRequestLink(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	request, canManage, err := h.serviceRequestForPage(r, workspaceID, user.ID, r.PathValue("key"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if !canManage {
+		http.Error(w, "Service agent access is required.", http.StatusForbidden)
+		return
+	}
+	if _, _, err := h.Commands.LinkIssue(r.Context(), user.ID, workspaceID, request.Issue.ID, r.PostFormValue("type"), strings.TrimSpace(r.PostFormValue("issue"))); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	redirectLocal(w, r, "/service/requests/"+request.Issue.Key+"#operations-links")
+}
+
+func (h *Handler) ServiceRequestLinkDelete(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	request, canManage, err := h.serviceRequestForPage(r, workspaceID, user.ID, r.PathValue("key"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if !canManage {
+		http.Error(w, "Service agent access is required.", http.StatusForbidden)
+		return
+	}
+	if _, err := h.Commands.DeleteIssueLink(r.Context(), user.ID, workspaceID, request.Issue.ID, r.PathValue("link")); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	redirectLocal(w, r, "/service/requests/"+request.Issue.Key+"#operations-links")
 }
 
 func (h *Handler) ServiceRequestParticipant(w http.ResponseWriter, r *http.Request) {

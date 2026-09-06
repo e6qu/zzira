@@ -160,8 +160,11 @@ have now been reviewed and are represented by explicit partial assessments.
 
 Request creation accepts string or Atlassian document format descriptions and
 request-type-specific text, number, and date-time custom fields, then stores the
-backing issue through the shared command layer. Incident request types
-automatically receive the `incident` label. Managers can define ordered JQL
+backing issue through the shared command layer. Existing and new desks seed
+help, incident, problem, and change request types. Operations requests receive
+one deterministic `incident`, `problem`, or `change` label, problem/change
+descriptions are required, and agents can link visible related Jira work from
+the service request without exposing those links to portal customers. Managers can define ordered JQL
 conditions per SLA metric; the first matching condition wins and every cycle
 snapshots the chosen goal name and duration so completed history remains stable.
 Active cycles follow edits to their selected goal, and the default remains the
@@ -180,5 +183,6 @@ service report comparisons, SLA goal distributions, exports and scheduled
 delivery, complete Assets object/schema/import APIs, full
 status chronology, SLA rule reordering and advanced criteria,
 portal invitation email delivery, Atlassian knowledge ranking/analytics, and
-incident/problem/change configuration remain. Customer creation grants only the
+advanced incident/problem/change risk, approval, on-call, and post-incident
+review configuration remain. Customer creation grants only the
 site `atlassian/customer` role and never silently grants Jira product access.

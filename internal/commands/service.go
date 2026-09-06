@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/e6qu/zzira/internal/jql"
 	"github.com/e6qu/zzira/internal/models"
@@ -46,14 +48,29 @@ func (s *Service) CreateServiceRequest(ctx context.Context, in CreateServiceRequ
 	if err := s.Store.EnrollServiceCustomer(ctx, in.WorkspaceID, in.CustomerID); err != nil {
 		return nil, err
 	}
-	labels := []string{}
+	labelSet := map[string]bool{}
 	for _, group := range requestType.GroupIDs {
-		if strings.EqualFold(group, "incidents") {
-			labels = append(labels, "incident")
+		switch strings.ToLower(group) {
+		case "incidents":
+			labelSet["incident"] = true
+		case "problems":
+			labelSet["problem"] = true
+		case "changes":
+			labelSet["change"] = true
 		}
 	}
-	if strings.Contains(strings.ToLower(requestType.Name), "incident") {
-		labels = append(labels, "incident")
+	name := strings.ToLower(requestType.Name)
+	words := strings.FieldsFunc(name, func(value rune) bool { return !unicode.IsLetter(value) && !unicode.IsDigit(value) })
+	for _, kind := range []string{"incident", "problem", "change"} {
+		if slices.Contains(words, kind) {
+			labelSet[kind] = true
+		}
+	}
+	labels := make([]string, 0, len(labelSet))
+	for _, kind := range []string{"incident", "problem", "change"} {
+		if labelSet[kind] {
+			labels = append(labels, kind)
+		}
 	}
 	issue, _, err := s.CreateIssue(ctx, CreateIssueInput{
 		ActorID: in.ActorID, ReporterID: in.CustomerID, WorkspaceID: in.WorkspaceID, ProjectIDOrKey: desk.ProjectID,
