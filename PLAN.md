@@ -79,7 +79,7 @@ semantics.
 | Knowledge | Spaces, page tree, page editing, drafts, versions and trash | Confluence v1, content types, collaboration, permissions, comments, attachments, macros, search and export |
 | Service management | None | Entire customer, agent, manager, portal, SLA, Assets and REST surface |
 | Analytics | Dashboard groupings and release progress | Historical reports, development facts, DORA, exports and scheduled delivery |
-| Administration | Organization/site/product/directory foundation, audited group and managed-account lifecycle, role access, search and statistics; limited project settings | Remaining organization identity/policy/audit APIs and Jira/Confluence schemes |
+| Administration | Organization/site/product/directory foundation, audited group and managed-account lifecycle, profiles, directory-scoped suspension, role access, search and statistics; limited project settings | Remaining organization identity/policy/audit APIs and Jira/Confluence schemes |
 | Apps | Webhooks and entity properties used by core features | Installation runtime, modules, isolation, storage, upgrades and app administration |
 
 The historical V0–V6 labels are retired. They described how the foundation was

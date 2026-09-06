@@ -383,3 +383,35 @@ func (h *Handler) UpdateAdminUserStatus(w http.ResponseWriter, r *http.Request) 
 	messages := map[string]string{"suspend": "User suspended", "restore": "User restored", "remove": "User removed"}
 	http.Redirect(w, r, "/admin?saved="+url.QueryEscape(messages[action]), http.StatusSeeOther)
 }
+
+func (h *Handler) UpdateAdminUserProfile(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form", http.StatusBadRequest)
+		return
+	}
+	data, err := h.adminData(r, workspaceID, "")
+	if err != nil || data.Directory == nil {
+		http.Error(w, "load directory", http.StatusInternalServerError)
+		return
+	}
+	err = h.Store.UpdateDirectoryUserProfile(r.Context(), workspaceID, user.ID, data.Directory.ID, r.PathValue("accountId"), store.ManagedProfileUpdate{
+		DisplayName: r.FormValue("displayName"), Nickname: r.FormValue("nickname"),
+		JobTitle: r.FormValue("jobTitle"), Department: r.FormValue("department"),
+		OrganizationName: r.FormValue("organization"), Location: r.FormValue("location"), TimeZone: r.FormValue("timeZone"),
+	})
+	if err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, store.ErrAdminValidation) {
+			status = http.StatusBadRequest
+		} else if errors.Is(err, pgx.ErrNoRows) || errors.Is(err, store.ErrAdminNotFound) {
+			status = http.StatusNotFound
+		}
+		http.Error(w, err.Error(), status)
+		return
+	}
+	http.Redirect(w, r, "/admin?saved="+url.QueryEscape("Profile updated"), http.StatusSeeOther)
+}

@@ -30,11 +30,12 @@ workspace membership and administration through this model.
 
 Site administrators use `/admin` to inspect organization and Cloud IDs, enabled
 products, the internal directory, users, groups, and recent audit events. They
-can invite, suspend, restore, or remove managed accounts; assign product access
-and groups during invitation; create or delete a group; add or remove directory
-users; and grant or revoke each group's Jira Software, Jira Service Management,
-and Confluence access. Suspension and removal revoke the
-account's active sessions and API tokens. Every successful user, group,
+can invite, edit the managed profile of, suspend, restore, or remove managed
+accounts; assign product access and groups during invitation; create or delete
+a group; add or remove directory users; and grant or revoke each group's Jira
+Software, Jira Service Management, and Confluence access. Suspension and
+removal revoke active sessions and API tokens when the account has no other
+active directory. Every successful user, group,
 membership, or role mutation writes an organization audit event in the same
 transaction. Administrators cannot suspend or remove their own account.
 Ordinary users do not see the administration navigation item and receive 403 on
@@ -101,22 +102,23 @@ eight failed attempts.
 
 The current server configuration serves one workspace/site. Organization
 discovery therefore returns the organization containing that site. Cross-site
-organization discovery, directory filters, SCIM lifecycle, user suspension,
-policy/domain/event endpoints, richer stored account profiles, per-directory
-account suspension for multi-site deployments, license limits, and full
+organization discovery, directory filters, SCIM provisioning and global
+deactivation, policy/domain/event endpoints, license limits, and full
 central-host rate limiting remain in
 the active plan and are reported as unassessed or missing in operation coverage.
 
 ## Verification
 
 - Store integration tests cover workspace provisioning, membership migration,
-  direct roles, group-derived administration and product access, revocation,
-  and audit events.
+  direct roles, group-derived administration and product access, managed
+  profiles, directory-scoped suspension across organizations, credential
+  revocation after the final active directory, and audit events.
 - API integration tests cover bearer authentication, permission denial,
   organization/directory/product discovery, group creation/detail/search/count/
   statistics/deletion, directory-user search/statistics, atomic invitation
   assignments and delivery enqueueing, membership and role mutations, effective
   assignments, partial results, conflicts, expansions, and audit persistence.
 - Playwright covers the complete group and product-access journey,
-  invitation-time product/group access, account lifecycle, ordinary-user denial, WCAG scans, light/dark
-  themes, and 320px reflow.
+  invitation-time product/group access, managed-profile editing, account
+  lifecycle, ordinary-user denial, WCAG scans, light/dark themes, and 320px
+  reflow.

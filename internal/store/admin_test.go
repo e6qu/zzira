@@ -87,6 +87,21 @@ func TestOrganizationProvisioningAndGroupAuthorization(t *testing.T) {
 	if len(users) != 2 {
 		t.Fatalf("directory users=%d, want 2", len(users))
 	}
+	if err := st.UpdateDirectoryUserProfile(ctx, workspaceID, adminID, directories[0].ID, memberID, ManagedProfileUpdate{
+		DisplayName: "Directory Member", Nickname: "Dee", JobTitle: "Service lead",
+		Department: "Support", OrganizationName: "Example", Location: "Bucharest", TimeZone: "Europe/Bucharest",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	users, err = st.DirectoryUsers(ctx, directories[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, user := range users {
+		if user.ID == memberID && (user.Nickname != "Dee" || user.JobTitle != "Service lead" || user.TimeZone != "Europe/Bucharest") {
+			t.Fatalf("managed profile was not persisted: %+v", user)
+		}
+	}
 	admin, err := st.IsAdmin(ctx, workspaceID, adminID)
 	if err != nil || !admin {
 		t.Fatalf("direct admin=%v, err=%v", admin, err)
@@ -138,11 +153,57 @@ func TestOrganizationProvisioningAndGroupAuthorization(t *testing.T) {
 	if err := st.SetRoleBinding(ctx, workspaceID, adminID, "group", group.ID, "product", products[0].ID, "atlassian/user", false); err != nil {
 		t.Fatal(err)
 	}
+	secondWorkspaceID := NewID("ws")
+	if _, err := st.Pool.Exec(ctx, `INSERT INTO workspaces(id,slug,name) VALUES($1,$1,'Second organization')`, secondWorkspaceID); err != nil {
+		t.Fatal(err)
+	}
+	secondOrganization, err := st.OrganizationByWorkspace(ctx, secondWorkspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM memberships WHERE workspace_id=$1`, secondWorkspaceID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM workspaces WHERE id=$1`, secondWorkspaceID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM organizations WHERE id::text=$1`, secondOrganization.ID)
+	}()
+	if err := st.AddMember(ctx, secondWorkspaceID, memberID, "member"); err != nil {
+		t.Fatal(err)
+	}
+	token := NewID("secret")
+	tokenID := NewID("tok")
+	if err := st.CreateAPIToken(ctx, tokenID, memberID, HashToken(token), "multi-directory"); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = st.Pool.Exec(ctx, `DELETE FROM api_tokens WHERE id=$1`, tokenID) }()
+	if err := st.SetDirectoryUserActive(ctx, workspaceID, adminID, directories[0].ID, memberID, false); err != nil {
+		t.Fatal(err)
+	}
+	if allowed, err := st.IsMember(ctx, workspaceID, memberID); err != nil || allowed {
+		t.Fatalf("suspended directory access=%v, err=%v", allowed, err)
+	}
+	if allowed, err := st.IsMember(ctx, secondWorkspaceID, memberID); err != nil || !allowed {
+		t.Fatalf("other directory access=%v, err=%v", allowed, err)
+	}
+	if tokenUser, err := st.UserByAPIToken(ctx, HashToken(token)); err != nil || tokenUser != memberID {
+		t.Fatalf("cross-organization token user=%q, err=%v", tokenUser, err)
+	}
+	users, err = st.DirectoryUsers(ctx, directories[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, user := range users {
+		if user.ID == memberID && (user.Active || !user.AccountActive || user.SuspendedAt == "") {
+			t.Fatalf("directory suspension profile=%+v", user)
+		}
+	}
+	if err := st.SetDirectoryUserActive(ctx, workspaceID, adminID, directories[0].ID, memberID, true); err != nil {
+		t.Fatal(err)
+	}
 	audit, err := st.OrganizationAuditEvents(ctx, organization.ID, 20)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(audit) != 5 {
-		t.Fatalf("audit events=%d, want 5", len(audit))
+	if len(audit) != 8 {
+		t.Fatalf("audit events=%d, want 8", len(audit))
 	}
 }

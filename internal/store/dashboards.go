@@ -24,7 +24,7 @@ type DashboardDetails struct {
 
 const dashboardAccess = `(d.owner_id=$2 OR d.share_permissions @> '[{"type":"loggedin"}]'::jsonb OR d.edit_permissions @> '[{"type":"loggedin"}]'::jsonb OR EXISTS(SELECT 1 FROM jsonb_array_elements(d.share_permissions || d.edit_permissions) perm WHERE perm->'user'->>'accountId'=$2))`
 const dashboardWritable = `(d.owner_id=$2 OR d.edit_permissions @> '[{"type":"loggedin"}]'::jsonb OR EXISTS(SELECT 1 FROM jsonb_array_elements(d.edit_permissions) perm WHERE perm->'user'->>'accountId'=$2))`
-const dashboardSelect = `SELECT d.id,d.workspace_id,d.owner_id,u.display_name,d.name,d.description,d.share_permissions,d.edit_permissions,d.layout,d.refresh_ms,EXISTS(SELECT 1 FROM dashboard_favourites f WHERE f.dashboard_id=d.id AND f.user_id=$2),(SELECT count(*) FROM dashboard_favourites f WHERE f.dashboard_id=d.id),` + dashboardWritable + ` FROM dashboards d JOIN users u ON u.id=d.owner_id WHERE d.workspace_id=$1 AND NOT d.deleted AND EXISTS(SELECT 1 FROM memberships WHERE workspace_id=$1 AND user_id=$2) AND ` + dashboardAccess
+const dashboardSelect = `SELECT d.id,d.workspace_id,d.owner_id,u.display_name,d.name,d.description,d.share_permissions,d.edit_permissions,d.layout,d.refresh_ms,EXISTS(SELECT 1 FROM dashboard_favourites f WHERE f.dashboard_id=d.id AND f.user_id=$2),(SELECT count(*) FROM dashboard_favourites f WHERE f.dashboard_id=d.id),` + dashboardWritable + ` FROM dashboards d JOIN users u ON u.id=d.owner_id WHERE d.workspace_id=$1 AND NOT d.deleted AND EXISTS(SELECT 1 FROM memberships m WHERE m.workspace_id=$1 AND m.user_id=$2 AND EXISTS (SELECT 1 FROM sites si JOIN directories dr ON dr.organization_id=si.organization_id JOIN directory_users du ON du.directory_id=dr.id AND du.user_id=m.user_id WHERE si.workspace_id=m.workspace_id AND dr.active AND du.active)) AND ` + dashboardAccess
 
 func scanDashboard(row pgx.Row) (*models.Dashboard, error) {
 	d := &models.Dashboard{}
@@ -96,7 +96,7 @@ func validateDashboardDetails(ctx context.Context, tx pgx.Tx, ws string, in *Das
 					return ErrDashboardValidation
 				}
 				var exists bool
-				if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM memberships m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=$1 AND m.user_id=$2 AND u.active)`, ws, perm.User.AccountID).Scan(&exists); err != nil {
+				if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM memberships m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=$1 AND m.user_id=$2 AND u.active AND EXISTS (SELECT 1 FROM sites si JOIN directories d ON d.organization_id=si.organization_id JOIN directory_users du ON du.directory_id=d.id AND du.user_id=m.user_id WHERE si.workspace_id=m.workspace_id AND d.active AND du.active))`, ws, perm.User.AccountID).Scan(&exists); err != nil {
 					return err
 				}
 				if !exists {

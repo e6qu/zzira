@@ -151,6 +151,12 @@ func TestOrganizationAndGroupAPIJourney(t *testing.T) {
 		t.Fatalf("unexpected directory page: %#v", directoryPage)
 	}
 	directoryID := directories[0].(map[string]any)["directoryId"].(string)
+	if err := st.UpdateDirectoryUserProfile(ctx, workspaceID, adminID, directoryID, memberID, store.ManagedProfileUpdate{
+		DisplayName: memberID, Nickname: "Support specialist", JobTitle: "Service manager",
+		Department: "Customer operations", OrganizationName: "Example", Location: "Remote", TimeZone: "Europe/Bucharest",
+	}); err != nil {
+		t.Fatal(err)
+	}
 	groupsPath := "/admin/v2/orgs/" + organization.ID + "/directories/" + directoryID + "/groups"
 	call(http.MethodPost, groupsPath, adminToken, map[string]string{"name": "invalid", "unknown": "field"}, http.StatusBadRequest)
 	call(http.MethodPost, groupsPath, adminToken, map[string]string{"name": "support-leads", "description": "Service owners"}, http.StatusCreated)
@@ -236,7 +242,8 @@ func TestOrganizationAndGroupAPIJourney(t *testing.T) {
 	}, http.StatusOK)
 	if len(userSearch["data"].([]any)) != 1 ||
 		len(userSearch["data"].([]any)[0].(map[string]any)["groups"].([]any)) != 1 ||
-		len(userSearch["data"].([]any)[0].(map[string]any)["productAccess"].([]any)) != 3 {
+		len(userSearch["data"].([]any)[0].(map[string]any)["productAccess"].([]any)) != 3 ||
+		userSearch["data"].([]any)[0].(map[string]any)["jobTitle"] != "Service manager" {
 		t.Fatalf("user search filters or expansions failed: %#v", userSearch)
 	}
 	userStats := call(http.MethodGet, usersPath+"/stats", adminToken, nil, http.StatusOK)
@@ -263,8 +270,8 @@ func TestOrganizationAndGroupAPIJourney(t *testing.T) {
 	call(http.MethodPost, invitePath, adminToken, map[string]any{"emails": []string{inviteEmail}, "sendNotification": true}, http.StatusServiceUnavailable)
 	handler.InvitationNotificationsConfigured = true
 	inviteRequest := map[string]any{
-		"emails": []string{inviteEmail},
-		"permissionRules": []map[string]string{{"resource": resourceID, "role": "atlassian/customer"}},
+		"emails":           []string{inviteEmail},
+		"permissionRules":  []map[string]string{{"resource": resourceID, "role": "atlassian/customer"}},
 		"additionalGroups": []string{groupID}, "sendNotification": true, "notificationText": "Welcome to the service team.",
 	}
 	invited := call(http.MethodPost, invitePath, adminToken, inviteRequest, http.StatusOK)
@@ -318,7 +325,7 @@ func TestOrganizationAndGroupAPIJourney(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(audit) != 15 {
-		t.Fatalf("audit events=%d, want 15", len(audit))
+	if len(audit) != 16 {
+		t.Fatalf("audit events=%d, want 16", len(audit))
 	}
 }

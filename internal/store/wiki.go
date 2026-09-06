@@ -16,7 +16,14 @@ var ErrWikiConflict = errors.New("the page changed; reload the latest version be
 
 // Wiki visibility is always evaluated against current membership. Private
 // spaces and drafts belong to their author; an admin can manage public spaces.
-const wikiSpaceVisible = `EXISTS (SELECT 1 FROM memberships wm JOIN users wu ON wu.id=wm.user_id AND wu.active WHERE wm.workspace_id=s.workspace_id AND wm.user_id=$2) AND (NOT s.private OR s.author_id=$2)`
+const wikiSpaceVisible = `EXISTS (
+  SELECT 1 FROM memberships wm JOIN users wu ON wu.id=wm.user_id AND wu.active
+  WHERE wm.workspace_id=s.workspace_id AND wm.user_id=$2 AND EXISTS (
+    SELECT 1 FROM sites si JOIN directories d ON d.organization_id=si.organization_id
+    JOIN directory_users du ON du.directory_id=d.id AND du.user_id=wm.user_id
+    WHERE si.workspace_id=wm.workspace_id AND d.active AND du.active
+  )
+) AND (NOT s.private OR s.author_id=$2)`
 const wikiPageVisible = `(p.published OR p.author_id=$2)`
 const wikiSpaceSelect = `SELECT s.id::text,s.workspace_id,s.key,s.name,s.description,s.author_id,s.private,to_char(s.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM wiki_spaces s`
 const wikiPageSelect = `SELECT p.id::text,s.workspace_id,p.space_id::text,COALESCE(p.parent_id::text,''),p.title,p.status,p.published,p.body,p.author_id,to_char(p.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),v.version,v.message,v.minor_edit,v.author_id,to_char(v.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM wiki_pages p JOIN wiki_spaces s ON s.id=p.space_id JOIN wiki_page_versions v ON v.page_id=p.id AND v.version=p.version`

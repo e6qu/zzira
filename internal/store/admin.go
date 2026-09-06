@@ -215,7 +215,10 @@ func (s *Store) DirectoryGroup(ctx context.Context, directoryID, groupID string)
 
 func (s *Store) DirectoryUsers(ctx context.Context, directoryID string) ([]*models.User, error) {
 	rows, err := s.Pool.Query(ctx, `
-		SELECT u.id,u.email,u.display_name,u.time_zone,u.active
+		SELECT u.id,u.email,u.display_name,u.time_zone,(du.active AND u.active),u.active,
+		       du.added_at,du.suspended_at,u.deactivated_at,du.management_source,
+		       u.nickname,u.job_title,u.department,u.organization_name,u.location,
+		       u.picture_url,u.avatar_url,u.email_verified,u.mfa_enabled
 		FROM directory_users du JOIN users u ON u.id=du.user_id
 		WHERE du.directory_id::text=$1 ORDER BY u.display_name,u.id`, directoryID)
 	if err != nil {
@@ -225,8 +228,20 @@ func (s *Store) DirectoryUsers(ctx context.Context, directoryID string) ([]*mode
 	users := make([]*models.User, 0)
 	for rows.Next() {
 		user := &models.User{AccountType: "atlassian"}
-		if err := rows.Scan(&user.ID, &user.Email, &user.DisplayName, &user.TimeZone, &user.Active); err != nil {
+		var addedAt time.Time
+		var suspendedAt, deactivatedAt *time.Time
+		if err := rows.Scan(&user.ID, &user.Email, &user.DisplayName, &user.TimeZone, &user.Active, &user.AccountActive,
+			&addedAt, &suspendedAt, &deactivatedAt, &user.ManagementSource,
+			&user.Nickname, &user.JobTitle, &user.Department, &user.OrganizationName, &user.Location,
+			&user.PictureURL, &user.AvatarURL, &user.EmailVerified, &user.MFAEnabled); err != nil {
 			return nil, err
+		}
+		user.AddedAt = formatAdminTime(addedAt)
+		if suspendedAt != nil {
+			user.SuspendedAt = formatAdminTime(*suspendedAt)
+		}
+		if deactivatedAt != nil {
+			user.DeactivatedAt = formatAdminTime(*deactivatedAt)
 		}
 		users = append(users, user)
 	}
@@ -265,10 +280,13 @@ func (s *Store) RolesForUserInWorkspace(ctx context.Context, workspaceID, userID
 		JOIN principals pr ON pr.principal_type=rb.principal_type AND pr.principal_id=rb.principal_id
 		JOIN users u ON u.id=$2 AND u.active
 		CROSS JOIN context c
-		WHERE (rb.scope_type='organization' AND rb.scope_id=c.organization_id::text)
+		WHERE EXISTS (
+		  SELECT 1 FROM directory_users du JOIN directories d ON d.id=du.directory_id
+		  WHERE du.user_id=$2 AND du.active AND d.active AND d.organization_id=c.organization_id
+		) AND ((rb.scope_type='organization' AND rb.scope_id=c.organization_id::text)
 		   OR (rb.scope_type='site' AND rb.scope_id=c.site_id::text)
 		   OR (rb.scope_type='product' AND rb.scope_id IN (
-		     SELECT p.id::text FROM products p WHERE p.site_id=c.site_id AND p.enabled))
+		     SELECT p.id::text FROM products p WHERE p.site_id=c.site_id AND p.enabled)))
 		ORDER BY rb.role_key`, workspaceID, userID)
 	if err != nil {
 		return nil, err
@@ -453,10 +471,29 @@ func (s *Store) SetDirectoryUserActive(ctx context.Context, workspaceID, actorID
 	if err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx, `UPDATE users SET active=$1 WHERE id=$2`, active, userID); err != nil {
+	if active {
+		var accountActive bool
+		if err := tx.QueryRow(ctx, `SELECT active FROM users WHERE id=$1`, userID).Scan(&accountActive); err != nil {
+			return err
+		}
+		if !accountActive {
+			return fmt.Errorf("%w: a deactivated account cannot be restored to a directory", ErrAdminConflict)
+		}
+	}
+	tag, err := tx.Exec(ctx, `
+		UPDATE directory_users SET active=$1,suspended_at=CASE WHEN $1 THEN NULL ELSE now() END
+		WHERE directory_id=$2::uuid AND user_id=$3 AND active<>$1`, active, directoryID, userID)
+	if err != nil {
 		return err
 	}
-	if !active {
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("%w: directory membership is already in the requested state", ErrAdminConflict)
+	}
+	var hasActiveDirectory bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM directory_users WHERE user_id=$1 AND active)`, userID).Scan(&hasActiveDirectory); err != nil {
+		return err
+	}
+	if !hasActiveDirectory {
 		if _, err := tx.Exec(ctx, `DELETE FROM sessions WHERE user_id=$1`, userID); err != nil {
 			return err
 		}
@@ -471,6 +508,67 @@ func (s *Store) SetDirectoryUserActive(ctx context.Context, workspaceID, actorID
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO organization_audit_events(organization_id,actor_id,action,target_type,target_id)
 		VALUES($1::uuid,$2,$3,'user',$4)`, organizationID, actorID, action, userID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+type ManagedProfileUpdate struct {
+	DisplayName      string
+	Nickname         string
+	JobTitle         string
+	Department       string
+	OrganizationName string
+	Location         string
+	TimeZone         string
+}
+
+func (s *Store) UpdateDirectoryUserProfile(ctx context.Context, workspaceID, actorID, directoryID, userID string, update ManagedProfileUpdate) error {
+	update.DisplayName = strings.TrimSpace(update.DisplayName)
+	update.Nickname = strings.TrimSpace(update.Nickname)
+	update.JobTitle = strings.TrimSpace(update.JobTitle)
+	update.Department = strings.TrimSpace(update.Department)
+	update.OrganizationName = strings.TrimSpace(update.OrganizationName)
+	update.Location = strings.TrimSpace(update.Location)
+	update.TimeZone = strings.TrimSpace(update.TimeZone)
+	if update.DisplayName == "" || len(update.DisplayName) > 255 || len(update.Nickname) > 255 ||
+		len(update.JobTitle) > 255 || len(update.Department) > 255 || len(update.OrganizationName) > 255 ||
+		len(update.Location) > 255 || len(update.TimeZone) > 100 {
+		return fmt.Errorf("%w: managed profile fields exceed their limits or the display name is empty", ErrAdminValidation)
+	}
+	if update.TimeZone == "" {
+		update.TimeZone = "UTC"
+	}
+	if _, err := time.LoadLocation(update.TimeZone); err != nil {
+		return fmt.Errorf("%w: time zone must be an IANA location", ErrAdminValidation)
+	}
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var organizationID string
+	if err := tx.QueryRow(ctx, `
+		SELECT d.organization_id::text FROM directory_users du
+		JOIN directories d ON d.id=du.directory_id
+		JOIN sites si ON si.organization_id=d.organization_id
+		WHERE du.directory_id::text=$1 AND du.user_id=$2 AND si.workspace_id=$3`, directoryID, userID, workspaceID).Scan(&organizationID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE users SET display_name=$2,nickname=$3,job_title=$4,department=$5,
+		 organization_name=$6,location=$7,time_zone=$8 WHERE id=$1`, userID,
+		update.DisplayName, update.Nickname, update.JobTitle, update.Department,
+		update.OrganizationName, update.Location, update.TimeZone); err != nil {
+		return err
+	}
+	detail, err := json.Marshal(map[string]any{"directoryId": directoryID, "fields": []string{"name", "nickname", "jobTitle", "department", "organization", "location", "timeZone"}})
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO organization_audit_events(organization_id,actor_id,action,target_type,target_id,detail)
+		VALUES($1::uuid,$2,'user.profile.updated','user',$3,$4)`, organizationID, actorID, userID, detail); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
@@ -511,11 +609,17 @@ func (s *Store) RemoveDirectoryUser(ctx context.Context, workspaceID, actorID, d
 	if _, err := tx.Exec(ctx, `DELETE FROM directory_users WHERE directory_id=$1::uuid AND user_id=$2`, directoryID, userID); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx, `DELETE FROM sessions WHERE user_id=$1`, userID); err != nil {
+	var hasActiveDirectory bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM directory_users WHERE user_id=$1 AND active)`, userID).Scan(&hasActiveDirectory); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx, `DELETE FROM api_tokens WHERE user_id=$1`, userID); err != nil {
-		return err
+	if !hasActiveDirectory {
+		if _, err := tx.Exec(ctx, `DELETE FROM sessions WHERE user_id=$1`, userID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `DELETE FROM api_tokens WHERE user_id=$1`, userID); err != nil {
+			return err
+		}
 	}
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO organization_audit_events(organization_id,actor_id,action,target_type,target_id)

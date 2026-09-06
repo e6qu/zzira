@@ -425,10 +425,13 @@ func bindingsMatch(context roleContext, bindings []*models.RoleBinding, resource
 }
 
 func userState(user *models.User) (status, accountStatus, membershipStatus string) {
+	if !user.AccountActive {
+		return "deactivated", "inactive", "suspended"
+	}
 	if user.Active {
 		return "active", "active", "active"
 	}
-	return "deactivated", "inactive", "suspended"
+	return "suspended", "active", "suspended"
 }
 
 func (h *Handler) SearchUsers(w http.ResponseWriter, r *http.Request) {
@@ -500,7 +503,7 @@ func (h *Handler) SearchUsers(w http.ResponseWriter, r *http.Request) {
 		if !includes(input.AccountIDs, user.ID) || !includes(input.Status, status) || !includes(input.AccountStatus, accountStatus) || !includes(input.MembershipStatus, membershipStatus) {
 			continue
 		}
-		if input.MFAEnabled != nil && *input.MFAEnabled || input.ClaimStatus == "unmanaged" {
+		if input.MFAEnabled != nil && *input.MFAEnabled != user.MFAEnabled || input.ClaimStatus == "unmanaged" {
 			continue
 		}
 		if input.SearchTerm != "" && !strings.Contains(strings.ToLower(user.DisplayName+" "+user.Email), strings.ToLower(input.SearchTerm)) || !matchesEmail(user.Email, input.Emails, input.EmailDomains) {
@@ -539,7 +542,7 @@ func (h *Handler) SearchUsers(w http.ResponseWriter, r *http.Request) {
 		if !bindingsMatch(context, bindings, input.ResourceIDs, nil, input.RoleIDs) {
 			continue
 		}
-		model := multiDirectoryUser(user)
+		model := h.multiDirectoryUser(user)
 		if includesExact(input.Expand, "counts.resources") {
 			model["counts"] = map[string]int{"resources": len(resources)}
 		}

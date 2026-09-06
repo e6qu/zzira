@@ -15,12 +15,26 @@ const (
 )
 
 type User struct {
-	ID          string `json:"accountId"`
-	Email       string `json:"emailAddress,omitempty"`
-	DisplayName string `json:"displayName"`
-	TimeZone    string `json:"timeZone,omitempty"`
-	Active      bool   `json:"active"`
-	AccountType string `json:"accountType"`
+	ID               string `json:"accountId"`
+	Email            string `json:"emailAddress,omitempty"`
+	DisplayName      string `json:"displayName"`
+	TimeZone         string `json:"timeZone,omitempty"`
+	Active           bool   `json:"active"`
+	AccountType      string `json:"accountType"`
+	AccountActive    bool   `json:"-"`
+	AddedAt          string `json:"-"`
+	SuspendedAt      string `json:"-"`
+	DeactivatedAt    string `json:"-"`
+	ManagementSource string `json:"-"`
+	Nickname         string `json:"-"`
+	JobTitle         string `json:"-"`
+	Department       string `json:"-"`
+	OrganizationName string `json:"-"`
+	Location         string `json:"-"`
+	PictureURL       string `json:"-"`
+	AvatarURL        string `json:"-"`
+	EmailVerified    bool   `json:"-"`
+	MFAEnabled       bool   `json:"-"`
 	// Username is a display handle for the UI's account control, not a Jira
 	// Cloud REST API field (accountId is the API identity); excluded from JSON.
 	Username string `json:"-"`

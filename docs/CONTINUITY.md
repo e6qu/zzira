@@ -83,6 +83,10 @@ does not publish them as one OpenAPI document.
   result details and 206 partial responses. Optional email delivery now uses a
   configured SMTP sender and a durable, leased, bounded-retry outbox; absent or
   partial SMTP configuration fails explicitly.
+- Added stored managed-account profiles and an audited administrator editing
+  journey. Directory memberships now carry independent active/suspended state;
+  access is removed only in that directory, and sessions and API tokens are
+  revoked after the account loses its final active directory.
 
 Validation after the organization foundation:
 
@@ -120,15 +124,21 @@ Validation after invitation access and delivery:
 - The focused Chromium journey passes invitation-time product/group access,
   account cleanup, WCAG scans, dark mode, and 320 px reflow.
 
+Validation after managed profiles and directory-scoped suspension:
+
+- Focused store, organization API, web, authorization, and server package tests
+  pass with migration 035 and PostgreSQL enabled.
+- The focused Chromium administration journey passes profile editing, account
+  lifecycle, WCAG scans in light and dark themes, and 320 px reflow.
+- `git diff --check` passes.
+
 ## Current change
 
-1. Complete richer managed-account profiles.
-2. Add per-directory membership state for multi-site account suspension.
-3. Complete remaining directory-user operations from the
+1. Complete remaining directory-user operations from the
    pinned Organizations contract.
-4. Add organization domains, authentication policies, identity-provider
+2. Add organization domains, authentication policies, identity-provider
    configuration, organization events, and the remaining central audit APIs.
-5. Extend revocation coverage from browser/API authorization to local replicas
+3. Extend revocation coverage from browser/API authorization to local replicas
    and queued mutations where the affected resource can already be cached.
 
 ## Resume here

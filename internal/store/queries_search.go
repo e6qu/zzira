@@ -78,9 +78,13 @@ func (s *Store) Search(ctx context.Context, workspaceID, userID string, c jql.Co
 // MembersByWorkspace lists workspace members (assignee pickers, user search).
 func (s *Store) MembersByWorkspace(ctx context.Context, workspaceID string) ([]*models.User, error) {
 	rows, err := s.Pool.Query(ctx, `
-		SELECT u.id, u.email, u.display_name, u.time_zone
+		SELECT DISTINCT u.id, u.email, u.display_name, u.time_zone
 		FROM memberships m JOIN users u ON u.id = m.user_id
 		WHERE m.workspace_id=$1 AND u.active
+		  AND EXISTS (
+		    SELECT 1 FROM sites si JOIN directories d ON d.organization_id=si.organization_id
+		    JOIN directory_users du ON du.directory_id=d.id AND du.user_id=u.id
+		    WHERE si.workspace_id=m.workspace_id AND d.active AND du.active)
 		ORDER BY u.display_name`, workspaceID)
 	if err != nil {
 		return nil, err
@@ -106,7 +110,11 @@ func (s *Store) MemberByID(ctx context.Context, workspaceID, userID string) (*mo
 		SELECT u.email, u.display_name, u.time_zone
 		FROM memberships m
 		JOIN users u ON u.id = m.user_id
-		WHERE m.workspace_id=$1 AND u.id=$2 AND u.active`, workspaceID, userID).
+		WHERE m.workspace_id=$1 AND u.id=$2 AND u.active
+		  AND EXISTS (
+		    SELECT 1 FROM sites si JOIN directories d ON d.organization_id=si.organization_id
+		    JOIN directory_users du ON du.directory_id=d.id AND du.user_id=u.id
+		    WHERE si.workspace_id=m.workspace_id AND d.active AND du.active)`, workspaceID, userID).
 		Scan(&u.Email, &u.DisplayName, &u.TimeZone)
 	if err != nil {
 		return nil, err
@@ -117,9 +125,13 @@ func (s *Store) MemberByID(ctx context.Context, workspaceID, userID string) (*mo
 // SearchMembers filters workspace members by name/email substring.
 func (s *Store) SearchMembers(ctx context.Context, workspaceID, query string) ([]*models.User, error) {
 	rows, err := s.Pool.Query(ctx, `
-		SELECT u.id, u.email, u.display_name, u.time_zone
+		SELECT DISTINCT u.id, u.email, u.display_name, u.time_zone
 		FROM memberships m JOIN users u ON u.id = m.user_id
 		WHERE m.workspace_id=$1 AND u.active
+		  AND EXISTS (
+		    SELECT 1 FROM sites si JOIN directories d ON d.organization_id=si.organization_id
+		    JOIN directory_users du ON du.directory_id=d.id AND du.user_id=u.id
+		    WHERE si.workspace_id=m.workspace_id AND d.active AND du.active)
 		  AND (u.display_name ILIKE $2 OR u.email ILIKE $2)
 		ORDER BY u.display_name LIMIT 50`, workspaceID, "%"+query+"%")
 	if err != nil {

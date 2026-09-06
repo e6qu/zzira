@@ -825,21 +825,34 @@ func (h *Handler) RoleAssignments(w http.ResponseWriter, r *http.Request) {
 }
 
 func userStatus(user *models.User) string {
-	if user.Active {
+	if user.AccountActive {
 		return "active"
 	}
 	return "inactive"
 }
 
-func multiDirectoryUser(user *models.User) map[string]any {
+func (h *Handler) multiDirectoryUser(user *models.User) map[string]any {
 	status, accountStatus, membershipStatus := userState(user)
-	return map[string]any{
+	nickname := user.Nickname
+	if nickname == "" {
+		nickname = user.DisplayName
+	}
+	model := map[string]any{
 		"accountId": user.ID, "accountType": "atlassian", "status": status,
 		"accountStatus": accountStatus, "membershipStatus": membershipStatus,
-		"name": user.DisplayName, "nickname": user.DisplayName, "email": user.Email,
-		"emailVerified": true, "claimStatus": "managed", "mfaEnabled": false,
-		"timeZone": user.TimeZone, "managementSource": "invited",
+		"addedToOrg": user.AddedAt, "name": user.DisplayName, "nickname": nickname, "email": user.Email,
+		"emailVerified": user.EmailVerified, "claimStatus": "managed", "mfaEnabled": user.MFAEnabled,
+		"timeZone": user.TimeZone, "managementSource": user.ManagementSource,
 	}
+	for key, value := range map[string]string{
+		"deactivatedOn": user.DeactivatedAt, "jobTitle": user.JobTitle, "department": user.Department,
+		"organization": user.OrganizationName, "location": user.Location, "picture": user.PictureURL, "avatar": user.AvatarURL,
+	} {
+		if value != "" {
+			model[key] = value
+		}
+	}
+	return model
 }
 
 func filterUsers(users []*models.User, query string) []*models.User {
@@ -888,7 +901,7 @@ func (h *Handler) DirectoryUsers(w http.ResponseWriter, r *http.Request) {
 	page, next := pageSlice(users, offset, limit)
 	data := make([]map[string]any, 0, len(page))
 	for _, user := range page {
-		data = append(data, multiDirectoryUser(user))
+		data = append(data, h.multiDirectoryUser(user))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": data, "links": map[string]any{"self": cursorFor(offset), "next": next}})
 }
@@ -983,7 +996,7 @@ func (h *Handler) DirectoryUserDetails(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, user := range users {
 		if user.ID == r.PathValue("userId") {
-			writeJSON(w, http.StatusOK, map[string]any{"data": multiDirectoryUser(user)})
+			writeJSON(w, http.StatusOK, map[string]any{"data": h.multiDirectoryUser(user)})
 			return
 		}
 	}
@@ -1011,6 +1024,8 @@ func (h *Handler) DirectoryUserLifecycle(w http.ResponseWriter, r *http.Request)
 	switch {
 	case errors.Is(err, store.ErrAdminValidation):
 		failure(w, http.StatusBadRequest, err.Error())
+	case errors.Is(err, store.ErrAdminConflict):
+		failure(w, http.StatusConflict, err.Error())
 	case errors.Is(err, pgx.ErrNoRows), errors.Is(err, store.ErrAdminNotFound):
 		failure(w, http.StatusNotFound, "Directory or user was not found.")
 	case err != nil:

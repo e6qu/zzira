@@ -204,6 +204,7 @@ func main() {
 	mux.HandleFunc("POST /admin/groups/{groupId}/roles", webHandler.UpdateAdminGroupRole)
 	mux.HandleFunc("POST /admin/users/invite", webHandler.InviteAdminUser)
 	mux.HandleFunc("POST /admin/users/{accountId}", webHandler.UpdateAdminUserStatus)
+	mux.HandleFunc("POST /admin/users/{accountId}/profile", webHandler.UpdateAdminUserProfile)
 	mux.HandleFunc("GET /wiki", webHandler.WikiHome)
 	mux.HandleFunc("POST /wiki/spaces", webHandler.WikiHome)
 	mux.HandleFunc("GET /wiki/spaces/{space}", webHandler.WikiSpacePage)
