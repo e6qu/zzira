@@ -108,6 +108,11 @@ workspace. New requests start both durable clocks. The first public agent reply
 completes the response cycle, reaching a Done status completes the resolution
 cycle, and reopening starts another resolution cycle.
 
+Administrators add, rename, or remove dated holidays in the same calendar
+workspace. Changes are scoped to the selected service desk and audited. SLA
+calculation, queue urgency, customer-visible goal state, and the escalation
+worker all read those persisted exclusions.
+
 The request page shows on-track, paused, breached and completed goal state.
 Elapsed and breach time skip non-working days and persisted holidays and honor
 time-zone transitions. The two Jira SLA REST operations are agent-only and
@@ -115,8 +120,8 @@ return Jira-compatible date, duration, completed-cycle and ongoing-cycle
 shapes. A durable minute worker emits one approaching-goal and one breached
 notification per clock and recipient, with transactionally synchronized
 notification actions. The SLA attention queue shows requests inside the final
-quarter of a goal and sorts breached requests first. Holiday administration,
-conditional goals, status-driven pauses and multiple calendars remain.
+quarter of a goal and sorts breached requests first. Conditional goals,
+status-driven pauses and multiple calendars remain.
 
 ## REST coverage
 
@@ -162,7 +167,7 @@ Assets-backed portal fields, participant notifications,
 approval workflow configuration, image thumbnail generation,
 email delivery and notification preference administration, CSAT configuration
 and aggregate service reports, complete Assets object/schema/import APIs, full
-status chronology, conditional SLA goal criteria, calendar holidays,
+status chronology, conditional SLA goal criteria,
 portal invitation email delivery, Atlassian knowledge ranking/analytics, and
 incident/problem/change configuration remain. Customer creation grants only the
 site `atlassian/customer` role and never silently grants Jira product access.

@@ -551,6 +551,19 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if err := handler.Commands.UpdateServiceCalendar(ctx, actorID, workspaceID, serviceDeskID, "Every day", "UTC", []int16{1, 2, 3, 4, 5, 6, 7}, 0, 1440); err != nil {
 		t.Fatal(err)
 	}
+	if err := handler.Commands.UpsertServiceCalendarHoliday(ctx, customerID, workspaceID, serviceDeskID, "2030-01-01", "Forbidden holiday"); err == nil {
+		t.Fatal("customer configured a service calendar holiday")
+	}
+	if err := handler.Commands.UpsertServiceCalendarHoliday(ctx, actorID, workspaceID, serviceDeskID, "2030-01-01", "Regional support shutdown"); err != nil {
+		t.Fatal(err)
+	}
+	calendar, err := st.ServiceCalendar(ctx, workspaceID, serviceDeskID)
+	if err != nil || calendar.Holidays["2030-01-01"] != "Regional support shutdown" {
+		t.Fatalf("service calendar holidays = %+v, %v", calendar, err)
+	}
+	if err := handler.Commands.DeleteServiceCalendarHoliday(ctx, actorID, workspaceID, serviceDeskID, "2030-01-01"); err != nil {
+		t.Fatal(err)
+	}
 	if err := handler.Commands.UpdateServiceSLAMetric(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], (2 * time.Hour).Milliseconds()); err != nil {
 		t.Fatal(err)
 	}
@@ -567,6 +580,10 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	var serviceConfigAudits int
 	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM organization_audit_events WHERE actor_id=$1 AND action IN ('service.calendar.updated','service.sla.updated')`, actorID).Scan(&serviceConfigAudits); err != nil || serviceConfigAudits != 2 {
 		t.Fatalf("service configuration audits = %d, %v", serviceConfigAudits, err)
+	}
+	var holidayAudits int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM organization_audit_events WHERE actor_id=$1 AND action LIKE 'service.calendar.holiday.%'`, actorID).Scan(&holidayAudits); err != nil || holidayAudits != 2 {
+		t.Fatalf("service holiday audits = %d, %v", holidayAudits, err)
 	}
 	escalationNow := time.Now().UTC().Truncate(time.Second)
 	if _, err := st.Pool.Exec(ctx, `UPDATE service_sla_cycles SET started_at=$2 WHERE request_issue_id=$1 AND metric_id=$3`, issue.ID, escalationNow.Add(-110*time.Minute), metricByKind["first_response"]); err != nil {

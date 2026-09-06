@@ -224,6 +224,32 @@ func (s *Service) UpdateServiceCalendar(ctx context.Context, actorID, workspaceI
 	return s.Store.UpdateServiceCalendar(ctx, workspaceID, actorID, serviceDeskID, name, timeZone, weekdays, startMinute, endMinute)
 }
 
+func (s *Service) UpsertServiceCalendarHoliday(ctx context.Context, actorID, workspaceID, serviceDeskID, day, name string) error {
+	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
+		return err
+	}
+	holiday, err := time.Parse(time.DateOnly, strings.TrimSpace(day))
+	if err != nil {
+		return fmt.Errorf("holiday date must use YYYY-MM-DD")
+	}
+	name = strings.TrimSpace(name)
+	if name == "" || len(name) > 255 {
+		return fmt.Errorf("holiday name is required and accepts at most 255 characters")
+	}
+	return s.Store.UpsertServiceCalendarHoliday(ctx, workspaceID, actorID, serviceDeskID, holiday, name)
+}
+
+func (s *Service) DeleteServiceCalendarHoliday(ctx context.Context, actorID, workspaceID, serviceDeskID, day string) error {
+	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
+		return err
+	}
+	holiday, err := time.Parse(time.DateOnly, strings.TrimSpace(day))
+	if err != nil {
+		return fmt.Errorf("holiday date must use YYYY-MM-DD")
+	}
+	return s.Store.DeleteServiceCalendarHoliday(ctx, workspaceID, actorID, serviceDeskID, holiday)
+}
+
 func (s *Service) validateServiceQueue(ctx context.Context, name, query string) (string, string, error) {
 	name, query = strings.TrimSpace(name), strings.TrimSpace(query)
 	if name == "" || len(name) > 255 {

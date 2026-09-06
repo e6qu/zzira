@@ -133,6 +133,56 @@ func (s *Store) UpdateServiceCalendar(ctx context.Context, workspaceID, actorID,
 	return tx.Commit(ctx)
 }
 
+func (s *Store) UpsertServiceCalendarHoliday(ctx context.Context, workspaceID, actorID, serviceDeskID string, holiday time.Time, name string) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var calendarID string
+	if err := tx.QueryRow(ctx, `
+		SELECT c.id FROM service_calendars c JOIN service_desks sd ON sd.id=c.service_desk_id
+		WHERE sd.workspace_id=$1 AND sd.id=$2`, workspaceID, serviceDeskID).Scan(&calendarID); err != nil {
+		return fmt.Errorf("service calendar does not exist")
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO service_calendar_holidays(calendar_id,holiday,name) VALUES($1,$2,$3)
+		ON CONFLICT(calendar_id,holiday) DO UPDATE SET name=EXCLUDED.name`, calendarID, holiday, name); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO organization_audit_events(organization_id,actor_id,action,target_type,target_id,detail)
+		SELECT organization_id,$2,'service.calendar.holiday.updated','service_calendar',$3,
+		       jsonb_build_object('serviceDeskId',$4::text,'holiday',$5::text,'name',$6::text)
+		FROM sites WHERE workspace_id=$1`, workspaceID, actorID, calendarID, serviceDeskID, holiday.Format(time.DateOnly), name); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (s *Store) DeleteServiceCalendarHoliday(ctx context.Context, workspaceID, actorID, serviceDeskID string, holiday time.Time) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var calendarID, name string
+	if err := tx.QueryRow(ctx, `
+		DELETE FROM service_calendar_holidays h USING service_calendars c,service_desks sd
+		WHERE h.calendar_id=c.id AND c.service_desk_id=sd.id AND sd.workspace_id=$1 AND sd.id=$2 AND h.holiday=$3
+		RETURNING c.id,h.name`, workspaceID, serviceDeskID, holiday).Scan(&calendarID, &name); err != nil {
+		return fmt.Errorf("calendar holiday does not exist")
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO organization_audit_events(organization_id,actor_id,action,target_type,target_id,detail)
+		SELECT organization_id,$2,'service.calendar.holiday.deleted','service_calendar',$3,
+		       jsonb_build_object('serviceDeskId',$4::text,'holiday',$5::text,'name',$6::text)
+		FROM sites WHERE workspace_id=$1`, workspaceID, actorID, calendarID, serviceDeskID, holiday.Format(time.DateOnly), name); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
 func (s *Store) CompleteServiceSLA(ctx context.Context, workspaceID, requestIssueID, kind string, at time.Time) error {
 	_, err := s.Pool.Exec(ctx, `
 		UPDATE service_sla_cycles c SET stopped_at=$4

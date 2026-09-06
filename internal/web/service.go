@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -33,6 +34,10 @@ type serviceRequestFieldValueView struct {
 	Name, Value string
 }
 
+type serviceCalendarHolidayView struct {
+	Day, Name string
+}
+
 type servicePageData struct {
 	Desks                 []models.ServiceDesk
 	Desk                  *models.ServiceDesk
@@ -50,6 +55,7 @@ type servicePageData struct {
 	Members               []*models.User
 	Agents                map[string]bool
 	Calendar              *models.ServiceCalendar
+	CalendarHolidays      []serviceCalendarHolidayView
 	SLAMetrics            []models.ServiceSLAMetric
 	SLAs                  []models.ServiceSLA
 	Customers             []*models.User
@@ -137,6 +143,10 @@ func (h *Handler) ServiceAgent(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "Could not load the service calendar.", http.StatusInternalServerError)
 				return
 			}
+			for day, name := range data.Calendar.Holidays {
+				data.CalendarHolidays = append(data.CalendarHolidays, serviceCalendarHolidayView{Day: day, Name: name})
+			}
+			sort.Slice(data.CalendarHolidays, func(i, j int) bool { return data.CalendarHolidays[i].Day < data.CalendarHolidays[j].Day })
 			data.SLAMetrics, err = h.Store.ServiceSLAMetrics(r.Context(), workspaceID, deskID)
 			if err != nil {
 				http.Error(w, "Could not load SLA goals.", http.StatusInternalServerError)
@@ -517,6 +527,28 @@ func (h *Handler) ServiceSLASettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	redirectLocal(w, r, "/service/agent/"+r.PathValue("desk")+"#sla-settings")
+}
+
+func (h *Handler) ServiceCalendarHolidaySettings(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	deskID, day := r.PathValue("desk"), r.PostFormValue("day")
+	var err error
+	if r.PostFormValue("action") == "delete" {
+		err = h.Commands.DeleteServiceCalendarHoliday(r.Context(), user.ID, workspaceID, deskID, day)
+	} else {
+		err = h.Commands.UpsertServiceCalendarHoliday(r.Context(), user.ID, workspaceID, deskID, day, r.PostFormValue("name"))
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	redirectLocal(w, r, "/service/agent/"+deskID+"#sla-settings")
 }
 
 func (h *Handler) ServiceHome(w http.ResponseWriter, r *http.Request) {

@@ -73,6 +73,8 @@ var adminAuditActions = []adminAuditAction{
 	{Value: "role.assigned", Name: "Role assigned"},
 	{Value: "role.revoked", Name: "Role revoked"},
 	{Value: "service.calendar.updated", Name: "Service calendar updated"},
+	{Value: "service.calendar.holiday.updated", Name: "Service calendar holiday updated"},
+	{Value: "service.calendar.holiday.deleted", Name: "Service calendar holiday deleted"},
 	{Value: "service.queue.created", Name: "Service queue created"},
 	{Value: "service.queue.deleted", Name: "Service queue deleted"},
 	{Value: "service.queue.updated", Name: "Service queue updated"},

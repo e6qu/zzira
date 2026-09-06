@@ -225,6 +225,13 @@ test('admin creates a service project with Jira Service Management request types
   await slaSettings.getByLabel('Ends').fill('18:00');
   await slaSettings.getByRole('button', { name: 'Save calendar' }).click();
   await expect(page.locator('#sla-settings').getByLabel('Starts')).toHaveValue('08:00');
+  const holidaySettings = page.locator('#sla-settings .service-calendar-holidays');
+  await holidaySettings.getByLabel('Holiday date').fill('2030-01-01');
+  await holidaySettings.getByLabel('Holiday name').fill('Regional support shutdown');
+  await holidaySettings.getByRole('button', { name: 'Add holiday' }).click();
+  await expect(page.locator('#sla-settings .service-calendar-holidays')).toContainText('Regional support shutdown');
+  await page.locator('#sla-settings .service-calendar-holidays').getByRole('button', { name: 'Remove holiday Regional support shutdown' }).click();
+  await expect(page.locator('#sla-settings .service-calendar-holidays')).not.toContainText('Regional support shutdown');
   const firstResponseGoal = page.locator('#sla-settings .service-sla-goals form').first();
   await firstResponseGoal.getByRole('spinbutton').fill('180');
   await firstResponseGoal.getByRole('button', { name: 'Save goal' }).click();

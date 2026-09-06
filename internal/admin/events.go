@@ -36,6 +36,8 @@ var organizationEventActions = map[string]string{
 	"role.assigned":                       "Role assigned",
 	"role.revoked":                        "Role revoked",
 	"service.calendar.updated":            "Service calendar updated",
+	"service.calendar.holiday.updated":    "Service calendar holiday updated",
+	"service.calendar.holiday.deleted":    "Service calendar holiday deleted",
 	"service.queue.created":               "Service queue created",
 	"service.queue.deleted":               "Service queue deleted",
 	"service.queue.updated":               "Service queue updated",

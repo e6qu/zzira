@@ -1281,10 +1281,23 @@ Validation after service request-type forms:
   through the portal, reads it on the request, passes WCAG scans and reflows at
   320 px. PostgreSQL contract coverage proves metadata, validation and storage.
 
+Validation after service calendar holiday administration:
+
+- Managers add, rename and remove dated holidays from each desk's calendar.
+  Commands enforce workspace-admin access, strict ISO dates and bounded names;
+  store mutations scope through the desk and write searchable organization
+  audit events.
+- Existing SLA calculation already excludes persisted calendar holidays. The
+  request clocks, attention queue and escalation runner therefore consume
+  manager changes without a second configuration path.
+- PostgreSQL coverage proves authorization, persistence, deletion and both
+  audit records. The combined Chromium service journey passes holiday
+  add/delete, WCAG scans and 320 px reflow.
+
 ## Current change
 
 1. Complete Jira Service Management journeys beyond the pinned contract:
-   conditional SLA goals, holidays,
+   conditional SLA goals,
    incident/problem/change linkage and service reports.
 2. Continue into the Confluence v1/v2 contract and knowledge collaboration
    workstreams after the remaining service journeys are browser-proven.
