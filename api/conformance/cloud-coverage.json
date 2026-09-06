@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 167,
+  "assessedTotal": 176,
   "counts": {
     "delivered": 0,
-    "partial": 160,
+    "partial": 169,
     "missing": 7,
-    "unassessed": 1040
+    "unassessed": 1031
   },
   "countsByFamily": {
     "automation": {
@@ -30,9 +30,9 @@
     },
     "jira-service-management": {
       "delivered": 0,
-      "partial": 28,
+      "partial": 37,
       "missing": 0,
-      "unassessed": 47
+      "unassessed": 38
     },
     "jira-software": {
       "delivered": 0,
@@ -6444,57 +6444,88 @@
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/approval",
       "family": "jira-service-management",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_approval_attachment.go",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Returns paged approval state, approvers, decisions and caller answerability; workflow-driven approval creation and expansion variants remain."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/approval/{approvalId}",
       "family": "jira-service-management",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_approval_attachment.go",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Returns one request-scoped approval with Jira-shaped dates and approver decisions; workflow-driven approval configuration remains."
     },
     {
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/request/{issueIdOrKey}/approval/{approvalId}",
       "family": "jira-service-management",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/commands/service_approval_attachment.go",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Enforces one decision by a pending assigned approver and computes decline or unanimous approval atomically; approval-stage workflow transitions remain."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/attachment",
       "family": "jira-service-management",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_approval_attachment.go",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Returns paged request attachments and filters internal files from customers; additional expansion and media metadata variants remain."
     },
     {
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/request/{issueIdOrKey}/attachment",
       "family": "jira-service-management",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/commands/service_approval_attachment.go",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Consumes actor-owned one-use temporary IDs and creates canonical Jira attachments linked to a public or internal comment; richer comment body forms remain."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/attachment/{attachmentId}",
       "family": "jira-service-management",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_approval_attachment.go",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Streams attachment content behind request and public/internal visibility checks; conditional range and cache headers remain."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/attachment/{attachmentId}/thumbnail",
       "family": "jira-service-management",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_approval_attachment.go",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Streams visible image content at the thumbnail URL; generated resized thumbnails and conditional cache headers remain."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/comment",
@@ -6545,9 +6576,13 @@
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/comment/{commentId}/attachment",
       "family": "jira-service-management",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_approval_attachment.go",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Returns attachments associated with a visible request comment and filters internal comments and files from customers; expansion variants remain."
     },
     {
       "operationId": "jira-service-management:DELETE:/rest/servicedeskapi/request/{issueIdOrKey}/notification",
@@ -6760,9 +6795,14 @@
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/servicedesk/{serviceDeskId}/attachTemporaryFile",
       "family": "jira-service-management",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/commands/service_approval_attachment.go",
+        "internal/commands/service_attachment_runner.go",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Accepts XSRF-protected multipart uploads with one-use temporary IDs and scheduled expiry cleanup; per-desk attachment-disable settings remain."
     },
     {
       "operationId": "jira-service-management:DELETE:/rest/servicedeskapi/servicedesk/{serviceDeskId}/customer",

@@ -182,6 +182,7 @@ func main() {
 	go (&automation.Runner{Service: automationSvc}).Run(ctx, workspaceID)
 	go (&store.APITaskRunner{Store: st}).Run(ctx, workspaceID)
 	go (&store.ServiceSLARunner{Store: st}).Run(ctx, workspaceID)
+	go (&commands.ServiceTemporaryAttachmentRunner{Service: cmdSvc}).Run(ctx)
 	if smtpSender != nil {
 		go (&mailer.Runner{Store: st, Sender: smtpSender}).Run(ctx)
 	}
@@ -225,6 +226,8 @@ func main() {
 	mux.HandleFunc("POST /service/portals/{desk}/request/{requestType}", webHandler.ServiceRequestForm)
 	mux.HandleFunc("GET /service/requests/{key}", webHandler.ServiceRequestPage)
 	mux.HandleFunc("POST /service/requests/{key}/comments", webHandler.ServiceRequestComment)
+	mux.HandleFunc("POST /service/requests/{key}/approvals", webHandler.ServiceRequestApproval)
+	mux.HandleFunc("POST /service/requests/{key}/approvals/{approval}", webHandler.ServiceRequestApprovalDecision)
 	mux.HandleFunc("POST /service/requests/{key}/transition", webHandler.ServiceRequestTransition)
 	mux.HandleFunc("POST /service/requests/{key}/participants", webHandler.ServiceRequestParticipant)
 	mux.HandleFunc("GET /service/agent", webHandler.ServiceAgent)

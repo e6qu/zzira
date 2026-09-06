@@ -24,6 +24,8 @@ type servicePageData struct {
 	Queues                []models.ServiceQueue
 	Queue                 *models.ServiceQueue
 	Comments              []models.ServiceRequestComment
+	Attachments           []models.ServiceRequestAttachment
+	Approvals             []models.ServiceApproval
 	Participants          []*models.User
 	Members               []*models.User
 	Agents                map[string]bool
@@ -34,6 +36,7 @@ type servicePageData struct {
 	CanAdmin              bool
 	CanAgent              bool
 	CanManageParticipants bool
+	CurrentUserID         string
 	Error                 string
 	Summary               string
 	Description           string
@@ -369,6 +372,16 @@ func (h *Handler) ServiceRequestPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load request comments.", http.StatusInternalServerError)
 		return
 	}
+	for i := range comments {
+		values, loadErr := h.Store.ServiceCommentAttachments(r.Context(), request.Issue.ID, comments[i].Comment.ID, canManage)
+		if loadErr != nil {
+			http.Error(w, "Could not load request attachments.", http.StatusInternalServerError)
+			return
+		}
+		for _, value := range values {
+			comments[i].Attachments = append(comments[i].Attachments, value.Attachment)
+		}
+	}
 	transitions, err := h.servicePageTransitions(r, workspaceID, user.ID, request)
 	if err != nil {
 		http.Error(w, "Could not load request transitions.", http.StatusInternalServerError)
@@ -384,7 +397,25 @@ func (h *Handler) ServiceRequestPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load request SLAs.", http.StatusInternalServerError)
 		return
 	}
-	h.writeWorkspacePage(w, r, "page_service_request", user, workspaceID, servicePageData{Request: request, Comments: comments, Participants: participants, SLAs: slas, Transitions: transitions, CanAgent: canManage, CanManageParticipants: canManage || request.Customer.ID == user.ID}, "service", request.Issue.ProjectID)
+	attachments, err := h.Store.ServiceRequestAttachments(r.Context(), request.Issue.ID, canManage)
+	if err != nil {
+		http.Error(w, "Could not load request attachments.", http.StatusInternalServerError)
+		return
+	}
+	approvals, err := h.Store.ServiceApprovals(r.Context(), request.Issue.ID)
+	if err != nil {
+		http.Error(w, "Could not load request approvals.", http.StatusInternalServerError)
+		return
+	}
+	members := []*models.User{}
+	if canManage {
+		members, err = h.Store.MembersByWorkspace(r.Context(), workspaceID)
+		if err != nil {
+			http.Error(w, "Could not load eligible approvers.", http.StatusInternalServerError)
+			return
+		}
+	}
+	h.writeWorkspacePage(w, r, "page_service_request", user, workspaceID, servicePageData{Request: request, Comments: comments, Attachments: attachments, Approvals: approvals, Participants: participants, Members: members, SLAs: slas, Transitions: transitions, CanAgent: canManage, CanManageParticipants: canManage || request.Customer.ID == user.ID, CurrentUserID: user.ID}, "service", request.Issue.ProjectID)
 }
 
 func (h *Handler) ServiceRequestParticipant(w http.ResponseWriter, r *http.Request) {
@@ -417,9 +448,16 @@ func (h *Handler) ServiceRequestComment(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	if !parseForm(w, r) {
+	r.Body = http.MaxBytesReader(w, r.Body, 32<<20)
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		http.Error(w, "Could not read the comment form.", http.StatusBadRequest)
 		return
 	}
+	defer func() {
+		if r.MultipartForm != nil {
+			_ = r.MultipartForm.RemoveAll()
+		}
+	}()
 	request, canManage, err := h.serviceRequestForPage(r, workspaceID, user.ID, r.PathValue("key"))
 	if err != nil {
 		http.NotFound(w, r)
@@ -429,11 +467,76 @@ func (h *Handler) ServiceRequestComment(w http.ResponseWriter, r *http.Request) 
 	if canManage {
 		public = r.PostFormValue("public") == "true"
 	}
-	if _, err := h.Commands.AddServiceRequestComment(r.Context(), user.ID, workspaceID, request.Issue.ID, json.RawMessage(nil), r.PostFormValue("body"), public); err != nil {
+	files := r.MultipartForm.File["file"]
+	if len(files) > 1 {
+		http.Error(w, "Attach one file at a time.", http.StatusBadRequest)
+		return
+	}
+	if len(files) == 1 {
+		file, openErr := files[0].Open()
+		if openErr != nil {
+			http.Error(w, "Could not read the attachment.", http.StatusBadRequest)
+			return
+		}
+		temporary, createErr := h.Commands.CreateServiceTemporaryAttachment(r.Context(), user.ID, workspaceID, request.ServiceDesk.ID, files[0].Filename, files[0].Header.Get("Content-Type"), file)
+		closeErr := file.Close()
+		if createErr != nil {
+			http.Error(w, createErr.Error(), http.StatusBadRequest)
+			return
+		}
+		if closeErr != nil {
+			http.Error(w, "Could not close the attachment.", http.StatusInternalServerError)
+			return
+		}
+		if _, _, err := h.Commands.CreateServiceAttachmentComment(r.Context(), user.ID, workspaceID, request.Issue.ID, []string{temporary.ID}, r.PostFormValue("body"), public); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	} else if _, err := h.Commands.AddServiceRequestComment(r.Context(), user.ID, workspaceID, request.Issue.ID, json.RawMessage(nil), r.PostFormValue("body"), public); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	redirectLocal(w, r, "/service/requests/"+request.Issue.Key+"#conversation")
+}
+
+func (h *Handler) ServiceRequestApproval(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	request, _, err := h.serviceRequestForPage(r, workspaceID, user.ID, r.PathValue("key"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if _, err := h.Commands.CreateServiceApproval(r.Context(), user.ID, workspaceID, request.Issue.ID, r.PostFormValue("name"), []string{r.PostFormValue("approver")}); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	redirectLocal(w, r, "/service/requests/"+request.Issue.Key+"#approvals")
+}
+
+func (h *Handler) ServiceRequestApprovalDecision(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	request, _, err := h.serviceRequestForPage(r, workspaceID, user.ID, r.PathValue("key"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if _, err := h.Commands.AnswerServiceApproval(r.Context(), user.ID, workspaceID, request.Issue.ID, r.PathValue("approval"), r.PostFormValue("decision")); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	redirectLocal(w, r, "/service/requests/"+request.Issue.Key+"#approvals")
 }
 
 func (h *Handler) ServiceRequestTransition(w http.ResponseWriter, r *http.Request) {

@@ -1,14 +1,18 @@
 package api3
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"mime/multipart"
 	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/e6qu/zzira/internal/attachments"
 	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/store"
 )
@@ -56,7 +60,11 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 		exec(`DELETE FROM api_tokens WHERE user_id IN ($1,$2,$3)`, actorID, customerID, agentID)
 		exec(`DELETE FROM users WHERE id IN ($1,$2,$3) OR email IN ('invited.customer@example.test','agent-created.customer@example.test')`, actorID, customerID, agentID)
 	})
-	handler := &Handler{Store: st, Commands: &commands.Service{Store: st}, WorkspaceSlug: workspaceID, BaseURL: "https://zzira.test"}
+	blobs, err := attachments.NewFS(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := &Handler{Store: st, Commands: &commands.Service{Store: st, Blobs: blobs}, Blobs: blobs, WorkspaceSlug: workspaceID, BaseURL: "https://zzira.test"}
 	callAs := func(accountID, method, path, body string, want int) *httptest.ResponseRecorder {
 		t.Helper()
 		request := httptest.NewRequest(method, path, strings.NewReader(body))
@@ -70,6 +78,31 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	}
 	call := func(method, path, body string, want int) *httptest.ResponseRecorder {
 		return callAs(actorID, method, path, body, want)
+	}
+	callMultipartAs := func(accountID, path, filename, content string, want int) *httptest.ResponseRecorder {
+		t.Helper()
+		var body bytes.Buffer
+		writer := multipart.NewWriter(&body)
+		part, err := writer.CreateFormFile("file", filename)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := part.Write([]byte(content)); err != nil {
+			t.Fatal(err)
+		}
+		if err := writer.Close(); err != nil {
+			t.Fatal(err)
+		}
+		request := httptest.NewRequest("POST", path, &body)
+		request.SetBasicAuth(accountID+"@example.test", accountID)
+		request.Header.Set("Content-Type", writer.FormDataContentType())
+		request.Header.Set("X-Atlassian-Token", "no-check")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != want {
+			t.Fatalf("POST %s: %d want %d: %s", path, response.Code, want, response.Body.String())
+		}
+		return response
 	}
 	created := call("POST", "/rest/api/3/project", `{"key":"HELP","name":"Help Center","projectTypeKey":"service_desk","projectTemplateKey":"com.atlassian.servicedesk:simplified-it-service-management","leadAccountId":"`+actorID+`"}`, 201)
 	if !strings.Contains(created.Body.String(), `"key":"HELP"`) {
@@ -155,6 +188,97 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	issue, err := st.IssueByIDOrKey(ctx, workspaceID, issueKey)
 	if err != nil || !strings.Contains(strings.Join(issue.Labels, ","), "incident") {
 		t.Fatalf("incident issue = %+v, %v", issue, err)
+	}
+	approval, err := handler.Commands.CreateServiceApproval(ctx, actorID, workspaceID, issue.ID, "Production change approval", []string{customerID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	approvalList := callAs(customerID, "GET", "/rest/servicedeskapi/request/"+issueKey+"/approval", "", 200)
+	if !strings.Contains(approvalList.Body.String(), `"canAnswerApproval":true`) || !strings.Contains(approvalList.Body.String(), "Production change approval") {
+		t.Fatal(approvalList.Body.String())
+	}
+	call("POST", "/rest/servicedeskapi/request/"+issueKey+"/approval/"+approval.ID, `{"decision":"approve"}`, 400)
+	approved := callAs(customerID, "POST", "/rest/servicedeskapi/request/"+issueKey+"/approval/"+approval.ID, `{"decision":"approve"}`, 200)
+	if !strings.Contains(approved.Body.String(), `"finalDecision":"approved"`) || !strings.Contains(approved.Body.String(), `"completedDate"`) {
+		t.Fatal(approved.Body.String())
+	}
+	callAs(customerID, "GET", "/rest/servicedeskapi/request/"+issueKey+"/approval/"+approval.ID, "", 200)
+	multiApproval, err := handler.Commands.CreateServiceApproval(ctx, actorID, workspaceID, issue.ID, "Two-person change approval", []string{customerID, agentID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pendingApproval := callAs(customerID, "POST", "/rest/servicedeskapi/request/"+issueKey+"/approval/"+multiApproval.ID, `{"decision":"approve"}`, 200)
+	if !strings.Contains(pendingApproval.Body.String(), `"finalDecision":"pending"`) {
+		t.Fatal(pendingApproval.Body.String())
+	}
+	declinedApproval := callAs(agentID, "POST", "/rest/servicedeskapi/request/"+issueKey+"/approval/"+multiApproval.ID, `{"decision":"decline"}`, 200)
+	if !strings.Contains(declinedApproval.Body.String(), `"finalDecision":"declined"`) {
+		t.Fatal(declinedApproval.Body.String())
+	}
+
+	temporaryResponse := callMultipartAs(customerID, "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/attachTemporaryFile", "customer-log.txt", "customer-visible-log", 201)
+	var temporaryBean struct {
+		TemporaryAttachments []struct {
+			ID string `json:"temporaryAttachmentId"`
+		} `json:"temporaryAttachments"`
+	}
+	if err := json.Unmarshal(temporaryResponse.Body.Bytes(), &temporaryBean); err != nil || len(temporaryBean.TemporaryAttachments) != 1 {
+		t.Fatalf("temporary attachment: %v %s", err, temporaryResponse.Body.String())
+	}
+	createdAttachment := callAs(customerID, "POST", "/rest/servicedeskapi/request/"+issueKey+"/attachment", `{"temporaryAttachmentIds":["`+temporaryBean.TemporaryAttachments[0].ID+`"],"public":true,"additionalComment":{"body":"Diagnostic log"}}`, 201)
+	if !strings.Contains(createdAttachment.Body.String(), "customer-log.txt") || !strings.Contains(createdAttachment.Body.String(), "Diagnostic log") {
+		t.Fatal(createdAttachment.Body.String())
+	}
+	var publicAttachmentID string
+	if err := st.Pool.QueryRow(ctx, `SELECT a.id FROM attachments a WHERE a.issue_id=$1 AND a.filename='customer-log.txt'`, issue.ID).Scan(&publicAttachmentID); err != nil {
+		t.Fatal(err)
+	}
+	var publicAttachmentCommentID string
+	if err := st.Pool.QueryRow(ctx, `SELECT comment_id FROM service_request_attachments WHERE attachment_id=$1`, publicAttachmentID).Scan(&publicAttachmentCommentID); err != nil {
+		t.Fatal(err)
+	}
+	commentAttachments := callAs(customerID, "GET", "/rest/servicedeskapi/request/"+issueKey+"/comment/"+publicAttachmentCommentID+"/attachment", "", 200)
+	if !strings.Contains(commentAttachments.Body.String(), "customer-log.txt") {
+		t.Fatal(commentAttachments.Body.String())
+	}
+	content := callAs(customerID, "GET", "/rest/servicedeskapi/request/"+issueKey+"/attachment/"+publicAttachmentID, "", 200)
+	if content.Body.String() != "customer-visible-log" {
+		t.Fatal(content.Body.String())
+	}
+	attachmentList := callAs(customerID, "GET", "/rest/servicedeskapi/request/"+issueKey+"/attachment?start=0&limit=50", "", 200)
+	if !strings.Contains(attachmentList.Body.String(), "customer-log.txt") {
+		t.Fatal(attachmentList.Body.String())
+	}
+
+	internalTemporary := callMultipartAs(actorID, "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/attachTemporaryFile", "agent-note.txt", "agent-only-note", 201)
+	if err := json.Unmarshal(internalTemporary.Body.Bytes(), &temporaryBean); err != nil {
+		t.Fatal(err)
+	}
+	call("POST", "/rest/servicedeskapi/request/"+issueKey+"/attachment", `{"temporaryAttachmentIds":["`+temporaryBean.TemporaryAttachments[0].ID+`"],"public":false,"additionalComment":{"body":"Internal evidence"}}`, 201)
+	var internalAttachmentID string
+	if err := st.Pool.QueryRow(ctx, `SELECT a.id FROM attachments a WHERE a.issue_id=$1 AND a.filename='agent-note.txt'`, issue.ID).Scan(&internalAttachmentID); err != nil {
+		t.Fatal(err)
+	}
+	customerAttachmentList := callAs(customerID, "GET", "/rest/servicedeskapi/request/"+issueKey+"/attachment?start=0&limit=50", "", 200)
+	if strings.Contains(customerAttachmentList.Body.String(), "agent-note.txt") {
+		t.Fatal(customerAttachmentList.Body.String())
+	}
+	callAs(customerID, "GET", "/rest/servicedeskapi/request/"+issueKey+"/attachment/"+internalAttachmentID, "", 404)
+	callAs(customerID, "GET", "/rest/api/3/attachment/content/"+internalAttachmentID, "", 404)
+	call("GET", "/rest/servicedeskapi/request/"+issueKey+"/attachment/"+internalAttachmentID+"/thumbnail", "", 200)
+	expiredTemporary := callMultipartAs(customerID, "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/attachTemporaryFile", "expired.txt", "expired-content", 201)
+	if err := json.Unmarshal(expiredTemporary.Body.Bytes(), &temporaryBean); err != nil {
+		t.Fatal(err)
+	}
+	var expiredBlobRef string
+	if err := st.Pool.QueryRow(ctx, `UPDATE service_temporary_attachments SET expires_at=now()-interval '1 minute' WHERE id=$1 RETURNING blob_ref`, temporaryBean.TemporaryAttachments[0].ID).Scan(&expiredBlobRef); err != nil {
+		t.Fatal(err)
+	}
+	if err := (&commands.ServiceTemporaryAttachmentRunner{Service: handler.Commands}).DrainOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := blobs.Get(ctx, expiredBlobRef); !errors.Is(err, attachments.ErrNotFound) {
+		t.Fatalf("expired temporary blob error = %v", err)
 	}
 	metrics, err := st.ServiceSLAMetrics(ctx, workspaceID, serviceDeskID)
 	if err != nil || len(metrics) != 2 {
@@ -364,5 +488,8 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	callAs(agentID, "GET", "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/queue", "", 403)
-	callAs(agentID, "GET", "/rest/servicedeskapi/request/"+issueKey, "", 404)
+	formerAgentView := callAs(agentID, "GET", "/rest/servicedeskapi/request/"+issueKey, "", 200)
+	if strings.Contains(formerAgentView.Body.String(), "Agent-only investigation detail") || strings.Contains(formerAgentView.Body.String(), "agent-note.txt") {
+		t.Fatal(formerAgentView.Body.String())
+	}
 }

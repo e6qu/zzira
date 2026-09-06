@@ -12,10 +12,11 @@ workflow and contributes to DORA recovery time through its `incident` label.
 
 Authenticated users can open `/service`, choose a service portal, search its
 request types, submit a typed request, review their requests, add public replies,
+upload and download customer-visible files, answer approvals assigned to them,
 and execute currently available workflow transitions. The request page exposes
-its status, request type, portal, channel, description, and conversation. The
-browser journey is tested in light and dark themes, with WCAG A/AA axe checks
-and 320 px reflow.
+its status, request type, portal, channel, description, conversation, files,
+and approval state. The browser journey is tested in light and dark themes,
+with WCAG A/AA axe checks and 320 px reflow.
 
 Assigned agents can read requests in their service desks by using
 `requestOwnership=ALL_REQUESTS`, raise a request for an enrolled customer, add
@@ -33,6 +34,20 @@ is shared by the queue UI, request UI, and REST permission checks. Site
 administrators can add or remove active workspace members from the desk roster.
 Revocation immediately removes queue access, all-request visibility, request
 management and internal-comment visibility for that desk.
+
+Agents can request an approval from an active site user. Every approver has an
+independent pending, approved, or declined decision. Any decline completes the
+approval as declined; otherwise it completes only after every approver accepts.
+Only a pending assigned approver can answer, and an approver can open the request
+even when they are neither its reporter nor a participant.
+
+The portal and REST API share Jira's canonical attachment records and blob
+store. Uploads first receive a one-use service-desk temporary ID, then become a
+public or internal comment attachment in one finalize operation. Customers see
+and download only public files; assigned agents see both. This boundary also
+applies through the ordinary Jira attachment metadata and content routes.
+Unclaimed temporary blobs expire after 24 hours and an hourly worker removes
+their metadata and bytes.
 
 Reporters and agents can add active service customers as request participants
 by account ID or email. Participants appear on the request, can read its public
@@ -72,7 +87,10 @@ The current `/rest/servicedeskapi` slice implements:
   optional comment; and
 - queue list/detail/issues with optional live counts;
 - participant list, add, and remove with participant-shaped visibility; and
-- paged SLA list and metric detail with business-calendar cycles.
+- paged SLA list and metric detail with business-calendar cycles;
+- approval list, detail, and assigned-user decisions; and
+- temporary upload, request/comment attachment listing, finalize-with-comment,
+  content, and thumbnail reads.
 
 Request creation accepts string or Atlassian document format descriptions and
 stores the backing issue through the shared command layer. Incident request
@@ -83,7 +101,8 @@ is compensated by a logged issue deletion, so no orphaned ticket remains.
 
 The implemented operations are assessed as partial. Custom queues and arbitrary
 queue JQL, dynamic form/custom-field values, participant notifications and
-organizations, request attachments, approvals, notifications, feedback, full
+organizations, approval workflow configuration, image thumbnail generation,
+notifications, feedback, full
 status chronology, conditional SLA goal criteria, calendar holidays,
 portal invitation activation, knowledge suggestions, Assets, and
 incident/problem/change configuration remain. Customer creation records a

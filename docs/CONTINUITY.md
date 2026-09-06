@@ -1167,10 +1167,27 @@ Validation after SLA attention and escalation:
   deduplication and queue membership. The combined Chromium journey confirms
   SLA-attention discovery in the responsive queue workspace.
 
+Validation after request approvals and attachments:
+
+- Migration 064 adds multi-user approvals, one-use service-desk temporary
+  uploads, canonical Jira attachment links, comment association and explicit
+  public/internal visibility.
+- Agents request approval in the request view; only a pending assigned approver
+  can approve or decline. Any decline finishes the approval and unanimous
+  acceptance approves it. Approver assignment also grants request visibility.
+- REST implements approval list/detail/decision, temporary multipart upload,
+  attachment finalization with a comment, request/comment lists, content and
+  thumbnail reads. Internal visibility is enforced through both JSM and Jira
+  attachment routes.
+- The portal accepts a file with a public or internal comment and shows linked
+  files and approval actions in the request journey. An hourly worker deletes
+  unclaimed temporary metadata and blobs after 24 hours.
+- Exact-operation review is now 176/1,207: 169 partial, 7 missing and 1,031
+  unassessed.
+
 ## Current change
 
-1. Implement Jira Service Management approvals and request attachments, then
-   request notifications and feedback.
+1. Implement Jira Service Management request notifications and feedback.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 

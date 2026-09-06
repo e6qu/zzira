@@ -39,8 +39,35 @@ type ServiceRequest struct {
 // ServiceRequestComment records which Jira comments may cross the customer
 // portal boundary. Comments without a row are agent-internal by default.
 type ServiceRequestComment struct {
-	Comment Comment
-	Public  bool
+	Comment     Comment
+	Public      bool
+	Attachments []Attachment
+}
+
+type ServiceApprover struct {
+	User      *User
+	Decision  string
+	DecidedAt *time.Time
+}
+
+type ServiceApproval struct {
+	ID, RequestIssueID, Name, FinalDecision string
+	CreatedAt                               time.Time
+	CompletedAt                             *time.Time
+	Approvers                               []ServiceApprover
+}
+
+type ServiceTemporaryAttachment struct {
+	ID, WorkspaceID, ServiceDeskID, AuthorID string
+	Filename, MimeType, BlobRef              string
+	Size                                     int64
+	CreatedAt, ExpiresAt                     time.Time
+}
+
+type ServiceRequestAttachment struct {
+	Attachment Attachment
+	CommentID  string
+	Public     bool
 }
 
 // ServiceQueue is an ordered agent work view for one service desk.

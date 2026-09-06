@@ -75,6 +75,17 @@ test('admin creates a service project with Jira Service Management request types
   await page.getByLabel('Add to the conversation').fill('The impact is increasing across regions.');
   await page.getByRole('button', { name: 'Add comment' }).click();
   await expect(page.locator('.service-comments')).toContainText('The impact is increasing across regions.');
+  await page.getByLabel('Add to the conversation').fill('Attached customer diagnostics.');
+  await page.getByLabel('Attachment').setInputFiles({ name: 'diagnostics.txt', mimeType: 'text/plain', buffer: Buffer.from('checkout diagnostics') });
+  await page.getByRole('button', { name: 'Add comment' }).click();
+  await expect(page.locator('.service-comments')).toContainText('diagnostics.txt');
+  await expect(page.getByRole('heading', { name: 'Attachments' })).toBeVisible();
+  await page.getByLabel('Request approval').fill('Incident manager approval');
+  await page.getByLabel('Approver').selectOption({ label: 'Demo User' });
+  await page.getByRole('button', { name: 'Request approval' }).click();
+  await expect(page.locator('#approvals')).toContainText('Incident manager approval');
+  await page.locator('#approvals').getByRole('button', { name: 'Approve' }).click();
+  await expect(page.locator('#approvals')).toContainText('approved');
   await page.getByRole('button', { name: /In Progress/ }).click();
   await expect(page.locator('.service-current-status')).toHaveText('In Progress');
   await accessible(page);

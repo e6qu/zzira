@@ -206,7 +206,9 @@ func (s *Store) ServiceRequest(ctx context.Context, workspaceID, viewerID, issue
 	return s.serviceRequestFromRow(ctx, workspaceID, s.Pool.QueryRow(ctx, serviceRequestMetadataSelect+`
 		JOIN issues i ON i.id=sr.issue_id
 		WHERE sr.workspace_id=$1 AND (sr.issue_id=$3 OR upper(i.key)=upper($3))
-		  AND ($4 OR sr.customer_id=$2 OR EXISTS(SELECT 1 FROM service_request_participants p WHERE p.request_issue_id=sr.issue_id AND p.user_id=$2))`, workspaceID, viewerID, issueIDOrKey, allowAll))
+		  AND ($4 OR sr.customer_id=$2
+		    OR EXISTS(SELECT 1 FROM service_request_participants p WHERE p.request_issue_id=sr.issue_id AND p.user_id=$2)
+		    OR EXISTS(SELECT 1 FROM service_request_approvals a JOIN service_request_approvers ap ON ap.approval_id=a.id WHERE a.request_issue_id=sr.issue_id AND ap.user_id=$2))`, workspaceID, viewerID, issueIDOrKey, allowAll))
 }
 
 func (s *Store) ServiceRequestParticipants(ctx context.Context, requestIssueID string) ([]*models.User, error) {
@@ -357,6 +359,140 @@ func (s *Store) ServiceRequestComment(ctx context.Context, requestIssueID, comme
 		return nil, err
 	}
 	return value, nil
+}
+
+func (s *Store) CreateServiceApproval(ctx context.Context, workspaceID, requestIssueID, actorID, name string, approverIDs []string) (*models.ServiceApproval, error) {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var id string
+	err = tx.QueryRow(ctx, `INSERT INTO service_request_approvals(request_issue_id,name,created_by)
+		SELECT sr.issue_id,$3,$4 FROM service_requests sr WHERE sr.workspace_id=$1 AND sr.issue_id=$2 RETURNING id`, workspaceID, requestIssueID, name, actorID).Scan(&id)
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	inserted := 0
+	for _, userID := range approverIDs {
+		if seen[userID] {
+			continue
+		}
+		seen[userID] = true
+		result, err := tx.Exec(ctx, `INSERT INTO service_request_approvers(approval_id,user_id)
+			SELECT $1,u.id FROM users u WHERE u.id=$2 AND u.active AND (
+			EXISTS(SELECT 1 FROM memberships m WHERE m.workspace_id=$3 AND m.user_id=u.id)
+			OR EXISTS(SELECT 1 FROM service_customers c WHERE c.workspace_id=$3 AND c.user_id=u.id AND c.active)) ON CONFLICT DO NOTHING`, id, userID, workspaceID)
+		if err != nil {
+			return nil, err
+		}
+		if result.RowsAffected() == 0 {
+			return nil, fmt.Errorf("approver %q is not an active user in this site", userID)
+		}
+		inserted++
+	}
+	if inserted == 0 {
+		return nil, fmt.Errorf("at least one approver is required")
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return s.ServiceApproval(ctx, requestIssueID, id)
+}
+
+func (s *Store) ServiceApprovals(ctx context.Context, requestIssueID string) ([]models.ServiceApproval, error) {
+	rows, err := s.Pool.Query(ctx, `SELECT id,name,final_decision,created_at,completed_at FROM service_request_approvals WHERE request_issue_id=$1 ORDER BY created_at,id::bigint`, requestIssueID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	values := make([]models.ServiceApproval, 0)
+	for rows.Next() {
+		var v models.ServiceApproval
+		v.RequestIssueID = requestIssueID
+		if err := rows.Scan(&v.ID, &v.Name, &v.FinalDecision, &v.CreatedAt, &v.CompletedAt); err != nil {
+			return nil, err
+		}
+		v.Approvers, err = s.ServiceApprovers(ctx, v.ID)
+		if err != nil {
+			return nil, err
+		}
+		values = append(values, v)
+	}
+	return values, rows.Err()
+}
+
+func (s *Store) ServiceApproval(ctx context.Context, requestIssueID, approvalID string) (*models.ServiceApproval, error) {
+	v := &models.ServiceApproval{RequestIssueID: requestIssueID}
+	err := s.Pool.QueryRow(ctx, `SELECT id,name,final_decision,created_at,completed_at FROM service_request_approvals WHERE request_issue_id=$1 AND id=$2`, requestIssueID, approvalID).Scan(&v.ID, &v.Name, &v.FinalDecision, &v.CreatedAt, &v.CompletedAt)
+	if err != nil {
+		return nil, err
+	}
+	v.Approvers, err = s.ServiceApprovers(ctx, v.ID)
+	return v, err
+}
+
+func (s *Store) ServiceApprovers(ctx context.Context, approvalID string) ([]models.ServiceApprover, error) {
+	rows, err := s.Pool.Query(ctx, `SELECT user_id,decision,decided_at FROM service_request_approvers WHERE approval_id=$1 ORDER BY user_id`, approvalID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	values := make([]models.ServiceApprover, 0)
+	for rows.Next() {
+		var v models.ServiceApprover
+		var userID string
+		if err := rows.Scan(&userID, &v.Decision, &v.DecidedAt); err != nil {
+			return nil, err
+		}
+		v.User, err = s.UserByID(ctx, userID)
+		if err != nil {
+			return nil, err
+		}
+		values = append(values, v)
+	}
+	return values, rows.Err()
+}
+
+func (s *Store) AnswerServiceApproval(ctx context.Context, requestIssueID, approvalID, actorID, decision string) (*models.ServiceApproval, error) {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var final string
+	if err := tx.QueryRow(ctx, `SELECT final_decision FROM service_request_approvals WHERE request_issue_id=$1 AND id=$2 FOR UPDATE`, requestIssueID, approvalID).Scan(&final); err != nil {
+		return nil, err
+	}
+	if final != "pending" {
+		return nil, fmt.Errorf("approval has already been completed")
+	}
+	result, err := tx.Exec(ctx, `UPDATE service_request_approvers SET decision=$4,decided_at=now() WHERE approval_id=$1 AND user_id=$2 AND decision='pending' AND EXISTS(SELECT 1 FROM service_request_approvals WHERE id=$1 AND request_issue_id=$3)`, approvalID, actorID, requestIssueID, decision)
+	if err != nil {
+		return nil, err
+	}
+	if result.RowsAffected() == 0 {
+		return nil, fmt.Errorf("approval is not assigned to this user or was already answered")
+	}
+	var declined, pending bool
+	if err := tx.QueryRow(ctx, `SELECT bool_or(decision='declined'),bool_or(decision='pending') FROM service_request_approvers WHERE approval_id=$1`, approvalID).Scan(&declined, &pending); err != nil {
+		return nil, err
+	}
+	if declined {
+		final = "declined"
+	} else if !pending {
+		final = "approved"
+	}
+	if final != "pending" {
+		if _, err := tx.Exec(ctx, `UPDATE service_request_approvals SET final_decision=$2,completed_at=now() WHERE id=$1`, approvalID, final); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return s.ServiceApproval(ctx, requestIssueID, approvalID)
 }
 
 func scanServiceQueue(row interface{ Scan(...any) error }) (*models.ServiceQueue, error) {

@@ -61,6 +61,18 @@ func (h *Handler) serviceDeskRoute(w http.ResponseWriter, r *http.Request) {
 		h.getServiceRequest(w, r, workspaceID, parts[1])
 	case len(parts) == 3 && parts[0] == "request" && parts[2] == "comment" && (r.Method == http.MethodGet || r.Method == http.MethodPost):
 		h.serviceRequestComments(w, r, workspaceID, parts[1], "")
+	case len(parts) == 5 && parts[0] == "request" && parts[2] == "comment" && parts[4] == "attachment" && r.Method == http.MethodGet:
+		h.serviceCommentAttachments(w, r, workspaceID, parts[1], parts[3])
+	case len(parts) == 3 && parts[0] == "request" && parts[2] == "approval" && r.Method == http.MethodGet:
+		h.serviceRequestApprovals(w, r, workspaceID, parts[1], "")
+	case len(parts) == 4 && parts[0] == "request" && parts[2] == "approval" && (r.Method == http.MethodGet || r.Method == http.MethodPost):
+		h.serviceRequestApprovals(w, r, workspaceID, parts[1], parts[3])
+	case len(parts) == 3 && parts[0] == "request" && parts[2] == "attachment" && (r.Method == http.MethodGet || r.Method == http.MethodPost):
+		h.serviceRequestAttachments(w, r, workspaceID, parts[1])
+	case len(parts) == 4 && parts[0] == "request" && parts[2] == "attachment" && r.Method == http.MethodGet:
+		h.serviceRequestAttachmentContent(w, r, workspaceID, parts[1], parts[3], false)
+	case len(parts) == 5 && parts[0] == "request" && parts[2] == "attachment" && parts[4] == "thumbnail" && r.Method == http.MethodGet:
+		h.serviceRequestAttachmentContent(w, r, workspaceID, parts[1], parts[3], true)
 	case len(parts) == 3 && parts[0] == "request" && parts[2] == "participant" && (r.Method == http.MethodGet || r.Method == http.MethodPost || r.Method == http.MethodDelete):
 		h.serviceRequestParticipants(w, r, workspaceID, parts[1])
 	case len(parts) == 4 && parts[0] == "request" && parts[2] == "comment" && r.Method == http.MethodGet:
@@ -109,6 +121,8 @@ func (h *Handler) serviceDeskRoute(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, http.StatusOK, serviceRequestTypeBean(h.BaseURL, *requestType))
+	case len(parts) == 3 && parts[0] == "servicedesk" && parts[2] == "attachTemporaryFile" && r.Method == http.MethodPost:
+		h.attachServiceTemporaryFiles(w, r, workspaceID, parts[1])
 	case len(parts) == 3 && parts[0] == "servicedesk" && parts[2] == "queue" && r.Method == http.MethodGet:
 		h.listServiceQueues(w, r, workspaceID, parts[1])
 	case len(parts) == 4 && parts[0] == "servicedesk" && parts[2] == "queue" && r.Method == http.MethodGet:
@@ -565,7 +579,22 @@ func (h *Handler) serviceRequestBean(r *http.Request, workspaceID, viewerID stri
 	}
 	commentBeans := make([]map[string]any, 0, len(comments))
 	for _, comment := range comments {
+		attachments, err := h.Store.ServiceCommentAttachments(r.Context(), request.Issue.ID, comment.Comment.ID, canManage)
+		if err != nil {
+			return nil, err
+		}
+		for _, attachment := range attachments {
+			comment.Attachments = append(comment.Attachments, attachment.Attachment)
+		}
 		commentBeans = append(commentBeans, h.serviceCommentBean(request, comment))
+	}
+	attachments, err := h.Store.ServiceRequestAttachments(r.Context(), request.Issue.ID, canManage)
+	if err != nil {
+		return nil, err
+	}
+	attachmentBeans := make([]map[string]any, 0, len(attachments))
+	for _, attachment := range attachments {
+		attachmentBeans = append(attachmentBeans, h.serviceAttachmentBean(request, attachment.Attachment))
 	}
 	participants, err := h.Store.ServiceRequestParticipants(r.Context(), request.Issue.ID)
 	if err != nil {
@@ -599,7 +628,7 @@ func (h *Handler) serviceRequestBean(r *http.Request, workspaceID, viewerID stri
 		"requestFieldValues": fields, "currentStatus": status, "status": status,
 		"createdDate": serviceDate(request.CreatedAt), "channel": request.Channel,
 		"comments":    map[string]any{"start": 0, "limit": 50, "size": len(commentBeans), "isLastPage": true, "values": commentBeans},
-		"attachments": []any{}, "sla": slaBeans, "actions": []any{}, "_expands": []string{"serviceDesk", "requestType", "currentStatus"},
+		"attachments": map[string]any{"start": 0, "limit": 50, "size": len(attachmentBeans), "isLastPage": true, "values": attachmentBeans}, "sla": slaBeans, "actions": []any{}, "_expands": []string{"serviceDesk", "requestType", "currentStatus"},
 		"_links": map[string]string{
 			"self": h.BaseURL + "/rest/servicedeskapi/request/" + request.Issue.Key,
 			"web":  h.BaseURL + "/service/requests/" + request.Issue.Key,
@@ -657,10 +686,14 @@ func (h *Handler) serviceRequestParticipants(w http.ResponseWriter, r *http.Requ
 }
 
 func (h *Handler) serviceCommentBean(request *models.ServiceRequest, comment models.ServiceRequestComment) map[string]any {
+	attachments := make([]map[string]any, 0, len(comment.Attachments))
+	for _, attachment := range comment.Attachments {
+		attachments = append(attachments, h.serviceAttachmentBean(request, attachment))
+	}
 	return map[string]any{
 		"id": comment.Comment.ID, "body": serviceADFText(comment.Comment.Body), "renderedBody": adf.ToHTML(comment.Comment.Body),
 		"public": comment.Public, "author": h.serviceUserBean(&models.User{ID: comment.Comment.AuthorID, DisplayName: comment.Comment.AuthorName, Active: true, AccountType: "atlassian"}),
-		"created": serviceDate(parseServiceDate(comment.Comment.Created)), "attachments": []any{}, "_expands": []any{},
+		"created": serviceDate(parseServiceDate(comment.Comment.Created)), "attachments": map[string]any{"start": 0, "limit": 50, "size": len(attachments), "isLastPage": true, "values": attachments}, "_expands": []any{},
 		"_links": map[string]string{"self": h.BaseURL + "/rest/servicedeskapi/request/" + request.Issue.Key + "/comment/" + comment.Comment.ID},
 	}
 }
@@ -707,6 +740,14 @@ func (h *Handler) serviceRequestComments(w http.ResponseWriter, r *http.Request,
 			jiraError(w, http.StatusNotFound, "Comment does not exist or is not visible.")
 			return
 		}
+		attachments, err := h.Store.ServiceCommentAttachments(r.Context(), request.Issue.ID, comment.Comment.ID, canManage)
+		if err != nil {
+			jiraError(w, http.StatusInternalServerError, "Could not load comment attachments.")
+			return
+		}
+		for _, attachment := range attachments {
+			comment.Attachments = append(comment.Attachments, attachment.Attachment)
+		}
 		writeJSON(w, http.StatusOK, h.serviceCommentBean(request, *comment))
 		return
 	}
@@ -717,6 +758,14 @@ func (h *Handler) serviceRequestComments(w http.ResponseWriter, r *http.Request,
 	}
 	beans := make([]map[string]any, 0, len(comments))
 	for _, comment := range comments {
+		attachments, err := h.Store.ServiceCommentAttachments(r.Context(), request.Issue.ID, comment.Comment.ID, canManage)
+		if err != nil {
+			jiraError(w, http.StatusInternalServerError, "Could not load comment attachments.")
+			return
+		}
+		for _, attachment := range attachments {
+			comment.Attachments = append(comment.Attachments, attachment.Attachment)
+		}
 		beans = append(beans, h.serviceCommentBean(request, comment))
 	}
 	h.writeServicePage(w, r, beans)

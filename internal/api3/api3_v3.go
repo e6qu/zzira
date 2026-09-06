@@ -301,5 +301,18 @@ func (h *Handler) attachmentForUser(r *http.Request, workspaceID, userID, attach
 	if !visible {
 		return nil, &jerr{status: http.StatusNotFound, message: "Attachment does not exist."}
 	}
+	isService, public, err := h.Store.ServiceAttachmentIsPublic(r.Context(), attachmentID)
+	if err != nil {
+		return nil, &jerr{status: http.StatusInternalServerError, message: "internal error"}
+	}
+	if isService && !public {
+		canManage, err := h.Store.CanManageServiceRequest(r.Context(), workspaceID, userID, att.IssueID)
+		if err != nil {
+			return nil, &jerr{status: http.StatusInternalServerError, message: "internal error"}
+		}
+		if !canManage {
+			return nil, &jerr{status: http.StatusNotFound, message: "Attachment does not exist."}
+		}
+	}
 	return att, nil
 }
