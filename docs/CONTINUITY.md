@@ -1185,9 +1185,29 @@ Validation after request approvals and attachments:
 - Exact-operation review is now 176/1,207: 169 partial, 7 missing and 1,031
   unassessed.
 
+Validation after request notifications and feedback:
+
+- Migration 065 adds per-viewer request subscriptions and reporter-owned CSAT.
+  Existing and new reporters and participants start subscribed; approval
+  assignment subscribes the approver.
+- Public comments/files, status and approval changes notify subscribed viewers
+  other than the actor. Internal comments notify subscribed agents only.
+  Delivery uses the existing private notification records and ordered sync
+  actions, and inbox links return to the service request.
+- The three pinned subscription operations share request visibility and mutate
+  only the caller's preference. The three feedback operations enforce a
+  one-to-five `csat` rating on completed requests, reporter-only writes/deletes,
+  and viewer reads.
+- The request page exposes mute/resume controls and a completed-request
+  satisfaction journey. PostgreSQL covers delivery and internal-note isolation;
+  Chromium covers both controls with accessibility and responsive checks.
+- Exact-operation review is now 182/1,207: 175 partial, 7 missing and 1,025
+  unassessed.
+
 ## Current change
 
-1. Implement Jira Service Management request notifications and feedback.
+1. Implement Jira Service Management organizations and complete customer
+   lifecycle operations.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 

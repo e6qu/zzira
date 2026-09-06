@@ -5,11 +5,12 @@ import "encoding/json"
 // Rank is the LexoRank ordering key; carried on issue snapshots so replicas
 // order board columns without extra state.
 const (
-	EntityBoard        = "board"
-	EntitySprint       = "sprint"
-	EntitySprintIssue  = "sprint_issue"
-	EntityWatcher      = "watcher"
-	EntityNotification = "notification"
+	EntityBoard          = "board"
+	EntitySprint         = "sprint"
+	EntitySprintIssue    = "sprint_issue"
+	EntityWatcher        = "watcher"
+	EntityNotification   = "notification"
+	EntityServiceRequest = "service_request"
 )
 
 type Board struct {

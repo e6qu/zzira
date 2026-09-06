@@ -48,6 +48,9 @@ func notificationsPageURL(view string, page int) string {
 }
 
 func notificationDestination(notification *models.Notification) string {
+	if notification.EntityType == models.EntityServiceRequest && notification.EntityID != "" {
+		return "/service/requests/" + url.PathEscape(notification.EntityID)
+	}
 	if notification.EntityType == models.EntityIssue && notification.EntityID != "" {
 		return "/browse/" + url.PathEscape(notification.EntityID)
 	}
@@ -56,6 +59,14 @@ func notificationDestination(notification *models.Notification) string {
 
 func notificationKindLabel(kind string) string {
 	switch kind {
+	case "service_comment":
+		return "Service request comment"
+	case "service_status":
+		return "Service request status"
+	case "service_approval":
+		return "Service request approval"
+	case "service_feedback":
+		return "Customer satisfaction"
 	case "assigned":
 		return "Assignment"
 	case "mentioned":

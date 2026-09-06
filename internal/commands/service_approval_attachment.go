@@ -30,7 +30,14 @@ func (s *Service) CreateServiceApproval(ctx context.Context, actorID, workspaceI
 	if len(approverIDs) == 0 {
 		return nil, fmt.Errorf("at least one approver is required")
 	}
-	return s.Store.CreateServiceApproval(ctx, workspaceID, request.Issue.ID, actorID, name, approverIDs)
+	approval, err := s.Store.CreateServiceApproval(ctx, workspaceID, request.Issue.ID, actorID, name, approverIDs)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.notifyServiceRequestUsers(ctx, actorID, workspaceID, request, approverIDs, "service_approval", "requested your approval on "+request.Issue.Key, false); err != nil {
+		return nil, err
+	}
+	return approval, nil
 }
 
 func (s *Service) AnswerServiceApproval(ctx context.Context, actorID, workspaceID, issueIDOrKey, approvalID, decision string) (*models.ServiceApproval, error) {
@@ -52,7 +59,14 @@ func (s *Service) AnswerServiceApproval(ctx context.Context, actorID, workspaceI
 	if err != nil {
 		return nil, fmt.Errorf("request does not exist")
 	}
-	return s.Store.AnswerServiceApproval(ctx, request.Issue.ID, approvalID, actorID, decision)
+	approval, err := s.Store.AnswerServiceApproval(ctx, request.Issue.ID, approvalID, actorID, decision)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.notifyServiceRequestSubscribers(ctx, actorID, workspaceID, request, "service_approval", decision+" approval on "+request.Issue.Key, false); err != nil {
+		return nil, err
+	}
+	return approval, nil
 }
 
 func (s *Service) CreateServiceTemporaryAttachment(ctx context.Context, actorID, workspaceID, serviceDeskID, filename, mimeType string, r io.Reader) (*models.ServiceTemporaryAttachment, error) {
@@ -112,7 +126,7 @@ func (s *Service) CreateServiceAttachmentComment(ctx context.Context, actorID, w
 	if strings.TrimSpace(body) == "" {
 		body = "Added attachments."
 	}
-	comment, err := s.AddServiceRequestComment(ctx, actorID, workspaceID, request.Issue.ID, json.RawMessage(nil), body, public)
+	comment, err := s.addServiceRequestComment(ctx, actorID, workspaceID, request.Issue.ID, json.RawMessage(nil), body, public, false)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -127,6 +141,9 @@ func (s *Service) CreateServiceAttachmentComment(ctx context.Context, actorID, w
 	comment.Attachments = make([]models.Attachment, 0, len(values))
 	for _, value := range values {
 		comment.Attachments = append(comment.Attachments, value.Attachment)
+	}
+	if err := s.afterServiceRequestComment(ctx, actorID, workspaceID, request, public, canManage); err != nil {
+		return nil, nil, err
 	}
 	return values, comment, nil
 }

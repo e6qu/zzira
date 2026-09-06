@@ -1827,6 +1827,42 @@
       "status": "partial",
       "evidence": ["internal/api3/service_test.go", "internal/api3/service_approval_attachment.go", "docs/SERVICE_MANAGEMENT.md"],
       "notes": "Returns attachments associated with a visible request comment and filters internal comments and files from customers; expansion variants remain."
+    },
+    {
+      "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/notification",
+      "status": "partial",
+      "evidence": ["internal/api3/service_test.go", "internal/api3/service_feedback.go", "e2e/service.spec.ts", "docs/SERVICE_MANAGEMENT.md"],
+      "notes": "Returns the authenticated viewer's durable request subscription state after applying request visibility; notification policy administration remains."
+    },
+    {
+      "operationId": "jira-service-management:PUT:/rest/servicedeskapi/request/{issueIdOrKey}/notification",
+      "status": "partial",
+      "evidence": ["internal/api3/service_test.go", "internal/commands/service_notifications_feedback.go", "e2e/service.spec.ts", "docs/SERVICE_MANAGEMENT.md"],
+      "notes": "Subscribes the authenticated viewer and delivers public request events through the private notification stream; external email delivery remains."
+    },
+    {
+      "operationId": "jira-service-management:DELETE:/rest/servicedeskapi/request/{issueIdOrKey}/notification",
+      "status": "partial",
+      "evidence": ["internal/api3/service_test.go", "internal/commands/service_notifications_feedback.go", "e2e/service.spec.ts", "docs/SERVICE_MANAGEMENT.md"],
+      "notes": "Unsubscribes only the authenticated viewer without changing request access; administrator notification policies remain."
+    },
+    {
+      "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{requestIdOrKey}/feedback",
+      "status": "partial",
+      "evidence": ["internal/api3/service_test.go", "internal/api3/service_feedback.go", "e2e/service.spec.ts", "docs/SERVICE_MANAGEMENT.md"],
+      "notes": "Returns request-visible CSAT feedback with rating and optional comment; configured satisfaction scales and aggregate reporting remain."
+    },
+    {
+      "operationId": "jira-service-management:POST:/rest/servicedeskapi/request/{requestIdOrKey}/feedback",
+      "status": "partial",
+      "evidence": ["internal/api3/service_test.go", "internal/commands/service_notifications_feedback.go", "e2e/service.spec.ts", "docs/SERVICE_MANAGEMENT.md"],
+      "notes": "Creates or revises one-to-five CSAT feedback for the reporter of a completed request and notifies subscribed agents; CSAT configuration remains."
+    },
+    {
+      "operationId": "jira-service-management:DELETE:/rest/servicedeskapi/request/{requestIdOrKey}/feedback",
+      "status": "partial",
+      "evidence": ["internal/api3/service_test.go", "internal/commands/service_notifications_feedback.go", "docs/SERVICE_MANAGEMENT.md"],
+      "notes": "Deletes feedback only for the request reporter; Connect app authorization and audit export remain."
     }
   ]
 }

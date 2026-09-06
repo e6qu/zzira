@@ -15,7 +15,7 @@ request types, submit a typed request, review their requests, add public replies
 upload and download customer-visible files, answer approvals assigned to them,
 and execute currently available workflow transitions. The request page exposes
 its status, request type, portal, channel, description, conversation, files,
-and approval state. The browser journey is tested in light and dark themes,
+approval state, notification preference, and satisfaction feedback. The browser journey is tested in light and dark themes,
 with WCAG A/AA axe checks and 320 px reflow.
 
 Assigned agents can read requests in their service desks by using
@@ -48,6 +48,19 @@ and download only public files; assigned agents see both. This boundary also
 applies through the ordinary Jira attachment metadata and content routes.
 Unclaimed temporary blobs expire after 24 hours and an hourly worker removes
 their metadata and bytes.
+
+Reporters, participants, approvers, and agents can subscribe to a request they
+can view. Reporters and newly added participants start subscribed, approval
+assignment also subscribes the approver, and each viewer can mute or resume
+updates. Public comments, attachments, status changes, and approval decisions
+create private inbox notifications for subscribed viewers other than the actor.
+Internal notes notify subscribed agents only. Notification actions synchronize
+through the existing per-user notification stream and open the portal request.
+
+After a request reaches Done, its reporter can submit, revise, read, or delete a
+one-to-five customer satisfaction rating with an optional comment. Agents and
+other request viewers can read the result but cannot change it. Subscribed
+agents receive a notification when the reporter leaves feedback.
 
 Reporters and agents can add active service customers as request participants
 by account ID or email. Participants appear on the request, can read its public
@@ -90,7 +103,9 @@ The current `/rest/servicedeskapi` slice implements:
 - paged SLA list and metric detail with business-calendar cycles;
 - approval list, detail, and assigned-user decisions; and
 - temporary upload, request/comment attachment listing, finalize-with-comment,
-  content, and thumbnail reads.
+  content, and thumbnail reads;
+- per-user request subscription status, subscribe, and unsubscribe; and
+- customer satisfaction feedback create, read, update, and delete.
 
 Request creation accepts string or Atlassian document format descriptions and
 stores the backing issue through the shared command layer. Incident request
@@ -102,7 +117,8 @@ is compensated by a logged issue deletion, so no orphaned ticket remains.
 The implemented operations are assessed as partial. Custom queues and arbitrary
 queue JQL, dynamic form/custom-field values, participant notifications and
 organizations, approval workflow configuration, image thumbnail generation,
-notifications, feedback, full
+email delivery and notification preference administration, CSAT configuration
+and aggregate service reports, full
 status chronology, conditional SLA goal criteria, calendar holidays,
 portal invitation activation, knowledge suggestions, Assets, and
 incident/problem/change configuration remain. Customer creation records a

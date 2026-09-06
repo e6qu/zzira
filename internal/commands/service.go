@@ -119,6 +119,10 @@ func (s *Service) CreateServiceCustomer(ctx context.Context, actorID, workspaceI
 }
 
 func (s *Service) AddServiceRequestComment(ctx context.Context, actorID, workspaceID, issueIDOrKey string, body json.RawMessage, plainText string, public bool) (*models.ServiceRequestComment, error) {
+	return s.addServiceRequestComment(ctx, actorID, workspaceID, issueIDOrKey, body, plainText, public, true)
+}
+
+func (s *Service) addServiceRequestComment(ctx context.Context, actorID, workspaceID, issueIDOrKey string, body json.RawMessage, plainText string, public, emitSideEffects bool) (*models.ServiceRequestComment, error) {
 	canManage, err := s.Store.CanManageServiceRequest(ctx, workspaceID, actorID, issueIDOrKey)
 	if err != nil {
 		return nil, err
@@ -138,12 +142,21 @@ func (s *Service) AddServiceRequestComment(ctx context.Context, actorID, workspa
 		_, cleanupErr := s.DeleteComment(ctx, actorID, workspaceID, comment.ID)
 		return nil, errors.Join(err, cleanupErr)
 	}
-	if public && canManage {
-		if err := s.Store.CompleteServiceSLA(ctx, workspaceID, request.Issue.ID, "first_response", time.Now().UTC()); err != nil {
+	if emitSideEffects {
+		if err := s.afterServiceRequestComment(ctx, actorID, workspaceID, request, public, canManage); err != nil {
 			return nil, err
 		}
 	}
 	return &models.ServiceRequestComment{Comment: *comment, Public: public}, nil
+}
+
+func (s *Service) afterServiceRequestComment(ctx context.Context, actorID, workspaceID string, request *models.ServiceRequest, public, canManage bool) error {
+	if public && canManage {
+		if err := s.Store.CompleteServiceSLA(ctx, workspaceID, request.Issue.ID, "first_response", time.Now().UTC()); err != nil {
+			return err
+		}
+	}
+	return s.notifyServiceRequestSubscribers(ctx, actorID, workspaceID, request, "service_comment", "commented on "+request.Issue.Key, !public)
 }
 
 func (s *Service) TransitionServiceRequest(ctx context.Context, actorID, workspaceID, issueIDOrKey, transitionID string) (*models.ServiceRequest, error) {
@@ -166,7 +179,14 @@ func (s *Service) TransitionServiceRequest(ctx context.Context, actorID, workspa
 	} else if err := s.Store.EnsureResolutionSLA(ctx, workspaceID, request.Issue.ID, time.Now().UTC()); err != nil {
 		return nil, err
 	}
-	return s.Store.ServiceRequest(ctx, workspaceID, actorID, request.Issue.ID, canManage)
+	request, err = s.Store.ServiceRequest(ctx, workspaceID, actorID, request.Issue.ID, canManage)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.notifyServiceRequestSubscribers(ctx, actorID, workspaceID, request, "service_status", "moved "+request.Issue.Key+" to "+request.Issue.Status.Name, false); err != nil {
+		return nil, err
+	}
+	return request, nil
 }
 
 func (s *Service) SetServiceDeskAgent(ctx context.Context, actorID, workspaceID, serviceDeskID, userID string, enabled bool) error {

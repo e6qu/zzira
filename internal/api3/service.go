@@ -69,6 +69,10 @@ func (h *Handler) serviceDeskRoute(w http.ResponseWriter, r *http.Request) {
 		h.serviceRequestApprovals(w, r, workspaceID, parts[1], parts[3])
 	case len(parts) == 3 && parts[0] == "request" && parts[2] == "attachment" && (r.Method == http.MethodGet || r.Method == http.MethodPost):
 		h.serviceRequestAttachments(w, r, workspaceID, parts[1])
+	case len(parts) == 3 && parts[0] == "request" && parts[2] == "notification" && (r.Method == http.MethodGet || r.Method == http.MethodPut || r.Method == http.MethodDelete):
+		h.serviceRequestNotification(w, r, workspaceID, parts[1])
+	case len(parts) == 3 && parts[0] == "request" && parts[2] == "feedback" && (r.Method == http.MethodGet || r.Method == http.MethodPost || r.Method == http.MethodDelete):
+		h.serviceRequestFeedback(w, r, workspaceID, parts[1])
 	case len(parts) == 4 && parts[0] == "request" && parts[2] == "attachment" && r.Method == http.MethodGet:
 		h.serviceRequestAttachmentContent(w, r, workspaceID, parts[1], parts[3], false)
 	case len(parts) == 5 && parts[0] == "request" && parts[2] == "attachment" && parts[4] == "thumbnail" && r.Method == http.MethodGet:

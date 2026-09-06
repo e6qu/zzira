@@ -70,6 +70,12 @@ type ServiceRequestAttachment struct {
 	Public     bool
 }
 
+type ServiceRequestFeedback struct {
+	RequestIssueID, ReporterID, Type, Comment string
+	Rating                                    int
+	CreatedAt, UpdatedAt                      time.Time
+}
+
 // ServiceQueue is an ordered agent work view for one service desk.
 type ServiceQueue struct {
 	ID, ServiceDeskID, Name, JQL, Kind string

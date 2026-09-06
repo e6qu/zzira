@@ -189,6 +189,17 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if err != nil || !strings.Contains(strings.Join(issue.Labels, ","), "incident") {
 		t.Fatalf("incident issue = %+v, %v", issue, err)
 	}
+	subscription := callAs(customerID, "GET", "/rest/servicedeskapi/request/"+issueKey+"/notification", "", 200)
+	if !strings.Contains(subscription.Body.String(), `"subscribed":true`) {
+		t.Fatal(subscription.Body.String())
+	}
+	callAs(customerID, "DELETE", "/rest/servicedeskapi/request/"+issueKey+"/notification", "", 204)
+	subscription = callAs(customerID, "GET", "/rest/servicedeskapi/request/"+issueKey+"/notification", "", 200)
+	if !strings.Contains(subscription.Body.String(), `"subscribed":false`) {
+		t.Fatal(subscription.Body.String())
+	}
+	callAs(customerID, "PUT", "/rest/servicedeskapi/request/"+issueKey+"/notification", "", 204)
+	callAs(customerID, "POST", "/rest/servicedeskapi/request/"+issueKey+"/feedback", `{"type":"csat","rating":5}`, 400)
 	approval, err := handler.Commands.CreateServiceApproval(ctx, actorID, workspaceID, issue.ID, "Production change approval", []string{customerID})
 	if err != nil {
 		t.Fatal(err)
@@ -228,6 +239,10 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	createdAttachment := callAs(customerID, "POST", "/rest/servicedeskapi/request/"+issueKey+"/attachment", `{"temporaryAttachmentIds":["`+temporaryBean.TemporaryAttachments[0].ID+`"],"public":true,"additionalComment":{"body":"Diagnostic log"}}`, 201)
 	if !strings.Contains(createdAttachment.Body.String(), "customer-log.txt") || !strings.Contains(createdAttachment.Body.String(), "Diagnostic log") {
 		t.Fatal(createdAttachment.Body.String())
+	}
+	var attachmentNotificationCount int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM notifications WHERE workspace_id=$1 AND user_id=$2 AND kind='service_comment'`, workspaceID, agentID).Scan(&attachmentNotificationCount); err != nil || attachmentNotificationCount != 1 {
+		t.Fatalf("attachment notifications = %d, %v", attachmentNotificationCount, err)
 	}
 	var publicAttachmentID string
 	if err := st.Pool.QueryRow(ctx, `SELECT a.id FROM attachments a WHERE a.issue_id=$1 AND a.filename='customer-log.txt'`, issue.ID).Scan(&publicAttachmentID); err != nil {
@@ -446,7 +461,15 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if !strings.Contains(agentDetail.Body.String(), `"sla":[{`) {
 		t.Fatal(agentDetail.Body.String())
 	}
+	var customerCommentNotificationsBefore int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM notifications WHERE workspace_id=$1 AND user_id=$2 AND kind='service_comment'`, workspaceID, customerID).Scan(&customerCommentNotificationsBefore); err != nil {
+		t.Fatal(err)
+	}
 	callAs(agentID, "POST", "/rest/servicedeskapi/request/"+issueKey+"/comment", `{"body":"Agent-only investigation detail.","public":false}`, 201)
+	var customerCommentNotificationsAfter int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM notifications WHERE workspace_id=$1 AND user_id=$2 AND kind='service_comment'`, workspaceID, customerID).Scan(&customerCommentNotificationsAfter); err != nil || customerCommentNotificationsAfter != customerCommentNotificationsBefore {
+		t.Fatalf("private comment customer notifications = %d before, %d after, %v", customerCommentNotificationsBefore, customerCommentNotificationsAfter, err)
+	}
 	regularAgentComments := callAs(agentID, "GET", "/rest/servicedeskapi/request/"+issueKey+"/comment", "", 200)
 	if !strings.Contains(regularAgentComments.Body.String(), "Agent-only investigation detail") {
 		t.Fatal(regularAgentComments.Body.String())
@@ -484,6 +507,18 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if !strings.Contains(resolutionSLA.Body.String(), `"completedCycles":[{`) || strings.Contains(resolutionSLA.Body.String(), `"ongoingCycle"`) {
 		t.Fatal(resolutionSLA.Body.String())
 	}
+	feedback := callAs(customerID, "POST", "/rest/servicedeskapi/request/"+issueKey+"/feedback", `{"type":"csat","rating":5,"comment":{"body":"Fast and clear resolution."}}`, 201)
+	if !strings.Contains(feedback.Body.String(), `"rating":5`) || !strings.Contains(feedback.Body.String(), "Fast and clear resolution.") {
+		t.Fatal(feedback.Body.String())
+	}
+	var feedbackNotificationCount int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM notifications WHERE workspace_id=$1 AND user_id=$2 AND kind='service_feedback'`, workspaceID, agentID).Scan(&feedbackNotificationCount); err != nil || feedbackNotificationCount != 1 {
+		t.Fatalf("feedback notifications = %d, %v", feedbackNotificationCount, err)
+	}
+	callAs(agentID, "GET", "/rest/servicedeskapi/request/"+issueKey+"/feedback", "", 200)
+	call("DELETE", "/rest/servicedeskapi/request/"+issueKey+"/feedback", "", 400)
+	callAs(customerID, "DELETE", "/rest/servicedeskapi/request/"+issueKey+"/feedback", "", 204)
+	callAs(customerID, "GET", "/rest/servicedeskapi/request/"+issueKey+"/feedback", "", 404)
 	if err := handler.Commands.SetServiceDeskAgent(ctx, actorID, workspaceID, serviceDeskID, agentID, false); err != nil {
 		t.Fatal(err)
 	}

@@ -12,6 +12,10 @@ func TestNotificationDestinationStaysOnFixedApplicationRoutes(t *testing.T) {
 	if got, want := notificationDestination(notification), "/browse/..%2Foutside%3Fnext=https:%2F%2Fexample.test"; got != want {
 		t.Fatalf("notification destination = %q, want %q", got, want)
 	}
+	notification.EntityType = models.EntityServiceRequest
+	if got, want := notificationDestination(notification), "/service/requests/..%2Foutside%3Fnext=https:%2F%2Fexample.test"; got != want {
+		t.Fatalf("service notification destination = %q, want %q", got, want)
+	}
 	notification.EntityType = "unknown"
 	if got := notificationDestination(notification); got != "/notifications" {
 		t.Fatalf("unknown notification destination = %q", got)

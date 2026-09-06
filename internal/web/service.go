@@ -2,6 +2,7 @@ package web
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/workflow"
+	"github.com/jackc/pgx/v5"
 )
 
 type serviceTransitionView struct{ ID, Name, To string }
@@ -26,6 +28,7 @@ type servicePageData struct {
 	Comments              []models.ServiceRequestComment
 	Attachments           []models.ServiceRequestAttachment
 	Approvals             []models.ServiceApproval
+	Feedback              *models.ServiceRequestFeedback
 	Participants          []*models.User
 	Members               []*models.User
 	Agents                map[string]bool
@@ -37,6 +40,8 @@ type servicePageData struct {
 	CanAgent              bool
 	CanManageParticipants bool
 	CurrentUserID         string
+	Subscribed            bool
+	CanLeaveFeedback      bool
 	Error                 string
 	Summary               string
 	Description           string
@@ -407,6 +412,16 @@ func (h *Handler) ServiceRequestPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load request approvals.", http.StatusInternalServerError)
 		return
 	}
+	subscribed, err := h.Store.ServiceRequestSubscription(r.Context(), request.Issue.ID, user.ID)
+	if err != nil {
+		http.Error(w, "Could not load notification subscription.", http.StatusInternalServerError)
+		return
+	}
+	feedback, err := h.Store.ServiceRequestFeedback(r.Context(), request.Issue.ID)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		http.Error(w, "Could not load request feedback.", http.StatusInternalServerError)
+		return
+	}
 	members := []*models.User{}
 	if canManage {
 		members, err = h.Store.MembersByWorkspace(r.Context(), workspaceID)
@@ -415,7 +430,7 @@ func (h *Handler) ServiceRequestPage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	h.writeWorkspacePage(w, r, "page_service_request", user, workspaceID, servicePageData{Request: request, Comments: comments, Attachments: attachments, Approvals: approvals, Participants: participants, Members: members, SLAs: slas, Transitions: transitions, CanAgent: canManage, CanManageParticipants: canManage || request.Customer.ID == user.ID, CurrentUserID: user.ID}, "service", request.Issue.ProjectID)
+	h.writeWorkspacePage(w, r, "page_service_request", user, workspaceID, servicePageData{Request: request, Comments: comments, Attachments: attachments, Approvals: approvals, Feedback: feedback, Participants: participants, Members: members, SLAs: slas, Transitions: transitions, CanAgent: canManage, CanManageParticipants: canManage || request.Customer.ID == user.ID, CurrentUserID: user.ID, Subscribed: subscribed, CanLeaveFeedback: request.Customer.ID == user.ID && request.Issue.Status.Category == "done"}, "service", request.Issue.ProjectID)
 }
 
 func (h *Handler) ServiceRequestParticipant(w http.ResponseWriter, r *http.Request) {
@@ -537,6 +552,55 @@ func (h *Handler) ServiceRequestApprovalDecision(w http.ResponseWriter, r *http.
 		return
 	}
 	redirectLocal(w, r, "/service/requests/"+request.Issue.Key+"#approvals")
+}
+
+func (h *Handler) ServiceRequestNotification(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	request, _, err := h.serviceRequestForPage(r, workspaceID, user.ID, r.PathValue("key"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if err := h.Commands.SetServiceRequestSubscription(r.Context(), user.ID, workspaceID, request.Issue.ID, r.PostFormValue("subscribed") == "true"); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	redirectLocal(w, r, "/service/requests/"+request.Issue.Key+"#notifications")
+}
+
+func (h *Handler) ServiceRequestFeedback(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	request, _, err := h.serviceRequestForPage(r, workspaceID, user.ID, r.PathValue("key"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if r.PostFormValue("action") == "delete" {
+		err = h.Commands.DeleteServiceRequestFeedback(r.Context(), user.ID, workspaceID, request.Issue.ID)
+	} else {
+		var rating int
+		rating, err = strconv.Atoi(r.PostFormValue("rating"))
+		if err == nil {
+			_, err = h.Commands.PutServiceRequestFeedback(r.Context(), user.ID, workspaceID, request.Issue.ID, "csat", rating, r.PostFormValue("comment"))
+		}
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	redirectLocal(w, r, "/service/requests/"+request.Issue.Key+"#feedback")
 }
 
 func (h *Handler) ServiceRequestTransition(w http.ResponseWriter, r *http.Request) {

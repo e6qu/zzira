@@ -171,6 +171,9 @@ func (s *Store) CreateServiceRequest(ctx context.Context, workspaceID, issueID, 
 		SELECT $1,m.id,now() FROM service_sla_metrics m WHERE m.service_desk_id=$2`, issueID, serviceDeskID); err != nil {
 		return err
 	}
+	if _, err := tx.Exec(ctx, `INSERT INTO service_request_subscriptions(request_issue_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING`, issueID, customerID); err != nil {
+		return err
+	}
 	return tx.Commit(ctx)
 }
 
@@ -261,7 +264,12 @@ func (s *Store) UpdateServiceRequestParticipants(ctx context.Context, workspaceI
 			if result.RowsAffected() == 0 {
 				return fmt.Errorf("participant %q is not on the request", userID)
 			}
+			if _, err := tx.Exec(ctx, `DELETE FROM service_request_subscriptions WHERE request_issue_id=$1 AND user_id=$2`, requestIssueID, userID); err != nil {
+				return err
+			}
 		} else if _, err := tx.Exec(ctx, `INSERT INTO service_request_participants(request_issue_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING`, requestIssueID, userID); err != nil {
+			return err
+		} else if _, err := tx.Exec(ctx, `INSERT INTO service_request_subscriptions(request_issue_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING`, requestIssueID, userID); err != nil {
 			return err
 		}
 	}
@@ -389,6 +397,9 @@ func (s *Store) CreateServiceApproval(ctx context.Context, workspaceID, requestI
 		}
 		if result.RowsAffected() == 0 {
 			return nil, fmt.Errorf("approver %q is not an active user in this site", userID)
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO service_request_subscriptions(request_issue_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING`, requestIssueID, userID); err != nil {
+			return nil, err
 		}
 		inserted++
 	}

@@ -228,6 +228,8 @@ func main() {
 	mux.HandleFunc("POST /service/requests/{key}/comments", webHandler.ServiceRequestComment)
 	mux.HandleFunc("POST /service/requests/{key}/approvals", webHandler.ServiceRequestApproval)
 	mux.HandleFunc("POST /service/requests/{key}/approvals/{approval}", webHandler.ServiceRequestApprovalDecision)
+	mux.HandleFunc("POST /service/requests/{key}/notification", webHandler.ServiceRequestNotification)
+	mux.HandleFunc("POST /service/requests/{key}/feedback", webHandler.ServiceRequestFeedback)
 	mux.HandleFunc("POST /service/requests/{key}/transition", webHandler.ServiceRequestTransition)
 	mux.HandleFunc("POST /service/requests/{key}/participants", webHandler.ServiceRequestParticipant)
 	mux.HandleFunc("GET /service/agent", webHandler.ServiceAgent)

@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 176,
+  "assessedTotal": 182,
   "counts": {
     "delivered": 0,
-    "partial": 169,
+    "partial": 175,
     "missing": 7,
-    "unassessed": 1031
+    "unassessed": 1025
   },
   "countsByFamily": {
     "automation": {
@@ -30,9 +30,9 @@
     },
     "jira-service-management": {
       "delivered": 0,
-      "partial": 37,
+      "partial": 43,
       "missing": 0,
-      "unassessed": 38
+      "unassessed": 32
     },
     "jira-software": {
       "delivered": 0,
@@ -6588,25 +6588,40 @@
       "operationId": "jira-service-management:DELETE:/rest/servicedeskapi/request/{issueIdOrKey}/notification",
       "family": "jira-service-management",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/commands/service_notifications_feedback.go",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Unsubscribes only the authenticated viewer without changing request access; administrator notification policies remain."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/notification",
       "family": "jira-service-management",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_feedback.go",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Returns the authenticated viewer's durable request subscription state after applying request visibility; notification policy administration remains."
     },
     {
       "operationId": "jira-service-management:PUT:/rest/servicedeskapi/request/{issueIdOrKey}/notification",
       "family": "jira-service-management",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/commands/service_notifications_feedback.go",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Subscribes the authenticated viewer and delivers public request events through the private notification stream; external email delivery remains."
     },
     {
       "operationId": "jira-service-management:DELETE:/rest/servicedeskapi/request/{issueIdOrKey}/participant",
@@ -6732,25 +6747,39 @@
       "operationId": "jira-service-management:DELETE:/rest/servicedeskapi/request/{requestIdOrKey}/feedback",
       "family": "jira-service-management",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/commands/service_notifications_feedback.go",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Deletes feedback only for the request reporter; Connect app authorization and audit export remain."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{requestIdOrKey}/feedback",
       "family": "jira-service-management",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_feedback.go",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Returns request-visible CSAT feedback with rating and optional comment; configured satisfaction scales and aggregate reporting remain."
     },
     {
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/request/{requestIdOrKey}/feedback",
       "family": "jira-service-management",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/commands/service_notifications_feedback.go",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Creates or revises one-to-five CSAT feedback for the reporter of a completed request and notifies subscribed agents; CSAT configuration remains."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/requesttype",
