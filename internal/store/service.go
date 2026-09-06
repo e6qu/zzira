@@ -193,7 +193,65 @@ const serviceRequestMetadataSelect = `SELECT sr.issue_id,sr.service_desk_id,sr.r
 func (s *Store) ServiceRequest(ctx context.Context, workspaceID, viewerID, issueIDOrKey string, allowAll bool) (*models.ServiceRequest, error) {
 	return s.serviceRequestFromRow(ctx, workspaceID, s.Pool.QueryRow(ctx, serviceRequestMetadataSelect+`
 		JOIN issues i ON i.id=sr.issue_id
-		WHERE sr.workspace_id=$1 AND (sr.issue_id=$3 OR upper(i.key)=upper($3)) AND ($4 OR sr.customer_id=$2)`, workspaceID, viewerID, issueIDOrKey, allowAll))
+		WHERE sr.workspace_id=$1 AND (sr.issue_id=$3 OR upper(i.key)=upper($3))
+		  AND ($4 OR sr.customer_id=$2 OR EXISTS(SELECT 1 FROM service_request_participants p WHERE p.request_issue_id=sr.issue_id AND p.user_id=$2))`, workspaceID, viewerID, issueIDOrKey, allowAll))
+}
+
+func (s *Store) ServiceRequestParticipants(ctx context.Context, requestIssueID string) ([]*models.User, error) {
+	rows, err := s.Pool.Query(ctx, `SELECT user_id FROM service_request_participants WHERE request_issue_id=$1 ORDER BY added_at,user_id`, requestIssueID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	users := make([]*models.User, 0)
+	for rows.Next() {
+		var userID string
+		if err := rows.Scan(&userID); err != nil {
+			return nil, err
+		}
+		user, err := s.UserByID(ctx, userID)
+		if err != nil {
+			return nil, err
+		}
+		users = append(users, user)
+	}
+	return users, rows.Err()
+}
+
+func (s *Store) UpdateServiceRequestParticipants(ctx context.Context, workspaceID, requestIssueID string, userIDs []string, remove bool) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var reporterID string
+	if err := tx.QueryRow(ctx, `SELECT customer_id FROM service_requests WHERE workspace_id=$1 AND issue_id=$2 FOR UPDATE`, workspaceID, requestIssueID).Scan(&reporterID); err != nil {
+		return err
+	}
+	for _, userID := range userIDs {
+		if userID == reporterID {
+			return fmt.Errorf("the reporter cannot be a request participant")
+		}
+		var customer bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM service_customers WHERE workspace_id=$1 AND user_id=$2 AND active)`, workspaceID, userID).Scan(&customer); err != nil {
+			return err
+		}
+		if !customer {
+			return fmt.Errorf("participant %q is not an active service customer", userID)
+		}
+		if remove {
+			result, err := tx.Exec(ctx, `DELETE FROM service_request_participants WHERE request_issue_id=$1 AND user_id=$2`, requestIssueID, userID)
+			if err != nil {
+				return err
+			}
+			if result.RowsAffected() == 0 {
+				return fmt.Errorf("participant %q is not on the request", userID)
+			}
+		} else if _, err := tx.Exec(ctx, `INSERT INTO service_request_participants(request_issue_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING`, requestIssueID, userID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
 }
 
 func (s *Store) ServiceRequests(ctx context.Context, workspaceID, viewerID, serviceDeskID, requestTypeID string, allowAll bool) ([]*models.ServiceRequest, error) {

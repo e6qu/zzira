@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 162,
+  "assessedTotal": 165,
   "counts": {
     "delivered": 0,
-    "partial": 155,
+    "partial": 158,
     "missing": 7,
-    "unassessed": 1045
+    "unassessed": 1042
   },
   "countsByFamily": {
     "automation": {
@@ -30,9 +30,9 @@
     },
     "jira-service-management": {
       "delivered": 0,
-      "partial": 23,
+      "partial": 26,
       "missing": 0,
-      "unassessed": 52
+      "unassessed": 49
     },
     "jira-software": {
       "delivered": 0,
@@ -6577,25 +6577,46 @@
       "operationId": "jira-service-management:DELETE:/rest/servicedeskapi/request/{issueIdOrKey}/participant",
       "family": "jira-service-management",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service.go",
+        "internal/commands/service.go",
+        "internal/store/service.go",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Atomically removes existing non-reporter participants and immediately revokes request visibility; organization membership semantics remain."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/participant",
       "family": "jira-service-management",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service.go",
+        "internal/commands/service.go",
+        "internal/store/service.go",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Lists active request participants with customer-safe user beans and request visibility enforcement; organization-derived participants and complete pagination links remain."
     },
     {
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/request/{issueIdOrKey}/participant",
       "family": "jira-service-management",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service.go",
+        "internal/commands/service.go",
+        "internal/store/service.go",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Adds active service customers by account ID or email for the reporter or agent and grants request visibility; notification delivery remains."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/sla",

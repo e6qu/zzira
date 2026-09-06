@@ -52,6 +52,8 @@ func (h *Handler) serviceDeskRoute(w http.ResponseWriter, r *http.Request) {
 		h.getServiceRequest(w, r, workspaceID, parts[1])
 	case len(parts) == 3 && parts[0] == "request" && parts[2] == "comment" && (r.Method == http.MethodGet || r.Method == http.MethodPost):
 		h.serviceRequestComments(w, r, workspaceID, parts[1], "")
+	case len(parts) == 3 && parts[0] == "request" && parts[2] == "participant" && (r.Method == http.MethodGet || r.Method == http.MethodPost || r.Method == http.MethodDelete):
+		h.serviceRequestParticipants(w, r, workspaceID, parts[1])
 	case len(parts) == 4 && parts[0] == "request" && parts[2] == "comment" && r.Method == http.MethodGet:
 		h.serviceRequestComments(w, r, workspaceID, parts[1], parts[3])
 	case len(parts) == 3 && parts[0] == "request" && parts[2] == "status" && r.Method == http.MethodGet:
@@ -247,8 +249,11 @@ func (h *Handler) validateServiceRequestBody(r *http.Request, workspaceID string
 	if len(input.Form) > 0 && string(input.Form) != "null" {
 		errors["form"] = "Forms are not configured for this request type."
 	}
-	if len(input.RequestParticipants) > 0 {
-		errors["requestParticipants"] = "Request participants are not supported by this request type."
+	for _, participant := range input.RequestParticipants {
+		if _, err := h.Store.ServiceCustomer(r.Context(), workspaceID, participant); err != nil {
+			errors["requestParticipants"] = "Every request participant must be an active service customer."
+			break
+		}
 	}
 	for fieldID := range input.RequestFieldValues {
 		if fieldID != "summary" && fieldID != "description" {
@@ -320,6 +325,15 @@ func (h *Handler) createServiceRequest(w http.ResponseWriter, r *http.Request, w
 		customerID = customer.ID
 	}
 	summary, _ := decodeServiceText(input.RequestFieldValues["summary"])
+	participantIDs := make([]string, 0, len(input.RequestParticipants))
+	for _, participant := range input.RequestParticipants {
+		customer, err := h.Store.ServiceCustomer(r.Context(), workspaceID, participant)
+		if err != nil {
+			jiraError(w, http.StatusBadRequest, "A request participant does not exist.")
+			return
+		}
+		participantIDs = append(participantIDs, customer.ID)
+	}
 	description, descriptionADF := "", json.RawMessage(nil)
 	if raw := input.RequestFieldValues["description"]; len(raw) > 0 {
 		if text, ok := decodeServiceText(raw); ok {
@@ -331,7 +345,7 @@ func (h *Handler) createServiceRequest(w http.ResponseWriter, r *http.Request, w
 	request, err := h.Commands.CreateServiceRequest(r.Context(), commands.CreateServiceRequestInput{
 		ActorID: actorID, WorkspaceID: workspaceID, CustomerID: customerID, Channel: input.Channel,
 		ServiceDeskID: input.ServiceDeskID, RequestTypeID: input.RequestTypeID,
-		Summary: summary, Description: description, DescriptionADF: descriptionADF,
+		Summary: summary, Description: description, DescriptionADF: descriptionADF, ParticipantIDs: participantIDs,
 	})
 	if err != nil {
 		jiraError(w, http.StatusBadRequest, err.Error())
@@ -506,6 +520,14 @@ func (h *Handler) serviceRequestBean(r *http.Request, workspaceID, viewerID stri
 	for _, comment := range comments {
 		commentBeans = append(commentBeans, h.serviceCommentBean(request, comment))
 	}
+	participants, err := h.Store.ServiceRequestParticipants(r.Context(), request.Issue.ID)
+	if err != nil {
+		return nil, err
+	}
+	participantBeans := make([]map[string]any, 0, len(participants))
+	for _, participant := range participants {
+		participantBeans = append(participantBeans, h.serviceUserBean(participant))
+	}
 	fields := []map[string]any{
 		{"fieldId": "summary", "label": "Summary", "value": request.Issue.Summary, "renderedValue": request.Issue.Summary},
 		{"fieldId": "description", "label": "Description", "value": request.Issue.Description, "renderedValue": adf.ToHTML(request.Issue.Description)},
@@ -516,7 +538,7 @@ func (h *Handler) serviceRequestBean(r *http.Request, workspaceID, viewerID stri
 		"serviceDeskId": request.ServiceDesk.ID, "requestTypeId": request.RequestType.ID,
 		"serviceDesk": serviceDeskBean(h.BaseURL, request.ServiceDesk),
 		"requestType": serviceRequestTypeBean(h.BaseURL, request.RequestType),
-		"reporter":    h.serviceUserBean(request.Customer), "participants": []map[string]any{h.serviceUserBean(request.Customer)},
+		"reporter":    h.serviceUserBean(request.Customer), "participants": participantBeans,
 		"requestFieldValues": fields, "currentStatus": status, "status": status,
 		"createdDate": serviceDate(request.CreatedAt), "channel": request.Channel,
 		"comments":    map[string]any{"start": 0, "limit": 50, "size": len(commentBeans), "isLastPage": true, "values": commentBeans},
@@ -526,6 +548,55 @@ func (h *Handler) serviceRequestBean(r *http.Request, workspaceID, viewerID stri
 			"web":  h.BaseURL + "/service/requests/" + request.Issue.Key,
 		},
 	}, nil
+}
+
+func (h *Handler) writeServiceParticipants(w http.ResponseWriter, r *http.Request, users []*models.User) {
+	beans := make([]map[string]any, 0, len(users))
+	for _, user := range users {
+		beans = append(beans, h.serviceUserBean(user))
+	}
+	h.writeServicePage(w, r, beans)
+}
+
+func (h *Handler) serviceRequestParticipants(w http.ResponseWriter, r *http.Request, workspaceID, issueIDOrKey string) {
+	request, _, actorID, accessErr := h.serviceRequestAccess(r, workspaceID, issueIDOrKey)
+	if accessErr != nil {
+		writeJerr(w, accessErr)
+		return
+	}
+	if r.Method == http.MethodGet {
+		users, err := h.Store.ServiceRequestParticipants(r.Context(), request.Issue.ID)
+		if err != nil {
+			jiraError(w, http.StatusInternalServerError, "Could not load request participants.")
+			return
+		}
+		h.writeServiceParticipants(w, r, users)
+		return
+	}
+	var input struct {
+		AccountIDs []string `json:"accountIds"`
+		Usernames  []string `json:"usernames"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&input); err != nil {
+		jiraError(w, http.StatusBadRequest, "Request body is invalid.")
+		return
+	}
+	identifiers := append(input.AccountIDs, input.Usernames...)
+	userIDs := make([]string, 0, len(identifiers))
+	for _, identifier := range identifiers {
+		customer, err := h.Store.ServiceCustomer(r.Context(), workspaceID, identifier)
+		if err != nil {
+			jiraError(w, http.StatusBadRequest, "A request participant does not exist.")
+			return
+		}
+		userIDs = append(userIDs, customer.ID)
+	}
+	users, err := h.Commands.UpdateServiceRequestParticipants(r.Context(), actorID, workspaceID, request.Issue.ID, userIDs, r.Method == http.MethodDelete)
+	if err != nil {
+		jiraError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	h.writeServiceParticipants(w, r, users)
 }
 
 func (h *Handler) serviceCommentBean(request *models.ServiceRequest, comment models.ServiceRequestComment) map[string]any {

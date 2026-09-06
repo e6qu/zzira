@@ -1100,10 +1100,24 @@ Validation after the Jira Service Management agent queue journey:
 - Exact-operation review is now 162/1,207: 155 partial, 7 missing and 1,045
   unassessed.
 
+Validation after Jira Service Management request participants:
+
+- Migration 060 stores non-reporter participants separately from the request
+  customer. Participant access is evaluated by the same request lookup used by
+  REST and web and is revoked by the remove transaction.
+- The three pinned participant list/add/remove operations accept active service
+  customers by account ID or email, restrict mutation to the reporter or an
+  agent, reject reporter membership and return the updated paged user list.
+- The request UI shows participants and lets an authorized reporter or agent
+  add and remove them. PostgreSQL proves access grant/revocation; the combined
+  Chromium journey covers UI add/remove alongside customer and queue flows.
+- Exact-operation review is now 165/1,207: 158 partial, 7 missing and 1,042
+  unassessed.
+
 ## Current change
 
-1. Implement Jira Service Management project-scoped agent roles, request
-   participants, SLA definitions/calendars and escalation on the queue/request
+1. Implement Jira Service Management project-scoped agent roles, SLA
+   definitions/calendars and escalation on the queue/request
    foundation.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.

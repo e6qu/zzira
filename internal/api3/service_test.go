@@ -175,6 +175,24 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if !strings.Contains(detail.Body.String(), `"status":"In Progress"`) || !strings.Contains(detail.Body.String(), "Work can begin") {
 		t.Fatal(detail.Body.String())
 	}
+	participants := callAs(customerID, "POST", "/rest/servicedeskapi/request/"+issueKey+"/participant", `{"usernames":["invited.customer@example.test"]}`, 200)
+	if !strings.Contains(participants.Body.String(), "Invited Customer") {
+		t.Fatal(participants.Body.String())
+	}
+	if _, err := st.ServiceRequest(ctx, workspaceID, invitedCustomerID, issueKey, false); err != nil {
+		t.Fatalf("participant access: %v", err)
+	}
+	listedParticipants := callAs(customerID, "GET", "/rest/servicedeskapi/request/"+issueKey+"/participant", "", 200)
+	if !strings.Contains(listedParticipants.Body.String(), invitedCustomerID) {
+		t.Fatal(listedParticipants.Body.String())
+	}
+	removedParticipants := callAs(customerID, "DELETE", "/rest/servicedeskapi/request/"+issueKey+"/participant", `{"accountIds":["`+invitedCustomerID+`"]}`, 200)
+	if strings.Contains(removedParticipants.Body.String(), invitedCustomerID) {
+		t.Fatal(removedParticipants.Body.String())
+	}
+	if _, err := st.ServiceRequest(ctx, workspaceID, invitedCustomerID, issueKey, false); err == nil {
+		t.Fatal("removed participant retained request access")
+	}
 	allRequests := call("GET", "/rest/servicedeskapi/request?requestOwnership=ALL_REQUESTS", "", 200)
 	if !strings.Contains(allRequests.Body.String(), issueKey) {
 		t.Fatal(allRequests.Body.String())

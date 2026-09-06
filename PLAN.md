@@ -275,7 +275,8 @@ browser UI, sync behavior where applicable, and tests.
     requests feed the existing DORA recovery measure through their backing Jira
     issue. The next agent slice provisions all-open, unassigned and assigned-to-
     me queues, implements the three pinned queue reads, and adds a responsive
-    queue/assignment workspace.
+    queue/assignment workspace. Reporter/agent participant management adds the
+    three pinned participant operations and participant-shaped request access.
 11. **Service Management journeys.** Extend the delivered customer help center,
     typed request portal, owned request tracking, conversation, status flow and
     agent queue/assignment workspace with custom queues, an SLA timeline, service setup,

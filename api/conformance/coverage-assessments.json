@@ -1708,6 +1708,45 @@
         "docs/SERVICE_MANAGEMENT.md"
       ],
       "notes": "Returns queue-filtered request issue beans for all-open, unassigned and current-agent views; arbitrary JQL queues, complete field projection and SLA ordering remain."
+    },
+    {
+      "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/participant",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service.go",
+        "internal/commands/service.go",
+        "internal/store/service.go",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Lists active request participants with customer-safe user beans and request visibility enforcement; organization-derived participants and complete pagination links remain."
+    },
+    {
+      "operationId": "jira-service-management:POST:/rest/servicedeskapi/request/{issueIdOrKey}/participant",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service.go",
+        "internal/commands/service.go",
+        "internal/store/service.go",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Adds active service customers by account ID or email for the reporter or agent and grants request visibility; notification delivery remains."
+    },
+    {
+      "operationId": "jira-service-management:DELETE:/rest/servicedeskapi/request/{issueIdOrKey}/participant",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service.go",
+        "internal/commands/service.go",
+        "internal/store/service.go",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Atomically removes existing non-reporter participants and immediately revokes request visibility; organization membership semantics remain."
     }
   ]
 }

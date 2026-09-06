@@ -13,21 +13,23 @@ import (
 type serviceTransitionView struct{ ID, Name, To string }
 
 type servicePageData struct {
-	Desks        []models.ServiceDesk
-	Desk         *models.ServiceDesk
-	RequestTypes []models.ServiceRequestType
-	RequestType  *models.ServiceRequestType
-	Requests     []*models.ServiceRequest
-	Request      *models.ServiceRequest
-	Queues       []models.ServiceQueue
-	Queue        *models.ServiceQueue
-	Comments     []models.ServiceRequestComment
-	Transitions  []serviceTransitionView
-	CanAdmin     bool
-	Error        string
-	Summary      string
-	Description  string
-	Query        string
+	Desks                 []models.ServiceDesk
+	Desk                  *models.ServiceDesk
+	RequestTypes          []models.ServiceRequestType
+	RequestType           *models.ServiceRequestType
+	Requests              []*models.ServiceRequest
+	Request               *models.ServiceRequest
+	Queues                []models.ServiceQueue
+	Queue                 *models.ServiceQueue
+	Comments              []models.ServiceRequestComment
+	Participants          []*models.User
+	Transitions           []serviceTransitionView
+	CanAdmin              bool
+	CanManageParticipants bool
+	Error                 string
+	Summary               string
+	Description           string
+	Query                 string
 }
 
 func (h *Handler) ServiceAgent(w http.ResponseWriter, r *http.Request) {
@@ -243,7 +245,37 @@ func (h *Handler) ServiceRequestPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load request transitions.", http.StatusInternalServerError)
 		return
 	}
-	h.writeWorkspacePage(w, r, "page_service_request", user, workspaceID, servicePageData{Request: request, Comments: comments, Transitions: transitions, CanAdmin: admin}, "service", request.Issue.ProjectID)
+	participants, err := h.Store.ServiceRequestParticipants(r.Context(), request.Issue.ID)
+	if err != nil {
+		http.Error(w, "Could not load request participants.", http.StatusInternalServerError)
+		return
+	}
+	h.writeWorkspacePage(w, r, "page_service_request", user, workspaceID, servicePageData{Request: request, Comments: comments, Participants: participants, Transitions: transitions, CanAdmin: admin, CanManageParticipants: admin || request.Customer.ID == user.ID}, "service", request.Issue.ProjectID)
+}
+
+func (h *Handler) ServiceRequestParticipant(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	request, _, err := h.serviceRequestForPage(r, workspaceID, user.ID, r.PathValue("key"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	customer, err := h.Store.ServiceCustomer(r.Context(), workspaceID, strings.TrimSpace(r.PostFormValue("participant")))
+	if err != nil {
+		http.Error(w, "Participant is not an active service customer.", http.StatusBadRequest)
+		return
+	}
+	if _, err := h.Commands.UpdateServiceRequestParticipants(r.Context(), user.ID, workspaceID, request.Issue.ID, []string{customer.ID}, r.PostFormValue("action") == "remove"); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	redirectLocal(w, r, "/service/requests/"+request.Issue.Key+"#participants")
 }
 
 func (h *Handler) ServiceRequestComment(w http.ResponseWriter, r *http.Request) {

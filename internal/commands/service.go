@@ -14,6 +14,7 @@ type CreateServiceRequestInput struct {
 	ActorID, WorkspaceID, ServiceDeskID, RequestTypeID string
 	CustomerID, Channel, Summary, Description          string
 	DescriptionADF                                     json.RawMessage
+	ParticipantIDs                                     []string
 }
 
 // CreateServiceRequest creates the canonical Jira issue first and compensates
@@ -67,11 +68,38 @@ func (s *Service) CreateServiceRequest(ctx context.Context, in CreateServiceRequ
 		_, cleanupErr := s.DeleteIssue(ctx, in.ActorID, in.WorkspaceID, issue.ID, "service request creation failed")
 		return nil, errors.Join(err, cleanupErr)
 	}
+	if len(in.ParticipantIDs) > 0 {
+		if err := s.Store.UpdateServiceRequestParticipants(ctx, in.WorkspaceID, issue.ID, in.ParticipantIDs, false); err != nil {
+			_, cleanupErr := s.DeleteIssue(ctx, in.ActorID, in.WorkspaceID, issue.ID, "service request participant creation failed")
+			return nil, errors.Join(err, cleanupErr)
+		}
+	}
 	admin, err := s.Store.IsAdmin(ctx, in.WorkspaceID, in.ActorID)
 	if err != nil {
 		return nil, err
 	}
 	return s.Store.ServiceRequest(ctx, in.WorkspaceID, in.ActorID, issue.ID, admin)
+}
+
+func (s *Service) UpdateServiceRequestParticipants(ctx context.Context, actorID, workspaceID, issueIDOrKey string, userIDs []string, remove bool) ([]*models.User, error) {
+	admin, err := s.Store.IsAdmin(ctx, workspaceID, actorID)
+	if err != nil {
+		return nil, err
+	}
+	request, err := s.Store.ServiceRequest(ctx, workspaceID, actorID, issueIDOrKey, admin)
+	if err != nil {
+		return nil, fmt.Errorf("request does not exist")
+	}
+	if !admin && request.Customer.ID != actorID {
+		return nil, fmt.Errorf("only the reporter or an agent may manage participants")
+	}
+	if len(userIDs) == 0 {
+		return nil, fmt.Errorf("at least one participant is required")
+	}
+	if err := s.Store.UpdateServiceRequestParticipants(ctx, workspaceID, request.Issue.ID, userIDs, remove); err != nil {
+		return nil, err
+	}
+	return s.Store.ServiceRequestParticipants(ctx, request.Issue.ID)
 }
 
 func (s *Service) CreateServiceCustomer(ctx context.Context, actorID, workspaceID, email, displayName string) (*models.User, error) {

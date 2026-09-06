@@ -62,6 +62,14 @@ test('admin creates a service project with Jira Service Management request types
   await expect(page.getByRole('heading', { name: requestSummary, level: 1 })).toBeVisible();
   await expect(page.locator('.service-current-status')).toHaveText('To Do');
   await expect(page.getByText('Customers receive an error when completing checkout.')).toBeVisible();
+  const participantEmail = `participant-${Date.now()}@example.test`;
+  const participantResponse = await page.request.post('/rest/servicedeskapi/customer', { headers: auth, data: { email: participantEmail, displayName: 'Incident stakeholder' } });
+  expect(participantResponse.status()).toBe(201);
+  await page.getByLabel('Add by account ID or email').fill(participantEmail);
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
+  await expect(page.locator('#participants')).toContainText('Incident stakeholder');
+  await page.getByRole('button', { name: 'Remove Incident stakeholder' }).click();
+  await expect(page.locator('#participants')).not.toContainText('Incident stakeholder');
   await page.getByLabel('Add to the conversation').fill('The impact is increasing across regions.');
   await page.getByRole('button', { name: 'Add comment' }).click();
   await expect(page.locator('.service-comments')).toContainText('The impact is increasing across regions.');

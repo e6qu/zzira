@@ -30,6 +30,11 @@ review internal notes, assign a request to themselves, unassign it, comment,
 and execute its workflow actions. Until project-scoped agent roles are added,
 this workspace and the queue APIs require site-administrator access.
 
+Reporters and agents can add active service customers as request participants
+by account ID or email. Participants appear on the request, can read its public
+conversation and status, and lose that access immediately when removed. The
+reporter remains a distinct role and cannot be added or removed as a participant.
+
 ## REST coverage
 
 The current `/rest/servicedeskapi` slice implements:
@@ -42,6 +47,7 @@ The current `/rest/servicedeskapi` slice implements:
 - condition-aware available transitions and transition execution with an
   optional comment; and
 - queue list/detail/issues with optional live counts.
+- participant list, add, and remove with participant-shaped visibility.
 
 Request creation accepts string or Atlassian document format descriptions and
 stores the backing issue through the shared command layer. Incident request
@@ -52,7 +58,7 @@ is compensated by a logged issue deletion, so no orphaned ticket remains.
 
 The implemented operations are assessed as partial. Custom queues and arbitrary
 queue JQL, project-scoped agent roles, dynamic form/custom-field
-values, participant mutations, organizations, request attachments, approvals,
+values, participant notifications and organizations, request attachments, approvals,
 notifications, feedback, full status chronology, SLAs, calendars, queues,
 agent roles, portal invitation activation, knowledge suggestions, Assets, and
 incident/problem/change configuration remain. Customer creation records a
