@@ -260,6 +260,20 @@ func main() {
 	})
 	mux.HandleFunc("GET /settings/workflows", webHandler.WorkflowsPage)
 	mux.HandleFunc("GET /settings/statuses", webHandler.StatusesPage)
+	mux.HandleFunc("GET /settings/workflow-schemes", webHandler.WorkflowSchemesPage)
+	mux.HandleFunc("POST /settings/workflow-schemes", webHandler.CreateWorkflowScheme)
+	mux.HandleFunc("GET /settings/workflow-schemes/{id}", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.WorkflowSchemePage(w, r, r.PathValue("id"))
+	})
+	mux.HandleFunc("POST /settings/workflow-schemes/{id}", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.SaveWorkflowSchemeDraft(w, r, r.PathValue("id"))
+	})
+	mux.HandleFunc("POST /settings/workflow-schemes/{id}/draft", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.FinishWorkflowSchemeDraft(w, r, r.PathValue("id"))
+	})
+	mux.HandleFunc("POST /settings/workflow-schemes/{id}/projects", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.AssignWorkflowScheme(w, r, r.PathValue("id"))
+	})
 	mux.HandleFunc("POST /settings/statuses", webHandler.CreateStatus)
 	mux.HandleFunc("POST /settings/statuses/{id}", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.UpdateStatus(w, r, r.PathValue("id"))

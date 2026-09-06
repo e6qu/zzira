@@ -1248,24 +1248,11 @@ func (s *Store) FirstAdminID(ctx context.Context, workspaceID string) (string, e
 // WorkflowForProject resolves the project's workflow, Default when unassigned
 // or the stored def is unusable.
 func (s *Store) WorkflowForProject(ctx context.Context, projectID string) (workflow.Workflow, error) {
-	var def []byte
-	err := s.Pool.QueryRow(ctx, `
-		SELECT w.def FROM projects p JOIN workflows w ON w.id = p.workflow_id
-		WHERE p.id=$1`, projectID).Scan(&def)
+	wf, err := s.WorkflowForProjectAndIssueType(ctx, projectID, "")
 	if errors.Is(err, pgx.ErrNoRows) {
 		return workflow.Default(), nil
 	}
-	if err != nil {
-		return workflow.Workflow{}, err
-	}
-	var wf workflow.Workflow
-	if err := json.Unmarshal(def, &wf); err != nil {
-		return workflow.Default(), fmt.Errorf("workflow def for project %s: %w", projectID, err)
-	}
-	if len(wf.Transitions) == 0 {
-		return workflow.Default(), nil
-	}
-	return wf, nil
+	return wf, err
 }
 
 // CreateWorkflow stores a workflow definition.
@@ -1452,14 +1439,35 @@ func (s *Store) finishWorkflowDraft(ctx context.Context, workspaceID, actorID, w
 
 // AssignWorkflowToProject points a project at a stored workflow.
 func (s *Store) AssignWorkflowToProject(ctx context.Context, workspaceID, projectID, workflowID string) error {
-	result, err := s.Pool.Exec(ctx, `UPDATE projects p SET workflow_id=$3 WHERE p.id=$2 AND p.workspace_id=$1 AND EXISTS(SELECT 1 FROM workflows w WHERE w.id=$3 AND (w.workspace_id=$1 OR (w.id='wf_default' AND w.workspace_id IS NULL)))`, workspaceID, projectID, workflowID)
+	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
-	if result.RowsAffected() == 0 {
+	defer func() { _ = tx.Rollback(ctx) }()
+	var projectKey string
+	if err := tx.QueryRow(ctx, `SELECT key FROM projects WHERE id=$1 AND workspace_id=$2 FOR UPDATE`, projectID, workspaceID).Scan(&projectKey); err != nil {
 		return fmt.Errorf("project %q does not exist", projectID)
 	}
-	return nil
+	var workflowExists bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM workflows WHERE id=$1 AND (workspace_id=$2 OR (id='wf_default' AND workspace_id IS NULL)))`, workflowID, workspaceID).Scan(&workflowExists); err != nil {
+		return err
+	}
+	if !workflowExists {
+		return fmt.Errorf("workflow %q does not exist", workflowID)
+	}
+	schemeID := "scheme_project_" + projectID
+	schemeName := projectKey + " project workflow scheme " + projectID[len(projectID)-min(6, len(projectID)):]
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO workflow_schemes(id,workspace_id,name,default_workflow_id)
+		VALUES($1,$2,$3,$4)
+		ON CONFLICT(id) DO UPDATE SET default_workflow_id=$4,issue_type_mappings='{}',draft_def=NULL,version=workflow_schemes.version+1,updated_at=now()
+		WHERE workflow_schemes.workspace_id=$2`, schemeID, workspaceID, schemeName, workflowID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE projects SET workflow_id=$3,workflow_scheme_id=$4 WHERE id=$1 AND workspace_id=$2`, projectID, workspaceID, workflowID, schemeID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // CreateSecurityScheme upserts a security scheme definition.

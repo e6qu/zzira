@@ -86,6 +86,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.workflowRoute(w, r)
 	case path == "/workflow" && r.Method == http.MethodPost:
 		h.workflowRoute(w, r)
+	case path == "/workflowscheme" || path == "/workflowscheme/project" || strings.HasPrefix(path, "/workflowscheme/"):
+		h.workflowSchemeRoute(w, r, path)
 	case strings.HasPrefix(path, "/workflow/project/"):
 		h.workflowRoute(w, r)
 	case path == "/issuesecurityschemes" && (r.Method == http.MethodGet || r.Method == http.MethodPost):
@@ -824,7 +826,7 @@ func (h *Handler) listTransitions(w http.ResponseWriter, r *http.Request, idOrKe
 		writeJerr(w, e)
 		return
 	}
-	wf, err := h.Store.WorkflowForProject(r.Context(), issue.ProjectID)
+	wf, err := h.Store.WorkflowForProjectAndIssueType(r.Context(), issue.ProjectID, issue.IssueType.ID)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return

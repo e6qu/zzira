@@ -243,7 +243,7 @@ func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue
 		if issue.Status.ID == value.StatusID {
 			return false, nil
 		}
-		workflow, err := r.Service.Store.WorkflowForProject(ctx, issue.ProjectID)
+		workflow, err := r.Service.Store.WorkflowForProjectAndIssueType(ctx, issue.ProjectID, issue.IssueType.ID)
 		if err != nil {
 			return false, err
 		}

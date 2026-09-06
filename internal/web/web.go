@@ -413,7 +413,7 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	if err != nil {
 		return nil, err
 	}
-	wf, err := h.Store.WorkflowForProject(r.Context(), issue.ProjectID)
+	wf, err := h.Store.WorkflowForProjectAndIssueType(r.Context(), issue.ProjectID, issue.IssueType.ID)
 	if err != nil {
 		return nil, err
 	}

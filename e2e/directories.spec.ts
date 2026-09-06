@@ -142,3 +142,35 @@ test('status administrators can create, classify, edit, inspect, and safely dele
   await expect(page.getByRole('status')).toContainText('Status deleted');
   await expect(page.getByRole('heading', { name: updatedName, exact: true })).toHaveCount(0);
 });
+
+test('workflow scheme drafts publish only after a safe project impact preview', async ({ page }) => {
+  await login(page);
+  await page.getByRole('link', { name: 'Workflow schemes', exact: true }).click();
+  await expect(page).toHaveURL('/settings/workflow-schemes');
+  await expect(page.getByRole('heading', { name: 'Workflow schemes', level: 1 })).toBeVisible();
+
+  const schemeName = `Delivery scheme ${Date.now()}`;
+  await page.fill('#scheme-name', schemeName);
+  await page.fill('#scheme-description', 'Routes delivery work by type.');
+  await page.selectOption('#scheme-default', 'wf_default');
+  await page.getByRole('button', { name: 'Create scheme' }).click();
+  await expect(page).toHaveURL(/\/settings\/workflow-schemes\/scheme_/);
+  await expect(page.getByRole('heading', { name: schemeName, level: 1 })).toBeVisible();
+  await expect(page.getByText('Published', { exact: true })).toBeVisible();
+
+  await page.fill('#scheme-edit-description', 'Routes every task through the published default.');
+  await page.selectOption('#mapping-it_task', 'wf_default');
+  await page.getByRole('button', { name: 'Save draft' }).click();
+  await expect(page.getByText('Draft changes', { exact: true })).toBeVisible();
+  await expect(page.getByText('Draft mappings are not active')).toBeVisible();
+  await page.getByRole('button', { name: 'Publish scheme' }).click();
+  await expect(page.getByText('Published', { exact: true })).toBeVisible();
+  await expect(page.getByText('Version 2')).toBeVisible();
+
+  await page.selectOption('#scheme-project', 'prj_default');
+  await page.getByRole('button', { name: 'Preview assignment' }).click();
+  await expect(page.getByText('All current work item statuses exist in the target workflows.')).toBeVisible();
+  await page.getByRole('button', { name: 'Assign scheme' }).click();
+  await expect(page.getByRole('status')).toContainText('Project assigned');
+  await expect(page.locator('.assigned-projects')).toContainText('ZZIRA Demo');
+});

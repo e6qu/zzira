@@ -153,6 +153,13 @@ does not publish them as one OpenAPI document.
   definitions from their project usage, UI and Jira API discovery exclude other
   sites, draft and publish writes require the owning workspace, and project
   assignment rejects foreign workflow IDs. The built-in default remains shared.
+- Added workflow schemes with migration 047. Schemes route issue types to a
+  published default or override workflow, isolate drafts from issue runtime,
+  validate every workflow and issue type in the workspace, and refuse publish
+  or project assignment when an existing issue status would be stranded. The
+  administrator UI covers create, mapping edits, publish/discard, project usage,
+  impact preview and assignment; seven core Jira workflow-scheme operations use
+  the same storage and authorization boundaries.
 
 Validation after the organization foundation:
 
@@ -344,10 +351,27 @@ Validation after workflow workspace isolation:
 - The full PostgreSQL Go suite, vet, WebAssembly compilation, seven conformance
   tests, generated inventory/coverage checks, and `git diff --check` pass.
 
+Validation after workflow schemes:
+
+- PostgreSQL tests prove incompatible status detection, blocked assignment,
+  safe assignment, issue-type runtime selection, draft isolation, publishing,
+  version increments, and audit-backed mutations with migration 047.
+- The Jira REST integration journey covers administrator authorization,
+  list/create/get/update/delete, project association read/write, active delete
+  conflicts, and workspace scoping for the seven assessed operations.
+- The Chromium administrator journey creates a scheme, edits and publishes its
+  mappings, previews project impact, assigns the scheme, and sees project usage.
+- The full PostgreSQL Go suite, vet with an isolated build cache, WebAssembly
+  compilation, seven conformance tests, generated inventory/coverage checks,
+  and `git diff --check` pass. The scheme directory and a real scheme editor
+  pass shared light/dark WCAG scans, WCAG 2.2 target sizing, and 320 px reflow.
+- Exact reviewed API coverage is 82 of 1,207 operations: 75 partial, 7 missing,
+  and 1,125 explicitly unassessed.
+
 ## Current change
 
-1. Continue Jira administration with workflow schemes and impact-safe project
-   assignment.
+1. Complete workflow-scheme draft/mapping/status-migration REST operations and
+   add explicit status replacement during project switches.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 

@@ -96,6 +96,37 @@ type statusDirectoryData struct {
 	Blocked string
 }
 
+type workflowSchemeCard struct {
+	Scheme              workflow.Scheme
+	DefaultWorkflowName string
+	Projects            []*models.Project
+}
+
+type workflowSchemesData struct {
+	Schemes   []workflowSchemeCard
+	Workflows []workflow.Workflow
+	CanCreate bool
+}
+
+type workflowSchemeMappingView struct {
+	IssueType  models.IssueType
+	WorkflowID string
+}
+
+type workflowSchemeEditorData struct {
+	Scheme              workflow.Scheme
+	DefaultWorkflowName string
+	Workflows           []workflow.Workflow
+	Mappings            []workflowSchemeMappingView
+	Projects            []*models.Project
+	Assigned            []*models.Project
+	PreviewProject      *models.Project
+	Impact              []store.WorkflowSchemeImpact
+	CanEdit             bool
+	Saved               string
+	Error               string
+}
+
 func (h *Handler) ProjectsPage(w http.ResponseWriter, r *http.Request) {
 	user, wsID, ok := h.pageContext(w, r)
 	if !ok {
@@ -347,6 +378,179 @@ func (h *Handler) StatusesPage(w http.ResponseWriter, r *http.Request) {
 	h.writeWorkspacePage(w, r, "page_statuses", user, workspaceID, statusDirectoryData{
 		Items: items, CanEdit: admin, Saved: r.URL.Query().Get("saved"), Blocked: r.URL.Query().Get("blocked"),
 	}, "statuses", "")
+}
+
+func (h *Handler) WorkflowSchemesPage(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	schemes, err := h.Store.ListWorkflowSchemes(r.Context(), workspaceID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	workflows, err := h.Store.ListWorkflows(r.Context(), workspaceID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	workflowNames := make(map[string]string, len(workflows))
+	for _, item := range workflows {
+		workflowNames[item.ID] = item.Name
+	}
+	data := workflowSchemesData{Workflows: workflows}
+	data.CanCreate, _ = h.Store.IsAdmin(r.Context(), workspaceID, user.ID)
+	for _, scheme := range schemes {
+		projects, err := h.Store.ProjectsForWorkflowScheme(r.Context(), workspaceID, scheme.ID)
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		data.Schemes = append(data.Schemes, workflowSchemeCard{Scheme: scheme, DefaultWorkflowName: workflowNames[scheme.DefaultWorkflowID], Projects: projects})
+	}
+	h.writeWorkspacePage(w, r, "page_workflow_schemes", user, workspaceID, data, "workflow-schemes", "")
+}
+
+func (h *Handler) WorkflowSchemePage(w http.ResponseWriter, r *http.Request, schemeID string) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	scheme, err := h.Store.WorkflowSchemeByID(r.Context(), workspaceID, schemeID, true)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	workflows, err := h.Store.ListWorkflows(r.Context(), workspaceID)
+	if err != nil {
+		http.Error(w, "internal error", 500)
+		return
+	}
+	issueTypes, err := h.Store.IssueTypes(r.Context())
+	if err != nil {
+		http.Error(w, "internal error", 500)
+		return
+	}
+	projects, err := h.Store.ProjectsByWorkspace(r.Context(), workspaceID)
+	if err != nil {
+		http.Error(w, "internal error", 500)
+		return
+	}
+	assigned, err := h.Store.ProjectsForWorkflowScheme(r.Context(), workspaceID, schemeID)
+	if err != nil {
+		http.Error(w, "internal error", 500)
+		return
+	}
+	data := workflowSchemeEditorData{Scheme: scheme, Workflows: workflows, Projects: projects, Assigned: assigned, Saved: r.URL.Query().Get("saved"), Error: r.URL.Query().Get("error")}
+	data.CanEdit, _ = h.Store.IsAdmin(r.Context(), workspaceID, user.ID)
+	for _, item := range workflows {
+		if item.ID == scheme.DefaultWorkflowID {
+			data.DefaultWorkflowName = item.Name
+		}
+	}
+	for _, issueType := range issueTypes {
+		data.Mappings = append(data.Mappings, workflowSchemeMappingView{IssueType: issueType, WorkflowID: scheme.IssueTypeMappings[issueType.ID]})
+	}
+	if projectID := r.URL.Query().Get("project"); projectID != "" {
+		project, err := h.Store.ProjectByIDOrKey(r.Context(), workspaceID, projectID)
+		if err != nil {
+			data.Error = "Project not found."
+		} else {
+			data.PreviewProject = project
+			data.Impact, err = h.Store.WorkflowSchemeImpact(r.Context(), workspaceID, project.ID, schemeID, false)
+			if err != nil {
+				http.Error(w, "internal error", 500)
+				return
+			}
+		}
+	}
+	h.writeWorkspacePage(w, r, "page_workflow_scheme", user, workspaceID, data, "workflow-schemes", "")
+}
+
+func (h *Handler) CreateWorkflowScheme(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	scheme, err := h.Store.CreateWorkflowScheme(r.Context(), workspaceID, user.ID, workflow.Scheme{Name: r.PostFormValue("name"), Description: r.PostFormValue("description"), DefaultWorkflowID: r.PostFormValue("default_workflow")})
+	if err != nil {
+		statusAdminError(w, err)
+		return
+	}
+	http.Redirect(w, r, "/settings/workflow-schemes/"+url.PathEscape(scheme.ID), http.StatusSeeOther)
+}
+
+func (h *Handler) SaveWorkflowSchemeDraft(w http.ResponseWriter, r *http.Request, schemeID string) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	scheme, err := h.Store.WorkflowSchemeByID(r.Context(), workspaceID, schemeID, true)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	scheme.Name, scheme.Description, scheme.DefaultWorkflowID = r.PostFormValue("name"), r.PostFormValue("description"), r.PostFormValue("default_workflow")
+	scheme.IssueTypeMappings = make(map[string]string)
+	issueTypes, err := h.Store.IssueTypes(r.Context())
+	if err != nil {
+		http.Error(w, "internal error", 500)
+		return
+	}
+	for _, issueType := range issueTypes {
+		if workflowID := r.PostFormValue("issue_type_" + issueType.ID); workflowID != "" {
+			scheme.IssueTypeMappings[issueType.ID] = workflowID
+		}
+	}
+	if err := h.Store.SaveWorkflowSchemeDraft(r.Context(), workspaceID, user.ID, scheme); err != nil {
+		statusAdminError(w, err)
+		return
+	}
+	http.Redirect(w, r, "/settings/workflow-schemes/"+url.PathEscape(schemeID)+"?saved="+url.QueryEscape("Draft saved"), http.StatusSeeOther)
+}
+
+func (h *Handler) FinishWorkflowSchemeDraft(w http.ResponseWriter, r *http.Request, schemeID string) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	action := r.PostFormValue("action")
+	var err error
+	if action == "publish" {
+		err = h.Store.PublishWorkflowSchemeDraft(r.Context(), workspaceID, user.ID, schemeID)
+	} else if action == "discard" {
+		err = h.Store.DiscardWorkflowSchemeDraft(r.Context(), workspaceID, user.ID, schemeID)
+	} else {
+		http.Error(w, "action must be publish or discard", 400)
+		return
+	}
+	if err != nil {
+		if errors.Is(err, store.ErrAdminConflict) {
+			http.Redirect(w, r, "/settings/workflow-schemes/"+url.PathEscape(schemeID)+"?error="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+			return
+		}
+		statusAdminError(w, err)
+		return
+	}
+	http.Redirect(w, r, "/settings/workflow-schemes/"+url.PathEscape(schemeID)+"?saved="+url.QueryEscape("Scheme "+map[string]string{"publish": "published", "discard": "draft discarded"}[action]), http.StatusSeeOther)
+}
+
+func (h *Handler) AssignWorkflowScheme(w http.ResponseWriter, r *http.Request, schemeID string) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	projectID := r.PostFormValue("project")
+	if err := h.Store.AssignWorkflowScheme(r.Context(), workspaceID, user.ID, projectID, schemeID); err != nil {
+		if errors.Is(err, store.ErrAdminConflict) {
+			http.Redirect(w, r, "/settings/workflow-schemes/"+url.PathEscape(schemeID)+"?project="+url.QueryEscape(projectID)+"&error="+url.QueryEscape("Assignment blocked until incompatible statuses are migrated."), http.StatusSeeOther)
+			return
+		}
+		statusAdminError(w, err)
+		return
+	}
+	http.Redirect(w, r, "/settings/workflow-schemes/"+url.PathEscape(schemeID)+"?saved="+url.QueryEscape("Project assigned"), http.StatusSeeOther)
 }
 
 func statusForm(r *http.Request) models.Status {

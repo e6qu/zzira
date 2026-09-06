@@ -94,7 +94,9 @@ Status: ✅ browser-tested complete journey · 🟡 usable tested subset · ⛔ 
 3. Configure permission, notification, security, field, screen, work-type and
    workflow schemes with impact previews and audit records. The current status
    directory covers custom status creation, classification, editing, live usage
-   counts, protected built-ins, and safe deletion.
+   counts, protected built-ins, and safe deletion. Workflow-scheme journeys now
+   cover defaults, issue-type overrides, draft publishing, project usage, and a
+   blocking assignment preview when current statuses are incompatible.
 4. Install and govern apps, scopes, callbacks, storage and scheduled work.
 5. Export data, set retention, inspect audit events and perform recovery actions.
 

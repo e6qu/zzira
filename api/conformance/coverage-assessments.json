@@ -716,6 +716,83 @@
         "docs/CLOUD_PARITY.md"
       ],
       "notes": "Returns opaque-token pages of active project workflows using the status; unassigned and workflow-scheme draft usages remain."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/workflowscheme",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/store/workflow_schemes_test.go",
+        "e2e/directories.spec.ts",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Lists workspace workflow schemes with Jira page and workflow-name mapping shapes; startAt/maxResults filtering remains."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/workflowscheme",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/store/workflow_schemes_test.go",
+        "e2e/directories.spec.ts",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Creates audited workspace schemes with validated default and issue-type workflow mappings; additional classic Jira flags remain."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/workflowscheme/project",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/store/workflow_schemes_test.go",
+        "e2e/directories.spec.ts",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Returns workflow-scheme associations for repeated workspace project IDs; Jira default-scheme null semantics remain."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/workflowscheme/project",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/store/workflow_schemes_test.go",
+        "e2e/directories.spec.ts",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Assigns a scheme transactionally only when every existing issue status is supported by its target workflow; explicit status migration mappings remain."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/workflowscheme/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/store/workflow_schemes_test.go",
+        "e2e/directories.spec.ts",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Deletes inactive workspace schemes with audit evidence and rejects active schemes; default-scheme protection remains."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/workflowscheme/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/store/workflow_schemes_test.go",
+        "e2e/directories.spec.ts",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Returns published or requested draft scheme configuration with workspace isolation and not-found behavior; expanded draft metadata remains."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/workflowscheme/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/store/workflow_schemes_test.go",
+        "e2e/directories.spec.ts",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Validates and saves default and issue-type mappings as an inactive runtime draft; updateDraftIfNeeded and direct inactive updates remain."
     }
   ]
 }

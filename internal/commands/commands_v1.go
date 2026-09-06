@@ -248,7 +248,7 @@ func (s *Service) TransitionIssue(ctx context.Context, actorID, workspaceID, iss
 	if err != nil {
 		return nil, nil, fmt.Errorf("issue %q not found", issueIDOrKey)
 	}
-	wf, err := s.Store.WorkflowForProject(ctx, issue.ProjectID)
+	wf, err := s.Store.WorkflowForProjectAndIssueType(ctx, issue.ProjectID, issue.IssueType.ID)
 	if err != nil {
 		return nil, nil, err
 	}

@@ -21,6 +21,16 @@ type Workflow struct {
 	Version     int          `json:"-"`
 }
 
+type Scheme struct {
+	ID                string            `json:"id"`
+	Name              string            `json:"name"`
+	Description       string            `json:"description"`
+	DefaultWorkflowID string            `json:"defaultWorkflowId"`
+	IssueTypeMappings map[string]string `json:"issueTypeMappings"`
+	HasDraft          bool              `json:"-"`
+	Version           int               `json:"-"`
+}
+
 // Default is the built-in workflow: To Do ↔ In Progress → Done, Done → To Do.
 // Transition ids match the Jira-style string ids clients expect.
 func Default() Workflow {
