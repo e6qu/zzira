@@ -150,15 +150,19 @@ func (h *Handler) workflowSchemeSubresourceRoute(w http.ResponseWriter, r *http.
 			return true
 		}
 		var request struct {
-			StatusMappings []struct{} `json:"statusMappings"`
+			StatusMappings []struct {
+				IssueTypeID string `json:"issueTypeId"`
+				StatusID    string `json:"statusId"`
+				NewStatusID string `json:"newStatusId"`
+			} `json:"statusMappings"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil && !errors.Is(err, io.EOF) {
 			jiraError(w, http.StatusBadRequest, "Invalid workflow scheme publish request.")
 			return true
 		}
-		if len(request.StatusMappings) > 0 {
-			jiraError(w, http.StatusBadRequest, "Status mappings are only accepted when assigned project statuses require migration.")
-			return true
+		statusMappings := make([]store.WorkflowStatusMapping, 0, len(request.StatusMappings))
+		for _, mapping := range request.StatusMappings {
+			statusMappings = append(statusMappings, store.WorkflowStatusMapping{IssueTypeID: mapping.IssueTypeID, OldStatusID: mapping.StatusID, NewStatusID: mapping.NewStatusID})
 		}
 		if r.URL.Query().Get("validateOnly") == "true" {
 			projects, err := h.Store.ProjectsForWorkflowScheme(r.Context(), workspaceID, schemeID)
@@ -168,15 +172,38 @@ func (h *Handler) workflowSchemeSubresourceRoute(w http.ResponseWriter, r *http.
 			}
 			for _, project := range projects {
 				impacts, err := h.Store.WorkflowSchemeImpact(r.Context(), workspaceID, project.ID, schemeID, true)
-				if err != nil || len(impacts) > 0 {
+				if err != nil {
 					jiraError(w, http.StatusBadRequest, "The draft requires status mappings before it can be published.")
 					return true
+				}
+				for _, impact := range impacts {
+					replacement := ""
+					for _, mapping := range statusMappings {
+						if mapping.IssueTypeID == impact.IssueTypeID && mapping.OldStatusID == impact.Status.ID {
+							replacement = mapping.NewStatusID
+						}
+					}
+					allowed := false
+					for _, transition := range impact.TargetWorkflow.Transitions {
+						if transition.To == replacement {
+							allowed = true
+						}
+						for _, from := range transition.From {
+							if from == replacement {
+								allowed = true
+							}
+						}
+					}
+					if replacement == "" || !allowed {
+						jiraError(w, http.StatusBadRequest, "The draft requires valid status mappings before it can be published.")
+						return true
+					}
 				}
 			}
 			w.WriteHeader(http.StatusNoContent)
 			return true
 		}
-		task, err := h.Store.PublishWorkflowSchemeDraftTask(r.Context(), workspaceID, userID, schemeID)
+		task, err := h.Store.PublishWorkflowSchemeDraftTaskWithMappings(r.Context(), workspaceID, userID, schemeID, statusMappings)
 		if err != nil {
 			workflowSchemeAPIError(w, err)
 			return true

@@ -935,7 +935,7 @@
         "internal/store/workflow_schemes.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Supports validation-only publishing and atomically publishes compatible drafts with audit, version increment, and a durable 303 task; publish-time status migration mappings remain."
+      "notes": "Validates or atomically publishes drafts, applying required per-issue-type status replacements across assigned projects with sync actions, audit, version increment, and a durable 303 task; queued execution remains."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/workflowscheme/{id}/draft/workflow",
@@ -1100,7 +1100,7 @@
         "internal/store/workflow_schemes.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Optimistically updates a validated published scheme at the requested version with assigned-project impact protection, audit, version increment, and a durable 303 task; supplied status migration mappings remain."
+      "notes": "Optimistically updates a validated published scheme, applying workflow-level and issue-type override status replacements atomically across assigned projects with sync actions, audit, version increment, and a durable 303 task; queued execution remains."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/workflowscheme/update/mappings",

@@ -181,6 +181,12 @@ does not publish them as one OpenAPI document.
   document versions; required-mapping analysis reports the actual statuses
   affected across assigned projects; updates enforce optimistic versions and
   return durable tasks while refusing an unsafe unmapped change.
+- Completed status replacement for draft publish and bulk update. Both request
+  shapes now migrate every affected issue across all assigned projects, emit
+  ordinary synchronized status actions, update the scheme, increment its
+  version, write audit evidence, and persist the completed task in one database
+  transaction. Workflow-level mappings expand by old/new workflow pair and
+  issue-type overrides take precedence.
 
 Validation after the organization foundation:
 
@@ -425,10 +431,19 @@ Validation after bulk workflow-scheme operations:
 - Exact reviewed API coverage is 111 of 1,207 operations: 104 partial, 7
   missing, and 1,096 explicitly unassessed.
 
+Validation after workflow-scheme publish/update migration:
+
+- PostgreSQL integration validates publish mappings without mutation, applies
+  them on publish, restores the active definition, rejects an unmapped bulk
+  update, applies an issue-type override on bulk update, and preserves stale
+  version rejection and the later project-switch migration path.
+- The full PostgreSQL Go suite, vet, WebAssembly build, seven conformance
+  tests, regenerated inventory/coverage checks, and `git diff --check` pass.
+
 ## Current change
 
-1. Add publish/update-time status replacement plus queued task execution and
-   cancellation semantics.
+1. Add queued task execution and cancellation semantics, then workflow
+   conditions, validators, post-functions, and visual designer persistence.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 

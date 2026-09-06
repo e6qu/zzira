@@ -147,6 +147,17 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	if !strings.Contains(usage.Body.String(), projectID) {
 		t.Fatal(usage.Body.String())
 	}
+	call(actor, "POST", "/rest/api/3/workflowscheme/"+schemeID+"/createdraft", "", 201)
+	call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/draft/default", `{"workflow":"Simple API lifecycle"}`, 200)
+	publishMappings := `{"statusMappings":[{"issueTypeId":"it_task","statusId":"st_inprogress","newStatusId":"st_todo"}]}`
+	call(actor, "POST", "/rest/api/3/workflowscheme/"+schemeID+"/draft/publish?validateOnly=true", publishMappings, 204)
+	call(actor, "POST", "/rest/api/3/workflowscheme/"+schemeID+"/draft/publish", publishMappings, 303)
+	var draftMigratedStatus string
+	if err := st.Pool.QueryRow(ctx, `SELECT status_id FROM issues WHERE id=$1`, issueID).Scan(&draftMigratedStatus); err != nil || draftMigratedStatus != "st_todo" {
+		t.Fatalf("draft migrated status=%q err=%v", draftMigratedStatus, err)
+	}
+	call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/default", `{"workflow":"Default"}`, 200)
+	exec(`UPDATE issues SET status_id='st_inprogress' WHERE id=$1`, issueID)
 	bulkRead := call(actor, "POST", "/rest/api/3/workflowscheme/read", `{"projectIds":["`+projectID+`"],"workflowSchemeIds":["`+schemeID+`"]}`, 200)
 	var readSchemes []map[string]any
 	if err := json.Unmarshal(bulkRead.Body.Bytes(), &readSchemes); err != nil || len(readSchemes) != 1 {
@@ -159,9 +170,16 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	}
 	unsafeBulkUpdate := `{"id":"` + schemeID + `","name":"Unsafe bulk","description":"Unsafe","defaultWorkflowId":"` + workflowID + `","version":{"versionNumber":` + fmt.Sprint(version) + `},"workflowsForIssueTypes":[]}`
 	call(actor, "POST", "/rest/api/3/workflowscheme/update", unsafeBulkUpdate, 409)
-	safeBulkUpdate := `{"id":"` + schemeID + `","name":"Delivery bulk","description":"Bulk updated","defaultWorkflowId":"wf_default","version":{"versionNumber":` + fmt.Sprint(version) + `},"workflowsForIssueTypes":[]}`
+	mappedBulkUpdate := `{"id":"` + schemeID + `","name":"Delivery migrated","description":"Bulk migrated","defaultWorkflowId":"` + workflowID + `","version":{"versionNumber":` + fmt.Sprint(version) + `},"workflowsForIssueTypes":[],"statusMappingsByIssueTypeOverride":[{"issueTypeId":"it_task","statusMappings":[{"oldStatusId":"st_inprogress","newStatusId":"st_todo"}]}]}`
+	call(actor, "POST", "/rest/api/3/workflowscheme/update", mappedBulkUpdate, 303)
+	var bulkMigratedStatus string
+	if err := st.Pool.QueryRow(ctx, `SELECT status_id FROM issues WHERE id=$1`, issueID).Scan(&bulkMigratedStatus); err != nil || bulkMigratedStatus != "st_todo" {
+		t.Fatalf("bulk migrated status=%q err=%v", bulkMigratedStatus, err)
+	}
+	safeBulkUpdate := `{"id":"` + schemeID + `","name":"Delivery bulk","description":"Bulk updated","defaultWorkflowId":"wf_default","version":{"versionNumber":` + fmt.Sprint(version+1) + `},"workflowsForIssueTypes":[]}`
 	call(actor, "POST", "/rest/api/3/workflowscheme/update", safeBulkUpdate, 303)
 	call(actor, "POST", "/rest/api/3/workflowscheme/update", safeBulkUpdate, 409)
+	exec(`UPDATE issues SET status_id='st_inprogress' WHERE id=$1`, issueID)
 	call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/default", `{"workflow":"Simple API lifecycle"}`, 409)
 	switchable := call(actor, "POST", "/rest/api/3/workflowscheme", `{"name":"Switch target","defaultWorkflow":"Simple API lifecycle"}`, 201)
 	if err := json.Unmarshal(switchable.Body.Bytes(), &scheme); err != nil {

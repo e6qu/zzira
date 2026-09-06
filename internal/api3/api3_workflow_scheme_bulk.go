@@ -7,12 +7,53 @@ import (
 	"strconv"
 
 	"github.com/e6qu/zzira/internal/models"
+	"github.com/e6qu/zzira/internal/store"
 	"github.com/e6qu/zzira/internal/workflow"
 )
 
 type workflowSchemeAssociationRequest struct {
 	IssueTypeIDs []string `json:"issueTypeIds"`
 	WorkflowID   string   `json:"workflowId"`
+}
+
+type workflowAssociationStatusMappingRequest struct {
+	OldStatusID string `json:"oldStatusId"`
+	NewStatusID string `json:"newStatusId"`
+}
+
+type mappingsByIssueTypeOverrideRequest struct {
+	IssueTypeID    string                                    `json:"issueTypeId"`
+	StatusMappings []workflowAssociationStatusMappingRequest `json:"statusMappings"`
+}
+
+type mappingsByWorkflowRequest struct {
+	OldWorkflowID  string                                    `json:"oldWorkflowId"`
+	NewWorkflowID  string                                    `json:"newWorkflowId"`
+	StatusMappings []workflowAssociationStatusMappingRequest `json:"statusMappings"`
+}
+
+func (h *Handler) workflowStatusMappings(r *http.Request, current, candidate workflow.Scheme, byIssueType []mappingsByIssueTypeOverrideRequest, byWorkflow []mappingsByWorkflowRequest) ([]store.WorkflowStatusMapping, error) {
+	issueTypes, err := h.Store.IssueTypes(r.Context())
+	if err != nil {
+		return nil, err
+	}
+	var mappings []store.WorkflowStatusMapping
+	for _, workflowMapping := range byWorkflow {
+		for _, issueType := range issueTypes {
+			if schemeWorkflowIDAPI(current, issueType.ID) != workflowMapping.OldWorkflowID || schemeWorkflowIDAPI(candidate, issueType.ID) != workflowMapping.NewWorkflowID {
+				continue
+			}
+			for _, mapping := range workflowMapping.StatusMappings {
+				mappings = append(mappings, store.WorkflowStatusMapping{IssueTypeID: issueType.ID, OldStatusID: mapping.OldStatusID, NewStatusID: mapping.NewStatusID})
+			}
+		}
+	}
+	for _, override := range byIssueType {
+		for _, mapping := range override.StatusMappings {
+			mappings = append(mappings, store.WorkflowStatusMapping{IssueTypeID: override.IssueTypeID, OldStatusID: mapping.OldStatusID, NewStatusID: mapping.NewStatusID})
+		}
+	}
+	return mappings, nil
 }
 
 func workflowSchemeFromAssociations(current workflow.Scheme, defaultWorkflowID string, associations []workflowSchemeAssociationRequest) workflow.Scheme {
@@ -207,7 +248,9 @@ func (h *Handler) workflowSchemeBulkRoute(w http.ResponseWriter, r *http.Request
 			Version           struct {
 				VersionNumber int `json:"versionNumber"`
 			} `json:"version"`
-			WorkflowsForIssueTypes []workflowSchemeAssociationRequest `json:"workflowsForIssueTypes"`
+			WorkflowsForIssueTypes            []workflowSchemeAssociationRequest   `json:"workflowsForIssueTypes"`
+			StatusMappingsByIssueTypeOverride []mappingsByIssueTypeOverrideRequest `json:"statusMappingsByIssueTypeOverride"`
+			StatusMappingsByWorkflows         []mappingsByWorkflowRequest          `json:"statusMappingsByWorkflows"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil || request.ID == "" || request.Name == "" || request.Version.VersionNumber < 1 {
 			jiraError(w, http.StatusBadRequest, "id, name, description, and version are required.")
@@ -220,7 +263,12 @@ func (h *Handler) workflowSchemeBulkRoute(w http.ResponseWriter, r *http.Request
 		}
 		candidate := workflowSchemeFromAssociations(current, request.DefaultWorkflowID, request.WorkflowsForIssueTypes)
 		candidate.Name, candidate.Description = request.Name, request.Description
-		task, err := h.Store.UpdatePublishedWorkflowSchemeTask(r.Context(), workspaceID, userID, candidate, request.Version.VersionNumber)
+		statusMappings, err := h.workflowStatusMappings(r, current, candidate, request.StatusMappingsByIssueTypeOverride, request.StatusMappingsByWorkflows)
+		if err != nil {
+			workflowSchemeAPIError(w, err)
+			return true
+		}
+		task, err := h.Store.UpdatePublishedWorkflowSchemeTask(r.Context(), workspaceID, userID, candidate, statusMappings, request.Version.VersionNumber)
 		if err != nil {
 			workflowSchemeAPIError(w, err)
 			return true
