@@ -815,6 +815,160 @@
         "docs/CLOUD_PARITY.md"
       ],
       "notes": "Validates and saves default and issue-type mappings as an inactive runtime draft; updateDraftIfNeeded and direct inactive updates remain."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/workflowscheme/{id}/createdraft",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_scheme_drafts.go",
+        "internal/store/workflow_schemes.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Copies the published workspace scheme into an isolated audited draft and rejects duplicate draft creation; expanded modification metadata remains."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/workflowscheme/{id}/draft",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_scheme_drafts.go",
+        "internal/store/workflow_schemes.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Discards an existing workspace draft with audit evidence and leaves the published runtime unchanged; Jira default-scheme semantics remain."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/workflowscheme/{id}/draft",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_scheme_drafts.go",
+        "internal/store/workflow_schemes.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Returns only an existing isolated draft with workflow-name mappings and strict workspace scoping; expanded modification metadata remains."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/workflowscheme/{id}/draft",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_scheme_drafts.go",
+        "internal/store/workflow_schemes.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Partially updates and validates draft name, description, default workflow, and issue-type mappings without changing runtime; updateDraftIfNeeded remains."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/workflowscheme/{id}/draft/default",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_scheme_drafts.go",
+        "internal/store/workflow_schemes.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Resets the draft default to the built-in workflow and returns the updated draft; schemes without a platform default remain unsupported."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/workflowscheme/{id}/draft/default",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_scheme_drafts.go",
+        "internal/store/workflow_schemes.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Returns the draft default workflow by Jira workflow name with draft and workspace validation."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/workflowscheme/{id}/draft/default",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_scheme_drafts.go",
+        "internal/store/workflow_schemes.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Validates and updates the draft default by workflow name with audit evidence; updateDraftIfNeeded remains."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/workflowscheme/{id}/draft/issuetype/{issueType}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_scheme_drafts.go",
+        "internal/store/workflow_schemes.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Deletes one draft issue-type override and returns the updated draft with strict missing-mapping behavior."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/workflowscheme/{id}/draft/issuetype/{issueType}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_scheme_drafts.go",
+        "internal/store/workflow_schemes.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Returns one draft issue-type to workflow-name mapping with strict missing-draft and missing-mapping behavior."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/workflowscheme/{id}/draft/issuetype/{issueType}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_scheme_drafts.go",
+        "internal/store/workflow_schemes.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Validates and saves one draft issue-type workflow override with workspace isolation and audit evidence."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/workflowscheme/{id}/draft/publish",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_scheme_drafts.go",
+        "internal/store/workflow_schemes.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Supports validation-only publishing and atomically publishes compatible drafts with audit, version increment, and a durable 303 task; publish-time status migration mappings remain."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/workflowscheme/{id}/draft/workflow",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_scheme_drafts.go",
+        "internal/store/workflow_schemes.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Removes every draft issue-type mapping for a named workflow and safely resets that workflow as default; Jira default-scheme nuances remain."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/workflowscheme/{id}/draft/workflow",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_scheme_drafts.go",
+        "internal/store/workflow_schemes.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Returns issue types and default membership for a named workflow in an isolated draft; omitted workflowName behavior remains."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/workflowscheme/{id}/draft/workflow",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_scheme_drafts.go",
+        "internal/store/workflow_schemes.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Moves a named workflow mapping across validated issue types and optionally makes it the draft default; updateDraftIfNeeded remains."
     }
   ]
 }

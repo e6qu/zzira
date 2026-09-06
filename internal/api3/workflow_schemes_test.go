@@ -94,6 +94,35 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	if !strings.Contains(draft.Body.String(), `"draft":true`) {
 		t.Fatal(draft.Body.String())
 	}
+	call(actor, "POST", "/rest/api/3/workflowscheme/"+schemeID+"/createdraft", "", 409)
+	call(actor, "GET", "/rest/api/3/workflowscheme/"+schemeID+"/draft", "", 200)
+	defaultMapping := call(actor, "GET", "/rest/api/3/workflowscheme/"+schemeID+"/draft/default", "", 200)
+	if !strings.Contains(defaultMapping.Body.String(), `"workflow":"Default"`) {
+		t.Fatal(defaultMapping.Body.String())
+	}
+	call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/draft/default", `{"workflow":"Simple API lifecycle"}`, 200)
+	call(actor, "DELETE", "/rest/api/3/workflowscheme/"+schemeID+"/draft/default", "", 200)
+	call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/draft/default", `{"workflow":"Default"}`, 200)
+	call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/draft/issuetype/it_task", `{"workflow":"Simple API lifecycle"}`, 200)
+	issueTypeMapping := call(actor, "GET", "/rest/api/3/workflowscheme/"+schemeID+"/draft/issuetype/it_task", "", 200)
+	if !strings.Contains(issueTypeMapping.Body.String(), `"workflow":"Simple API lifecycle"`) {
+		t.Fatal(issueTypeMapping.Body.String())
+	}
+	workflowMapping := call(actor, "GET", "/rest/api/3/workflowscheme/"+schemeID+"/draft/workflow?workflowName=Simple%20API%20lifecycle", "", 200)
+	if !strings.Contains(workflowMapping.Body.String(), `"it_task"`) {
+		t.Fatal(workflowMapping.Body.String())
+	}
+	call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/draft/workflow?workflowName=Simple%20API%20lifecycle", `{"workflow":"Default","issueTypes":["it_task"]}`, 200)
+	call(actor, "DELETE", "/rest/api/3/workflowscheme/"+schemeID+"/draft/issuetype/it_task", "", 200)
+	call(actor, "GET", "/rest/api/3/workflowscheme/"+schemeID+"/draft/issuetype/it_task", "", 404)
+	call(actor, "POST", "/rest/api/3/workflowscheme/"+schemeID+"/draft/publish?validateOnly=true", `{}`, 204)
+	publishedTask := call(actor, "POST", "/rest/api/3/workflowscheme/"+schemeID+"/draft/publish", `{}`, 303)
+	if !strings.Contains(publishedTask.Body.String(), `"status":"COMPLETE"`) {
+		t.Fatal(publishedTask.Body.String())
+	}
+	call(actor, "GET", "/rest/api/3/workflowscheme/"+schemeID+"/draft", "", 404)
+	call(actor, "POST", "/rest/api/3/workflowscheme/"+schemeID+"/createdraft", "", 201)
+	call(actor, "DELETE", "/rest/api/3/workflowscheme/"+schemeID+"/draft", "", 204)
 	call(actor, "PUT", "/rest/api/3/workflowscheme/project", `{"projectId":"`+projectID+`","workflowSchemeId":"`+schemeID+`"}`, 204)
 	association := call(actor, "GET", "/rest/api/3/workflowscheme/project?projectId="+projectID, "", 200)
 	if !strings.Contains(association.Body.String(), schemeID) {

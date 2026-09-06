@@ -195,7 +195,40 @@ func (s *Store) SaveWorkflowSchemeDraft(ctx context.Context, workspaceID, actorI
 	if tag.RowsAffected() != 1 {
 		return ErrAdminNotFound
 	}
+	if err := addWorkflowSchemeAudit(ctx, tx, workspaceID, actorID, "workflow.scheme.draft.saved", scheme.ID, map[string]any{"name": scheme.Name}); err != nil {
+		return err
+	}
 	return tx.Commit(ctx)
+}
+
+func (s *Store) CreateWorkflowSchemeDraft(ctx context.Context, workspaceID, actorID, schemeID string) (workflow.Scheme, error) {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return workflow.Scheme{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	scheme, err := scanWorkflowScheme(tx.QueryRow(ctx, `SELECT id,name,description,default_workflow_id,issue_type_mappings,COALESCE(draft_def,'null'),version,draft_def IS NOT NULL FROM workflow_schemes WHERE id=$1 AND workspace_id=$2 FOR UPDATE`, schemeID, workspaceID), false)
+	if err != nil {
+		return workflow.Scheme{}, ErrAdminNotFound
+	}
+	if scheme.HasDraft {
+		return workflow.Scheme{}, fmt.Errorf("%w: the workflow scheme already has a draft", ErrAdminConflict)
+	}
+	def, err := json.Marshal(workflowSchemeDef{DefaultWorkflowID: scheme.DefaultWorkflowID, IssueTypeMappings: scheme.IssueTypeMappings})
+	if err != nil {
+		return workflow.Scheme{}, err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE workflow_schemes SET draft_def=$3,updated_at=now() WHERE id=$1 AND workspace_id=$2`, schemeID, workspaceID, def); err != nil {
+		return workflow.Scheme{}, err
+	}
+	if err := addWorkflowSchemeAudit(ctx, tx, workspaceID, actorID, "workflow.scheme.draft.created", schemeID, nil); err != nil {
+		return workflow.Scheme{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return workflow.Scheme{}, err
+	}
+	scheme.HasDraft = true
+	return scheme, nil
 }
 
 func schemeWorkflowID(scheme workflow.Scheme, issueTypeID string) string {
@@ -405,6 +438,18 @@ func (s *Store) switchWorkflowScheme(ctx context.Context, workspaceID, actorID, 
 }
 
 func (s *Store) PublishWorkflowSchemeDraft(ctx context.Context, workspaceID, actorID, schemeID string) error {
+	return s.publishWorkflowSchemeDraft(ctx, workspaceID, actorID, schemeID, nil)
+}
+
+func (s *Store) PublishWorkflowSchemeDraftTask(ctx context.Context, workspaceID, actorID, schemeID string) (APITask, error) {
+	task, err := completedAPITask(workspaceID, actorID, "Workflow scheme draft published.", map[string]any{"workflowSchemeId": schemeID})
+	if err != nil {
+		return task, err
+	}
+	return task, s.publishWorkflowSchemeDraft(ctx, workspaceID, actorID, schemeID, &task)
+}
+
+func (s *Store) publishWorkflowSchemeDraft(ctx context.Context, workspaceID, actorID, schemeID string, task *APITask) error {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -446,6 +491,11 @@ func (s *Store) PublishWorkflowSchemeDraft(ctx context.Context, workspaceID, act
 	}
 	if err := addWorkflowSchemeAudit(ctx, tx, workspaceID, actorID, "workflow.scheme.published", schemeID, map[string]any{"version": scheme.Version + 1}); err != nil {
 		return err
+	}
+	if task != nil {
+		if err := insertAPITask(ctx, tx, *task); err != nil {
+			return err
+		}
 	}
 	return tx.Commit(ctx)
 }

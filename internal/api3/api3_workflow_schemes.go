@@ -198,6 +198,10 @@ func (h *Handler) workflowSchemeRoute(w http.ResponseWriter, r *http.Request, pa
 		return
 	}
 	id := strings.TrimPrefix(path, "/workflowscheme/")
+	parts := strings.Split(id, "/")
+	if h.workflowSchemeSubresourceRoute(w, r, workspaceID, userID, parts) {
+		return
+	}
 	if id == path || strings.Contains(id, "/") || id == "" {
 		jiraError(w, http.StatusNotFound, "No resource found")
 		return

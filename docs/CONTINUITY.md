@@ -167,6 +167,11 @@ does not publish them as one OpenAPI document.
   transaction, and returns Jira's 303 completed-task representation. Migration
   048 persists that task so the Location can be polled after redirects or a
   server restart; task access is limited to its submitter and administrators.
+- Added fourteen Jira workflow-scheme draft resources. Administrators can
+  explicitly create, read, partially update, discard, validate, and publish a
+  draft; default, issue-type, and workflow-group mappings share the same
+  workspace validation and audited store path. Normal publish returns a
+  durable completed task while validation-only requests leave state untouched.
 
 Validation after the organization foundation:
 
@@ -385,14 +390,23 @@ Validation after workflow-scheme status migration:
   password-authenticated member API journeys.
 - The full PostgreSQL Go suite, vet, WebAssembly build, seven conformance
   tests, generated inventory/coverage checks, and `git diff --check` pass.
-- Exact reviewed API coverage is 84 of 1,207 operations: 77 partial, 7 missing,
-  and 1,123 explicitly unassessed.
+Validation after workflow-scheme draft resources:
+
+- The PostgreSQL Jira integration journey exercises every draft resource and
+  method, missing draft/mapping behavior, duplicate draft conflicts,
+  validation-only publish, durable publish tasks, and published runtime safety.
+- The full PostgreSQL Go suite, vet, WebAssembly build, seven conformance
+  tests, generated inventory/coverage checks, and `git diff --check` pass.
+- Exact reviewed API coverage is 98 of 1,207 operations: 91 partial, 7 missing,
+  and 1,109 explicitly unassessed.
 
 ## Current change
 
-1. Complete workflow-scheme draft and mapping REST operations plus queued task
-   execution and cancellation semantics.
-2. Continue the reviewed Jira Platform contract operation ledger alongside the
+1. Complete published workflow-scheme default, issue-type, workflow-group,
+   project-usage, and bulk read/update/mapping REST operations.
+2. Add publish-time status replacement plus queued task execution and
+   cancellation semantics.
+3. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 
 ## Resume here
