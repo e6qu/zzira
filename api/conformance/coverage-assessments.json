@@ -1535,13 +1535,13 @@
       "status": "partial",
       "evidence": [
         "internal/api3/service_test.go",
-        "internal/api3/service.go",
+        "internal/api3/service_organizations.go",
         "internal/commands/service.go",
         "internal/store/service.go",
         "e2e/service.spec.ts",
-        "docs/CLOUD_PARITY.md"
+        "docs/SERVICE_MANAGEMENT.md"
       ],
-      "notes": "Creates or enrolls a workspace-scoped portal-only customer account for assigned agents and implicit service managers; invitation delivery, portal login activation and skip-permission-check variants remain."
+      "notes": "Creates or reactivates a site-scoped portal-only customer for site administrators, grants customer-only site access, honors strict conflict mode, and never grants Jira product access; outbound invitation mail and every Atlassian account conflict detail remain."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request",
@@ -1777,92 +1777,518 @@
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/approval",
       "status": "partial",
-      "evidence": ["internal/api3/service_test.go", "internal/api3/service_approval_attachment.go", "e2e/service.spec.ts", "docs/SERVICE_MANAGEMENT.md"],
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_approval_attachment.go",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
       "notes": "Returns paged approval state, approvers, decisions and caller answerability; workflow-driven approval creation and expansion variants remain."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/approval/{approvalId}",
       "status": "partial",
-      "evidence": ["internal/api3/service_test.go", "internal/api3/service_approval_attachment.go", "docs/SERVICE_MANAGEMENT.md"],
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_approval_attachment.go",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
       "notes": "Returns one request-scoped approval with Jira-shaped dates and approver decisions; workflow-driven approval configuration remains."
     },
     {
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/request/{issueIdOrKey}/approval/{approvalId}",
       "status": "partial",
-      "evidence": ["internal/api3/service_test.go", "internal/commands/service_approval_attachment.go", "e2e/service.spec.ts", "docs/SERVICE_MANAGEMENT.md"],
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/commands/service_approval_attachment.go",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
       "notes": "Enforces one decision by a pending assigned approver and computes decline or unanimous approval atomically; approval-stage workflow transitions remain."
     },
     {
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/servicedesk/{serviceDeskId}/attachTemporaryFile",
       "status": "partial",
-      "evidence": ["internal/api3/service_test.go", "internal/commands/service_approval_attachment.go", "internal/commands/service_attachment_runner.go", "docs/SERVICE_MANAGEMENT.md"],
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/commands/service_approval_attachment.go",
+        "internal/commands/service_attachment_runner.go",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
       "notes": "Accepts XSRF-protected multipart uploads with one-use temporary IDs and scheduled expiry cleanup; per-desk attachment-disable settings remain."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/attachment",
       "status": "partial",
-      "evidence": ["internal/api3/service_test.go", "internal/api3/service_approval_attachment.go", "docs/SERVICE_MANAGEMENT.md"],
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_approval_attachment.go",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
       "notes": "Returns paged request attachments and filters internal files from customers; additional expansion and media metadata variants remain."
     },
     {
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/request/{issueIdOrKey}/attachment",
       "status": "partial",
-      "evidence": ["internal/api3/service_test.go", "internal/commands/service_approval_attachment.go", "e2e/service.spec.ts", "docs/SERVICE_MANAGEMENT.md"],
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/commands/service_approval_attachment.go",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
       "notes": "Consumes actor-owned one-use temporary IDs and creates canonical Jira attachments linked to a public or internal comment; richer comment body forms remain."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/attachment/{attachmentId}",
       "status": "partial",
-      "evidence": ["internal/api3/service_test.go", "internal/api3/service_approval_attachment.go", "docs/SERVICE_MANAGEMENT.md"],
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_approval_attachment.go",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
       "notes": "Streams attachment content behind request and public/internal visibility checks; conditional range and cache headers remain."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/attachment/{attachmentId}/thumbnail",
       "status": "partial",
-      "evidence": ["internal/api3/service_test.go", "internal/api3/service_approval_attachment.go", "docs/SERVICE_MANAGEMENT.md"],
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_approval_attachment.go",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
       "notes": "Streams visible image content at the thumbnail URL; generated resized thumbnails and conditional cache headers remain."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/comment/{commentId}/attachment",
       "status": "partial",
-      "evidence": ["internal/api3/service_test.go", "internal/api3/service_approval_attachment.go", "docs/SERVICE_MANAGEMENT.md"],
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_approval_attachment.go",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
       "notes": "Returns attachments associated with a visible request comment and filters internal comments and files from customers; expansion variants remain."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/notification",
       "status": "partial",
-      "evidence": ["internal/api3/service_test.go", "internal/api3/service_feedback.go", "e2e/service.spec.ts", "docs/SERVICE_MANAGEMENT.md"],
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_feedback.go",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
       "notes": "Returns the authenticated viewer's durable request subscription state after applying request visibility; notification policy administration remains."
     },
     {
       "operationId": "jira-service-management:PUT:/rest/servicedeskapi/request/{issueIdOrKey}/notification",
       "status": "partial",
-      "evidence": ["internal/api3/service_test.go", "internal/commands/service_notifications_feedback.go", "e2e/service.spec.ts", "docs/SERVICE_MANAGEMENT.md"],
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/commands/service_notifications_feedback.go",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
       "notes": "Subscribes the authenticated viewer and delivers public request events through the private notification stream; external email delivery remains."
     },
     {
       "operationId": "jira-service-management:DELETE:/rest/servicedeskapi/request/{issueIdOrKey}/notification",
       "status": "partial",
-      "evidence": ["internal/api3/service_test.go", "internal/commands/service_notifications_feedback.go", "e2e/service.spec.ts", "docs/SERVICE_MANAGEMENT.md"],
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/commands/service_notifications_feedback.go",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
       "notes": "Unsubscribes only the authenticated viewer without changing request access; administrator notification policies remain."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{requestIdOrKey}/feedback",
       "status": "partial",
-      "evidence": ["internal/api3/service_test.go", "internal/api3/service_feedback.go", "e2e/service.spec.ts", "docs/SERVICE_MANAGEMENT.md"],
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_feedback.go",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
       "notes": "Returns request-visible CSAT feedback with rating and optional comment; configured satisfaction scales and aggregate reporting remain."
     },
     {
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/request/{requestIdOrKey}/feedback",
       "status": "partial",
-      "evidence": ["internal/api3/service_test.go", "internal/commands/service_notifications_feedback.go", "e2e/service.spec.ts", "docs/SERVICE_MANAGEMENT.md"],
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/commands/service_notifications_feedback.go",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
       "notes": "Creates or revises one-to-five CSAT feedback for the reporter of a completed request and notifies subscribed agents; CSAT configuration remains."
     },
     {
       "operationId": "jira-service-management:DELETE:/rest/servicedeskapi/request/{requestIdOrKey}/feedback",
       "status": "partial",
-      "evidence": ["internal/api3/service_test.go", "internal/commands/service_notifications_feedback.go", "docs/SERVICE_MANAGEMENT.md"],
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/commands/service_notifications_feedback.go",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
       "notes": "Deletes feedback only for the request reporter; Connect app authorization and audit export remain."
+    },
+    {
+      "operationId": "jira-service-management:POST:/rest/servicedeskapi/customer/skip-permission-check",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_organizations.go",
+        "internal/commands/service_organizations.go",
+        "internal/store/service_organizations.go",
+        "migrations/066_service_organizations_customers.sql",
+        "migrations/067_service_customer_revocation.sql",
+        "internal/web/service.go",
+        "internal/render/templates/service.gohtml",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Accepts the documented customer DTO and provisions the same customer-only identity under authenticated site-administrator authority; Connect-app identity and its permission-bypass distinction are not modeled."
+    },
+    {
+      "operationId": "jira-service-management:PUT:/rest/servicedeskapi/customer/user/{accountId}/revoke-portal-only-access",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_organizations.go",
+        "internal/commands/service_organizations.go",
+        "internal/store/service_organizations.go",
+        "migrations/066_service_organizations_customers.sql",
+        "migrations/067_service_customer_revocation.sql",
+        "internal/web/service.go",
+        "internal/render/templates/service.gohtml",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Site administrators durably revoke only portal-only accounts, remove their customer role, desk and organization access, and prevent request auto-enrollment from restoring access; Atlassian lifecycle events remain."
+    },
+    {
+      "operationId": "jira-service-management:GET:/rest/servicedeskapi/organization",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_organizations.go",
+        "internal/commands/service_organizations.go",
+        "internal/store/service_organizations.go",
+        "migrations/066_service_organizations_customers.sql",
+        "migrations/067_service_customer_revocation.sql",
+        "internal/web/service.go",
+        "internal/render/templates/service.gohtml",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Returns paged name-ordered organizations, limits customers to their memberships, and supports agent-only accountId filtering; every expansion and customer-service detail field remain."
+    },
+    {
+      "operationId": "jira-service-management:POST:/rest/servicedeskapi/organization",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_organizations.go",
+        "internal/commands/service_organizations.go",
+        "internal/store/service_organizations.go",
+        "migrations/066_service_organizations_customers.sql",
+        "migrations/067_service_customer_revocation.sql",
+        "internal/web/service.go",
+        "internal/render/templates/service.gohtml",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Agents and administrators create a site organization or receive the existing case-insensitive name match with the documented organization bean; SCIM-backed creation policy remains."
+    },
+    {
+      "operationId": "jira-service-management:DELETE:/rest/servicedeskapi/organization/{organizationId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_organizations.go",
+        "internal/commands/service_organizations.go",
+        "internal/store/service_organizations.go",
+        "migrations/066_service_organizations_customers.sql",
+        "migrations/067_service_customer_revocation.sql",
+        "internal/web/service.go",
+        "internal/render/templates/service.gohtml",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Agents and administrators delete a workspace organization and cascade its membership, properties, and desk links with the documented empty response; external directory lifecycle remains."
+    },
+    {
+      "operationId": "jira-service-management:GET:/rest/servicedeskapi/organization/{organizationId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_organizations.go",
+        "internal/commands/service_organizations.go",
+        "internal/store/service_organizations.go",
+        "migrations/066_service_organizations_customers.sql",
+        "migrations/067_service_customer_revocation.sql",
+        "internal/web/service.go",
+        "internal/render/templates/service.gohtml",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Returns the organization to agents and administrators or to a customer who belongs to it, hiding other organizations as not found; customer-service detail fields remain."
+    },
+    {
+      "operationId": "jira-service-management:GET:/rest/servicedeskapi/organization/{organizationId}/property",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_organizations.go",
+        "internal/commands/service_organizations.go",
+        "internal/store/service_organizations.go",
+        "migrations/066_service_organizations_customers.sql",
+        "migrations/067_service_customer_revocation.sql",
+        "internal/web/service.go",
+        "internal/render/templates/service.gohtml",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Returns documented entity-property key beans to agents or organization members with the same membership boundary; property expansions remain."
+    },
+    {
+      "operationId": "jira-service-management:DELETE:/rest/servicedeskapi/organization/{organizationId}/property/{propertyKey}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_organizations.go",
+        "internal/commands/service_organizations.go",
+        "internal/store/service_organizations.go",
+        "migrations/066_service_organizations_customers.sql",
+        "migrations/067_service_customer_revocation.sql",
+        "internal/web/service.go",
+        "internal/render/templates/service.gohtml",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Agents and administrators delete a workspace-scoped organization entity property with the documented empty response; app-scope distinctions remain."
+    },
+    {
+      "operationId": "jira-service-management:GET:/rest/servicedeskapi/organization/{organizationId}/property/{propertyKey}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_organizations.go",
+        "internal/commands/service_organizations.go",
+        "internal/store/service_organizations.go",
+        "migrations/066_service_organizations_customers.sql",
+        "migrations/067_service_customer_revocation.sql",
+        "internal/web/service.go",
+        "internal/render/templates/service.gohtml",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Returns a JSON organization entity property to agents or organization members while hiding foreign organizations and missing keys; app-scope distinctions remain."
+    },
+    {
+      "operationId": "jira-service-management:PUT:/rest/servicedeskapi/organization/{organizationId}/property/{propertyKey}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_organizations.go",
+        "internal/commands/service_organizations.go",
+        "internal/store/service_organizations.go",
+        "migrations/066_service_organizations_customers.sql",
+        "migrations/067_service_customer_revocation.sql",
+        "internal/web/service.go",
+        "internal/render/templates/service.gohtml",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Agents and administrators validate and upsert a JSON organization property with Jira-compatible key and value limits; app-scope distinctions remain."
+    },
+    {
+      "operationId": "jira-service-management:DELETE:/rest/servicedeskapi/organization/{organizationId}/user",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_organizations.go",
+        "internal/commands/service_organizations.go",
+        "internal/store/service_organizations.go",
+        "migrations/066_service_organizations_customers.sql",
+        "migrations/067_service_customer_revocation.sql",
+        "internal/web/service.go",
+        "internal/render/templates/service.gohtml",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Agents and administrators remove one or more accountIds or legacy usernames from an organization with idempotent empty success; app-scope distinctions remain."
+    },
+    {
+      "operationId": "jira-service-management:GET:/rest/servicedeskapi/organization/{organizationId}/user",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_organizations.go",
+        "internal/commands/service_organizations.go",
+        "internal/store/service_organizations.go",
+        "migrations/066_service_organizations_customers.sql",
+        "migrations/067_service_customer_revocation.sql",
+        "internal/web/service.go",
+        "internal/render/templates/service.gohtml",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Returns a paged account-ID-ordered list of active organization customers to agents and administrators; all legacy user fields and expansions remain partial."
+    },
+    {
+      "operationId": "jira-service-management:POST:/rest/servicedeskapi/organization/{organizationId}/user",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_organizations.go",
+        "internal/commands/service_organizations.go",
+        "internal/store/service_organizations.go",
+        "migrations/066_service_organizations_customers.sql",
+        "migrations/067_service_customer_revocation.sql",
+        "internal/web/service.go",
+        "internal/render/templates/service.gohtml",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Agents and administrators add active service customers by accountIds or legacy usernames idempotently and reject inactive identities; app-scope distinctions remain."
+    },
+    {
+      "operationId": "jira-service-management:DELETE:/rest/servicedeskapi/servicedesk/{serviceDeskId}/customer",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_organizations.go",
+        "internal/commands/service_organizations.go",
+        "internal/store/service_organizations.go",
+        "migrations/066_service_organizations_customers.sql",
+        "migrations/067_service_customer_revocation.sql",
+        "internal/web/service.go",
+        "internal/render/templates/service.gohtml",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Site administrators remove customers from a closed portal using accountIds or legacy usernames, preserving a denial until explicitly re-added; Jira project-admin granularity remains."
+    },
+    {
+      "operationId": "jira-service-management:GET:/rest/servicedeskapi/servicedesk/{serviceDeskId}/customer",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_organizations.go",
+        "internal/commands/service_organizations.go",
+        "internal/store/service_organizations.go",
+        "migrations/066_service_organizations_customers.sql",
+        "migrations/067_service_customer_revocation.sql",
+        "internal/web/service.go",
+        "internal/render/templates/service.gohtml",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Agents assigned to the desk receive a paged, display-name ordered active customer list with display-name, email, account-ID query matching; exact project permission variants remain."
+    },
+    {
+      "operationId": "jira-service-management:POST:/rest/servicedeskapi/servicedesk/{serviceDeskId}/customer",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_organizations.go",
+        "internal/commands/service_organizations.go",
+        "internal/store/service_organizations.go",
+        "migrations/066_service_organizations_customers.sql",
+        "migrations/067_service_customer_revocation.sql",
+        "internal/web/service.go",
+        "internal/render/templates/service.gohtml",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Site administrators idempotently add active site customers to a desk by accountIds or legacy usernames; Jira project-admin granularity remains."
+    },
+    {
+      "operationId": "jira-service-management:POST:/rest/servicedeskapi/servicedesk/{serviceDeskId}/customer/invite",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_organizations.go",
+        "internal/commands/service_organizations.go",
+        "internal/store/service_organizations.go",
+        "migrations/066_service_organizations_customers.sql",
+        "migrations/067_service_customer_revocation.sql",
+        "internal/web/service.go",
+        "internal/render/templates/service.gohtml",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Site administrators create or reactivate a customer-only account and associate it with the desk, honoring strict conflict mode; actual invitation email delivery and project-admin granularity remain."
+    },
+    {
+      "operationId": "jira-service-management:POST:/rest/servicedeskapi/servicedesk/{serviceDeskId}/customer/skip-permission-check",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_organizations.go",
+        "internal/commands/service_organizations.go",
+        "internal/store/service_organizations.go",
+        "migrations/066_service_organizations_customers.sql",
+        "migrations/067_service_customer_revocation.sql",
+        "internal/web/service.go",
+        "internal/render/templates/service.gohtml",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Accepts the documented bulk customer DTO and adds active customers under site-administrator authority; Connect-app identity and its permission-bypass distinction are not modeled."
+    },
+    {
+      "operationId": "jira-service-management:DELETE:/rest/servicedeskapi/servicedesk/{serviceDeskId}/organization",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_organizations.go",
+        "internal/commands/service_organizations.go",
+        "internal/store/service_organizations.go",
+        "migrations/066_service_organizations_customers.sql",
+        "migrations/067_service_customer_revocation.sql",
+        "internal/web/service.go",
+        "internal/render/templates/service.gohtml",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Assigned agents and administrators idempotently unlink a workspace organization from their desk with the documented empty response; app-access rules remain."
+    },
+    {
+      "operationId": "jira-service-management:GET:/rest/servicedeskapi/servicedesk/{serviceDeskId}/organization",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_organizations.go",
+        "internal/commands/service_organizations.go",
+        "internal/store/service_organizations.go",
+        "migrations/066_service_organizations_customers.sql",
+        "migrations/067_service_customer_revocation.sql",
+        "internal/web/service.go",
+        "internal/render/templates/service.gohtml",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Returns paged name-ordered organizations linked to a desk for its assigned agents and administrators; all expansions remain."
+    },
+    {
+      "operationId": "jira-service-management:POST:/rest/servicedeskapi/servicedesk/{serviceDeskId}/organization",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_organizations.go",
+        "internal/commands/service_organizations.go",
+        "internal/store/service_organizations.go",
+        "migrations/066_service_organizations_customers.sql",
+        "migrations/067_service_customer_revocation.sql",
+        "internal/web/service.go",
+        "internal/render/templates/service.gohtml",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Assigned agents and administrators idempotently link a workspace organization to their desk and organization members gain closed-portal admission; app-access rules remain."
     }
   ]
 }

@@ -19,9 +19,13 @@ approval state, notification preference, and satisfaction feedback. The browser 
 with WCAG A/AA axe checks and 320 px reflow.
 
 Assigned agents can read requests in their service desks by using
-`requestOwnership=ALL_REQUESTS`, raise a request for an enrolled customer, add
-internal notes, and create portal-only customer records. Site administrators
-are implicit service managers across every desk. A customer can read only their
+`requestOwnership=ALL_REQUESTS`, raise a request for an enrolled customer, and add
+internal notes. Site administrators create or reactivate portal-only customer
+records without granting Jira product access. They can open a portal to all
+active site customers or close it to direct and organization membership, invite
+and remove desk customers, and durably revoke portal-only access. Revocation
+removes the customer role and cannot be undone by request auto-enrollment. Site
+administrators are implicit service managers across every desk. A customer can read only their
 own requests and public comments; comments created through ordinary Jira issue
 UI have no public marker and remain internal.
 
@@ -34,6 +38,13 @@ is shared by the queue UI, request UI, and REST permission checks. Site
 administrators can add or remove active workspace members from the desk roster.
 Revocation immediately removes queue access, all-request visibility, request
 management and internal-comment visibility for that desk.
+
+Agents can create customer organizations, add or remove active customers, store
+JSON entity properties, and link organizations to the desks they work. A linked
+organization admits its members to a closed portal. Customers see only their
+own organizations and their properties; agents can filter and inspect the full
+customer directory. The agent workspace includes customer invitation, portal
+access, organization membership, and desk-link management.
 
 Agents can request an approval from an active site user. Every approver has an
 independent pending, approved, or declined decision. Any decline completes the
@@ -92,7 +103,9 @@ conditional goals, status-driven pauses and multiple calendars remain.
 The current `/rest/servicedeskapi` slice implements:
 
 - product info, service desk and request type discovery and administration;
-- customer creation;
+- customer creation, strict conflict handling and portal-only revocation;
+- desk customer invitation, list, add and closed-portal removal;
+- organization lifecycle, member and JSON property management, plus desk links;
 - request validation, creation, owned/all listing, and detail by issue ID or key;
 - public and internal comment list, create, and detail;
 - current request status; and
@@ -115,13 +128,11 @@ is compensated by a logged issue deletion, so no orphaned ticket remains.
 ## Remaining fidelity
 
 The implemented operations are assessed as partial. Custom queues and arbitrary
-queue JQL, dynamic form/custom-field values, participant notifications and
-organizations, approval workflow configuration, image thumbnail generation,
+queue JQL, dynamic form/custom-field values, participant notifications,
+approval workflow configuration, image thumbnail generation,
 email delivery and notification preference administration, CSAT configuration
 and aggregate service reports, full
 status chronology, conditional SLA goal criteria, calendar holidays,
-portal invitation activation, knowledge suggestions, Assets, and
-incident/problem/change configuration remain. Customer creation records a
-portal-only account but does not silently grant Jira product access; a future
-invitation policy will activate authentication with an `atlassian/customer`
-role.
+portal invitation email delivery, knowledge suggestions, Assets, and
+incident/problem/change configuration remain. Customer creation grants only the
+site `atlassian/customer` role and never silently grants Jira product access.

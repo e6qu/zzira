@@ -35,6 +35,10 @@ type servicePageData struct {
 	Calendar              *models.ServiceCalendar
 	SLAMetrics            []models.ServiceSLAMetric
 	SLAs                  []models.ServiceSLA
+	Customers             []*models.User
+	Organizations         []models.ServiceOrganization
+	DeskOrganizations     map[string]bool
+	OrganizationUsers     map[string][]*models.User
 	Transitions           []serviceTransitionView
 	CanAdmin              bool
 	CanAgent              bool
@@ -131,6 +135,34 @@ func (h *Handler) ServiceAgent(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+		data.Customers, err = h.Store.ServiceDeskCustomers(r.Context(), workspaceID, deskID, "")
+		if err != nil {
+			http.Error(w, "Could not load service desk customers.", http.StatusInternalServerError)
+			return
+		}
+		data.Organizations, err = h.Store.ServiceOrganizations(r.Context(), workspaceID, user.ID, "", true)
+		if err != nil {
+			http.Error(w, "Could not load customer organizations.", http.StatusInternalServerError)
+			return
+		}
+		linkedOrganizations, err := h.Store.ServiceDeskOrganizations(r.Context(), workspaceID, deskID)
+		if err != nil {
+			http.Error(w, "Could not load service desk organizations.", http.StatusInternalServerError)
+			return
+		}
+		data.DeskOrganizations = make(map[string]bool, len(linkedOrganizations))
+		for _, organization := range linkedOrganizations {
+			data.DeskOrganizations[organization.ID] = true
+		}
+		data.OrganizationUsers = make(map[string][]*models.User, len(data.Organizations))
+		for _, organization := range data.Organizations {
+			customers, err := h.Store.ServiceOrganizationUsers(r.Context(), workspaceID, organization.ID)
+			if err != nil {
+				http.Error(w, "Could not load organization customers.", http.StatusInternalServerError)
+				return
+			}
+			data.OrganizationUsers[organization.ID] = customers
+		}
 	}
 	preferredProject := ""
 	if data.Desk != nil {
@@ -178,6 +210,78 @@ func (h *Handler) ServiceAgentSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	redirectLocal(w, r, "/service/agent/"+r.PathValue("desk")+"#agents")
+}
+
+func (h *Handler) ServiceCustomerSettings(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	deskID := r.PathValue("desk")
+	switch r.PostFormValue("action") {
+	case "access":
+		if err := h.Commands.SetServiceDeskCustomerAccess(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("open") == "true"); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	case "invite":
+		if _, err := h.Commands.InviteServiceDeskCustomer(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("email"), r.PostFormValue("displayName")); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	case "add", "remove":
+		customer, err := h.Store.ServiceCustomer(r.Context(), workspaceID, strings.TrimSpace(r.PostFormValue("customer")))
+		if err != nil {
+			http.Error(w, "Active customer was not found.", http.StatusBadRequest)
+			return
+		}
+		if err := h.Commands.SetServiceDeskCustomers(r.Context(), user.ID, workspaceID, deskID, []string{customer.ID}, r.PostFormValue("action") == "add"); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	default:
+		http.Error(w, "Customer action is invalid.", http.StatusBadRequest)
+		return
+	}
+	redirectLocal(w, r, "/service/agent/"+deskID+"#customers")
+}
+
+func (h *Handler) ServiceOrganizationSettings(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	deskID, organizationID := r.PathValue("desk"), r.PostFormValue("organizationId")
+	var err error
+	switch r.PostFormValue("action") {
+	case "create":
+		_, err = h.Commands.CreateServiceOrganization(r.Context(), user.ID, workspaceID, r.PostFormValue("name"))
+	case "link", "unlink":
+		err = h.Commands.SetServiceDeskOrganization(r.Context(), user.ID, workspaceID, deskID, organizationID, r.PostFormValue("action") == "link")
+	case "add-member":
+		var customer *models.User
+		customer, err = h.Store.ServiceCustomer(r.Context(), workspaceID, strings.TrimSpace(r.PostFormValue("customer")))
+		if err == nil {
+			err = h.Commands.SetServiceOrganizationUsers(r.Context(), user.ID, workspaceID, organizationID, []string{customer.ID}, true)
+		}
+	case "remove-member":
+		err = h.Commands.SetServiceOrganizationUsers(r.Context(), user.ID, workspaceID, organizationID, []string{r.PostFormValue("accountId")}, false)
+	case "delete":
+		err = h.Commands.DeleteServiceOrganization(r.Context(), user.ID, workspaceID, organizationID)
+	default:
+		err = errors.New("organization action is invalid")
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	redirectLocal(w, r, "/service/agent/"+deskID+"#organizations")
 }
 
 func parseServiceClock(value string) (int16, error) {
@@ -261,7 +365,12 @@ func (h *Handler) ServiceHome(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load customer requests.", http.StatusInternalServerError)
 		return
 	}
-	h.writeWorkspacePage(w, r, "page_service_home", user, workspaceID, servicePageData{Desks: desks, Requests: requests}, "service", "")
+	organizations, err := h.Store.ServiceOrganizations(r.Context(), workspaceID, user.ID, "", false)
+	if err != nil {
+		http.Error(w, "Could not load your customer organizations.", http.StatusInternalServerError)
+		return
+	}
+	h.writeWorkspacePage(w, r, "page_service_home", user, workspaceID, servicePageData{Desks: desks, Requests: requests, Organizations: organizations}, "service", "")
 }
 
 func (h *Handler) ServicePortal(w http.ResponseWriter, r *http.Request) {

@@ -77,7 +77,7 @@ semantics.
 | Releases | Version lifecycle, fix/affects membership, progress and notes | Ordering, related work, approvals, custom fields, exports and cross-project releases |
 | Dashboards | CRUD, layouts, favourites, sharing and native issue gadgets | Full shares, subscriptions, report gadgets, app gadgets and offline data |
 | Knowledge | Spaces, page tree, page editing, drafts, versions and trash | Confluence v1, content types, collaboration, permissions, comments, attachments, macros, search and export |
-| Service management | Help center, service projects, typed customer requests, participants, public/private conversation and attachments, assigned-user approvals, request subscriptions and inbox notifications, completed-request CSAT, status transitions, per-desk agents and queues, business calendars, first-response/resolution SLA cycles and durable escalation notifications | Portals/forms, custom queues, organizations, conditional SLA goals, holidays, approval configuration, email delivery, CSAT configuration and reports, Assets, incident/problem/change management, service reports and remaining REST |
+| Service management | Help center, service projects, typed customer requests, participants, public/private conversation and attachments, assigned-user approvals, request subscriptions and inbox notifications, completed-request CSAT, status transitions, per-desk agents and queues, business calendars, first-response/resolution SLA cycles, durable escalation notifications, customer-only accounts, open/closed portal access, and customer organizations | Dynamic forms, custom queues, conditional SLA goals, holidays, approval configuration, email delivery, CSAT configuration and reports, Assets, incident/problem/change management, service reports and remaining REST |
 | Analytics | Dashboard groupings and release progress | Historical reports, development facts, DORA, exports and scheduled delivery |
 | Administration | All 47 organization operations reviewed with tested organization/site/product/directory, DNS claim, policy/resource, event, group and managed-account subsets; limited project settings | Runtime policy enforcement, provider administration and Jira/Confluence schemes |
 | Apps | Webhooks and entity properties used by core features | Installation runtime, modules, isolation, storage, upgrades and app administration |
@@ -280,6 +280,10 @@ browser UI, sync behavior where applicable, and tests.
     participant operations and participant-shaped request access. The first SLA
     slice adds configurable business calendars, durable first-response and
     resolution cycles, customer-visible clock state and both pinned SLA reads.
+    The customer-directory slice adds durable portal-only activation and
+    revocation, open/closed desk admission, direct customer membership,
+    organizations, organization members/properties, desk links, and all pinned
+    organization and customer lifecycle operations.
 11. **Service Management journeys.** Extend the delivered customer help center,
     typed request portal, owned request tracking, conversation, status flow and
     agent queue/assignment workspace with custom queues, an SLA timeline, service setup,

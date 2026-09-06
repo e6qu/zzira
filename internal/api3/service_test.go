@@ -58,7 +58,7 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 		exec(`DELETE FROM memberships WHERE workspace_id=$1`, workspaceID)
 		exec(`DELETE FROM workspaces WHERE id=$1`, workspaceID)
 		exec(`DELETE FROM api_tokens WHERE user_id IN ($1,$2,$3)`, actorID, customerID, agentID)
-		exec(`DELETE FROM users WHERE id IN ($1,$2,$3) OR email IN ('invited.customer@example.test','agent-created.customer@example.test')`, actorID, customerID, agentID)
+		exec(`DELETE FROM users WHERE id IN ($1,$2,$3) OR email IN ('invited.customer@example.test','agent-created.customer@example.test','lifecycle.customer@example.test','desk.invite@example.test')`, actorID, customerID, agentID)
 	})
 	blobs, err := attachments.NewFS(t.TempDir())
 	if err != nil {
@@ -155,6 +155,49 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	invitedCustomerID, _ := createdCustomerBean["accountId"].(string)
+	call("POST", "/rest/servicedeskapi/customer?strictConflictStatusCode=true", `{"email":"invited.customer@example.test","displayName":"Invited Customer"}`, 409)
+	callAs(agentID, "POST", "/rest/servicedeskapi/customer", `{"email":"forbidden.customer@example.test","displayName":"Forbidden Customer"}`, 403)
+	lifecycleCustomer := call("POST", "/rest/servicedeskapi/customer/skip-permission-check", `{"email":"lifecycle.customer@example.test","displayName":"Lifecycle Customer"}`, 201)
+	var lifecycleCustomerBean map[string]any
+	if err := json.Unmarshal(lifecycleCustomer.Body.Bytes(), &lifecycleCustomerBean); err != nil {
+		t.Fatal(err)
+	}
+	lifecycleCustomerID, _ := lifecycleCustomerBean["accountId"].(string)
+	if lifecycleCustomerID == "" {
+		t.Fatal(lifecycleCustomer.Body.String())
+	}
+	invitedToDesk := call("POST", "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/customer/invite", `{"email":"desk.invite@example.test","displayName":"Desk Invite"}`, 201)
+	if !strings.Contains(invitedToDesk.Body.String(), `"displayName":"Desk Invite"`) {
+		t.Fatal(invitedToDesk.Body.String())
+	}
+	deskCustomers := call("GET", "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/customer?query=Desk", "", 200)
+	if !strings.Contains(deskCustomers.Body.String(), `"displayName":"Desk Invite"`) {
+		t.Fatal(deskCustomers.Body.String())
+	}
+	call("DELETE", "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/customer", `{"accountIds":["`+lifecycleCustomerID+`"]}`, 400)
+	if err := handler.Commands.SetServiceDeskCustomerAccess(ctx, actorID, workspaceID, serviceDeskID, false); err != nil {
+		t.Fatal(err)
+	}
+	call("POST", "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/customer", `{"accountIds":["`+lifecycleCustomerID+`"]}`, 204)
+	call("DELETE", "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/customer", `{"accountIds":["`+lifecycleCustomerID+`"]}`, 204)
+	call("POST", "/rest/servicedeskapi/request", `{"serviceDeskId":"`+serviceDeskID+`","requestTypeId":"`+requestTypeID+`","raiseOnBehalfOf":"lifecycle.customer@example.test","requestFieldValues":{"summary":"Closed portal denial"}}`, 400)
+	call("POST", "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/customer/skip-permission-check", `{"accountIds":["`+lifecycleCustomerID+`"]}`, 204)
+	call("POST", "/rest/servicedeskapi/request", `{"serviceDeskId":"`+serviceDeskID+`","requestTypeId":"`+requestTypeID+`","raiseOnBehalfOf":"lifecycle.customer@example.test","requestFieldValues":{"summary":"Closed portal admission"}}`, 201)
+	call("PUT", "/rest/servicedeskapi/customer/user/"+lifecycleCustomerID+"/revoke-portal-only-access", "", 204)
+	var lifecycleActive, lifecycleRole bool
+	if err := st.Pool.QueryRow(ctx, `SELECT active FROM service_customers WHERE workspace_id=$1 AND user_id=$2`, workspaceID, lifecycleCustomerID).Scan(&lifecycleActive); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM role_bindings rb JOIN sites si ON rb.scope_type='site' AND rb.scope_id=si.id::text WHERE si.workspace_id=$1 AND rb.principal_id=$2 AND rb.role_key='atlassian/customer')`, workspaceID, lifecycleCustomerID).Scan(&lifecycleRole); err != nil {
+		t.Fatal(err)
+	}
+	if lifecycleActive || lifecycleRole {
+		t.Fatalf("revoked lifecycle customer active=%v role=%v", lifecycleActive, lifecycleRole)
+	}
+	call("POST", "/rest/servicedeskapi/request", `{"serviceDeskId":"`+serviceDeskID+`","requestTypeId":"`+requestTypeID+`","raiseOnBehalfOf":"lifecycle.customer@example.test","requestFieldValues":{"summary":"Revoked portal denial"}}`, 400)
+	if err := handler.Commands.SetServiceDeskCustomerAccess(ctx, actorID, workspaceID, serviceDeskID, true); err != nil {
+		t.Fatal(err)
+	}
 	onBehalf := call("POST", "/rest/servicedeskapi/request", `{"serviceDeskId":"`+serviceDeskID+`","requestTypeId":"`+requestTypeID+`","raiseOnBehalfOf":"invited.customer@example.test","requestFieldValues":{"summary":"New starter access"}}`, 201)
 	var onBehalfBean map[string]any
 	if err := json.Unmarshal(onBehalf.Body.Bytes(), &onBehalfBean); err != nil {
@@ -189,6 +232,58 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if err != nil || !strings.Contains(strings.Join(issue.Labels, ","), "incident") {
 		t.Fatalf("incident issue = %+v, %v", issue, err)
 	}
+	organizationResponse := call("POST", "/rest/servicedeskapi/organization", `{"name":"Acme Customer Group"}`, 201)
+	var organizationBean map[string]any
+	if err := json.Unmarshal(organizationResponse.Body.Bytes(), &organizationBean); err != nil {
+		t.Fatal(err)
+	}
+	organizationID, _ := organizationBean["id"].(string)
+	if organizationID == "" || organizationBean["scimManaged"] != false {
+		t.Fatal(organizationResponse.Body.String())
+	}
+	callAs(customerID, "GET", "/rest/servicedeskapi/organization/"+organizationID, "", 404)
+	call("POST", "/rest/servicedeskapi/organization/"+organizationID+"/user", `{"accountIds":["`+customerID+`","`+invitedCustomerID+`"],"usernames":[]}`, 204)
+	organization := callAs(customerID, "GET", "/rest/servicedeskapi/organization/"+organizationID, "", 200)
+	if !strings.Contains(organization.Body.String(), `"name":"Acme Customer Group"`) {
+		t.Fatal(organization.Body.String())
+	}
+	organizations := callAs(customerID, "GET", "/rest/servicedeskapi/organization", "", 200)
+	if !strings.Contains(organizations.Body.String(), `"name":"Acme Customer Group"`) {
+		t.Fatal(organizations.Body.String())
+	}
+	call("GET", "/rest/servicedeskapi/organization?accountId="+customerID, "", 200)
+	call("PUT", "/rest/servicedeskapi/organization/"+organizationID+"/property/support-profile", `{"tier":"gold","region":"eu"}`, 204)
+	property := callAs(customerID, "GET", "/rest/servicedeskapi/organization/"+organizationID+"/property/support-profile", "", 200)
+	if !strings.Contains(property.Body.String(), `"tier":"gold"`) {
+		t.Fatal(property.Body.String())
+	}
+	keys := callAs(customerID, "GET", "/rest/servicedeskapi/organization/"+organizationID+"/property", "", 200)
+	if !strings.Contains(keys.Body.String(), `"key":"support-profile"`) {
+		t.Fatal(keys.Body.String())
+	}
+	organizationUsers := call("GET", "/rest/servicedeskapi/organization/"+organizationID+"/user", "", 200)
+	if !strings.Contains(organizationUsers.Body.String(), customerID) || !strings.Contains(organizationUsers.Body.String(), invitedCustomerID) {
+		t.Fatal(organizationUsers.Body.String())
+	}
+	call("POST", "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/organization", `{"organizationId":`+organizationID+`}`, 204)
+	deskOrganizations := call("GET", "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/organization", "", 200)
+	if !strings.Contains(deskOrganizations.Body.String(), `"name":"Acme Customer Group"`) {
+		t.Fatal(deskOrganizations.Body.String())
+	}
+	if err := handler.Commands.SetServiceDeskCustomerAccess(ctx, actorID, workspaceID, serviceDeskID, false); err != nil {
+		t.Fatal(err)
+	}
+	call("DELETE", "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/customer", `{"accountIds":["`+customerID+`"]}`, 204)
+	callAs(customerID, "POST", "/rest/servicedeskapi/request", `{"serviceDeskId":"`+serviceDeskID+`","requestTypeId":"`+requestTypeID+`","requestFieldValues":{"summary":"Organization portal admission"}}`, 201)
+	if err := handler.Commands.SetServiceDeskCustomerAccess(ctx, actorID, workspaceID, serviceDeskID, true); err != nil {
+		t.Fatal(err)
+	}
+	call("DELETE", "/rest/servicedeskapi/organization/"+organizationID+"/user", `{"accountIds":["`+customerID+`"]}`, 204)
+	callAs(customerID, "GET", "/rest/servicedeskapi/organization/"+organizationID, "", 404)
+	call("DELETE", "/rest/servicedeskapi/organization/"+organizationID+"/property/support-profile", "", 204)
+	call("DELETE", "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/organization", `{"organizationId":`+organizationID+`}`, 204)
+	call("DELETE", "/rest/servicedeskapi/organization/"+organizationID, "", 204)
+	call("GET", "/rest/servicedeskapi/organization/"+organizationID, "", 404)
 	subscription := callAs(customerID, "GET", "/rest/servicedeskapi/request/"+issueKey+"/notification", "", 200)
 	if !strings.Contains(subscription.Body.String(), `"subscribed":true`) {
 		t.Fatal(subscription.Body.String())
@@ -449,7 +544,8 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	}
 	callAs(agentID, "GET", "/rest/servicedeskapi/servicedesk/"+otherDeskID+"/queue", "", 403)
 	callAs(agentID, "GET", "/rest/servicedeskapi/request/"+otherIssueKey, "", 404)
-	agentCustomer := callAs(agentID, "POST", "/rest/servicedeskapi/customer", `{"email":"agent-created.customer@example.test","displayName":"Agent-created Customer"}`, 201)
+	callAs(agentID, "POST", "/rest/servicedeskapi/customer", `{"email":"agent-created.customer@example.test","displayName":"Agent-created Customer"}`, 403)
+	agentCustomer := call("POST", "/rest/servicedeskapi/customer", `{"email":"agent-created.customer@example.test","displayName":"Agent-created Customer"}`, 201)
 	if !strings.Contains(agentCustomer.Body.String(), "Agent-created Customer") {
 		t.Fatal(agentCustomer.Body.String())
 	}

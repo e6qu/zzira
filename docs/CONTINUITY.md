@@ -1204,10 +1204,35 @@ Validation after request notifications and feedback:
 - Exact-operation review is now 182/1,207: 175 partial, 7 missing and 1,025
   unassessed.
 
+Validation after customer and organization lifecycle:
+
+- Migrations 066 and 067 add open/closed portal admission, direct desk
+  customers, site customer organizations, membership, JSON properties, desk
+  links, and a durable portal-only revocation marker.
+- Customer creation now grants only the site customer role and requires site
+  administration. Revocation removes the role, direct desk and organization
+  access, and cannot be reversed by the request auto-enrollment path.
+- All pinned organization and customer lifecycle routes are implemented:
+  customer create/skip/revoke; organization list/create/detail/delete,
+  properties and users; desk customer list/add/remove/invite/skip; and desk
+  organization list/add/remove.
+- Closed desks admit direct customers and linked-organization members. The
+  agent workspace manages access mode, invitations, direct membership,
+  organizations, organization customers and desk links. Customers see their
+  own organizations in the help center.
+- The full PostgreSQL Go suite, vet, WebAssembly build, seven conformance tests,
+  generated inventory/coverage checks and `git diff --check` pass. The focused
+  Chromium service journey covers customer invitation, access-mode changes,
+  organization creation/membership/linking, customer visibility, WCAG scans,
+  dark mode and 320 px reflow.
+- Exact-operation review is now 203/1,207: 196 partial, 7 missing and 1,004
+  unassessed. Jira Service Management has 64 of 75 pinned operations reviewed.
+
 ## Current change
 
-1. Implement Jira Service Management organizations and complete customer
-   lifecycle operations.
+1. Complete the remaining Jira Service Management contract operations:
+   knowledge-base article discovery/viewing, request-type permission checks,
+   request-type properties and groups, then Assets workspace discovery.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 

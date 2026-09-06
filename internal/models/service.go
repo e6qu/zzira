@@ -4,13 +4,19 @@ import "time"
 
 // ServiceDesk is the Jira Service Management portal attached to a service project.
 type ServiceDesk struct {
-	ID             string
-	WorkspaceID    string
-	ProjectID      string
-	ProjectKey     string
-	ProjectName    string
-	ProjectTypeKey string
-	PortalName     string
+	ID                 string
+	WorkspaceID        string
+	ProjectID          string
+	ProjectKey         string
+	ProjectName        string
+	ProjectTypeKey     string
+	PortalName         string
+	CustomerAccessOpen bool
+}
+
+type ServiceOrganization struct {
+	ID, WorkspaceID, Name string
+	CreatedAt             time.Time
 }
 
 // ServiceRequestType describes one customer-facing form backed by a Jira issue type.

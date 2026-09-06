@@ -15,7 +15,7 @@ import (
 )
 
 func (h *Handler) serviceDeskRoute(w http.ResponseWriter, r *http.Request) {
-	workspaceID, _, authErr := h.authWorkspace(r)
+	workspaceID, actorID, authErr := h.authWorkspace(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
@@ -23,34 +23,21 @@ func (h *Handler) serviceDeskRoute(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(strings.Trim(strings.TrimPrefix(r.URL.Path, "/rest/servicedeskapi"), "/"), "/")
 	switch {
 	case len(parts) == 1 && parts[0] == "customer" && r.Method == http.MethodPost:
-		_, actorID, authErr := h.authWorkspace(r)
-		if authErr != nil {
-			writeJerr(w, authErr)
-			return
-		}
-		agent, err := h.Store.IsAnyServiceAgent(r.Context(), workspaceID, actorID)
-		if err != nil {
-			jiraError(w, http.StatusInternalServerError, "Could not authorize service access.")
-			return
-		}
-		if !agent {
-			jiraError(w, http.StatusForbidden, "Service agent access is required.")
-			return
-		}
-		var input struct {
-			Email       string `json:"email"`
-			DisplayName string `json:"displayName"`
-		}
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&input); err != nil {
-			jiraError(w, http.StatusBadRequest, "Request body is invalid.")
-			return
-		}
-		customer, err := h.Commands.CreateServiceCustomer(r.Context(), actorID, workspaceID, input.Email, input.DisplayName)
-		if err != nil {
-			jiraError(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		writeJSON(w, http.StatusCreated, h.serviceUserBean(customer))
+		h.createServiceCustomer(w, r, workspaceID, actorID)
+	case len(parts) == 2 && parts[0] == "customer" && parts[1] == "skip-permission-check" && r.Method == http.MethodPost:
+		h.createServiceCustomer(w, r, workspaceID, actorID)
+	case len(parts) == 4 && parts[0] == "customer" && parts[1] == "user" && parts[3] == "revoke-portal-only-access" && r.Method == http.MethodPut:
+		h.revokeServiceCustomer(w, r, workspaceID, actorID, parts[2])
+	case len(parts) == 1 && parts[0] == "organization" && (r.Method == http.MethodGet || r.Method == http.MethodPost):
+		h.serviceOrganizations(w, r, workspaceID, actorID)
+	case len(parts) == 2 && parts[0] == "organization" && (r.Method == http.MethodGet || r.Method == http.MethodDelete):
+		h.serviceOrganization(w, r, workspaceID, actorID, parts[1])
+	case len(parts) == 3 && parts[0] == "organization" && parts[2] == "property" && r.Method == http.MethodGet:
+		h.serviceOrganizationPropertyKeys(w, r, workspaceID, actorID, parts[1])
+	case len(parts) == 4 && parts[0] == "organization" && parts[2] == "property" && (r.Method == http.MethodGet || r.Method == http.MethodPut || r.Method == http.MethodDelete):
+		h.serviceOrganizationProperty(w, r, workspaceID, actorID, parts[1], parts[3])
+	case len(parts) == 3 && parts[0] == "organization" && parts[2] == "user" && (r.Method == http.MethodGet || r.Method == http.MethodPost || r.Method == http.MethodDelete):
+		h.serviceOrganizationUsers(w, r, workspaceID, actorID, parts[1])
 	case len(parts) == 1 && parts[0] == "request" && r.Method == http.MethodGet:
 		h.listServiceRequests(w, r, workspaceID)
 	case len(parts) == 1 && parts[0] == "request" && r.Method == http.MethodPost:
@@ -125,6 +112,14 @@ func (h *Handler) serviceDeskRoute(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, http.StatusOK, serviceRequestTypeBean(h.BaseURL, *requestType))
+	case len(parts) == 3 && parts[0] == "servicedesk" && parts[2] == "customer" && (r.Method == http.MethodGet || r.Method == http.MethodPost || r.Method == http.MethodDelete):
+		h.serviceDeskCustomers(w, r, workspaceID, actorID, parts[1])
+	case len(parts) == 4 && parts[0] == "servicedesk" && parts[2] == "customer" && parts[3] == "invite" && r.Method == http.MethodPost:
+		h.inviteServiceDeskCustomer(w, r, workspaceID, actorID, parts[1])
+	case len(parts) == 4 && parts[0] == "servicedesk" && parts[2] == "customer" && parts[3] == "skip-permission-check" && r.Method == http.MethodPost:
+		h.serviceDeskCustomers(w, r, workspaceID, actorID, parts[1])
+	case len(parts) == 3 && parts[0] == "servicedesk" && parts[2] == "organization" && (r.Method == http.MethodGet || r.Method == http.MethodPost || r.Method == http.MethodDelete):
+		h.serviceDeskOrganizations(w, r, workspaceID, actorID, parts[1])
 	case len(parts) == 3 && parts[0] == "servicedesk" && parts[2] == "attachTemporaryFile" && r.Method == http.MethodPost:
 		h.attachServiceTemporaryFiles(w, r, workspaceID, parts[1])
 	case len(parts) == 3 && parts[0] == "servicedesk" && parts[2] == "queue" && r.Method == http.MethodGet:

@@ -104,12 +104,12 @@ func (s *Service) UpdateServiceRequestParticipants(ctx context.Context, actorID,
 }
 
 func (s *Service) CreateServiceCustomer(ctx context.Context, actorID, workspaceID, email, displayName string) (*models.User, error) {
-	agent, err := s.Store.IsAnyServiceAgent(ctx, workspaceID, actorID)
+	admin, err := s.Store.IsAdmin(ctx, workspaceID, actorID)
 	if err != nil {
 		return nil, err
 	}
-	if !agent {
-		return nil, fmt.Errorf("only a service agent may create customers")
+	if !admin {
+		return nil, fmt.Errorf("only a site administrator may create customers")
 	}
 	email, displayName = strings.TrimSpace(strings.ToLower(email)), strings.TrimSpace(displayName)
 	if email == "" || !strings.Contains(email, "@") || displayName == "" || len(displayName) > 255 {

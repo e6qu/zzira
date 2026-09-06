@@ -13,11 +13,11 @@ import (
 
 func scanServiceDesk(row interface{ Scan(...any) error }) (*models.ServiceDesk, error) {
 	desk := &models.ServiceDesk{}
-	err := row.Scan(&desk.ID, &desk.WorkspaceID, &desk.ProjectID, &desk.ProjectKey, &desk.ProjectName, &desk.ProjectTypeKey, &desk.PortalName)
+	err := row.Scan(&desk.ID, &desk.WorkspaceID, &desk.ProjectID, &desk.ProjectKey, &desk.ProjectName, &desk.ProjectTypeKey, &desk.PortalName, &desk.CustomerAccessOpen)
 	return desk, err
 }
 
-const serviceDeskSelect = `SELECT sd.id,sd.workspace_id,p.id,p.key,p.name,p.project_type_key,sd.portal_name FROM service_desks sd JOIN projects p ON p.id=sd.project_id `
+const serviceDeskSelect = `SELECT sd.id,sd.workspace_id,p.id,p.key,p.name,p.project_type_key,sd.portal_name,sd.customer_access_open FROM service_desks sd JOIN projects p ON p.id=sd.project_id `
 
 func (s *Store) ServiceDesks(ctx context.Context, workspaceID string) ([]models.ServiceDesk, error) {
 	rows, err := s.Pool.Query(ctx, serviceDeskSelect+`WHERE sd.workspace_id=$1 ORDER BY sd.id::bigint`, workspaceID)
@@ -97,19 +97,19 @@ func (s *Store) EnrollServiceCustomer(ctx context.Context, workspaceID, userID s
 	result, err := s.Pool.Exec(ctx, `
 		INSERT INTO service_customers(workspace_id,user_id)
 		SELECT $1,$2 WHERE EXISTS(SELECT 1 FROM users WHERE id=$2 AND active)
-		ON CONFLICT(workspace_id,user_id) DO UPDATE SET active=TRUE`, workspaceID, userID)
+		ON CONFLICT(workspace_id,user_id) DO UPDATE SET active=TRUE
+		WHERE service_customers.revoked_at IS NULL`, workspaceID, userID)
 	if err != nil {
 		return err
 	}
 	if result.RowsAffected() == 0 {
-		return fmt.Errorf("customer account does not exist")
+		return fmt.Errorf("customer account does not exist or its portal access was revoked")
 	}
 	return nil
 }
 
-// CreateServiceCustomer provisions a portal-only account. It deliberately does
-// not add product membership; invitation and authentication policy can grant
-// the atlassian/customer role independently.
+// CreateServiceCustomer provisions a portal-only account and grants the site
+// customer role. It does not grant Jira, Confluence, or agent product access.
 func (s *Store) CreateServiceCustomer(ctx context.Context, workspaceID, email, displayName string) (*models.User, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
@@ -127,7 +127,20 @@ func (s *Store) CreateServiceCustomer(ctx context.Context, workspaceID, email, d
 	}
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO service_customers(workspace_id,user_id) VALUES($1,$2)
-		ON CONFLICT(workspace_id,user_id) DO UPDATE SET active=TRUE`, workspaceID, userID); err != nil {
+		ON CONFLICT(workspace_id,user_id) DO UPDATE SET active=TRUE,revoked_at=NULL`, workspaceID, userID); err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO directory_users(directory_id,user_id)
+		SELECT d.id,$2 FROM directories d JOIN sites si ON si.organization_id=d.organization_id
+		WHERE si.workspace_id=$1 AND d.active ORDER BY (d.directory_type='internal') DESC,d.created_at LIMIT 1
+		ON CONFLICT DO NOTHING`, workspaceID, userID); err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO role_bindings(scope_type,scope_id,role_key,principal_type,principal_id,source)
+		SELECT 'site',si.id::text,'atlassian/customer','user',$2,'system' FROM sites si WHERE si.workspace_id=$1
+		ON CONFLICT DO NOTHING`, workspaceID, userID); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -153,6 +166,24 @@ func (s *Store) CreateServiceRequest(ctx context.Context, workspaceID, issueID, 
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	var allowed bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS(
+		SELECT 1 FROM service_desks sd
+		WHERE sd.workspace_id=$1 AND sd.id=$2 AND (
+			sd.customer_access_open
+			OR EXISTS(SELECT 1 FROM service_desk_customers dc WHERE dc.service_desk_id=sd.id AND dc.user_id=$3 AND dc.active)
+			OR EXISTS(SELECT 1 FROM service_desk_organizations dso JOIN service_organization_users sou ON sou.organization_id=dso.organization_id WHERE dso.service_desk_id=sd.id AND sou.user_id=$3)
+		))`, workspaceID, serviceDeskID, customerID).Scan(&allowed); err != nil {
+		return err
+	}
+	if !allowed {
+		return fmt.Errorf("customer does not have access to this service desk")
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO service_desk_customers(service_desk_id,user_id)
+		VALUES($1,$2) ON CONFLICT(service_desk_id,user_id) DO UPDATE SET active=TRUE`, serviceDeskID, customerID); err != nil {
+		return err
+	}
 	result, err := tx.Exec(ctx, `
 		INSERT INTO service_requests(issue_id,workspace_id,service_desk_id,request_type_id,customer_id,channel)
 		SELECT i.id,$1,sd.id,rt.id,$5,$6
