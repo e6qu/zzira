@@ -12,12 +12,24 @@ import (
 )
 
 type WorkflowUpdateDefinition struct {
-	Workflow        workflow.Workflow
-	ExpectedVersion int
+	Workflow         workflow.Workflow
+	ExpectedVersion  int
+	StatusMigrations []WorkflowStatusMigration
 }
 
-func addWorkflowAudit(ctx context.Context, tx pgx.Tx, workspaceID, actorID, action string, wf workflow.Workflow) error {
-	detail, err := json.Marshal(map[string]any{"name": wf.Name, "version": wf.Version})
+type WorkflowStatusMigration struct {
+	ProjectID   string
+	IssueTypeID string
+	OldStatusID string
+	NewStatusID string
+}
+
+func addWorkflowAudit(ctx context.Context, tx pgx.Tx, workspaceID, actorID, action string, wf workflow.Workflow, values map[string]any) error {
+	if values == nil {
+		values = make(map[string]any)
+	}
+	values["name"], values["version"] = wf.Name, wf.Version
+	detail, err := json.Marshal(values)
 	if err != nil {
 		return err
 	}
@@ -103,7 +115,7 @@ func (s *Store) CreateWorkflowBatch(ctx context.Context, workspaceID, actorID st
 			return nil, nil, err
 		}
 		wf.Version = 1
-		if err := addWorkflowAudit(ctx, tx, workspaceID, actorID, "workflow.created", *wf); err != nil {
+		if err := addWorkflowAudit(ctx, tx, workspaceID, actorID, "workflow.created", *wf, nil); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -126,6 +138,100 @@ func workflowDefinitionStatuses(wf workflow.Workflow) []string {
 		ids = append(ids, id)
 	}
 	return ids
+}
+
+func migrateWorkflowDefinitionIssues(ctx context.Context, tx pgx.Tx, workspaceID, actorID string, update WorkflowUpdateDefinition) (int, error) {
+	rows, err := tx.Query(ctx, `
+		SELECT i.id,i.project_id,i.issuetype_id,i.status_id
+		FROM issues i
+		JOIN projects p ON p.id=i.project_id AND p.workspace_id=$1
+		LEFT JOIN workflow_schemes ws ON ws.id=p.workflow_scheme_id AND ws.workspace_id=p.workspace_id
+		WHERE COALESCE(ws.issue_type_mappings->>i.issuetype_id,ws.default_workflow_id,p.workflow_id,'wf_default')=$2
+		ORDER BY i.id FOR UPDATE OF i`, workspaceID, update.Workflow.ID)
+	if err != nil {
+		return 0, err
+	}
+	type issueState struct{ id, projectID, issueTypeID, statusID string }
+	var issues []issueState
+	for rows.Next() {
+		var issue issueState
+		if err := rows.Scan(&issue.id, &issue.projectID, &issue.issueTypeID, &issue.statusID); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		issues = append(issues, issue)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return 0, err
+	}
+	rows.Close()
+	targetStatuses := make(map[string]bool)
+	for _, id := range workflowDefinitionStatuses(update.Workflow) {
+		targetStatuses[id] = true
+	}
+	defaultMappings := make(map[string]string)
+	scopedMappings := make(map[string]string)
+	for _, mapping := range update.StatusMigrations {
+		if mapping.OldStatusID == "" || mapping.NewStatusID == "" || !targetStatuses[mapping.NewStatusID] {
+			return 0, fmt.Errorf("%w: every status mapping needs known old and target workflow statuses", ErrAdminValidation)
+		}
+		if mapping.ProjectID == "" && mapping.IssueTypeID == "" {
+			defaultMappings[mapping.OldStatusID] = mapping.NewStatusID
+			continue
+		}
+		if mapping.ProjectID == "" || mapping.IssueTypeID == "" {
+			return 0, fmt.Errorf("%w: scoped status mappings require project and issue type", ErrAdminValidation)
+		}
+		scopedMappings[mapping.ProjectID+"\x00"+mapping.IssueTypeID+"\x00"+mapping.OldStatusID] = mapping.NewStatusID
+	}
+	statusNames := make(map[string]string)
+	migrated := 0
+	for _, issue := range issues {
+		if targetStatuses[issue.statusID] {
+			continue
+		}
+		newStatusID := scopedMappings[issue.projectID+"\x00"+issue.issueTypeID+"\x00"+issue.statusID]
+		if newStatusID == "" {
+			newStatusID = defaultMappings[issue.statusID]
+		}
+		if newStatusID == "" {
+			return 0, fmt.Errorf("%w: status mapping required for project %s, issue type %s, and status %s", ErrAdminConflict, issue.projectID, issue.issueTypeID, issue.statusID)
+		}
+		for _, statusID := range []string{issue.statusID, newStatusID} {
+			if _, exists := statusNames[statusID]; exists {
+				continue
+			}
+			var statusName string
+			if err := tx.QueryRow(ctx, `SELECT name FROM statuses WHERE id=$1 AND (workspace_id IS NULL OR workspace_id=$2)`, statusID, workspaceID).Scan(&statusName); err != nil {
+				return 0, fmt.Errorf("%w: status %s does not exist", ErrAdminValidation, statusID)
+			}
+			statusNames[statusID] = statusName
+		}
+		seq, err := nextSeq(ctx, tx, workspaceID)
+		if err != nil {
+			return 0, err
+		}
+		if _, err := tx.Exec(ctx, `UPDATE issues SET status_id=$2,updated_seq=$3,updated_at=now() WHERE id=$1`, issue.id, newStatusID, seq); err != nil {
+			return 0, err
+		}
+		updated, err := scanIssue(tx.QueryRow(ctx, issueJoin+`WHERE i.workspace_id=$1 AND i.id=$2`, workspaceID, issue.id))
+		if err != nil {
+			return 0, err
+		}
+		payload, err := json.Marshal(map[string]any{
+			"issue": updated,
+			"diff":  map[string]models.ChangeItem{"status": {Field: "status", FieldType: "jira", From: issue.statusID, FromString: statusNames[issue.statusID], To: newStatusID, ToString: statusNames[newStatusID]}},
+		})
+		if err != nil {
+			return 0, err
+		}
+		if err := appendAction(ctx, tx, &models.Action{WorkspaceID: workspaceID, Seq: seq, EntityType: models.EntityIssue, EntityID: issue.id, Op: models.OpUpsert, SchemaV: models.SchemaVersion, Payload: payload, ActorID: actorID}); err != nil {
+			return 0, err
+		}
+		migrated++
+	}
+	return migrated, nil
 }
 
 func (s *Store) UpdateWorkflowBatch(ctx context.Context, workspaceID, actorID string, statuses []models.Status, updates []WorkflowUpdateDefinition) ([]models.Status, []workflow.Workflow, error) {
@@ -159,20 +265,9 @@ func (s *Store) UpdateWorkflowBatch(ctx context.Context, workspaceID, actorID st
 		if currentVersion != update.ExpectedVersion {
 			return nil, nil, fmt.Errorf("%w: workflow version is stale", ErrAdminConflict)
 		}
-		statuses := workflowDefinitionStatuses(update.Workflow)
-		var incompatible bool
-		if err := tx.QueryRow(ctx, `
-			SELECT EXISTS(
-				SELECT 1 FROM issues i
-				JOIN projects p ON p.id=i.project_id AND p.workspace_id=$1
-				LEFT JOIN workflow_schemes ws ON ws.id=p.workflow_scheme_id AND ws.workspace_id=p.workspace_id
-				WHERE COALESCE(ws.issue_type_mappings->>i.issuetype_id,ws.default_workflow_id,p.workflow_id,'wf_default')=$2
-				AND NOT (i.status_id=ANY($3::text[]))
-			)`, workspaceID, update.Workflow.ID, statuses).Scan(&incompatible); err != nil {
+		migrated, err := migrateWorkflowDefinitionIssues(ctx, tx, workspaceID, actorID, update)
+		if err != nil {
 			return nil, nil, err
-		}
-		if incompatible {
-			return nil, nil, fmt.Errorf("%w: status mappings are required for active issues", ErrAdminConflict)
 		}
 		updated := update.Workflow
 		updated.Version = currentVersion + 1
@@ -180,7 +275,7 @@ func (s *Store) UpdateWorkflowBatch(ctx context.Context, workspaceID, actorID st
 			return nil, nil, err
 		}
 		updates[index].Workflow = updated
-		if err := addWorkflowAudit(ctx, tx, workspaceID, actorID, "workflow.updated", updated); err != nil {
+		if err := addWorkflowAudit(ctx, tx, workspaceID, actorID, "workflow.updated", updated, map[string]any{"migratedIssues": migrated}); err != nil {
 			return nil, nil, err
 		}
 	}

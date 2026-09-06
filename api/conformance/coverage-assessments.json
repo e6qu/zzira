@@ -1209,7 +1209,7 @@
         "internal/store/agile.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Returns structured validation records for workspace workflow existence, optimistic document versions, existing and proposed global statuses, directed topology, and unsupported rules without mutation; status mappings, rules, and project workflows remain."
+      "notes": "Returns structured validation records for workspace workflow existence, optimistic document versions, existing and proposed global statuses, directed topology, default and project/issue-type status-mapping references, and unsupported rules without mutation; rules and project workflows remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/workflows/create",
@@ -1231,7 +1231,7 @@
         "internal/store/workflow_mutations.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Atomically creates referenced global statuses and updates validated workspace workflows with optimistic versions, rollback across status/workflow batches, audit, and active issue-status safety; explicit status mappings, rules, descriptions, layouts, and queued tasks remain."
+      "notes": "Atomically creates referenced global statuses, migrates active work items with scoped-over-default status mappings and immutable sync actions, and updates validated workspace workflows with optimistic versions, rollback, and audit; rules, descriptions, layouts, and queued tasks remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/workflows/preview",

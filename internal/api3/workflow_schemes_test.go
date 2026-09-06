@@ -337,6 +337,19 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	}
 	unsafeActiveWorkflowUpdate := `{"workflows":[{"id":"` + workflowID + `","version":{"id":"` + workflowID + `","versionNumber":1},"statuses":[{"statusReference":"st_done","properties":{}}],"transitions":[{"id":"1","name":"Stay done","type":"DIRECTED","toStatusReference":"st_done","links":[{"fromStatusReference":"st_done"}]}]}]}`
 	call(actor, "POST", "/rest/api/3/workflows/update", unsafeActiveWorkflowUpdate, 409)
+	mappedActiveWorkflowUpdate := `{"workflows":[{"id":"` + workflowID + `","version":{"id":"` + workflowID + `","versionNumber":1},"statuses":[{"statusReference":"st_inprogress","properties":{}},{"statusReference":"st_done","properties":{}}],"transitions":[{"id":"1","name":"Begin again","type":"DIRECTED","toStatusReference":"st_inprogress","links":[{"fromStatusReference":"st_done"}]}],"defaultStatusMappings":[{"oldStatusReference":"st_todo","newStatusReference":"st_inprogress"}],"statusMappings":[{"projectId":"` + projectID + `","issueTypeId":"it_task","statusMigrations":[{"oldStatusReference":"st_todo","newStatusReference":"st_done"}]}]}]}`
+	mappedWorkflowUpdate := call(actor, "POST", "/rest/api/3/workflows/update", mappedActiveWorkflowUpdate, 200)
+	if !strings.Contains(mappedWorkflowUpdate.Body.String(), `"versionNumber":2`) {
+		t.Fatal(mappedWorkflowUpdate.Body.String())
+	}
+	var workflowMigratedStatus string
+	if err := st.Pool.QueryRow(ctx, `SELECT status_id FROM issues WHERE id=$1`, issueID).Scan(&workflowMigratedStatus); err != nil || workflowMigratedStatus != "st_done" {
+		t.Fatalf("workflow migrated status=%q err=%v", workflowMigratedStatus, err)
+	}
+	var workflowMigrationActions int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM actions WHERE workspace_id=$1 AND entity_id=$2 AND payload->'diff' ? 'status'`, ws, issueID).Scan(&workflowMigrationActions); err != nil || workflowMigrationActions < 4 {
+		t.Fatalf("workflow migration actions=%d err=%v", workflowMigrationActions, err)
+	}
 	call(actor, "GET", "/rest/api/3/workflows/search?maxResults=0", "", 400)
 	call(actor, "GET", "/rest/api/3/workflows/search?expand=transitions", "", 400)
 	call(actor, "GET", "/rest/api/3/workflows/search?projectId=project_missing", "", 400)

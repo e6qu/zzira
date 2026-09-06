@@ -51,11 +51,24 @@ type workflowVersionRequest struct {
 	VersionNumber int    `json:"versionNumber"`
 }
 
+type workflowStatusMigrationRequest struct {
+	OldStatusReference string `json:"oldStatusReference"`
+	NewStatusReference string `json:"newStatusReference"`
+}
+
+type workflowScopedStatusMappingRequest struct {
+	ProjectID        string                           `json:"projectId"`
+	IssueTypeID      string                           `json:"issueTypeId"`
+	StatusMigrations []workflowStatusMigrationRequest `json:"statusMigrations"`
+}
+
 type workflowUpdateItemRequest struct {
-	ID          string                            `json:"id"`
-	Version     workflowVersionRequest            `json:"version"`
-	Statuses    []workflowStatusLayoutRequest     `json:"statuses"`
-	Transitions []workflowTransitionUpdateRequest `json:"transitions"`
+	ID                    string                               `json:"id"`
+	Version               workflowVersionRequest               `json:"version"`
+	Statuses              []workflowStatusLayoutRequest        `json:"statuses"`
+	Transitions           []workflowTransitionUpdateRequest    `json:"transitions"`
+	DefaultStatusMappings []workflowStatusMigrationRequest     `json:"defaultStatusMappings"`
+	StatusMappings        []workflowScopedStatusMappingRequest `json:"statusMappings"`
 }
 
 type workflowCreatePayloadRequest struct {
@@ -249,6 +262,37 @@ func workflowDefinitionFromRequest(id, name string, statuses []workflowStatusLay
 	return wf, errors
 }
 
+func workflowStatusMigrationsFromRequest(item workflowUpdateItemRequest, references map[string]string, wf workflow.Workflow) ([]store.WorkflowStatusMigration, []map[string]any) {
+	targetStatuses := workflowStatusReferences(wf)
+	migrations := make([]store.WorkflowStatusMigration, 0)
+	errors := make([]map[string]any, 0)
+	add := func(projectID, issueTypeID string, migration workflowStatusMigrationRequest) {
+		oldStatusID, newStatusID := references[migration.OldStatusReference], references[migration.NewStatusReference]
+		if oldStatusID == "" || newStatusID == "" {
+			errors = append(errors, workflowValidationError("STATUS_MAPPING_REFERENCE_INVALID", "Status mappings must reference known old and new statuses.", "STATUS_MAPPING", map[string]any{"statusMappingReference": map[string]string{"projectId": projectID, "issueTypeId": issueTypeID}}))
+			return
+		}
+		if !targetStatuses[newStatusID] {
+			errors = append(errors, workflowValidationError("STATUS_MAPPING_TARGET_INVALID", "A replacement status must belong to the updated workflow.", "STATUS_MAPPING", map[string]any{"statusMappingReference": map[string]string{"projectId": projectID, "issueTypeId": issueTypeID}}))
+			return
+		}
+		migrations = append(migrations, store.WorkflowStatusMigration{ProjectID: projectID, IssueTypeID: issueTypeID, OldStatusID: oldStatusID, NewStatusID: newStatusID})
+	}
+	for _, migration := range item.DefaultStatusMappings {
+		add("", "", migration)
+	}
+	for _, mapping := range item.StatusMappings {
+		if mapping.ProjectID == "" || mapping.IssueTypeID == "" || len(mapping.StatusMigrations) == 0 {
+			errors = append(errors, workflowValidationError("STATUS_MAPPING_CONTEXT_INVALID", "Scoped mappings require projectId, issueTypeId, and statusMigrations.", "STATUS_MAPPING", nil))
+			continue
+		}
+		for _, migration := range mapping.StatusMigrations {
+			add(mapping.ProjectID, mapping.IssueTypeID, migration)
+		}
+	}
+	return migrations, errors
+}
+
 func (h *Handler) workflowCreateValidation(w http.ResponseWriter, r *http.Request) {
 	workspaceID, _, authErr := h.authWorkspaceAdmin(r)
 	if authErr != nil {
@@ -341,6 +385,8 @@ func (h *Handler) workflowUpdateValidation(w http.ResponseWriter, r *http.Reques
 		}
 		wf, itemErrors := workflowDefinitionFromRequest(item.ID, published.Name, item.Statuses, item.Transitions, references)
 		errors = append(errors, itemErrors...)
+		_, mappingErrors := workflowStatusMigrationsFromRequest(item, references, wf)
+		errors = append(errors, mappingErrors...)
 		if len(itemErrors) == 0 && len(createdStatuses) == 0 {
 			if err := h.Store.ValidateWorkflowDefinition(r.Context(), workspaceID, wf); err != nil {
 				errors = append(errors, workflowValidationError("WORKFLOW_INVALID", err.Error(), "WORKFLOW", nil))
@@ -498,7 +544,9 @@ func (h *Handler) workflowUpdate(w http.ResponseWriter, r *http.Request) {
 		}
 		definition, itemErrors := workflowDefinitionFromRequest(item.ID, published.Name, item.Statuses, item.Transitions, references)
 		validationErrors = append(validationErrors, itemErrors...)
-		updates = append(updates, store.WorkflowUpdateDefinition{Workflow: definition, ExpectedVersion: item.Version.VersionNumber})
+		migrations, mappingErrors := workflowStatusMigrationsFromRequest(item, references, definition)
+		validationErrors = append(validationErrors, mappingErrors...)
+		updates = append(updates, store.WorkflowUpdateDefinition{Workflow: definition, ExpectedVersion: item.Version.VersionNumber, StatusMigrations: migrations})
 	}
 	if len(validationErrors) > 0 {
 		status := http.StatusBadRequest

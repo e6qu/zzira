@@ -536,11 +536,23 @@ Validation after workflow-owned status creation:
 - The full PostgreSQL Go suite, vet, WebAssembly build, seven conformance tests,
   generated inventory/coverage checks, and `git diff --check` pass.
 
+Validation after workflow status mappings:
+
+- PostgreSQL Jira integration rejects an active workflow update that would
+  strand a work item, then accepts the same topology with default and
+  project/issue-type mappings, proves the scoped mapping wins, migrates the
+  work item atomically, and emits the ordinary status-diff sync action.
+- Mapping validation resolves existing and request-created status references,
+  rejects targets outside the updated workflow, and records the migrated issue
+  count with the workflow update audit event.
+- The full PostgreSQL Go suite, vet, WebAssembly build, seven conformance tests,
+  generated inventory/coverage checks, and `git diff --check` pass.
+
 ## Current change
 
-1. Add explicit status-mapping support to modern workflow updates, then
-   transition rules and visual designer persistence, followed by queued task
-   execution and cancellation semantics.
+1. Add transition conditions, validators, post-functions, capability entries,
+   and visual designer persistence, followed by queued task execution and
+   cancellation semantics.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 
