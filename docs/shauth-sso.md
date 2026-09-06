@@ -30,7 +30,11 @@ server from starting rather than silently changing authentication behavior.
 Configure any provider by setting its complete variable group. A partial group
 prevents startup. The sign-in page shows every configured provider alongside
 password sign-in, and the administration page reports the active provider,
-protocol, and issuer without exposing secrets.
+protocol, and issuer without exposing secrets. An organization administrator
+can disable a configured provider immediately: ZZIRA removes it from new sign-in
+and connection journeys, revokes that issuer's browser sessions, audits the
+change, and restores the setting after restart. Re-enabling makes the retained
+deployment configuration available again.
 
 Register callback URLs as follows:
 

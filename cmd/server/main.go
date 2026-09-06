@@ -123,6 +123,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("configure identity providers: %v", err)
 	}
+	providerSettings, err := st.IdentityProviderSettingsByWorkspace(ctx, workspaceID)
+	if err != nil {
+		log.Fatalf("load identity provider settings: %v", err)
+	}
+	identityProviders.ApplyEnabled(providerSettings)
 	baseURL := envOr("BASE_URL", "http://localhost:"+port)
 	webHandler := &web.Handler{
 		Store: st, Commands: cmdSvc, Automation: automationSvc, OIDC: identityProviders.Provider("shauth"), IdentityProviders: identityProviders,
@@ -199,6 +204,7 @@ func main() {
 	mux.HandleFunc("GET /signed-out", webHandler.SignedOut)
 	mux.HandleFunc("GET /projects", webHandler.ProjectsPage)
 	mux.HandleFunc("GET /admin", webHandler.AdminPage)
+	mux.HandleFunc("POST /admin/identity-providers/{provider}", webHandler.UpdateAdminIdentityProvider)
 	mux.HandleFunc("POST /admin/groups", webHandler.CreateAdminGroup)
 	mux.HandleFunc("POST /admin/groups/{groupId}/delete", webHandler.DeleteAdminGroup)
 	mux.HandleFunc("POST /admin/groups/{groupId}/members", webHandler.UpdateAdminGroupMember)

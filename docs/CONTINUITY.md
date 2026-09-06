@@ -119,6 +119,10 @@ does not publish them as one OpenAPI document.
   provider through a user-bound authorization transaction; and disconnect it.
   Disconnect revokes sessions for that issuer, preserves other-provider
   sessions, refuses the final external identity, and writes link/unlink audits.
+- Added durable organization provider availability settings. Administrators can
+  disable or enable each configured provider; disabling removes its login/link
+  entry points, revokes every session from its issuer in the same transaction,
+  and records the action. Startup reapplies the stored setting.
 
 Validation after the organization foundation:
 
@@ -226,10 +230,21 @@ Validation after explicit identity linking:
 - The provider browser journey covers the responsive profile connection panel
   as well as login choice and administrator provider status.
 
+Validation after provider availability administration:
+
+- Focused store and registry tests pass durable settings, unknown-key rejection,
+  issuer-scoped session revocation, audit evidence, disabled login discovery,
+  and re-enable behavior with migration 042.
+- The provider Chromium journey disables Atlassian, proves a fresh signed-out
+  browser can no longer select it, re-enables it, and proves it is restored.
+- The full PostgreSQL Go suite, vet, WebAssembly build, conformance tests, and
+  generated inventory/coverage checks pass; the existing administration journey
+  still passes its WCAG light/dark and 320 px checks.
+
 ## Current change
 
-1. Add provider lifecycle administration: durable enable/disable metadata and
-   safe client-secret rotation without exposing credentials.
+1. Add encrypted provider registration and safe client-secret rotation without
+   exposing credentials.
 2. Extend revocation coverage from browser/API authorization to local replicas
    and queued mutations where the affected resource can already be cached.
 

@@ -404,6 +404,7 @@ func (h *Handler) identityProvider(r *http.Request) (*OIDC, string) {
 		if provider := h.IdentityProviders.Provider(key); provider != nil {
 			return provider, key
 		}
+		return nil, key
 	}
 	if key == "shauth" && h.OIDC != nil {
 		return h.OIDC, key

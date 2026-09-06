@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import axe from 'axe-core';
 
-test('user chooses Atlassian sign-in and admin can inspect provider status', async ({ page }) => {
+test('user chooses Atlassian sign-in and admin controls provider availability', async ({ page, browser }) => {
   await page.goto('/login');
   await expect(page.getByRole('heading', { name: 'Log in to your workspace' })).toBeVisible();
   const atlassian = page.getByRole('link', { name: 'Continue with Atlassian' });
@@ -29,4 +29,21 @@ test('user chooses Atlassian sign-in and admin can inspect provider status', asy
   await expect(providerRow).toContainText('OAuth 2.0 (3LO)');
   await expect(providerRow).toContainText('https://auth.atlassian.com');
   await expect(providerRow).toContainText('Enabled');
+  await providerRow.getByRole('button', { name: 'Disable Atlassian' }).click();
+  await expect(page).toHaveURL(/saved=Atlassian\+disabled/);
+  await expect(page.getByRole('row').filter({ hasText: 'Atlassian' })).toContainText('Disabled');
+
+  const signedOutContext = await browser.newContext();
+  const signedOutPage = await signedOutContext.newPage();
+  await signedOutPage.goto('/login');
+  await expect(signedOutPage.getByRole('link', { name: 'Continue with Atlassian' })).toHaveCount(0);
+  await signedOutContext.close();
+
+  await page.getByRole('row').filter({ hasText: 'Atlassian' }).getByRole('button', { name: 'Enable Atlassian' }).click();
+  await expect(page).toHaveURL(/saved=Atlassian\+enabled/);
+  const restoredContext = await browser.newContext();
+  const restoredPage = await restoredContext.newPage();
+  await restoredPage.goto('/login');
+  await expect(restoredPage.getByRole('link', { name: 'Continue with Atlassian' })).toBeVisible();
+  await restoredContext.close();
 });

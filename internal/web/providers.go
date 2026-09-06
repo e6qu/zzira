@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/oauth2"
@@ -26,9 +27,11 @@ var microsoftTenantPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9.-]{0,254
 // order is stable so the sign-in and administration surfaces do not jump when
 // configuration changes elsewhere in the process environment.
 type ProviderRegistry struct {
+	mu       sync.RWMutex
 	ordered  []*OIDC
 	byKey    map[string]*OIDC
 	byIssuer map[string]*OIDC
+	disabled map[string]bool
 }
 
 type LoginProvider struct {
@@ -36,10 +39,11 @@ type LoginProvider struct {
 	DisplayName string
 	Kind        string
 	Issuer      string
+	Enabled     bool
 }
 
 func NewIdentityProviders(ctx context.Context) (*ProviderRegistry, error) {
-	registry := &ProviderRegistry{byKey: map[string]*OIDC{}, byIssuer: map[string]*OIDC{}}
+	registry := &ProviderRegistry{byKey: map[string]*OIDC{}, byIssuer: map[string]*OIDC{}, disabled: map[string]bool{}}
 	shauth, err := NewOIDC(ctx)
 	if err != nil {
 		return nil, err
@@ -177,6 +181,11 @@ func (r *ProviderRegistry) Provider(key string) *OIDC {
 	if r == nil {
 		return nil
 	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.disabled[key] {
+		return nil
+	}
 	return r.byKey[key]
 }
 
@@ -184,28 +193,97 @@ func (r *ProviderRegistry) ProviderByIssuer(issuer string) *OIDC {
 	if r == nil {
 		return nil
 	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	return r.byIssuer[issuer]
+}
+
+func (r *ProviderRegistry) ProviderByKeyAny(key string) *OIDC {
+	if r == nil {
+		return nil
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.byKey[key]
 }
 
 func (r *ProviderRegistry) LoginProviders() []LoginProvider {
 	if r == nil {
 		return nil
 	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	providers := make([]LoginProvider, 0, len(r.ordered))
+	for _, provider := range r.ordered {
+		if r.disabled[provider.key] {
+			continue
+		}
+		kind := "OpenID Connect"
+		if provider.atlassian {
+			kind = "OAuth 2.0 (3LO)"
+		}
+		providers = append(providers, LoginProvider{Key: provider.key, DisplayName: provider.displayName, Kind: kind, Issuer: provider.issuer, Enabled: true})
+	}
+	return providers
+}
+
+func (r *ProviderRegistry) AdminProviders() []LoginProvider {
+	if r == nil {
+		return nil
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	providers := make([]LoginProvider, 0, len(r.ordered))
 	for _, provider := range r.ordered {
 		kind := "OpenID Connect"
 		if provider.atlassian {
 			kind = "OAuth 2.0 (3LO)"
 		}
-		providers = append(providers, LoginProvider{Key: provider.key, DisplayName: provider.displayName, Kind: kind, Issuer: provider.issuer})
+		providers = append(providers, LoginProvider{
+			Key: provider.key, DisplayName: provider.displayName, Kind: kind, Issuer: provider.issuer, Enabled: !r.disabled[provider.key],
+		})
 	}
 	return providers
+}
+
+func (r *ProviderRegistry) ApplyEnabled(settings map[string]bool) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.disabled == nil {
+		r.disabled = map[string]bool{}
+	}
+	for key, enabled := range settings {
+		if _, configured := r.byKey[key]; configured {
+			r.disabled[key] = !enabled
+		}
+	}
+}
+
+func (r *ProviderRegistry) SetEnabled(key string, enabled bool) bool {
+	if r == nil {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.disabled == nil {
+		r.disabled = map[string]bool{}
+	}
+	if _, configured := r.byKey[key]; !configured {
+		return false
+	}
+	r.disabled[key] = !enabled
+	return true
 }
 
 func (r *ProviderRegistry) FormActionOrigins() string {
 	if r == nil {
 		return ""
 	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	seen := map[string]bool{}
 	for _, provider := range r.ordered {
 		if origin := provider.FormActionOrigin(); origin != "" {

@@ -58,6 +58,8 @@ var adminAuditActions = []adminAuditAction{
 	{Value: "identity.login", Name: "Provider sign-in"},
 	{Value: "identity.linked", Name: "Provider connected"},
 	{Value: "identity.unlinked", Name: "Provider disconnected"},
+	{Value: "identity.provider.disabled", Name: "Provider disabled"},
+	{Value: "identity.provider.enabled", Name: "Provider enabled"},
 	{Value: "policy.created", Name: "Policy created"},
 	{Value: "policy.deleted", Name: "Policy deleted"},
 	{Value: "policy.resource.added", Name: "Policy resource added"},
@@ -104,7 +106,7 @@ func (h *Handler) adminData(r *http.Request, workspaceID, message string) (admin
 		Products:                          products,
 		Domains:                           domains,
 		Policies:                          policies,
-		IdentityProviders:                 h.loginProviders(),
+		IdentityProviders:                 h.adminProviders(),
 		Groups:                            []adminGroupRow{},
 		Users:                             []*models.User{},
 		Audit:                             []*models.OrganizationAuditEvent{},
@@ -155,6 +157,49 @@ func (h *Handler) adminData(r *http.Request, workspaceID, message string) (admin
 		return adminPageData{}, err
 	}
 	return data, nil
+}
+
+func (h *Handler) adminProviders() []LoginProvider {
+	if h.IdentityProviders != nil {
+		return h.IdentityProviders.AdminProviders()
+	}
+	return h.loginProviders()
+}
+
+func (h *Handler) UpdateAdminIdentityProvider(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok {
+		return
+	}
+	providerKey := r.PathValue("provider")
+	provider := h.IdentityProviders.Provider(providerKey)
+	if provider == nil && h.IdentityProviders != nil {
+		provider = h.IdentityProviders.ProviderByKeyAny(providerKey)
+	}
+	if provider == nil {
+		http.NotFound(w, r)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form", http.StatusBadRequest)
+		return
+	}
+	action := r.FormValue("action")
+	if action != "enable" && action != "disable" {
+		http.Error(w, "action must be enable or disable", http.StatusBadRequest)
+		return
+	}
+	enabled := action == "enable"
+	if err := h.Store.SetIdentityProviderEnabled(r.Context(), workspaceID, user.ID, providerKey, provider.issuer, enabled); err != nil {
+		http.Error(w, "update identity provider", http.StatusInternalServerError)
+		return
+	}
+	h.IdentityProviders.SetEnabled(providerKey, enabled)
+	message := provider.displayName + " enabled"
+	if !enabled {
+		message = provider.displayName + " disabled"
+	}
+	http.Redirect(w, r, "/admin?saved="+url.QueryEscape(message), http.StatusSeeOther)
 }
 
 func (h *Handler) CreateAdminDomain(w http.ResponseWriter, r *http.Request) {

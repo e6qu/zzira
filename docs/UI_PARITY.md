@@ -13,7 +13,7 @@ Status: ✅ browser-tested complete journey · 🟡 usable tested subset · ⛔ 
 
 | Persona and goal | State | Current evidence and gap |
 |---|---:|---|
-| User signs in and orients | Partial | ✅ Password plus simultaneous Shauth, Google, Microsoft and Atlassian provider choice, profile-based identity review/connect/disconnect, issuer-scoped session revocation, responsive shell, theme and session controls; product switcher remains |
+| User signs in and orients | Partial | ✅ Password plus simultaneous Shauth, Google, Microsoft and Atlassian provider choice, profile-based identity review/connect/disconnect, durable admin availability controls, issuer-scoped session revocation, responsive shell, theme and session controls; product switcher remains |
 | Contributor finds work | ✅ | Project-scoped basic/JQL search, filters, columns, sorting, pagination, keyboard navigation and contextual preview |
 | Contributor creates and triages work | ✅ | Shared create metadata, validation recovery, inline fields, security, labels, watchers, links, activity, attachments and worklogs |
 | Contributor plans and runs a sprint | ✅ | Backlog grouping/ranking, sprint create/edit/start/complete, board movement, quick/assignee filters, WIP feedback, swimlanes and issue preview |

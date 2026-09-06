@@ -141,3 +141,51 @@ func TestIdentityProviderLinkLifecycleRevokesOnlyRemovedProvider(t *testing.T) {
 		t.Fatalf("link audit counts = %d linked, %d unlinked", linked, unlinked)
 	}
 }
+
+func TestIdentityProviderSettingPersistsAndDisablingRevokesIssuerSessions(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	st, err := Open(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := Migrate(ctx, st.Pool); err != nil {
+		t.Fatal(err)
+	}
+	workspaceID, _, err := st.DefaultWorkspace(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actorID, err := st.FirstAdminID(ctx, workspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tokenHash := HashToken(NewID("disabled-provider-session"))
+	if err := st.CreateOIDCSession(ctx, tokenHash, actorID, "id-token", "https://auth.atlassian.com", NewID("subject"), "", time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetIdentityProviderEnabled(ctx, workspaceID, actorID, "atlassian", "https://auth.atlassian.com", false); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = st.SetIdentityProviderEnabled(ctx, workspaceID, actorID, "atlassian", "https://auth.atlassian.com", true)
+	}()
+	settings, err := st.IdentityProviderSettingsByWorkspace(ctx, workspaceID)
+	if err != nil || settings["atlassian"] {
+		t.Fatalf("provider settings = %#v, %v", settings, err)
+	}
+	if _, err := st.SessionUser(ctx, tokenHash); !errors.Is(err, pgx.ErrNoRows) {
+		t.Fatalf("disabled-provider session remained valid: %v", err)
+	}
+	var disabledEvents int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM organization_audit_events WHERE actor_id=$1 AND action='identity.provider.disabled' AND target_id='atlassian'`, actorID).Scan(&disabledEvents); err != nil {
+		t.Fatal(err)
+	}
+	if disabledEvents == 0 {
+		t.Fatal("provider disable did not write an audit event")
+	}
+}

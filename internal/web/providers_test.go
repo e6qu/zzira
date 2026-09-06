@@ -116,3 +116,25 @@ func TestMicrosoftProviderRequiresTenantSpecificAuthority(t *testing.T) {
 		t.Fatalf("common authority error = %v", err)
 	}
 }
+
+func TestProviderRegistryAppliesDurableAvailabilityWithoutLosingConfiguration(t *testing.T) {
+	provider := &OIDC{key: "atlassian", displayName: "Atlassian", issuer: atlassianIssuer, atlassian: true}
+	registry := &ProviderRegistry{ordered: []*OIDC{provider}, byKey: map[string]*OIDC{"atlassian": provider}, byIssuer: map[string]*OIDC{atlassianIssuer: provider}}
+	registry.ApplyEnabled(map[string]bool{"atlassian": false})
+	if registry.Provider("atlassian") != nil || len(registry.LoginProviders()) != 0 {
+		t.Fatal("disabled provider remained available for login")
+	}
+	adminProviders := registry.AdminProviders()
+	if len(adminProviders) != 1 || adminProviders[0].Enabled {
+		t.Fatalf("admin providers = %#v", adminProviders)
+	}
+	if registry.ProviderByIssuer(atlassianIssuer) != provider {
+		t.Fatal("disabled provider configuration was lost for logout/re-enable")
+	}
+	if !registry.SetEnabled("atlassian", true) || registry.Provider("atlassian") != provider {
+		t.Fatal("provider did not become available after re-enable")
+	}
+	if registry.SetEnabled("missing", false) {
+		t.Fatal("unknown provider accepted an availability change")
+	}
+}

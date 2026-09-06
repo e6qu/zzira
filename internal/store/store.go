@@ -438,6 +438,63 @@ func addIdentityAudit(ctx context.Context, tx pgx.Tx, userID, action, issuer str
 	return err
 }
 
+func (s *Store) IdentityProviderSettingsByWorkspace(ctx context.Context, workspaceID string) (map[string]bool, error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT settings.provider_key,settings.enabled
+		FROM identity_provider_settings settings
+		JOIN sites site ON site.organization_id=settings.organization_id
+		WHERE site.workspace_id=$1`, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	settings := map[string]bool{}
+	for rows.Next() {
+		var key string
+		var enabled bool
+		if err := rows.Scan(&key, &enabled); err != nil {
+			return nil, err
+		}
+		settings[key] = enabled
+	}
+	return settings, rows.Err()
+}
+
+func (s *Store) SetIdentityProviderEnabled(ctx context.Context, workspaceID, actorID, providerKey, issuer string, enabled bool) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var organizationID string
+	if err := tx.QueryRow(ctx, `SELECT organization_id::text FROM sites WHERE workspace_id=$1`, workspaceID).Scan(&organizationID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO identity_provider_settings(organization_id,provider_key,enabled,updated_by)
+		VALUES($1::uuid,$2,$3,$4)
+		ON CONFLICT(organization_id,provider_key) DO UPDATE
+		SET enabled=EXCLUDED.enabled,updated_by=EXCLUDED.updated_by,updated_at=now()`, organizationID, providerKey, enabled, actorID); err != nil {
+		return err
+	}
+	if !enabled {
+		if _, err := tx.Exec(ctx, `DELETE FROM sessions WHERE oidc_issuer=$1`, issuer); err != nil {
+			return err
+		}
+	}
+	detail, err := json.Marshal(map[string]any{"provider": providerKey, "issuer": issuer, "enabled": enabled})
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO organization_audit_events(organization_id,actor_id,action,target_type,target_id,detail)
+		VALUES($1::uuid,$2,$3,'identity-provider',$4,$5::jsonb)`, organizationID, actorID,
+		map[bool]string{true: "identity.provider.enabled", false: "identity.provider.disabled"}[enabled], providerKey, detail); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
 // ResolveOIDCUser binds a verified sign-in to its immutable (issuer, subject)
 // pair, identifying every later sign-in by that pair rather than the mutable
 // email. The first sign-in for a pair binds to an existing active user
