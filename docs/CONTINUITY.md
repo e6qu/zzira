@@ -146,6 +146,9 @@ does not publish them as one OpenAPI document.
   blocked while issues, boards, published/draft workflows, or automation rules
   refer to the status. Editors and REST reads exclude other workspaces' custom
   statuses.
+- Exposed paged Jira status project, workflow, and per-project issue-type usage
+  resources from the same impact data, bringing every pinned status and status
+  category operation under explicit reviewed evidence.
 
 Validation after the organization foundation:
 
@@ -316,7 +319,8 @@ Validation after status lifecycle administration:
   after reference cleanup, and create/update/delete audit evidence.
 - The Jira REST integration journey covers member/admin authorization, bulk
   create/read/update/delete, lookup by ID/name, search/category filtering,
-  status categories, descriptions, conflicts, and protected deletion.
+  status categories, descriptions, conflicts, protected deletion, and the three
+  project/workflow/issue-type usage resources.
 - The Chromium administrator journey covers directory navigation, built-in
   protection, creation, categorization, description, impact counts, editing,
   and safe deletion.
@@ -324,8 +328,8 @@ Validation after status lifecycle administration:
   tests, both generated evidence checks, and `git diff --check` pass. The new
   page passes the shared light/dark WCAG scan, WCAG 2.2 target-size check, and
   320 px reflow journey.
-- Exact reviewed API coverage is 72 of 1,207 operations: 65 partial, 7 missing,
-  and 1,135 explicitly unassessed.
+- Exact reviewed API coverage is 75 of 1,207 operations: 68 partial, 7 missing,
+  and 1,132 explicitly unassessed.
 
 ## Current change
 

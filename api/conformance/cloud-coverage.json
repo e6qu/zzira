@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 72,
+  "assessedTotal": 75,
   "counts": {
     "delivered": 0,
-    "partial": 65,
+    "partial": 68,
     "missing": 7,
-    "unassessed": 1135
+    "unassessed": 1132
   },
   "countsByFamily": {
     "automation": {
@@ -24,9 +24,9 @@
     },
     "jira-platform": {
       "delivered": 0,
-      "partial": 10,
+      "partial": 13,
       "missing": 0,
-      "unassessed": 607
+      "unassessed": 604
     },
     "jira-service-management": {
       "delivered": 0,
@@ -3974,25 +3974,37 @@
       "operationId": "jira-v3:GET:/rest/api/3/statuses/{statusId}/project/{projectId}/issueTypeUsages",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/statuses_test.go",
+        "internal/store/statuses.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Returns paged issue type IDs observed using the status in the requested workspace project with strict status/project validation; scheme-derived unused issue types remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/statuses/{statusId}/projectUsages",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/statuses_test.go",
+        "internal/store/statuses.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Returns opaque-token pages of workspace projects whose issues, boards, or active workflow use the status; workflow-scheme-only associations remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/statuses/{statusId}/workflowUsages",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/statuses_test.go",
+        "internal/store/statuses.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Returns opaque-token pages of active project workflows using the status; unassigned and workflow-scheme draft usages remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/task/{taskId}",

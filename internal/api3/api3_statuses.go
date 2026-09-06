@@ -1,6 +1,7 @@
 package api3
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -251,4 +252,91 @@ func defaultString(value, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func statusUsagePage(r *http.Request, values []string) ([]map[string]any, string, error) {
+	max, err := strconv.Atoi(defaultString(r.URL.Query().Get("maxResults"), "50"))
+	if err != nil || max < 1 || max > 1000 {
+		return nil, "", errors.New("maxResults must be between 1 and 1000")
+	}
+	start := 0
+	if token := r.URL.Query().Get("nextPageToken"); token != "" {
+		raw, decodeErr := base64.RawURLEncoding.DecodeString(token)
+		if decodeErr != nil {
+			return nil, "", errors.New("nextPageToken is invalid")
+		}
+		start, err = strconv.Atoi(string(raw))
+		if err != nil || start < 0 || start > len(values) {
+			return nil, "", errors.New("nextPageToken is invalid")
+		}
+	}
+	end := start + max
+	if end > len(values) {
+		end = len(values)
+	}
+	page := make([]map[string]any, 0, end-start)
+	for _, id := range values[start:end] {
+		page = append(page, map[string]any{"id": id})
+	}
+	next := ""
+	if end < len(values) {
+		next = base64.RawURLEncoding.EncodeToString([]byte(strconv.Itoa(end)))
+	}
+	return page, next, nil
+}
+
+func (h *Handler) statusUsageEndpoint(w http.ResponseWriter, r *http.Request, parts []string) {
+	workspaceID, _, e := h.authWorkspace(r)
+	if e != nil {
+		writeJerr(w, e)
+		return
+	}
+	if len(parts) < 2 {
+		jiraError(w, http.StatusNotFound, "No resource found")
+		return
+	}
+	statusID := parts[0]
+	if _, err := h.Store.StatusUsage(r.Context(), workspaceID, statusID); err != nil {
+		statusAPIError(w, err)
+		return
+	}
+	var ids []string
+	var err error
+	container := ""
+	response := map[string]any{"statusId": statusID}
+	switch {
+	case len(parts) == 2 && parts[1] == "projectUsages":
+		ids, err = h.Store.StatusProjectUsages(r.Context(), workspaceID, statusID)
+		container = "projects"
+	case len(parts) == 2 && parts[1] == "workflowUsages":
+		ids, err = h.Store.StatusWorkflowUsages(r.Context(), workspaceID, statusID)
+		container = "workflows"
+	case len(parts) == 4 && parts[1] == "project" && parts[3] == "issueTypeUsages":
+		project, projectErr := h.Store.ProjectByIDOrKey(r.Context(), workspaceID, parts[2])
+		if projectErr != nil {
+			jiraError(w, http.StatusNotFound, "The project does not exist.")
+			return
+		}
+		ids, err = h.Store.StatusProjectIssueTypeUsages(r.Context(), workspaceID, project.ID, statusID)
+		container = "issueTypes"
+		response["projectId"] = project.ID
+	default:
+		jiraError(w, http.StatusNotFound, "No resource found")
+		return
+	}
+	if err != nil {
+		statusAPIError(w, err)
+		return
+	}
+	values, next, err := statusUsagePage(r, ids)
+	if err != nil {
+		jiraError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	page := map[string]any{"values": values}
+	if next != "" {
+		page["nextPageToken"] = next
+	}
+	response[container] = page
+	writeJSON(w, http.StatusOK, response)
 }

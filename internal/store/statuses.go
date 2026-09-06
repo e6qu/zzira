@@ -210,3 +210,66 @@ func (s *Store) DeleteStatus(ctx context.Context, workspaceID, actorID, statusID
 	}
 	return tx.Commit(ctx)
 }
+
+func (s *Store) StatusProjectUsages(ctx context.Context, workspaceID, statusID string) ([]string, error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT DISTINCT p.id FROM projects p WHERE p.workspace_id=$1 AND (
+		 EXISTS(SELECT 1 FROM issues i WHERE i.project_id=p.id AND i.status_id=$2)
+		 OR EXISTS(SELECT 1 FROM boards b WHERE b.project_id=p.id AND $2=ANY(b.column_status_ids))
+		 OR EXISTS(SELECT 1 FROM workflows w WHERE w.id=COALESCE(p.workflow_id,'wf_default') AND
+		   EXISTS(SELECT 1 FROM jsonb_array_elements(w.def->'transitions') t WHERE t->>'to'=$2 OR (t->'from') ? $2))
+		) ORDER BY p.id`, workspaceID, statusID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+func (s *Store) StatusWorkflowUsages(ctx context.Context, workspaceID, statusID string) ([]string, error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT DISTINCT w.id FROM workflows w WHERE
+		 EXISTS(SELECT 1 FROM projects p WHERE p.workspace_id=$1 AND COALESCE(p.workflow_id,'wf_default')=w.id)
+		 AND EXISTS(SELECT 1 FROM jsonb_array_elements(w.def->'transitions') t WHERE t->>'to'=$2 OR (t->'from') ? $2)
+		 ORDER BY w.id`, workspaceID, statusID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+func (s *Store) StatusProjectIssueTypeUsages(ctx context.Context, workspaceID, projectID, statusID string) ([]string, error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT DISTINCT i.issuetype_id FROM issues i JOIN projects p ON p.id=i.project_id
+		WHERE p.workspace_id=$1 AND p.id=$2 AND i.status_id=$3 ORDER BY i.issuetype_id`, workspaceID, projectID, statusID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}

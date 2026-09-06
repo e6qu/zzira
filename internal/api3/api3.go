@@ -74,6 +74,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.statusesByNameEndpoint(w, r)
 	case path == "/statuses/search" && r.Method == http.MethodGet:
 		h.searchStatusesEndpoint(w, r)
+	case strings.HasPrefix(path, "/statuses/") && r.Method == http.MethodGet:
+		h.statusUsageEndpoint(w, r, strings.Split(strings.TrimPrefix(path, "/statuses/"), "/"))
 	case path == "/resolution" && r.Method == http.MethodGet:
 		h.resolutionsEndpoint(w, r)
 	case path == "/mypermissions" && r.Method == http.MethodGet:

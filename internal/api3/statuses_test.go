@@ -43,7 +43,12 @@ func TestStatusAPILifecycleAndWorkspaceScope(t *testing.T) {
 		exec(`INSERT INTO memberships(workspace_id,user_id,role) VALUES($1,$2,$3)`, ws, user, role)
 		exec(`INSERT INTO api_tokens(id,user_id,token_hash) VALUES($1,$1,$2)`, user, store.HashToken(user))
 	}
+	projectID, issueID := store.NewID("project"), store.NewID("issue")
+	exec(`INSERT INTO projects(id,workspace_id,key,name) VALUES($1,$2,'STAT','Status project')`, projectID, ws)
+	exec(`INSERT INTO issues(id,workspace_id,project_id,key,summary,status_id,issuetype_id,updated_seq) VALUES($1,$2,$3,'STAT-1','Status usage','st_todo','it_task',0)`, issueID, ws, projectID)
 	t.Cleanup(func() {
+		exec(`DELETE FROM issues WHERE workspace_id=$1`, ws)
+		exec(`DELETE FROM projects WHERE workspace_id=$1`, ws)
 		exec(`DELETE FROM statuses WHERE workspace_id=$1`, ws)
 		exec(`DELETE FROM memberships WHERE workspace_id=$1`, ws)
 		exec(`DELETE FROM workspaces WHERE id=$1`, ws)
@@ -85,6 +90,18 @@ func TestStatusAPILifecycleAndWorkspaceScope(t *testing.T) {
 	call(actor, "PUT", "/rest/api/3/statuses", update, 204)
 	call(member, "GET", "/rest/api/3/statuses/byNames?name=Review%20complete", "", 200)
 	call(member, "PUT", "/rest/api/3/statuses", update, 403)
+	projectUsage := call(member, "GET", "/rest/api/3/statuses/st_todo/projectUsages?maxResults=1", "", 200)
+	if !strings.Contains(projectUsage.Body.String(), projectID) {
+		t.Fatal(projectUsage.Body.String())
+	}
+	workflowUsage := call(member, "GET", "/rest/api/3/statuses/st_todo/workflowUsages", "", 200)
+	if !strings.Contains(workflowUsage.Body.String(), "wf_default") {
+		t.Fatal(workflowUsage.Body.String())
+	}
+	issueTypeUsage := call(member, "GET", "/rest/api/3/statuses/st_todo/project/"+projectID+"/issueTypeUsages", "", 200)
+	if !strings.Contains(issueTypeUsage.Body.String(), "it_task") {
+		t.Fatal(issueTypeUsage.Body.String())
+	}
 	call(actor, "DELETE", "/rest/api/3/statuses?id=st_todo", "", 409)
 	call(actor, "DELETE", "/rest/api/3/statuses?id="+id, "", 204)
 	call(member, "GET", "/rest/api/3/status/"+id, "", 404)
