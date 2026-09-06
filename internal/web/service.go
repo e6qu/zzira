@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -63,6 +64,8 @@ type servicePageData struct {
 	CalendarHolidays      []serviceCalendarHolidayView
 	Report                *models.ServiceReport
 	ReportDays            []serviceReportDayView
+	ReportFilter          models.ServiceReportFilter
+	ReportChannels        []string
 	SLAMetrics            []models.ServiceSLAMetric
 	SLAGoals              map[string][]models.ServiceSLAGoal
 	SLAs                  []models.ServiceSLA
@@ -295,7 +298,40 @@ func (h *Handler) ServiceReports(w http.ResponseWriter, r *http.Request) {
 	if requested, parseErr := strconv.Atoi(r.URL.Query().Get("days")); parseErr == nil && (requested == 7 || requested == 30 || requested == 90) {
 		days = requested
 	}
-	report, err := h.Store.ServiceReport(r.Context(), workspaceID, deskID, days, time.Now().UTC())
+	filter := models.ServiceReportFilter{
+		RequestTypeID: strings.TrimSpace(r.URL.Query().Get("requestType")),
+		Channel:       strings.TrimSpace(r.URL.Query().Get("channel")),
+		Status:        strings.TrimSpace(r.URL.Query().Get("status")),
+	}
+	if filter.Status != "" && filter.Status != "open" && filter.Status != "resolved" {
+		http.Error(w, "Report status filter is invalid.", http.StatusBadRequest)
+		return
+	}
+	requestTypes, err := h.Store.ServiceRequestTypes(r.Context(), workspaceID, deskID, "")
+	if err != nil {
+		http.Error(w, "Could not load report request types.", http.StatusInternalServerError)
+		return
+	}
+	channels, err := h.Store.ServiceRequestChannels(r.Context(), workspaceID, deskID)
+	if err != nil {
+		http.Error(w, "Could not load report channels.", http.StatusInternalServerError)
+		return
+	}
+	if filter.RequestTypeID != "" {
+		valid := false
+		for _, requestType := range requestTypes {
+			valid = valid || requestType.ID == filter.RequestTypeID
+		}
+		if !valid {
+			http.Error(w, "Report request type filter is invalid.", http.StatusBadRequest)
+			return
+		}
+	}
+	if filter.Channel != "" && !slices.Contains(channels, filter.Channel) {
+		http.Error(w, "Report channel filter is invalid.", http.StatusBadRequest)
+		return
+	}
+	report, err := h.Store.ServiceReportFiltered(r.Context(), workspaceID, deskID, filter, days, time.Now().UTC())
 	if err != nil {
 		http.Error(w, "Could not load service reports.", http.StatusInternalServerError)
 		return
@@ -308,7 +344,7 @@ func (h *Handler) ServiceReports(w http.ResponseWriter, r *http.Request) {
 	for _, day := range report.Daily {
 		views = append(views, serviceReportDayView{Day: day.Day, Count: day.Count, Width: day.Count * 100 / maximum})
 	}
-	h.writeWorkspacePage(w, r, "page_service_reports", user, workspaceID, servicePageData{Desk: desk, Report: report, ReportDays: views, CanAgent: true}, "service", desk.ProjectID)
+	h.writeWorkspacePage(w, r, "page_service_reports", user, workspaceID, servicePageData{Desk: desk, RequestTypes: requestTypes, Report: report, ReportDays: views, ReportFilter: filter, ReportChannels: channels, CanAgent: true}, "service", desk.ProjectID)
 }
 
 func (h *Handler) ServiceAgentAssign(w http.ResponseWriter, r *http.Request) {

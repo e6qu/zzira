@@ -275,9 +275,17 @@ test('admin creates a service project with Jira Service Management request types
   await expect(page.getByRole('heading', { name: 'Service reports', level: 1 })).toBeVisible();
   await expect(page.locator('.service-report-metrics article').filter({ hasText: 'Total requests' })).toContainText('3');
   await expect(page.getByText('4.0 / 5')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Request types', level: 2 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Channels', level: 2 })).toBeVisible();
   await expect(page.getByRole('img', { name: 'Daily request volume for the selected 30 day period' })).toBeVisible();
+  await page.getByLabel('Status').selectOption('resolved');
+  await page.getByRole('button', { name: 'Apply filters' }).click();
+  await expect(page).toHaveURL(/status=resolved/);
+  await expect(page.locator('.service-report-metrics article').filter({ hasText: 'Total requests' })).toContainText('1');
+  await expect(page.locator('.service-report-metrics article').filter({ hasText: 'Open requests' })).toContainText('0');
   await page.getByRole('link', { name: '7 days' }).click();
   await expect(page.getByRole('link', { name: '7 days' })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByLabel('Status')).toHaveValue('resolved');
   await accessible(page);
   await page.setViewportSize({ width: 320, height: 740 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

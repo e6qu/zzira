@@ -175,8 +175,9 @@ documented ZZIRA search subset, including array-aware label matching;
 conditional form logic, select, user, and
 Assets-backed portal fields, participant notifications,
 approval workflow configuration, image thumbnail generation,
-email delivery and notification preference administration, CSAT configuration
-and advanced segmented service reports, complete Assets object/schema/import APIs, full
+email delivery and notification preference administration, CSAT configuration,
+service report comparisons, SLA goal distributions, exports and scheduled
+delivery, complete Assets object/schema/import APIs, full
 status chronology, SLA rule reordering and advanced criteria,
 portal invitation email delivery, Atlassian knowledge ranking/analytics, and
 incident/problem/change configuration remain. Customer creation grants only the

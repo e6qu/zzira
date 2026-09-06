@@ -144,10 +144,20 @@ type ServiceReportDay struct {
 	Count int
 }
 
+type ServiceReportSegment struct {
+	ID, Name string
+	Count    int
+}
+
+type ServiceReportFilter struct {
+	RequestTypeID, Channel, Status string
+}
+
 type ServiceReport struct {
 	WindowDays                                    int
 	TotalRequests, OpenRequests, ResolvedRequests int
 	BreachedRequests, SatisfactionResponses       int
 	AverageSatisfaction                           float64
 	Daily                                         []ServiceReportDay
+	RequestTypes, Channels                        []ServiceReportSegment
 }

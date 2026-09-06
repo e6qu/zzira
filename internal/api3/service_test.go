@@ -8,6 +8,7 @@ import (
 	"mime/multipart"
 	"net/http/httptest"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -858,8 +859,23 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	}
 	callAs(agentID, "GET", "/rest/servicedeskapi/request/"+issueKey+"/feedback", "", 200)
 	report, err := st.ServiceReport(ctx, workspaceID, serviceDeskID, 30, time.Now().UTC())
-	if err != nil || report.TotalRequests < 5 || report.ResolvedRequests < 1 || report.SatisfactionResponses != 1 || report.AverageSatisfaction != 5 || len(report.Daily) != 30 {
+	if err != nil || report.TotalRequests < 5 || report.ResolvedRequests < 1 || report.SatisfactionResponses != 1 || report.AverageSatisfaction != 5 || len(report.Daily) != 30 || len(report.RequestTypes) == 0 || len(report.Channels) == 0 {
 		t.Fatalf("service report = %+v, %v", report, err)
+	}
+	resolvedReport, err := st.ServiceReportFiltered(ctx, workspaceID, serviceDeskID, models.ServiceReportFilter{Status: "resolved"}, 30, time.Now().UTC())
+	if err != nil || resolvedReport.TotalRequests != 1 || resolvedReport.OpenRequests != 0 || resolvedReport.ResolvedRequests != 1 || resolvedReport.SatisfactionResponses != 1 {
+		t.Fatalf("resolved service report = %+v, %v", resolvedReport, err)
+	}
+	incidentReport, err := st.ServiceReportFiltered(ctx, workspaceID, serviceDeskID, models.ServiceReportFilter{RequestTypeID: incidentTypeID, Channel: "portal"}, 30, time.Now().UTC())
+	if err != nil || incidentReport.TotalRequests < 3 || len(incidentReport.RequestTypes) != 1 || incidentReport.RequestTypes[0].ID != incidentTypeID {
+		t.Fatalf("segmented incident report = %+v, %v", incidentReport, err)
+	}
+	channels, err := st.ServiceRequestChannels(ctx, workspaceID, serviceDeskID)
+	if err != nil || !slices.Contains(channels, "portal") {
+		t.Fatalf("service request channels = %+v, %v", channels, err)
+	}
+	if _, err := st.ServiceReportFiltered(ctx, workspaceID, serviceDeskID, models.ServiceReportFilter{Status: "invalid"}, 30, time.Now().UTC()); err == nil {
+		t.Fatal("service report accepted unsupported status filter")
 	}
 	if _, err := st.ServiceReport(ctx, workspaceID, serviceDeskID, 31, time.Now().UTC()); err == nil {
 		t.Fatal("service report accepted unsupported window")

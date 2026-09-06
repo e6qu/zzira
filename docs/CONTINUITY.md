@@ -1322,10 +1322,23 @@ Validation after conditional service SLA goals:
   manager configuration and customer request journey, including WCAG and
   320 px reflow.
 
+Validation after service report segmentation:
+
+- Service agents and managers filter each 7, 30, or 90 day report by request
+  type, channel, and open/resolved state. The same scoped predicates drive the
+  headline totals, CSAT, daily volume, breach calculation, and exact breakdown
+  tables; window changes retain active filters.
+- Request-type and channel tables remain available alongside the accessible
+  daily chart, including explicit empty states. PostgreSQL coverage proves
+  status, request-type and channel segmentation plus invalid-filter rejection.
+- The combined Chromium service journey filters to the single resolved request,
+  preserves the filter while changing window, passes axe WCAG checks, and
+  reflows without document overflow at 320 px.
+
 ## Current change
 
 1. Complete Jira Service Management journeys beyond the pinned contract:
-   incident/problem/change linkage and advanced service report segmentation.
+   incident/problem/change linkage.
 2. Continue into the Confluence v1/v2 contract and knowledge collaboration
    workstreams after the remaining service journeys are browser-proven.
 
