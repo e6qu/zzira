@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 165,
+  "assessedTotal": 167,
   "counts": {
     "delivered": 0,
-    "partial": 158,
+    "partial": 160,
     "missing": 7,
-    "unassessed": 1042
+    "unassessed": 1040
   },
   "countsByFamily": {
     "automation": {
@@ -30,9 +30,9 @@
     },
     "jira-service-management": {
       "delivered": 0,
-      "partial": 26,
+      "partial": 28,
       "missing": 0,
-      "unassessed": 49
+      "unassessed": 47
     },
     "jira-software": {
       "delivered": 0,
@@ -6237,7 +6237,7 @@
         "e2e/service.spec.ts",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Creates or enrolls a workspace-scoped portal-only customer account for administrators; invitation delivery, portal login activation and skip-permission-check variants remain."
+      "notes": "Creates or enrolls a workspace-scoped portal-only customer account for assigned agents and implicit service managers; invitation delivery, portal login activation and skip-permission-check variants remain."
     },
     {
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/customer/skip-permission-check",
@@ -6393,7 +6393,7 @@
         "e2e/service.spec.ts",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Lists caller-owned requests, with administrator ALL_REQUESTS and desk/type filters; remaining status, participant, approval, organization and pagination filters remain."
+      "notes": "Lists caller-owned requests, with desk-scoped agent ALL_REQUESTS and desk/type filters; remaining status, participant, approval, organization and pagination filters remain."
     },
     {
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/request",
@@ -6438,7 +6438,7 @@
         "e2e/service.spec.ts",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Returns a customer-safe request by issue ID or key with typed fields, portal, reporter, current status and visible conversation; remaining expansions, SLA and approval shapes remain."
+      "notes": "Returns a customer-safe request by issue ID or key with typed fields, portal, reporter, current status and visible conversation; remaining attachment, approval and expansion shapes remain."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/approval",
@@ -6509,7 +6509,7 @@
         "e2e/service.spec.ts",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Lists public request comments for customers and includes internal notes for administrators; full query filters, attachment expansion and cursor links remain."
+      "notes": "Lists public request comments for customers and includes internal notes for assigned agents; full query filters, attachment expansion and cursor links remain."
     },
     {
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/request/{issueIdOrKey}/comment",
@@ -6524,7 +6524,7 @@
         "e2e/service.spec.ts",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Creates public customer replies or administrator-only internal notes through the canonical Jira comment command; attachment-bearing comments remain."
+      "notes": "Creates public customer replies or agent-only internal notes through the canonical Jira comment command; attachment-bearing comments remain."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/comment/{commentId}",
@@ -6622,17 +6622,31 @@
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/sla",
       "family": "jira-service-management",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service.go",
+        "internal/store/service_sla.go",
+        "internal/store/service_sla_test.go",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Returns agent-authorized paged SLA metrics with business-calendar-aware ongoing and completed cycles, breach times and durations; multiple goals per metric, pause/status rules and holiday administration remain."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/sla/{slaMetricId}",
       "family": "jira-service-management",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service.go",
+        "internal/store/service_sla.go",
+        "internal/store/service_sla_test.go",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Returns one SLA metric by ID with first-response or resolution cycle state and Jira date/duration shapes; richer goal criteria and display-format variants remain."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/status",
@@ -6834,7 +6848,7 @@
         "e2e/service.spec.ts",
         "docs/SERVICE_MANAGEMENT.md"
       ],
-      "notes": "Lists the ordered default agent queues with optional live request counts and agent-only access; custom queue administration and granular service-project agent roles remain."
+      "notes": "Lists the ordered default queues with optional live request counts and per-service-desk agent authorization; custom queue administration remains."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/servicedesk/{serviceDeskId}/queue/{queueId}",

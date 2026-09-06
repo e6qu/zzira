@@ -1132,10 +1132,29 @@ Validation after Jira Service Management project-scoped agents:
   agent roster administration is an internal authorization capability rather
   than a pinned JSM REST operation.
 
+Validation after Jira Service Management calendars and SLA clocks:
+
+- Migration 062 provisions a default business calendar plus first-response and
+  resolution goals for every existing and future desk and starts durable cycles
+  for existing and future requests.
+- Calendar calculations honor IANA time zones, configured ISO weekdays, daily
+  working windows and persisted holidays. Unit coverage proves overnight,
+  weekend and holiday exclusion.
+- A public agent response completes the first-response cycle; Done completes
+  resolution; reopening starts another resolution cycle. The request journey
+  shows current goal state, and administrators edit calendar and goal settings
+  in the same responsive agent workspace.
+- Both pinned agent-only SLA reads return Jira date/duration shapes, paged
+  metric lists, completed cycles, ongoing cycles and not-found/permission
+  errors. PostgreSQL covers configuration and lifecycle transitions; Chromium
+  covers customer goal visibility and manager configuration.
+- Exact-operation review is now 167/1,207: 160 partial, 7 missing and 1,040
+  unassessed.
+
 ## Current change
 
-1. Implement Jira Service Management SLA definitions, calendars, request clock
-   timelines and escalation on the queue/request foundation.
+1. Implement Jira Service Management breach-warning queues and durable
+   escalation notifications, then approvals and request attachments.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 

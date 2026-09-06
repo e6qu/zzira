@@ -146,7 +146,12 @@ func (s *Store) ServiceCustomer(ctx context.Context, workspaceID, userIDOrEmail 
 }
 
 func (s *Store) CreateServiceRequest(ctx context.Context, workspaceID, issueID, serviceDeskID, requestTypeID, customerID, channel string) error {
-	result, err := s.Pool.Exec(ctx, `
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	result, err := tx.Exec(ctx, `
 		INSERT INTO service_requests(issue_id,workspace_id,service_desk_id,request_type_id,customer_id,channel)
 		SELECT i.id,$1,sd.id,rt.id,$5,$6
 		FROM issues i JOIN service_desks sd ON sd.project_id=i.project_id
@@ -159,7 +164,12 @@ func (s *Store) CreateServiceRequest(ctx context.Context, workspaceID, issueID, 
 	if result.RowsAffected() == 0 {
 		return fmt.Errorf("request type, issue, and customer must belong to the service desk")
 	}
-	return nil
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO service_sla_cycles(request_issue_id,metric_id,started_at)
+		SELECT $1,m.id,now() FROM service_sla_metrics m WHERE m.service_desk_id=$2`, issueID, serviceDeskID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func (s *Store) serviceRequestFromRow(ctx context.Context, workspaceID string, row pgx.Row) (*models.ServiceRequest, error) {
@@ -521,26 +531,45 @@ func (s *Store) ServiceDeskAgents(ctx context.Context, workspaceID, serviceDeskI
 	return users, nil
 }
 
-func (s *Store) SetServiceDeskAgent(ctx context.Context, workspaceID, serviceDeskID, userID string, enabled bool) error {
+func (s *Store) SetServiceDeskAgent(ctx context.Context, workspaceID, actorID, serviceDeskID, userID string, enabled bool) error {
 	if _, err := s.MemberByID(ctx, workspaceID, userID); err != nil {
 		return fmt.Errorf("agent must be an active workspace member")
 	}
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	changed := false
 	if enabled {
-		result, err := s.Pool.Exec(ctx, `INSERT INTO service_desk_agents(service_desk_id,user_id) SELECT sd.id,$3 FROM service_desks sd WHERE sd.workspace_id=$1 AND sd.id=$2 ON CONFLICT DO NOTHING`, workspaceID, serviceDeskID, userID)
+		result, err := tx.Exec(ctx, `INSERT INTO service_desk_agents(service_desk_id,user_id) SELECT sd.id,$3 FROM service_desks sd WHERE sd.workspace_id=$1 AND sd.id=$2 ON CONFLICT DO NOTHING`, workspaceID, serviceDeskID, userID)
 		if err != nil {
 			return err
 		}
+		changed = result.RowsAffected() > 0
 		if result.RowsAffected() == 0 {
 			var exists bool
-			if err := s.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM service_desks WHERE workspace_id=$1 AND id=$2)`, workspaceID, serviceDeskID).Scan(&exists); err != nil {
+			if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM service_desks WHERE workspace_id=$1 AND id=$2)`, workspaceID, serviceDeskID).Scan(&exists); err != nil {
 				return err
 			}
 			if !exists {
 				return fmt.Errorf("service desk does not exist")
 			}
 		}
-		return nil
+	} else {
+		result, err := tx.Exec(ctx, `DELETE FROM service_desk_agents a USING service_desks sd WHERE a.service_desk_id=sd.id AND sd.workspace_id=$1 AND sd.id=$2 AND a.user_id=$3`, workspaceID, serviceDeskID, userID)
+		if err != nil {
+			return err
+		}
+		changed = result.RowsAffected() > 0
 	}
-	_, err := s.Pool.Exec(ctx, `DELETE FROM service_desk_agents a USING service_desks sd WHERE a.service_desk_id=sd.id AND sd.workspace_id=$1 AND sd.id=$2 AND a.user_id=$3`, workspaceID, serviceDeskID, userID)
-	return err
+	if changed {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO organization_audit_events(organization_id,actor_id,action,target_type,target_id,detail)
+			SELECT si.organization_id,$2,'service.agent.updated','user',$3,jsonb_build_object('serviceDeskId',$4::text,'enabled',$5::boolean)
+			FROM sites si WHERE si.workspace_id=$1`, workspaceID, actorID, userID, serviceDeskID, enabled); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
 }

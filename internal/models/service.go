@@ -49,3 +49,30 @@ type ServiceQueue struct {
 	Position                           int
 	IssueCount                         int
 }
+
+type ServiceCalendar struct {
+	ID, ServiceDeskID, Name, TimeZone string
+	Weekdays                          []int16
+	StartMinute, EndMinute            int16
+	Holidays                          map[string]string
+}
+
+type ServiceSLAMetric struct {
+	ID, ServiceDeskID, CalendarID, Name, Kind string
+	GoalMillis                                int64
+	Position                                  int
+}
+
+type ServiceSLACycle struct {
+	ID, GoalLabel, ElapsedLabel, RemainingLabel string
+	StartTime, BreachTime                       time.Time
+	StopTime                                    *time.Time
+	GoalMillis, ElapsedMillis, RemainingMillis  int64
+	Breached, Paused, WithinCalendarHours       bool
+}
+
+type ServiceSLA struct {
+	ServiceSLAMetric
+	CompletedCycles []ServiceSLACycle
+	OngoingCycle    *ServiceSLACycle
+}

@@ -39,6 +39,23 @@ by account ID or email. Participants appear on the request, can read its public
 conversation and status, and lose that access immediately when removed. The
 reporter remains a distinct role and cannot be added or removed as a participant.
 
+## Service goals and calendars
+
+Every service desk starts with a Monday-to-Friday 09:00–17:00 UTC business
+calendar, a four-business-hour first-response goal and an eight-business-hour
+resolution goal. Site administrators can change the calendar name, IANA time
+zone, working days, daily window and both goal durations from the agent
+workspace. New requests start both durable clocks. The first public agent reply
+completes the response cycle, reaching a Done status completes the resolution
+cycle, and reopening starts another resolution cycle.
+
+The request page shows on-track, paused, breached and completed goal state.
+Elapsed and breach time skip non-working days and persisted holidays and honor
+time-zone transitions. The two Jira SLA REST operations are agent-only and
+return Jira-compatible date, duration, completed-cycle and ongoing-cycle
+shapes. Holiday administration, conditional goals, status-driven pauses,
+multiple calendars, warning notifications and durable breach escalation remain.
+
 ## REST coverage
 
 The current `/rest/servicedeskapi` slice implements:
@@ -50,8 +67,9 @@ The current `/rest/servicedeskapi` slice implements:
 - current request status; and
 - condition-aware available transitions and transition execution with an
   optional comment; and
-- queue list/detail/issues with optional live counts.
-- participant list, add, and remove with participant-shaped visibility.
+- queue list/detail/issues with optional live counts;
+- participant list, add, and remove with participant-shaped visibility; and
+- paged SLA list and metric detail with business-calendar cycles.
 
 Request creation accepts string or Atlassian document format descriptions and
 stores the backing issue through the shared command layer. Incident request
@@ -63,8 +81,9 @@ is compensated by a logged issue deletion, so no orphaned ticket remains.
 The implemented operations are assessed as partial. Custom queues and arbitrary
 queue JQL, dynamic form/custom-field values, participant notifications and
 organizations, request attachments, approvals, notifications, feedback, full
-status chronology, SLAs, calendars, portal invitation activation, knowledge
-suggestions, Assets, and incident/problem/change configuration remain. Customer creation records a
+status chronology, advanced SLA goals and escalation, calendar holidays,
+portal invitation activation, knowledge suggestions, Assets, and
+incident/problem/change configuration remain. Customer creation records a
 portal-only account but does not silently grant Jira product access; a future
 invitation policy will activate authentication with an `atlassian/customer`
 role.

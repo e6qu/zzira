@@ -67,6 +67,10 @@ func (h *Handler) serviceDeskRoute(w http.ResponseWriter, r *http.Request) {
 		h.serviceRequestComments(w, r, workspaceID, parts[1], parts[3])
 	case len(parts) == 3 && parts[0] == "request" && parts[2] == "status" && r.Method == http.MethodGet:
 		h.serviceRequestStatus(w, r, workspaceID, parts[1])
+	case len(parts) == 3 && parts[0] == "request" && parts[2] == "sla" && r.Method == http.MethodGet:
+		h.serviceRequestSLA(w, r, workspaceID, parts[1], "")
+	case len(parts) == 4 && parts[0] == "request" && parts[2] == "sla" && r.Method == http.MethodGet:
+		h.serviceRequestSLA(w, r, workspaceID, parts[1], parts[3])
 	case len(parts) == 3 && parts[0] == "request" && parts[2] == "transition" && (r.Method == http.MethodGet || r.Method == http.MethodPost):
 		h.serviceRequestTransition(w, r, workspaceID, parts[1])
 	case len(parts) == 1 && parts[0] == "info" && r.Method == http.MethodGet:
@@ -571,6 +575,16 @@ func (h *Handler) serviceRequestBean(r *http.Request, workspaceID, viewerID stri
 	for _, participant := range participants {
 		participantBeans = append(participantBeans, h.serviceUserBean(participant))
 	}
+	slaBeans := make([]map[string]any, 0)
+	if canManage {
+		slas, err := h.Store.ServiceSLAs(r.Context(), workspaceID, request.Issue.ID, time.Now().UTC())
+		if err != nil {
+			return nil, err
+		}
+		for _, sla := range slas {
+			slaBeans = append(slaBeans, h.serviceSLABean(request, sla))
+		}
+	}
 	fields := []map[string]any{
 		{"fieldId": "summary", "label": "Summary", "value": request.Issue.Summary, "renderedValue": request.Issue.Summary},
 		{"fieldId": "description", "label": "Description", "value": request.Issue.Description, "renderedValue": adf.ToHTML(request.Issue.Description)},
@@ -585,7 +599,7 @@ func (h *Handler) serviceRequestBean(r *http.Request, workspaceID, viewerID stri
 		"requestFieldValues": fields, "currentStatus": status, "status": status,
 		"createdDate": serviceDate(request.CreatedAt), "channel": request.Channel,
 		"comments":    map[string]any{"start": 0, "limit": 50, "size": len(commentBeans), "isLastPage": true, "values": commentBeans},
-		"attachments": []any{}, "sla": []any{}, "actions": []any{}, "_expands": []string{"serviceDesk", "requestType", "currentStatus"},
+		"attachments": []any{}, "sla": slaBeans, "actions": []any{}, "_expands": []string{"serviceDesk", "requestType", "currentStatus"},
 		"_links": map[string]string{
 			"self": h.BaseURL + "/rest/servicedeskapi/request/" + request.Issue.Key,
 			"web":  h.BaseURL + "/service/requests/" + request.Issue.Key,
@@ -715,6 +729,74 @@ func (h *Handler) serviceRequestStatus(w http.ResponseWriter, r *http.Request, w
 		return
 	}
 	h.writeServicePage(w, r, []map[string]any{h.serviceStatusBean(request.Issue.Status, request.Issue.UpdatedAt)})
+}
+
+func serviceDuration(millis int64, friendly string) map[string]any {
+	return map[string]any{"millis": millis, "friendly": friendly}
+}
+
+func serviceSLACycleBean(cycle models.ServiceSLACycle, ongoing bool) map[string]any {
+	bean := map[string]any{
+		"startTime": serviceDate(cycle.StartTime), "breachTime": serviceDate(cycle.BreachTime),
+		"breached": cycle.Breached, "goalDuration": serviceDuration(cycle.GoalMillis, cycle.GoalLabel),
+		"elapsedTime":   serviceDuration(cycle.ElapsedMillis, cycle.ElapsedLabel),
+		"remainingTime": serviceDuration(cycle.RemainingMillis, cycle.RemainingLabel),
+	}
+	if ongoing {
+		bean["paused"] = cycle.Paused
+		bean["withinCalendarHours"] = cycle.WithinCalendarHours
+	} else if cycle.StopTime != nil {
+		bean["stopTime"] = serviceDate(*cycle.StopTime)
+	}
+	return bean
+}
+
+func (h *Handler) serviceSLABean(request *models.ServiceRequest, sla models.ServiceSLA) map[string]any {
+	completed := make([]map[string]any, 0, len(sla.CompletedCycles))
+	for _, cycle := range sla.CompletedCycles {
+		completed = append(completed, serviceSLACycleBean(cycle, false))
+	}
+	bean := map[string]any{
+		"id": sla.ID, "name": sla.Name, "completedCycles": completed, "slaDisplayFormat": "NEW_SLA_FORMAT",
+		"_links": map[string]string{"self": h.BaseURL + "/rest/servicedeskapi/request/" + request.Issue.Key + "/sla/" + sla.ID},
+	}
+	if sla.OngoingCycle != nil {
+		bean["ongoingCycle"] = serviceSLACycleBean(*sla.OngoingCycle, true)
+	}
+	return bean
+}
+
+func (h *Handler) serviceRequestSLA(w http.ResponseWriter, r *http.Request, workspaceID, issueIDOrKey, metricID string) {
+	request, canManage, _, accessErr := h.serviceRequestAccess(r, workspaceID, issueIDOrKey)
+	if accessErr != nil {
+		writeJerr(w, accessErr)
+		return
+	}
+	if !canManage {
+		jiraError(w, http.StatusForbidden, "Service agent access is required to view SLA information.")
+		return
+	}
+	slas, err := h.Store.ServiceSLAs(r.Context(), workspaceID, request.Issue.ID, time.Now().UTC())
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "Could not load SLA information.")
+		return
+	}
+	beans := make([]map[string]any, 0, len(slas))
+	for _, sla := range slas {
+		if metricID != "" && sla.ID != metricID {
+			continue
+		}
+		beans = append(beans, h.serviceSLABean(request, sla))
+	}
+	if metricID != "" {
+		if len(beans) == 0 {
+			jiraError(w, http.StatusNotFound, "SLA metric was not found.")
+			return
+		}
+		writeJSON(w, http.StatusOK, beans[0])
+		return
+	}
+	h.writeServicePage(w, r, beans)
 }
 
 func (h *Handler) availableServiceTransitions(r *http.Request, workspaceID, actorID string, request *models.ServiceRequest) ([]map[string]any, error) {

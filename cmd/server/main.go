@@ -229,6 +229,8 @@ func main() {
 	mux.HandleFunc("GET /service/agent", webHandler.ServiceAgent)
 	mux.HandleFunc("GET /service/agent/{desk}", webHandler.ServiceAgent)
 	mux.HandleFunc("POST /service/agent/{desk}/agents", webHandler.ServiceAgentSettings)
+	mux.HandleFunc("POST /service/agent/{desk}/calendar", webHandler.ServiceCalendarSettings)
+	mux.HandleFunc("POST /service/agent/{desk}/sla/{metric}", webHandler.ServiceSLASettings)
 	mux.HandleFunc("POST /service/agent/{desk}/requests/{key}/assign", webHandler.ServiceAgentAssign)
 	mux.HandleFunc("GET /admin", webHandler.AdminPage)
 	mux.HandleFunc("POST /admin/identity-providers/{provider}", webHandler.UpdateAdminIdentityProvider)

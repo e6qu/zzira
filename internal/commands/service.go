@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/e6qu/zzira/internal/models"
 )
@@ -137,6 +138,11 @@ func (s *Service) AddServiceRequestComment(ctx context.Context, actorID, workspa
 		_, cleanupErr := s.DeleteComment(ctx, actorID, workspaceID, comment.ID)
 		return nil, errors.Join(err, cleanupErr)
 	}
+	if public && canManage {
+		if err := s.Store.CompleteServiceSLA(ctx, workspaceID, request.Issue.ID, "first_response", time.Now().UTC()); err != nil {
+			return nil, err
+		}
+	}
 	return &models.ServiceRequestComment{Comment: *comment, Public: public}, nil
 }
 
@@ -149,7 +155,15 @@ func (s *Service) TransitionServiceRequest(ctx context.Context, actorID, workspa
 	if err != nil {
 		return nil, fmt.Errorf("request does not exist")
 	}
-	if _, _, err := s.TransitionIssue(ctx, actorID, workspaceID, request.Issue.ID, transitionID); err != nil {
+	updated, _, err := s.TransitionIssue(ctx, actorID, workspaceID, request.Issue.ID, transitionID)
+	if err != nil {
+		return nil, err
+	}
+	if updated.Status.Category == "done" {
+		if err := s.Store.CompleteServiceSLA(ctx, workspaceID, request.Issue.ID, "resolution", time.Now().UTC()); err != nil {
+			return nil, err
+		}
+	} else if err := s.Store.EnsureResolutionSLA(ctx, workspaceID, request.Issue.ID, time.Now().UTC()); err != nil {
 		return nil, err
 	}
 	return s.Store.ServiceRequest(ctx, workspaceID, actorID, request.Issue.ID, canManage)
@@ -163,5 +177,27 @@ func (s *Service) SetServiceDeskAgent(ctx context.Context, actorID, workspaceID,
 	if !admin {
 		return fmt.Errorf("only an administrator may manage service desk agents")
 	}
-	return s.Store.SetServiceDeskAgent(ctx, workspaceID, serviceDeskID, userID, enabled)
+	return s.Store.SetServiceDeskAgent(ctx, workspaceID, actorID, serviceDeskID, userID, enabled)
+}
+
+func (s *Service) UpdateServiceSLAMetric(ctx context.Context, actorID, workspaceID, serviceDeskID, metricID string, goalMillis int64) error {
+	admin, err := s.Store.IsAdmin(ctx, workspaceID, actorID)
+	if err != nil {
+		return err
+	}
+	if !admin {
+		return fmt.Errorf("only an administrator may configure service SLAs")
+	}
+	return s.Store.UpdateServiceSLAMetric(ctx, workspaceID, actorID, serviceDeskID, metricID, goalMillis)
+}
+
+func (s *Service) UpdateServiceCalendar(ctx context.Context, actorID, workspaceID, serviceDeskID, name, timeZone string, weekdays []int16, startMinute, endMinute int16) error {
+	admin, err := s.Store.IsAdmin(ctx, workspaceID, actorID)
+	if err != nil {
+		return err
+	}
+	if !admin {
+		return fmt.Errorf("only an administrator may configure service calendars")
+	}
+	return s.Store.UpdateServiceCalendar(ctx, workspaceID, actorID, serviceDeskID, name, timeZone, weekdays, startMinute, endMinute)
 }

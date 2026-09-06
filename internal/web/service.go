@@ -3,7 +3,9 @@ package web
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/models"
@@ -25,6 +27,9 @@ type servicePageData struct {
 	Participants          []*models.User
 	Members               []*models.User
 	Agents                map[string]bool
+	Calendar              *models.ServiceCalendar
+	SLAMetrics            []models.ServiceSLAMetric
+	SLAs                  []models.ServiceSLA
 	Transitions           []serviceTransitionView
 	CanAdmin              bool
 	CanAgent              bool
@@ -91,6 +96,16 @@ func (h *Handler) ServiceAgent(w http.ResponseWriter, r *http.Request) {
 			for _, assigned := range agents {
 				data.Agents[assigned.ID] = true
 			}
+			data.Calendar, err = h.Store.ServiceCalendar(r.Context(), workspaceID, deskID)
+			if err != nil {
+				http.Error(w, "Could not load the service calendar.", http.StatusInternalServerError)
+				return
+			}
+			data.SLAMetrics, err = h.Store.ServiceSLAMetrics(r.Context(), workspaceID, deskID)
+			if err != nil {
+				http.Error(w, "Could not load SLA goals.", http.StatusInternalServerError)
+				return
+			}
 		}
 		data.Queues, err = h.Store.ServiceQueues(r.Context(), workspaceID, deskID)
 		if err != nil {
@@ -155,6 +170,72 @@ func (h *Handler) ServiceAgentSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	redirectLocal(w, r, "/service/agent/"+r.PathValue("desk")+"#agents")
+}
+
+func parseServiceClock(value string) (int16, error) {
+	parts := strings.Split(value, ":")
+	if len(parts) != 2 {
+		return 0, strconv.ErrSyntax
+	}
+	hour, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return 0, err
+	}
+	minute, err := strconv.Atoi(parts[1])
+	if err != nil || hour < 0 || hour > 24 || minute < 0 || minute > 59 || (hour == 24 && minute != 0) {
+		return 0, strconv.ErrSyntax
+	}
+	return int16(hour*60 + minute), nil
+}
+
+func (h *Handler) ServiceCalendarSettings(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	startMinute, startErr := parseServiceClock(r.PostFormValue("start"))
+	endMinute, endErr := parseServiceClock(r.PostFormValue("end"))
+	if startErr != nil || endErr != nil {
+		http.Error(w, "Working hours must use HH:MM.", http.StatusBadRequest)
+		return
+	}
+	weekdays := make([]int16, 0, len(r.PostForm["weekday"]))
+	for _, value := range r.PostForm["weekday"] {
+		weekday, err := strconv.Atoi(value)
+		if err != nil {
+			http.Error(w, "Working days are invalid.", http.StatusBadRequest)
+			return
+		}
+		weekdays = append(weekdays, int16(weekday))
+	}
+	if err := h.Commands.UpdateServiceCalendar(r.Context(), user.ID, workspaceID, r.PathValue("desk"), r.PostFormValue("name"), r.PostFormValue("timeZone"), weekdays, startMinute, endMinute); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	redirectLocal(w, r, "/service/agent/"+r.PathValue("desk")+"#sla-settings")
+}
+
+func (h *Handler) ServiceSLASettings(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	goalMinutes, err := strconv.ParseInt(r.PostFormValue("goalMinutes"), 10, 64)
+	if err != nil || goalMinutes < 1 {
+		http.Error(w, "SLA goal must be a positive number of minutes.", http.StatusBadRequest)
+		return
+	}
+	if err := h.Commands.UpdateServiceSLAMetric(r.Context(), user.ID, workspaceID, r.PathValue("desk"), r.PathValue("metric"), goalMinutes*time.Minute.Milliseconds()); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	redirectLocal(w, r, "/service/agent/"+r.PathValue("desk")+"#sla-settings")
 }
 
 func (h *Handler) ServiceHome(w http.ResponseWriter, r *http.Request) {
@@ -298,7 +379,12 @@ func (h *Handler) ServiceRequestPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load request participants.", http.StatusInternalServerError)
 		return
 	}
-	h.writeWorkspacePage(w, r, "page_service_request", user, workspaceID, servicePageData{Request: request, Comments: comments, Participants: participants, Transitions: transitions, CanAgent: canManage, CanManageParticipants: canManage || request.Customer.ID == user.ID}, "service", request.Issue.ProjectID)
+	slas, err := h.Store.ServiceSLAs(r.Context(), workspaceID, request.Issue.ID, time.Now().UTC())
+	if err != nil {
+		http.Error(w, "Could not load request SLAs.", http.StatusInternalServerError)
+		return
+	}
+	h.writeWorkspacePage(w, r, "page_service_request", user, workspaceID, servicePageData{Request: request, Comments: comments, Participants: participants, SLAs: slas, Transitions: transitions, CanAgent: canManage, CanManageParticipants: canManage || request.Customer.ID == user.ID}, "service", request.Issue.ProjectID)
 }
 
 func (h *Handler) ServiceRequestParticipant(w http.ResponseWriter, r *http.Request) {

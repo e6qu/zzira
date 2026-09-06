@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/store"
@@ -154,6 +155,40 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if err != nil || !strings.Contains(strings.Join(issue.Labels, ","), "incident") {
 		t.Fatalf("incident issue = %+v, %v", issue, err)
 	}
+	metrics, err := st.ServiceSLAMetrics(ctx, workspaceID, serviceDeskID)
+	if err != nil || len(metrics) != 2 {
+		t.Fatalf("SLA metrics = %+v, %v", metrics, err)
+	}
+	metricByKind := make(map[string]string, len(metrics))
+	for _, metric := range metrics {
+		metricByKind[metric.Kind] = metric.ID
+	}
+	callAs(customerID, "GET", "/rest/servicedeskapi/request/"+issueKey+"/sla", "", 403)
+	slaList := call("GET", "/rest/servicedeskapi/request/"+issueKey+"/sla", "", 200)
+	if !strings.Contains(slaList.Body.String(), "Time to first response") || !strings.Contains(slaList.Body.String(), `"ongoingCycle"`) {
+		t.Fatal(slaList.Body.String())
+	}
+	call("GET", "/rest/servicedeskapi/request/"+issueKey+"/sla/does-not-exist", "", 404)
+	if err := handler.Commands.UpdateServiceCalendar(ctx, actorID, workspaceID, serviceDeskID, "Every day", "UTC", []int16{1, 2, 3, 4, 5, 6, 7}, 0, 1440); err != nil {
+		t.Fatal(err)
+	}
+	if err := handler.Commands.UpdateServiceSLAMetric(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], (2 * time.Hour).Milliseconds()); err != nil {
+		t.Fatal(err)
+	}
+	configuredSLA := call("GET", "/rest/servicedeskapi/request/"+issueKey+"/sla/"+metricByKind["first_response"], "", 200)
+	var configuredSLABean map[string]any
+	if err := json.Unmarshal(configuredSLA.Body.Bytes(), &configuredSLABean); err != nil {
+		t.Fatal(err)
+	}
+	ongoingCycle, _ := configuredSLABean["ongoingCycle"].(map[string]any)
+	goalDuration, _ := ongoingCycle["goalDuration"].(map[string]any)
+	if goalDuration["millis"] != float64((2 * time.Hour).Milliseconds()) {
+		t.Fatal(configuredSLA.Body.String())
+	}
+	var serviceConfigAudits int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM organization_audit_events WHERE actor_id=$1 AND action IN ('service.calendar.updated','service.sla.updated')`, actorID).Scan(&serviceConfigAudits); err != nil || serviceConfigAudits != 2 {
+		t.Fatalf("service configuration audits = %d, %v", serviceConfigAudits, err)
+	}
 	owned := callAs(customerID, "GET", "/rest/servicedeskapi/request", "", 200)
 	if !strings.Contains(owned.Body.String(), issueKey) {
 		t.Fatal(owned.Body.String())
@@ -249,7 +284,10 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if !strings.Contains(agentRaised.Body.String(), "Agent-raised customer request") {
 		t.Fatal(agentRaised.Body.String())
 	}
-	callAs(agentID, "GET", "/rest/servicedeskapi/request/"+issueKey, "", 200)
+	agentDetail := callAs(agentID, "GET", "/rest/servicedeskapi/request/"+issueKey, "", 200)
+	if !strings.Contains(agentDetail.Body.String(), `"sla":[{`) {
+		t.Fatal(agentDetail.Body.String())
+	}
 	callAs(agentID, "POST", "/rest/servicedeskapi/request/"+issueKey+"/comment", `{"body":"Agent-only investigation detail.","public":false}`, 201)
 	regularAgentComments := callAs(agentID, "GET", "/rest/servicedeskapi/request/"+issueKey+"/comment", "", 200)
 	if !strings.Contains(regularAgentComments.Body.String(), "Agent-only investigation detail") {
@@ -258,6 +296,11 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	customerComments = callAs(customerID, "GET", "/rest/servicedeskapi/request/"+issueKey+"/comment", "", 200)
 	if strings.Contains(customerComments.Body.String(), "Agent-only investigation detail") {
 		t.Fatal(customerComments.Body.String())
+	}
+	callAs(agentID, "POST", "/rest/servicedeskapi/request/"+issueKey+"/comment", `{"body":"The service team is investigating.","public":true}`, 201)
+	firstResponseSLA := callAs(agentID, "GET", "/rest/servicedeskapi/request/"+issueKey+"/sla/"+metricByKind["first_response"], "", 200)
+	if !strings.Contains(firstResponseSLA.Body.String(), `"completedCycles":[{`) || strings.Contains(firstResponseSLA.Body.String(), `"ongoingCycle"`) {
+		t.Fatal(firstResponseSLA.Body.String())
 	}
 	var unassignedQueueID, mineQueueID string
 	if err := st.Pool.QueryRow(ctx, `SELECT id FROM service_queues WHERE service_desk_id=$1 AND kind='unassigned'`, serviceDeskID).Scan(&unassignedQueueID); err != nil {
@@ -277,6 +320,11 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	assigned := call("GET", "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/queue/"+mineQueueID+"/issue", "", 200)
 	if !strings.Contains(assigned.Body.String(), issueKey) {
 		t.Fatal(assigned.Body.String())
+	}
+	callAs(agentID, "POST", "/rest/servicedeskapi/request/"+issueKey+"/transition", `{"id":"31"}`, 204)
+	resolutionSLA := callAs(agentID, "GET", "/rest/servicedeskapi/request/"+issueKey+"/sla/"+metricByKind["resolution"], "", 200)
+	if !strings.Contains(resolutionSLA.Body.String(), `"completedCycles":[{`) || strings.Contains(resolutionSLA.Body.String(), `"ongoingCycle"`) {
+		t.Fatal(resolutionSLA.Body.String())
 	}
 	if err := handler.Commands.SetServiceDeskAgent(ctx, actorID, workspaceID, serviceDeskID, agentID, false); err != nil {
 		t.Fatal(err)

@@ -61,6 +61,8 @@ test('admin creates a service project with Jira Service Management request types
   await expect(page).toHaveURL(new RegExp(`/service/requests/${key}-\\d+$`));
   await expect(page.getByRole('heading', { name: requestSummary, level: 1 })).toBeVisible();
   await expect(page.locator('.service-current-status')).toHaveText('To Do');
+  await expect(page.getByRole('heading', { name: 'Service goals' })).toBeVisible();
+  await expect(page.locator('.service-sla-panel')).toContainText('Time to first response');
   await expect(page.getByText('Customers receive an error when completing checkout.')).toBeVisible();
   const participantEmail = `participant-${Date.now()}@example.test`;
   const participantResponse = await page.request.post('/rest/servicedeskapi/customer', { headers: auth, data: { email: participantEmail, displayName: 'Incident stakeholder' } });
@@ -98,6 +100,16 @@ test('admin creates a service project with Jira Service Management request types
   await expect(page.locator('#agents').getByRole('button', { name: /Remove agent Demo User/ })).toBeVisible();
   await page.locator('#agents').getByRole('button', { name: /Remove agent Demo User/ }).click();
   await expect(page.locator('#agents').getByRole('button', { name: /Add agent Demo User/ })).toBeVisible();
+  const slaSettings = page.locator('#sla-settings');
+  await expect(slaSettings.getByRole('heading', { name: 'Calendar and SLA goals' })).toBeVisible();
+  await slaSettings.getByLabel('Starts').fill('08:00');
+  await slaSettings.getByLabel('Ends').fill('18:00');
+  await slaSettings.getByRole('button', { name: 'Save calendar' }).click();
+  await expect(page.locator('#sla-settings').getByLabel('Starts')).toHaveValue('08:00');
+  const firstResponseGoal = page.locator('#sla-settings .service-sla-goals form').first();
+  await firstResponseGoal.getByRole('spinbutton').fill('180');
+  await firstResponseGoal.getByRole('button', { name: 'Save goal' }).click();
+  await expect(page.locator('#sla-settings .service-sla-goals form').first().getByRole('spinbutton')).toHaveValue('180');
   await accessible(page);
   await page.setViewportSize({ width: 320, height: 740 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
