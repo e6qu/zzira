@@ -81,6 +81,10 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 		return rec
 	}
 	body := `{"name":"Delivery scheme","description":"Routes delivery","defaultWorkflow":"Default","issueTypeMappings":{"it_task":"Default"}}`
+	defaultEditor := call(member, "GET", "/rest/api/3/workflows/defaultEditor", "", 200)
+	if defaultEditor.Body.String() != "{\"value\":\"NEW\"}\n" {
+		t.Fatal(defaultEditor.Body.String())
+	}
 	call(member, "POST", "/rest/api/3/workflowscheme", body, 403)
 	created := call(actor, "POST", "/rest/api/3/workflowscheme", body, 201)
 	var scheme map[string]any
@@ -221,10 +225,32 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	}
 	call(actor, "GET", "/rest/api/3/workflow/"+workflowID+"/project/prj_missing/issueTypeUsages", "", 404)
 	call(actor, "GET", "/rest/api/3/workflow/"+workflowID+"/projectUsages?maxResults=0", "", 400)
+	call(member, "DELETE", "/rest/api/3/workflow/"+workflowID, "", 403)
+	call(actor, "DELETE", "/rest/api/3/workflow/"+workflowID, "", 400)
+	call(actor, "DELETE", "/rest/api/3/workflow/wf_default", "", 400)
+	call(actor, "DELETE", "/rest/api/3/workflow/workflow_missing", "", 404)
 	call(actor, "DELETE", "/rest/api/3/workflowscheme/"+targetSchemeID, "", 409)
 	unused := call(actor, "POST", "/rest/api/3/workflowscheme", `{"name":"Unused scheme","defaultWorkflow":"Default"}`, 201)
 	if err := json.Unmarshal(unused.Body.Bytes(), &scheme); err != nil {
 		t.Fatal(err)
 	}
-	call(actor, "DELETE", "/rest/api/3/workflowscheme/"+scheme["id"].(string), "", 204)
+	unusedSchemeID := scheme["id"].(string)
+	deletableWorkflow := simpleWorkflow
+	deletableWorkflow.ID, deletableWorkflow.Name = store.NewID("workflow"), "Delete API lifecycle"
+	if err := st.CreateWorkflow(ctx, ws, deletableWorkflow); err != nil {
+		t.Fatal(err)
+	}
+	call(actor, "POST", "/rest/api/3/workflowscheme/"+unusedSchemeID+"/createdraft", "", 201)
+	call(actor, "PUT", "/rest/api/3/workflowscheme/"+unusedSchemeID+"/draft/default", `{"workflow":"Delete API lifecycle"}`, 200)
+	call(actor, "DELETE", "/rest/api/3/workflow/"+deletableWorkflow.ID, "", 400)
+	call(actor, "DELETE", "/rest/api/3/workflowscheme/"+unusedSchemeID+"/draft", "", 204)
+	call(actor, "DELETE", "/rest/api/3/workflowscheme/"+unusedSchemeID, "", 204)
+	call(actor, "DELETE", "/rest/api/3/workflow/"+deletableWorkflow.ID, "", 204)
+	if _, err := st.WorkflowByID(ctx, ws, deletableWorkflow.ID); err == nil {
+		t.Fatal("deleted workflow remains readable")
+	}
+	var workflowDeleteAudits int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM organization_audit_events WHERE actor_id=$1 AND action='workflow.deleted' AND target_id=$2`, actor, deletableWorkflow.ID).Scan(&workflowDeleteAudits); err != nil || workflowDeleteAudits != 1 {
+		t.Fatalf("workflow delete audits=%d err=%v", workflowDeleteAudits, err)
+	}
 }

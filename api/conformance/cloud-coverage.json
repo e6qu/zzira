@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 114,
+  "assessedTotal": 116,
   "counts": {
     "delivered": 0,
-    "partial": 107,
+    "partial": 109,
     "missing": 7,
-    "unassessed": 1093
+    "unassessed": 1091
   },
   "countsByFamily": {
     "automation": {
@@ -24,9 +24,9 @@
     },
     "jira-platform": {
       "delivered": 0,
-      "partial": 52,
+      "partial": 54,
       "missing": 0,
-      "unassessed": 565
+      "unassessed": 563
     },
     "jira-service-management": {
       "delivered": 0,
@@ -4503,9 +4503,14 @@
       "operationId": "jira-v3:DELETE:/rest/api/3/workflow/{entityId}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_usage.go",
+        "internal/store/workflow_admin.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Deletes workspace-owned inactive workflows atomically with audit evidence and rejects system, project-active, published-scheme, and draft-scheme references; project-scoped workflows remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/workflow/{workflowId}/project/{projectId}/issueTypeUsages",
@@ -4582,9 +4587,13 @@
       "operationId": "jira-v3:GET:/rest/api/3/workflows/defaultEditor",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Returns the authenticated user default editor contract as NEW because ZZIRA exposes its new workflow editor; per-user legacy editor preference remains."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/workflows/preview",

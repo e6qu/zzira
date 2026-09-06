@@ -1145,6 +1145,27 @@
         "docs/CLOUD_PARITY.md"
       ],
       "notes": "Returns opaque-cursor pages of issue type IDs that resolve to the workflow in a workspace-scoped project, including default mapping fallback."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/workflow/{entityId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_usage.go",
+        "internal/store/workflow_admin.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Deletes workspace-owned inactive workflows atomically with audit evidence and rejects system, project-active, published-scheme, and draft-scheme references; project-scoped workflows remain."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/workflows/defaultEditor",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Returns the authenticated user default editor contract as NEW because ZZIRA exposes its new workflow editor; per-user legacy editor preference remains."
     }
   ]
 }

@@ -8,6 +8,14 @@ import (
 	"github.com/e6qu/zzira/internal/workflow"
 )
 
+func (h *Handler) workflowDefaultEditor(w http.ResponseWriter, r *http.Request) {
+	if _, _, err := h.authWorkspace(r); err != nil {
+		writeJerr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"value": "NEW"})
+}
+
 // workflowRoute serves the admin workflow surface:
 //
 //	GET  /rest/api/3/workflow/search  → list stored workflows

@@ -2,6 +2,7 @@ package api3
 
 import (
 	"encoding/base64"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -45,16 +46,30 @@ func workflowUsagePage(r *http.Request, ids []string) (map[string]any, error) {
 }
 
 func (h *Handler) workflowUsageRoute(w http.ResponseWriter, r *http.Request, path string) {
-	workspaceID, _, authErr := h.authWorkspaceAdmin(r)
+	workspaceID, userID, authErr := h.authWorkspaceAdmin(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
+		return
+	}
+	parts := strings.Split(strings.TrimPrefix(path, "/workflow/"), "/")
+	if r.Method == http.MethodDelete && len(parts) == 1 && parts[0] != "" {
+		err := h.Store.DeleteInactiveWorkflow(r.Context(), workspaceID, userID, parts[0])
+		switch {
+		case err == nil:
+			w.WriteHeader(http.StatusNoContent)
+		case errors.Is(err, store.ErrAdminNotFound):
+			jiraError(w, http.StatusNotFound, "The workflow was not found.")
+		case errors.Is(err, store.ErrAdminValidation):
+			jiraError(w, http.StatusBadRequest, err.Error())
+		default:
+			jiraError(w, http.StatusInternalServerError, "internal error")
+		}
 		return
 	}
 	if r.Method != http.MethodGet {
 		jiraError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	parts := strings.Split(strings.TrimPrefix(path, "/workflow/"), "/")
 	if len(parts) < 2 || parts[0] == "" {
 		jiraError(w, http.StatusNotFound, "No resource found")
 		return

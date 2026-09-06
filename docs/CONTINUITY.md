@@ -451,10 +451,25 @@ Validation after workflow usage resources:
 - Exact reviewed API coverage is 114 of 1,207 operations: 107 partial, 7
   missing, and 1,093 explicitly unassessed.
 
+Validation after workflow administration guards:
+
+- PostgreSQL integration rejects deletion of the system workflow and workflows
+  referenced by projects, published schemes, or draft schemes; deletion of an
+  inactive workspace workflow removes it and writes one organization audit
+  event atomically.
+- The Jira integration journey covers member denial, validation failures,
+  missing workflows, successful 204 deletion, and authenticated new-editor
+  discovery.
+- The full PostgreSQL Go suite, vet, WebAssembly build, seven conformance tests,
+  generated inventory/coverage checks, and `git diff --check` pass.
+- Exact reviewed API coverage is 116 of 1,207 operations: 109 partial, 7
+  missing, and 1,091 explicitly unassessed.
+
 ## Current change
 
-1. Add queued task execution and cancellation semantics, then workflow
-   conditions, validators, post-functions, and visual designer persistence.
+1. Complete modern workflow search, create/update validation, capabilities,
+   transition rules, and visual designer persistence, then add queued task
+   execution and cancellation semantics.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 
