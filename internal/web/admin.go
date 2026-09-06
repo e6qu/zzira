@@ -25,6 +25,7 @@ type adminPageData struct {
 	Site                              *models.Site
 	Products                          []*models.Product
 	Domains                           []*models.OrganizationDomain
+	Policies                          []*models.OrganizationPolicy
 	Directory                         *models.Directory
 	Groups                            []adminGroupRow
 	Users                             []*models.User
@@ -53,6 +54,12 @@ var adminAuditActions = []adminAuditAction{
 	{Value: "group.deleted", Name: "Group deleted"},
 	{Value: "group.member.added", Name: "Group member added"},
 	{Value: "group.member.removed", Name: "Group member removed"},
+	{Value: "policy.created", Name: "Policy created"},
+	{Value: "policy.deleted", Name: "Policy deleted"},
+	{Value: "policy.resource.added", Name: "Policy resource added"},
+	{Value: "policy.resource.removed", Name: "Policy resource removed"},
+	{Value: "policy.resource.updated", Name: "Policy resource updated"},
+	{Value: "policy.updated", Name: "Policy updated"},
 	{Value: "role.assigned", Name: "Role assigned"},
 	{Value: "role.revoked", Name: "Role revoked"},
 	{Value: "user.invited", Name: "User invited"},
@@ -79,6 +86,10 @@ func (h *Handler) adminData(r *http.Request, workspaceID, message string) (admin
 	if err != nil {
 		return adminPageData{}, err
 	}
+	policies, err := h.Store.OrganizationPolicies(r.Context(), organization.ID, "")
+	if err != nil {
+		return adminPageData{}, err
+	}
 	directories, err := h.Store.DirectoriesByOrganization(r.Context(), organization.ID)
 	if err != nil {
 		return adminPageData{}, err
@@ -88,6 +99,7 @@ func (h *Handler) adminData(r *http.Request, workspaceID, message string) (admin
 		Site:                              site,
 		Products:                          products,
 		Domains:                           domains,
+		Policies:                          policies,
 		Groups:                            []adminGroupRow{},
 		Users:                             []*models.User{},
 		Audit:                             []*models.OrganizationAuditEvent{},
@@ -222,6 +234,132 @@ func (h *Handler) UpdateAdminDomain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/admin?saved="+url.QueryEscape("Domain verified"), http.StatusSeeOther)
+}
+
+func productResourceID(product *models.Product) string {
+	return "ari:cloud:" + product.Key + "::site/" + product.SiteID
+}
+
+func policyRuleValues(policy *models.OrganizationPolicy) []string {
+	values, ok := policy.Rule["in"].([]any)
+	if !ok {
+		if texts, ok := policy.Rule["in"].([]string); ok {
+			return texts
+		}
+		return nil
+	}
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if text, ok := value.(string); ok {
+			result = append(result, text)
+		}
+	}
+	return result
+}
+
+func policyResourceInputs(policy *models.OrganizationPolicy) []store.PolicyResourceInput {
+	resources := make([]store.PolicyResourceInput, 0, len(policy.Resources))
+	for _, resource := range policy.Resources {
+		resources = append(resources, store.PolicyResourceInput{ID: resource.ID, Meta: resource.Meta, Links: resource.Links})
+	}
+	return resources
+}
+
+func (h *Handler) CreateAdminPolicy(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form", http.StatusBadRequest)
+		return
+	}
+	values := strings.FieldsFunc(r.FormValue("values"), func(character rune) bool { return character == ',' || character == '\n' || character == '\r' })
+	input := store.PolicyInput{Type: r.FormValue("type"), Name: r.FormValue("name"), Status: "disabled", Values: values}
+	if r.FormValue("enabled") == "true" {
+		input.Status = "enabled"
+	}
+	data, err := h.adminData(r, workspaceID, "")
+	if err != nil {
+		http.Error(w, "load administration", http.StatusInternalServerError)
+		return
+	}
+	available := map[string]bool{}
+	for _, product := range data.Products {
+		available[productResourceID(product)] = true
+	}
+	for _, resourceID := range r.Form["resourceId"] {
+		if !available[resourceID] {
+			http.Error(w, "policy product was not found", http.StatusNotFound)
+			return
+		}
+		input.Resources = append(input.Resources, store.PolicyResourceInput{ID: resourceID})
+	}
+	if _, err := h.Store.CreateOrganizationPolicy(r.Context(), workspaceID, user.ID, input); err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, store.ErrAdminValidation) {
+			status = http.StatusBadRequest
+		} else if errors.Is(err, store.ErrAdminConflict) {
+			status = http.StatusConflict
+		}
+		http.Error(w, err.Error(), status)
+		return
+	}
+	http.Redirect(w, r, "/admin?saved="+url.QueryEscape("Policy created"), http.StatusSeeOther)
+}
+
+func (h *Handler) UpdateAdminPolicy(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form", http.StatusBadRequest)
+		return
+	}
+	action := r.FormValue("action")
+	if action == "delete" {
+		if err := h.Store.DeleteOrganizationPolicy(r.Context(), workspaceID, user.ID, r.PathValue("policyId")); err != nil {
+			status := http.StatusInternalServerError
+			if errors.Is(err, store.ErrAdminNotFound) {
+				status = http.StatusNotFound
+			}
+			http.Error(w, err.Error(), status)
+			return
+		}
+		http.Redirect(w, r, "/admin?saved="+url.QueryEscape("Policy deleted"), http.StatusSeeOther)
+		return
+	}
+	if action != "enable" && action != "disable" {
+		http.Error(w, "action must be enable, disable, or delete", http.StatusBadRequest)
+		return
+	}
+	organization, err := h.Store.OrganizationByWorkspace(r.Context(), workspaceID)
+	if err != nil {
+		http.Error(w, "load organization", http.StatusInternalServerError)
+		return
+	}
+	policy, err := h.Store.OrganizationPolicy(r.Context(), organization.ID, r.PathValue("policyId"))
+	if err != nil {
+		http.Error(w, "load policy", http.StatusNotFound)
+		return
+	}
+	status := "enabled"
+	if action == "disable" {
+		status = "disabled"
+	}
+	_, err = h.Store.UpdateOrganizationPolicy(r.Context(), workspaceID, user.ID, policy.ID, store.PolicyInput{
+		Type: policy.Type, Name: policy.Name, Status: status, Values: policyRuleValues(policy), Resources: policyResourceInputs(policy),
+	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	message := "Policy enabled"
+	if action == "disable" {
+		message = "Policy disabled"
+	}
+	http.Redirect(w, r, "/admin?saved="+url.QueryEscape(message), http.StatusSeeOther)
 }
 
 func (h *Handler) AdminPage(w http.ResponseWriter, r *http.Request) {

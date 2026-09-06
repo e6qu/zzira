@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"testing"
 
@@ -102,6 +103,15 @@ func TestOrganizationAndGroupAPIJourney(t *testing.T) {
 	mux.HandleFunc("GET /admin/v1/orgs/{orgId}/event-actions", handler.EventActions)
 	mux.HandleFunc("GET /admin/v1/orgs/{orgId}/domains", handler.Domains)
 	mux.HandleFunc("GET /admin/v1/orgs/{orgId}/domains/{domainId}", handler.DomainDetails)
+	mux.HandleFunc("GET /admin/v1/orgs/{orgId}/policies", handler.Policies)
+	mux.HandleFunc("POST /admin/v1/orgs/{orgId}/policies", handler.Policies)
+	mux.HandleFunc("GET /admin/v1/orgs/{orgId}/policies/{policyId}", handler.PolicyDetails)
+	mux.HandleFunc("PUT /admin/v1/orgs/{orgId}/policies/{policyId}", handler.PolicyDetails)
+	mux.HandleFunc("DELETE /admin/v1/orgs/{orgId}/policies/{policyId}", handler.PolicyDetails)
+	mux.HandleFunc("POST /admin/v1/orgs/{orgId}/policies/{policyId}/resources", handler.PolicyResources)
+	mux.HandleFunc("PUT /admin/v1/orgs/{orgId}/policies/{policyId}/resources/{resourceId}", handler.PolicyResourceDetails)
+	mux.HandleFunc("DELETE /admin/v1/orgs/{orgId}/policies/{policyId}/resources/{resourceId}", handler.PolicyResourceDetails)
+	mux.HandleFunc("GET /admin/v1/orgs/{orgId}/policies/{policyId}/validate", handler.ValidatePolicy)
 	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories/{directoryId}/users", handler.DirectoryUsers)
 	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories/{directoryId}/users/count", handler.DirectoryUserCount)
 	mux.HandleFunc("POST /admin/v2/orgs/{orgId}/directories/{directoryId}/users/search", handler.SearchUsers)
@@ -256,6 +266,42 @@ func TestOrganizationAndGroupAPIJourney(t *testing.T) {
 	if resourceID == "" {
 		t.Fatal("Jira Service Management workspace resource was not returned")
 	}
+	policiesPath := "/admin/v1/orgs/" + organization.ID + "/policies"
+	invalidPolicy := map[string]any{"data": map[string]any{"type": "policy", "attributes": map[string]any{
+		"type": "ip-allowlist", "name": "Invalid network", "status": "enabled", "rule": map[string]any{"in": []string{"not-an-ip"}},
+	}}}
+	call(http.MethodPost, policiesPath, adminToken, invalidPolicy, http.StatusBadRequest)
+	policyRequest := map[string]any{"data": map[string]any{"type": "policy", "attributes": map[string]any{
+		"type": "ip-allowlist", "name": "Service operations network", "status": "disabled", "rule": map[string]any{"in": []string{"192.0.2.0/24"}}, "resources": []any{},
+	}}}
+	createdPolicy := call(http.MethodPost, policiesPath, adminToken, policyRequest, http.StatusAccepted)
+	policyID := createdPolicy["data"].(map[string]any)["id"].(string)
+	policyPath := policiesPath + "/" + policyID
+	policyPage := call(http.MethodGet, policiesPath+"?type=ip-allowlist", adminToken, nil, http.StatusOK)
+	if len(policyPage["data"].([]any)) != 1 {
+		t.Fatalf("unexpected policy page: %#v", policyPage)
+	}
+	call(http.MethodGet, policyPath, adminToken, nil, http.StatusOK)
+	call(http.MethodGet, policyPath+"/validate", adminToken, nil, http.StatusAccepted)
+	policyWithResource := call(http.MethodPost, policyPath+"/resources", adminToken, map[string]any{
+		"id": resourceID, "meta": map[string]string{"scheduledDate": "2026-09-07"}, "links": map[string]string{"ticket": "OPS-1"},
+	}, http.StatusAccepted)
+	if len(policyWithResource["data"].(map[string]any)["attributes"].(map[string]any)["resources"].([]any)) != 1 {
+		t.Fatalf("policy resource was not attached: %#v", policyWithResource)
+	}
+	resourcePath := policyPath + "/resources/" + url.PathEscape(resourceID)
+	call(http.MethodPut, resourcePath, adminToken, map[string]any{"meta": map[string]string{"scheduledDate": "2026-09-08"}, "links": map[string]string{"ticket": "OPS-2"}}, http.StatusAccepted)
+	policyRequest["data"].(map[string]any)["id"] = policyID
+	attributes := policyRequest["data"].(map[string]any)["attributes"].(map[string]any)
+	attributes["status"] = "enabled"
+	attributes["resources"] = []map[string]any{{"id": resourceID, "meta": map[string]string{"scheduledDate": "2026-09-08"}, "links": map[string]string{"ticket": "OPS-2"}}}
+	updatedPolicy := call(http.MethodPut, policyPath, adminToken, policyRequest, http.StatusAccepted)
+	if updatedPolicy["data"].(map[string]any)["attributes"].(map[string]any)["status"] != "enabled" {
+		t.Fatalf("policy was not enabled: %#v", updatedPolicy)
+	}
+	call(http.MethodDelete, resourcePath, adminToken, nil, http.StatusNoContent)
+	call(http.MethodDelete, policyPath, adminToken, nil, http.StatusAccepted)
+	call(http.MethodGet, policyPath, adminToken, nil, http.StatusNotFound)
 	groupRolesPath := groupsPath + "/" + groupID + "/role-assignments"
 	call(http.MethodPost, groupRolesPath+"/assign", adminToken, map[string]string{"resourceId": resourceID, "roleId": "atlassian/user"}, http.StatusOK)
 	groupSearch = call(http.MethodPost, groupsPath+"/search", adminToken, map[string]any{
@@ -396,11 +442,11 @@ func TestOrganizationAndGroupAPIJourney(t *testing.T) {
 		t.Fatalf("unexpected audit action catalog: %#v", actions)
 	}
 
-	audit, err := st.OrganizationAuditEvents(ctx, organization.ID, 20)
+	audit, err := st.OrganizationAuditEvents(ctx, organization.ID, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(audit) != 18 {
-		t.Fatalf("audit events=%d, want 18", len(audit))
+	if len(audit) != 24 {
+		t.Fatalf("audit events=%d, want 24", len(audit))
 	}
 }

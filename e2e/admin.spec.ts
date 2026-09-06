@@ -37,6 +37,21 @@ test('site admin manages a directory group and its audited membership', async ({
   await expect(domainRow).toContainText('unverified');
   await expect(domainRow).toContainText('zzira-domain-verification=');
 
+  const policyName = `Office network ${Date.now()}`;
+  await page.getByLabel('Policy name').fill(policyName);
+  await page.getByLabel('Policy type').selectOption('ip-allowlist');
+  await page.getByLabel('Rule values').fill('192.0.2.0/24');
+  await page.getByRole('group', { name: 'Policy products' }).getByLabel('Jira Software').check();
+  await page.getByRole('button', { name: 'Create policy' }).click();
+  await expect(page).toHaveURL(/\/admin\?saved=Policy\+created$/);
+  let policy = page.locator('.admin-policy').filter({ hasText: policyName });
+  await expect(policy).toContainText('disabled');
+  await expect(policy).toContainText('192.0.2.0/24');
+  await policy.getByRole('button', { name: 'Enable' }).click();
+  await expect(page).toHaveURL(/\/admin\?saved=Policy\+enabled$/);
+  policy = page.locator('.admin-policy').filter({ hasText: policyName });
+  await expect(policy).toContainText('enabled');
+
   const groupName = `delivery-managers-${Date.now()}`;
   await page.getByLabel('Group name').fill(groupName);
   await page.getByLabel('Description').fill('Coordinates plans, releases, and delivery evidence.');
@@ -137,4 +152,8 @@ test('site admin manages a directory group and its audited membership', async ({
   await domainRow.getByRole('button', { name: 'Remove' }).click();
   await expect(page).toHaveURL(/\/admin\?saved=Domain\+removed$/);
   await expect(page.getByRole('row').filter({ hasText: domainName })).toHaveCount(0);
+  policy = page.locator('.admin-policy').filter({ hasText: policyName });
+  await policy.getByRole('button', { name: 'Delete policy' }).click();
+  await expect(page).toHaveURL(/\/admin\?saved=Policy\+deleted$/);
+  await expect(page.locator('.admin-policy').filter({ hasText: policyName })).toHaveCount(0);
 });

@@ -482,6 +482,60 @@
         "docs/ADMIN.md"
       ],
       "notes": "Domain detail reports normalized name, DNS claim type, lifecycle status, self link, and exact not-found behavior."
+    },
+    {
+      "operationId": "organization-admin:GET:/admin/v1/orgs/{orgId}/policies",
+      "status": "partial",
+      "evidence": ["internal/admin/policies.go", "internal/admin/http_test.go", "e2e/admin.spec.ts", "docs/ADMIN.md"],
+      "notes": "Policy listing returns rule and resource state with type filtering, metadata, self/next links, and opaque paging; runtime enforcement remains."
+    },
+    {
+      "operationId": "organization-admin:POST:/admin/v1/orgs/{orgId}/policies",
+      "status": "partial",
+      "evidence": ["internal/admin/policies.go", "internal/admin/http_test.go", "e2e/admin.spec.ts", "docs/ADMIN.md"],
+      "notes": "Policy creation validates nested wire shape, type, status, IP/CIDR or residency rule values, product ownership, duplicates, and commits audit evidence atomically."
+    },
+    {
+      "operationId": "organization-admin:GET:/admin/v1/orgs/{orgId}/policies/{policyId}",
+      "status": "partial",
+      "evidence": ["internal/admin/policies.go", "internal/admin/http_test.go", "docs/ADMIN.md"],
+      "notes": "Policy detail returns type, name, status, rule, resource application state, metadata, links, and not-found behavior."
+    },
+    {
+      "operationId": "organization-admin:PUT:/admin/v1/orgs/{orgId}/policies/{policyId}",
+      "status": "partial",
+      "evidence": ["internal/admin/policies.go", "internal/admin/http_test.go", "e2e/admin.spec.ts", "docs/ADMIN.md"],
+      "notes": "Whole-policy update validates matching IDs, rule values and resources, replaces state atomically, and records audit evidence."
+    },
+    {
+      "operationId": "organization-admin:DELETE:/admin/v1/orgs/{orgId}/policies/{policyId}",
+      "status": "partial",
+      "evidence": ["internal/admin/policies.go", "internal/admin/http_test.go", "e2e/admin.spec.ts", "docs/ADMIN.md"],
+      "notes": "Policy deletion cascades resource associations, preserves audit evidence, and returns the documented accepted/not-found behavior."
+    },
+    {
+      "operationId": "organization-admin:POST:/admin/v1/orgs/{orgId}/policies/{policyId}/resources",
+      "status": "partial",
+      "evidence": ["internal/admin/policies.go", "internal/admin/http_test.go", "docs/ADMIN.md"],
+      "notes": "Resource attachment accepts product ARIs owned by the organization with metadata and ticket links and returns updated applied state."
+    },
+    {
+      "operationId": "organization-admin:PUT:/admin/v1/orgs/{orgId}/policies/{policyId}/resources/{resourceId}",
+      "status": "partial",
+      "evidence": ["internal/admin/policies.go", "internal/admin/http_test.go", "docs/ADMIN.md"],
+      "notes": "Resource update replaces metadata and links for the exact policy/resource pair and returns the updated policy."
+    },
+    {
+      "operationId": "organization-admin:DELETE:/admin/v1/orgs/{orgId}/policies/{policyId}/resources/{resourceId}",
+      "status": "partial",
+      "evidence": ["internal/admin/policies.go", "internal/admin/http_test.go", "docs/ADMIN.md"],
+      "notes": "Resource removal is audited and returns the documented no-content/not-found behavior."
+    },
+    {
+      "operationId": "organization-admin:GET:/admin/v1/orgs/{orgId}/policies/{policyId}/validate",
+      "status": "partial",
+      "evidence": ["internal/admin/policies.go", "internal/admin/http_test.go", "docs/ADMIN.md"],
+      "notes": "Validation confirms a stored policy passed rule and organization-resource constraints; asynchronous application checks remain."
     }
   ]
 }

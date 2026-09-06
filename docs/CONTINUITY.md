@@ -51,8 +51,8 @@ does not publish them as one OpenAPI document.
   strict pin validation, and focused generator tests.
 - Added exact-operation coverage generation. The first reviewed assessment
   records Automation as 8 partial and 7 missing operations. The organization
-  slices add 38 partial assessments; 1,154 operations remain explicitly
-  unassessed rather than being inferred from route names.
+  slices assess all 47 Organizations operations as partial; 1,145 operations
+  remain explicitly unassessed rather than being inferred from route names.
 - Added organization, site, product, internal-directory, directory-user, group,
   group-member, role-binding, and organization-audit persistence with automatic
   provisioning for new workspaces and a repair path for older workspaces.
@@ -97,6 +97,10 @@ does not publish them as one OpenAPI document.
 - Added durable organization domain claims with strict DNS normalization,
   generated TXT challenges, fail-closed verification, removal, audit evidence,
   administrator UI, and exact domain list/detail API resources.
+- Completed reviewed coverage of the Organizations contract with nine policy
+  operations: policy CRUD/filtering, product-resource add/update/remove, and
+  validation. Added IP/CIDR and resource ownership validation, audited state,
+  and the administrator create/scope/enable/disable/delete journey.
 
 Validation after the organization foundation:
 
@@ -172,9 +176,21 @@ Validation after organization domain claims:
 - Exact coverage is 53 of 1,207 operations assessed: 46 partial, 7 missing, and
   1,154 explicitly unassessed.
 
+Validation after organization policy management:
+
+- The organization API integration journey passes all nine policy operations,
+  nested wire shapes, IP/CIDR validation, product ownership, type filtering,
+  resource metadata updates, status changes, deletion and audit evidence with
+  migration 038.
+- The focused Chromium administration journey passes policy create, product
+  scope, enable and deletion, WCAG scans, dark mode, and 320 px reflow.
+- All 47 Organizations operations now have reviewed partial assessments. Exact
+  coverage is 62 of 1,207: 55 partial, 7 missing, and 1,145 unassessed.
+
 ## Current change
 
-1. Add authentication policies and identity-provider configuration.
+1. Begin provider-based authentication with a provider registry, Google,
+   Microsoft and Atlassian login, account linking, and provider administration.
 2. Extend revocation coverage from browser/API authorization to local replicas
    and queued mutations where the affected resource can already be cached.
 

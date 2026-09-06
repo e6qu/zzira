@@ -51,6 +51,25 @@ type OrganizationDomain struct {
 	VerifiedAt        string
 }
 
+type OrganizationPolicyResource struct {
+	ID                string
+	ApplicationStatus string
+	Meta              map[string]any
+	Links             map[string]any
+}
+
+type OrganizationPolicy struct {
+	ID             string
+	OrganizationID string
+	Type           string
+	Name           string
+	Status         string
+	Rule           map[string]any
+	Resources      []*OrganizationPolicyResource
+	CreatedAt      string
+	UpdatedAt      string
+}
+
 type Group struct {
 	ID          string `json:"id"`
 	DirectoryID string `json:"directoryId"`

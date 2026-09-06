@@ -56,6 +56,11 @@ implemented:
 | GET | `/admin/v1/orgs/{orgId}/event-actions` |
 | GET | `/admin/v1/orgs/{orgId}/domains` |
 | GET | `/admin/v1/orgs/{orgId}/domains/{domainId}` |
+| GET/POST | `/admin/v1/orgs/{orgId}/policies` |
+| GET/PUT/DELETE | `/admin/v1/orgs/{orgId}/policies/{policyId}` |
+| POST | `/admin/v1/orgs/{orgId}/policies/{policyId}/resources` |
+| PUT/DELETE | `/admin/v1/orgs/{orgId}/policies/{policyId}/resources/{resourceId}` |
+| GET | `/admin/v1/orgs/{orgId}/policies/{policyId}/validate` |
 | GET | `/admin/v2/orgs/{orgId}/directories` |
 | GET/POST | `/admin/v2/orgs/{orgId}/directories/{directoryId}/groups` |
 | GET | `/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/count` |
@@ -113,6 +118,16 @@ challenge, verify it, and remove the claim from `/admin`. Verification queries
 to lowercase fully qualified DNS names. The domain list and detail APIs expose
 the published `domains` resource and claim status shapes with opaque paging.
 
+IP allowlist and data-residency policies have durable rules, enabled/disabled
+state, product-resource attachments, resource metadata and ticket links. The
+API implements list/type filtering, create, detail, whole-policy update,
+deletion, resource add/update/remove, and validation with the published 200,
+202, and 204 response shapes. IP values must be valid addresses or CIDR ranges;
+resources must be product ARIs owned by the organization. `/admin` lets an
+administrator create a scoped policy, review its rules and application state,
+enable or disable it, and delete it. Mutations and resource changes are audited.
+Network enforcement and physical data placement remain separate runtime work.
+
 Invitation access, group membership, optional email enqueueing, and audit
 evidence commit atomically for each account. A multi-account request returns
 `206 Partial Content` with per-assignment `ERROR` results if an account cannot
@@ -131,7 +146,7 @@ eight failed attempts.
 The current server configuration serves one workspace/site. Organization
 discovery therefore returns the organization containing that site. Cross-site
 organization discovery, directory filters, SCIM provisioning and global
-deactivation, policy endpoints, cross-organization domain ownership checks,
+deactivation, policy enforcement, cross-organization domain ownership checks,
 license limits, and full
 central-host rate limiting remain in
 the active plan and are reported as unassessed or missing in operation coverage.
@@ -147,9 +162,9 @@ the active plan and are reported as unassessed or missing in operation coverage.
   statistics/deletion, directory-user search/statistics, atomic invitation
   assignments and delivery enqueueing, product activity and last-active dates,
   organization event query/poll/detail/action operations, membership and role
-  mutations, domain list/detail and claim states, effective assignments, partial
-  results, conflicts, expansions, and audit persistence.
+  mutations, domain claims, all policy/resource operations, effective
+  assignments, partial results, conflicts, expansions, and audit persistence.
 - Playwright covers the complete group and product-access journey,
   invitation-time product/group access, two-second visible product activity,
-  domain claim add/remove, managed-profile editing, account lifecycle,
+  domain claim add/remove, policy create/enable/delete, managed-profile editing,
   ordinary-user denial, WCAG scans, light/dark themes, and 320px reflow.

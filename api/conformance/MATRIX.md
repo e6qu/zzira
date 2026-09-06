@@ -60,7 +60,7 @@ use `/rest/zzira/1`.
 | /filter CRUD + /filter/{id}/favourite | ✅ | |
 | GET /rest/api/3/workflow/search · POST /workflow · GET/PUT /workflow/project/{key} | ✅ | **enforced**: transitions come from the project workflow |
 | GET /rest/api/3/role | 🟡 | registry list |
-| Organizations orgs · directories · users · groups · memberships · workspaces · roles · events · domains | 🟡 | Bearer auth, site-admin permission, product ARIs, direct/effective roles, group and directory-user administration, product activity, atomic invitations and email, directory-scoped lifecycle, audit query/poll/detail/action catalog, and DNS domain claim list/detail delivered; broader 47-operation contract remains |
+| Organizations orgs · directories · users · groups · memberships · workspaces · roles · events · domains · policies | 🟡 | All 47 operations reviewed: group and directory-user administration, product roles/activity, invitations/email, directory lifecycle, audit query/poll/detail/actions, DNS claims, and policy/resource CRUD/validation are useful tested subsets; runtime policy enforcement, central rate limits, and remaining edge semantics remain |
 | Issue security: scheme admin APIs, assignment, enforcement | ✅ | tombstones + per-user sync filtering + visibility on search/board/navigator/bootstrap |
 | Permissionscheme admin APIs | ⛔ | workspace-role enforcement live |
 | Screens/schemes APIs | ⛔ | editmeta serves the form contract |
