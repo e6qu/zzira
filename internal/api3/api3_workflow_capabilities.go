@@ -24,6 +24,11 @@ func workflowCapabilitiesResponse(editorScope string) map[string]any {
 				"isAvailableForInitialTransition": true, "isVisible": true, "name": "Assign an issue",
 				"ruleKey": "system:change-assignee", "ruleType": "Function",
 			},
+			{
+				"description": "Collect selected work item fields while a transition runs.", "incompatibleRuleKeys": []string{},
+				"isAvailableForInitialTransition": false, "isVisible": true, "name": "Transition screen",
+				"ruleKey": "system:transition-screen", "ruleType": "Screen",
+			},
 		},
 		"connectRules": []any{},
 		"forgeRules":   []any{},

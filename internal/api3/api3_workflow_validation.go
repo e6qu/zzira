@@ -51,6 +51,7 @@ type workflowTransitionUpdateRequest struct {
 	Actions           []workflowRuleUpdateRequest          `json:"actions"`
 	Validators        []workflowRuleUpdateRequest          `json:"validators"`
 	Conditions        *workflowConditionGroupUpdateRequest `json:"conditions"`
+	TransitionScreen  *workflowRuleUpdateRequest           `json:"transitionScreen"`
 	Triggers          []json.RawMessage                    `json:"triggers"`
 }
 
@@ -351,6 +352,10 @@ func workflowDefinitionFromRequest(id, name, description string, startPointLayou
 			continue
 		}
 		transition := workflow.Transition{ID: transitionID, Name: strings.TrimSpace(item.Name), From: from, To: to}
+		if item.TransitionScreen != nil {
+			screen := workflowRuleFromRequest(*item.TransitionScreen, transitionID+"-screen")
+			transition.Screen = &screen
+		}
 		for ruleIndex, rule := range item.Actions {
 			transition.Actions = append(transition.Actions, workflowRuleFromRequest(rule, fmt.Sprintf("%s-action-%d", transitionID, ruleIndex+1)))
 		}

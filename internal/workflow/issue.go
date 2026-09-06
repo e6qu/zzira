@@ -41,3 +41,7 @@ func jsonValuePresent(value json.RawMessage) bool {
 	}
 	return true
 }
+
+func FieldValuePresent(value json.RawMessage) bool {
+	return jsonValuePresent(value)
+}

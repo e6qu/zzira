@@ -245,9 +245,29 @@ func (s *Service) notifyAssignee(ctx context.Context, in UpdateIssueInput, issue
 // TransitionIssue validates and applies a workflow transition using the
 // issue's project workflow (Default when unassigned).
 func (s *Service) TransitionIssue(ctx context.Context, actorID, workspaceID, issueIDOrKey, transitionID string) (*models.Issue, *models.Action, error) {
+	return s.TransitionIssueWithUpdate(ctx, actorID, workspaceID, issueIDOrKey, transitionID, store.IssueUpdate{})
+}
+
+func (s *Service) TransitionIssueWithUpdate(ctx context.Context, actorID, workspaceID, issueIDOrKey, transitionID string, update store.IssueUpdate) (*models.Issue, *models.Action, error) {
 	issue, err := s.visibleIssue(ctx, actorID, workspaceID, issueIDOrKey)
 	if err != nil {
 		return nil, nil, fmt.Errorf("issue %q not found", issueIDOrKey)
+	}
+	if update.Summary != nil && (len(*update.Summary) == 0 || len(*update.Summary) > 255) {
+		return nil, nil, fmt.Errorf("summary is required (max 255 chars)")
+	}
+	if len(update.Description) > 1<<20 {
+		return nil, nil, fmt.Errorf("description must be at most 1 MiB")
+	}
+	if err := s.validateCustomFields(ctx, issue.ProjectID, update.Fields); err != nil {
+		return nil, nil, err
+	}
+	if update.Labels != nil {
+		labels, err := normalizeLabels(*update.Labels)
+		if err != nil {
+			return nil, nil, err
+		}
+		update.Labels = &labels
 	}
 	wf, err := s.Store.WorkflowForProjectAndIssueType(ctx, issue.ProjectID, issue.IssueType.ID)
 	if err != nil {
@@ -260,6 +280,51 @@ func (s *Service) TransitionIssue(ctx context.Context, actorID, workspaceID, iss
 	context := workflow.ContextForIssue(actorID, issue)
 	if !t.ConditionsAllow(context) {
 		return nil, nil, fmt.Errorf("transition %q is not available to this user", transitionID)
+	}
+	requestedFields := make(map[string]bool)
+	for field, changed := range map[string]bool{
+		"summary": update.Summary != nil, "description": update.Description != nil,
+		"priority": update.PriorityID != nil, "assignee": update.AssigneeID != nil,
+		"labels": update.Labels != nil,
+	} {
+		if changed {
+			requestedFields[field] = true
+		}
+	}
+	for field := range update.Fields {
+		requestedFields[field] = true
+	}
+	allowed := make(map[string]bool)
+	for _, field := range t.ScreenFields() {
+		allowed[field] = true
+	}
+	for field := range requestedFields {
+		if !allowed[field] {
+			return nil, nil, fmt.Errorf("field %q is not available on transition %q", field, transitionID)
+		}
+	}
+	if update.Summary != nil {
+		context.FieldPresent["summary"] = strings.TrimSpace(*update.Summary) != ""
+	}
+	if update.Description != nil {
+		context.FieldPresent["description"] = strings.TrimSpace(adf.PlainText(update.Description)) != ""
+	}
+	if update.PriorityID != nil {
+		context.FieldPresent["priority"] = *update.PriorityID != ""
+	}
+	if update.AssigneeID != nil {
+		context.FieldPresent["assignee"] = *update.AssigneeID != ""
+		if *update.AssigneeID != "" {
+			if _, err := s.Store.MemberByID(ctx, workspaceID, *update.AssigneeID); err != nil {
+				return nil, nil, fmt.Errorf("assignee is not an active workspace member")
+			}
+		}
+	}
+	if update.Labels != nil {
+		context.FieldPresent["labels"] = len(*update.Labels) > 0
+	}
+	for field, value := range update.Fields {
+		context.FieldPresent[field] = workflow.FieldValuePresent(value)
 	}
 	if err := t.ValidateRules(context); err != nil {
 		return nil, nil, err
@@ -274,7 +339,8 @@ func (s *Service) TransitionIssue(ctx context.Context, actorID, workspaceID, iss
 		}
 	}
 	newStatus := t.To
-	update := store.IssueUpdate{StatusID: &newStatus, ExpectedUpdatedSeq: &issue.UpdatedSeq}
+	update.StatusID = &newStatus
+	update.ExpectedUpdatedSeq = &issue.UpdatedSeq
 	if changeAssignee {
 		update.AssigneeID = &assigneeID
 	}

@@ -859,16 +859,21 @@ func (h *Handler) listTransitions(w http.ResponseWriter, r *http.Request, idOrKe
 			jiraError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
+		fields := map[string]any{}
+		required := t.RequiredFields()
+		for _, field := range t.ScreenFields() {
+			fields[field] = transitionFieldMetadata(field, required[field])
+		}
 		beans = append(beans, map[string]any{
 			"id":            t.ID,
 			"name":          t.Name,
 			"to":            h.statusBean(status),
-			"hasScreen":     false,
+			"hasScreen":     t.Screen != nil,
 			"isGlobal":      false,
 			"isInitial":     false,
 			"isConditional": t.Conditions != nil,
 			"isAvailable":   true,
-			"fields":        map[string]any{},
+			"fields":        fields,
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -887,16 +892,98 @@ func (h *Handler) performTransition(w http.ResponseWriter, r *http.Request, idOr
 		Transition struct {
 			ID string `json:"id"`
 		} `json:"transition"`
+		Fields map[string]json.RawMessage `json:"fields"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Transition.ID == "" {
 		jiraFieldError(w, http.StatusBadRequest, map[string]string{"transition": "Transition id is required."})
 		return
 	}
-	if _, _, err := h.Commands.TransitionIssue(r.Context(), userID, wsID, idOrKey, req.Transition.ID); err != nil {
+	update, fieldErrors := transitionIssueUpdate(req.Fields)
+	if len(fieldErrors) > 0 {
+		jiraFieldError(w, http.StatusBadRequest, fieldErrors)
+		return
+	}
+	if _, _, err := h.Commands.TransitionIssueWithUpdate(r.Context(), userID, wsID, idOrKey, req.Transition.ID, update); err != nil {
 		jiraError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func transitionFieldMetadata(field string, required bool) map[string]any {
+	name := field
+	schema := map[string]any{"type": "string"}
+	switch field {
+	case "summary":
+		name = "Summary"
+	case "description":
+		name, schema = "Description", map[string]any{"type": "any", "system": "description"}
+	case "labels":
+		name, schema = "Labels", map[string]any{"type": "array", "items": "string", "system": "labels"}
+	case "assignee":
+		name, schema = "Assignee", map[string]any{"type": "user", "system": "assignee"}
+	case "priority":
+		name, schema = "Priority", map[string]any{"type": "priority", "system": "priority"}
+	}
+	return map[string]any{"required": required, "name": name, "schema": schema, "operations": []string{"set"}}
+}
+
+func transitionIssueUpdate(fields map[string]json.RawMessage) (store.IssueUpdate, map[string]string) {
+	update := store.IssueUpdate{}
+	errors := make(map[string]string)
+	for field, raw := range fields {
+		switch field {
+		case "summary":
+			var value string
+			if err := json.Unmarshal(raw, &value); err != nil {
+				errors[field] = "Summary must be a string."
+			} else {
+				update.Summary = &value
+			}
+		case "description":
+			update.Description = raw
+		case "labels":
+			var value []string
+			if err := json.Unmarshal(raw, &value); err != nil {
+				errors[field] = "Labels must be an array of strings."
+			} else {
+				update.Labels = &value
+			}
+		case "assignee", "priority":
+			value := ""
+			if string(raw) != "null" {
+				var object map[string]any
+				if err := json.Unmarshal(raw, &object); err != nil {
+					errors[field] = "Field value must be an object or null."
+					continue
+				}
+				key := "id"
+				if field == "assignee" {
+					key = "accountId"
+				}
+				value, _ = object[key].(string)
+				if value == "" {
+					errors[field] = "Field value requires " + key + "."
+					continue
+				}
+			}
+			if field == "assignee" {
+				update.AssigneeID = &value
+			} else {
+				update.PriorityID = &value
+			}
+		default:
+			if strings.HasPrefix(field, "customfield_") {
+				if update.Fields == nil {
+					update.Fields = make(map[string]json.RawMessage)
+				}
+				update.Fields[field] = raw
+			} else {
+				errors[field] = "Field is not supported during a transition."
+			}
+		}
+	}
+	return update, errors
 }
 
 // ---- changelog (derived view of the log) ----

@@ -643,9 +643,30 @@ Validation after project-scoped workflows and capabilities:
   Chromium journey creates, edits, publishes, and verifies the active project
   workflow.
 
+Validation after executable transition screens:
+
+- Workflow transitions persist and round-trip a `system:transition-screen`
+  configuration. Capability discovery advertises it as a Screen rule, and
+  create/update validation rejects missing fields or duplicate rule IDs.
+- Jira transition discovery reports `hasScreen` and field metadata, including
+  required markers shared with field validators. Transition requests reject
+  fields outside the configured screen and decode summary, ADF description,
+  labels, assignee, priority, and custom values.
+- Allowed screen changes, the target status, validators, and assignee
+  post-functions execute through one optimistic issue update, producing one
+  synchronized changelog transaction. PostgreSQL integration covers hidden
+  fields, submitted labels, required-field validation, status movement, and
+  post-function assignment.
+- The workflow editor offers accessible screen-field choices and identifies
+  the screen on its diagram. The focused Chromium workflow journey configures,
+  publishes, and verifies a labels screen.
+- The full PostgreSQL Go suite, vet, WebAssembly build, seven conformance tests,
+  generated inventory and coverage checks, diff check, primary-page light/dark
+  axe scan, and 320 px reflow gate pass.
+
 ## Current change
 
-1. Add workflow transition screens and continue the executable rule catalog.
+1. Add visual editing for workflow conditions, validators, and post-functions.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 

@@ -72,9 +72,10 @@ type workflowsPageData struct {
 }
 
 type workflowTransitionView struct {
-	ID   string
-	Name string
-	To   models.Status
+	ID           string
+	Name         string
+	To           models.Status
+	ScreenFields []string
 }
 
 type workflowNodeView struct {
@@ -828,10 +829,14 @@ func (h *Handler) AddWorkflowTransition(w http.ResponseWriter, r *http.Request, 
 		http.NotFound(w, r)
 		return
 	}
-	wf.Transitions = append(wf.Transitions, workflow.Transition{
+	transition := workflow.Transition{
 		ID: store.NewID("transition"), Name: strings.TrimSpace(r.PostFormValue("name")),
 		From: []string{r.PostFormValue("from")}, To: r.PostFormValue("to"),
-	})
+	}
+	if fields := r.PostForm["screen_field"]; len(fields) > 0 {
+		transition.Screen = &workflow.Rule{ID: store.NewID("rule"), RuleKey: workflow.RuleTransitionScreen, Parameters: map[string]string{"fields": strings.Join(fields, ",")}}
+	}
+	wf.Transitions = append(wf.Transitions, transition)
 	if err := h.Store.SaveWorkflowDraft(r.Context(), wsID, wf); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -999,7 +1004,7 @@ func workflowDesignerMap(wf workflow.Workflow, statuses []models.Status) ([]work
 		transitions := make([]workflowTransitionView, 0)
 		for _, transition := range wf.Transitions {
 			if containsValue(transition.From, status.ID) {
-				transitions = append(transitions, workflowTransitionView{ID: transition.ID, Name: transition.Name, To: statusByID[transition.To]})
+				transitions = append(transitions, workflowTransitionView{ID: transition.ID, Name: transition.Name, To: statusByID[transition.To], ScreenFields: transition.ScreenFields()})
 			}
 		}
 		nodes = append(nodes, workflowNodeView{Status: status, X: x, Y: y, Transitions: transitions})

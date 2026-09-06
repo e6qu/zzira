@@ -420,7 +420,7 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	}
 	var transitions []models.WorkflowTransition
 	for _, t := range wf.AvailableFor(issue.Status.ID, workflow.ContextForIssue(user.ID, issue)) {
-		transitions = append(transitions, models.WorkflowTransition{ID: t.ID, Name: t.Name})
+		transitions = append(transitions, models.WorkflowTransition{ID: t.ID, Name: t.Name, ScreenFields: t.ScreenFields()})
 	}
 	editView, err := h.buildEditDialogView(r.Context(), wsID, issue)
 	if err != nil {
@@ -1188,7 +1188,38 @@ func (h *Handler) TransitionIssue(w http.ResponseWriter, r *http.Request, key st
 	if !parseForm(w, r) {
 		return
 	}
-	if _, _, err := h.Commands.TransitionIssue(r.Context(), user.ID, wsID, key, r.PostFormValue("transition")); err != nil {
+	update := store.IssueUpdate{}
+	for name, values := range r.PostForm {
+		if !strings.HasPrefix(name, "field_") || len(values) == 0 {
+			continue
+		}
+		field, value := strings.TrimPrefix(name, "field_"), values[0]
+		switch field {
+		case "summary":
+			update.Summary = &value
+		case "description":
+			update.Description = adf.ParagraphDoc(value)
+		case "labels":
+			labels := strings.Split(value, ",")
+			if strings.TrimSpace(value) == "" {
+				labels = []string{}
+			}
+			update.Labels = &labels
+		case "assignee":
+			update.AssigneeID = &value
+		case "priority":
+			update.PriorityID = &value
+		default:
+			if strings.HasPrefix(field, "customfield_") {
+				if update.Fields == nil {
+					update.Fields = make(map[string]json.RawMessage)
+				}
+				encoded, _ := json.Marshal(value)
+				update.Fields[field] = encoded
+			}
+		}
+	}
+	if _, _, err := h.Commands.TransitionIssueWithUpdate(r.Context(), user.ID, wsID, key, r.PostFormValue("transition"), update); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}

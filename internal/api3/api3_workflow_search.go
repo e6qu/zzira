@@ -115,6 +115,9 @@ func workflowTransitionBean(transition workflow.Transition) map[string]any {
 	if transition.Conditions != nil {
 		bean["conditions"] = transition.Conditions
 	}
+	if transition.Screen != nil {
+		bean["transitionScreen"] = transition.Screen
+	}
 	return bean
 }
 

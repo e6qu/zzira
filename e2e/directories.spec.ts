@@ -109,8 +109,10 @@ test('project workflow creation, editor, transition changes, and assignment work
   await page.fill('#transition-name', 'Ready for review');
   await page.selectOption('#transition-from', 'st_inprogress');
   await page.selectOption('#transition-to', 'st_done');
+  await page.getByLabel('Labels', { exact: true }).check();
   await page.getByRole('button', { name: 'Add transition' }).click();
   await expect(page.getByText('Ready for review', { exact: true })).toBeVisible();
+  await expect(page.getByText('to Done · screen: labels', { exact: true })).toBeVisible();
   await expect(page.getByText('Draft changes', { exact: true })).toBeVisible();
   await expect(page.getByText('Draft changes are not active')).toBeVisible();
   await page.getByRole('button', { name: 'Publish workflow' }).click();

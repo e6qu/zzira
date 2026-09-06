@@ -13,6 +13,7 @@ const (
 	RuleRestrictIssueTransition = "system:restrict-issue-transition"
 	RuleValidateFieldValue      = "system:validate-field-value"
 	RuleChangeAssignee          = "system:change-assignee"
+	RuleTransitionScreen        = "system:transition-screen"
 )
 
 // Rule is the Jira Cloud workflow rule wire shape. Parameters remain strings
@@ -61,6 +62,7 @@ type Transition struct {
 	Actions    []Rule          `json:"actions,omitempty"`
 	Validators []Rule          `json:"validators,omitempty"`
 	Conditions *ConditionGroup `json:"conditions,omitempty"`
+	Screen     *Rule           `json:"transitionScreen,omitempty"`
 }
 
 // Workflow is a named set of transitions over its visible status registry.
@@ -276,6 +278,14 @@ func ValidateTransitionRules(transition Transition) error {
 		seen[rule.ID] = true
 		return nil
 	}
+	if transition.Screen != nil {
+		if err := validateRuleID(*transition.Screen); err != nil {
+			return err
+		}
+		if transition.Screen.RuleKey != RuleTransitionScreen || len(commaValues(transition.Screen.Parameters["fields"])) == 0 {
+			return fmt.Errorf("workflow transition screen is unsupported or incomplete")
+		}
+	}
 	for _, validator := range transition.Validators {
 		if err := validateRuleID(validator); err != nil {
 			return err
@@ -307,6 +317,25 @@ func ValidateTransitionRules(transition Transition) error {
 		}
 	}
 	return nil
+}
+
+func (t Transition) ScreenFields() []string {
+	if t.Screen == nil {
+		return nil
+	}
+	return commaValues(t.Screen.Parameters["fields"])
+}
+
+func (t Transition) RequiredFields() map[string]bool {
+	required := make(map[string]bool)
+	for _, validator := range t.Validators {
+		if validator.RuleKey == RuleValidateFieldValue && validator.Parameters["ruleType"] == "fieldRequired" {
+			for _, field := range commaValues(validator.Parameters["fieldsRequired"]) {
+				required[field] = true
+			}
+		}
+	}
+	return required
 }
 
 func validateConditionConfiguration(group ConditionGroup, seen map[string]bool) error {

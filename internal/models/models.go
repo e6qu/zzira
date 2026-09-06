@@ -182,8 +182,9 @@ type IssueLinkView struct {
 
 // WorkflowTransition decouples the view from the workflow package.
 type WorkflowTransition struct {
-	ID   string
-	Name string
+	ID           string
+	Name         string
+	ScreenFields []string
 }
 
 // EditDialogView drives the edit-issue dialog; rendered by both server and
