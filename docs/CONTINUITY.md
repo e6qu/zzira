@@ -164,14 +164,14 @@ does not publish them as one OpenAPI document.
   administrator preview offers only statuses in each target workflow; the Jira
   switch request accepts per-issue-type mappings, updates affected work items
   with synchronized status actions, assigns the published scheme in the same
-  transaction, and returns Jira's 303 completed-task representation. Migration
-  048 persists that task so the Location can be polled after redirects or a
-  server restart; task access is limited to its submitter and administrators.
+  transaction, and returns Jira's 303 task representation. Migration 048
+  persists that task so the Location can be polled after redirects or a server
+  restart; task access is limited to its submitter and administrators.
 - Added fourteen Jira workflow-scheme draft resources. Administrators can
   explicitly create, read, partially update, discard, validate, and publish a
   draft; default, issue-type, and workflow-group mappings share the same
   workspace validation and audited store path. Normal publish returns a
-  durable completed task while validation-only requests leave state untouched.
+  durable queued task while validation-only requests leave state untouched.
 - Added ten published workflow-scheme mapping resources. Default, issue-type,
   and workflow-group mutations validate assigned project impact before they
   version and audit the live scheme; project usage returns workspace-scoped
@@ -585,9 +585,27 @@ Validation after workflow designer persistence:
 - The full PostgreSQL Go suite, vet, WebAssembly build, seven conformance tests,
   generated inventory/coverage checks, and diff checks pass on the final tree.
 
+Validation after durable Jira task execution:
+
+- Workflow-scheme switch, draft publish, and bulk update requests now validate
+  synchronously, persist an `ENQUEUED` operation payload, and return the Jira
+  303 task resource before any workflow or issue state changes.
+- A server-managed worker claims tasks with `SKIP LOCKED`, reports `RUNNING`,
+  commits the workflow mutation and `COMPLETE` result atomically, records
+  terminal failures, and reclaims abandoned running work after its lease.
+- `POST /rest/api/3/task/{taskId}/cancel` returns 202 for enqueued or running
+  work. If cancellation wins before commit, the worker rolls back every issue,
+  project, audit, sync, and scheme change; completed tasks remain immutable.
+- PostgreSQL store and API journeys cover all three producers, submitter/admin
+  visibility, queued polling, successful results, enqueued and running
+  cancellation, failed operations, completed-task rejection, and simulated
+  restart recovery.
+- The full PostgreSQL Go suite, vet, WebAssembly build, all seven conformance
+  tests, generated inventory/coverage checks, migration, and diff checks pass.
+
 ## Current change
 
-1. Add queued workflow task execution and cancellation semantics.
+1. Add project-scoped statuses and capability catalogs.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 

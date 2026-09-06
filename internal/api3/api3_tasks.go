@@ -16,6 +16,7 @@ func (h *Handler) apiTaskBean(task store.APITask) map[string]any {
 		result = []byte("null")
 	}
 	bean := map[string]any{
+		"description":    task.Description,
 		"elapsedRuntime": task.LastUpdateAt.Sub(task.SubmittedAt).Milliseconds(),
 		"id":             task.ID,
 		"lastUpdate":     task.LastUpdateAt.UnixMilli(),
@@ -75,7 +76,20 @@ func (h *Handler) taskRoute(w http.ResponseWriter, r *http.Request, path string)
 		return
 	}
 	if len(parts) == 2 && parts[1] == "cancel" && r.Method == http.MethodPost {
-		jiraError(w, http.StatusBadRequest, "The task has already completed and cannot be cancelled.")
+		cancelled, err := h.Store.CancelAPITask(r.Context(), workspaceID, task.ID)
+		if errors.Is(err, store.ErrAPITaskNotCancellable) {
+			jiraError(w, http.StatusBadRequest, "The task has already finished and cannot be cancelled.")
+			return
+		}
+		if errors.Is(err, pgx.ErrNoRows) {
+			jiraError(w, http.StatusNotFound, "The task does not exist.")
+			return
+		}
+		if err != nil {
+			jiraError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		writeJSON(w, http.StatusAccepted, h.apiTaskBean(cancelled))
 		return
 	}
 	jiraError(w, http.StatusMethodNotAllowed, "method not allowed")

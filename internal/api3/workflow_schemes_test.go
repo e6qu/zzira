@@ -80,6 +80,28 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 		}
 		return rec
 	}
+	taskRunner := &store.APITaskRunner{Store: st}
+	completeTask := func(response *httptest.ResponseRecorder) string {
+		t.Helper()
+		var task map[string]any
+		if err := json.Unmarshal(response.Body.Bytes(), &task); err != nil {
+			t.Fatal(err)
+		}
+		if task["status"] != "ENQUEUED" || task["progress"] != float64(0) || task["description"] == "" {
+			t.Fatalf("submitted task = %s", response.Body.String())
+		}
+		taskPath := "/rest/api/3/task/" + task["id"].(string)
+		if queued := call(actor, "GET", taskPath, "", 200); !strings.Contains(queued.Body.String(), `"status":"ENQUEUED"`) {
+			t.Fatal(queued.Body.String())
+		}
+		if err := taskRunner.DrainOnce(ctx, ws); err != nil {
+			t.Fatal(err)
+		}
+		if completed := call(actor, "GET", taskPath, "", 200); !strings.Contains(completed.Body.String(), `"status":"COMPLETE"`) || !strings.Contains(completed.Body.String(), `"progress":100`) {
+			t.Fatal(completed.Body.String())
+		}
+		return taskPath
+	}
 	body := `{"name":"Delivery scheme","description":"Routes delivery","defaultWorkflow":"Default","issueTypeMappings":{"it_task":"Default"}}`
 	defaultEditor := call(member, "GET", "/rest/api/3/workflows/defaultEditor", "", 200)
 	if defaultEditor.Body.String() != "{\"value\":\"NEW\"}\n" {
@@ -214,9 +236,7 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	call(actor, "GET", "/rest/api/3/workflowscheme/"+schemeID+"/draft/issuetype/it_task", "", 404)
 	call(actor, "POST", "/rest/api/3/workflowscheme/"+schemeID+"/draft/publish?validateOnly=true", `{}`, 204)
 	publishedTask := call(actor, "POST", "/rest/api/3/workflowscheme/"+schemeID+"/draft/publish", `{}`, 303)
-	if !strings.Contains(publishedTask.Body.String(), `"status":"COMPLETE"`) {
-		t.Fatal(publishedTask.Body.String())
-	}
+	completeTask(publishedTask)
 	call(actor, "GET", "/rest/api/3/workflowscheme/"+schemeID+"/draft", "", 404)
 	call(actor, "POST", "/rest/api/3/workflowscheme/"+schemeID+"/createdraft", "", 201)
 	call(actor, "DELETE", "/rest/api/3/workflowscheme/"+schemeID+"/draft", "", 204)
@@ -247,7 +267,7 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/draft/default", `{"workflow":"Simple API lifecycle"}`, 200)
 	publishMappings := `{"statusMappings":[{"issueTypeId":"it_task","statusId":"st_inprogress","newStatusId":"st_todo"}]}`
 	call(actor, "POST", "/rest/api/3/workflowscheme/"+schemeID+"/draft/publish?validateOnly=true", publishMappings, 204)
-	call(actor, "POST", "/rest/api/3/workflowscheme/"+schemeID+"/draft/publish", publishMappings, 303)
+	completeTask(call(actor, "POST", "/rest/api/3/workflowscheme/"+schemeID+"/draft/publish", publishMappings, 303))
 	var draftMigratedStatus string
 	if err := st.Pool.QueryRow(ctx, `SELECT status_id FROM issues WHERE id=$1`, issueID).Scan(&draftMigratedStatus); err != nil || draftMigratedStatus != "st_todo" {
 		t.Fatalf("draft migrated status=%q err=%v", draftMigratedStatus, err)
@@ -267,13 +287,13 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	unsafeBulkUpdate := `{"id":"` + schemeID + `","name":"Unsafe bulk","description":"Unsafe","defaultWorkflowId":"` + workflowID + `","version":{"versionNumber":` + fmt.Sprint(version) + `},"workflowsForIssueTypes":[]}`
 	call(actor, "POST", "/rest/api/3/workflowscheme/update", unsafeBulkUpdate, 409)
 	mappedBulkUpdate := `{"id":"` + schemeID + `","name":"Delivery migrated","description":"Bulk migrated","defaultWorkflowId":"` + workflowID + `","version":{"versionNumber":` + fmt.Sprint(version) + `},"workflowsForIssueTypes":[],"statusMappingsByIssueTypeOverride":[{"issueTypeId":"it_task","statusMappings":[{"oldStatusId":"st_inprogress","newStatusId":"st_todo"}]}]}`
-	call(actor, "POST", "/rest/api/3/workflowscheme/update", mappedBulkUpdate, 303)
+	completeTask(call(actor, "POST", "/rest/api/3/workflowscheme/update", mappedBulkUpdate, 303))
 	var bulkMigratedStatus string
 	if err := st.Pool.QueryRow(ctx, `SELECT status_id FROM issues WHERE id=$1`, issueID).Scan(&bulkMigratedStatus); err != nil || bulkMigratedStatus != "st_todo" {
 		t.Fatalf("bulk migrated status=%q err=%v", bulkMigratedStatus, err)
 	}
 	safeBulkUpdate := `{"id":"` + schemeID + `","name":"Delivery bulk","description":"Bulk updated","defaultWorkflowId":"wf_default","version":{"versionNumber":` + fmt.Sprint(version+1) + `},"workflowsForIssueTypes":[]}`
-	call(actor, "POST", "/rest/api/3/workflowscheme/update", safeBulkUpdate, 303)
+	completeTask(call(actor, "POST", "/rest/api/3/workflowscheme/update", safeBulkUpdate, 303))
 	call(actor, "POST", "/rest/api/3/workflowscheme/update", safeBulkUpdate, 409)
 	exec(`UPDATE issues SET status_id='st_inprogress' WHERE id=$1`, issueID)
 	call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/default", `{"workflow":"Simple API lifecycle"}`, 409)
@@ -284,7 +304,7 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	targetSchemeID := scheme["id"].(string)
 	call(actor, "POST", "/rest/api/3/workflowscheme/project/switch", `{"projectId":"`+projectID+`","targetSchemeId":"`+targetSchemeID+`"}`, 409)
 	switchResponse := call(actor, "POST", "/rest/api/3/workflowscheme/project/switch", `{"projectId":"`+projectID+`","targetSchemeId":"`+targetSchemeID+`","mappingsByIssueTypeOverride":[{"issueTypeId":"it_task","statusMappings":[{"oldStatusId":"st_inprogress","newStatusId":"st_todo"}]}]}`, 303)
-	if switchResponse.Header().Get("Location") == "" || !strings.Contains(switchResponse.Body.String(), `"status":"COMPLETE"`) || !strings.Contains(switchResponse.Body.String(), `"progress":100`) {
+	if switchResponse.Header().Get("Location") == "" || !strings.Contains(switchResponse.Body.String(), `"status":"ENQUEUED"`) || !strings.Contains(switchResponse.Body.String(), `"progress":0`) {
 		t.Fatalf("switch task = %s, location = %q", switchResponse.Body.String(), switchResponse.Header().Get("Location"))
 	}
 	var task map[string]any
@@ -293,10 +313,27 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	}
 	taskPath := "/rest/api/3/task/" + task["id"].(string)
 	polledTask := call(actor, "GET", taskPath, "", 200)
-	if !strings.Contains(polledTask.Body.String(), targetSchemeID) {
+	if !strings.Contains(polledTask.Body.String(), `"status":"ENQUEUED"`) {
 		t.Fatal(polledTask.Body.String())
 	}
 	call(member, "GET", taskPath, "", 403)
+	cancelled := call(actor, "POST", taskPath+"/cancel", "", 202)
+	if !strings.Contains(cancelled.Body.String(), `"status":"CANCELLED"`) {
+		t.Fatal(cancelled.Body.String())
+	}
+	if err := taskRunner.DrainOnce(ctx, ws); err != nil {
+		t.Fatal(err)
+	}
+	var cancelledIssueStatus, cancelledScheme string
+	if err := st.Pool.QueryRow(ctx, `SELECT i.status_id,p.workflow_scheme_id FROM issues i JOIN projects p ON p.id=i.project_id WHERE i.id=$1`, issueID).Scan(&cancelledIssueStatus, &cancelledScheme); err != nil || cancelledIssueStatus != "st_inprogress" || cancelledScheme != schemeID {
+		t.Fatalf("cancelled switch changed status=%q scheme=%q err=%v", cancelledIssueStatus, cancelledScheme, err)
+	}
+	switchResponse = call(actor, "POST", "/rest/api/3/workflowscheme/project/switch", `{"projectId":"`+projectID+`","targetSchemeId":"`+targetSchemeID+`","mappingsByIssueTypeOverride":[{"issueTypeId":"it_task","statusMappings":[{"oldStatusId":"st_inprogress","newStatusId":"st_todo"}]}]}`, 303)
+	taskPath = completeTask(switchResponse)
+	completedSwitch := call(actor, "GET", taskPath, "", 200)
+	if !strings.Contains(completedSwitch.Body.String(), targetSchemeID) {
+		t.Fatal(completedSwitch.Body.String())
+	}
 	call(actor, "POST", taskPath+"/cancel", "", 400)
 	call(actor, "GET", "/rest/api/3/task/task_missing", "", 404)
 	var issueStatus, assignedScheme string

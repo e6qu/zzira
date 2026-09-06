@@ -180,6 +180,7 @@ func main() {
 	}
 	go dispatcher.Run(ctx, workspaceID)
 	go (&automation.Runner{Service: automationSvc}).Run(ctx, workspaceID)
+	go (&store.APITaskRunner{Store: st}).Run(ctx, workspaceID)
 	if smtpSender != nil {
 		go (&mailer.Runner{Store: st, Sender: smtpSender}).Run(ctx)
 	}
