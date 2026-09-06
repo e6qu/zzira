@@ -106,7 +106,7 @@ func (h *Handler) ProjectsPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	workflows, err := h.Store.ListWorkflows(r.Context())
+	workflows, err := h.Store.ListWorkflows(r.Context(), wsID)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -309,7 +309,7 @@ func (h *Handler) WorkflowsPage(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	items, err := h.Store.ListWorkflows(r.Context())
+	items, err := h.Store.ListWorkflows(r.Context(), wsID)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -416,7 +416,7 @@ func (h *Handler) WorkflowPage(w http.ResponseWriter, r *http.Request, id string
 	if !ok {
 		return
 	}
-	wf, err := h.Store.WorkflowDraftByID(r.Context(), id)
+	wf, err := h.Store.WorkflowDraftByID(r.Context(), wsID, id)
 	if err != nil {
 		http.NotFound(w, r)
 		return
@@ -462,7 +462,7 @@ func (h *Handler) WorkflowPage(w http.ResponseWriter, r *http.Request, id string
 }
 
 func (h *Handler) CreateWorkflow(w http.ResponseWriter, r *http.Request) {
-	_, _, ok := h.requireAdminPage(w, r)
+	_, wsID, ok := h.requireAdminPage(w, r)
 	if !ok || !parseForm(w, r) {
 		return
 	}
@@ -474,7 +474,7 @@ func (h *Handler) CreateWorkflow(w http.ResponseWriter, r *http.Request) {
 	wf := workflow.Default()
 	wf.ID = store.NewID("workflow")
 	wf.Name = name
-	if err := h.Store.CreateWorkflow(r.Context(), wf); err != nil {
+	if err := h.Store.CreateWorkflow(r.Context(), wsID, wf); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -490,7 +490,7 @@ func (h *Handler) AddWorkflowTransition(w http.ResponseWriter, r *http.Request, 
 		http.Error(w, "the built-in workflow is read-only; create a copy to edit it", http.StatusBadRequest)
 		return
 	}
-	wf, err := h.Store.WorkflowDraftByID(r.Context(), workflowID)
+	wf, err := h.Store.WorkflowDraftByID(r.Context(), wsID, workflowID)
 	if err != nil {
 		http.NotFound(w, r)
 		return
@@ -515,7 +515,7 @@ func (h *Handler) DeleteWorkflowTransition(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "the built-in workflow is read-only", http.StatusBadRequest)
 		return
 	}
-	wf, err := h.Store.WorkflowDraftByID(r.Context(), workflowID)
+	wf, err := h.Store.WorkflowDraftByID(r.Context(), wsID, workflowID)
 	if err != nil {
 		http.NotFound(w, r)
 		return
@@ -574,7 +574,7 @@ func (h *Handler) AssignProjectWorkflow(w http.ResponseWriter, r *http.Request, 
 	if !ok || !parseForm(w, r) {
 		return
 	}
-	if _, err := h.Store.WorkflowByID(r.Context(), workflowID); err != nil {
+	if _, err := h.Store.WorkflowByID(r.Context(), wsID, workflowID); err != nil {
 		http.NotFound(w, r)
 		return
 	}
@@ -583,7 +583,7 @@ func (h *Handler) AssignProjectWorkflow(w http.ResponseWriter, r *http.Request, 
 		http.Error(w, "project not found", http.StatusBadRequest)
 		return
 	}
-	if err := h.Store.AssignWorkflowToProject(r.Context(), project.ID, workflowID); err != nil {
+	if err := h.Store.AssignWorkflowToProject(r.Context(), wsID, project.ID, workflowID); err != nil {
 		http.Error(w, "could not assign workflow", http.StatusInternalServerError)
 		return
 	}

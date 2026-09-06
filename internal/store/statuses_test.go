@@ -65,7 +65,7 @@ func TestStatusLifecycleProtectsReferencesAndBuiltIns(t *testing.T) {
 	if err != nil {
 		t.Fatalf("workspace workflow validation: %v", err)
 	}
-	if _, err := st.Pool.Exec(ctx, `INSERT INTO workflows(id,name,def) VALUES($1,$2,$3)`, workflowID, wf.Name, def); err != nil {
+	if _, err := st.Pool.Exec(ctx, `INSERT INTO workflows(id,name,def,workspace_id) VALUES($1,$2,$3,$4)`, workflowID, wf.Name, def, workspaceID); err != nil {
 		t.Fatalf("insert workflow: %v", err)
 	}
 	usage, err := st.StatusUsage(ctx, workspaceID, statusID)

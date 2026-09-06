@@ -143,7 +143,7 @@ func TestUpdateTransitionCommentChangelogPipeline(t *testing.T) {
 
 	// Transition 21: To Do → In Progress (project pinned to the default
 	// workflow so earlier live assigns of other workflows cannot skew this).
-	if err := st.AssignWorkflowToProject(ctx, issue.ProjectID, "wf_default"); err != nil {
+	if err := st.AssignWorkflowToProject(ctx, "ws_default", issue.ProjectID, "wf_default"); err != nil {
 		t.Fatalf("assign workflow: %v", err)
 	}
 	_, tAction, err := svc.TransitionIssue(ctx, "usr_test", "ws_default", issue.Key, "21")

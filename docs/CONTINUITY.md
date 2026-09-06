@@ -149,6 +149,10 @@ does not publish them as one OpenAPI document.
 - Exposed paged Jira status project, workflow, and per-project issue-type usage
   resources from the same impact data, bringing every pinned status and status
   category operation under explicit reviewed evidence.
+- Made every custom workflow workspace-owned. Migration 046 assigns legacy
+  definitions from their project usage, UI and Jira API discovery exclude other
+  sites, draft and publish writes require the owning workspace, and project
+  assignment rejects foreign workflow IDs. The built-in default remains shared.
 
 Validation after the organization foundation:
 
@@ -330,6 +334,15 @@ Validation after status lifecycle administration:
   320 px reflow journey.
 - Exact reviewed API coverage is 75 of 1,207 operations: 68 partial, 7 missing,
   and 1,132 explicitly unassessed.
+
+Validation after workflow workspace isolation:
+
+- PostgreSQL workflow tests prove custom definitions cannot be read, listed, or
+  assigned from another workspace while the shared default remains available.
+- The Chromium administrator workflow journey still passes create, draft edit,
+  publish version 2, and project assignment after migration 046.
+- The full PostgreSQL Go suite, vet, WebAssembly compilation, seven conformance
+  tests, generated inventory/coverage checks, and `git diff --check` pass.
 
 ## Current change
 

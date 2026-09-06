@@ -1269,15 +1269,27 @@ func (s *Store) WorkflowForProject(ctx context.Context, projectID string) (workf
 }
 
 // CreateWorkflow stores a workflow definition.
-func (s *Store) CreateWorkflow(ctx context.Context, wf workflow.Workflow) error {
-	def, err := s.validateWorkflow(ctx, "", wf)
+func (s *Store) CreateWorkflow(ctx context.Context, workspaceID string, wf workflow.Workflow) error {
+	if wf.ID == workflow.Default().ID || workspaceID == "" {
+		return fmt.Errorf("custom workflows require a workspace")
+	}
+	def, err := s.validateWorkflow(ctx, workspaceID, wf)
 	if err != nil {
 		return err
 	}
-	_, err = s.Pool.Exec(ctx,
-		`INSERT INTO workflows (id, name, def) VALUES ($1,$2,$3)
-		 ON CONFLICT (id) DO UPDATE SET name=$2, def=$3`, wf.ID, wf.Name, def)
-	return err
+	tag, err := s.Pool.Exec(ctx,
+		`INSERT INTO workflows (id,name,def,workspace_id) VALUES ($1,$2,$3,$4)
+		 ON CONFLICT (id) DO UPDATE SET name=$2,def=$3 WHERE workflows.workspace_id=$4`, wf.ID, wf.Name, def, workspaceID)
+	if err != nil {
+		if isUniqueViolation(err) {
+			return fmt.Errorf("%w: a workflow already uses that name or id", ErrAdminConflict)
+		}
+		return err
+	}
+	if tag.RowsAffected() != 1 {
+		return fmt.Errorf("%w: workflow id belongs to another workspace", ErrAdminConflict)
+	}
+	return nil
 }
 
 func (s *Store) validateWorkflow(ctx context.Context, workspaceID string, wf workflow.Workflow) ([]byte, error) {
@@ -1331,7 +1343,7 @@ func (s *Store) SaveWorkflowDraft(ctx context.Context, workspaceID string, wf wo
 	if err != nil {
 		return err
 	}
-	result, err := s.Pool.Exec(ctx, `UPDATE workflows SET draft_def=$2,draft_updated_at=now() WHERE id=$1`, wf.ID, def)
+	result, err := s.Pool.Exec(ctx, `UPDATE workflows SET draft_def=$3,draft_updated_at=now() WHERE id=$1 AND workspace_id=$2`, wf.ID, workspaceID, def)
 	if err != nil {
 		return err
 	}
@@ -1342,10 +1354,10 @@ func (s *Store) SaveWorkflowDraft(ctx context.Context, workspaceID string, wf wo
 }
 
 // WorkflowByID returns one stored workflow definition.
-func (s *Store) WorkflowByID(ctx context.Context, id string) (workflow.Workflow, error) {
+func (s *Store) WorkflowByID(ctx context.Context, workspaceID, id string) (workflow.Workflow, error) {
 	var wf workflow.Workflow
 	var def []byte
-	err := s.Pool.QueryRow(ctx, `SELECT def,version,draft_def IS NOT NULL FROM workflows WHERE id=$1`, id).Scan(&def, &wf.Version, &wf.HasDraft)
+	err := s.Pool.QueryRow(ctx, `SELECT def,version,draft_def IS NOT NULL FROM workflows WHERE id=$1 AND (workspace_id=$2 OR (id='wf_default' AND workspace_id IS NULL))`, id, workspaceID).Scan(&def, &wf.Version, &wf.HasDraft)
 	if err != nil {
 		return wf, err
 	}
@@ -1355,10 +1367,10 @@ func (s *Store) WorkflowByID(ctx context.Context, id string) (workflow.Workflow,
 	return wf, nil
 }
 
-func (s *Store) WorkflowDraftByID(ctx context.Context, id string) (workflow.Workflow, error) {
+func (s *Store) WorkflowDraftByID(ctx context.Context, workspaceID, id string) (workflow.Workflow, error) {
 	var wf workflow.Workflow
 	var def []byte
-	err := s.Pool.QueryRow(ctx, `SELECT COALESCE(draft_def,def),version,draft_def IS NOT NULL FROM workflows WHERE id=$1`, id).Scan(&def, &wf.Version, &wf.HasDraft)
+	err := s.Pool.QueryRow(ctx, `SELECT COALESCE(draft_def,def),version,draft_def IS NOT NULL FROM workflows WHERE id=$1 AND (workspace_id=$2 OR (id='wf_default' AND workspace_id IS NULL))`, id, workspaceID).Scan(&def, &wf.Version, &wf.HasDraft)
 	if err != nil {
 		return wf, err
 	}
@@ -1369,8 +1381,8 @@ func (s *Store) WorkflowDraftByID(ctx context.Context, id string) (workflow.Work
 }
 
 // ListWorkflows returns all stored workflow definitions.
-func (s *Store) ListWorkflows(ctx context.Context) ([]workflow.Workflow, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT id, name, def,version,draft_def IS NOT NULL FROM workflows ORDER BY id`)
+func (s *Store) ListWorkflows(ctx context.Context, workspaceID string) ([]workflow.Workflow, error) {
+	rows, err := s.Pool.Query(ctx, `SELECT id,name,def,version,draft_def IS NOT NULL FROM workflows WHERE workspace_id=$1 OR (id='wf_default' AND workspace_id IS NULL) ORDER BY id`, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -1410,11 +1422,11 @@ func (s *Store) finishWorkflowDraft(ctx context.Context, workspaceID, actorID, w
 	}
 	var affected int64
 	if publish {
-		result, updateErr := tx.Exec(ctx, `UPDATE workflows SET def=draft_def,draft_def=NULL,draft_updated_at=NULL,version=version+1,published_at=now() WHERE id=$1 AND draft_def IS NOT NULL`, workflowID)
+		result, updateErr := tx.Exec(ctx, `UPDATE workflows SET def=draft_def,draft_def=NULL,draft_updated_at=NULL,version=version+1,published_at=now() WHERE id=$1 AND workspace_id=$2 AND draft_def IS NOT NULL`, workflowID, workspaceID)
 		err = updateErr
 		affected = result.RowsAffected()
 	} else {
-		result, updateErr := tx.Exec(ctx, `UPDATE workflows SET draft_def=NULL,draft_updated_at=NULL WHERE id=$1 AND draft_def IS NOT NULL`, workflowID)
+		result, updateErr := tx.Exec(ctx, `UPDATE workflows SET draft_def=NULL,draft_updated_at=NULL WHERE id=$1 AND workspace_id=$2 AND draft_def IS NOT NULL`, workflowID, workspaceID)
 		err = updateErr
 		affected = result.RowsAffected()
 	}
@@ -1439,8 +1451,8 @@ func (s *Store) finishWorkflowDraft(ctx context.Context, workspaceID, actorID, w
 }
 
 // AssignWorkflowToProject points a project at a stored workflow.
-func (s *Store) AssignWorkflowToProject(ctx context.Context, projectID, workflowID string) error {
-	result, err := s.Pool.Exec(ctx, `UPDATE projects SET workflow_id=$2 WHERE id=$1`, projectID, workflowID)
+func (s *Store) AssignWorkflowToProject(ctx context.Context, workspaceID, projectID, workflowID string) error {
+	result, err := s.Pool.Exec(ctx, `UPDATE projects p SET workflow_id=$3 WHERE p.id=$2 AND p.workspace_id=$1 AND EXISTS(SELECT 1 FROM workflows w WHERE w.id=$3 AND (w.workspace_id=$1 OR (w.id='wf_default' AND w.workspace_id IS NULL)))`, workspaceID, projectID, workflowID)
 	if err != nil {
 		return err
 	}
