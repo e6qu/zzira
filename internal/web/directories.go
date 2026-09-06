@@ -974,7 +974,7 @@ func (h *Handler) AddWorkflowTransition(w http.ResponseWriter, r *http.Request, 
 	if source := r.PostFormValue("copy_source"); source != "" {
 		transition.Actions = append(transition.Actions, workflow.Rule{
 			ID: store.NewID("rule"), RuleKey: workflow.RuleCopyFieldValue, Parameters: map[string]string{
-				"sourceFieldKey": source, "targetFieldKey": r.PostFormValue("copy_target"), "issueSource": "SAME",
+				"sourceFieldKey": source, "targetFieldKey": r.PostFormValue("copy_target"), "issueSource": r.PostFormValue("copy_issue_source"),
 			},
 		})
 	}

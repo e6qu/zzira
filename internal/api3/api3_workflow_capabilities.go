@@ -70,7 +70,7 @@ func workflowCapabilitiesResponse(editorScope string) map[string]any {
 				"ruleKey": "system:update-field", "ruleType": "Function",
 			},
 			{
-				"description": "Copy a supported field value to another field on the same issue.", "incompatibleRuleKeys": []string{},
+				"description": "Copy a supported field value from the same or parent issue to the transitioning issue.", "incompatibleRuleKeys": []string{},
 				"isAvailableForInitialTransition": true, "isVisible": true, "name": "Copy field value",
 				"ruleKey": "system:copy-value-from-other-field", "ruleType": "Function",
 			},

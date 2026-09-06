@@ -368,7 +368,7 @@ func TestChangeAssigneePostFunctions(t *testing.T) {
 		t.Fatalf("effect = %q, %t, %v", assigneeID, changed, err)
 	}
 	updates, err := transition.FieldUpdateEffects()
-	if err != nil || len(updates) != 2 || updates[0].Field != "labels" || updates[0].Value != "released" || updates[1].SourceField != "summary" || updates[1].Field != "description" {
+	if err != nil || len(updates) != 2 || updates[0].Field != "labels" || updates[0].Value != "released" || updates[1].SourceField != "summary" || updates[1].Field != "description" || updates[1].IssueSource != "SAME" {
 		t.Fatalf("field effects = %+v, %v", updates, err)
 	}
 }
@@ -381,8 +381,16 @@ func TestCopyFieldPostFunctionValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 	transition.Actions[0].Parameters["issueSource"] = "PARENT"
+	if err := ValidateTransitionRules(transition); err != nil {
+		t.Fatal(err)
+	}
+	effects, err := transition.FieldUpdateEffects()
+	if err != nil || len(effects) != 1 || effects[0].IssueSource != "PARENT" {
+		t.Fatalf("parent copy effect = %+v, %v", effects, err)
+	}
+	transition.Actions[0].Parameters["issueSource"] = "CHILD"
 	if err := ValidateTransitionRules(transition); err == nil {
-		t.Fatal("unimplemented parent issue source was accepted")
+		t.Fatal("unsupported child issue source was accepted")
 	}
 	transition.Actions[0].Parameters["issueSource"] = "SAME"
 	transition.Actions[0].Parameters["targetFieldKey"] = "status"

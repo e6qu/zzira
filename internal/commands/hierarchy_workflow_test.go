@@ -5,6 +5,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/e6qu/zzira/internal/adf"
 	"github.com/e6qu/zzira/internal/store"
 	"github.com/e6qu/zzira/internal/workflow"
 )
@@ -94,5 +95,23 @@ func TestIssueHierarchyPersistsAndBlocksWorkflowTransitions(t *testing.T) {
 	}
 	if _, _, err := service.TransitionIssue(ctx, actorID, workspaceID, parent.Key, "complete"); err != nil {
 		t.Fatal(err)
+	}
+	wf.Transitions[0].Actions = []workflow.Rule{{
+		ID: "copy-parent", RuleKey: workflow.RuleCopyFieldValue,
+		Parameters: map[string]string{"sourceFieldKey": "summary", "targetFieldKey": "description", "issueSource": "PARENT"},
+	}}
+	if err := st.CreateWorkflow(ctx, workspaceID, wf); err != nil {
+		t.Fatal(err)
+	}
+	copyChild, _, err := service.CreateIssue(ctx, CreateIssueInput{ActorID: actorID, WorkspaceID: workspaceID, ProjectIDOrKey: projectID, Summary: "Copy child", IssueTypeID: "it_subtask", ParentIDOrKey: parent.Key})
+	if err != nil {
+		t.Fatal(err)
+	}
+	copyChild, _, err = service.TransitionIssue(ctx, actorID, workspaceID, copyChild.Key, "complete")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := adf.PlainText(copyChild.Description); got != parent.Summary {
+		t.Fatalf("parent summary copied to description = %q", got)
 	}
 }

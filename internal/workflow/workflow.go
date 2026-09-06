@@ -444,6 +444,7 @@ func (t Transition) AssigneeEffect(context EvaluationContext) (string, bool, err
 type FieldUpdateEffect struct {
 	Field       string
 	SourceField string
+	IssueSource string
 	Value       string
 	Mode        string
 }
@@ -474,10 +475,14 @@ func (t Transition) FieldUpdateEffects() ([]FieldUpdateEffect, error) {
 			if !readableWorkflowField(source) || !executableUpdateField(target) {
 				return nil, fmt.Errorf("unsupported copy-field source %q or target %q", source, target)
 			}
-			if issueSource := action.Parameters["issueSource"]; issueSource != "" && issueSource != "SAME" {
+			issueSource := action.Parameters["issueSource"]
+			if issueSource != "" && issueSource != "SAME" && issueSource != "PARENT" {
 				return nil, fmt.Errorf("unsupported copy-field issue source %q", issueSource)
 			}
-			effects = append(effects, FieldUpdateEffect{Field: target, SourceField: source, Mode: "replace"})
+			if issueSource == "" {
+				issueSource = "SAME"
+			}
+			effects = append(effects, FieldUpdateEffect{Field: target, SourceField: source, IssueSource: issueSource, Mode: "replace"})
 		default:
 			return nil, fmt.Errorf("unsupported workflow post-function %q", action.RuleKey)
 		}
@@ -641,7 +646,7 @@ func ValidateTransitionRules(transition Transition) error {
 			if !readableWorkflowField(source) || !executableUpdateField(target) {
 				return fmt.Errorf("copy-field source %q or target %q is not executable", source, target)
 			}
-			if issueSource := action.Parameters["issueSource"]; issueSource != "" && issueSource != "SAME" {
+			if issueSource := action.Parameters["issueSource"]; issueSource != "" && issueSource != "SAME" && issueSource != "PARENT" {
 				return fmt.Errorf("copy-field issue source %q is unsupported", issueSource)
 			}
 		default:

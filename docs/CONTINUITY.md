@@ -933,10 +933,25 @@ Validation after issue hierarchy and parent/child workflow rules:
   generated inventory and coverage checks, diff check, primary-page light/dark
   axe scan, and 320 px reflow gate pass.
 
+Validation after parent-field workflow copying:
+
+- `system:copy-value-from-other-field` now accepts Jira's `issueSource=PARENT`
+  alongside `SAME`, with an omitted source still defaulting to `SAME`.
+- Ordered post-function execution loads the persisted parent snapshot as the
+  source while writing only into the child transition update. Missing parents
+  fail the transition and unsupported source values fail workflow validation.
+- The workflow editor exposes “This issue” and “Parent issue” source choices.
+  Capabilities describe both sources, and stored workflow definitions preserve
+  the Jira parameter unchanged.
+- Unit tests cover source parsing and invalid values. The PostgreSQL hierarchy
+  journey transitions a child and proves its parent summary was copied into the
+  child description; the focused Chromium workflow editor journey passes with
+  the parent source selected.
+
 ## Current change
 
-1. Extend copy-field workflow post-functions to parent relationships now that
-   issue hierarchy is persisted.
+1. Implement the next executable Jira system workflow rule from the reviewed
+   capability catalog.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 

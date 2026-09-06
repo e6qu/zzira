@@ -402,7 +402,19 @@ func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, worksp
 	for _, effect := range fieldEffects {
 		var err error
 		if effect.SourceField != "" {
-			err = applyWorkflowFieldCopy(issue, &update, effect.SourceField, effect.Field)
+			sourceIssue := issue
+			sourceUpdate := &update
+			if effect.IssueSource == "PARENT" {
+				if issue.Parent == nil {
+					return nil, nil, fmt.Errorf("copy-field parent source requires a parent issue")
+				}
+				sourceIssue, err = s.Store.IssueByIDOrKey(ctx, workspaceID, issue.Parent.ID)
+				sourceUpdate = &store.IssueUpdate{}
+				if err != nil {
+					return nil, nil, fmt.Errorf("copy-field parent source is unavailable")
+				}
+			}
+			err = applyWorkflowFieldCopyFrom(sourceIssue, sourceUpdate, &update, effect.SourceField, effect.Field)
 		} else {
 			err = applyWorkflowFieldUpdate(issue, &update, effect)
 		}
@@ -515,7 +527,11 @@ func workflowFieldRaw(issue *models.Issue, update *store.IssueUpdate, field stri
 }
 
 func applyWorkflowFieldCopy(issue *models.Issue, update *store.IssueUpdate, source, target string) error {
-	raw := workflowFieldRaw(issue, update, source)
+	return applyWorkflowFieldCopyFrom(issue, update, update, source, target)
+}
+
+func applyWorkflowFieldCopyFrom(sourceIssue *models.Issue, sourceUpdate, targetUpdate *store.IssueUpdate, source, target string) error {
+	raw := workflowFieldRaw(sourceIssue, sourceUpdate, source)
 	if target == "labels" {
 		var labels []string
 		if json.Unmarshal(raw, &labels) != nil {
@@ -529,7 +545,7 @@ func applyWorkflowFieldCopy(issue *models.Issue, update *store.IssueUpdate, sour
 		if err != nil {
 			return fmt.Errorf("workflow field copy: %w", err)
 		}
-		update.Labels = &normalized
+		targetUpdate.Labels = &normalized
 		return nil
 	}
 	if target == "summary" || target == "description" || target == "priority" {
@@ -539,18 +555,18 @@ func applyWorkflowFieldCopy(issue *models.Issue, update *store.IssueUpdate, sour
 		}
 		switch target {
 		case "summary":
-			update.Summary = &value
+			targetUpdate.Summary = &value
 		case "description":
-			update.Description = adf.ParagraphDoc(value)
+			targetUpdate.Description = adf.ParagraphDoc(value)
 		case "priority":
-			update.PriorityID = &value
+			targetUpdate.PriorityID = &value
 		}
 		return nil
 	}
-	if update.Fields == nil {
-		update.Fields = make(map[string]json.RawMessage)
+	if targetUpdate.Fields == nil {
+		targetUpdate.Fields = make(map[string]json.RawMessage)
 	}
-	update.Fields[target] = append(json.RawMessage(nil), raw...)
+	targetUpdate.Fields[target] = append(json.RawMessage(nil), raw...)
 	return nil
 }
 

@@ -116,6 +116,7 @@ test('project workflow creation, editor, transition changes, and assignment work
   await page.selectOption('#transition-update-mode', 'append');
   await page.fill('#transition-update-value', 'workflow-reviewed');
   await page.selectOption('#transition-copy-source', 'summary');
+	await page.selectOption('#transition-copy-issue-source', 'PARENT');
   await page.selectOption('#transition-copy-target', 'description');
   await page.selectOption('#transition-changed-field-validator', 'labels');
   await page.selectOption('#transition-regexp-field-validator', 'description');
