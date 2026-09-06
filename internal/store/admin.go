@@ -1004,3 +1004,112 @@ func (s *Store) OrganizationAuditEvents(ctx context.Context, organizationID stri
 	}
 	return events, rows.Err()
 }
+
+type OrganizationAuditFilter struct {
+	Query     string
+	Action    string
+	Actors    []string
+	IPs       []string
+	Products  []string
+	Locations []string
+	From      *time.Time
+	To        *time.Time
+	Offset    int
+	Limit     int
+	Ascending bool
+}
+
+func (s *Store) QueryOrganizationAuditEvents(ctx context.Context, organizationID string, filter OrganizationAuditFilter) ([]*models.OrganizationAuditEvent, bool, error) {
+	if filter.Limit < 1 || filter.Limit > 500 || filter.Offset < 0 {
+		return nil, false, fmt.Errorf("%w: audit limit must be between 1 and 500 and offset must be non-negative", ErrAdminValidation)
+	}
+	args := []any{organizationID}
+	where := []string{"e.organization_id::text=$1"}
+	add := func(clause string, value any) {
+		args = append(args, value)
+		where = append(where, strings.ReplaceAll(clause, "%d", fmt.Sprint(len(args))))
+	}
+	if filter.Query != "" {
+		add("(e.action ILIKE $%d OR e.target_type ILIKE $%d OR e.target_id ILIKE $%d OR COALESCE(u.display_name,'') ILIKE $%d OR COALESCE(u.email,'') ILIKE $%d OR e.detail::text ILIKE $%d)", "%"+filter.Query+"%")
+	}
+	if filter.Action != "" {
+		add("e.action=$%d", filter.Action)
+	}
+	if len(filter.Actors) > 0 {
+		add("(e.actor_id=ANY($%d::text[]) OR u.email=ANY($%d::text[]) OR u.display_name=ANY($%d::text[]))", filter.Actors)
+	}
+	if len(filter.IPs) > 0 {
+		add("e.detail->>'ip'=ANY($%d::text[])", filter.IPs)
+	}
+	if len(filter.Products) > 0 {
+		add("e.detail->>'product'=ANY($%d::text[])", filter.Products)
+	}
+	if len(filter.Locations) > 0 {
+		add("e.detail::text ILIKE ANY($%d::text[])", filter.Locations)
+	}
+	if filter.From != nil {
+		add("e.created_at >= $%d", *filter.From)
+	}
+	if filter.To != nil {
+		add("e.created_at <= $%d", *filter.To)
+	}
+	order := "DESC"
+	if filter.Ascending {
+		order = "ASC"
+	}
+	args = append(args, filter.Limit+1, filter.Offset)
+	query := `SELECT e.id,e.organization_id::text,COALESCE(e.actor_id,''),COALESCE(u.display_name,''),COALESCE(u.email,''),
+		e.action,e.target_type,e.target_id,e.detail,e.created_at
+		FROM organization_audit_events e LEFT JOIN users u ON u.id=e.actor_id
+		WHERE ` + strings.Join(where, " AND ") + ` ORDER BY e.created_at ` + order + `,e.id ` + order +
+		fmt.Sprintf(" LIMIT $%d OFFSET $%d", len(args)-1, len(args))
+	rows, err := s.Pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, false, err
+	}
+	defer rows.Close()
+	events := make([]*models.OrganizationAuditEvent, 0, filter.Limit+1)
+	for rows.Next() {
+		event := &models.OrganizationAuditEvent{}
+		var detail []byte
+		var createdAt time.Time
+		if err := rows.Scan(&event.ID, &event.OrganizationID, &event.ActorID, &event.ActorName, &event.ActorEmail,
+			&event.Action, &event.TargetType, &event.TargetID, &detail, &createdAt); err != nil {
+			return nil, false, err
+		}
+		if err := json.Unmarshal(detail, &event.Detail); err != nil {
+			return nil, false, err
+		}
+		event.CreatedAt = formatAdminTime(createdAt)
+		events = append(events, event)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, err
+	}
+	hasMore := len(events) > filter.Limit
+	if hasMore {
+		events = events[:filter.Limit]
+	}
+	return events, hasMore, nil
+}
+
+func (s *Store) OrganizationAuditEventByID(ctx context.Context, organizationID string, eventID int64) (*models.OrganizationAuditEvent, error) {
+	event := &models.OrganizationAuditEvent{}
+	var detail []byte
+	var createdAt time.Time
+	err := s.Pool.QueryRow(ctx, `
+		SELECT e.id,e.organization_id::text,COALESCE(e.actor_id,''),COALESCE(u.display_name,''),COALESCE(u.email,''),
+		       e.action,e.target_type,e.target_id,e.detail,e.created_at
+		FROM organization_audit_events e LEFT JOIN users u ON u.id=e.actor_id
+		WHERE e.organization_id::text=$1 AND e.id=$2`, organizationID, eventID).Scan(
+		&event.ID, &event.OrganizationID, &event.ActorID, &event.ActorName, &event.ActorEmail,
+		&event.Action, &event.TargetType, &event.TargetID, &detail, &createdAt)
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(detail, &event.Detail); err != nil {
+		return nil, err
+	}
+	event.CreatedAt = formatAdminTime(createdAt)
+	return event, nil
+}

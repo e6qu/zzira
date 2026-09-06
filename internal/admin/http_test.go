@@ -96,6 +96,10 @@ func TestOrganizationAndGroupAPIJourney(t *testing.T) {
 	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories/{directoryId}/users/{accountId}/role-assignments", handler.RoleAssignments)
 	mux.HandleFunc("GET /admin/v1/orgs/{orgId}/users", handler.ManagedUsers)
 	mux.HandleFunc("GET /admin/v1/orgs/{orgId}/directory/users/{accountId}/last-active-dates", handler.UserLastActiveDates)
+	mux.HandleFunc("GET /admin/v1/orgs/{orgId}/events", handler.Events)
+	mux.HandleFunc("GET /admin/v1/orgs/{orgId}/events-stream", handler.Events)
+	mux.HandleFunc("GET /admin/v1/orgs/{orgId}/events/{eventId}", handler.EventDetails)
+	mux.HandleFunc("GET /admin/v1/orgs/{orgId}/event-actions", handler.EventActions)
 	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories/{directoryId}/users", handler.DirectoryUsers)
 	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories/{directoryId}/users/count", handler.DirectoryUserCount)
 	mux.HandleFunc("POST /admin/v2/orgs/{orgId}/directories/{directoryId}/users/search", handler.SearchUsers)
@@ -337,6 +341,29 @@ func TestOrganizationAndGroupAPIJourney(t *testing.T) {
 	}
 	if remainingGroupRoles != 0 {
 		t.Fatalf("group deletion left %d role bindings", remainingGroupRoles)
+	}
+	eventsPath := "/admin/v1/orgs/" + organization.ID + "/events"
+	call(http.MethodGet, eventsPath+"?limit=501", adminToken, nil, http.StatusBadRequest)
+	call(http.MethodGet, eventsPath+"?from=invalid", adminToken, nil, http.StatusBadRequest)
+	call(http.MethodGet, eventsPath+"?product=unknown", adminToken, nil, http.StatusBadRequest)
+	eventPage := call(http.MethodGet, eventsPath+"?action=group.deleted&actor="+adminID+"&q=group&limit=1", adminToken, nil, http.StatusOK)
+	eventData := eventPage["data"].([]any)
+	if len(eventData) != 1 || eventData[0].(map[string]any)["attributes"].(map[string]any)["action"] != "group.deleted" {
+		t.Fatalf("unexpected filtered audit events: %#v", eventPage)
+	}
+	eventID := eventData[0].(map[string]any)["id"].(string)
+	eventDetail := call(http.MethodGet, eventsPath+"/"+eventID, adminToken, nil, http.StatusOK)
+	if eventDetail["data"].(map[string]any)["id"] != eventID {
+		t.Fatalf("unexpected audit event detail: %#v", eventDetail)
+	}
+	call(http.MethodGet, eventsPath+"/999999999", adminToken, nil, http.StatusNotFound)
+	stream := call(http.MethodGet, "/admin/v1/orgs/"+organization.ID+"/events-stream?limit=2&sortOrder=asc", adminToken, nil, http.StatusOK)
+	if len(stream["data"].([]any)) != 2 || stream["meta"].(map[string]any)["next"] == "" {
+		t.Fatalf("unexpected audit polling page: %#v", stream)
+	}
+	actions := call(http.MethodGet, "/admin/v1/orgs/"+organization.ID+"/event-actions", adminToken, nil, http.StatusOK)
+	if len(actions["data"].([]any)) != len(organizationEventActions) {
+		t.Fatalf("unexpected audit action catalog: %#v", actions)
 	}
 
 	audit, err := st.OrganizationAuditEvents(ctx, organization.ID, 20)

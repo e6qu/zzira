@@ -117,4 +117,12 @@ test('site admin manages a directory group and its audited membership', async ({
   await expect(page).toHaveURL(/\/admin\?saved=Group\+deleted$/);
   await expect(page.locator('.admin-group').filter({ has: page.getByRole('heading', { name: groupName }) })).toHaveCount(0);
   await expect(page.locator('.admin-audit')).toContainText('group.deleted');
+  await page.getByLabel('Search audit log').fill(groupName);
+  await page.getByLabel('Action').selectOption('group.deleted');
+  await page.getByRole('button', { name: 'Filter events' }).click();
+  await expect(page).toHaveURL(/auditAction=group.deleted/);
+  await expect(page.locator('.admin-audit')).toContainText('group.deleted');
+  await expect(page.locator('.admin-audit')).not.toContainText('group.created');
+  await page.getByRole('link', { name: 'Clear filters' }).click();
+  await expect(page).toHaveURL('/admin');
 });

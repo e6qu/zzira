@@ -66,6 +66,8 @@ type OrganizationAuditEvent struct {
 	ID             int64          `json:"id"`
 	OrganizationID string         `json:"organizationId"`
 	ActorID        string         `json:"actorId,omitempty"`
+	ActorName      string         `json:"-"`
+	ActorEmail     string         `json:"-"`
 	Action         string         `json:"action"`
 	TargetType     string         `json:"targetType"`
 	TargetID       string         `json:"targetId"`

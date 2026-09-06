@@ -66,7 +66,8 @@
 
     <section class="surface-card admin-section" aria-labelledby="admin-audit-title">
       <header><div><span class="eyebrow">Evidence</span><h2 id="admin-audit-title">Audit log</h2></div><p>Directory changes are recorded with their actor and target.</p></header>
-      <ol class="admin-audit">{{range .Data.Audit}}<li><span class="admin-audit-mark" aria-hidden="true"></span><div><strong>{{.Action}}</strong><p>{{.TargetType}} · <code>{{.TargetID}}</code></p><small>{{.CreatedAt}} · actor {{.ActorID}}</small></div></li>{{else}}<li class="empty-state"><strong>No administration changes yet</strong></li>{{end}}</ol>
+      <form class="admin-audit-filters" method="get" action="/admin" role="search"><label for="admin-audit-query">Search audit log</label><input id="admin-audit-query" name="auditQuery" value="{{.Data.AuditQuery}}" placeholder="Actor, action, target, or detail"><label for="admin-audit-action">Action</label><select id="admin-audit-action" name="auditAction"><option value="">All actions</option>{{range .Data.AuditActions}}<option value="{{.Value}}" {{if eq .Value $.Data.AuditAction}}selected{{end}}>{{.Name}}</option>{{end}}</select><button class="btn" type="submit">Filter events</button>{{if or .Data.AuditQuery .Data.AuditAction}}<a href="/admin">Clear filters</a>{{end}}</form>
+      <ol class="admin-audit">{{range .Data.Audit}}<li><span class="admin-audit-mark" aria-hidden="true"></span><div><strong>{{.Action}}</strong><p>{{.TargetType}} · <code>{{.TargetID}}</code></p><small>{{.CreatedAt}} · {{if .ActorName}}{{.ActorName}}{{else}}actor {{.ActorID}}{{end}}</small></div></li>{{else}}<li class="empty-state"><strong>No administration changes match these filters</strong></li>{{end}}</ol>
     </section>
   </div>
 </main>

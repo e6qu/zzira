@@ -419,6 +419,47 @@
         "docs/ADMIN.md"
       ],
       "notes": "User statistics report account lifecycle and effective role counts for one or all authorized directories."
+    },
+    {
+      "operationId": "organization-admin:GET:/admin/v1/orgs/{orgId}/events",
+      "status": "partial",
+      "evidence": [
+        "internal/admin/events.go",
+        "internal/admin/http_test.go",
+        "e2e/admin.spec.ts",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Immutable organization audit events support text, action, actor, IP, product, location, time, limit, and cursor filters with Jira-shaped resources; request metadata capture and central rate limiting remain."
+    },
+    {
+      "operationId": "organization-admin:GET:/admin/v1/orgs/{orgId}/events-stream",
+      "status": "partial",
+      "evidence": [
+        "internal/admin/events.go",
+        "internal/admin/http_test.go",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Polling returns ascending or descending audit pages with processedAt, time bounds, limits, and reusable opaque cursors; long-lived keyset cursor state remains."
+    },
+    {
+      "operationId": "organization-admin:GET:/admin/v1/orgs/{orgId}/events/{eventId}",
+      "status": "partial",
+      "evidence": [
+        "internal/admin/events.go",
+        "internal/admin/http_test.go",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Event detail returns actor, target context, organization container, immutable attributes, links, and exact not-found behavior."
+    },
+    {
+      "operationId": "organization-admin:GET:/admin/v1/orgs/{orgId}/event-actions",
+      "status": "partial",
+      "evidence": [
+        "internal/admin/events.go",
+        "internal/admin/http_test.go",
+        "docs/ADMIN.md"
+      ],
+      "notes": "The action catalog covers every organization mutation currently emitted by ZZIRA; locale negotiation and future product action groups remain."
     }
   ]
 }

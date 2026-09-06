@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 47,
+  "assessedTotal": 51,
   "counts": {
     "delivered": 0,
-    "partial": 40,
+    "partial": 44,
     "missing": 7,
-    "unassessed": 1160
+    "unassessed": 1156
   },
   "countsByFamily": {
     "automation": {
@@ -42,9 +42,9 @@
     },
     "organization-admin": {
       "delivered": 0,
-      "partial": 32,
+      "partial": 36,
       "missing": 0,
-      "unassessed": 15
+      "unassessed": 11
     }
   },
   "operations": [
@@ -9406,33 +9406,50 @@
       "operationId": "organization-admin:GET:/admin/v1/orgs/{orgId}/event-actions",
       "family": "organization-admin",
       "hostClass": "central",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/admin/events.go",
+        "internal/admin/http_test.go",
+        "docs/ADMIN.md"
+      ],
+      "notes": "The action catalog covers every organization mutation currently emitted by ZZIRA; locale negotiation and future product action groups remain."
     },
     {
       "operationId": "organization-admin:GET:/admin/v1/orgs/{orgId}/events",
       "family": "organization-admin",
       "hostClass": "central",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/admin/events.go",
+        "internal/admin/http_test.go",
+        "e2e/admin.spec.ts",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Immutable organization audit events support text, action, actor, IP, product, location, time, limit, and cursor filters with Jira-shaped resources; request metadata capture and central rate limiting remain."
     },
     {
       "operationId": "organization-admin:GET:/admin/v1/orgs/{orgId}/events-stream",
       "family": "organization-admin",
       "hostClass": "central",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/admin/events.go",
+        "internal/admin/http_test.go",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Polling returns ascending or descending audit pages with processedAt, time bounds, limits, and reusable opaque cursors; long-lived keyset cursor state remains."
     },
     {
       "operationId": "organization-admin:GET:/admin/v1/orgs/{orgId}/events/{eventId}",
       "family": "organization-admin",
       "hostClass": "central",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/admin/events.go",
+        "internal/admin/http_test.go",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Event detail returns actor, target context, organization container, immutable attributes, links, and exact not-found behavior."
     },
     {
       "operationId": "organization-admin:GET:/admin/v1/orgs/{orgId}/policies",

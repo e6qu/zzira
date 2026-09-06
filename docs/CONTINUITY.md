@@ -51,7 +51,7 @@ does not publish them as one OpenAPI document.
   strict pin validation, and focused generator tests.
 - Added exact-operation coverage generation. The first reviewed assessment
   records Automation as 8 partial and 7 missing operations. The organization
-  slices add 32 partial assessments; 1,160 operations remain explicitly
+  slices add 36 partial assessments; 1,156 operations remain explicitly
   unassessed rather than being inferred from route names.
 - Added organization, site, product, internal-directory, directory-user, group,
   group-member, role-binding, and organization-audit persistence with automatic
@@ -91,6 +91,9 @@ does not publish them as one OpenAPI document.
 - Completed the remaining directory-user contract operation with durable
   two-second visible product activity and exact per-product last-active dates,
   mapped product keys, organization-add timestamps, and cursor validation.
+- Exposed immutable organization audit evidence through event query, polling,
+  detail, and action-catalog APIs. Added text/action/actor/network/product/time
+  filters, ascending polling cursors, and shared browser audit search.
 
 Validation after the organization foundation:
 
@@ -146,10 +149,20 @@ Validation after directory-user activity completion:
 - Exact coverage is 47 of 1,207 operations assessed: 40 partial, 7 missing, and
   1,160 explicitly unassessed.
 
+Validation after organization audit completion:
+
+- The organization API integration journey passes query validation and filters,
+  500-item limits, ascending polling and next cursors, event detail, missing
+  events, and the action catalog.
+- The focused Chromium administration journey passes audit text/action filters,
+  clear-filter navigation, WCAG scans, dark mode, and 320 px reflow.
+- Exact coverage is 51 of 1,207 operations assessed: 44 partial, 7 missing, and
+  1,156 explicitly unassessed.
+
 ## Current change
 
-1. Add organization domains, authentication policies, identity-provider
-   configuration, organization events, and the remaining central audit APIs.
+1. Add organization domains, authentication policies, and identity-provider
+   configuration.
 2. Extend revocation coverage from browser/API authorization to local replicas
    and queued mutations where the affected resource can already be cached.
 

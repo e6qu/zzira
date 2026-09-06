@@ -27,12 +27,34 @@ type adminPageData struct {
 	Groups                            []adminGroupRow
 	Users                             []*models.User
 	Audit                             []*models.OrganizationAuditEvent
+	AuditActions                      []adminAuditAction
+	AuditQuery                        string
+	AuditAction                       string
 	Error                             string
 	Saved                             string
 	GroupName                         string
 	GroupDescription                  string
 	CurrentUserID                     string
 	InvitationNotificationsConfigured bool
+}
+
+type adminAuditAction struct {
+	Value string
+	Name  string
+}
+
+var adminAuditActions = []adminAuditAction{
+	{Value: "group.created", Name: "Group created"},
+	{Value: "group.deleted", Name: "Group deleted"},
+	{Value: "group.member.added", Name: "Group member added"},
+	{Value: "group.member.removed", Name: "Group member removed"},
+	{Value: "role.assigned", Name: "Role assigned"},
+	{Value: "role.revoked", Name: "Role revoked"},
+	{Value: "user.invited", Name: "User invited"},
+	{Value: "user.profile.updated", Name: "User profile updated"},
+	{Value: "user.removed", Name: "User removed"},
+	{Value: "user.restored", Name: "User restored"},
+	{Value: "user.suspended", Name: "User suspended"},
 }
 
 func (h *Handler) adminData(r *http.Request, workspaceID, message string) (adminPageData, error) {
@@ -59,6 +81,9 @@ func (h *Handler) adminData(r *http.Request, workspaceID, message string) (admin
 		Groups:                            []adminGroupRow{},
 		Users:                             []*models.User{},
 		Audit:                             []*models.OrganizationAuditEvent{},
+		AuditActions:                      adminAuditActions,
+		AuditQuery:                        strings.TrimSpace(r.URL.Query().Get("auditQuery")),
+		AuditAction:                       r.URL.Query().Get("auditAction"),
 		Error:                             message,
 		Saved:                             r.URL.Query().Get("saved"),
 		InvitationNotificationsConfigured: h.InvitationNotificationsConfigured,
@@ -96,7 +121,9 @@ func (h *Handler) adminData(r *http.Request, workspaceID, message string) (admin
 		}
 		data.Groups = append(data.Groups, adminGroupRow{Group: group, MemberIDs: membership, ProductAccess: productAccess})
 	}
-	data.Audit, err = h.Store.OrganizationAuditEvents(r.Context(), organization.ID, 20)
+	data.Audit, _, err = h.Store.QueryOrganizationAuditEvents(r.Context(), organization.ID, store.OrganizationAuditFilter{
+		Query: data.AuditQuery, Action: data.AuditAction, Limit: 20,
+	})
 	if err != nil {
 		return adminPageData{}, err
 	}

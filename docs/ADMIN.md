@@ -50,6 +50,10 @@ implemented:
 |---|---|
 | GET | `/admin/v1/orgs` |
 | GET | `/admin/v1/orgs/{orgId}` |
+| GET | `/admin/v1/orgs/{orgId}/events` |
+| GET | `/admin/v1/orgs/{orgId}/events-stream` |
+| GET | `/admin/v1/orgs/{orgId}/events/{eventId}` |
+| GET | `/admin/v1/orgs/{orgId}/event-actions` |
 | GET | `/admin/v2/orgs/{orgId}/directories` |
 | GET/POST | `/admin/v2/orgs/{orgId}/directories/{directoryId}/groups` |
 | GET | `/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/count` |
@@ -92,6 +96,14 @@ instance IDs, Jira-compatible product keys, UTC dates and timestamps, the first
 organization membership time, and opaque paging. A user who has never viewed a
 product has an empty `product_access` array.
 
+Organization events expose the same immutable evidence as the browser audit
+log. Query supports text, action, actor, IP, product, location, millisecond time
+bounds, limits up to 500, and opaque paging. The polling endpoint defaults to
+ascending processing order and returns a reusable cursor even at the current
+end of the stream. Event detail and the localized action catalog use the
+published resource shapes. The administration page searches event text and
+filters by action through this shared query path.
+
 Invitation access, group membership, optional email enqueueing, and audit
 evidence commit atomically for each account. A multi-account request returns
 `206 Partial Content` with per-assignment `ERROR` results if an account cannot
@@ -124,8 +136,9 @@ the active plan and are reported as unassessed or missing in operation coverage.
   organization/directory/product discovery, group creation/detail/search/count/
   statistics/deletion, directory-user search/statistics, atomic invitation
   assignments and delivery enqueueing, product activity and last-active dates,
-  membership and role mutations, effective assignments, partial results,
-  conflicts, expansions, and audit persistence.
+  organization event query/poll/detail/action operations, membership and role
+  mutations, effective assignments, partial results, conflicts, expansions,
+  and audit persistence.
 - Playwright covers the complete group and product-access journey,
   invitation-time product/group access, two-second visible product activity,
   managed-profile editing, account lifecycle, ordinary-user denial, WCAG scans,
