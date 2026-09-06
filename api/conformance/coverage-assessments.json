@@ -2430,6 +2430,111 @@
         "migrations/068_service_knowledge_assets.sql",
         "docs/SERVICE_MANAGEMENT.md"
       ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/footer-comments",
+      "status": "partial",
+      "notes": "Lists all visible page footer comments with cursor pagination, storage bodies and four documented sort orders; non-page targets and other body formats remain.",
+      "evidence": [
+        "internal/confluence/http.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki.go",
+        "migrations/073_wiki_footer_comments.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:POST:/wiki/api/v2/footer-comments",
+      "status": "partial",
+      "notes": "Creates page comments and threaded replies from flat or representation-keyed storage bodies, returning the documented 201 and Location header; non-page targets and other body formats remain.",
+      "evidence": [
+        "internal/confluence/http.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki.go",
+        "migrations/073_wiki_footer_comments.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:DELETE:/wiki/api/v2/footer-comments/{comment-id}",
+      "status": "partial",
+      "notes": "Deletes an author-owned comment or an administrator-moderated comment with cascading replies and the documented 204 behavior.",
+      "evidence": [
+        "internal/confluence/http.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki.go",
+        "migrations/073_wiki_footer_comments.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/footer-comments/{comment-id}",
+      "status": "partial",
+      "notes": "Returns a visible page footer comment and optional storage body; historical version and expansion parameters remain.",
+      "evidence": [
+        "internal/confluence/http.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki.go",
+        "migrations/073_wiki_footer_comments.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:PUT:/wiki/api/v2/footer-comments/{comment-id}",
+      "status": "partial",
+      "notes": "Updates an author-owned or administrator-moderated comment with strict next-version concurrency and immutable version persistence; other body formats remain.",
+      "evidence": [
+        "internal/confluence/http.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki.go",
+        "migrations/073_wiki_footer_comments.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/footer-comments/{id}/children",
+      "status": "partial",
+      "notes": "Lists direct visible replies with cursor pagination, storage bodies and all documented sort orders.",
+      "evidence": [
+        "internal/confluence/http.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki.go",
+        "migrations/073_wiki_footer_comments.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{id}/footer-comments",
+      "status": "partial",
+      "notes": "Lists visible top-level footer comments for a page with status validation, cursor pagination, storage bodies and all documented sort orders.",
+      "evidence": [
+        "internal/confluence/http.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki.go",
+        "migrations/073_wiki_footer_comments.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
     }
   ]
 }

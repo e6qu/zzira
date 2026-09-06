@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 214,
+  "assessedTotal": 221,
   "counts": {
     "delivered": 0,
-    "partial": 207,
+    "partial": 214,
     "missing": 7,
-    "unassessed": 993
+    "unassessed": 986
   },
   "countsByFamily": {
     "automation": {
@@ -18,9 +18,9 @@
     },
     "confluence": {
       "delivered": 0,
-      "partial": 0,
+      "partial": 7,
       "missing": 0,
-      "unassessed": 348
+      "unassessed": 341
     },
     "jira-platform": {
       "delivered": 0,
@@ -9290,49 +9290,103 @@
       "operationId": "confluence-v2:GET:/wiki/api/v2/footer-comments",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/http.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki.go",
+        "migrations/073_wiki_footer_comments.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Lists all visible page footer comments with cursor pagination, storage bodies and four documented sort orders; non-page targets and other body formats remain."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/footer-comments",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/http.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki.go",
+        "migrations/073_wiki_footer_comments.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Creates page comments and threaded replies from flat or representation-keyed storage bodies, returning the documented 201 and Location header; non-page targets and other body formats remain."
     },
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/footer-comments/{comment-id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/http.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki.go",
+        "migrations/073_wiki_footer_comments.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Deletes an author-owned comment or an administrator-moderated comment with cascading replies and the documented 204 behavior."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/footer-comments/{comment-id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/http.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki.go",
+        "migrations/073_wiki_footer_comments.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Returns a visible page footer comment and optional storage body; historical version and expansion parameters remain."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/footer-comments/{comment-id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/http.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki.go",
+        "migrations/073_wiki_footer_comments.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Updates an author-owned or administrator-moderated comment with strict next-version concurrency and immutable version persistence; other body formats remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/footer-comments/{id}/children",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/http.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki.go",
+        "migrations/073_wiki_footer_comments.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Lists direct visible replies with cursor pagination, storage bodies and all documented sort orders."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/footer-comments/{id}/likes/count",
@@ -9610,9 +9664,18 @@
       "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{id}/footer-comments",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/http.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki.go",
+        "migrations/073_wiki_footer_comments.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Lists visible top-level footer comments for a page with status validation, cursor pagination, storage bodies and all documented sort orders."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{id}/inline-comments",

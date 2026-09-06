@@ -37,3 +37,16 @@ type WikiPage struct {
 	Body        WikiBody    `json:"body"`
 	Version     WikiVersion `json:"version"`
 }
+
+type WikiFooterComment struct {
+	ID              string      `json:"id"`
+	PageID          string      `json:"pageId"`
+	SpaceID         string      `json:"-"`
+	ParentCommentID string      `json:"parentCommentId,omitempty"`
+	AuthorID        string      `json:"authorId"`
+	AuthorName      string      `json:"-"`
+	CreatedAt       string      `json:"createdAt"`
+	UpdatedAt       string      `json:"-"`
+	Body            WikiBody    `json:"body"`
+	Version         WikiVersion `json:"version"`
+}

@@ -53,3 +53,48 @@ func (s *Service) SaveWikiPage(ctx context.Context, ws, actor string, p models.W
 	}
 	return s.Store.SaveWikiPage(ctx, ws, actor, p)
 }
+
+func (s *Service) CreateWikiFooterComment(ctx context.Context, ws, actor string, comment models.WikiFooterComment) (*models.WikiFooterComment, error) {
+	if err := validateWikiComment(comment); err != nil {
+		return nil, err
+	}
+	if comment.PageID == "" && comment.ParentCommentID == "" {
+		return nil, fmt.Errorf("%w: pageId or parentCommentId is required", store.ErrWikiValidation)
+	}
+	if comment.PageID != "" && comment.ParentCommentID != "" {
+		return nil, fmt.Errorf("%w: choose either pageId or parentCommentId", store.ErrWikiValidation)
+	}
+	return s.Store.CreateWikiFooterComment(ctx, ws, actor, comment)
+}
+
+func (s *Service) UpdateWikiFooterComment(ctx context.Context, ws, actor string, comment models.WikiFooterComment) (*models.WikiFooterComment, error) {
+	if comment.ID == "" {
+		return nil, fmt.Errorf("%w: comment id is required", store.ErrWikiValidation)
+	}
+	if comment.Version.Number < 2 {
+		return nil, fmt.Errorf("%w: the next comment version is required", store.ErrWikiValidation)
+	}
+	if err := validateWikiComment(comment); err != nil {
+		return nil, err
+	}
+	return s.Store.UpdateWikiFooterComment(ctx, ws, actor, comment)
+}
+
+func validateWikiComment(comment models.WikiFooterComment) error {
+	if comment.Body.Representation != "storage" {
+		return fmt.Errorf("%w: only the storage comment representation is currently supported", store.ErrWikiValidation)
+	}
+	if strings.TrimSpace(comment.Body.Value) == "" {
+		return fmt.Errorf("%w: comment body is required", store.ErrWikiValidation)
+	}
+	if len(comment.Body.Value) > 1<<20 {
+		return fmt.Errorf("%w: comment body must be at most 1 MiB", store.ErrWikiValidation)
+	}
+	if _, err := wikimarkup.Render(comment.Body.Value); err != nil {
+		return fmt.Errorf("%w: %v", store.ErrWikiValidation, err)
+	}
+	if len(comment.Version.Message) > 2000 {
+		return fmt.Errorf("%w: version message must be at most 2000 bytes", store.ErrWikiValidation)
+	}
+	return nil
+}

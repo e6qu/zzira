@@ -129,6 +129,10 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	page := create(public, "Release guide", "current")
 	draft := create(public, "Private draft", "draft")
 	secret := create(private, "Secret guide", "current")
+	secretComment := call(actor, "POST", "/footer-comments", map[string]any{"pageId": secret.ID, "body": models.WikiBody{Representation: "storage", Value: "<p>Private launch phrase</p>"}}, 201)
+	if secretComment.Header().Get("Location") == "" {
+		t.Fatal("created footer comment omitted Location")
+	}
 	call(member, "GET", "/pages/"+draft.ID+"?status=draft", nil, 404)
 	call(member, "GET", "/pages/"+secret.ID, nil, 404)
 	call(member, "POST", "/pages", map[string]any{"spaceId": private, "title": "Intrusion", "body": models.WikiBody{Representation: "storage", Value: "<p>x</p>"}}, 404)
@@ -137,6 +141,54 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	update := map[string]any{"id": page.ID, "spaceId": public, "title": "Release guide updated", "status": "current", "body": models.WikiBody{Representation: "storage", Value: "<h2>Ready</h2>"}, "version": map[string]any{"number": 2, "message": "Updated release instructions"}}
 	call(member, "PUT", "/pages/"+page.ID, update, 200)
 	call(actor, "PUT", "/pages/"+page.ID, update, 409)
+	topResponse := call(member, "POST", "/footer-comments", map[string]any{"pageId": page.ID, "body": map[string]any{"storage": models.WikiBody{Representation: "storage", Value: "<p>Ready for review</p>"}}}, 201)
+	var top struct {
+		ID      string
+		PageID  string
+		Version models.WikiVersion
+	}
+	if err := json.Unmarshal(topResponse.Body.Bytes(), &top); err != nil {
+		t.Fatal(err)
+	}
+	if top.ID == "" || top.PageID != page.ID || top.Version.Number != 1 {
+		t.Fatalf("unexpected footer comment: %+v", top)
+	}
+	replyResponse := call(actor, "POST", "/footer-comments", map[string]any{"parentCommentId": top.ID, "body": models.WikiBody{Representation: "storage", Value: "<p>Approval recorded</p>"}}, 201)
+	var reply struct {
+		ID, ParentCommentID string
+	}
+	if err := json.Unmarshal(replyResponse.Body.Bytes(), &reply); err != nil {
+		t.Fatal(err)
+	}
+	if reply.ID == "" || reply.ParentCommentID != top.ID {
+		t.Fatalf("unexpected footer reply: %+v", reply)
+	}
+	pageComments := call(actor, "GET", "/pages/"+page.ID+"/footer-comments?body-format=storage&sort=-created-date", nil, 200)
+	if !strings.Contains(pageComments.Body.String(), "Ready for review") || strings.Contains(pageComments.Body.String(), "Approval recorded") {
+		t.Fatalf("page collection should contain top-level comments only: %s", pageComments.Body.String())
+	}
+	children := call(member, "GET", "/footer-comments/"+top.ID+"/children?body-format=storage", nil, 200)
+	if !strings.Contains(children.Body.String(), "Approval recorded") {
+		t.Fatal(children.Body.String())
+	}
+	allVisible := call(member, "GET", "/footer-comments?body-format=storage&sort=modified-date", nil, 200)
+	if !strings.Contains(allVisible.Body.String(), "Ready for review") || !strings.Contains(allVisible.Body.String(), "Approval recorded") || strings.Contains(allVisible.Body.String(), "Private launch phrase") {
+		t.Fatalf("visible footer comment collection is incorrect: %s", allVisible.Body.String())
+	}
+	call(member, "PUT", "/footer-comments/"+reply.ID, map[string]any{"version": map[string]int{"number": 2}, "body": models.WikiBody{Representation: "storage", Value: "<p>Changed by another user</p>"}}, 404)
+	commentUpdate := map[string]any{"version": map[string]any{"number": 2, "message": "Clarified review state"}, "body": models.WikiBody{Representation: "storage", Value: "<p>Ready for final review</p>"}}
+	call(actor, "PUT", "/footer-comments/"+top.ID, commentUpdate, 200)
+	call(member, "PUT", "/footer-comments/"+top.ID, commentUpdate, 409)
+	call(member, "PUT", "/footer-comments/"+top.ID, map[string]any{"version": map[string]int{"number": 3}, "body": models.WikiBody{Representation: "storage", Value: "<script>unsafe</script>"}}, 400)
+	gotComment := call(actor, "GET", "/footer-comments/"+top.ID+"?body-format=storage", nil, 200)
+	if !strings.Contains(gotComment.Body.String(), "Ready for final review") || !strings.Contains(gotComment.Body.String(), "Clarified review state") {
+		t.Fatal(gotComment.Body.String())
+	}
+	call(member, "DELETE", "/footer-comments/"+reply.ID, nil, 404)
+	call(actor, "DELETE", "/footer-comments/"+reply.ID, nil, 204)
+	call(actor, "GET", "/footer-comments/"+reply.ID, nil, 404)
+	call(member, "DELETE", "/footer-comments/"+top.ID, nil, 204)
+	call(actor, "GET", "/footer-comments/"+top.ID, nil, 404)
 	versions := call(actor, "GET", "/pages/"+page.ID+"/versions", nil, 200)
 	if !strings.Contains(versions.Body.String(), "Updated release instructions") {
 		t.Fatal(versions.Body.String())
@@ -171,7 +223,7 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, a := range actions {
-		if strings.Contains(string(a.Payload), "Private draft") || strings.Contains(string(a.Payload), "Secret guide") || strings.Contains(string(a.Payload), "PRIVATE") {
+		if strings.Contains(string(a.Payload), "Private draft") || strings.Contains(string(a.Payload), "Secret guide") || strings.Contains(string(a.Payload), "PRIVATE") || strings.Contains(string(a.Payload), "Private launch phrase") {
 			t.Fatalf("private wiki action leaked: %s", a.Payload)
 		}
 	}

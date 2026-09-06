@@ -21,6 +21,7 @@ type wikiData struct {
 	Tree                                  []wikiTreeNode
 	Page                                  *models.WikiPage
 	Versions                              []models.WikiVersion
+	Comments                              []wikiCommentNode
 	Error                                 string
 	CanAdmin                              bool
 	Editing                               bool
@@ -34,6 +35,29 @@ type wikiData struct {
 type wikiTreeNode struct {
 	Page     *models.WikiPage
 	Children []wikiTreeNode
+}
+
+type wikiCommentNode struct {
+	Comment     *models.WikiFooterComment
+	Replies     []wikiCommentNode
+	CanManage   bool
+	NextVersion int
+}
+
+func wikiCommentTree(comments []*models.WikiFooterComment, userID string, admin bool) []wikiCommentNode {
+	children := map[string][]*models.WikiFooterComment{}
+	for _, comment := range comments {
+		children[comment.ParentCommentID] = append(children[comment.ParentCommentID], comment)
+	}
+	var branch func(string) []wikiCommentNode
+	branch = func(parent string) []wikiCommentNode {
+		nodes := []wikiCommentNode{}
+		for _, comment := range children[parent] {
+			nodes = append(nodes, wikiCommentNode{Comment: comment, Replies: branch(comment.ID), CanManage: admin || comment.AuthorID == userID, NextVersion: comment.Version.Number + 1})
+		}
+		return nodes
+	}
+	return branch("")
 }
 
 func wikiPageTree(pages []*models.WikiPage) []wikiTreeNode {
@@ -217,8 +241,134 @@ func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 			http.Error(w, "Could not load page history.", 500)
 			return
 		}
+		comments, commentErr := h.Store.WikiFooterCommentThread(r.Context(), ws, user.ID, page.ID)
+		if commentErr != nil {
+			http.Error(w, "Could not load page comments.", 500)
+			return
+		}
+		admin, adminErr := h.Store.IsAdmin(r.Context(), ws, user.ID)
+		if adminErr != nil {
+			http.Error(w, "Could not load comment permissions.", 500)
+			return
+		}
+		data.Comments = wikiCommentTree(comments, user.ID, admin)
 	}
 	h.writeWorkspacePageStatus(w, r, "page_wiki_page", user, ws, data, "wiki", "", status)
+}
+
+func (h *Handler) WikiCommentCreate(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	page, err := h.wikiPageForComment(r, ws, user.ID)
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	if parentID := r.PostFormValue("parentId"); parentID != "" {
+		parent, parentErr := h.Store.WikiFooterComment(r.Context(), ws, user.ID, parentID)
+		if parentErr != nil || parent.PageID != page.ID {
+			http.NotFound(w, r)
+			return
+		}
+	}
+	comment := models.WikiFooterComment{PageID: page.ID, Body: models.WikiBody{Representation: "storage", Value: r.PostFormValue("body")}}
+	if parentID := r.PostFormValue("parentId"); parentID != "" {
+		comment.PageID = ""
+		comment.ParentCommentID = parentID
+	}
+	created, err := h.Commands.CreateWikiFooterComment(r.Context(), ws, user.ID, comment)
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	redirectLocal(w, r, wikiPageURL(page)+"#comment-"+created.ID)
+}
+
+func (h *Handler) WikiCommentUpdate(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	page, err := h.wikiPageForComment(r, ws, user.ID)
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	version, err := strconv.Atoi(r.PostFormValue("version"))
+	if err != nil || version < 2 {
+		http.Error(w, "Invalid comment version.", 400)
+		return
+	}
+	existing, err := h.Store.WikiFooterComment(r.Context(), ws, user.ID, r.PathValue("comment"))
+	if err != nil || existing.PageID != page.ID {
+		http.NotFound(w, r)
+		return
+	}
+	comment, err := h.Commands.UpdateWikiFooterComment(r.Context(), ws, user.ID, models.WikiFooterComment{ID: r.PathValue("comment"), Body: models.WikiBody{Representation: "storage", Value: r.PostFormValue("body")}, Version: models.WikiVersion{Number: version, Message: r.PostFormValue("message")}})
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	if comment.PageID != page.ID {
+		http.NotFound(w, r)
+		return
+	}
+	redirectLocal(w, r, wikiPageURL(page)+"#comment-"+comment.ID)
+}
+
+func (h *Handler) WikiCommentDelete(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	page, err := h.wikiPageForComment(r, ws, user.ID)
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	comment, err := h.Store.WikiFooterComment(r.Context(), ws, user.ID, r.PathValue("comment"))
+	if err != nil || comment.PageID != page.ID {
+		if err == nil {
+			err = pgx.ErrNoRows
+		}
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	if err := h.Store.DeleteWikiFooterComment(r.Context(), ws, user.ID, comment.ID); err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	redirectLocal(w, r, wikiPageURL(page)+"#wiki-discussion")
+}
+
+func (h *Handler) wikiPageForComment(r *http.Request, ws, userID string) (*models.WikiPage, error) {
+	page, err := h.Store.WikiPage(r.Context(), ws, userID, r.PathValue("page"))
+	if err != nil {
+		return nil, err
+	}
+	if page.SpaceID != r.PathValue("space") || page.Status != "current" {
+		return nil, pgx.ErrNoRows
+	}
+	return page, nil
+}
+
+func wikiPageURL(page *models.WikiPage) string {
+	return "/wiki/spaces/" + page.SpaceID + "/pages/" + page.ID
 }
 
 func (h *Handler) WikiTrash(w http.ResponseWriter, r *http.Request) {

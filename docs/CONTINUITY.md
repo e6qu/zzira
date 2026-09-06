@@ -1349,10 +1349,30 @@ Validation after service operations intake and linkage:
   Chromium journey discovers the new portal types, submits a change, links it
   to an incident, and retains WCAG and 320 px checks.
 
+Validation after Confluence page footer comments:
+
+- Migration 073 adds page-scoped footer comments, arbitrary-depth replies and
+  immutable comment versions. Current page and space visibility applies to
+  every read and write; private-space comments stay out of both REST results
+  and local-first action pages.
+- Seven pinned Confluence Cloud v2 operations now cover global, page, direct
+  child and single-comment reads plus create, optimistic update and delete.
+  Writes accept both documented body shapes, validate the storage markup, keep
+  author ownership, allow administrator moderation, and return the pinned
+  status, pagination and Location behavior.
+- The page journey presents accessible threaded discussion with reply, edit and
+  cascading-delete controls. PostgreSQL coverage proves private-space
+  isolation, author/admin authorization, stale-write rejection, safe markup,
+  pagination shapes and lifecycle behavior; Chromium proves the complete
+  authoring journey, axe checks and 320 px reflow.
+- Exact reviewed API coverage is 221 of 1,207 operations: 214 partial, 7
+  missing, and 986 unassessed. Confluence coverage begins at 7 of 348 reviewed.
+
 ## Current change
 
-1. Continue into the Confluence v1/v2 contract and knowledge collaboration
-   workstreams.
+1. Continue Confluence v1/v2 contract and knowledge collaboration with page
+   attachments, labels and restrictions, then expose comment versions, likes
+   and permitted operations.
 2. Return to advanced service operations risk, CAB approval, on-call and
    post-incident review configuration after the next knowledge slice.
 

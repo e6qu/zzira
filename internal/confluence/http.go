@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -49,6 +50,8 @@ func writeError(w http.ResponseWriter, err error) {
 	case errors.Is(err, store.ErrProjectPermission):
 		failure(w, 403, err.Error())
 	case errors.Is(err, store.ErrWikiConflict):
+		failure(w, 409, err.Error())
+	case errors.Is(err, store.ErrWikiCommentConflict):
 		failure(w, 409, err.Error())
 	case errors.Is(err, store.ErrWikiValidation):
 		failure(w, 400, err.Error())
@@ -183,9 +186,261 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			values = append(values, v)
 		}
 		h.list(w, r, values)
+	case len(parts) == 3 && parts[0] == "pages" && parts[2] == "footer-comments" && r.Method == "GET":
+		h.footerComments(w, r, ws, actor, parts[1], "")
+	case len(parts) == 1 && parts[0] == "footer-comments" && r.Method == "GET":
+		h.footerComments(w, r, ws, actor, "", "")
+	case len(parts) == 1 && parts[0] == "footer-comments" && r.Method == "POST":
+		h.createFooterComment(w, r, ws, actor)
+	case len(parts) == 2 && parts[0] == "footer-comments" && r.Method == "GET":
+		h.footerComment(w, r, ws, actor, parts[1])
+	case len(parts) == 2 && parts[0] == "footer-comments" && r.Method == "PUT":
+		h.updateFooterComment(w, r, ws, actor, parts[1])
+	case len(parts) == 2 && parts[0] == "footer-comments" && r.Method == "DELETE":
+		h.deleteFooterComment(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "footer-comments" && parts[2] == "children" && r.Method == "GET":
+		h.footerComments(w, r, ws, actor, "", parts[1])
 	default:
 		failure(w, 404, "This Confluence resource is not implemented.")
 	}
+}
+
+type footerCommentWrite struct {
+	PageID          string          `json:"pageId"`
+	ParentCommentID string          `json:"parentCommentId"`
+	BlogPostID      string          `json:"blogPostId"`
+	AttachmentID    string          `json:"attachmentId"`
+	CustomContentID string          `json:"customContentId"`
+	Body            json.RawMessage `json:"body"`
+}
+
+type footerCommentUpdate struct {
+	Body    json.RawMessage `json:"body"`
+	Links   json.RawMessage `json:"_links"`
+	Version struct {
+		Number  int    `json:"number"`
+		Message string `json:"message"`
+	} `json:"version"`
+}
+
+func decodeCommentBody(raw json.RawMessage) (models.WikiBody, error) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return models.WikiBody{}, fmt.Errorf("comment body is required")
+	}
+	var flat models.WikiBody
+	if err := json.Unmarshal(raw, &flat); err == nil && flat.Representation != "" {
+		return flat, nil
+	}
+	var nested map[string]models.WikiBody
+	if err := json.Unmarshal(raw, &nested); err != nil {
+		return models.WikiBody{}, fmt.Errorf("invalid comment body")
+	}
+	if len(nested) != 1 {
+		return models.WikiBody{}, fmt.Errorf("comment body must contain one representation")
+	}
+	body, ok := nested["storage"]
+	if !ok {
+		return models.WikiBody{}, fmt.Errorf("only the storage comment representation is currently supported")
+	}
+	if body.Representation == "" {
+		body.Representation = "storage"
+	}
+	if body.Representation != "storage" {
+		return models.WikiBody{}, fmt.Errorf("the nested representation must match storage")
+	}
+	return body, nil
+}
+
+func (h *Handler) footerCommentBean(comment *models.WikiFooterComment, body bool) map[string]any {
+	bean := map[string]any{
+		"id": comment.ID, "status": "current", "title": "", "pageId": comment.PageID,
+		"createdAt": comment.CreatedAt, "version": comment.Version,
+		"_links": map[string]string{"webui": "/spaces/" + comment.SpaceID + "/pages/" + comment.PageID + "#comment-" + comment.ID, "base": h.BaseURL + "/wiki"},
+	}
+	if comment.ParentCommentID != "" {
+		bean["parentCommentId"] = comment.ParentCommentID
+	}
+	if body {
+		bean["body"] = map[string]any{"storage": comment.Body}
+	}
+	return bean
+}
+
+func commentQuery(w http.ResponseWriter, r *http.Request, status bool) bool {
+	allowed := []string{"body-format", "sort", "cursor", "limit"}
+	if status {
+		allowed = append(allowed, "status")
+	}
+	if !supportedQuery(w, r, allowed...) || !storageFormat(w, r) {
+		return false
+	}
+	order := r.URL.Query().Get("sort")
+	if order != "" && order != "created-date" && order != "-created-date" && order != "modified-date" && order != "-modified-date" {
+		failure(w, 400, "Unsupported comment sort order.")
+		return false
+	}
+	if status {
+		for _, raw := range r.URL.Query()["status"] {
+			for _, value := range strings.Split(raw, ",") {
+				if value != "" && value != "current" {
+					failure(w, 400, "Only current footer comments are supported.")
+					return false
+				}
+			}
+		}
+	}
+	return true
+}
+
+func sortFooterComments(comments []*models.WikiFooterComment, order string) {
+	if order == "" || order == "created-date" {
+		return
+	}
+	modified := strings.Contains(order, "modified")
+	desc := strings.HasPrefix(order, "-")
+	sort.SliceStable(comments, func(i, j int) bool {
+		left, right := comments[i].CreatedAt, comments[j].CreatedAt
+		if modified {
+			left, right = comments[i].UpdatedAt, comments[j].UpdatedAt
+		}
+		if left == right {
+			leftID, leftErr := strconv.ParseInt(comments[i].ID, 10, 64)
+			rightID, rightErr := strconv.ParseInt(comments[j].ID, 10, 64)
+			if leftErr == nil && rightErr == nil {
+				if desc {
+					return leftID > rightID
+				}
+				return leftID < rightID
+			}
+			left, right = comments[i].ID, comments[j].ID
+		}
+		if desc {
+			return left > right
+		}
+		return left < right
+	})
+}
+
+func (h *Handler) footerComments(w http.ResponseWriter, r *http.Request, ws, actor, pageID, parentID string) {
+	if !commentQuery(w, r, pageID != "") {
+		return
+	}
+	var comments []*models.WikiFooterComment
+	var err error
+	if parentID != "" {
+		comments, err = h.Store.WikiFooterCommentChildren(r.Context(), ws, actor, parentID)
+	} else {
+		if pageID != "" {
+			page, pageErr := h.Store.WikiPage(r.Context(), ws, actor, pageID)
+			if pageErr != nil {
+				writeError(w, pageErr)
+				return
+			}
+			if page.Status != "current" {
+				failure(w, 404, "Page not found with current status.")
+				return
+			}
+		}
+		comments, err = h.Store.WikiFooterComments(r.Context(), ws, actor, pageID)
+	}
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	sortFooterComments(comments, r.URL.Query().Get("sort"))
+	values := make([]any, 0, len(comments))
+	for _, comment := range comments {
+		values = append(values, h.footerCommentBean(comment, r.URL.Query().Get("body-format") != ""))
+	}
+	h.list(w, r, values)
+}
+
+func (h *Handler) footerComment(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
+	if !supportedQuery(w, r, "body-format", "version", "include-properties", "include-operations", "include-likes", "include-versions", "include-version") || !storageFormat(w, r) {
+		return
+	}
+	for _, key := range []string{"version", "include-properties", "include-operations", "include-likes", "include-versions", "include-version"} {
+		if r.URL.Query().Get(key) != "" {
+			failure(w, 400, key+" is not yet supported for footer comments.")
+			return
+		}
+	}
+	comment, err := h.Store.WikiFooterComment(r.Context(), ws, actor, id)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	respond(w, 200, h.footerCommentBean(comment, r.URL.Query().Get("body-format") != ""))
+}
+
+func unsupportedCommentTarget(in footerCommentWrite) bool {
+	return in.BlogPostID != "" || in.AttachmentID != "" || in.CustomContentID != ""
+}
+
+func (h *Handler) createFooterComment(w http.ResponseWriter, r *http.Request, ws, actor string) {
+	if !supportedQuery(w, r) {
+		return
+	}
+	var in footerCommentWrite
+	if !decode(w, r, &in) {
+		return
+	}
+	if unsupportedCommentTarget(in) {
+		failure(w, 400, "Only page footer comments are currently supported.")
+		return
+	}
+	body, err := decodeCommentBody(in.Body)
+	if err != nil {
+		failure(w, 400, err.Error())
+		return
+	}
+	comment, err := h.Commands.CreateWikiFooterComment(r.Context(), ws, actor, models.WikiFooterComment{PageID: in.PageID, ParentCommentID: in.ParentCommentID, Body: body})
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	w.Header().Set("Location", h.BaseURL+"/wiki/api/v2/footer-comments/"+comment.ID)
+	respond(w, 201, h.footerCommentBean(comment, true))
+}
+
+func (h *Handler) updateFooterComment(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
+	if !supportedQuery(w, r) {
+		return
+	}
+	var in footerCommentUpdate
+	if !decode(w, r, &in) {
+		return
+	}
+	body, err := decodeCommentBody(in.Body)
+	if err != nil {
+		failure(w, 400, err.Error())
+		return
+	}
+	comment, err := h.Commands.UpdateWikiFooterComment(r.Context(), ws, actor, models.WikiFooterComment{ID: id, Body: body, Version: models.WikiVersion{Number: in.Version.Number, Message: in.Version.Message}})
+	if err != nil {
+		if errors.Is(err, store.ErrProjectPermission) {
+			failure(w, 404, "Content does not exist or you do not have permission to update it.")
+			return
+		}
+		writeError(w, err)
+		return
+	}
+	respond(w, 200, h.footerCommentBean(comment, true))
+}
+
+func (h *Handler) deleteFooterComment(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
+	if !supportedQuery(w, r) {
+		return
+	}
+	if err := h.Store.DeleteWikiFooterComment(r.Context(), ws, actor, id); err != nil {
+		if errors.Is(err, store.ErrProjectPermission) {
+			failure(w, 404, "Content does not exist or you do not have permission to delete it.")
+			return
+		}
+		writeError(w, err)
+		return
+	}
+	w.WriteHeader(204)
 }
 
 func supportedQuery(w http.ResponseWriter, r *http.Request, allowed ...string) bool {

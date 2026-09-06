@@ -82,7 +82,7 @@ use `/rest/zzira/1`.
 | Project versions and releases | 🟡 | Ten version operations, release hub/lifecycle, fix/affected membership, visible progress and notes; exact limits in [RELEASES.md](../../docs/RELEASES.md) |
 | Metrics and reports | 🟡 | Permission-filtered 7/30/90 day DORA metrics, immutable delivery facts, accessible daily SVG/table and recent production evidence; Jira/Agile report catalog, comparisons, exports, subscriptions and scheduled delivery remain; see `docs/REPORTS.md` |
 | Apps/plugins, diagrams and graphs | ⛔ | installation/runtime modules, diagram authoring and graph/report surfaces remain |
-| Confluence Cloud /wiki/api/v2 spaces and pages | 🟡 | Initial space/page CRUD, parent validation, storage subset, drafts, versions, trash/restore and permission-filtered action log; exact limits in CLOUD_PARITY.md |
+| Confluence Cloud /wiki/api/v2 spaces, pages and footer comments | 🟡 | Initial space/page CRUD, parent validation, storage subset, drafts, versions, trash/restore, threaded footer-comment CRUD across seven reviewed operations, and permission-filtered action log; exact limits in CLOUD_PARITY.md |
 
 ## E2E (browser-proven, Playwright/Chromium)
 
@@ -97,6 +97,7 @@ use `/rest/zzira/1`.
 | Notifications inbox, private API mutations, unread filtering, and open-to-work flow | ✅ |
 | WCAG 2.2 A/AA axe sweep, target sizes, keyboard movement and 320px reflow | ✅ |
 | Service help center, request, queue, SLA, approval, file, notification, feedback, customer and organization management journey | ✅ |
+| Wiki space/page authoring, stale edits, history, threaded footer comments, child pages and trash/restore | ✅ |
 
 ## Load measurement
 
