@@ -351,10 +351,10 @@ body.nav-collapsed .project-switcher-panel a { padding-inline: 9px; }
 .release-counts { display:flex; gap:32px; margin-bottom:0; }.release-counts dd { font-size:24px; margin:4px 0; font-variant-numeric:tabular-nums; }
 .release-section-heading { display:flex; align-items:baseline; justify-content:space-between; gap:12px; flex-wrap:wrap; }
 .release-add { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:16px 0; }.release-add label { width:100%; }.release-add input { min-width:0; max-width:100%; }
-.release-issues { list-style:none; padding:0; }.release-issues li { display:flex; gap:12px; align-items:center; padding:12px 0; border-top:1px solid var(--ds-border); }.release-issues li>div { flex:1; min-width:0; overflow-wrap:anywhere; }.release-issues form { margin:0; }
+.release-issues,.delivery-evidence-list { list-style:none; padding:0; }.release-issues li,.delivery-evidence-list li { display:flex; gap:12px; align-items:center; padding:12px 0; border-top:1px solid var(--ds-border); }.release-issues li>div,.delivery-evidence-list li>div { flex:1; min-width:0; overflow-wrap:anywhere; }.release-issues form { margin:0; }
 .release-secondary-action,.release-delete { margin-top:20px; }.release-delete summary { cursor:pointer; }.release-edit { max-width:650px; margin-bottom:24px; }.release-notes p { overflow-wrap:anywhere; }
 @media(max-width:900px) { .release-layout { grid-template-columns:1fr; } }
-@media(max-width:540px) { .release-row { grid-template-columns:1fr; }.release-issues li { flex-wrap:wrap; }.release-counts { gap:18px; }.release-add input { width:100%; } }
+@media(max-width:540px) { .release-row { grid-template-columns:1fr; }.release-issues li,.delivery-evidence-list li { flex-wrap:wrap; }.release-counts { gap:18px; }.release-add input { width:100%; } }
 
 .issue-version-links { display:flex; flex-wrap:wrap; gap:8px 16px; margin:12px 0; font-size:12px; }
 

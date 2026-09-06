@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 130,
+  "assessedTotal": 139,
   "counts": {
     "delivered": 0,
-    "partial": 123,
+    "partial": 132,
     "missing": 7,
-    "unassessed": 1077
+    "unassessed": 1068
   },
   "countsByFamily": {
     "automation": {
@@ -36,9 +36,9 @@
     },
     "jira-software": {
       "delivered": 0,
-      "partial": 6,
+      "partial": 15,
       "missing": 0,
-      "unassessed": 99
+      "unassessed": 90
     },
     "organization-admin": {
       "delivered": 0,
@@ -5713,73 +5713,118 @@
       "operationId": "jira-software:POST:/rest/builds/0.1/bulk",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/delivery_test.go",
+        "internal/api3/delivery.go",
+        "internal/store/delivery.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Stores valid build snapshots with monotonic update ordering, issue-key/ID associations, per-build rejection, unknown associations, provider properties, issue/release UI evidence and the documented 202 result; Connect JWT scopes, rate limits and every optional field constraint remain."
     },
     {
       "operationId": "jira-software:DELETE:/rest/builds/0.1/bulkByProperties",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/delivery_test.go",
+        "internal/api3/delivery.go",
+        "internal/store/delivery.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Deletes property-matched builds with optional update-sequence protection and the documented accepted response; execution is immediate rather than asynchronous."
     },
     {
       "operationId": "jira-software:DELETE:/rest/builds/0.1/pipelines/{pipelineId}/builds/{buildNumber}",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/delivery_test.go",
+        "internal/api3/delivery.go",
+        "internal/store/delivery.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Accepts idempotent keyed deletion with optional inclusive update-sequence protection; execution is immediate rather than asynchronous."
     },
     {
       "operationId": "jira-software:GET:/rest/builds/0.1/pipelines/{pipelineId}/builds/{buildNumber}",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/delivery_test.go",
+        "internal/api3/delivery.go",
+        "internal/store/delivery.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Returns the current sequence-ordered build payload by its composite key, including direct and cloudId proxy routing; Connect JWT scopes and rate limits remain."
     },
     {
       "operationId": "jira-software:POST:/rest/deployments/0.1/bulk",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/delivery_test.go",
+        "internal/api3/delivery.go",
+        "internal/store/delivery.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Stores valid deployment snapshots with monotonic update ordering, issue-key/ID associations, per-deployment rejection, provider properties, environment metadata, issue/release UI evidence and the documented 202 result; Connect JWT scopes, rate limits and every optional field constraint remain."
     },
     {
       "operationId": "jira-software:DELETE:/rest/deployments/0.1/bulkByProperties",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/delivery_test.go",
+        "internal/api3/delivery.go",
+        "internal/store/delivery.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Deletes property-matched deployments with optional update-sequence protection and the documented accepted response; execution is immediate rather than asynchronous."
     },
     {
       "operationId": "jira-software:DELETE:/rest/deployments/0.1/pipelines/{pipelineId}/environments/{environmentId}/deployments/{deploymentSequenceNumber}",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/delivery_test.go",
+        "internal/api3/delivery.go",
+        "internal/store/delivery.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Accepts idempotent keyed deletion with optional inclusive update-sequence protection; execution is immediate rather than asynchronous."
     },
     {
       "operationId": "jira-software:GET:/rest/deployments/0.1/pipelines/{pipelineId}/environments/{environmentId}/deployments/{deploymentSequenceNumber}",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/delivery_test.go",
+        "internal/api3/delivery.go",
+        "internal/store/delivery.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Returns the current sequence-ordered deployment payload by its composite key, including direct and cloudId proxy routing; Connect JWT scopes and rate limits remain."
     },
     {
       "operationId": "jira-software:GET:/rest/deployments/0.1/pipelines/{pipelineId}/environments/{environmentId}/deployments/{deploymentSequenceNumber}/gating-status",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/delivery_test.go",
+        "internal/api3/delivery.go",
+        "internal/store/delivery.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Returns the documented deployment key, timestamp, allowed status and detail array for stored deployments; configurable deployment gates and blocked issue details remain."
     },
     {
       "operationId": "jira-software:POST:/rest/devinfo/0.10/bulk",

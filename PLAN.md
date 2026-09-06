@@ -247,9 +247,11 @@ browser UI, sync behavior where applicable, and tests.
 7. **Development facts.** Ingest development information, builds, deployments,
    feature flags, remote links, security and operations. Add immutable work,
    change, deployment and incident facts plus recalculation workers.
-   The first slice now persists sequence-ordered repositories, commits,
-   branches and pull requests behind all six devinfo operations, links them to
-   work items, and executes the branch-created workflow trigger.
+   The delivered slices persist sequence-ordered repositories, commits,
+   branches and pull requests behind all six devinfo operations, plus builds
+   and deployments behind all nine pinned CI/environment operations. Work
+   items and releases expose the linked evidence, and branch creation can
+   execute a workflow trigger.
 8. **Reports and dashboards.** Add Agile and Jira reports, four DORA measures,
    service/release/automation/knowledge metrics, report exports, scheduled
    delivery, dashboard subscriptions, complete shares and report/app gadgets.

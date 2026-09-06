@@ -50,6 +50,8 @@ use `/rest/zzira/1`.
 | POST /backlog/issue | ✅ | moves issues out of open sprints and retains closed-sprint history |
 | POST /rest/agile/1.0/issue/rank | ✅ | LexoRank, column-scoped |
 | /rest/devinfo/0.10 repositories, entities and property operations | 🟡 | All six pinned operations: ordered repository/commit/branch/pull-request ingestion, current reads, idempotent sequence-aware deletes, property existence/bulk delete, issue panel, branch-created workflow trigger, and cloudId alias; Connect JWT scopes, asynchronous deletes, complete validation and rate limits remain |
+| /rest/builds/0.1 build operations | 🟡 | All four pinned operations: ordered bulk submission with per-item acceptance/rejection, issue-key/ID associations, keyed reads, sequence-aware keyed/property deletes, issue/release evidence, and cloudId alias; Connect JWT scopes, asynchronous deletes, complete optional validation and rate limits remain |
+| /rest/deployments/0.1 deployment operations | 🟡 | All five pinned operations: ordered bulk submission, keyed reads/deletes, property cleanup, default allowed gating status, environment evidence on issues/releases, and cloudId alias; configurable gates, Connect JWT scopes, asynchronous deletes, complete optional validation and rate limits remain |
 
 ## Tier C — Platform & admin
 
@@ -74,7 +76,7 @@ use `/rest/zzira/1`.
 | Endpoint | Status | Notes |
 |---|---|---|
 | Dashboards | 🟡 16/17 pinned operations + custom UI | Fixed `/dashboard` plus `/dashboards`: CRUD, ownership/sharing, copy, gadget catalog/lifecycle/properties, favourites, layouts, refresh, JQL/filter lists and permission-filtered charts. Bulk edit and external gadget runtimes remain; see `docs/DASHBOARDS.md` |
-| Development information | 🟡 | All six devinfo operations plus issue UI and branch-created workflow trigger; builds, deployments, feature flags, security, operations, components and legacy dev-status summaries remain |
+| Development information | 🟡 | All six devinfo, four build and five deployment operations plus issue/release UI and branch-created workflow trigger; feature flags, security, operations, components, configurable deployment gates and legacy dev-status summaries remain |
 | Service management surfaces | ⛔ | separate product surface included in the full-surface ledger |
 | Automation and schedules | 🟡 | all eight Jira Automation rule-management routes, fixed-rate editor, durable execution/retries, actor-scoped JQL, label/assign/transition actions and audit UI delivered; see `docs/AUTOMATION.md` for Cron, trigger, component and runtime gaps |
 | Project versions and releases | 🟡 | Ten version operations, release hub/lifecycle, fix/affected membership, visible progress and notes; exact limits in [RELEASES.md](../../docs/RELEASES.md) |

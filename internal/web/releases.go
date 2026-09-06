@@ -27,6 +27,7 @@ type releasesData struct {
 	Version  *models.Version
 	Issues   []*models.Issue
 	Progress models.VersionProgress
+	Delivery []models.DeliveryItem
 	Admin    bool
 	Editing  bool
 	Error    string
@@ -187,5 +188,14 @@ func (h *Handler) Release(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data.Progress = store.VersionProgress(data.Issues)
+	issueKeys := make([]string, 0, len(data.Issues))
+	for _, issue := range data.Issues {
+		issueKeys = append(issueKeys, issue.Key)
+	}
+	data.Delivery, err = h.Store.DeliveryItemsForIssues(r.Context(), ws, issueKeys)
+	if err != nil {
+		http.Error(w, "Could not load release delivery evidence.", 500)
+		return
+	}
 	h.writeWorkspacePageStatus(w, r, "page_release", user, ws, data, "releases", project.Key, status)
 }

@@ -1010,10 +1010,30 @@ Validation after Jira Software development information:
   queries, sequence-aware deletion, cloud-ID routing, and workflow wire data.
   Focused Chromium contributor and admin journeys pass.
 
+Validation after Jira Software builds and deployments:
+
+- Migration 055 adds workspace-scoped, sequence-ordered build and deployment
+  snapshots with issue associations, provider properties, pipeline and
+  environment keys, current payloads, cascade deletion, and timeline indexes.
+- All nine pinned `/rest/builds/0.1` and `/rest/deployments/0.1` operations are
+  implemented: bulk submission with per-item acceptance/rejection, composite
+  key reads and idempotent sequence-aware deletes, property bulk deletion, and
+  deployment gating-status reads. The `api.atlassian.com`-style cloudId aliases
+  validate the target site.
+- Work items show linked builds and deployments. Release pages roll the same
+  evidence up from version scope with pipeline, environment, state and safe
+  provider links.
+- PostgreSQL integration covers issue-key/ID associations, unknown keys,
+  current reads, stale updates, inclusive sequence-protected deletion,
+  property cleanup, cloud-ID routing, gating status and per-item rejection.
+  The full release Chromium journey proves issue and release evidence, light
+  and dark accessibility checks, and 320 px reflow. The full PostgreSQL Go
+  suite, vet, WASM build, inventory and coverage checks pass.
+
 ## Current change
 
-1. Implement Jira Software builds and deployments on the development-event
-   foundation, including issue and release evidence needed by DORA metrics.
+1. Add immutable delivery facts and the first DORA metrics report from the
+   development, build, deployment and issue-history foundations.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 

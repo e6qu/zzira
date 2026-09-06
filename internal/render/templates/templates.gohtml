@@ -264,6 +264,11 @@
         {{if .Development}}<ul class="linked-work-list" id="issue-development-list">{{range .Development}}<li><span class="link-relationship">{{if eq .Type "pullrequest"}}Pull request{{else if eq .Type "branch"}}Branch{{else}}Commit{{end}}</span>{{if .URL}}<a href="{{.URL}}" rel="noreferrer"><strong>{{.Name}}</strong></a>{{else}}<strong>{{.Name}}</strong>{{end}}<span class="muted">{{.RepositoryName}}{{if .Status}} · {{.Status}}{{end}}</span></li>{{end}}</ul>{{else}}<p class="muted">No branches, commits, or pull requests linked.</p>{{end}}
       </section>
 
+      <section class="issue-section issue-delivery" aria-labelledby="delivery-title">
+        <div class="section-heading"><h2 id="delivery-title">Builds and deployments <span class="section-count">{{len .Delivery}}</span></h2></div>
+        {{if .Delivery}}<ul class="linked-work-list" id="issue-delivery-list">{{range .Delivery}}<li><span class="link-relationship">{{if eq .Kind "deployment"}}Deployment{{else}}Build{{end}}</span>{{if .URL}}<a href="{{.URL}}" rel="noreferrer"><strong>{{.DisplayName}}</strong></a>{{else}}<strong>{{.DisplayName}}</strong>{{end}}<span class="lozenge {{if eq .State "successful"}}lozenge-success{{else if eq .State "failed"}}lozenge-danger{{else}}lozenge-default{{end}}">{{.State}}</span><span class="muted">{{if .EnvironmentName}}{{.EnvironmentName}} · {{end}}{{.PipelineID}}</span></li>{{end}}</ul>{{else}}<p class="muted">No builds or deployments linked.</p>{{end}}
+      </section>
+
       <section class="issue-section issue-attachments" aria-labelledby="attachments-title">
         <div class="section-heading"><h2 id="attachments-title">Attachments <span class="section-count">{{len .Attachments}}</span></h2></div>
         {{if .Attachments}}<ul id="attachments-list" class="attachment-list">
