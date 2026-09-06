@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -1297,11 +1298,33 @@ func validateWorkflowAgainstStatuses(wf workflow.Workflow, statuses []models.Sta
 	if strings.TrimSpace(wf.ID) == "" || strings.TrimSpace(wf.Name) == "" || len(wf.Transitions) == 0 {
 		return nil, fmt.Errorf("workflow id, name, and at least one transition are required")
 	}
+	if len(wf.Name) > 255 || len(wf.Description) > 1000 {
+		return nil, fmt.Errorf("workflow name or description is too long")
+	}
 	knownStatuses := make(map[string]struct{}, len(statuses))
 	for _, status := range statuses {
 		knownStatuses[status.ID] = struct{}{}
 	}
 	transitionIDs := make(map[string]struct{}, len(wf.Transitions))
+	validLayout := func(layout *workflow.Layout) bool {
+		return layout == nil || (!math.IsNaN(layout.X) && !math.IsInf(layout.X, 0) && !math.IsNaN(layout.Y) && !math.IsInf(layout.Y, 0) && layout.X >= -10000 && layout.X <= 10000 && layout.Y >= -10000 && layout.Y <= 10000)
+	}
+	if !validLayout(wf.StartPointLayout) || !validLayout(wf.LoopedTransitionContainerLayout) {
+		return nil, fmt.Errorf("workflow designer coordinates are invalid")
+	}
+	statusLayouts := make(map[string]struct{}, len(wf.Statuses))
+	for _, status := range wf.Statuses {
+		if _, ok := knownStatuses[status.StatusReference]; !ok {
+			return nil, fmt.Errorf("workflow layout has unknown status %q", status.StatusReference)
+		}
+		if _, duplicate := statusLayouts[status.StatusReference]; duplicate {
+			return nil, fmt.Errorf("workflow layout status %q is duplicated", status.StatusReference)
+		}
+		if !validLayout(status.Layout) {
+			return nil, fmt.Errorf("workflow layout for status %q has invalid coordinates", status.StatusReference)
+		}
+		statusLayouts[status.StatusReference] = struct{}{}
+	}
 	for _, transition := range wf.Transitions {
 		if strings.TrimSpace(transition.ID) == "" || strings.TrimSpace(transition.Name) == "" || transition.To == "" || len(transition.From) == 0 {
 			return nil, fmt.Errorf("every workflow transition requires an id, name, source, and destination")

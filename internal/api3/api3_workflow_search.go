@@ -46,6 +46,9 @@ func containsWorkflowUsage(ids []string, projectID string) bool {
 
 func workflowStatusReferences(wf workflow.Workflow) map[string]bool {
 	ids := make(map[string]bool)
+	for _, status := range wf.Statuses {
+		ids[status.StatusReference] = true
+	}
 	for _, transition := range wf.Transitions {
 		ids[transition.To] = true
 		for _, from := range transition.From {
@@ -53,6 +56,31 @@ func workflowStatusReferences(wf workflow.Workflow) map[string]bool {
 		}
 	}
 	return ids
+}
+
+func workflowReferenceStatuses(wf workflow.Workflow) []map[string]any {
+	statusIDs := workflowStatusReferences(wf)
+	layouts := make(map[string]workflow.StatusLayout, len(wf.Statuses))
+	for _, status := range wf.Statuses {
+		layouts[status.StatusReference] = status
+	}
+	statuses := make([]map[string]any, 0, len(statusIDs))
+	for id := range statusIDs {
+		status, exists := layouts[id]
+		properties := status.Properties
+		if properties == nil {
+			properties = map[string]string{}
+		}
+		bean := map[string]any{"statusReference": id, "deprecated": false, "properties": properties}
+		if exists && status.Layout != nil {
+			bean["layout"] = status.Layout
+		}
+		statuses = append(statuses, bean)
+	}
+	sort.Slice(statuses, func(i, j int) bool {
+		return statuses[i]["statusReference"].(string) < statuses[j]["statusReference"].(string)
+	})
+	return statuses
 }
 
 func workflowStatusCategory(category string) string {
@@ -91,18 +119,16 @@ func workflowTransitionBean(transition workflow.Transition) map[string]any {
 }
 
 func workflowSearchBean(wf workflow.Workflow, expandTransitions bool) map[string]any {
-	statusIDs := workflowStatusReferences(wf)
-	statuses := make([]map[string]any, 0, len(statusIDs))
-	for id := range statusIDs {
-		statuses = append(statuses, map[string]any{"statusReference": id, "deprecated": false, "properties": map[string]string{}})
-	}
-	sort.Slice(statuses, func(i, j int) bool {
-		return statuses[i]["statusReference"].(string) < statuses[j]["statusReference"].(string)
-	})
 	bean := map[string]any{
-		"id": wf.ID, "name": wf.Name, "description": "", "isEditable": wf.ID != workflow.Default().ID,
-		"scope": map[string]string{"type": "GLOBAL"}, "statuses": statuses,
+		"id": wf.ID, "name": wf.Name, "description": wf.Description, "isEditable": wf.ID != workflow.Default().ID,
+		"scope": map[string]string{"type": "GLOBAL"}, "statuses": workflowReferenceStatuses(wf),
 		"version": map[string]any{"id": wf.ID, "versionNumber": wf.Version},
+	}
+	if wf.StartPointLayout != nil {
+		bean["startPointLayout"] = wf.StartPointLayout
+	}
+	if wf.LoopedTransitionContainerLayout != nil {
+		bean["loopedTransitionContainerLayout"] = wf.LoopedTransitionContainerLayout
 	}
 	if expandTransitions {
 		transitions := make([]map[string]any, 0, len(wf.Transitions))

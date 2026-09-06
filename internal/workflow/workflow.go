@@ -38,6 +38,20 @@ type EvaluationContext struct {
 	FieldPresent map[string]bool
 }
 
+// Layout is a workflow designer coordinate in CSS pixels. Jira Cloud exposes
+// the same x/y pair in modern workflow create, update, search, and preview.
+type Layout struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+}
+
+// StatusLayout keeps a workflow's status membership and designer placement.
+type StatusLayout struct {
+	StatusReference string            `json:"statusReference"`
+	Layout          *Layout           `json:"layout,omitempty"`
+	Properties      map[string]string `json:"properties"`
+}
+
 // Transition is one workflow edge.
 type Transition struct {
 	ID         string          `json:"id"`
@@ -51,11 +65,15 @@ type Transition struct {
 
 // Workflow is a named set of transitions over the global status registry.
 type Workflow struct {
-	ID          string       `json:"id"`
-	Name        string       `json:"name"`
-	Transitions []Transition `json:"transitions"`
-	HasDraft    bool         `json:"-"`
-	Version     int          `json:"-"`
+	ID                              string         `json:"id"`
+	Name                            string         `json:"name"`
+	Description                     string         `json:"description,omitempty"`
+	StartPointLayout                *Layout        `json:"startPointLayout,omitempty"`
+	LoopedTransitionContainerLayout *Layout        `json:"loopedTransitionContainerLayout,omitempty"`
+	Statuses                        []StatusLayout `json:"statuses,omitempty"`
+	Transitions                     []Transition   `json:"transitions"`
+	HasDraft                        bool           `json:"-"`
+	Version                         int            `json:"-"`
 }
 
 type Scheme struct {

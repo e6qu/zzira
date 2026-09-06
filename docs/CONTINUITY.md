@@ -565,10 +565,29 @@ Validation after executable workflow rules:
 - The full PostgreSQL Go suite passes. Vet, WebAssembly, conformance, generated
   evidence, and diff checks are run before the slice commit.
 
+Validation after workflow designer persistence:
+
+- Workflow JSON now preserves the modern Jira description, start-point,
+  loop-container, status-property, and per-status layout fields. Create,
+  update, search, and preview round-trip those fields, while validation rejects
+  duplicate status membership and non-finite or out-of-range coordinates.
+- The administrator workflow page is a connected transit map of only the
+  workflow's statuses. Pointer dragging and arrow-key movement redraw curved
+  routes live, serialize position saves, create isolated drafts without a page
+  reload, and reveal publish/discard controls as soon as the first save lands.
+- PostgreSQL tests prove layout drafts do not leak into the published runtime,
+  publish promotes all layout metadata, and omitted update metadata preserves
+  published workflow descriptions and container positions.
+- The targeted Chromium administrator journey moves a status by keyboard,
+  observes the saved draft, adds a transition, publishes both changes as one
+  version, and assigns the workflow. The full primary-page axe light/dark scan,
+  target-size check, and 320 px reflow journey pass.
+- The full PostgreSQL Go suite, vet, WebAssembly build, seven conformance tests,
+  generated inventory/coverage checks, and diff checks pass on the final tree.
+
 ## Current change
 
-1. Add visual workflow designer persistence, followed by queued task execution
-   and cancellation semantics.
+1. Add queued workflow task execution and cancellation semantics.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 

@@ -2,9 +2,11 @@ package web
 
 import (
 	"errors"
+	"math"
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/e6qu/zzira/internal/authn"
@@ -74,14 +76,24 @@ type workflowTransitionView struct {
 	To   models.Status
 }
 
-type workflowLaneView struct {
+type workflowNodeView struct {
 	Status      models.Status
+	X           int
+	Y           int
 	Transitions []workflowTransitionView
+}
+
+type workflowEdgeView struct {
+	FromID string
+	ToID   string
 }
 
 type workflowEditorData struct {
 	Workflow  workflow.Workflow
-	Lanes     []workflowLaneView
+	Nodes     []workflowNodeView
+	Edges     []workflowEdgeView
+	MapWidth  int
+	MapHeight int
 	Statuses  []models.Status
 	Projects  []*models.Project
 	Assigned  []*models.Project
@@ -684,20 +696,7 @@ func (h *Handler) WorkflowPage(w http.ResponseWriter, r *http.Request, id string
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	statusByID := make(map[string]models.Status, len(statuses))
-	for _, status := range statuses {
-		statusByID[status.ID] = status
-	}
-	lanes := make([]workflowLaneView, 0, len(statuses))
-	for _, status := range statuses {
-		lane := workflowLaneView{Status: status}
-		for _, transition := range wf.Transitions {
-			if containsValue(transition.From, status.ID) {
-				lane.Transitions = append(lane.Transitions, workflowTransitionView{ID: transition.ID, Name: transition.Name, To: statusByID[transition.To]})
-			}
-		}
-		lanes = append(lanes, lane)
-	}
+	nodes, edges, mapWidth, mapHeight := workflowDesignerMap(wf, statuses)
 	assigned := make([]*models.Project, 0)
 	for _, project := range projects {
 		if project.WorkflowID == wf.ID || (project.WorkflowID == "" && wf.ID == workflow.Default().ID) {
@@ -706,9 +705,53 @@ func (h *Handler) WorkflowPage(w http.ResponseWriter, r *http.Request, id string
 	}
 	admin, _ := h.Store.IsAdmin(r.Context(), wsID, user.ID)
 	h.writeWorkspacePage(w, r, "page_workflow", user, wsID, workflowEditorData{
-		Workflow: wf, Lanes: lanes, Statuses: statuses, Projects: projects, Assigned: assigned,
+		Workflow: wf, Nodes: nodes, Edges: edges, MapWidth: mapWidth, MapHeight: mapHeight, Statuses: statuses, Projects: projects, Assigned: assigned,
 		CanEdit: admin && wf.ID != workflow.Default().ID, CanAssign: admin,
 	}, "workflows", "")
+}
+
+func (h *Handler) SaveWorkflowLayout(w http.ResponseWriter, r *http.Request, workflowID string) {
+	_, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	if workflowID == workflow.Default().ID {
+		http.Error(w, "the built-in workflow is read-only", http.StatusBadRequest)
+		return
+	}
+	x, xErr := strconv.ParseFloat(r.PostFormValue("x"), 64)
+	y, yErr := strconv.ParseFloat(r.PostFormValue("y"), 64)
+	if xErr != nil || yErr != nil || math.IsNaN(x) || math.IsInf(x, 0) || math.IsNaN(y) || math.IsInf(y, 0) || x < 0 || x > 10000 || y < 0 || y > 10000 {
+		http.Error(w, "workflow coordinates must be between 0 and 10000", http.StatusBadRequest)
+		return
+	}
+	wf, err := h.Store.WorkflowDraftByID(r.Context(), workspaceID, workflowID)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	statusID := r.PostFormValue("status")
+	referenced := workflowStatusIDs(wf)
+	if !referenced[statusID] {
+		http.Error(w, "status is not part of this workflow", http.StatusBadRequest)
+		return
+	}
+	updated := false
+	for index := range wf.Statuses {
+		if wf.Statuses[index].StatusReference == statusID {
+			wf.Statuses[index].Layout = &workflow.Layout{X: x, Y: y}
+			updated = true
+			break
+		}
+	}
+	if !updated {
+		wf.Statuses = append(wf.Statuses, workflow.StatusLayout{StatusReference: statusID, Layout: &workflow.Layout{X: x, Y: y}, Properties: map[string]string{}})
+	}
+	if err := h.Store.SaveWorkflowDraft(r.Context(), workspaceID, wf); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) CreateWorkflow(w http.ResponseWriter, r *http.Request) {
@@ -874,6 +917,61 @@ func containsValue(values []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func workflowStatusIDs(wf workflow.Workflow) map[string]bool {
+	ids := make(map[string]bool)
+	for _, status := range wf.Statuses {
+		ids[status.StatusReference] = true
+	}
+	for _, transition := range wf.Transitions {
+		ids[transition.To] = true
+		for _, from := range transition.From {
+			ids[from] = true
+		}
+	}
+	return ids
+}
+
+func workflowDesignerMap(wf workflow.Workflow, statuses []models.Status) ([]workflowNodeView, []workflowEdgeView, int, int) {
+	referenced := workflowStatusIDs(wf)
+	layouts := make(map[string]*workflow.Layout, len(wf.Statuses))
+	for _, status := range wf.Statuses {
+		layouts[status.StatusReference] = status.Layout
+	}
+	categoryX := map[string]int{"new": 36, "indeterminate": 326, "done": 616}
+	categoryRows := map[string]int{}
+	statusByID := make(map[string]models.Status, len(statuses))
+	for _, status := range statuses {
+		statusByID[status.ID] = status
+	}
+	nodes := make([]workflowNodeView, 0, len(referenced))
+	maxX, maxY := 0, 0
+	for _, status := range statuses {
+		if !referenced[status.ID] {
+			continue
+		}
+		x, y := categoryX[status.Category], 68+categoryRows[status.Category]*148
+		categoryRows[status.Category]++
+		if layout := layouts[status.ID]; layout != nil {
+			x, y = int(math.Round(layout.X)), int(math.Round(layout.Y))
+		}
+		transitions := make([]workflowTransitionView, 0)
+		for _, transition := range wf.Transitions {
+			if containsValue(transition.From, status.ID) {
+				transitions = append(transitions, workflowTransitionView{ID: transition.ID, Name: transition.Name, To: statusByID[transition.To]})
+			}
+		}
+		nodes = append(nodes, workflowNodeView{Status: status, X: x, Y: y, Transitions: transitions})
+		maxX, maxY = max(maxX, x), max(maxY, y)
+	}
+	edges := make([]workflowEdgeView, 0, len(wf.Transitions))
+	for _, transition := range wf.Transitions {
+		for _, from := range transition.From {
+			edges = append(edges, workflowEdgeView{FromID: from, ToID: transition.To})
+		}
+	}
+	return nodes, edges, max(880, maxX+270), max(480, maxY+150)
 }
 
 func workflowStatusOrder(category string) int {

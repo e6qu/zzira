@@ -79,23 +79,29 @@ func TestWorkflowPersistenceValidatesDefinitionsAndAssignments(t *testing.T) {
 		t.Fatal(err)
 	}
 	draft := stored
+	draft.Description = "A positioned delivery workflow"
+	draft.Statuses = []workflow.StatusLayout{
+		{StatusReference: "st_todo", Layout: &workflow.Layout{X: 40, Y: 72}, Properties: map[string]string{}},
+		{StatusReference: "st_inprogress", Layout: &workflow.Layout{X: 340, Y: 72}, Properties: map[string]string{}},
+		{StatusReference: "st_done", Layout: &workflow.Layout{X: 640, Y: 72}, Properties: map[string]string{}},
+	}
 	draft.Transitions = append(draft.Transitions, workflow.Transition{ID: transitionID, Name: "Review", From: []string{"st_inprogress"}, To: "st_done"})
 	if err := st.SaveWorkflowDraft(ctx, "ws_default", draft); err != nil {
 		t.Fatalf("save draft: %v", err)
 	}
 	publishedBefore, err := st.WorkflowByID(ctx, "ws_default", workflowID)
-	if err != nil || len(publishedBefore.Transitions) != len(wf.Transitions) || !publishedBefore.HasDraft {
+	if err != nil || len(publishedBefore.Transitions) != len(wf.Transitions) || publishedBefore.Description != "" || len(publishedBefore.Statuses) != 0 || !publishedBefore.HasDraft {
 		t.Fatalf("published workflow changed before publish: %+v, %v", publishedBefore, err)
 	}
 	editorDraft, err := st.WorkflowDraftByID(ctx, "ws_default", workflowID)
-	if err != nil || !editorDraft.HasDraft || len(editorDraft.Transitions) != len(wf.Transitions)+1 {
+	if err != nil || !editorDraft.HasDraft || len(editorDraft.Transitions) != len(wf.Transitions)+1 || editorDraft.Description != draft.Description || len(editorDraft.Statuses) != 3 || editorDraft.Statuses[1].Layout.X != 340 {
 		t.Fatalf("editor draft = %+v, %v", editorDraft, err)
 	}
 	if err := st.PublishWorkflowDraft(ctx, workspaceID, actorID, workflowID); err != nil {
 		t.Fatalf("publish draft: %v", err)
 	}
 	published, err := st.WorkflowByID(ctx, "ws_default", workflowID)
-	if err != nil || published.HasDraft || published.Version != 2 || len(published.Transitions) != len(wf.Transitions)+1 {
+	if err != nil || published.HasDraft || published.Version != 2 || len(published.Transitions) != len(wf.Transitions)+1 || published.Description != draft.Description || len(published.Statuses) != 3 || published.Statuses[2].Layout.X != 640 {
 		t.Fatalf("published workflow = %+v, %v", published, err)
 	}
 	discarded := published

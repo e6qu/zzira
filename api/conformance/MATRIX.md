@@ -58,7 +58,7 @@ use `/rest/zzira/1`.
 | Custom fields in issue beans + JQL | ✅ | incl. numeric compare |
 | POST/GET /rest/api/3/webhook · DELETE /webhook/{id} · GET /webhook/refresh | ✅ | log-driven dispatcher, watermark, exactly-once claims |
 | /filter CRUD + /filter/{id}/favourite | ✅ | |
-| GET /rest/api/3/workflow/search · modern workflow create/update/search/preview/capabilities · POST /workflow · GET/PUT /workflow/project/{key} | ✅ | **enforced**: project workflows and executable transition rules round-trip through admin APIs and runtime |
+| GET /rest/api/3/workflow/search · modern workflow create/update/search/preview/capabilities · POST /workflow · GET/PUT /workflow/project/{key} | ✅ | **enforced**: project workflows, designer layouts, and executable transition rules round-trip through admin APIs and runtime |
 | GET /rest/api/3/role | 🟡 | registry list |
 | Organizations orgs · directories · users · groups · memberships · workspaces · roles · events · domains · policies | 🟡 | All 47 operations reviewed: group and directory-user administration, product roles/activity, invitations/email, directory lifecycle, audit query/poll/detail/actions, DNS claims, and policy/resource CRUD/validation are useful tested subsets; runtime policy enforcement, central rate limits, and remaining edge semantics remain |
 | Issue security: scheme admin APIs, assignment, enforcement | ✅ | tombstones + per-user sync filtering + visibility on search/board/navigator/bootstrap |

@@ -81,7 +81,7 @@ func TestWorkflowRulesPersistAndExecuteAcrossAPIJourney(t *testing.T) {
 		}
 	}
 
-	createBody := `{"scope":{"type":"GLOBAL"},"statuses":[{"id":"st_todo","name":"To Do","statusCategory":"TODO","statusReference":"todo"},{"id":"st_done","name":"Done","statusCategory":"DONE","statusReference":"done"}],"workflows":[{"name":"Executable rule workflow","statuses":[{"statusReference":"todo","properties":{}},{"statusReference":"done","properties":{}}],"transitions":[{"id":"complete","name":"Complete","type":"DIRECTED","toStatusReference":"done","links":[{"fromStatusReference":"todo"}],"conditions":{"operation":"ALL","conditions":[{"ruleKey":"system:restrict-issue-transition","parameters":{"accountIds":"allow-reporter"}}],"conditionGroups":[]},"validators":[{"ruleKey":"system:validate-field-value","parameters":{"ruleType":"fieldRequired","fieldsRequired":"description","errorMessage":"Add completion notes"}}],"actions":[{"ruleKey":"system:change-assignee","parameters":{"type":"to-current-user"}}]}]}]}`
+	createBody := `{"scope":{"type":"GLOBAL"},"statuses":[{"id":"st_todo","name":"To Do","statusCategory":"TODO","statusReference":"todo"},{"id":"st_done","name":"Done","statusCategory":"DONE","statusReference":"done"}],"workflows":[{"name":"Executable rule workflow","description":"A governed release path","startPointLayout":{"x":-100,"y":-80},"loopedTransitionContainerLayout":{"x":700,"y":40},"statuses":[{"statusReference":"todo","layout":{"x":40,"y":60},"properties":{"phase":"intake"}},{"statusReference":"done","layout":{"x":520,"y":60},"properties":{}}],"transitions":[{"id":"complete","name":"Complete","type":"DIRECTED","toStatusReference":"done","links":[{"fromStatusReference":"todo"}],"conditions":{"operation":"ALL","conditions":[{"ruleKey":"system:restrict-issue-transition","parameters":{"accountIds":"allow-reporter"}}],"conditionGroups":[]},"validators":[{"ruleKey":"system:validate-field-value","parameters":{"ruleType":"fieldRequired","fieldsRequired":"description","errorMessage":"Add completion notes"}}],"actions":[{"ruleKey":"system:change-assignee","parameters":{"type":"to-current-user"}}]}]}]}`
 	created := call(adminID, "POST", "/rest/api/3/workflows/create", createBody, 200)
 	var result struct {
 		Workflows []struct {
@@ -92,7 +92,7 @@ func TestWorkflowRulesPersistAndExecuteAcrossAPIJourney(t *testing.T) {
 		t.Fatalf("created workflow: %v %s", err, created.Body.String())
 	}
 	workflowID := result.Workflows[0].ID
-	updateBody := `{"workflows":[{"id":"` + workflowID + `","version":{"id":"` + workflowID + `","versionNumber":1},"statuses":[{"statusReference":"st_todo","properties":{}},{"statusReference":"st_done","properties":{}}],"transitions":[{"id":"complete","name":"Complete","type":"DIRECTED","toStatusReference":"st_done","links":[{"fromStatusReference":"st_todo"}],"conditions":{"operation":"ALL","conditions":[{"ruleKey":"system:restrict-issue-transition","parameters":{"accountIds":"allow-reporter"}}],"conditionGroups":[]},"validators":[{"ruleKey":"system:validate-field-value","parameters":{"ruleType":"fieldRequired","fieldsRequired":"description","errorMessage":"Add completion notes"}}],"actions":[{"ruleKey":"system:change-assignee","parameters":{"type":"to-current-user"}}]}]}]}`
+	updateBody := `{"workflows":[{"id":"` + workflowID + `","version":{"id":"` + workflowID + `","versionNumber":1},"statuses":[{"statusReference":"st_todo","layout":{"x":40,"y":60},"properties":{"phase":"intake"}},{"statusReference":"st_done","layout":{"x":560,"y":72},"properties":{}}],"transitions":[{"id":"complete","name":"Complete","type":"DIRECTED","toStatusReference":"st_done","links":[{"fromStatusReference":"st_todo"}],"conditions":{"operation":"ALL","conditions":[{"ruleKey":"system:restrict-issue-transition","parameters":{"accountIds":"allow-reporter"}}],"conditionGroups":[]},"validators":[{"ruleKey":"system:validate-field-value","parameters":{"ruleType":"fieldRequired","fieldsRequired":"description","errorMessage":"Add completion notes"}}],"actions":[{"ruleKey":"system:change-assignee","parameters":{"type":"to-current-user"}}]}]}]}`
 	updatedWorkflow := call(adminID, "POST", "/rest/api/3/workflows/update", updateBody, 200)
 	if !strings.Contains(updatedWorkflow.Body.String(), `"versionNumber":2`) || !strings.Contains(updatedWorkflow.Body.String(), `"ruleKey":"system:change-assignee"`) {
 		t.Fatal(updatedWorkflow.Body.String())
@@ -144,13 +144,13 @@ func TestWorkflowRulesPersistAndExecuteAcrossAPIJourney(t *testing.T) {
 	}
 
 	search := call(adminID, "GET", "/rest/api/3/workflows/search?queryString=Executable&expand=values.transitions", "", 200)
-	for _, fragment := range []string{`"conditions":{"operation":"ALL"`, `"ruleKey":"system:validate-field-value"`, `"ruleKey":"system:change-assignee"`} {
+	for _, fragment := range []string{`"description":"A governed release path"`, `"layout":{"x":40,"y":60}`, `"startPointLayout":{"x":-100,"y":-80}`, `"conditions":{"operation":"ALL"`, `"ruleKey":"system:validate-field-value"`, `"ruleKey":"system:change-assignee"`} {
 		if !strings.Contains(search.Body.String(), fragment) {
 			t.Fatalf("search omits %s: %s", fragment, search.Body.String())
 		}
 	}
 	preview := call(adminID, "POST", "/rest/api/3/workflows/preview", `{"projectId":"`+projectID+`","workflowIds":["`+workflowID+`"]}`, 200)
-	if !strings.Contains(preview.Body.String(), `"ruleKey":"system:restrict-issue-transition"`) {
+	if !strings.Contains(preview.Body.String(), `"ruleKey":"system:restrict-issue-transition"`) || !strings.Contains(preview.Body.String(), `"layout":{"x":560,"y":72}`) {
 		t.Fatal(preview.Body.String())
 	}
 }

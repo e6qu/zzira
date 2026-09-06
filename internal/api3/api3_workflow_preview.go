@@ -3,7 +3,6 @@ package api3
 import (
 	"encoding/json"
 	"net/http"
-	"sort"
 	"strings"
 
 	"github.com/e6qu/zzira/internal/workflow"
@@ -22,14 +21,10 @@ type workflowPreviewItem struct {
 }
 
 func workflowPreviewBean(item workflowPreviewItem, projectID string) map[string]any {
-	statusIDs := workflowStatusReferences(item.Workflow)
-	statuses := make([]map[string]any, 0, len(statusIDs))
-	for statusID := range statusIDs {
-		statuses = append(statuses, map[string]any{"statusReference": statusID, "deprecated": false})
+	statuses := workflowReferenceStatuses(item.Workflow)
+	for _, status := range statuses {
+		delete(status, "properties")
 	}
-	sort.Slice(statuses, func(i, j int) bool {
-		return statuses[i]["statusReference"].(string) < statuses[j]["statusReference"].(string)
-	})
 	transitions := make([]map[string]any, 0, len(item.Workflow.Transitions))
 	for _, transition := range item.Workflow.Transitions {
 		transitions = append(transitions, workflowTransitionBean(transition))
@@ -38,12 +33,19 @@ func workflowPreviewBean(item workflowPreviewItem, projectID string) map[string]
 	if len(item.IssueTypes) > 0 {
 		queryContext = append(queryContext, map[string]any{"project": projectID, "issueTypes": item.IssueTypes})
 	}
-	return map[string]any{
-		"id": item.Workflow.ID, "name": item.Workflow.Name, "description": "",
+	bean := map[string]any{
+		"id": item.Workflow.ID, "name": item.Workflow.Name, "description": item.Workflow.Description,
 		"scope": map[string]string{"type": "GLOBAL"}, "statuses": statuses, "transitions": transitions,
 		"queryContext": queryContext,
 		"version":      map[string]any{"id": item.Workflow.ID, "versionNumber": item.Workflow.Version},
 	}
+	if item.Workflow.StartPointLayout != nil {
+		bean["startPointLayout"] = item.Workflow.StartPointLayout
+	}
+	if item.Workflow.LoopedTransitionContainerLayout != nil {
+		bean["loopedTransitionContainerLayout"] = item.Workflow.LoopedTransitionContainerLayout
+	}
+	return bean
 }
 
 func (h *Handler) workflowPreview(w http.ResponseWriter, r *http.Request) {

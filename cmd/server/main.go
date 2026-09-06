@@ -291,6 +291,9 @@ func main() {
 	mux.HandleFunc("POST /settings/workflows/{id}/transitions/{transition}/delete", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.DeleteWorkflowTransition(w, r, r.PathValue("id"), r.PathValue("transition"))
 	})
+	mux.HandleFunc("POST /settings/workflows/{id}/layout", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.SaveWorkflowLayout(w, r, r.PathValue("id"))
+	})
 	mux.HandleFunc("POST /settings/workflows/{id}/projects", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.AssignProjectWorkflow(w, r, r.PathValue("id"))
 	})

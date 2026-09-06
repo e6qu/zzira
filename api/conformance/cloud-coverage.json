@@ -4585,7 +4585,7 @@
         "internal/store/workflow_mutations.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Atomically creates up to 20 validated global directed workflows and statuses with generated workflow/status/rule IDs, versions, Jira response beans, executable nested actor conditions, required-field validators and assignee post-functions, conflict handling, rollback, and audit; remaining rules, descriptions, layouts, and project scopes remain."
+      "notes": "Atomically creates up to 20 validated global directed workflows and statuses with generated workflow/status/rule IDs, descriptions, start/loop and status layouts/properties, versions, Jira response beans, executable rules, conflict handling, rollback, and audit; remaining rules and project scopes remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/workflows/create/validation",
@@ -4599,7 +4599,7 @@
         "internal/store/agile.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Returns structured ERROR validation records for global workflow names, sizes, status references, categories, directed topology, duplicate transitions, nested condition groups, required-field validators, assignee post-functions, unsupported rules, conflicts, scopes, and validation-level filtering; layouts, remaining rules, and non-directed transitions remain."
+      "notes": "Returns structured ERROR validation records for global workflow names/descriptions, sizes, status references and unique membership, categories, finite designer layouts, directed topology, nested condition groups, executable rules, conflicts, scopes, and validation-level filtering; remaining rules and non-directed transitions remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/workflows/defaultEditor",
@@ -4625,7 +4625,7 @@
         "internal/store/workflow_usage.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Previews published project-associated workflows by ordered ID, case-insensitive name, and issue-type lookups, returning query contexts, directed topology, versions, statuses, and executable condition/validator/post-function configuration; project-scoped layouts, remaining rules, and approval configuration remain."
+      "notes": "Previews published project-associated workflows by ordered ID, case-insensitive name, and issue-type lookups, returning query contexts, descriptions, start/loop and status layouts, directed topology, versions, statuses, and executable rule configuration; remaining rules and approval configuration remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/workflows/search",
@@ -4639,7 +4639,7 @@
         "internal/store/workflow_usage.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Searches published global workspace workflows with validated offset paging, query/name ordering, global scope, active and project filters, related statuses, document versions, transition expansion, and executable condition/validator/post-function configuration; project-scoped workflows and created/updated ordering remain."
+      "notes": "Searches published global workspace workflows with validated paging, filtering and ordering, related statuses, document versions, descriptions, start/loop and status layouts, transition expansion, and executable rule configuration; project-scoped workflows and created/updated ordering remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/workflows/update",
@@ -4653,7 +4653,7 @@
         "internal/store/workflow_mutations.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Atomically creates referenced global statuses, migrates active work items with scoped-over-default mappings and sync actions, and updates workflows with executable nested actor conditions, required-field validators, assignee post-functions, optimistic versions, rollback, and audit; remaining rules, descriptions, layouts, and queued tasks remain."
+      "notes": "Atomically creates referenced global statuses, migrates active work items with scoped-over-default mappings and sync actions, and updates workflow descriptions, designer layouts and executable rules with optimistic versions, rollback, and audit; remaining rules, project scopes, and queued tasks remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/workflows/update/validation",
@@ -4667,7 +4667,7 @@
         "internal/store/agile.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Returns structured validation records for workspace workflow existence, optimistic versions, global statuses, directed topology, status mappings, nested actor conditions, required-field validators, assignee post-functions, and unsupported rules without mutation; remaining rules and project workflows remain."
+      "notes": "Returns structured validation records for workflow existence, optimistic versions, descriptions, designer layouts, global statuses, directed topology, status mappings, executable rules, and unsupported rules without mutation; remaining rules and project workflows remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/workflowscheme",

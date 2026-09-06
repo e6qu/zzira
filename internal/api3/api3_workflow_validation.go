@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"strings"
 
@@ -21,6 +22,7 @@ type workflowStatusUpdateRequest struct {
 
 type workflowStatusLayoutRequest struct {
 	StatusReference string            `json:"statusReference"`
+	Layout          *workflow.Layout  `json:"layout"`
 	Properties      map[string]string `json:"properties"`
 }
 
@@ -53,9 +55,12 @@ type workflowTransitionUpdateRequest struct {
 }
 
 type workflowCreateItemRequest struct {
-	Name        string                            `json:"name"`
-	Statuses    []workflowStatusLayoutRequest     `json:"statuses"`
-	Transitions []workflowTransitionUpdateRequest `json:"transitions"`
+	Name                            string                            `json:"name"`
+	Description                     string                            `json:"description"`
+	StartPointLayout                *workflow.Layout                  `json:"startPointLayout"`
+	LoopedTransitionContainerLayout *workflow.Layout                  `json:"loopedTransitionContainerLayout"`
+	Statuses                        []workflowStatusLayoutRequest     `json:"statuses"`
+	Transitions                     []workflowTransitionUpdateRequest `json:"transitions"`
 }
 
 type workflowVersionRequest struct {
@@ -75,12 +80,15 @@ type workflowScopedStatusMappingRequest struct {
 }
 
 type workflowUpdateItemRequest struct {
-	ID                    string                               `json:"id"`
-	Version               workflowVersionRequest               `json:"version"`
-	Statuses              []workflowStatusLayoutRequest        `json:"statuses"`
-	Transitions           []workflowTransitionUpdateRequest    `json:"transitions"`
-	DefaultStatusMappings []workflowStatusMigrationRequest     `json:"defaultStatusMappings"`
-	StatusMappings        []workflowScopedStatusMappingRequest `json:"statusMappings"`
+	ID                              string                               `json:"id"`
+	Description                     *string                              `json:"description"`
+	StartPointLayout                *workflow.Layout                     `json:"startPointLayout"`
+	LoopedTransitionContainerLayout *workflow.Layout                     `json:"loopedTransitionContainerLayout"`
+	Version                         workflowVersionRequest               `json:"version"`
+	Statuses                        []workflowStatusLayoutRequest        `json:"statuses"`
+	Transitions                     []workflowTransitionUpdateRequest    `json:"transitions"`
+	DefaultStatusMappings           []workflowStatusMigrationRequest     `json:"defaultStatusMappings"`
+	StatusMappings                  []workflowScopedStatusMappingRequest `json:"statusMappings"`
 }
 
 type workflowCreatePayloadRequest struct {
@@ -210,7 +218,7 @@ func (h *Handler) workflowStatusReferences(r *http.Request, workspaceID string, 
 	return references, created, errors, nil
 }
 
-func workflowDefinitionFromRequest(id, name string, statuses []workflowStatusLayoutRequest, transitions []workflowTransitionUpdateRequest, references map[string]string) (workflow.Workflow, []map[string]any) {
+func workflowDefinitionFromRequest(id, name, description string, startPointLayout, loopedTransitionContainerLayout *workflow.Layout, statuses []workflowStatusLayoutRequest, transitions []workflowTransitionUpdateRequest, references map[string]string) (workflow.Workflow, []map[string]any) {
 	errors := make([]map[string]any, 0)
 	allowed := make(map[string]bool, len(statuses))
 	for _, status := range statuses {
@@ -221,12 +229,39 @@ func workflowDefinitionFromRequest(id, name string, statuses []workflowStatusLay
 		}
 		allowed[resolved] = true
 	}
-	wf := workflow.Workflow{ID: id, Name: strings.TrimSpace(name)}
+	wf := workflow.Workflow{ID: id, Name: strings.TrimSpace(name), Description: strings.TrimSpace(description), StartPointLayout: startPointLayout, LoopedTransitionContainerLayout: loopedTransitionContainerLayout}
 	if wf.Name == "" || len(wf.Name) > 255 {
 		errors = append(errors, workflowValidationError("WORKFLOW_NAME_INVALID", "The workflow name is required and must be at most 255 characters.", "WORKFLOW", nil))
 	}
+	if len(wf.Description) > 1000 {
+		errors = append(errors, workflowValidationError("WORKFLOW_DESCRIPTION_INVALID", "The workflow description must be at most 1000 characters.", "WORKFLOW", nil))
+	}
+	if !workflowLayoutValid(startPointLayout) || !workflowLayoutValid(loopedTransitionContainerLayout) {
+		errors = append(errors, workflowValidationError("WORKFLOW_LAYOUT_INVALID", "Workflow layout coordinates must be finite values between -10000 and 10000.", "WORKFLOW", nil))
+	}
 	if len(statuses) == 0 {
 		errors = append(errors, workflowValidationError("WORKFLOW_STATUSES_REQUIRED", "At least one workflow status is required.", "WORKFLOW", nil))
+	}
+	statusLayouts := make(map[string]bool, len(statuses))
+	for _, status := range statuses {
+		resolved := references[status.StatusReference]
+		if resolved == "" {
+			continue
+		}
+		if statusLayouts[resolved] {
+			errors = append(errors, workflowValidationError("WORKFLOW_STATUS_DUPLICATE", "A workflow status can only appear once.", "STATUS", map[string]any{"statusReference": status.StatusReference}))
+			continue
+		}
+		statusLayouts[resolved] = true
+		if !workflowLayoutValid(status.Layout) {
+			errors = append(errors, workflowValidationError("WORKFLOW_STATUS_LAYOUT_INVALID", "Status layout coordinates must be finite values between -10000 and 10000.", "STATUS", map[string]any{"statusReference": status.StatusReference}))
+			continue
+		}
+		properties := status.Properties
+		if properties == nil {
+			properties = map[string]string{}
+		}
+		wf.Statuses = append(wf.Statuses, workflow.StatusLayout{StatusReference: resolved, Layout: status.Layout, Properties: properties})
 	}
 	if len(transitions) == 0 {
 		errors = append(errors, workflowValidationError("WORKFLOW_TRANSITIONS_REQUIRED", "At least one workflow transition is required.", "WORKFLOW", nil))
@@ -286,6 +321,10 @@ func workflowDefinitionFromRequest(id, name string, statuses []workflowStatusLay
 		wf.Transitions = append(wf.Transitions, transition)
 	}
 	return wf, errors
+}
+
+func workflowLayoutValid(layout *workflow.Layout) bool {
+	return layout == nil || (!math.IsNaN(layout.X) && !math.IsInf(layout.X, 0) && !math.IsNaN(layout.Y) && !math.IsInf(layout.Y, 0) && layout.X >= -10000 && layout.X <= 10000 && layout.Y >= -10000 && layout.Y <= 10000)
 }
 
 func workflowRuleFromRequest(rule workflowRuleUpdateRequest, fallbackID string) workflow.Rule {
@@ -380,7 +419,7 @@ func (h *Handler) workflowCreateValidation(w http.ResponseWriter, r *http.Reques
 		names[strings.ToLower(item.Name)] = true
 	}
 	for index, item := range request.Payload.Workflows {
-		wf, itemErrors := workflowDefinitionFromRequest(fmt.Sprintf("validation-%d", index+1), item.Name, item.Statuses, item.Transitions, references)
+		wf, itemErrors := workflowDefinitionFromRequest(fmt.Sprintf("validation-%d", index+1), item.Name, item.Description, item.StartPointLayout, item.LoopedTransitionContainerLayout, item.Statuses, item.Transitions, references)
 		errors = append(errors, itemErrors...)
 		if names[strings.ToLower(wf.Name)] {
 			errors = append(errors, workflowValidationError("WORKFLOW_NAME_CONFLICT", "A workflow already uses this name.", "WORKFLOW", nil))
@@ -432,7 +471,8 @@ func (h *Handler) workflowUpdateValidation(w http.ResponseWriter, r *http.Reques
 		if item.Version.VersionNumber != published.Version || (item.Version.ID != "" && item.Version.ID != published.ID) {
 			errors = append(errors, workflowValidationError("WORKFLOW_VERSION_CONFLICT", "The workflow version is stale.", "WORKFLOW", nil))
 		}
-		wf, itemErrors := workflowDefinitionFromRequest(item.ID, published.Name, item.Statuses, item.Transitions, references)
+		description, startPointLayout, loopedTransitionContainerLayout := workflowUpdateMetadata(item, published)
+		wf, itemErrors := workflowDefinitionFromRequest(item.ID, published.Name, description, startPointLayout, loopedTransitionContainerLayout, item.Statuses, item.Transitions, references)
 		errors = append(errors, itemErrors...)
 		_, mappingErrors := workflowStatusMigrationsFromRequest(item, references, wf)
 		errors = append(errors, mappingErrors...)
@@ -526,7 +566,7 @@ func (h *Handler) workflowCreate(w http.ResponseWriter, r *http.Request) {
 	definitions := make([]workflow.Workflow, 0, len(payload.Workflows))
 	names := make(map[string]bool)
 	for _, item := range payload.Workflows {
-		definition, itemErrors := workflowDefinitionFromRequest(store.NewID("workflow"), item.Name, item.Statuses, item.Transitions, references)
+		definition, itemErrors := workflowDefinitionFromRequest(store.NewID("workflow"), item.Name, item.Description, item.StartPointLayout, item.LoopedTransitionContainerLayout, item.Statuses, item.Transitions, references)
 		validationErrors = append(validationErrors, itemErrors...)
 		nameKey := strings.ToLower(definition.Name)
 		if names[nameKey] {
@@ -591,7 +631,8 @@ func (h *Handler) workflowUpdate(w http.ResponseWriter, r *http.Request) {
 		if item.Version.ID != "" && item.Version.ID != item.ID {
 			validationErrors = append(validationErrors, workflowValidationError("WORKFLOW_VERSION_CONFLICT", "The workflow version ID does not match the workflow.", "WORKFLOW", nil))
 		}
-		definition, itemErrors := workflowDefinitionFromRequest(item.ID, published.Name, item.Statuses, item.Transitions, references)
+		description, startPointLayout, loopedTransitionContainerLayout := workflowUpdateMetadata(item, published)
+		definition, itemErrors := workflowDefinitionFromRequest(item.ID, published.Name, description, startPointLayout, loopedTransitionContainerLayout, item.Statuses, item.Transitions, references)
 		validationErrors = append(validationErrors, itemErrors...)
 		migrations, mappingErrors := workflowStatusMigrationsFromRequest(item, references, definition)
 		validationErrors = append(validationErrors, mappingErrors...)
@@ -620,4 +661,20 @@ func (h *Handler) workflowUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"workflows": workflowValues, "statuses": statuses, "taskId": nil})
+}
+
+func workflowUpdateMetadata(item workflowUpdateItemRequest, published workflow.Workflow) (string, *workflow.Layout, *workflow.Layout) {
+	description := published.Description
+	if item.Description != nil {
+		description = *item.Description
+	}
+	startPointLayout := item.StartPointLayout
+	if startPointLayout == nil {
+		startPointLayout = published.StartPointLayout
+	}
+	loopedTransitionContainerLayout := item.LoopedTransitionContainerLayout
+	if loopedTransitionContainerLayout == nil {
+		loopedTransitionContainerLayout = published.LoopedTransitionContainerLayout
+	}
+	return description, startPointLayout, loopedTransitionContainerLayout
 }

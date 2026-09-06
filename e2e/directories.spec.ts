@@ -95,6 +95,14 @@ test('workflow directory, editor, transition changes, and project assignment wor
   await expect(page.getByRole('heading', { name: workflowName, level: 1 })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Add transition' })).toBeVisible();
 
+  const todoStatus = page.locator('.workflow-node[data-status-id="st_todo"]');
+  const originalPosition = await todoStatus.getAttribute('style');
+  await todoStatus.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.getByText('Position saved to draft')).toBeVisible();
+  await expect(todoStatus).not.toHaveAttribute('style', originalPosition || '');
+  await expect(page.getByText('Draft changes are not active')).toBeVisible();
+
   await page.fill('#transition-name', 'Ready for review');
   await page.selectOption('#transition-from', 'st_inprogress');
   await page.selectOption('#transition-to', 'st_done');
@@ -104,7 +112,7 @@ test('workflow directory, editor, transition changes, and project assignment wor
   await expect(page.getByText('Draft changes are not active')).toBeVisible();
   await page.getByRole('button', { name: 'Publish workflow' }).click();
   await expect(page.getByText('Published', { exact: true })).toBeVisible();
-  await expect(page.getByText('Version 2')).toBeVisible();
+  await expect(page.locator('.workflow-editor-header')).toContainText('Version 2');
 
   await page.selectOption('#workflow-project', 'prj_default');
   await page.getByRole('button', { name: 'Assign', exact: true }).click();
