@@ -802,9 +802,27 @@ Validation after separation-of-duties conditions:
   generated inventory and coverage checks, diff check, primary-page light/dark
   axe scan, and 320 px reflow gate pass.
 
+Validation after Jira permission workflow validators:
+
+- `system:check-permission-validator` now accepts every documented built-in
+  Jira permission key and evaluates the transition actor against zzira's shared
+  organization/site role bindings. Active members receive the delivered work
+  permissions; site administrators also receive workflow and project
+  administration permissions.
+- Workflow validation rejects unknown keys, capability discovery and modern
+  workflow resources expose and round-trip the executable validator, and the
+  administrator editor provides the delivered permission choices.
+- Unit tests prove denial, success, and invalid-key rejection. PostgreSQL REST
+  integration verifies member and administrator grants and executes a stored
+  `EDIT_ISSUES` validator; the focused Chromium journey creates and publishes
+  the visual control.
+- The full PostgreSQL Go suite, vet, WebAssembly build, seven conformance tests,
+  generated inventory and coverage checks, diff check, primary-page light/dark
+  axe scan, and 320 px reflow gate pass.
+
 ## Current change
 
-1. Add executable permission workflow validators and visual controls.
+1. Add executable changed-field workflow validators and visual controls.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 

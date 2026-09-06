@@ -345,6 +345,10 @@ func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, worksp
 	for field, value := range update.Fields {
 		context.FieldPresent[field] = workflow.FieldValuePresent(value)
 	}
+	context.Permissions, err = authz.JiraPermissions(ctx, s.Store, workspaceID, actorID)
+	if err != nil {
+		return nil, nil, err
+	}
 	if err := t.ValidateRules(context); err != nil {
 		return nil, nil, err
 	}

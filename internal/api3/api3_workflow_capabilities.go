@@ -45,6 +45,11 @@ func workflowCapabilitiesResponse(editorScope string) map[string]any {
 				"ruleKey": "system:previous-status-validator", "ruleType": "Validator",
 			},
 			{
+				"description": "Require the person running a transition to have a Jira permission.", "incompatibleRuleKeys": []string{},
+				"isAvailableForInitialTransition": false, "isVisible": true, "name": "Permission validator",
+				"ruleKey": "system:check-permission-validator", "ruleType": "Validator",
+			},
+			{
 				"description": "Automatically assign an issue after moving it using a transition.", "incompatibleRuleKeys": []string{},
 				"isAvailableForInitialTransition": true, "isVisible": true, "name": "Assign an issue",
 				"ruleKey": "system:change-assignee", "ruleType": "Function",

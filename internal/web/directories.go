@@ -891,6 +891,12 @@ func (h *Handler) AddWorkflowTransition(w http.ResponseWriter, r *http.Request, 
 			},
 		})
 	}
+	if permissionKey := r.PostFormValue("permission_validator"); permissionKey != "" {
+		transition.Validators = append(transition.Validators, workflow.Rule{
+			ID: store.NewID("rule"), RuleKey: workflow.RuleCheckPermissionValidator,
+			Parameters: map[string]string{"permissionKey": permissionKey},
+		})
+	}
 	if effect := r.PostFormValue("assignee_effect"); effect != "" {
 		transition.Actions = append(transition.Actions, workflow.Rule{
 			ID: store.NewID("rule"), RuleKey: workflow.RuleChangeAssignee, Parameters: map[string]string{"type": effect},

@@ -118,6 +118,7 @@ test('project workflow creation, editor, transition changes, and assignment work
   await page.selectOption('#transition-copy-source', 'summary');
   await page.selectOption('#transition-copy-target', 'description');
   await page.locator('fieldset').filter({ hasText: 'Transition screen fields' }).getByLabel('Labels').check();
+  await page.selectOption('#transition-permission-validator', 'EDIT_ISSUES');
   await page.getByRole('button', { name: 'Add transition' }).click();
   await expect(page.getByText('Ready for review', { exact: true })).toBeVisible();
   await expect(page.getByText('to Done · condition, validator, post-function · screen: labels', { exact: true })).toBeVisible();

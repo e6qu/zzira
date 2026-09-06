@@ -191,6 +191,25 @@ func TestRequiredFieldValidatorUsesConfiguredMessage(t *testing.T) {
 	}
 }
 
+func TestPermissionValidatorUsesGrantedJiraPermissions(t *testing.T) {
+	transition := Transition{Validators: []Rule{{ID: "permission", RuleKey: RuleCheckPermissionValidator, Parameters: map[string]string{
+		"permissionKey": "ADMINISTER_PROJECTS",
+	}}}}
+	if err := transition.ValidateRules(EvaluationContext{Permissions: map[string]bool{"EDIT_ISSUES": true}}); err == nil || err.Error() != "permission ADMINISTER_PROJECTS is required to perform this transition" {
+		t.Fatalf("validator error = %v", err)
+	}
+	if err := transition.ValidateRules(EvaluationContext{Permissions: map[string]bool{"ADMINISTER_PROJECTS": true}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateTransitionRules(transition); err != nil {
+		t.Fatal(err)
+	}
+	transition.Validators[0].Parameters["permissionKey"] = "UNKNOWN_PERMISSION"
+	if err := ValidateTransitionRules(transition); err == nil {
+		t.Fatal("unknown Jira permission was accepted")
+	}
+}
+
 func TestChangeAssigneePostFunctions(t *testing.T) {
 	transition := Transition{Actions: []Rule{
 		{RuleKey: RuleChangeAssignee, Parameters: map[string]string{"type": "to-selected-user", "accountId": "usr_first"}},

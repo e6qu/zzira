@@ -11,17 +11,18 @@ import (
 )
 
 const (
-	RuleRestrictIssueTransition = "system:restrict-issue-transition"
-	RuleRestrictFromAllUsers    = "system:restrict-from-all-users"
-	RuleCheckFieldValue         = "system:check-field-value"
-	RulePreviousStatusCondition = "system:previous-status-condition"
-	RulePreviousStatusValidator = "system:previous-status-validator"
-	RuleSeparationOfDuties      = "system:separation-of-duties"
-	RuleValidateFieldValue      = "system:validate-field-value"
-	RuleChangeAssignee          = "system:change-assignee"
-	RuleUpdateField             = "system:update-field"
-	RuleCopyFieldValue          = "system:copy-value-from-other-field"
-	RuleTransitionScreen        = "system:transition-screen"
+	RuleRestrictIssueTransition  = "system:restrict-issue-transition"
+	RuleRestrictFromAllUsers     = "system:restrict-from-all-users"
+	RuleCheckFieldValue          = "system:check-field-value"
+	RulePreviousStatusCondition  = "system:previous-status-condition"
+	RulePreviousStatusValidator  = "system:previous-status-validator"
+	RuleSeparationOfDuties       = "system:separation-of-duties"
+	RuleCheckPermissionValidator = "system:check-permission-validator"
+	RuleValidateFieldValue       = "system:validate-field-value"
+	RuleChangeAssignee           = "system:change-assignee"
+	RuleUpdateField              = "system:update-field"
+	RuleCopyFieldValue           = "system:copy-value-from-other-field"
+	RuleTransitionScreen         = "system:transition-screen"
 )
 
 // Rule is the Jira Cloud workflow rule wire shape. Parameters remain strings
@@ -49,6 +50,7 @@ type EvaluationContext struct {
 	StatusHistory []string
 	CurrentStatus string
 	Transitions   []TransitionHistory
+	Permissions   map[string]bool
 	IsAPI         bool
 }
 
@@ -270,6 +272,11 @@ func (t Transition) ValidateRules(context EvaluationContext) error {
 			if !previousStatusMatches(validator.Parameters, context) {
 				return fmt.Errorf("issue has not passed through the required status")
 			}
+		case RuleCheckPermissionValidator:
+			permissionKey := validator.Parameters["permissionKey"]
+			if !context.Permissions[permissionKey] {
+				return fmt.Errorf("permission %s is required to perform this transition", permissionKey)
+			}
 		default:
 			return fmt.Errorf("unsupported workflow validator %q", validator.RuleKey)
 		}
@@ -440,6 +447,10 @@ func ValidateTransitionRules(transition Transition) error {
 			if err := validatePreviousStatusRule(validator.Parameters, false); err != nil {
 				return err
 			}
+		case RuleCheckPermissionValidator:
+			if !jiraPermissionKeys[validator.Parameters["permissionKey"]] {
+				return fmt.Errorf("workflow permission validator has an unknown permission key")
+			}
 		default:
 			return fmt.Errorf("workflow validator %q is unsupported or incomplete", validator.RuleKey)
 		}
@@ -487,6 +498,22 @@ func ValidateTransitionRules(transition Transition) error {
 		}
 	}
 	return nil
+}
+
+var jiraPermissionKeys = map[string]bool{
+	"ADMINISTER_PROJECTS": true, "EDIT_WORKFLOW": true, "EDIT_ISSUE_LAYOUT": true,
+	"BROWSE_PROJECTS": true, "MANAGE_SPRINTS_PERMISSION": true, "SERVICEDESK_AGENT": true,
+	"VIEW_DEV_TOOLS": true, "VIEW_READONLY_WORKFLOW": true,
+	"ASSIGNABLE_USER": true, "ASSIGN_ISSUES": true, "CLOSE_ISSUES": true,
+	"CREATE_ISSUES": true, "DELETE_ISSUES": true, "EDIT_ISSUES": true,
+	"LINK_ISSUES": true, "MODIFY_REPORTER": true, "MOVE_ISSUES": true,
+	"RESOLVE_ISSUES": true, "SCHEDULE_ISSUES": true, "SET_ISSUE_SECURITY": true,
+	"TRANSITION_ISSUES": true, "MANAGE_WATCHERS": true, "VIEW_VOTERS_AND_WATCHERS": true,
+	"ADD_COMMENTS": true, "DELETE_ALL_COMMENTS": true, "DELETE_OWN_COMMENTS": true,
+	"EDIT_ALL_COMMENTS": true, "EDIT_OWN_COMMENTS": true,
+	"CREATE_ATTACHMENTS": true, "DELETE_ALL_ATTACHMENTS": true, "DELETE_OWN_ATTACHMENTS": true,
+	"DELETE_ALL_WORKLOGS": true, "DELETE_OWN_WORKLOGS": true, "EDIT_ALL_WORKLOGS": true,
+	"EDIT_OWN_WORKLOGS": true, "WORK_ON_ISSUES": true,
 }
 
 func (t Transition) ScreenFields() []string {
