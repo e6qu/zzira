@@ -133,6 +133,13 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	if secretComment.Header().Get("Location") == "" {
 		t.Fatal("created footer comment omitted Location")
 	}
+	var secretCommentBean struct{ ID string }
+	if err := json.Unmarshal(secretComment.Body.Bytes(), &secretCommentBean); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetWikiFooterCommentLike(ctx, ws, actor, secretCommentBean.ID, true); err != nil {
+		t.Fatal(err)
+	}
 	call(member, "GET", "/pages/"+draft.ID+"?status=draft", nil, 404)
 	call(member, "GET", "/pages/"+secret.ID, nil, 404)
 	call(member, "POST", "/pages", map[string]any{"spaceId": private, "title": "Intrusion", "body": models.WikiBody{Representation: "storage", Value: "<p>x</p>"}}, 404)
@@ -184,6 +191,40 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	if !strings.Contains(gotComment.Body.String(), "Ready for final review") || !strings.Contains(gotComment.Body.String(), "Clarified review state") {
 		t.Fatal(gotComment.Body.String())
 	}
+	historical := call(member, "GET", "/footer-comments/"+top.ID+"?body-format=storage&version=1", nil, 200)
+	if !strings.Contains(historical.Body.String(), "Ready for review") || strings.Contains(historical.Body.String(), "final review") {
+		t.Fatal(historical.Body.String())
+	}
+	commentVersions := call(actor, "GET", "/footer-comments/"+top.ID+"/versions?body-format=storage&sort=-modified-date", nil, 200)
+	if !strings.Contains(commentVersions.Body.String(), "Clarified review state") || !strings.Contains(commentVersions.Body.String(), "Ready for review") {
+		t.Fatal(commentVersions.Body.String())
+	}
+	versionDetails := call(actor, "GET", "/footer-comments/"+top.ID+"/versions/2", nil, 200)
+	if !strings.Contains(versionDetails.Body.String(), `"prevVersion":1`) {
+		t.Fatal(versionDetails.Body.String())
+	}
+	operations := call(member, "GET", "/footer-comments/"+top.ID+"/operations", nil, 200)
+	if !strings.Contains(operations.Body.String(), `"operation":"update"`) {
+		t.Fatal(operations.Body.String())
+	}
+	readOnly := call(member, "GET", "/footer-comments/"+reply.ID+"/operations", nil, 200)
+	if strings.Contains(readOnly.Body.String(), `"operation":"update"`) || !strings.Contains(readOnly.Body.String(), `"operation":"read"`) {
+		t.Fatal(readOnly.Body.String())
+	}
+	if err := st.SetWikiFooterCommentLike(ctx, ws, member, reply.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetWikiFooterCommentLike(ctx, ws, member, reply.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	likeCount := call(actor, "GET", "/footer-comments/"+reply.ID+"/likes/count", nil, 200)
+	if !strings.Contains(likeCount.Body.String(), `"count":1`) {
+		t.Fatal(likeCount.Body.String())
+	}
+	likeUsers := call(actor, "GET", "/footer-comments/"+reply.ID+"/likes/users", nil, 200)
+	if !strings.Contains(likeUsers.Body.String(), member) {
+		t.Fatal(likeUsers.Body.String())
+	}
 	call(member, "DELETE", "/footer-comments/"+reply.ID, nil, 404)
 	call(actor, "DELETE", "/footer-comments/"+reply.ID, nil, 204)
 	call(actor, "GET", "/footer-comments/"+reply.ID, nil, 404)
@@ -223,6 +264,9 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, a := range actions {
+		if a.EntityType == "wiki_footer_comment_like" && strings.HasPrefix(a.EntityID, secretCommentBean.ID+":") {
+			t.Fatalf("private wiki like action leaked: %s", a.Payload)
+		}
 		if strings.Contains(string(a.Payload), "Private draft") || strings.Contains(string(a.Payload), "Secret guide") || strings.Contains(string(a.Payload), "PRIVATE") || strings.Contains(string(a.Payload), "Private launch phrase") {
 			t.Fatalf("private wiki action leaked: %s", a.Payload)
 		}

@@ -52,6 +52,8 @@ test('wiki space, rich page, stale edits, child pages, history, trash and restor
   const discussion = page.locator('#wiki-discussion');
   const topComment = discussion.locator('.wiki-comment-list > .wiki-comment').first();
   await expect(topComment).toContainText('Release owner confirms readiness.');
+  await topComment.getByRole('button', { name: 'Like', exact: true }).click();
+  await expect(topComment.getByRole('button', { name: 'Unlike · 1', exact: true })).toBeVisible();
   await topComment.locator(':scope > .wiki-comment-actions > details').filter({ hasText: /^Reply/ }).locator('summary').click();
   await topComment.getByLabel('Reply to Demo User').fill('Approval recorded.');
   await topComment.getByRole('button', { name: 'Reply', exact: true }).click();
@@ -63,6 +65,10 @@ test('wiki space, rich page, stale edits, child pages, history, trash and restor
   await topActions.getByLabel('What changed?').fill('Confirmed final state');
   await topActions.getByRole('button', { name: 'Save comment', exact: true }).click();
   await expect(discussion).toContainText('Release owner confirms final readiness.');
+  await refreshedTopComment.getByText('Version history', { exact: true }).click();
+  await expect(refreshedTopComment.locator('.wiki-comment-history')).toContainText('Confirmed final state');
+  await refreshedTopComment.getByRole('button', { name: 'Unlike · 1', exact: true }).click();
+  await expect(topActions.getByRole('button', { name: 'Like', exact: true })).toBeVisible();
   const reply = discussion.locator('.wiki-comment-replies .wiki-comment').first();
   await reply.locator(':scope > .wiki-comment-actions > details').filter({ hasText: /^Delete/ }).locator('summary').click();
   await reply.getByRole('button', { name: 'Confirm delete', exact: true }).click();

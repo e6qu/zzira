@@ -400,3 +400,131 @@ func (s *Store) DeleteWikiFooterComment(ctx context.Context, ws, actor, id strin
 	}
 	return tx.Commit(ctx)
 }
+
+func (s *Store) WikiFooterCommentVersions(ctx context.Context, ws, user, id string) ([]models.WikiFooterCommentVersion, error) {
+	if _, err := s.WikiFooterComment(ctx, ws, user, id); err != nil {
+		return nil, err
+	}
+	rows, err := s.Pool.Query(ctx, `SELECT version,message,author_id,to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),body FROM wiki_footer_comment_versions WHERE comment_id::text=$1 ORDER BY version`, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	versions := []models.WikiFooterCommentVersion{}
+	for rows.Next() {
+		version := models.WikiFooterCommentVersion{Body: models.WikiBody{Representation: "storage"}}
+		if err := rows.Scan(&version.Number, &version.Message, &version.AuthorID, &version.CreatedAt, &version.Body.Value); err != nil {
+			return nil, err
+		}
+		versions = append(versions, version)
+	}
+	return versions, rows.Err()
+}
+
+func (s *Store) WikiFooterCommentVersion(ctx context.Context, ws, user, id string, number int) (*models.WikiFooterCommentVersion, error) {
+	if _, err := s.WikiFooterComment(ctx, ws, user, id); err != nil {
+		return nil, err
+	}
+	version := &models.WikiFooterCommentVersion{Body: models.WikiBody{Representation: "storage"}}
+	err := s.Pool.QueryRow(ctx, `SELECT version,message,author_id,to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),body FROM wiki_footer_comment_versions WHERE comment_id::text=$1 AND version=$2`, id, number).Scan(&version.Number, &version.Message, &version.AuthorID, &version.CreatedAt, &version.Body.Value)
+	return version, err
+}
+
+func (s *Store) WikiFooterCommentLikes(ctx context.Context, ws, user, id string) ([]string, error) {
+	if _, err := s.WikiFooterComment(ctx, ws, user, id); err != nil {
+		return nil, err
+	}
+	rows, err := s.Pool.Query(ctx, `SELECT l.user_id FROM wiki_footer_comment_likes l JOIN users u ON u.id=l.user_id AND u.active WHERE l.comment_id::text=$1 ORDER BY l.created_at,l.user_id`, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	users := []string{}
+	for rows.Next() {
+		var accountID string
+		if err := rows.Scan(&accountID); err != nil {
+			return nil, err
+		}
+		users = append(users, accountID)
+	}
+	return users, rows.Err()
+}
+
+func (s *Store) WikiFooterCommentLikesForPage(ctx context.Context, ws, user, pageID string) (map[string][]string, error) {
+	if _, err := s.WikiPage(ctx, ws, user, pageID); err != nil {
+		return nil, err
+	}
+	rows, err := s.Pool.Query(ctx, `SELECT l.comment_id::text,l.user_id FROM wiki_footer_comment_likes l JOIN wiki_footer_comments c ON c.id=l.comment_id JOIN users u ON u.id=l.user_id AND u.active WHERE c.page_id::text=$1 ORDER BY l.created_at,l.user_id`, pageID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	likes := map[string][]string{}
+	for rows.Next() {
+		var commentID, accountID string
+		if err := rows.Scan(&commentID, &accountID); err != nil {
+			return nil, err
+		}
+		likes[commentID] = append(likes[commentID], accountID)
+	}
+	return likes, rows.Err()
+}
+
+func (s *Store) WikiFooterCommentVersionsForPage(ctx context.Context, ws, user, pageID string) (map[string][]models.WikiFooterCommentVersion, error) {
+	if _, err := s.WikiPage(ctx, ws, user, pageID); err != nil {
+		return nil, err
+	}
+	rows, err := s.Pool.Query(ctx, `SELECT v.comment_id::text,v.version,v.message,v.author_id,to_char(v.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),v.body FROM wiki_footer_comment_versions v JOIN wiki_footer_comments c ON c.id=v.comment_id WHERE c.page_id::text=$1 ORDER BY v.comment_id,v.version`, pageID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	versions := map[string][]models.WikiFooterCommentVersion{}
+	for rows.Next() {
+		var commentID string
+		version := models.WikiFooterCommentVersion{Body: models.WikiBody{Representation: "storage"}}
+		if err := rows.Scan(&commentID, &version.Number, &version.Message, &version.AuthorID, &version.CreatedAt, &version.Body.Value); err != nil {
+			return nil, err
+		}
+		versions[commentID] = append(versions[commentID], version)
+	}
+	return versions, rows.Err()
+}
+
+func (s *Store) SetWikiFooterCommentLike(ctx context.Context, ws, actor, id string, liked bool) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	comment, err := scanWikiFooterComment(tx.QueryRow(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND p.status='current' AND c.id::text=$3 FOR SHARE OF c`, ws, actor, id))
+	if err != nil {
+		return err
+	}
+	var changed int64
+	if liked {
+		tag, execErr := tx.Exec(ctx, `INSERT INTO wiki_footer_comment_likes(comment_id,user_id) VALUES ($1::bigint,$2) ON CONFLICT DO NOTHING`, id, actor)
+		err, changed = execErr, tag.RowsAffected()
+	} else {
+		tag, execErr := tx.Exec(ctx, `DELETE FROM wiki_footer_comment_likes WHERE comment_id::text=$1 AND user_id=$2`, id, actor)
+		err, changed = execErr, tag.RowsAffected()
+	}
+	if err != nil {
+		return err
+	}
+	if changed == 0 {
+		return tx.Commit(ctx)
+	}
+	seq, err := nextSeq(ctx, tx, ws)
+	if err != nil {
+		return err
+	}
+	payload, err := json.Marshal(map[string]any{"wikiSpaceId": comment.SpaceID, "wiki_footer_comment_like": map[string]any{"pageId": comment.PageID, "commentId": id, "userId": actor, "liked": liked}})
+	if err != nil {
+		return err
+	}
+	if err := appendAction(ctx, tx, &models.Action{WorkspaceID: ws, Seq: seq, EntityType: "wiki_footer_comment_like", EntityID: id + ":" + actor, Op: models.OpUpsert, SchemaV: models.SchemaVersion, Payload: payload, ActorID: actor}); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}

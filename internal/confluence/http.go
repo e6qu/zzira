@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -200,6 +201,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.deleteFooterComment(w, r, ws, actor, parts[1])
 	case len(parts) == 3 && parts[0] == "footer-comments" && parts[2] == "children" && r.Method == "GET":
 		h.footerComments(w, r, ws, actor, "", parts[1])
+	case len(parts) == 3 && parts[0] == "footer-comments" && parts[2] == "versions" && r.Method == "GET":
+		h.footerCommentVersions(w, r, ws, actor, parts[1])
+	case len(parts) == 4 && parts[0] == "footer-comments" && parts[2] == "versions" && r.Method == "GET":
+		h.footerCommentVersion(w, r, ws, actor, parts[1], parts[3])
+	case len(parts) == 3 && parts[0] == "footer-comments" && parts[2] == "operations" && r.Method == "GET":
+		h.footerCommentOperations(w, r, ws, actor, parts[1])
+	case len(parts) == 4 && parts[0] == "footer-comments" && parts[2] == "likes" && parts[3] == "count" && r.Method == "GET":
+		h.footerCommentLikeCount(w, r, ws, actor, parts[1])
+	case len(parts) == 4 && parts[0] == "footer-comments" && parts[2] == "likes" && parts[3] == "users" && r.Method == "GET":
+		h.footerCommentLikeUsers(w, r, ws, actor, parts[1])
 	default:
 		failure(w, 404, "This Confluence resource is not implemented.")
 	}
@@ -359,7 +370,7 @@ func (h *Handler) footerComment(w http.ResponseWriter, r *http.Request, ws, acto
 	if !supportedQuery(w, r, "body-format", "version", "include-properties", "include-operations", "include-likes", "include-versions", "include-version") || !storageFormat(w, r) {
 		return
 	}
-	for _, key := range []string{"version", "include-properties", "include-operations", "include-likes", "include-versions", "include-version"} {
+	for _, key := range []string{"include-properties", "include-operations", "include-likes", "include-versions", "include-version"} {
 		if r.URL.Query().Get(key) != "" {
 			failure(w, 400, key+" is not yet supported for footer comments.")
 			return
@@ -370,7 +381,135 @@ func (h *Handler) footerComment(w http.ResponseWriter, r *http.Request, ws, acto
 		writeError(w, err)
 		return
 	}
+	if rawVersion := r.URL.Query().Get("version"); rawVersion != "" {
+		number, parseErr := strconv.Atoi(rawVersion)
+		if parseErr != nil || number < 1 {
+			failure(w, 400, "Version number must be a positive integer.")
+			return
+		}
+		version, versionErr := h.Store.WikiFooterCommentVersion(r.Context(), ws, actor, id, number)
+		if versionErr != nil {
+			writeError(w, versionErr)
+			return
+		}
+		comment.Body = version.Body
+		comment.Version = version.WikiVersion
+	}
 	respond(w, 200, h.footerCommentBean(comment, r.URL.Query().Get("body-format") != ""))
+}
+
+func footerCommentVersionBean(id string, version models.WikiFooterCommentVersion, body bool) map[string]any {
+	comment := map[string]any{"id": id, "title": ""}
+	if body {
+		comment["body"] = map[string]any{"storage": version.Body}
+	}
+	return map[string]any{"number": version.Number, "message": version.Message, "minorEdit": version.MinorEdit, "authorId": version.AuthorID, "createdAt": version.CreatedAt, "comment": comment}
+}
+
+func (h *Handler) footerCommentVersions(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
+	if !supportedQuery(w, r, "body-format", "cursor", "limit", "sort") || !storageFormat(w, r) {
+		return
+	}
+	order := r.URL.Query().Get("sort")
+	if order != "" && order != "modified-date" && order != "-modified-date" {
+		failure(w, 400, "Unsupported version sort order.")
+		return
+	}
+	versions, err := h.Store.WikiFooterCommentVersions(r.Context(), ws, actor, id)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if order == "-modified-date" {
+		slices.Reverse(versions)
+	}
+	values := make([]any, 0, len(versions))
+	for _, version := range versions {
+		values = append(values, footerCommentVersionBean(id, version, r.URL.Query().Get("body-format") != ""))
+	}
+	h.list(w, r, values)
+}
+
+func (h *Handler) footerCommentVersion(w http.ResponseWriter, r *http.Request, ws, actor, id, rawVersion string) {
+	if !supportedQuery(w, r) {
+		return
+	}
+	number, err := strconv.Atoi(rawVersion)
+	if err != nil || number < 1 {
+		failure(w, 400, "Version number must be a positive integer.")
+		return
+	}
+	version, err := h.Store.WikiFooterCommentVersion(r.Context(), ws, actor, id, number)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	bean := map[string]any{"number": version.Number, "message": version.Message, "minorEdit": version.MinorEdit, "authorId": version.AuthorID, "createdAt": version.CreatedAt, "contentTypeModified": false, "collaborators": []string{}}
+	if number > 1 {
+		bean["prevVersion"] = number - 1
+	}
+	current, err := h.Store.WikiFooterComment(r.Context(), ws, actor, id)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if number < current.Version.Number {
+		bean["nextVersion"] = number + 1
+	}
+	respond(w, 200, bean)
+}
+
+func commentOperations(admin bool, actor string, comment *models.WikiFooterComment) []any {
+	operations := []any{map[string]string{"operation": "read", "targetType": "comment"}}
+	if admin || actor == comment.AuthorID {
+		operations = append(operations, map[string]string{"operation": "update", "targetType": "comment"}, map[string]string{"operation": "delete", "targetType": "comment"})
+	}
+	return operations
+}
+
+func (h *Handler) footerCommentOperations(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
+	if !supportedQuery(w, r) {
+		return
+	}
+	comment, err := h.Store.WikiFooterComment(r.Context(), ws, actor, id)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	admin, err := h.Store.IsAdmin(r.Context(), ws, actor)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	respond(w, 200, map[string]any{"operations": commentOperations(admin, actor, comment)})
+}
+
+func (h *Handler) footerCommentLikeCount(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
+	if !supportedQuery(w, r) {
+		return
+	}
+	likes, err := h.Store.WikiFooterCommentLikes(r.Context(), ws, actor, id)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	respond(w, 200, map[string]int{"count": len(likes)})
+}
+
+func (h *Handler) footerCommentLikeUsers(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
+	if !supportedQuery(w, r, "cursor", "limit") {
+		return
+	}
+	likes, err := h.Store.WikiFooterCommentLikes(r.Context(), ws, actor, id)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	values := make([]any, 0, len(likes))
+	for _, accountID := range likes {
+		values = append(values, map[string]string{"accountId": accountID})
+	}
+	h.list(w, r, values)
 }
 
 func unsupportedCommentTarget(in footerCommentWrite) bool {

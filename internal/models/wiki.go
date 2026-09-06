@@ -50,3 +50,8 @@ type WikiFooterComment struct {
 	Body            WikiBody    `json:"body"`
 	Version         WikiVersion `json:"version"`
 }
+
+type WikiFooterCommentVersion struct {
+	WikiVersion
+	Body WikiBody `json:"body"`
+}

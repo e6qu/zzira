@@ -1368,11 +1368,25 @@ Validation after Confluence page footer comments:
 - Exact reviewed API coverage is 221 of 1,207 operations: 214 partial, 7
   missing, and 986 unassessed. Confluence coverage begins at 7 of 348 reviewed.
 
+Validation after footer-comment history, operations and likes:
+
+- Migration 074 adds idempotent per-user comment likes with cascade cleanup and
+  private-space-safe local-first actions. Page reads load engagement and version
+  data in two bounded queries rather than once per comment.
+- Five more pinned v2 operations expose comment versions, version navigation,
+  author/admin permitted operations, like counts and paginated liker account
+  IDs. Single-comment reads also honor the historical `version` selector.
+- The page discussion lets every viewer like/unlike a comment and inspect edit
+  history. PostgreSQL tests cover both like states, history bodies, operation
+  authorization and private action filtering; Chromium covers like/unlike and
+  the visible version message with axe and reflow retained.
+- Exact reviewed API coverage is 226 of 1,207 operations: 219 partial, 7
+  missing, and 981 unassessed. Confluence coverage is 12 of 348 reviewed.
+
 ## Current change
 
 1. Continue Confluence v1/v2 contract and knowledge collaboration with page
-   attachments, labels and restrictions, then expose comment versions, likes
-   and permitted operations.
+   attachments, labels and restrictions.
 2. Return to advanced service operations risk, CAB approval, on-call and
    post-incident review configuration after the next knowledge slice.
 

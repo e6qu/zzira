@@ -2535,6 +2535,81 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/footer-comments/{id}/versions",
+      "status": "partial",
+      "notes": "Returns cursor-paginated immutable comment versions in either modification order with optional storage bodies.",
+      "evidence": [
+        "internal/confluence/http.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki.go",
+        "migrations/073_wiki_footer_comments.sql",
+        "migrations/074_wiki_footer_comment_likes.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/footer-comments/{id}/versions/{version-number}",
+      "status": "partial",
+      "notes": "Returns detailed comment version metadata with previous and next version navigation.",
+      "evidence": [
+        "internal/confluence/http.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki.go",
+        "migrations/073_wiki_footer_comments.sql",
+        "migrations/074_wiki_footer_comment_likes.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/footer-comments/{id}/operations",
+      "status": "partial",
+      "notes": "Returns read plus author-or-administrator update and delete operations for a visible comment.",
+      "evidence": [
+        "internal/confluence/http.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki.go",
+        "migrations/073_wiki_footer_comments.sql",
+        "migrations/074_wiki_footer_comment_likes.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/footer-comments/{id}/likes/count",
+      "status": "partial",
+      "notes": "Returns the persisted visible-user like count for a visible page footer comment.",
+      "evidence": [
+        "internal/confluence/http.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki.go",
+        "migrations/073_wiki_footer_comments.sql",
+        "migrations/074_wiki_footer_comment_likes.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/footer-comments/{id}/likes/users",
+      "status": "partial",
+      "notes": "Returns cursor-paginated account IDs for persisted likes on a visible page footer comment.",
+      "evidence": [
+        "internal/confluence/http.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki.go",
+        "migrations/073_wiki_footer_comments.sql",
+        "migrations/074_wiki_footer_comment_likes.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
     }
   ]
 }

@@ -275,6 +275,7 @@ func main() {
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/comments", webHandler.WikiCommentCreate)
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/comments/{comment}", webHandler.WikiCommentUpdate)
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/comments/{comment}/delete", webHandler.WikiCommentDelete)
+	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/comments/{comment}/like", webHandler.WikiCommentLike)
 	mux.Handle("/wiki/api/v2/", &confluence.Handler{Store: st, Commands: api.Commands, WorkspaceSlug: workspaceSlug, BaseURL: api.BaseURL})
 	mux.HandleFunc("GET /projects/{key}/releases", webHandler.Releases)
 	mux.HandleFunc("POST /projects/{key}/releases", webHandler.Releases)

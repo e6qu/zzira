@@ -42,9 +42,12 @@ type wikiCommentNode struct {
 	Replies     []wikiCommentNode
 	CanManage   bool
 	NextVersion int
+	LikeCount   int
+	Liked       bool
+	Versions    []models.WikiFooterCommentVersion
 }
 
-func wikiCommentTree(comments []*models.WikiFooterComment, userID string, admin bool) []wikiCommentNode {
+func wikiCommentTree(comments []*models.WikiFooterComment, likes map[string][]string, versions map[string][]models.WikiFooterCommentVersion, userID string, admin bool) []wikiCommentNode {
 	children := map[string][]*models.WikiFooterComment{}
 	for _, comment := range comments {
 		children[comment.ParentCommentID] = append(children[comment.ParentCommentID], comment)
@@ -53,7 +56,14 @@ func wikiCommentTree(comments []*models.WikiFooterComment, userID string, admin 
 	branch = func(parent string) []wikiCommentNode {
 		nodes := []wikiCommentNode{}
 		for _, comment := range children[parent] {
-			nodes = append(nodes, wikiCommentNode{Comment: comment, Replies: branch(comment.ID), CanManage: admin || comment.AuthorID == userID, NextVersion: comment.Version.Number + 1})
+			liked := false
+			for _, accountID := range likes[comment.ID] {
+				if accountID == userID {
+					liked = true
+					break
+				}
+			}
+			nodes = append(nodes, wikiCommentNode{Comment: comment, Replies: branch(comment.ID), CanManage: admin || comment.AuthorID == userID, NextVersion: comment.Version.Number + 1, LikeCount: len(likes[comment.ID]), Liked: liked, Versions: versions[comment.ID]})
 		}
 		return nodes
 	}
@@ -251,7 +261,17 @@ func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 			http.Error(w, "Could not load comment permissions.", 500)
 			return
 		}
-		data.Comments = wikiCommentTree(comments, user.ID, admin)
+		likes, likesErr := h.Store.WikiFooterCommentLikesForPage(r.Context(), ws, user.ID, page.ID)
+		if likesErr != nil {
+			http.Error(w, "Could not load comment likes.", 500)
+			return
+		}
+		versions, versionsErr := h.Store.WikiFooterCommentVersionsForPage(r.Context(), ws, user.ID, page.ID)
+		if versionsErr != nil {
+			http.Error(w, "Could not load comment history.", 500)
+			return
+		}
+		data.Comments = wikiCommentTree(comments, likes, versions, user.ID, admin)
 	}
 	h.writeWorkspacePageStatus(w, r, "page_wiki_page", user, ws, data, "wiki", "", status)
 }
@@ -354,6 +374,34 @@ func (h *Handler) WikiCommentDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	redirectLocal(w, r, wikiPageURL(page)+"#wiki-discussion")
+}
+
+func (h *Handler) WikiCommentLike(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	page, err := h.wikiPageForComment(r, ws, user.ID)
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	comment, err := h.Store.WikiFooterComment(r.Context(), ws, user.ID, r.PathValue("comment"))
+	if err != nil || comment.PageID != page.ID {
+		http.NotFound(w, r)
+		return
+	}
+	liked := r.PostFormValue("liked") == "true"
+	if err := h.Store.SetWikiFooterCommentLike(r.Context(), ws, user.ID, comment.ID, liked); err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	redirectLocal(w, r, wikiPageURL(page)+"#comment-"+comment.ID)
 }
 
 func (h *Handler) wikiPageForComment(r *http.Request, ws, userID string) (*models.WikiPage, error) {
