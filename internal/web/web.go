@@ -20,6 +20,7 @@ import (
 	"github.com/e6qu/zzira/internal/jql"
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/render"
+	"github.com/e6qu/zzira/internal/secretbox"
 	"github.com/e6qu/zzira/internal/store"
 )
 
@@ -29,6 +30,8 @@ type Handler struct {
 	Automation                        *automation.Service
 	OIDC                              *OIDC
 	IdentityProviders                 *ProviderRegistry
+	ProviderSecrets                   *secretbox.Box
+	IdentityExternalURL               string
 	WorkspaceSlug                     string
 	BaseURL                           string
 	InvitationNotificationsConfigured bool

@@ -43,6 +43,14 @@ transaction. Administrators cannot suspend or remove their own account.
 Ordinary users do not see the administration navigation item and receive 403 on
 direct access.
 
+With `ZZIRA_IDENTITY_ENCRYPTION_KEY` configured, the same page registers custom
+OpenID Connect providers through validated discovery, rotates their client
+secrets, enables or disables sign-in, and deletes registrations. Secrets use an
+authenticated AES-256-GCM envelope bound to the workspace and provider key and
+are never returned to the browser. Environment-configured providers remain
+deployment-managed. Deleting a stored provider and disabling any provider
+revoke its issuer sessions and write organization audit evidence.
+
 ## Organization API subset
 
 The Organizations REST API is mounted locally at `/admin`. These operations are

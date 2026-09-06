@@ -40,6 +40,7 @@ type adminPageData struct {
 	GroupDescription                  string
 	CurrentUserID                     string
 	InvitationNotificationsConfigured bool
+	ProviderRegistrationConfigured    bool
 }
 
 type adminAuditAction struct {
@@ -60,6 +61,9 @@ var adminAuditActions = []adminAuditAction{
 	{Value: "identity.unlinked", Name: "Provider disconnected"},
 	{Value: "identity.provider.disabled", Name: "Provider disabled"},
 	{Value: "identity.provider.enabled", Name: "Provider enabled"},
+	{Value: "identity.provider.registered", Name: "Provider registered"},
+	{Value: "identity.provider.credentials.rotated", Name: "Provider credentials rotated"},
+	{Value: "identity.provider.deleted", Name: "Provider deleted"},
 	{Value: "policy.created", Name: "Policy created"},
 	{Value: "policy.deleted", Name: "Policy deleted"},
 	{Value: "policy.resource.added", Name: "Policy resource added"},
@@ -116,6 +120,7 @@ func (h *Handler) adminData(r *http.Request, workspaceID, message string) (admin
 		Error:                             message,
 		Saved:                             r.URL.Query().Get("saved"),
 		InvitationNotificationsConfigured: h.InvitationNotificationsConfigured,
+		ProviderRegistrationConfigured:    h.ProviderSecrets != nil,
 	}
 	if len(directories) == 0 {
 		return data, nil
@@ -159,6 +164,53 @@ func (h *Handler) adminData(r *http.Request, workspaceID, message string) (admin
 	return data, nil
 }
 
+func (h *Handler) CreateAdminIdentityProvider(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok {
+		return
+	}
+	if h.ProviderSecrets == nil || h.IdentityProviders == nil {
+		http.Error(w, "stored identity providers require ZZIRA_IDENTITY_ENCRYPTION_KEY", http.StatusServiceUnavailable)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form", http.StatusBadRequest)
+		return
+	}
+	input := StoredProviderInput{
+		Key: r.FormValue("key"), DisplayName: r.FormValue("displayName"), Issuer: r.FormValue("issuer"),
+		ClientID: r.FormValue("clientId"), ClientSecret: r.FormValue("clientSecret"),
+	}
+	if len(input.ClientSecret) > 8192 {
+		http.Error(w, "client secret is too long", http.StatusBadRequest)
+		return
+	}
+	provider, err := BuildStoredOIDCProvider(r.Context(), input, h.IdentityExternalURL)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := h.persistStoredProvider(r, workspaceID, user.ID, provider, input.ClientSecret); err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	http.Redirect(w, r, "/admin?saved="+url.QueryEscape(provider.displayName+" registered"), http.StatusSeeOther)
+}
+
+func (h *Handler) persistStoredProvider(r *http.Request, workspaceID, actorID string, provider *OIDC, clientSecret string) error {
+	ciphertext, err := h.ProviderSecrets.Seal([]byte(clientSecret), workspaceID+"/"+provider.key)
+	if err != nil {
+		return err
+	}
+	registration := models.IdentityProviderRegistration{
+		ProviderKey: provider.key, DisplayName: provider.displayName, Issuer: provider.issuer,
+		ClientID: provider.config.ClientID, SecretCiphertext: ciphertext,
+	}
+	return h.IdentityProviders.PersistStored(provider, func() error {
+		return h.Store.SaveIdentityProviderRegistration(r.Context(), workspaceID, actorID, registration)
+	})
+}
+
 func (h *Handler) adminProviders() []LoginProvider {
 	if h.IdentityProviders != nil {
 		return h.IdentityProviders.AdminProviders()
@@ -185,6 +237,45 @@ func (h *Handler) UpdateAdminIdentityProvider(w http.ResponseWriter, r *http.Req
 		return
 	}
 	action := r.FormValue("action")
+	if action == "delete" {
+		if provider.source != "database" {
+			http.Error(w, "provider is deployment-managed", http.StatusConflict)
+			return
+		}
+		if err := h.IdentityProviders.DeleteStored(providerKey, func(current *OIDC) error {
+			return h.Store.DeleteIdentityProviderRegistration(r.Context(), workspaceID, user.ID, current.key, current.issuer)
+		}); err != nil {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+		http.Redirect(w, r, "/admin?saved="+url.QueryEscape(provider.displayName+" deleted"), http.StatusSeeOther)
+		return
+	}
+	if action == "rotate" {
+		if h.ProviderSecrets == nil || provider.source != "database" {
+			http.Error(w, "provider credentials are deployment-managed", http.StatusConflict)
+			return
+		}
+		secret := r.FormValue("clientSecret")
+		if strings.TrimSpace(secret) == "" || len(secret) > 8192 {
+			http.Error(w, "a client secret of at most 8192 characters is required", http.StatusBadRequest)
+			return
+		}
+		rotated, err := BuildStoredOIDCProvider(r.Context(), StoredProviderInput{
+			Key: provider.key, DisplayName: provider.displayName, Issuer: provider.issuer,
+			ClientID: provider.config.ClientID, ClientSecret: secret,
+		}, h.IdentityExternalURL)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if err := h.persistStoredProvider(r, workspaceID, user.ID, rotated, secret); err != nil {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+		http.Redirect(w, r, "/admin?saved="+url.QueryEscape(provider.displayName+" credentials rotated"), http.StatusSeeOther)
+		return
+	}
 	if action != "enable" && action != "disable" {
 		http.Error(w, "action must be enable or disable", http.StatusBadRequest)
 		return

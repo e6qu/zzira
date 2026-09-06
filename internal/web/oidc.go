@@ -50,6 +50,7 @@ type OIDC struct {
 	httpClient            *http.Client
 	endSessionEndpoint    string
 	postLogoutRedirectURL string
+	source                string
 }
 
 func NewOIDC(ctx context.Context) (*OIDC, error) {

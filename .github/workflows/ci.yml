@@ -84,6 +84,7 @@ jobs:
           ZZIRA_ALLOW_INSECURE_OIDC: "true"
           ZZIRA_ATLASSIAN_CLIENT_ID: e2e-atlassian-client
           ZZIRA_ATLASSIAN_CLIENT_SECRET: e2e-atlassian-secret
+          ZZIRA_IDENTITY_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
         run: |
           go run ./cmd/server -mode=migrate
           go run ./cmd/server -mode=seed

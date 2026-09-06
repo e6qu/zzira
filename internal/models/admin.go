@@ -31,6 +31,17 @@ type ProductUserActivity struct {
 	LastActiveAt string
 }
 
+type IdentityProviderRegistration struct {
+	OrganizationID   string `json:"organizationId"`
+	ProviderKey      string `json:"providerKey"`
+	DisplayName      string `json:"displayName"`
+	Issuer           string `json:"issuer"`
+	ClientID         string `json:"clientId"`
+	SecretCiphertext []byte `json:"-"`
+	CreatedAt        string `json:"createdAt"`
+	UpdatedAt        string `json:"updatedAt"`
+}
+
 type Directory struct {
 	ID             string `json:"id"`
 	OrganizationID string `json:"organizationId"`

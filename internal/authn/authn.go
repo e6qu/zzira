@@ -235,11 +235,18 @@ func ProtectCookieMutations(next http.Handler) http.Handler {
 // with no further navigation at all) until the provider's origin was
 // explicitly allowed here.
 func SecurityHeaders(next http.Handler, oidcFormActionOrigin string) http.Handler {
-	formAction := "form-action 'self'"
-	if oidcFormActionOrigin != "" {
-		formAction += " " + oidcFormActionOrigin
-	}
+	return SecurityHeadersDynamic(next, func() string { return oidcFormActionOrigin })
+}
+
+// SecurityHeadersDynamic refreshes allowed logout origins for providers added
+// or rotated at runtime. The registry returns origins only from validated OIDC
+// discovery documents.
+func SecurityHeadersDynamic(next http.Handler, oidcFormActionOrigins func() string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		formAction := "form-action 'self'"
+		if origins := oidcFormActionOrigins(); origins != "" {
+			formAction += " " + origins
+		}
 		w.Header().Set("Content-Security-Policy",
 			"default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; "+
 				"style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; "+

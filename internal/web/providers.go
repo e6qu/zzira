@@ -13,6 +13,9 @@ import (
 	"time"
 
 	"golang.org/x/oauth2"
+
+	"github.com/e6qu/zzira/internal/models"
+	"github.com/e6qu/zzira/internal/secretbox"
 )
 
 const (
@@ -40,6 +43,16 @@ type LoginProvider struct {
 	Kind        string
 	Issuer      string
 	Enabled     bool
+	Source      string
+	Manageable  bool
+}
+
+type StoredProviderInput struct {
+	Key          string
+	DisplayName  string
+	Issuer       string
+	ClientID     string
+	ClientSecret string
 }
 
 func NewIdentityProviders(ctx context.Context) (*ProviderRegistry, error) {
@@ -172,9 +185,125 @@ func validExternalURL(raw string) error {
 }
 
 func (r *ProviderRegistry) add(provider *OIDC) {
+	if provider.source == "" {
+		provider.source = "environment"
+	}
 	r.ordered = append(r.ordered, provider)
 	r.byKey[provider.key] = provider
 	r.byIssuer[provider.issuer] = provider
+}
+
+func BuildStoredOIDCProvider(ctx context.Context, input StoredProviderInput, externalURL string) (*OIDC, error) {
+	input.Key = strings.TrimSpace(strings.ToLower(input.Key))
+	input.DisplayName = strings.TrimSpace(input.DisplayName)
+	input.Issuer = strings.TrimRight(strings.TrimSpace(input.Issuer), "/")
+	input.ClientID = strings.TrimSpace(input.ClientID)
+	if !regexp.MustCompile(`^[a-z][a-z0-9-]{1,30}$`).MatchString(input.Key) {
+		return nil, fmt.Errorf("provider key must use 2-31 lowercase letters, numbers, or hyphens")
+	}
+	if input.DisplayName == "" || len(input.DisplayName) > 80 {
+		return nil, fmt.Errorf("provider name must contain 1-80 characters")
+	}
+	if input.ClientID == "" || strings.TrimSpace(input.ClientSecret) == "" {
+		return nil, fmt.Errorf("client ID and client secret are required")
+	}
+	if err := validExternalURL(externalURL); err != nil {
+		return nil, err
+	}
+	if err := validOIDCURL(input.Issuer); err != nil {
+		return nil, fmt.Errorf("provider issuer: %w", err)
+	}
+	provider, err := newDiscoveredOIDC(ctx, input.Key, input.DisplayName, input.Issuer, input.ClientID, input.ClientSecret, externalURL)
+	if err != nil {
+		return nil, err
+	}
+	provider.source = "database"
+	return provider, nil
+}
+
+func (r *ProviderRegistry) LoadStored(ctx context.Context, registrations []models.IdentityProviderRegistration, box *secretbox.Box, workspaceID, externalURL string) error {
+	if len(registrations) > 0 && box == nil {
+		return fmt.Errorf("ZZIRA_IDENTITY_ENCRYPTION_KEY is required to load stored identity providers")
+	}
+	for _, registration := range registrations {
+		secret, err := box.Open(registration.SecretCiphertext, workspaceID+"/"+registration.ProviderKey)
+		if err != nil {
+			return fmt.Errorf("decrypt identity provider %s: %w", registration.ProviderKey, err)
+		}
+		provider, err := BuildStoredOIDCProvider(ctx, StoredProviderInput{
+			Key: registration.ProviderKey, DisplayName: registration.DisplayName, Issuer: registration.Issuer,
+			ClientID: registration.ClientID, ClientSecret: string(secret),
+		}, externalURL)
+		for index := range secret {
+			secret[index] = 0
+		}
+		if err != nil {
+			return fmt.Errorf("load identity provider %s: %w", registration.ProviderKey, err)
+		}
+		if err := r.PersistStored(provider, func() error { return nil }); err != nil {
+			return fmt.Errorf("register identity provider %s: %w", registration.ProviderKey, err)
+		}
+	}
+	return nil
+}
+
+// PersistStored validates registry conflicts, commits encrypted registration
+// state, then publishes the provider to new login and linking requests.
+func (r *ProviderRegistry) PersistStored(provider *OIDC, persist func() error) error {
+	if r == nil || provider == nil || provider.source != "database" {
+		return fmt.Errorf("stored provider is invalid")
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if current := r.byKey[provider.key]; current != nil && current.source != "database" {
+		return fmt.Errorf("provider key is owned by deployment configuration")
+	}
+	if current := r.byIssuer[provider.issuer]; current != nil && current.key != provider.key {
+		return fmt.Errorf("provider issuer is already registered")
+	}
+	if err := persist(); err != nil {
+		return err
+	}
+	if current := r.byKey[provider.key]; current != nil {
+		delete(r.byIssuer, current.issuer)
+		for index := range r.ordered {
+			if r.ordered[index].key == provider.key {
+				r.ordered[index] = provider
+				r.byKey[provider.key] = provider
+				r.byIssuer[provider.issuer] = provider
+				return nil
+			}
+		}
+	}
+	r.ordered = append(r.ordered, provider)
+	r.byKey[provider.key] = provider
+	r.byIssuer[provider.issuer] = provider
+	return nil
+}
+
+func (r *ProviderRegistry) DeleteStored(key string, persist func(*OIDC) error) error {
+	if r == nil {
+		return fmt.Errorf("identity provider registry is unavailable")
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	provider := r.byKey[key]
+	if provider == nil || provider.source != "database" {
+		return fmt.Errorf("stored identity provider was not found")
+	}
+	if err := persist(provider); err != nil {
+		return err
+	}
+	delete(r.byKey, key)
+	delete(r.byIssuer, provider.issuer)
+	delete(r.disabled, key)
+	for index := range r.ordered {
+		if r.ordered[index].key == key {
+			r.ordered = append(r.ordered[:index], r.ordered[index+1:]...)
+			break
+		}
+	}
+	return nil
 }
 
 func (r *ProviderRegistry) Provider(key string) *OIDC {
@@ -222,7 +351,7 @@ func (r *ProviderRegistry) LoginProviders() []LoginProvider {
 		if provider.atlassian {
 			kind = "OAuth 2.0 (3LO)"
 		}
-		providers = append(providers, LoginProvider{Key: provider.key, DisplayName: provider.displayName, Kind: kind, Issuer: provider.issuer, Enabled: true})
+		providers = append(providers, LoginProvider{Key: provider.key, DisplayName: provider.displayName, Kind: kind, Issuer: provider.issuer, Enabled: true, Source: provider.source, Manageable: provider.source == "database"})
 	}
 	return providers
 }
@@ -241,6 +370,7 @@ func (r *ProviderRegistry) AdminProviders() []LoginProvider {
 		}
 		providers = append(providers, LoginProvider{
 			Key: provider.key, DisplayName: provider.displayName, Kind: kind, Issuer: provider.issuer, Enabled: !r.disabled[provider.key],
+			Source: provider.source, Manageable: provider.source == "database",
 		})
 	}
 	return providers

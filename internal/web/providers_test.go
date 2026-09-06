@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,9 @@ import (
 	"testing"
 
 	"golang.org/x/oauth2"
+
+	"github.com/e6qu/zzira/internal/models"
+	"github.com/e6qu/zzira/internal/secretbox"
 )
 
 func TestAtlassianAuthorizationUsesDocumentedThreeLeggedOAuthParameters(t *testing.T) {
@@ -136,5 +140,80 @@ func TestProviderRegistryAppliesDurableAvailabilityWithoutLosingConfiguration(t 
 	}
 	if registry.SetEnabled("missing", false) {
 		t.Fatal("unknown provider accepted an availability change")
+	}
+}
+
+func TestProviderRegistryPersistsRotatesAndDeletesStoredProvider(t *testing.T) {
+	environment := &OIDC{key: "google", displayName: "Google", issuer: googleIssuer, source: "environment"}
+	registry := &ProviderRegistry{
+		ordered: []*OIDC{environment}, byKey: map[string]*OIDC{"google": environment},
+		byIssuer: map[string]*OIDC{googleIssuer: environment}, disabled: map[string]bool{},
+	}
+	stored := &OIDC{key: "company", displayName: "Company SSO", issuer: "https://id.example.test", source: "database"}
+	persisted := 0
+	if err := registry.PersistStored(stored, func() error { persisted++; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if got := registry.Provider("company"); got != stored || persisted != 1 {
+		t.Fatalf("stored provider = %p, persisted %d", got, persisted)
+	}
+	rotated := &OIDC{key: "company", displayName: "Company SSO", issuer: stored.issuer, source: "database"}
+	if err := registry.PersistStored(rotated, func() error { persisted++; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if registry.Provider("company") != rotated || len(registry.AdminProviders()) != 2 {
+		t.Fatal("rotation duplicated or failed to replace provider")
+	}
+	if err := registry.DeleteStored("company", func(provider *OIDC) error {
+		if provider != rotated {
+			t.Fatal("delete received stale provider")
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if registry.ProviderByKeyAny("company") != nil || registry.ProviderByIssuer(stored.issuer) != nil {
+		t.Fatal("deleted provider remained in registry")
+	}
+	blocked := &OIDC{key: "google", displayName: "Override", issuer: "https://other.example.test", source: "database"}
+	if err := registry.PersistStored(blocked, func() error { t.Fatal("environment override persisted"); return nil }); err == nil {
+		t.Fatal("environment-managed provider was overwritten")
+	}
+}
+
+func TestProviderRegistryLoadsEncryptedRegistration(t *testing.T) {
+	t.Setenv("ZZIRA_ALLOW_INSECURE_OIDC", "true")
+	var issuer string
+	discovery := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/.well-known/openid-configuration" {
+			http.NotFound(w, r)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"issuer": issuer, "authorization_endpoint": issuer + "/authorize",
+			"token_endpoint": issuer + "/token", "jwks_uri": issuer + "/jwks",
+			"response_types_supported": []string{"code"}, "subject_types_supported": []string{"public"},
+			"id_token_signing_alg_values_supported": []string{"RS256"},
+		})
+	}))
+	defer discovery.Close()
+	issuer = discovery.URL
+	box, err := secretbox.New(bytes.Repeat([]byte{3}, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ciphertext, err := box.Seal([]byte("stored-secret"), "ws_default/company")
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := &ProviderRegistry{byKey: map[string]*OIDC{}, byIssuer: map[string]*OIDC{}, disabled: map[string]bool{}}
+	if err := registry.LoadStored(t.Context(), []models.IdentityProviderRegistration{{
+		ProviderKey: "company", DisplayName: "Company", Issuer: issuer, ClientID: "stored-client", SecretCiphertext: ciphertext,
+	}}, box, "ws_default", "http://localhost:8080"); err != nil {
+		t.Fatal(err)
+	}
+	provider := registry.Provider("company")
+	if provider == nil || provider.config.ClientID != "stored-client" || provider.config.ClientSecret != "stored-secret" {
+		t.Fatalf("loaded provider = %#v", provider)
 	}
 }

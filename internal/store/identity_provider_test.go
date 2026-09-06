@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/e6qu/zzira/internal/models"
 )
 
 func TestIdentityProviderStateIsBoundToProvider(t *testing.T) {
@@ -187,5 +189,72 @@ func TestIdentityProviderSettingPersistsAndDisablingRevokesIssuerSessions(t *tes
 	}
 	if disabledEvents == 0 {
 		t.Fatal("provider disable did not write an audit event")
+	}
+}
+
+func TestStoredIdentityProviderRegistrationLifecycle(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	st, err := Open(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := Migrate(ctx, st.Pool); err != nil {
+		t.Fatal(err)
+	}
+	workspaceID, _, err := st.DefaultWorkspace(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actorID, err := st.FirstAdminID(ctx, workspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := "test-" + NewID("provider")[9:20]
+	issuer := "https://" + key + ".example.invalid"
+	registration := models.IdentityProviderRegistration{
+		ProviderKey: key, DisplayName: "Stored provider", Issuer: issuer,
+		ClientID: "client-id", SecretCiphertext: make([]byte, 48),
+	}
+	if err := st.SaveIdentityProviderRegistration(ctx, workspaceID, actorID, registration); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM identity_provider_registrations WHERE provider_key=$1`, key)
+	}()
+	registrations, err := st.IdentityProviderRegistrationsByWorkspace(ctx, workspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, current := range registrations {
+		if current.ProviderKey == key {
+			found = current.Issuer == issuer && current.ClientID == "client-id" && len(current.SecretCiphertext) == 48
+		}
+	}
+	if !found {
+		t.Fatalf("stored registration missing from %#v", registrations)
+	}
+	registration.SecretCiphertext = make([]byte, 64)
+	if err := st.SaveIdentityProviderRegistration(ctx, workspaceID, actorID, registration); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DeleteIdentityProviderRegistration(ctx, workspaceID, actorID, key, issuer); err != nil {
+		t.Fatal(err)
+	}
+	var registered, rotated, deleted int
+	if err := st.Pool.QueryRow(ctx, `
+		SELECT count(*) FILTER (WHERE action='identity.provider.registered'),
+		       count(*) FILTER (WHERE action='identity.provider.credentials.rotated'),
+		       count(*) FILTER (WHERE action='identity.provider.deleted')
+		FROM organization_audit_events WHERE actor_id=$1 AND target_id=$2`, actorID, key).Scan(&registered, &rotated, &deleted); err != nil {
+		t.Fatal(err)
+	}
+	if registered != 1 || rotated != 1 || deleted != 1 {
+		t.Fatalf("registration audit = %d registered, %d rotated, %d deleted", registered, rotated, deleted)
 	}
 }

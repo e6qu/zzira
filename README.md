@@ -12,7 +12,8 @@ Linear's ["Rebuilding delta sync read path"](https://linear.app/now/rebuilding-d
 - Frontend: HTMX + SortableJS, Jira-like UI
 - **Provider sign-in**: simultaneous Shauth-compatible OIDC, Google, tenant-
   scoped Microsoft Entra ID, and Atlassian OAuth 2.0 3LO with provider-bound
-  replay protection, linked identities, server-side sessions, and login audit;
+  replay protection, linked identities, encrypted custom OIDC registration and
+  credential rotation, server-side sessions, and login audit;
   see [identity provider sign-in](docs/shauth-sso.md).
 
 The current architecture, hard rules, one-PR execution map, and completion gates

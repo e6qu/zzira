@@ -11,8 +11,8 @@ and final acceptance rules belong in [PLAN.md](../PLAN.md).
 - Branch: `feat/cloud-surface-completion`
 - Base: `origin/main` after PR #65, scheduled automation
 - Delivery shape: one pull request with ordered, independently green commits
-- Last completed workstream: 2 of 15 — organizations and authorization
-- Active workstream: 3 of 15 — provider-based authentication
+- Last completed workstream: 3 of 15 — provider-based authentication
+- Active workstream: 4 of 15 — Jira administration and workflows
 - Blockers: none
 
 ## Last verified baseline
@@ -129,6 +129,12 @@ does not publish them as one OpenAPI document.
   authenticated page caches, rotates the replica identity, and signs the user
   out. Offline network transitions cancel in-flight worker requests, and
   reconnect maintenance yields the JavaScript event loop before fetching.
+- Added administrator-managed custom OpenID Connect providers. A deployment
+  master key enables AES-256-GCM storage bound to workspace/provider context;
+  registration and secret rotation validate live discovery before publishing
+  the new configuration, secrets are never rendered, environment-owned keys
+  cannot be overwritten, and deletion revokes issuer sessions. All lifecycle
+  changes are durable and audited, including across server restart.
 
 Validation after the organization foundation:
 
@@ -263,12 +269,27 @@ Validation after browser-replica revocation:
   coverage remains 62 of 1,207 because this closes local sync semantics rather
   than a pinned public product operation.
 
+Validation after encrypted provider administration:
+
+- Cryptography tests prove authenticated round trips, associated-context
+  binding, tamper rejection, and absence of plaintext in the envelope.
+- PostgreSQL tests cover migration 043, encrypted registration persistence,
+  rotation/deletion audit records, and cleanup; registry tests cover live
+  publish/replace/delete and rejection of environment-provider overrides.
+- Two Chromium provider journeys pass built-in availability plus custom OIDC
+  discovery, encrypted registration, immediate login choice, secret rotation
+  without disclosure, and deletion.
+- The full PostgreSQL Go suite, vet, WebAssembly compilation, seven conformance
+  tests, both generated evidence checks, and `git diff --check` pass. Ten
+  Chromium provider/admin/accessibility journeys pass, including light/dark
+  WCAG scans, keyboard behavior, target sizing, and 320 px reflow.
+
 ## Current change
 
-1. Add encrypted provider registration and safe client-secret rotation without
-   exposing credentials.
-2. Begin Jira administration and workflow completion after provider
-   registration is production-manageable.
+1. Begin Jira administration and workflow completion with status lifecycle,
+   draft/publish semantics, workflow schemes, and impact-safe assignment.
+2. Continue the reviewed Jira Platform contract operation ledger alongside the
+   vertical workflow slices.
 
 ## Resume here
 

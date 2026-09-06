@@ -22,6 +22,7 @@ server from starting rather than silently changing authentication behavior.
 | `ZZIRA_MICROSOFT_TENANT_ID` | Tenant UUID or verified tenant domain. Tenant-independent authorities are rejected so the token issuer can be checked exactly. |
 | `ZZIRA_ATLASSIAN_CLIENT_ID` | Atlassian OAuth 2.0 integration client ID. |
 | `ZZIRA_ATLASSIAN_CLIENT_SECRET` | Atlassian OAuth 2.0 integration client secret. The integration must include the User Identity API and `read:me` scope. |
+| `ZZIRA_IDENTITY_ENCRYPTION_KEY` | Optional base64-encoded 32-byte AES key. Required before organization administrators can register custom OIDC providers or rotate their secrets in the UI. Keep this key stable and supply it to every server replica. |
 | `ZZIRA_EXTERNAL_URL` | Canonical externally reachable ZZIRA origin. |
 | `ZZIRA_ALLOW_INSECURE_OIDC=true` | Local-development only: permits an HTTP loopback issuer. Never set this in production. |
 | `COOKIE_SECURE` | Optional override for cookie transport security. If unset, an HTTPS `ZZIRA_EXTERNAL_URL` enables secure cookies automatically; never disable it for a production HTTPS origin. |
@@ -35,6 +36,18 @@ can disable a configured provider immediately: ZZIRA removes it from new sign-in
 and connection journeys, revokes that issuer's browser sessions, audits the
 change, and restores the setting after restart. Re-enabling makes the retained
 deployment configuration available again.
+
+When `ZZIRA_IDENTITY_ENCRYPTION_KEY` is configured, an organization
+administrator can add a discovered OpenID Connect provider from `/admin` using
+its issuer, client ID, and client secret. Provider keys become callback paths:
+`<ZZIRA_EXTERNAL_URL>/auth/<provider-key>/callback`. ZZIRA validates discovery
+and every advertised endpoint before saving the provider, encrypts the secret
+with AES-256-GCM bound to the workspace and provider key, and never renders the
+secret or ciphertext. Rotation replaces the encrypted credential only after a
+fresh discovery check. Deletion revokes sessions for that issuer. Registration,
+rotation, deletion, enable, and disable operations are audited. Providers whose
+credentials come from environment variables are labeled deployment-managed and
+cannot be overwritten, rotated, or deleted in the UI.
 
 Register callback URLs as follows:
 

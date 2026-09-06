@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 	"unicode"
@@ -29,6 +30,7 @@ import (
 	"github.com/e6qu/zzira/internal/jql"
 	"github.com/e6qu/zzira/internal/mailer"
 	"github.com/e6qu/zzira/internal/notifybus"
+	"github.com/e6qu/zzira/internal/secretbox"
 	"github.com/e6qu/zzira/internal/store"
 	"github.com/e6qu/zzira/internal/syncapi"
 	"github.com/e6qu/zzira/internal/web"
@@ -123,6 +125,18 @@ func main() {
 	if err != nil {
 		log.Fatalf("configure identity providers: %v", err)
 	}
+	identityExternalURL := strings.TrimRight(os.Getenv("ZZIRA_EXTERNAL_URL"), "/")
+	providerSecrets, err := secretbox.FromEnv("ZZIRA_IDENTITY_ENCRYPTION_KEY")
+	if err != nil {
+		log.Fatalf("configure identity provider credential encryption: %v", err)
+	}
+	registrations, err := st.IdentityProviderRegistrationsByWorkspace(ctx, workspaceID)
+	if err != nil {
+		log.Fatalf("load identity provider registrations: %v", err)
+	}
+	if err := identityProviders.LoadStored(ctx, registrations, providerSecrets, workspaceID, identityExternalURL); err != nil {
+		log.Fatalf("configure stored identity providers: %v", err)
+	}
 	providerSettings, err := st.IdentityProviderSettingsByWorkspace(ctx, workspaceID)
 	if err != nil {
 		log.Fatalf("load identity provider settings: %v", err)
@@ -130,7 +144,7 @@ func main() {
 	identityProviders.ApplyEnabled(providerSettings)
 	baseURL := envOr("BASE_URL", "http://localhost:"+port)
 	webHandler := &web.Handler{
-		Store: st, Commands: cmdSvc, Automation: automationSvc, OIDC: identityProviders.Provider("shauth"), IdentityProviders: identityProviders,
+		Store: st, Commands: cmdSvc, Automation: automationSvc, OIDC: identityProviders.Provider("shauth"), IdentityProviders: identityProviders, ProviderSecrets: providerSecrets, IdentityExternalURL: identityExternalURL,
 		WorkspaceSlug: workspaceSlug, BaseURL: baseURL, InvitationNotificationsConfigured: smtpSender != nil,
 	}
 	api := &api3.Handler{Store: st, Commands: cmdSvc, Blobs: blobs, BaseURL: baseURL, WorkspaceSlug: workspaceSlug}
@@ -205,6 +219,7 @@ func main() {
 	mux.HandleFunc("GET /projects", webHandler.ProjectsPage)
 	mux.HandleFunc("GET /admin", webHandler.AdminPage)
 	mux.HandleFunc("POST /admin/identity-providers/{provider}", webHandler.UpdateAdminIdentityProvider)
+	mux.HandleFunc("POST /admin/identity-providers", webHandler.CreateAdminIdentityProvider)
 	mux.HandleFunc("POST /admin/groups", webHandler.CreateAdminGroup)
 	mux.HandleFunc("POST /admin/groups/{groupId}/delete", webHandler.DeleteAdminGroup)
 	mux.HandleFunc("POST /admin/groups/{groupId}/members", webHandler.UpdateAdminGroupMember)
@@ -438,7 +453,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              address,
-		Handler:           http.MaxBytesHandler(authn.SecurityHeaders(authn.ProtectCookieMutations(mux), identityProviders.FormActionOrigins()), 34<<20),
+		Handler:           http.MaxBytesHandler(authn.SecurityHeadersDynamic(authn.ProtectCookieMutations(mux), identityProviders.FormActionOrigins), 34<<20),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      60 * time.Second,

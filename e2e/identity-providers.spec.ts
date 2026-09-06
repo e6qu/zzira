@@ -47,3 +47,55 @@ test('user chooses Atlassian sign-in and admin controls provider availability', 
   await expect(restoredPage.getByRole('link', { name: 'Continue with Atlassian' })).toBeVisible();
   await restoredContext.close();
 });
+
+test('admin registers, rotates, and removes an encrypted OIDC provider', async ({ page, browser }) => {
+  const suffix = Date.now().toString(36);
+  const key = `test-${suffix}`;
+  const name = `Test SSO ${suffix}`;
+  const firstSecret = `first-${suffix}`;
+  const secondSecret = `second-${suffix}`;
+
+  await page.goto('/login');
+  await page.getByLabel('Email').fill('demo@zzira.dev');
+  await page.getByLabel('Password').fill('demo1234');
+  await page.getByRole('button', { name: 'Log in' }).click();
+  await page.goto('/admin');
+
+  await page.getByText('Add OpenID Connect provider').click();
+  const registration = page.locator('.admin-provider-registration');
+  await registration.getByLabel('Provider key').fill(key);
+  await registration.getByLabel('Display name').fill(name);
+  await registration.getByLabel('Issuer URL').fill('http://127.0.0.1:8100');
+  await registration.getByLabel('Client ID').fill(`client-${suffix}`);
+  await registration.getByLabel('Client secret').fill(firstSecret);
+  await registration.getByRole('button', { name: 'Add provider' }).click();
+  await expect(page.getByRole('status')).toContainText(`${name} registered`);
+
+  let row = page.getByRole('row').filter({ hasText: name });
+  await expect(row).toContainText('Encrypted database');
+  await expect(row).toContainText('Enabled');
+  await expect(page.locator('body')).not.toContainText(firstSecret);
+
+  const loginContext = await browser.newContext();
+  const loginPage = await loginContext.newPage();
+  await loginPage.goto('/login');
+  await expect(loginPage.getByRole('link', { name: `Continue with ${name}` })).toBeVisible();
+  await loginContext.close();
+
+  await row.getByText('Rotate secret').click();
+  await row.getByLabel('New client secret').fill(secondSecret);
+  await row.getByRole('button', { name: 'Save new secret' }).click();
+  await expect(page).toHaveURL(/credentials\+rotated/);
+  await expect(page.locator('body')).not.toContainText(secondSecret);
+
+  row = page.getByRole('row').filter({ hasText: name });
+  await row.getByRole('button', { name: `Delete ${name}` }).click();
+  await expect(page).toHaveURL(/deleted/);
+  await expect(page.getByRole('row').filter({ hasText: name })).toHaveCount(0);
+
+  const removedContext = await browser.newContext();
+  const removedPage = await removedContext.newPage();
+  await removedPage.goto('/login');
+  await expect(removedPage.getByRole('link', { name: `Continue with ${name}` })).toHaveCount(0);
+  await removedContext.close();
+});

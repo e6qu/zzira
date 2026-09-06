@@ -75,6 +75,24 @@ func TestSecurityHeadersAllowsTheOIDCProviderInFormAction(t *testing.T) {
 	}
 }
 
+func TestSecurityHeadersRefreshesRuntimeProviderOrigins(t *testing.T) {
+	origins := ""
+	handler := SecurityHeadersDynamic(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}), func() string { return origins })
+	first := httptest.NewRecorder()
+	handler.ServeHTTP(first, httptest.NewRequest(http.MethodGet, "https://zzira.example/", nil))
+	if strings.Contains(first.Header().Get("Content-Security-Policy"), "login.example.test") {
+		t.Fatal("unregistered provider origin was allowed")
+	}
+	origins = "https://login.example.test"
+	second := httptest.NewRecorder()
+	handler.ServeHTTP(second, httptest.NewRequest(http.MethodGet, "https://zzira.example/", nil))
+	if !strings.Contains(second.Header().Get("Content-Security-Policy"), "form-action 'self' https://login.example.test") {
+		t.Fatalf("runtime provider origin missing from %q", second.Header().Get("Content-Security-Policy"))
+	}
+}
+
 func TestSecureCookiesDefaultToTheExternalURL(t *testing.T) {
 	t.Setenv("COOKIE_SECURE", "")
 	t.Setenv("ZZIRA_EXTERNAL_URL", "https://zzira.example")

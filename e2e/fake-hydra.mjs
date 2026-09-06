@@ -12,6 +12,25 @@ const server = http.createServer((request, response) => {
     return;
   }
 
+  if (requestURL.pathname === '/.well-known/openid-configuration') {
+    const issuer = `http://${host}:${port}`;
+    response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({
+      issuer,
+      authorization_endpoint: issuer + '/authorize',
+      token_endpoint: issuer + '/token',
+      jwks_uri: issuer + '/jwks',
+      response_types_supported: ['code'],
+      subject_types_supported: ['public'],
+      id_token_signing_alg_values_supported: ['RS256'],
+    }));
+    return;
+  }
+
+  if (requestURL.pathname === '/jwks') {
+    response.writeHead(200, { 'Content-Type': 'application/json' }).end('{"keys":[]}');
+    return;
+  }
+
   if (requestURL.pathname !== '/simulated-logout') {
     response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Not found');
     return;
