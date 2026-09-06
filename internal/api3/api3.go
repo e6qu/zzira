@@ -62,8 +62,18 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.prioritiesEndpoint(w, r)
 	case path == "/status" && r.Method == http.MethodGet:
 		h.statusesEndpoint(w, r)
+	case strings.HasPrefix(path, "/status/") && r.Method == http.MethodGet:
+		h.statusDetailEndpoint(w, r, strings.TrimPrefix(path, "/status/"))
 	case path == "/statuscategory" && r.Method == http.MethodGet:
 		h.statusCategoryEndpoint(w, r)
+	case strings.HasPrefix(path, "/statuscategory/") && r.Method == http.MethodGet:
+		h.statusCategoryDetailEndpoint(w, r, strings.TrimPrefix(path, "/statuscategory/"))
+	case path == "/statuses" && (r.Method == http.MethodGet || r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodDelete):
+		h.bulkStatusesEndpoint(w, r)
+	case path == "/statuses/byNames" && r.Method == http.MethodGet:
+		h.statusesByNameEndpoint(w, r)
+	case path == "/statuses/search" && r.Method == http.MethodGet:
+		h.searchStatusesEndpoint(w, r)
 	case path == "/resolution" && r.Method == http.MethodGet:
 		h.resolutionsEndpoint(w, r)
 	case path == "/mypermissions" && r.Method == http.MethodGet:
@@ -256,6 +266,7 @@ func (h *Handler) statusBean(s models.Status) map[string]any {
 		"self":           h.BaseURL + "/rest/api/3/status/" + s.ID,
 		"id":             s.ID,
 		"name":           s.Name,
+		"description":    s.Description,
 		"statusCategory": statusCategoryBean(s.Category),
 	}
 }
@@ -659,15 +670,21 @@ func (h *Handler) issueBean(i *models.Issue) map[string]any {
 
 func statusCategoryBean(category string) map[string]any {
 	name := category
+	id := 2
+	color := "blue-gray"
 	switch category {
 	case "new":
 		name = "To Do"
 	case "indeterminate":
 		name = "In Progress"
+		id = 4
+		color = "yellow"
 	case "done":
 		name = "Done"
+		id = 3
+		color = "green"
 	}
-	return map[string]any{"key": category, "name": name}
+	return map[string]any{"id": id, "key": category, "name": name, "colorName": color}
 }
 
 func projectKeyOf(i *models.Issue) string {

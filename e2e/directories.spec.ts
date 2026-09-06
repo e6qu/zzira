@@ -105,3 +105,40 @@ test('workflow directory, editor, transition changes, and project assignment wor
   await page.goto('/projects/ZZ');
   await expect(page.getByRole('heading', { name: 'Workflow' }).locator('xpath=..')).toContainText(workflowName);
 });
+
+test('status administrators can create, classify, edit, inspect, and safely delete a status', async ({ page }) => {
+  await login(page);
+  await page.getByRole('link', { name: 'Statuses', exact: true }).click();
+  await expect(page).toHaveURL('/settings/statuses');
+  await expect(page.getByRole('heading', { name: 'Statuses', level: 1 })).toBeVisible();
+
+  const builtIn = page.locator('.status-directory-item').filter({ has: page.getByRole('heading', { name: 'To Do', exact: true }) });
+  await expect(builtIn).toContainText('Built in');
+  await expect(builtIn).toContainText('Built-in statuses are available to every project');
+
+  const originalName = `Review queue ${Date.now()}`;
+  await page.fill('#status-name', originalName);
+  await page.selectOption('#status-category', 'indeterminate');
+  await page.fill('#status-description', 'Waiting for a peer review.');
+  await page.getByRole('button', { name: 'Add status' }).click();
+  await expect(page.getByRole('status')).toContainText(`${originalName} created`);
+
+  const row = page.locator('.status-directory-item').filter({ has: page.getByRole('heading', { name: originalName, exact: true }) });
+  await expect(row).toContainText('Waiting for a peer review.');
+  await expect(row.locator('.status-impact')).toContainText('Work items');
+  await row.locator('summary', { hasText: 'Edit status' }).click();
+  const updatedName = `${originalName} ready`;
+  await row.getByLabel('Name').fill(updatedName);
+  await row.getByLabel('Category').selectOption('done');
+  await row.getByLabel('Description').fill('Review has completed.');
+  await row.getByRole('button', { name: 'Save status' }).click();
+  await expect(page.getByRole('status')).toContainText(`${updatedName} updated`);
+
+  const updated = page.locator('.status-directory-item').filter({ has: page.getByRole('heading', { name: updatedName, exact: true }) });
+  await expect(updated).toContainText('Review has completed.');
+  await expect(updated).toContainText('Done');
+  await updated.locator('summary', { hasText: 'Edit status' }).click();
+  await updated.getByRole('button', { name: 'Delete status' }).click();
+  await expect(page.getByRole('status')).toContainText('Status deleted');
+  await expect(page.getByRole('heading', { name: updatedName, exact: true })).toHaveCount(0);
+});

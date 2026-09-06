@@ -3,6 +3,7 @@ package api3
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/e6qu/zzira/internal/authz"
 	"github.com/e6qu/zzira/internal/models"
@@ -165,11 +166,12 @@ func (h *Handler) prioritiesEndpoint(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) statusesEndpoint(w http.ResponseWriter, r *http.Request) {
-	if _, _, e := h.authWorkspace(r); e != nil {
+	workspaceID, _, e := h.authWorkspace(r)
+	if e != nil {
 		writeJerr(w, e)
 		return
 	}
-	statuses, err := h.Store.AllStatuses(r.Context())
+	statuses, err := h.Store.StatusesForWorkspace(r.Context(), workspaceID)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -182,11 +184,24 @@ func (h *Handler) statusesEndpoint(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) statusCategoryEndpoint(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, []map[string]any{
-		{"key": "new", "name": "To Do"},
-		{"key": "indeterminate", "name": "In Progress"},
-		{"key": "done", "name": "Done"},
-	})
+	if _, _, e := h.authWorkspace(r); e != nil {
+		writeJerr(w, e)
+		return
+	}
+	writeJSON(w, http.StatusOK, []map[string]any{statusCategoryBean("new"), statusCategoryBean("indeterminate"), statusCategoryBean("done")})
+}
+
+func (h *Handler) statusCategoryDetailEndpoint(w http.ResponseWriter, r *http.Request, idOrKey string) {
+	if _, _, e := h.authWorkspace(r); e != nil {
+		writeJerr(w, e)
+		return
+	}
+	category := map[string]string{"2": "new", "new": "new", "4": "indeterminate", "indeterminate": "indeterminate", "3": "done", "done": "done"}[strings.ToLower(idOrKey)]
+	if category == "" {
+		jiraError(w, http.StatusNotFound, "The status category does not exist.")
+		return
+	}
+	writeJSON(w, http.StatusOK, statusCategoryBean(category))
 }
 
 func (h *Handler) resolutionsEndpoint(w http.ResponseWriter, r *http.Request) {

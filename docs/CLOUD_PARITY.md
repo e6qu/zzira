@@ -34,7 +34,7 @@ with `python3 api/conformance/inventory.py`; CI runs the same program with
 
 The generated [operation coverage](../api/conformance/cloud-coverage.json)
 applies reviewed exact-operation assessments to that denominator. It currently
-assesses 62 operations: 55 partial and 7 missing. The remaining 1,145 operations
+assesses 72 operations: 65 partial and 7 missing. The remaining 1,135 operations
 are explicitly unassessed at this stricter level. The grouped
 [API matrix](../api/conformance/MATRIX.md) records older tested slices; it is not
 divided by 1,207 because one row may represent several operations and does not
@@ -69,7 +69,7 @@ runtime. Capability discovery and errors must distinguish these cases precisely.
 | Work items | Partial | Issue CRUD, rich-text subset, comments, attachments, worklogs, links, watchers, versions, fields and security | Complete ADF and metadata; hierarchy, components, estimates, votes, properties, bulk operations, exact expansions and permissions |
 | Search and filters | Partial | Useful JQL subset, navigator, filter CRUD and favourites | Full JQL grammar/functions/history, stable cursors, sharing administration, subscriptions and remaining search options |
 | Agile planning | Partial | Boards, backlog, sprints, rank, quick filters, swimlanes, WIP and card configuration | Board CRUD/ownership, epics, estimation, capacity, teams, parallel sprints, dependencies, plans and report calculations |
-| Workflows | Partial | Directory, versioned transition drafts, explicit publish/discard with audit, project assignment and published-definition runtime enforcement | Status lifecycle, workflow schemes, designer persistence, conditions, validators and post-functions |
+| Workflows | Partial | Workspace-scoped custom status create/edit/delete, built-in protection, issue/board/workflow/automation impact checks, ten Jira status REST operations, workflow directory, versioned transition drafts, explicit publish/discard with audit, project assignment and published-definition runtime enforcement | Project status scopes, atomic bulk status writes, status usage APIs, workflow schemes, designer persistence, conditions, validators and post-functions |
 | Releases | Partial | Version lifecycle, fix/affects assignment, progress, notes, release/archive/delete | Ordering, related work, approvers, custom fields, exports, cross-project releases and full permissions; see [RELEASES.md](RELEASES.md) |
 | Reports and metrics | Partial | Dashboard statistics/pie tables and release progress | Jira and Agile report catalog, historical facts, DORA, service metrics, exports and scheduled delivery |
 | Dashboards | Partial | CRUD, favourites, layouts, private/user/workspace sharing and native work-item gadgets | Group/project sharing, archive/bulk edit, subscriptions, report/app gadgets and offline data; see [DASHBOARDS.md](DASHBOARDS.md) |

@@ -366,3 +366,15 @@ body.nav-collapsed .project-switcher-panel a { padding-inline: 9px; }
 .workflow-publish p { margin:4px 0 0; color:var(--ds-text-subtle); }
 .workflow-publish form { display:flex; gap:8px; flex-wrap:wrap; }
 @media(max-width:540px) { .workflow-publish { align-items:stretch; flex-direction:column; }.workflow-publish form .btn { flex:1; } }
+
+.status-create { display:grid; grid-template-columns:minmax(220px,.8fr) minmax(320px,1.2fr); gap:28px; margin-bottom:20px; }
+.status-create h2,.status-directory-item h2 { margin:4px 0; }.status-create p { color:var(--ds-text-subtle); }
+.status-form-fields,.status-edit form { display:grid; gap:7px; }.status-form-fields label,.status-edit label { margin-top:5px; font-weight:600; }
+.status-form-fields input,.status-form-fields select,.status-form-fields textarea,.status-edit input,.status-edit select,.status-edit textarea { width:100%; min-width:0; padding:9px 10px; border:1px solid var(--ds-border); border-radius:var(--ds-radius); color:var(--ds-text); background:var(--ds-surface); font:inherit; }
+.status-form-fields .btn { justify-self:start; margin-top:7px; }.status-directory { display:grid; gap:12px; }
+.status-directory-item { display:grid; grid-template-columns:minmax(220px,1fr) minmax(300px,.8fr) auto; gap:22px; align-items:center; }.status-directory-item.is-blocked { border-color:var(--ds-danger); }
+.status-directory-summary { display:flex; gap:12px; align-items:flex-start; min-width:0; }.status-directory-summary .status-dot { margin-top:9px; }.status-directory-summary p { margin:3px 0 8px; color:var(--ds-text-subtle); overflow-wrap:anywhere; }
+.status-impact { display:grid; grid-template-columns:repeat(4,minmax(58px,1fr)); gap:8px; margin:0; }.status-impact div { text-align:center; }.status-impact dt { color:var(--ds-text-subtle); font-size:11px; }.status-impact dd { margin:3px 0 0; font-size:18px; font-variant-numeric:tabular-nums; }
+.status-edit { position:relative; }.status-edit>summary { list-style:none; white-space:nowrap; }.status-edit>summary::-webkit-details-marker { display:none; }.status-edit[open] { grid-column:1/-1; padding-top:14px; border-top:1px solid var(--ds-border); }.status-edit[open]>summary { margin-bottom:12px; }.status-edit form { max-width:680px; }.status-delete { margin-top:14px; }.status-delete-help { color:var(--ds-text-subtle); margin:14px 0 0; }
+@media(max-width:900px) { .status-create { grid-template-columns:1fr; }.status-directory-item { grid-template-columns:1fr auto; }.status-impact { grid-row:2; grid-column:1/-1; }.status-edit[open] { grid-row:3; } }
+@media(max-width:540px) { .status-directory-item { grid-template-columns:1fr; }.status-impact { grid-column:1; }.status-edit { justify-self:start; }.status-edit[open] { width:100%; }.status-form-fields .btn,.status-edit .btn { width:100%; } }

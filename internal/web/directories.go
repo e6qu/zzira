@@ -89,6 +89,13 @@ type workflowEditorData struct {
 	CanAssign bool
 }
 
+type statusDirectoryData struct {
+	Items   []store.StatusUsage
+	CanEdit bool
+	Saved   string
+	Blocked string
+}
+
 func (h *Handler) ProjectsPage(w http.ResponseWriter, r *http.Request) {
 	user, wsID, ok := h.pageContext(w, r)
 	if !ok {
@@ -326,6 +333,84 @@ func (h *Handler) WorkflowsPage(w http.ResponseWriter, r *http.Request) {
 	h.writeWorkspacePage(w, r, "page_workflows", user, wsID, workflowsPageData{Workflows: cards, CanCreate: admin}, "workflows", "")
 }
 
+func (h *Handler) StatusesPage(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	items, err := h.Store.StatusDirectory(r.Context(), workspaceID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	admin, _ := h.Store.IsAdmin(r.Context(), workspaceID, user.ID)
+	h.writeWorkspacePage(w, r, "page_statuses", user, workspaceID, statusDirectoryData{
+		Items: items, CanEdit: admin, Saved: r.URL.Query().Get("saved"), Blocked: r.URL.Query().Get("blocked"),
+	}, "statuses", "")
+}
+
+func statusForm(r *http.Request) models.Status {
+	return models.Status{
+		ID: r.PostFormValue("id"), Name: r.PostFormValue("name"),
+		Description: r.PostFormValue("description"), Category: r.PostFormValue("category"),
+	}
+}
+
+func statusAdminError(w http.ResponseWriter, err error) {
+	code := http.StatusInternalServerError
+	if errors.Is(err, store.ErrAdminValidation) {
+		code = http.StatusBadRequest
+	} else if errors.Is(err, store.ErrAdminConflict) {
+		code = http.StatusConflict
+	} else if errors.Is(err, store.ErrAdminNotFound) {
+		code = http.StatusNotFound
+	}
+	http.Error(w, err.Error(), code)
+}
+
+func (h *Handler) CreateStatus(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	status, err := h.Store.CreateStatus(r.Context(), workspaceID, user.ID, statusForm(r))
+	if err != nil {
+		statusAdminError(w, err)
+		return
+	}
+	http.Redirect(w, r, "/settings/statuses?saved="+url.QueryEscape(status.Name+" created"), http.StatusSeeOther)
+}
+
+func (h *Handler) UpdateStatus(w http.ResponseWriter, r *http.Request, statusID string) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	status := statusForm(r)
+	status.ID = statusID
+	if err := h.Store.UpdateStatus(r.Context(), workspaceID, user.ID, status); err != nil {
+		statusAdminError(w, err)
+		return
+	}
+	http.Redirect(w, r, "/settings/statuses?saved="+url.QueryEscape(status.Name+" updated"), http.StatusSeeOther)
+}
+
+func (h *Handler) DeleteStatus(w http.ResponseWriter, r *http.Request, statusID string) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok {
+		return
+	}
+	if err := h.Store.DeleteStatus(r.Context(), workspaceID, user.ID, statusID); err != nil {
+		if errors.Is(err, store.ErrAdminConflict) {
+			http.Redirect(w, r, "/settings/statuses?blocked="+url.QueryEscape(statusID), http.StatusSeeOther)
+			return
+		}
+		statusAdminError(w, err)
+		return
+	}
+	http.Redirect(w, r, "/settings/statuses?saved="+url.QueryEscape("Status deleted"), http.StatusSeeOther)
+}
+
 func (h *Handler) WorkflowPage(w http.ResponseWriter, r *http.Request, id string) {
 	user, wsID, ok := h.pageContext(w, r)
 	if !ok {
@@ -336,7 +421,7 @@ func (h *Handler) WorkflowPage(w http.ResponseWriter, r *http.Request, id string
 		http.NotFound(w, r)
 		return
 	}
-	statuses, err := h.Store.AllStatuses(r.Context())
+	statuses, err := h.Store.StatusesForWorkspace(r.Context(), wsID)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -397,7 +482,7 @@ func (h *Handler) CreateWorkflow(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) AddWorkflowTransition(w http.ResponseWriter, r *http.Request, workflowID string) {
-	_, _, ok := h.requireAdminPage(w, r)
+	_, wsID, ok := h.requireAdminPage(w, r)
 	if !ok || !parseForm(w, r) {
 		return
 	}
@@ -414,7 +499,7 @@ func (h *Handler) AddWorkflowTransition(w http.ResponseWriter, r *http.Request, 
 		ID: store.NewID("transition"), Name: strings.TrimSpace(r.PostFormValue("name")),
 		From: []string{r.PostFormValue("from")}, To: r.PostFormValue("to"),
 	})
-	if err := h.Store.SaveWorkflowDraft(r.Context(), wf); err != nil {
+	if err := h.Store.SaveWorkflowDraft(r.Context(), wsID, wf); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -422,7 +507,7 @@ func (h *Handler) AddWorkflowTransition(w http.ResponseWriter, r *http.Request, 
 }
 
 func (h *Handler) DeleteWorkflowTransition(w http.ResponseWriter, r *http.Request, workflowID, transitionID string) {
-	_, _, ok := h.requireAdminPage(w, r)
+	_, wsID, ok := h.requireAdminPage(w, r)
 	if !ok {
 		return
 	}
@@ -446,7 +531,7 @@ func (h *Handler) DeleteWorkflowTransition(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	wf.Transitions = transitions
-	if err := h.Store.SaveWorkflowDraft(r.Context(), wf); err != nil {
+	if err := h.Store.SaveWorkflowDraft(r.Context(), wsID, wf); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}

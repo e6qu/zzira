@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 62,
+  "assessedTotal": 72,
   "counts": {
     "delivered": 0,
-    "partial": 55,
+    "partial": 65,
     "missing": 7,
-    "unassessed": 1145
+    "unassessed": 1135
   },
   "countsByFamily": {
     "automation": {
@@ -24,9 +24,9 @@
     },
     "jira-platform": {
       "delivered": 0,
-      "partial": 0,
+      "partial": 10,
       "missing": 0,
-      "unassessed": 617
+      "unassessed": 607
     },
     "jira-service-management": {
       "delivered": 0,
@@ -3844,81 +3844,131 @@
       "operationId": "jira-v3:GET:/rest/api/3/status",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/statuses_test.go",
+        "internal/store/statuses_test.go",
+        "e2e/directories.spec.ts",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Workspace-visible built-in and custom statuses are authenticated and returned with Jira status-category beans; expanded legacy fields and permission nuances remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/status/{idOrName}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/statuses_test.go",
+        "internal/store/statuses_test.go",
+        "e2e/directories.spec.ts",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Status lookup supports workspace-visible IDs and case-insensitive names with exact not-found behavior; project-specific visibility remains."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/statuscategory",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/statuses_test.go",
+        "internal/store/statuses_test.go",
+        "e2e/directories.spec.ts",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "The three Jira status categories require authentication and return stable IDs, keys, names, and colors."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/statuscategory/{idOrKey}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/statuses_test.go",
+        "internal/store/statuses_test.go",
+        "e2e/directories.spec.ts",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Category lookup accepts Jira IDs and keys with exact not-found behavior."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/statuses",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/statuses_test.go",
+        "internal/store/statuses_test.go",
+        "e2e/directories.spec.ts",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Administrators can delete unused workspace statuses; built-ins and statuses referenced by work, boards, workflow drafts/published definitions, or automation are protected. Multi-item atomicity remains."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/statuses",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/statuses_test.go",
+        "internal/store/statuses_test.go",
+        "e2e/directories.spec.ts",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Repeated status IDs return workspace-visible JiraStatus resources; project-scoped status scope remains."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/statuses",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/statuses_test.go",
+        "internal/store/statuses_test.go",
+        "e2e/directories.spec.ts",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Administrators can create validated GLOBAL workspace statuses with descriptions, categories, duplicate detection, and audit evidence. Project scope and multi-item atomicity remain."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/statuses",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/statuses_test.go",
+        "internal/store/statuses_test.go",
+        "e2e/directories.spec.ts",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Administrators can update custom status names, descriptions, and categories with built-in protection and audit evidence. Multi-item atomicity remains."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/statuses/byNames",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/statuses_test.go",
+        "internal/store/statuses_test.go",
+        "e2e/directories.spec.ts",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Repeated names return case-insensitive workspace-visible matches; projectId scoping remains."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/statuses/search",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/statuses_test.go",
+        "internal/store/statuses_test.go",
+        "e2e/directories.spec.ts",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Search supports text, category, startAt/maxResults paging, totals, isLast, and nextPage. Project and includeGlobalStatuses filters remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/statuses/{statusId}/project/{projectId}/issueTypeUsages",

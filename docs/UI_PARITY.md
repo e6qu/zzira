@@ -92,7 +92,9 @@ Status: ✅ browser-tested complete journey · 🟡 usable tested subset · ⛔ 
 1. Manage organizations, sites, products, directories, users, groups and roles.
 2. Configure authentication providers, domains, access policy, sessions and tokens.
 3. Configure permission, notification, security, field, screen, work-type and
-   workflow schemes with impact previews and audit records.
+   workflow schemes with impact previews and audit records. The current status
+   directory covers custom status creation, classification, editing, live usage
+   counts, protected built-ins, and safe deletion.
 4. Install and govern apps, scopes, callbacks, storage and scheduled work.
 5. Export data, set retention, inspect audit events and perform recovery actions.
 

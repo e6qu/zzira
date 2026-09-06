@@ -259,6 +259,14 @@ func main() {
 		webHandler.ProfilePage(w, r, r.PathValue("id"))
 	})
 	mux.HandleFunc("GET /settings/workflows", webHandler.WorkflowsPage)
+	mux.HandleFunc("GET /settings/statuses", webHandler.StatusesPage)
+	mux.HandleFunc("POST /settings/statuses", webHandler.CreateStatus)
+	mux.HandleFunc("POST /settings/statuses/{id}", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.UpdateStatus(w, r, r.PathValue("id"))
+	})
+	mux.HandleFunc("POST /settings/statuses/{id}/delete", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.DeleteStatus(w, r, r.PathValue("id"))
+	})
 	mux.HandleFunc("POST /settings/workflows", webHandler.CreateWorkflow)
 	mux.HandleFunc("GET /settings/workflows/{id}", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.WorkflowPage(w, r, r.PathValue("id"))

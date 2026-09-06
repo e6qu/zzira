@@ -60,7 +60,7 @@ func TestWorkflowPersistenceValidatesDefinitionsAndAssignments(t *testing.T) {
 	}
 	draft := stored
 	draft.Transitions = append(draft.Transitions, workflow.Transition{ID: transitionID, Name: "Review", From: []string{"st_inprogress"}, To: "st_done"})
-	if err := st.SaveWorkflowDraft(ctx, draft); err != nil {
+	if err := st.SaveWorkflowDraft(ctx, "ws_default", draft); err != nil {
 		t.Fatalf("save draft: %v", err)
 	}
 	publishedBefore, err := st.WorkflowByID(ctx, workflowID)
@@ -80,7 +80,7 @@ func TestWorkflowPersistenceValidatesDefinitionsAndAssignments(t *testing.T) {
 	}
 	discarded := published
 	discarded.Transitions = discarded.Transitions[:len(discarded.Transitions)-1]
-	if err := st.SaveWorkflowDraft(ctx, discarded); err != nil {
+	if err := st.SaveWorkflowDraft(ctx, "ws_default", discarded); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.DiscardWorkflowDraft(ctx, workspaceID, actorID, workflowID); err != nil {

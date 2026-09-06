@@ -20,7 +20,7 @@
   }());
 </script>
 <link rel="stylesheet" href="/static/css/tokens.css?v=4">
-<link rel="stylesheet" href="/static/css/workspace.css?v=11">
+<link rel="stylesheet" href="/static/css/workspace.css?v=12">
 <link rel="preload" href="/static/zzira-worker.wasm?v=4" as="fetch" crossorigin>
 <link rel="preload" href="/static/sqlite/sqlite3.wasm" as="fetch" crossorigin>
 <script src="/static/htmx/htmx.min.js" defer></script>
@@ -110,7 +110,7 @@
     <div class="nav-label">Settings</div>
     {{with .Navigation}}{{if .CanAdmin}}{{with .Current}}<a class="nav-project-settings" href="/projects/{{.Project.Key}}/settings" {{if eq $.Active "project-settings"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6M16 14v6"/></svg><span>Project settings</span></a>{{end}}{{end}}{{end}}
     <a class="nav-workflows" href="/settings/workflows" {{if eq .Active "workflows"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M7 6h10M18 8l-5 8M11 16 6 8"/></svg><span>Workflows</span></a>
-    {{with .Navigation}}{{if .CanAdmin}}<a class="nav-automation" href="/settings/automation" {{if eq $.Active "automation"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2M4 12H2M22 12h-2"/></svg><span>Automation</span></a>
+    {{with .Navigation}}{{if .CanAdmin}}<a class="nav-statuses" href="/settings/statuses" {{if eq $.Active "statuses"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="2"/><circle cx="6" cy="12" r="2"/><circle cx="6" cy="18" r="2"/><path d="M10 6h10M10 12h10M10 18h10"/></svg><span>Statuses</span></a><a class="nav-automation" href="/settings/automation" {{if eq $.Active "automation"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2M4 12H2M22 12h-2"/></svg><span>Automation</span></a>
     <a class="nav-admin" href="/admin" {{if eq $.Active "admin"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3"/><path d="M5 20c.6-4.4 2.8-7 7-7s6.4 2.6 7 7M4 5h2M18 5h2"/></svg><span>Administration</span></a>{{end}}{{end}}
   </nav>
   <div class="sync-rail" id="sync-rail" data-state="online">
@@ -831,6 +831,30 @@
       <section class="surface-card" aria-labelledby="assigned-work-title"><div class="section-heading"><div><span class="eyebrow">Ownership</span><h2 id="assigned-work-title">Assigned work <span class="section-count">{{len .Data.Assigned}}</span></h2></div></div><ul class="compact-work-list">{{range .Data.Assigned}}<li><a href="/browse/{{.Key}}"><strong>{{.Key}}</strong><span>{{.Summary}}</span></a><span class="lozenge {{statusClass .Status.Category}}">{{.Status.Name}}</span></li>{{else}}<li class="empty-state"><strong>No assigned work</strong></li>{{end}}</ul></section>
       <section class="surface-card" aria-labelledby="reported-work-title"><div class="section-heading"><div><span class="eyebrow">Created</span><h2 id="reported-work-title">Reported work <span class="section-count">{{len .Data.Reported}}</span></h2></div></div><ul class="compact-work-list">{{range .Data.Reported}}<li><a href="/browse/{{.Key}}"><strong>{{.Key}}</strong><span>{{.Summary}}</span></a><span class="lozenge {{statusClass .Status.Category}}">{{.Status.Name}}</span></li>{{else}}<li class="empty-state"><strong>No reported work</strong></li>{{end}}</ul></section>
     </div>
+  </main></div><div id="modal-root"></div><div id="sync-banner" class="sync-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+</body></html>
+{{end}}
+
+{{define "page_statuses"}}
+<!doctype html>
+<html lang="en">
+<head><title>Statuses · ZZIRA</title>{{template "head" .}}</head>
+<body class="page-statuses">
+  <a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}
+  <div class="app-shell">{{template "workspace_nav" .}}
+  <main class="page page-directory" id="main-content" tabindex="-1">
+    <nav class="issue-breadcrumbs" aria-label="Breadcrumb"><span>Settings</span><span aria-hidden="true">/</span><span aria-current="page">Statuses</span></nav>
+    <header class="page-header"><div><span class="eyebrow">Work item settings</span><h1>Statuses</h1><p>Manage the steps teams use in workflows, boards, automation, and reports.</p></div></header>
+    {{if .Data.Saved}}<div class="success-banner" role="status">{{.Data.Saved}}.</div>{{end}}
+    {{if .Data.Blocked}}<div class="form-error" role="alert"><strong>Status is still in use</strong><span>Remove it from every work item, board, workflow draft and published workflow, and automation rule before deleting it.</span></div>{{end}}
+    {{if .Data.CanEdit}}<form class="surface-card status-create" method="post" action="/settings/statuses"><div><span class="eyebrow">New status</span><h2>Add a lifecycle step</h2><p>Create a workspace status, then add it to a workflow before teams can transition work into it.</p></div><div class="status-form-fields"><label for="status-name">Name</label><input id="status-name" name="name" maxlength="255" required placeholder="For example: Ready for review"><label for="status-category">Category</label><select id="status-category" name="category" required><option value="new">To do</option><option value="indeterminate">In progress</option><option value="done">Done</option></select><label for="status-description">Description</label><textarea id="status-description" name="description" maxlength="1000" rows="2" placeholder="Explain when work enters this status"></textarea><button class="btn btn-primary" type="submit">Add status</button></div></form>{{end}}
+    <section class="status-directory" aria-label="Status directory">
+    {{range .Data.Items}}<article class="surface-card status-directory-item{{if eq .Status.ID $.Data.Blocked}} is-blocked{{end}}">
+      <div class="status-directory-summary"><span class="status-dot status-{{.Status.Category}}" aria-hidden="true"></span><div><h2>{{.Status.Name}}</h2><p>{{if .Status.Description}}{{.Status.Description}}{{else}}No description{{end}}</p><span class="lozenge">{{if eq .Status.Category "new"}}To do{{else if eq .Status.Category "indeterminate"}}In progress{{else}}Done{{end}}</span>{{if .Status.Protected}} <span class="lozenge">Built in</span>{{end}}</div></div>
+      <dl class="status-impact"><div><dt>Work items</dt><dd>{{.Issues}}</dd></div><div><dt>Boards</dt><dd>{{.Boards}}</dd></div><div><dt>Workflows</dt><dd>{{.Workflows}}</dd></div><div><dt>Automation</dt><dd>{{.Automations}}</dd></div></dl>
+      {{if $.Data.CanEdit}}{{if .Status.Protected}}<small class="muted">Built-in statuses are available to every project and cannot be edited or deleted.</small>{{else}}<details class="status-edit"><summary class="btn">Edit status</summary><form method="post" action="/settings/statuses/{{.Status.ID}}"><label for="name-{{.Status.ID}}">Name</label><input id="name-{{.Status.ID}}" name="name" value="{{.Status.Name}}" maxlength="255" required><label for="category-{{.Status.ID}}">Category</label><select id="category-{{.Status.ID}}" name="category"><option value="new" {{if eq .Status.Category "new"}}selected{{end}}>To do</option><option value="indeterminate" {{if eq .Status.Category "indeterminate"}}selected{{end}}>In progress</option><option value="done" {{if eq .Status.Category "done"}}selected{{end}}>Done</option></select><label for="description-{{.Status.ID}}">Description</label><textarea id="description-{{.Status.ID}}" name="description" maxlength="1000" rows="2">{{.Status.Description}}</textarea><div><button class="btn btn-primary" type="submit">Save status</button></div></form>{{if eq .Total 0}}<form class="status-delete" method="post" action="/settings/statuses/{{.Status.ID}}/delete"><button class="btn btn-danger" type="submit">Delete status</button></form>{{else}}<p class="status-delete-help">Deletion is locked while this status has {{.Total}} active reference{{if ne .Total 1}}s{{end}}.</p>{{end}}</details>{{end}}{{end}}
+    </article>{{else}}<div class="empty-state"><strong>No statuses found</strong></div>{{end}}
+    </section>
   </main></div><div id="modal-root"></div><div id="sync-banner" class="sync-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div>
 </body></html>
 {{end}}

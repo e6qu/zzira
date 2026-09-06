@@ -67,8 +67,8 @@ func (s *Store) DefaultProjectInWorkspace(ctx context.Context, workspaceID strin
 // StatusByID returns one status (transitions beans, diff display names).
 func (s *Store) StatusByID(ctx context.Context, id string) (models.Status, error) {
 	var st models.Status
-	err := s.Pool.QueryRow(ctx, `SELECT id, name, category FROM statuses WHERE id=$1`, id).
-		Scan(&st.ID, &st.Name, &st.Category)
+	err := s.Pool.QueryRow(ctx, `SELECT id,name,description,category,workspace_id IS NULL FROM statuses WHERE id=$1`, id).
+		Scan(&st.ID, &st.Name, &st.Description, &st.Category, &st.Protected)
 	return st, err
 }
 
@@ -165,7 +165,7 @@ func (s *Store) Priorities(ctx context.Context) ([]*models.Priority, error) {
 
 // AllStatuses lists the status registry.
 func (s *Store) AllStatuses(ctx context.Context) ([]models.Status, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT id, name, category FROM statuses ORDER BY id`)
+	rows, err := s.Pool.Query(ctx, `SELECT id,name,description,category,workspace_id IS NULL FROM statuses ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -173,10 +173,32 @@ func (s *Store) AllStatuses(ctx context.Context) ([]models.Status, error) {
 	var out []models.Status
 	for rows.Next() {
 		var st models.Status
-		if err := rows.Scan(&st.ID, &st.Name, &st.Category); err != nil {
+		if err := rows.Scan(&st.ID, &st.Name, &st.Description, &st.Category, &st.Protected); err != nil {
 			return nil, err
 		}
 		out = append(out, st)
+	}
+	return out, rows.Err()
+}
+
+// StatusesForWorkspace returns the built-in registry and custom statuses owned
+// by one workspace. Custom statuses from other sites never enter editors or APIs.
+func (s *Store) StatusesForWorkspace(ctx context.Context, workspaceID string) ([]models.Status, error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT id,name,description,category,workspace_id IS NULL
+		FROM statuses WHERE workspace_id IS NULL OR workspace_id=$1
+		ORDER BY CASE category WHEN 'new' THEN 1 WHEN 'indeterminate' THEN 2 ELSE 3 END,lower(name),id`, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []models.Status
+	for rows.Next() {
+		var status models.Status
+		if err := rows.Scan(&status.ID, &status.Name, &status.Description, &status.Category, &status.Protected); err != nil {
+			return nil, err
+		}
+		out = append(out, status)
 	}
 	return out, rows.Err()
 }

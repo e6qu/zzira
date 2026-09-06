@@ -41,9 +41,11 @@ type User struct {
 }
 
 type Status struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Category string `json:"category"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Category    string `json:"category"`
+	Protected   bool   `json:"-"`
 }
 
 type IssueType struct {

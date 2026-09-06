@@ -1270,7 +1270,7 @@ func (s *Store) WorkflowForProject(ctx context.Context, projectID string) (workf
 
 // CreateWorkflow stores a workflow definition.
 func (s *Store) CreateWorkflow(ctx context.Context, wf workflow.Workflow) error {
-	def, err := s.validateWorkflow(ctx, wf)
+	def, err := s.validateWorkflow(ctx, "", wf)
 	if err != nil {
 		return err
 	}
@@ -1280,11 +1280,17 @@ func (s *Store) CreateWorkflow(ctx context.Context, wf workflow.Workflow) error 
 	return err
 }
 
-func (s *Store) validateWorkflow(ctx context.Context, wf workflow.Workflow) ([]byte, error) {
+func (s *Store) validateWorkflow(ctx context.Context, workspaceID string, wf workflow.Workflow) ([]byte, error) {
 	if strings.TrimSpace(wf.ID) == "" || strings.TrimSpace(wf.Name) == "" || len(wf.Transitions) == 0 {
 		return nil, fmt.Errorf("workflow id, name, and at least one transition are required")
 	}
-	statuses, err := s.AllStatuses(ctx)
+	var statuses []models.Status
+	var err error
+	if workspaceID == "" {
+		statuses, err = s.AllStatuses(ctx)
+	} else {
+		statuses, err = s.StatusesForWorkspace(ctx, workspaceID)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -1317,11 +1323,11 @@ func (s *Store) validateWorkflow(ctx context.Context, wf workflow.Workflow) ([]b
 	return def, nil
 }
 
-func (s *Store) SaveWorkflowDraft(ctx context.Context, wf workflow.Workflow) error {
+func (s *Store) SaveWorkflowDraft(ctx context.Context, workspaceID string, wf workflow.Workflow) error {
 	if wf.ID == workflow.Default().ID {
 		return fmt.Errorf("the built-in workflow is read-only")
 	}
-	def, err := s.validateWorkflow(ctx, wf)
+	def, err := s.validateWorkflow(ctx, workspaceID, wf)
 	if err != nil {
 		return err
 	}

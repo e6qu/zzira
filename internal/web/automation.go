@@ -178,7 +178,7 @@ func (h *Handler) automationEditorData(r *http.Request, workspaceID string, rule
 	if err != nil {
 		return automationEditorData{}, err
 	}
-	statuses, err := h.Store.AllStatuses(r.Context())
+	statuses, err := h.Store.StatusesForWorkspace(r.Context(), workspaceID)
 	if err != nil {
 		return automationEditorData{}, err
 	}

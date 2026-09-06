@@ -140,6 +140,12 @@ does not publish them as one OpenAPI document.
   definition. Administrators explicitly publish or discard; publishing bumps
   the version, both outcomes write organization audit evidence, and the
   workflow directory exposes pending drafts.
+- Added a workspace status directory and Jira status REST subset. Administrators
+  create, classify, describe, edit, and delete custom statuses; built-ins are
+  protected, visible names are unique, all changes are audited, and deletion is
+  blocked while issues, boards, published/draft workflows, or automation rules
+  refer to the status. Editors and REST reads exclude other workspaces' custom
+  statuses.
 
 Validation after the organization foundation:
 
@@ -303,10 +309,28 @@ Validation after workflow draft/publish:
   The light/dark WCAG scan of every primary page and the 320 px reflow journey
   also pass.
 
+Validation after status lifecycle administration:
+
+- PostgreSQL tests cover migration 045, workspace visibility, validation,
+  duplicate and built-in protection, workflow impact detection, deletion only
+  after reference cleanup, and create/update/delete audit evidence.
+- The Jira REST integration journey covers member/admin authorization, bulk
+  create/read/update/delete, lookup by ID/name, search/category filtering,
+  status categories, descriptions, conflicts, and protected deletion.
+- The Chromium administrator journey covers directory navigation, built-in
+  protection, creation, categorization, description, impact counts, editing,
+  and safe deletion.
+- The full PostgreSQL Go suite, vet, WebAssembly compilation, seven conformance
+  tests, both generated evidence checks, and `git diff --check` pass. The new
+  page passes the shared light/dark WCAG scan, WCAG 2.2 target-size check, and
+  320 px reflow journey.
+- Exact reviewed API coverage is 72 of 1,207 operations: 65 partial, 7 missing,
+  and 1,135 explicitly unassessed.
+
 ## Current change
 
-1. Continue Jira administration with status lifecycle, workflow schemes, and
-   impact-safe assignment.
+1. Continue Jira administration with workflow schemes and impact-safe project
+   assignment.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 
