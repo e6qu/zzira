@@ -10,6 +10,11 @@ func workflowCapabilitiesResponse(editorScope string) map[string]any {
 		"projectTypes": []string{"software", "business"},
 		"systemRules": []map[string]any{
 			{
+				"description": "Allow a transition when a system or custom field matches a configured value.", "incompatibleRuleKeys": []string{},
+				"isAvailableForInitialTransition": false, "isVisible": true, "name": "Check field value",
+				"ruleKey": "system:check-field-value", "ruleType": "Condition",
+			},
+			{
 				"description": "Prevent people from running a transition, with an option to block API calls too.", "incompatibleRuleKeys": []string{},
 				"isAvailableForInitialTransition": false, "isVisible": true, "name": "Restrict transitions",
 				"ruleKey": "system:restrict-from-all-users", "ruleType": "Condition",

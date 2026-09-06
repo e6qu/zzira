@@ -58,6 +58,61 @@ func TestRestrictFromAllUsersDistinguishesAPIRequests(t *testing.T) {
 	}
 }
 
+func TestCheckFieldValueConditionComparators(t *testing.T) {
+	issue := &models.Issue{Summary: "Ready", Labels: []string{"released", "verified"}, Fields: map[string]json.RawMessage{
+		"customfield_points": json.RawMessage(`8`),
+		"customfield_due":    json.RawMessage(`"2026-10-01"`),
+		"customfield_option": json.RawMessage(`{"id":"10001","value":"Gold"}`),
+	}}
+	context := ContextForIssue("usr_actor", issue)
+	tests := []struct {
+		name       string
+		field      string
+		value      string
+		comparator string
+		kind       string
+		want       bool
+	}{
+		{name: "text equal", field: "summary", value: `["Ready"]`, comparator: "=", kind: "STRING", want: true},
+		{name: "array member", field: "labels", value: `["released"]`, comparator: "=", kind: "STRING", want: true},
+		{name: "array differs", field: "labels", value: `["blocked"]`, comparator: "!=", kind: "STRING", want: true},
+		{name: "number", field: "customfield_points", value: `["5"]`, comparator: ">=", kind: "NUMBER", want: true},
+		{name: "date", field: "customfield_due", value: `["2026-12-01"]`, comparator: "<", kind: "DATE_WITHOUT_TIME", want: true},
+		{name: "option", field: "customfield_option", value: `["10001"]`, comparator: "=", kind: "OPTIONID", want: true},
+		{name: "option label", field: "customfield_option", value: `["Gold"]`, comparator: "=", kind: "STRING", want: true},
+		{name: "missing", field: "customfield_missing", value: `["x"]`, comparator: "!=", kind: "STRING", want: false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			transition := Transition{Conditions: &ConditionGroup{Operation: "ALL", Conditions: []Rule{{
+				RuleKey: RuleCheckFieldValue, Parameters: map[string]string{"fieldId": test.field, "fieldValue": test.value, "comparator": test.comparator, "comparisonType": test.kind},
+			}}}}
+			if got := transition.ConditionsAllow(context); got != test.want {
+				t.Fatalf("condition result = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
+func TestCheckFieldValueConfigurationValidation(t *testing.T) {
+	rule := Rule{ID: "check", RuleKey: RuleCheckFieldValue, Parameters: map[string]string{
+		"fieldId": "summary", "fieldValue": `["Ready"]`, "comparator": "=", "comparisonType": "STRING",
+	}}
+	transition := Transition{Conditions: &ConditionGroup{Operation: "ALL", Conditions: []Rule{rule}}}
+	if err := ValidateTransitionRules(transition); err != nil {
+		t.Fatal(err)
+	}
+	transition.Conditions.Conditions[0].Parameters["fieldValue"] = "Ready"
+	if err := ValidateTransitionRules(transition); err == nil {
+		t.Fatal("non-array fieldValue was accepted")
+	}
+	transition.Conditions.Conditions[0].Parameters["fieldValue"] = `["Ready"]`
+	transition.Conditions.Conditions[0].Parameters["comparisonType"] = "UNKNOWN"
+	if err := ValidateTransitionRules(transition); err == nil {
+		t.Fatal("unknown comparison type was accepted")
+	}
+}
+
 func TestRequiredFieldValidatorUsesConfiguredMessage(t *testing.T) {
 	transition := Transition{Validators: []Rule{{RuleKey: RuleValidateFieldValue, Parameters: map[string]string{
 		"ruleType": "fieldRequired", "fieldsRequired": "assignee,customfield_10001", "errorMessage": "Complete ownership and review notes",

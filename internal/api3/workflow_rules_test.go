@@ -75,13 +75,13 @@ func TestWorkflowRulesPersistAndExecuteAcrossAPIJourney(t *testing.T) {
 	}
 
 	capabilities := call(adminID, "GET", "/rest/api/3/workflows/capabilities?workflowId=wf_default", "", 200)
-	for _, ruleKey := range []string{"system:restrict-issue-transition", "system:restrict-from-all-users", "system:validate-field-value", "system:change-assignee", "system:transition-screen"} {
+	for _, ruleKey := range []string{"system:restrict-issue-transition", "system:restrict-from-all-users", "system:check-field-value", "system:validate-field-value", "system:change-assignee", "system:transition-screen"} {
 		if !strings.Contains(capabilities.Body.String(), `"ruleKey":"`+ruleKey+`"`) {
 			t.Fatalf("capabilities omit %s: %s", ruleKey, capabilities.Body.String())
 		}
 	}
 
-	createBody := `{"scope":{"type":"GLOBAL"},"statuses":[{"id":"st_todo","name":"To Do","statusCategory":"TODO","statusReference":"todo"},{"id":"st_done","name":"Done","statusCategory":"DONE","statusReference":"done"}],"workflows":[{"name":"Executable rule workflow","description":"A governed release path","startPointLayout":{"x":-100,"y":-80},"loopedTransitionContainerLayout":{"x":700,"y":40},"statuses":[{"statusReference":"todo","layout":{"x":40,"y":60},"properties":{"phase":"intake"}},{"statusReference":"done","layout":{"x":520,"y":60},"properties":{}}],"transitions":[{"id":"complete","name":"Complete","type":"DIRECTED","toStatusReference":"done","links":[{"fromStatusReference":"todo"}],"conditions":{"operation":"ALL","conditions":[{"ruleKey":"system:restrict-issue-transition","parameters":{"accountIds":"allow-reporter"}},{"ruleKey":"system:restrict-from-all-users","parameters":{"restrictMode":"users"}}],"conditionGroups":[]},"validators":[{"ruleKey":"system:validate-field-value","parameters":{"ruleType":"fieldRequired","fieldsRequired":"description","errorMessage":"Add completion notes"}}],"actions":[{"ruleKey":"system:change-assignee","parameters":{"type":"to-current-user"}}],"transitionScreen":{"ruleKey":"system:transition-screen","parameters":{"fields":"labels"}}}]}]}`
+	createBody := `{"scope":{"type":"GLOBAL"},"statuses":[{"id":"st_todo","name":"To Do","statusCategory":"TODO","statusReference":"todo"},{"id":"st_done","name":"Done","statusCategory":"DONE","statusReference":"done"}],"workflows":[{"name":"Executable rule workflow","description":"A governed release path","startPointLayout":{"x":-100,"y":-80},"loopedTransitionContainerLayout":{"x":700,"y":40},"statuses":[{"statusReference":"todo","layout":{"x":40,"y":60},"properties":{"phase":"intake"}},{"statusReference":"done","layout":{"x":520,"y":60},"properties":{}}],"transitions":[{"id":"complete","name":"Complete","type":"DIRECTED","toStatusReference":"done","links":[{"fromStatusReference":"todo"}],"conditions":{"operation":"ALL","conditions":[{"ruleKey":"system:restrict-issue-transition","parameters":{"accountIds":"allow-reporter"}},{"ruleKey":"system:restrict-from-all-users","parameters":{"restrictMode":"users"}},{"ruleKey":"system:check-field-value","parameters":{"fieldId":"summary","fieldValue":"[\"Rule journey\"]","comparator":"=","comparisonType":"STRING"}}],"conditionGroups":[]},"validators":[{"ruleKey":"system:validate-field-value","parameters":{"ruleType":"fieldRequired","fieldsRequired":"description","errorMessage":"Add completion notes"}}],"actions":[{"ruleKey":"system:change-assignee","parameters":{"type":"to-current-user"}}],"transitionScreen":{"ruleKey":"system:transition-screen","parameters":{"fields":"labels"}}}]}]}`
 	created := call(adminID, "POST", "/rest/api/3/workflows/create", createBody, 200)
 	var result struct {
 		Workflows []struct {
@@ -92,7 +92,7 @@ func TestWorkflowRulesPersistAndExecuteAcrossAPIJourney(t *testing.T) {
 		t.Fatalf("created workflow: %v %s", err, created.Body.String())
 	}
 	workflowID := result.Workflows[0].ID
-	updateBody := `{"workflows":[{"id":"` + workflowID + `","version":{"id":"` + workflowID + `","versionNumber":1},"statuses":[{"statusReference":"st_todo","layout":{"x":40,"y":60},"properties":{"phase":"intake"}},{"statusReference":"st_done","layout":{"x":560,"y":72},"properties":{}}],"transitions":[{"id":"complete","name":"Complete","type":"DIRECTED","toStatusReference":"st_done","links":[{"fromStatusReference":"st_todo"}],"conditions":{"operation":"ALL","conditions":[{"ruleKey":"system:restrict-issue-transition","parameters":{"accountIds":"allow-reporter"}},{"ruleKey":"system:restrict-from-all-users","parameters":{"restrictMode":"users"}}],"conditionGroups":[]},"validators":[{"ruleKey":"system:validate-field-value","parameters":{"ruleType":"fieldRequired","fieldsRequired":"description","errorMessage":"Add completion notes"}}],"actions":[{"ruleKey":"system:change-assignee","parameters":{"type":"to-current-user"}}],"transitionScreen":{"ruleKey":"system:transition-screen","parameters":{"fields":"labels"}}}]}]}`
+	updateBody := `{"workflows":[{"id":"` + workflowID + `","version":{"id":"` + workflowID + `","versionNumber":1},"statuses":[{"statusReference":"st_todo","layout":{"x":40,"y":60},"properties":{"phase":"intake"}},{"statusReference":"st_done","layout":{"x":560,"y":72},"properties":{}}],"transitions":[{"id":"complete","name":"Complete","type":"DIRECTED","toStatusReference":"st_done","links":[{"fromStatusReference":"st_todo"}],"conditions":{"operation":"ALL","conditions":[{"ruleKey":"system:restrict-issue-transition","parameters":{"accountIds":"allow-reporter"}},{"ruleKey":"system:restrict-from-all-users","parameters":{"restrictMode":"users"}},{"ruleKey":"system:check-field-value","parameters":{"fieldId":"summary","fieldValue":"[\"Rule journey\"]","comparator":"=","comparisonType":"STRING"}}],"conditionGroups":[]},"validators":[{"ruleKey":"system:validate-field-value","parameters":{"ruleType":"fieldRequired","fieldsRequired":"description","errorMessage":"Add completion notes"}}],"actions":[{"ruleKey":"system:change-assignee","parameters":{"type":"to-current-user"}}],"transitionScreen":{"ruleKey":"system:transition-screen","parameters":{"fields":"labels"}}}]}]}`
 	updatedWorkflow := call(adminID, "POST", "/rest/api/3/workflows/update", updateBody, 200)
 	if !strings.Contains(updatedWorkflow.Body.String(), `"versionNumber":2`) || !strings.Contains(updatedWorkflow.Body.String(), `"ruleKey":"system:change-assignee"`) {
 		t.Fatal(updatedWorkflow.Body.String())
@@ -103,6 +103,14 @@ func TestWorkflowRulesPersistAndExecuteAcrossAPIJourney(t *testing.T) {
 	issue, _, err := service.CreateIssue(ctx, commands.CreateIssueInput{ActorID: reporterID, WorkspaceID: workspaceID, ProjectIDOrKey: "WRK", Summary: "Rule journey", IssueTypeID: "it_task"})
 	if err != nil {
 		t.Fatal(err)
+	}
+	wrongValueIssue, _, err := service.CreateIssue(ctx, commands.CreateIssueInput{ActorID: reporterID, WorkspaceID: workspaceID, ProjectIDOrKey: "WRK", Summary: "Wrong field value", IssueTypeID: "it_task"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrongValueTransitions := call(reporterID, "GET", "/rest/api/3/issue/"+wrongValueIssue.Key+"/transitions", "", 200)
+	if !strings.Contains(wrongValueTransitions.Body.String(), `"transitions":[]`) {
+		t.Fatalf("field condition exposed transition: %s", wrongValueTransitions.Body.String())
 	}
 
 	hidden := call(otherID, "GET", "/rest/api/3/issue/"+issue.Key+"/transitions", "", 200)
@@ -151,7 +159,7 @@ func TestWorkflowRulesPersistAndExecuteAcrossAPIJourney(t *testing.T) {
 	}
 
 	search := call(adminID, "GET", "/rest/api/3/workflows/search?queryString=Executable&expand=values.transitions", "", 200)
-	for _, fragment := range []string{`"description":"A governed release path"`, `"layout":{"x":40,"y":60}`, `"startPointLayout":{"x":-100,"y":-80}`, `"conditions":{"operation":"ALL"`, `"ruleKey":"system:restrict-from-all-users"`, `"ruleKey":"system:validate-field-value"`, `"ruleKey":"system:change-assignee"`} {
+	for _, fragment := range []string{`"description":"A governed release path"`, `"layout":{"x":40,"y":60}`, `"startPointLayout":{"x":-100,"y":-80}`, `"conditions":{"operation":"ALL"`, `"ruleKey":"system:restrict-from-all-users"`, `"ruleKey":"system:check-field-value"`, `"ruleKey":"system:validate-field-value"`, `"ruleKey":"system:change-assignee"`} {
 		if !strings.Contains(search.Body.String(), fragment) {
 			t.Fatalf("search omits %s: %s", fragment, search.Body.String())
 		}

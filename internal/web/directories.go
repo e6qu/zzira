@@ -1,6 +1,7 @@
 package web
 
 import (
+	"encoding/json"
 	"errors"
 	"math"
 	"net/http"
@@ -837,18 +838,30 @@ func (h *Handler) AddWorkflowTransition(w http.ResponseWriter, r *http.Request, 
 	if fields := r.PostForm["screen_field"]; len(fields) > 0 {
 		transition.Screen = &workflow.Rule{ID: store.NewID("rule"), RuleKey: workflow.RuleTransitionScreen, Parameters: map[string]string{"fields": strings.Join(fields, ",")}}
 	}
+	conditions := make([]workflow.Rule, 0, 2)
 	if restriction := r.PostFormValue("restriction"); restriction == "block-users" || restriction == "block-all" {
 		mode := "users"
 		if restriction == "block-all" {
 			mode = "usersAndAPI"
 		}
-		transition.Conditions = &workflow.ConditionGroup{Operation: "ALL", Conditions: []workflow.Rule{{
+		conditions = append(conditions, workflow.Rule{
 			ID: store.NewID("rule"), RuleKey: workflow.RuleRestrictFromAllUsers, Parameters: map[string]string{"restrictMode": mode},
-		}}}
+		})
 	} else if restriction != "" {
-		transition.Conditions = &workflow.ConditionGroup{Operation: "ALL", Conditions: []workflow.Rule{{
+		conditions = append(conditions, workflow.Rule{
 			ID: store.NewID("rule"), RuleKey: workflow.RuleRestrictIssueTransition, Parameters: map[string]string{"accountIds": restriction},
-		}}}
+		})
+	}
+	if field := strings.TrimSpace(r.PostFormValue("condition_field")); field != "" {
+		values, _ := json.Marshal([]string{r.PostFormValue("condition_value")})
+		conditions = append(conditions, workflow.Rule{
+			ID: store.NewID("rule"), RuleKey: workflow.RuleCheckFieldValue, Parameters: map[string]string{
+				"fieldId": field, "fieldValue": string(values), "comparator": r.PostFormValue("condition_comparator"), "comparisonType": r.PostFormValue("condition_type"),
+			},
+		})
+	}
+	if len(conditions) > 0 {
+		transition.Conditions = &workflow.ConditionGroup{Operation: "ALL", Conditions: conditions}
 	}
 	if fields := r.PostForm["required_field"]; len(fields) > 0 {
 		transition.Validators = []workflow.Rule{{

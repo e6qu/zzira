@@ -713,9 +713,28 @@ Validation after API-aware transition restrictions:
   generated inventory and coverage checks, diff check, primary-page light/dark
   axe scan, and 320 px reflow gate pass.
 
+Validation after field-value workflow conditions:
+
+- `system:check-field-value` evaluates system and custom issue fields with
+  Jira's `STRING`, `NUMBER`, `DATE`, `DATE_WITHOUT_TIME`, and `OPTIONID` modes
+  and `>`, `>=`, `=`, `<=`, `<`, and `!=` comparators. Scalar, array, and
+  option-object values share one normalized evaluator; missing fields do not
+  accidentally satisfy negative comparisons.
+- Workflow validation requires a field, a non-empty JSON value array, and known
+  comparison settings. Create, update, search, preview, and capabilities
+  round-trip the executable rule.
+- The administrator editor provides system-field, comparator, type, and value
+  controls and can combine the condition with actor or API restrictions. Unit
+  coverage exercises every value shape and type; PostgreSQL REST integration
+  proves matching work is available and a mismatched summary stays hidden; the
+  Chromium workflow journey creates and publishes the visual configuration.
+- The full PostgreSQL Go suite, vet, WebAssembly build, seven conformance tests,
+  generated inventory and coverage checks, diff check, primary-page light/dark
+  axe scan, and 320 px reflow gate pass.
+
 ## Current change
 
-1. Add executable field-value workflow conditions and visual controls.
+1. Add executable update-field workflow post-functions and visual controls.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 

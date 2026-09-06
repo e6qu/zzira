@@ -120,6 +120,10 @@ test('project workflow creation, editor, transition changes, and assignment work
   await page.selectOption('#transition-from', 'st_done');
   await page.selectOption('#transition-to', 'st_todo');
   await page.selectOption('#transition-restriction', 'block-users');
+  await page.selectOption('#transition-condition-field', 'summary');
+  await page.selectOption('#transition-condition-comparator', '=');
+  await page.selectOption('#transition-condition-type', 'STRING');
+  await page.fill('#transition-condition-value', 'Emergency reopen');
   await page.getByRole('button', { name: 'Add transition' }).click();
   await expect(page.getByText('Integration reopen', { exact: true })).toBeVisible();
   await expect(page.getByText('to To Do · condition', { exact: true })).toBeVisible();

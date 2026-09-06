@@ -5,6 +5,7 @@
 package workflow
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -12,6 +13,7 @@ import (
 const (
 	RuleRestrictIssueTransition = "system:restrict-issue-transition"
 	RuleRestrictFromAllUsers    = "system:restrict-from-all-users"
+	RuleCheckFieldValue         = "system:check-field-value"
 	RuleValidateFieldValue      = "system:validate-field-value"
 	RuleChangeAssignee          = "system:change-assignee"
 	RuleTransitionScreen        = "system:transition-screen"
@@ -38,6 +40,7 @@ type EvaluationContext struct {
 	AssigneeID   string
 	ReporterID   string
 	FieldPresent map[string]bool
+	FieldValues  map[string]json.RawMessage
 	IsAPI        bool
 }
 
@@ -191,10 +194,13 @@ func evaluateConditionGroup(group ConditionGroup, context EvaluationContext) boo
 }
 
 func evaluateCondition(rule Rule, context EvaluationContext) bool {
-	if rule.RuleKey == RuleRestrictFromAllUsers {
+	switch rule.RuleKey {
+	case RuleCheckFieldValue:
+		return checkFieldValue(rule.Parameters, context)
+	case RuleRestrictFromAllUsers:
 		return rule.Parameters["restrictMode"] == "users" && context.IsAPI
-	}
-	if rule.RuleKey != RuleRestrictIssueTransition {
+	case RuleRestrictIssueTransition:
+	default:
 		return false
 	}
 	for _, value := range commaValues(rule.Parameters["accountIds"]) {
@@ -371,6 +377,23 @@ func validateConditionConfiguration(group ConditionGroup, seen map[string]bool) 
 		case RuleRestrictFromAllUsers:
 			if mode := condition.Parameters["restrictMode"]; mode != "users" && mode != "usersAndAPI" {
 				return fmt.Errorf("restrict-from-all-users mode %q is unsupported", mode)
+			}
+		case RuleCheckFieldValue:
+			if strings.TrimSpace(condition.Parameters["fieldId"]) == "" {
+				return fmt.Errorf("check-field-value fieldId is required")
+			}
+			if _, ok := comparisonValues(condition.Parameters["fieldValue"]); !ok {
+				return fmt.Errorf("check-field-value fieldValue must be a non-empty JSON array")
+			}
+			switch condition.Parameters["comparator"] {
+			case ">", ">=", "=", "<=", "<", "!=":
+			default:
+				return fmt.Errorf("check-field-value comparator %q is unsupported", condition.Parameters["comparator"])
+			}
+			switch condition.Parameters["comparisonType"] {
+			case "STRING", "NUMBER", "DATE", "DATE_WITHOUT_TIME", "OPTIONID":
+			default:
+				return fmt.Errorf("check-field-value comparison type %q is unsupported", condition.Parameters["comparisonType"])
 			}
 		default:
 			return fmt.Errorf("workflow condition %q is unsupported or incomplete", condition.RuleKey)
