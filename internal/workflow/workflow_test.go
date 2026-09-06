@@ -33,6 +33,31 @@ func TestNestedTransitionConditions(t *testing.T) {
 	}
 }
 
+func TestRestrictFromAllUsersDistinguishesAPIRequests(t *testing.T) {
+	uiOnly := Transition{Conditions: &ConditionGroup{Operation: "ALL", Conditions: []Rule{{
+		RuleKey: RuleRestrictFromAllUsers, Parameters: map[string]string{"restrictMode": "users"},
+	}}}}
+	if uiOnly.ConditionsAllow(EvaluationContext{ActorID: "usr_actor"}) {
+		t.Fatal("users mode must hide the transition from browser users")
+	}
+	if !uiOnly.ConditionsAllow(EvaluationContext{ActorID: "usr_actor", IsAPI: true}) {
+		t.Fatal("users mode must preserve API transitions")
+	}
+	all := Transition{Conditions: &ConditionGroup{Operation: "ALL", Conditions: []Rule{{
+		ID: "block", RuleKey: RuleRestrictFromAllUsers, Parameters: map[string]string{"restrictMode": "usersAndAPI"},
+	}}}}
+	if all.ConditionsAllow(EvaluationContext{ActorID: "usr_actor", IsAPI: true}) {
+		t.Fatal("usersAndAPI mode must block API transitions")
+	}
+	if err := ValidateTransitionRules(all); err != nil {
+		t.Fatal(err)
+	}
+	all.Conditions.Conditions[0].Parameters["restrictMode"] = "invalid"
+	if err := ValidateTransitionRules(all); err == nil {
+		t.Fatal("invalid restriction mode was accepted")
+	}
+}
+
 func TestRequiredFieldValidatorUsesConfiguredMessage(t *testing.T) {
 	transition := Transition{Validators: []Rule{{RuleKey: RuleValidateFieldValue, Parameters: map[string]string{
 		"ruleType": "fieldRequired", "fieldsRequired": "assignee,customfield_10001", "errorMessage": "Complete ownership and review notes",

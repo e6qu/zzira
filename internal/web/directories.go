@@ -837,7 +837,15 @@ func (h *Handler) AddWorkflowTransition(w http.ResponseWriter, r *http.Request, 
 	if fields := r.PostForm["screen_field"]; len(fields) > 0 {
 		transition.Screen = &workflow.Rule{ID: store.NewID("rule"), RuleKey: workflow.RuleTransitionScreen, Parameters: map[string]string{"fields": strings.Join(fields, ",")}}
 	}
-	if restriction := r.PostFormValue("restriction"); restriction != "" {
+	if restriction := r.PostFormValue("restriction"); restriction == "block-users" || restriction == "block-all" {
+		mode := "users"
+		if restriction == "block-all" {
+			mode = "usersAndAPI"
+		}
+		transition.Conditions = &workflow.ConditionGroup{Operation: "ALL", Conditions: []workflow.Rule{{
+			ID: store.NewID("rule"), RuleKey: workflow.RuleRestrictFromAllUsers, Parameters: map[string]string{"restrictMode": mode},
+		}}}
+	} else if restriction != "" {
 		transition.Conditions = &workflow.ConditionGroup{Operation: "ALL", Conditions: []workflow.Rule{{
 			ID: store.NewID("rule"), RuleKey: workflow.RuleRestrictIssueTransition, Parameters: map[string]string{"accountIds": restriction},
 		}}}

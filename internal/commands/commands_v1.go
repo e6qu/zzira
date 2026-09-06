@@ -245,10 +245,20 @@ func (s *Service) notifyAssignee(ctx context.Context, in UpdateIssueInput, issue
 // TransitionIssue validates and applies a workflow transition using the
 // issue's project workflow (Default when unassigned).
 func (s *Service) TransitionIssue(ctx context.Context, actorID, workspaceID, issueIDOrKey, transitionID string) (*models.Issue, *models.Action, error) {
-	return s.TransitionIssueWithUpdate(ctx, actorID, workspaceID, issueIDOrKey, transitionID, store.IssueUpdate{})
+	return s.transitionIssueWithUpdate(ctx, actorID, workspaceID, issueIDOrKey, transitionID, store.IssueUpdate{}, false)
 }
 
 func (s *Service) TransitionIssueWithUpdate(ctx context.Context, actorID, workspaceID, issueIDOrKey, transitionID string, update store.IssueUpdate) (*models.Issue, *models.Action, error) {
+	return s.transitionIssueWithUpdate(ctx, actorID, workspaceID, issueIDOrKey, transitionID, update, false)
+}
+
+// TransitionIssueWithUpdateFromAPI preserves Jira's distinction between rules
+// that block people in the UI and rules that also block REST transitions.
+func (s *Service) TransitionIssueWithUpdateFromAPI(ctx context.Context, actorID, workspaceID, issueIDOrKey, transitionID string, update store.IssueUpdate) (*models.Issue, *models.Action, error) {
+	return s.transitionIssueWithUpdate(ctx, actorID, workspaceID, issueIDOrKey, transitionID, update, true)
+}
+
+func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, workspaceID, issueIDOrKey, transitionID string, update store.IssueUpdate, isAPI bool) (*models.Issue, *models.Action, error) {
 	issue, err := s.visibleIssue(ctx, actorID, workspaceID, issueIDOrKey)
 	if err != nil {
 		return nil, nil, fmt.Errorf("issue %q not found", issueIDOrKey)
@@ -278,6 +288,7 @@ func (s *Service) TransitionIssueWithUpdate(ctx context.Context, actorID, worksp
 		return nil, nil, fmt.Errorf("transition %q is not valid from status %q", transitionID, issue.Status.Name)
 	}
 	context := workflow.ContextForIssue(actorID, issue)
+	context.IsAPI = isAPI
 	if !t.ConditionsAllow(context) {
 		return nil, nil, fmt.Errorf("transition %q is not available to this user", transitionID)
 	}

@@ -11,6 +11,7 @@ import (
 
 const (
 	RuleRestrictIssueTransition = "system:restrict-issue-transition"
+	RuleRestrictFromAllUsers    = "system:restrict-from-all-users"
 	RuleValidateFieldValue      = "system:validate-field-value"
 	RuleChangeAssignee          = "system:change-assignee"
 	RuleTransitionScreen        = "system:transition-screen"
@@ -37,6 +38,7 @@ type EvaluationContext struct {
 	AssigneeID   string
 	ReporterID   string
 	FieldPresent map[string]bool
+	IsAPI        bool
 }
 
 // Layout is a workflow designer coordinate in CSS pixels. Jira Cloud exposes
@@ -189,6 +191,9 @@ func evaluateConditionGroup(group ConditionGroup, context EvaluationContext) boo
 }
 
 func evaluateCondition(rule Rule, context EvaluationContext) bool {
+	if rule.RuleKey == RuleRestrictFromAllUsers {
+		return rule.Parameters["restrictMode"] == "users" && context.IsAPI
+	}
 	if rule.RuleKey != RuleRestrictIssueTransition {
 		return false
 	}
@@ -353,13 +358,22 @@ func validateConditionConfiguration(group ConditionGroup, seen map[string]bool) 
 			return fmt.Errorf("workflow rule id %q is duplicated", condition.ID)
 		}
 		seen[condition.ID] = true
-		if condition.RuleKey != RuleRestrictIssueTransition || len(commaValues(condition.Parameters["accountIds"])) == 0 {
-			return fmt.Errorf("workflow condition %q is unsupported or incomplete", condition.RuleKey)
-		}
-		for _, parameter := range []string{"roleIds", "groupIds", "permissionKeys", "groupCustomFields", "allowUserCustomFields", "denyUserCustomFields"} {
-			if strings.TrimSpace(condition.Parameters[parameter]) != "" {
-				return fmt.Errorf("workflow condition parameter %q is not executable", parameter)
+		switch condition.RuleKey {
+		case RuleRestrictIssueTransition:
+			if len(commaValues(condition.Parameters["accountIds"])) == 0 {
+				return fmt.Errorf("workflow condition %q is unsupported or incomplete", condition.RuleKey)
 			}
+			for _, parameter := range []string{"roleIds", "groupIds", "permissionKeys", "groupCustomFields", "allowUserCustomFields", "denyUserCustomFields"} {
+				if strings.TrimSpace(condition.Parameters[parameter]) != "" {
+					return fmt.Errorf("workflow condition parameter %q is not executable", parameter)
+				}
+			}
+		case RuleRestrictFromAllUsers:
+			if mode := condition.Parameters["restrictMode"]; mode != "users" && mode != "usersAndAPI" {
+				return fmt.Errorf("restrict-from-all-users mode %q is unsupported", mode)
+			}
+		default:
+			return fmt.Errorf("workflow condition %q is unsupported or incomplete", condition.RuleKey)
 		}
 	}
 	for _, child := range group.ConditionGroups {

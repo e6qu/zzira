@@ -695,9 +695,27 @@ Validation after atomic multi-status writes:
 - The full PostgreSQL Go suite, vet, WebAssembly build, seven conformance tests,
   generated inventory and coverage checks, and diff check pass.
 
+Validation after API-aware transition restrictions:
+
+- `system:restrict-from-all-users` is now an executable condition with Jira's
+  `users` and `usersAndAPI` modes. The shared evaluator distinguishes REST
+  execution from browser and automation execution, so API-only transitions
+  stay absent from the user-facing issue journey while remaining available to
+  integrations.
+- Modern workflow create, update, validation, search, preview, and capability
+  resources round-trip the rule. The administrator editor offers API-only and
+  fully blocked choices alongside reporter and assignee restrictions.
+- Unit coverage proves both request-source modes and rejects unknown values.
+  PostgreSQL REST integration creates, publishes, discovers, and executes an
+  API-only transition, while the Chromium editor journey creates and publishes
+  the same restriction visually.
+- The full PostgreSQL Go suite, vet, WebAssembly build, seven conformance tests,
+  generated inventory and coverage checks, diff check, primary-page light/dark
+  axe scan, and 320 px reflow gate pass.
+
 ## Current change
 
-1. Continue the workflow rule catalog and its visual editor controls.
+1. Add executable field-value workflow conditions and visual controls.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 

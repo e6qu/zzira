@@ -853,7 +853,9 @@ func (h *Handler) listTransitions(w http.ResponseWriter, r *http.Request, idOrKe
 		return
 	}
 	beans := []map[string]any{}
-	for _, t := range wf.AvailableFor(issue.Status.ID, workflow.ContextForIssue(userID, issue)) {
+	evaluation := workflow.ContextForIssue(userID, issue)
+	evaluation.IsAPI = true
+	for _, t := range wf.AvailableFor(issue.Status.ID, evaluation) {
 		status, err := h.Store.StatusByIDForProject(r.Context(), t.To, issue.ProjectID)
 		if err != nil {
 			jiraError(w, http.StatusInternalServerError, "internal error")
@@ -903,7 +905,7 @@ func (h *Handler) performTransition(w http.ResponseWriter, r *http.Request, idOr
 		jiraFieldError(w, http.StatusBadRequest, fieldErrors)
 		return
 	}
-	if _, _, err := h.Commands.TransitionIssueWithUpdate(r.Context(), userID, wsID, idOrKey, req.Transition.ID, update); err != nil {
+	if _, _, err := h.Commands.TransitionIssueWithUpdateFromAPI(r.Context(), userID, wsID, idOrKey, req.Transition.ID, update); err != nil {
 		jiraError(w, http.StatusBadRequest, err.Error())
 		return
 	}
