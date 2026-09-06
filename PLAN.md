@@ -77,7 +77,7 @@ semantics.
 | Releases | Version lifecycle, fix/affects membership, progress and notes | Ordering, related work, approvals, custom fields, exports and cross-project releases |
 | Dashboards | CRUD, layouts, favourites, sharing and native issue gadgets | Full shares, subscriptions, report gadgets, app gadgets and offline data |
 | Knowledge | Spaces, page tree, page editing, drafts, versions and trash | Confluence v1, content types, collaboration, permissions, comments, attachments, macros, search and export |
-| Service management | None | Entire customer, agent, manager, portal, SLA, Assets and REST surface |
+| Service management | Help center, service projects, typed customer requests, participants, public/private conversation, status transitions, per-desk agents and queues | Portals/forms, custom queues, organizations, calendars, SLAs, approvals, attachments, notifications, Assets, incident/problem/change management, service reports and remaining REST |
 | Analytics | Dashboard groupings and release progress | Historical reports, development facts, DORA, exports and scheduled delivery |
 | Administration | All 47 organization operations reviewed with tested organization/site/product/directory, DNS claim, policy/resource, event, group and managed-account subsets; limited project settings | Runtime policy enforcement, provider administration and Jira/Confluence schemes |
 | Apps | Webhooks and entity properties used by core features | Installation runtime, modules, isolation, storage, upgrades and app administration |
@@ -273,10 +273,11 @@ browser UI, sync behavior where applicable, and tests.
     request reads, validation, public/internal conversations, workflow status
     transitions, and eleven more pinned request operations. Incident portal
     requests feed the existing DORA recovery measure through their backing Jira
-    issue. The next agent slice provisions all-open, unassigned and assigned-to-
-    me queues, implements the three pinned queue reads, and adds a responsive
-    queue/assignment workspace. Reporter/agent participant management adds the
-    three pinned participant operations and participant-shaped request access.
+    issue. The agent slices provision all-open, unassigned and assigned-to-me
+    queues, implement the three pinned queue reads, add a responsive
+    queue/assignment workspace, and enforce per-desk agent assignment across
+    REST and web. Reporter/agent participant management adds the three pinned
+    participant operations and participant-shaped request access.
 11. **Service Management journeys.** Extend the delivered customer help center,
     typed request portal, owned request tracking, conversation, status flow and
     agent queue/assignment workspace with custom queues, an SLA timeline, service setup,

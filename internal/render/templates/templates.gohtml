@@ -94,7 +94,7 @@
   {{end}}
   <nav aria-label="Primary">
     <a class="nav-service" href="/service" {{if eq .Active "service"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H8l-4 4zM8 9h8M8 12h5"/></svg><span>Service</span></a>
-    {{with .Navigation}}{{if .CanAdmin}}<a class="nav-service-agent" href="/service/agent" {{if eq $.Active "service-agent"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v4H4zM4 12h16v7H4zM8 15h8"/></svg><span>Queues</span></a>{{end}}{{end}}
+    {{with .Navigation}}{{if .CanServiceAgent}}<a class="nav-service-agent" href="/service/agent" {{if eq $.Active "service-agent"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v4H4zM4 12h16v7H4zM8 15h8"/></svg><span>Queues</span></a>{{end}}{{end}}
     <a class="nav-wiki" href="/wiki" {{if eq .Active "wiki"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7l1 2 1-2h7v16h-7l-1-2-1 2H4zM12 6v12"/></svg><span>Wiki</span></a>
     <a class="nav-dashboards" href="/dashboards" {{if eq .Active "dashboards"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7v7H4zM14 4h6v7h-6zM4 14h7v6H4zM14 14h6v6h-6z"/></svg><span>Dashboards</span></a>
     <a class="nav-dashboard" href="/dashboard" {{if eq .Active "dashboard"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h6v7H4zM14 4h6v16h-6zM4 4h6v5H4z"/></svg><span>Your work</span></a>

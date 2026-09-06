@@ -92,6 +92,12 @@ test('admin creates a service project with Jira Service Management request types
   await requestRow.getByRole('button', { name: 'Assign to me' }).click();
   await page.getByRole('link', { name: 'Assigned to me', exact: true }).click();
   await expect(page.getByRole('row').filter({ hasText: requestSummary }).getByRole('button', { name: 'Unassign' })).toBeVisible();
+  const agentSettings = page.locator('#agents');
+  await expect(agentSettings.getByRole('heading', { name: 'Agents' })).toBeVisible();
+  await agentSettings.getByRole('button', { name: /Add agent Demo User/ }).click();
+  await expect(page.locator('#agents').getByRole('button', { name: /Remove agent Demo User/ })).toBeVisible();
+  await page.locator('#agents').getByRole('button', { name: /Remove agent Demo User/ }).click();
+  await expect(page.locator('#agents').getByRole('button', { name: /Add agent Demo User/ })).toBeVisible();
   await accessible(page);
   await page.setViewportSize({ width: 320, height: 740 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

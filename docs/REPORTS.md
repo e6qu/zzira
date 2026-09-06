@@ -22,8 +22,9 @@ The chart uses accessible SVG with a title and description. A keyboard
 reachable table exposes every daily value, and the complete report is covered
 in light and dark themes and at 320 px width.
 
-Jira Service Management incident types and incident links will replace the
-temporary `incident` label convention. Deployment approvals, configurable
+Jira Service Management incident request types currently add the `incident`
+label that feeds recovery time; dedicated incident relationships and service
+configuration remain. Deployment approvals, configurable
 environment mapping, excluded-period calendars, team filters, comparison
 periods, targets, exports, subscriptions and scheduled delivery remain.
 Additional Jira and Agile reports—sprint, velocity, burndown, burnup,

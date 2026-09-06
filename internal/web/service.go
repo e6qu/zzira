@@ -23,8 +23,11 @@ type servicePageData struct {
 	Queue                 *models.ServiceQueue
 	Comments              []models.ServiceRequestComment
 	Participants          []*models.User
+	Members               []*models.User
+	Agents                map[string]bool
 	Transitions           []serviceTransitionView
 	CanAdmin              bool
+	CanAgent              bool
 	CanManageParticipants bool
 	Error                 string
 	Summary               string
@@ -37,28 +40,58 @@ func (h *Handler) ServiceAgent(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	admin, err := h.Store.IsAdmin(r.Context(), workspaceID, user.ID)
-	if err != nil || !admin {
+	agent, err := h.Store.IsAnyServiceAgent(r.Context(), workspaceID, user.ID)
+	if err != nil || !agent {
 		http.Error(w, "Service agent access is required.", http.StatusForbidden)
 		return
 	}
-	desks, err := h.Store.ServiceDesks(r.Context(), workspaceID)
+	desks, err := h.Store.ServiceDesksForAgent(r.Context(), workspaceID, user.ID)
 	if err != nil {
 		http.Error(w, "Could not load service desks.", http.StatusInternalServerError)
 		return
 	}
-	data := servicePageData{Desks: desks, CanAdmin: true}
+	admin, err := h.Store.IsAdmin(r.Context(), workspaceID, user.ID)
+	if err != nil {
+		http.Error(w, "Could not authorize service administration.", http.StatusInternalServerError)
+		return
+	}
+	data := servicePageData{Desks: desks, CanAdmin: admin, CanAgent: true}
 	deskID := r.PathValue("desk")
 	if deskID == "" && len(desks) > 0 {
 		deskID = desks[0].ID
 	}
 	if deskID != "" {
+		allowed, err := h.Store.IsServiceAgent(r.Context(), workspaceID, deskID, user.ID)
+		if err != nil {
+			http.Error(w, "Could not authorize service desk access.", http.StatusInternalServerError)
+			return
+		}
+		if !allowed {
+			http.Error(w, "Service agent access is required.", http.StatusForbidden)
+			return
+		}
 		desk, err := h.Store.ServiceDesk(r.Context(), workspaceID, deskID)
 		if err != nil {
 			http.NotFound(w, r)
 			return
 		}
 		data.Desk = desk
+		if admin {
+			data.Members, err = h.Store.MembersByWorkspace(r.Context(), workspaceID)
+			if err != nil {
+				http.Error(w, "Could not load workspace members.", http.StatusInternalServerError)
+				return
+			}
+			agents, err := h.Store.ServiceDeskAgents(r.Context(), workspaceID, deskID)
+			if err != nil {
+				http.Error(w, "Could not load service desk agents.", http.StatusInternalServerError)
+				return
+			}
+			data.Agents = make(map[string]bool, len(agents))
+			for _, assigned := range agents {
+				data.Agents[assigned.ID] = true
+			}
+		}
 		data.Queues, err = h.Store.ServiceQueues(r.Context(), workspaceID, deskID)
 		if err != nil {
 			http.Error(w, "Could not load queues.", http.StatusInternalServerError)
@@ -88,8 +121,8 @@ func (h *Handler) ServiceAgentAssign(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	admin, err := h.Store.IsAdmin(r.Context(), workspaceID, user.ID)
-	if err != nil || !admin {
+	agent, err := h.Store.IsServiceAgent(r.Context(), workspaceID, r.PathValue("desk"), user.ID)
+	if err != nil || !agent {
 		http.Error(w, "Service agent access is required.", http.StatusForbidden)
 		return
 	}
@@ -107,6 +140,21 @@ func (h *Handler) ServiceAgentAssign(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	redirectLocal(w, r, "/service/agent/"+request.ServiceDesk.ID+"?queue="+r.FormValue("queue"))
+}
+
+func (h *Handler) ServiceAgentSettings(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	if err := h.Commands.SetServiceDeskAgent(r.Context(), user.ID, workspaceID, r.PathValue("desk"), r.PostFormValue("accountId"), r.PostFormValue("enabled") == "true"); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	redirectLocal(w, r, "/service/agent/"+r.PathValue("desk")+"#agents")
 }
 
 func (h *Handler) ServiceHome(w http.ResponseWriter, r *http.Request) {
@@ -184,12 +232,12 @@ func (h *Handler) ServiceRequestForm(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) serviceRequestForPage(r *http.Request, workspaceID, userID, issueIDOrKey string) (*models.ServiceRequest, bool, error) {
-	admin, err := h.Store.IsAdmin(r.Context(), workspaceID, userID)
+	canManage, err := h.Store.CanManageServiceRequest(r.Context(), workspaceID, userID, issueIDOrKey)
 	if err != nil {
 		return nil, false, err
 	}
-	request, err := h.Store.ServiceRequest(r.Context(), workspaceID, userID, issueIDOrKey, admin)
-	return request, admin, err
+	request, err := h.Store.ServiceRequest(r.Context(), workspaceID, userID, issueIDOrKey, canManage)
+	return request, canManage, err
 }
 
 func (h *Handler) servicePageTransitions(r *http.Request, workspaceID, actorID string, request *models.ServiceRequest) ([]serviceTransitionView, error) {
@@ -230,12 +278,12 @@ func (h *Handler) ServiceRequestPage(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	request, admin, err := h.serviceRequestForPage(r, workspaceID, user.ID, r.PathValue("key"))
+	request, canManage, err := h.serviceRequestForPage(r, workspaceID, user.ID, r.PathValue("key"))
 	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
-	comments, err := h.Store.ServiceRequestComments(r.Context(), request.Issue.ID, admin)
+	comments, err := h.Store.ServiceRequestComments(r.Context(), request.Issue.ID, canManage)
 	if err != nil {
 		http.Error(w, "Could not load request comments.", http.StatusInternalServerError)
 		return
@@ -250,7 +298,7 @@ func (h *Handler) ServiceRequestPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load request participants.", http.StatusInternalServerError)
 		return
 	}
-	h.writeWorkspacePage(w, r, "page_service_request", user, workspaceID, servicePageData{Request: request, Comments: comments, Participants: participants, Transitions: transitions, CanAdmin: admin, CanManageParticipants: admin || request.Customer.ID == user.ID}, "service", request.Issue.ProjectID)
+	h.writeWorkspacePage(w, r, "page_service_request", user, workspaceID, servicePageData{Request: request, Comments: comments, Participants: participants, Transitions: transitions, CanAgent: canManage, CanManageParticipants: canManage || request.Customer.ID == user.ID}, "service", request.Issue.ProjectID)
 }
 
 func (h *Handler) ServiceRequestParticipant(w http.ResponseWriter, r *http.Request) {
@@ -286,13 +334,13 @@ func (h *Handler) ServiceRequestComment(w http.ResponseWriter, r *http.Request) 
 	if !parseForm(w, r) {
 		return
 	}
-	request, admin, err := h.serviceRequestForPage(r, workspaceID, user.ID, r.PathValue("key"))
+	request, canManage, err := h.serviceRequestForPage(r, workspaceID, user.ID, r.PathValue("key"))
 	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
 	public := true
-	if admin {
+	if canManage {
 		public = r.PostFormValue("public") == "true"
 	}
 	if _, err := h.Commands.AddServiceRequestComment(r.Context(), user.ID, workspaceID, request.Issue.ID, json.RawMessage(nil), r.PostFormValue("body"), public); err != nil {

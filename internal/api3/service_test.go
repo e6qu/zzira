@@ -26,7 +26,7 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if err := store.Migrate(ctx, st.Pool); err != nil {
 		t.Fatal(err)
 	}
-	workspaceID, actorID, customerID := store.NewID("ws"), store.NewID("usr"), store.NewID("usr")
+	workspaceID, actorID, customerID, agentID := store.NewID("ws"), store.NewID("usr"), store.NewID("usr"), store.NewID("usr")
 	exec := func(query string, args ...any) {
 		t.Helper()
 		if _, err := st.Pool.Exec(ctx, query, args...); err != nil {
@@ -36,10 +36,13 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	exec(`INSERT INTO workspaces(id,slug,name) VALUES($1,$1,'Service test')`, workspaceID)
 	exec(`INSERT INTO users(id,email,password_hash,display_name) VALUES($1,$2,'test','Service admin')`, actorID, actorID+"@example.test")
 	exec(`INSERT INTO users(id,email,password_hash,display_name) VALUES($1,$2,'test','Portal customer')`, customerID, customerID+"@example.test")
+	exec(`INSERT INTO users(id,email,password_hash,display_name) VALUES($1,$2,'test','Service agent')`, agentID, agentID+"@example.test")
 	exec(`INSERT INTO memberships(workspace_id,user_id,role) VALUES($1,$2,'admin')`, workspaceID, actorID)
 	exec(`INSERT INTO memberships(workspace_id,user_id,role) VALUES($1,$2,'member')`, workspaceID, customerID)
+	exec(`INSERT INTO memberships(workspace_id,user_id,role) VALUES($1,$2,'member')`, workspaceID, agentID)
 	exec(`INSERT INTO api_tokens(id,user_id,token_hash) VALUES($1,$1,$2)`, actorID, store.HashToken(actorID))
 	exec(`INSERT INTO api_tokens(id,user_id,token_hash) VALUES($1,$1,$2)`, customerID, store.HashToken(customerID))
+	exec(`INSERT INTO api_tokens(id,user_id,token_hash) VALUES($1,$1,$2)`, agentID, store.HashToken(agentID))
 	t.Cleanup(func() {
 		exec(`DELETE FROM actions WHERE workspace_id=$1`, workspaceID)
 		exec(`DELETE FROM issues WHERE workspace_id=$1`, workspaceID)
@@ -48,8 +51,8 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 		exec(`DELETE FROM organization_audit_events WHERE actor_id=$1`, actorID)
 		exec(`DELETE FROM memberships WHERE workspace_id=$1`, workspaceID)
 		exec(`DELETE FROM workspaces WHERE id=$1`, workspaceID)
-		exec(`DELETE FROM api_tokens WHERE user_id IN ($1,$2)`, actorID, customerID)
-		exec(`DELETE FROM users WHERE id IN ($1,$2) OR email='invited.customer@example.test'`, actorID, customerID)
+		exec(`DELETE FROM api_tokens WHERE user_id IN ($1,$2,$3)`, actorID, customerID, agentID)
+		exec(`DELETE FROM users WHERE id IN ($1,$2,$3) OR email IN ('invited.customer@example.test','agent-created.customer@example.test')`, actorID, customerID, agentID)
 	})
 	handler := &Handler{Store: st, Commands: &commands.Service{Store: st}, WorkspaceSlug: workspaceID, BaseURL: "https://zzira.test"}
 	callAs := func(accountID, method, path, body string, want int) *httptest.ResponseRecorder {
@@ -197,11 +200,65 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if !strings.Contains(allRequests.Body.String(), issueKey) {
 		t.Fatal(allRequests.Body.String())
 	}
+	call("POST", "/rest/api/3/project", `{"key":"OPS","name":"Operations desk","projectTypeKey":"service_desk","projectTemplateKey":"com.atlassian.servicedesk:simplified-it-service-management","leadAccountId":"`+actorID+`"}`, 201)
+	otherProject, err := st.ProjectByKey(ctx, workspaceID, "OPS")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var otherDeskID, otherTypeID string
+	if err := st.Pool.QueryRow(ctx, `SELECT id FROM service_desks WHERE project_id=$1`, otherProject.ID).Scan(&otherDeskID); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Pool.QueryRow(ctx, `SELECT id FROM service_request_types WHERE service_desk_id=$1 ORDER BY id::bigint LIMIT 1`, otherDeskID).Scan(&otherTypeID); err != nil {
+		t.Fatal(err)
+	}
+	otherRequest := callAs(customerID, "POST", "/rest/servicedeskapi/request", `{"serviceDeskId":"`+otherDeskID+`","requestTypeId":"`+otherTypeID+`","requestFieldValues":{"summary":"Other desk request"}}`, 201)
+	var otherRequestBean map[string]any
+	if err := json.Unmarshal(otherRequest.Body.Bytes(), &otherRequestBean); err != nil {
+		t.Fatal(err)
+	}
+	otherIssueKey, _ := otherRequestBean["issueKey"].(string)
 	queues := call("GET", "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/queue?includeCount=true", "", 200)
 	if !strings.Contains(queues.Body.String(), "Unassigned requests") || !strings.Contains(queues.Body.String(), `"issueCount"`) {
 		t.Fatal(queues.Body.String())
 	}
 	callAs(customerID, "GET", "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/queue", "", 403)
+	callAs(agentID, "GET", "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/queue", "", 403)
+	callAs(agentID, "GET", "/rest/servicedeskapi/request?requestOwnership=ALL_REQUESTS", "", 403)
+	if err := handler.Commands.SetServiceDeskAgent(ctx, actorID, workspaceID, serviceDeskID, agentID, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := handler.Commands.SetServiceDeskAgent(ctx, agentID, workspaceID, serviceDeskID, customerID, true); err == nil {
+		t.Fatal("regular service agent managed the agent roster")
+	}
+	agentQueues := callAs(agentID, "GET", "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/queue?includeCount=true", "", 200)
+	if !strings.Contains(agentQueues.Body.String(), "Unassigned requests") {
+		t.Fatal(agentQueues.Body.String())
+	}
+	agentRequests := callAs(agentID, "GET", "/rest/servicedeskapi/request?requestOwnership=ALL_REQUESTS", "", 200)
+	if !strings.Contains(agentRequests.Body.String(), issueKey) || strings.Contains(agentRequests.Body.String(), otherIssueKey) {
+		t.Fatal(agentRequests.Body.String())
+	}
+	callAs(agentID, "GET", "/rest/servicedeskapi/servicedesk/"+otherDeskID+"/queue", "", 403)
+	callAs(agentID, "GET", "/rest/servicedeskapi/request/"+otherIssueKey, "", 404)
+	agentCustomer := callAs(agentID, "POST", "/rest/servicedeskapi/customer", `{"email":"agent-created.customer@example.test","displayName":"Agent-created Customer"}`, 201)
+	if !strings.Contains(agentCustomer.Body.String(), "Agent-created Customer") {
+		t.Fatal(agentCustomer.Body.String())
+	}
+	agentRaised := callAs(agentID, "POST", "/rest/servicedeskapi/request", `{"serviceDeskId":"`+serviceDeskID+`","requestTypeId":"`+requestTypeID+`","raiseOnBehalfOf":"agent-created.customer@example.test","requestFieldValues":{"summary":"Agent-raised customer request"}}`, 201)
+	if !strings.Contains(agentRaised.Body.String(), "Agent-raised customer request") {
+		t.Fatal(agentRaised.Body.String())
+	}
+	callAs(agentID, "GET", "/rest/servicedeskapi/request/"+issueKey, "", 200)
+	callAs(agentID, "POST", "/rest/servicedeskapi/request/"+issueKey+"/comment", `{"body":"Agent-only investigation detail.","public":false}`, 201)
+	regularAgentComments := callAs(agentID, "GET", "/rest/servicedeskapi/request/"+issueKey+"/comment", "", 200)
+	if !strings.Contains(regularAgentComments.Body.String(), "Agent-only investigation detail") {
+		t.Fatal(regularAgentComments.Body.String())
+	}
+	customerComments = callAs(customerID, "GET", "/rest/servicedeskapi/request/"+issueKey+"/comment", "", 200)
+	if strings.Contains(customerComments.Body.String(), "Agent-only investigation detail") {
+		t.Fatal(customerComments.Body.String())
+	}
 	var unassignedQueueID, mineQueueID string
 	if err := st.Pool.QueryRow(ctx, `SELECT id FROM service_queues WHERE service_desk_id=$1 AND kind='unassigned'`, serviceDeskID).Scan(&unassignedQueueID); err != nil {
 		t.Fatal(err)
@@ -221,4 +278,9 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if !strings.Contains(assigned.Body.String(), issueKey) {
 		t.Fatal(assigned.Body.String())
 	}
+	if err := handler.Commands.SetServiceDeskAgent(ctx, actorID, workspaceID, serviceDeskID, agentID, false); err != nil {
+		t.Fatal(err)
+	}
+	callAs(agentID, "GET", "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/queue", "", 403)
+	callAs(agentID, "GET", "/rest/servicedeskapi/request/"+issueKey, "", 404)
 }

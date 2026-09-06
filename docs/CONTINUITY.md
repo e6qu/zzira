@@ -11,8 +11,8 @@ and final acceptance rules belong in [PLAN.md](../PLAN.md).
 - Branch: `feat/cloud-surface-completion`
 - Base: `origin/main` after PR #65, scheduled automation
 - Delivery shape: one pull request with ordered, independently green commits
-- Last completed workstream: 3 of 15 — provider-based authentication
-- Active workstream: 4 of 15 — Jira administration and workflows
+- Last completed workstream: 9 of 15 — automation foundation
+- Active workstream: 10 of 15 — Jira Service Management API and journeys
 - Blockers: none
 
 ## Last verified baseline
@@ -1114,11 +1114,28 @@ Validation after Jira Service Management request participants:
 - Exact-operation review is now 165/1,207: 158 partial, 7 missing and 1,042
   unassessed.
 
+Validation after Jira Service Management project-scoped agents:
+
+- Migration 061 assigns active workspace members to individual service desks.
+  Site administrators remain implicit service managers across every desk.
+- Queue navigation, queue REST operations, all-request reads, request detail,
+  internal comments, participant management, assignment and raise-on-behalf all
+  evaluate the same desk-scoped agent boundary. Revocation takes effect on the
+  next request.
+- `/service/agent/{desk}` includes an administrator-only roster and exposes only
+  assigned desks to regular agents. The combined Chromium service journey
+  passes roster add/remove, queue work, light/dark WCAG checks and 320 px reflow.
+- The PostgreSQL service contract proves denied access before assignment,
+  scoped access after assignment, customer/internal-comment separation,
+  agent-created customers, raise-on-behalf, roster administration denial and
+  immediate revocation. Exact-operation coverage remains 165/1,207 because
+  agent roster administration is an internal authorization capability rather
+  than a pinned JSM REST operation.
+
 ## Current change
 
-1. Implement Jira Service Management project-scoped agent roles, SLA
-   definitions/calendars and escalation on the queue/request
-   foundation.
+1. Implement Jira Service Management SLA definitions, calendars, request clock
+   timelines and escalation on the queue/request foundation.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 

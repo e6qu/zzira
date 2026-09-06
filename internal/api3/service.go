@@ -23,9 +23,18 @@ func (h *Handler) serviceDeskRoute(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(strings.Trim(strings.TrimPrefix(r.URL.Path, "/rest/servicedeskapi"), "/"), "/")
 	switch {
 	case len(parts) == 1 && parts[0] == "customer" && r.Method == http.MethodPost:
-		_, actorID, adminErr := h.authWorkspaceAdmin(r)
-		if adminErr != nil {
-			writeJerr(w, adminErr)
+		_, actorID, authErr := h.authWorkspace(r)
+		if authErr != nil {
+			writeJerr(w, authErr)
+			return
+		}
+		agent, err := h.Store.IsAnyServiceAgent(r.Context(), workspaceID, actorID)
+		if err != nil {
+			jiraError(w, http.StatusInternalServerError, "Could not authorize service access.")
+			return
+		}
+		if !agent {
+			jiraError(w, http.StatusForbidden, "Service agent access is required.")
 			return
 		}
 		var input struct {
@@ -143,9 +152,18 @@ func (h *Handler) serviceQueueBean(queue models.ServiceQueue, includeCount bool)
 }
 
 func (h *Handler) listServiceQueues(w http.ResponseWriter, r *http.Request, workspaceID, serviceDeskID string) {
-	_, actorID, authErr := h.authWorkspaceAdmin(r)
+	_, actorID, authErr := h.authWorkspace(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
+		return
+	}
+	agent, err := h.Store.IsServiceAgent(r.Context(), workspaceID, serviceDeskID, actorID)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "Could not authorize service desk access.")
+		return
+	}
+	if !agent {
+		jiraError(w, http.StatusForbidden, "Service agent access is required.")
 		return
 	}
 	queues, err := h.Store.ServiceQueues(r.Context(), workspaceID, serviceDeskID)
@@ -170,9 +188,18 @@ func (h *Handler) listServiceQueues(w http.ResponseWriter, r *http.Request, work
 }
 
 func (h *Handler) getServiceQueue(w http.ResponseWriter, r *http.Request, workspaceID, serviceDeskID, queueID string, includeIssues bool) {
-	_, actorID, authErr := h.authWorkspaceAdmin(r)
+	_, actorID, authErr := h.authWorkspace(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
+		return
+	}
+	agent, err := h.Store.IsServiceAgent(r.Context(), workspaceID, serviceDeskID, actorID)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "Could not authorize service desk access.")
+		return
+	}
+	if !agent {
+		jiraError(w, http.StatusForbidden, "Service agent access is required.")
 		return
 	}
 	queue, requests, err := h.Store.ServiceQueueRequests(r.Context(), workspaceID, actorID, serviceDeskID, queueID)
@@ -364,15 +391,15 @@ func (h *Handler) serviceRequestAccess(r *http.Request, workspaceID, issueIDOrKe
 	if authErr != nil {
 		return nil, false, "", authErr
 	}
-	admin, err := h.Store.IsAdmin(r.Context(), workspaceID, actorID)
+	canManage, err := h.Store.CanManageServiceRequest(r.Context(), workspaceID, actorID, issueIDOrKey)
 	if err != nil {
 		return nil, false, "", &jerr{status: http.StatusInternalServerError, message: "internal error"}
 	}
-	request, err := h.Store.ServiceRequest(r.Context(), workspaceID, actorID, issueIDOrKey, admin)
+	request, err := h.Store.ServiceRequest(r.Context(), workspaceID, actorID, issueIDOrKey, canManage)
 	if err != nil {
-		return nil, admin, actorID, &jerr{status: http.StatusNotFound, message: "Customer request does not exist or you do not have permission to view it."}
+		return nil, canManage, actorID, &jerr{status: http.StatusNotFound, message: "Customer request does not exist or you do not have permission to view it."}
 	}
-	return request, admin, actorID, nil
+	return request, canManage, actorID, nil
 }
 
 func (h *Handler) listServiceRequests(w http.ResponseWriter, r *http.Request, workspaceID string) {
@@ -386,8 +413,24 @@ func (h *Handler) listServiceRequests(w http.ResponseWriter, r *http.Request, wo
 		jiraError(w, http.StatusInternalServerError, "Could not load customer requests.")
 		return
 	}
-	allowAll := admin && strings.EqualFold(r.URL.Query().Get("requestOwnership"), "ALL_REQUESTS")
-	requests, err := h.Store.ServiceRequests(r.Context(), workspaceID, actorID, r.URL.Query().Get("serviceDeskId"), r.URL.Query().Get("requestTypeId"), allowAll)
+	allRequests := strings.EqualFold(r.URL.Query().Get("requestOwnership"), "ALL_REQUESTS")
+	var requests []*models.ServiceRequest
+	if allRequests && admin {
+		requests, err = h.Store.ServiceRequests(r.Context(), workspaceID, actorID, r.URL.Query().Get("serviceDeskId"), r.URL.Query().Get("requestTypeId"), true)
+	} else if allRequests {
+		agent, accessErr := h.Store.IsAnyServiceAgent(r.Context(), workspaceID, actorID)
+		if accessErr != nil {
+			jiraError(w, http.StatusInternalServerError, "Could not authorize service access.")
+			return
+		}
+		if !agent {
+			jiraError(w, http.StatusForbidden, "Service agent access is required for all requests.")
+			return
+		}
+		requests, err = h.Store.ServiceRequestsForAgent(r.Context(), workspaceID, actorID, r.URL.Query().Get("serviceDeskId"), r.URL.Query().Get("requestTypeId"))
+	} else {
+		requests, err = h.Store.ServiceRequests(r.Context(), workspaceID, actorID, r.URL.Query().Get("serviceDeskId"), r.URL.Query().Get("requestTypeId"), false)
+	}
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "Could not load customer requests.")
 		return
@@ -508,11 +551,11 @@ func (h *Handler) serviceStatusBean(status models.Status, changed string) map[st
 }
 
 func (h *Handler) serviceRequestBean(r *http.Request, workspaceID, viewerID string, request *models.ServiceRequest) (map[string]any, error) {
-	admin, err := h.Store.IsAdmin(r.Context(), workspaceID, viewerID)
+	canManage, err := h.Store.CanManageServiceRequest(r.Context(), workspaceID, viewerID, request.Issue.ID)
 	if err != nil {
 		return nil, err
 	}
-	comments, err := h.Store.ServiceRequestComments(r.Context(), request.Issue.ID, admin)
+	comments, err := h.Store.ServiceRequestComments(r.Context(), request.Issue.ID, canManage)
 	if err != nil {
 		return nil, err
 	}
@@ -609,7 +652,7 @@ func (h *Handler) serviceCommentBean(request *models.ServiceRequest, comment mod
 }
 
 func (h *Handler) serviceRequestComments(w http.ResponseWriter, r *http.Request, workspaceID, issueIDOrKey, commentID string) {
-	request, admin, actorID, accessErr := h.serviceRequestAccess(r, workspaceID, issueIDOrKey)
+	request, canManage, actorID, accessErr := h.serviceRequestAccess(r, workspaceID, issueIDOrKey)
 	if accessErr != nil {
 		writeJerr(w, accessErr)
 		return
@@ -645,7 +688,7 @@ func (h *Handler) serviceRequestComments(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	if commentID != "" {
-		comment, err := h.Store.ServiceRequestComment(r.Context(), request.Issue.ID, commentID, admin)
+		comment, err := h.Store.ServiceRequestComment(r.Context(), request.Issue.ID, commentID, canManage)
 		if err != nil {
 			jiraError(w, http.StatusNotFound, "Comment does not exist or is not visible.")
 			return
@@ -653,7 +696,7 @@ func (h *Handler) serviceRequestComments(w http.ResponseWriter, r *http.Request,
 		writeJSON(w, http.StatusOK, h.serviceCommentBean(request, *comment))
 		return
 	}
-	comments, err := h.Store.ServiceRequestComments(r.Context(), request.Issue.ID, admin)
+	comments, err := h.Store.ServiceRequestComments(r.Context(), request.Issue.ID, canManage)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "Could not load comments.")
 		return
@@ -709,7 +752,7 @@ func (h *Handler) availableServiceTransitions(r *http.Request, workspaceID, acto
 }
 
 func (h *Handler) serviceRequestTransition(w http.ResponseWriter, r *http.Request, workspaceID, issueIDOrKey string) {
-	request, admin, actorID, accessErr := h.serviceRequestAccess(r, workspaceID, issueIDOrKey)
+	request, canManage, actorID, accessErr := h.serviceRequestAccess(r, workspaceID, issueIDOrKey)
 	if accessErr != nil {
 		writeJerr(w, accessErr)
 		return
@@ -734,7 +777,7 @@ func (h *Handler) serviceRequestTransition(w http.ResponseWriter, r *http.Reques
 		jiraError(w, http.StatusBadRequest, "A transition id is required.")
 		return
 	}
-	if input.AdditionalComment != nil && input.AdditionalComment.Public != nil && !*input.AdditionalComment.Public && !admin {
+	if input.AdditionalComment != nil && input.AdditionalComment.Public != nil && !*input.AdditionalComment.Public && !canManage {
 		jiraError(w, http.StatusBadRequest, "Customers may only add public comments.")
 		return
 	}

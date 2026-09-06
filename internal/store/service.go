@@ -274,6 +274,28 @@ func (s *Store) ServiceRequests(ctx context.Context, workspaceID, viewerID, serv
 	return requests, rows.Err()
 }
 
+// ServiceRequestsForAgent returns requests only from desks assigned to viewerID.
+func (s *Store) ServiceRequestsForAgent(ctx context.Context, workspaceID, viewerID, serviceDeskID, requestTypeID string) ([]*models.ServiceRequest, error) {
+	rows, err := s.Pool.Query(ctx, serviceRequestMetadataSelect+`
+		WHERE sr.workspace_id=$1
+		  AND EXISTS(SELECT 1 FROM service_desk_agents a WHERE a.service_desk_id=sr.service_desk_id AND a.user_id=$2)
+		  AND ($3='' OR sr.service_desk_id=$3) AND ($4='' OR sr.request_type_id=$4)
+		ORDER BY sr.created_at DESC,sr.issue_id`, workspaceID, viewerID, serviceDeskID, requestTypeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	requests := make([]*models.ServiceRequest, 0)
+	for rows.Next() {
+		request, err := s.serviceRequestFromRow(ctx, workspaceID, rows)
+		if err != nil {
+			return nil, err
+		}
+		requests = append(requests, request)
+	}
+	return requests, rows.Err()
+}
+
 func (s *Store) MarkServiceRequestComment(ctx context.Context, requestIssueID, commentID string, public bool) error {
 	result, err := s.Pool.Exec(ctx, `
 		INSERT INTO service_request_comments(comment_id,request_issue_id,public)
@@ -386,4 +408,139 @@ func (s *Store) ServiceQueueRequests(ctx context.Context, workspaceID, viewerID,
 	}
 	queue.IssueCount = len(filtered)
 	return queue, filtered, nil
+}
+
+func (s *Store) IsServiceAgent(ctx context.Context, workspaceID, serviceDeskID, userID string) (bool, error) {
+	admin, err := s.IsAdmin(ctx, workspaceID, userID)
+	if err != nil || admin {
+		return admin, err
+	}
+	member, err := s.IsMember(ctx, workspaceID, userID)
+	if err != nil || !member {
+		return false, err
+	}
+	var allowed bool
+	err = s.Pool.QueryRow(ctx, `SELECT EXISTS(
+		SELECT 1 FROM service_desk_agents a JOIN service_desks sd ON sd.id=a.service_desk_id
+		WHERE sd.workspace_id=$1 AND sd.id=$2 AND a.user_id=$3)`, workspaceID, serviceDeskID, userID).Scan(&allowed)
+	return allowed, err
+}
+
+func (s *Store) IsAnyServiceAgent(ctx context.Context, workspaceID, userID string) (bool, error) {
+	admin, err := s.IsAdmin(ctx, workspaceID, userID)
+	if err != nil || admin {
+		return admin, err
+	}
+	member, err := s.IsMember(ctx, workspaceID, userID)
+	if err != nil || !member {
+		return false, err
+	}
+	var allowed bool
+	err = s.Pool.QueryRow(ctx, `SELECT EXISTS(
+		SELECT 1 FROM service_desk_agents a JOIN service_desks sd ON sd.id=a.service_desk_id
+		WHERE sd.workspace_id=$1 AND a.user_id=$2)`, workspaceID, userID).Scan(&allowed)
+	return allowed, err
+}
+
+func (s *Store) CanManageServiceRequest(ctx context.Context, workspaceID, userID, issueIDOrKey string) (bool, error) {
+	admin, err := s.IsAdmin(ctx, workspaceID, userID)
+	if err != nil || admin {
+		return admin, err
+	}
+	member, err := s.IsMember(ctx, workspaceID, userID)
+	if err != nil || !member {
+		return false, err
+	}
+	var allowed bool
+	err = s.Pool.QueryRow(ctx, `SELECT EXISTS(
+		SELECT 1 FROM service_requests sr JOIN issues i ON i.id=sr.issue_id
+		JOIN service_desk_agents a ON a.service_desk_id=sr.service_desk_id
+		WHERE sr.workspace_id=$1 AND (sr.issue_id=$3 OR upper(i.key)=upper($3)) AND a.user_id=$2)`, workspaceID, userID, issueIDOrKey).Scan(&allowed)
+	return allowed, err
+}
+
+func (s *Store) ServiceDesksForAgent(ctx context.Context, workspaceID, userID string) ([]models.ServiceDesk, error) {
+	admin, err := s.IsAdmin(ctx, workspaceID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if admin {
+		return s.ServiceDesks(ctx, workspaceID)
+	}
+	member, err := s.IsMember(ctx, workspaceID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if !member {
+		return []models.ServiceDesk{}, nil
+	}
+	rows, err := s.Pool.Query(ctx, serviceDeskSelect+`
+		JOIN service_desk_agents a ON a.service_desk_id=sd.id
+		WHERE sd.workspace_id=$1 AND a.user_id=$2 ORDER BY sd.id::bigint`, workspaceID, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	values := make([]models.ServiceDesk, 0)
+	for rows.Next() {
+		desk, err := scanServiceDesk(rows)
+		if err != nil {
+			return nil, err
+		}
+		values = append(values, *desk)
+	}
+	return values, rows.Err()
+}
+
+func (s *Store) ServiceDeskAgents(ctx context.Context, workspaceID, serviceDeskID string) ([]*models.User, error) {
+	rows, err := s.Pool.Query(ctx, `SELECT a.user_id FROM service_desk_agents a JOIN service_desks sd ON sd.id=a.service_desk_id WHERE sd.workspace_id=$1 AND sd.id=$2 ORDER BY a.created_at,a.user_id`, workspaceID, serviceDeskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	userIDs := make([]string, 0)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		userIDs = append(userIDs, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	users := make([]*models.User, 0, len(userIDs))
+	for _, id := range userIDs {
+		user, err := s.UserByID(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		users = append(users, user)
+	}
+	return users, nil
+}
+
+func (s *Store) SetServiceDeskAgent(ctx context.Context, workspaceID, serviceDeskID, userID string, enabled bool) error {
+	if _, err := s.MemberByID(ctx, workspaceID, userID); err != nil {
+		return fmt.Errorf("agent must be an active workspace member")
+	}
+	if enabled {
+		result, err := s.Pool.Exec(ctx, `INSERT INTO service_desk_agents(service_desk_id,user_id) SELECT sd.id,$3 FROM service_desks sd WHERE sd.workspace_id=$1 AND sd.id=$2 ON CONFLICT DO NOTHING`, workspaceID, serviceDeskID, userID)
+		if err != nil {
+			return err
+		}
+		if result.RowsAffected() == 0 {
+			var exists bool
+			if err := s.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM service_desks WHERE workspace_id=$1 AND id=$2)`, workspaceID, serviceDeskID).Scan(&exists); err != nil {
+				return err
+			}
+			if !exists {
+				return fmt.Errorf("service desk does not exist")
+			}
+		}
+		return nil
+	}
+	_, err := s.Pool.Exec(ctx, `DELETE FROM service_desk_agents a USING service_desks sd WHERE a.service_desk_id=sd.id AND sd.workspace_id=$1 AND sd.id=$2 AND a.user_id=$3`, workspaceID, serviceDeskID, userID)
+	return err
 }

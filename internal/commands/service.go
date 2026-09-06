@@ -32,12 +32,12 @@ func (s *Service) CreateServiceRequest(ctx context.Context, in CreateServiceRequ
 		in.CustomerID = in.ActorID
 	}
 	if in.CustomerID != in.ActorID {
-		admin, adminErr := s.Store.IsAdmin(ctx, in.WorkspaceID, in.ActorID)
-		if adminErr != nil {
-			return nil, adminErr
+		canRaiseOnBehalf, accessErr := s.Store.IsServiceAgent(ctx, in.WorkspaceID, in.ServiceDeskID, in.ActorID)
+		if accessErr != nil {
+			return nil, accessErr
 		}
-		if !admin {
-			return nil, fmt.Errorf("only an administrator may raise a request for another customer")
+		if !canRaiseOnBehalf {
+			return nil, fmt.Errorf("only a service agent may raise a request for another customer")
 		}
 	}
 	if err := s.Store.EnrollServiceCustomer(ctx, in.WorkspaceID, in.CustomerID); err != nil {
@@ -74,23 +74,23 @@ func (s *Service) CreateServiceRequest(ctx context.Context, in CreateServiceRequ
 			return nil, errors.Join(err, cleanupErr)
 		}
 	}
-	admin, err := s.Store.IsAdmin(ctx, in.WorkspaceID, in.ActorID)
+	canManage, err := s.Store.CanManageServiceRequest(ctx, in.WorkspaceID, in.ActorID, issue.ID)
 	if err != nil {
 		return nil, err
 	}
-	return s.Store.ServiceRequest(ctx, in.WorkspaceID, in.ActorID, issue.ID, admin)
+	return s.Store.ServiceRequest(ctx, in.WorkspaceID, in.ActorID, issue.ID, canManage)
 }
 
 func (s *Service) UpdateServiceRequestParticipants(ctx context.Context, actorID, workspaceID, issueIDOrKey string, userIDs []string, remove bool) ([]*models.User, error) {
-	admin, err := s.Store.IsAdmin(ctx, workspaceID, actorID)
+	canManage, err := s.Store.CanManageServiceRequest(ctx, workspaceID, actorID, issueIDOrKey)
 	if err != nil {
 		return nil, err
 	}
-	request, err := s.Store.ServiceRequest(ctx, workspaceID, actorID, issueIDOrKey, admin)
+	request, err := s.Store.ServiceRequest(ctx, workspaceID, actorID, issueIDOrKey, canManage)
 	if err != nil {
 		return nil, fmt.Errorf("request does not exist")
 	}
-	if !admin && request.Customer.ID != actorID {
+	if !canManage && request.Customer.ID != actorID {
 		return nil, fmt.Errorf("only the reporter or an agent may manage participants")
 	}
 	if len(userIDs) == 0 {
@@ -103,12 +103,12 @@ func (s *Service) UpdateServiceRequestParticipants(ctx context.Context, actorID,
 }
 
 func (s *Service) CreateServiceCustomer(ctx context.Context, actorID, workspaceID, email, displayName string) (*models.User, error) {
-	admin, err := s.Store.IsAdmin(ctx, workspaceID, actorID)
+	agent, err := s.Store.IsAnyServiceAgent(ctx, workspaceID, actorID)
 	if err != nil {
 		return nil, err
 	}
-	if !admin {
-		return nil, fmt.Errorf("only an administrator may create customers")
+	if !agent {
+		return nil, fmt.Errorf("only a service agent may create customers")
 	}
 	email, displayName = strings.TrimSpace(strings.ToLower(email)), strings.TrimSpace(displayName)
 	if email == "" || !strings.Contains(email, "@") || displayName == "" || len(displayName) > 255 {
@@ -118,15 +118,15 @@ func (s *Service) CreateServiceCustomer(ctx context.Context, actorID, workspaceI
 }
 
 func (s *Service) AddServiceRequestComment(ctx context.Context, actorID, workspaceID, issueIDOrKey string, body json.RawMessage, plainText string, public bool) (*models.ServiceRequestComment, error) {
-	admin, err := s.Store.IsAdmin(ctx, workspaceID, actorID)
+	canManage, err := s.Store.CanManageServiceRequest(ctx, workspaceID, actorID, issueIDOrKey)
 	if err != nil {
 		return nil, err
 	}
-	request, err := s.Store.ServiceRequest(ctx, workspaceID, actorID, issueIDOrKey, admin)
+	request, err := s.Store.ServiceRequest(ctx, workspaceID, actorID, issueIDOrKey, canManage)
 	if err != nil {
 		return nil, fmt.Errorf("request does not exist")
 	}
-	if !admin && !public {
+	if !canManage && !public {
 		return nil, fmt.Errorf("customers may only add public comments")
 	}
 	comment, _, err := s.AddComment(ctx, AddCommentInput{ActorID: actorID, WorkspaceID: workspaceID, IssueIDOrKey: request.Issue.ID, Body: body, PlainText: plainText})
@@ -141,16 +141,27 @@ func (s *Service) AddServiceRequestComment(ctx context.Context, actorID, workspa
 }
 
 func (s *Service) TransitionServiceRequest(ctx context.Context, actorID, workspaceID, issueIDOrKey, transitionID string) (*models.ServiceRequest, error) {
-	admin, err := s.Store.IsAdmin(ctx, workspaceID, actorID)
+	canManage, err := s.Store.CanManageServiceRequest(ctx, workspaceID, actorID, issueIDOrKey)
 	if err != nil {
 		return nil, err
 	}
-	request, err := s.Store.ServiceRequest(ctx, workspaceID, actorID, issueIDOrKey, admin)
+	request, err := s.Store.ServiceRequest(ctx, workspaceID, actorID, issueIDOrKey, canManage)
 	if err != nil {
 		return nil, fmt.Errorf("request does not exist")
 	}
 	if _, _, err := s.TransitionIssue(ctx, actorID, workspaceID, request.Issue.ID, transitionID); err != nil {
 		return nil, err
 	}
-	return s.Store.ServiceRequest(ctx, workspaceID, actorID, request.Issue.ID, admin)
+	return s.Store.ServiceRequest(ctx, workspaceID, actorID, request.Issue.ID, canManage)
+}
+
+func (s *Service) SetServiceDeskAgent(ctx context.Context, actorID, workspaceID, serviceDeskID, userID string, enabled bool) error {
+	admin, err := s.Store.IsAdmin(ctx, workspaceID, actorID)
+	if err != nil {
+		return err
+	}
+	if !admin {
+		return fmt.Errorf("only an administrator may manage service desk agents")
+	}
+	return s.Store.SetServiceDeskAgent(ctx, workspaceID, serviceDeskID, userID, enabled)
 }

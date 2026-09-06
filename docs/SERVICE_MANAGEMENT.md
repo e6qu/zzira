@@ -17,18 +17,22 @@ its status, request type, portal, channel, description, and conversation. The
 browser journey is tested in light and dark themes, with WCAG A/AA axe checks
 and 320 px reflow.
 
-Administrators can read all requests by using `requestOwnership=ALL_REQUESTS`,
-raise a request for an enrolled customer, add internal notes, and create
-portal-only customer records. A customer can read only their own requests and
-public comments; comments created through ordinary Jira issue UI have no public
-marker and remain internal.
+Assigned agents can read requests in their service desks by using
+`requestOwnership=ALL_REQUESTS`, raise a request for an enrolled customer, add
+internal notes, and create portal-only customer records. Site administrators
+are implicit service managers across every desk. A customer can read only their
+own requests and public comments; comments created through ordinary Jira issue
+UI have no public marker and remain internal.
 
 The agent workspace at `/service/agent` provides ordered all-open, unassigned,
 and assigned-to-me queues for each service desk. Live counts and queue contents
 update from the canonical request issue. Agents can open the full request,
 review internal notes, assign a request to themselves, unassign it, comment,
-and execute its workflow actions. Until project-scoped agent roles are added,
-this workspace and the queue APIs require site-administrator access.
+and execute its workflow actions. Agent access is assigned per service desk and
+is shared by the queue UI, request UI, and REST permission checks. Site
+administrators can add or remove active workspace members from the desk roster.
+Revocation immediately removes queue access, all-request visibility, request
+management and internal-comment visibility for that desk.
 
 Reporters and agents can add active service customers as request participants
 by account ID or email. Participants appear on the request, can read its public
@@ -57,11 +61,10 @@ is compensated by a logged issue deletion, so no orphaned ticket remains.
 ## Remaining fidelity
 
 The implemented operations are assessed as partial. Custom queues and arbitrary
-queue JQL, project-scoped agent roles, dynamic form/custom-field
-values, participant notifications and organizations, request attachments, approvals,
-notifications, feedback, full status chronology, SLAs, calendars, queues,
-agent roles, portal invitation activation, knowledge suggestions, Assets, and
-incident/problem/change configuration remain. Customer creation records a
+queue JQL, dynamic form/custom-field values, participant notifications and
+organizations, request attachments, approvals, notifications, feedback, full
+status chronology, SLAs, calendars, portal invitation activation, knowledge
+suggestions, Assets, and incident/problem/change configuration remain. Customer creation records a
 portal-only account but does not silently grant Jira product access; a future
 invitation policy will activate authentication with an `atlassian/customer`
 role.
