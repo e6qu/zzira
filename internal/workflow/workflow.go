@@ -26,6 +26,7 @@ const (
 	RuleChangeAssignee           = "system:change-assignee"
 	RuleUpdateField              = "system:update-field"
 	RuleCopyFieldValue           = "system:copy-value-from-other-field"
+	RuleTriggerWebhook           = "system:trigger-webhook"
 	RuleTransitionScreen         = "system:transition-screen"
 )
 
@@ -421,7 +422,7 @@ func (t Transition) AssigneeEffect(context EvaluationContext) (string, bool, err
 	var assigneeID string
 	changed := false
 	for _, action := range t.Actions {
-		if action.RuleKey == RuleUpdateField || action.RuleKey == RuleCopyFieldValue {
+		if action.RuleKey == RuleUpdateField || action.RuleKey == RuleCopyFieldValue || action.RuleKey == RuleTriggerWebhook {
 			continue
 		}
 		if action.RuleKey != RuleChangeAssignee {
@@ -455,7 +456,7 @@ func (t Transition) FieldUpdateEffects() ([]FieldUpdateEffect, error) {
 	effects := make([]FieldUpdateEffect, 0)
 	for _, action := range t.Actions {
 		switch action.RuleKey {
-		case RuleChangeAssignee:
+		case RuleChangeAssignee, RuleTriggerWebhook:
 			continue
 		case RuleUpdateField:
 			field := action.Parameters["field"]
@@ -488,6 +489,31 @@ func (t Transition) FieldUpdateEffects() ([]FieldUpdateEffect, error) {
 		}
 	}
 	return effects, nil
+}
+
+// TriggerWebhookIDs returns the webhook registrations explicitly invoked by
+// post-functions, preserving workflow order while removing duplicates.
+func (t Transition) TriggerWebhookIDs() ([]string, error) {
+	ids := make([]string, 0)
+	seen := make(map[string]bool)
+	for _, action := range t.Actions {
+		switch action.RuleKey {
+		case RuleChangeAssignee, RuleUpdateField, RuleCopyFieldValue:
+			continue
+		case RuleTriggerWebhook:
+			id := strings.TrimSpace(action.Parameters["webhookId"])
+			if id == "" {
+				return nil, fmt.Errorf("trigger-webhook registration is required")
+			}
+			if !seen[id] {
+				seen[id] = true
+				ids = append(ids, id)
+			}
+		default:
+			return nil, fmt.Errorf("unsupported workflow post-function %q", action.RuleKey)
+		}
+	}
+	return ids, nil
 }
 
 func readableWorkflowField(field string) bool {
@@ -648,6 +674,10 @@ func ValidateTransitionRules(transition Transition) error {
 			}
 			if issueSource := action.Parameters["issueSource"]; issueSource != "" && issueSource != "SAME" && issueSource != "PARENT" {
 				return fmt.Errorf("copy-field issue source %q is unsupported", issueSource)
+			}
+		case RuleTriggerWebhook:
+			if strings.TrimSpace(action.Parameters["webhookId"]) == "" {
+				return fmt.Errorf("trigger-webhook registration is required")
 			}
 		default:
 			return fmt.Errorf("workflow post-function %q is unsupported", action.RuleKey)

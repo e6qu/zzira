@@ -948,10 +948,30 @@ Validation after parent-field workflow copying:
   child description; the focused Chromium workflow editor journey passes with
   the parent source selected.
 
+Validation after workflow-triggered webhook delivery:
+
+- `system:trigger-webhook` accepts Jira's `webhookId` parameter in modern
+  workflow create, update, validation, search, preview, and capability payloads.
+  Empty IDs fail definition validation. The issue-update transaction locks each
+  target and rejects missing or inactive registrations in the current workspace
+  before mutating the issue, so registration deletion cannot race the commit.
+- Transition execution records the ordered, de-duplicated target IDs in the
+  same action-log transaction as the issue update. A webhook-only loop
+  transition therefore still creates a durable `jira:issue_updated` action.
+- The existing dispatcher and retry ledger deliver that action. The explicitly
+  targeted registration bypasses its ordinary event subscription and JQL
+  filters, while every unrelated registration retains those filters.
+- The admin workflow editor lists active registered webhook URLs and persists
+  the selected post-function. Unit tests cover parsing, validation, event
+  classification and targeting; PostgreSQL integration proves active/inactive
+  execution and delivery-filter bypass; the modern Jira REST journey proves
+  API round-tripping and execution; the focused Chromium editor journey passes.
+
 ## Current change
 
 1. Implement the next executable Jira system workflow rule from the reviewed
-   capability catalog.
+   capability catalog, adding any required product foundation rather than
+   storing inert rule metadata.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 

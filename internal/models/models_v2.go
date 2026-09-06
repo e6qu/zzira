@@ -16,8 +16,9 @@ type ChangeItem struct {
 
 // IssueUpdatePayload: field diff (changelog) + full snapshot (materialization).
 type IssueUpdatePayload struct {
-	Diff  map[string]ChangeItem `json:"diff"`
-	Issue Issue                 `json:"issue"`
+	Diff                map[string]ChangeItem `json:"diff"`
+	Issue               Issue                 `json:"issue"`
+	TriggeredWebhookIDs []string              `json:"triggeredWebhookIds,omitempty"`
 }
 
 type CommentUpsertPayload struct {

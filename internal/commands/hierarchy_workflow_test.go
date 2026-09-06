@@ -2,10 +2,12 @@ package commands
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"testing"
 
 	"github.com/e6qu/zzira/internal/adf"
+	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
 	"github.com/e6qu/zzira/internal/workflow"
 )
@@ -36,6 +38,8 @@ func TestIssueHierarchyPersistsAndBlocksWorkflowTransitions(t *testing.T) {
 	exec(`INSERT INTO memberships(workspace_id,user_id,role) VALUES($1,$2,'admin')`, workspaceID, actorID)
 	exec(`INSERT INTO projects(id,workspace_id,key,name) VALUES($1,$2,'HIE','Hierarchy project')`, projectID, workspaceID)
 	t.Cleanup(func() {
+		exec(`DELETE FROM webhook_deliveries WHERE webhook_id IN (SELECT id FROM webhooks WHERE workspace_id=$1)`, workspaceID)
+		exec(`DELETE FROM webhooks WHERE workspace_id=$1`, workspaceID)
 		exec(`DELETE FROM actions WHERE workspace_id=$1`, workspaceID)
 		exec(`DELETE FROM issues WHERE workspace_id=$1`, workspaceID)
 		exec(`DELETE FROM projects WHERE workspace_id=$1`, workspaceID)
@@ -113,5 +117,38 @@ func TestIssueHierarchyPersistsAndBlocksWorkflowTransitions(t *testing.T) {
 	}
 	if got := adf.PlainText(copyChild.Description); got != parent.Summary {
 		t.Fatalf("parent summary copied to description = %q", got)
+	}
+
+	webhook, err := st.CreateWebhook(ctx, workspaceID, "https://example.invalid/transition", []string{"jira:issue_created"}, `summary = "will not match"`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wf.Transitions[0].Actions = []workflow.Rule{{
+		ID: "notify", RuleKey: workflow.RuleTriggerWebhook, Parameters: map[string]string{"webhookId": webhook.ID},
+	}}
+	if err := st.CreateWorkflow(ctx, workspaceID, wf); err != nil {
+		t.Fatal(err)
+	}
+	notified, _, err := service.CreateIssue(ctx, CreateIssueInput{ActorID: actorID, WorkspaceID: workspaceID, ProjectIDOrKey: projectID, Summary: "Notify", IssueTypeID: "it_task"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, action, err := service.TransitionIssue(ctx, actorID, workspaceID, notified.Key, "complete")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload models.IssueUpdatePayload
+	if action == nil || json.Unmarshal(action.Payload, &payload) != nil || len(payload.TriggeredWebhookIDs) != 1 || payload.TriggeredWebhookIDs[0] != webhook.ID {
+		t.Fatalf("triggered webhook action = %+v payload=%+v", action, payload)
+	}
+	if _, err := st.Pool.Exec(ctx, `UPDATE webhooks SET active=false WHERE id=$1`, webhook.ID); err != nil {
+		t.Fatal(err)
+	}
+	blocked, _, err := service.CreateIssue(ctx, CreateIssueInput{ActorID: actorID, WorkspaceID: workspaceID, ProjectIDOrKey: projectID, Summary: "Inactive hook", IssueTypeID: "it_task"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := service.TransitionIssue(ctx, actorID, workspaceID, blocked.Key, "complete"); err == nil {
+		t.Fatal("transition accepted an inactive webhook registration")
 	}
 }

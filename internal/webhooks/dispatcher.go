@@ -38,7 +38,7 @@ func EventFor(a *models.Action) (string, bool) {
 		switch a.Op {
 		case models.OpUpsert:
 			var p models.IssueUpdatePayload
-			if json.Unmarshal(a.Payload, &p) == nil && len(p.Diff) > 0 {
+			if json.Unmarshal(a.Payload, &p) == nil && (len(p.Diff) > 0 || len(p.TriggeredWebhookIDs) > 0) {
 				return "jira:issue_updated", true
 			}
 			return "jira:issue_created", true
@@ -112,10 +112,11 @@ func (d *Dispatcher) deliver(ctx context.Context, workspaceID string, webhook *m
 	if !ok {
 		return d.mark(ctx, webhook.ID, seq, true, "")
 	}
-	if len(webhook.Events) > 0 && !containsString(webhook.Events, event) {
+	forced := actionTriggersWebhook(action, webhook.ID)
+	if !forced && len(webhook.Events) > 0 && !containsString(webhook.Events, event) {
 		return d.mark(ctx, webhook.ID, seq, true, "")
 	}
-	if webhook.JQL != "" && action.EntityType == models.EntityIssue {
+	if !forced && webhook.JQL != "" && action.EntityType == models.EntityIssue {
 		if d.Checker == nil || d.Checker.Search == nil {
 			return d.markFailed(ctx, webhook.ID, seq, errors.New("JQL checker is not configured"))
 		}
@@ -157,6 +158,14 @@ func (d *Dispatcher) deliver(ctx context.Context, workspaceID string, webhook *m
 		return d.mark(ctx, webhook.ID, seq, true, "")
 	}
 	return d.markFailed(ctx, webhook.ID, seq, fmt.Errorf("http %d", resp.StatusCode))
+}
+
+func actionTriggersWebhook(action *models.Action, webhookID string) bool {
+	if action.EntityType != models.EntityIssue || action.Op != models.OpUpsert {
+		return false
+	}
+	var payload models.IssueUpdatePayload
+	return json.Unmarshal(action.Payload, &payload) == nil && containsString(payload.TriggeredWebhookIDs, webhookID)
 }
 
 func (d *Dispatcher) markFailed(ctx context.Context, webhookID string, seq int64, cause error) error {

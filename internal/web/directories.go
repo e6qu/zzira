@@ -102,6 +102,7 @@ type workflowEditorData struct {
 	Statuses  []models.Status
 	Projects  []*models.Project
 	Assigned  []*models.Project
+	Webhooks  []*models.Webhook
 	CanEdit   bool
 	CanAssign bool
 }
@@ -726,6 +727,17 @@ func (h *Handler) WorkflowPage(w http.ResponseWriter, r *http.Request, id string
 		}
 		projects = projectScoped
 	}
+	webhooks, err := h.Store.Webhooks(r.Context(), wsID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	activeWebhooks := webhooks[:0]
+	for _, webhook := range webhooks {
+		if webhook.Active {
+			activeWebhooks = append(activeWebhooks, webhook)
+		}
+	}
 	nodes, edges, mapWidth, mapHeight := workflowDesignerMap(wf, statuses)
 	assigned := make([]*models.Project, 0)
 	for _, project := range projects {
@@ -735,7 +747,7 @@ func (h *Handler) WorkflowPage(w http.ResponseWriter, r *http.Request, id string
 	}
 	admin, _ := h.Store.IsAdmin(r.Context(), wsID, user.ID)
 	h.writeWorkspacePage(w, r, "page_workflow", user, wsID, workflowEditorData{
-		Workflow: wf, Nodes: nodes, Edges: edges, MapWidth: mapWidth, MapHeight: mapHeight, Statuses: statuses, Projects: projects, Assigned: assigned,
+		Workflow: wf, Nodes: nodes, Edges: edges, MapWidth: mapWidth, MapHeight: mapHeight, Statuses: statuses, Projects: projects, Assigned: assigned, Webhooks: activeWebhooks,
 		CanEdit: admin && wf.ID != workflow.Default().ID, CanAssign: admin,
 	}, "workflows", "")
 }
@@ -976,6 +988,27 @@ func (h *Handler) AddWorkflowTransition(w http.ResponseWriter, r *http.Request, 
 			ID: store.NewID("rule"), RuleKey: workflow.RuleCopyFieldValue, Parameters: map[string]string{
 				"sourceFieldKey": source, "targetFieldKey": r.PostFormValue("copy_target"), "issueSource": r.PostFormValue("copy_issue_source"),
 			},
+		})
+	}
+	if webhookID := strings.TrimSpace(r.PostFormValue("trigger_webhook")); webhookID != "" {
+		webhooks, err := h.Store.Webhooks(r.Context(), wsID)
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		valid := false
+		for _, webhook := range webhooks {
+			if webhook.ID == webhookID && webhook.Active {
+				valid = true
+				break
+			}
+		}
+		if !valid {
+			http.Error(w, "webhook registration is not active", http.StatusBadRequest)
+			return
+		}
+		transition.Actions = append(transition.Actions, workflow.Rule{
+			ID: store.NewID("rule"), RuleKey: workflow.RuleTriggerWebhook, Parameters: map[string]string{"webhookId": webhookID},
 		})
 	}
 	wf.Transitions = append(wf.Transitions, transition)

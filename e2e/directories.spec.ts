@@ -83,6 +83,12 @@ test('project switcher keeps the shell and generic pages in the current project'
 
 test('project workflow creation, editor, transition changes, and assignment work', async ({ page }) => {
   await login(page);
+  const webhookResponse = await page.request.post('/rest/api/3/webhook', {
+    headers: { Authorization: apiAuthHeader() },
+    data: { url: 'https://example.invalid/workflow-ui', webhooks: [{ jqlFilter: 'project = ZZ', events: ['jira:issue_created'] }] },
+  });
+  expect(webhookResponse.status()).toBe(201);
+  const webhookID = (await webhookResponse.json()).webhookRegistrationStatus[0].createdWebhookId as string;
   await page.getByRole('link', { name: 'Workflows', exact: true }).click();
   await expect(page).toHaveURL('/settings/workflows');
   await expect(page.getByRole('heading', { name: 'Workflows', level: 1 })).toBeVisible();
@@ -118,6 +124,8 @@ test('project workflow creation, editor, transition changes, and assignment work
   await page.selectOption('#transition-copy-source', 'summary');
 	await page.selectOption('#transition-copy-issue-source', 'PARENT');
   await page.selectOption('#transition-copy-target', 'description');
+  await expect(page.locator('#transition-trigger-webhook')).toContainText('https://example.invalid/workflow-ui');
+  await page.selectOption('#transition-trigger-webhook', webhookID);
   await page.selectOption('#transition-changed-field-validator', 'labels');
   await page.selectOption('#transition-regexp-field-validator', 'description');
   await page.fill('#transition-regexp-pattern', '^.+$');

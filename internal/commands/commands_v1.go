@@ -422,6 +422,13 @@ func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, worksp
 			return nil, nil, err
 		}
 	}
+	triggeredWebhookIDs, err := t.TriggerWebhookIDs()
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(triggeredWebhookIDs) > 0 {
+		update.TriggeredWebhookIDs = triggeredWebhookIDs
+	}
 	if update.Summary != nil && (len(*update.Summary) == 0 || len(*update.Summary) > 255) {
 		return nil, nil, fmt.Errorf("workflow summary update must be between 1 and 255 characters")
 	}

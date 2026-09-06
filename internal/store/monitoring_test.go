@@ -21,8 +21,19 @@ func TestMonitoringSnapshotReportsRealIssueCount(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	tx, err := st.Pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	// Other packages share TEST_DATABASE_URL and run concurrently. A SHARE lock
+	// keeps their issue writes from racing the reference count while still
+	// allowing MonitoringSnapshot's separate connection to read the table.
+	if _, err := tx.Exec(ctx, `LOCK TABLE issues IN SHARE MODE`); err != nil {
+		t.Fatal(err)
+	}
 	var before int64
-	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM issues`).Scan(&before); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT count(*) FROM issues`).Scan(&before); err != nil {
 		t.Fatal(err)
 	}
 

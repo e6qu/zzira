@@ -399,6 +399,32 @@ func TestCopyFieldPostFunctionValidation(t *testing.T) {
 	}
 }
 
+func TestTriggerWebhookPostFunctionValidationAndOrdering(t *testing.T) {
+	transition := Transition{Actions: []Rule{
+		{ID: "first", RuleKey: RuleTriggerWebhook, Parameters: map[string]string{"webhookId": "wh_first"}},
+		{ID: "field", RuleKey: RuleUpdateField, Parameters: map[string]string{"field": "labels", "value": "sent", "mode": "append"}},
+		{ID: "duplicate", RuleKey: RuleTriggerWebhook, Parameters: map[string]string{"webhookId": "wh_first"}},
+		{ID: "second", RuleKey: RuleTriggerWebhook, Parameters: map[string]string{"webhookId": "wh_second"}},
+	}}
+	if err := ValidateTransitionRules(transition); err != nil {
+		t.Fatal(err)
+	}
+	ids, err := transition.TriggerWebhookIDs()
+	if err != nil || len(ids) != 2 || ids[0] != "wh_first" || ids[1] != "wh_second" {
+		t.Fatalf("webhook effects = %v, %v", ids, err)
+	}
+	if _, _, err := transition.AssigneeEffect(EvaluationContext{}); err != nil {
+		t.Fatal(err)
+	}
+	if effects, err := transition.FieldUpdateEffects(); err != nil || len(effects) != 1 {
+		t.Fatalf("field effects = %+v, %v", effects, err)
+	}
+	transition.Actions[0].Parameters["webhookId"] = " "
+	if err := ValidateTransitionRules(transition); err == nil {
+		t.Fatal("empty webhook registration was accepted")
+	}
+}
+
 func TestUpdateFieldPostFunctionValidation(t *testing.T) {
 	transition := Transition{Actions: []Rule{{ID: "update", RuleKey: RuleUpdateField, Parameters: map[string]string{"field": "labels", "value": "released", "mode": "replace"}}}}
 	if err := ValidateTransitionRules(transition); err != nil {

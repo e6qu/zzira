@@ -37,17 +37,18 @@ func appendAction(ctx context.Context, tx pgx.Tx, a *models.Action) error {
 // ---- Issue update / delete (V1) ----
 
 type IssueUpdate struct {
-	VersionOperations  map[string][]map[string]json.RawMessage
-	ExpectedUpdatedSeq *int64
-	Summary            *string
-	Description        json.RawMessage // non-nil = replace
-	PriorityID         *string         // "" = clear, nil = unchanged
-	AssigneeID         *string         // "" = unassign, nil = unchanged
-	ParentID           *string         // "" = clear, nil = unchanged
-	StatusID           *string         // transitions only; "" invalid
-	SecurityLevelID    *string         // "" = public, nil = unchanged
-	Labels             *[]string       // empty = clear, nil = unchanged
-	Fields             map[string]json.RawMessage
+	VersionOperations   map[string][]map[string]json.RawMessage
+	ExpectedUpdatedSeq  *int64
+	Summary             *string
+	Description         json.RawMessage // non-nil = replace
+	PriorityID          *string         // "" = clear, nil = unchanged
+	AssigneeID          *string         // "" = unassign, nil = unchanged
+	ParentID            *string         // "" = clear, nil = unchanged
+	StatusID            *string         // transitions only; "" invalid
+	SecurityLevelID     *string         // "" = public, nil = unchanged
+	Labels              *[]string       // empty = clear, nil = unchanged
+	Fields              map[string]json.RawMessage
+	TriggeredWebhookIDs []string
 }
 
 func diffItem(field, from, fromString, to, toString string) models.ChangeItem {
@@ -71,6 +72,15 @@ func (s *Store) UpdateIssue(ctx context.Context, actorID, workspaceID, issueID s
 	}
 	if up.ExpectedUpdatedSeq != nil && current.UpdatedSeq != *up.ExpectedUpdatedSeq {
 		return nil, nil, fmt.Errorf("issue changed while applying transition")
+	}
+	for _, webhookID := range up.TriggeredWebhookIDs {
+		var lockedID string
+		if err := tx.QueryRow(ctx, `SELECT id FROM webhooks WHERE id=$1 AND workspace_id=$2 AND active FOR KEY SHARE`, webhookID, workspaceID).Scan(&lockedID); err != nil {
+			if err == pgx.ErrNoRows {
+				return nil, nil, fmt.Errorf("workflow webhook %q is not an active registration", webhookID)
+			}
+			return nil, nil, err
+		}
 	}
 	if len(up.VersionOperations) > 0 {
 		up.Fields, err = applyVersionOperations(ctx, tx, projectID, current.Fields, up.Fields, up.VersionOperations)
@@ -179,7 +189,7 @@ func (s *Store) UpdateIssue(ctx context.Context, actorID, workspaceID, issueID s
 		}
 	}
 
-	if len(sets) == 0 {
+	if len(sets) == 0 && len(up.TriggeredWebhookIDs) == 0 {
 		return current, nil, nil // nothing to do: no action
 	}
 
@@ -199,7 +209,7 @@ func (s *Store) UpdateIssue(ctx context.Context, actorID, workspaceID, issueID s
 	if err != nil {
 		return nil, nil, err
 	}
-	payload, err := json.Marshal(models.IssueUpdatePayload{Diff: diff, Issue: *updated})
+	payload, err := json.Marshal(models.IssueUpdatePayload{Diff: diff, Issue: *updated, TriggeredWebhookIDs: up.TriggeredWebhookIDs})
 	if err != nil {
 		return nil, nil, err
 	}
