@@ -76,15 +76,26 @@ func (s *Store) ServiceRequestType(ctx context.Context, workspaceID, serviceDesk
 }
 
 func (s *Store) CreateServiceRequestType(ctx context.Context, workspaceID, serviceDeskID, name, description, helpText, issueTypeID string) (*models.ServiceRequestType, error) {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
 	requestType := &models.ServiceRequestType{}
-	err := s.Pool.QueryRow(ctx, `
+	err = tx.QueryRow(ctx, `
 		INSERT INTO service_request_types(service_desk_id,name,description,help_text,issue_type_id)
 		SELECT sd.id,$3,$4,$5,$6 FROM service_desks sd
 		WHERE sd.workspace_id=$1 AND sd.id=$2
 		RETURNING id,service_desk_id,name,description,help_text,issue_type_id,group_ids`, workspaceID, serviceDeskID, name, description, helpText, issueTypeID).Scan(
 		&requestType.ID, &requestType.ServiceDeskID, &requestType.Name, &requestType.Description,
 		&requestType.HelpText, &requestType.IssueTypeID, &requestType.GroupIDs)
-	return requestType, err
+	if err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO service_request_type_fields(request_type_id,field_id,required,help_text,position) VALUES($1,'summary',TRUE,$2,0),($1,'description',FALSE,'Describe the request.',1)`, requestType.ID, requestType.HelpText); err != nil {
+		return nil, err
+	}
+	return requestType, tx.Commit(ctx)
 }
 
 func (s *Store) DeleteServiceRequestType(ctx context.Context, workspaceID, serviceDeskID, id string) error {

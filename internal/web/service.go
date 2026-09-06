@@ -3,6 +3,8 @@ package web
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -16,6 +18,20 @@ import (
 )
 
 type serviceTransitionView struct{ ID, Name, To string }
+
+type serviceRequestFieldChoice struct {
+	models.ServiceRequestTypeField
+	Enabled bool
+}
+
+type serviceRequestTypeFormView struct {
+	RequestType models.ServiceRequestType
+	Fields      []serviceRequestFieldChoice
+}
+
+type serviceRequestFieldValueView struct {
+	Name, Value string
+}
 
 type servicePageData struct {
 	Desks                 []models.ServiceDesk
@@ -43,6 +59,10 @@ type servicePageData struct {
 	KnowledgeArticles     []models.ServiceKnowledgeArticle
 	KnowledgeSpaces       []*models.WikiSpace
 	KnowledgeSpaceLinks   map[string]bool
+	RequestTypeForms      []serviceRequestTypeFormView
+	RequestTypeFields     []models.ServiceRequestTypeField
+	RequestFieldValues    []serviceRequestFieldValueView
+	FieldValues           map[string]string
 	Transitions           []serviceTransitionView
 	CanAdmin              bool
 	CanAgent              bool
@@ -135,6 +155,45 @@ func (h *Handler) ServiceAgent(w http.ResponseWriter, r *http.Request) {
 			data.KnowledgeSpaceLinks = make(map[string]bool, len(linkedSpaces))
 			for _, space := range linkedSpaces {
 				data.KnowledgeSpaceLinks[space.ID] = true
+			}
+			data.RequestTypes, err = h.Store.ServiceRequestTypes(r.Context(), workspaceID, deskID, "")
+			if err != nil {
+				http.Error(w, "Could not load request types.", http.StatusInternalServerError)
+				return
+			}
+			customFields, err := h.Store.CustomFieldsForProject(r.Context(), desk.ProjectID)
+			if err != nil {
+				http.Error(w, "Could not load service form fields.", http.StatusInternalServerError)
+				return
+			}
+			for _, requestType := range data.RequestTypes {
+				configured, err := h.Store.ServiceRequestTypeFields(r.Context(), workspaceID, deskID, requestType.ID)
+				if err != nil {
+					http.Error(w, "Could not load request type fields.", http.StatusInternalServerError)
+					return
+				}
+				byID := make(map[string]models.ServiceRequestTypeField, len(configured))
+				for _, field := range configured {
+					byID[field.ID] = field
+				}
+				choices := []serviceRequestFieldChoice{
+					{ServiceRequestTypeField: models.ServiceRequestTypeField{ID: "summary", RequestTypeID: requestType.ID, Name: "Summary", Type: models.CustomFieldText, Required: true, HelpText: requestType.HelpText}, Enabled: true},
+					{ServiceRequestTypeField: models.ServiceRequestTypeField{ID: "description", RequestTypeID: requestType.ID, Name: "Description", Type: models.CustomFieldText, Description: "Describe the request."}, Enabled: byID["description"].ID != ""},
+				}
+				if field := byID["summary"]; field.ID != "" {
+					choices[0].ServiceRequestTypeField = field
+				}
+				if field := byID["description"]; field.ID != "" {
+					choices[1].ServiceRequestTypeField = field
+				}
+				for _, customField := range customFields {
+					field, enabled := byID[customField.ID]
+					if !enabled {
+						field = models.ServiceRequestTypeField{ID: customField.ID, RequestTypeID: requestType.ID, Name: customField.Name, Type: customField.Type, Description: customField.Description, Custom: true}
+					}
+					choices = append(choices, serviceRequestFieldChoice{ServiceRequestTypeField: field, Enabled: enabled})
+				}
+				data.RequestTypeForms = append(data.RequestTypeForms, serviceRequestTypeFormView{RequestType: requestType, Fields: choices})
 			}
 		}
 		data.Queues, err = h.Store.ServiceQueues(r.Context(), workspaceID, deskID)
@@ -361,6 +420,39 @@ func (h *Handler) ServiceQueueSettings(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (h *Handler) ServiceRequestTypeFieldSettings(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	admin, err := h.Store.IsAdmin(r.Context(), workspaceID, user.ID)
+	if err != nil {
+		http.Error(w, "Could not authorize service administration.", http.StatusInternalServerError)
+		return
+	}
+	if !admin {
+		http.Error(w, "Workspace admin access is required.", http.StatusForbidden)
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	required := make(map[string]bool, len(r.PostForm["requiredFieldId"]))
+	for _, fieldID := range r.PostForm["requiredFieldId"] {
+		required[fieldID] = true
+	}
+	fields := make([]models.ServiceRequestTypeField, 0, len(r.PostForm["fieldId"]))
+	for _, fieldID := range r.PostForm["fieldId"] {
+		fields = append(fields, models.ServiceRequestTypeField{ID: fieldID, Required: required[fieldID], HelpText: r.PostFormValue("help_" + fieldID)})
+	}
+	deskID, requestTypeID := r.PathValue("desk"), r.PathValue("requestType")
+	if err := h.Commands.SetServiceRequestTypeFields(r.Context(), user.ID, workspaceID, deskID, requestTypeID, fields); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	redirectLocal(w, r, "/service/agent/"+deskID+"#request-forms")
+}
+
 func parseServiceClock(value string) (int16, error) {
 	parts := strings.Split(value, ":")
 	if len(parts) != 2 {
@@ -535,14 +627,50 @@ func (h *Handler) ServiceRequestForm(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	data := servicePageData{Desk: desk, RequestType: requestType}
+	fields, err := h.Store.ServiceRequestTypeFields(r.Context(), workspaceID, desk.ID, requestType.ID)
+	if err != nil {
+		http.Error(w, "Could not load request fields.", http.StatusInternalServerError)
+		return
+	}
+	data := servicePageData{Desk: desk, RequestType: requestType, RequestTypeFields: fields, FieldValues: map[string]string{}}
 	status := http.StatusOK
 	if r.Method == http.MethodPost {
 		if !parseForm(w, r) {
 			return
 		}
-		data.Summary, data.Description = strings.TrimSpace(r.PostFormValue("summary")), r.PostFormValue("description")
-		request, err := h.Commands.CreateServiceRequest(r.Context(), commands.CreateServiceRequestInput{ActorID: user.ID, WorkspaceID: workspaceID, ServiceDeskID: desk.ID, RequestTypeID: requestType.ID, Channel: "portal", Summary: data.Summary, Description: data.Description})
+		customFields := map[string]json.RawMessage{}
+		for _, field := range fields {
+			value := r.PostFormValue("field_" + field.ID)
+			data.FieldValues[field.ID] = value
+			if field.Required && strings.TrimSpace(value) == "" {
+				data.Error, status = field.Name+" is required.", http.StatusBadRequest
+				break
+			}
+			switch field.ID {
+			case "summary":
+				data.Summary = strings.TrimSpace(value)
+			case "description":
+				data.Description = value
+			default:
+				if strings.TrimSpace(value) == "" {
+					continue
+				}
+				encoded, encodeErr := encodeServiceRequestField(field, value)
+				if encodeErr != nil {
+					data.Error, status = encodeErr.Error(), http.StatusBadRequest
+					break
+				}
+				customFields[field.ID] = encoded
+			}
+			if data.Error != "" {
+				break
+			}
+		}
+		if data.Error != "" {
+			h.writeWorkspacePageStatus(w, r, "page_service_request_form", user, workspaceID, data, "service", desk.ProjectID, status)
+			return
+		}
+		request, err := h.Commands.CreateServiceRequest(r.Context(), commands.CreateServiceRequestInput{ActorID: user.ID, WorkspaceID: workspaceID, ServiceDeskID: desk.ID, RequestTypeID: requestType.ID, Channel: "portal", Summary: data.Summary, Description: data.Description, Fields: customFields})
 		if err == nil {
 			redirectLocal(w, r, "/service/requests/"+request.Issue.Key)
 			return
@@ -550,6 +678,17 @@ func (h *Handler) ServiceRequestForm(w http.ResponseWriter, r *http.Request) {
 		data.Error, status = err.Error(), http.StatusBadRequest
 	}
 	h.writeWorkspacePageStatus(w, r, "page_service_request_form", user, workspaceID, data, "service", desk.ProjectID, status)
+}
+
+func encodeServiceRequestField(field models.ServiceRequestTypeField, value string) (json.RawMessage, error) {
+	if field.Type == models.CustomFieldNumber {
+		number, err := strconv.ParseFloat(value, 64)
+		if err != nil || math.IsInf(number, 0) || math.IsNaN(number) {
+			return nil, fmt.Errorf("%s must be a finite number", field.Name)
+		}
+		return json.Marshal(number)
+	}
+	return json.Marshal(value)
 }
 
 func (h *Handler) serviceRequestForPage(r *http.Request, workspaceID, userID, issueIDOrKey string) (*models.ServiceRequest, bool, error) {
@@ -662,7 +801,28 @@ func (h *Handler) ServiceRequestPage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	h.writeWorkspacePage(w, r, "page_service_request", user, workspaceID, servicePageData{Request: request, Comments: comments, Attachments: attachments, Approvals: approvals, Feedback: feedback, Participants: participants, Members: members, SLAs: slas, Transitions: transitions, CanAgent: canManage, CanManageParticipants: canManage || request.Customer.ID == user.ID, CurrentUserID: user.ID, Subscribed: subscribed, CanLeaveFeedback: request.Customer.ID == user.ID && request.Issue.Status.Category == "done"}, "service", request.Issue.ProjectID)
+	configuredFields, err := h.Store.ServiceRequestTypeFields(r.Context(), workspaceID, request.ServiceDesk.ID, request.RequestType.ID)
+	if err != nil {
+		http.Error(w, "Could not load request fields.", http.StatusInternalServerError)
+		return
+	}
+	requestFields := make([]serviceRequestFieldValueView, 0)
+	for _, field := range configuredFields {
+		if !field.Custom {
+			continue
+		}
+		raw, ok := request.Issue.Fields[field.ID]
+		if !ok || string(raw) == "null" {
+			continue
+		}
+		var value any
+		if err := json.Unmarshal(raw, &value); err != nil {
+			http.Error(w, "Could not render request fields.", http.StatusInternalServerError)
+			return
+		}
+		requestFields = append(requestFields, serviceRequestFieldValueView{Name: field.Name, Value: fmt.Sprint(value)})
+	}
+	h.writeWorkspacePage(w, r, "page_service_request", user, workspaceID, servicePageData{Request: request, RequestFieldValues: requestFields, Comments: comments, Attachments: attachments, Approvals: approvals, Feedback: feedback, Participants: participants, Members: members, SLAs: slas, Transitions: transitions, CanAgent: canManage, CanManageParticipants: canManage || request.Customer.ID == user.ID, CurrentUserID: user.ID, Subscribed: subscribed, CanLeaveFeedback: request.Customer.ID == user.ID && request.Issue.Status.Category == "done"}, "service", request.Issue.ProjectID)
 }
 
 func (h *Handler) ServiceRequestParticipant(w http.ResponseWriter, r *http.Request) {

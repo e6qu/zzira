@@ -11,7 +11,8 @@ workflow and contributes to DORA recovery time through its `incident` label.
 ## Customer journey
 
 Authenticated users can open `/service`, choose a service portal, search its
-request types and linked knowledge articles, submit a typed request, review their requests, add public replies,
+request types and linked knowledge articles, submit a request-type-specific
+form, review their requests, add public replies,
 upload and download customer-visible files, answer approvals assigned to them,
 and execute currently available workflow transitions. The request page exposes
 its status, request type, portal, channel, description, conversation, files,
@@ -49,6 +50,14 @@ is shared by the queue UI, request UI, and REST permission checks. Site
 administrators can add or remove active workspace members from the desk roster.
 Revocation immediately removes queue access, all-request visibility, request
 management and internal-comment visibility for that desk.
+
+Site administrators configure each request type's portal fields from the agent
+workspace. Summary is always present and required; description and
+project-available text, number, or date-time custom fields can be shown,
+required, ordered, and given customer help text. The portal UI and JSM field
+metadata read the same durable configuration. UI and REST request creation
+reject unconfigured or missing fields, validate typed values through the
+canonical Jira command layer, and store custom answers on the backing issue.
 
 Agents can create customer organizations, add or remove active customers, store
 JSON entity properties, and link organizations to the desks they work. A linked
@@ -140,14 +149,16 @@ All 75 operations in the pinned Jira Service Management Cloud REST contract
 have now been reviewed and are represented by explicit partial assessments.
 
 Request creation accepts string or Atlassian document format descriptions and
-stores the backing issue through the shared command layer. Incident request
-types automatically receive the `incident` label. Failed metadata association
-is compensated by a logged issue deletion, so no orphaned ticket remains.
+request-type-specific text, number, and date-time custom fields, then stores the
+backing issue through the shared command layer. Incident request types
+automatically receive the `incident` label. Failed metadata association is
+compensated by a logged issue deletion, so no orphaned ticket remains.
 
 ## Remaining fidelity
 
 The implemented operations are assessed as partial. JQL support follows the
-documented ZZIRA search subset; dynamic form/custom-field values, participant notifications,
+documented ZZIRA search subset; conditional form logic, select, user, and
+Assets-backed portal fields, participant notifications,
 approval workflow configuration, image thumbnail generation,
 email delivery and notification preference administration, CSAT configuration
 and aggregate service reports, complete Assets object/schema/import APIs, full

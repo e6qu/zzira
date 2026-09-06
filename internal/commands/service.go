@@ -17,6 +17,7 @@ type CreateServiceRequestInput struct {
 	CustomerID, Channel, Summary, Description          string
 	DescriptionADF                                     json.RawMessage
 	ParticipantIDs                                     []string
+	Fields                                             map[string]json.RawMessage
 }
 
 // CreateServiceRequest creates the canonical Jira issue first and compensates
@@ -57,7 +58,7 @@ func (s *Service) CreateServiceRequest(ctx context.Context, in CreateServiceRequ
 	issue, _, err := s.CreateIssue(ctx, CreateIssueInput{
 		ActorID: in.ActorID, ReporterID: in.CustomerID, WorkspaceID: in.WorkspaceID, ProjectIDOrKey: desk.ProjectID,
 		Summary: in.Summary, Description: in.Description, DescriptionADF: in.DescriptionADF,
-		IssueTypeID: requestType.IssueTypeID, Labels: labels,
+		IssueTypeID: requestType.IssueTypeID, Labels: labels, Fields: in.Fields,
 	})
 	if err != nil {
 		return nil, err
@@ -273,4 +274,44 @@ func (s *Service) DeleteServiceQueue(ctx context.Context, actorID, workspaceID, 
 		return err
 	}
 	return s.Store.DeleteServiceQueue(ctx, workspaceID, actorID, serviceDeskID, queueID)
+}
+
+func (s *Service) SetServiceRequestTypeFields(ctx context.Context, actorID, workspaceID, serviceDeskID, requestTypeID string, fields []models.ServiceRequestTypeField) error {
+	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
+		return err
+	}
+	if len(fields) == 0 || len(fields) > 50 {
+		return fmt.Errorf("request type forms require 1 to 50 fields")
+	}
+	desk, err := s.Store.ServiceDesk(ctx, workspaceID, serviceDeskID)
+	if err != nil {
+		return fmt.Errorf("service desk does not exist")
+	}
+	customFields, err := s.Store.CustomFieldsForProject(ctx, desk.ProjectID)
+	if err != nil {
+		return err
+	}
+	allowed := map[string]bool{"summary": true, "description": true}
+	for _, field := range customFields {
+		allowed[field.ID] = true
+	}
+	seen, hasSummary := map[string]bool{}, false
+	for index := range fields {
+		field := &fields[index]
+		field.ID, field.HelpText = strings.TrimSpace(field.ID), strings.TrimSpace(field.HelpText)
+		if !allowed[field.ID] || seen[field.ID] {
+			return fmt.Errorf("field %q is duplicated or unavailable for this service project", field.ID)
+		}
+		if len(field.HelpText) > 1000 {
+			return fmt.Errorf("field help text accepts at most 1000 characters")
+		}
+		seen[field.ID] = true
+		if field.ID == "summary" {
+			hasSummary, field.Required = true, true
+		}
+	}
+	if !hasSummary {
+		return fmt.Errorf("summary is required on every request type form")
+	}
+	return s.Store.SetServiceRequestTypeFields(ctx, workspaceID, actorID, serviceDeskID, requestTypeID, fields)
 }

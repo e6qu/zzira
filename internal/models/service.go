@@ -24,6 +24,12 @@ type ServiceRequestTypeGroup struct {
 	Position                int
 }
 
+type ServiceRequestTypeField struct {
+	ID, RequestTypeID, Name, Type, Description, HelpText string
+	Required, Custom                                     bool
+	Position                                             int
+}
+
 type ServiceKnowledgeArticle struct {
 	PageID, SpaceID, SpaceKey, Title, Excerpt, Body string
 }

@@ -82,6 +82,12 @@ func (s *Store) CreateProject(ctx context.Context, actorID string, p models.Proj
 			return nil, err
 		}
 		if _, err := tx.Exec(ctx, `
+			INSERT INTO service_request_type_fields(request_type_id,field_id,required,help_text,position)
+			SELECT id,'summary',TRUE,help_text,0 FROM service_request_types WHERE service_desk_id=$1
+			UNION ALL SELECT id,'description',FALSE,'Describe the request.',1 FROM service_request_types WHERE service_desk_id=$1`, serviceDeskID); err != nil {
+			return nil, err
+		}
+		if _, err := tx.Exec(ctx, `
 			INSERT INTO service_queues(service_desk_id,name,jql,kind,position) VALUES
 			($1,'All open requests','resolution = Unresolved ORDER BY created ASC','all_open',0),
 			($1,'SLA attention','resolution = Unresolved ORDER BY created ASC','sla_attention',1),

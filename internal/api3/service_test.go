@@ -8,6 +8,7 @@ import (
 	"mime/multipart"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -33,6 +34,7 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	workspaceID, actorID, customerID, agentID := store.NewID("ws"), store.NewID("usr"), store.NewID("usr"), store.NewID("usr")
+	customFieldID := "customfield_" + strconv.FormatInt(time.Now().UnixNano(), 10)
 	exec := func(query string, args ...any) {
 		t.Helper()
 		if _, err := st.Pool.Exec(ctx, query, args...); err != nil {
@@ -55,6 +57,7 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 		exec(`DELETE FROM issues WHERE workspace_id=$1`, workspaceID)
 		exec(`DELETE FROM boards WHERE project_id IN (SELECT id FROM projects WHERE workspace_id=$1)`, workspaceID)
 		exec(`DELETE FROM projects WHERE workspace_id=$1`, workspaceID)
+		exec(`DELETE FROM custom_fields WHERE id=$1`, customFieldID)
 		exec(`DELETE FROM organization_audit_events WHERE actor_id=$1`, actorID)
 		exec(`DELETE FROM memberships WHERE workspace_id=$1`, workspaceID)
 		exec(`DELETE FROM wiki_page_versions WHERE page_id IN (SELECT p.id FROM wiki_pages p JOIN wiki_spaces s ON s.id=p.space_id WHERE s.workspace_id=$1)`, workspaceID)
@@ -305,6 +308,42 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	issue, err := st.IssueByIDOrKey(ctx, workspaceID, issueKey)
 	if err != nil || !strings.Contains(strings.Join(issue.Labels, ","), "incident") {
 		t.Fatalf("incident issue = %+v, %v", issue, err)
+	}
+	if _, err := st.CreateCustomField(ctx, customFieldID, "Business impact", models.CustomFieldNumber, "Affected orders per minute"); err != nil {
+		t.Fatal(err)
+	}
+	if err := handler.Commands.SetServiceRequestTypeFields(ctx, actorID, workspaceID, serviceDeskID, incidentTypeID, []models.ServiceRequestTypeField{
+		{ID: "summary", Required: true}, {ID: "description"}, {ID: customFieldID, Required: true, HelpText: "Estimate the affected orders per minute."},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := handler.Commands.SetServiceRequestTypeFields(ctx, customerID, workspaceID, serviceDeskID, incidentTypeID, []models.ServiceRequestTypeField{{ID: "summary"}}); err == nil {
+		t.Fatal("customer configured a service request form")
+	}
+	var formAudits int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM organization_audit_events WHERE actor_id=$1 AND target_id=$2 AND action='service.request_type.fields.updated'`, actorID, incidentTypeID).Scan(&formAudits); err != nil || formAudits != 1 {
+		t.Fatalf("service request form audits = %d, %v", formAudits, err)
+	}
+	dynamicFields := callAs(customerID, "GET", "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/requesttype/"+incidentTypeID+"/field", "", 200)
+	if !strings.Contains(dynamicFields.Body.String(), `"fieldId":"`+customFieldID+`"`) || !strings.Contains(dynamicFields.Body.String(), `"required":true`) || !strings.Contains(dynamicFields.Body.String(), `"type":"number"`) {
+		t.Fatal(dynamicFields.Body.String())
+	}
+	missingDynamic := callAs(customerID, "POST", "/rest/servicedeskapi/request/validate", `{"serviceDeskId":"`+serviceDeskID+`","requestTypeId":"`+incidentTypeID+`","requestFieldValues":{"summary":"Dynamic routing question"}}`, 200)
+	if !strings.Contains(missingDynamic.Body.String(), `"`+customFieldID+`":"Business impact is required."`) {
+		t.Fatal(missingDynamic.Body.String())
+	}
+	invalidDynamic := callAs(customerID, "POST", "/rest/servicedeskapi/request/validate", `{"serviceDeskId":"`+serviceDeskID+`","requestTypeId":"`+incidentTypeID+`","requestFieldValues":{"summary":"Dynamic routing question","`+customFieldID+`":"many"}}`, 200)
+	if !strings.Contains(invalidDynamic.Body.String(), `"valid":false`) || !strings.Contains(invalidDynamic.Body.String(), `"`+customFieldID+`":"Business impact must be a number."`) {
+		t.Fatal(invalidDynamic.Body.String())
+	}
+	dynamicRequest := callAs(customerID, "POST", "/rest/servicedeskapi/request", `{"serviceDeskId":"`+serviceDeskID+`","requestTypeId":"`+incidentTypeID+`","requestFieldValues":{"summary":"Dynamic routing question","description":"Route by impact.","`+customFieldID+`":42.5}}`, 201)
+	var dynamicRequestBean map[string]any
+	if err := json.Unmarshal(dynamicRequest.Body.Bytes(), &dynamicRequestBean); err != nil {
+		t.Fatal(err)
+	}
+	dynamicIssue, err := st.IssueByIDOrKey(ctx, workspaceID, dynamicRequestBean["issueKey"].(string))
+	if err != nil || string(dynamicIssue.Fields[customFieldID]) != "42.5" || !strings.Contains(dynamicRequest.Body.String(), `"label":"Business impact"`) {
+		t.Fatalf("dynamic request = %+v, %v, %s", dynamicIssue, err, dynamicRequest.Body.String())
 	}
 	if _, err := handler.Commands.CreateServiceQueue(ctx, customerID, workspaceID, serviceDeskID, "Forbidden queue", `summary ~ "checkout"`); err == nil {
 		t.Fatal("customer created a custom service queue")

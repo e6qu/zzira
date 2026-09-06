@@ -76,6 +76,7 @@ var adminAuditActions = []adminAuditAction{
 	{Value: "service.queue.created", Name: "Service queue created"},
 	{Value: "service.queue.deleted", Name: "Service queue deleted"},
 	{Value: "service.queue.updated", Name: "Service queue updated"},
+	{Value: "service.request_type.fields.updated", Name: "Service request form updated"},
 	{Value: "service.sla.updated", Name: "Service SLA updated"},
 	{Value: "user.invited", Name: "User invited"},
 	{Value: "user.profile.updated", Name: "User profile updated"},

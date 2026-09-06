@@ -77,7 +77,7 @@ semantics.
 | Releases | Version lifecycle, fix/affects membership, progress and notes | Ordering, related work, approvals, custom fields, exports and cross-project releases |
 | Dashboards | CRUD, layouts, favourites, sharing and native issue gadgets | Full shares, subscriptions, report gadgets, app gadgets and offline data |
 | Knowledge | Spaces, page tree, page editing, drafts, versions and trash | Confluence v1, content types, collaboration, permissions, comments, attachments, macros, search and export |
-| Service management | Help center, service projects, typed customer requests, participants, public/private conversation and attachments, assigned-user approvals, request subscriptions and inbox notifications, completed-request CSAT, status transitions, per-desk agents, built-in and manager-defined JQL queues, business calendars, first-response/resolution SLA cycles, durable escalation notifications, customer-only accounts, open/closed portal access, customer organizations, linked knowledge suggestions, request-type metadata/properties/permissions, Assets workspace discovery, and all 75 pinned REST operations reviewed | Dynamic forms, complete JQL, conditional SLA goals, holidays, approval configuration, email delivery, CSAT configuration and reports, complete Assets APIs, incident/problem/change management and service reports |
+| Service management | Help center, service projects, request-type-specific forms with typed custom fields, customer requests, participants, public/private conversation and attachments, assigned-user approvals, request subscriptions and inbox notifications, completed-request CSAT, status transitions, per-desk agents, built-in and manager-defined JQL queues, business calendars, first-response/resolution SLA cycles, durable escalation notifications, customer-only accounts, open/closed portal access, customer organizations, linked knowledge suggestions, request-type metadata/properties/permissions, Assets workspace discovery, and all 75 pinned REST operations reviewed | Conditional/advanced portal fields, complete JQL, conditional SLA goals, holidays, approval configuration, email delivery, CSAT configuration and reports, complete Assets APIs, incident/problem/change management and service reports |
 | Analytics | Dashboard groupings and release progress | Historical reports, development facts, DORA, exports and scheduled delivery |
 | Administration | All 47 organization operations reviewed with tested organization/site/product/directory, DNS claim, policy/resource, event, group and managed-account subsets; limited project settings | Runtime policy enforcement, provider administration and Jira/Confluence schemes |
 | Apps | Webhooks and entity properties used by core features | Installation runtime, modules, isolation, storage, upgrades and app administration |
@@ -295,6 +295,10 @@ browser UI, sync behavior where applicable, and tests.
     Managers can now create, edit and delete validated JQL queues; agents use
     those views with permission-shaped service requests in JQL order, while
     built-in operational queues remain protected.
+    Managers also configure ordered request-type forms with required/help state
+    for summary, description, and project-available text, number, and date-time
+    custom fields. The customer UI and JSM metadata use the same persisted
+    contract, and answers flow into the canonical Jira issue.
 12. **Confluence contract completion.** Add the v1 and remaining v2 APIs, generic
     versioned content, ancestors/descendants, operations, comments, attachments,
     labels, likes, watches, tasks, properties, restrictions, space roles, CQL,

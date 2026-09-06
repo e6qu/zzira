@@ -43,6 +43,8 @@ test('admin creates a service project with Jira Service Management request types
   expect(requestTypesResponse.status()).toBe(200);
   const requestTypes = await requestTypesResponse.json();
   expect(requestTypes.values.map((requestType: any) => requestType.name)).toEqual(expect.arrayContaining(['Get IT help', 'Report an incident']));
+  const incidentRequestType = requestTypes.values.find((requestType: any) => requestType.name === 'Report an incident');
+  expect(incidentRequestType).toBeTruthy();
   const fieldsResponse = await page.request.get(`/rest/servicedeskapi/servicedesk/${desk.id}/requesttype/${requestTypes.values[0].id}/field`, { headers: auth });
   expect(fieldsResponse.status()).toBe(200);
   expect((await fieldsResponse.json()).requestTypeFields).toEqual(expect.arrayContaining([expect.objectContaining({ fieldId: 'summary', required: true })]));
@@ -115,6 +117,13 @@ test('admin creates a service project with Jira Service Management request types
   await page.goto('/service');
   await expect(page.locator('.service-request-list')).toContainText(requestSummary);
   await page.setViewportSize({ width: 1280, height: 720 });
+  const impactFieldName = `Affected orders ${Date.now()}`;
+  const impactFieldResponse = await page.request.post('/rest/api/3/field', {
+    headers: auth,
+    data: { name: impactFieldName, type: 'number', description: 'Estimated affected orders per minute.' },
+  });
+  expect(impactFieldResponse.status()).toBe(201);
+  const impactField = await impactFieldResponse.json();
   await page.goto(`/service/agent/${desk.id}`);
   await expect(page.getByRole('heading', { name: 'Queues', level: 1 })).toBeVisible();
   await expect(page.getByRole('link', { name: 'SLA attention', exact: true })).toBeVisible();
@@ -134,6 +143,31 @@ test('admin creates a service project with Jira Service Management request types
   await expect(page.getByRole('heading', { name: updatedQueueName, level: 2 })).toBeVisible();
   await page.locator('#queue-settings').getByRole('button', { name: `Delete queue ${updatedQueueName}` }).click();
   await expect(page.locator('.service-queue-nav')).not.toContainText(updatedQueueName);
+  const requestFormSettings = page.locator('#request-forms');
+  await expect(requestFormSettings.getByRole('heading', { name: 'Request type forms' })).toBeVisible();
+  const incidentForm = requestFormSettings.locator('form').filter({ has: page.getByRole('heading', { name: 'Report an incident', level: 3 }) });
+  const impactFieldSettings = incidentForm.locator('fieldset').filter({ hasText: impactFieldName });
+  await impactFieldSettings.getByRole('checkbox', { name: 'Show on portal' }).check();
+  await impactFieldSettings.getByRole('checkbox', { name: 'Required' }).check();
+  await impactFieldSettings.getByLabel('Help text').fill('Estimate the affected orders per minute.');
+  await incidentForm.getByRole('button', { name: 'Save Report an incident form' }).click();
+  await expect(page).toHaveURL(new RegExp(`/service/agent/${desk.id}.*#request-forms$`));
+  await page.goto(`/service/portals/${desk.id}/request/${incidentRequestType.id}`);
+  await expect(page.getByLabel(impactFieldName)).toBeVisible();
+  await expect(page.getByText('Estimate the affected orders per minute.')).toBeVisible();
+  const dynamicRequestSummary = `Impact-qualified incident ${Date.now()}`;
+  await page.getByLabel('Summary').fill(dynamicRequestSummary);
+  await page.getByLabel('Description').fill('The portal form captures structured impact for routing.');
+  await page.getByLabel(impactFieldName).fill('42.5');
+  await page.getByRole('button', { name: 'Send request' }).click();
+  await expect(page.getByRole('heading', { name: dynamicRequestSummary, level: 1 })).toBeVisible();
+  await expect(page.locator('.service-request-fields')).toContainText(impactFieldName);
+  await expect(page.locator('.service-request-fields')).toContainText('42.5');
+  await accessible(page);
+  await page.setViewportSize({ width: 320, height: 740 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto(`/service/agent/${desk.id}`);
   await page.getByRole('link', { name: 'Unassigned requests', exact: true }).click();
   await expect(page.locator('.service-agent-table')).toContainText(requestSummary);
   const requestRow = page.getByRole('row').filter({ hasText: requestSummary });

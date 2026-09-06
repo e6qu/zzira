@@ -1266,10 +1266,25 @@ Validation after custom service queues:
   conformance tests, generated inventory/coverage checks and `git diff --check`
   pass.
 
+Validation after service request-type forms:
+
+- Migration 070 persists ordered fields, requirements and help text for every
+  request type, and seeds summary plus description for existing and newly
+  provisioned service projects.
+- Site administrators configure summary, description and project-available
+  text, number and date-time custom fields from the agent workspace. The JSM
+  field metadata and portal form read the same configuration.
+- REST validation rejects missing, unknown and unavailable fields. UI and API
+  submission use the canonical Jira create path, so typed custom answers remain
+  available to Jira search, synchronization and downstream integrations.
+- The combined Chromium journey configures a required number field, submits it
+  through the portal, reads it on the request, passes WCAG scans and reflows at
+  320 px. PostgreSQL contract coverage proves metadata, validation and storage.
+
 ## Current change
 
 1. Complete Jira Service Management journeys beyond the pinned contract:
-   request-type forms, conditional SLA goals, holidays,
+   conditional SLA goals, holidays,
    incident/problem/change linkage and service reports.
 2. Continue into the Confluence v1/v2 contract and knowledge collaboration
    workstreams after the remaining service journeys are browser-proven.

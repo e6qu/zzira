@@ -3,6 +3,7 @@ package api3
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -151,7 +152,12 @@ func (h *Handler) serviceDeskRoute(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if len(parts) == 5 && parts[4] == "field" && r.Method == http.MethodGet {
-			writeJSON(w, http.StatusOK, serviceRequestTypeFields(*requestType))
+			fields, err := h.Store.ServiceRequestTypeFields(r.Context(), workspaceID, parts[1], parts[3])
+			if err != nil {
+				jiraError(w, http.StatusInternalServerError, "Could not load request type fields.")
+				return
+			}
+			writeJSON(w, http.StatusOK, serviceRequestTypeFields(fields))
 			return
 		}
 		if len(parts) == 4 && r.Method == http.MethodGet {
@@ -304,8 +310,9 @@ func serviceADFText(raw json.RawMessage) string {
 	return strings.Join(parts, "")
 }
 
-func (h *Handler) validateServiceRequestBody(r *http.Request, workspaceID string, input createServiceRequestBody) map[string]string {
+func (h *Handler) validateServiceRequestBody(r *http.Request, workspaceID string, input createServiceRequestBody) (map[string]string, []models.ServiceRequestTypeField, error) {
 	errors := map[string]string{}
+	configured := []models.ServiceRequestTypeField{}
 	if len(input.Form) > 0 && string(input.Form) != "null" {
 		errors["form"] = "Forms are not configured for this request type."
 	}
@@ -313,11 +320,6 @@ func (h *Handler) validateServiceRequestBody(r *http.Request, workspaceID string
 		if _, err := h.Store.ServiceCustomer(r.Context(), workspaceID, participant); err != nil {
 			errors["requestParticipants"] = "Every request participant must be an active service customer."
 			break
-		}
-	}
-	for fieldID := range input.RequestFieldValues {
-		if fieldID != "summary" && fieldID != "description" {
-			errors[fieldID] = "This field is not configured for the request type."
 		}
 	}
 	if input.ServiceDeskID == "" {
@@ -329,6 +331,33 @@ func (h *Handler) validateServiceRequestBody(r *http.Request, workspaceID string
 	if input.ServiceDeskID != "" && input.RequestTypeID != "" {
 		if _, err := h.Store.ServiceRequestType(r.Context(), workspaceID, input.ServiceDeskID, input.RequestTypeID); err != nil {
 			errors["requestTypeId"] = "The request type does not belong to this service desk."
+		} else {
+			fields, err := h.Store.ServiceRequestTypeFields(r.Context(), workspaceID, input.ServiceDeskID, input.RequestTypeID)
+			if err != nil {
+				return nil, nil, err
+			}
+			configured = fields
+		}
+	}
+	allowed := make(map[string]models.ServiceRequestTypeField, len(configured))
+	for _, field := range configured {
+		allowed[field.ID] = field
+		raw, present := input.RequestFieldValues[field.ID]
+		if field.Required {
+			text, isText := decodeServiceText(raw)
+			if !present || len(raw) == 0 || string(raw) == "null" || (isText && strings.TrimSpace(text) == "") {
+				errors[field.ID] = field.Name + " is required."
+			}
+		}
+		if field.Custom && present && len(raw) > 0 && string(raw) != "null" {
+			if message := serviceRequestFieldValueError(field, raw); message != "" {
+				errors[field.ID] = message
+			}
+		}
+	}
+	for fieldID := range input.RequestFieldValues {
+		if _, ok := allowed[fieldID]; !ok {
+			errors[fieldID] = "This field is not configured for the request type."
 		}
 	}
 	summary, ok := decodeServiceText(input.RequestFieldValues["summary"])
@@ -348,7 +377,44 @@ func (h *Handler) validateServiceRequestBody(r *http.Request, workspaceID string
 			}
 		}
 	}
-	return errors
+	return errors, configured, nil
+}
+
+func serviceRequestFieldValueError(field models.ServiceRequestTypeField, raw json.RawMessage) string {
+	if len(raw) > 64<<10 {
+		return field.Name + " accepts at most 64 KiB."
+	}
+	switch field.Type {
+	case models.CustomFieldText:
+		if _, ok := decodeServiceText(raw); !ok {
+			return field.Name + " must be text."
+		}
+	case models.CustomFieldNumber:
+		var number json.Number
+		if json.Unmarshal(raw, &number) != nil {
+			return field.Name + " must be a number."
+		}
+		value, err := strconv.ParseFloat(number.String(), 64)
+		if err != nil || math.IsInf(value, 0) || math.IsNaN(value) {
+			return field.Name + " must be a finite number."
+		}
+	case models.CustomFieldDatetime:
+		value, ok := decodeServiceText(raw)
+		if !ok {
+			return field.Name + " must be a date and time."
+		}
+		valid := value == ""
+		for _, layout := range []string{time.RFC3339, "2006-01-02T15:04", "2006-01-02T15:04:05"} {
+			if _, err := time.Parse(layout, value); err == nil {
+				valid = true
+				break
+			}
+		}
+		if !valid {
+			return field.Name + " must be an RFC 3339 or local date-time."
+		}
+	}
+	return ""
 }
 
 func (h *Handler) createServiceRequest(w http.ResponseWriter, r *http.Request, workspaceID string, validateOnly bool) {
@@ -362,7 +428,11 @@ func (h *Handler) createServiceRequest(w http.ResponseWriter, r *http.Request, w
 		jiraError(w, http.StatusBadRequest, "Request body is invalid.")
 		return
 	}
-	fieldErrors := h.validateServiceRequestBody(r, workspaceID, input)
+	fieldErrors, configuredFields, err := h.validateServiceRequestBody(r, workspaceID, input)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "Could not validate request type fields.")
+		return
+	}
 	if validateOnly {
 		messages := []string{}
 		for _, message := range fieldErrors {
@@ -395,6 +465,14 @@ func (h *Handler) createServiceRequest(w http.ResponseWriter, r *http.Request, w
 		participantIDs = append(participantIDs, customer.ID)
 	}
 	description, descriptionADF := "", json.RawMessage(nil)
+	customFields := map[string]json.RawMessage{}
+	for _, field := range configuredFields {
+		if field.Custom {
+			if value, ok := input.RequestFieldValues[field.ID]; ok {
+				customFields[field.ID] = value
+			}
+		}
+	}
 	if raw := input.RequestFieldValues["description"]; len(raw) > 0 {
 		if text, ok := decodeServiceText(raw); ok {
 			description = text
@@ -405,7 +483,7 @@ func (h *Handler) createServiceRequest(w http.ResponseWriter, r *http.Request, w
 	request, err := h.Commands.CreateServiceRequest(r.Context(), commands.CreateServiceRequestInput{
 		ActorID: actorID, WorkspaceID: workspaceID, CustomerID: customerID, Channel: input.Channel,
 		ServiceDeskID: input.ServiceDeskID, RequestTypeID: input.RequestTypeID,
-		Summary: summary, Description: description, DescriptionADF: descriptionADF, ParticipantIDs: participantIDs,
+		Summary: summary, Description: description, DescriptionADF: descriptionADF, ParticipantIDs: participantIDs, Fields: customFields,
 	})
 	if err != nil {
 		jiraError(w, http.StatusBadRequest, err.Error())
@@ -541,11 +619,27 @@ func serviceRequestTypeBean(baseURL string, requestType models.ServiceRequestTyp
 	return map[string]any{"id": requestType.ID, "serviceDeskId": requestType.ServiceDeskID, "portalId": requestType.ServiceDeskID, "name": requestType.Name, "description": requestType.Description, "helpText": requestType.HelpText, "issueTypeId": requestType.IssueTypeID, "groupIds": requestType.GroupIDs, "canCreateRequest": true, "restrictionStatus": "OPEN", "practice": "service_desk", "_expands": []any{}, "_links": map[string]string{"self": baseURL + "/rest/servicedeskapi/servicedesk/" + requestType.ServiceDeskID + "/requesttype/" + requestType.ID}}
 }
 
-func serviceRequestTypeFields(requestType models.ServiceRequestType) map[string]any {
-	return map[string]any{"canAddRequestParticipants": true, "canRaiseOnBehalfOf": true, "requestTypeFields": []map[string]any{
-		{"fieldId": "summary", "name": "Summary", "description": requestType.HelpText, "required": true, "visible": true, "defaultValues": []any{}, "presetValues": []any{}, "validValues": []any{}, "jiraSchema": map[string]string{"type": "string", "system": "summary"}},
-		{"fieldId": "description", "name": "Description", "description": "Describe the request.", "required": false, "visible": true, "defaultValues": []any{}, "presetValues": []any{}, "validValues": []any{}, "jiraSchema": map[string]string{"type": "string", "system": "description"}},
-	}}
+func serviceRequestTypeFields(fields []models.ServiceRequestTypeField) map[string]any {
+	beans := make([]map[string]any, 0, len(fields))
+	for _, field := range fields {
+		schema := map[string]string{"type": "string"}
+		if field.Type == models.CustomFieldNumber {
+			schema["type"] = "number"
+		} else if field.Type == models.CustomFieldDatetime {
+			schema["type"] = "datetime"
+		}
+		if !field.Custom {
+			schema["system"] = field.ID
+		} else {
+			schema["custom"] = field.Type
+		}
+		description := field.HelpText
+		if description == "" {
+			description = field.Description
+		}
+		beans = append(beans, map[string]any{"fieldId": field.ID, "name": field.Name, "description": description, "required": field.Required, "visible": true, "defaultValues": []any{}, "presetValues": []any{}, "validValues": []any{}, "jiraSchema": schema})
+	}
+	return map[string]any{"canAddRequestParticipants": true, "canRaiseOnBehalfOf": true, "requestTypeFields": beans}
 }
 
 func serviceDate(value time.Time) map[string]any {
@@ -632,6 +726,22 @@ func (h *Handler) serviceRequestBean(r *http.Request, workspaceID, viewerID stri
 	fields := []map[string]any{
 		{"fieldId": "summary", "label": "Summary", "value": request.Issue.Summary, "renderedValue": request.Issue.Summary},
 		{"fieldId": "description", "label": "Description", "value": request.Issue.Description, "renderedValue": adf.ToHTML(request.Issue.Description)},
+	}
+	configuredFields, err := h.Store.ServiceRequestTypeFields(r.Context(), workspaceID, request.ServiceDesk.ID, request.RequestType.ID)
+	if err != nil {
+		return nil, err
+	}
+	for _, field := range configuredFields {
+		if !field.Custom {
+			continue
+		}
+		var value any
+		if raw, ok := request.Issue.Fields[field.ID]; ok && string(raw) != "null" {
+			if err := json.Unmarshal(raw, &value); err != nil {
+				return nil, err
+			}
+		}
+		fields = append(fields, map[string]any{"fieldId": field.ID, "label": field.Name, "value": value, "renderedValue": value})
 	}
 	status := h.serviceStatusBean(request.Issue.Status, request.Issue.UpdatedAt)
 	return map[string]any{
