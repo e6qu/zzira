@@ -136,7 +136,7 @@ func TestResolveOIDCUserBindsAnExistingActiveMemberWithoutHashing(t *testing.T) 
 	}
 }
 
-func TestResolveOIDCUserLinksMultipleProvidersToOneVerifiedEmail(t *testing.T) {
+func TestResolveOIDCUserLinksMultipleProvidersToOneAccountEmail(t *testing.T) {
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	if dsn == "" {
 		t.Skip("TEST_DATABASE_URL not set")
@@ -151,15 +151,19 @@ func TestResolveOIDCUserLinksMultipleProvidersToOneVerifiedEmail(t *testing.T) {
 		t.Fatal(err)
 	}
 	email := NewID("multi-provider") + "@example.invalid"
-	first, err := st.ResolveOIDCUser(ctx, "https://accounts.google.com", "google-subject", email, "Linked user", func() (string, error) { return "unusable", nil })
+	first, err := st.ResolveOIDCUser(ctx, "https://accounts.google.com", NewID("google-subject"), email, "Linked user", func() (string, error) { return "unusable", nil })
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := st.ResolveOIDCUser(ctx, "https://auth.atlassian.com", "atlassian-subject", email, "Linked user", unusedPasswordHash(t))
+	second, err := st.ResolveOIDCUser(ctx, "https://auth.atlassian.com", NewID("atlassian-subject"), email, "Linked user", unusedPasswordHash(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _, _ = st.Pool.Exec(ctx, `DELETE FROM users WHERE id=$1`, first) }()
+	defer func() {
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM oidc_identities WHERE user_id=$1`, first)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM memberships WHERE user_id=$1`, first)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM users WHERE id=$1`, first)
+	}()
 	if first != second {
 		t.Fatalf("provider identities resolved to %q and %q", first, second)
 	}

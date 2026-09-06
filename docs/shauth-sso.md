@@ -85,7 +85,15 @@ a mutable email or username. Multiple providers with the same trusted email
 link to the same ZZIRA account. Each successful provider sign-in is recorded in
 the organization audit log.
 
-If the ID token carries a `preferred_username` claim, it is recorded as the
+Signed-in users can review connected provider name, issuer, current asserted
+email, immutable subject, and connection time on their profile. Connecting a
+new provider starts a provider-bound authorization transaction tied to the
+current user instead of relying on email matching. Disconnecting a provider
+revokes every browser session from that issuer while preserving sessions from
+other providers. ZZIRA refuses to remove the last external identity, preventing
+an externally provisioned account from losing its final known sign-in path.
+
+If an identity carries a `preferred_username` or Atlassian nickname, it is recorded as the
 account’s display handle (`data-shauth-user` on the account control in the
 product header) and refreshed on every sign-in. Its absence is not an error —
 the account control falls back to the email’s local part.

@@ -304,10 +304,19 @@ func (s *Store) CreateOIDCLoginState(ctx context.Context, state, nonce, codeVeri
 }
 
 func (s *Store) CreateIdentityProviderLoginState(ctx context.Context, state, providerKey, nonce, codeVerifier string, ttl time.Duration) error {
+	return s.createIdentityProviderState(ctx, state, providerKey, nonce, codeVerifier, "", ttl)
+}
+
+func (s *Store) CreateIdentityProviderLinkState(ctx context.Context, state, providerKey, nonce, codeVerifier, userID string, ttl time.Duration) error {
+	return s.createIdentityProviderState(ctx, state, providerKey, nonce, codeVerifier, userID, ttl)
+}
+
+func (s *Store) createIdentityProviderState(ctx context.Context, state, providerKey, nonce, codeVerifier, userID string, ttl time.Duration) error {
 	_, err := s.Pool.Exec(ctx,
 		`WITH expired AS (DELETE FROM oidc_login_states WHERE expires_at <= now())
-		 INSERT INTO oidc_login_states (state_hash, provider_key, nonce, code_verifier, expires_at) VALUES ($1,$2,$3,$4,now() + $5::interval)`,
-		HashToken(state), providerKey, nonce, codeVerifier, fmt.Sprintf("%d seconds", int(ttl.Seconds())))
+		 INSERT INTO oidc_login_states (state_hash, provider_key, nonce, code_verifier, link_user_id, expires_at)
+		 VALUES ($1,$2,$3,$4,NULLIF($5,''),now() + $6::interval)`,
+		HashToken(state), providerKey, nonce, codeVerifier, userID, fmt.Sprintf("%d seconds", int(ttl.Seconds())))
 	return err
 }
 
@@ -316,10 +325,117 @@ func (s *Store) ConsumeOIDCLoginState(ctx context.Context, state string) (nonce,
 }
 
 func (s *Store) ConsumeIdentityProviderLoginState(ctx context.Context, state, providerKey string) (nonce, codeVerifier string, err error) {
-	err = s.Pool.QueryRow(ctx,
-		`DELETE FROM oidc_login_states WHERE state_hash=$1 AND provider_key=$2 AND expires_at > now() RETURNING nonce, code_verifier`,
-		HashToken(state), providerKey).Scan(&nonce, &codeVerifier)
+	nonce, codeVerifier, _, err = s.ConsumeIdentityProviderState(ctx, state, providerKey)
 	return nonce, codeVerifier, err
+}
+
+func (s *Store) ConsumeIdentityProviderState(ctx context.Context, state, providerKey string) (nonce, codeVerifier, linkUserID string, err error) {
+	err = s.Pool.QueryRow(ctx,
+		`DELETE FROM oidc_login_states WHERE state_hash=$1 AND provider_key=$2 AND expires_at > now()
+		 RETURNING nonce,code_verifier,COALESCE(link_user_id,'')`, HashToken(state), providerKey).
+		Scan(&nonce, &codeVerifier, &linkUserID)
+	return nonce, codeVerifier, linkUserID, err
+}
+
+type OIDCIdentity struct {
+	Issuer    string
+	Subject   string
+	Email     string
+	CreatedAt time.Time
+}
+
+func (s *Store) OIDCIdentitiesByUser(ctx context.Context, userID string) ([]OIDCIdentity, error) {
+	rows, err := s.Pool.Query(ctx, `SELECT issuer,subject,email,created_at FROM oidc_identities WHERE user_id=$1 ORDER BY created_at,issuer,subject`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	identities := make([]OIDCIdentity, 0)
+	for rows.Next() {
+		var identity OIDCIdentity
+		if err := rows.Scan(&identity.Issuer, &identity.Subject, &identity.Email, &identity.CreatedAt); err != nil {
+			return nil, err
+		}
+		identities = append(identities, identity)
+	}
+	return identities, rows.Err()
+}
+
+func (s *Store) LinkOIDCIdentity(ctx context.Context, userID, issuer, subject, email string) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var active bool
+	if err := tx.QueryRow(ctx, `SELECT active FROM users WHERE id=$1 FOR UPDATE`, userID).Scan(&active); err != nil {
+		return err
+	}
+	if !active {
+		return ErrInactiveUser
+	}
+	var existingUserID string
+	err = tx.QueryRow(ctx, `SELECT user_id FROM oidc_identities WHERE issuer=$1 AND subject=$2`, issuer, subject).Scan(&existingUserID)
+	if err == nil {
+		if existingUserID != userID {
+			return fmt.Errorf("%w: identity is already linked to another account", ErrAdminConflict)
+		}
+		if _, err := tx.Exec(ctx, `UPDATE oidc_identities SET email=$3 WHERE issuer=$1 AND subject=$2`, issuer, subject, email); err != nil {
+			return err
+		}
+		return tx.Commit(ctx)
+	}
+	if err != pgx.ErrNoRows {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO oidc_identities(issuer,subject,user_id,email) VALUES($1,$2,$3,$4)`, issuer, subject, userID, email); err != nil {
+		return err
+	}
+	if err := addIdentityAudit(ctx, tx, userID, "identity.linked", issuer); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (s *Store) UnlinkOIDCIdentity(ctx context.Context, userID, issuer string) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var count int
+	if err := tx.QueryRow(ctx, `SELECT count(*) FROM (SELECT issuer FROM oidc_identities WHERE user_id=$1 FOR UPDATE) locked`, userID).Scan(&count); err != nil {
+		return err
+	}
+	if count <= 1 {
+		return fmt.Errorf("%w: the last linked provider cannot be removed", ErrAdminConflict)
+	}
+	tag, err := tx.Exec(ctx, `DELETE FROM oidc_identities WHERE user_id=$1 AND issuer=$2`, userID, issuer)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("%w: linked identity was not found", ErrAdminNotFound)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM sessions WHERE user_id=$1 AND oidc_issuer=$2`, userID, issuer); err != nil {
+		return err
+	}
+	if err := addIdentityAudit(ctx, tx, userID, "identity.unlinked", issuer); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func addIdentityAudit(ctx context.Context, tx pgx.Tx, userID, action, issuer string) error {
+	detail, err := json.Marshal(map[string]any{"issuer": issuer})
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, `
+		INSERT INTO organization_audit_events(organization_id,actor_id,action,target_type,target_id,detail)
+		SELECT DISTINCT d.organization_id,$1,$2,'user',$1,$3::jsonb
+		FROM directory_users du JOIN directories d ON d.id=du.directory_id WHERE du.user_id=$1`, userID, action, detail)
+	return err
 }
 
 // ResolveOIDCUser binds a verified sign-in to its immutable (issuer, subject)
@@ -354,6 +470,9 @@ func (s *Store) ResolveOIDCUser(ctx context.Context, issuer, subject, email, dis
 	if err == nil {
 		if !active {
 			return "", ErrInactiveUser
+		}
+		if _, err := tx.Exec(ctx, `UPDATE oidc_identities SET email=$3 WHERE issuer=$1 AND subject=$2`, issuer, subject, email); err != nil {
+			return "", err
 		}
 		if err := tx.Commit(ctx); err != nil {
 			return "", err
@@ -390,7 +509,7 @@ func (s *Store) ResolveOIDCUser(ctx context.Context, issuer, subject, email, dis
 			return "", err
 		}
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO oidc_identities (issuer, subject, user_id) VALUES ($1,$2,$3)`, issuer, subject, userID); err != nil {
+	if _, err := tx.Exec(ctx, `INSERT INTO oidc_identities (issuer, subject, user_id, email) VALUES ($1,$2,$3,$4)`, issuer, subject, userID, email); err != nil {
 		return "", err
 	}
 	if err := tx.Commit(ctx); err != nil {

@@ -69,7 +69,7 @@ semantics.
 
 | Surface | Delivered foundation | Principal gap |
 |---|---|---|
-| Identity | Password, API tokens, sessions, simultaneous generic OIDC, Google and tenant-scoped Microsoft OIDC, Atlassian OAuth 2.0 3LO, linked issuer/subject identities, login audit and back-channel logout | Provider CRUD and secret rotation, explicit link review, organization/site/product lifecycle |
+| Identity | Password, API tokens, sessions, simultaneous generic OIDC, Google and tenant-scoped Microsoft OIDC, Atlassian OAuth 2.0 3LO, profile-based identity connect/review/unlink, issuer-scoped revocation, login audit and back-channel logout | Provider CRUD and secret rotation, organization/site/product lifecycle |
 | Work management | Projects, issues, comments, attachments, worklogs, links, watchers, custom fields, security levels, notifications | Remaining Jira v3 operations, complete JQL/ADF, hierarchy, schemes and admin semantics |
 | Agile | Boards, backlog, sprints, ranking, quick filters, swimlanes, WIP limits | Board administration, epics, estimates, capacity, plans, dependencies and reports |
 | Workflows | Directory, simple transition editing, project assignment, runtime enforcement | Draft/publish, statuses, workflow schemes, conditions, validators and post-functions |

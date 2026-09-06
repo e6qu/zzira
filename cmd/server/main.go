@@ -188,6 +188,7 @@ func main() {
 	mux.HandleFunc("GET /{$}", webHandler.Home)
 	mux.HandleFunc("GET /login", webHandler.LoginForm)
 	mux.HandleFunc("GET /auth/{provider}", webHandler.OIDCLogin)
+	mux.HandleFunc("GET /auth/{provider}/link", webHandler.IdentityProviderLink)
 	mux.HandleFunc("GET /auth/{provider}/callback", webHandler.OIDCCallback)
 	mux.HandleFunc("GET /auth/{provider}/logout/complete", webHandler.OIDCLogoutComplete)
 	mux.HandleFunc("GET /auth/validation", webHandler.Validation)
@@ -232,6 +233,7 @@ func main() {
 	})
 	mux.HandleFunc("GET /people", webHandler.PeoplePage)
 	mux.HandleFunc("GET /profile", webHandler.SelfProfile)
+	mux.HandleFunc("POST /profile/identities/{provider}/unlink", webHandler.UnlinkIdentityProvider)
 	mux.HandleFunc("GET /people/{id}", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.ProfilePage(w, r, r.PathValue("id"))
 	})

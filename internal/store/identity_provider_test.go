@@ -70,3 +70,74 @@ func TestIdentityProviderSessionWritesOrganizationLoginAudit(t *testing.T) {
 		t.Fatalf("audit = %q %q", action, provider)
 	}
 }
+
+func TestIdentityProviderLinkLifecycleRevokesOnlyRemovedProvider(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	st, err := Open(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := Migrate(ctx, st.Pool); err != nil {
+		t.Fatal(err)
+	}
+	email := NewID("provider-link") + "@example.invalid"
+	googleSubject := NewID("google-subject")
+	atlassianSubject := NewID("atlassian-subject")
+	userID, err := st.ResolveOIDCUser(ctx, "https://accounts.google.com", googleSubject, email, "Provider link", func() (string, error) { return "unusable", nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM organization_audit_events WHERE target_id=$1`, userID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM oidc_identities WHERE user_id=$1`, userID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM memberships WHERE user_id=$1`, userID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM users WHERE id=$1`, userID)
+	}()
+	linkState := NewID("link-state")
+	if err := st.CreateIdentityProviderLinkState(ctx, linkState, "atlassian", "link-nonce", "link-verifier", userID, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	_, _, linkedUserID, err := st.ConsumeIdentityProviderState(ctx, linkState, "atlassian")
+	if err != nil || linkedUserID != userID {
+		t.Fatalf("link state user = %q, %v", linkedUserID, err)
+	}
+	if err := st.LinkOIDCIdentity(ctx, userID, "https://auth.atlassian.com", atlassianSubject, email); err != nil {
+		t.Fatal(err)
+	}
+	identities, err := st.OIDCIdentitiesByUser(ctx, userID)
+	if err != nil || len(identities) != 2 {
+		t.Fatalf("linked identities = %#v, %v", identities, err)
+	}
+	googleSession := HashToken(NewID("google-session"))
+	atlassianSession := HashToken(NewID("atlassian-session"))
+	if err := st.CreateOIDCSession(ctx, googleSession, userID, "google-token", "https://accounts.google.com", googleSubject, "", time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.CreateOIDCSession(ctx, atlassianSession, userID, "atlassian-token", "https://auth.atlassian.com", atlassianSubject, "", time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.UnlinkOIDCIdentity(ctx, userID, "https://auth.atlassian.com"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.SessionUser(ctx, atlassianSession); !errors.Is(err, pgx.ErrNoRows) {
+		t.Fatalf("removed-provider session remained valid: %v", err)
+	}
+	if got, err := st.SessionUser(ctx, googleSession); err != nil || got != userID {
+		t.Fatalf("other-provider session = %q, %v", got, err)
+	}
+	if err := st.UnlinkOIDCIdentity(ctx, userID, "https://accounts.google.com"); !errors.Is(err, ErrAdminConflict) {
+		t.Fatalf("last-provider unlink = %v", err)
+	}
+	var linked, unlinked int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FILTER (WHERE action='identity.linked'),count(*) FILTER (WHERE action='identity.unlinked') FROM organization_audit_events WHERE actor_id=$1`, userID).Scan(&linked, &unlinked); err != nil {
+		t.Fatal(err)
+	}
+	if linked != 1 || unlinked != 1 {
+		t.Fatalf("link audit counts = %d linked, %d unlinked", linked, unlinked)
+	}
+}

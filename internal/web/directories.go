@@ -1,10 +1,13 @@
 package web
 
 import (
+	"errors"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 
+	"github.com/e6qu/zzira/internal/authn"
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
 	"github.com/e6qu/zzira/internal/workflow"
@@ -36,10 +39,23 @@ type peoplePageData struct {
 }
 
 type profilePageData struct {
-	Profile  *models.User
-	Self     bool
-	Assigned []*models.Issue
-	Reported []*models.Issue
+	Profile    *models.User
+	Self       bool
+	Assigned   []*models.Issue
+	Reported   []*models.Issue
+	Identities []profileIdentityView
+	Saved      string
+}
+
+type profileIdentityView struct {
+	ProviderKey string
+	DisplayName string
+	Issuer      string
+	Subject     string
+	Email       string
+	CreatedAt   string
+	Connected   bool
+	CanUnlink   bool
 }
 
 type workflowDirectoryCard struct {
@@ -212,9 +228,73 @@ func (h *Handler) ProfilePage(w http.ResponseWriter, r *http.Request, accountID 
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	h.writeWorkspacePage(w, r, "page_profile", user, wsID, profilePageData{
-		Profile: profile, Self: profile.ID == user.ID, Assigned: assigned, Reported: reported,
-	}, "people", "")
+	data := profilePageData{Profile: profile, Self: profile.ID == user.ID, Assigned: assigned, Reported: reported, Saved: r.URL.Query().Get("saved")}
+	if data.Self {
+		identities, err := h.Store.OIDCIdentitiesByUser(r.Context(), user.ID)
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		byIssuer := make(map[string]store.OIDCIdentity, len(identities))
+		for _, identity := range identities {
+			byIssuer[identity.Issuer] = identity
+		}
+		for _, provider := range h.loginProviders() {
+			identity, connected := byIssuer[provider.Issuer]
+			view := profileIdentityView{
+				ProviderKey: provider.Key, DisplayName: provider.DisplayName, Issuer: provider.Issuer,
+				Subject: identity.Subject, Email: identity.Email, Connected: connected, CanUnlink: connected && len(identities) > 1,
+			}
+			if connected {
+				view.CreatedAt = identity.CreatedAt.UTC().Format("2006-01-02 15:04 UTC")
+			}
+			data.Identities = append(data.Identities, view)
+			delete(byIssuer, provider.Issuer)
+		}
+		for _, identity := range identities {
+			if _, unknown := byIssuer[identity.Issuer]; !unknown {
+				continue
+			}
+			data.Identities = append(data.Identities, profileIdentityView{
+				DisplayName: "External provider", Issuer: identity.Issuer, Subject: identity.Subject, Email: identity.Email,
+				CreatedAt: identity.CreatedAt.UTC().Format("2006-01-02 15:04 UTC"), Connected: true,
+			})
+		}
+	}
+	h.writeWorkspacePage(w, r, "page_profile", user, wsID, data, "people", "")
+}
+
+func (h *Handler) UnlinkIdentityProvider(w http.ResponseWriter, r *http.Request) {
+	user := h.currentUser(r)
+	if user == nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+	provider, _ := h.identityProvider(r)
+	if provider == nil {
+		http.NotFound(w, r)
+		return
+	}
+	currentIssuer := ""
+	if cookie, err := r.Cookie(sessionCookieName()); err == nil {
+		_, currentIssuer, _ = h.Store.IdentityProviderSession(r.Context(), authn.SessionHash(cookie.Value))
+	}
+	if err := h.Store.UnlinkOIDCIdentity(r.Context(), user.ID, provider.issuer); err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, store.ErrAdminConflict) {
+			status = http.StatusConflict
+		} else if errors.Is(err, store.ErrAdminNotFound) {
+			status = http.StatusNotFound
+		}
+		http.Error(w, err.Error(), status)
+		return
+	}
+	if currentIssuer == provider.issuer {
+		authn.ClearSessionCookie(w)
+		http.Redirect(w, r, "/signed-out", http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, "/people/"+url.PathEscape(user.ID)+"?saved="+url.QueryEscape(provider.displayName+" disconnected"), http.StatusSeeOther)
 }
 
 func (h *Handler) WorkflowsPage(w http.ResponseWriter, r *http.Request) {

@@ -21,6 +21,9 @@ test('user chooses Atlassian sign-in and admin can inspect provider status', asy
   await page.getByLabel('Email').fill('demo@zzira.dev');
   await page.getByLabel('Password').fill('demo1234');
   await page.getByRole('button', { name: 'Log in' }).click();
+  await page.goto('/profile');
+  await expect(page.getByRole('heading', { name: 'Connected sign-in accounts' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Connect Atlassian' })).toHaveAttribute('href', '/auth/atlassian/link');
   await page.getByRole('link', { name: 'Administration', exact: true }).click();
   const providerRow = page.getByRole('row').filter({ hasText: 'Atlassian' });
   await expect(providerRow).toContainText('OAuth 2.0 (3LO)');

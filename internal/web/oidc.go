@@ -412,6 +412,19 @@ func (h *Handler) identityProvider(r *http.Request) (*OIDC, string) {
 }
 
 func (h *Handler) OIDCLogin(w http.ResponseWriter, r *http.Request) {
+	h.beginIdentityProvider(w, r, "")
+}
+
+func (h *Handler) IdentityProviderLink(w http.ResponseWriter, r *http.Request) {
+	user := h.currentUser(r)
+	if user == nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+	h.beginIdentityProvider(w, r, user.ID)
+}
+
+func (h *Handler) beginIdentityProvider(w http.ResponseWriter, r *http.Request, linkUserID string) {
 	noStoreAuthResponse(w)
 	provider, providerKey := h.identityProvider(r)
 	if provider == nil {
@@ -433,7 +446,13 @@ func (h *Handler) OIDCLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not begin sign-in", http.StatusInternalServerError)
 		return
 	}
-	if err := h.Store.CreateIdentityProviderLoginState(r.Context(), state, providerKey, nonce, verifier, oidcStateTTL); err != nil {
+	var stateErr error
+	if linkUserID == "" {
+		stateErr = h.Store.CreateIdentityProviderLoginState(r.Context(), state, providerKey, nonce, verifier, oidcStateTTL)
+	} else {
+		stateErr = h.Store.CreateIdentityProviderLinkState(r.Context(), state, providerKey, nonce, verifier, linkUserID, oidcStateTTL)
+	}
+	if stateErr != nil {
 		http.Error(w, "could not begin sign-in", http.StatusInternalServerError)
 		return
 	}
@@ -457,7 +476,7 @@ func (h *Handler) OIDCCallback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid sign-in callback", http.StatusBadRequest)
 		return
 	}
-	nonce, verifier, err := h.Store.ConsumeIdentityProviderLoginState(r.Context(), state, providerKey)
+	nonce, verifier, linkUserID, err := h.Store.ConsumeIdentityProviderState(r.Context(), state, providerKey)
 	if err != nil {
 		http.Error(w, "invalid or expired sign-in state", http.StatusBadRequest)
 		return
@@ -484,10 +503,19 @@ func (h *Handler) OIDCCallback(w http.ResponseWriter, r *http.Request) {
 	if displayName == "" {
 		displayName, _, _ = strings.Cut(identity.Email, "@")
 	}
-	userID, err := h.Store.ResolveOIDCUser(r.Context(), identity.Issuer, identity.Subject, identity.Email, displayName, authn.UnusablePasswordHash)
+	userID := linkUserID
+	if userID == "" {
+		userID, err = h.Store.ResolveOIDCUser(r.Context(), identity.Issuer, identity.Subject, identity.Email, displayName, authn.UnusablePasswordHash)
+	} else {
+		err = h.Store.LinkOIDCIdentity(r.Context(), userID, identity.Issuer, identity.Subject, identity.Email)
+	}
 	if err != nil {
 		if errors.Is(err, store.ErrInactiveUser) {
 			http.Error(w, "this account is inactive", http.StatusForbidden)
+			return
+		}
+		if errors.Is(err, store.ErrAdminConflict) {
+			http.Error(w, "this sign-in account is already connected elsewhere", http.StatusConflict)
 			return
 		}
 		http.Error(w, "could not create sign-in session", http.StatusInternalServerError)
@@ -511,6 +539,10 @@ func (h *Handler) OIDCCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	authn.SetSessionCookie(w, session)
+	if linkUserID != "" {
+		http.Redirect(w, r, "/people/"+url.PathEscape(userID)+"?saved="+url.QueryEscape(provider.displayName+" connected"), http.StatusSeeOther)
+		return
+	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 

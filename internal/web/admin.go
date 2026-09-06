@@ -56,6 +56,8 @@ var adminAuditActions = []adminAuditAction{
 	{Value: "group.member.added", Name: "Group member added"},
 	{Value: "group.member.removed", Name: "Group member removed"},
 	{Value: "identity.login", Name: "Provider sign-in"},
+	{Value: "identity.linked", Name: "Provider connected"},
+	{Value: "identity.unlinked", Name: "Provider disconnected"},
 	{Value: "policy.created", Name: "Policy created"},
 	{Value: "policy.deleted", Name: "Policy deleted"},
 	{Value: "policy.resource.added", Name: "Policy resource added"},

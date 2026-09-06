@@ -108,12 +108,17 @@ does not publish them as one OpenAPI document.
   state, OIDC nonce and PKCE where supported, strict claim/profile validation,
   immutable issuer/subject identities, and exact tenant issuer checks.
 - Allowed one account to link several configured-provider identities by their
-  asserted email, recorded successful provider sessions in every applicable organization
-  audit log, selected RP-initiated logout by session issuer, and preserved
+  asserted email, recorded successful provider sessions in every applicable
+  organization audit log, selected RP-initiated logout by session issuer, and preserved
   Shauth back-channel logout behavior.
 - Added responsive login provider choice and read-only provider status in
   organization administration. Deployment secrets remain environment-owned and
   are never rendered into the application.
+- Added a self-service profile journey to review each provider's issuer,
+  asserted email, immutable subject, and connection time; connect an additional
+  provider through a user-bound authorization transaction; and disconnect it.
+  Disconnect revokes sessions for that issuer, preserves other-provider
+  sessions, refuses the final external identity, and writes link/unlink audits.
 
 Validation after the organization foundation:
 
@@ -213,11 +218,18 @@ Validation after the provider registry and login journey:
 - Exact API coverage remains 62 of 1,207 because browser provider login is not
   one of the pinned product REST operations.
 
+Validation after explicit identity linking:
+
+- Focused PostgreSQL tests pass provider-bound link state, identity metadata,
+  link/unlink audit evidence, last-provider protection, and issuer-scoped
+  browser-session revocation with migrations 040 and 041.
+- The provider browser journey covers the responsive profile connection panel
+  as well as login choice and administrator provider status.
+
 ## Current change
 
-1. Add provider lifecycle administration: durable enable/disable metadata,
-   safe client-secret rotation, explicit identity-link review/unlink, and
-   per-provider session revocation without exposing credentials.
+1. Add provider lifecycle administration: durable enable/disable metadata and
+   safe client-secret rotation without exposing credentials.
 2. Extend revocation coverage from browser/API authorization to local replicas
    and queued mutations where the affected resource can already be cached.
 
