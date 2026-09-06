@@ -16,6 +16,7 @@ const (
 	RuleCheckFieldValue         = "system:check-field-value"
 	RulePreviousStatusCondition = "system:previous-status-condition"
 	RulePreviousStatusValidator = "system:previous-status-validator"
+	RuleSeparationOfDuties      = "system:separation-of-duties"
 	RuleValidateFieldValue      = "system:validate-field-value"
 	RuleChangeAssignee          = "system:change-assignee"
 	RuleUpdateField             = "system:update-field"
@@ -47,7 +48,14 @@ type EvaluationContext struct {
 	FieldValues   map[string]json.RawMessage
 	StatusHistory []string
 	CurrentStatus string
+	Transitions   []TransitionHistory
 	IsAPI         bool
+}
+
+type TransitionHistory struct {
+	FromStatusID string
+	ToStatusID   string
+	ActorID      string
 }
 
 // Layout is a workflow designer coordinate in CSS pixels. Jira Cloud exposes
@@ -209,6 +217,13 @@ func evaluateCondition(rule Rule, context EvaluationContext) bool {
 			return !matched
 		}
 		return matched
+	case RuleSeparationOfDuties:
+		for _, transition := range context.Transitions {
+			if transition.ActorID == context.ActorID && transition.FromStatusID == rule.Parameters["fromStatusId"] && transition.ToStatusID == rule.Parameters["toStatusId"] {
+				return false
+			}
+		}
+		return true
 	case RuleRestrictFromAllUsers:
 		return rule.Parameters["restrictMode"] == "users" && context.IsAPI
 	case RuleRestrictIssueTransition:
@@ -542,6 +557,10 @@ func validateConditionConfiguration(group ConditionGroup, seen map[string]bool) 
 		case RulePreviousStatusCondition:
 			if err := validatePreviousStatusRule(condition.Parameters, true); err != nil {
 				return err
+			}
+		case RuleSeparationOfDuties:
+			if strings.TrimSpace(condition.Parameters["fromStatusId"]) == "" || strings.TrimSpace(condition.Parameters["toStatusId"]) == "" {
+				return fmt.Errorf("separation-of-duties requires from and to status ids")
 			}
 		default:
 			return fmt.Errorf("workflow condition %q is unsupported or incomplete", condition.RuleKey)

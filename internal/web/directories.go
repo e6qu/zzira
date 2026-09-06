@@ -868,6 +868,13 @@ func (h *Handler) AddWorkflowTransition(w http.ResponseWriter, r *http.Request, 
 			},
 		})
 	}
+	if fromStatusID := r.PostFormValue("separation_from"); fromStatusID != "" {
+		conditions = append(conditions, workflow.Rule{
+			ID: store.NewID("rule"), RuleKey: workflow.RuleSeparationOfDuties, Parameters: map[string]string{
+				"fromStatusId": fromStatusID, "toStatusId": r.PostFormValue("separation_to"),
+			},
+		})
+	}
 	if len(conditions) > 0 {
 		transition.Conditions = &workflow.ConditionGroup{Operation: "ALL", Conditions: conditions}
 	}

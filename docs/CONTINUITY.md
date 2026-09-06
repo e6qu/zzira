@@ -785,9 +785,26 @@ Validation after previous-status conditions and validators:
   generated inventory and coverage checks, diff check, primary-page light/dark
   axe scan, and 320 px reflow gate pass.
 
+Validation after separation-of-duties conditions:
+
+- The action log now supplies ordered from-status, to-status, and actor triples
+  to every workflow evaluation path. `system:separation-of-duties` rejects the
+  configured transition when the current actor performed that earlier status
+  change and allows a different actor.
+- Configuration validation requires both status IDs, capability discovery
+  advertises the executable rule, and modern workflow resources round-trip it.
+  The administrator editor provides paired status selectors.
+- Unit tests prove same-actor denial, different-actor access, and incomplete
+  configuration rejection. PostgreSQL REST integration verifies stored actor
+  history and executes as a different actor; the focused Chromium journey
+  creates and publishes the visual rule.
+- The full PostgreSQL Go suite, vet, WebAssembly build, seven conformance tests,
+  generated inventory and coverage checks, diff check, primary-page light/dark
+  axe scan, and 320 px reflow gate pass.
+
 ## Current change
 
-1. Add separation-of-duties workflow conditions backed by transition actors.
+1. Add executable permission workflow validators and visual controls.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 

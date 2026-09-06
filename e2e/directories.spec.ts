@@ -133,6 +133,8 @@ test('project workflow creation, editor, transition changes, and assignment work
   await page.getByLabel('Most recent only').first().check();
   await page.selectOption('#transition-previous-validator', 'st_done');
   await page.locator('fieldset').filter({ hasText: 'Status-history validator options' }).getByLabel('Most recent only').check();
+  await page.selectOption('#transition-separation-from', 'st_todo');
+  await page.selectOption('#transition-separation-to', 'st_inprogress');
   await page.getByRole('button', { name: 'Add transition' }).click();
   await expect(page.getByText('Integration reopen', { exact: true })).toBeVisible();
   await expect(page.getByText('to To Do · condition, validator', { exact: true })).toBeVisible();

@@ -20,6 +20,11 @@ func workflowCapabilitiesResponse(editorScope string) map[string]any {
 				"ruleKey": "system:previous-status-condition", "ruleType": "Condition",
 			},
 			{
+				"description": "Prevent the same person from completing a configured pair of transitions.", "incompatibleRuleKeys": []string{},
+				"isAvailableForInitialTransition": false, "isVisible": true, "name": "Separation of duties",
+				"ruleKey": "system:separation-of-duties", "ruleType": "Condition",
+			},
+			{
 				"description": "Prevent people from running a transition, with an option to block API calls too.", "incompatibleRuleKeys": []string{},
 				"isAvailableForInitialTransition": false, "isVisible": true, "name": "Restrict transitions",
 				"ruleKey": "system:restrict-from-all-users", "ruleType": "Condition",

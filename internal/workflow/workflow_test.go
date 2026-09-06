@@ -156,6 +156,27 @@ func TestPreviousStatusConfigurationValidation(t *testing.T) {
 	}
 }
 
+func TestSeparationOfDutiesUsesTransitionActors(t *testing.T) {
+	transition := Transition{Conditions: &ConditionGroup{Operation: "ALL", Conditions: []Rule{{ID: "separation", RuleKey: RuleSeparationOfDuties, Parameters: map[string]string{
+		"fromStatusId": "st_todo", "toStatusId": "st_inprogress",
+	}}}}}
+	context := EvaluationContext{ActorID: "usr_reviewer", Transitions: []TransitionHistory{{FromStatusID: "st_todo", ToStatusID: "st_inprogress", ActorID: "usr_builder"}}}
+	if !transition.ConditionsAllow(context) {
+		t.Fatal("a different actor was blocked")
+	}
+	context.ActorID = "usr_builder"
+	if transition.ConditionsAllow(context) {
+		t.Fatal("the prior transition actor was allowed")
+	}
+	if err := ValidateTransitionRules(transition); err != nil {
+		t.Fatal(err)
+	}
+	transition.Conditions.Conditions[0].Parameters["toStatusId"] = ""
+	if err := ValidateTransitionRules(transition); err == nil {
+		t.Fatal("incomplete separation-of-duties configuration was accepted")
+	}
+}
+
 func TestRequiredFieldValidatorUsesConfiguredMessage(t *testing.T) {
 	transition := Transition{Validators: []Rule{{RuleKey: RuleValidateFieldValue, Parameters: map[string]string{
 		"ruleType": "fieldRequired", "fieldsRequired": "assignee,customfield_10001", "errorMessage": "Complete ownership and review notes",

@@ -860,6 +860,11 @@ func (h *Handler) listTransitions(w http.ResponseWriter, r *http.Request, idOrKe
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	evaluation.Transitions, err = h.Store.IssueTransitionHistory(r.Context(), wsID, issue.ID)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
 	for _, t := range wf.AvailableFor(issue.Status.ID, evaluation) {
 		status, err := h.Store.StatusByIDForProject(r.Context(), t.To, issue.ProjectID)
 		if err != nil {
