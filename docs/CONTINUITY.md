@@ -856,9 +856,24 @@ Validation after regular-expression workflow validators:
   generated inventory and coverage checks, diff check, primary-page light/dark
   axe scan, and 320 px reflow gate pass.
 
+Validation after single-value workflow validators:
+
+- The `fieldHasSingleValue` mode of `system:validate-field-value` evaluates the
+  effective transition value: nonempty scalars and one-element arrays pass,
+  while empty and multi-value fields fail. `excludeSubtasks` is parsed and
+  validated as Jira's required boolean parameter.
+- Modern workflow resources round-trip the rule and the administrator editor
+  exposes both the field selector and subtask option.
+- Unit tests prove empty, multiple, single, and invalid-configuration paths.
+  PostgreSQL REST integration executes the stored scalar validator, and the
+  focused Chromium journey creates and publishes the visual rule.
+- The full PostgreSQL Go suite, vet, WebAssembly build, seven conformance tests,
+  generated inventory and coverage checks, diff check, primary-page light/dark
+  axe scan, and 320 px reflow gate pass.
+
 ## Current change
 
-1. Add executable single-value workflow validators and visual controls.
+1. Add executable date-comparison workflow validators and visual controls.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 

@@ -289,6 +289,11 @@ func (t Transition) ValidateRules(context EvaluationContext) error {
 					}
 					return fmt.Errorf("%s", message)
 				}
+			case "fieldHasSingleValue":
+				field := validator.Parameters["fieldKey"]
+				if !workflowFieldHasSingleValue(context.FieldValues[field]) {
+					return fmt.Errorf("%s must contain exactly one value", field)
+				}
 			default:
 				return fmt.Errorf("unsupported workflow validator %q", validator.RuleKey)
 			}
@@ -315,6 +320,20 @@ func workflowFieldMatches(pattern *regexp.Regexp, raw json.RawMessage) bool {
 		}
 	}
 	return false
+}
+
+func workflowFieldHasSingleValue(raw json.RawMessage) bool {
+	if !jsonValuePresent(raw) {
+		return false
+	}
+	var value any
+	if json.Unmarshal(raw, &value) != nil {
+		return false
+	}
+	if values, ok := value.([]any); ok {
+		return len(values) == 1
+	}
+	return true
 }
 
 func previousStatusMatches(parameters map[string]string, context EvaluationContext) bool {
@@ -488,6 +507,13 @@ func ValidateTransitionRules(transition Transition) error {
 				}
 				if _, err := regexp.Compile(validator.Parameters["regexp"]); err != nil {
 					return fmt.Errorf("workflow validator regular expression is invalid")
+				}
+			case "fieldHasSingleValue":
+				if strings.TrimSpace(validator.Parameters["fieldKey"]) == "" {
+					return fmt.Errorf("workflow validator %q is unsupported or incomplete", validator.RuleKey)
+				}
+				if value := validator.Parameters["excludeSubtasks"]; value != "true" && value != "false" {
+					return fmt.Errorf("workflow validator excludeSubtasks must be true or false")
 				}
 			default:
 				return fmt.Errorf("workflow validator %q is unsupported or incomplete", validator.RuleKey)

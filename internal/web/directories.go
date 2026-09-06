@@ -905,6 +905,15 @@ func (h *Handler) AddWorkflowTransition(w http.ResponseWriter, r *http.Request, 
 			},
 		})
 	}
+	if field := strings.TrimSpace(r.PostFormValue("single_value_validator")); field != "" {
+		transition.Validators = append(transition.Validators, workflow.Rule{
+			ID: store.NewID("rule"), RuleKey: workflow.RuleValidateFieldValue,
+			Parameters: map[string]string{
+				"ruleType": "fieldHasSingleValue", "fieldKey": field,
+				"excludeSubtasks": formBool(r, "single_value_exclude_subtasks"),
+			},
+		})
+	}
 	if statusID := r.PostFormValue("previous_status_validator"); statusID != "" {
 		transition.Validators = append(transition.Validators, workflow.Rule{
 			ID: store.NewID("rule"), RuleKey: workflow.RulePreviousStatusValidator, Parameters: map[string]string{

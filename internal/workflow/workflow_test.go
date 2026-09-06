@@ -229,6 +229,31 @@ func TestRegularExpressionValidatorUsesEffectiveFieldValue(t *testing.T) {
 	}
 }
 
+func TestSingleValueValidatorCountsEffectiveFieldValues(t *testing.T) {
+	transition := Transition{Validators: []Rule{{ID: "single", RuleKey: RuleValidateFieldValue, Parameters: map[string]string{
+		"ruleType": "fieldHasSingleValue", "fieldKey": "labels", "excludeSubtasks": "false",
+	}}}}
+	for name, raw := range map[string]json.RawMessage{
+		"empty": json.RawMessage(`[]`), "many": json.RawMessage(`["one","two"]`),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := transition.ValidateRules(EvaluationContext{FieldValues: map[string]json.RawMessage{"labels": raw}}); err == nil {
+				t.Fatal("value count passed validation")
+			}
+		})
+	}
+	if err := transition.ValidateRules(EvaluationContext{FieldValues: map[string]json.RawMessage{"labels": json.RawMessage(`["one"]`)}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateTransitionRules(transition); err != nil {
+		t.Fatal(err)
+	}
+	transition.Validators[0].Parameters["excludeSubtasks"] = "sometimes"
+	if err := ValidateTransitionRules(transition); err == nil {
+		t.Fatal("invalid excludeSubtasks value was accepted")
+	}
+}
+
 func TestPermissionValidatorUsesGrantedJiraPermissions(t *testing.T) {
 	transition := Transition{Validators: []Rule{{ID: "permission", RuleKey: RuleCheckPermissionValidator, Parameters: map[string]string{
 		"permissionKey": "ADMINISTER_PROJECTS",
