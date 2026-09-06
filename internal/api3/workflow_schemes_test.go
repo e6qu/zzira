@@ -94,6 +94,31 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	call(actor, "GET", "/rest/api/3/workflows/capabilities", "", 400)
 	call(actor, "GET", "/rest/api/3/workflows/capabilities?workflowId="+workflowID+"&projectId="+projectID+"&issueTypeId=it_task", "", 400)
 	call(actor, "GET", "/rest/api/3/workflows/capabilities?projectId="+projectID+"&issueTypeId=it_missing", "", 400)
+	createValidationBody := `{"payload":{"scope":{"type":"GLOBAL"},"statuses":[{"id":"st_todo","name":"To Do","statusCategory":"TODO","statusReference":"todo"},{"id":"st_done","name":"Done","statusCategory":"DONE","statusReference":"done"}],"workflows":[{"name":"Validated workflow","statuses":[{"statusReference":"todo","properties":{}},{"statusReference":"done","properties":{}}],"transitions":[{"id":"1","name":"Complete","type":"DIRECTED","toStatusReference":"done","links":[{"fromStatusReference":"todo"}]}]}]}}`
+	call(member, "POST", "/rest/api/3/workflows/create/validation", createValidationBody, 403)
+	createValidation := call(actor, "POST", "/rest/api/3/workflows/create/validation", createValidationBody, 200)
+	if createValidation.Body.String() != "{\"errors\":[]}\n" {
+		t.Fatal(createValidation.Body.String())
+	}
+	badCreateValidation := call(actor, "POST", "/rest/api/3/workflows/create/validation", `{"payload":{"workflows":[{"name":"","statuses":[],"transitions":[]}]}}`, 200)
+	if !strings.Contains(badCreateValidation.Body.String(), `"code":"WORKFLOW_NAME_INVALID"`) || !strings.Contains(badCreateValidation.Body.String(), `"level":"ERROR"`) {
+		t.Fatal(badCreateValidation.Body.String())
+	}
+	warningOnlyValidation := call(actor, "POST", "/rest/api/3/workflows/create/validation", `{"payload":{"workflows":[{"name":"","statuses":[],"transitions":[]}]},"validationOptions":{"levels":["WARNING"]}}`, 200)
+	if warningOnlyValidation.Body.String() != "{\"errors\":[]}\n" {
+		t.Fatal(warningOnlyValidation.Body.String())
+	}
+	updateValidationBody := `{"payload":{"workflows":[{"id":"` + workflowID + `","version":{"id":"` + workflowID + `","versionNumber":1},"statuses":[{"statusReference":"st_todo","properties":{}},{"statusReference":"st_done","properties":{}}],"transitions":[{"id":"` + simpleWorkflow.Transitions[0].ID + `","name":"Complete","type":"DIRECTED","toStatusReference":"st_done","links":[{"fromStatusReference":"st_todo"}]},{"id":"` + simpleWorkflow.Transitions[1].ID + `","name":"Reopen","type":"DIRECTED","toStatusReference":"st_todo","links":[{"fromStatusReference":"st_done"}]}]}]}}`
+	updateValidation := call(actor, "POST", "/rest/api/3/workflows/update/validation", updateValidationBody, 200)
+	if updateValidation.Body.String() != "{\"errors\":[]}\n" {
+		t.Fatal(updateValidation.Body.String())
+	}
+	staleUpdateValidation := strings.Replace(updateValidationBody, `"versionNumber":1`, `"versionNumber":99`, 1)
+	staleValidation := call(actor, "POST", "/rest/api/3/workflows/update/validation", staleUpdateValidation, 200)
+	if !strings.Contains(staleValidation.Body.String(), `"code":"WORKFLOW_VERSION_CONFLICT"`) {
+		t.Fatal(staleValidation.Body.String())
+	}
+	call(actor, "POST", "/rest/api/3/workflows/create/validation", `{`, 400)
 	call(member, "POST", "/rest/api/3/workflowscheme", body, 403)
 	created := call(actor, "POST", "/rest/api/3/workflowscheme", body, 201)
 	var scheme map[string]any

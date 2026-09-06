@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 118,
+  "assessedTotal": 120,
   "counts": {
     "delivered": 0,
-    "partial": 111,
+    "partial": 113,
     "missing": 7,
-    "unassessed": 1089
+    "unassessed": 1087
   },
   "countsByFamily": {
     "automation": {
@@ -24,9 +24,9 @@
     },
     "jira-platform": {
       "delivered": 0,
-      "partial": 56,
+      "partial": 58,
       "missing": 0,
-      "unassessed": 561
+      "unassessed": 559
     },
     "jira-service-management": {
       "delivered": 0,
@@ -4584,9 +4584,14 @@
       "operationId": "jira-v3:POST:/rest/api/3/workflows/create/validation",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_validation.go",
+        "internal/store/agile.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Returns structured ERROR validation records for global workflow names, sizes, existing status references, directed transition topology, duplicate transitions, conflicts, scopes, unsupported rules, and validation-level filtering; new status creation, rules, and non-directed transitions remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/workflows/defaultEditor",
@@ -4633,9 +4638,14 @@
       "operationId": "jira-v3:POST:/rest/api/3/workflows/update/validation",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_validation.go",
+        "internal/store/agile.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Returns structured validation records for workspace workflow existence, optimistic document versions, existing statuses, directed topology, and unsupported rules without mutation; mappings, new statuses, rules, and project workflows remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/workflowscheme",

@@ -1322,6 +1322,11 @@ func (s *Store) validateWorkflow(ctx context.Context, workspaceID string, wf wor
 	return def, nil
 }
 
+func (s *Store) ValidateWorkflowDefinition(ctx context.Context, workspaceID string, wf workflow.Workflow) error {
+	_, err := s.validateWorkflow(ctx, workspaceID, wf)
+	return err
+}
+
 func (s *Store) SaveWorkflowDraft(ctx context.Context, workspaceID string, wf workflow.Workflow) error {
 	if wf.ID == workflow.Default().ID {
 		return fmt.Errorf("the built-in workflow is read-only")

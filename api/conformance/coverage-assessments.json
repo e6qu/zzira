@@ -1188,6 +1188,28 @@
         "docs/CLOUD_PARITY.md"
       ],
       "notes": "Resolves workspace workflows by workflow ID or project and issue type, validates mutually exclusive selectors, and truthfully reports the global editor scope, supported project types, and currently empty system/ecosystem rule catalogs; configurable rules and project scopes remain."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/workflows/create/validation",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_validation.go",
+        "internal/store/agile.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Returns structured ERROR validation records for global workflow names, sizes, existing status references, directed transition topology, duplicate transitions, conflicts, scopes, unsupported rules, and validation-level filtering; new status creation, rules, and non-directed transitions remain."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/workflows/update/validation",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_validation.go",
+        "internal/store/agile.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Returns structured validation records for workspace workflow existence, optimistic document versions, existing statuses, directed topology, and unsupported rules without mutation; mappings, new statuses, rules, and project workflows remain."
     }
   ]
 }
