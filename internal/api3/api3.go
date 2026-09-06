@@ -362,6 +362,10 @@ type createIssueRequest struct {
 			ID   string `json:"id"`
 			Name string `json:"name"`
 		} `json:"issuetype"`
+		Parent *struct {
+			ID  string `json:"id"`
+			Key string `json:"key"`
+		} `json:"parent"`
 		Priority *struct {
 			ID   string `json:"id"`
 			Name string `json:"name"`
@@ -447,12 +451,21 @@ func (h *Handler) createIssue(w http.ResponseWriter, r *http.Request) {
 		projectIDOrKey = req.Fields.Project.ID
 	}
 	issue, _, err := h.Commands.CreateIssue(r.Context(), commands.CreateIssueInput{
-		ActorID:                   userID,
-		WorkspaceID:               wsID,
-		ProjectIDOrKey:            projectIDOrKey,
-		Summary:                   req.Fields.Summary,
-		DescriptionADF:            req.Fields.Description,
-		IssueTypeID:               issueTypeID,
+		ActorID:        userID,
+		WorkspaceID:    wsID,
+		ProjectIDOrKey: projectIDOrKey,
+		Summary:        req.Fields.Summary,
+		DescriptionADF: req.Fields.Description,
+		IssueTypeID:    issueTypeID,
+		ParentIDOrKey: func() string {
+			if req.Fields.Parent == nil {
+				return ""
+			}
+			if req.Fields.Parent.Key != "" {
+				return req.Fields.Parent.Key
+			}
+			return req.Fields.Parent.ID
+		}(),
 		PriorityID:                priorityID,
 		AssigneeID:                assigneeID,
 		UseProjectDefaultAssignee: !assigneeProvided || assigneeID == "-1",
@@ -485,7 +498,7 @@ func unsupportedCreateFields(body []byte) map[string]string {
 	}
 	supported := map[string]struct{}{
 		"project": {}, "summary": {}, "description": {}, "issuetype": {}, "priority": {},
-		"assignee": {}, "security": {}, "labels": {}, "fixVersions": {}, "versions": {},
+		"assignee": {}, "security": {}, "labels": {}, "fixVersions": {}, "versions": {}, "parent": {},
 	}
 	for field := range raw.Fields {
 		if _, ok := supported[field]; ok || customFieldIDPattern.MatchString(field) {
@@ -498,7 +511,7 @@ func unsupportedCreateFields(body []byte) map[string]string {
 
 func createIssueFieldError(err error) map[string]string {
 	message := err.Error()
-	for _, field := range []string{"summary", "project", "priority", "assignee", "security", "labels", "description"} {
+	for _, field := range []string{"summary", "project", "priority", "assignee", "security", "labels", "description", "parent"} {
 		if strings.Contains(message, field) {
 			return map[string]string{field: message}
 		}
@@ -571,6 +584,29 @@ func (h *Handler) putIssue(w http.ResponseWriter, r *http.Request, idOrKey strin
 		}
 	}
 	fields := customFieldsFromBody(body)
+	var rawFields struct {
+		Fields map[string]json.RawMessage `json:"fields"`
+	}
+	_ = json.Unmarshal(body, &rawFields)
+	var parentIDOrKey *string
+	if rawParent, provided := rawFields.Fields["parent"]; provided {
+		value := ""
+		if string(rawParent) != "null" {
+			var parent struct {
+				ID  string `json:"id"`
+				Key string `json:"key"`
+			}
+			if err := json.Unmarshal(rawParent, &parent); err != nil || (parent.ID == "" && parent.Key == "") {
+				jiraFieldError(w, http.StatusBadRequest, map[string]string{"parent": "Parent requires an issue id or key."})
+				return
+			}
+			value = parent.Key
+			if value == "" {
+				value = parent.ID
+			}
+		}
+		parentIDOrKey = &value
+	}
 	var securityID *string
 	if req.Fields.Security != nil {
 		sid := req.Fields.Security.ID
@@ -580,9 +616,14 @@ func (h *Handler) putIssue(w http.ResponseWriter, r *http.Request, idOrKey strin
 		ActorID: userID, WorkspaceID: wsID, IssueIDOrKey: idOrKey,
 		Summary: up.Summary, Description: up.Description,
 		PriorityID: up.PriorityID, AssigneeID: up.AssigneeID,
+		ParentIDOrKey:   parentIDOrKey,
 		SecurityLevelID: securityID, Labels: req.Fields.Labels, Fields: fields, VersionOperations: req.Update,
 	}); err != nil {
-		jiraFieldError(w, http.StatusBadRequest, map[string]string{"fields": err.Error()})
+		field := "fields"
+		if strings.Contains(err.Error(), "parent") || strings.Contains(err.Error(), "sub-task") {
+			field = "parent"
+		}
+		jiraFieldError(w, http.StatusBadRequest, map[string]string{field: err.Error()})
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -662,7 +703,15 @@ func (h *Handler) issueBean(i *models.Issue) map[string]any {
 			"id":      i.IssueType.ID,
 			"name":    i.IssueType.Name,
 			"iconUrl": h.BaseURL + "/static/img/issuetype-task.svg",
+			"subtask": i.IssueType.Subtask,
 		},
+	}
+	if i.Parent != nil {
+		fields["parent"] = map[string]any{
+			"id": i.Parent.ID, "key": i.Parent.Key,
+			"self":   h.BaseURL + "/rest/api/3/issue/" + i.Parent.ID,
+			"fields": map[string]any{"summary": i.Parent.Summary},
+		}
 	}
 	if i.Priority != nil {
 		fields["priority"] = map[string]any{"id": i.Priority.ID, "name": i.Priority.Name}
@@ -861,6 +910,11 @@ func (h *Handler) listTransitions(w http.ResponseWriter, r *http.Request, idOrKe
 		return
 	}
 	evaluation.Transitions, err = h.Store.IssueTransitionHistory(r.Context(), wsID, issue.ID)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	evaluation.ParentStatus, evaluation.ChildStatuses, err = h.Store.IssueHierarchyStatuses(r.Context(), wsID, issue.ID)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return

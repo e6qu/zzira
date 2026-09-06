@@ -43,6 +43,7 @@ type IssueUpdate struct {
 	Description        json.RawMessage // non-nil = replace
 	PriorityID         *string         // "" = clear, nil = unchanged
 	AssigneeID         *string         // "" = unassign, nil = unchanged
+	ParentID           *string         // "" = clear, nil = unchanged
 	StatusID           *string         // transitions only; "" invalid
 	SecurityLevelID    *string         // "" = public, nil = unchanged
 	Labels             *[]string       // empty = clear, nil = unchanged
@@ -158,6 +159,23 @@ func (s *Store) UpdateIssue(ctx context.Context, actorID, workspaceID, issueID s
 			}
 			diff["assignee"] = diffItem("assignee", oldID, oldName, newID, newName)
 			sets = append(sets, "assignee_id = "+arg(nilIfEmpty(newID)))
+		}
+	}
+	if up.ParentID != nil {
+		newID := *up.ParentID
+		oldID, oldKey := "", ""
+		if current.Parent != nil {
+			oldID, oldKey = current.Parent.ID, current.Parent.Key
+		}
+		if newID != oldID {
+			newKey := ""
+			if newID != "" {
+				if err := tx.QueryRow(ctx, `SELECT key FROM issues WHERE id=$1 AND workspace_id=$2 AND project_id=$3`, newID, workspaceID, current.ProjectID).Scan(&newKey); err != nil {
+					return nil, nil, fmt.Errorf("unknown parent %q", newID)
+				}
+			}
+			diff["parent"] = diffItem("parent", oldID, oldKey, newID, newKey)
+			sets = append(sets, "parent_id = "+arg(nilIfEmpty(newID)))
 		}
 	}
 

@@ -692,7 +692,9 @@ func (s *Store) ProjectByKey(ctx context.Context, workspaceID, key string) (*mod
 const issueJoin = `
 SELECT i.id, i.workspace_id, i.project_id, i.key, i.summary, i.description,
        st.id, st.name, st.category,
-       it.id, it.name, it.icon,
+	       it.id, it.name, it.icon,
+	       it.subtask,
+	       parent.id, parent.key, parent.summary,
        pr.id, pr.name,
        a.id, a.display_name,
 	       r.id, r.display_name,
@@ -705,6 +707,7 @@ JOIN issue_types it ON it.id = i.issuetype_id
 LEFT JOIN priorities pr ON pr.id = i.priority_id
 LEFT JOIN users a ON a.id = i.assignee_id
 LEFT JOIN users r ON r.id = i.reporter_id
+LEFT JOIN issues parent ON parent.id = i.parent_id
 `
 
 func scanIssue(row pgx.Row) (*models.Issue, error) {
@@ -712,12 +715,14 @@ func scanIssue(row pgx.Row) (*models.Issue, error) {
 	var priorityID, priorityName *string
 	var assigneeID, assigneeName *string
 	var reporterID, reporterName *string
+	var parentID, parentKey, parentSummary *string
 	var updatedAt time.Time
 	var securityLevelID *string
 	var fieldsJSON []byte
 	err := row.Scan(&i.ID, &i.WorkspaceID, &i.ProjectID, &i.Key, &i.Summary, &i.Description,
 		&i.Status.ID, &i.Status.Name, &i.Status.Category,
-		&i.IssueType.ID, &i.IssueType.Name, &i.IssueType.Icon,
+		&i.IssueType.ID, &i.IssueType.Name, &i.IssueType.Icon, &i.IssueType.Subtask,
+		&parentID, &parentKey, &parentSummary,
 		&priorityID, &priorityName,
 		&assigneeID, &assigneeName,
 		&reporterID, &reporterName,
@@ -751,6 +756,9 @@ func scanIssue(row pgx.Row) (*models.Issue, error) {
 	if reporterID != nil {
 		i.Reporter = &models.User{ID: *reporterID, DisplayName: *reporterName, Active: true, AccountType: "atlassian"}
 	}
+	if parentID != nil {
+		i.Parent = &models.IssueParent{ID: *parentID, Key: *parentKey, Summary: *parentSummary}
+	}
 	return i, nil
 }
 
@@ -761,7 +769,7 @@ func (s *Store) IssueByIDOrKey(ctx context.Context, workspaceID, idOrKey string)
 
 // CreateIssue runs the canonical write transaction: state change + action append +
 // notify, all-or-nothing. Returns the persisted issue and its action.
-func (s *Store) CreateIssue(ctx context.Context, actorID, projectID, summary string, description json.RawMessage, statusID, issueTypeID, priorityID, assigneeID string, labels []string, fields map[string]json.RawMessage, securityLevelID string) (*models.Issue, *models.Action, error) {
+func (s *Store) CreateIssue(ctx context.Context, actorID, projectID, summary string, description json.RawMessage, statusID, issueTypeID, priorityID, assigneeID string, labels []string, fields map[string]json.RawMessage, securityLevelID, parentID string) (*models.Issue, *models.Action, error) {
 	if labels == nil {
 		labels = []string{}
 	}
@@ -805,9 +813,9 @@ func (s *Store) CreateIssue(ctx context.Context, actorID, projectID, summary str
 	}
 	_, err = tx.Exec(ctx, `
 		INSERT INTO issues (id, workspace_id, project_id, key, summary, description, fields, labels,
-		                    status_id, issuetype_id, priority_id, assignee_id, reporter_id, security_level_id, updated_seq)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,0)`,
-		issueID, wsID, projectID, issueKey, summary, description, fieldsJSON, labels, statusID, issueTypeID, nilIfEmpty(priorityID), nilIfEmpty(assigneeID), reporter, nilIfEmpty(securityLevelID))
+		                    status_id, issuetype_id, priority_id, assignee_id, reporter_id, security_level_id, parent_id, updated_seq)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,0)`,
+		issueID, wsID, projectID, issueKey, summary, description, fieldsJSON, labels, statusID, issueTypeID, nilIfEmpty(priorityID), nilIfEmpty(assigneeID), reporter, nilIfEmpty(securityLevelID), nilIfEmpty(parentID))
 	if err != nil {
 		return nil, nil, err
 	}

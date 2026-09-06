@@ -10,7 +10,7 @@ import (
 
 // IssueTypes lists the issue type registry used by create metadata.
 func (s *Store) IssueTypes(ctx context.Context) ([]models.IssueType, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT id, name, COALESCE(icon,'') FROM issue_types ORDER BY name, id`)
+	rows, err := s.Pool.Query(ctx, `SELECT id, name, COALESCE(icon,''), subtask FROM issue_types ORDER BY subtask, name, id`)
 	if err != nil {
 		return nil, err
 	}
@@ -18,7 +18,7 @@ func (s *Store) IssueTypes(ctx context.Context) ([]models.IssueType, error) {
 	var out []models.IssueType
 	for rows.Next() {
 		var issueType models.IssueType
-		if err := rows.Scan(&issueType.ID, &issueType.Name, &issueType.Icon); err != nil {
+		if err := rows.Scan(&issueType.ID, &issueType.Name, &issueType.Icon, &issueType.Subtask); err != nil {
 			return nil, err
 		}
 		out = append(out, issueType)
@@ -82,6 +82,28 @@ func (s *Store) IssueCreateMetadata(ctx context.Context, workspaceID, userID str
 
 	meta := &models.IssueCreateMetadata{Projects: make([]models.CreateProjectMeta, 0, len(projects))}
 	for _, project := range projects {
+		parentOptions := []models.CreateFieldOption{}
+		parentRows, err := s.Pool.Query(ctx, `
+			SELECT id, key, summary FROM issues
+			WHERE project_id=$1 AND parent_id IS NULL
+			ORDER BY updated_seq DESC, key LIMIT 200`, project.ID)
+		if err != nil {
+			return nil, err
+		}
+		for parentRows.Next() {
+			var option models.CreateFieldOption
+			if err := parentRows.Scan(&option.ID, &option.Key, &option.Name); err != nil {
+				parentRows.Close()
+				return nil, err
+			}
+			option.Name = option.Key + " — " + option.Name
+			parentOptions = append(parentOptions, option)
+		}
+		if err := parentRows.Err(); err != nil {
+			parentRows.Close()
+			return nil, err
+		}
+		parentRows.Close()
 		fields := []models.CreateFieldMeta{
 			{ID: "project", Name: "Project", Type: "project", Required: true, Section: "context", Options: projectOptions},
 			{ID: "issuetype", Name: "Issue type", Type: "issuetype", Required: true, Section: "context", Options: typeOptions},
@@ -90,6 +112,7 @@ func (s *Store) IssueCreateMetadata(ctx context.Context, workspaceID, userID str
 			{ID: "assignee", Name: "Assignee", Type: "user", Section: "details", Options: memberOptions},
 			{ID: "priority", Name: "Priority", Type: "priority", Section: "details", Options: priorityOptions},
 			{ID: "labels", Name: "Labels", Type: "array", Description: "Separate labels with commas. Spaces are not allowed inside a label.", Section: "details"},
+			{ID: "parent", Name: "Parent", Type: "parent", Description: "Required for sub-tasks. Choose a work item in this project.", Section: "details", Options: parentOptions},
 		}
 
 		versions, err := s.ProjectVersions(ctx, project.ID)

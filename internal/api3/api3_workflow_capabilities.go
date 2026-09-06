@@ -25,6 +25,11 @@ func workflowCapabilitiesResponse(editorScope string) map[string]any {
 				"ruleKey": "system:separation-of-duties", "ruleType": "Condition",
 			},
 			{
+				"description": "Block a parent transition while a child remains in a configured status.", "incompatibleRuleKeys": []string{},
+				"isAvailableForInitialTransition": false, "isVisible": true, "name": "Sub-task blocking condition",
+				"ruleKey": "system:parent-or-child-blocking-condition", "ruleType": "Condition",
+			},
+			{
 				"description": "Prevent people from running a transition, with an option to block API calls too.", "incompatibleRuleKeys": []string{},
 				"isAvailableForInitialTransition": false, "isVisible": true, "name": "Restrict transitions",
 				"ruleKey": "system:restrict-from-all-users", "ruleType": "Condition",
@@ -48,6 +53,11 @@ func workflowCapabilitiesResponse(editorScope string) map[string]any {
 				"description": "Require the person running a transition to have a Jira permission.", "incompatibleRuleKeys": []string{},
 				"isAvailableForInitialTransition": false, "isVisible": true, "name": "Permission validator",
 				"ruleKey": "system:check-permission-validator", "ruleType": "Validator",
+			},
+			{
+				"description": "Block a sub-task transition while its parent remains in a configured status.", "incompatibleRuleKeys": []string{},
+				"isAvailableForInitialTransition": false, "isVisible": true, "name": "Parent blocking validator",
+				"ruleKey": "system:parent-or-child-blocking-validator", "ruleType": "Validator",
 			},
 			{
 				"description": "Automatically assign an issue after moving it using a transition.", "incompatibleRuleKeys": []string{},

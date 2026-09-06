@@ -303,6 +303,40 @@ func TestDateWindowValidatorLimitsDaysPastReference(t *testing.T) {
 	}
 }
 
+func TestParentAndChildBlockingRules(t *testing.T) {
+	condition := Transition{Conditions: &ConditionGroup{Operation: "ALL", Conditions: []Rule{{
+		ID: "children", RuleKey: RuleParentChildCondition,
+		Parameters: map[string]string{"blocker": "CHILD", "statusIds": "st_todo,st_inprogress"},
+	}}}}
+	if condition.ConditionsAllow(EvaluationContext{ChildStatuses: []string{"st_done", "st_todo"}}) {
+		t.Fatal("a child in a blocked status exposed the transition")
+	}
+	if !condition.ConditionsAllow(EvaluationContext{ChildStatuses: []string{"st_done"}}) {
+		t.Fatal("completed children blocked the transition")
+	}
+	if err := ValidateTransitionRules(condition); err != nil {
+		t.Fatal(err)
+	}
+
+	validator := Transition{Validators: []Rule{{
+		ID: "parent", RuleKey: RuleParentChildValidator,
+		Parameters: map[string]string{"blocker": "PARENT", "statusIds": "st_todo"},
+	}}}
+	if err := validator.ValidateRules(EvaluationContext{ParentStatus: "st_todo"}); err == nil {
+		t.Fatal("a parent in the blocked status passed validation")
+	}
+	if err := validator.ValidateRules(EvaluationContext{ParentStatus: "st_inprogress"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateTransitionRules(validator); err != nil {
+		t.Fatal(err)
+	}
+	validator.Validators[0].Parameters["blocker"] = "CHILD"
+	if err := ValidateTransitionRules(validator); err == nil {
+		t.Fatal("an invalid parent blocker configuration was accepted")
+	}
+}
+
 func TestPermissionValidatorUsesGrantedJiraPermissions(t *testing.T) {
 	transition := Transition{Validators: []Rule{{ID: "permission", RuleKey: RuleCheckPermissionValidator, Parameters: map[string]string{
 		"permissionKey": "ADMINISTER_PROJECTS",

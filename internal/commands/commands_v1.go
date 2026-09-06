@@ -29,6 +29,7 @@ type UpdateIssueInput struct {
 	Description       json.RawMessage // ADF; nil = unchanged
 	PriorityID        *string
 	AssigneeID        *string
+	ParentIDOrKey     *string
 	StatusID          *string // transitions only
 
 	SecurityLevelID *string                    // "" = public, nil = unchanged
@@ -66,6 +67,23 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 		if _, err := s.Store.MemberByID(ctx, in.WorkspaceID, *in.AssigneeID); err != nil {
 			return nil, nil, fmt.Errorf("assignee is not an active workspace member")
 		}
+	}
+	var parentID *string
+	if in.ParentIDOrKey != nil {
+		resolved := ""
+		if issue.IssueType.Subtask {
+			if strings.TrimSpace(*in.ParentIDOrKey) == "" {
+				return nil, nil, fmt.Errorf("parent is required for a sub-task")
+			}
+			parent, err := s.visibleIssue(ctx, in.ActorID, in.WorkspaceID, *in.ParentIDOrKey)
+			if err != nil || parent.ProjectID != issue.ProjectID || parent.ID == issue.ID || parent.IssueType.Subtask {
+				return nil, nil, fmt.Errorf("parent must be a visible non-sub-task in this project")
+			}
+			resolved = parent.ID
+		} else if strings.TrimSpace(*in.ParentIDOrKey) != "" {
+			return nil, nil, fmt.Errorf("parent is only available for sub-tasks")
+		}
+		parentID = &resolved
 	}
 	if in.SecurityLevelID != nil && *in.SecurityLevelID != "" {
 		scheme, err := s.Store.SecuritySchemeForProject(ctx, issue.ProjectID)
@@ -107,6 +125,7 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 		Description:       in.Description,
 		PriorityID:        in.PriorityID,
 		AssigneeID:        in.AssigneeID,
+		ParentID:          parentID,
 		StatusID:          in.StatusID,
 		SecurityLevelID:   in.SecurityLevelID,
 		Labels:            in.Labels,
@@ -295,6 +314,10 @@ func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, worksp
 		return nil, nil, err
 	}
 	context.Transitions, err = s.Store.IssueTransitionHistory(ctx, workspaceID, issue.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+	context.ParentStatus, context.ChildStatuses, err = s.Store.IssueHierarchyStatuses(ctx, workspaceID, issue.ID)
 	if err != nil {
 		return nil, nil, err
 	}

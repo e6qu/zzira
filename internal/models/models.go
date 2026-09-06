@@ -50,9 +50,16 @@ type Status struct {
 }
 
 type IssueType struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Icon string `json:"icon"`
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Icon    string `json:"icon"`
+	Subtask bool   `json:"subtask"`
+}
+
+type IssueParent struct {
+	ID      string `json:"id"`
+	Key     string `json:"key"`
+	Summary string `json:"summary"`
 }
 
 type Priority struct {
@@ -84,6 +91,7 @@ type Issue struct {
 	Description json.RawMessage `json:"description"`
 	Status      Status          `json:"status"`
 	IssueType   IssueType       `json:"issuetype"`
+	Parent      *IssueParent    `json:"parent,omitempty"`
 	Priority    *Priority       `json:"priority"`
 	Assignee    *User           `json:"assignee"`
 	Reporter    *User           `json:"reporter"`
@@ -156,6 +164,8 @@ type IssueView struct {
 	IsWatching        bool
 	Links             []IssueLinkView
 	LinkTypes         []LinkType
+	Children          []Issue
+	ParentOptions     []CreateFieldOption
 }
 
 // IssueActivityItem is one entry in the issue's chronological activity ledger.

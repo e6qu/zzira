@@ -130,6 +130,8 @@ test('project workflow creation, editor, transition changes, and assignment work
   await page.fill('#transition-window-date1-field-validator', 'customfield_99102');
   await page.fill('#transition-window-date-days', '3');
   await page.fill('#transition-window-date2-field-validator', 'customfield_99101');
+	await page.selectOption('#transition-child-blocking-status', 'st_todo');
+	await page.selectOption('#transition-parent-blocking-status', 'st_inprogress');
   await page.selectOption('#transition-permission-validator', 'EDIT_ISSUES');
   await page.getByRole('button', { name: 'Add transition' }).click();
   await expect(page.getByText('Ready for review', { exact: true })).toBeVisible();

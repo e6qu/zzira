@@ -21,8 +21,8 @@ func (s *Store) FirstIssueType(ctx context.Context) (*models.IssueType, error) {
 // canonical internal identifier. Issue types are workspace-independent today.
 func (s *Store) IssueTypeByIDOrName(ctx context.Context, idOrName string) (*models.IssueType, error) {
 	t := &models.IssueType{}
-	err := s.Pool.QueryRow(ctx, `SELECT id, name, COALESCE(icon,'') FROM issue_types WHERE id=$1 OR name=$1 LIMIT 1`, idOrName).
-		Scan(&t.ID, &t.Name, &t.Icon)
+	err := s.Pool.QueryRow(ctx, `SELECT id, name, COALESCE(icon,''), subtask FROM issue_types WHERE id=$1 OR name=$1 LIMIT 1`, idOrName).
+		Scan(&t.ID, &t.Name, &t.Icon, &t.Subtask)
 	if err != nil {
 		return nil, err
 	}

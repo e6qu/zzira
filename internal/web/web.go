@@ -47,11 +47,12 @@ type pageData struct {
 }
 
 type createDialogData struct {
-	Metadata   *models.IssueCreateMetadata
-	Selected   models.CreateProjectMeta
-	Values     map[string]string
-	Error      string
-	CreatedKey string
+	Metadata                 *models.IssueCreateMetadata
+	Selected                 models.CreateProjectMeta
+	SelectedIssueTypeSubtask bool
+	Values                   map[string]string
+	Error                    string
+	CreatedKey               string
 }
 
 type projectIssuesData struct {
@@ -428,6 +429,10 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	if err != nil {
 		return nil, err
 	}
+	evaluation.ParentStatus, evaluation.ChildStatuses, err = h.Store.IssueHierarchyStatuses(r.Context(), wsID, issue.ID)
+	if err != nil {
+		return nil, err
+	}
 	for _, t := range wf.AvailableFor(issue.Status.ID, evaluation) {
 		transitions = append(transitions, models.WorkflowTransition{ID: t.ID, Name: t.Name, ScreenFields: t.ScreenFields()})
 	}
@@ -457,6 +462,27 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	links, err := h.Store.LinksByIssue(r.Context(), issue.ID)
 	if err != nil {
 		return nil, err
+	}
+	children, err := h.Store.ChildIssues(r.Context(), wsID, issue.ID)
+	if err != nil {
+		return nil, err
+	}
+	parentOptions := []models.CreateFieldOption{}
+	if issue.IssueType.Subtask {
+		meta, err := h.Store.IssueCreateMetadata(r.Context(), wsID, user.ID)
+		if err != nil {
+			return nil, err
+		}
+		for _, projectMeta := range meta.Projects {
+			if projectMeta.Project.ID != issue.ProjectID {
+				continue
+			}
+			for _, field := range projectMeta.Fields {
+				if field.ID == "parent" {
+					parentOptions = field.Options
+				}
+			}
+		}
 	}
 	linkViews := make([]models.IssueLinkView, 0, len(links))
 	for _, link := range links {
@@ -541,7 +567,17 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 		IsWatching:        isWatching,
 		Links:             linkViews,
 		LinkTypes:         linkTypeValues,
+		Children:          derefIssues(children),
+		ParentOptions:     parentOptions,
 	}, nil
+}
+
+func derefIssues(in []*models.Issue) []models.Issue {
+	out := make([]models.Issue, 0, len(in))
+	for _, issue := range in {
+		out = append(out, *issue)
+	}
+	return out
 }
 
 // buildEditDialogView produces the complete edit-command schema for the
@@ -835,6 +871,7 @@ func (h *Handler) CreateIssue(w http.ResponseWriter, r *http.Request) {
 		Summary:         values["summary"],
 		Description:     values["description"],
 		IssueTypeID:     values["issuetype"],
+		ParentIDOrKey:   values["parent"],
 		PriorityID:      values["priority"],
 		AssigneeID:      values["assignee"],
 		SecurityLevelID: values["security"],
@@ -913,7 +950,23 @@ func (h *Handler) buildCreateDialogData(ctx context.Context, workspaceID, userID
 	if values["issuetype"] == "" {
 		return createDialogData{}, fmt.Errorf("no issue type is available")
 	}
-	return createDialogData{Metadata: meta, Selected: selected, Values: values}, nil
+	selectedSubtask := false
+	for _, issueType := range selected.IssueTypes {
+		if issueType.ID == values["issuetype"] {
+			selectedSubtask = issueType.Subtask
+			break
+		}
+	}
+	if !selectedSubtask {
+		visibleFields := make([]models.CreateFieldMeta, 0, len(selected.Fields))
+		for _, field := range selected.Fields {
+			if field.ID != "parent" {
+				visibleFields = append(visibleFields, field)
+			}
+		}
+		selected.Fields = visibleFields
+	}
+	return createDialogData{Metadata: meta, Selected: selected, SelectedIssueTypeSubtask: selectedSubtask, Values: values}, nil
 }
 
 func createFieldsFromForm(fields []models.CreateFieldMeta, values map[string]string) (map[string]json.RawMessage, error) {
@@ -1388,6 +1441,8 @@ func (h *Handler) UpdateIssueField(w http.ResponseWriter, r *http.Request, key s
 		in.PriorityID = &value
 	case "assignee":
 		in.AssigneeID = &value
+	case "parent":
+		in.ParentIDOrKey = &value
 	case "security":
 		in.SecurityLevelID = &value
 	case "labels":

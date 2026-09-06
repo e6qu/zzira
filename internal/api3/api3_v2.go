@@ -182,7 +182,11 @@ func (h *Handler) createMeta(w http.ResponseWriter, r *http.Request) {
 			bean := h.createMetaIssueTypeBean(issueType)
 			if includeFields {
 				fields := make(map[string]any, len(project.Fields))
-				for _, field := range project.Fields {
+				for _, source := range project.Fields {
+					field := source
+					if field.ID == "parent" {
+						field.Required = issueType.Subtask
+					}
 					fields[field.ID] = h.legacyCreateFieldBean(field)
 				}
 				bean["fields"] = fields
@@ -230,14 +234,15 @@ func (h *Handler) createMetaFields(w http.ResponseWriter, r *http.Request, proje
 		writeJerr(w, e)
 		return
 	}
-	found := false
+	var selectedType *models.IssueType
 	for _, issueType := range project.IssueTypes {
 		if issueType.ID == issueTypeID {
-			found = true
+			selected := issueType
+			selectedType = &selected
 			break
 		}
 	}
-	if !found {
+	if selectedType == nil {
 		jiraError(w, http.StatusBadRequest, "The issue type is not available in this project.")
 		return
 	}
@@ -249,7 +254,11 @@ func (h *Handler) createMetaFields(w http.ResponseWriter, r *http.Request, proje
 	safeStart := min(start, len(project.Fields))
 	end := min(safeStart+limit, len(project.Fields))
 	values := make([]map[string]any, 0, end-safeStart)
-	for _, field := range project.Fields[safeStart:end] {
+	for _, source := range project.Fields[safeStart:end] {
+		field := source
+		if field.ID == "parent" {
+			field.Required = selectedType.Subtask
+		}
 		values = append(values, h.createFieldBean(field))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -277,7 +286,7 @@ func (h *Handler) createMetaProject(r *http.Request, projectIDOrKey string) (*mo
 
 func (h *Handler) createMetaIssueTypeBean(issueType models.IssueType) map[string]any {
 	return map[string]any{
-		"id": issueType.ID, "name": issueType.Name, "description": "", "subtask": false,
+		"id": issueType.ID, "name": issueType.Name, "description": "", "subtask": issueType.Subtask,
 		"iconUrl": h.BaseURL + "/static/img/issuetype-task.svg",
 		"self":    h.BaseURL + "/rest/api/3/issuetype/" + issueType.ID,
 	}

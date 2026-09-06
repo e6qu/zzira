@@ -23,7 +23,7 @@ test('create journey and createmeta share every supported field', async ({ page,
   const demoID = (await (await request.get('/rest/api/3/myself', auth)).json()).accountId;
   const unique = Date.now().toString();
 
-  const fieldResponse = await request.post('/rest/api/3/field', {
+	const fieldResponse = await request.post('/rest/api/3/field', {
     ...auth,
     data: { name: `Create score ${unique}`, type: 'number', description: 'Relative delivery effort.' },
   });
@@ -43,16 +43,28 @@ test('create journey and createmeta share every supported field', async ({ page,
   const issueTypes = await request.get('/rest/api/3/issue/createmeta/ZZ/issuetypes', auth);
   expect(issueTypes.status()).toBe(200);
   const issueTypeBody = await issueTypes.json();
-  expect(issueTypeBody.issueTypes).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'it_task', name: 'Task' })]));
+	expect(issueTypeBody.issueTypes).toEqual(expect.arrayContaining([
+		expect.objectContaining({ id: 'it_task', name: 'Task', subtask: false }),
+		expect.objectContaining({ id: 'it_subtask', name: 'Sub-task', subtask: true }),
+	]));
 
-  const fieldMeta = await request.get('/rest/api/3/issue/createmeta/ZZ/issuetypes/it_task?maxResults=100', auth);
-  expect(fieldMeta.status()).toBe(200);
-  const fieldMetaBody = await fieldMeta.json();
+	let fieldStart = 0;
+	let fieldMetaBody: any = { fields: [], total: 0 };
+	do {
+		const fieldMeta = await request.get(`/rest/api/3/issue/createmeta/ZZ/issuetypes/it_task?startAt=${fieldStart}&maxResults=100`, auth);
+		expect(fieldMeta.status()).toBe(200);
+		const pageBody = await fieldMeta.json();
+		fieldMetaBody.fields.push(...pageBody.fields);
+		fieldMetaBody.total = pageBody.total;
+		fieldStart += pageBody.fields.length;
+	} while (fieldStart < fieldMetaBody.total);
   expect(fieldMetaBody.fields.map((field: any) => field.fieldId)).toEqual(expect.arrayContaining([
-    'project', 'issuetype', 'summary', 'description', 'assignee', 'priority', 'labels', 'security', customFieldID,
+		'project', 'issuetype', 'summary', 'description', 'assignee', 'priority', 'labels', 'parent', 'security', customFieldID,
   ]));
-  const customMeta = fieldMetaBody.fields.find((field: any) => field.fieldId === customFieldID);
+	const customMeta = fieldMetaBody.fields.find((field: any) => field.fieldId === customFieldID);
   expect(customMeta.schema).toMatchObject({ type: 'number', customId: Number(customFieldID.replace('customfield_', '')) });
+	const subtaskMeta = await (await request.get('/rest/api/3/issue/createmeta/ZZ/issuetypes/it_subtask?maxResults=100', auth)).json();
+	expect(subtaskMeta.fields.find((field: any) => field.fieldId === 'parent')).toMatchObject({ required: true, schema: { system: 'parent' } });
 
   const legacyMeta = await request.get('/rest/api/3/issue/createmeta?projectKeys=ZZ&issuetypeIds=it_task&expand=projects.issuetypes.fields', auth);
   expect(legacyMeta.status()).toBe(200);
@@ -113,4 +125,29 @@ test('create journey and createmeta share every supported field', async ({ page,
   await dialog.getByRole('button', { name: 'Create issue' }).click();
   await expect(page).toHaveURL(/\/browse\/ZZ-\d+$/);
   await expect(page.locator('.issue-summary')).toHaveText(retrySummary);
+
+	await page.locator('#global-create-issue').click();
+	const subtaskDialog = page.getByRole('dialog', { name: 'Create issue' });
+	await page.selectOption('#create-issuetype', 'it_subtask');
+	await expect(page.locator('#create-issuetype')).toHaveValue('it_subtask');
+	await expect(page.locator('#create-parent')).toHaveAttribute('required', '');
+	await page.fill('#create-summary', `Hierarchy child ${unique}`);
+	await page.locator('.create-more summary').click();
+	const parentOption = page.locator('#create-parent option').filter({ hasText: createdKey });
+	await page.selectOption('#create-parent', await parentOption.getAttribute('value') as string);
+	const previousURL = page.url();
+	await Promise.all([
+		page.waitForURL(url => url.href !== previousURL && /\/browse\/ZZ-\d+$/.test(url.pathname)),
+		subtaskDialog.getByRole('button', { name: 'Create issue', exact: true }).click(),
+	]);
+	await expect(page.getByLabel('Parent')).toContainText(createdKey);
+	const childKey = page.url().split('/').pop()!;
+	const childIssue = await (await request.get(`/rest/api/3/issue/${childKey}`, auth)).json();
+	expect(childIssue.fields).toMatchObject({
+		parent: { key: createdKey, fields: { summary: `Metadata UI create ${unique}` } },
+		issuetype: { id: 'it_subtask', subtask: true },
+	});
+	await page.goto(`/browse/${createdKey}`);
+	await expect(page.getByRole('heading', { name: 'Sub-tasks' })).toBeVisible();
+	await expect(page.getByRole('link', { name: new RegExp(`${childKey} Hierarchy child`) })).toBeVisible();
 });

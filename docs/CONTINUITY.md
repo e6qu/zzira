@@ -906,9 +906,37 @@ Validation after date-window workflow validators:
   generated inventory and coverage checks, diff check, primary-page light/dark
   axe scan, and 320 px reflow gate pass.
 
+Validation after issue hierarchy and parent/child workflow rules:
+
+- Migration 052 adds an indexed, referentially constrained `parent_id` and the
+  built-in Sub-task work type. Command validation requires every sub-task to
+  use a visible non-sub-task parent in the same project and prevents parent
+  deletion while children remain.
+- Jira create, get, update and create-metadata resources accept and return the
+  `parent` field by ID or key, expose the issue type `subtask` flag, and mark
+  parent as required in Sub-task create metadata. Sync actions and changelogs
+  retain the same persisted relationship.
+- The browser create dialog refreshes when the work type changes, requires a
+  parent for Sub-task, supports later parent reassignment, links child to
+  parent, and lists direct sub-tasks on the parent work item.
+- `system:parent-or-child-blocking-condition` blocks a parent while any child
+  has a configured status. `system:parent-or-child-blocking-validator` blocks
+  a child while its parent has a configured status. REST discovery, browser
+  transition discovery, automation, and execution hydrate the same hierarchy
+  facts; capabilities and modern workflow resources round-trip both rule keys.
+- Unit tests cover rule truth tables and malformed blocker configuration. A
+  PostgreSQL command journey proves persisted hierarchy and both transition
+  directions, the Jira REST journey proves parent create/get/reassignment and
+  required-parent validation, and focused Chromium journeys cover Sub-task UI
+  creation/navigation and both workflow editor controls.
+- The full PostgreSQL Go suite, vet, WebAssembly build, seven conformance tests,
+  generated inventory and coverage checks, diff check, primary-page light/dark
+  axe scan, and 320 px reflow gate pass.
+
 ## Current change
 
-1. Add work-item hierarchy for parent/child workflow blocking rules.
+1. Extend copy-field workflow post-functions to parent relationships now that
+   issue hierarchy is persisted.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 

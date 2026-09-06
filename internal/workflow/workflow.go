@@ -19,6 +19,8 @@ const (
 	RulePreviousStatusCondition  = "system:previous-status-condition"
 	RulePreviousStatusValidator  = "system:previous-status-validator"
 	RuleSeparationOfDuties       = "system:separation-of-duties"
+	RuleParentChildCondition     = "system:parent-or-child-blocking-condition"
+	RuleParentChildValidator     = "system:parent-or-child-blocking-validator"
 	RuleCheckPermissionValidator = "system:check-permission-validator"
 	RuleValidateFieldValue       = "system:validate-field-value"
 	RuleChangeAssignee           = "system:change-assignee"
@@ -54,6 +56,8 @@ type EvaluationContext struct {
 	CurrentStatus string
 	Transitions   []TransitionHistory
 	Permissions   map[string]bool
+	ParentStatus  string
+	ChildStatuses []string
 	IsAPI         bool
 }
 
@@ -229,6 +233,14 @@ func evaluateCondition(rule Rule, context EvaluationContext) bool {
 			}
 		}
 		return true
+	case RuleParentChildCondition:
+		blocked := stringSet(rule.Parameters["statusIds"])
+		for _, statusID := range context.ChildStatuses {
+			if blocked[statusID] {
+				return false
+			}
+		}
+		return true
 	case RuleRestrictFromAllUsers:
 		return rule.Parameters["restrictMode"] == "users" && context.IsAPI
 	case RuleRestrictIssueTransition:
@@ -319,6 +331,10 @@ func (t Transition) ValidateRules(context EvaluationContext) error {
 			permissionKey := validator.Parameters["permissionKey"]
 			if !context.Permissions[permissionKey] {
 				return fmt.Errorf("permission %s is required to perform this transition", permissionKey)
+			}
+		case RuleParentChildValidator:
+			if stringSet(validator.Parameters["statusIds"])[context.ParentStatus] {
+				return fmt.Errorf("parent status blocks this transition")
 			}
 		default:
 			return fmt.Errorf("unsupported workflow validator %q", validator.RuleKey)
@@ -587,6 +603,10 @@ func ValidateTransitionRules(transition Transition) error {
 			if !jiraPermissionKeys[validator.Parameters["permissionKey"]] {
 				return fmt.Errorf("workflow permission validator has an unknown permission key")
 			}
+		case RuleParentChildValidator:
+			if validator.Parameters["blocker"] != "PARENT" || len(commaValues(validator.Parameters["statusIds"])) == 0 {
+				return fmt.Errorf("parent blocking validator requires blocker PARENT and statusIds")
+			}
 		default:
 			return fmt.Errorf("workflow validator %q is unsupported or incomplete", validator.RuleKey)
 		}
@@ -725,6 +745,10 @@ func validateConditionConfiguration(group ConditionGroup, seen map[string]bool) 
 			if strings.TrimSpace(condition.Parameters["fromStatusId"]) == "" || strings.TrimSpace(condition.Parameters["toStatusId"]) == "" {
 				return fmt.Errorf("separation-of-duties requires from and to status ids")
 			}
+		case RuleParentChildCondition:
+			if condition.Parameters["blocker"] != "CHILD" || len(commaValues(condition.Parameters["statusIds"])) == 0 {
+				return fmt.Errorf("child blocking condition requires blocker CHILD and statusIds")
+			}
 		default:
 			return fmt.Errorf("workflow condition %q is unsupported or incomplete", condition.RuleKey)
 		}
@@ -735,6 +759,14 @@ func validateConditionConfiguration(group ConditionGroup, seen map[string]bool) 
 		}
 	}
 	return nil
+}
+
+func stringSet(values string) map[string]bool {
+	set := make(map[string]bool)
+	for _, value := range commaValues(values) {
+		set[value] = true
+	}
+	return set
 }
 
 func validatePreviousStatusRule(parameters map[string]string, condition bool) error {

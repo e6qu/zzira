@@ -31,12 +31,12 @@ func TestBacklogSprintLifecycleAndExclusivePlanningMembership(t *testing.T) {
 		t.Skip("demo user not seeded")
 	}
 	issueOne, _, err := st.CreateIssue(ctx, actorID, "prj_default", "backlog lifecycle one",
-		json.RawMessage(`{"type":"doc","version":1,"content":[]}`), "st_todo", "it_task", "pr_medium", "", nil, nil, "")
+		json.RawMessage(`{"type":"doc","version":1,"content":[]}`), "st_todo", "it_task", "pr_medium", "", nil, nil, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	issueTwo, _, err := st.CreateIssue(ctx, actorID, "prj_default", "backlog lifecycle two",
-		json.RawMessage(`{"type":"doc","version":1,"content":[]}`), "st_todo", "it_task", "pr_medium", "", nil, nil, "")
+		json.RawMessage(`{"type":"doc","version":1,"content":[]}`), "st_todo", "it_task", "pr_medium", "", nil, nil, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}

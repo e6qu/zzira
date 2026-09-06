@@ -20,13 +20,16 @@ JOIN issue_types it ON it.id = i.issuetype_id
 LEFT JOIN priorities pr2 ON pr2.id = i.priority_id
 LEFT JOIN users a ON a.id = i.assignee_id
 LEFT JOIN users r ON r.id = i.reporter_id
+LEFT JOIN issues parent ON parent.id = i.parent_id
 JOIN projects pr ON pr.id = i.project_id
 `
 
 const searchSelect = `
 SELECT i.id, i.workspace_id, i.project_id, i.key, i.summary, i.description,
        st.id, st.name, st.category,
-       it.id, it.name, it.icon,
+	       it.id, it.name, it.icon,
+	       it.subtask,
+	       parent.id, parent.key, parent.summary,
        pr2.id, pr2.name,
        a.id, a.display_name,
 	       r.id, r.display_name,
@@ -288,6 +291,7 @@ func issueJoinTables() string {
 	LEFT JOIN priorities pr2 ON pr2.id = i.priority_id
 	LEFT JOIN users a ON a.id = i.assignee_id
 	LEFT JOIN users r ON r.id = i.reporter_id
+	LEFT JOIN issues parent ON parent.id = i.parent_id
 	JOIN projects pr ON pr.id = i.project_id`
 }
 

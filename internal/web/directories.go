@@ -881,6 +881,12 @@ func (h *Handler) AddWorkflowTransition(w http.ResponseWriter, r *http.Request, 
 			},
 		})
 	}
+	if statusID := r.PostFormValue("child_blocking_status"); statusID != "" {
+		conditions = append(conditions, workflow.Rule{
+			ID: store.NewID("rule"), RuleKey: workflow.RuleParentChildCondition,
+			Parameters: map[string]string{"blocker": "CHILD", "statusIds": statusID},
+		})
+	}
 	if len(conditions) > 0 {
 		transition.Conditions = &workflow.ConditionGroup{Operation: "ALL", Conditions: conditions}
 	}
@@ -945,6 +951,12 @@ func (h *Handler) AddWorkflowTransition(w http.ResponseWriter, r *http.Request, 
 		transition.Validators = append(transition.Validators, workflow.Rule{
 			ID: store.NewID("rule"), RuleKey: workflow.RuleCheckPermissionValidator,
 			Parameters: map[string]string{"permissionKey": permissionKey},
+		})
+	}
+	if statusID := r.PostFormValue("parent_blocking_status"); statusID != "" {
+		transition.Validators = append(transition.Validators, workflow.Rule{
+			ID: store.NewID("rule"), RuleKey: workflow.RuleParentChildValidator,
+			Parameters: map[string]string{"blocker": "PARENT", "statusIds": statusID},
 		})
 	}
 	if effect := r.PostFormValue("assignee_effect"); effect != "" {
