@@ -513,6 +513,17 @@ Validation after modern workflow mutations:
 - Exact reviewed API coverage is 122 of 1,207 operations: 115 partial, 7
   missing, and 1,085 explicitly unassessed.
 
+Validation after workflow preview:
+
+- PostgreSQL Jira integration previews only published workflows associated
+  with the requested project, preserves ID/name/issue-type lookup order,
+  coalesces query context, and returns directed transitions, versions, and
+  related status metadata; invalid selectors and unassociated workflows fail.
+- The full PostgreSQL Go suite, vet, WebAssembly build, seven conformance tests,
+  generated inventory/coverage checks, and `git diff --check` pass.
+- Exact reviewed API coverage is 123 of 1,207 operations: 116 partial, 7
+  missing, and 1,084 explicitly unassessed.
+
 ## Current change
 
 1. Add new-status and explicit status-mapping support to modern workflow

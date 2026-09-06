@@ -1232,6 +1232,17 @@
         "docs/CLOUD_PARITY.md"
       ],
       "notes": "Atomically updates validated workspace workflows with optimistic document versions, rollback across batches, audit, and active issue-status safety; explicit status mappings, status creation, rules, layouts, and queued tasks remain."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/workflows/preview",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_preview.go",
+        "internal/store/workflow_usage.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Previews published workflows actually associated with a workspace project by ordered ID, case-insensitive name, and issue-type lookups, returning query contexts, directed topology, versions, and related statuses; project-scoped layouts, rules, and approval configuration remain."
     }
   ]
 }

@@ -296,6 +296,14 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	if !strings.Contains(workflowSearch.Body.String(), `"id":"`+workflowID+`"`) || !strings.Contains(workflowSearch.Body.String(), `"toStatusReference":"st_done"`) || !strings.Contains(workflowSearch.Body.String(), `"statusCategory":"DONE"`) {
 		t.Fatal(workflowSearch.Body.String())
 	}
+	call(member, "POST", "/rest/api/3/workflows/preview", `{"projectId":"`+projectID+`","workflowIds":["`+workflowID+`"]}`, 403)
+	workflowPreview := call(actor, "POST", "/rest/api/3/workflows/preview", `{"projectId":"`+projectID+`","workflowIds":["`+workflowID+`"],"workflowNames":["Simple API lifecycle"],"issueTypeIds":["it_task"]}`, 200)
+	if !strings.Contains(workflowPreview.Body.String(), `"id":"`+workflowID+`"`) || !strings.Contains(workflowPreview.Body.String(), `"issueTypes":["it_task"]`) || !strings.Contains(workflowPreview.Body.String(), `"rawName":"Done"`) || !strings.Contains(workflowPreview.Body.String(), `"toStatusReference":"st_done"`) {
+		t.Fatal(workflowPreview.Body.String())
+	}
+	call(actor, "POST", "/rest/api/3/workflows/preview", `{"projectId":"`+projectID+`","workflowIds":["`+modernWorkflowID+`"]}`, 404)
+	call(actor, "POST", "/rest/api/3/workflows/preview", `{"projectId":"`+projectID+`","issueTypeIds":["it_missing"]}`, 400)
+	call(actor, "POST", "/rest/api/3/workflows/preview", `{"projectId":"`+projectID+`"}`, 400)
 	workflowPage := call(actor, "GET", "/rest/api/3/workflows/search?maxResults=1", "", 200)
 	if !strings.Contains(workflowPage.Body.String(), `"nextPage":"https://zzira.test/rest/api/3/workflows/search?maxResults=1\u0026startAt=1"`) {
 		t.Fatal(workflowPage.Body.String())
