@@ -1430,6 +1430,105 @@
         "docs/CLOUD_PARITY.md"
       ],
       "notes": "Returns the documented deployment key, timestamp, allowed status and detail array for stored deployments; configurable deployment gates and blocked issue details remain."
+    },
+    {
+      "operationId": "jira-service-management:GET:/rest/servicedeskapi/info",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service.go",
+        "internal/store/service.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Returns the authenticated Service Management version, platform, licensing and self-link shape; exact Atlassian build metadata remains deployment-specific."
+    },
+    {
+      "operationId": "jira-service-management:GET:/rest/servicedeskapi/servicedesk",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service.go",
+        "internal/store/service.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Returns paged service desks created atomically with service projects; permission schemes, expand variants and exact pagination links remain."
+    },
+    {
+      "operationId": "jira-service-management:GET:/rest/servicedeskapi/servicedesk/{serviceDeskId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service.go",
+        "internal/store/service.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Returns workspace-scoped service desk and backing service-project identity with Jira links; granular agent/customer permissions remain."
+    },
+    {
+      "operationId": "jira-service-management:GET:/rest/servicedeskapi/requesttype",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service.go",
+        "internal/store/service.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Searches and pages request types across visible workspace service desks; hidden/restricted types and every expand remain."
+    },
+    {
+      "operationId": "jira-service-management:GET:/rest/servicedeskapi/servicedesk/{serviceDeskId}/requesttype",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service.go",
+        "internal/store/service.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Searches and pages request types within one service desk with default IT-help and incident types; group/restriction filters and expands remain."
+    },
+    {
+      "operationId": "jira-service-management:POST:/rest/servicedeskapi/servicedesk/{serviceDeskId}/requesttype",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service.go",
+        "internal/store/service.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Creates a workspace-scoped request type backed by an existing Jira issue type for administrators; full request-form field editing and audit remain."
+    },
+    {
+      "operationId": "jira-service-management:GET:/rest/servicedeskapi/servicedesk/{serviceDeskId}/requesttype/{requestTypeId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service.go",
+        "internal/store/service.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Returns a request type with portal, group, issue-type and creation metadata; icon, field expansion and restriction policy remain partial."
+    },
+    {
+      "operationId": "jira-service-management:DELETE:/rest/servicedeskapi/servicedesk/{serviceDeskId}/requesttype/{requestTypeId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service.go",
+        "internal/store/service.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Deletes a workspace-scoped request type for administrators with the documented empty response; request migration and audit remain."
+    },
+    {
+      "operationId": "jira-service-management:GET:/rest/servicedeskapi/servicedesk/{serviceDeskId}/requesttype/{requestTypeId}/field",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service.go",
+        "internal/store/service.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Returns customer form metadata for required summary and optional description fields; custom fields, preset/valid values and field configuration remain."
     }
   ]
 }

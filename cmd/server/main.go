@@ -427,6 +427,7 @@ func main() {
 	mux.HandleFunc("POST /rest/zzira/1/product-activity", webHandler.RecordProductActivity)
 	mux.Handle("/rest/agile/1.0/", agileAPI)
 	mux.Handle("/rest/api/3/", api)
+	mux.Handle("/rest/servicedeskapi/", api)
 	mux.Handle("/jira/forms/cloud/", api)
 	mux.Handle("/rest/devinfo/0.10/", api)
 	mux.Handle("/jira/devinfo/0.1/cloud/", api)

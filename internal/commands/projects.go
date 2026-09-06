@@ -72,16 +72,23 @@ func (s *Service) CreateProject(ctx context.Context, actorID, workspaceID string
 	if !projectKeyPattern.MatchString(in.Key) {
 		fields["key"] = "Use 2–10 uppercase letters, numbers or underscores, starting with a letter."
 	}
-	if in.ProjectTypeKey != "software" {
-		fields["projectTypeKey"] = "Only software projects are currently supported."
-	}
 	boardType := "scrum"
-	switch in.ProjectTemplateKey {
-	case "", "com.pyxis.greenhopper.jira:gh-simplified-scrum-classic":
-	case "com.pyxis.greenhopper.jira:gh-simplified-kanban-classic":
+	switch in.ProjectTypeKey {
+	case "software":
+		switch in.ProjectTemplateKey {
+		case "", "com.pyxis.greenhopper.jira:gh-simplified-scrum-classic":
+		case "com.pyxis.greenhopper.jira:gh-simplified-kanban-classic":
+			boardType = "kanban"
+		default:
+			fields["projectTemplateKey"] = "Choose a company-managed Scrum or Kanban template."
+		}
+	case "service_desk":
 		boardType = "kanban"
+		if in.ProjectTemplateKey != "com.atlassian.servicedesk:simplified-it-service-management" {
+			fields["projectTemplateKey"] = "Choose the IT service management template."
+		}
 	default:
-		fields["projectTemplateKey"] = "Choose a company-managed Scrum or Kanban template."
+		fields["projectTypeKey"] = "Choose a software or service management project."
 	}
 	if in.LeadAccountID == "" {
 		fields["leadAccountId"] = "Choose a project lead."
@@ -92,7 +99,7 @@ func (s *Service) CreateProject(ctx context.Context, actorID, workspaceID string
 	if len(fields) > 0 {
 		return nil, &ProjectValidationError{fields}
 	}
-	p, err := s.Store.CreateProject(ctx, actorID, models.Project{WorkspaceID: workspaceID, Key: in.Key, Name: in.Name, Description: in.Description, URL: in.URL, LeadAccountID: in.LeadAccountID, AssigneeType: in.AssigneeType}, boardType)
+	p, err := s.Store.CreateProject(ctx, actorID, models.Project{WorkspaceID: workspaceID, Key: in.Key, Name: in.Name, Description: in.Description, URL: in.URL, LeadAccountID: in.LeadAccountID, AssigneeType: in.AssigneeType, ProjectTypeKey: in.ProjectTypeKey}, boardType)
 	var pgerr *pgconn.PgError
 	if errors.As(err, &pgerr) && pgerr.Code == "23505" {
 		return nil, &ProjectValidationError{map[string]string{"key": "A project with this key already exists."}}

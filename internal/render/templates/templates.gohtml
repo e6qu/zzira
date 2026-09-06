@@ -792,7 +792,7 @@
     <header class="page-header"><div><span class="eyebrow">Spaces</span><h1>Projects</h1><p>Browse every software project, its board, work items, and active workflow.</p></div>{{if .Data.CanCreate}}<a class="btn btn-primary" href="/projects/new">Create project</a>{{end}}</header>
     <div class="directory-grid">
     {{range .Data.Projects}}<article class="directory-card project-card">
-      <header><span class="project-card-avatar" aria-hidden="true">{{.Project.Key}}</span><div><h2><a href="/projects/{{.Project.Key}}">{{.Project.Name}}</a></h2><p>{{.Project.Key}} · Software project</p></div></header>
+      <header><span class="project-card-avatar" aria-hidden="true">{{.Project.Key}}</span><div><h2><a href="/projects/{{.Project.Key}}">{{.Project.Name}}</a></h2><p>{{.Project.Key}} · {{if eq .Project.ProjectTypeKey "service_desk"}}Service project{{else}}Software project{{end}}</p></div></header>
       <dl><div><dt>Work items</dt><dd>{{.IssueCount}}</dd></div><div><dt>Workflow</dt><dd>{{.WorkflowName}}</dd></div><div><dt>Boards</dt><dd>{{len .Boards}}</dd></div></dl>
       <footer><a href="/projects/{{.Project.Key}}">Open project</a><a href="/issues/{{.Project.Key}}">View work</a>{{with .PrimaryBoard}}<a href="/board/{{.ID}}/backlog">Plan backlog</a><a href="/board/{{.ID}}">Open board</a>{{end}}</footer>
     </article>{{else}}<div class="empty-state"><strong>No projects yet</strong><small>Projects available to this workspace will appear here.</small></div>{{end}}

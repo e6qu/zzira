@@ -1047,11 +1047,27 @@ Validation after the first DORA report:
   a 50% failure-rate case, a two-hour linked-commit lead time, a 2.5-hour
   incident recovery, and fact idempotency under a stale update.
 
+Validation after the Jira Service Management project foundation:
+
+- Migration 057 gives projects an explicit `software` or `service_desk` type
+  and adds workspace-scoped service desks and request types. Creating a service
+  project atomically provisions its desk plus default IT-help and incident
+  request types.
+- The project creation UI and Jira Platform project API accept the IT service
+  management template and return `projectTypeKey: service_desk`.
+- Nine pinned `/rest/servicedeskapi` operations cover product info, paged desk
+  discovery/detail, global and desk request-type search, administrator create
+  and delete, request-type detail, and request field metadata.
+- A PostgreSQL contract journey proves tenant isolation, project typing,
+  defaults, custom request-type lifecycle and form metadata. A Chromium admin
+  journey creates the service project and discovers its customer form through
+  Jira Service Management APIs.
+
 ## Current change
 
-1. Implement the Jira Service Management service-project, request-type,
-   customer portal and request foundation, then feed typed incidents and SLAs
-   into the report facts.
+1. Implement Jira Service Management customer identities, portal request
+   creation/list/detail, public comments and customer transitions on the new
+   service-project and request-type foundation.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 

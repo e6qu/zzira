@@ -266,6 +266,9 @@ browser UI, sync behavior where applicable, and tests.
     request types, dynamic forms, requests, queues, calendars, SLAs, approvals,
     participants, comments, attachments, feedback, incidents, problems, changes,
     knowledge links and Assets with the public REST contract.
+    The foundation now creates service projects and desks atomically, seeds help
+    and incident request types, exposes request field metadata, and implements
+    the first nine pinned discovery and request-type operations.
 11. **Service Management journeys.** Add the customer help center, request
     portal, agent request workspace, queues, SLA timeline, service setup,
     incident/problem/change experiences and service reporting.

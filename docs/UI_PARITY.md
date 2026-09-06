@@ -29,6 +29,7 @@ Status: ✅ browser-tested complete journey · 🟡 usable tested subset · ⛔ 
 | Service customer requests help | Missing | Help center, knowledge discovery, request forms, conversation, approval, notifications and feedback remain |
 | Service agent works a queue | Missing | Queue, request workspace, private collaboration, SLA, assignment, approval and escalation remain |
 | Service manager runs a service | Missing | Portal/request-type setup, forms, calendars, SLAs, Assets, incident/problem/change configuration and reporting remain |
+| Admin starts a service project | Partial | ✅ Service-management template creation, service-project identity, atomic desk provisioning, default help and incident request types, request field metadata and Jira Service Management API discovery; portal configuration and the full service lifecycle remain |
 | Knowledge user authors a page | Partial | ✅ Space/page create, storage editor, drafts, parents, history, search and trash/restore; complete editor, comments, attachments, restrictions and collaboration remain |
 | Knowledge team collaborates live | Missing | Live documents, presence, concurrent operations, inline discussion, tasks and notifications remain |
 | Knowledge user diagrams or models data | Missing | Whiteboards, diagrams, databases, object links, embeds and exports remain |

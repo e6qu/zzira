@@ -25,7 +25,7 @@ func (h *Handler) projectBean(p *models.Project) map[string]any {
 		"url":            p.URL,
 		"assigneeType":   p.AssigneeType,
 		"self":           h.BaseURL + "/rest/api/3/project/" + p.Key,
-		"projectTypeKey": "software",
+		"projectTypeKey": p.ProjectTypeKey,
 		"simplified":     true,
 		"style":          "classic",
 		"avatarUrls": map[string]string{
