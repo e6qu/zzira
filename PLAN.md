@@ -255,6 +255,10 @@ browser UI, sync behavior where applicable, and tests.
 8. **Reports and dashboards.** Add Agile and Jira reports, four DORA measures,
    service/release/automation/knowledge metrics, report exports, scheduled
    delivery, dashboard subscriptions, complete shares and report/app gadgets.
+   The first DORA slice now persists immutable build/deployment updates and
+   calculates deployment frequency, commit-to-production lead time, change
+   failure rate and incident recovery time with permission filtering, selectable
+   windows, an accessible chart/table and recent production evidence.
 9. **Automation completion.** Add Cron, event, webhook and manual triggers;
    conditions, branches, smart values, related-object traversal, connections,
    templates, the product action catalog, quotas and complete audit controls.

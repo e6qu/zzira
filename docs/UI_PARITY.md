@@ -22,6 +22,7 @@ Status: ✅ browser-tested complete journey · 🟡 usable tested subset · ⛔ 
 | Manager configures a project | Partial | ✅ Scrum/Kanban create, details, lead/default assignment and workflow selection; roles, types, fields, screens, schemes, security and lifecycle remain |
 | Manager plans across teams | Missing | Hierarchy, teams, capacity, dependencies, timeline, scenarios and cross-project plans remain |
 | Agile coach diagnoses delivery | Missing | Sprint, velocity, burnup, burndown, cumulative-flow and control-chart journeys remain |
+| Engineering manager reviews delivery | Partial | ✅ Permission-filtered DORA summary, window selection, daily accessible production chart/table, recent environment events, release rollup, dark theme and 320 px reflow; comparisons, targets, filters, exports and subscriptions remain |
 | Manager builds an operating dashboard | Partial | ✅ Configurable dashboards, layouts, favourites, sharing, refresh and native work-item gadgets; report gadgets, complete shares, subscriptions and exports remain |
 | Admin designs and publishes a workflow | Partial | ✅ Global or project-scoped creation, automatic project assignment, connected status map, drag and keyboard layout editing, serialized draft saves, custom transition drafts with visual reporter/assignee/API-only restrictions, typed system-field comparisons, previous-status, separation-of-duties and child-status conditions, history, required-field, changed-field, single-value, regular-expression, date-comparison, date-window, Jira-permission, parent-status and Advanced Forms validators, assignee effects, label append/replace, same-or-parent field copy, registered-webhook and branch-created development triggers, screen fields, published-version isolation, explicit publish/discard, plus nested API rule configuration enforced in browser and REST transitions; custom-field UI selection, advanced rule parameters and complete scheme administration remain |
 | Admin automates work | Partial | ✅ Fixed schedule → JQL → label/assign/transition flow, management, run-now and audit; trigger/action catalog, conditions, branches, smart values and templates remain |
@@ -111,7 +112,8 @@ remain stable.
 
 The visual signature is an operating timeline linking work, code, build,
 deployment, incident, recovery, and release evidence. Reports use accessible SVG
-and equivalent tables. Diagrams expose keyboard editing and a maintained text
+and equivalent tables. The first DORA report uses immutable delivery updates
+and visible issue history; see [REPORTS.md](REPORTS.md). Diagrams expose keyboard editing and a maintained text
 description. Dense lists keep sorting and filtering visible rather than hiding
 routine work inside cards or modal layers.
 

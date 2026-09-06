@@ -26,7 +26,7 @@ func (s *Store) UpsertSoftwareBuilds(ctx context.Context, workspaceID string, bu
 		if build.PipelineID == "" || !json.Valid(build.Payload) {
 			return fmt.Errorf("build key, updateSequenceNumber, and payload are required")
 		}
-		_, err = tx.Exec(ctx, `
+		tag, err := tx.Exec(ctx, `
 			INSERT INTO software_builds(workspace_id,pipeline_id,build_number,update_sequence_number,issue_keys,display_name,url,state,last_updated,properties,payload)
 			VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
 			ON CONFLICT (workspace_id,pipeline_id,build_number) DO UPDATE SET
@@ -38,6 +38,16 @@ func (s *Store) UpsertSoftwareBuilds(ctx context.Context, workspaceID string, bu
 			build.DisplayName, build.URL, build.State, build.LastUpdated, normalizedProperties(build.Properties), build.Payload)
 		if err != nil {
 			return err
+		}
+		if tag.RowsAffected() == 1 {
+			_, err = tx.Exec(ctx, `
+				INSERT INTO software_delivery_facts(workspace_id,fact_type,pipeline_id,entity_sequence_number,update_sequence_number,issue_keys,state,occurred_at,payload)
+				VALUES($1,'build',$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING`,
+				workspaceID, build.PipelineID, build.BuildNumber, build.UpdateSequenceNumber,
+				build.IssueKeys, build.State, build.LastUpdated, build.Payload)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return tx.Commit(ctx)
@@ -70,7 +80,7 @@ func (s *Store) UpsertSoftwareDeployments(ctx context.Context, workspaceID strin
 		if deployment.PipelineID == "" || deployment.EnvironmentID == "" || !json.Valid(deployment.Payload) {
 			return fmt.Errorf("deployment key, updateSequenceNumber, and payload are required")
 		}
-		_, err = tx.Exec(ctx, `
+		tag, err := tx.Exec(ctx, `
 			INSERT INTO software_deployments(workspace_id,pipeline_id,environment_id,deployment_sequence_number,update_sequence_number,issue_keys,display_name,url,state,environment_name,environment_type,last_updated,properties,payload)
 			VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
 			ON CONFLICT (workspace_id,pipeline_id,environment_id,deployment_sequence_number) DO UPDATE SET
@@ -85,6 +95,17 @@ func (s *Store) UpsertSoftwareDeployments(ctx context.Context, workspaceID strin
 			normalizedProperties(deployment.Properties), deployment.Payload)
 		if err != nil {
 			return err
+		}
+		if tag.RowsAffected() == 1 {
+			_, err = tx.Exec(ctx, `
+				INSERT INTO software_delivery_facts(workspace_id,fact_type,pipeline_id,environment_id,entity_sequence_number,update_sequence_number,issue_keys,state,environment_type,occurred_at,payload)
+				VALUES($1,'deployment',$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT DO NOTHING`,
+				workspaceID, deployment.PipelineID, deployment.EnvironmentID, deployment.DeploymentSequenceNumber,
+				deployment.UpdateSequenceNumber, deployment.IssueKeys, deployment.State,
+				deployment.EnvironmentType, deployment.LastUpdated, deployment.Payload)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return tx.Commit(ctx)

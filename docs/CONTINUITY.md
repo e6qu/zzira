@@ -1030,10 +1030,28 @@ Validation after Jira Software builds and deployments:
   and dark accessibility checks, and 320 px reflow. The full PostgreSQL Go
   suite, vet, WASM build, inventory and coverage checks pass.
 
+Validation after the first DORA report:
+
+- Migration 056 records every accepted build and deployment update as an
+  immutable, sequence-keyed fact and backfills current delivery snapshots.
+  Stale retries cannot create facts.
+- `/projects/{key}/reports/dora` offers 7, 30 and 90 day permission-filtered
+  deployment frequency, commit-to-production lead time, production change
+  failure rate and incident recovery time. Current deployment state is derived
+  from the highest immutable update sequence for every deployment key.
+- The production trend uses an accessible SVG with exact keyboard-reachable
+  daily data, recent pipeline/environment events, calculation definitions and
+  explicit empty states. The release Chromium journey covers the report in
+  light and dark themes and at 320 px.
+- PostgreSQL integration proves successful and rolled-back production counts,
+  a 50% failure-rate case, a two-hour linked-commit lead time, a 2.5-hour
+  incident recovery, and fact idempotency under a stale update.
+
 ## Current change
 
-1. Add immutable delivery facts and the first DORA metrics report from the
-   development, build, deployment and issue-history foundations.
+1. Implement the Jira Service Management service-project, request-type,
+   customer portal and request foundation, then feed typed incidents and SLAs
+   into the report facts.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 
@@ -1057,6 +1075,7 @@ Validation after Jira Software builds and deployments:
 - [Automation behavior](AUTOMATION.md)
 - [Dashboard behavior](DASHBOARDS.md)
 - [Release behavior](RELEASES.md)
+- [Reports and DORA behavior](REPORTS.md)
 - [SSO behavior](shauth-sso.md)
 
 ## Continuity rules
