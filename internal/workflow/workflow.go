@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -302,6 +303,11 @@ func (t Transition) ValidateRules(context EvaluationContext) error {
 				if !workflowFieldsCompare(context.FieldValues[validator.Parameters["date1FieldKey"]], context.FieldValues[validator.Parameters["date2FieldKey"]], validator.Parameters["conditionSelected"], comparisonType) {
 					return fmt.Errorf("workflow date fields do not satisfy %s", validator.Parameters["conditionSelected"])
 				}
+			case "windowDateComparison":
+				days, _ := strconv.Atoi(validator.Parameters["numberOfDays"])
+				if !workflowFieldsWithinDays(context.FieldValues[validator.Parameters["date1FieldKey"]], context.FieldValues[validator.Parameters["date2FieldKey"]], days) {
+					return fmt.Errorf("workflow date field exceeds the %d-day window", days)
+				}
 			default:
 				return fmt.Errorf("unsupported workflow validator %q", validator.RuleKey)
 			}
@@ -348,6 +354,22 @@ func workflowFieldsCompare(leftRaw, rightRaw json.RawMessage, comparator, compar
 	for _, left := range comparableJSONValues(leftRaw) {
 		for _, right := range comparableJSONValues(rightRaw) {
 			if compareWorkflowValues(left, right, comparator, comparisonType) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func workflowFieldsWithinDays(dateRaw, referenceRaw json.RawMessage, days int) bool {
+	for _, dateValue := range comparableJSONValues(dateRaw) {
+		date, dateErr := parseWorkflowDate(workflowScalar(dateValue, "DATE_WITHOUT_TIME"), false)
+		if dateErr != nil {
+			continue
+		}
+		for _, referenceValue := range comparableJSONValues(referenceRaw) {
+			reference, referenceErr := parseWorkflowDate(workflowScalar(referenceValue, "DATE_WITHOUT_TIME"), false)
+			if referenceErr == nil && !date.After(reference.AddDate(0, 0, days)) {
 				return true
 			}
 		}
@@ -545,6 +567,14 @@ func ValidateTransitionRules(transition Transition) error {
 				case ">", ">=", "=", "<=", "<", "!=":
 				default:
 					return fmt.Errorf("workflow date validator condition is unsupported")
+				}
+			case "windowDateComparison":
+				if strings.TrimSpace(validator.Parameters["date1FieldKey"]) == "" || strings.TrimSpace(validator.Parameters["date2FieldKey"]) == "" {
+					return fmt.Errorf("workflow date-window validator requires two field keys")
+				}
+				days, err := strconv.Atoi(validator.Parameters["numberOfDays"])
+				if err != nil || days < 0 {
+					return fmt.Errorf("workflow date-window validator requires nonnegative numberOfDays")
 				}
 			default:
 				return fmt.Errorf("workflow validator %q is unsupported or incomplete", validator.RuleKey)

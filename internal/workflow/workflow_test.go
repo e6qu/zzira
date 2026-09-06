@@ -280,6 +280,29 @@ func TestDateFieldValidatorComparesEffectiveDates(t *testing.T) {
 	}
 }
 
+func TestDateWindowValidatorLimitsDaysPastReference(t *testing.T) {
+	transition := Transition{Validators: []Rule{{ID: "window", RuleKey: RuleValidateFieldValue, Parameters: map[string]string{
+		"ruleType": "windowDateComparison", "date1FieldKey": "customfield_target", "date2FieldKey": "customfield_baseline", "numberOfDays": "3",
+	}}}}
+	context := EvaluationContext{FieldValues: map[string]json.RawMessage{
+		"customfield_target": json.RawMessage(`"2026-09-09"`), "customfield_baseline": json.RawMessage(`"2026-09-06"`),
+	}}
+	if err := transition.ValidateRules(context); err != nil {
+		t.Fatal(err)
+	}
+	context.FieldValues["customfield_target"] = json.RawMessage(`"2026-09-10"`)
+	if err := transition.ValidateRules(context); err == nil {
+		t.Fatal("date beyond the configured window passed")
+	}
+	if err := ValidateTransitionRules(transition); err != nil {
+		t.Fatal(err)
+	}
+	transition.Validators[0].Parameters["numberOfDays"] = "-1"
+	if err := ValidateTransitionRules(transition); err == nil {
+		t.Fatal("negative date window was accepted")
+	}
+}
+
 func TestPermissionValidatorUsesGrantedJiraPermissions(t *testing.T) {
 	transition := Transition{Validators: []Rule{{ID: "permission", RuleKey: RuleCheckPermissionValidator, Parameters: map[string]string{
 		"permissionKey": "ADMINISTER_PROJECTS",

@@ -889,9 +889,26 @@ Validation after date-field comparison workflow validators:
   generated inventory and coverage checks, diff check, primary-page light/dark
   axe scan, and 320 px reflow gate pass.
 
+Validation after date-window workflow validators:
+
+- The `windowDateComparison` mode of `system:validate-field-value` requires the
+  first effective date to be no later than `numberOfDays` after its reference
+  date. The boundary is inclusive and both date-only and RFC 3339 values compare
+  by calendar date.
+- Workflow validation requires both field keys and a nonnegative integer day
+  limit. Modern resources round-trip the rule, and the administrator editor
+  exposes the target field, reference field, and constrained day input.
+- Unit tests prove the inclusive boundary, over-window failure, and negative
+  configuration rejection. PostgreSQL REST integration executes the stored
+  rule against registered datetime fields, and the focused Chromium journey
+  creates and publishes the visual controls.
+- The full PostgreSQL Go suite, vet, WebAssembly build, seven conformance tests,
+  generated inventory and coverage checks, diff check, primary-page light/dark
+  axe scan, and 320 px reflow gate pass.
+
 ## Current change
 
-1. Add executable date-window workflow validators and visual controls.
+1. Add work-item hierarchy for parent/child workflow blocking rules.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 
