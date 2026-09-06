@@ -31,6 +31,7 @@ type Handler struct {
 	WorkspaceSlug                     string
 	BaseURL                           string
 	InvitationNotificationsConfigured bool
+	DomainTXTLookup                   func(context.Context, string) ([]string, error)
 }
 
 type pageData struct {

@@ -2,6 +2,7 @@ package web
 
 import (
 	"errors"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -23,6 +24,7 @@ type adminPageData struct {
 	Organization                      *models.Organization
 	Site                              *models.Site
 	Products                          []*models.Product
+	Domains                           []*models.OrganizationDomain
 	Directory                         *models.Directory
 	Groups                            []adminGroupRow
 	Users                             []*models.User
@@ -44,6 +46,9 @@ type adminAuditAction struct {
 }
 
 var adminAuditActions = []adminAuditAction{
+	{Value: "domain.created", Name: "Domain added"},
+	{Value: "domain.deleted", Name: "Domain removed"},
+	{Value: "domain.verified", Name: "Domain verified"},
 	{Value: "group.created", Name: "Group created"},
 	{Value: "group.deleted", Name: "Group deleted"},
 	{Value: "group.member.added", Name: "Group member added"},
@@ -70,6 +75,10 @@ func (h *Handler) adminData(r *http.Request, workspaceID, message string) (admin
 	if err != nil {
 		return adminPageData{}, err
 	}
+	domains, err := h.Store.OrganizationDomains(r.Context(), organization.ID)
+	if err != nil {
+		return adminPageData{}, err
+	}
 	directories, err := h.Store.DirectoriesByOrganization(r.Context(), organization.ID)
 	if err != nil {
 		return adminPageData{}, err
@@ -78,6 +87,7 @@ func (h *Handler) adminData(r *http.Request, workspaceID, message string) (admin
 		Organization:                      organization,
 		Site:                              site,
 		Products:                          products,
+		Domains:                           domains,
 		Groups:                            []adminGroupRow{},
 		Users:                             []*models.User{},
 		Audit:                             []*models.OrganizationAuditEvent{},
@@ -128,6 +138,90 @@ func (h *Handler) adminData(r *http.Request, workspaceID, message string) (admin
 		return adminPageData{}, err
 	}
 	return data, nil
+}
+
+func (h *Handler) CreateAdminDomain(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form", http.StatusBadRequest)
+		return
+	}
+	_, err := h.Store.CreateOrganizationDomain(r.Context(), workspaceID, user.ID, r.FormValue("name"))
+	if err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, store.ErrAdminValidation) {
+			status = http.StatusBadRequest
+		} else if errors.Is(err, store.ErrAdminConflict) {
+			status = http.StatusConflict
+		}
+		http.Error(w, err.Error(), status)
+		return
+	}
+	http.Redirect(w, r, "/admin?saved="+url.QueryEscape("Domain added"), http.StatusSeeOther)
+}
+
+func (h *Handler) UpdateAdminDomain(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form", http.StatusBadRequest)
+		return
+	}
+	action := r.FormValue("action")
+	if action == "delete" {
+		if err := h.Store.DeleteOrganizationDomain(r.Context(), workspaceID, user.ID, r.PathValue("domainId")); err != nil {
+			status := http.StatusInternalServerError
+			if errors.Is(err, store.ErrAdminNotFound) {
+				status = http.StatusNotFound
+			}
+			http.Error(w, err.Error(), status)
+			return
+		}
+		http.Redirect(w, r, "/admin?saved="+url.QueryEscape("Domain removed"), http.StatusSeeOther)
+		return
+	}
+	if action != "verify" {
+		http.Error(w, "action must be verify or delete", http.StatusBadRequest)
+		return
+	}
+	organization, err := h.Store.OrganizationByWorkspace(r.Context(), workspaceID)
+	if err != nil {
+		http.Error(w, "load organization", http.StatusInternalServerError)
+		return
+	}
+	domain, err := h.Store.OrganizationDomain(r.Context(), organization.ID, r.PathValue("domainId"))
+	if err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, pgx.ErrNoRows) {
+			status = http.StatusNotFound
+		}
+		http.Error(w, "load domain", status)
+		return
+	}
+	lookup := h.DomainTXTLookup
+	if lookup == nil {
+		lookup = net.DefaultResolver.LookupTXT
+	}
+	records, err := lookup(r.Context(), "_zzira-challenge."+domain.Name)
+	expected := "zzira-domain-verification=" + domain.VerificationToken
+	verified := false
+	for _, record := range records {
+		verified = verified || strings.TrimSpace(record) == expected
+	}
+	if err != nil || !verified {
+		http.Error(w, "DNS verification record was not found: "+expected, http.StatusConflict)
+		return
+	}
+	if err := h.Store.VerifyOrganizationDomain(r.Context(), workspaceID, user.ID, domain.ID); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/admin?saved="+url.QueryEscape("Domain verified"), http.StatusSeeOther)
 }
 
 func (h *Handler) AdminPage(w http.ResponseWriter, r *http.Request) {

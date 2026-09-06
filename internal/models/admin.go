@@ -40,6 +40,17 @@ type Directory struct {
 	CreatedAt      string `json:"createdAt"`
 }
 
+type OrganizationDomain struct {
+	ID                string
+	OrganizationID    string
+	Name              string
+	ClaimType         string
+	ClaimStatus       string
+	VerificationToken string
+	CreatedAt         string
+	VerifiedAt        string
+}
+
 type Group struct {
 	ID          string `json:"id"`
 	DirectoryID string `json:"directoryId"`

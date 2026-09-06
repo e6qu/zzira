@@ -100,6 +100,8 @@ func TestOrganizationAndGroupAPIJourney(t *testing.T) {
 	mux.HandleFunc("GET /admin/v1/orgs/{orgId}/events-stream", handler.Events)
 	mux.HandleFunc("GET /admin/v1/orgs/{orgId}/events/{eventId}", handler.EventDetails)
 	mux.HandleFunc("GET /admin/v1/orgs/{orgId}/event-actions", handler.EventActions)
+	mux.HandleFunc("GET /admin/v1/orgs/{orgId}/domains", handler.Domains)
+	mux.HandleFunc("GET /admin/v1/orgs/{orgId}/domains/{domainId}", handler.DomainDetails)
 	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories/{directoryId}/users", handler.DirectoryUsers)
 	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories/{directoryId}/users/count", handler.DirectoryUserCount)
 	mux.HandleFunc("POST /admin/v2/orgs/{orgId}/directories/{directoryId}/users/search", handler.SearchUsers)
@@ -149,6 +151,34 @@ func TestOrganizationAndGroupAPIJourney(t *testing.T) {
 	}
 	orgPath := "/admin/v1/orgs/" + organization.ID
 	call(http.MethodGet, orgPath, adminToken, nil, http.StatusOK)
+	domainsPath := orgPath + "/domains"
+	if domains := call(http.MethodGet, domainsPath, adminToken, nil, http.StatusOK)["data"].([]any); len(domains) != 0 {
+		t.Fatalf("new organization has domains: %#v", domains)
+	}
+	if _, err := st.CreateOrganizationDomain(ctx, workspaceID, adminID, "not-a-domain"); err == nil {
+		t.Fatal("invalid organization domain was accepted")
+	}
+	domain, err := st.CreateOrganizationDomain(ctx, workspaceID, adminID, "EXAMPLE.TEST.")
+	if err != nil {
+		t.Fatal(err)
+	}
+	call(http.MethodGet, domainsPath+"?cursor=invalid", adminToken, nil, http.StatusBadRequest)
+	domainPage := call(http.MethodGet, domainsPath, adminToken, nil, http.StatusOK)
+	if len(domainPage["data"].([]any)) != 1 || domainPage["data"].([]any)[0].(map[string]any)["attributes"].(map[string]any)["name"] != "example.test" {
+		t.Fatalf("unexpected domain page: %#v", domainPage)
+	}
+	call(http.MethodGet, domainsPath+"/missing", adminToken, nil, http.StatusNotFound)
+	domainDetail := call(http.MethodGet, domainsPath+"/"+domain.ID, adminToken, nil, http.StatusOK)
+	if domainDetail["data"].(map[string]any)["id"] != domain.ID {
+		t.Fatalf("unexpected domain detail: %#v", domainDetail)
+	}
+	if err := st.VerifyOrganizationDomain(ctx, workspaceID, adminID, domain.ID); err != nil {
+		t.Fatal(err)
+	}
+	domainDetail = call(http.MethodGet, domainsPath+"/"+domain.ID, adminToken, nil, http.StatusOK)
+	if domainDetail["data"].(map[string]any)["attributes"].(map[string]any)["claim"].(map[string]any)["status"] != "verified" {
+		t.Fatalf("verified domain status was not returned: %#v", domainDetail)
+	}
 
 	directoryPage := call(http.MethodGet, "/admin/v2/orgs/"+organization.ID+"/directories", adminToken, nil, http.StatusOK)
 	directories := directoryPage["data"].([]any)
@@ -370,7 +400,7 @@ func TestOrganizationAndGroupAPIJourney(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(audit) != 16 {
-		t.Fatalf("audit events=%d, want 16", len(audit))
+	if len(audit) != 18 {
+		t.Fatalf("audit events=%d, want 18", len(audit))
 	}
 }

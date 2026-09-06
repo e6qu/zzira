@@ -54,6 +54,8 @@ implemented:
 | GET | `/admin/v1/orgs/{orgId}/events-stream` |
 | GET | `/admin/v1/orgs/{orgId}/events/{eventId}` |
 | GET | `/admin/v1/orgs/{orgId}/event-actions` |
+| GET | `/admin/v1/orgs/{orgId}/domains` |
+| GET | `/admin/v1/orgs/{orgId}/domains/{domainId}` |
 | GET | `/admin/v2/orgs/{orgId}/directories` |
 | GET/POST | `/admin/v2/orgs/{orgId}/directories/{directoryId}/groups` |
 | GET | `/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/count` |
@@ -104,6 +106,13 @@ end of the stream. Event detail and the localized action catalog use the
 published resource shapes. The administration page searches event text and
 filters by action through this shared query path.
 
+Administrators can add email-domain claims, copy the generated DNS TXT
+challenge, verify it, and remove the claim from `/admin`. Verification queries
+`_zzira-challenge.<domain>` and changes state only when the exact
+`zzira-domain-verification=<token>` value exists. Domain names are normalized
+to lowercase fully qualified DNS names. The domain list and detail APIs expose
+the published `domains` resource and claim status shapes with opaque paging.
+
 Invitation access, group membership, optional email enqueueing, and audit
 evidence commit atomically for each account. A multi-account request returns
 `206 Partial Content` with per-assignment `ERROR` results if an account cannot
@@ -122,7 +131,8 @@ eight failed attempts.
 The current server configuration serves one workspace/site. Organization
 discovery therefore returns the organization containing that site. Cross-site
 organization discovery, directory filters, SCIM provisioning and global
-deactivation, policy/domain/event endpoints, license limits, and full
+deactivation, policy endpoints, cross-organization domain ownership checks,
+license limits, and full
 central-host rate limiting remain in
 the active plan and are reported as unassessed or missing in operation coverage.
 
@@ -137,9 +147,9 @@ the active plan and are reported as unassessed or missing in operation coverage.
   statistics/deletion, directory-user search/statistics, atomic invitation
   assignments and delivery enqueueing, product activity and last-active dates,
   organization event query/poll/detail/action operations, membership and role
-  mutations, effective assignments, partial results, conflicts, expansions,
-  and audit persistence.
+  mutations, domain list/detail and claim states, effective assignments, partial
+  results, conflicts, expansions, and audit persistence.
 - Playwright covers the complete group and product-access journey,
   invitation-time product/group access, two-second visible product activity,
-  managed-profile editing, account lifecycle, ordinary-user denial, WCAG scans,
-  light/dark themes, and 320px reflow.
+  domain claim add/remove, managed-profile editing, account lifecycle,
+  ordinary-user denial, WCAG scans, light/dark themes, and 320px reflow.

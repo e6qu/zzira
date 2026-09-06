@@ -29,6 +29,14 @@ test('site admin manages a directory group and its audited membership', async ({
   await expect(page.getByRole('row', { name: /Jira Service Management/ })).toBeVisible();
   await expect(page.getByRole('row', { name: /Confluence/ })).toBeVisible();
 
+  const domainName = `journey-${Date.now()}.example.invalid`;
+  await page.getByLabel('Domain name').fill(domainName);
+  await page.getByRole('button', { name: 'Add domain' }).click();
+  await expect(page).toHaveURL(/\/admin\?saved=Domain\+added$/);
+  let domainRow = page.getByRole('row').filter({ hasText: domainName });
+  await expect(domainRow).toContainText('unverified');
+  await expect(domainRow).toContainText('zzira-domain-verification=');
+
   const groupName = `delivery-managers-${Date.now()}`;
   await page.getByLabel('Group name').fill(groupName);
   await page.getByLabel('Description').fill('Coordinates plans, releases, and delivery evidence.');
@@ -125,4 +133,8 @@ test('site admin manages a directory group and its audited membership', async ({
   await expect(page.locator('.admin-audit')).not.toContainText('group.created');
   await page.getByRole('link', { name: 'Clear filters' }).click();
   await expect(page).toHaveURL('/admin');
+  domainRow = page.getByRole('row').filter({ hasText: domainName });
+  await domainRow.getByRole('button', { name: 'Remove' }).click();
+  await expect(page).toHaveURL(/\/admin\?saved=Domain\+removed$/);
+  await expect(page.getByRole('row').filter({ hasText: domainName })).toHaveCount(0);
 });

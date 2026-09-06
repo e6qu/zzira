@@ -20,6 +20,9 @@ import (
 )
 
 var organizationEventActions = map[string]string{
+	"domain.created":       "Domain added",
+	"domain.deleted":       "Domain removed",
+	"domain.verified":      "Domain verified",
 	"group.created":        "Group created",
 	"group.deleted":        "Group deleted",
 	"group.member.added":   "Group member added",

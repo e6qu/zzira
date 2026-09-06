@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 51,
+  "assessedTotal": 53,
   "counts": {
     "delivered": 0,
-    "partial": 44,
+    "partial": 46,
     "missing": 7,
-    "unassessed": 1156
+    "unassessed": 1154
   },
   "countsByFamily": {
     "automation": {
@@ -42,9 +42,9 @@
     },
     "organization-admin": {
       "delivered": 0,
-      "partial": 36,
+      "partial": 38,
       "missing": 0,
-      "unassessed": 11
+      "unassessed": 9
     }
   },
   "operations": [
@@ -9390,17 +9390,27 @@
       "operationId": "organization-admin:GET:/admin/v1/orgs/{orgId}/domains",
       "family": "organization-admin",
       "hostClass": "central",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/admin/domains.go",
+        "internal/admin/http_test.go",
+        "e2e/admin.spec.ts",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Organization DNS claims return exact domain resource and claim shapes with opaque paging; cross-organization ownership and provider-managed claims remain."
     },
     {
       "operationId": "organization-admin:GET:/admin/v1/orgs/{orgId}/domains/{domainId}",
       "family": "organization-admin",
       "hostClass": "central",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/admin/domains.go",
+        "internal/admin/http_test.go",
+        "e2e/admin.spec.ts",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Domain detail reports normalized name, DNS claim type, lifecycle status, self link, and exact not-found behavior."
     },
     {
       "operationId": "organization-admin:GET:/admin/v1/orgs/{orgId}/event-actions",

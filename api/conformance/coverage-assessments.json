@@ -460,6 +460,28 @@
         "docs/ADMIN.md"
       ],
       "notes": "The action catalog covers every organization mutation currently emitted by ZZIRA; locale negotiation and future product action groups remain."
+    },
+    {
+      "operationId": "organization-admin:GET:/admin/v1/orgs/{orgId}/domains",
+      "status": "partial",
+      "evidence": [
+        "internal/admin/domains.go",
+        "internal/admin/http_test.go",
+        "e2e/admin.spec.ts",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Organization DNS claims return exact domain resource and claim shapes with opaque paging; cross-organization ownership and provider-managed claims remain."
+    },
+    {
+      "operationId": "organization-admin:GET:/admin/v1/orgs/{orgId}/domains/{domainId}",
+      "status": "partial",
+      "evidence": [
+        "internal/admin/domains.go",
+        "internal/admin/http_test.go",
+        "e2e/admin.spec.ts",
+        "docs/ADMIN.md"
+      ],
+      "notes": "Domain detail reports normalized name, DNS claim type, lifecycle status, self link, and exact not-found behavior."
     }
   ]
 }

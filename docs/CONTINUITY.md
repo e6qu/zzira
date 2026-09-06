@@ -51,7 +51,7 @@ does not publish them as one OpenAPI document.
   strict pin validation, and focused generator tests.
 - Added exact-operation coverage generation. The first reviewed assessment
   records Automation as 8 partial and 7 missing operations. The organization
-  slices add 36 partial assessments; 1,156 operations remain explicitly
+  slices add 38 partial assessments; 1,154 operations remain explicitly
   unassessed rather than being inferred from route names.
 - Added organization, site, product, internal-directory, directory-user, group,
   group-member, role-binding, and organization-audit persistence with automatic
@@ -94,6 +94,9 @@ does not publish them as one OpenAPI document.
 - Exposed immutable organization audit evidence through event query, polling,
   detail, and action-catalog APIs. Added text/action/actor/network/product/time
   filters, ascending polling cursors, and shared browser audit search.
+- Added durable organization domain claims with strict DNS normalization,
+  generated TXT challenges, fail-closed verification, removal, audit evidence,
+  administrator UI, and exact domain list/detail API resources.
 
 Validation after the organization foundation:
 
@@ -159,10 +162,19 @@ Validation after organization audit completion:
 - Exact coverage is 51 of 1,207 operations assessed: 44 partial, 7 missing, and
   1,156 explicitly unassessed.
 
+Validation after organization domain claims:
+
+- The organization API integration journey passes empty/populated domain lists,
+  normalization, invalid input, opaque cursor rejection, detail/not-found, and
+  verified claim state with migration 037.
+- The focused Chromium administration journey passes domain add/remove, TXT
+  challenge visibility, WCAG scans, dark mode, and 320 px reflow.
+- Exact coverage is 53 of 1,207 operations assessed: 46 partial, 7 missing, and
+  1,154 explicitly unassessed.
+
 ## Current change
 
-1. Add organization domains, authentication policies, and identity-provider
-   configuration.
+1. Add authentication policies and identity-provider configuration.
 2. Extend revocation coverage from browser/API authorization to local replicas
    and queued mutations where the affected resource can already be cached.
 
