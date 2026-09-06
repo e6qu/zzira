@@ -465,6 +465,17 @@ Validation after workflow administration guards:
 - Exact reviewed API coverage is 116 of 1,207 operations: 109 partial, 7
   missing, and 1,091 explicitly unassessed.
 
+Validation after modern workflow search:
+
+- PostgreSQL Jira integration covers published workflow search by name,
+  project, and active state; deterministic name ordering; validated offset
+  paging and next links; global/project scope behavior; related status
+  categories; and expanded transition links.
+- The full PostgreSQL Go suite, vet, WebAssembly build, seven conformance tests,
+  generated inventory/coverage checks, and `git diff --check` pass.
+- Exact reviewed API coverage is 117 of 1,207 operations: 110 partial, 7
+  missing, and 1,090 explicitly unassessed.
+
 ## Current change
 
 1. Complete modern workflow search, create/update validation, capabilities,

@@ -223,6 +223,21 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	if !strings.Contains(issueTypeUsage.Body.String(), `"it_task"`) {
 		t.Fatal(issueTypeUsage.Body.String())
 	}
+	workflowSearch := call(actor, "GET", "/rest/api/3/workflows/search?queryString=Simple&projectId="+projectID+"&isActive=true&orderBy=name&expand=values.transitions", "", 200)
+	if !strings.Contains(workflowSearch.Body.String(), `"id":"`+workflowID+`"`) || !strings.Contains(workflowSearch.Body.String(), `"toStatusReference":"st_done"`) || !strings.Contains(workflowSearch.Body.String(), `"statusCategory":"DONE"`) {
+		t.Fatal(workflowSearch.Body.String())
+	}
+	workflowPage := call(actor, "GET", "/rest/api/3/workflows/search?maxResults=1", "", 200)
+	if !strings.Contains(workflowPage.Body.String(), `"nextPage":"https://zzira.test/rest/api/3/workflows/search?maxResults=1\u0026startAt=1"`) {
+		t.Fatal(workflowPage.Body.String())
+	}
+	projectScope := call(actor, "GET", "/rest/api/3/workflows/search?scope=PROJECT", "", 200)
+	if !strings.Contains(projectScope.Body.String(), `"total":0`) {
+		t.Fatal(projectScope.Body.String())
+	}
+	call(actor, "GET", "/rest/api/3/workflows/search?maxResults=0", "", 400)
+	call(actor, "GET", "/rest/api/3/workflows/search?expand=transitions", "", 400)
+	call(actor, "GET", "/rest/api/3/workflows/search?projectId=project_missing", "", 400)
 	call(actor, "GET", "/rest/api/3/workflow/"+workflowID+"/project/prj_missing/issueTypeUsages", "", 404)
 	call(actor, "GET", "/rest/api/3/workflow/"+workflowID+"/projectUsages?maxResults=0", "", 400)
 	call(member, "DELETE", "/rest/api/3/workflow/"+workflowID, "", 403)

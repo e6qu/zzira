@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 116,
+  "assessedTotal": 117,
   "counts": {
     "delivered": 0,
-    "partial": 109,
+    "partial": 110,
     "missing": 7,
-    "unassessed": 1091
+    "unassessed": 1090
   },
   "countsByFamily": {
     "automation": {
@@ -24,9 +24,9 @@
     },
     "jira-platform": {
       "delivered": 0,
-      "partial": 54,
+      "partial": 55,
       "missing": 0,
-      "unassessed": 563
+      "unassessed": 562
     },
     "jira-service-management": {
       "delivered": 0,
@@ -4607,9 +4607,14 @@
       "operationId": "jira-v3:GET:/rest/api/3/workflows/search",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_search.go",
+        "internal/store/workflow_usage.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Searches published global workspace workflows with validated offset paging, query/name ordering, global scope, active and project filters, related statuses, document versions, and transition expansion; project-scoped workflows and created/updated ordering remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/workflows/update",

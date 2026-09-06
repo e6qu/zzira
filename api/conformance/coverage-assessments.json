@@ -1166,6 +1166,17 @@
         "docs/CLOUD_PARITY.md"
       ],
       "notes": "Returns the authenticated user default editor contract as NEW because ZZIRA exposes its new workflow editor; per-user legacy editor preference remains."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/workflows/search",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_search.go",
+        "internal/store/workflow_usage.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Searches published global workspace workflows with validated offset paging, query/name ordering, global scope, active and project filters, related statuses, document versions, and transition expansion; project-scoped workflows and created/updated ordering remain."
     }
   ]
 }
