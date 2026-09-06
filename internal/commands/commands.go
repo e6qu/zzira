@@ -22,6 +22,7 @@ type Service struct {
 
 type CreateIssueInput struct {
 	ActorID                   string
+	ReporterID                string
 	WorkspaceID               string
 	ProjectIDOrKey            string
 	Summary                   string
@@ -176,7 +177,7 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 		}
 		description = in.DescriptionADF
 	}
-	issue, action, err := s.Store.CreateIssue(ctx, in.ActorID, project.ID, in.Summary,
+	issue, action, err := s.Store.CreateIssueForReporter(ctx, in.ActorID, in.ReporterID, project.ID, in.Summary,
 		description, "st_todo", issueType.ID, priorityID, in.AssigneeID, labels, in.Fields, in.SecurityLevelID, parentID)
 	if err != nil {
 		return nil, nil, err

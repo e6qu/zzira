@@ -20,7 +20,7 @@
   }());
 </script>
 <link rel="stylesheet" href="/static/css/tokens.css?v=4">
-<link rel="stylesheet" href="/static/css/workspace.css?v=13">
+<link rel="stylesheet" href="/static/css/workspace.css?v=14">
 <link rel="preload" href="/static/zzira-worker.wasm?v=4" as="fetch" crossorigin>
 <link rel="preload" href="/static/sqlite/sqlite3.wasm" as="fetch" crossorigin>
 <script src="/static/htmx/htmx.min.js" defer></script>
@@ -93,6 +93,7 @@
   <a class="workspace-identity" href="/projects"><span class="workspace-avatar" aria-hidden="true">ZZ</span><span class="workspace-copy"><strong>ZZIRA</strong><small>Browse projects</small></span></a>
   {{end}}
   <nav aria-label="Primary">
+    <a class="nav-service" href="/service" {{if eq .Active "service"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H8l-4 4zM8 9h8M8 12h5"/></svg><span>Service</span></a>
     <a class="nav-wiki" href="/wiki" {{if eq .Active "wiki"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7l1 2 1-2h7v16h-7l-1-2-1 2H4zM12 6v12"/></svg><span>Wiki</span></a>
     <a class="nav-dashboards" href="/dashboards" {{if eq .Active "dashboards"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7v7H4zM14 4h6v7h-6zM4 14h7v6H4zM14 14h6v6h-6z"/></svg><span>Dashboards</span></a>
     <a class="nav-dashboard" href="/dashboard" {{if eq .Active "dashboard"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h6v7H4zM14 4h6v16h-6zM4 4h6v5H4z"/></svg><span>Your work</span></a>

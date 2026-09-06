@@ -1063,11 +1063,32 @@ Validation after the Jira Service Management project foundation:
   journey creates the service project and discovers its customer form through
   Jira Service Management APIs.
 
+Validation after the Jira Service Management customer request journey:
+
+- Migration 058 adds workspace customers, issue-backed service requests and an
+  explicit public/internal marker for request comments. Ordinary Jira comments
+  remain internal unless deliberately shared through the service path.
+- Eleven more pinned operations cover customer creation, request validation,
+  create/list/detail, comment list/create/detail, current status and available/
+  executed transitions. Administrators can query all requests, raise on behalf
+  of enrolled customers and add internal notes; customers are restricted to
+  their own requests and public comments.
+- `/service` now provides help-center and portal discovery, request-type search,
+  typed submission, owned request tracking, conversation and workflow actions.
+  Incident request types create regular Jira issues labeled `incident`, joining
+  the customer journey to DORA recovery time, automation, search and reporting.
+- PostgreSQL integration proves validation, customer ownership, internal-note
+  isolation, incident labeling and a real transition with an additional public
+  comment. The Chromium journey passes WCAG A/AA axe checks in light and dark
+  themes and reflows without document overflow at 320 px.
+- Exact-operation review is now 159/1,207: 152 partial, 7 missing and 1,048
+  unassessed.
+
 ## Current change
 
-1. Implement Jira Service Management customer identities, portal request
-   creation/list/detail, public comments and customer transitions on the new
-   service-project and request-type foundation.
+1. Implement Jira Service Management agent queues and request workspace, typed
+   assignment, participants, SLAs/calendars and escalation on the customer
+   request foundation.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 
@@ -1092,6 +1113,7 @@ Validation after the Jira Service Management project foundation:
 - [Dashboard behavior](DASHBOARDS.md)
 - [Release behavior](RELEASES.md)
 - [Reports and DORA behavior](REPORTS.md)
+- [Service Management behavior](SERVICE_MANAGEMENT.md)
 - [SSO behavior](shauth-sso.md)
 
 ## Continuity rules

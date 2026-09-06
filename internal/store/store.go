@@ -770,6 +770,12 @@ func (s *Store) IssueByIDOrKey(ctx context.Context, workspaceID, idOrKey string)
 // CreateIssue runs the canonical write transaction: state change + action append +
 // notify, all-or-nothing. Returns the persisted issue and its action.
 func (s *Store) CreateIssue(ctx context.Context, actorID, projectID, summary string, description json.RawMessage, statusID, issueTypeID, priorityID, assigneeID string, labels []string, fields map[string]json.RawMessage, securityLevelID, parentID string) (*models.Issue, *models.Action, error) {
+	return s.CreateIssueForReporter(ctx, actorID, actorID, projectID, summary, description, statusID, issueTypeID, priorityID, assigneeID, labels, fields, securityLevelID, parentID)
+}
+
+// CreateIssueForReporter separates the authenticated change actor from the
+// issue reporter for on-behalf-of service requests.
+func (s *Store) CreateIssueForReporter(ctx context.Context, actorID, reporterID, projectID, summary string, description json.RawMessage, statusID, issueTypeID, priorityID, assigneeID string, labels []string, fields map[string]json.RawMessage, securityLevelID, parentID string) (*models.Issue, *models.Action, error) {
 	if labels == nil {
 		labels = []string{}
 	}
@@ -795,7 +801,19 @@ func (s *Store) CreateIssue(ctx context.Context, actorID, projectID, summary str
 	issueID := NewID("iss")
 	issueKey := fmt.Sprintf("%s-%d", projectKey, issueNum)
 
-	reporter := actorID
+	reporter := reporterID
+	if reporter == "" {
+		reporter = actorID
+	}
+	if reporter != actorID {
+		var reporterExists bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE id=$1 AND active)`, reporter).Scan(&reporterExists); err != nil {
+			return nil, nil, err
+		}
+		if !reporterExists {
+			return nil, nil, fmt.Errorf("reporter account does not exist")
+		}
+	}
 	if assigneeID != "" {
 		var exists bool
 		err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE id=$1)`, assigneeID).Scan(&exists)

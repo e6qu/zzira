@@ -268,9 +268,15 @@ browser UI, sync behavior where applicable, and tests.
     knowledge links and Assets with the public REST contract.
     The foundation now creates service projects and desks atomically, seeds help
     and incident request types, exposes request field metadata, and implements
-    the first nine pinned discovery and request-type operations.
-11. **Service Management journeys.** Add the customer help center, request
-    portal, agent request workspace, queues, SLA timeline, service setup,
+    the first nine pinned discovery and request-type operations. The customer
+    slice adds portal-only identities, a help-center request journey, owned/all
+    request reads, validation, public/internal conversations, workflow status
+    transitions, and eleven more pinned request operations. Incident portal
+    requests feed the existing DORA recovery measure through their backing Jira
+    issue.
+11. **Service Management journeys.** Extend the delivered customer help center,
+    typed request portal, owned request tracking, conversation and status flow
+    with an agent request workspace, queues, SLA timeline, service setup,
     incident/problem/change experiences and service reporting.
 12. **Confluence contract completion.** Add the v1 and remaining v2 APIs, generic
     versioned content, ancestors/descendants, operations, comments, attachments,

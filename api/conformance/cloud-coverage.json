@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 148,
+  "assessedTotal": 159,
   "counts": {
     "delivered": 0,
-    "partial": 141,
+    "partial": 152,
     "missing": 7,
-    "unassessed": 1059
+    "unassessed": 1048
   },
   "countsByFamily": {
     "automation": {
@@ -30,9 +30,9 @@
     },
     "jira-service-management": {
       "delivered": 0,
-      "partial": 9,
+      "partial": 20,
       "missing": 0,
-      "unassessed": 66
+      "unassessed": 55
     },
     "jira-software": {
       "delivered": 0,
@@ -6228,9 +6228,16 @@
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/customer",
       "family": "jira-service-management",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service.go",
+        "internal/commands/service.go",
+        "internal/store/service.go",
+        "e2e/service.spec.ts",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Creates or enrolls a workspace-scoped portal-only customer account for administrators; invitation delivery, portal login activation and skip-permission-check variants remain."
     },
     {
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/customer/skip-permission-check",
@@ -6377,33 +6384,61 @@
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request",
       "family": "jira-service-management",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service.go",
+        "internal/commands/service.go",
+        "internal/store/service.go",
+        "e2e/service.spec.ts",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Lists caller-owned requests, with administrator ALL_REQUESTS and desk/type filters; remaining status, participant, approval, organization and pagination filters remain."
     },
     {
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/request",
       "family": "jira-service-management",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service.go",
+        "internal/commands/service.go",
+        "internal/store/service.go",
+        "e2e/service.spec.ts",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Validates and creates a customer request as a canonical Jira issue with request type, channel and reporter metadata; dynamic custom fields, attachments and participants remain."
     },
     {
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/request/validate",
       "family": "jira-service-management",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service.go",
+        "internal/commands/service.go",
+        "internal/store/service.go",
+        "e2e/service.spec.ts",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Validates service desk, request type, required summary and description wire format without mutation; dynamic form fields and all Atlassian reason keys remain."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}",
       "family": "jira-service-management",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service.go",
+        "internal/commands/service.go",
+        "internal/store/service.go",
+        "e2e/service.spec.ts",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Returns a customer-safe request by issue ID or key with typed fields, portal, reporter, current status and visible conversation; remaining expansions, SLA and approval shapes remain."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/approval",
@@ -6465,25 +6500,46 @@
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/comment",
       "family": "jira-service-management",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service.go",
+        "internal/commands/service.go",
+        "internal/store/service.go",
+        "e2e/service.spec.ts",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Lists public request comments for customers and includes internal notes for administrators; full query filters, attachment expansion and cursor links remain."
     },
     {
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/request/{issueIdOrKey}/comment",
       "family": "jira-service-management",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service.go",
+        "internal/commands/service.go",
+        "internal/store/service.go",
+        "e2e/service.spec.ts",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Creates public customer replies or administrator-only internal notes through the canonical Jira comment command; attachment-bearing comments remain."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/comment/{commentId}",
       "family": "jira-service-management",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service.go",
+        "internal/commands/service.go",
+        "internal/store/service.go",
+        "e2e/service.spec.ts",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Returns one visible request comment while enforcing the public/internal portal boundary; attachment expansion remains."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/comment/{commentId}/attachment",
@@ -6561,25 +6617,46 @@
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/status",
       "family": "jira-service-management",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service.go",
+        "internal/commands/service.go",
+        "internal/store/service.go",
+        "e2e/service.spec.ts",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Returns the current customer-visible status in the Jira Service Management date and category shape; full historical status chronology remains."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/transition",
       "family": "jira-service-management",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service.go",
+        "internal/commands/service.go",
+        "internal/store/service.go",
+        "e2e/service.spec.ts",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Returns workflow- and condition-aware transitions available to the customer; portal-specific transition naming and field expansions remain."
     },
     {
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/request/{issueIdOrKey}/transition",
       "family": "jira-service-management",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service.go",
+        "internal/commands/service.go",
+        "internal/store/service.go",
+        "e2e/service.spec.ts",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Executes an available canonical Jira workflow transition and optional public/internal comment with the documented empty response; atomic transition-plus-comment rollback remains."
     },
     {
       "operationId": "jira-service-management:DELETE:/rest/servicedeskapi/request/{requestIdOrKey}/feedback",

@@ -2,11 +2,16 @@ package api3
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/e6qu/zzira/internal/adf"
+	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/models"
+	"github.com/e6qu/zzira/internal/workflow"
 )
 
 func (h *Handler) serviceDeskRoute(w http.ResponseWriter, r *http.Request) {
@@ -17,6 +22,42 @@ func (h *Handler) serviceDeskRoute(w http.ResponseWriter, r *http.Request) {
 	}
 	parts := strings.Split(strings.Trim(strings.TrimPrefix(r.URL.Path, "/rest/servicedeskapi"), "/"), "/")
 	switch {
+	case len(parts) == 1 && parts[0] == "customer" && r.Method == http.MethodPost:
+		_, actorID, adminErr := h.authWorkspaceAdmin(r)
+		if adminErr != nil {
+			writeJerr(w, adminErr)
+			return
+		}
+		var input struct {
+			Email       string `json:"email"`
+			DisplayName string `json:"displayName"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&input); err != nil {
+			jiraError(w, http.StatusBadRequest, "Request body is invalid.")
+			return
+		}
+		customer, err := h.Commands.CreateServiceCustomer(r.Context(), actorID, workspaceID, input.Email, input.DisplayName)
+		if err != nil {
+			jiraError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusCreated, h.serviceUserBean(customer))
+	case len(parts) == 1 && parts[0] == "request" && r.Method == http.MethodGet:
+		h.listServiceRequests(w, r, workspaceID)
+	case len(parts) == 1 && parts[0] == "request" && r.Method == http.MethodPost:
+		h.createServiceRequest(w, r, workspaceID, false)
+	case len(parts) == 2 && parts[0] == "request" && parts[1] == "validate" && r.Method == http.MethodPost:
+		h.createServiceRequest(w, r, workspaceID, true)
+	case len(parts) == 2 && parts[0] == "request" && r.Method == http.MethodGet:
+		h.getServiceRequest(w, r, workspaceID, parts[1])
+	case len(parts) == 3 && parts[0] == "request" && parts[2] == "comment" && (r.Method == http.MethodGet || r.Method == http.MethodPost):
+		h.serviceRequestComments(w, r, workspaceID, parts[1], "")
+	case len(parts) == 4 && parts[0] == "request" && parts[2] == "comment" && r.Method == http.MethodGet:
+		h.serviceRequestComments(w, r, workspaceID, parts[1], parts[3])
+	case len(parts) == 3 && parts[0] == "request" && parts[2] == "status" && r.Method == http.MethodGet:
+		h.serviceRequestStatus(w, r, workspaceID, parts[1])
+	case len(parts) == 3 && parts[0] == "request" && parts[2] == "transition" && (r.Method == http.MethodGet || r.Method == http.MethodPost):
+		h.serviceRequestTransition(w, r, workspaceID, parts[1])
 	case len(parts) == 1 && parts[0] == "info" && r.Method == http.MethodGet:
 		writeJSON(w, http.StatusOK, map[string]any{"version": "5.17.0", "platformVersion": "1001.0.0-SNAPSHOT", "buildChangeSet": "zzira", "buildDate": "2026-09-06T00:00:00Z", "isLicensedForUse": true, "_links": map[string]string{"self": h.BaseURL + "/rest/servicedeskapi/info"}})
 	case len(parts) == 1 && parts[0] == "servicedesk" && r.Method == http.MethodGet:
@@ -85,6 +126,215 @@ func (h *Handler) serviceDeskRoute(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+type createServiceRequestBody struct {
+	Channel             string                     `json:"channel"`
+	Form                json.RawMessage            `json:"form"`
+	IsADFRequest        *bool                      `json:"isAdfRequest"`
+	RaiseOnBehalfOf     string                     `json:"raiseOnBehalfOf"`
+	RequestFieldValues  map[string]json.RawMessage `json:"requestFieldValues"`
+	RequestParticipants []string                   `json:"requestParticipants"`
+	RequestTypeID       string                     `json:"requestTypeId"`
+	ServiceDeskID       string                     `json:"serviceDeskId"`
+}
+
+func decodeServiceText(raw json.RawMessage) (string, bool) {
+	var value string
+	if len(raw) == 0 || json.Unmarshal(raw, &value) != nil {
+		return "", false
+	}
+	return value, true
+}
+
+func serviceADFText(raw json.RawMessage) string {
+	var value any
+	if json.Unmarshal(raw, &value) != nil {
+		return ""
+	}
+	var parts []string
+	var walk func(any)
+	walk = func(node any) {
+		switch typed := node.(type) {
+		case map[string]any:
+			if text, ok := typed["text"].(string); ok {
+				parts = append(parts, text)
+			}
+			if children, ok := typed["content"].([]any); ok {
+				for _, child := range children {
+					walk(child)
+				}
+			}
+		case []any:
+			for _, child := range typed {
+				walk(child)
+			}
+		}
+	}
+	walk(value)
+	return strings.Join(parts, "")
+}
+
+func (h *Handler) validateServiceRequestBody(r *http.Request, workspaceID string, input createServiceRequestBody) map[string]string {
+	errors := map[string]string{}
+	if len(input.Form) > 0 && string(input.Form) != "null" {
+		errors["form"] = "Forms are not configured for this request type."
+	}
+	if len(input.RequestParticipants) > 0 {
+		errors["requestParticipants"] = "Request participants are not supported by this request type."
+	}
+	for fieldID := range input.RequestFieldValues {
+		if fieldID != "summary" && fieldID != "description" {
+			errors[fieldID] = "This field is not configured for the request type."
+		}
+	}
+	if input.ServiceDeskID == "" {
+		errors["serviceDeskId"] = "A service desk is required."
+	}
+	if input.RequestTypeID == "" {
+		errors["requestTypeId"] = "A request type is required."
+	}
+	if input.ServiceDeskID != "" && input.RequestTypeID != "" {
+		if _, err := h.Store.ServiceRequestType(r.Context(), workspaceID, input.ServiceDeskID, input.RequestTypeID); err != nil {
+			errors["requestTypeId"] = "The request type does not belong to this service desk."
+		}
+	}
+	summary, ok := decodeServiceText(input.RequestFieldValues["summary"])
+	if !ok || strings.TrimSpace(summary) == "" || len(strings.TrimSpace(summary)) > 255 {
+		errors["summary"] = "Summary is required and accepts at most 255 characters."
+	}
+	if description := input.RequestFieldValues["description"]; len(description) > 1<<20 {
+		errors["description"] = "Description accepts at most 1 MiB."
+	} else if len(description) > 0 {
+		if _, text := decodeServiceText(description); !text {
+			var doc struct {
+				Type    string `json:"type"`
+				Version int    `json:"version"`
+			}
+			if json.Unmarshal(description, &doc) != nil || doc.Type != "doc" || doc.Version != 1 {
+				errors["description"] = "Description must be text or an Atlassian document format value."
+			}
+		}
+	}
+	return errors
+}
+
+func (h *Handler) createServiceRequest(w http.ResponseWriter, r *http.Request, workspaceID string, validateOnly bool) {
+	_, actorID, authErr := h.authWorkspace(r)
+	if authErr != nil {
+		writeJerr(w, authErr)
+		return
+	}
+	var input createServiceRequestBody
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 2<<20)).Decode(&input); err != nil {
+		jiraError(w, http.StatusBadRequest, "Request body is invalid.")
+		return
+	}
+	fieldErrors := h.validateServiceRequestBody(r, workspaceID, input)
+	if validateOnly {
+		messages := []string{}
+		for _, message := range fieldErrors {
+			messages = append(messages, message)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"valid": len(fieldErrors) == 0, "fieldErrors": fieldErrors, "formErrors": []any{}, "errorMessages": messages, "errorMessage": "", "reasonKey": ""})
+		return
+	}
+	if len(fieldErrors) > 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"errorMessage": "Request validation failed.", "errorMessages": []string{"Request validation failed."}, "fieldErrors": fieldErrors})
+		return
+	}
+	customerID := actorID
+	if input.RaiseOnBehalfOf != "" {
+		customer, err := h.Store.ServiceCustomer(r.Context(), workspaceID, input.RaiseOnBehalfOf)
+		if err != nil {
+			jiraError(w, http.StatusBadRequest, "The requested customer does not exist.")
+			return
+		}
+		customerID = customer.ID
+	}
+	summary, _ := decodeServiceText(input.RequestFieldValues["summary"])
+	description, descriptionADF := "", json.RawMessage(nil)
+	if raw := input.RequestFieldValues["description"]; len(raw) > 0 {
+		if text, ok := decodeServiceText(raw); ok {
+			description = text
+		} else {
+			descriptionADF = raw
+		}
+	}
+	request, err := h.Commands.CreateServiceRequest(r.Context(), commands.CreateServiceRequestInput{
+		ActorID: actorID, WorkspaceID: workspaceID, CustomerID: customerID, Channel: input.Channel,
+		ServiceDeskID: input.ServiceDeskID, RequestTypeID: input.RequestTypeID,
+		Summary: summary, Description: description, DescriptionADF: descriptionADF,
+	})
+	if err != nil {
+		jiraError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	bean, err := h.serviceRequestBean(r, workspaceID, actorID, request)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "Could not load the created request.")
+		return
+	}
+	writeJSON(w, http.StatusCreated, bean)
+}
+
+func (h *Handler) serviceRequestAccess(r *http.Request, workspaceID, issueIDOrKey string) (*models.ServiceRequest, bool, string, *jerr) {
+	_, actorID, authErr := h.authWorkspace(r)
+	if authErr != nil {
+		return nil, false, "", authErr
+	}
+	admin, err := h.Store.IsAdmin(r.Context(), workspaceID, actorID)
+	if err != nil {
+		return nil, false, "", &jerr{status: http.StatusInternalServerError, message: "internal error"}
+	}
+	request, err := h.Store.ServiceRequest(r.Context(), workspaceID, actorID, issueIDOrKey, admin)
+	if err != nil {
+		return nil, admin, actorID, &jerr{status: http.StatusNotFound, message: "Customer request does not exist or you do not have permission to view it."}
+	}
+	return request, admin, actorID, nil
+}
+
+func (h *Handler) listServiceRequests(w http.ResponseWriter, r *http.Request, workspaceID string) {
+	_, actorID, authErr := h.authWorkspace(r)
+	if authErr != nil {
+		writeJerr(w, authErr)
+		return
+	}
+	admin, err := h.Store.IsAdmin(r.Context(), workspaceID, actorID)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "Could not load customer requests.")
+		return
+	}
+	allowAll := admin && strings.EqualFold(r.URL.Query().Get("requestOwnership"), "ALL_REQUESTS")
+	requests, err := h.Store.ServiceRequests(r.Context(), workspaceID, actorID, r.URL.Query().Get("serviceDeskId"), r.URL.Query().Get("requestTypeId"), allowAll)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "Could not load customer requests.")
+		return
+	}
+	beans := make([]map[string]any, 0, len(requests))
+	for _, request := range requests {
+		bean, err := h.serviceRequestBean(r, workspaceID, actorID, request)
+		if err != nil {
+			jiraError(w, http.StatusInternalServerError, "Could not load customer requests.")
+			return
+		}
+		beans = append(beans, bean)
+	}
+	h.writeServicePage(w, r, beans)
+}
+
+func (h *Handler) getServiceRequest(w http.ResponseWriter, r *http.Request, workspaceID, issueIDOrKey string) {
+	request, _, actorID, accessErr := h.serviceRequestAccess(r, workspaceID, issueIDOrKey)
+	if accessErr != nil {
+		writeJerr(w, accessErr)
+		return
+	}
+	bean, err := h.serviceRequestBean(r, workspaceID, actorID, request)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "Could not load customer request.")
+		return
+	}
+	writeJSON(w, http.StatusOK, bean)
+}
+
 func serviceDeskBean(baseURL string, desk models.ServiceDesk) map[string]any {
 	return map[string]any{"id": desk.ID, "projectId": desk.ProjectID, "projectKey": desk.ProjectKey, "projectName": desk.ProjectName, "projectTypeKey": desk.ProjectTypeKey, "_links": map[string]string{"self": baseURL + "/rest/servicedeskapi/servicedesk/" + desk.ID}}
 }
@@ -137,4 +387,231 @@ func serviceRequestTypeFields(requestType models.ServiceRequestType) map[string]
 		{"fieldId": "summary", "name": "Summary", "description": requestType.HelpText, "required": true, "visible": true, "defaultValues": []any{}, "presetValues": []any{}, "validValues": []any{}, "jiraSchema": map[string]string{"type": "string", "system": "summary"}},
 		{"fieldId": "description", "name": "Description", "description": "Describe the request.", "required": false, "visible": true, "defaultValues": []any{}, "presetValues": []any{}, "validValues": []any{}, "jiraSchema": map[string]string{"type": "string", "system": "description"}},
 	}}
+}
+
+func serviceDate(value time.Time) map[string]any {
+	value = value.UTC()
+	return map[string]any{
+		"iso8601":     value.Format("2006-01-02T15:04:05-0700"),
+		"jira":        value.Format("2006-01-02T15:04:05.000-0700"),
+		"friendly":    value.Format("02/Jan/06 3:04 PM"),
+		"epochMillis": value.UnixMilli(),
+	}
+}
+
+func parseServiceDate(value string) time.Time {
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return time.Unix(0, 0).UTC()
+	}
+	return parsed
+}
+
+func (h *Handler) serviceUserBean(user *models.User) map[string]any {
+	if user == nil {
+		return nil
+	}
+	bean := h.userBean(user)
+	bean["_links"] = map[string]string{"jiraRest": h.BaseURL + "/rest/api/3/user?accountId=" + user.ID}
+	return bean
+}
+
+func (h *Handler) serviceStatusBean(status models.Status, changed string) map[string]any {
+	return map[string]any{
+		"status":         status.Name,
+		"statusCategory": map[string]string{"key": status.Category, "name": status.Category},
+		"statusDate":     serviceDate(parseServiceDate(changed)),
+	}
+}
+
+func (h *Handler) serviceRequestBean(r *http.Request, workspaceID, viewerID string, request *models.ServiceRequest) (map[string]any, error) {
+	admin, err := h.Store.IsAdmin(r.Context(), workspaceID, viewerID)
+	if err != nil {
+		return nil, err
+	}
+	comments, err := h.Store.ServiceRequestComments(r.Context(), request.Issue.ID, admin)
+	if err != nil {
+		return nil, err
+	}
+	commentBeans := make([]map[string]any, 0, len(comments))
+	for _, comment := range comments {
+		commentBeans = append(commentBeans, h.serviceCommentBean(request, comment))
+	}
+	fields := []map[string]any{
+		{"fieldId": "summary", "label": "Summary", "value": request.Issue.Summary, "renderedValue": request.Issue.Summary},
+		{"fieldId": "description", "label": "Description", "value": request.Issue.Description, "renderedValue": adf.ToHTML(request.Issue.Description)},
+	}
+	status := h.serviceStatusBean(request.Issue.Status, request.Issue.UpdatedAt)
+	return map[string]any{
+		"issueId": request.Issue.ID, "issueKey": request.Issue.Key, "summary": request.Issue.Summary,
+		"serviceDeskId": request.ServiceDesk.ID, "requestTypeId": request.RequestType.ID,
+		"serviceDesk": serviceDeskBean(h.BaseURL, request.ServiceDesk),
+		"requestType": serviceRequestTypeBean(h.BaseURL, request.RequestType),
+		"reporter":    h.serviceUserBean(request.Customer), "participants": []map[string]any{h.serviceUserBean(request.Customer)},
+		"requestFieldValues": fields, "currentStatus": status, "status": status,
+		"createdDate": serviceDate(request.CreatedAt), "channel": request.Channel,
+		"comments":    map[string]any{"start": 0, "limit": 50, "size": len(commentBeans), "isLastPage": true, "values": commentBeans},
+		"attachments": []any{}, "sla": []any{}, "actions": []any{}, "_expands": []string{"serviceDesk", "requestType", "currentStatus"},
+		"_links": map[string]string{
+			"self": h.BaseURL + "/rest/servicedeskapi/request/" + request.Issue.Key,
+			"web":  h.BaseURL + "/service/requests/" + request.Issue.Key,
+		},
+	}, nil
+}
+
+func (h *Handler) serviceCommentBean(request *models.ServiceRequest, comment models.ServiceRequestComment) map[string]any {
+	return map[string]any{
+		"id": comment.Comment.ID, "body": serviceADFText(comment.Comment.Body), "renderedBody": adf.ToHTML(comment.Comment.Body),
+		"public": comment.Public, "author": h.serviceUserBean(&models.User{ID: comment.Comment.AuthorID, DisplayName: comment.Comment.AuthorName, Active: true, AccountType: "atlassian"}),
+		"created": serviceDate(parseServiceDate(comment.Comment.Created)), "attachments": []any{}, "_expands": []any{},
+		"_links": map[string]string{"self": h.BaseURL + "/rest/servicedeskapi/request/" + request.Issue.Key + "/comment/" + comment.Comment.ID},
+	}
+}
+
+func (h *Handler) serviceRequestComments(w http.ResponseWriter, r *http.Request, workspaceID, issueIDOrKey, commentID string) {
+	request, admin, actorID, accessErr := h.serviceRequestAccess(r, workspaceID, issueIDOrKey)
+	if accessErr != nil {
+		writeJerr(w, accessErr)
+		return
+	}
+	if r.Method == http.MethodPost {
+		var input struct {
+			Body   json.RawMessage `json:"body"`
+			Public *bool           `json:"public"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&input); err != nil {
+			jiraError(w, http.StatusBadRequest, "Request body is invalid.")
+			return
+		}
+		public := true
+		if input.Public != nil {
+			public = *input.Public
+		}
+		plainText, isText := decodeServiceText(input.Body)
+		body := json.RawMessage(nil)
+		if !isText {
+			body = input.Body
+		}
+		if strings.TrimSpace(plainText) == "" && len(body) == 0 {
+			jiraError(w, http.StatusBadRequest, "Comment body is required.")
+			return
+		}
+		comment, err := h.Commands.AddServiceRequestComment(r.Context(), actorID, workspaceID, request.Issue.ID, body, plainText, public)
+		if err != nil {
+			jiraError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusCreated, h.serviceCommentBean(request, *comment))
+		return
+	}
+	if commentID != "" {
+		comment, err := h.Store.ServiceRequestComment(r.Context(), request.Issue.ID, commentID, admin)
+		if err != nil {
+			jiraError(w, http.StatusNotFound, "Comment does not exist or is not visible.")
+			return
+		}
+		writeJSON(w, http.StatusOK, h.serviceCommentBean(request, *comment))
+		return
+	}
+	comments, err := h.Store.ServiceRequestComments(r.Context(), request.Issue.ID, admin)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "Could not load comments.")
+		return
+	}
+	beans := make([]map[string]any, 0, len(comments))
+	for _, comment := range comments {
+		beans = append(beans, h.serviceCommentBean(request, comment))
+	}
+	h.writeServicePage(w, r, beans)
+}
+
+func (h *Handler) serviceRequestStatus(w http.ResponseWriter, r *http.Request, workspaceID, issueIDOrKey string) {
+	request, _, _, accessErr := h.serviceRequestAccess(r, workspaceID, issueIDOrKey)
+	if accessErr != nil {
+		writeJerr(w, accessErr)
+		return
+	}
+	h.writeServicePage(w, r, []map[string]any{h.serviceStatusBean(request.Issue.Status, request.Issue.UpdatedAt)})
+}
+
+func (h *Handler) availableServiceTransitions(r *http.Request, workspaceID, actorID string, request *models.ServiceRequest) ([]map[string]any, error) {
+	wf, err := h.Store.WorkflowForProjectAndIssueType(r.Context(), request.Issue.ProjectID, request.Issue.IssueType.ID)
+	if err != nil {
+		return nil, err
+	}
+	evaluation := workflow.ContextForIssue(actorID, request.Issue)
+	evaluation.IsAPI = true
+	evaluation.StatusHistory, err = h.Store.IssueStatusHistory(r.Context(), workspaceID, request.Issue.ID)
+	if err != nil {
+		return nil, err
+	}
+	evaluation.Transitions, err = h.Store.IssueTransitionHistory(r.Context(), workspaceID, request.Issue.ID)
+	if err != nil {
+		return nil, err
+	}
+	evaluation.ParentStatus, evaluation.ChildStatuses, err = h.Store.IssueHierarchyStatuses(r.Context(), workspaceID, request.Issue.ID)
+	if err != nil {
+		return nil, err
+	}
+	evaluation.FormsAttached, evaluation.FormsSubmitted, err = h.Store.IssueFormState(r.Context(), workspaceID, request.Issue.ID)
+	if err != nil {
+		return nil, err
+	}
+	beans := make([]map[string]any, 0)
+	for _, transition := range wf.AvailableFor(request.Issue.Status.ID, evaluation) {
+		status, err := h.Store.StatusByIDForProject(r.Context(), transition.To, request.Issue.ProjectID)
+		if err != nil {
+			return nil, err
+		}
+		beans = append(beans, map[string]any{"id": transition.ID, "name": transition.Name, "to": map[string]any{"id": status.ID, "name": status.Name, "statusCategory": status.Category}})
+	}
+	return beans, nil
+}
+
+func (h *Handler) serviceRequestTransition(w http.ResponseWriter, r *http.Request, workspaceID, issueIDOrKey string) {
+	request, admin, actorID, accessErr := h.serviceRequestAccess(r, workspaceID, issueIDOrKey)
+	if accessErr != nil {
+		writeJerr(w, accessErr)
+		return
+	}
+	if r.Method == http.MethodGet {
+		beans, err := h.availableServiceTransitions(r, workspaceID, actorID, request)
+		if err != nil {
+			jiraError(w, http.StatusInternalServerError, "Could not load transitions.")
+			return
+		}
+		h.writeServicePage(w, r, beans)
+		return
+	}
+	var input struct {
+		ID                string `json:"id"`
+		AdditionalComment *struct {
+			Body   string `json:"body"`
+			Public *bool  `json:"public"`
+		} `json:"additionalComment"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&input); err != nil || input.ID == "" {
+		jiraError(w, http.StatusBadRequest, "A transition id is required.")
+		return
+	}
+	if input.AdditionalComment != nil && input.AdditionalComment.Public != nil && !*input.AdditionalComment.Public && !admin {
+		jiraError(w, http.StatusBadRequest, "Customers may only add public comments.")
+		return
+	}
+	updated, err := h.Commands.TransitionServiceRequest(r.Context(), actorID, workspaceID, request.Issue.ID, input.ID)
+	if err != nil {
+		jiraError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if input.AdditionalComment != nil && strings.TrimSpace(input.AdditionalComment.Body) != "" {
+		public := true
+		if input.AdditionalComment.Public != nil {
+			public = *input.AdditionalComment.Public
+		}
+		if _, err := h.Commands.AddServiceRequestComment(r.Context(), actorID, workspaceID, updated.Issue.ID, nil, input.AdditionalComment.Body, public); err != nil {
+			jiraError(w, http.StatusInternalServerError, fmt.Sprintf("Request transitioned, but the additional comment could not be saved: %v", err))
+			return
+		}
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

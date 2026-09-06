@@ -1,5 +1,7 @@
 package models
 
+import "time"
+
 // ServiceDesk is the Jira Service Management portal attached to a service project.
 type ServiceDesk struct {
 	ID             string
@@ -20,4 +22,22 @@ type ServiceRequestType struct {
 	HelpText      string
 	IssueTypeID   string
 	GroupIDs      []string
+}
+
+// ServiceRequest attaches customer-facing service metadata to a regular Jira
+// issue. The issue remains the canonical workflow and field record.
+type ServiceRequest struct {
+	Issue       *Issue
+	ServiceDesk ServiceDesk
+	RequestType ServiceRequestType
+	Customer    *User
+	Channel     string
+	CreatedAt   time.Time
+}
+
+// ServiceRequestComment records which Jira comments may cross the customer
+// portal boundary. Comments without a row are agent-internal by default.
+type ServiceRequestComment struct {
+	Comment Comment
+	Public  bool
 }
