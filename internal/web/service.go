@@ -10,6 +10,7 @@ import (
 
 	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/models"
+	"github.com/e6qu/zzira/internal/wikimarkup"
 	"github.com/e6qu/zzira/internal/workflow"
 	"github.com/jackc/pgx/v5"
 )
@@ -39,6 +40,9 @@ type servicePageData struct {
 	Organizations         []models.ServiceOrganization
 	DeskOrganizations     map[string]bool
 	OrganizationUsers     map[string][]*models.User
+	KnowledgeArticles     []models.ServiceKnowledgeArticle
+	KnowledgeSpaces       []*models.WikiSpace
+	KnowledgeSpaceLinks   map[string]bool
 	Transitions           []serviceTransitionView
 	CanAdmin              bool
 	CanAgent              bool
@@ -117,6 +121,20 @@ func (h *Handler) ServiceAgent(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				http.Error(w, "Could not load SLA goals.", http.StatusInternalServerError)
 				return
+			}
+			data.KnowledgeSpaces, err = h.Store.WikiSpaces(r.Context(), workspaceID, user.ID)
+			if err != nil {
+				http.Error(w, "Could not load knowledge spaces.", http.StatusInternalServerError)
+				return
+			}
+			linkedSpaces, err := h.Store.ServiceDeskKnowledgeSpaces(r.Context(), workspaceID, user.ID, deskID)
+			if err != nil {
+				http.Error(w, "Could not load linked knowledge spaces.", http.StatusInternalServerError)
+				return
+			}
+			data.KnowledgeSpaceLinks = make(map[string]bool, len(linkedSpaces))
+			for _, space := range linkedSpaces {
+				data.KnowledgeSpaceLinks[space.ID] = true
 			}
 		}
 		data.Queues, err = h.Store.ServiceQueues(r.Context(), workspaceID, deskID)
@@ -284,6 +302,22 @@ func (h *Handler) ServiceOrganizationSettings(w http.ResponseWriter, r *http.Req
 	redirectLocal(w, r, "/service/agent/"+deskID+"#organizations")
 }
 
+func (h *Handler) ServiceKnowledgeSettings(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	deskID := r.PathValue("desk")
+	if err := h.Commands.SetServiceDeskKnowledgeSpace(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("spaceId"), r.PostFormValue("linked") == "true"); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	redirectLocal(w, r, "/service/agent/"+deskID+"#knowledge-base")
+}
+
 func parseServiceClock(value string) (int16, error) {
 	parts := strings.Split(value, ":")
 	if len(parts) != 2 {
@@ -394,7 +428,53 @@ func (h *Handler) ServicePortal(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load requests.", http.StatusInternalServerError)
 		return
 	}
-	h.writeWorkspacePage(w, r, "page_service_portal", user, workspaceID, servicePageData{Desk: desk, RequestTypes: requestTypes, Requests: requests, Query: query}, "service", desk.ProjectID)
+	data := servicePageData{Desk: desk, RequestTypes: requestTypes, Requests: requests, Query: query}
+	if query != "" {
+		admin, err := h.Store.IsAdmin(r.Context(), workspaceID, user.ID)
+		if err != nil {
+			http.Error(w, "Could not authorize knowledge access.", http.StatusInternalServerError)
+			return
+		}
+		data.KnowledgeArticles, err = h.Store.ServiceKnowledgeArticles(r.Context(), workspaceID, user.ID, desk.ID, query, admin)
+		if err != nil {
+			http.Error(w, "Could not search knowledge articles.", http.StatusInternalServerError)
+			return
+		}
+		for index := range data.KnowledgeArticles {
+			data.KnowledgeArticles[index].Excerpt = serviceKnowledgeExcerpt(data.KnowledgeArticles[index].Body)
+		}
+	}
+	h.writeWorkspacePage(w, r, "page_service_portal", user, workspaceID, data, "service", desk.ProjectID)
+}
+
+func serviceKnowledgeExcerpt(storage string) string {
+	value, err := wikimarkup.Text(storage)
+	if err != nil {
+		return ""
+	}
+	runes := []rune(value)
+	if len(runes) > 180 {
+		return string(runes[:177]) + "..."
+	}
+	return value
+}
+
+func (h *Handler) ServiceKnowledgePage(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	admin, err := h.Store.IsAdmin(r.Context(), workspaceID, user.ID)
+	if err != nil {
+		http.Error(w, "Could not authorize knowledge access.", http.StatusInternalServerError)
+		return
+	}
+	article, err := h.Store.ServiceKnowledgeArticle(r.Context(), workspaceID, user.ID, r.PathValue("page"), admin)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	h.writeWorkspacePage(w, r, "page_service_knowledge", user, workspaceID, servicePageData{KnowledgeArticles: []models.ServiceKnowledgeArticle{*article}}, "service", "")
 }
 
 func (h *Handler) ServiceRequestForm(w http.ResponseWriter, r *http.Request) {

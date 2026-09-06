@@ -64,6 +64,9 @@ func (s *Store) CreateProject(ctx context.Context, actorID string, p models.Proj
 	}
 	if p.ProjectTypeKey == "service_desk" {
 		var serviceDeskID string
+		if _, err := tx.Exec(ctx, `INSERT INTO service_assets_workspaces(workspace_id) VALUES($1) ON CONFLICT DO NOTHING`, p.WorkspaceID); err != nil {
+			return nil, err
+		}
 		if err := tx.QueryRow(ctx, `INSERT INTO service_desks(workspace_id,project_id,portal_name) VALUES($1,$2,$3) RETURNING id`, p.WorkspaceID, p.ID, p.Name).Scan(&serviceDeskID); err != nil {
 			return nil, err
 		}
@@ -71,6 +74,11 @@ func (s *Store) CreateProject(ctx context.Context, actorID string, p models.Proj
 			INSERT INTO service_request_types(service_desk_id,name,description,help_text,issue_type_id,group_ids)
 			VALUES ($1,'Get IT help','Request help from the service team.','Describe what you need and its impact.','it_task',ARRAY['help']),
 			       ($1,'Report an incident','Report a service interruption or degradation.','Include the affected service and when the impact began.','it_task',ARRAY['incidents'])`, serviceDeskID); err != nil {
+			return nil, err
+		}
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO service_request_type_groups(service_desk_id,id,name,position) VALUES
+			($1,'help','Help and support',0),($1,'incidents','Incidents',1)`, serviceDeskID); err != nil {
 			return nil, err
 		}
 		if _, err := tx.Exec(ctx, `

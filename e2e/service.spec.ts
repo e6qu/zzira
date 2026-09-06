@@ -47,6 +47,19 @@ test('admin creates a service project with Jira Service Management request types
   expect(fieldsResponse.status()).toBe(200);
   expect((await fieldsResponse.json()).requestTypeFields).toEqual(expect.arrayContaining([expect.objectContaining({ fieldId: 'summary', required: true })]));
 
+  const knowledgeKey = `KB${String(Date.now()).slice(-8)}`;
+  const spaceResponse = await page.request.post('/wiki/api/v2/spaces', {
+    headers: auth,
+    data: { key: knowledgeKey, name: `Support knowledge ${key}`, description: { representation: 'plain', value: 'Self-service support articles' }, createPrivateSpace: false },
+  });
+  expect(spaceResponse.status()).toBe(201);
+  const knowledgeSpace = await spaceResponse.json();
+  const articleResponse = await page.request.post('/wiki/api/v2/pages', {
+    headers: auth,
+    data: { spaceId: knowledgeSpace.id, title: `Resolve checkout errors ${key}`, status: 'current', body: { representation: 'storage', value: '<p>Restart the checkout worker and verify the payment queue.</p>' } },
+  });
+  expect(articleResponse.status()).toBe(200);
+
   await page.goto('/service');
   await expect(page.getByRole('heading', { name: 'How can we help?', level: 1 })).toBeVisible();
   await accessible(page);
@@ -118,6 +131,20 @@ test('admin creates a service project with Jira Service Management request types
   await expect(page.locator('#agents').getByRole('button', { name: /Remove agent Demo User/ })).toBeVisible();
   await page.locator('#agents').getByRole('button', { name: /Remove agent Demo User/ }).click();
   await expect(page.locator('#agents').getByRole('button', { name: /Add agent Demo User/ })).toBeVisible();
+  const knowledgeSettings = page.locator('#knowledge-base');
+  await expect(knowledgeSettings.getByRole('heading', { name: 'Knowledge base' })).toBeVisible();
+  await knowledgeSettings.getByRole('button', { name: `Link knowledge base Support knowledge ${key}` }).click();
+  await expect(page.locator('#knowledge-base').getByRole('button', { name: `Unlink knowledge base Support knowledge ${key}` })).toBeVisible();
+  await page.goto(`/service/portals/${desk.id}?q=checkout`);
+  await expect(page.getByRole('heading', { name: 'Suggested articles' })).toBeVisible();
+  await page.getByRole('link', { name: new RegExp(`Resolve checkout errors ${key}`) }).click();
+  await expect(page.getByRole('heading', { name: `Resolve checkout errors ${key}`, level: 1 })).toBeVisible();
+  await expect(page.getByText('Restart the checkout worker and verify the payment queue.')).toBeVisible();
+  await accessible(page);
+  await page.setViewportSize({ width: 320, height: 740 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto(`/service/agent/${desk.id}`);
   const customerSettings = page.locator('#customers');
   await expect(customerSettings.getByRole('heading', { name: 'Customers' })).toBeVisible();
   const managedCustomerEmail = `managed-${Date.now()}@example.test`;

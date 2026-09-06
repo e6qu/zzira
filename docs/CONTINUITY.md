@@ -11,8 +11,8 @@ and final acceptance rules belong in [PLAN.md](../PLAN.md).
 - Branch: `feat/cloud-surface-completion`
 - Base: `origin/main` after PR #65, scheduled automation
 - Delivery shape: one pull request with ordered, independently green commits
-- Last completed workstream: 9 of 15 — automation foundation
-- Active workstream: 10 of 15 — Jira Service Management API and journeys
+- Last completed workstream: 10 of 15 — Jira Service Management API
+- Active workstream: 11 of 15 — Jira Service Management journeys
 - Blockers: none
 
 ## Last verified baseline
@@ -1228,13 +1228,35 @@ Validation after customer and organization lifecycle:
 - Exact-operation review is now 203/1,207: 196 partial, 7 missing and 1,004
   unassessed. Jira Service Management has 64 of 75 pinned operations reviewed.
 
+Validation after Jira Service Management contract completion:
+
+- Migration 068 adds ordered request-type groups, linked Confluence spaces and
+  a durable Assets-compatible workspace namespace for existing and future
+  service desks.
+- The final eleven pinned operations implement Assets/Insight workspace
+  discovery, global and per-desk knowledge search, rendered article viewing,
+  request-type permission checks, request-type property CRUD and group reads.
+- Site administrators link Confluence spaces from the agent workspace.
+  Published matching pages appear as customer portal suggestions and open in a
+  permission-shaped knowledge article journey without granting Confluence
+  product access.
+- PostgreSQL contract coverage proves status shapes, validation, administrator
+  and customer permissions, highlight markers and persisted values. The
+  Chromium service journey passes knowledge linking/search/viewing, WCAG scans
+  and 320 px reflow alongside the existing customer, agent and manager flow.
+- The full PostgreSQL-enabled Go suite, `go vet`, WebAssembly build, seven
+  conformance tests, generated inventory/coverage checks and `git diff --check`
+  pass.
+- Exact-operation review is now 214/1,207: 207 partial, 7 missing and 993
+  unassessed. All 75 pinned Jira Service Management operations are reviewed.
+
 ## Current change
 
-1. Complete the remaining Jira Service Management contract operations:
-   knowledge-base article discovery/viewing, request-type permission checks,
-   request-type properties and groups, then Assets workspace discovery.
-2. Continue the reviewed Jira Platform contract operation ledger alongside the
-   vertical workflow slices.
+1. Complete Jira Service Management journeys beyond the pinned contract:
+   custom queue management and JQL, request-type forms, conditional SLA goals,
+   holidays, incident/problem/change linkage and service reports.
+2. Continue into the Confluence v1/v2 contract and knowledge collaboration
+   workstreams after the remaining service journeys are browser-proven.
 
 ## Resume here
 

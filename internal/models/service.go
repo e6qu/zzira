@@ -19,6 +19,15 @@ type ServiceOrganization struct {
 	CreatedAt             time.Time
 }
 
+type ServiceRequestTypeGroup struct {
+	ID, ServiceDeskID, Name string
+	Position                int
+}
+
+type ServiceKnowledgeArticle struct {
+	PageID, SpaceID, SpaceKey, Title, Excerpt, Body string
+}
+
 // ServiceRequestType describes one customer-facing form backed by a Jira issue type.
 type ServiceRequestType struct {
 	ID            string

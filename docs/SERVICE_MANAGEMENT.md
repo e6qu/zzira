@@ -11,12 +11,20 @@ workflow and contributes to DORA recovery time through its `incident` label.
 ## Customer journey
 
 Authenticated users can open `/service`, choose a service portal, search its
-request types, submit a typed request, review their requests, add public replies,
+request types and linked knowledge articles, submit a typed request, review their requests, add public replies,
 upload and download customer-visible files, answer approvals assigned to them,
 and execute currently available workflow transitions. The request page exposes
 its status, request type, portal, channel, description, conversation, files,
 approval state, notification preference, and satisfaction feedback. The browser journey is tested in light and dark themes,
 with WCAG A/AA axe checks and 320 px reflow.
+
+Site administrators link existing Confluence spaces to individual service
+desks from the agent workspace. Published pages in those spaces appear as
+portal suggestions when their title or storage body matches the customer's
+search. Customers can open the rendered article without receiving Confluence
+product access; closed-portal admission still applies. The global and per-desk
+knowledge REST searches use the same visibility boundary and provide Jira's
+optional highlight markers and article source/content links.
 
 Assigned agents can read requests in their service desks by using
 `requestOwnership=ALL_REQUESTS`, raise a request for an enrolled customer, and add
@@ -103,6 +111,11 @@ conditional goals, status-driven pauses and multiple calendars remain.
 The current `/rest/servicedeskapi` slice implements:
 
 - product info, service desk and request type discovery and administration;
+- durable Assets workspace discovery through both the current and deprecated
+  Insight paths;
+- request type groups, permission checks, and administrator-owned JSON entity
+  properties;
+- linked knowledge-base article search and rendered article viewing;
 - customer creation, strict conflict handling and portal-only revocation;
 - desk customer invitation, list, add and closed-portal removal;
 - organization lifecycle, member and JSON property management, plus desk links;
@@ -120,6 +133,9 @@ The current `/rest/servicedeskapi` slice implements:
 - per-user request subscription status, subscribe, and unsubscribe; and
 - customer satisfaction feedback create, read, update, and delete.
 
+All 75 operations in the pinned Jira Service Management Cloud REST contract
+have now been reviewed and are represented by explicit partial assessments.
+
 Request creation accepts string or Atlassian document format descriptions and
 stores the backing issue through the shared command layer. Incident request
 types automatically receive the `incident` label. Failed metadata association
@@ -131,8 +147,8 @@ The implemented operations are assessed as partial. Custom queues and arbitrary
 queue JQL, dynamic form/custom-field values, participant notifications,
 approval workflow configuration, image thumbnail generation,
 email delivery and notification preference administration, CSAT configuration
-and aggregate service reports, full
+and aggregate service reports, complete Assets object/schema/import APIs, full
 status chronology, conditional SLA goal criteria, calendar holidays,
-portal invitation email delivery, knowledge suggestions, Assets, and
+portal invitation email delivery, Atlassian knowledge ranking/analytics, and
 incident/problem/change configuration remain. Customer creation grants only the
 site `atlassian/customer` role and never silently grants Jira product access.

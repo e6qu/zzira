@@ -75,3 +75,31 @@ func Render(storage string) (string, error) {
 	}
 	return b.String(), nil
 }
+
+// Text returns readable plain text from validated storage markup for search
+// excerpts and accessible summaries.
+func Text(storage string) (string, error) {
+	if _, err := Render(storage); err != nil {
+		return "", err
+	}
+	decoder := xml.NewDecoder(strings.NewReader("<root>" + storage + "</root>"))
+	var value strings.Builder
+	for {
+		token, err := decoder.Token()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return "", err
+		}
+		switch typed := token.(type) {
+		case xml.StartElement:
+			if value.Len() > 0 && typed.Name.Local != "root" && typed.Name.Local != "a" && typed.Name.Local != "strong" && typed.Name.Local != "em" && typed.Name.Local != "b" && typed.Name.Local != "i" && typed.Name.Local != "u" && typed.Name.Local != "s" {
+				value.WriteByte(' ')
+			}
+		case xml.CharData:
+			value.Write(typed)
+		}
+	}
+	return strings.Join(strings.Fields(value.String()), " "), nil
+}

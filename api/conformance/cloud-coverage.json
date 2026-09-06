@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 203,
+  "assessedTotal": 214,
   "counts": {
     "delivered": 0,
-    "partial": 196,
+    "partial": 207,
     "missing": 7,
-    "unassessed": 1004
+    "unassessed": 993
   },
   "countsByFamily": {
     "automation": {
@@ -30,9 +30,9 @@
     },
     "jira-service-management": {
       "delivered": 0,
-      "partial": 64,
+      "partial": 75,
       "missing": 0,
-      "unassessed": 11
+      "unassessed": 0
     },
     "jira-software": {
       "delivered": 0,
@@ -6220,9 +6220,15 @@
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/assets/workspace",
       "family": "jira-service-management",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_knowledge.go",
+        "internal/store/service_knowledge.go",
+        "migrations/068_service_knowledge_assets.sql",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Returns the durable Assets-compatible workspace namespace for a site with service desks; Assets objects, schemas and imports remain outside this operation."
     },
     {
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/customer",
@@ -6294,25 +6300,49 @@
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/insight/workspace",
       "family": "jira-service-management",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_knowledge.go",
+        "internal/store/service_knowledge.go",
+        "migrations/068_service_knowledge_assets.sql",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Supports the deprecated Insight alias over the same durable Assets workspace namespace."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/knowledgebase/article",
       "family": "jira-service-management",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_knowledge.go",
+        "internal/store/service_knowledge.go",
+        "migrations/068_service_knowledge_assets.sql",
+        "docs/SERVICE_MANAGEMENT.md",
+        "internal/web/service.go",
+        "internal/render/templates/service.gohtml",
+        "e2e/service.spec.ts"
+      ],
+      "notes": "Searches published pages in linked Confluence spaces with portal and agent visibility, pagination and optional Jira highlight markers; Atlassian ranking and analytics remain."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/knowledgebase/article/view/{pageId}",
       "family": "jira-service-management",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_knowledge.go",
+        "internal/store/service_knowledge.go",
+        "migrations/068_service_knowledge_assets.sql",
+        "docs/SERVICE_MANAGEMENT.md",
+        "internal/web/service.go",
+        "internal/render/templates/service.gohtml",
+        "e2e/service.spec.ts"
+      ],
+      "notes": "Returns validated rendered storage content for an accessible linked knowledge article; the complete Confluence storage vocabulary remains partial."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/organization",
@@ -7075,9 +7105,18 @@
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/servicedesk/{serviceDeskId}/knowledgebase/article",
       "family": "jira-service-management",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_knowledge.go",
+        "internal/store/service_knowledge.go",
+        "migrations/068_service_knowledge_assets.sql",
+        "docs/SERVICE_MANAGEMENT.md",
+        "internal/web/service.go",
+        "internal/render/templates/service.gohtml",
+        "e2e/service.spec.ts"
+      ],
+      "notes": "Searches published articles linked to one accessible service desk and emits Jira knowledge article beans."
     },
     {
       "operationId": "jira-service-management:DELETE:/rest/servicedeskapi/servicedesk/{serviceDeskId}/organization",
@@ -7208,9 +7247,15 @@
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/servicedesk/{serviceDeskId}/requesttype/permissions/check",
       "family": "jira-service-management",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_knowledge.go",
+        "internal/store/service_knowledge.go",
+        "migrations/068_service_knowledge_assets.sql",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Checks create and administer permissions for up to 50 numeric request type IDs, including administrator-only checks for another account."
     },
     {
       "operationId": "jira-service-management:DELETE:/rest/servicedeskapi/servicedesk/{serviceDeskId}/requesttype/{requestTypeId}",
@@ -7255,41 +7300,71 @@
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/servicedesk/{serviceDeskId}/requesttype/{requestTypeId}/property",
       "family": "jira-service-management",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_knowledge.go",
+        "internal/store/service_knowledge.go",
+        "migrations/068_service_knowledge_assets.sql",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Lists persisted JSON property keys and canonical self links for an accessible request type."
     },
     {
       "operationId": "jira-service-management:DELETE:/rest/servicedeskapi/servicedesk/{serviceDeskId}/requesttype/{requestTypeId}/property/{propertyKey}",
       "family": "jira-service-management",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_knowledge.go",
+        "internal/store/service_knowledge.go",
+        "migrations/068_service_knowledge_assets.sql",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Deletes an existing request type JSON property with site-administrator authorization."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/servicedesk/{serviceDeskId}/requesttype/{requestTypeId}/property/{propertyKey}",
       "family": "jira-service-management",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_knowledge.go",
+        "internal/store/service_knowledge.go",
+        "migrations/068_service_knowledge_assets.sql",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Returns a persisted JSON request type property to users who can access the request type."
     },
     {
       "operationId": "jira-service-management:PUT:/rest/servicedeskapi/servicedesk/{serviceDeskId}/requesttype/{requestTypeId}/property/{propertyKey}",
       "family": "jira-service-management",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_knowledge.go",
+        "internal/store/service_knowledge.go",
+        "migrations/068_service_knowledge_assets.sql",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Creates or replaces bounded JSON request type properties with Jira 201 and 200 status behavior."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/servicedesk/{serviceDeskId}/requesttypegroup",
       "family": "jira-service-management",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service_knowledge.go",
+        "internal/store/service_knowledge.go",
+        "migrations/068_service_knowledge_assets.sql",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Returns ordered request type group IDs and names for an accessible service desk."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/analytics/content/{contentId}/viewers",

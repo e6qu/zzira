@@ -120,6 +120,22 @@ func (h *Handler) serviceDeskRoute(w http.ResponseWriter, r *http.Request) {
 		h.serviceDeskCustomers(w, r, workspaceID, actorID, parts[1])
 	case len(parts) == 3 && parts[0] == "servicedesk" && parts[2] == "organization" && (r.Method == http.MethodGet || r.Method == http.MethodPost || r.Method == http.MethodDelete):
 		h.serviceDeskOrganizations(w, r, workspaceID, actorID, parts[1])
+	case len(parts) == 2 && (parts[0] == "assets" || parts[0] == "insight") && parts[1] == "workspace" && r.Method == http.MethodGet:
+		h.serviceAssetsWorkspaces(w, r, workspaceID)
+	case len(parts) == 2 && parts[0] == "knowledgebase" && parts[1] == "article" && r.Method == http.MethodGet:
+		h.serviceKnowledgeArticles(w, r, workspaceID, actorID, "")
+	case len(parts) == 4 && parts[0] == "knowledgebase" && parts[1] == "article" && parts[2] == "view" && r.Method == http.MethodGet:
+		h.serviceKnowledgeArticle(w, r, workspaceID, actorID, parts[3])
+	case len(parts) == 4 && parts[0] == "servicedesk" && parts[2] == "knowledgebase" && parts[3] == "article" && r.Method == http.MethodGet:
+		h.serviceKnowledgeArticles(w, r, workspaceID, actorID, parts[1])
+	case len(parts) == 3 && parts[0] == "servicedesk" && parts[2] == "requesttypegroup" && r.Method == http.MethodGet:
+		h.serviceRequestTypeGroups(w, r, workspaceID, actorID, parts[1])
+	case len(parts) == 5 && parts[0] == "servicedesk" && parts[2] == "requesttype" && parts[3] == "permissions" && parts[4] == "check" && r.Method == http.MethodPost:
+		h.serviceRequestTypePermissions(w, r, workspaceID, actorID, parts[1])
+	case len(parts) == 5 && parts[0] == "servicedesk" && parts[2] == "requesttype" && parts[4] == "property" && r.Method == http.MethodGet:
+		h.serviceRequestTypePropertyKeys(w, r, workspaceID, actorID, parts[1], parts[3])
+	case len(parts) == 6 && parts[0] == "servicedesk" && parts[2] == "requesttype" && parts[4] == "property" && (r.Method == http.MethodGet || r.Method == http.MethodPut || r.Method == http.MethodDelete):
+		h.serviceRequestTypeProperty(w, r, workspaceID, actorID, parts[1], parts[3], parts[5])
 	case len(parts) == 3 && parts[0] == "servicedesk" && parts[2] == "attachTemporaryFile" && r.Method == http.MethodPost:
 		h.attachServiceTemporaryFiles(w, r, workspaceID, parts[1])
 	case len(parts) == 3 && parts[0] == "servicedesk" && parts[2] == "queue" && r.Method == http.MethodGet:

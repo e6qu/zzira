@@ -14,6 +14,7 @@ import (
 
 	"github.com/e6qu/zzira/internal/attachments"
 	"github.com/e6qu/zzira/internal/commands"
+	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
 )
 
@@ -56,6 +57,9 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 		exec(`DELETE FROM projects WHERE workspace_id=$1`, workspaceID)
 		exec(`DELETE FROM organization_audit_events WHERE actor_id=$1`, actorID)
 		exec(`DELETE FROM memberships WHERE workspace_id=$1`, workspaceID)
+		exec(`DELETE FROM wiki_page_versions WHERE page_id IN (SELECT p.id FROM wiki_pages p JOIN wiki_spaces s ON s.id=p.space_id WHERE s.workspace_id=$1)`, workspaceID)
+		exec(`DELETE FROM wiki_pages WHERE space_id IN (SELECT id FROM wiki_spaces WHERE workspace_id=$1)`, workspaceID)
+		exec(`DELETE FROM wiki_spaces WHERE workspace_id=$1`, workspaceID)
 		exec(`DELETE FROM workspaces WHERE id=$1`, workspaceID)
 		exec(`DELETE FROM api_tokens WHERE user_id IN ($1,$2,$3)`, actorID, customerID, agentID)
 		exec(`DELETE FROM users WHERE id IN ($1,$2,$3) OR email IN ('invited.customer@example.test','agent-created.customer@example.test','lifecycle.customer@example.test','desk.invite@example.test')`, actorID, customerID, agentID)
@@ -145,6 +149,76 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	call("GET", "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/requesttype/"+createdTypeID, "", 404)
 	call("GET", "/rest/servicedeskapi/requesttype?searchQuery=incident", "", 200)
 	call("GET", "/rest/servicedeskapi/info", "", 200)
+	assets := call("GET", "/rest/servicedeskapi/assets/workspace", "", 200)
+	if !strings.Contains(assets.Body.String(), `"workspaceId"`) {
+		t.Fatal(assets.Body.String())
+	}
+	deprecatedAssets := call("GET", "/rest/servicedeskapi/insight/workspace", "", 200)
+	if !strings.Contains(deprecatedAssets.Body.String(), `"workspaceId"`) {
+		t.Fatal(deprecatedAssets.Body.String())
+	}
+	groups := callAs(customerID, "GET", "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/requesttypegroup", "", 200)
+	if !strings.Contains(groups.Body.String(), `"name":"Help and support"`) || !strings.Contains(groups.Body.String(), `"name":"Incidents"`) {
+		t.Fatal(groups.Body.String())
+	}
+	call("GET", "/rest/servicedeskapi/servicedesk/missing/requesttypegroup", "", 404)
+
+	permissionsBody := `{"permissions":["canCreateRequest","canAdminister"],"requestTypeIds":[` + requestTypeID + `,999999999]}`
+	permissions := call("POST", "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/requesttype/permissions/check", permissionsBody, 200)
+	if !strings.Contains(permissions.Body.String(), `"canCreateRequest":[`+requestTypeID+`]`) || !strings.Contains(permissions.Body.String(), `"canAdminister":[`+requestTypeID+`]`) {
+		t.Fatal(permissions.Body.String())
+	}
+	targetPermissions := call("POST", "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/requesttype/permissions/check", `{"accountId":"`+customerID+`","permissions":["canCreateRequest","canAdminister"],"requestTypeIds":[`+requestTypeID+`]}`, 200)
+	if !strings.Contains(targetPermissions.Body.String(), `"canCreateRequest":[`+requestTypeID+`]`) || !strings.Contains(targetPermissions.Body.String(), `"canAdminister":[]`) {
+		t.Fatal(targetPermissions.Body.String())
+	}
+	callAs(customerID, "POST", "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/requesttype/permissions/check", `{"accountId":"`+actorID+`","permissions":["canCreateRequest"],"requestTypeIds":[`+requestTypeID+`]}`, 401)
+	call("POST", "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/requesttype/permissions/check", `{"permissions":[],"requestTypeIds":[]}`, 400)
+
+	propertyPath := "/rest/servicedeskapi/servicedesk/" + serviceDeskID + "/requesttype/" + requestTypeID + "/property/automation"
+	call("PUT", propertyPath, `{"owner":"service-automation","enabled":true}`, 201)
+	call("PUT", propertyPath, `{"owner":"service-automation","enabled":false}`, 200)
+	requestTypeProperty := callAs(customerID, "GET", propertyPath, "", 200)
+	if !strings.Contains(requestTypeProperty.Body.String(), `"key":"automation"`) || !strings.Contains(requestTypeProperty.Body.String(), `"enabled":false`) {
+		t.Fatal(requestTypeProperty.Body.String())
+	}
+	propertyKeys := callAs(customerID, "GET", "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/requesttype/"+requestTypeID+"/property", "", 200)
+	if !strings.Contains(propertyKeys.Body.String(), `"key":"automation"`) {
+		t.Fatal(propertyKeys.Body.String())
+	}
+	callAs(customerID, "PUT", propertyPath, `{"enabled":true}`, 403)
+	call("DELETE", propertyPath, "", 204)
+	callAs(customerID, "GET", propertyPath, "", 404)
+
+	space, err := handler.Commands.CreateWikiSpace(ctx, workspaceID, actorID, "HELPKB", "Support knowledge", "Customer self service", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := handler.Commands.SaveWikiPage(ctx, workspaceID, actorID, models.WikiPage{
+		SpaceID: space.ID,
+		Title:   "Restart checkout worker",
+		Status:  "current",
+		Body:    models.WikiBody{Representation: "storage", Value: "<p>Restart the checkout worker safely.</p>"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := handler.Commands.SetServiceDeskKnowledgeSpace(ctx, actorID, workspaceID, serviceDeskID, space.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	call("GET", "/rest/servicedeskapi/knowledgebase/article", "", 400)
+	articles := callAs(customerID, "GET", "/rest/servicedeskapi/knowledgebase/article?query=checkout&highlight=true", "", 200)
+	if !strings.Contains(articles.Body.String(), `@@@hl@@@checkout@@@endhl@@@`) || !strings.Contains(articles.Body.String(), `"pageId":"`+page.ID+`"`) || !strings.Contains(articles.Body.String(), `"spaceKey":"HELPKB"`) {
+		t.Fatal(articles.Body.String())
+	}
+	deskArticles := callAs(customerID, "GET", "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/knowledgebase/article?query=worker", "", 200)
+	if !strings.Contains(deskArticles.Body.String(), "Restart checkout worker") {
+		t.Fatal(deskArticles.Body.String())
+	}
+	article := callAs(customerID, "GET", "/rest/servicedeskapi/knowledgebase/article/view/"+page.ID, "", 200)
+	if !strings.Contains(article.Body.String(), "Restart the checkout worker safely.") {
+		t.Fatal(article.Body.String())
+	}
 
 	createdCustomer := call("POST", "/rest/servicedeskapi/customer", `{"email":"invited.customer@example.test","displayName":"Invited Customer"}`, 201)
 	if !strings.Contains(createdCustomer.Body.String(), `"displayName":"Invited Customer"`) {

@@ -139,3 +139,28 @@ func (s *Service) SetServiceDeskCustomerAccess(ctx context.Context, actorID, wor
 	}
 	return s.Store.SetServiceDeskCustomerAccess(ctx, workspaceID, serviceDeskID, open)
 }
+
+func (s *Service) SetServiceDeskKnowledgeSpace(ctx context.Context, actorID, workspaceID, serviceDeskID, spaceID string, link bool) error {
+	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
+		return err
+	}
+	return s.Store.SetServiceDeskKnowledgeSpace(ctx, workspaceID, actorID, serviceDeskID, spaceID, link)
+}
+
+func (s *Service) SetServiceRequestTypeProperty(ctx context.Context, actorID, workspaceID, serviceDeskID, requestTypeID, key string, value json.RawMessage) (bool, error) {
+	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
+		return false, err
+	}
+	key = strings.TrimSpace(key)
+	if key == "" || len(key) > 255 || len(value) == 0 || len(value) > 32768 || !json.Valid(value) {
+		return false, fmt.Errorf("property key and a valid JSON value of at most 32768 bytes are required")
+	}
+	return s.Store.SetServiceRequestTypeProperty(ctx, workspaceID, serviceDeskID, requestTypeID, key, value)
+}
+
+func (s *Service) DeleteServiceRequestTypeProperty(ctx context.Context, actorID, workspaceID, serviceDeskID, requestTypeID, key string) error {
+	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
+		return err
+	}
+	return s.Store.DeleteServiceRequestTypeProperty(ctx, workspaceID, serviceDeskID, requestTypeID, key)
+}
