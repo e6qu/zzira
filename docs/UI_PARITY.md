@@ -23,7 +23,7 @@ Status: ✅ browser-tested complete journey · 🟡 usable tested subset · ⛔ 
 | Manager plans across teams | Missing | Hierarchy, teams, capacity, dependencies, timeline, scenarios and cross-project plans remain |
 | Agile coach diagnoses delivery | Missing | Sprint, velocity, burnup, burndown, cumulative-flow and control-chart journeys remain |
 | Manager builds an operating dashboard | Partial | ✅ Configurable dashboards, layouts, favourites, sharing, refresh and native work-item gadgets; report gadgets, complete shares, subscriptions and exports remain |
-| Admin designs and publishes a workflow | Partial | ✅ Directory, diagrams, custom transitions and project assignment; status editing, draft/publish, schemes, conditions, validators and post-functions remain |
+| Admin designs and publishes a workflow | Partial | ✅ Directory, diagram, custom transition drafts, published-version isolation, explicit publish/discard and project assignment; status editing, schemes, conditions, validators and post-functions remain |
 | Admin automates work | Partial | ✅ Fixed schedule → JQL → label/assign/transition flow, management, run-now and audit; trigger/action catalog, conditions, branches, smart values and templates remain |
 | Service customer requests help | Missing | Help center, knowledge discovery, request forms, conversation, approval, notifications and feedback remain |
 | Service agent works a queue | Missing | Queue, request workspace, private collaboration, SLA, assignment, approval and escalation remain |

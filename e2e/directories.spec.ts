@@ -92,6 +92,11 @@ test('workflow directory, editor, transition changes, and project assignment wor
   await page.selectOption('#transition-to', 'st_done');
   await page.getByRole('button', { name: 'Add transition' }).click();
   await expect(page.getByText('Ready for review', { exact: true })).toBeVisible();
+  await expect(page.getByText('Draft changes', { exact: true })).toBeVisible();
+  await expect(page.getByText('Draft changes are not active')).toBeVisible();
+  await page.getByRole('button', { name: 'Publish workflow' }).click();
+  await expect(page.getByText('Published', { exact: true })).toBeVisible();
+  await expect(page.getByText('Version 2')).toBeVisible();
 
   await page.selectOption('#workflow-project', 'prj_default');
   await page.getByRole('button', { name: 'Assign', exact: true }).click();

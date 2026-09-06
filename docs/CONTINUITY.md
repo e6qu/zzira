@@ -135,6 +135,11 @@ does not publish them as one OpenAPI document.
   the new configuration, secrets are never rendered, environment-owned keys
   cannot be overwritten, and deletion revokes issuer sessions. All lifecycle
   changes are durable and audited, including across server restart.
+- Added versioned workflow drafts. Transition edits and deletes now change an
+  editor draft while assigned projects continue enforcing the published
+  definition. Administrators explicitly publish or discard; publishing bumps
+  the version, both outcomes write organization audit evidence, and the
+  workflow directory exposes pending drafts.
 
 Validation after the organization foundation:
 
@@ -284,10 +289,24 @@ Validation after encrypted provider administration:
   Chromium provider/admin/accessibility journeys pass, including light/dark
   WCAG scans, keyboard behavior, target sizing, and 320 px reflow.
 
+Validation after workflow draft/publish:
+
+- PostgreSQL workflow tests prove published definitions remain unchanged while
+  a draft is edited, publishing promotes the draft and increments its version,
+  discarding preserves the published definition, and project runtime resolves
+  only the published version with migration 044.
+- The Chromium workflow journey creates a workflow, adds a transition, observes
+  the inactive-draft explanation, publishes version 2, assigns it to a project,
+  and verifies the project uses it.
+- The full PostgreSQL Go suite, vet, WebAssembly compilation, seven conformance
+  tests, both generated inventory/coverage checks, and `git diff --check` pass.
+  The light/dark WCAG scan of every primary page and the 320 px reflow journey
+  also pass.
+
 ## Current change
 
-1. Begin Jira administration and workflow completion with status lifecycle,
-   draft/publish semantics, workflow schemes, and impact-safe assignment.
+1. Continue Jira administration with status lifecycle, workflow schemes, and
+   impact-safe assignment.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 

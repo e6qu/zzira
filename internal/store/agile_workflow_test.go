@@ -50,6 +50,46 @@ func TestWorkflowPersistenceValidatesDefinitionsAndAssignments(t *testing.T) {
 	if stored.ID != workflowID || stored.Name != wf.Name || len(stored.Transitions) != len(wf.Transitions) {
 		t.Fatalf("stored workflow = %+v, want %+v", stored, wf)
 	}
+	workspaceID, _, err := st.DefaultWorkspace(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actorID, err := st.FirstAdminID(ctx, workspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	draft := stored
+	draft.Transitions = append(draft.Transitions, workflow.Transition{ID: transitionID, Name: "Review", From: []string{"st_inprogress"}, To: "st_done"})
+	if err := st.SaveWorkflowDraft(ctx, draft); err != nil {
+		t.Fatalf("save draft: %v", err)
+	}
+	publishedBefore, err := st.WorkflowByID(ctx, workflowID)
+	if err != nil || len(publishedBefore.Transitions) != len(wf.Transitions) || !publishedBefore.HasDraft {
+		t.Fatalf("published workflow changed before publish: %+v, %v", publishedBefore, err)
+	}
+	editorDraft, err := st.WorkflowDraftByID(ctx, workflowID)
+	if err != nil || !editorDraft.HasDraft || len(editorDraft.Transitions) != len(wf.Transitions)+1 {
+		t.Fatalf("editor draft = %+v, %v", editorDraft, err)
+	}
+	if err := st.PublishWorkflowDraft(ctx, workspaceID, actorID, workflowID); err != nil {
+		t.Fatalf("publish draft: %v", err)
+	}
+	published, err := st.WorkflowByID(ctx, workflowID)
+	if err != nil || published.HasDraft || published.Version != 2 || len(published.Transitions) != len(wf.Transitions)+1 {
+		t.Fatalf("published workflow = %+v, %v", published, err)
+	}
+	discarded := published
+	discarded.Transitions = discarded.Transitions[:len(discarded.Transitions)-1]
+	if err := st.SaveWorkflowDraft(ctx, discarded); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DiscardWorkflowDraft(ctx, workspaceID, actorID, workflowID); err != nil {
+		t.Fatal(err)
+	}
+	afterDiscard, err := st.WorkflowByID(ctx, workflowID)
+	if err != nil || afterDiscard.HasDraft || len(afterDiscard.Transitions) != len(published.Transitions) {
+		t.Fatalf("workflow after discard = %+v, %v", afterDiscard, err)
+	}
 	if err := st.AssignWorkflowToProject(ctx, "prj_default", workflowID); err != nil {
 		t.Fatalf("assign workflow: %v", err)
 	}

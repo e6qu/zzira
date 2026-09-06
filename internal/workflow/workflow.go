@@ -17,6 +17,8 @@ type Workflow struct {
 	ID          string       `json:"id"`
 	Name        string       `json:"name"`
 	Transitions []Transition `json:"transitions"`
+	HasDraft    bool         `json:"-"`
+	Version     int          `json:"-"`
 }
 
 // Default is the built-in workflow: To Do ↔ In Progress → Done, Done → To Do.

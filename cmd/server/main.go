@@ -272,6 +272,9 @@ func main() {
 	mux.HandleFunc("POST /settings/workflows/{id}/projects", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.AssignProjectWorkflow(w, r, r.PathValue("id"))
 	})
+	mux.HandleFunc("POST /settings/workflows/{id}/draft", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.FinishWorkflowDraft(w, r, r.PathValue("id"))
+	})
 	mux.HandleFunc("GET /settings/automation", webHandler.AutomationRules)
 	mux.HandleFunc("POST /settings/automation", webHandler.AutomationCreate)
 	mux.HandleFunc("GET /settings/automation/new", webHandler.AutomationNew)

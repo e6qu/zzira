@@ -331,7 +331,7 @@ func (h *Handler) WorkflowPage(w http.ResponseWriter, r *http.Request, id string
 	if !ok {
 		return
 	}
-	wf, err := h.Store.WorkflowByID(r.Context(), id)
+	wf, err := h.Store.WorkflowDraftByID(r.Context(), id)
 	if err != nil {
 		http.NotFound(w, r)
 		return
@@ -405,7 +405,7 @@ func (h *Handler) AddWorkflowTransition(w http.ResponseWriter, r *http.Request, 
 		http.Error(w, "the built-in workflow is read-only; create a copy to edit it", http.StatusBadRequest)
 		return
 	}
-	wf, err := h.Store.WorkflowByID(r.Context(), workflowID)
+	wf, err := h.Store.WorkflowDraftByID(r.Context(), workflowID)
 	if err != nil {
 		http.NotFound(w, r)
 		return
@@ -414,7 +414,7 @@ func (h *Handler) AddWorkflowTransition(w http.ResponseWriter, r *http.Request, 
 		ID: store.NewID("transition"), Name: strings.TrimSpace(r.PostFormValue("name")),
 		From: []string{r.PostFormValue("from")}, To: r.PostFormValue("to"),
 	})
-	if err := h.Store.CreateWorkflow(r.Context(), wf); err != nil {
+	if err := h.Store.SaveWorkflowDraft(r.Context(), wf); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -430,7 +430,7 @@ func (h *Handler) DeleteWorkflowTransition(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "the built-in workflow is read-only", http.StatusBadRequest)
 		return
 	}
-	wf, err := h.Store.WorkflowByID(r.Context(), workflowID)
+	wf, err := h.Store.WorkflowDraftByID(r.Context(), workflowID)
 	if err != nil {
 		http.NotFound(w, r)
 		return
@@ -446,11 +446,42 @@ func (h *Handler) DeleteWorkflowTransition(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	wf.Transitions = transitions
-	if err := h.Store.CreateWorkflow(r.Context(), wf); err != nil {
+	if err := h.Store.SaveWorkflowDraft(r.Context(), wf); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	http.Redirect(w, r, "/settings/workflows/"+workflowID, http.StatusSeeOther)
+}
+
+func (h *Handler) FinishWorkflowDraft(w http.ResponseWriter, r *http.Request, workflowID string) {
+	user, wsID, ok := h.requireAdminPage(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	if workflowID == workflow.Default().ID {
+		http.Error(w, "the built-in workflow is read-only", http.StatusBadRequest)
+		return
+	}
+	action := r.PostFormValue("action")
+	var err error
+	switch action {
+	case "publish":
+		err = h.Store.PublishWorkflowDraft(r.Context(), wsID, user.ID, workflowID)
+	case "discard":
+		err = h.Store.DiscardWorkflowDraft(r.Context(), wsID, user.ID, workflowID)
+	default:
+		http.Error(w, "action must be publish or discard", http.StatusBadRequest)
+		return
+	}
+	if err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, store.ErrAdminConflict) {
+			status = http.StatusConflict
+		}
+		http.Error(w, err.Error(), status)
+		return
+	}
+	http.Redirect(w, r, "/settings/workflows/"+workflowID+"?saved="+url.QueryEscape("Workflow "+map[string]string{"publish": "published", "discard": "draft discarded"}[action]), http.StatusSeeOther)
 }
 
 func (h *Handler) AssignProjectWorkflow(w http.ResponseWriter, r *http.Request, workflowID string) {

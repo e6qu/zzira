@@ -361,3 +361,8 @@ body.nav-collapsed .project-switcher-panel a { padding-inline: 9px; }
 .release-side dt { color:var(--ds-text-subtle); font-size:12px; margin-top:12px; }.release-side dd { margin:4px 0 0; font-family:var(--utility-font); font-size:13px; }
 /* Keep board filters usable when keyboard focus scrolls a long board. */
 .board-toolbar { position:sticky; top:var(--topbar-height); z-index:10; }
+
+.workflow-publish { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:18px; border-left:4px solid var(--ds-primary); }
+.workflow-publish p { margin:4px 0 0; color:var(--ds-text-subtle); }
+.workflow-publish form { display:flex; gap:8px; flex-wrap:wrap; }
+@media(max-width:540px) { .workflow-publish { align-items:stretch; flex-direction:column; }.workflow-publish form .btn { flex:1; } }
