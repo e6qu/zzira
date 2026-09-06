@@ -978,7 +978,7 @@ func (h *Handler) ProjectIssues(w http.ResponseWriter, r *http.Request, key stri
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	statuses, err := h.Store.StatusesForWorkspace(r.Context(), wsID)
+	statuses, err := h.Store.StatusesForProject(r.Context(), wsID, project.ID, true)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return

@@ -603,9 +603,29 @@ Validation after durable Jira task execution:
 - The full PostgreSQL Go suite, vet, WebAssembly build, all seven conformance
   tests, generated inventory/coverage checks, migration, and diff checks pass.
 
+Validation after project-scoped statuses:
+
+- Migration 050 gives custom statuses an optional project owner, with separate
+  case-insensitive uniqueness for global and per-project names. Creation
+  validates that the project belongs to the active workspace, and updates
+  preserve the original scope.
+- Jira status creation and response resources support `GLOBAL` and `PROJECT`
+  scope shapes. Bulk lookup, by-name selection, and paged search expose the
+  correct scope; `projectId` and `includeGlobalStatuses` isolate each project
+  while preserving all filters in `nextPage`.
+- Issue updates and workflow/scheme status migrations reject a project status
+  outside the issue's project. Project issue navigation and scheme impact
+  choices use the same visibility boundary.
+- The administrator directory offers a global or named-project scope and labels
+  every built-in, global, and project status. The focused Chromium journey
+  creates, edits, and deletes a project status and checks its ownership label.
+- The full PostgreSQL Go suite, vet, WebAssembly build, seven conformance tests,
+  generated inventory and coverage checks, diff check, primary-page light/dark
+  axe scan, and 320 px reflow gate pass.
+
 ## Current change
 
-1. Add project-scoped statuses and capability catalogs.
+1. Add project-scoped workflows and capability catalogs.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 

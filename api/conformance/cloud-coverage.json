@@ -3916,7 +3916,7 @@
         "e2e/directories.spec.ts",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Repeated status IDs return workspace-visible JiraStatus resources; project-scoped status scope remains."
+      "notes": "Repeated status IDs return workspace-visible JiraStatus resources with GLOBAL or PROJECT scope. Exact missing-ID/error and permission parity remains."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/statuses",
@@ -3929,7 +3929,7 @@
         "e2e/directories.spec.ts",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Administrators can create validated GLOBAL workspace statuses with descriptions, categories, duplicate detection, and audit evidence. Project scope and multi-item atomicity remain."
+      "notes": "Administrators can create validated GLOBAL or PROJECT statuses with descriptions, categories, scope-local duplicate detection, project ownership checks, and audit evidence. Multi-item atomicity remains."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/statuses",
@@ -3942,7 +3942,7 @@
         "e2e/directories.spec.ts",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Administrators can update custom status names, descriptions, and categories with built-in protection and audit evidence. Multi-item atomicity remains."
+      "notes": "Administrators can update custom status names, descriptions, and categories while preserving GLOBAL or PROJECT ownership, with built-in protection and audit evidence. Multi-item atomicity remains."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/statuses/byNames",
@@ -3955,7 +3955,7 @@
         "e2e/directories.spec.ts",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Repeated names return case-insensitive workspace-visible matches; projectId scoping remains."
+      "notes": "Repeated names return case-insensitive scope-visible matches, with projectId selecting that project's statuses and an omitted selector returning global statuses. Exact Jira permission filtering remains."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/statuses/search",
@@ -3968,7 +3968,7 @@
         "e2e/directories.spec.ts",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Search supports text, category, startAt/maxResults paging, totals, isLast, and nextPage. Project and includeGlobalStatuses filters remain."
+      "notes": "Search supports text, category, projectId, includeGlobalStatuses, startAt/maxResults paging, totals, isLast, and filter-preserving nextPage links. Exact Jira permission filtering remains."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/statuses/{statusId}/project/{projectId}/issueTypeUsages",

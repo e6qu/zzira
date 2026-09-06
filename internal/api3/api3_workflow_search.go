@@ -143,7 +143,7 @@ func workflowSearchBean(wf workflow.Workflow, expandTransitions bool) map[string
 func workflowSearchStatusBean(status models.Status) map[string]any {
 	return map[string]any{
 		"id": status.ID, "name": status.Name, "description": status.Description,
-		"scope": map[string]string{"type": "GLOBAL"}, "statusCategory": workflowStatusCategory(status.Category),
+		"scope": jiraStatusScope(status), "statusCategory": workflowStatusCategory(status.Category),
 		"statusReference": status.ID,
 	}
 }

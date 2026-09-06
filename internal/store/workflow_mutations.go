@@ -67,10 +67,10 @@ func (s *Store) workflowBatchDefinitions(ctx context.Context, workspaceID string
 
 func createWorkflowBatchStatuses(ctx context.Context, tx pgx.Tx, workspaceID, actorID string, statuses []models.Status) error {
 	for _, status := range statuses {
-		if err := statusNameAvailable(ctx, tx, workspaceID, status.Name, ""); err != nil {
+		if err := statusNameAvailable(ctx, tx, workspaceID, status.ProjectID, status.Name, ""); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(ctx, `INSERT INTO statuses(id,name,description,category,workspace_id) VALUES($1,$2,$3,$4,$5)`, status.ID, status.Name, status.Description, status.Category, workspaceID); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO statuses(id,name,description,category,workspace_id,project_id) VALUES($1,$2,$3,$4,$5,$6)`, status.ID, status.Name, status.Description, status.Category, workspaceID, nilIfEmpty(status.ProjectID)); err != nil {
 			if isUniqueViolation(err) {
 				return fmt.Errorf("%w: a status already uses that name or id", ErrAdminConflict)
 			}
@@ -203,7 +203,7 @@ func migrateWorkflowDefinitionIssues(ctx context.Context, tx pgx.Tx, workspaceID
 				continue
 			}
 			var statusName string
-			if err := tx.QueryRow(ctx, `SELECT name FROM statuses WHERE id=$1 AND (workspace_id IS NULL OR workspace_id=$2)`, statusID, workspaceID).Scan(&statusName); err != nil {
+			if err := tx.QueryRow(ctx, `SELECT name FROM statuses WHERE id=$1 AND (workspace_id IS NULL OR workspace_id=$2) AND (project_id IS NULL OR project_id=$3)`, statusID, workspaceID, issue.projectID).Scan(&statusName); err != nil {
 				return 0, fmt.Errorf("%w: status %s does not exist", ErrAdminValidation, statusID)
 			}
 			statusNames[statusID] = statusName

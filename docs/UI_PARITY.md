@@ -93,8 +93,9 @@ Status: ✅ browser-tested complete journey · 🟡 usable tested subset · ⛔ 
 2. Configure authentication providers, domains, access policy, sessions and tokens.
 3. Configure permission, notification, security, field, screen, work-type and
    workflow schemes with impact previews and audit records. The current status
-   directory covers custom status creation, classification, editing, live usage
-   counts, protected built-ins, and safe deletion. Workflow-scheme journeys now
+   directory covers global and project-scoped status creation, classification,
+   ownership labels, editing, live usage counts, protected built-ins, and safe
+   deletion. Workflow-scheme journeys now
    cover defaults, issue-type overrides, draft publishing, project usage, and
    explicit replacement choices that migrate incompatible statuses as part of
    the project assignment transaction.

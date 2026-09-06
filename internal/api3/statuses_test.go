@@ -43,8 +43,9 @@ func TestStatusAPILifecycleAndWorkspaceScope(t *testing.T) {
 		exec(`INSERT INTO memberships(workspace_id,user_id,role) VALUES($1,$2,$3)`, ws, user, role)
 		exec(`INSERT INTO api_tokens(id,user_id,token_hash) VALUES($1,$1,$2)`, user, store.HashToken(user))
 	}
-	projectID, issueID := store.NewID("project"), store.NewID("issue")
+	projectID, otherProjectID, issueID := store.NewID("project"), store.NewID("project"), store.NewID("issue")
 	exec(`INSERT INTO projects(id,workspace_id,key,name) VALUES($1,$2,'STAT','Status project')`, projectID, ws)
+	exec(`INSERT INTO projects(id,workspace_id,key,name) VALUES($1,$2,'OTHER','Other status project')`, otherProjectID, ws)
 	exec(`INSERT INTO issues(id,workspace_id,project_id,key,summary,status_id,issuetype_id,updated_seq) VALUES($1,$2,$3,'STAT-1','Status usage','st_todo','it_task',0)`, issueID, ws, projectID)
 	t.Cleanup(func() {
 		exec(`DELETE FROM issues WHERE workspace_id=$1`, ws)
@@ -90,7 +91,45 @@ func TestStatusAPILifecycleAndWorkspaceScope(t *testing.T) {
 	call(actor, "PUT", "/rest/api/3/statuses", update, 204)
 	call(member, "GET", "/rest/api/3/statuses/byNames?name=Review%20complete", "", 200)
 	call(member, "PUT", "/rest/api/3/statuses", update, 403)
-	projectUsage := call(member, "GET", "/rest/api/3/statuses/st_todo/projectUsages?maxResults=1", "", 200)
+	projectBody := `{"scope":{"type":"PROJECT","project":{"id":"` + projectID + `"}},"statuses":[{"name":"Awaiting customer","description":"Waiting for a reply","statusCategory":"IN_PROGRESS"}]}`
+	projectCreated := call(actor, "POST", "/rest/api/3/statuses", projectBody, 200)
+	var projectStatuses []map[string]any
+	if err := json.Unmarshal(projectCreated.Body.Bytes(), &projectStatuses); err != nil || len(projectStatuses) != 1 {
+		t.Fatalf("project status response: %s (%v)", projectCreated.Body.String(), err)
+	}
+	projectStatusID := projectStatuses[0]["id"].(string)
+	projectScope := projectStatuses[0]["scope"].(map[string]any)
+	if projectScope["type"] != "PROJECT" || projectScope["project"].(map[string]any)["id"] != projectID {
+		t.Fatalf("project scope = %#v", projectScope)
+	}
+	otherProjectBody := `{"scope":{"type":"PROJECT","project":{"id":"` + otherProjectID + `"}},"statuses":[{"name":"Awaiting customer","statusCategory":"IN_PROGRESS"}]}`
+	otherCreated := call(actor, "POST", "/rest/api/3/statuses", otherProjectBody, 200)
+	var otherStatuses []map[string]any
+	if err := json.Unmarshal(otherCreated.Body.Bytes(), &otherStatuses); err != nil || len(otherStatuses) != 1 {
+		t.Fatalf("other project status response: %s (%v)", otherCreated.Body.String(), err)
+	}
+	otherStatusID := otherStatuses[0]["id"].(string)
+	byName := call(member, "GET", "/rest/api/3/statuses/byNames?projectId="+projectID+"&name=Awaiting%20customer", "", 200)
+	if !strings.Contains(byName.Body.String(), projectStatusID) || strings.Contains(byName.Body.String(), otherStatusID) {
+		t.Fatalf("project byNames leaked status: %s", byName.Body.String())
+	}
+	projectSearch := call(member, "GET", "/rest/api/3/statuses/search?projectId="+projectID+"&includeGlobalStatuses=false", "", 200)
+	if !strings.Contains(projectSearch.Body.String(), projectStatusID) || strings.Contains(projectSearch.Body.String(), otherStatusID) || strings.Contains(projectSearch.Body.String(), id) {
+		t.Fatalf("project-only search = %s", projectSearch.Body.String())
+	}
+	projectAndGlobalSearch := call(member, "GET", "/rest/api/3/statuses/search?projectId="+projectID+"&includeGlobalStatuses=true", "", 200)
+	if !strings.Contains(projectAndGlobalSearch.Body.String(), projectStatusID) || !strings.Contains(projectAndGlobalSearch.Body.String(), id) || strings.Contains(projectAndGlobalSearch.Body.String(), otherStatusID) {
+		t.Fatalf("project and global search = %s", projectAndGlobalSearch.Body.String())
+	}
+	bulkProject := call(member, "GET", "/rest/api/3/statuses?id="+projectStatusID, "", 200)
+	if !strings.Contains(bulkProject.Body.String(), `"type":"PROJECT"`) || !strings.Contains(bulkProject.Body.String(), projectID) {
+		t.Fatalf("bulk project status = %s", bulkProject.Body.String())
+	}
+	call(actor, "POST", "/rest/api/3/statuses", `{"scope":{"type":"PROJECT","project":{"id":"missing"}},"statuses":[{"name":"Invalid","statusCategory":"TODO"}]}`, 400)
+	if _, _, err := st.UpdateIssue(ctx, actor, ws, issueID, store.IssueUpdate{StatusID: &otherStatusID}); err == nil {
+		t.Fatal("issue accepted a status owned by another project")
+	}
+	projectUsage := call(member, "GET", "/rest/api/3/statuses/st_todo/projectUsages?maxResults=10", "", 200)
 	if !strings.Contains(projectUsage.Body.String(), projectID) {
 		t.Fatal(projectUsage.Body.String())
 	}
@@ -103,6 +142,8 @@ func TestStatusAPILifecycleAndWorkspaceScope(t *testing.T) {
 		t.Fatal(issueTypeUsage.Body.String())
 	}
 	call(actor, "DELETE", "/rest/api/3/statuses?id=st_todo", "", 409)
+	call(actor, "DELETE", "/rest/api/3/statuses?id="+projectStatusID, "", 204)
+	call(actor, "DELETE", "/rest/api/3/statuses?id="+otherStatusID, "", 204)
 	call(actor, "DELETE", "/rest/api/3/statuses?id="+id, "", 204)
 	call(member, "GET", "/rest/api/3/status/"+id, "", 404)
 	call(member, "GET", "/rest/api/3/statuscategory/4", "", 200)

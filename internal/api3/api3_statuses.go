@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -25,11 +24,18 @@ func internalStatusCategory(category string) string {
 }
 
 func (h *Handler) jiraStatusBean(status models.Status) map[string]any {
-	scope := map[string]any{"type": "GLOBAL"}
+	scope := jiraStatusScope(status)
 	return map[string]any{
 		"id": status.ID, "name": status.Name, "description": status.Description,
 		"statusCategory": jiraStatusCategory(status.Category), "scope": scope,
 	}
+}
+
+func jiraStatusScope(status models.Status) map[string]any {
+	if status.ProjectID != "" {
+		return map[string]any{"type": "PROJECT", "project": map[string]string{"id": status.ProjectID}}
+	}
+	return map[string]any{"type": "GLOBAL"}
 }
 
 func statusAPIError(w http.ResponseWriter, err error) {
@@ -65,7 +71,7 @@ func (h *Handler) bulkStatusesEndpoint(w http.ResponseWriter, r *http.Request) {
 			jiraError(w, http.StatusBadRequest, "At least one status id is required.")
 			return
 		}
-		statuses, err := h.Store.StatusesForWorkspace(r.Context(), workspaceID)
+		statuses, err := h.Store.StatusesForAdministration(r.Context(), workspaceID)
 		if err != nil {
 			statusAPIError(w, err)
 			return
@@ -90,19 +96,40 @@ func (h *Handler) bulkStatusesEndpoint(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPost:
 		var request struct {
 			Scope struct {
-				Type string `json:"type"`
+				Type    string `json:"type"`
+				Project struct {
+					ID string `json:"id"`
+				} `json:"project"`
 			} `json:"scope"`
 			Statuses []struct {
 				Name, Description, StatusCategory string
 			} `json:"statuses"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&request); err != nil || request.Scope.Type != "GLOBAL" || len(request.Statuses) == 0 {
-			jiraError(w, http.StatusBadRequest, "A GLOBAL scope and at least one status are required.")
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil || len(request.Statuses) == 0 {
+			jiraError(w, http.StatusBadRequest, "A valid scope and at least one status are required.")
+			return
+		}
+		projectID := ""
+		switch request.Scope.Type {
+		case "GLOBAL":
+			if request.Scope.Project.ID != "" {
+				jiraError(w, http.StatusBadRequest, "GLOBAL scope cannot include a project.")
+				return
+			}
+		case "PROJECT":
+			project, err := h.Store.ProjectByIDOrKey(r.Context(), workspaceID, request.Scope.Project.ID)
+			if err != nil {
+				jiraError(w, http.StatusBadRequest, "PROJECT scope requires a project in this workspace.")
+				return
+			}
+			projectID = project.ID
+		default:
+			jiraError(w, http.StatusBadRequest, "Scope type must be GLOBAL or PROJECT.")
 			return
 		}
 		out := make([]map[string]any, 0, len(request.Statuses))
 		for _, input := range request.Statuses {
-			created, err := h.Store.CreateStatus(r.Context(), workspaceID, userID, models.Status{Name: input.Name, Description: input.Description, Category: internalStatusCategory(input.StatusCategory)})
+			created, err := h.Store.CreateStatus(r.Context(), workspaceID, userID, models.Status{Name: input.Name, Description: input.Description, Category: internalStatusCategory(input.StatusCategory), ProjectID: projectID})
 			if err != nil {
 				statusAPIError(w, err)
 				return
@@ -179,7 +206,18 @@ func (h *Handler) statusesByNameEndpoint(w http.ResponseWriter, r *http.Request)
 	for _, name := range names {
 		wanted[strings.ToLower(name)] = true
 	}
-	statuses, err := h.Store.StatusesForWorkspace(r.Context(), workspaceID)
+	var statuses []models.Status
+	var err error
+	if projectID := r.URL.Query().Get("projectId"); projectID != "" {
+		project, projectErr := h.Store.ProjectByIDOrKey(r.Context(), workspaceID, projectID)
+		if projectErr != nil {
+			jiraError(w, http.StatusBadRequest, "projectId does not identify a project in this workspace.")
+			return
+		}
+		statuses, err = h.Store.StatusesForProject(r.Context(), workspaceID, project.ID, false)
+	} else {
+		statuses, err = h.Store.StatusesForWorkspace(r.Context(), workspaceID)
+	}
 	if err != nil {
 		statusAPIError(w, err)
 		return
@@ -211,7 +249,26 @@ func (h *Handler) searchStatusesEndpoint(w http.ResponseWriter, r *http.Request)
 	}
 	query := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("searchString")))
 	category := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("statusCategory")))
-	statuses, err := h.Store.StatusesForWorkspace(r.Context(), workspaceID)
+	var statuses []models.Status
+	projectID := r.URL.Query().Get("projectId")
+	if projectID != "" {
+		project, projectErr := h.Store.ProjectByIDOrKey(r.Context(), workspaceID, projectID)
+		if projectErr != nil {
+			jiraError(w, http.StatusBadRequest, "projectId does not identify a project in this workspace.")
+			return
+		}
+		includeGlobal := false
+		if raw := r.URL.Query().Get("includeGlobalStatuses"); raw != "" {
+			includeGlobal, err = strconv.ParseBool(raw)
+			if err != nil {
+				jiraError(w, http.StatusBadRequest, "includeGlobalStatuses must be true or false.")
+				return
+			}
+		}
+		statuses, err = h.Store.StatusesForProject(r.Context(), workspaceID, project.ID, includeGlobal)
+	} else {
+		statuses, err = h.Store.StatusesForWorkspace(r.Context(), workspaceID)
+	}
 	if err != nil {
 		statusAPIError(w, err)
 		return
@@ -242,7 +299,10 @@ func (h *Handler) searchStatusesEndpoint(w http.ResponseWriter, r *http.Request)
 	self := h.BaseURL + "/rest/api/3/statuses/search"
 	response := map[string]any{"self": self, "startAt": start, "maxResults": max, "total": total, "isLast": end == total, "values": values}
 	if end < total {
-		response["nextPage"] = self + "?startAt=" + strconv.Itoa(end) + "&maxResults=" + strconv.Itoa(max) + "&searchString=" + url.QueryEscape(r.URL.Query().Get("searchString"))
+		nextQuery := r.URL.Query()
+		nextQuery.Set("startAt", strconv.Itoa(end))
+		nextQuery.Set("maxResults", strconv.Itoa(max))
+		response["nextPage"] = self + "?" + nextQuery.Encode()
 	}
 	writeJSON(w, http.StatusOK, response)
 }

@@ -427,7 +427,7 @@ func schemeImpact(ctx context.Context, q workflowSchemeQuerier, workspaceID, pro
 			continue
 		}
 		status := models.Status{ID: item.status}
-		_ = q.QueryRow(ctx, `SELECT name,description,category,workspace_id IS NULL FROM statuses WHERE id=$1`, item.status).Scan(&status.Name, &status.Description, &status.Category, &status.Protected)
+		_ = q.QueryRow(ctx, `SELECT name,description,category,COALESCE(project_id,''),workspace_id IS NULL FROM statuses WHERE id=$1 AND (workspace_id IS NULL OR workspace_id=$2) AND (project_id IS NULL OR project_id=$3)`, item.status, workspaceID, projectID).Scan(&status.Name, &status.Description, &status.Category, &status.ProjectID, &status.Protected)
 		impacts = append(impacts, WorkflowSchemeImpact{IssueTypeID: item.issueType, Status: status, IssueCount: count, TargetWorkflow: wf})
 	}
 	return impacts, nil
@@ -570,7 +570,7 @@ func migrateWorkflowSchemeIssues(ctx context.Context, tx pgx.Tx, workspaceID, ac
 		for _, statusID := range []string{issue.statusID, newStatusID} {
 			if _, ok := statusNames[statusID]; !ok {
 				var statusName string
-				if err := tx.QueryRow(ctx, `SELECT name FROM statuses WHERE id=$1 AND (workspace_id IS NULL OR workspace_id=$2)`, statusID, workspaceID).Scan(&statusName); err != nil {
+				if err := tx.QueryRow(ctx, `SELECT name FROM statuses WHERE id=$1 AND (workspace_id IS NULL OR workspace_id=$2) AND (project_id IS NULL OR project_id=$3)`, statusID, workspaceID, projectID).Scan(&statusName); err != nil {
 					return fmt.Errorf("%w: status %s does not exist", ErrAdminValidation, statusID)
 				}
 				statusNames[statusID] = statusName

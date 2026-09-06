@@ -102,10 +102,12 @@ type workflowEditorData struct {
 }
 
 type statusDirectoryData struct {
-	Items   []store.StatusUsage
-	CanEdit bool
-	Saved   string
-	Blocked string
+	Items        []store.StatusUsage
+	Projects     []*models.Project
+	ProjectNames map[string]string
+	CanEdit      bool
+	Saved        string
+	Blocked      string
 }
 
 type workflowSchemeCard struct {
@@ -393,9 +395,18 @@ func (h *Handler) StatusesPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	projects, err := h.Store.ProjectsByWorkspace(r.Context(), workspaceID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	projectNames := make(map[string]string, len(projects))
+	for _, project := range projects {
+		projectNames[project.ID] = project.Name
+	}
 	admin, _ := h.Store.IsAdmin(r.Context(), workspaceID, user.ID)
 	h.writeWorkspacePage(w, r, "page_statuses", user, workspaceID, statusDirectoryData{
-		Items: items, CanEdit: admin, Saved: r.URL.Query().Get("saved"), Blocked: r.URL.Query().Get("blocked"),
+		Items: items, Projects: projects, ProjectNames: projectNames, CanEdit: admin, Saved: r.URL.Query().Get("saved"), Blocked: r.URL.Query().Get("blocked"),
 	}, "statuses", "")
 }
 
@@ -483,7 +494,7 @@ func (h *Handler) WorkflowSchemePage(w http.ResponseWriter, r *http.Request, sch
 				http.Error(w, "internal error", 500)
 				return
 			}
-			statuses, err := h.Store.StatusesForWorkspace(r.Context(), workspaceID)
+			statuses, err := h.Store.StatusesForProject(r.Context(), workspaceID, project.ID, true)
 			if err != nil {
 				http.Error(w, "internal error", 500)
 				return
@@ -614,7 +625,7 @@ func (h *Handler) AssignWorkflowScheme(w http.ResponseWriter, r *http.Request, s
 func statusForm(r *http.Request) models.Status {
 	return models.Status{
 		ID: r.PostFormValue("id"), Name: r.PostFormValue("name"),
-		Description: r.PostFormValue("description"), Category: r.PostFormValue("category"),
+		Description: r.PostFormValue("description"), Category: r.PostFormValue("category"), ProjectID: r.PostFormValue("project"),
 	}
 }
 

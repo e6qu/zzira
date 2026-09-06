@@ -67,9 +67,22 @@ func (s *Store) DefaultProjectInWorkspace(ctx context.Context, workspaceID strin
 // StatusByID returns one status (transitions beans, diff display names).
 func (s *Store) StatusByID(ctx context.Context, id string) (models.Status, error) {
 	var st models.Status
-	err := s.Pool.QueryRow(ctx, `SELECT id,name,description,category,workspace_id IS NULL FROM statuses WHERE id=$1`, id).
-		Scan(&st.ID, &st.Name, &st.Description, &st.Category, &st.Protected)
+	err := s.Pool.QueryRow(ctx, `SELECT id,name,description,category,COALESCE(project_id,''),workspace_id IS NULL FROM statuses WHERE id=$1`, id).
+		Scan(&st.ID, &st.Name, &st.Description, &st.Category, &st.ProjectID, &st.Protected)
 	return st, err
+}
+
+// StatusByIDForProject resolves a status only when its ownership makes it
+// available to the project.
+func (s *Store) StatusByIDForProject(ctx context.Context, id, projectID string) (models.Status, error) {
+	var status models.Status
+	err := s.Pool.QueryRow(ctx, `
+		SELECT st.id,st.name,st.description,st.category,COALESCE(st.project_id,''),st.workspace_id IS NULL
+		FROM statuses st JOIN projects p ON p.id=$2
+		WHERE st.id=$1 AND (st.workspace_id IS NULL OR st.workspace_id=p.workspace_id)
+		  AND (st.project_id IS NULL OR st.project_id=p.id)`, id, projectID).
+		Scan(&status.ID, &status.Name, &status.Description, &status.Category, &status.ProjectID, &status.Protected)
+	return status, err
 }
 
 // IssuesByProject lists a project's issues, newest activity first (V0 navigator-lite),
@@ -165,7 +178,7 @@ func (s *Store) Priorities(ctx context.Context) ([]*models.Priority, error) {
 
 // AllStatuses lists the status registry.
 func (s *Store) AllStatuses(ctx context.Context) ([]models.Status, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT id,name,description,category,workspace_id IS NULL FROM statuses ORDER BY id`)
+	rows, err := s.Pool.Query(ctx, `SELECT id,name,description,category,COALESCE(project_id,''),workspace_id IS NULL FROM statuses ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -173,7 +186,7 @@ func (s *Store) AllStatuses(ctx context.Context) ([]models.Status, error) {
 	var out []models.Status
 	for rows.Next() {
 		var st models.Status
-		if err := rows.Scan(&st.ID, &st.Name, &st.Description, &st.Category, &st.Protected); err != nil {
+		if err := rows.Scan(&st.ID, &st.Name, &st.Description, &st.Category, &st.ProjectID, &st.Protected); err != nil {
 			return nil, err
 		}
 		out = append(out, st)
@@ -181,11 +194,57 @@ func (s *Store) AllStatuses(ctx context.Context) ([]models.Status, error) {
 	return out, rows.Err()
 }
 
-// StatusesForWorkspace returns the built-in registry and custom statuses owned
-// by one workspace. Custom statuses from other sites never enter editors or APIs.
+// StatusesForWorkspace returns built-ins and global custom statuses. Project
+// statuses require an explicit project selector and never enter global editors.
 func (s *Store) StatusesForWorkspace(ctx context.Context, workspaceID string) ([]models.Status, error) {
 	rows, err := s.Pool.Query(ctx, `
-		SELECT id,name,description,category,workspace_id IS NULL
+		SELECT id,name,description,category,COALESCE(project_id,''),workspace_id IS NULL
+		FROM statuses WHERE workspace_id IS NULL OR (workspace_id=$1 AND project_id IS NULL)
+		ORDER BY CASE category WHEN 'new' THEN 1 WHEN 'indeterminate' THEN 2 ELSE 3 END,lower(name),id`, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []models.Status
+	for rows.Next() {
+		var status models.Status
+		if err := rows.Scan(&status.ID, &status.Name, &status.Description, &status.Category, &status.ProjectID, &status.Protected); err != nil {
+			return nil, err
+		}
+		out = append(out, status)
+	}
+	return out, rows.Err()
+}
+
+// StatusesForProject returns statuses valid for work in one project.
+func (s *Store) StatusesForProject(ctx context.Context, workspaceID, projectID string, includeGlobal bool) ([]models.Status, error) {
+	globalClause := ""
+	if includeGlobal {
+		globalClause = " OR project_id IS NULL"
+	}
+	rows, err := s.Pool.Query(ctx, `
+		SELECT id,name,description,category,COALESCE(project_id,''),workspace_id IS NULL
+		FROM statuses WHERE (workspace_id IS NULL OR workspace_id=$1) AND (project_id=$2`+globalClause+`)
+		ORDER BY CASE category WHEN 'new' THEN 1 WHEN 'indeterminate' THEN 2 ELSE 3 END,lower(name),id`, workspaceID, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []models.Status
+	for rows.Next() {
+		var status models.Status
+		if err := rows.Scan(&status.ID, &status.Name, &status.Description, &status.Category, &status.ProjectID, &status.Protected); err != nil {
+			return nil, err
+		}
+		out = append(out, status)
+	}
+	return out, rows.Err()
+}
+
+// StatusesForAdministration includes every status owned by one workspace.
+func (s *Store) StatusesForAdministration(ctx context.Context, workspaceID string) ([]models.Status, error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT id,name,description,category,COALESCE(project_id,''),workspace_id IS NULL
 		FROM statuses WHERE workspace_id IS NULL OR workspace_id=$1
 		ORDER BY CASE category WHEN 'new' THEN 1 WHEN 'indeterminate' THEN 2 ELSE 3 END,lower(name),id`, workspaceID)
 	if err != nil {
@@ -195,7 +254,7 @@ func (s *Store) StatusesForWorkspace(ctx context.Context, workspaceID string) ([
 	var out []models.Status
 	for rows.Next() {
 		var status models.Status
-		if err := rows.Scan(&status.ID, &status.Name, &status.Description, &status.Category, &status.Protected); err != nil {
+		if err := rows.Scan(&status.ID, &status.Name, &status.Description, &status.Category, &status.ProjectID, &status.Protected); err != nil {
 			return nil, err
 		}
 		out = append(out, status)

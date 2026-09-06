@@ -120,7 +120,7 @@ func (s *Store) UpdateIssue(ctx context.Context, actorID, workspaceID, issueID s
 	}
 	if up.StatusID != nil && *up.StatusID != current.Status.ID {
 		var newName, newCategory string
-		if err := tx.QueryRow(ctx, `SELECT name, category FROM statuses WHERE id=$1`, *up.StatusID).Scan(&newName, &newCategory); err != nil {
+		if err := tx.QueryRow(ctx, `SELECT name, category FROM statuses WHERE id=$1 AND (workspace_id IS NULL OR workspace_id=$2) AND (project_id IS NULL OR project_id=$3)`, *up.StatusID, current.WorkspaceID, current.ProjectID).Scan(&newName, &newCategory); err != nil {
 			return nil, nil, fmt.Errorf("unknown status %q", *up.StatusID)
 		}
 		diff["status"] = diffItem("status", current.Status.ID, current.Status.Name, *up.StatusID, newName)

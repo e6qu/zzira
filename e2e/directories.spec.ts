@@ -135,12 +135,14 @@ test('status administrators can create, classify, edit, inspect, and safely dele
   const originalName = `Review queue ${Date.now()}`;
   await page.fill('#status-name', originalName);
   await page.selectOption('#status-category', 'indeterminate');
+  await page.selectOption('#status-project', 'prj_default');
   await page.fill('#status-description', 'Waiting for a peer review.');
   await page.getByRole('button', { name: 'Add status' }).click();
   await expect(page.getByRole('status')).toContainText(`${originalName} created`);
 
   const row = page.locator('.status-directory-item').filter({ has: page.getByRole('heading', { name: originalName, exact: true }) });
   await expect(row).toContainText('Waiting for a peer review.');
+  await expect(row).toContainText('Project · ZZIRA Demo');
   await expect(row.locator('.status-impact')).toContainText('Work items');
   await row.locator('summary', { hasText: 'Edit status' }).click();
   const updatedName = `${originalName} ready`;

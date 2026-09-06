@@ -854,7 +854,7 @@ func (h *Handler) listTransitions(w http.ResponseWriter, r *http.Request, idOrKe
 	}
 	beans := []map[string]any{}
 	for _, t := range wf.AvailableFor(issue.Status.ID, workflow.ContextForIssue(userID, issue)) {
-		status, err := h.Store.StatusByID(r.Context(), t.To)
+		status, err := h.Store.StatusByIDForProject(r.Context(), t.To, issue.ProjectID)
 		if err != nil {
 			jiraError(w, http.StatusInternalServerError, "internal error")
 			return

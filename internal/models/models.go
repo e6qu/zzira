@@ -45,6 +45,7 @@ type Status struct {
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
 	Category    string `json:"category"`
+	ProjectID   string `json:"-"`
 	Protected   bool   `json:"-"`
 }
 
