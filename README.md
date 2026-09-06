@@ -10,10 +10,10 @@ Linear's ["Rebuilding delta sync read path"](https://linear.app/now/rebuilding-d
 - **Local-first browser replica**: SQLite (WASM/OPFS) + an isomorphic Go renderer compiled to both server and client
 - **Go + Postgres backend**: stateless replicas, an immutable action log as the single write path, Postgres LISTEN/NOTIFY for live pokes
 - Frontend: HTMX + SortableJS, Jira-like UI
-- **Optional OIDC SSO**: one reference-provider configuration with Discovery,
-  Authorization Code + PKCE, verified claims, and server-side sessions. The
-  active plan adds Atlassian, Google, and Microsoft providers; see
-  [ShAuth SSO](docs/shauth-sso.md).
+- **Provider sign-in**: simultaneous Shauth-compatible OIDC, Google, tenant-
+  scoped Microsoft Entra ID, and Atlassian OAuth 2.0 3LO with provider-bound
+  replay protection, linked identities, server-side sessions, and login audit;
+  see [identity provider sign-in](docs/shauth-sso.md).
 
 The current architecture, hard rules, one-PR execution map, and completion gates
 live in [PLAN.md](PLAN.md). Continue active work from

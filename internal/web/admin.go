@@ -26,6 +26,7 @@ type adminPageData struct {
 	Products                          []*models.Product
 	Domains                           []*models.OrganizationDomain
 	Policies                          []*models.OrganizationPolicy
+	IdentityProviders                 []LoginProvider
 	Directory                         *models.Directory
 	Groups                            []adminGroupRow
 	Users                             []*models.User
@@ -54,6 +55,7 @@ var adminAuditActions = []adminAuditAction{
 	{Value: "group.deleted", Name: "Group deleted"},
 	{Value: "group.member.added", Name: "Group member added"},
 	{Value: "group.member.removed", Name: "Group member removed"},
+	{Value: "identity.login", Name: "Provider sign-in"},
 	{Value: "policy.created", Name: "Policy created"},
 	{Value: "policy.deleted", Name: "Policy deleted"},
 	{Value: "policy.resource.added", Name: "Policy resource added"},
@@ -100,6 +102,7 @@ func (h *Handler) adminData(r *http.Request, workspaceID, message string) (admin
 		Products:                          products,
 		Domains:                           domains,
 		Policies:                          policies,
+		IdentityProviders:                 h.loginProviders(),
 		Groups:                            []adminGroupRow{},
 		Users:                             []*models.User{},
 		Audit:                             []*models.OrganizationAuditEvent{},

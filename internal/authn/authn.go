@@ -136,6 +136,23 @@ func LoginOIDC(ctx context.Context, st *store.Store, userID, idToken, issuer, su
 	return token, nil
 }
 
+// LoginIdentityProvider creates a session for either OIDC or OAuth identity
+// providers. OAuth-only providers do not issue an ID token, so idToken may be
+// empty; issuer and subject remain the immutable identity key.
+func LoginIdentityProvider(ctx context.Context, st *store.Store, userID, idToken, issuer, subject, sid, providerKey string) (string, error) {
+	if userID == "" || issuer == "" || subject == "" || providerKey == "" {
+		return "", ErrUnauthorized
+	}
+	token, err := randomToken()
+	if err != nil {
+		return "", err
+	}
+	if err := st.CreateIdentityProviderSession(ctx, hashToken(token), userID, idToken, issuer, subject, sid, providerKey, sessionTTL); err != nil {
+		return "", err
+	}
+	return token, nil
+}
+
 var ErrUnauthorized = unauthorized{}
 
 type unauthorized struct{}

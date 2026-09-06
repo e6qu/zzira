@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/rand"
@@ -10,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -38,8 +40,14 @@ const (
 // with the reference deployment, but any standards-compliant OIDC provider is
 // accepted through discovery.
 type OIDC struct {
+	key                   string
+	displayName           string
+	issuer                string
 	config                oauth2.Config
 	verifier              *oidc.IDTokenVerifier
+	profileEndpoint       string
+	atlassian             bool
+	httpClient            *http.Client
 	endSessionEndpoint    string
 	postLogoutRedirectURL string
 }
@@ -49,7 +57,7 @@ func NewOIDC(ctx context.Context) (*OIDC, error) {
 	clientID := os.Getenv("ZZIRA_SHAUTH_CLIENT_ID")
 	clientSecret := os.Getenv("ZZIRA_SHAUTH_CLIENT_SECRET")
 	externalURL := strings.TrimRight(os.Getenv("ZZIRA_EXTERNAL_URL"), "/")
-	values := []string{issuer, clientID, clientSecret, externalURL}
+	values := []string{issuer, clientID, clientSecret}
 	present := 0
 	for _, value := range values {
 		if value != "" {
@@ -59,7 +67,7 @@ func NewOIDC(ctx context.Context) (*OIDC, error) {
 	if present == 0 {
 		return nil, nil
 	}
-	if present != len(values) {
+	if present != len(values) || externalURL == "" {
 		return nil, fmt.Errorf("ZZIRA_SHAUTH_ISSUER, ZZIRA_SHAUTH_CLIENT_ID, ZZIRA_SHAUTH_CLIENT_SECRET, and ZZIRA_EXTERNAL_URL must be set together")
 	}
 	if err := validOIDCURL(issuer); err != nil {
@@ -71,9 +79,13 @@ func NewOIDC(ctx context.Context) (*OIDC, error) {
 	if parsed, _ := url.Parse(externalURL); parsed.Path != "" && parsed.Path != "/" {
 		return nil, fmt.Errorf("ZZIRA_EXTERNAL_URL: must be an origin without a path")
 	}
+	return newDiscoveredOIDC(ctx, "shauth", "Shauth", issuer, clientID, clientSecret, externalURL)
+}
+
+func newDiscoveredOIDC(ctx context.Context, key, displayName, issuer, clientID, clientSecret, externalURL string) (*OIDC, error) {
 	provider, err := oidc.NewProvider(ctx, issuer)
 	if err != nil {
-		return nil, fmt.Errorf("OIDC discovery: %w", err)
+		return nil, fmt.Errorf("%s OIDC discovery: %w", displayName, err)
 	}
 	var metadata struct {
 		EndSessionEndpoint string `json:"end_session_endpoint"`
@@ -98,13 +110,14 @@ func NewOIDC(ctx context.Context) (*OIDC, error) {
 		}
 	}
 	return &OIDC{
+		key: key, displayName: displayName, issuer: issuer,
 		config: oauth2.Config{
 			ClientID: clientID, ClientSecret: clientSecret, Endpoint: endpoint,
-			RedirectURL: externalURL + "/auth/shauth/callback", Scopes: []string{oidc.ScopeOpenID, "profile", "email"},
+			RedirectURL: externalURL + "/auth/" + key + "/callback", Scopes: []string{oidc.ScopeOpenID, "profile", "email"},
 		},
 		verifier:              provider.Verifier(&oidc.Config{ClientID: clientID}),
 		endSessionEndpoint:    metadata.EndSessionEndpoint,
-		postLogoutRedirectURL: externalURL + "/auth/shauth/logout/complete",
+		postLogoutRedirectURL: externalURL + "/auth/" + key + "/logout/complete",
 	}, nil
 }
 
@@ -169,11 +182,146 @@ func validOIDCTransport(u *url.URL) error {
 // remote configuration and must not be trusted solely because discovery used
 // TLS successfully.
 func (o *OIDC) authorizationURL(state, nonce, verifier string) (string, error) {
-	target := o.config.AuthCodeURL(state, oidc.Nonce(nonce), oauth2.S256ChallengeOption(verifier))
+	options := []oauth2.AuthCodeOption{}
+	if o.atlassian {
+		options = append(options, oauth2.SetAuthURLParam("audience", "api.atlassian.com"), oauth2.SetAuthURLParam("prompt", "consent"))
+	} else {
+		options = append(options, oidc.Nonce(nonce), oauth2.S256ChallengeOption(verifier))
+	}
+	target := o.config.AuthCodeURL(state, options...)
 	if err := validOIDCEndpointURL(target); err != nil {
 		return "", fmt.Errorf("authorization redirect: %w", err)
 	}
 	return target, nil
+}
+
+type providerIdentity struct {
+	Issuer            string
+	Subject           string
+	Email             string
+	DisplayName       string
+	PreferredUsername string
+	Role              string
+	SID               string
+	IDToken           string
+}
+
+func (o *OIDC) authenticate(ctx context.Context, code, nonce, verifier string) (providerIdentity, error) {
+	if o.atlassian {
+		return o.authenticateAtlassian(ctx, code)
+	}
+	token, err := o.config.Exchange(ctx, code, oauth2.VerifierOption(verifier))
+	if err != nil {
+		return providerIdentity{}, fmt.Errorf("token exchange: %w", err)
+	}
+	rawIDToken, ok := token.Extra("id_token").(string)
+	if !ok || rawIDToken == "" {
+		return providerIdentity{}, errors.New("provider response omitted id_token")
+	}
+	idToken, err := o.verifier.Verify(ctx, rawIDToken)
+	if err != nil {
+		return providerIdentity{}, fmt.Errorf("verify identity token: %w", err)
+	}
+	var claims struct {
+		Email             string `json:"email"`
+		EmailVerified     bool   `json:"email_verified"`
+		Name              string `json:"name"`
+		Nonce             string `json:"nonce"`
+		PreferredUsername string `json:"preferred_username"`
+		SID               string `json:"sid"`
+		AuthorizedParty   string `json:"azp"`
+		Role              string `json:"role"`
+	}
+	if err := idToken.Claims(&claims); err != nil || idToken.Subject == "" || (o.key != "microsoft" && !claims.EmailVerified) ||
+		!validOIDCAuthorizedParty(idToken.Audience, claims.AuthorizedParty, o.config.ClientID) ||
+		subtle.ConstantTimeCompare([]byte(claims.Nonce), []byte(nonce)) != 1 {
+		return providerIdentity{}, errors.New("identity token claims are not acceptable")
+	}
+	emailClaim := claims.Email
+	if o.key == "microsoft" && strings.TrimSpace(emailClaim) == "" {
+		emailClaim = claims.PreferredUsername
+	}
+	email, err := normalizeOIDCEmail(emailClaim)
+	if err != nil {
+		return providerIdentity{}, errors.New("identity token claims are not acceptable")
+	}
+	return providerIdentity{
+		Issuer: idToken.Issuer, Subject: idToken.Subject, Email: email, DisplayName: claims.Name,
+		PreferredUsername: claims.PreferredUsername, Role: claims.Role, SID: claims.SID, IDToken: rawIDToken,
+	}, nil
+}
+
+func (o *OIDC) authenticateAtlassian(ctx context.Context, code string) (providerIdentity, error) {
+	payload, err := json.Marshal(map[string]string{
+		"grant_type": "authorization_code", "client_id": o.config.ClientID, "client_secret": o.config.ClientSecret,
+		"code": code, "redirect_uri": o.config.RedirectURL,
+	})
+	if err != nil {
+		return providerIdentity{}, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, o.config.Endpoint.TokenURL, bytes.NewReader(payload))
+	if err != nil {
+		return providerIdentity{}, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	client := o.httpClient
+	if client == nil {
+		client = http.DefaultClient
+	}
+	response, err := client.Do(req)
+	if err != nil {
+		return providerIdentity{}, fmt.Errorf("token exchange: %w", err)
+	}
+	defer response.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
+	if err != nil {
+		return providerIdentity{}, fmt.Errorf("token exchange response: %w", err)
+	}
+	if response.StatusCode != http.StatusOK {
+		return providerIdentity{}, fmt.Errorf("token exchange returned %s", response.Status)
+	}
+	var token struct {
+		AccessToken string `json:"access_token"`
+		TokenType   string `json:"token_type"`
+	}
+	if err := json.Unmarshal(body, &token); err != nil || token.AccessToken == "" || !strings.EqualFold(token.TokenType, "Bearer") {
+		return providerIdentity{}, errors.New("token exchange response is invalid")
+	}
+	profileRequest, err := http.NewRequestWithContext(ctx, http.MethodGet, o.profileEndpoint, nil)
+	if err != nil {
+		return providerIdentity{}, err
+	}
+	profileRequest.Header.Set("Authorization", "Bearer "+token.AccessToken)
+	profileRequest.Header.Set("Accept", "application/json")
+	profileResponse, err := client.Do(profileRequest)
+	if err != nil {
+		return providerIdentity{}, fmt.Errorf("identity lookup: %w", err)
+	}
+	defer profileResponse.Body.Close()
+	profileBody, err := io.ReadAll(io.LimitReader(profileResponse.Body, 1<<20))
+	if err != nil {
+		return providerIdentity{}, fmt.Errorf("identity response: %w", err)
+	}
+	if profileResponse.StatusCode != http.StatusOK {
+		return providerIdentity{}, fmt.Errorf("identity lookup returned %s", profileResponse.Status)
+	}
+	var profile struct {
+		AccountID     string `json:"account_id"`
+		AccountType   string `json:"account_type"`
+		AccountStatus string `json:"account_status"`
+		Email         string `json:"email"`
+		Name          string `json:"name"`
+		Nickname      string `json:"nickname"`
+	}
+	if err := json.Unmarshal(profileBody, &profile); err != nil || profile.AccountID == "" || profile.AccountStatus != "active" || profile.AccountType != "atlassian" {
+		return providerIdentity{}, errors.New("identity response is invalid")
+	}
+	email, err := normalizeOIDCEmail(profile.Email)
+	if err != nil {
+		return providerIdentity{}, errors.New("identity response omitted a valid email")
+	}
+	return providerIdentity{Issuer: o.issuer, Subject: profile.AccountID, Email: email, DisplayName: profile.Name, PreferredUsername: profile.Nickname}, nil
 }
 
 func oidcRandom() (string, error) {
@@ -241,9 +389,32 @@ func validOIDCStateBinding(r *http.Request, state string) bool {
 	return hmac.Equal(provided, mac.Sum(nil))
 }
 
+func (h *Handler) identityProvider(r *http.Request) (*OIDC, string) {
+	key := r.PathValue("provider")
+	if key == "" {
+		parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+		if len(parts) >= 2 && parts[0] == "auth" {
+			key = parts[1]
+		}
+	}
+	if key == "" {
+		key = "shauth"
+	}
+	if h.IdentityProviders != nil {
+		if provider := h.IdentityProviders.Provider(key); provider != nil {
+			return provider, key
+		}
+	}
+	if key == "shauth" && h.OIDC != nil {
+		return h.OIDC, key
+	}
+	return nil, key
+}
+
 func (h *Handler) OIDCLogin(w http.ResponseWriter, r *http.Request) {
 	noStoreAuthResponse(w)
-	if h.OIDC == nil {
+	provider, providerKey := h.identityProvider(r)
+	if provider == nil {
 		http.NotFound(w, r)
 		return
 	}
@@ -262,11 +433,11 @@ func (h *Handler) OIDCLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not begin sign-in", http.StatusInternalServerError)
 		return
 	}
-	if err := h.Store.CreateOIDCLoginState(r.Context(), state, nonce, verifier, oidcStateTTL); err != nil {
+	if err := h.Store.CreateIdentityProviderLoginState(r.Context(), state, providerKey, nonce, verifier, oidcStateTTL); err != nil {
 		http.Error(w, "could not begin sign-in", http.StatusInternalServerError)
 		return
 	}
-	authorizationURL, err := h.OIDC.authorizationURL(state, nonce, verifier)
+	authorizationURL, err := provider.authorizationURL(state, nonce, verifier)
 	if err != nil {
 		http.Error(w, "could not begin sign-in", http.StatusInternalServerError)
 		return
@@ -276,7 +447,8 @@ func (h *Handler) OIDCLogin(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) OIDCCallback(w http.ResponseWriter, r *http.Request) {
 	noStoreAuthResponse(w)
-	if h.OIDC == nil {
+	provider, providerKey := h.identityProvider(r)
+	if provider == nil {
 		http.NotFound(w, r)
 		return
 	}
@@ -285,7 +457,7 @@ func (h *Handler) OIDCCallback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid sign-in callback", http.StatusBadRequest)
 		return
 	}
-	nonce, verifier, err := h.Store.ConsumeOIDCLoginState(r.Context(), state)
+	nonce, verifier, err := h.Store.ConsumeIdentityProviderLoginState(r.Context(), state, providerKey)
 	if err != nil {
 		http.Error(w, "invalid or expired sign-in state", http.StatusBadRequest)
 		return
@@ -299,50 +471,20 @@ func (h *Handler) OIDCCallback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid sign-in callback", http.StatusBadRequest)
 		return
 	}
-	token, err := h.OIDC.config.Exchange(r.Context(), code, oauth2.VerifierOption(verifier))
+	identity, err := provider.authenticate(r.Context(), code, nonce, verifier)
 	if err != nil {
-		http.Error(w, "sign-in exchange failed", http.StatusUnauthorized)
+		log.Printf("%s sign-in: %v", providerKey, err)
+		http.Error(w, "sign-in could not be completed", http.StatusUnauthorized)
 		return
 	}
-	rawIDToken, ok := token.Extra("id_token").(string)
-	if !ok || rawIDToken == "" {
-		http.Error(w, "provider response omitted id_token", http.StatusUnauthorized)
-		return
-	}
-	idToken, err := h.OIDC.verifier.Verify(r.Context(), rawIDToken)
-	if err != nil {
-		http.Error(w, "invalid identity token", http.StatusUnauthorized)
-		return
-	}
-	var claims struct {
-		Email             string `json:"email"`
-		EmailVerified     bool   `json:"email_verified"`
-		Name              string `json:"name"`
-		Nonce             string `json:"nonce"`
-		PreferredUsername string `json:"preferred_username"`
-		SID               string `json:"sid"`
-		AuthorizedParty   string `json:"azp"`
-		Role              string `json:"role"`
-	}
-	if err := idToken.Claims(&claims); err != nil || idToken.Subject == "" || !claims.EmailVerified ||
-		!validOIDCAuthorizedParty(idToken.Audience, claims.AuthorizedParty, h.OIDC.config.ClientID) ||
-		subtle.ConstantTimeCompare([]byte(claims.Nonce), []byte(nonce)) != 1 {
-		http.Error(w, "identity token claims are not acceptable", http.StatusUnauthorized)
-		return
-	}
-	email, err := normalizeOIDCEmail(claims.Email)
-	if err != nil {
-		http.Error(w, "identity token claims are not acceptable", http.StatusUnauthorized)
-		return
-	}
-	displayName := strings.TrimSpace(claims.Name)
+	displayName := strings.TrimSpace(identity.DisplayName)
 	if displayName == "" {
-		displayName = strings.TrimSpace(claims.PreferredUsername)
+		displayName = strings.TrimSpace(identity.PreferredUsername)
 	}
 	if displayName == "" {
-		displayName, _, _ = strings.Cut(email, "@")
+		displayName, _, _ = strings.Cut(identity.Email, "@")
 	}
-	userID, err := h.Store.ResolveOIDCUser(r.Context(), idToken.Issuer, idToken.Subject, email, displayName, authn.UnusablePasswordHash)
+	userID, err := h.Store.ResolveOIDCUser(r.Context(), identity.Issuer, identity.Subject, identity.Email, displayName, authn.UnusablePasswordHash)
 	if err != nil {
 		if errors.Is(err, store.ErrInactiveUser) {
 			http.Error(w, "this account is inactive", http.StatusForbidden)
@@ -351,19 +493,19 @@ func (h *Handler) OIDCCallback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not create sign-in session", http.StatusInternalServerError)
 		return
 	}
-	if username := strings.TrimSpace(claims.PreferredUsername); username != "" {
+	if username := strings.TrimSpace(identity.PreferredUsername); username != "" {
 		if err := h.Store.SetOIDCUsername(r.Context(), userID, username); err != nil {
 			http.Error(w, "could not create sign-in session", http.StatusInternalServerError)
 			return
 		}
 	}
-	if role := strings.TrimSpace(claims.Role); role != "" {
+	if role := strings.TrimSpace(identity.Role); role != "" {
 		if err := h.Store.SetOIDCRole(r.Context(), userID, role); err != nil {
 			http.Error(w, "could not create sign-in session", http.StatusInternalServerError)
 			return
 		}
 	}
-	session, err := authn.LoginOIDC(r.Context(), h.Store, userID, rawIDToken, idToken.Issuer, idToken.Subject, claims.SID)
+	session, err := authn.LoginIdentityProvider(r.Context(), h.Store, userID, identity.IDToken, identity.Issuer, identity.Subject, identity.SID, providerKey)
 	if err != nil {
 		http.Error(w, "could not create sign-in session", http.StatusInternalServerError)
 		return
@@ -498,7 +640,8 @@ type oidcLogoutClaims struct {
 // nonce, jti, and required sid/sub shape before issuer-scoped revocation.
 func (h *Handler) BackChannelLogout(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
-	if h.OIDC == nil {
+	provider, _ := h.identityProvider(r)
+	if provider == nil || provider.verifier == nil {
 		http.NotFound(w, r)
 		return
 	}
@@ -512,7 +655,7 @@ func (h *Handler) BackChannelLogout(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "logout_token is required", http.StatusBadRequest)
 		return
 	}
-	logoutToken, err := h.OIDC.verifier.VerifyLogout(r.Context(), rawLogoutToken)
+	logoutToken, err := provider.verifier.VerifyLogout(r.Context(), rawLogoutToken)
 	if err != nil {
 		http.Error(w, "logout token verification failed", http.StatusBadRequest)
 		return

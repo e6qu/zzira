@@ -908,6 +908,12 @@
     <section class="login-story" aria-label="About ZZIRA"><a class="logo login-logo" href="/" aria-label="ZZIRA home"><span class="logo-mark" aria-hidden="true">Z</span><span>ZZIRA</span></a><div><span class="eyebrow">Local-first issue tracking</span><p class="login-display">Ship work,<br><em>not refreshes.</em></p><p>Your team’s work stays fast, available, and in sync—even when the network isn’t.</p></div><div class="login-proof"><span class="sync-dot" aria-hidden="true"></span><span><strong>Built for flow</strong><small>Jira-compatible API · Local replica</small></span></div></section>
     <section class="login-card">
     <span class="eyebrow">Welcome back</span><h1>Log in to your workspace</h1><p class="login-intro">Continue to ZZIRA Software.</p>
+    {{if .Providers}}
+    <div class="login-providers" aria-label="Single sign-on providers">
+      {{range .Providers}}<a class="btn btn-secondary btn-block" href="/auth/{{.Key}}">Continue with {{.DisplayName}}</a>{{end}}
+    </div>
+    <p class="login-separator"><span>or use your ZZIRA account</span></p>
+    {{end}}
     <form method="post" action="/login">
       <label for="login-email">Email</label>
       <input id="login-email" type="email" name="email" required autofocus autocomplete="email" placeholder="you@company.com">
@@ -930,8 +936,11 @@
   <main class="login-card">
     <span class="logo-mark" aria-hidden="true">Z</span><h1>Signed out</h1>
     <p>You have been signed out of ZZIRA.</p>
-    {{if .OIDCEnabled}}
-    <a class="btn btn-primary btn-block" href="/auth/shauth">Sign in with Shauth</a>
+    {{if .Providers}}
+    <div class="login-providers" aria-label="Sign-in providers">
+      {{range .Providers}}<a class="btn btn-primary btn-block" href="/auth/{{.Key}}">Sign in with {{.DisplayName}}</a>{{end}}
+    </div>
+    <a class="btn btn-secondary btn-block" href="/login">Use password</a>
     {{else}}
     <a class="btn btn-primary btn-block" href="/login">Log in</a>
     {{end}}

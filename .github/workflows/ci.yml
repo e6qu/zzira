@@ -80,6 +80,10 @@ jobs:
         env:
           DATABASE_URL: postgres://zzira:zzira@localhost:5433/zzira?sslmode=disable
           WORKSPACE_SLUG: zzira
+          ZZIRA_EXTERNAL_URL: http://localhost:8080
+          ZZIRA_ALLOW_INSECURE_OIDC: "true"
+          ZZIRA_ATLASSIAN_CLIENT_ID: e2e-atlassian-client
+          ZZIRA_ATLASSIAN_CLIENT_SECRET: e2e-atlassian-secret
         run: |
           go run ./cmd/server -mode=migrate
           go run ./cmd/server -mode=seed

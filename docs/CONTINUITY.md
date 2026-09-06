@@ -11,8 +11,8 @@ and final acceptance rules belong in [PLAN.md](../PLAN.md).
 - Branch: `feat/cloud-surface-completion`
 - Base: `origin/main` after PR #65, scheduled automation
 - Delivery shape: one pull request with ordered, independently green commits
-- Last completed workstream: 1 of 15 — contract and continuity
-- Active workstream: 2 of 15 — organizations and authorization
+- Last completed workstream: 2 of 15 — organizations and authorization
+- Active workstream: 3 of 15 — provider-based authentication
 - Blockers: none
 
 ## Last verified baseline
@@ -20,8 +20,9 @@ and final acceptance rules belong in [PLAN.md](../PLAN.md).
 The merged product includes core work items, projects, people, search, issue
 triage, boards, backlog and sprint lifecycle, notifications, elementary workflow
 administration, releases, configurable dashboards, initial wiki spaces/pages,
-and durable fixed-interval automation. Password, API-token, browser-session and
-one generic OIDC configuration are present.
+and durable fixed-interval automation. Password, API-token, browser-session,
+generic OIDC, Google, tenant-scoped Microsoft, and Atlassian provider sign-in
+are present.
 
 The pinned contract inventory contains 1,207 operations:
 
@@ -101,6 +102,18 @@ does not publish them as one OpenAPI document.
   operations: policy CRUD/filtering, product-resource add/update/remove, and
   validation. Added IP/CIDR and resource ownership validation, audited state,
   and the administrator create/scope/enable/disable/delete journey.
+- Added a simultaneous identity-provider registry for Shauth-compatible OIDC,
+  Google OIDC, tenant-scoped Microsoft Entra OIDC, and Atlassian OAuth 2.0 3LO
+  with its User Identity API. Provider callbacks use provider-bound single-use
+  state, OIDC nonce and PKCE where supported, strict claim/profile validation,
+  immutable issuer/subject identities, and exact tenant issuer checks.
+- Allowed one account to link several configured-provider identities by their
+  asserted email, recorded successful provider sessions in every applicable organization
+  audit log, selected RP-initiated logout by session issuer, and preserved
+  Shauth back-channel logout behavior.
+- Added responsive login provider choice and read-only provider status in
+  organization administration. Deployment secrets remain environment-owned and
+  are never rendered into the application.
 
 Validation after the organization foundation:
 
@@ -187,10 +200,24 @@ Validation after organization policy management:
 - All 47 Organizations operations now have reviewed partial assessments. Exact
   coverage is 62 of 1,207: 55 partial, 7 missing, and 1,145 unassessed.
 
+Validation after the provider registry and login journey:
+
+- All Go packages pass with PostgreSQL migration 039, including provider-bound
+  replay state, multi-provider identity linking, organization login audit, exact
+  Atlassian JSON token/profile exchange, and provider configuration behavior.
+- `go vet ./...`, the WebAssembly build, all seven conformance tests, and both
+  inventory `--check` modes pass.
+- All 46 Chromium user-journey tests pass against a provider-enabled server,
+  including the provider-choice/admin-status journey, WCAG light/dark checks,
+  and 320 px reflow.
+- Exact API coverage remains 62 of 1,207 because browser provider login is not
+  one of the pinned product REST operations.
+
 ## Current change
 
-1. Begin provider-based authentication with a provider registry, Google,
-   Microsoft and Atlassian login, account linking, and provider administration.
+1. Add provider lifecycle administration: durable enable/disable metadata,
+   safe client-secret rotation, explicit identity-link review/unlink, and
+   per-provider session revocation without exposing credentials.
 2. Extend revocation coverage from browser/API authorization to local replicas
    and queued mutations where the affected resource can already be cached.
 

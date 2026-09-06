@@ -119,13 +119,13 @@ func main() {
 		log.Fatalf("configure invitation email: %v", err)
 	}
 
-	oidcSSO, err := web.NewOIDC(ctx)
+	identityProviders, err := web.NewIdentityProviders(ctx)
 	if err != nil {
-		log.Fatalf("configure OIDC SSO: %v", err)
+		log.Fatalf("configure identity providers: %v", err)
 	}
 	baseURL := envOr("BASE_URL", "http://localhost:"+port)
 	webHandler := &web.Handler{
-		Store: st, Commands: cmdSvc, Automation: automationSvc, OIDC: oidcSSO,
+		Store: st, Commands: cmdSvc, Automation: automationSvc, OIDC: identityProviders.Provider("shauth"), IdentityProviders: identityProviders,
 		WorkspaceSlug: workspaceSlug, BaseURL: baseURL, InvitationNotificationsConfigured: smtpSender != nil,
 	}
 	api := &api3.Handler{Store: st, Commands: cmdSvc, Blobs: blobs, BaseURL: baseURL, WorkspaceSlug: workspaceSlug}
@@ -187,12 +187,12 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", webHandler.Home)
 	mux.HandleFunc("GET /login", webHandler.LoginForm)
-	mux.HandleFunc("GET /auth/shauth", webHandler.OIDCLogin)
-	mux.HandleFunc("GET /auth/shauth/callback", webHandler.OIDCCallback)
-	mux.HandleFunc("GET /auth/shauth/logout/complete", webHandler.OIDCLogoutComplete)
+	mux.HandleFunc("GET /auth/{provider}", webHandler.OIDCLogin)
+	mux.HandleFunc("GET /auth/{provider}/callback", webHandler.OIDCCallback)
+	mux.HandleFunc("GET /auth/{provider}/logout/complete", webHandler.OIDCLogoutComplete)
 	mux.HandleFunc("GET /auth/validation", webHandler.Validation)
 	mux.HandleFunc("GET /monitoring/observation", webHandler.Monitoring)
-	mux.HandleFunc("POST /auth/shauth/backchannel-logout", webHandler.BackChannelLogout)
+	mux.HandleFunc("POST /auth/{provider}/backchannel-logout", webHandler.BackChannelLogout)
 	mux.HandleFunc("POST /login", webHandler.LoginSubmit)
 	mux.HandleFunc("POST /logout", webHandler.Logout)
 	mux.HandleFunc("GET /signed-out", webHandler.SignedOut)
@@ -430,7 +430,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              address,
-		Handler:           http.MaxBytesHandler(authn.SecurityHeaders(authn.ProtectCookieMutations(mux), oidcSSO.FormActionOrigin()), 34<<20),
+		Handler:           http.MaxBytesHandler(authn.SecurityHeaders(authn.ProtectCookieMutations(mux), identityProviders.FormActionOrigins()), 34<<20),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      60 * time.Second,

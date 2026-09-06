@@ -28,6 +28,7 @@ type Handler struct {
 	Commands                          *commands.Service
 	Automation                        *automation.Service
 	OIDC                              *OIDC
+	IdentityProviders                 *ProviderRegistry
 	WorkspaceSlug                     string
 	BaseURL                           string
 	InvitationNotificationsConfigured bool
@@ -622,11 +623,12 @@ func (h *Handler) LoginForm(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
-	if h.OIDC != nil {
+	providers := h.loginProviders()
+	if len(providers) == 1 && providers[0].Key == "shauth" {
 		http.Redirect(w, r, "/auth/shauth", http.StatusSeeOther)
 		return
 	}
-	writePage(w, "page_login", map[string]string{})
+	writePage(w, "page_login", loginPageData{Providers: providers})
 }
 
 func (h *Handler) LoginSubmit(w http.ResponseWriter, r *http.Request) {
@@ -637,7 +639,7 @@ func (h *Handler) LoginSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	token, err := authn.Login(r.Context(), h.Store, r.PostFormValue("email"), r.PostFormValue("password"))
 	if err != nil {
-		writePageStatus(w, "page_login", map[string]string{"Error": "Incorrect email or password."}, http.StatusUnauthorized)
+		writePageStatus(w, "page_login", loginPageData{Error: "Incorrect email or password.", Providers: h.loginProviders()}, http.StatusUnauthorized)
 		return
 	}
 	authn.SetSessionCookie(w, token)
@@ -647,11 +649,18 @@ func (h *Handler) LoginSubmit(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	noStoreAuthResponse(w)
 	var idToken string
+	var sessionProvider *OIDC
 	if c, err := r.Cookie(sessionCookieName()); err == nil {
-		if h.OIDC != nil && h.OIDC.endSessionEndpoint != "" {
-			idToken, err = h.Store.OIDCSessionToken(r.Context(), authn.SessionHash(c.Value))
+		if h.IdentityProviders != nil || h.OIDC != nil {
+			var issuer string
+			idToken, issuer, err = h.Store.IdentityProviderSession(r.Context(), authn.SessionHash(c.Value))
 			if err != nil {
 				log.Printf("OIDC session token: %v", err)
+			}
+			if h.IdentityProviders != nil {
+				sessionProvider = h.IdentityProviders.ProviderByIssuer(issuer)
+			} else if h.OIDC != nil && (issuer == "" || h.OIDC.issuer == "" || h.OIDC.issuer == issuer) {
+				sessionProvider = h.OIDC
 			}
 		}
 		if err := h.Store.DeleteSession(r.Context(), authn.SessionHash(c.Value)); err != nil {
@@ -659,14 +668,14 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	authn.ClearSessionCookie(w)
-	if idToken != "" {
-		logoutURL, err := url.Parse(h.OIDC.endSessionEndpoint)
+	if idToken != "" && sessionProvider != nil && sessionProvider.endSessionEndpoint != "" {
+		logoutURL, err := url.Parse(sessionProvider.endSessionEndpoint)
 		if err != nil {
 			log.Printf("OIDC end-session URL: %v", err)
 		} else {
 			query := logoutURL.Query()
 			query.Set("id_token_hint", idToken)
-			query.Set("post_logout_redirect_uri", h.OIDC.postLogoutRedirectURL)
+			query.Set("post_logout_redirect_uri", sessionProvider.postLogoutRedirectURL)
 			logoutURL.RawQuery = query.Encode()
 			target := logoutURL.String()
 			if err := validOIDCEndpointURL(target); err != nil {
@@ -687,12 +696,29 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 // "Sign in with Shauth" and link there directly -- a generic "Log in" link
 // gives an anonymous caller (and Shauth's own SSO validator, which asserts
 // on that exact accessible name) no visible way back into the app.
-type signedOutData struct{ OIDCEnabled bool }
+type loginPageData struct {
+	Error     string
+	Providers []LoginProvider
+}
+
+type signedOutData struct {
+	Providers []LoginProvider
+}
+
+func (h *Handler) loginProviders() []LoginProvider {
+	if h.IdentityProviders != nil {
+		return h.IdentityProviders.LoginProviders()
+	}
+	if h.OIDC != nil {
+		return []LoginProvider{{Key: "shauth", DisplayName: "Shauth", Kind: "OpenID Connect", Issuer: h.OIDC.issuer}}
+	}
+	return nil
+}
 
 func (h *Handler) SignedOut(w http.ResponseWriter, r *http.Request) {
 	noStoreAuthResponse(w)
 	authn.ClearSessionCookie(w)
-	writePage(w, "page_signed_out", signedOutData{OIDCEnabled: h.OIDC != nil})
+	writePage(w, "page_signed_out", signedOutData{Providers: h.loginProviders()})
 }
 
 // OIDCLogoutComplete is the registered post-logout redirect bridge Shauth
@@ -708,9 +734,12 @@ func (h *Handler) SignedOut(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) OIDCLogoutComplete(w http.ResponseWriter, r *http.Request) {
 	noStoreAuthResponse(w)
 	authn.ClearSessionCookie(w)
-	if origin := h.OIDC.FormActionOrigin(); origin != "" {
-		http.Redirect(w, r, origin+"/oauth/logout/complete", http.StatusSeeOther)
-		return
+	provider, providerKey := h.identityProvider(r)
+	if providerKey == "shauth" {
+		if origin := provider.FormActionOrigin(); origin != "" {
+			http.Redirect(w, r, origin+"/oauth/logout/complete", http.StatusSeeOther)
+			return
+		}
 	}
 	http.Redirect(w, r, "/signed-out", http.StatusSeeOther)
 }

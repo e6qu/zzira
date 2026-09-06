@@ -207,6 +207,35 @@ func (s *Store) CreateOIDCSession(ctx context.Context, tokenHash, userID, idToke
 	return err
 }
 
+// CreateIdentityProviderSession records a provider-backed browser session and
+// its login evidence in one transaction. A user may belong to more than one
+// organization; each organization receives its own immutable audit event.
+func (s *Store) CreateIdentityProviderSession(ctx context.Context, tokenHash, userID, idToken, issuer, subject, sid, providerKey string, ttl time.Duration) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO sessions (token_hash, user_id, oidc_id_token, oidc_issuer, oidc_subject, oidc_session_id, expires_at)
+		 VALUES ($1,$2,NULLIF($3,''),$4,$5,NULLIF($6,''),now() + $7::interval)`,
+		tokenHash, userID, idToken, issuer, subject, sid, fmt.Sprintf("%d seconds", int(ttl.Seconds()))); err != nil {
+		return err
+	}
+	detail, err := json.Marshal(map[string]any{"provider": providerKey, "issuer": issuer})
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO organization_audit_events(organization_id,actor_id,action,target_type,target_id,detail)
+		SELECT DISTINCT d.organization_id,$1,'identity.login','user',$1,$2::jsonb
+		FROM directory_users du JOIN directories d ON d.id=du.directory_id
+		WHERE du.user_id=$1`, userID, detail); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
 func (s *Store) SessionUser(ctx context.Context, tokenHash string) (string, error) {
 	var userID string
 	err := s.Pool.QueryRow(ctx,
@@ -261,23 +290,35 @@ func (s *Store) ClaimOIDCLogoutAndDeleteSessions(ctx context.Context, jti string
 }
 
 func (s *Store) OIDCSessionToken(ctx context.Context, tokenHash string) (string, error) {
-	var idToken string
-	err := s.Pool.QueryRow(ctx, `SELECT COALESCE(oidc_id_token, '') FROM sessions WHERE token_hash=$1 AND expires_at > now()`, tokenHash).Scan(&idToken)
+	idToken, _, err := s.IdentityProviderSession(ctx, tokenHash)
 	return idToken, err
 }
 
+func (s *Store) IdentityProviderSession(ctx context.Context, tokenHash string) (idToken, issuer string, err error) {
+	err = s.Pool.QueryRow(ctx, `SELECT COALESCE(oidc_id_token, ''),COALESCE(oidc_issuer, '') FROM sessions WHERE token_hash=$1 AND expires_at > now()`, tokenHash).Scan(&idToken, &issuer)
+	return idToken, issuer, err
+}
+
 func (s *Store) CreateOIDCLoginState(ctx context.Context, state, nonce, codeVerifier string, ttl time.Duration) error {
+	return s.CreateIdentityProviderLoginState(ctx, state, "shauth", nonce, codeVerifier, ttl)
+}
+
+func (s *Store) CreateIdentityProviderLoginState(ctx context.Context, state, providerKey, nonce, codeVerifier string, ttl time.Duration) error {
 	_, err := s.Pool.Exec(ctx,
 		`WITH expired AS (DELETE FROM oidc_login_states WHERE expires_at <= now())
-		 INSERT INTO oidc_login_states (state_hash, nonce, code_verifier, expires_at) VALUES ($1,$2,$3,now() + $4::interval)`,
-		HashToken(state), nonce, codeVerifier, fmt.Sprintf("%d seconds", int(ttl.Seconds())))
+		 INSERT INTO oidc_login_states (state_hash, provider_key, nonce, code_verifier, expires_at) VALUES ($1,$2,$3,$4,now() + $5::interval)`,
+		HashToken(state), providerKey, nonce, codeVerifier, fmt.Sprintf("%d seconds", int(ttl.Seconds())))
 	return err
 }
 
 func (s *Store) ConsumeOIDCLoginState(ctx context.Context, state string) (nonce, codeVerifier string, err error) {
+	return s.ConsumeIdentityProviderLoginState(ctx, state, "shauth")
+}
+
+func (s *Store) ConsumeIdentityProviderLoginState(ctx context.Context, state, providerKey string) (nonce, codeVerifier string, err error) {
 	err = s.Pool.QueryRow(ctx,
-		`DELETE FROM oidc_login_states WHERE state_hash=$1 AND expires_at > now() RETURNING nonce, code_verifier`, HashToken(state)).
-		Scan(&nonce, &codeVerifier)
+		`DELETE FROM oidc_login_states WHERE state_hash=$1 AND provider_key=$2 AND expires_at > now() RETURNING nonce, code_verifier`,
+		HashToken(state), providerKey).Scan(&nonce, &codeVerifier)
 	return nonce, codeVerifier, err
 }
 

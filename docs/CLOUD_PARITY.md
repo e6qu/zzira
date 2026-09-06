@@ -64,7 +64,7 @@ runtime. Capability discovery and errors must distinguish these cases precisely.
 
 | Surface | State | Delivered evidence | Remaining completion work |
 |---|---:|---|---|
-| Identity and authentication | Partial | Password, sessions, API tokens, generic OIDC with PKCE/nonce and logout | Provider registry; Atlassian, Google and Microsoft login; identity linking; organization/site/product lifecycle |
+| Identity and authentication | Partial | Password, sessions, API tokens, simultaneous generic OIDC, Google and tenant-scoped Microsoft OIDC, Atlassian OAuth 2.0 3LO, provider-bound state, identity linking, login audit and logout | Provider CRUD/secret rotation, explicit identity link review, organization/site/product lifecycle |
 | Projects and administration | Partial | Project create/edit, Scrum/Kanban setup, project directory and settings entry points; all 47 organization operations reviewed with tested group/user/role/activity/event/domain/policy subsets and admin journeys | Permission, notification, security, workflow, screen and field schemes; runtime policy enforcement and cross-organization domain ownership; templates; project lifecycle; remaining Jira admin APIs and journeys |
 | Work items | Partial | Issue CRUD, rich-text subset, comments, attachments, worklogs, links, watchers, versions, fields and security | Complete ADF and metadata; hierarchy, components, estimates, votes, properties, bulk operations, exact expansions and permissions |
 | Search and filters | Partial | Useful JQL subset, navigator, filter CRUD and favourites | Full JQL grammar/functions/history, stable cursors, sharing administration, subscriptions and remaining search options |

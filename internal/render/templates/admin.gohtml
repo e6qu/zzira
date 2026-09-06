@@ -21,6 +21,11 @@
     <article class="surface-card"><span class="eyebrow">Directory</span>{{with .Data.Directory}}<h2>{{.Name}}</h2><dl><div><dt>Type</dt><dd>{{.Type}}</dd></div><div><dt>Accounts</dt><dd>{{len $.Data.Users}}</dd></div></dl>{{else}}<h2>No active directory</h2>{{end}}</article>
   </section>
 
+  <section class="surface-card admin-section" aria-labelledby="admin-identity-providers-title">
+    <header><div><span class="eyebrow">Authentication</span><h2 id="admin-identity-providers-title">Identity providers</h2></div><p>Configured providers are available on the shared sign-in page. Client secrets remain in deployment configuration.</p></header>
+    <div class="table-scroll" tabindex="0" aria-label="Configured identity providers"><table><thead><tr><th scope="col">Provider</th><th scope="col">Protocol</th><th scope="col">Issuer</th><th scope="col">State</th></tr></thead><tbody>{{range .Data.IdentityProviders}}<tr><th scope="row">{{.DisplayName}}</th><td>{{.Kind}}</td><td><code>{{.Issuer}}</code></td><td><span class="lozenge lozenge-success">Enabled</span></td></tr>{{else}}<tr><td colspan="4"><div class="empty-state"><strong>No external identity providers</strong><small>Password sign-in remains available.</small></div></td></tr>{{end}}</tbody></table></div>
+  </section>
+
   <section class="surface-card admin-section" aria-labelledby="admin-domains-title">
     <header><div><span class="eyebrow">Identity boundary</span><h2 id="admin-domains-title">Domains</h2></div><p>Claim an email domain with a DNS TXT record before applying organization-wide authentication policy.</p></header>
     <form class="admin-domain-create" method="post" action="/admin/domains"><label for="admin-domain-name">Domain name</label><input id="admin-domain-name" name="name" placeholder="example.com" required maxlength="253"><button class="btn btn-primary" type="submit">Add domain</button></form>
