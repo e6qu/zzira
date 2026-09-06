@@ -254,6 +254,32 @@ func TestSingleValueValidatorCountsEffectiveFieldValues(t *testing.T) {
 	}
 }
 
+func TestDateFieldValidatorComparesEffectiveDates(t *testing.T) {
+	transition := Transition{Validators: []Rule{{ID: "dates", RuleKey: RuleValidateFieldValue, Parameters: map[string]string{
+		"ruleType": "dateFieldComparison", "date1FieldKey": "customfield_start", "date2FieldKey": "customfield_due",
+		"includeTime": "false", "conditionSelected": "<",
+	}}}}
+	context := EvaluationContext{FieldValues: map[string]json.RawMessage{
+		"customfield_start": json.RawMessage(`"2026-09-06T23:00:00Z"`),
+		"customfield_due":   json.RawMessage(`"2026-09-07T01:00:00Z"`),
+	}}
+	if err := transition.ValidateRules(context); err != nil {
+		t.Fatal(err)
+	}
+	transition.Validators[0].Parameters["includeTime"] = "true"
+	transition.Validators[0].Parameters["conditionSelected"] = ">"
+	if err := transition.ValidateRules(context); err == nil {
+		t.Fatal("reversed time comparison passed")
+	}
+	if err := ValidateTransitionRules(transition); err != nil {
+		t.Fatal(err)
+	}
+	transition.Validators[0].Parameters["includeTime"] = "sometimes"
+	if err := ValidateTransitionRules(transition); err == nil {
+		t.Fatal("invalid includeTime value was accepted")
+	}
+}
+
 func TestPermissionValidatorUsesGrantedJiraPermissions(t *testing.T) {
 	transition := Transition{Validators: []Rule{{ID: "permission", RuleKey: RuleCheckPermissionValidator, Parameters: map[string]string{
 		"permissionKey": "ADMINISTER_PROJECTS",

@@ -294,6 +294,14 @@ func (t Transition) ValidateRules(context EvaluationContext) error {
 				if !workflowFieldHasSingleValue(context.FieldValues[field]) {
 					return fmt.Errorf("%s must contain exactly one value", field)
 				}
+			case "dateFieldComparison":
+				comparisonType := "DATE_WITHOUT_TIME"
+				if validator.Parameters["includeTime"] == "true" {
+					comparisonType = "DATE"
+				}
+				if !workflowFieldsCompare(context.FieldValues[validator.Parameters["date1FieldKey"]], context.FieldValues[validator.Parameters["date2FieldKey"]], validator.Parameters["conditionSelected"], comparisonType) {
+					return fmt.Errorf("workflow date fields do not satisfy %s", validator.Parameters["conditionSelected"])
+				}
 			default:
 				return fmt.Errorf("unsupported workflow validator %q", validator.RuleKey)
 			}
@@ -334,6 +342,17 @@ func workflowFieldHasSingleValue(raw json.RawMessage) bool {
 		return len(values) == 1
 	}
 	return true
+}
+
+func workflowFieldsCompare(leftRaw, rightRaw json.RawMessage, comparator, comparisonType string) bool {
+	for _, left := range comparableJSONValues(leftRaw) {
+		for _, right := range comparableJSONValues(rightRaw) {
+			if compareWorkflowValues(left, right, comparator, comparisonType) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func previousStatusMatches(parameters map[string]string, context EvaluationContext) bool {
@@ -514,6 +533,18 @@ func ValidateTransitionRules(transition Transition) error {
 				}
 				if value := validator.Parameters["excludeSubtasks"]; value != "true" && value != "false" {
 					return fmt.Errorf("workflow validator excludeSubtasks must be true or false")
+				}
+			case "dateFieldComparison":
+				if strings.TrimSpace(validator.Parameters["date1FieldKey"]) == "" || strings.TrimSpace(validator.Parameters["date2FieldKey"]) == "" {
+					return fmt.Errorf("workflow date validator requires two field keys")
+				}
+				if value := validator.Parameters["includeTime"]; value != "true" && value != "false" {
+					return fmt.Errorf("workflow date validator includeTime must be true or false")
+				}
+				switch validator.Parameters["conditionSelected"] {
+				case ">", ">=", "=", "<=", "<", "!=":
+				default:
+					return fmt.Errorf("workflow date validator condition is unsupported")
 				}
 			default:
 				return fmt.Errorf("workflow validator %q is unsupported or incomplete", validator.RuleKey)

@@ -871,9 +871,27 @@ Validation after single-value workflow validators:
   generated inventory and coverage checks, diff check, primary-page light/dark
   axe scan, and 320 px reflow gate pass.
 
+Validation after date-field comparison workflow validators:
+
+- The `dateFieldComparison` mode of `system:validate-field-value` compares two
+  effective system or custom field values with Jira's six operators. Date-only
+  mode ignores the time portion, while time-aware mode accepts RFC 3339 values
+  and treats date-only values as midnight.
+- Workflow validation requires both field keys, a strict `includeTime` boolean,
+  and a supported operator. Modern resources round-trip the rule, and the
+  administrator editor exposes both field keys, the operator, and time mode.
+- Unit tests prove date-only and time-aware comparisons plus invalid
+  configuration. PostgreSQL REST integration uses registered datetime custom
+  fields, proves a reversed date blocks the transition atomically, restores the
+  later date, and completes the matching path. The focused Chromium journey
+  creates and publishes the visual rule.
+- The full PostgreSQL Go suite, vet, WebAssembly build, seven conformance tests,
+  generated inventory and coverage checks, diff check, primary-page light/dark
+  axe scan, and 320 px reflow gate pass.
+
 ## Current change
 
-1. Add executable date-comparison workflow validators and visual controls.
+1. Add executable date-window workflow validators and visual controls.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 

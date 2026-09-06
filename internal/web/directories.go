@@ -914,6 +914,16 @@ func (h *Handler) AddWorkflowTransition(w http.ResponseWriter, r *http.Request, 
 			},
 		})
 	}
+	if firstField := strings.TrimSpace(r.PostFormValue("date1_field_validator")); firstField != "" {
+		transition.Validators = append(transition.Validators, workflow.Rule{
+			ID: store.NewID("rule"), RuleKey: workflow.RuleValidateFieldValue,
+			Parameters: map[string]string{
+				"ruleType": "dateFieldComparison", "date1FieldKey": firstField,
+				"date2FieldKey": strings.TrimSpace(r.PostFormValue("date2_field_validator")),
+				"includeTime":   formBool(r, "date_validator_include_time"), "conditionSelected": r.PostFormValue("date_validator_condition"),
+			},
+		})
+	}
 	if statusID := r.PostFormValue("previous_status_validator"); statusID != "" {
 		transition.Validators = append(transition.Validators, workflow.Rule{
 			ID: store.NewID("rule"), RuleKey: workflow.RulePreviousStatusValidator, Parameters: map[string]string{

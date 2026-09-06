@@ -168,12 +168,8 @@ func compareWorkflowValues(left, right any, comparator, comparisonType string) b
 			comparison = 1
 		}
 	case "DATE", "DATE_WITHOUT_TIME":
-		layout := time.RFC3339
-		if comparisonType == "DATE_WITHOUT_TIME" {
-			layout = "2006-01-02"
-		}
-		leftDate, leftErr := time.Parse(layout, leftValue)
-		rightDate, rightErr := time.Parse(layout, rightValue)
+		leftDate, leftErr := parseWorkflowDate(leftValue, comparisonType == "DATE")
+		rightDate, rightErr := parseWorkflowDate(rightValue, comparisonType == "DATE")
 		if leftErr != nil || rightErr != nil {
 			return false
 		}
@@ -201,4 +197,17 @@ func compareWorkflowValues(left, right any, comparator, comparisonType string) b
 		return comparison <= 0
 	}
 	return false
+}
+
+func parseWorkflowDate(value string, includeTime bool) (time.Time, error) {
+	if includeTime {
+		if parsed, err := time.Parse(time.RFC3339, value); err == nil {
+			return parsed, nil
+		}
+		return time.Parse("2006-01-02", value)
+	}
+	if len(value) >= len("2006-01-02") {
+		value = value[:len("2006-01-02")]
+	}
+	return time.Parse("2006-01-02", value)
 }
