@@ -25,3 +25,14 @@ func TestDispositionForStatus(t *testing.T) {
 		}
 	}
 }
+
+func TestDispositionForSyncStatus(t *testing.T) {
+	for _, test := range []struct {
+		status int
+		want   SyncDisposition
+	}{{200, SyncAccepted}, {304, SyncAccepted}, {401, SyncRevoked}, {403, SyncRevoked}, {429, SyncRetry}, {500, SyncRetry}} {
+		if got := DispositionForSyncStatus(test.status); got != test.want {
+			t.Errorf("DispositionForSyncStatus(%d)=%v, want %v", test.status, got, test.want)
+		}
+	}
+}

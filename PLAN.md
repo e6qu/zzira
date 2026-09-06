@@ -81,6 +81,7 @@ semantics.
 | Analytics | Dashboard groupings and release progress | Historical reports, development facts, DORA, exports and scheduled delivery |
 | Administration | All 47 organization operations reviewed with tested organization/site/product/directory, DNS claim, policy/resource, event, group and managed-account subsets; limited project settings | Runtime policy enforcement, provider administration and Jira/Confluence schemes |
 | Apps | Webhooks and entity properties used by core features | Installation runtime, modules, isolation, storage, upgrades and app administration |
+| Local-first | Issue replica and outbox, offline issue edits, authorization-before-replay, revoked-access replica/cache purge, tab isolation and reconnect convergence | Permission-shaped service, knowledge, report and administration data; replica schema upgrades and broader safe mutations |
 
 The historical V0–V6 labels are retired. They described how the foundation was
 built and no longer define the remaining product. Git history and release notes
@@ -136,8 +137,9 @@ flowchart LR
 - `internal/commands` is the only application layer that changes domain state.
 - Every committed mutation appends one or more immutable, ordered actions in the
   same transaction.
-- Replay is deterministic. A permission change emits tombstones for data that a
-  browser replica may no longer retain.
+- Replay is deterministic. Reconnect verifies authorization before outbox
+  replay; loss of site access clears private materializations, queued commands,
+  checkpoints, and authenticated caches before the browser signs out.
 - Background work uses durable database queues, leases, bounded retries, and
   idempotent desired-state actions. Correctness cannot depend on an in-process
   timer.

@@ -123,6 +123,12 @@ does not publish them as one OpenAPI document.
   disable or enable each configured provider; disabling removes its login/link
   entry points, revokes every session from its issuer in the same transaction,
   and records the action. Startup reapplies the stored setting.
+- Closed the browser-replica revocation boundary. Reconnect now verifies access
+  before replaying queued commands; a 401 or 403 atomically clears private
+  SQLite materializations, action checkpoints, and the remaining outbox, clears
+  authenticated page caches, rotates the replica identity, and signs the user
+  out. Offline network transitions cancel in-flight worker requests, and
+  reconnect maintenance yields the JavaScript event loop before fetching.
 
 Validation after the organization foundation:
 
@@ -241,12 +247,28 @@ Validation after provider availability administration:
   generated inventory/coverage checks pass; the existing administration journey
   still passes its WCAG light/dark and 320 px checks.
 
+Validation after browser-replica revocation:
+
+- Focused sync policy tests cover accepted, retryable, unauthorized, and
+  forbidden responses; the browser-replica protocol exposes bare 401 responses
+  while preserving Basic challenges for ordinary API clients.
+- The Chromium journey proves that suspension while an edit is queued offline
+  never replays that edit and clears the private SQLite replica, action log,
+  checkpoint, outbox, page cache, and replica identifier before signed-out
+  navigation.
+- The revocation, sign-out/session-isolation, rapid OPFS navigation, and all V1
+  edit/comment/transition/offline-drain journeys pass: 8 tests total.
+- The full PostgreSQL Go suite, vet, WebAssembly build, seven conformance tests,
+  both generated evidence checks, and `git diff --check` pass. Exact API
+  coverage remains 62 of 1,207 because this closes local sync semantics rather
+  than a pinned public product operation.
+
 ## Current change
 
 1. Add encrypted provider registration and safe client-secret rotation without
    exposing credentials.
-2. Extend revocation coverage from browser/API authorization to local replicas
-   and queued mutations where the affected resource can already be cached.
+2. Begin Jira administration and workflow completion after provider
+   registration is production-manageable.
 
 ## Resume here
 

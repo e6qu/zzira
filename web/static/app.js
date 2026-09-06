@@ -456,7 +456,7 @@
     return id;
   }
   const worker = replicaView && typeof Worker === 'function'
-    ? new Worker('/static/worker.js?v=11&replica=' + encodeURIComponent(replicaID()))
+    ? new Worker('/static/worker.js?v=13&replica=' + encodeURIComponent(replicaID()))
     : null;
   const banner = () => document.getElementById('sync-banner');
   let workerReady = false;
@@ -605,6 +605,14 @@
       case 'offline':
         announce('offline \u2014 showing local copy', 4000);
         setSyncRail('offline', 'Offline', 'Showing local copy');
+        break;
+      case 'revoked':
+        worker.terminate();
+        sessionStorage.removeItem('zzira-replica-id');
+        if (navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_PRIVATE_CACHE' });
+        }
+        location.replace('/signed-out');
         break;
       case 'html':
         // Skip the worker's redundant initial render: the server already
@@ -801,10 +809,12 @@
     setSyncRail('syncing', 'Back online', 'Syncing changes');
     // Reconnection is a protocol event, not an opportunity to wait for the
     // next maintenance tick. This message follows buffered offline commands.
+    postWorker({ type: 'network-state', online: true });
     postWorker({ type: 'sync-now' });
   });
   window.addEventListener('offline', () => {
     offlineMode = true;
+    postWorker({ type: 'network-state', online: false });
     setSyncRail('offline', 'Offline', 'Showing local copy');
   });
 

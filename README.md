@@ -7,7 +7,7 @@ Linear's ["Rebuilding delta sync read path"](https://linear.app/now/rebuilding-d
   Software, Service Management, Confluence, Automation, administration, and
   installable apps. Delivered coverage remains partial; see the current
   [scope and evidence](docs/CLOUD_PARITY.md).
-- **Local-first browser replica**: SQLite (WASM/OPFS) + an isomorphic Go renderer compiled to both server and client
+- **Local-first browser replica**: SQLite (WASM/OPFS) + an isomorphic Go renderer compiled to both server and client, with authorization-before-replay and revoked-access data purge
 - **Go + Postgres backend**: stateless replicas, an immutable action log as the single write path, Postgres LISTEN/NOTIFY for live pokes
 - Frontend: HTMX + SortableJS, Jira-like UI
 - **Provider sign-in**: simultaneous Shauth-compatible OIDC, Google, tenant-

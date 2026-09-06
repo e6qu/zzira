@@ -80,7 +80,7 @@ runtime. Capability discovery and errors must distinguish these cases precisely.
 | Service Management | Missing | Jira work-item foundation can be reused | Complete service project, portal, customer, agent, request, queue, SLA, approval, Assets, incident/problem/change, report and REST journeys |
 | Development integrations | Missing | Work-item links exist | Development info, builds, deployments, feature flags, security, operations and components needed for release and DORA evidence |
 | App runtime | Missing | Core webhooks and entity properties | Installation/lifecycle, principals/scopes, signed callbacks, modules, isolated storage, scheduled functions, upgrades/uninstall and administration |
-| Local-first behavior | Partial | Issue replica/outbox, offline issue work and two-client convergence | Permission-shaped service, knowledge, report and administration replicas plus safe queued writes and schema upgrades |
+| Local-first behavior | Partial | Issue replica/outbox, offline issue work, two-client convergence, authorization-before-replay and revoked-access purge of private SQLite data, queued mutations and authenticated page caches | Permission-shaped service, knowledge, report and administration replicas plus broader safe queued writes and schema upgrades |
 | Accessibility and interaction | Partial | Core light/dark, keyboard, reflow and axe coverage | Equivalent coverage for each new persona journey, chart table, editor, diagram and administrative surface |
 
 ## Delivered compatibility details

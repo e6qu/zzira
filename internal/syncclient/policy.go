@@ -25,3 +25,25 @@ func DispositionForStatus(status int) OutboxDisposition {
 		return OutboxRetry
 	}
 }
+
+type SyncDisposition int
+
+const (
+	SyncRetry SyncDisposition = iota
+	SyncAccepted
+	SyncRevoked
+)
+
+// DispositionForSyncStatus treats authentication and authorization failures as
+// a replica revocation boundary. A private offline copy must be purged before a
+// different user or a restored account can reuse the browser context.
+func DispositionForSyncStatus(status int) SyncDisposition {
+	switch status {
+	case 200, 304:
+		return SyncAccepted
+	case 401, 403:
+		return SyncRevoked
+	default:
+		return SyncRetry
+	}
+}

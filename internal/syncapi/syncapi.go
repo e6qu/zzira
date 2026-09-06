@@ -44,7 +44,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	userID, err := authn.Identify(r.Context(), h.Store, r)
 	if err != nil {
-		w.Header().Set("WWW-Authenticate", `Basic realm="zzira"`)
+		// A Basic challenge can suspend fetch() behind browser credential UI.
+		// Replica workers need the bare 401 so they can purge local state;
+		// ordinary API clients retain the Jira-compatible challenge.
+		if r.Header.Get("X-Zzira-Replica") != "browser" {
+			w.Header().Set("WWW-Authenticate", `Basic realm="zzira"`)
+		}
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}

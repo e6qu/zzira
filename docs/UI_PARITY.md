@@ -17,7 +17,7 @@ Status: ✅ browser-tested complete journey · 🟡 usable tested subset · ⛔ 
 | Contributor finds work | ✅ | Project-scoped basic/JQL search, filters, columns, sorting, pagination, keyboard navigation and contextual preview |
 | Contributor creates and triages work | ✅ | Shared create metadata, validation recovery, inline fields, security, labels, watchers, links, activity, attachments and worklogs |
 | Contributor plans and runs a sprint | ✅ | Backlog grouping/ranking, sprint create/edit/start/complete, board movement, quick/assignee filters, WIP feedback, swimlanes and issue preview |
-| Contributor works offline | Partial | ✅ Issue reads/edits, reconnect drain and server reconciliation; other product entities and richer mutations remain online-only |
+| Contributor works offline | Partial | ✅ Issue reads/edits, authorization-before-replay, reconnect drain and server reconciliation; suspension while offline purges the private replica, queued mutations and authenticated page cache before sign-out. Other product entities and richer mutations remain online-only |
 | Contributor follows code through release | Partial | ✅ Version scope, progress, notes and lifecycle; development/build/deployment evidence and complete release governance remain |
 | Manager configures a project | Partial | ✅ Scrum/Kanban create, details, lead/default assignment and workflow selection; roles, types, fields, screens, schemes, security and lifecycle remain |
 | Manager plans across teams | Missing | Hierarchy, teams, capacity, dependencies, timeline, scenarios and cross-project plans remain |

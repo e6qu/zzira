@@ -35,7 +35,9 @@ accounts; assign product access and groups during invitation; create or delete
 a group; add or remove directory users; and grant or revoke each group's Jira
 Software, Jira Service Management, and Confluence access. Suspension and
 removal revoke active sessions and API tokens when the account has no other
-active directory. Every successful user, group,
+active directory. On reconnect, an affected browser verifies access before
+outbox replay, purges its private replica and authenticated page cache, and
+returns to the signed-out page. Every successful user, group,
 membership, or role mutation writes an organization audit event in the same
 transaction. Administrators cannot suspend or remove their own account.
 Ordinary users do not see the administration navigation item and receive 403 on
