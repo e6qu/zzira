@@ -87,6 +87,7 @@ test('admin creates a service project with Jira Service Management request types
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto(`/service/agent/${desk.id}`);
   await expect(page.getByRole('heading', { name: 'Queues', level: 1 })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'SLA attention', exact: true })).toBeVisible();
   await expect(page.locator('.service-agent-table')).toContainText(requestSummary);
   await page.getByRole('link', { name: 'Unassigned requests', exact: true }).click();
   await expect(page.locator('.service-agent-table')).toContainText(requestSummary);

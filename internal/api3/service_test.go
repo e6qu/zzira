@@ -45,6 +45,7 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	exec(`INSERT INTO api_tokens(id,user_id,token_hash) VALUES($1,$1,$2)`, customerID, store.HashToken(customerID))
 	exec(`INSERT INTO api_tokens(id,user_id,token_hash) VALUES($1,$1,$2)`, agentID, store.HashToken(agentID))
 	t.Cleanup(func() {
+		exec(`DELETE FROM notifications WHERE workspace_id=$1`, workspaceID)
 		exec(`DELETE FROM actions WHERE workspace_id=$1`, workspaceID)
 		exec(`DELETE FROM issues WHERE workspace_id=$1`, workspaceID)
 		exec(`DELETE FROM boards WHERE project_id IN (SELECT id FROM projects WHERE workspace_id=$1)`, workspaceID)
@@ -188,6 +189,39 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	var serviceConfigAudits int
 	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM organization_audit_events WHERE actor_id=$1 AND action IN ('service.calendar.updated','service.sla.updated')`, actorID).Scan(&serviceConfigAudits); err != nil || serviceConfigAudits != 2 {
 		t.Fatalf("service configuration audits = %d, %v", serviceConfigAudits, err)
+	}
+	escalationNow := time.Now().UTC().Truncate(time.Second)
+	if _, err := st.Pool.Exec(ctx, `UPDATE service_sla_cycles SET started_at=$2 WHERE request_issue_id=$1 AND metric_id=$3`, issue.ID, escalationNow.Add(-110*time.Minute), metricByKind["first_response"]); err != nil {
+		t.Fatal(err)
+	}
+	runner := &store.ServiceSLARunner{Store: st, Now: func() time.Time { return escalationNow }}
+	if err := runner.DrainOnce(ctx, workspaceID); err != nil {
+		t.Fatal(err)
+	}
+	if err := runner.DrainOnce(ctx, workspaceID); err != nil {
+		t.Fatal(err)
+	}
+	var warningCount int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM notifications WHERE workspace_id=$1 AND kind='service_sla_warning'`, workspaceID).Scan(&warningCount); err != nil || warningCount != 1 {
+		t.Fatalf("warning notifications = %d, %v", warningCount, err)
+	}
+	if _, err := st.Pool.Exec(ctx, `UPDATE service_sla_cycles SET started_at=$2 WHERE request_issue_id=$1 AND metric_id=$3`, issue.ID, escalationNow.Add(-3*time.Hour), metricByKind["first_response"]); err != nil {
+		t.Fatal(err)
+	}
+	if err := runner.DrainOnce(ctx, workspaceID); err != nil {
+		t.Fatal(err)
+	}
+	var breachCount int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM notifications WHERE workspace_id=$1 AND kind='service_sla_breached'`, workspaceID).Scan(&breachCount); err != nil || breachCount != 1 {
+		t.Fatalf("breach notifications = %d, %v", breachCount, err)
+	}
+	var attentionQueueID string
+	if err := st.Pool.QueryRow(ctx, `SELECT id FROM service_queues WHERE service_desk_id=$1 AND kind='sla_attention'`, serviceDeskID).Scan(&attentionQueueID); err != nil {
+		t.Fatal(err)
+	}
+	attention := call("GET", "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/queue/"+attentionQueueID+"/issue", "", 200)
+	if !strings.Contains(attention.Body.String(), issueKey) {
+		t.Fatal(attention.Body.String())
 	}
 	owned := callAs(customerID, "GET", "/rest/servicedeskapi/request", "", 200)
 	if !strings.Contains(owned.Body.String(), issueKey) {

@@ -1151,10 +1151,26 @@ Validation after Jira Service Management calendars and SLA clocks:
 - Exact-operation review is now 167/1,207: 160 partial, 7 missing and 1,040
   unassessed.
 
+Validation after SLA attention and escalation:
+
+- Migration 063 adds an SLA-attention queue and a per-cycle, per-recipient,
+  per-stage escalation ledger. New and existing desks keep All open as their
+  default queue.
+- The minute SLA runner recomputes open clocks from business-calendar time and
+  atomically writes deduplicated approaching-goal or breached notifications and
+  their sync actions. Restart and concurrent replicas cannot duplicate a stage.
+- The attention queue includes requests in the last quarter of any active goal,
+  sorts breached requests first and shows the contributing clock in the agent
+  table. Explicit desk agents, the current assignee and an implicit service
+  manager receive escalation notifications.
+- PostgreSQL integration proves warning and breach delivery, retry
+  deduplication and queue membership. The combined Chromium journey confirms
+  SLA-attention discovery in the responsive queue workspace.
+
 ## Current change
 
-1. Implement Jira Service Management breach-warning queues and durable
-   escalation notifications, then approvals and request attachments.
+1. Implement Jira Service Management approvals and request attachments, then
+   request notifications and feedback.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 

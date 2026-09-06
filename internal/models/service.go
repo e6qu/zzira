@@ -33,6 +33,7 @@ type ServiceRequest struct {
 	Customer    *User
 	Channel     string
 	CreatedAt   time.Time
+	SLAs        []ServiceSLA
 }
 
 // ServiceRequestComment records which Jira comments may cross the customer

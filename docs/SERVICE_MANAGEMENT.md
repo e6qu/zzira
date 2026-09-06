@@ -53,8 +53,11 @@ The request page shows on-track, paused, breached and completed goal state.
 Elapsed and breach time skip non-working days and persisted holidays and honor
 time-zone transitions. The two Jira SLA REST operations are agent-only and
 return Jira-compatible date, duration, completed-cycle and ongoing-cycle
-shapes. Holiday administration, conditional goals, status-driven pauses,
-multiple calendars, warning notifications and durable breach escalation remain.
+shapes. A durable minute worker emits one approaching-goal and one breached
+notification per clock and recipient, with transactionally synchronized
+notification actions. The SLA attention queue shows requests inside the final
+quarter of a goal and sorts breached requests first. Holiday administration,
+conditional goals, status-driven pauses and multiple calendars remain.
 
 ## REST coverage
 
@@ -81,7 +84,7 @@ is compensated by a logged issue deletion, so no orphaned ticket remains.
 The implemented operations are assessed as partial. Custom queues and arbitrary
 queue JQL, dynamic form/custom-field values, participant notifications and
 organizations, request attachments, approvals, notifications, feedback, full
-status chronology, advanced SLA goals and escalation, calendar holidays,
+status chronology, conditional SLA goal criteria, calendar holidays,
 portal invitation activation, knowledge suggestions, Assets, and
 incident/problem/change configuration remain. Customer creation records a
 portal-only account but does not silently grant Jira product access; a future

@@ -1707,7 +1707,7 @@
         "e2e/service.spec.ts",
         "docs/SERVICE_MANAGEMENT.md"
       ],
-      "notes": "Returns queue-filtered request issue beans for all-open, unassigned and current-agent views; arbitrary JQL queues, complete field projection and SLA ordering remain."
+      "notes": "Returns queue-filtered request issue beans for all-open, SLA-attention, unassigned and current-agent views with breached-first SLA prioritization; arbitrary JQL queues and complete field projection remain."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/participant",

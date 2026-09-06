@@ -3,7 +3,9 @@ package store
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/jackc/pgx/v5"
@@ -413,8 +415,30 @@ func (s *Store) ServiceQueueRequests(ctx context.Context, workspaceID, viewerID,
 			if request.Issue.Assignee == nil || request.Issue.Assignee.ID != viewerID {
 				continue
 			}
+		case "sla_attention":
+			slas, err := s.ServiceSLAs(ctx, workspaceID, request.Issue.ID, time.Now().UTC())
+			if err != nil {
+				return nil, nil, err
+			}
+			for _, sla := range slas {
+				if sla.OngoingCycle != nil && sla.OngoingCycle.RemainingMillis <= sla.GoalMillis/4 {
+					request.SLAs = append(request.SLAs, sla)
+				}
+			}
+			if len(request.SLAs) == 0 {
+				continue
+			}
 		}
 		filtered = append(filtered, request)
+	}
+	if queue.Kind == "sla_attention" {
+		sort.SliceStable(filtered, func(i, j int) bool {
+			left, right := filtered[i].SLAs[0].OngoingCycle, filtered[j].SLAs[0].OngoingCycle
+			if left.Breached != right.Breached {
+				return left.Breached
+			}
+			return left.RemainingMillis < right.RemainingMillis
+		})
 	}
 	queue.IssueCount = len(filtered)
 	return queue, filtered, nil

@@ -76,8 +76,9 @@ func (s *Store) CreateProject(ctx context.Context, actorID string, p models.Proj
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO service_queues(service_desk_id,name,jql,kind,position) VALUES
 			($1,'All open requests','resolution = Unresolved ORDER BY created ASC','all_open',0),
-			($1,'Unassigned requests','assignee is EMPTY AND resolution = Unresolved ORDER BY created ASC','unassigned',1),
-			($1,'Assigned to me','assignee = currentUser() AND resolution = Unresolved ORDER BY created ASC','assigned_to_me',2)`, serviceDeskID); err != nil {
+			($1,'SLA attention','resolution = Unresolved ORDER BY created ASC','sla_attention',1),
+			($1,'Unassigned requests','assignee is EMPTY AND resolution = Unresolved ORDER BY created ASC','unassigned',2),
+			($1,'Assigned to me','assignee = currentUser() AND resolution = Unresolved ORDER BY created ASC','assigned_to_me',3)`, serviceDeskID); err != nil {
 			return nil, err
 		}
 	}
