@@ -96,6 +96,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.workflowCreateValidation(w, r)
 	case path == "/workflows/update/validation" && r.Method == http.MethodPost:
 		h.workflowUpdateValidation(w, r)
+	case path == "/workflows/create" && r.Method == http.MethodPost:
+		h.workflowCreate(w, r)
+	case path == "/workflows/update" && r.Method == http.MethodPost:
+		h.workflowUpdate(w, r)
 	case path == "/workflowscheme" || path == "/workflowscheme/project" || strings.HasPrefix(path, "/workflowscheme/"):
 		h.workflowSchemeRoute(w, r, path)
 	case strings.HasPrefix(path, "/task/"):

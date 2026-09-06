@@ -499,11 +499,25 @@ Validation after modern workflow validation:
 - Exact reviewed API coverage is 120 of 1,207 operations: 113 partial, 7
   missing, and 1,087 explicitly unassessed.
 
+Validation after modern workflow mutations:
+
+- PostgreSQL Jira integration creates and updates global directed workflows
+  over existing statuses, returns workflow/status/document-version beans,
+  rejects duplicate names and stale versions, prevents active updates that
+  strand work items in removed statuses, and verifies create/update audit
+  events.
+- Multi-workflow integration cases prove a later create conflict or stale
+  update rolls back every earlier workflow and audit write in the same request.
+- The full PostgreSQL Go suite, vet, WebAssembly build, seven conformance tests,
+  generated inventory/coverage checks, and `git diff --check` pass.
+- Exact reviewed API coverage is 122 of 1,207 operations: 115 partial, 7
+  missing, and 1,085 explicitly unassessed.
+
 ## Current change
 
-1. Add modern workflow create/update mutations on the shared validator, then
-   transition rules and visual designer persistence, followed by queued task
-   execution and cancellation semantics.
+1. Add new-status and explicit status-mapping support to modern workflow
+   mutations, then transition rules and visual designer persistence, followed
+   by queued task execution and cancellation semantics.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 

@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 120,
+  "assessedTotal": 122,
   "counts": {
     "delivered": 0,
-    "partial": 113,
+    "partial": 115,
     "missing": 7,
-    "unassessed": 1087
+    "unassessed": 1085
   },
   "countsByFamily": {
     "automation": {
@@ -24,9 +24,9 @@
     },
     "jira-platform": {
       "delivered": 0,
-      "partial": 58,
+      "partial": 60,
       "missing": 0,
-      "unassessed": 559
+      "unassessed": 557
     },
     "jira-service-management": {
       "delivered": 0,
@@ -4576,9 +4576,14 @@
       "operationId": "jira-v3:POST:/rest/api/3/workflows/create",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_validation.go",
+        "internal/store/workflow_mutations.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Atomically creates up to 20 validated global directed workflows over existing statuses with generated IDs, versions, Jira workflow/status response beans, name/ID conflict handling, rollback, and audit; status creation, rules, layouts, and project scopes remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/workflows/create/validation",
@@ -4630,9 +4635,14 @@
       "operationId": "jira-v3:POST:/rest/api/3/workflows/update",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_validation.go",
+        "internal/store/workflow_mutations.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Atomically updates validated workspace workflows with optimistic document versions, rollback across batches, audit, and active issue-status safety; explicit status mappings, status creation, rules, layouts, and queued tasks remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/workflows/update/validation",

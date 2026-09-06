@@ -1210,6 +1210,28 @@
         "docs/CLOUD_PARITY.md"
       ],
       "notes": "Returns structured validation records for workspace workflow existence, optimistic document versions, existing statuses, directed topology, and unsupported rules without mutation; mappings, new statuses, rules, and project workflows remain."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/workflows/create",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_validation.go",
+        "internal/store/workflow_mutations.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Atomically creates up to 20 validated global directed workflows over existing statuses with generated IDs, versions, Jira workflow/status response beans, name/ID conflict handling, rollback, and audit; status creation, rules, layouts, and project scopes remain."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/workflows/update",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_validation.go",
+        "internal/store/workflow_mutations.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Atomically updates validated workspace workflows with optimistic document versions, rollback across batches, audit, and active issue-status safety; explicit status mappings, status creation, rules, layouts, and queued tasks remain."
     }
   ]
 }

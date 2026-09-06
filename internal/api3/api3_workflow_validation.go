@@ -2,10 +2,12 @@ package api3
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 
+	"github.com/e6qu/zzira/internal/store"
 	"github.com/e6qu/zzira/internal/workflow"
 )
 
@@ -314,4 +316,158 @@ func (h *Handler) workflowUpdateValidation(w http.ResponseWriter, r *http.Reques
 		errors = []map[string]any{}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"errors": errors})
+}
+
+func workflowMutationError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, store.ErrAdminConflict):
+		jiraError(w, http.StatusConflict, err.Error())
+	case errors.Is(err, store.ErrAdminValidation), errors.Is(err, store.ErrAdminNotFound):
+		jiraError(w, http.StatusBadRequest, err.Error())
+	default:
+		jiraError(w, http.StatusInternalServerError, "internal error")
+	}
+}
+
+func workflowValidationMessages(values []map[string]any) string {
+	messages := make([]string, 0, len(values))
+	for _, value := range values {
+		if message, ok := value["message"].(string); ok {
+			messages = append(messages, message)
+		}
+	}
+	return strings.Join(messages, " ")
+}
+
+func (h *Handler) workflowResponseStatuses(r *http.Request, workspaceID string, workflows []workflow.Workflow) ([]map[string]any, error) {
+	referenced := make(map[string]bool)
+	for _, item := range workflows {
+		for id := range workflowStatusReferences(item) {
+			referenced[id] = true
+		}
+	}
+	statuses, err := h.Store.StatusesForWorkspace(r.Context(), workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	values := make([]map[string]any, 0, len(referenced))
+	for _, status := range statuses {
+		if referenced[status.ID] {
+			values = append(values, workflowSearchStatusBean(status))
+		}
+	}
+	return values, nil
+}
+
+func (h *Handler) workflowCreate(w http.ResponseWriter, r *http.Request) {
+	workspaceID, actorID, authErr := h.authWorkspaceAdmin(r)
+	if authErr != nil {
+		writeJerr(w, authErr)
+		return
+	}
+	var payload workflowCreatePayloadRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		jiraError(w, http.StatusBadRequest, "request body is invalid")
+		return
+	}
+	validationErrors := make([]map[string]any, 0)
+	if payload.Scope.Type != "" && payload.Scope.Type != "GLOBAL" {
+		validationErrors = append(validationErrors, workflowValidationError("SCOPE_UNSUPPORTED", "Only global workflows are currently supported.", "SCOPE", nil))
+	}
+	if len(payload.Workflows) == 0 || len(payload.Workflows) > 20 || len(payload.Statuses) > 1000 {
+		validationErrors = append(validationErrors, workflowValidationError("PAYLOAD_SIZE_INVALID", "Provide between 1 and 20 workflows and no more than 1000 statuses.", "WORKFLOW", nil))
+	}
+	references, statusErrors, err := h.workflowStatusReferences(r, workspaceID, payload.Statuses)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	validationErrors = append(validationErrors, statusErrors...)
+	definitions := make([]workflow.Workflow, 0, len(payload.Workflows))
+	names := make(map[string]bool)
+	for _, item := range payload.Workflows {
+		definition, itemErrors := workflowDefinitionFromRequest(store.NewID("workflow"), item.Name, item.Statuses, item.Transitions, references)
+		validationErrors = append(validationErrors, itemErrors...)
+		nameKey := strings.ToLower(definition.Name)
+		if names[nameKey] {
+			validationErrors = append(validationErrors, workflowValidationError("WORKFLOW_NAME_CONFLICT", "Workflow names in the request must be unique.", "WORKFLOW", nil))
+		}
+		names[nameKey] = true
+		definitions = append(definitions, definition)
+	}
+	if len(validationErrors) > 0 {
+		jiraError(w, http.StatusBadRequest, workflowValidationMessages(validationErrors))
+		return
+	}
+	created, err := h.Store.CreateWorkflowBatch(r.Context(), workspaceID, actorID, definitions)
+	if err != nil {
+		workflowMutationError(w, err)
+		return
+	}
+	workflowValues := make([]map[string]any, 0, len(created))
+	for _, item := range created {
+		workflowValues = append(workflowValues, workflowSearchBean(item, true))
+	}
+	statuses, err := h.workflowResponseStatuses(r, workspaceID, created)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"workflows": workflowValues, "statuses": statuses})
+}
+
+func (h *Handler) workflowUpdate(w http.ResponseWriter, r *http.Request) {
+	workspaceID, actorID, authErr := h.authWorkspaceAdmin(r)
+	if authErr != nil {
+		writeJerr(w, authErr)
+		return
+	}
+	var payload workflowUpdatePayloadRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		jiraError(w, http.StatusBadRequest, "request body is invalid")
+		return
+	}
+	validationErrors := make([]map[string]any, 0)
+	if len(payload.Workflows) == 0 || len(payload.Workflows) > 20 || len(payload.Statuses) > 1000 {
+		validationErrors = append(validationErrors, workflowValidationError("PAYLOAD_SIZE_INVALID", "Provide between 1 and 20 workflows and no more than 1000 statuses.", "WORKFLOW", nil))
+	}
+	references, statusErrors, err := h.workflowStatusReferences(r, workspaceID, payload.Statuses)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	validationErrors = append(validationErrors, statusErrors...)
+	updates := make([]store.WorkflowUpdateDefinition, 0, len(payload.Workflows))
+	for _, item := range payload.Workflows {
+		published, err := h.Store.WorkflowByID(r.Context(), workspaceID, item.ID)
+		if err != nil {
+			validationErrors = append(validationErrors, workflowValidationError("WORKFLOW_NOT_FOUND", "The workflow does not exist.", "WORKFLOW", nil))
+			continue
+		}
+		if item.Version.ID != "" && item.Version.ID != item.ID {
+			validationErrors = append(validationErrors, workflowValidationError("WORKFLOW_VERSION_CONFLICT", "The workflow version ID does not match the workflow.", "WORKFLOW", nil))
+		}
+		definition, itemErrors := workflowDefinitionFromRequest(item.ID, published.Name, item.Statuses, item.Transitions, references)
+		validationErrors = append(validationErrors, itemErrors...)
+		updates = append(updates, store.WorkflowUpdateDefinition{Workflow: definition, ExpectedVersion: item.Version.VersionNumber})
+	}
+	if len(validationErrors) > 0 {
+		jiraError(w, http.StatusBadRequest, workflowValidationMessages(validationErrors))
+		return
+	}
+	updated, err := h.Store.UpdateWorkflowBatch(r.Context(), workspaceID, actorID, updates)
+	if err != nil {
+		workflowMutationError(w, err)
+		return
+	}
+	workflowValues := make([]map[string]any, 0, len(updated))
+	for _, item := range updated {
+		workflowValues = append(workflowValues, workflowSearchBean(item, true))
+	}
+	statuses, err := h.workflowResponseStatuses(r, workspaceID, updated)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"workflows": workflowValues, "statuses": statuses, "taskId": nil})
 }
