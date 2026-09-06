@@ -172,6 +172,10 @@ does not publish them as one OpenAPI document.
   draft; default, issue-type, and workflow-group mappings share the same
   workspace validation and audited store path. Normal publish returns a
   durable completed task while validation-only requests leave state untouched.
+- Added ten published workflow-scheme mapping resources. Default, issue-type,
+  and workflow-group mutations validate assigned project impact before they
+  version and audit the live scheme; project usage returns workspace-scoped
+  opaque cursor pages with Jira's 1–200 result limit.
 
 Validation after the organization foundation:
 
@@ -397,13 +401,21 @@ Validation after workflow-scheme draft resources:
   validation-only publish, durable publish tasks, and published runtime safety.
 - The full PostgreSQL Go suite, vet, WebAssembly build, seven conformance
   tests, generated inventory/coverage checks, and `git diff --check` pass.
-- Exact reviewed API coverage is 98 of 1,207 operations: 91 partial, 7 missing,
-  and 1,109 explicitly unassessed.
+
+Validation after published workflow-scheme mappings:
+
+- The PostgreSQL Jira integration journey exercises all published mapping
+  reads and mutations, inactive safe edits, project assignment, and paged
+  project usage alongside the existing draft and switch paths.
+- The full PostgreSQL Go suite, vet, WebAssembly build, seven conformance
+  tests, generated inventory/coverage checks, and `git diff --check` pass.
+- Exact reviewed API coverage is 108 of 1,207 operations: 101 partial, 7
+  missing, and 1,099 explicitly unassessed.
 
 ## Current change
 
-1. Complete published workflow-scheme default, issue-type, workflow-group,
-   project-usage, and bulk read/update/mapping REST operations.
+1. Complete bulk workflow-scheme read, update, and required-mapping REST
+   operations.
 2. Add publish-time status replacement plus queued task execution and
    cancellation semantics.
 3. Continue the reviewed Jira Platform contract operation ledger alongside the

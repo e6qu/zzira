@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 98,
+  "assessedTotal": 108,
   "counts": {
     "delivered": 0,
-    "partial": 91,
+    "partial": 101,
     "missing": 7,
-    "unassessed": 1109
+    "unassessed": 1099
   },
   "countsByFamily": {
     "automation": {
@@ -24,9 +24,9 @@
     },
     "jira-platform": {
       "delivered": 0,
-      "partial": 36,
+      "partial": 46,
       "missing": 0,
-      "unassessed": 581
+      "unassessed": 571
     },
     "jira-service-management": {
       "delivered": 0,
@@ -4748,25 +4748,40 @@
       "operationId": "jira-v3:DELETE:/rest/api/3/workflowscheme/{id}/default",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_scheme_published.go",
+        "internal/store/workflow_schemes.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Resets a published workspace scheme to the built-in default workflow with impact validation, versioning, and audit; schemes without a platform default remain unsupported."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/workflowscheme/{id}/default",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_scheme_published.go",
+        "internal/store/workflow_schemes.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Returns the published default workflow by Jira workflow name with workspace isolation."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/workflowscheme/{id}/default",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_scheme_published.go",
+        "internal/store/workflow_schemes.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Validates and updates the published default workflow with assigned-project impact checks, versioning, and audit; updateDraftIfNeeded remains."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/workflowscheme/{id}/draft",
@@ -4941,57 +4956,92 @@
       "operationId": "jira-v3:DELETE:/rest/api/3/workflowscheme/{id}/issuetype/{issueType}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_scheme_published.go",
+        "internal/store/workflow_schemes.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Deletes a published issue-type override with assigned-project impact validation, versioning, and audit."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/workflowscheme/{id}/issuetype/{issueType}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_scheme_published.go",
+        "internal/store/workflow_schemes.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Returns one published issue-type to workflow-name mapping with strict missing-mapping behavior."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/workflowscheme/{id}/issuetype/{issueType}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_scheme_published.go",
+        "internal/store/workflow_schemes.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Validates and saves one published issue-type override with assigned-project impact checks, versioning, and audit."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/workflowscheme/{id}/workflow",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_scheme_published.go",
+        "internal/store/workflow_schemes.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Removes published issue-type mappings for a named workflow, resets it as default when needed, and validates assigned project impact."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/workflowscheme/{id}/workflow",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_scheme_published.go",
+        "internal/store/workflow_schemes.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Returns issue types and default membership for a named published workflow; omitted workflowName behavior remains."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/workflowscheme/{id}/workflow",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_scheme_published.go",
+        "internal/store/workflow_schemes.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Moves a published named-workflow mapping across validated issue types with impact checks, versioning, and audit; updateDraftIfNeeded remains."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/workflowscheme/{workflowSchemeId}/projectUsages",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_schemes_test.go",
+        "internal/api3/api3_workflow_scheme_published.go",
+        "internal/store/workflow_schemes.go",
+        "docs/CLOUD_PARITY.md"
+      ],
+      "notes": "Returns opaque-cursor pages of workspace project IDs assigned to the scheme with maxResults validation; additional project fields remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/worklog/deleted",

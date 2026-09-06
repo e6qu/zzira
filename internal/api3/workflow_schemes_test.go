@@ -123,11 +123,30 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	call(actor, "GET", "/rest/api/3/workflowscheme/"+schemeID+"/draft", "", 404)
 	call(actor, "POST", "/rest/api/3/workflowscheme/"+schemeID+"/createdraft", "", 201)
 	call(actor, "DELETE", "/rest/api/3/workflowscheme/"+schemeID+"/draft", "", 204)
+	call(actor, "GET", "/rest/api/3/workflowscheme/"+schemeID+"/default", "", 200)
+	call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/default", `{"workflow":"Simple API lifecycle"}`, 200)
+	call(actor, "DELETE", "/rest/api/3/workflowscheme/"+schemeID+"/default", "", 200)
+	call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/issuetype/it_task", `{"workflow":"Simple API lifecycle"}`, 200)
+	call(actor, "GET", "/rest/api/3/workflowscheme/"+schemeID+"/issuetype/it_task", "", 200)
+	call(actor, "GET", "/rest/api/3/workflowscheme/"+schemeID+"/workflow?workflowName=Simple%20API%20lifecycle", "", 200)
+	call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/workflow?workflowName=Simple%20API%20lifecycle", `{"workflow":"Default","issueTypes":["it_task"]}`, 200)
+	call(actor, "DELETE", "/rest/api/3/workflowscheme/"+schemeID+"/issuetype/it_task", "", 200)
+	call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/issuetype/it_task", `{"workflow":"Simple API lifecycle"}`, 200)
+	call(actor, "DELETE", "/rest/api/3/workflowscheme/"+schemeID+"/workflow?workflowName=Simple%20API%20lifecycle", "", 204)
+	usage := call(actor, "GET", "/rest/api/3/workflowscheme/"+schemeID+"/projectUsages?maxResults=1", "", 200)
+	if !strings.Contains(usage.Body.String(), `"values":[]`) {
+		t.Fatal(usage.Body.String())
+	}
 	call(actor, "PUT", "/rest/api/3/workflowscheme/project", `{"projectId":"`+projectID+`","workflowSchemeId":"`+schemeID+`"}`, 204)
 	association := call(actor, "GET", "/rest/api/3/workflowscheme/project?projectId="+projectID, "", 200)
 	if !strings.Contains(association.Body.String(), schemeID) {
 		t.Fatal(association.Body.String())
 	}
+	usage = call(actor, "GET", "/rest/api/3/workflowscheme/"+schemeID+"/projectUsages?maxResults=1", "", 200)
+	if !strings.Contains(usage.Body.String(), projectID) {
+		t.Fatal(usage.Body.String())
+	}
+	call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/default", `{"workflow":"Simple API lifecycle"}`, 409)
 	switchable := call(actor, "POST", "/rest/api/3/workflowscheme", `{"name":"Switch target","defaultWorkflow":"Simple API lifecycle"}`, 201)
 	if err := json.Unmarshal(switchable.Body.Bytes(), &scheme); err != nil {
 		t.Fatal(err)

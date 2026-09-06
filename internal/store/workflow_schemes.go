@@ -231,6 +231,67 @@ func (s *Store) CreateWorkflowSchemeDraft(ctx context.Context, workspaceID, acto
 	return scheme, nil
 }
 
+func (s *Store) SavePublishedWorkflowScheme(ctx context.Context, workspaceID, actorID string, scheme workflow.Scheme) error {
+	scheme, err := validateScheme(scheme)
+	if err != nil {
+		return err
+	}
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := validateSchemeWorkflows(ctx, tx, workspaceID, scheme); err != nil {
+		return err
+	}
+	var currentVersion int
+	if err := tx.QueryRow(ctx, `SELECT version FROM workflow_schemes WHERE id=$1 AND workspace_id=$2 FOR UPDATE`, scheme.ID, workspaceID).Scan(&currentVersion); err != nil {
+		return ErrAdminNotFound
+	}
+	projectRows, err := tx.Query(ctx, `SELECT id FROM projects WHERE workspace_id=$1 AND workflow_scheme_id=$2 ORDER BY id`, workspaceID, scheme.ID)
+	if err != nil {
+		return err
+	}
+	var projectIDs []string
+	for projectRows.Next() {
+		var projectID string
+		if err := projectRows.Scan(&projectID); err != nil {
+			projectRows.Close()
+			return err
+		}
+		projectIDs = append(projectIDs, projectID)
+	}
+	if err := projectRows.Err(); err != nil {
+		projectRows.Close()
+		return err
+	}
+	projectRows.Close()
+	for _, projectID := range projectIDs {
+		impacts, err := schemeImpact(ctx, tx, workspaceID, projectID, scheme, true)
+		if err != nil {
+			return err
+		}
+		if len(impacts) > 0 {
+			return fmt.Errorf("%w: project %s requires status mappings before the published scheme can change", ErrAdminConflict, projectID)
+		}
+	}
+	mappings, err := json.Marshal(scheme.IssueTypeMappings)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, `UPDATE workflow_schemes SET name=$3,description=$4,default_workflow_id=$5,issue_type_mappings=$6,version=version+1,updated_at=now() WHERE id=$1 AND workspace_id=$2`, scheme.ID, workspaceID, scheme.Name, scheme.Description, scheme.DefaultWorkflowID, mappings)
+	if err != nil {
+		if isUniqueViolation(err) {
+			return fmt.Errorf("%w: a workflow scheme already uses that name", ErrAdminConflict)
+		}
+		return err
+	}
+	if err := addWorkflowSchemeAudit(ctx, tx, workspaceID, actorID, "workflow.scheme.updated", scheme.ID, map[string]any{"version": currentVersion + 1}); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
 func schemeWorkflowID(scheme workflow.Scheme, issueTypeID string) string {
 	if workflowID := scheme.IssueTypeMappings[issueTypeID]; workflowID != "" {
 		return workflowID
