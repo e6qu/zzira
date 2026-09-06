@@ -31,6 +31,10 @@ type Handler struct {
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if strings.HasPrefix(r.URL.Path, "/jira/forms/cloud/") {
+		h.issueFormsRoute(w, r)
+		return
+	}
 	path := strings.TrimPrefix(r.URL.Path, "/rest/api/3")
 	switch {
 	case path == "/dashboard":

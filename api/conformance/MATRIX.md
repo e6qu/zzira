@@ -24,6 +24,7 @@ use `/rest/zzira/1`.
 | GET /rest/api/3/issue/{idOrKey}/editmeta | 🟡 | system + custom fields |
 | GET /rest/api/3/issue/createmeta (+ paginated project/type routes) | ✅ | legacy filters/expanded fields plus current per-project issue-type and field metadata shapes |
 | GET/POST /rest/api/3/issue/{idOrKey}/transitions | ✅ | Project workflow, nested actor conditions, required-field validators, and atomic assignee, field-update, field-copy and registered-webhook post-functions enforced |
+| /jira/forms/cloud/{cloudId}/issue/{idOrKey}/form lifecycle | 🟡 | Issue form index/attach/get/save/delete, visibility, submit/reopen, and executable attached/submitted workflow validators; project templates, exports, attachments, external data and copy remain |
 | GET/POST/DELETE /rest/api/3/issue/{idOrKey}/watchers | 🟡 | complete self-subscription and watcher reads; managing other users is intentionally not exposed without a broader permission model |
 | /comment CRUD | ✅ | ADF bodies, author-only delete |
 | GET /rest/api/3/issue/{idOrKey}/changelog | ✅ | derived from the action log |

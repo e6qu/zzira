@@ -425,6 +425,29 @@ func TestTriggerWebhookPostFunctionValidationAndOrdering(t *testing.T) {
 	}
 }
 
+func TestProFormaValidatorsRequireAttachedAndSubmittedForms(t *testing.T) {
+	transition := Transition{Validators: []Rule{
+		{ID: "attached", RuleKey: RuleFormsAttachedValidator, Parameters: map[string]string{}},
+		{ID: "submitted", RuleKey: RuleFormsSubmittedValidator, Parameters: map[string]string{}},
+	}}
+	if err := ValidateTransitionRules(transition); err != nil {
+		t.Fatal(err)
+	}
+	if err := transition.ValidateRules(EvaluationContext{}); err == nil || err.Error() != "at least one form must be attached before this transition" {
+		t.Fatalf("missing form error = %v", err)
+	}
+	if err := transition.ValidateRules(EvaluationContext{FormsAttached: 1}); err == nil || err.Error() != "all attached forms must be submitted before this transition" {
+		t.Fatalf("open form error = %v", err)
+	}
+	if err := transition.ValidateRules(EvaluationContext{FormsAttached: 2, FormsSubmitted: true}); err != nil {
+		t.Fatal(err)
+	}
+	transition.Validators[0].Parameters["unexpected"] = "value"
+	if err := ValidateTransitionRules(transition); err == nil {
+		t.Fatal("form validator parameters were accepted")
+	}
+}
+
 func TestUpdateFieldPostFunctionValidation(t *testing.T) {
 	transition := Transition{Actions: []Rule{{ID: "update", RuleKey: RuleUpdateField, Parameters: map[string]string{"field": "labels", "value": "released", "mode": "replace"}}}}
 	if err := ValidateTransitionRules(transition); err != nil {

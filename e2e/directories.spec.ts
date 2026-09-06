@@ -81,6 +81,32 @@ test('project switcher keeps the shell and generic pages in the current project'
   await page.keyboard.press('Escape');
 });
 
+test('issue forms can be attached, submitted, reopened, and removed', async ({ page }) => {
+  await login(page);
+  const created = await page.request.post('/rest/api/3/issue', {
+    headers: { Authorization: apiAuthHeader() },
+    data: { fields: { project: { key: 'ZZ' }, summary: `Forms journey ${Date.now()}`, issuetype: { id: 'it_task' } } },
+  });
+  expect(created.status()).toBe(201);
+  const issue = await created.json();
+  await page.goto(`/browse/${issue.key}`);
+  const forms = page.locator('.issue-forms');
+  await expect(forms.getByRole('heading', { name: /Forms/ })).toBeVisible();
+  await forms.locator('summary', { hasText: 'Attach form' }).click();
+  await forms.getByLabel('Template ID').fill('onboarding');
+  await forms.getByLabel('Form name').fill('Employee onboarding');
+  await forms.getByRole('button', { name: 'Attach form' }).click();
+  await expect(forms).toContainText('Employee onboarding');
+  await expect(forms).toContainText('Open');
+  await forms.getByRole('button', { name: 'Submit' }).click();
+  await expect(forms).toContainText('Submitted');
+  await forms.getByRole('button', { name: 'Reopen' }).click();
+  await expect(forms).toContainText('Open');
+  page.once('dialog', dialog => dialog.accept());
+  await forms.getByRole('button', { name: 'Delete form Employee onboarding' }).click();
+  await expect(forms).toContainText('No forms attached.');
+});
+
 test('project workflow creation, editor, transition changes, and assignment work', async ({ page }) => {
   await login(page);
   const webhookResponse = await page.request.post('/rest/api/3/webhook', {
@@ -141,6 +167,8 @@ test('project workflow creation, editor, transition changes, and assignment work
   await page.fill('#transition-window-date2-field-validator', 'customfield_99101');
 	await page.selectOption('#transition-child-blocking-status', 'st_todo');
 	await page.selectOption('#transition-parent-blocking-status', 'st_inprogress');
+  await page.getByLabel('Require a form to be attached').check();
+  await page.getByLabel('Require every attached form to be submitted').check();
   await page.selectOption('#transition-permission-validator', 'EDIT_ISSUES');
   await page.getByRole('button', { name: 'Add transition' }).click();
   await expect(page.getByText('Ready for review', { exact: true })).toBeVisible();

@@ -329,6 +329,12 @@ func main() {
 	mux.HandleFunc("POST /issues/{key}/attachments", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.UploadAttachment(w, r, r.PathValue("key"))
 	})
+	mux.HandleFunc("POST /issues/{key}/forms", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.AttachIssueForm(w, r, r.PathValue("key"))
+	})
+	mux.HandleFunc("POST /issues/{key}/forms/{form}/action/{action}", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.UpdateIssueForm(w, r, r.PathValue("key"), r.PathValue("form"), r.PathValue("action"))
+	})
 	mux.HandleFunc("POST /issues/{key}/worklogs", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.AddWorklog(w, r, r.PathValue("key"))
 	})
@@ -420,6 +426,7 @@ func main() {
 	mux.HandleFunc("POST /rest/zzira/1/product-activity", webHandler.RecordProductActivity)
 	mux.Handle("/rest/agile/1.0/", agileAPI)
 	mux.Handle("/rest/api/3/", api)
+	mux.Handle("/jira/forms/cloud/", api)
 	mux.HandleFunc("GET /_edge/tenant_info", automationAPI.TenantInfo)
 	mux.Handle("/gateway/api/automation/public/jira/", automationAPI)
 	mux.HandleFunc("GET /admin/v1/orgs", adminAPI.Organizations)

@@ -60,6 +60,16 @@ func workflowCapabilitiesResponse(editorScope string) map[string]any {
 				"ruleKey": "system:parent-or-child-blocking-validator", "ruleType": "Validator",
 			},
 			{
+				"description": "Require one or more Advanced Forms to be attached to the work item.", "incompatibleRuleKeys": []string{},
+				"isAvailableForInitialTransition": false, "isVisible": true, "name": "Forms attached validator",
+				"ruleKey": "system:proforma-forms-attached", "ruleType": "Validator",
+			},
+			{
+				"description": "Require every Advanced Form attached to the work item to be submitted.", "incompatibleRuleKeys": []string{},
+				"isAvailableForInitialTransition": false, "isVisible": true, "name": "Forms submitted validator",
+				"ruleKey": "system:proforma-forms-submitted", "ruleType": "Validator",
+			},
+			{
 				"description": "Automatically assign an issue after moving it using a transition.", "incompatibleRuleKeys": []string{},
 				"isAvailableForInitialTransition": true, "isVisible": true, "name": "Assign an issue",
 				"ruleKey": "system:change-assignee", "ruleType": "Function",

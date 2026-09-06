@@ -49,6 +49,12 @@
         </ul>
       </section>
 
+      <section class="issue-section issue-forms" aria-labelledby="forms-title">
+        <div class="section-heading"><h2 id="forms-title">Forms <span class="section-count">0</span></h2></div>
+        <p class="muted">No forms attached.</p>
+        <details class="link-create"><summary class="quiet-action">Attach form</summary><form method="post" action="/issues/ZZ-1/forms" hx-post="/issues/ZZ-1/forms" hx-target="#issue-root" hx-swap="outerHTML"><label for="form-template">Template ID</label><input id="form-template" name="template" maxlength="255" required placeholder="employee-onboarding"><label for="form-name">Form name</label><input id="form-name" name="name" maxlength="255" placeholder="Employee onboarding"><button type="submit" class="btn btn-primary">Attach form</button></form></details>
+      </section>
+
       <section class="issue-section issue-attachments" aria-labelledby="attachments-title">
         <div class="section-heading"><h2 id="attachments-title">Attachments <span class="section-count">1</span></h2></div>
         <ul id="attachments-list" class="attachment-list">

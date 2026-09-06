@@ -971,6 +971,12 @@ func (h *Handler) AddWorkflowTransition(w http.ResponseWriter, r *http.Request, 
 			Parameters: map[string]string{"blocker": "PARENT", "statusIds": statusID},
 		})
 	}
+	if r.PostFormValue("forms_attached_validator") != "" {
+		transition.Validators = append(transition.Validators, workflow.Rule{ID: store.NewID("rule"), RuleKey: workflow.RuleFormsAttachedValidator, Parameters: map[string]string{}})
+	}
+	if r.PostFormValue("forms_submitted_validator") != "" {
+		transition.Validators = append(transition.Validators, workflow.Rule{ID: store.NewID("rule"), RuleKey: workflow.RuleFormsSubmittedValidator, Parameters: map[string]string{}})
+	}
 	if effect := r.PostFormValue("assignee_effect"); effect != "" {
 		transition.Actions = append(transition.Actions, workflow.Rule{
 			ID: store.NewID("rule"), RuleKey: workflow.RuleChangeAssignee, Parameters: map[string]string{"type": effect},

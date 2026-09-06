@@ -967,11 +967,32 @@ Validation after workflow-triggered webhook delivery:
   execution and delivery-filter bypass; the modern Jira REST journey proves
   API round-tripping and execution; the focused Chromium editor journey passes.
 
+Validation after Advanced Forms workflow validators:
+
+- Migration 053 adds issue-bound Advanced Form instances with template
+  references, answers, internal/external visibility, open/submitted state,
+  locking metadata, timestamps, issue cascade deletion, and workspace-scoped
+  store access.
+- The Forms Cloud issue contract is served at
+  `/jira/forms/cloud/{cloudId}/issue/{issueIdOrKey}/form`: index, attach, get,
+  answer save, delete, internal/external visibility, submit, and reopen are
+  implemented with the documented request and response shapes. Submitted or
+  locked forms reject answer writes until reopened.
+- `system:proforma-forms-attached` and
+  `system:proforma-forms-submitted` accept no parameters and execute against
+  the persisted issue-form state. Modern workflow create, update, validation,
+  search, preview, and capability resources preserve both official keys.
+- The issue UI exposes the form list and attach, submit, reopen, and delete
+  journey. The workflow editor exposes both validators. Unit tests cover the
+  validator truth table and parameter rejection; a PostgreSQL API journey
+  proves the Forms lifecycle drives transition failure and success; focused
+  Chromium contributor and admin journeys pass.
+
 ## Current change
 
-1. Implement the next executable Jira system workflow rule from the reviewed
-   capability catalog, adding any required product foundation rather than
-   storing inert rule metadata.
+1. Implement Jira development triggers with persisted development events so
+   workflow triggers, release evidence, reports, and DORA metrics share one
+   real data foundation.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 

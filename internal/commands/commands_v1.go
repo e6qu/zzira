@@ -321,6 +321,10 @@ func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, worksp
 	if err != nil {
 		return nil, nil, err
 	}
+	context.FormsAttached, context.FormsSubmitted, err = s.Store.IssueFormState(ctx, workspaceID, issue.ID)
+	if err != nil {
+		return nil, nil, err
+	}
 	if !t.ConditionsAllow(context) {
 		return nil, nil, fmt.Errorf("transition %q is not available to this user", transitionID)
 	}

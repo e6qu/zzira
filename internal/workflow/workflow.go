@@ -21,6 +21,8 @@ const (
 	RuleSeparationOfDuties       = "system:separation-of-duties"
 	RuleParentChildCondition     = "system:parent-or-child-blocking-condition"
 	RuleParentChildValidator     = "system:parent-or-child-blocking-validator"
+	RuleFormsAttachedValidator   = "system:proforma-forms-attached"
+	RuleFormsSubmittedValidator  = "system:proforma-forms-submitted"
 	RuleCheckPermissionValidator = "system:check-permission-validator"
 	RuleValidateFieldValue       = "system:validate-field-value"
 	RuleChangeAssignee           = "system:change-assignee"
@@ -47,19 +49,21 @@ type ConditionGroup struct {
 
 // EvaluationContext contains the issue and actor facts workflow rules may use.
 type EvaluationContext struct {
-	ActorID       string
-	AssigneeID    string
-	ReporterID    string
-	FieldPresent  map[string]bool
-	ChangedFields map[string]bool
-	FieldValues   map[string]json.RawMessage
-	StatusHistory []string
-	CurrentStatus string
-	Transitions   []TransitionHistory
-	Permissions   map[string]bool
-	ParentStatus  string
-	ChildStatuses []string
-	IsAPI         bool
+	ActorID        string
+	AssigneeID     string
+	ReporterID     string
+	FieldPresent   map[string]bool
+	ChangedFields  map[string]bool
+	FieldValues    map[string]json.RawMessage
+	StatusHistory  []string
+	CurrentStatus  string
+	Transitions    []TransitionHistory
+	Permissions    map[string]bool
+	ParentStatus   string
+	ChildStatuses  []string
+	FormsAttached  int
+	FormsSubmitted bool
+	IsAPI          bool
 }
 
 type TransitionHistory struct {
@@ -336,6 +340,14 @@ func (t Transition) ValidateRules(context EvaluationContext) error {
 		case RuleParentChildValidator:
 			if stringSet(validator.Parameters["statusIds"])[context.ParentStatus] {
 				return fmt.Errorf("parent status blocks this transition")
+			}
+		case RuleFormsAttachedValidator:
+			if context.FormsAttached == 0 {
+				return fmt.Errorf("at least one form must be attached before this transition")
+			}
+		case RuleFormsSubmittedValidator:
+			if context.FormsAttached == 0 || !context.FormsSubmitted {
+				return fmt.Errorf("all attached forms must be submitted before this transition")
 			}
 		default:
 			return fmt.Errorf("unsupported workflow validator %q", validator.RuleKey)
@@ -637,6 +649,10 @@ func ValidateTransitionRules(transition Transition) error {
 		case RuleParentChildValidator:
 			if validator.Parameters["blocker"] != "PARENT" || len(commaValues(validator.Parameters["statusIds"])) == 0 {
 				return fmt.Errorf("parent blocking validator requires blocker PARENT and statusIds")
+			}
+		case RuleFormsAttachedValidator, RuleFormsSubmittedValidator:
+			if len(validator.Parameters) != 0 {
+				return fmt.Errorf("form workflow validators do not accept parameters")
 			}
 		default:
 			return fmt.Errorf("workflow validator %q is unsupported or incomplete", validator.RuleKey)
