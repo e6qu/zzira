@@ -46,6 +46,7 @@ type EvaluationContext struct {
 	AssigneeID    string
 	ReporterID    string
 	FieldPresent  map[string]bool
+	ChangedFields map[string]bool
 	FieldValues   map[string]json.RawMessage
 	StatusHistory []string
 	CurrentStatus string
@@ -256,17 +257,29 @@ func (t Transition) ValidateRules(context EvaluationContext) error {
 	for _, validator := range t.Validators {
 		switch validator.RuleKey {
 		case RuleValidateFieldValue:
-			if validator.Parameters["ruleType"] != "fieldRequired" {
-				return fmt.Errorf("unsupported workflow validator %q", validator.RuleKey)
-			}
-			for _, field := range commaValues(validator.Parameters["fieldsRequired"]) {
-				if !context.FieldPresent[field] {
+			switch validator.Parameters["ruleType"] {
+			case "fieldRequired":
+				for _, field := range commaValues(validator.Parameters["fieldsRequired"]) {
+					if context.FieldPresent[field] {
+						continue
+					}
 					message := strings.TrimSpace(validator.Parameters["errorMessage"])
 					if message == "" {
 						message = fmt.Sprintf("%s is required", field)
 					}
 					return fmt.Errorf("%s", message)
 				}
+			case "fieldChanged":
+				field := validator.Parameters["fieldKey"]
+				if !context.ChangedFields[field] {
+					message := strings.TrimSpace(validator.Parameters["errorMessage"])
+					if message == "" {
+						message = fmt.Sprintf("%s must be changed during the transition", field)
+					}
+					return fmt.Errorf("%s", message)
+				}
+			default:
+				return fmt.Errorf("unsupported workflow validator %q", validator.RuleKey)
 			}
 		case RulePreviousStatusValidator:
 			if !previousStatusMatches(validator.Parameters, context) {
@@ -440,7 +453,16 @@ func ValidateTransitionRules(transition Transition) error {
 		}
 		switch validator.RuleKey {
 		case RuleValidateFieldValue:
-			if validator.Parameters["ruleType"] != "fieldRequired" || len(commaValues(validator.Parameters["fieldsRequired"])) == 0 {
+			switch validator.Parameters["ruleType"] {
+			case "fieldRequired":
+				if len(commaValues(validator.Parameters["fieldsRequired"])) == 0 {
+					return fmt.Errorf("workflow validator %q is unsupported or incomplete", validator.RuleKey)
+				}
+			case "fieldChanged":
+				if strings.TrimSpace(validator.Parameters["fieldKey"]) == "" || strings.TrimSpace(validator.Parameters["groupsExemptFromValidation"]) != "" {
+					return fmt.Errorf("workflow validator %q is unsupported or incomplete", validator.RuleKey)
+				}
+			default:
 				return fmt.Errorf("workflow validator %q is unsupported or incomplete", validator.RuleKey)
 			}
 		case RulePreviousStatusValidator:

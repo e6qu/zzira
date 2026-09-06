@@ -35,7 +35,7 @@ func workflowCapabilitiesResponse(editorScope string) map[string]any {
 				"ruleKey": "system:restrict-issue-transition", "ruleType": "Condition",
 			},
 			{
-				"description": "Require a field to have a value before an issue can transition.", "incompatibleRuleKeys": []string{},
+				"description": "Require a field value or require a field to change during a transition.", "incompatibleRuleKeys": []string{},
 				"isAvailableForInitialTransition": false, "isVisible": true, "name": "Validate a field value",
 				"ruleKey": "system:validate-field-value", "ruleType": "Validator",
 			},

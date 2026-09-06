@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -313,6 +314,7 @@ func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, worksp
 	for field := range update.Fields {
 		requestedFields[field] = true
 	}
+	context.ChangedFields = changedTransitionFields(issue, update)
 	allowed := make(map[string]bool)
 	for _, field := range t.ScreenFields() {
 		allowed[field] = true
@@ -394,6 +396,44 @@ func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, worksp
 		return nil, nil, err
 	}
 	return s.Store.UpdateIssue(ctx, actorID, workspaceID, issue.ID, update)
+}
+
+func changedTransitionFields(issue *models.Issue, update store.IssueUpdate) map[string]bool {
+	changed := make(map[string]bool)
+	if update.Summary != nil && *update.Summary != issue.Summary {
+		changed["summary"] = true
+	}
+	if update.Description != nil && !adf.Equal(update.Description, issue.Description) {
+		changed["description"] = true
+	}
+	priorityID := ""
+	if issue.Priority != nil {
+		priorityID = issue.Priority.ID
+	}
+	if update.PriorityID != nil && *update.PriorityID != priorityID {
+		changed["priority"] = true
+	}
+	assigneeID := ""
+	if issue.Assignee != nil {
+		assigneeID = issue.Assignee.ID
+	}
+	if update.AssigneeID != nil && *update.AssigneeID != assigneeID {
+		changed["assignee"] = true
+	}
+	if update.Labels != nil && !slices.Equal(*update.Labels, issue.Labels) {
+		changed["labels"] = true
+	}
+	for field, value := range update.Fields {
+		var submitted, current any
+		currentValid := true
+		if raw := issue.Fields[field]; len(raw) > 0 {
+			currentValid = json.Unmarshal(raw, &current) == nil
+		}
+		if json.Unmarshal(value, &submitted) != nil || !currentValid || !reflect.DeepEqual(submitted, current) {
+			changed[field] = true
+		}
+	}
+	return changed
 }
 
 func workflowFieldRaw(issue *models.Issue, update *store.IssueUpdate, field string) json.RawMessage {

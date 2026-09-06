@@ -820,9 +820,28 @@ Validation after Jira permission workflow validators:
   generated inventory and coverage checks, diff check, primary-page light/dark
   axe scan, and 320 px reflow gate pass.
 
+Validation after changed-field workflow validators:
+
+- The `fieldChanged` mode of `system:validate-field-value` now requires its
+  `fieldKey` to differ from the stored work-item value and returns the
+  configured Jira `errorMessage` when it does not. System fields, ADF, lists,
+  and custom JSON fields use value-aware comparisons. Unsupported group
+  exemptions are rejected instead of being stored without effect.
+- Modern workflow create, update, search, preview, and validation resources
+  round-trip the rule. The visual editor exposes supported fields and
+  automatically adds the chosen field to the transition screen.
+- Unit tests prove semantic changed/unchanged evaluation and configuration
+  rejection. PostgreSQL REST integration proves rejection when the submitted
+  labels equal the stored value and success when they differ; the focused
+  Chromium journey creates and publishes the rule while verifying the resulting
+  screen summary.
+- The full PostgreSQL Go suite, vet, WebAssembly build, seven conformance tests,
+  generated inventory and coverage checks, diff check, primary-page light/dark
+  axe scan, and 320 px reflow gate pass.
+
 ## Current change
 
-1. Add executable changed-field workflow validators and visual controls.
+1. Add executable regular-expression workflow validators and visual controls.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 

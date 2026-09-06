@@ -6,6 +6,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -835,7 +836,12 @@ func (h *Handler) AddWorkflowTransition(w http.ResponseWriter, r *http.Request, 
 		ID: store.NewID("transition"), Name: strings.TrimSpace(r.PostFormValue("name")),
 		From: []string{r.PostFormValue("from")}, To: r.PostFormValue("to"),
 	}
-	if fields := r.PostForm["screen_field"]; len(fields) > 0 {
+	changedField := strings.TrimSpace(r.PostFormValue("changed_field_validator"))
+	fields := append([]string(nil), r.PostForm["screen_field"]...)
+	if changedField != "" && !slices.Contains(fields, changedField) {
+		fields = append(fields, changedField)
+	}
+	if len(fields) > 0 {
 		transition.Screen = &workflow.Rule{ID: store.NewID("rule"), RuleKey: workflow.RuleTransitionScreen, Parameters: map[string]string{"fields": strings.Join(fields, ",")}}
 	}
 	conditions := make([]workflow.Rule, 0, 2)
@@ -882,6 +888,12 @@ func (h *Handler) AddWorkflowTransition(w http.ResponseWriter, r *http.Request, 
 		transition.Validators = append(transition.Validators, workflow.Rule{
 			ID: store.NewID("rule"), RuleKey: workflow.RuleValidateFieldValue,
 			Parameters: map[string]string{"ruleType": "fieldRequired", "fieldsRequired": strings.Join(fields, ","), "errorMessage": "Complete the required transition fields."},
+		})
+	}
+	if changedField != "" {
+		transition.Validators = append(transition.Validators, workflow.Rule{
+			ID: store.NewID("rule"), RuleKey: workflow.RuleValidateFieldValue,
+			Parameters: map[string]string{"ruleType": "fieldChanged", "fieldKey": changedField, "errorMessage": "Change the selected field during the transition."},
 		})
 	}
 	if statusID := r.PostFormValue("previous_status_validator"); statusID != "" {

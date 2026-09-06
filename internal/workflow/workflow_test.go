@@ -191,6 +191,25 @@ func TestRequiredFieldValidatorUsesConfiguredMessage(t *testing.T) {
 	}
 }
 
+func TestChangedFieldValidatorRequiresTransitionInput(t *testing.T) {
+	transition := Transition{Validators: []Rule{{ID: "changed", RuleKey: RuleValidateFieldValue, Parameters: map[string]string{
+		"ruleType": "fieldChanged", "fieldKey": "labels", "errorMessage": "Update labels during transition",
+	}}}}
+	if err := transition.ValidateRules(EvaluationContext{ChangedFields: map[string]bool{"summary": true}}); err == nil || err.Error() != "Update labels during transition" {
+		t.Fatalf("validator error = %v", err)
+	}
+	if err := transition.ValidateRules(EvaluationContext{ChangedFields: map[string]bool{"labels": true}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateTransitionRules(transition); err != nil {
+		t.Fatal(err)
+	}
+	transition.Validators[0].Parameters["groupsExemptFromValidation"] = "group-1"
+	if err := ValidateTransitionRules(transition); err == nil {
+		t.Fatal("unimplemented group exemption was accepted")
+	}
+}
+
 func TestPermissionValidatorUsesGrantedJiraPermissions(t *testing.T) {
 	transition := Transition{Validators: []Rule{{ID: "permission", RuleKey: RuleCheckPermissionValidator, Parameters: map[string]string{
 		"permissionKey": "ADMINISTER_PROJECTS",
