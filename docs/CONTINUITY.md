@@ -664,9 +664,26 @@ Validation after executable transition screens:
   generated inventory and coverage checks, diff check, primary-page light/dark
   axe scan, and 320 px reflow gate pass.
 
+Validation after visual workflow rule editing:
+
+- The workflow transition editor now creates actor restrictions for the
+  reporter or current assignee, required-field validators, current-user or
+  unassigned assignee post-functions, and transition screens from one form.
+  These controls produce the same executable system rules accepted by the Jira
+  workflow API and enforced by runtime transitions.
+- The workflow diagram summarizes conditions, validators, post-functions, and
+  screen fields on each transition so an administrator can review the active
+  behavior without reopening the form.
+- The focused Chromium journey creates a project workflow, configures all four
+  rule categories, saves the draft, publishes it, and verifies the diagram
+  summary.
+- The full PostgreSQL Go suite, vet, WebAssembly build, seven conformance tests,
+  generated inventory and coverage checks, diff check, primary-page light/dark
+  axe scan, and 320 px reflow gate pass.
+
 ## Current change
 
-1. Add visual editing for workflow conditions, validators, and post-functions.
+1. Add atomic multi-status writes, then continue the workflow rule catalog.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 

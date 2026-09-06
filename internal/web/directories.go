@@ -76,6 +76,7 @@ type workflowTransitionView struct {
 	Name         string
 	To           models.Status
 	ScreenFields []string
+	RuleSummary  []string
 }
 
 type workflowNodeView struct {
@@ -836,6 +837,22 @@ func (h *Handler) AddWorkflowTransition(w http.ResponseWriter, r *http.Request, 
 	if fields := r.PostForm["screen_field"]; len(fields) > 0 {
 		transition.Screen = &workflow.Rule{ID: store.NewID("rule"), RuleKey: workflow.RuleTransitionScreen, Parameters: map[string]string{"fields": strings.Join(fields, ",")}}
 	}
+	if restriction := r.PostFormValue("restriction"); restriction != "" {
+		transition.Conditions = &workflow.ConditionGroup{Operation: "ALL", Conditions: []workflow.Rule{{
+			ID: store.NewID("rule"), RuleKey: workflow.RuleRestrictIssueTransition, Parameters: map[string]string{"accountIds": restriction},
+		}}}
+	}
+	if fields := r.PostForm["required_field"]; len(fields) > 0 {
+		transition.Validators = []workflow.Rule{{
+			ID: store.NewID("rule"), RuleKey: workflow.RuleValidateFieldValue,
+			Parameters: map[string]string{"ruleType": "fieldRequired", "fieldsRequired": strings.Join(fields, ","), "errorMessage": "Complete the required transition fields."},
+		}}
+	}
+	if effect := r.PostFormValue("assignee_effect"); effect != "" {
+		transition.Actions = []workflow.Rule{{
+			ID: store.NewID("rule"), RuleKey: workflow.RuleChangeAssignee, Parameters: map[string]string{"type": effect},
+		}}
+	}
 	wf.Transitions = append(wf.Transitions, transition)
 	if err := h.Store.SaveWorkflowDraft(r.Context(), wsID, wf); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -1004,7 +1021,17 @@ func workflowDesignerMap(wf workflow.Workflow, statuses []models.Status) ([]work
 		transitions := make([]workflowTransitionView, 0)
 		for _, transition := range wf.Transitions {
 			if containsValue(transition.From, status.ID) {
-				transitions = append(transitions, workflowTransitionView{ID: transition.ID, Name: transition.Name, To: statusByID[transition.To], ScreenFields: transition.ScreenFields()})
+				rules := make([]string, 0, 3)
+				if transition.Conditions != nil {
+					rules = append(rules, "condition")
+				}
+				if len(transition.Validators) > 0 {
+					rules = append(rules, "validator")
+				}
+				if len(transition.Actions) > 0 {
+					rules = append(rules, "post-function")
+				}
+				transitions = append(transitions, workflowTransitionView{ID: transition.ID, Name: transition.Name, To: statusByID[transition.To], ScreenFields: transition.ScreenFields(), RuleSummary: rules})
 			}
 		}
 		nodes = append(nodes, workflowNodeView{Status: status, X: x, Y: y, Transitions: transitions})
