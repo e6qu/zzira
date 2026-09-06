@@ -41,3 +41,11 @@ type ServiceRequestComment struct {
 	Comment Comment
 	Public  bool
 }
+
+// ServiceQueue is an ordered agent work view for one service desk.
+type ServiceQueue struct {
+	ID, ServiceDeskID, Name, JQL, Kind string
+	Fields                             []string
+	Position                           int
+	IssueCount                         int
+}

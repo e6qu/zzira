@@ -73,6 +73,13 @@ func (s *Store) CreateProject(ctx context.Context, actorID string, p models.Proj
 			       ($1,'Report an incident','Report a service interruption or degradation.','Include the affected service and when the impact began.','it_task',ARRAY['incidents'])`, serviceDeskID); err != nil {
 			return nil, err
 		}
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO service_queues(service_desk_id,name,jql,kind,position) VALUES
+			($1,'All open requests','resolution = Unresolved ORDER BY created ASC','all_open',0),
+			($1,'Unassigned requests','assignee is EMPTY AND resolution = Unresolved ORDER BY created ASC','unassigned',1),
+			($1,'Assigned to me','assignee = currentUser() AND resolution = Unresolved ORDER BY created ASC','assigned_to_me',2)`, serviceDeskID); err != nil {
+			return nil, err
+		}
 	}
 	board := models.Board{ID: NewID("brd"), ProjectID: p.ID, Name: p.Name + " board", Type: boardType}
 	err = tx.QueryRow(ctx, `INSERT INTO boards (id,project_id,name,type,filter_jql) VALUES ($1,$2,$3,$4,$5) RETURNING column_status_ids,filter_jql,quick_filters,swimlane_strategy,card_fields,column_limits`, board.ID, p.ID, board.Name, board.Type, "project = "+p.Key).Scan(&board.ColumnStatusIDs, &board.FilterJQL, &board.QuickFilters, &board.SwimlaneStrategy, &board.CardFields, &board.ColumnLimits)

@@ -1084,11 +1084,27 @@ Validation after the Jira Service Management customer request journey:
 - Exact-operation review is now 159/1,207: 152 partial, 7 missing and 1,048
   unassessed.
 
+Validation after the Jira Service Management agent queue journey:
+
+- Migration 059 provisions ordered all-open, unassigned and assigned-to-me
+  queues for existing and newly created service desks. Queue contents and live
+  counts derive from canonical request issue status and assignee state.
+- The three pinned service-desk queue list/detail/issues operations enforce the
+  current agent boundary, expose Jira-compatible queue/JQL/field shapes and
+  return queue-filtered issue beans. Site administrators are the initial agent
+  role until project-scoped service roles are implemented.
+- `/service/agent` adds service-desk and queue navigation, a keyboard-reachable
+  request table, request drill-through, take-ownership and unassign actions.
+  The combined customer-to-agent Chromium journey proves queue movement,
+  light/dark accessibility and 320 px reflow.
+- Exact-operation review is now 162/1,207: 155 partial, 7 missing and 1,045
+  unassessed.
+
 ## Current change
 
-1. Implement Jira Service Management agent queues and request workspace, typed
-   assignment, participants, SLAs/calendars and escalation on the customer
-   request foundation.
+1. Implement Jira Service Management project-scoped agent roles, request
+   participants, SLA definitions/calendars and escalation on the queue/request
+   foundation.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 

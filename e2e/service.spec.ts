@@ -74,4 +74,17 @@ test('admin creates a service project with Jira Service Management request types
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.goto('/service');
   await expect(page.locator('.service-request-list')).toContainText(requestSummary);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto(`/service/agent/${desk.id}`);
+  await expect(page.getByRole('heading', { name: 'Queues', level: 1 })).toBeVisible();
+  await expect(page.locator('.service-agent-table')).toContainText(requestSummary);
+  await page.getByRole('link', { name: 'Unassigned requests', exact: true }).click();
+  await expect(page.locator('.service-agent-table')).toContainText(requestSummary);
+  const requestRow = page.getByRole('row').filter({ hasText: requestSummary });
+  await requestRow.getByRole('button', { name: 'Assign to me' }).click();
+  await page.getByRole('link', { name: 'Assigned to me', exact: true }).click();
+  await expect(page.getByRole('row').filter({ hasText: requestSummary }).getByRole('button', { name: 'Unassign' })).toBeVisible();
+  await accessible(page);
+  await page.setViewportSize({ width: 320, height: 740 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });

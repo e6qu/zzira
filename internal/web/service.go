@@ -19,6 +19,8 @@ type servicePageData struct {
 	RequestType  *models.ServiceRequestType
 	Requests     []*models.ServiceRequest
 	Request      *models.ServiceRequest
+	Queues       []models.ServiceQueue
+	Queue        *models.ServiceQueue
 	Comments     []models.ServiceRequestComment
 	Transitions  []serviceTransitionView
 	CanAdmin     bool
@@ -26,6 +28,83 @@ type servicePageData struct {
 	Summary      string
 	Description  string
 	Query        string
+}
+
+func (h *Handler) ServiceAgent(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	admin, err := h.Store.IsAdmin(r.Context(), workspaceID, user.ID)
+	if err != nil || !admin {
+		http.Error(w, "Service agent access is required.", http.StatusForbidden)
+		return
+	}
+	desks, err := h.Store.ServiceDesks(r.Context(), workspaceID)
+	if err != nil {
+		http.Error(w, "Could not load service desks.", http.StatusInternalServerError)
+		return
+	}
+	data := servicePageData{Desks: desks, CanAdmin: true}
+	deskID := r.PathValue("desk")
+	if deskID == "" && len(desks) > 0 {
+		deskID = desks[0].ID
+	}
+	if deskID != "" {
+		desk, err := h.Store.ServiceDesk(r.Context(), workspaceID, deskID)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		data.Desk = desk
+		data.Queues, err = h.Store.ServiceQueues(r.Context(), workspaceID, deskID)
+		if err != nil {
+			http.Error(w, "Could not load queues.", http.StatusInternalServerError)
+			return
+		}
+		queueID := r.URL.Query().Get("queue")
+		if queueID == "" && len(data.Queues) > 0 {
+			queueID = data.Queues[0].ID
+		}
+		if queueID != "" {
+			data.Queue, data.Requests, err = h.Store.ServiceQueueRequests(r.Context(), workspaceID, user.ID, deskID, queueID)
+			if err != nil {
+				http.NotFound(w, r)
+				return
+			}
+		}
+	}
+	preferredProject := ""
+	if data.Desk != nil {
+		preferredProject = data.Desk.ProjectID
+	}
+	h.writeWorkspacePage(w, r, "page_service_agent", user, workspaceID, data, "service-agent", preferredProject)
+}
+
+func (h *Handler) ServiceAgentAssign(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	admin, err := h.Store.IsAdmin(r.Context(), workspaceID, user.ID)
+	if err != nil || !admin {
+		http.Error(w, "Service agent access is required.", http.StatusForbidden)
+		return
+	}
+	request, err := h.Store.ServiceRequest(r.Context(), workspaceID, user.ID, r.PathValue("key"), true)
+	if err != nil || request.ServiceDesk.ID != r.PathValue("desk") {
+		http.NotFound(w, r)
+		return
+	}
+	assignee := user.ID
+	if r.FormValue("assignment") == "unassigned" {
+		assignee = ""
+	}
+	if _, _, err := h.Commands.UpdateIssue(r.Context(), commands.UpdateIssueInput{ActorID: user.ID, WorkspaceID: workspaceID, IssueIDOrKey: request.Issue.ID, AssigneeID: &assignee}); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	redirectLocal(w, r, "/service/agent/"+request.ServiceDesk.ID+"?queue="+r.FormValue("queue"))
 }
 
 func (h *Handler) ServiceHome(w http.ResponseWriter, r *http.Request) {

@@ -1672,6 +1672,42 @@
         "docs/CLOUD_PARITY.md"
       ],
       "notes": "Executes an available canonical Jira workflow transition and optional public/internal comment with the documented empty response; atomic transition-plus-comment rollback remains."
+    },
+    {
+      "operationId": "jira-service-management:GET:/rest/servicedeskapi/servicedesk/{serviceDeskId}/queue",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service.go",
+        "internal/store/service.go",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Lists the ordered default agent queues with optional live request counts and agent-only access; custom queue administration and granular service-project agent roles remain."
+    },
+    {
+      "operationId": "jira-service-management:GET:/rest/servicedeskapi/servicedesk/{serviceDeskId}/queue/{queueId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service.go",
+        "internal/store/service.go",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Returns one workspace-scoped queue with its JQL, visible fields and optional live count; custom queue configuration remains."
+    },
+    {
+      "operationId": "jira-service-management:GET:/rest/servicedeskapi/servicedesk/{serviceDeskId}/queue/{queueId}/issue",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/service_test.go",
+        "internal/api3/service.go",
+        "internal/store/service.go",
+        "e2e/service.spec.ts",
+        "docs/SERVICE_MANAGEMENT.md"
+      ],
+      "notes": "Returns queue-filtered request issue beans for all-open, unassigned and current-agent views; arbitrary JQL queues, complete field projection and SLA ordering remain."
     }
   ]
 }

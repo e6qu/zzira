@@ -179,4 +179,28 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if !strings.Contains(allRequests.Body.String(), issueKey) {
 		t.Fatal(allRequests.Body.String())
 	}
+	queues := call("GET", "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/queue?includeCount=true", "", 200)
+	if !strings.Contains(queues.Body.String(), "Unassigned requests") || !strings.Contains(queues.Body.String(), `"issueCount"`) {
+		t.Fatal(queues.Body.String())
+	}
+	callAs(customerID, "GET", "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/queue", "", 403)
+	var unassignedQueueID, mineQueueID string
+	if err := st.Pool.QueryRow(ctx, `SELECT id FROM service_queues WHERE service_desk_id=$1 AND kind='unassigned'`, serviceDeskID).Scan(&unassignedQueueID); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Pool.QueryRow(ctx, `SELECT id FROM service_queues WHERE service_desk_id=$1 AND kind='assigned_to_me'`, serviceDeskID).Scan(&mineQueueID); err != nil {
+		t.Fatal(err)
+	}
+	unassigned := call("GET", "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/queue/"+unassignedQueueID+"/issue", "", 200)
+	if !strings.Contains(unassigned.Body.String(), issueKey) {
+		t.Fatal(unassigned.Body.String())
+	}
+	assigneeID := actorID
+	if _, _, err := handler.Commands.UpdateIssue(ctx, commands.UpdateIssueInput{ActorID: actorID, WorkspaceID: workspaceID, IssueIDOrKey: issueKey, AssigneeID: &assigneeID}); err != nil {
+		t.Fatal(err)
+	}
+	assigned := call("GET", "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/queue/"+mineQueueID+"/issue", "", 200)
+	if !strings.Contains(assigned.Body.String(), issueKey) {
+		t.Fatal(assigned.Body.String())
+	}
 }

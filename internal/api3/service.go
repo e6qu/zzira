@@ -94,6 +94,12 @@ func (h *Handler) serviceDeskRoute(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, http.StatusOK, serviceRequestTypeBean(h.BaseURL, *requestType))
+	case len(parts) == 3 && parts[0] == "servicedesk" && parts[2] == "queue" && r.Method == http.MethodGet:
+		h.listServiceQueues(w, r, workspaceID, parts[1])
+	case len(parts) == 4 && parts[0] == "servicedesk" && parts[2] == "queue" && r.Method == http.MethodGet:
+		h.getServiceQueue(w, r, workspaceID, parts[1], parts[3], false)
+	case len(parts) == 5 && parts[0] == "servicedesk" && parts[2] == "queue" && parts[4] == "issue" && r.Method == http.MethodGet:
+		h.getServiceQueue(w, r, workspaceID, parts[1], parts[3], true)
 	case (len(parts) == 4 || len(parts) == 5) && parts[0] == "servicedesk" && parts[2] == "requesttype":
 		requestType, err := h.Store.ServiceRequestType(r.Context(), workspaceID, parts[1], parts[3])
 		if err != nil {
@@ -124,6 +130,69 @@ func (h *Handler) serviceDeskRoute(w http.ResponseWriter, r *http.Request) {
 	default:
 		jiraError(w, http.StatusNotFound, "Service management resource does not exist.")
 	}
+}
+
+func (h *Handler) serviceQueueBean(queue models.ServiceQueue, includeCount bool) map[string]any {
+	bean := map[string]any{"id": queue.ID, "name": queue.Name, "jql": queue.JQL, "fields": queue.Fields, "_links": map[string]string{"self": h.BaseURL + "/rest/servicedeskapi/servicedesk/" + queue.ServiceDeskID + "/queue/" + queue.ID}}
+	if includeCount {
+		bean["issueCount"] = queue.IssueCount
+	}
+	return bean
+}
+
+func (h *Handler) listServiceQueues(w http.ResponseWriter, r *http.Request, workspaceID, serviceDeskID string) {
+	_, actorID, authErr := h.authWorkspaceAdmin(r)
+	if authErr != nil {
+		writeJerr(w, authErr)
+		return
+	}
+	queues, err := h.Store.ServiceQueues(r.Context(), workspaceID, serviceDeskID)
+	if err != nil {
+		jiraError(w, http.StatusNotFound, "Service desk was not found.")
+		return
+	}
+	includeCount := r.URL.Query().Get("includeCount") == "true"
+	beans := make([]map[string]any, 0, len(queues))
+	for _, queue := range queues {
+		if includeCount {
+			counted, _, err := h.Store.ServiceQueueRequests(r.Context(), workspaceID, actorID, serviceDeskID, queue.ID)
+			if err != nil {
+				jiraError(w, http.StatusInternalServerError, "Could not count queue requests.")
+				return
+			}
+			queue.IssueCount = counted.IssueCount
+		}
+		beans = append(beans, h.serviceQueueBean(queue, includeCount))
+	}
+	h.writeServicePage(w, r, beans)
+}
+
+func (h *Handler) getServiceQueue(w http.ResponseWriter, r *http.Request, workspaceID, serviceDeskID, queueID string, includeIssues bool) {
+	_, actorID, authErr := h.authWorkspaceAdmin(r)
+	if authErr != nil {
+		writeJerr(w, authErr)
+		return
+	}
+	queue, requests, err := h.Store.ServiceQueueRequests(r.Context(), workspaceID, actorID, serviceDeskID, queueID)
+	if err != nil {
+		jiraError(w, http.StatusNotFound, "Queue was not found.")
+		return
+	}
+	if !includeIssues {
+		writeJSON(w, http.StatusOK, h.serviceQueueBean(*queue, r.URL.Query().Get("includeCount") == "true"))
+		return
+	}
+	beans := make([]map[string]any, 0, len(requests))
+	for _, request := range requests {
+		fields := map[string]any{"summary": request.Issue.Summary, "issuetype": request.Issue.IssueType, "created": request.CreatedAt.UTC().Format("2006-01-02T15:04:05.000-0700"), "reporter": h.serviceUserBean(request.Customer), "status": request.Issue.Status}
+		if request.Issue.Assignee != nil {
+			fields["assignee"] = h.serviceUserBean(request.Issue.Assignee)
+		} else {
+			fields["assignee"] = nil
+		}
+		beans = append(beans, map[string]any{"id": request.Issue.ID, "key": request.Issue.Key, "self": h.BaseURL + "/rest/api/3/issue/" + request.Issue.ID, "fields": fields})
+	}
+	h.writeServicePage(w, r, beans)
 }
 
 type createServiceRequestBody struct {

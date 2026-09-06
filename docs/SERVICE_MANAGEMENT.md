@@ -23,6 +23,13 @@ portal-only customer records. A customer can read only their own requests and
 public comments; comments created through ordinary Jira issue UI have no public
 marker and remain internal.
 
+The agent workspace at `/service/agent` provides ordered all-open, unassigned,
+and assigned-to-me queues for each service desk. Live counts and queue contents
+update from the canonical request issue. Agents can open the full request,
+review internal notes, assign a request to themselves, unassign it, comment,
+and execute its workflow actions. Until project-scoped agent roles are added,
+this workspace and the queue APIs require site-administrator access.
+
 ## REST coverage
 
 The current `/rest/servicedeskapi` slice implements:
@@ -33,7 +40,8 @@ The current `/rest/servicedeskapi` slice implements:
 - public and internal comment list, create, and detail;
 - current request status; and
 - condition-aware available transitions and transition execution with an
-  optional comment.
+  optional comment; and
+- queue list/detail/issues with optional live counts.
 
 Request creation accepts string or Atlassian document format descriptions and
 stores the backing issue through the shared command layer. Incident request
@@ -42,7 +50,8 @@ is compensated by a logged issue deletion, so no orphaned ticket remains.
 
 ## Remaining fidelity
 
-The implemented operations are assessed as partial. Dynamic form/custom-field
+The implemented operations are assessed as partial. Custom queues and arbitrary
+queue JQL, project-scoped agent roles, dynamic form/custom-field
 values, participant mutations, organizations, request attachments, approvals,
 notifications, feedback, full status chronology, SLAs, calendars, queues,
 agent roles, portal invitation activation, knowledge suggestions, Assets, and

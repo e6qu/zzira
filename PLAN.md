@@ -273,10 +273,12 @@ browser UI, sync behavior where applicable, and tests.
     request reads, validation, public/internal conversations, workflow status
     transitions, and eleven more pinned request operations. Incident portal
     requests feed the existing DORA recovery measure through their backing Jira
-    issue.
+    issue. The next agent slice provisions all-open, unassigned and assigned-to-
+    me queues, implements the three pinned queue reads, and adds a responsive
+    queue/assignment workspace.
 11. **Service Management journeys.** Extend the delivered customer help center,
-    typed request portal, owned request tracking, conversation and status flow
-    with an agent request workspace, queues, SLA timeline, service setup,
+    typed request portal, owned request tracking, conversation, status flow and
+    agent queue/assignment workspace with custom queues, an SLA timeline, service setup,
     incident/problem/change experiences and service reporting.
 12. **Confluence contract completion.** Add the v1 and remaining v2 APIs, generic
     versioned content, ancestors/descendants, operations, comments, attachments,

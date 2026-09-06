@@ -266,3 +266,66 @@ func (s *Store) ServiceRequestComment(ctx context.Context, requestIssueID, comme
 	}
 	return value, nil
 }
+
+func scanServiceQueue(row interface{ Scan(...any) error }) (*models.ServiceQueue, error) {
+	queue := &models.ServiceQueue{}
+	err := row.Scan(&queue.ID, &queue.ServiceDeskID, &queue.Name, &queue.JQL, &queue.Kind, &queue.Fields, &queue.Position)
+	return queue, err
+}
+
+const serviceQueueSelect = `SELECT q.id,q.service_desk_id,q.name,q.jql,q.kind,q.fields,q.position FROM service_queues q `
+
+func (s *Store) ServiceQueues(ctx context.Context, workspaceID, serviceDeskID string) ([]models.ServiceQueue, error) {
+	rows, err := s.Pool.Query(ctx, serviceQueueSelect+`
+		JOIN service_desks sd ON sd.id=q.service_desk_id
+		WHERE sd.workspace_id=$1 AND sd.id=$2 ORDER BY q.position,q.id::bigint`, workspaceID, serviceDeskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	queues := make([]models.ServiceQueue, 0)
+	for rows.Next() {
+		queue, err := scanServiceQueue(rows)
+		if err != nil {
+			return nil, err
+		}
+		queues = append(queues, *queue)
+	}
+	return queues, rows.Err()
+}
+
+func (s *Store) ServiceQueue(ctx context.Context, workspaceID, serviceDeskID, queueID string) (*models.ServiceQueue, error) {
+	return scanServiceQueue(s.Pool.QueryRow(ctx, serviceQueueSelect+`
+		JOIN service_desks sd ON sd.id=q.service_desk_id
+		WHERE sd.workspace_id=$1 AND sd.id=$2 AND q.id=$3`, workspaceID, serviceDeskID, queueID))
+}
+
+func (s *Store) ServiceQueueRequests(ctx context.Context, workspaceID, viewerID, serviceDeskID, queueID string) (*models.ServiceQueue, []*models.ServiceRequest, error) {
+	queue, err := s.ServiceQueue(ctx, workspaceID, serviceDeskID, queueID)
+	if err != nil {
+		return nil, nil, err
+	}
+	requests, err := s.ServiceRequests(ctx, workspaceID, viewerID, serviceDeskID, "", true)
+	if err != nil {
+		return nil, nil, err
+	}
+	filtered := make([]*models.ServiceRequest, 0)
+	for _, request := range requests {
+		if request.Issue.Status.Category == "done" {
+			continue
+		}
+		switch queue.Kind {
+		case "unassigned":
+			if request.Issue.Assignee != nil {
+				continue
+			}
+		case "assigned_to_me":
+			if request.Issue.Assignee == nil || request.Issue.Assignee.ID != viewerID {
+				continue
+			}
+		}
+		filtered = append(filtered, request)
+	}
+	queue.IssueCount = len(filtered)
+	return queue, filtered, nil
+}
