@@ -1250,11 +1250,27 @@ Validation after Jira Service Management contract completion:
 - Exact-operation review is now 214/1,207: 207 partial, 7 missing and 993
   unassessed. All 75 pinned Jira Service Management operations are reviewed.
 
+Validation after custom service queues:
+
+- Migration 069 adds manager-defined queues while retaining protected built-in
+  all-open, SLA-attention, unassigned and assigned-to-me views.
+- Administrators create, edit and delete queues with validated JQL. Queue
+  evaluation uses the shared search compiler, issue-security scope and JQL
+  ordering, then limits results to requests in the selected service desk.
+- Queue lifecycle writes organization audit events and is included in both
+  audit action catalogs. PostgreSQL proves permission denial, invalid JQL,
+  filtering, updates, deletion and audit evidence.
+- The combined Chromium service journey passes queue create/filter/rename/delete,
+  WCAG scans and 320 px reflow.
+- The full PostgreSQL-enabled Go suite, `go vet`, WebAssembly build, seven
+  conformance tests, generated inventory/coverage checks and `git diff --check`
+  pass.
+
 ## Current change
 
 1. Complete Jira Service Management journeys beyond the pinned contract:
-   custom queue management and JQL, request-type forms, conditional SLA goals,
-   holidays, incident/problem/change linkage and service reports.
+   request-type forms, conditional SLA goals, holidays,
+   incident/problem/change linkage and service reports.
 2. Continue into the Confluence v1/v2 contract and knowledge collaboration
    workstreams after the remaining service journeys are browser-proven.
 

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/e6qu/zzira/internal/jql"
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/jackc/pgx/v5"
 )
@@ -580,6 +581,41 @@ func (s *Store) ServiceQueueRequests(ctx context.Context, workspaceID, viewerID,
 		return nil, nil, err
 	}
 	filtered := make([]*models.ServiceRequest, 0)
+	if queue.Kind == "custom" {
+		parsed, err := jql.Parse(queue.JQL)
+		if err != nil {
+			return nil, nil, err
+		}
+		resolver := jql.DefaultResolver()
+		if customFields, err := s.CustomFields(ctx); err == nil {
+			resolver = jql.WithCustomFields(resolver, customFields)
+		} else {
+			return nil, nil, err
+		}
+		compiled := jql.CompileAt(parsed, viewerID, resolver, 2)
+		if compiled.Err != nil {
+			return nil, nil, compiled.Err
+		}
+		_, total, err := s.Search(ctx, workspaceID, viewerID, compiled, 1, 0)
+		if err != nil {
+			return nil, nil, err
+		}
+		issues, _, err := s.Search(ctx, workspaceID, viewerID, compiled, max(total, 1), 0)
+		if err != nil {
+			return nil, nil, err
+		}
+		byIssue := make(map[string]*models.ServiceRequest, len(requests))
+		for _, request := range requests {
+			byIssue[request.Issue.ID] = request
+		}
+		for _, issue := range issues {
+			if request := byIssue[issue.ID]; request != nil {
+				filtered = append(filtered, request)
+			}
+		}
+		queue.IssueCount = len(filtered)
+		return queue, filtered, nil
+	}
 	for _, request := range requests {
 		if request.Issue.Status.Category == "done" {
 			continue

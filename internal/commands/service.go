@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/e6qu/zzira/internal/jql"
 	"github.com/e6qu/zzira/internal/models"
 )
 
@@ -220,4 +221,56 @@ func (s *Service) UpdateServiceCalendar(ctx context.Context, actorID, workspaceI
 		return fmt.Errorf("only an administrator may configure service calendars")
 	}
 	return s.Store.UpdateServiceCalendar(ctx, workspaceID, actorID, serviceDeskID, name, timeZone, weekdays, startMinute, endMinute)
+}
+
+func (s *Service) validateServiceQueue(ctx context.Context, name, query string) (string, string, error) {
+	name, query = strings.TrimSpace(name), strings.TrimSpace(query)
+	if name == "" || len(name) > 255 {
+		return "", "", fmt.Errorf("queue name is required and accepts at most 255 characters")
+	}
+	if query == "" || len(query) > 2000 {
+		return "", "", fmt.Errorf("queue JQL is required and accepts at most 2000 characters")
+	}
+	parsed, err := jql.Parse(query)
+	if err != nil {
+		return "", "", err
+	}
+	resolver := jql.DefaultResolver()
+	fields, err := s.Store.CustomFields(ctx)
+	if err != nil {
+		return "", "", err
+	}
+	if compiled := jql.Compile(parsed, "validation", jql.WithCustomFields(resolver, fields)); compiled.Err != nil {
+		return "", "", compiled.Err
+	}
+	return name, query, nil
+}
+
+func (s *Service) CreateServiceQueue(ctx context.Context, actorID, workspaceID, serviceDeskID, name, query string) (*models.ServiceQueue, error) {
+	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
+		return nil, err
+	}
+	name, query, err := s.validateServiceQueue(ctx, name, query)
+	if err != nil {
+		return nil, err
+	}
+	return s.Store.CreateServiceQueue(ctx, workspaceID, actorID, serviceDeskID, name, query)
+}
+
+func (s *Service) UpdateServiceQueue(ctx context.Context, actorID, workspaceID, serviceDeskID, queueID, name, query string) error {
+	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
+		return err
+	}
+	name, query, err := s.validateServiceQueue(ctx, name, query)
+	if err != nil {
+		return err
+	}
+	return s.Store.UpdateServiceQueue(ctx, workspaceID, actorID, serviceDeskID, queueID, name, query)
+}
+
+func (s *Service) DeleteServiceQueue(ctx context.Context, actorID, workspaceID, serviceDeskID, queueID string) error {
+	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
+		return err
+	}
+	return s.Store.DeleteServiceQueue(ctx, workspaceID, actorID, serviceDeskID, queueID)
 }

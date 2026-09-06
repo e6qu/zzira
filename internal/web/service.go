@@ -318,6 +318,49 @@ func (h *Handler) ServiceKnowledgeSettings(w http.ResponseWriter, r *http.Reques
 	redirectLocal(w, r, "/service/agent/"+deskID+"#knowledge-base")
 }
 
+func (h *Handler) ServiceQueueSettings(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	admin, err := h.Store.IsAdmin(r.Context(), workspaceID, user.ID)
+	if err != nil {
+		http.Error(w, "Could not authorize service administration.", http.StatusInternalServerError)
+		return
+	}
+	if !admin {
+		http.Error(w, "Site administrator access is required.", http.StatusForbidden)
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	deskID, queueID := r.PathValue("desk"), r.PostFormValue("queueId")
+	switch r.PostFormValue("action") {
+	case "create":
+		queue, err := h.Commands.CreateServiceQueue(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("name"), r.PostFormValue("jql"))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		redirectLocal(w, r, "/service/agent/"+deskID+"?queue="+queue.ID+"#queue-settings")
+	case "update":
+		if err := h.Commands.UpdateServiceQueue(r.Context(), user.ID, workspaceID, deskID, queueID, r.PostFormValue("name"), r.PostFormValue("jql")); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		redirectLocal(w, r, "/service/agent/"+deskID+"?queue="+queueID+"#queue-settings")
+	case "delete":
+		if err := h.Commands.DeleteServiceQueue(r.Context(), user.ID, workspaceID, deskID, queueID); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		redirectLocal(w, r, "/service/agent/"+deskID+"#queue-settings")
+	default:
+		http.Error(w, "Choose a queue action.", http.StatusBadRequest)
+	}
+}
+
 func parseServiceClock(value string) (int16, error) {
 	parts := strings.Split(value, ":")
 	if len(parts) != 2 {

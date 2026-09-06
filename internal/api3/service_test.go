@@ -306,6 +306,37 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if err != nil || !strings.Contains(strings.Join(issue.Labels, ","), "incident") {
 		t.Fatalf("incident issue = %+v, %v", issue, err)
 	}
+	if _, err := handler.Commands.CreateServiceQueue(ctx, customerID, workspaceID, serviceDeskID, "Forbidden queue", `summary ~ "checkout"`); err == nil {
+		t.Fatal("customer created a custom service queue")
+	}
+	if _, err := handler.Commands.CreateServiceQueue(ctx, actorID, workspaceID, serviceDeskID, "Invalid queue", `unknownField = value`); err == nil {
+		t.Fatal("custom queue accepted unsupported JQL")
+	}
+	customQueue, err := handler.Commands.CreateServiceQueue(ctx, actorID, workspaceID, serviceDeskID, "Checkout incidents", `summary ~ "checkout" ORDER BY created ASC`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, customRequests, err := st.ServiceQueueRequests(ctx, workspaceID, actorID, serviceDeskID, customQueue.ID)
+	if err != nil || len(customRequests) != 1 || customRequests[0].Issue.ID != issue.ID {
+		t.Fatalf("custom queue requests = %+v, %v", customRequests, err)
+	}
+	if err := handler.Commands.UpdateServiceQueue(ctx, actorID, workspaceID, serviceDeskID, customQueue.ID, "Checkout incidents now", `summary ~ "does not match"`); err != nil {
+		t.Fatal(err)
+	}
+	_, customRequests, err = st.ServiceQueueRequests(ctx, workspaceID, actorID, serviceDeskID, customQueue.ID)
+	if err != nil || len(customRequests) != 0 {
+		t.Fatalf("updated custom queue requests = %+v, %v", customRequests, err)
+	}
+	if err := handler.Commands.DeleteServiceQueue(ctx, actorID, workspaceID, serviceDeskID, customQueue.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.ServiceQueue(ctx, workspaceID, serviceDeskID, customQueue.ID); err == nil {
+		t.Fatal("deleted custom queue still exists")
+	}
+	var queueAudits int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM organization_audit_events WHERE actor_id=$1 AND target_id=$2 AND action LIKE 'service.queue.%'`, actorID, customQueue.ID).Scan(&queueAudits); err != nil || queueAudits != 3 {
+		t.Fatalf("custom queue audits = %d, %v", queueAudits, err)
+	}
 	organizationResponse := call("POST", "/rest/servicedeskapi/organization", `{"name":"Acme Customer Group"}`, 201)
 	var organizationBean map[string]any
 	if err := json.Unmarshal(organizationResponse.Body.Bytes(), &organizationBean); err != nil {

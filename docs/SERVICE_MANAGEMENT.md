@@ -38,7 +38,10 @@ own requests and public comments; comments created through ordinary Jira issue
 UI have no public marker and remain internal.
 
 The agent workspace at `/service/agent` provides ordered all-open, unassigned,
-and assigned-to-me queues for each service desk. Live counts and queue contents
+assigned-to-me, SLA-attention, and administrator-defined custom queues for each
+service desk. Managers create, edit, and delete custom queues with validated JQL;
+agents see matching service requests in the query's requested order. Built-in
+queues cannot be edited or removed. Live counts and queue contents
 update from the canonical request issue. Agents can open the full request,
 review internal notes, assign a request to themselves, unassign it, comment,
 and execute its workflow actions. Agent access is assigned per service desk and
@@ -143,8 +146,8 @@ is compensated by a logged issue deletion, so no orphaned ticket remains.
 
 ## Remaining fidelity
 
-The implemented operations are assessed as partial. Custom queues and arbitrary
-queue JQL, dynamic form/custom-field values, participant notifications,
+The implemented operations are assessed as partial. JQL support follows the
+documented ZZIRA search subset; dynamic form/custom-field values, participant notifications,
 approval workflow configuration, image thumbnail generation,
 email delivery and notification preference administration, CSAT configuration
 and aggregate service reports, complete Assets object/schema/import APIs, full
