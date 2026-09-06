@@ -896,6 +896,15 @@ func (h *Handler) AddWorkflowTransition(w http.ResponseWriter, r *http.Request, 
 			Parameters: map[string]string{"ruleType": "fieldChanged", "fieldKey": changedField, "errorMessage": "Change the selected field during the transition."},
 		})
 	}
+	if field := strings.TrimSpace(r.PostFormValue("regexp_field_validator")); field != "" {
+		transition.Validators = append(transition.Validators, workflow.Rule{
+			ID: store.NewID("rule"), RuleKey: workflow.RuleValidateFieldValue,
+			Parameters: map[string]string{
+				"ruleType": "fieldMatchesRegularExpression", "fieldKey": field,
+				"regexp": r.PostFormValue("regexp_pattern"), "errorMessage": strings.TrimSpace(r.PostFormValue("regexp_error")),
+			},
+		})
+	}
 	if statusID := r.PostFormValue("previous_status_validator"); statusID != "" {
 		transition.Validators = append(transition.Validators, workflow.Rule{
 			ID: store.NewID("rule"), RuleKey: workflow.RulePreviousStatusValidator, Parameters: map[string]string{

@@ -7,6 +7,7 @@ package workflow
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -278,6 +279,16 @@ func (t Transition) ValidateRules(context EvaluationContext) error {
 					}
 					return fmt.Errorf("%s", message)
 				}
+			case "fieldMatchesRegularExpression":
+				field := validator.Parameters["fieldKey"]
+				pattern, err := regexp.Compile(validator.Parameters["regexp"])
+				if err != nil || !workflowFieldMatches(pattern, context.FieldValues[field]) {
+					message := strings.TrimSpace(validator.Parameters["errorMessage"])
+					if message == "" {
+						message = fmt.Sprintf("%s does not match the required pattern", field)
+					}
+					return fmt.Errorf("%s", message)
+				}
 			default:
 				return fmt.Errorf("unsupported workflow validator %q", validator.RuleKey)
 			}
@@ -295,6 +306,15 @@ func (t Transition) ValidateRules(context EvaluationContext) error {
 		}
 	}
 	return nil
+}
+
+func workflowFieldMatches(pattern *regexp.Regexp, raw json.RawMessage) bool {
+	for _, value := range comparableJSONValues(raw) {
+		if pattern.MatchString(workflowScalar(value, "STRING")) {
+			return true
+		}
+	}
+	return false
 }
 
 func previousStatusMatches(parameters map[string]string, context EvaluationContext) bool {
@@ -461,6 +481,13 @@ func ValidateTransitionRules(transition Transition) error {
 			case "fieldChanged":
 				if strings.TrimSpace(validator.Parameters["fieldKey"]) == "" || strings.TrimSpace(validator.Parameters["groupsExemptFromValidation"]) != "" {
 					return fmt.Errorf("workflow validator %q is unsupported or incomplete", validator.RuleKey)
+				}
+			case "fieldMatchesRegularExpression":
+				if strings.TrimSpace(validator.Parameters["fieldKey"]) == "" || strings.TrimSpace(validator.Parameters["regexp"]) == "" {
+					return fmt.Errorf("workflow validator %q is unsupported or incomplete", validator.RuleKey)
+				}
+				if _, err := regexp.Compile(validator.Parameters["regexp"]); err != nil {
+					return fmt.Errorf("workflow validator regular expression is invalid")
 				}
 			default:
 				return fmt.Errorf("workflow validator %q is unsupported or incomplete", validator.RuleKey)

@@ -118,6 +118,9 @@ test('project workflow creation, editor, transition changes, and assignment work
   await page.selectOption('#transition-copy-source', 'summary');
   await page.selectOption('#transition-copy-target', 'description');
   await page.selectOption('#transition-changed-field-validator', 'labels');
+  await page.selectOption('#transition-regexp-field-validator', 'description');
+  await page.fill('#transition-regexp-pattern', '^.+$');
+  await page.fill('#transition-regexp-error', 'Describe the review');
   await page.selectOption('#transition-permission-validator', 'EDIT_ISSUES');
   await page.getByRole('button', { name: 'Add transition' }).click();
   await expect(page.getByText('Ready for review', { exact: true })).toBeVisible();

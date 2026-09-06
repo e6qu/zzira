@@ -839,9 +839,26 @@ Validation after changed-field workflow validators:
   generated inventory and coverage checks, diff check, primary-page light/dark
   axe scan, and 320 px reflow gate pass.
 
+Validation after regular-expression workflow validators:
+
+- The `fieldMatchesRegularExpression` mode of
+  `system:validate-field-value` compiles the configured Jira `regexp`, matches
+  scalar and list field values, and returns the configured `errorMessage`.
+  Invalid expressions and incomplete configurations are rejected at save time.
+- Transition-screen updates replace the stored field values in the validator
+  context before rules run. Modern workflow resources round-trip the parameters,
+  and the visual editor exposes field, expression, and message controls.
+- Unit tests prove match, mismatch, message, and invalid-pattern paths.
+  PostgreSQL REST integration distinguishes unchanged-field rejection,
+  nonmatching changed values, and a successful matching label; the focused
+  Chromium journey creates and publishes the visual rule.
+- The full PostgreSQL Go suite, vet, WebAssembly build, seven conformance tests,
+  generated inventory and coverage checks, diff check, primary-page light/dark
+  axe scan, and 320 px reflow gate pass.
+
 ## Current change
 
-1. Add executable regular-expression workflow validators and visual controls.
+1. Add executable single-value workflow validators and visual controls.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 

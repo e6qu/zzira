@@ -210,6 +210,25 @@ func TestChangedFieldValidatorRequiresTransitionInput(t *testing.T) {
 	}
 }
 
+func TestRegularExpressionValidatorUsesEffectiveFieldValue(t *testing.T) {
+	transition := Transition{Validators: []Rule{{ID: "regexp", RuleKey: RuleValidateFieldValue, Parameters: map[string]string{
+		"ruleType": "fieldMatchesRegularExpression", "fieldKey": "summary", "regexp": `^REL-[0-9]+$`, "errorMessage": "Add a release reference",
+	}}}}
+	if err := transition.ValidateRules(EvaluationContext{FieldValues: map[string]json.RawMessage{"summary": json.RawMessage(`"Draft"`)}}); err == nil || err.Error() != "Add a release reference" {
+		t.Fatalf("validator error = %v", err)
+	}
+	if err := transition.ValidateRules(EvaluationContext{FieldValues: map[string]json.RawMessage{"summary": json.RawMessage(`"REL-42"`)}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateTransitionRules(transition); err != nil {
+		t.Fatal(err)
+	}
+	transition.Validators[0].Parameters["regexp"] = "["
+	if err := ValidateTransitionRules(transition); err == nil {
+		t.Fatal("invalid regular expression was accepted")
+	}
+}
+
 func TestPermissionValidatorUsesGrantedJiraPermissions(t *testing.T) {
 	transition := Transition{Validators: []Rule{{ID: "permission", RuleKey: RuleCheckPermissionValidator, Parameters: map[string]string{
 		"permissionKey": "ADMINISTER_PROJECTS",
