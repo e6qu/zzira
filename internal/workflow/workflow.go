@@ -16,6 +16,7 @@ const (
 	RuleCheckFieldValue         = "system:check-field-value"
 	RuleValidateFieldValue      = "system:validate-field-value"
 	RuleChangeAssignee          = "system:change-assignee"
+	RuleUpdateField             = "system:update-field"
 	RuleTransitionScreen        = "system:transition-screen"
 )
 
@@ -246,6 +247,9 @@ func (t Transition) AssigneeEffect(context EvaluationContext) (string, bool, err
 	var assigneeID string
 	changed := false
 	for _, action := range t.Actions {
+		if action.RuleKey == RuleUpdateField {
+			continue
+		}
 		if action.RuleKey != RuleChangeAssignee {
 			return "", false, fmt.Errorf("unsupported workflow post-function %q", action.RuleKey)
 		}
@@ -261,6 +265,56 @@ func (t Transition) AssigneeEffect(context EvaluationContext) (string, bool, err
 		}
 	}
 	return assigneeID, changed, nil
+}
+
+type FieldUpdateEffect struct {
+	Field string
+	Value string
+	Mode  string
+}
+
+// FieldUpdateEffects returns configured update-field post-functions in their
+// workflow order. Validation guarantees every returned effect is executable.
+func (t Transition) FieldUpdateEffects() ([]FieldUpdateEffect, error) {
+	effects := make([]FieldUpdateEffect, 0)
+	for _, action := range t.Actions {
+		switch action.RuleKey {
+		case RuleChangeAssignee:
+			continue
+		case RuleUpdateField:
+			field := action.Parameters["field"]
+			if !executableUpdateField(field) {
+				return nil, fmt.Errorf("unsupported update-field target %q", action.Parameters["field"])
+			}
+			mode := action.Parameters["mode"]
+			if mode != "append" && mode != "replace" {
+				return nil, fmt.Errorf("unsupported update-field mode %q", mode)
+			}
+			if mode == "append" && field == "priority" {
+				return nil, fmt.Errorf("update-field target %q cannot be appended", field)
+			}
+			effects = append(effects, FieldUpdateEffect{Field: field, Value: action.Parameters["value"], Mode: mode})
+		default:
+			return nil, fmt.Errorf("unsupported workflow post-function %q", action.RuleKey)
+		}
+	}
+	return effects, nil
+}
+
+func executableUpdateField(field string) bool {
+	switch field {
+	case "summary", "description", "labels", "priority":
+		return true
+	}
+	if !strings.HasPrefix(field, "customfield_") || len(field) == len("customfield_") {
+		return false
+	}
+	for _, char := range strings.TrimPrefix(field, "customfield_") {
+		if char < '0' || char > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func commaValues(value string) []string {
@@ -309,17 +363,29 @@ func ValidateTransitionRules(transition Transition) error {
 		if err := validateRuleID(action); err != nil {
 			return err
 		}
-		if action.RuleKey != RuleChangeAssignee {
-			return fmt.Errorf("workflow post-function %q is unsupported", action.RuleKey)
-		}
-		switch action.Parameters["type"] {
-		case "to-current-user", "to-unassigned":
-		case "to-selected-user":
-			if strings.TrimSpace(action.Parameters["accountId"]) == "" {
-				return fmt.Errorf("change-assignee selected user is required")
+		switch action.RuleKey {
+		case RuleChangeAssignee:
+			switch action.Parameters["type"] {
+			case "to-current-user", "to-unassigned":
+			case "to-selected-user":
+				if strings.TrimSpace(action.Parameters["accountId"]) == "" {
+					return fmt.Errorf("change-assignee selected user is required")
+				}
+			default:
+				return fmt.Errorf("change-assignee type %q is unsupported", action.Parameters["type"])
+			}
+		case RuleUpdateField:
+			field := action.Parameters["field"]
+			if !executableUpdateField(field) {
+				return fmt.Errorf("update-field target %q is not executable", action.Parameters["field"])
+			}
+			if mode := action.Parameters["mode"]; mode != "append" && mode != "replace" {
+				return fmt.Errorf("update-field mode %q is unsupported", mode)
+			} else if mode == "append" && field == "priority" {
+				return fmt.Errorf("update-field target %q cannot be appended", field)
 			}
 		default:
-			return fmt.Errorf("change-assignee type %q is unsupported", action.Parameters["type"])
+			return fmt.Errorf("workflow post-function %q is unsupported", action.RuleKey)
 		}
 	}
 	if transition.Conditions != nil {

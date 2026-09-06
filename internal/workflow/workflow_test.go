@@ -130,11 +130,36 @@ func TestRequiredFieldValidatorUsesConfiguredMessage(t *testing.T) {
 func TestChangeAssigneePostFunctions(t *testing.T) {
 	transition := Transition{Actions: []Rule{
 		{RuleKey: RuleChangeAssignee, Parameters: map[string]string{"type": "to-selected-user", "accountId": "usr_first"}},
+		{RuleKey: RuleUpdateField, Parameters: map[string]string{"field": "labels", "value": "released", "mode": "append"}},
 		{RuleKey: RuleChangeAssignee, Parameters: map[string]string{"type": "to-current-user"}},
 	}}
 	assigneeID, changed, err := transition.AssigneeEffect(EvaluationContext{ActorID: "usr_actor"})
 	if err != nil || !changed || assigneeID != "usr_actor" {
 		t.Fatalf("effect = %q, %t, %v", assigneeID, changed, err)
+	}
+	updates, err := transition.FieldUpdateEffects()
+	if err != nil || len(updates) != 1 || updates[0].Field != "labels" || updates[0].Value != "released" || updates[0].Mode != "append" {
+		t.Fatalf("field effects = %+v, %v", updates, err)
+	}
+}
+
+func TestUpdateFieldPostFunctionValidation(t *testing.T) {
+	transition := Transition{Actions: []Rule{{ID: "update", RuleKey: RuleUpdateField, Parameters: map[string]string{"field": "labels", "value": "released", "mode": "replace"}}}}
+	if err := ValidateTransitionRules(transition); err != nil {
+		t.Fatal(err)
+	}
+	transition.Actions[0].Parameters["field"] = "components"
+	if err := ValidateTransitionRules(transition); err == nil {
+		t.Fatal("unsupported update-field target was accepted")
+	}
+	transition.Actions[0].Parameters["field"] = "customfield_10001"
+	if err := ValidateTransitionRules(transition); err != nil {
+		t.Fatalf("custom field target was rejected: %v", err)
+	}
+	transition.Actions[0].Parameters["field"] = "labels"
+	transition.Actions[0].Parameters["mode"] = "merge"
+	if err := ValidateTransitionRules(transition); err == nil {
+		t.Fatal("unsupported update-field mode was accepted")
 	}
 }
 

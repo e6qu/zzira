@@ -35,6 +35,11 @@ func workflowCapabilitiesResponse(editorScope string) map[string]any {
 				"ruleKey": "system:change-assignee", "ruleType": "Function",
 			},
 			{
+				"description": "Replace or append supported system and custom fields after a transition completes.", "incompatibleRuleKeys": []string{},
+				"isAvailableForInitialTransition": true, "isVisible": true, "name": "Update field",
+				"ruleKey": "system:update-field", "ruleType": "Function",
+			},
+			{
 				"description": "Collect selected work item fields while a transition runs.", "incompatibleRuleKeys": []string{},
 				"isAvailableForInitialTransition": false, "isVisible": true, "name": "Transition screen",
 				"ruleKey": "system:transition-screen", "ruleType": "Screen",

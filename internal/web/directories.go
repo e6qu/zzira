@@ -870,9 +870,16 @@ func (h *Handler) AddWorkflowTransition(w http.ResponseWriter, r *http.Request, 
 		}}
 	}
 	if effect := r.PostFormValue("assignee_effect"); effect != "" {
-		transition.Actions = []workflow.Rule{{
+		transition.Actions = append(transition.Actions, workflow.Rule{
 			ID: store.NewID("rule"), RuleKey: workflow.RuleChangeAssignee, Parameters: map[string]string{"type": effect},
-		}}
+		})
+	}
+	if field := r.PostFormValue("update_field"); field != "" {
+		transition.Actions = append(transition.Actions, workflow.Rule{
+			ID: store.NewID("rule"), RuleKey: workflow.RuleUpdateField, Parameters: map[string]string{
+				"field": field, "value": r.PostFormValue("update_value"), "mode": r.PostFormValue("update_mode"),
+			},
+		})
 	}
 	wf.Transitions = append(wf.Transitions, transition)
 	if err := h.Store.SaveWorkflowDraft(r.Context(), wsID, wf); err != nil {

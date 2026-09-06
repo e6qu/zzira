@@ -732,9 +732,26 @@ Validation after field-value workflow conditions:
   generated inventory and coverage checks, diff check, primary-page light/dark
   axe scan, and 320 px reflow gate pass.
 
+Validation after update-field workflow post-functions:
+
+- `system:update-field` now replaces or appends summary, description, labels,
+  and supported custom fields, and replaces priority. Configuration
+  validation rejects unknown fields, modes, and invalid append operations.
+- Post-functions apply after validators and transition-screen input in workflow
+  order. Their changes, assignee effects, and target status are normalized and
+  persisted through the same optimistic issue update and sync action.
+- The administrator editor provides label append/replace controls. Unit tests
+  cover configuration, coexistence with assignee functions, and custom text
+  append; PostgreSQL REST integration proves screen labels plus workflow labels
+  and a summary append commit atomically; the focused Chromium journey creates
+  and publishes the visual rule.
+- The full PostgreSQL Go suite, vet, WebAssembly build, seven conformance tests,
+  generated inventory and coverage checks, diff check, primary-page light/dark
+  axe scan, and 320 px reflow gate pass.
+
 ## Current change
 
-1. Add executable update-field workflow post-functions and visual controls.
+1. Add executable copy-field-value workflow post-functions and visual controls.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 

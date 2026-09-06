@@ -112,6 +112,9 @@ test('project workflow creation, editor, transition changes, and assignment work
   await page.selectOption('#transition-restriction', 'allow-reporter');
   await page.locator('fieldset').filter({ hasText: 'Required before transition' }).getByLabel('Description').check();
   await page.selectOption('#transition-assignee-effect', 'to-current-user');
+  await page.selectOption('#transition-update-field', 'labels');
+  await page.selectOption('#transition-update-mode', 'append');
+  await page.fill('#transition-update-value', 'workflow-reviewed');
   await page.locator('fieldset').filter({ hasText: 'Transition screen fields' }).getByLabel('Labels').check();
   await page.getByRole('button', { name: 'Add transition' }).click();
   await expect(page.getByText('Ready for review', { exact: true })).toBeVisible();

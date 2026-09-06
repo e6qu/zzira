@@ -13,6 +13,7 @@ import (
 	"github.com/e6qu/zzira/internal/jql"
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
+	"github.com/e6qu/zzira/internal/workflow"
 )
 
 // TestCreateIssueToSyncPipeline is the V0 integration gate: it runs against a
@@ -94,6 +95,24 @@ func TestCreateIssueToSyncPipeline(t *testing.T) {
 	byID, err := st.IssueByIDOrKey(ctx, "ws_default", issue.ID)
 	if err != nil || byID.Key != issue.Key {
 		t.Fatalf("IssueByIDOrKey by id failed")
+	}
+}
+
+func TestApplyWorkflowFieldUpdateSupportsCustomText(t *testing.T) {
+	issue := &models.Issue{Summary: "Ready", Fields: map[string]json.RawMessage{"customfield_10001": json.RawMessage(`"release"`)}}
+	update := store.IssueUpdate{}
+	if err := applyWorkflowFieldUpdate(issue, &update, workflow.FieldUpdateEffect{Field: "customfield_10001", Value: `" notes"`, Mode: "append"}); err != nil {
+		t.Fatal(err)
+	}
+	var value string
+	if err := json.Unmarshal(update.Fields["customfield_10001"], &value); err != nil || value != "release notes" {
+		t.Fatalf("custom field = %q, %v", value, err)
+	}
+	if err := applyWorkflowFieldUpdate(issue, &update, workflow.FieldUpdateEffect{Field: "summary", Value: " complete", Mode: "append"}); err != nil {
+		t.Fatal(err)
+	}
+	if update.Summary == nil || *update.Summary != "Ready complete" {
+		t.Fatalf("summary = %v", update.Summary)
 	}
 }
 

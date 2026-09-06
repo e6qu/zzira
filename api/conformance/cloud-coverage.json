@@ -4580,7 +4580,7 @@
         "internal/store/agile.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Resolves workflows by workflow ID or project and issue type, validates selectors, and reports the resolved GLOBAL or PROJECT editor scope, project types, and executable actor restriction, API-only restriction, typed field-value, required-field, change-assignee, and transition-screen rules; remaining system/ecosystem rules remain."
+      "notes": "Resolves workflows by workflow ID or project and issue type, validates selectors, and reports the resolved GLOBAL or PROJECT editor scope, project types, and executable actor restriction, API-only restriction, typed field-value, required-field, change-assignee, system/custom field-update, and transition-screen rules; remaining system/ecosystem rules remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/workflows/create",

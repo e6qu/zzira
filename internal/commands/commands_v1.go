@@ -355,7 +355,95 @@ func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, worksp
 	if changeAssignee {
 		update.AssigneeID = &assigneeID
 	}
+	fieldEffects, err := t.FieldUpdateEffects()
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, effect := range fieldEffects {
+		if err := applyWorkflowFieldUpdate(issue, &update, effect); err != nil {
+			return nil, nil, err
+		}
+	}
+	if update.Summary != nil && (len(*update.Summary) == 0 || len(*update.Summary) > 255) {
+		return nil, nil, fmt.Errorf("workflow summary update must be between 1 and 255 characters")
+	}
+	if update.AssigneeID != nil && *update.AssigneeID != "" {
+		if _, err := s.Store.MemberByID(ctx, workspaceID, *update.AssigneeID); err != nil {
+			return nil, nil, fmt.Errorf("workflow assignee is not an active workspace member")
+		}
+	}
+	if err := s.validateCustomFields(ctx, issue.ProjectID, update.Fields); err != nil {
+		return nil, nil, err
+	}
 	return s.Store.UpdateIssue(ctx, actorID, workspaceID, issue.ID, update)
+}
+
+func applyWorkflowFieldUpdate(issue *models.Issue, update *store.IssueUpdate, effect workflow.FieldUpdateEffect) error {
+	appendText := func(current string) string {
+		if effect.Mode == "replace" {
+			return effect.Value
+		}
+		return current + effect.Value
+	}
+	switch effect.Field {
+	case "summary":
+		current := issue.Summary
+		if update.Summary != nil {
+			current = *update.Summary
+		}
+		value := appendText(current)
+		update.Summary = &value
+	case "description":
+		current := adf.PlainText(issue.Description)
+		if update.Description != nil {
+			current = adf.PlainText(update.Description)
+		}
+		update.Description = adf.ParagraphDoc(appendText(current))
+	case "labels":
+		labels := append([]string(nil), issue.Labels...)
+		if update.Labels != nil {
+			labels = append([]string(nil), (*update.Labels)...)
+		}
+		values := strings.Split(effect.Value, ",")
+		if strings.TrimSpace(effect.Value) == "" {
+			values = []string{}
+		}
+		if effect.Mode == "replace" {
+			labels = values
+		} else {
+			labels = append(labels, values...)
+		}
+		normalized, err := normalizeLabels(labels)
+		if err != nil {
+			return fmt.Errorf("workflow label update: %w", err)
+		}
+		update.Labels = &normalized
+	case "priority":
+		value := effect.Value
+		update.PriorityID = &value
+	default:
+		if update.Fields == nil {
+			update.Fields = make(map[string]json.RawMessage)
+		}
+		incoming := json.RawMessage(effect.Value)
+		if !json.Valid(incoming) {
+			incoming, _ = json.Marshal(effect.Value)
+		}
+		if effect.Mode == "replace" {
+			update.Fields[effect.Field] = incoming
+			break
+		}
+		current := issue.Fields[effect.Field]
+		if changed, ok := update.Fields[effect.Field]; ok {
+			current = changed
+		}
+		var currentText, incomingText string
+		if json.Unmarshal(current, &currentText) != nil || json.Unmarshal(incoming, &incomingText) != nil {
+			return fmt.Errorf("workflow field %q only supports append for text values", effect.Field)
+		}
+		update.Fields[effect.Field], _ = json.Marshal(currentText + incomingText)
+	}
+	return nil
 }
 
 type AddCommentInput struct {
