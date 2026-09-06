@@ -39,11 +39,11 @@ func TestWorkflowSchemeDraftRuntimeAndSafeAssignment(t *testing.T) {
 		_, _ = st.Pool.Exec(ctx, `DELETE FROM workflows WHERE id=ANY($1)`, []string{workflowAID, workflowBID})
 	})
 	wfA := workflow.Default()
-	wfA.ID, wfA.Name = workflowAID, "Full lifecycle"
+	wfA.ID, wfA.Name = workflowAID, "Full lifecycle "+workflowAID[len(workflowAID)-6:]
 	if err := st.CreateWorkflow(ctx, workspaceID, wfA); err != nil {
 		t.Fatal(err)
 	}
-	wfB := workflow.Workflow{ID: workflowBID, Name: "Simple lifecycle", Transitions: []workflow.Transition{
+	wfB := workflow.Workflow{ID: workflowBID, Name: "Simple lifecycle " + workflowBID[len(workflowBID)-6:], Transitions: []workflow.Transition{
 		{ID: NewID("transition"), Name: "Complete", From: []string{"st_todo"}, To: "st_done"},
 		{ID: NewID("transition"), Name: "Reopen", From: []string{"st_done"}, To: "st_todo"},
 	}}

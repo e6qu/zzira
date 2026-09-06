@@ -82,7 +82,7 @@ func workflowMetadataBean(item workflow.Workflow) map[string]any {
 }
 
 func (h *Handler) workflowSchemeReadBean(r *http.Request, workspaceID string, scheme workflow.Scheme) (map[string]any, error) {
-	workflows, err := h.Store.ListWorkflows(r.Context(), workspaceID)
+	workflows, err := h.Store.ListGlobalWorkflows(r.Context(), workspaceID)
 	if err != nil {
 		return nil, err
 	}

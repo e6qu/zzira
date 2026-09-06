@@ -4,9 +4,9 @@ import (
 	"net/http"
 )
 
-func workflowCapabilitiesResponse() map[string]any {
+func workflowCapabilitiesResponse(editorScope string) map[string]any {
 	return map[string]any{
-		"editorScope":  "GLOBAL",
+		"editorScope":  editorScope,
 		"projectTypes": []string{"software", "business"},
 		"systemRules": []map[string]any{
 			{
@@ -45,11 +45,16 @@ func (h *Handler) workflowCapabilities(w http.ResponseWriter, r *http.Request) {
 			jiraError(w, http.StatusBadRequest, "workflowId cannot be combined with projectId or issueTypeId")
 			return
 		}
-		if _, err := h.Store.WorkflowByID(r.Context(), workspaceID, workflowID); err != nil {
+		wf, err := h.Store.WorkflowByID(r.Context(), workspaceID, workflowID)
+		if err != nil {
 			jiraError(w, http.StatusBadRequest, "workflowId is invalid")
 			return
 		}
-		writeJSON(w, http.StatusOK, workflowCapabilitiesResponse())
+		scope := "GLOBAL"
+		if wf.ProjectID != "" {
+			scope = "PROJECT"
+		}
+		writeJSON(w, http.StatusOK, workflowCapabilitiesResponse(scope))
 		return
 	}
 	if projectID == "" || issueTypeID == "" {
@@ -77,10 +82,15 @@ func (h *Handler) workflowCapabilities(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, http.StatusBadRequest, "issueTypeId is invalid")
 		return
 	}
-	if _, err := h.Store.WorkflowForProjectAndIssueType(r.Context(), project.ID, issueTypeID); err != nil {
+	wf, err := h.Store.WorkflowForProjectAndIssueType(r.Context(), project.ID, issueTypeID)
+	if err != nil {
 		jiraError(w, http.StatusBadRequest, "the project workflow could not be resolved")
 		return
 	}
-	response := workflowCapabilitiesResponse()
+	scope := "GLOBAL"
+	if wf.ProjectID != "" {
+		scope = "PROJECT"
+	}
+	response := workflowCapabilitiesResponse(scope)
 	writeJSON(w, http.StatusOK, response)
 }

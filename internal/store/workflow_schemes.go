@@ -83,7 +83,7 @@ func validateSchemeWorkflows(ctx context.Context, q workflowSchemeQuerier, works
 	}
 	for workflowID := range workflowIDs {
 		var exists bool
-		if err := q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM workflows WHERE id=$1 AND (workspace_id=$2 OR (id='wf_default' AND workspace_id IS NULL)))`, workflowID, workspaceID).Scan(&exists); err != nil {
+		if err := q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM workflows WHERE id=$1 AND project_id IS NULL AND (workspace_id=$2 OR (id='wf_default' AND workspace_id IS NULL)))`, workflowID, workspaceID).Scan(&exists); err != nil {
 			return err
 		}
 		if !exists {
@@ -367,13 +367,15 @@ func schemeWorkflowID(scheme workflow.Scheme, issueTypeID string) string {
 
 func workflowByIDQuery(ctx context.Context, q workflowSchemeQuerier, workspaceID, workflowID string) (workflow.Workflow, error) {
 	var def []byte
-	if err := q.QueryRow(ctx, `SELECT def FROM workflows WHERE id=$1 AND (workspace_id=$2 OR (id='wf_default' AND workspace_id IS NULL))`, workflowID, workspaceID).Scan(&def); err != nil {
+	var projectID string
+	if err := q.QueryRow(ctx, `SELECT def,COALESCE(project_id,'') FROM workflows WHERE id=$1 AND (workspace_id=$2 OR (id='wf_default' AND workspace_id IS NULL))`, workflowID, workspaceID).Scan(&def, &projectID); err != nil {
 		return workflow.Workflow{}, err
 	}
 	var result workflow.Workflow
 	if err := json.Unmarshal(def, &result); err != nil {
 		return result, err
 	}
+	result.ProjectID = projectID
 	return result, nil
 }
 
@@ -794,5 +796,12 @@ func (s *Store) WorkflowForProjectAndIssueType(ctx context.Context, projectID, i
 	if err != nil {
 		return workflow.Workflow{}, err
 	}
-	return workflowByIDQuery(ctx, s.Pool, workspaceID, workflowID)
+	wf, err := workflowByIDQuery(ctx, s.Pool, workspaceID, workflowID)
+	if err != nil {
+		return workflow.Workflow{}, err
+	}
+	if wf.ProjectID != "" && wf.ProjectID != projectID {
+		return workflow.Workflow{}, pgx.ErrNoRows
+	}
+	return wf, nil
 }

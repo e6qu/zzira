@@ -93,7 +93,10 @@ type workflowUpdateItemRequest struct {
 
 type workflowCreatePayloadRequest struct {
 	Scope struct {
-		Type string `json:"type"`
+		Type    string `json:"type"`
+		Project struct {
+			ID string `json:"id"`
+		} `json:"project"`
 	} `json:"scope"`
 	Statuses  []workflowStatusUpdateRequest `json:"statuses"`
 	Workflows []workflowCreateItemRequest   `json:"workflows"`
@@ -163,8 +166,14 @@ func workflowCategory(category string) string {
 	}
 }
 
-func (h *Handler) workflowStatusReferences(r *http.Request, workspaceID string, updates []workflowStatusUpdateRequest, generateIDs bool) (map[string]string, []models.Status, []map[string]any, error) {
-	statuses, err := h.Store.StatusesForWorkspace(r.Context(), workspaceID)
+func (h *Handler) workflowStatusReferences(r *http.Request, workspaceID, projectID string, updates []workflowStatusUpdateRequest, generateIDs bool) (map[string]string, []models.Status, []map[string]any, error) {
+	var statuses []models.Status
+	var err error
+	if projectID == "" {
+		statuses, err = h.Store.StatusesForWorkspace(r.Context(), workspaceID)
+	} else {
+		statuses, err = h.Store.StatusesForProject(r.Context(), workspaceID, projectID, true)
+	}
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -173,7 +182,9 @@ func (h *Handler) workflowStatusReferences(r *http.Request, workspaceID string, 
 	references := make(map[string]string, len(statuses)+len(updates))
 	for _, status := range statuses {
 		known[status.ID] = true
-		names[strings.ToLower(status.Name)] = true
+		if projectID == "" || status.ProjectID == projectID {
+			names[strings.ToLower(status.Name)] = true
+		}
 		references[status.ID] = status.ID
 	}
 	created := make([]models.Status, 0)
@@ -205,7 +216,7 @@ func (h *Handler) workflowStatusReferences(r *http.Request, workspaceID string, 
 			if generateIDs {
 				id = store.NewID("status")
 			}
-			created = append(created, models.Status{ID: id, Name: name, Category: category})
+			created = append(created, models.Status{ID: id, Name: name, Category: category, ProjectID: projectID})
 			names[nameKey], known[id], references[status.StatusReference] = true, true, id
 			continue
 		}
@@ -216,6 +227,42 @@ func (h *Handler) workflowStatusReferences(r *http.Request, workspaceID string, 
 		references[status.StatusReference] = status.ID
 	}
 	return references, created, errors, nil
+}
+
+func (h *Handler) workflowCreateScope(r *http.Request, workspaceID string, payload *workflowCreatePayloadRequest) (string, error) {
+	switch payload.Scope.Type {
+	case "", "GLOBAL":
+		if payload.Scope.Project.ID != "" {
+			return "", fmt.Errorf("GLOBAL scope cannot include a project")
+		}
+		return "", nil
+	case "PROJECT":
+		project, err := h.Store.ProjectByIDOrKey(r.Context(), workspaceID, payload.Scope.Project.ID)
+		if err != nil {
+			return "", fmt.Errorf("PROJECT scope requires a project in this workspace")
+		}
+		return project.ID, nil
+	default:
+		return "", fmt.Errorf("scope type must be GLOBAL or PROJECT")
+	}
+}
+
+func (h *Handler) workflowUpdateScope(r *http.Request, workspaceID string, workflows []workflowUpdateItemRequest) (string, error) {
+	projectID := ""
+	found := false
+	for _, item := range workflows {
+		published, err := h.Store.WorkflowByID(r.Context(), workspaceID, item.ID)
+		if err != nil {
+			continue
+		}
+		if !found {
+			projectID = published.ProjectID
+			found = true
+		} else if projectID != published.ProjectID {
+			return "", fmt.Errorf("workflow updates with new statuses must share one scope")
+		}
+	}
+	return projectID, nil
 }
 
 func workflowDefinitionFromRequest(id, name, description string, startPointLayout, loopedTransitionContainerLayout *workflow.Layout, statuses []workflowStatusLayoutRequest, transitions []workflowTransitionUpdateRequest, references map[string]string) (workflow.Workflow, []map[string]any) {
@@ -397,13 +444,14 @@ func (h *Handler) workflowCreateValidation(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	errors := make([]map[string]any, 0)
-	if request.Payload.Scope.Type != "" && request.Payload.Scope.Type != "GLOBAL" {
-		errors = append(errors, workflowValidationError("SCOPE_UNSUPPORTED", "Only global workflows are currently supported.", "SCOPE", nil))
+	projectID, scopeErr := h.workflowCreateScope(r, workspaceID, request.Payload)
+	if scopeErr != nil {
+		errors = append(errors, workflowValidationError("SCOPE_INVALID", scopeErr.Error(), "SCOPE", nil))
 	}
 	if len(request.Payload.Workflows) == 0 || len(request.Payload.Workflows) > 20 || len(request.Payload.Statuses) > 1000 {
 		errors = append(errors, workflowValidationError("PAYLOAD_SIZE_INVALID", "Provide between 1 and 20 workflows and no more than 1000 statuses.", "WORKFLOW", nil))
 	}
-	references, createdStatuses, statusErrors, err := h.workflowStatusReferences(r, workspaceID, request.Payload.Statuses, false)
+	references, createdStatuses, statusErrors, err := h.workflowStatusReferences(r, workspaceID, projectID, request.Payload.Statuses, false)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -416,10 +464,13 @@ func (h *Handler) workflowCreateValidation(w http.ResponseWriter, r *http.Reques
 	}
 	names := make(map[string]bool, len(existing))
 	for _, item := range existing {
-		names[strings.ToLower(item.Name)] = true
+		if item.ProjectID == projectID {
+			names[strings.ToLower(item.Name)] = true
+		}
 	}
 	for index, item := range request.Payload.Workflows {
 		wf, itemErrors := workflowDefinitionFromRequest(fmt.Sprintf("validation-%d", index+1), item.Name, item.Description, item.StartPointLayout, item.LoopedTransitionContainerLayout, item.Statuses, item.Transitions, references)
+		wf.ProjectID = projectID
 		errors = append(errors, itemErrors...)
 		if names[strings.ToLower(wf.Name)] {
 			errors = append(errors, workflowValidationError("WORKFLOW_NAME_CONFLICT", "A workflow already uses this name.", "WORKFLOW", nil))
@@ -456,7 +507,11 @@ func (h *Handler) workflowUpdateValidation(w http.ResponseWriter, r *http.Reques
 	if len(request.Payload.Workflows) == 0 || len(request.Payload.Workflows) > 20 || len(request.Payload.Statuses) > 1000 {
 		errors = append(errors, workflowValidationError("PAYLOAD_SIZE_INVALID", "Provide between 1 and 20 workflows and no more than 1000 statuses.", "WORKFLOW", nil))
 	}
-	references, createdStatuses, statusErrors, err := h.workflowStatusReferences(r, workspaceID, request.Payload.Statuses, false)
+	projectID, scopeErr := h.workflowUpdateScope(r, workspaceID, request.Payload.Workflows)
+	if scopeErr != nil {
+		errors = append(errors, workflowValidationError("SCOPE_INVALID", scopeErr.Error(), "SCOPE", nil))
+	}
+	references, createdStatuses, statusErrors, err := h.workflowStatusReferences(r, workspaceID, projectID, request.Payload.Statuses, false)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -473,6 +528,7 @@ func (h *Handler) workflowUpdateValidation(w http.ResponseWriter, r *http.Reques
 		}
 		description, startPointLayout, loopedTransitionContainerLayout := workflowUpdateMetadata(item, published)
 		wf, itemErrors := workflowDefinitionFromRequest(item.ID, published.Name, description, startPointLayout, loopedTransitionContainerLayout, item.Statuses, item.Transitions, references)
+		wf.ProjectID = published.ProjectID
 		errors = append(errors, itemErrors...)
 		_, mappingErrors := workflowStatusMigrationsFromRequest(item, references, wf)
 		errors = append(errors, mappingErrors...)
@@ -526,7 +582,7 @@ func (h *Handler) workflowResponseStatuses(r *http.Request, workspaceID string, 
 			referenced[id] = true
 		}
 	}
-	statuses, err := h.Store.StatusesForWorkspace(r.Context(), workspaceID)
+	statuses, err := h.Store.StatusesForAdministration(r.Context(), workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -551,13 +607,14 @@ func (h *Handler) workflowCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	validationErrors := make([]map[string]any, 0)
-	if payload.Scope.Type != "" && payload.Scope.Type != "GLOBAL" {
-		validationErrors = append(validationErrors, workflowValidationError("SCOPE_UNSUPPORTED", "Only global workflows are currently supported.", "SCOPE", nil))
+	projectID, scopeErr := h.workflowCreateScope(r, workspaceID, &payload)
+	if scopeErr != nil {
+		validationErrors = append(validationErrors, workflowValidationError("SCOPE_INVALID", scopeErr.Error(), "SCOPE", nil))
 	}
 	if len(payload.Workflows) == 0 || len(payload.Workflows) > 20 || len(payload.Statuses) > 1000 {
 		validationErrors = append(validationErrors, workflowValidationError("PAYLOAD_SIZE_INVALID", "Provide between 1 and 20 workflows and no more than 1000 statuses.", "WORKFLOW", nil))
 	}
-	references, createdStatuses, statusErrors, err := h.workflowStatusReferences(r, workspaceID, payload.Statuses, true)
+	references, createdStatuses, statusErrors, err := h.workflowStatusReferences(r, workspaceID, projectID, payload.Statuses, true)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -567,6 +624,7 @@ func (h *Handler) workflowCreate(w http.ResponseWriter, r *http.Request) {
 	names := make(map[string]bool)
 	for _, item := range payload.Workflows {
 		definition, itemErrors := workflowDefinitionFromRequest(store.NewID("workflow"), item.Name, item.Description, item.StartPointLayout, item.LoopedTransitionContainerLayout, item.Statuses, item.Transitions, references)
+		definition.ProjectID = projectID
 		validationErrors = append(validationErrors, itemErrors...)
 		nameKey := strings.ToLower(definition.Name)
 		if names[nameKey] {
@@ -615,7 +673,11 @@ func (h *Handler) workflowUpdate(w http.ResponseWriter, r *http.Request) {
 	if len(payload.Workflows) == 0 || len(payload.Workflows) > 20 || len(payload.Statuses) > 1000 {
 		validationErrors = append(validationErrors, workflowValidationError("PAYLOAD_SIZE_INVALID", "Provide between 1 and 20 workflows and no more than 1000 statuses.", "WORKFLOW", nil))
 	}
-	references, createdStatuses, statusErrors, err := h.workflowStatusReferences(r, workspaceID, payload.Statuses, true)
+	projectID, scopeErr := h.workflowUpdateScope(r, workspaceID, payload.Workflows)
+	if scopeErr != nil {
+		validationErrors = append(validationErrors, workflowValidationError("SCOPE_INVALID", scopeErr.Error(), "SCOPE", nil))
+	}
+	references, createdStatuses, statusErrors, err := h.workflowStatusReferences(r, workspaceID, projectID, payload.Statuses, true)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -633,6 +695,7 @@ func (h *Handler) workflowUpdate(w http.ResponseWriter, r *http.Request) {
 		}
 		description, startPointLayout, loopedTransitionContainerLayout := workflowUpdateMetadata(item, published)
 		definition, itemErrors := workflowDefinitionFromRequest(item.ID, published.Name, description, startPointLayout, loopedTransitionContainerLayout, item.Statuses, item.Transitions, references)
+		definition.ProjectID = published.ProjectID
 		validationErrors = append(validationErrors, itemErrors...)
 		migrations, mappingErrors := workflowStatusMigrationsFromRequest(item, references, definition)
 		validationErrors = append(validationErrors, mappingErrors...)

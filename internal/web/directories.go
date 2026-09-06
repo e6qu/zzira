@@ -67,6 +67,7 @@ type workflowDirectoryCard struct {
 
 type workflowsPageData struct {
 	Workflows []workflowDirectoryCard
+	Projects  []*models.Project
 	CanCreate bool
 }
 
@@ -382,7 +383,7 @@ func (h *Handler) WorkflowsPage(w http.ResponseWriter, r *http.Request) {
 		cards = append(cards, card)
 	}
 	admin, _ := h.Store.IsAdmin(r.Context(), wsID, user.ID)
-	h.writeWorkspacePage(w, r, "page_workflows", user, wsID, workflowsPageData{Workflows: cards, CanCreate: admin}, "workflows", "")
+	h.writeWorkspacePage(w, r, "page_workflows", user, wsID, workflowsPageData{Workflows: cards, Projects: projects, CanCreate: admin}, "workflows", "")
 }
 
 func (h *Handler) StatusesPage(w http.ResponseWriter, r *http.Request) {
@@ -420,7 +421,7 @@ func (h *Handler) WorkflowSchemesPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	workflows, err := h.Store.ListWorkflows(r.Context(), workspaceID)
+	workflows, err := h.Store.ListGlobalWorkflows(r.Context(), workspaceID)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -452,7 +453,7 @@ func (h *Handler) WorkflowSchemePage(w http.ResponseWriter, r *http.Request, sch
 		http.NotFound(w, r)
 		return
 	}
-	workflows, err := h.Store.ListWorkflows(r.Context(), workspaceID)
+	workflows, err := h.Store.ListGlobalWorkflows(r.Context(), workspaceID)
 	if err != nil {
 		http.Error(w, "internal error", 500)
 		return
@@ -694,7 +695,12 @@ func (h *Handler) WorkflowPage(w http.ResponseWriter, r *http.Request, id string
 		http.NotFound(w, r)
 		return
 	}
-	statuses, err := h.Store.StatusesForWorkspace(r.Context(), wsID)
+	var statuses []models.Status
+	if wf.ProjectID == "" {
+		statuses, err = h.Store.StatusesForWorkspace(r.Context(), wsID)
+	} else {
+		statuses, err = h.Store.StatusesForProject(r.Context(), wsID, wf.ProjectID, true)
+	}
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -706,6 +712,15 @@ func (h *Handler) WorkflowPage(w http.ResponseWriter, r *http.Request, id string
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
+	}
+	if wf.ProjectID != "" {
+		projectScoped := projects[:0]
+		for _, project := range projects {
+			if project.ID == wf.ProjectID {
+				projectScoped = append(projectScoped, project)
+			}
+		}
+		projects = projectScoped
 	}
 	nodes, edges, mapWidth, mapHeight := workflowDesignerMap(wf, statuses)
 	assigned := make([]*models.Project, 0)
@@ -778,9 +793,23 @@ func (h *Handler) CreateWorkflow(w http.ResponseWriter, r *http.Request) {
 	wf := workflow.Default()
 	wf.ID = store.NewID("workflow")
 	wf.Name = name
+	if projectID := r.PostFormValue("project"); projectID != "" {
+		project, err := h.Store.ProjectByIDOrKey(r.Context(), wsID, projectID)
+		if err != nil {
+			http.Error(w, "workflow project does not exist", http.StatusBadRequest)
+			return
+		}
+		wf.ProjectID = project.ID
+	}
 	if err := h.Store.CreateWorkflow(r.Context(), wsID, wf); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
+	}
+	if wf.ProjectID != "" {
+		if err := h.Store.AssignWorkflowToProject(r.Context(), wsID, wf.ProjectID, wf.ID); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 	}
 	http.Redirect(w, r, "/settings/workflows/"+wf.ID, http.StatusSeeOther)
 }

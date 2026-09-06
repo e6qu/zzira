@@ -11,7 +11,7 @@ import (
 )
 
 func (h *Handler) workflowSchemeBean(r *http.Request, workspaceID string, scheme workflow.Scheme) map[string]any {
-	workflows, _ := h.Store.ListWorkflows(r.Context(), workspaceID)
+	workflows, _ := h.Store.ListGlobalWorkflows(r.Context(), workspaceID)
 	names := make(map[string]string, len(workflows))
 	for _, item := range workflows {
 		names[item.ID] = item.Name
@@ -96,7 +96,7 @@ func (h *Handler) workflowSchemeRoute(w http.ResponseWriter, r *http.Request, pa
 				jiraError(w, http.StatusBadRequest, "Invalid workflow scheme request.")
 				return
 			}
-			workflows, err := h.Store.ListWorkflows(r.Context(), workspaceID)
+			workflows, err := h.Store.ListGlobalWorkflows(r.Context(), workspaceID)
 			if err != nil {
 				workflowSchemeAPIError(w, err)
 				return
@@ -230,7 +230,7 @@ func (h *Handler) workflowSchemeRoute(w http.ResponseWriter, r *http.Request, pa
 			jiraError(w, http.StatusBadRequest, "Invalid workflow scheme request.")
 			return
 		}
-		workflows, _ := h.Store.ListWorkflows(r.Context(), workspaceID)
+		workflows, _ := h.Store.ListGlobalWorkflows(r.Context(), workspaceID)
 		defaultID, mappings, ok := resolveSchemeWorkflowNames(workflows, request.DefaultWorkflow, request.IssueTypeMappings)
 		if !ok {
 			jiraError(w, http.StatusBadRequest, "A mapped workflow does not exist.")

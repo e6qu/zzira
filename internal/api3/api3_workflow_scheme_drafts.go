@@ -97,7 +97,7 @@ func (h *Handler) workflowSchemeSubresourceRoute(w http.ResponseWriter, r *http.
 				jiraError(w, http.StatusBadRequest, "Invalid workflow scheme draft request.")
 				return true
 			}
-			workflows, err := h.Store.ListWorkflows(r.Context(), workspaceID)
+			workflows, err := h.Store.ListGlobalWorkflows(r.Context(), workspaceID)
 			if err != nil {
 				workflowSchemeAPIError(w, err)
 				return true
@@ -218,7 +218,7 @@ func (h *Handler) workflowSchemeSubresourceRoute(w http.ResponseWriter, r *http.
 		if !ok {
 			return true
 		}
-		workflows, err := h.Store.ListWorkflows(r.Context(), workspaceID)
+		workflows, err := h.Store.ListGlobalWorkflows(r.Context(), workspaceID)
 		if err != nil {
 			workflowSchemeAPIError(w, err)
 			return true
@@ -258,7 +258,7 @@ func (h *Handler) workflowSchemeSubresourceRoute(w http.ResponseWriter, r *http.
 			return true
 		}
 		issueTypeID := parts[3]
-		workflows, err := h.Store.ListWorkflows(r.Context(), workspaceID)
+		workflows, err := h.Store.ListGlobalWorkflows(r.Context(), workspaceID)
 		if err != nil {
 			workflowSchemeAPIError(w, err)
 			return true
@@ -309,7 +309,7 @@ func (h *Handler) workflowSchemeSubresourceRoute(w http.ResponseWriter, r *http.
 		if !ok {
 			return true
 		}
-		workflows, err := h.Store.ListWorkflows(r.Context(), workspaceID)
+		workflows, err := h.Store.ListGlobalWorkflows(r.Context(), workspaceID)
 		if err != nil {
 			workflowSchemeAPIError(w, err)
 			return true

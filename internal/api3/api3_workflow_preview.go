@@ -35,7 +35,7 @@ func workflowPreviewBean(item workflowPreviewItem, projectID string) map[string]
 	}
 	bean := map[string]any{
 		"id": item.Workflow.ID, "name": item.Workflow.Name, "description": item.Workflow.Description,
-		"scope": map[string]string{"type": "GLOBAL"}, "statuses": statuses, "transitions": transitions,
+		"scope": jiraWorkflowScope(item.Workflow), "statuses": statuses, "transitions": transitions,
 		"queryContext": queryContext,
 		"version":      map[string]any{"id": item.Workflow.ID, "versionNumber": item.Workflow.Version},
 	}

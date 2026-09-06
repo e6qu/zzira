@@ -121,7 +121,7 @@ func workflowTransitionBean(transition workflow.Transition) map[string]any {
 func workflowSearchBean(wf workflow.Workflow, expandTransitions bool) map[string]any {
 	bean := map[string]any{
 		"id": wf.ID, "name": wf.Name, "description": wf.Description, "isEditable": wf.ID != workflow.Default().ID,
-		"scope": map[string]string{"type": "GLOBAL"}, "statuses": workflowReferenceStatuses(wf),
+		"scope": jiraWorkflowScope(wf), "statuses": workflowReferenceStatuses(wf),
 		"version": map[string]any{"id": wf.ID, "versionNumber": wf.Version},
 	}
 	if wf.StartPointLayout != nil {
@@ -138,6 +138,13 @@ func workflowSearchBean(wf workflow.Workflow, expandTransitions bool) map[string
 		bean["transitions"] = transitions
 	}
 	return bean
+}
+
+func jiraWorkflowScope(wf workflow.Workflow) map[string]any {
+	if wf.ProjectID != "" {
+		return map[string]any{"type": "PROJECT", "project": map[string]string{"id": wf.ProjectID}}
+	}
+	return map[string]any{"type": "GLOBAL"}
 }
 
 func workflowSearchStatusBean(status models.Status) map[string]any {
@@ -207,7 +214,8 @@ func (h *Handler) workflowSearch(w http.ResponseWriter, r *http.Request) {
 	query := strings.ToLower(r.URL.Query().Get("queryString"))
 	filtered := make([]workflow.Workflow, 0, len(workflows))
 	for _, item := range workflows {
-		if scope == "PROJECT" || (query != "" && !strings.Contains(strings.ToLower(item.Name), query)) {
+		if (scope == "PROJECT" && item.ProjectID == "") || (scope == "GLOBAL" && item.ProjectID != "") ||
+			(query != "" && !strings.Contains(strings.ToLower(item.Name), query)) {
 			continue
 		}
 		projects, err := h.Store.WorkflowProjectUsages(r.Context(), workspaceID, item.ID)
@@ -219,7 +227,7 @@ func (h *Handler) workflowSearch(w http.ResponseWriter, r *http.Request) {
 		if activeFilter != nil && active != *activeFilter {
 			continue
 		}
-		if projectID != "" && !containsWorkflowUsage(projects, projectID) {
+		if projectID != "" && item.ProjectID != projectID && !containsWorkflowUsage(projects, projectID) {
 			continue
 		}
 		filtered = append(filtered, item)
@@ -251,7 +259,7 @@ func (h *Handler) workflowSearch(w http.ResponseWriter, r *http.Request) {
 			referencedStatuses[id] = true
 		}
 	}
-	statuses, err := h.Store.StatusesForWorkspace(r.Context(), workspaceID)
+	statuses, err := h.Store.StatusesForAdministration(r.Context(), workspaceID)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return

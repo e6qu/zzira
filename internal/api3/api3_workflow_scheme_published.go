@@ -82,7 +82,7 @@ func (h *Handler) workflowSchemePublishedSubresourceRoute(w http.ResponseWriter,
 			jiraError(w, http.StatusNotFound, "The workflow scheme does not exist.")
 			return true
 		}
-		workflows, err := h.Store.ListWorkflows(r.Context(), workspaceID)
+		workflows, err := h.Store.ListGlobalWorkflows(r.Context(), workspaceID)
 		if err != nil {
 			workflowSchemeAPIError(w, err)
 			return true
@@ -123,7 +123,7 @@ func (h *Handler) workflowSchemePublishedSubresourceRoute(w http.ResponseWriter,
 			return true
 		}
 		issueTypeID := parts[2]
-		workflows, err := h.Store.ListWorkflows(r.Context(), workspaceID)
+		workflows, err := h.Store.ListGlobalWorkflows(r.Context(), workspaceID)
 		if err != nil {
 			workflowSchemeAPIError(w, err)
 			return true
@@ -175,7 +175,7 @@ func (h *Handler) workflowSchemePublishedSubresourceRoute(w http.ResponseWriter,
 			jiraError(w, http.StatusNotFound, "The workflow scheme does not exist.")
 			return true
 		}
-		workflows, err := h.Store.ListWorkflows(r.Context(), workspaceID)
+		workflows, err := h.Store.ListGlobalWorkflows(r.Context(), workspaceID)
 		if err != nil {
 			workflowSchemeAPIError(w, err)
 			return true

@@ -49,7 +49,7 @@ func TestWorkflowPersistenceValidatesDefinitionsAndAssignments(t *testing.T) {
 
 	wf := workflow.Default()
 	wf.ID = workflowID
-	wf.Name = "Test delivery"
+	wf.Name = "Test delivery " + workflowID[len(workflowID)-6:]
 	if err := st.CreateWorkflow(ctx, "ws_default", wf); err != nil {
 		t.Fatalf("create workflow: %v", err)
 	}

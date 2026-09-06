@@ -24,6 +24,24 @@ type WorkflowStatusMigration struct {
 	NewStatusID string
 }
 
+func workflowNameAvailable(ctx context.Context, tx pgx.Tx, workspaceID, projectID, workflowID, name string) error {
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('workflow-name:' || $1 || ':' || $2))`, workspaceID, projectID); err != nil {
+		return err
+	}
+	var duplicate bool
+	if err := tx.QueryRow(ctx, `
+		SELECT EXISTS(SELECT 1 FROM workflows
+		 WHERE workspace_id=$1 AND project_id IS NOT DISTINCT FROM $2
+		   AND lower(name)=lower($3) AND id<>$4)`,
+		workspaceID, nilIfEmpty(projectID), name, workflowID).Scan(&duplicate); err != nil {
+		return err
+	}
+	if duplicate {
+		return fmt.Errorf("%w: a workflow already uses that name in this scope", ErrAdminConflict)
+	}
+	return nil
+}
+
 func addWorkflowAudit(ctx context.Context, tx pgx.Tx, workspaceID, actorID, action string, wf workflow.Workflow, values map[string]any) error {
 	if values == nil {
 		values = make(map[string]any)
@@ -41,10 +59,6 @@ func addWorkflowAudit(ctx context.Context, tx pgx.Tx, workspaceID, actorID, acti
 }
 
 func (s *Store) workflowBatchDefinitions(ctx context.Context, workspaceID string, statuses []models.Status, workflows []workflow.Workflow) ([][]byte, []models.Status, error) {
-	visible, err := s.StatusesForWorkspace(ctx, workspaceID)
-	if err != nil {
-		return nil, nil, err
-	}
 	validatedStatuses := make([]models.Status, len(statuses))
 	for index, status := range statuses {
 		validated, err := validateStatus(status)
@@ -52,10 +66,25 @@ func (s *Store) workflowBatchDefinitions(ctx context.Context, workspaceID string
 			return nil, nil, err
 		}
 		validatedStatuses[index] = validated
-		visible = append(visible, validated)
 	}
 	definitions := make([][]byte, len(workflows))
 	for index, wf := range workflows {
+		var visible []models.Status
+		var err error
+		if wf.ProjectID == "" {
+			visible, err = s.StatusesForWorkspace(ctx, workspaceID)
+		} else {
+			visible, err = s.StatusesForProject(ctx, workspaceID, wf.ProjectID, true)
+		}
+		if err != nil {
+			return nil, nil, err
+		}
+		for _, status := range validatedStatuses {
+			if status.ProjectID != wf.ProjectID {
+				return nil, nil, fmt.Errorf("%w: workflow-created statuses must share the workflow scope", ErrAdminValidation)
+			}
+			visible = append(visible, status)
+		}
 		definition, err := validateWorkflowAgainstStatuses(wf, visible)
 		if err != nil {
 			return nil, nil, err
@@ -101,21 +130,33 @@ func (s *Store) CreateWorkflowBatch(ctx context.Context, workspaceID, actorID st
 	}
 	for index := range workflows {
 		wf := &workflows[index]
-		var duplicate bool
-		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM workflows WHERE id=$1 OR (workspace_id=$2 AND lower(name)=lower($3)))`, wf.ID, workspaceID, wf.Name).Scan(&duplicate); err != nil {
+		var duplicateID bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM workflows WHERE id=$1)`, wf.ID).Scan(&duplicateID); err != nil {
 			return nil, nil, err
 		}
-		if duplicate {
+		if duplicateID {
 			return nil, nil, fmt.Errorf("%w: a workflow already uses that name or id", ErrAdminConflict)
 		}
-		if _, err := tx.Exec(ctx, `INSERT INTO workflows(id,name,def,workspace_id) VALUES($1,$2,$3,$4)`, wf.ID, wf.Name, definitions[index], workspaceID); err != nil {
+		if err := workflowNameAvailable(ctx, tx, workspaceID, wf.ProjectID, wf.ID, wf.Name); err != nil {
+			return nil, nil, err
+		}
+		if wf.ProjectID != "" {
+			var validProject bool
+			if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM projects WHERE id=$1 AND workspace_id=$2)`, wf.ProjectID, workspaceID).Scan(&validProject); err != nil {
+				return nil, nil, err
+			}
+			if !validProject {
+				return nil, nil, fmt.Errorf("%w: workflow project does not exist in this workspace", ErrAdminValidation)
+			}
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO workflows(id,name,def,workspace_id,project_id) VALUES($1,$2,$3,$4,$5)`, wf.ID, wf.Name, definitions[index], workspaceID, nilIfEmpty(wf.ProjectID)); err != nil {
 			if isUniqueViolation(err) {
 				return nil, nil, fmt.Errorf("%w: a workflow already uses that id", ErrAdminConflict)
 			}
 			return nil, nil, err
 		}
 		wf.Version = 1
-		if err := addWorkflowAudit(ctx, tx, workspaceID, actorID, "workflow.created", *wf, nil); err != nil {
+		if err := addWorkflowAudit(ctx, tx, workspaceID, actorID, "workflow.created", *wf, map[string]any{"projectId": wf.ProjectID}); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -256,11 +297,15 @@ func (s *Store) UpdateWorkflowBatch(ctx context.Context, workspaceID, actorID st
 			return nil, nil, fmt.Errorf("%w: the system workflow is read-only", ErrAdminValidation)
 		}
 		var currentVersion int
-		if err := tx.QueryRow(ctx, `SELECT version FROM workflows WHERE id=$1 AND workspace_id=$2 FOR UPDATE`, update.Workflow.ID, workspaceID).Scan(&currentVersion); err != nil {
+		var currentProjectID string
+		if err := tx.QueryRow(ctx, `SELECT version,COALESCE(project_id,'') FROM workflows WHERE id=$1 AND workspace_id=$2 FOR UPDATE`, update.Workflow.ID, workspaceID).Scan(&currentVersion, &currentProjectID); err != nil {
 			if err == pgx.ErrNoRows {
 				return nil, nil, ErrAdminNotFound
 			}
 			return nil, nil, err
+		}
+		if currentProjectID != update.Workflow.ProjectID {
+			return nil, nil, fmt.Errorf("%w: workflow scope cannot be changed", ErrAdminValidation)
 		}
 		if currentVersion != update.ExpectedVersion {
 			return nil, nil, fmt.Errorf("%w: workflow version is stale", ErrAdminConflict)
@@ -275,7 +320,7 @@ func (s *Store) UpdateWorkflowBatch(ctx context.Context, workspaceID, actorID st
 			return nil, nil, err
 		}
 		updates[index].Workflow = updated
-		if err := addWorkflowAudit(ctx, tx, workspaceID, actorID, "workflow.updated", updated, map[string]any{"migratedIssues": migrated}); err != nil {
+		if err := addWorkflowAudit(ctx, tx, workspaceID, actorID, "workflow.updated", updated, map[string]any{"migratedIssues": migrated, "projectId": updated.ProjectID}); err != nil {
 			return nil, nil, err
 		}
 	}

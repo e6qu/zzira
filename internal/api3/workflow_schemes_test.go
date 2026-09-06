@@ -165,6 +165,43 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	if !strings.Contains(modernCreatedResponse.Body.String(), `"name":"Review gate"`) || !strings.Contains(modernCreatedResponse.Body.String(), `"statusCategory":"IN_PROGRESS"`) {
 		t.Fatal(modernCreatedResponse.Body.String())
 	}
+	projectCreateBody := `{"scope":{"type":"PROJECT","project":{"id":"` + projectID + `"}},"statuses":[{"id":"st_inprogress","name":"In Progress","statusCategory":"IN_PROGRESS","statusReference":"progress"},{"name":"Project ready","statusCategory":"IN_PROGRESS","statusReference":"ready"}],"workflows":[{"name":"Project API workflow","statuses":[{"statusReference":"progress","properties":{}},{"statusReference":"ready","properties":{}}],"transitions":[{"id":"ready","name":"Ready","type":"DIRECTED","toStatusReference":"ready","links":[{"fromStatusReference":"progress"}]}]}]}`
+	projectCreatedResponse := call(actor, "POST", "/rest/api/3/workflows/create", projectCreateBody, 200)
+	var projectCreated map[string]any
+	if err := json.Unmarshal(projectCreatedResponse.Body.Bytes(), &projectCreated); err != nil {
+		t.Fatal(err)
+	}
+	projectWorkflowID := projectCreated["workflows"].([]any)[0].(map[string]any)["id"].(string)
+	if !strings.Contains(projectCreatedResponse.Body.String(), `"type":"PROJECT"`) || !strings.Contains(projectCreatedResponse.Body.String(), projectID) || !strings.Contains(projectCreatedResponse.Body.String(), `"name":"Project ready"`) {
+		t.Fatal(projectCreatedResponse.Body.String())
+	}
+	projectCapabilities := call(actor, "GET", "/rest/api/3/workflows/capabilities?workflowId="+projectWorkflowID, "", 200)
+	if !strings.Contains(projectCapabilities.Body.String(), `"editorScope":"PROJECT"`) {
+		t.Fatal(projectCapabilities.Body.String())
+	}
+	projectStatusID := ""
+	for _, value := range projectCreated["statuses"].([]any) {
+		status := value.(map[string]any)
+		if status["name"] == "Project ready" {
+			projectStatusID = status["id"].(string)
+		}
+	}
+	if projectStatusID == "" {
+		t.Fatal("project workflow response omitted its created status")
+	}
+	if err := st.AssignWorkflowToProject(ctx, ws, projectID, projectWorkflowID); err != nil {
+		t.Fatal(err)
+	}
+	call(actor, "POST", "/rest/api/3/issue/WSA-1/transitions", `{"transition":{"id":"ready"}}`, 204)
+	var transitionedStatus string
+	if err := st.Pool.QueryRow(ctx, `SELECT status_id FROM issues WHERE id=$1`, issueID).Scan(&transitionedStatus); err != nil || transitionedStatus != projectStatusID {
+		t.Fatalf("project workflow transition status=%q err=%v", transitionedStatus, err)
+	}
+	exec(`UPDATE issues SET status_id='st_inprogress' WHERE id=$1`, issueID)
+	exec(`UPDATE projects SET workflow_id='wf_default',workflow_scheme_id=NULL WHERE id=$1`, projectID)
+	if _, err := st.CreateWorkflowScheme(ctx, ws, actor, workflow.Scheme{Name: "Invalid project workflow scheme", DefaultWorkflowID: projectWorkflowID}); err == nil {
+		t.Fatal("global workflow scheme accepted a project-scoped workflow")
+	}
 	call(actor, "POST", "/rest/api/3/workflows/create", modernCreateBody, 409)
 	atomicCreateBody := `{"statuses":[{"id":"st_todo","name":"To Do","statusCategory":"TODO","statusReference":"todo"},{"id":"st_done","name":"Done","statusCategory":"DONE","statusReference":"done"},{"name":"Atomic status","statusCategory":"DONE","statusReference":"atomic"}],"workflows":[{"name":"Atomic candidate","statuses":[{"statusReference":"todo","properties":{}},{"statusReference":"atomic","properties":{}}],"transitions":[{"id":"1","name":"Complete","type":"DIRECTED","toStatusReference":"atomic","links":[{"fromStatusReference":"todo"}]}]},{"name":"Simple API lifecycle","statuses":[{"statusReference":"todo","properties":{}},{"statusReference":"done","properties":{}}],"transitions":[{"id":"1","name":"Complete","type":"DIRECTED","toStatusReference":"done","links":[{"fromStatusReference":"todo"}]}]}]}`
 	call(actor, "POST", "/rest/api/3/workflows/create", atomicCreateBody, 409)
@@ -369,7 +406,7 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 		t.Fatal(workflowPage.Body.String())
 	}
 	projectScope := call(actor, "GET", "/rest/api/3/workflows/search?scope=PROJECT", "", 200)
-	if !strings.Contains(projectScope.Body.String(), `"total":0`) {
+	if !strings.Contains(projectScope.Body.String(), projectWorkflowID) || !strings.Contains(projectScope.Body.String(), `"type":"PROJECT"`) {
 		t.Fatal(projectScope.Body.String())
 	}
 	unsafeActiveWorkflowUpdate := `{"workflows":[{"id":"` + workflowID + `","version":{"id":"` + workflowID + `","versionNumber":1},"statuses":[{"statusReference":"st_done","properties":{}}],"transitions":[{"id":"1","name":"Stay done","type":"DIRECTED","toStatusReference":"st_done","links":[{"fromStatusReference":"st_done"}]}]}]}`

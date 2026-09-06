@@ -81,7 +81,7 @@ test('project switcher keeps the shell and generic pages in the current project'
   await page.keyboard.press('Escape');
 });
 
-test('workflow directory, editor, transition changes, and project assignment work', async ({ page }) => {
+test('project workflow creation, editor, transition changes, and assignment work', async ({ page }) => {
   await login(page);
   await page.getByRole('link', { name: 'Workflows', exact: true }).click();
   await expect(page).toHaveURL('/settings/workflows');
@@ -90,9 +90,12 @@ test('workflow directory, editor, transition changes, and project assignment wor
 
   const workflowName = `Delivery ${Date.now()}`;
   await page.fill('#workflow-name', workflowName);
+  await page.selectOption('#workflow-project-scope', 'prj_default');
   await page.getByRole('button', { name: 'Create workflow' }).click();
   await expect(page).toHaveURL(/\/settings\/workflows\/workflow_/);
   await expect(page.getByRole('heading', { name: workflowName, level: 1 })).toBeVisible();
+  await expect(page.locator('.workflow-editor-header')).toContainText('Project scope');
+  await expect(page.locator('.assigned-projects')).toContainText('ZZIRA Demo');
   await expect(page.getByRole('heading', { name: 'Add transition' })).toBeVisible();
 
   const todoStatus = page.locator('.workflow-node[data-status-id="st_todo"]');
@@ -113,10 +116,6 @@ test('workflow directory, editor, transition changes, and project assignment wor
   await page.getByRole('button', { name: 'Publish workflow' }).click();
   await expect(page.getByText('Published', { exact: true })).toBeVisible();
   await expect(page.locator('.workflow-editor-header')).toContainText('Version 2');
-
-  await page.selectOption('#workflow-project', 'prj_default');
-  await page.getByRole('button', { name: 'Assign', exact: true }).click();
-  await expect(page.locator('.assigned-projects')).toContainText('ZZIRA Demo');
 
   await page.goto('/projects/ZZ');
   await expect(page.getByRole('heading', { name: 'Workflow' }).locator('xpath=..')).toContainText(workflowName);

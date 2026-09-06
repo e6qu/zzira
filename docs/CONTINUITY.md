@@ -623,9 +623,29 @@ Validation after project-scoped statuses:
   generated inventory and coverage checks, diff check, primary-page light/dark
   axe scan, and 320 px reflow gate pass.
 
+Validation after project-scoped workflows and capabilities:
+
+- Migration 051 adds optional project ownership without imposing a new unique
+  index on legacy installations that may contain repeated workflow names.
+  New global and per-project names are serialized and checked within their
+  scope, while foreign project owners are rejected.
+- Modern create and validation accept Jira GLOBAL and PROJECT scope payloads,
+  create related statuses in the same scope, preserve scope on update, and
+  return scoped workflow and status resources. Search filters GLOBAL/PROJECT
+  definitions and treats project ownership as a project association.
+- Capability lookup by workflow or project/work-item type reports the resolved
+  editor scope. Runtime workflow resolution, direct assignment, status
+  validation, preview, and deletion usage all honor the owner boundary.
+  Global workflow schemes accept only global definitions.
+- The workflow directory creates either scope. A project workflow is assigned
+  to its owner immediately, exposes global plus owner statuses in its editor,
+  and identifies its scope in both the directory and editor. The focused
+  Chromium journey creates, edits, publishes, and verifies the active project
+  workflow.
+
 ## Current change
 
-1. Add project-scoped workflows and capability catalogs.
+1. Add workflow transition screens and continue the executable rule catalog.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 

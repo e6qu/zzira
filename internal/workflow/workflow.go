@@ -63,10 +63,11 @@ type Transition struct {
 	Conditions *ConditionGroup `json:"conditions,omitempty"`
 }
 
-// Workflow is a named set of transitions over the global status registry.
+// Workflow is a named set of transitions over its visible status registry.
 type Workflow struct {
 	ID                              string         `json:"id"`
 	Name                            string         `json:"name"`
+	ProjectID                       string         `json:"-"`
 	Description                     string         `json:"description,omitempty"`
 	StartPointLayout                *Layout        `json:"startPointLayout,omitempty"`
 	LoopedTransitionContainerLayout *Layout        `json:"loopedTransitionContainerLayout,omitempty"`
