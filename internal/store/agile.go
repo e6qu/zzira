@@ -1280,9 +1280,6 @@ func (s *Store) CreateWorkflow(ctx context.Context, workspaceID string, wf workf
 }
 
 func (s *Store) validateWorkflow(ctx context.Context, workspaceID string, wf workflow.Workflow) ([]byte, error) {
-	if strings.TrimSpace(wf.ID) == "" || strings.TrimSpace(wf.Name) == "" || len(wf.Transitions) == 0 {
-		return nil, fmt.Errorf("workflow id, name, and at least one transition are required")
-	}
 	var statuses []models.Status
 	var err error
 	if workspaceID == "" {
@@ -1292,6 +1289,13 @@ func (s *Store) validateWorkflow(ctx context.Context, workspaceID string, wf wor
 	}
 	if err != nil {
 		return nil, err
+	}
+	return validateWorkflowAgainstStatuses(wf, statuses)
+}
+
+func validateWorkflowAgainstStatuses(wf workflow.Workflow, statuses []models.Status) ([]byte, error) {
+	if strings.TrimSpace(wf.ID) == "" || strings.TrimSpace(wf.Name) == "" || len(wf.Transitions) == 0 {
+		return nil, fmt.Errorf("workflow id, name, and at least one transition are required")
 	}
 	knownStatuses := make(map[string]struct{}, len(statuses))
 	for _, status := range statuses {

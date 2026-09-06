@@ -1198,7 +1198,7 @@
         "internal/store/agile.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Returns structured ERROR validation records for global workflow names, sizes, existing status references, directed transition topology, duplicate transitions, conflicts, scopes, unsupported rules, and validation-level filtering; new status creation, rules, and non-directed transitions remain."
+      "notes": "Returns structured ERROR validation records for global workflow names, sizes, existing and proposed status references, categories, directed transition topology, duplicate transitions, conflicts, scopes, unsupported rules, and validation-level filtering; rule validation, layouts, and non-directed transitions remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/workflows/update/validation",
@@ -1209,7 +1209,7 @@
         "internal/store/agile.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Returns structured validation records for workspace workflow existence, optimistic document versions, existing statuses, directed topology, and unsupported rules without mutation; mappings, new statuses, rules, and project workflows remain."
+      "notes": "Returns structured validation records for workspace workflow existence, optimistic document versions, existing and proposed global statuses, directed topology, and unsupported rules without mutation; status mappings, rules, and project workflows remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/workflows/create",
@@ -1220,7 +1220,7 @@
         "internal/store/workflow_mutations.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Atomically creates up to 20 validated global directed workflows over existing statuses with generated IDs, versions, Jira workflow/status response beans, name/ID conflict handling, rollback, and audit; status creation, rules, layouts, and project scopes remain."
+      "notes": "Atomically creates up to 20 validated global directed workflows and new global statuses with generated IDs, versions, Jira workflow/status response beans, name/ID conflict handling, rollback, and audit; rules, descriptions, layouts, and project scopes remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/workflows/update",
@@ -1231,7 +1231,7 @@
         "internal/store/workflow_mutations.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Atomically updates validated workspace workflows with optimistic document versions, rollback across batches, audit, and active issue-status safety; explicit status mappings, status creation, rules, layouts, and queued tasks remain."
+      "notes": "Atomically creates referenced global statuses and updates validated workspace workflows with optimistic versions, rollback across status/workflow batches, audit, and active issue-status safety; explicit status mappings, rules, descriptions, layouts, and queued tasks remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/workflows/preview",

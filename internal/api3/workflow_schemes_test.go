@@ -100,6 +100,15 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	if createValidation.Body.String() != "{\"errors\":[]}\n" {
 		t.Fatal(createValidation.Body.String())
 	}
+	newStatusValidationBody := `{"payload":{"statuses":[{"id":"st_todo","name":"To Do","statusCategory":"TODO","statusReference":"todo"},{"name":"Validation only","statusCategory":"DONE","statusReference":"validation_done"}],"workflows":[{"name":"Validation with status","statuses":[{"statusReference":"todo","properties":{}},{"statusReference":"validation_done","properties":{}}],"transitions":[{"id":"1","name":"Complete","type":"DIRECTED","toStatusReference":"validation_done","links":[{"fromStatusReference":"todo"}]}]}]}}`
+	newStatusValidation := call(actor, "POST", "/rest/api/3/workflows/create/validation", newStatusValidationBody, 200)
+	if newStatusValidation.Body.String() != "{\"errors\":[]}\n" {
+		t.Fatal(newStatusValidation.Body.String())
+	}
+	var validationOnlyStatuses int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM statuses WHERE workspace_id=$1 AND name='Validation only'`, ws).Scan(&validationOnlyStatuses); err != nil || validationOnlyStatuses != 0 {
+		t.Fatalf("validation-only statuses=%d err=%v", validationOnlyStatuses, err)
+	}
 	badCreateValidation := call(actor, "POST", "/rest/api/3/workflows/create/validation", `{"payload":{"workflows":[{"name":"","statuses":[],"transitions":[]}]}}`, 200)
 	if !strings.Contains(badCreateValidation.Body.String(), `"code":"WORKFLOW_NAME_INVALID"`) || !strings.Contains(badCreateValidation.Body.String(), `"level":"ERROR"`) {
 		t.Fatal(badCreateValidation.Body.String())
@@ -119,7 +128,7 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 		t.Fatal(staleValidation.Body.String())
 	}
 	call(actor, "POST", "/rest/api/3/workflows/create/validation", `{`, 400)
-	modernCreateBody := `{"scope":{"type":"GLOBAL"},"statuses":[{"id":"st_todo","name":"To Do","statusCategory":"TODO","statusReference":"todo"},{"id":"st_done","name":"Done","statusCategory":"DONE","statusReference":"done"}],"workflows":[{"name":"Modern workflow","statuses":[{"statusReference":"todo","properties":{}},{"statusReference":"done","properties":{}}],"transitions":[{"id":"1","name":"Complete","type":"DIRECTED","toStatusReference":"done","links":[{"fromStatusReference":"todo"}]}]}]}`
+	modernCreateBody := `{"scope":{"type":"GLOBAL"},"statuses":[{"id":"st_todo","name":"To Do","statusCategory":"TODO","statusReference":"todo"},{"name":"Review gate","statusCategory":"IN_PROGRESS","statusReference":"review"}],"workflows":[{"name":"Modern workflow","statuses":[{"statusReference":"todo","properties":{}},{"statusReference":"review","properties":{}}],"transitions":[{"id":"1","name":"Review","type":"DIRECTED","toStatusReference":"review","links":[{"fromStatusReference":"todo"}]}]}]}`
 	call(member, "POST", "/rest/api/3/workflows/create", modernCreateBody, 403)
 	modernCreatedResponse := call(actor, "POST", "/rest/api/3/workflows/create", modernCreateBody, 200)
 	var modernCreated map[string]any
@@ -131,24 +140,38 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	if modernWorkflows[0].(map[string]any)["version"].(map[string]any)["versionNumber"].(float64) != 1 {
 		t.Fatal(modernCreatedResponse.Body.String())
 	}
+	if !strings.Contains(modernCreatedResponse.Body.String(), `"name":"Review gate"`) || !strings.Contains(modernCreatedResponse.Body.String(), `"statusCategory":"IN_PROGRESS"`) {
+		t.Fatal(modernCreatedResponse.Body.String())
+	}
 	call(actor, "POST", "/rest/api/3/workflows/create", modernCreateBody, 409)
-	atomicCreateBody := `{"statuses":[{"id":"st_todo","name":"To Do","statusCategory":"TODO","statusReference":"todo"},{"id":"st_done","name":"Done","statusCategory":"DONE","statusReference":"done"}],"workflows":[{"name":"Atomic candidate","statuses":[{"statusReference":"todo","properties":{}},{"statusReference":"done","properties":{}}],"transitions":[{"id":"1","name":"Complete","type":"DIRECTED","toStatusReference":"done","links":[{"fromStatusReference":"todo"}]}]},{"name":"Simple API lifecycle","statuses":[{"statusReference":"todo","properties":{}},{"statusReference":"done","properties":{}}],"transitions":[{"id":"1","name":"Complete","type":"DIRECTED","toStatusReference":"done","links":[{"fromStatusReference":"todo"}]}]}]}`
+	atomicCreateBody := `{"statuses":[{"id":"st_todo","name":"To Do","statusCategory":"TODO","statusReference":"todo"},{"id":"st_done","name":"Done","statusCategory":"DONE","statusReference":"done"},{"name":"Atomic status","statusCategory":"DONE","statusReference":"atomic"}],"workflows":[{"name":"Atomic candidate","statuses":[{"statusReference":"todo","properties":{}},{"statusReference":"atomic","properties":{}}],"transitions":[{"id":"1","name":"Complete","type":"DIRECTED","toStatusReference":"atomic","links":[{"fromStatusReference":"todo"}]}]},{"name":"Simple API lifecycle","statuses":[{"statusReference":"todo","properties":{}},{"statusReference":"done","properties":{}}],"transitions":[{"id":"1","name":"Complete","type":"DIRECTED","toStatusReference":"done","links":[{"fromStatusReference":"todo"}]}]}]}`
 	call(actor, "POST", "/rest/api/3/workflows/create", atomicCreateBody, 409)
 	atomicSearch := call(actor, "GET", "/rest/api/3/workflows/search?queryString=Atomic", "", 200)
 	if !strings.Contains(atomicSearch.Body.String(), `"total":0`) {
 		t.Fatal(atomicSearch.Body.String())
 	}
-	modernUpdateBody := `{"workflows":[{"id":"` + modernWorkflowID + `","version":{"id":"` + modernWorkflowID + `","versionNumber":1},"statuses":[{"statusReference":"st_todo","properties":{}},{"statusReference":"st_done","properties":{}}],"transitions":[{"id":"1","name":"Ship","type":"DIRECTED","toStatusReference":"st_done","links":[{"fromStatusReference":"st_todo"}]}]}]}`
+	var atomicStatuses int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM statuses WHERE workspace_id=$1 AND name='Atomic status'`, ws).Scan(&atomicStatuses); err != nil || atomicStatuses != 0 {
+		t.Fatalf("atomic statuses=%d err=%v", atomicStatuses, err)
+	}
+	modernUpdateBody := `{"statuses":[{"name":"Quality assured","statusCategory":"DONE","statusReference":"qa"}],"workflows":[{"id":"` + modernWorkflowID + `","version":{"id":"` + modernWorkflowID + `","versionNumber":1},"statuses":[{"statusReference":"st_todo","properties":{}},{"statusReference":"qa","properties":{}}],"transitions":[{"id":"1","name":"Ship","type":"DIRECTED","toStatusReference":"qa","links":[{"fromStatusReference":"st_todo"}]}]}]}`
 	modernUpdatedResponse := call(actor, "POST", "/rest/api/3/workflows/update", modernUpdateBody, 200)
 	if !strings.Contains(modernUpdatedResponse.Body.String(), `"name":"Ship"`) || !strings.Contains(modernUpdatedResponse.Body.String(), `"versionNumber":2`) || !strings.Contains(modernUpdatedResponse.Body.String(), `"taskId":null`) {
 		t.Fatal(modernUpdatedResponse.Body.String())
 	}
+	if !strings.Contains(modernUpdatedResponse.Body.String(), `"name":"Quality assured"`) || !strings.Contains(modernUpdatedResponse.Body.String(), `"statusCategory":"DONE"`) {
+		t.Fatal(modernUpdatedResponse.Body.String())
+	}
 	call(actor, "POST", "/rest/api/3/workflows/update", modernUpdateBody, 409)
-	atomicUpdateBody := `{"workflows":[{"id":"` + modernWorkflowID + `","version":{"id":"` + modernWorkflowID + `","versionNumber":2},"statuses":[{"statusReference":"st_todo","properties":{}},{"statusReference":"st_done","properties":{}}],"transitions":[{"id":"1","name":"Must roll back","type":"DIRECTED","toStatusReference":"st_done","links":[{"fromStatusReference":"st_todo"}]}]},{"id":"` + workflowID + `","version":{"id":"` + workflowID + `","versionNumber":99},"statuses":[{"statusReference":"st_todo","properties":{}},{"statusReference":"st_done","properties":{}}],"transitions":[{"id":"1","name":"Stale","type":"DIRECTED","toStatusReference":"st_done","links":[{"fromStatusReference":"st_todo"}]}]}]}`
+	atomicUpdateBody := `{"statuses":[{"name":"Rolled back update status","statusCategory":"DONE","statusReference":"rollback_done"}],"workflows":[{"id":"` + modernWorkflowID + `","version":{"id":"` + modernWorkflowID + `","versionNumber":2},"statuses":[{"statusReference":"st_todo","properties":{}},{"statusReference":"rollback_done","properties":{}}],"transitions":[{"id":"1","name":"Must roll back","type":"DIRECTED","toStatusReference":"rollback_done","links":[{"fromStatusReference":"st_todo"}]}]},{"id":"` + workflowID + `","version":{"id":"` + workflowID + `","versionNumber":99},"statuses":[{"statusReference":"st_todo","properties":{}},{"statusReference":"st_done","properties":{}}],"transitions":[{"id":"1","name":"Stale","type":"DIRECTED","toStatusReference":"st_done","links":[{"fromStatusReference":"st_todo"}]}]}]}`
 	call(actor, "POST", "/rest/api/3/workflows/update", atomicUpdateBody, 409)
 	modernAfterRollback, err := st.WorkflowByID(ctx, ws, modernWorkflowID)
 	if err != nil || modernAfterRollback.Version != 2 || modernAfterRollback.Transitions[0].Name != "Ship" {
 		t.Fatalf("workflow after atomic rollback=%+v err=%v", modernAfterRollback, err)
+	}
+	var rolledBackUpdateStatuses int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM statuses WHERE workspace_id=$1 AND name='Rolled back update status'`, ws).Scan(&rolledBackUpdateStatuses); err != nil || rolledBackUpdateStatuses != 0 {
+		t.Fatalf("rolled back update statuses=%d err=%v", rolledBackUpdateStatuses, err)
 	}
 	var modernWorkflowAudits int
 	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM organization_audit_events WHERE actor_id=$1 AND target_id=$2 AND action IN ('workflow.created','workflow.updated')`, actor, modernWorkflowID).Scan(&modernWorkflowAudits); err != nil || modernWorkflowAudits != 2 {

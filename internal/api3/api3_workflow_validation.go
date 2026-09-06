@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
 	"github.com/e6qu/zzira/internal/workflow"
 )
@@ -116,29 +117,63 @@ func includeWorkflowErrors(levels []string) bool {
 	return false
 }
 
-func (h *Handler) workflowStatusReferences(r *http.Request, workspaceID string, updates []workflowStatusUpdateRequest) (map[string]string, []map[string]any, error) {
+func workflowCategory(category string) string {
+	switch category {
+	case "TODO":
+		return "new"
+	case "IN_PROGRESS":
+		return "indeterminate"
+	case "DONE":
+		return "done"
+	default:
+		return ""
+	}
+}
+
+func (h *Handler) workflowStatusReferences(r *http.Request, workspaceID string, updates []workflowStatusUpdateRequest, generateIDs bool) (map[string]string, []models.Status, []map[string]any, error) {
 	statuses, err := h.Store.StatusesForWorkspace(r.Context(), workspaceID)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	known := make(map[string]bool, len(statuses))
+	names := make(map[string]bool, len(statuses)+len(updates))
 	references := make(map[string]string, len(statuses)+len(updates))
 	for _, status := range statuses {
 		known[status.ID] = true
+		names[strings.ToLower(status.Name)] = true
 		references[status.ID] = status.ID
 	}
+	created := make([]models.Status, 0)
 	errors := make([]map[string]any, 0)
-	for _, status := range updates {
+	seenReferences := make(map[string]bool, len(updates))
+	for index, status := range updates {
 		if status.StatusReference == "" {
 			errors = append(errors, workflowValidationError("STATUS_REFERENCE_REQUIRED", "A status reference is required.", "STATUS", nil))
 			continue
 		}
-		if strings.TrimSpace(status.Name) == "" || (status.StatusCategory != "TODO" && status.StatusCategory != "IN_PROGRESS" && status.StatusCategory != "DONE") {
+		if seenReferences[status.StatusReference] {
+			errors = append(errors, workflowValidationError("STATUS_REFERENCE_CONFLICT", "Status references in the request must be unique.", "STATUS", map[string]any{"statusReference": status.StatusReference}))
+			continue
+		}
+		seenReferences[status.StatusReference] = true
+		name := strings.TrimSpace(status.Name)
+		category := workflowCategory(status.StatusCategory)
+		if name == "" || category == "" {
 			errors = append(errors, workflowValidationError("STATUS_INVALID", "A status name and valid status category are required.", "STATUS", map[string]any{"statusReference": status.StatusReference}))
 			continue
 		}
 		if status.ID == "" {
-			errors = append(errors, workflowValidationError("STATUS_CREATE_UNSUPPORTED", "This endpoint currently accepts existing status IDs only.", "STATUS", map[string]any{"statusReference": status.StatusReference}))
+			nameKey := strings.ToLower(name)
+			if names[nameKey] {
+				errors = append(errors, workflowValidationError("STATUS_NAME_CONFLICT", "A visible status already uses this name.", "STATUS", map[string]any{"statusReference": status.StatusReference}))
+				continue
+			}
+			id := fmt.Sprintf("validation-status-%d", index+1)
+			if generateIDs {
+				id = store.NewID("status")
+			}
+			created = append(created, models.Status{ID: id, Name: name, Category: category})
+			names[nameKey], known[id], references[status.StatusReference] = true, true, id
 			continue
 		}
 		if !known[status.ID] {
@@ -147,7 +182,7 @@ func (h *Handler) workflowStatusReferences(r *http.Request, workspaceID string, 
 		}
 		references[status.StatusReference] = status.ID
 	}
-	return references, errors, nil
+	return references, created, errors, nil
 }
 
 func workflowDefinitionFromRequest(id, name string, statuses []workflowStatusLayoutRequest, transitions []workflowTransitionUpdateRequest, references map[string]string) (workflow.Workflow, []map[string]any) {
@@ -236,7 +271,7 @@ func (h *Handler) workflowCreateValidation(w http.ResponseWriter, r *http.Reques
 	if len(request.Payload.Workflows) == 0 || len(request.Payload.Workflows) > 20 || len(request.Payload.Statuses) > 1000 {
 		errors = append(errors, workflowValidationError("PAYLOAD_SIZE_INVALID", "Provide between 1 and 20 workflows and no more than 1000 statuses.", "WORKFLOW", nil))
 	}
-	references, statusErrors, err := h.workflowStatusReferences(r, workspaceID, request.Payload.Statuses)
+	references, createdStatuses, statusErrors, err := h.workflowStatusReferences(r, workspaceID, request.Payload.Statuses, false)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -258,7 +293,7 @@ func (h *Handler) workflowCreateValidation(w http.ResponseWriter, r *http.Reques
 			errors = append(errors, workflowValidationError("WORKFLOW_NAME_CONFLICT", "A workflow already uses this name.", "WORKFLOW", nil))
 		}
 		names[strings.ToLower(wf.Name)] = true
-		if len(itemErrors) == 0 {
+		if len(itemErrors) == 0 && len(createdStatuses) == 0 {
 			if err := h.Store.ValidateWorkflowDefinition(r.Context(), workspaceID, wf); err != nil {
 				errors = append(errors, workflowValidationError("WORKFLOW_INVALID", err.Error(), "WORKFLOW", nil))
 			}
@@ -289,7 +324,7 @@ func (h *Handler) workflowUpdateValidation(w http.ResponseWriter, r *http.Reques
 	if len(request.Payload.Workflows) == 0 || len(request.Payload.Workflows) > 20 || len(request.Payload.Statuses) > 1000 {
 		errors = append(errors, workflowValidationError("PAYLOAD_SIZE_INVALID", "Provide between 1 and 20 workflows and no more than 1000 statuses.", "WORKFLOW", nil))
 	}
-	references, statusErrors, err := h.workflowStatusReferences(r, workspaceID, request.Payload.Statuses)
+	references, createdStatuses, statusErrors, err := h.workflowStatusReferences(r, workspaceID, request.Payload.Statuses, false)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -306,7 +341,7 @@ func (h *Handler) workflowUpdateValidation(w http.ResponseWriter, r *http.Reques
 		}
 		wf, itemErrors := workflowDefinitionFromRequest(item.ID, published.Name, item.Statuses, item.Transitions, references)
 		errors = append(errors, itemErrors...)
-		if len(itemErrors) == 0 {
+		if len(itemErrors) == 0 && len(createdStatuses) == 0 {
 			if err := h.Store.ValidateWorkflowDefinition(r.Context(), workspaceID, wf); err != nil {
 				errors = append(errors, workflowValidationError("WORKFLOW_INVALID", err.Error(), "WORKFLOW", nil))
 			}
@@ -337,6 +372,16 @@ func workflowValidationMessages(values []map[string]any) string {
 		}
 	}
 	return strings.Join(messages, " ")
+}
+
+func workflowValidationHasConflict(values []map[string]any) bool {
+	for _, value := range values {
+		code, _ := value["code"].(string)
+		if strings.HasSuffix(code, "_CONFLICT") {
+			return true
+		}
+	}
+	return false
 }
 
 func (h *Handler) workflowResponseStatuses(r *http.Request, workspaceID string, workflows []workflow.Workflow) ([]map[string]any, error) {
@@ -377,7 +422,7 @@ func (h *Handler) workflowCreate(w http.ResponseWriter, r *http.Request) {
 	if len(payload.Workflows) == 0 || len(payload.Workflows) > 20 || len(payload.Statuses) > 1000 {
 		validationErrors = append(validationErrors, workflowValidationError("PAYLOAD_SIZE_INVALID", "Provide between 1 and 20 workflows and no more than 1000 statuses.", "WORKFLOW", nil))
 	}
-	references, statusErrors, err := h.workflowStatusReferences(r, workspaceID, payload.Statuses)
+	references, createdStatuses, statusErrors, err := h.workflowStatusReferences(r, workspaceID, payload.Statuses, true)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -396,10 +441,14 @@ func (h *Handler) workflowCreate(w http.ResponseWriter, r *http.Request) {
 		definitions = append(definitions, definition)
 	}
 	if len(validationErrors) > 0 {
-		jiraError(w, http.StatusBadRequest, workflowValidationMessages(validationErrors))
+		status := http.StatusBadRequest
+		if workflowValidationHasConflict(validationErrors) {
+			status = http.StatusConflict
+		}
+		jiraError(w, status, workflowValidationMessages(validationErrors))
 		return
 	}
-	created, err := h.Store.CreateWorkflowBatch(r.Context(), workspaceID, actorID, definitions)
+	_, created, err := h.Store.CreateWorkflowBatch(r.Context(), workspaceID, actorID, createdStatuses, definitions)
 	if err != nil {
 		workflowMutationError(w, err)
 		return
@@ -431,7 +480,7 @@ func (h *Handler) workflowUpdate(w http.ResponseWriter, r *http.Request) {
 	if len(payload.Workflows) == 0 || len(payload.Workflows) > 20 || len(payload.Statuses) > 1000 {
 		validationErrors = append(validationErrors, workflowValidationError("PAYLOAD_SIZE_INVALID", "Provide between 1 and 20 workflows and no more than 1000 statuses.", "WORKFLOW", nil))
 	}
-	references, statusErrors, err := h.workflowStatusReferences(r, workspaceID, payload.Statuses)
+	references, createdStatuses, statusErrors, err := h.workflowStatusReferences(r, workspaceID, payload.Statuses, true)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -452,10 +501,14 @@ func (h *Handler) workflowUpdate(w http.ResponseWriter, r *http.Request) {
 		updates = append(updates, store.WorkflowUpdateDefinition{Workflow: definition, ExpectedVersion: item.Version.VersionNumber})
 	}
 	if len(validationErrors) > 0 {
-		jiraError(w, http.StatusBadRequest, workflowValidationMessages(validationErrors))
+		status := http.StatusBadRequest
+		if workflowValidationHasConflict(validationErrors) {
+			status = http.StatusConflict
+		}
+		jiraError(w, status, workflowValidationMessages(validationErrors))
 		return
 	}
-	updated, err := h.Store.UpdateWorkflowBatch(r.Context(), workspaceID, actorID, updates)
+	_, updated, err := h.Store.UpdateWorkflowBatch(r.Context(), workspaceID, actorID, createdStatuses, updates)
 	if err != nil {
 		workflowMutationError(w, err)
 		return
