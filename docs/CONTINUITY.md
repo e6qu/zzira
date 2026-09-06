@@ -749,9 +749,27 @@ Validation after update-field workflow post-functions:
   generated inventory and coverage checks, diff check, primary-page light/dark
   axe scan, and 320 px reflow gate pass.
 
+Validation after copy-field workflow post-functions:
+
+- `system:copy-value-from-other-field` copies system or custom values between
+  executable fields on the same issue. Configuration validation rejects
+  unknown and read-only targets and reports parent copying as unsupported until
+  issue hierarchy is available.
+- Copy actions execute in declared order with update-field actions, so later
+  copies observe earlier screen or post-function values. The copied value,
+  target status, and every other effect still produce one issue update and sync
+  record.
+- The administrator editor provides source and target controls. Unit tests
+  cover configuration and effective-value copying; PostgreSQL REST integration
+  appends a summary and then copies that result into description in the same
+  transition; the focused Chromium journey creates and publishes the rule.
+- The full PostgreSQL Go suite, vet, WebAssembly build, seven conformance tests,
+  generated inventory and coverage checks, diff check, primary-page light/dark
+  axe scan, and 320 px reflow gate pass.
+
 ## Current change
 
-1. Add executable copy-field-value workflow post-functions and visual controls.
+1. Add previous-status workflow conditions and validators backed by history.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 

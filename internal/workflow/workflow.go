@@ -17,6 +17,7 @@ const (
 	RuleValidateFieldValue      = "system:validate-field-value"
 	RuleChangeAssignee          = "system:change-assignee"
 	RuleUpdateField             = "system:update-field"
+	RuleCopyFieldValue          = "system:copy-value-from-other-field"
 	RuleTransitionScreen        = "system:transition-screen"
 )
 
@@ -247,7 +248,7 @@ func (t Transition) AssigneeEffect(context EvaluationContext) (string, bool, err
 	var assigneeID string
 	changed := false
 	for _, action := range t.Actions {
-		if action.RuleKey == RuleUpdateField {
+		if action.RuleKey == RuleUpdateField || action.RuleKey == RuleCopyFieldValue {
 			continue
 		}
 		if action.RuleKey != RuleChangeAssignee {
@@ -268,9 +269,10 @@ func (t Transition) AssigneeEffect(context EvaluationContext) (string, bool, err
 }
 
 type FieldUpdateEffect struct {
-	Field string
-	Value string
-	Mode  string
+	Field       string
+	SourceField string
+	Value       string
+	Mode        string
 }
 
 // FieldUpdateEffects returns configured update-field post-functions in their
@@ -294,11 +296,28 @@ func (t Transition) FieldUpdateEffects() ([]FieldUpdateEffect, error) {
 				return nil, fmt.Errorf("update-field target %q cannot be appended", field)
 			}
 			effects = append(effects, FieldUpdateEffect{Field: field, Value: action.Parameters["value"], Mode: mode})
+		case RuleCopyFieldValue:
+			source, target := action.Parameters["sourceFieldKey"], action.Parameters["targetFieldKey"]
+			if !readableWorkflowField(source) || !executableUpdateField(target) {
+				return nil, fmt.Errorf("unsupported copy-field source %q or target %q", source, target)
+			}
+			if issueSource := action.Parameters["issueSource"]; issueSource != "" && issueSource != "SAME" {
+				return nil, fmt.Errorf("unsupported copy-field issue source %q", issueSource)
+			}
+			effects = append(effects, FieldUpdateEffect{Field: target, SourceField: source, Mode: "replace"})
 		default:
 			return nil, fmt.Errorf("unsupported workflow post-function %q", action.RuleKey)
 		}
 	}
 	return effects, nil
+}
+
+func readableWorkflowField(field string) bool {
+	switch field {
+	case "summary", "description", "labels", "assignee", "reporter", "priority", "status":
+		return true
+	}
+	return executableUpdateField(field)
 }
 
 func executableUpdateField(field string) bool {
@@ -383,6 +402,14 @@ func ValidateTransitionRules(transition Transition) error {
 				return fmt.Errorf("update-field mode %q is unsupported", mode)
 			} else if mode == "append" && field == "priority" {
 				return fmt.Errorf("update-field target %q cannot be appended", field)
+			}
+		case RuleCopyFieldValue:
+			source, target := action.Parameters["sourceFieldKey"], action.Parameters["targetFieldKey"]
+			if !readableWorkflowField(source) || !executableUpdateField(target) {
+				return fmt.Errorf("copy-field source %q or target %q is not executable", source, target)
+			}
+			if issueSource := action.Parameters["issueSource"]; issueSource != "" && issueSource != "SAME" {
+				return fmt.Errorf("copy-field issue source %q is unsupported", issueSource)
 			}
 		default:
 			return fmt.Errorf("workflow post-function %q is unsupported", action.RuleKey)

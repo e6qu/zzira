@@ -114,6 +114,12 @@ func TestApplyWorkflowFieldUpdateSupportsCustomText(t *testing.T) {
 	if update.Summary == nil || *update.Summary != "Ready complete" {
 		t.Fatalf("summary = %v", update.Summary)
 	}
+	if err := applyWorkflowFieldCopy(issue, &update, "summary", "description"); err != nil {
+		t.Fatal(err)
+	}
+	if got := adf.PlainText(update.Description); got != "Ready complete" {
+		t.Fatalf("copied description = %q", got)
+	}
 }
 
 func TestUpdateTransitionCommentChangelogPipeline(t *testing.T) {

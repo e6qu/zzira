@@ -360,7 +360,13 @@ func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, worksp
 		return nil, nil, err
 	}
 	for _, effect := range fieldEffects {
-		if err := applyWorkflowFieldUpdate(issue, &update, effect); err != nil {
+		var err error
+		if effect.SourceField != "" {
+			err = applyWorkflowFieldCopy(issue, &update, effect.SourceField, effect.Field)
+		} else {
+			err = applyWorkflowFieldUpdate(issue, &update, effect)
+		}
+		if err != nil {
 			return nil, nil, err
 		}
 	}
@@ -376,6 +382,98 @@ func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, worksp
 		return nil, nil, err
 	}
 	return s.Store.UpdateIssue(ctx, actorID, workspaceID, issue.ID, update)
+}
+
+func workflowFieldRaw(issue *models.Issue, update *store.IssueUpdate, field string) json.RawMessage {
+	encode := func(value any) json.RawMessage {
+		encoded, _ := json.Marshal(value)
+		return encoded
+	}
+	switch field {
+	case "summary":
+		if update.Summary != nil {
+			return encode(*update.Summary)
+		}
+		return encode(issue.Summary)
+	case "description":
+		if update.Description != nil {
+			return encode(adf.PlainText(update.Description))
+		}
+		return encode(adf.PlainText(issue.Description))
+	case "labels":
+		if update.Labels != nil {
+			return encode(*update.Labels)
+		}
+		return encode(issue.Labels)
+	case "assignee":
+		if update.AssigneeID != nil {
+			return encode(*update.AssigneeID)
+		}
+		if issue.Assignee != nil {
+			return encode(issue.Assignee.ID)
+		}
+	case "reporter":
+		if issue.Reporter != nil {
+			return encode(issue.Reporter.ID)
+		}
+	case "priority":
+		if update.PriorityID != nil {
+			return encode(*update.PriorityID)
+		}
+		if issue.Priority != nil {
+			return encode(issue.Priority.ID)
+		}
+	case "status":
+		return encode(issue.Status.ID)
+	default:
+		if update.Fields != nil {
+			if value, exists := update.Fields[field]; exists {
+				return value
+			}
+		}
+		return issue.Fields[field]
+	}
+	return json.RawMessage("null")
+}
+
+func applyWorkflowFieldCopy(issue *models.Issue, update *store.IssueUpdate, source, target string) error {
+	raw := workflowFieldRaw(issue, update, source)
+	if target == "labels" {
+		var labels []string
+		if json.Unmarshal(raw, &labels) != nil {
+			var value string
+			if json.Unmarshal(raw, &value) != nil {
+				return fmt.Errorf("workflow field %q cannot be copied to labels", source)
+			}
+			labels = strings.Split(value, ",")
+		}
+		normalized, err := normalizeLabels(labels)
+		if err != nil {
+			return fmt.Errorf("workflow field copy: %w", err)
+		}
+		update.Labels = &normalized
+		return nil
+	}
+	if target == "summary" || target == "description" || target == "priority" {
+		var value string
+		if json.Unmarshal(raw, &value) != nil {
+			return fmt.Errorf("workflow field %q cannot be copied to %s", source, target)
+		}
+		switch target {
+		case "summary":
+			update.Summary = &value
+		case "description":
+			update.Description = adf.ParagraphDoc(value)
+		case "priority":
+			update.PriorityID = &value
+		}
+		return nil
+	}
+	if update.Fields == nil {
+		update.Fields = make(map[string]json.RawMessage)
+	}
+	update.Fields[target] = append(json.RawMessage(nil), raw...)
+	return nil
 }
 
 func applyWorkflowFieldUpdate(issue *models.Issue, update *store.IssueUpdate, effect workflow.FieldUpdateEffect) error {

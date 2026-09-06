@@ -40,6 +40,11 @@ func workflowCapabilitiesResponse(editorScope string) map[string]any {
 				"ruleKey": "system:update-field", "ruleType": "Function",
 			},
 			{
+				"description": "Copy a supported field value to another field on the same issue.", "incompatibleRuleKeys": []string{},
+				"isAvailableForInitialTransition": true, "isVisible": true, "name": "Copy field value",
+				"ruleKey": "system:copy-value-from-other-field", "ruleType": "Function",
+			},
+			{
 				"description": "Collect selected work item fields while a transition runs.", "incompatibleRuleKeys": []string{},
 				"isAvailableForInitialTransition": false, "isVisible": true, "name": "Transition screen",
 				"ruleKey": "system:transition-screen", "ruleType": "Screen",
