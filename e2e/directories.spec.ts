@@ -129,9 +129,13 @@ test('project workflow creation, editor, transition changes, and assignment work
   await page.selectOption('#transition-condition-comparator', '=');
   await page.selectOption('#transition-condition-type', 'STRING');
   await page.fill('#transition-condition-value', 'Emergency reopen');
+  await page.selectOption('#transition-previous-condition', 'st_done');
+  await page.getByLabel('Most recent only').first().check();
+  await page.selectOption('#transition-previous-validator', 'st_done');
+  await page.locator('fieldset').filter({ hasText: 'Status-history validator options' }).getByLabel('Most recent only').check();
   await page.getByRole('button', { name: 'Add transition' }).click();
   await expect(page.getByText('Integration reopen', { exact: true })).toBeVisible();
-  await expect(page.getByText('to To Do · condition', { exact: true })).toBeVisible();
+  await expect(page.getByText('to To Do · condition, validator', { exact: true })).toBeVisible();
   await expect(page.getByText('Draft changes', { exact: true })).toBeVisible();
   await expect(page.getByText('Draft changes are not active')).toBeVisible();
   await page.getByRole('button', { name: 'Publish workflow' }).click();

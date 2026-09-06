@@ -419,7 +419,12 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 		return nil, err
 	}
 	var transitions []models.WorkflowTransition
-	for _, t := range wf.AvailableFor(issue.Status.ID, workflow.ContextForIssue(user.ID, issue)) {
+	evaluation := workflow.ContextForIssue(user.ID, issue)
+	evaluation.StatusHistory, err = h.Store.IssueStatusHistory(r.Context(), wsID, issue.ID)
+	if err != nil {
+		return nil, err
+	}
+	for _, t := range wf.AvailableFor(issue.Status.ID, evaluation) {
 		transitions = append(transitions, models.WorkflowTransition{ID: t.ID, Name: t.Name, ScreenFields: t.ScreenFields()})
 	}
 	editView, err := h.buildEditDialogView(r.Context(), wsID, issue)

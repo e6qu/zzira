@@ -113,6 +113,49 @@ func TestCheckFieldValueConfigurationValidation(t *testing.T) {
 	}
 }
 
+func TestPreviousStatusRulesUseOrderedHistory(t *testing.T) {
+	context := EvaluationContext{StatusHistory: []string{"st_todo", "st_inprogress"}, CurrentStatus: "st_done"}
+	condition := Transition{Conditions: &ConditionGroup{Operation: "ALL", Conditions: []Rule{{
+		RuleKey: RulePreviousStatusCondition, Parameters: map[string]string{"previousStatusIds": "st_inprogress", "mostRecentStatusOnly": "true"},
+	}}}}
+	if !condition.ConditionsAllow(context) {
+		t.Fatal("most recent previous status did not match")
+	}
+	condition.Conditions.Conditions[0].Parameters["not"] = "true"
+	if condition.ConditionsAllow(context) {
+		t.Fatal("negated previous status condition matched")
+	}
+	condition.Conditions.Conditions[0].Parameters = map[string]string{"previousStatusIds": "st_done", "mostRecentStatusOnly": "true", "includeCurrentStatus": "true"}
+	if !condition.ConditionsAllow(context) {
+		t.Fatal("current status was not included")
+	}
+	validator := Transition{Validators: []Rule{{RuleKey: RulePreviousStatusValidator, Parameters: map[string]string{"previousStatusIds": "st_todo"}}}}
+	if err := validator.ValidateRules(context); err != nil {
+		t.Fatal(err)
+	}
+	validator.Validators[0].Parameters["previousStatusIds"] = "st_missing"
+	if err := validator.ValidateRules(context); err == nil {
+		t.Fatal("missing previous status passed validation")
+	}
+}
+
+func TestPreviousStatusConfigurationValidation(t *testing.T) {
+	condition := Transition{Conditions: &ConditionGroup{Operation: "ALL", Conditions: []Rule{{ID: "history", RuleKey: RulePreviousStatusCondition, Parameters: map[string]string{
+		"previousStatusIds": "st_todo", "mostRecentStatusOnly": "false", "includeCurrentStatus": "false", "not": "false", "ignoreLoopTransitions": "true",
+	}}}}}
+	if err := ValidateTransitionRules(condition); err != nil {
+		t.Fatal(err)
+	}
+	condition.Conditions.Conditions[0].Parameters["mostRecentStatusOnly"] = "sometimes"
+	if err := ValidateTransitionRules(condition); err == nil {
+		t.Fatal("invalid previous-status boolean was accepted")
+	}
+	validator := Transition{Validators: []Rule{{ID: "history-validator", RuleKey: RulePreviousStatusValidator, Parameters: map[string]string{"previousStatusIds": "st_todo,st_done"}}}}
+	if err := ValidateTransitionRules(validator); err == nil {
+		t.Fatal("multiple previous status ids were accepted")
+	}
+}
+
 func TestRequiredFieldValidatorUsesConfiguredMessage(t *testing.T) {
 	transition := Transition{Validators: []Rule{{RuleKey: RuleValidateFieldValue, Parameters: map[string]string{
 		"ruleType": "fieldRequired", "fieldsRequired": "assignee,customfield_10001", "errorMessage": "Complete ownership and review notes",

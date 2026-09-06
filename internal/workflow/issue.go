@@ -31,6 +31,7 @@ func ContextForIssue(actorID string, issue *models.Issue) EvaluationContext {
 	context.FieldPresent["reporter"] = issue.Reporter != nil
 	context.FieldPresent["priority"] = issue.Priority != nil
 	context.FieldPresent["labels"] = len(issue.Labels) > 0
+	context.CurrentStatus = issue.Status.ID
 	setFieldString(context.FieldValues, "summary", issue.Summary)
 	setFieldString(context.FieldValues, "description", adf.PlainText(issue.Description))
 	setFieldString(context.FieldValues, "status", issue.Status.ID)

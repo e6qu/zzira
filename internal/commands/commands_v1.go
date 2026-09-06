@@ -289,6 +289,10 @@ func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, worksp
 	}
 	context := workflow.ContextForIssue(actorID, issue)
 	context.IsAPI = isAPI
+	context.StatusHistory, err = s.Store.IssueStatusHistory(ctx, workspaceID, issue.ID)
+	if err != nil {
+		return nil, nil, err
+	}
 	if !t.ConditionsAllow(context) {
 		return nil, nil, fmt.Errorf("transition %q is not available to this user", transitionID)
 	}

@@ -860,14 +860,29 @@ func (h *Handler) AddWorkflowTransition(w http.ResponseWriter, r *http.Request, 
 			},
 		})
 	}
+	if statusID := r.PostFormValue("previous_status_condition"); statusID != "" {
+		conditions = append(conditions, workflow.Rule{
+			ID: store.NewID("rule"), RuleKey: workflow.RulePreviousStatusCondition, Parameters: map[string]string{
+				"previousStatusIds": statusID, "mostRecentStatusOnly": formBool(r, "previous_status_recent"),
+				"includeCurrentStatus": formBool(r, "previous_status_current"), "not": formBool(r, "previous_status_not"), "ignoreLoopTransitions": "true",
+			},
+		})
+	}
 	if len(conditions) > 0 {
 		transition.Conditions = &workflow.ConditionGroup{Operation: "ALL", Conditions: conditions}
 	}
 	if fields := r.PostForm["required_field"]; len(fields) > 0 {
-		transition.Validators = []workflow.Rule{{
+		transition.Validators = append(transition.Validators, workflow.Rule{
 			ID: store.NewID("rule"), RuleKey: workflow.RuleValidateFieldValue,
 			Parameters: map[string]string{"ruleType": "fieldRequired", "fieldsRequired": strings.Join(fields, ","), "errorMessage": "Complete the required transition fields."},
-		}}
+		})
+	}
+	if statusID := r.PostFormValue("previous_status_validator"); statusID != "" {
+		transition.Validators = append(transition.Validators, workflow.Rule{
+			ID: store.NewID("rule"), RuleKey: workflow.RulePreviousStatusValidator, Parameters: map[string]string{
+				"previousStatusIds": statusID, "mostRecentStatusOnly": formBool(r, "previous_validator_recent"),
+			},
+		})
 	}
 	if effect := r.PostFormValue("assignee_effect"); effect != "" {
 		transition.Actions = append(transition.Actions, workflow.Rule{
@@ -894,6 +909,13 @@ func (h *Handler) AddWorkflowTransition(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	http.Redirect(w, r, "/settings/workflows/"+workflowID, http.StatusSeeOther)
+}
+
+func formBool(r *http.Request, name string) string {
+	if r.PostFormValue(name) != "" {
+		return "true"
+	}
+	return "false"
 }
 
 func (h *Handler) DeleteWorkflowTransition(w http.ResponseWriter, r *http.Request, workflowID, transitionID string) {

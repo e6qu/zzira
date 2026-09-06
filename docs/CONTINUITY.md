@@ -767,9 +767,27 @@ Validation after copy-field workflow post-functions:
   generated inventory and coverage checks, diff check, primary-page light/dark
   axe scan, and 320 px reflow gate pass.
 
+Validation after previous-status conditions and validators:
+
+- The immutable issue action log now supplies ordered prior statuses to the
+  shared workflow context for REST discovery, browser rendering, automation,
+  and transition execution. Only real status changes enter history.
+- `system:previous-status-condition` supports Jira's single status, most-recent,
+  include-current, and negated modes; `system:previous-status-validator`
+  enforces any or most-recent history. Strict boolean and status-count
+  validation prevents inert configurations.
+- The administrator editor provides status selectors and history options. Unit
+  tests cover ordered, recent, current, negated, invalid, and validator paths;
+  PostgreSQL REST integration creates and verifies real status history before
+  executing a governed transition; the focused Chromium journey creates and
+  publishes both visual rule types.
+- The full PostgreSQL Go suite, vet, WebAssembly build, seven conformance tests,
+  generated inventory and coverage checks, diff check, primary-page light/dark
+  axe scan, and 320 px reflow gate pass.
+
 ## Current change
 
-1. Add previous-status workflow conditions and validators backed by history.
+1. Add separation-of-duties workflow conditions backed by transition actors.
 2. Continue the reviewed Jira Platform contract operation ledger alongside the
    vertical workflow slices.
 

@@ -15,6 +15,11 @@ func workflowCapabilitiesResponse(editorScope string) map[string]any {
 				"ruleKey": "system:check-field-value", "ruleType": "Condition",
 			},
 			{
+				"description": "Allow a transition based on the issue's previous status history.", "incompatibleRuleKeys": []string{},
+				"isAvailableForInitialTransition": false, "isVisible": true, "name": "Previous status condition",
+				"ruleKey": "system:previous-status-condition", "ruleType": "Condition",
+			},
+			{
 				"description": "Prevent people from running a transition, with an option to block API calls too.", "incompatibleRuleKeys": []string{},
 				"isAvailableForInitialTransition": false, "isVisible": true, "name": "Restrict transitions",
 				"ruleKey": "system:restrict-from-all-users", "ruleType": "Condition",
@@ -28,6 +33,11 @@ func workflowCapabilitiesResponse(editorScope string) map[string]any {
 				"description": "Require a field to have a value before an issue can transition.", "incompatibleRuleKeys": []string{},
 				"isAvailableForInitialTransition": false, "isVisible": true, "name": "Validate a field value",
 				"ruleKey": "system:validate-field-value", "ruleType": "Validator",
+			},
+			{
+				"description": "Require the issue to have passed through a configured status.", "incompatibleRuleKeys": []string{},
+				"isAvailableForInitialTransition": false, "isVisible": true, "name": "Previous status validator",
+				"ruleKey": "system:previous-status-validator", "ruleType": "Validator",
 			},
 			{
 				"description": "Automatically assign an issue after moving it using a transition.", "incompatibleRuleKeys": []string{},

@@ -14,6 +14,8 @@ const (
 	RuleRestrictIssueTransition = "system:restrict-issue-transition"
 	RuleRestrictFromAllUsers    = "system:restrict-from-all-users"
 	RuleCheckFieldValue         = "system:check-field-value"
+	RulePreviousStatusCondition = "system:previous-status-condition"
+	RulePreviousStatusValidator = "system:previous-status-validator"
 	RuleValidateFieldValue      = "system:validate-field-value"
 	RuleChangeAssignee          = "system:change-assignee"
 	RuleUpdateField             = "system:update-field"
@@ -38,12 +40,14 @@ type ConditionGroup struct {
 
 // EvaluationContext contains the issue and actor facts workflow rules may use.
 type EvaluationContext struct {
-	ActorID      string
-	AssigneeID   string
-	ReporterID   string
-	FieldPresent map[string]bool
-	FieldValues  map[string]json.RawMessage
-	IsAPI        bool
+	ActorID       string
+	AssigneeID    string
+	ReporterID    string
+	FieldPresent  map[string]bool
+	FieldValues   map[string]json.RawMessage
+	StatusHistory []string
+	CurrentStatus string
+	IsAPI         bool
 }
 
 // Layout is a workflow designer coordinate in CSS pixels. Jira Cloud exposes
@@ -199,6 +203,12 @@ func evaluateCondition(rule Rule, context EvaluationContext) bool {
 	switch rule.RuleKey {
 	case RuleCheckFieldValue:
 		return checkFieldValue(rule.Parameters, context)
+	case RulePreviousStatusCondition:
+		matched := previousStatusMatches(rule.Parameters, context)
+		if rule.Parameters["not"] == "true" {
+			return !matched
+		}
+		return matched
 	case RuleRestrictFromAllUsers:
 		return rule.Parameters["restrictMode"] == "users" && context.IsAPI
 	case RuleRestrictIssueTransition:
@@ -227,20 +237,52 @@ func evaluateCondition(rule Rule, context EvaluationContext) bool {
 // ValidateRules evaluates validators after a transition is selected.
 func (t Transition) ValidateRules(context EvaluationContext) error {
 	for _, validator := range t.Validators {
-		if validator.RuleKey != RuleValidateFieldValue || validator.Parameters["ruleType"] != "fieldRequired" {
-			return fmt.Errorf("unsupported workflow validator %q", validator.RuleKey)
-		}
-		for _, field := range commaValues(validator.Parameters["fieldsRequired"]) {
-			if !context.FieldPresent[field] {
-				message := strings.TrimSpace(validator.Parameters["errorMessage"])
-				if message == "" {
-					message = fmt.Sprintf("%s is required", field)
-				}
-				return fmt.Errorf("%s", message)
+		switch validator.RuleKey {
+		case RuleValidateFieldValue:
+			if validator.Parameters["ruleType"] != "fieldRequired" {
+				return fmt.Errorf("unsupported workflow validator %q", validator.RuleKey)
 			}
+			for _, field := range commaValues(validator.Parameters["fieldsRequired"]) {
+				if !context.FieldPresent[field] {
+					message := strings.TrimSpace(validator.Parameters["errorMessage"])
+					if message == "" {
+						message = fmt.Sprintf("%s is required", field)
+					}
+					return fmt.Errorf("%s", message)
+				}
+			}
+		case RulePreviousStatusValidator:
+			if !previousStatusMatches(validator.Parameters, context) {
+				return fmt.Errorf("issue has not passed through the required status")
+			}
+		default:
+			return fmt.Errorf("unsupported workflow validator %q", validator.RuleKey)
 		}
 	}
 	return nil
+}
+
+func previousStatusMatches(parameters map[string]string, context EvaluationContext) bool {
+	wanted := make(map[string]bool)
+	for _, statusID := range commaValues(parameters["previousStatusIds"]) {
+		wanted[statusID] = true
+	}
+	history := append([]string(nil), context.StatusHistory...)
+	if parameters["includeCurrentStatus"] == "true" && context.CurrentStatus != "" {
+		history = append(history, context.CurrentStatus)
+	}
+	if len(history) == 0 {
+		return false
+	}
+	if parameters["mostRecentStatusOnly"] == "true" {
+		return wanted[history[len(history)-1]]
+	}
+	for _, statusID := range history {
+		if wanted[statusID] {
+			return true
+		}
+	}
+	return false
 }
 
 // AssigneeEffect returns the final assignee change produced by post-functions.
@@ -374,7 +416,16 @@ func ValidateTransitionRules(transition Transition) error {
 		if err := validateRuleID(validator); err != nil {
 			return err
 		}
-		if validator.RuleKey != RuleValidateFieldValue || validator.Parameters["ruleType"] != "fieldRequired" || len(commaValues(validator.Parameters["fieldsRequired"])) == 0 {
+		switch validator.RuleKey {
+		case RuleValidateFieldValue:
+			if validator.Parameters["ruleType"] != "fieldRequired" || len(commaValues(validator.Parameters["fieldsRequired"])) == 0 {
+				return fmt.Errorf("workflow validator %q is unsupported or incomplete", validator.RuleKey)
+			}
+		case RulePreviousStatusValidator:
+			if err := validatePreviousStatusRule(validator.Parameters, false); err != nil {
+				return err
+			}
+		default:
 			return fmt.Errorf("workflow validator %q is unsupported or incomplete", validator.RuleKey)
 		}
 	}
@@ -488,6 +539,10 @@ func validateConditionConfiguration(group ConditionGroup, seen map[string]bool) 
 			default:
 				return fmt.Errorf("check-field-value comparison type %q is unsupported", condition.Parameters["comparisonType"])
 			}
+		case RulePreviousStatusCondition:
+			if err := validatePreviousStatusRule(condition.Parameters, true); err != nil {
+				return err
+			}
 		default:
 			return fmt.Errorf("workflow condition %q is unsupported or incomplete", condition.RuleKey)
 		}
@@ -495,6 +550,22 @@ func validateConditionConfiguration(group ConditionGroup, seen map[string]bool) 
 	for _, child := range group.ConditionGroups {
 		if err := validateConditionConfiguration(child, seen); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+func validatePreviousStatusRule(parameters map[string]string, condition bool) error {
+	if len(commaValues(parameters["previousStatusIds"])) != 1 {
+		return fmt.Errorf("previous-status rule requires exactly one status id")
+	}
+	booleanParameters := []string{"mostRecentStatusOnly"}
+	if condition {
+		booleanParameters = append(booleanParameters, "not", "includeCurrentStatus", "ignoreLoopTransitions")
+	}
+	for _, parameter := range booleanParameters {
+		if value := parameters[parameter]; value != "" && value != "true" && value != "false" {
+			return fmt.Errorf("previous-status parameter %q must be true or false", parameter)
 		}
 	}
 	return nil
