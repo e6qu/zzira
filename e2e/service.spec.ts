@@ -249,4 +249,14 @@ test('admin creates a service project with Jira Service Management request types
   await expect(page.locator('#feedback')).toContainText('4 out of 5');
   await expect(page.locator('#feedback')).toContainText('Clear updates and a fast resolution.');
   await accessible(page);
+  await page.goto(`/service/agent/${desk.id}/reports`);
+  await expect(page.getByRole('heading', { name: 'Service reports', level: 1 })).toBeVisible();
+  await expect(page.locator('.service-report-metrics article').filter({ hasText: 'Total requests' })).toContainText('2');
+  await expect(page.getByText('4.0 / 5')).toBeVisible();
+  await expect(page.getByRole('img', { name: 'Daily request volume for the selected 30 day period' })).toBeVisible();
+  await page.getByRole('link', { name: '7 days' }).click();
+  await expect(page.getByRole('link', { name: '7 days' })).toHaveAttribute('aria-current', 'page');
+  await accessible(page);
+  await page.setViewportSize({ width: 320, height: 740 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });

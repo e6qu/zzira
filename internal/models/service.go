@@ -131,3 +131,16 @@ type ServiceSLA struct {
 	CompletedCycles []ServiceSLACycle
 	OngoingCycle    *ServiceSLACycle
 }
+
+type ServiceReportDay struct {
+	Day   string
+	Count int
+}
+
+type ServiceReport struct {
+	WindowDays                                    int
+	TotalRequests, OpenRequests, ResolvedRequests int
+	BreachedRequests, SatisfactionResponses       int
+	AverageSatisfaction                           float64
+	Daily                                         []ServiceReportDay
+}

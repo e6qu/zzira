@@ -38,6 +38,11 @@ type serviceCalendarHolidayView struct {
 	Day, Name string
 }
 
+type serviceReportDayView struct {
+	Day          string
+	Count, Width int
+}
+
 type servicePageData struct {
 	Desks                 []models.ServiceDesk
 	Desk                  *models.ServiceDesk
@@ -56,6 +61,8 @@ type servicePageData struct {
 	Agents                map[string]bool
 	Calendar              *models.ServiceCalendar
 	CalendarHolidays      []serviceCalendarHolidayView
+	Report                *models.ServiceReport
+	ReportDays            []serviceReportDayView
 	SLAMetrics            []models.ServiceSLAMetric
 	SLAs                  []models.ServiceSLA
 	Customers             []*models.User
@@ -256,6 +263,42 @@ func (h *Handler) ServiceAgent(w http.ResponseWriter, r *http.Request) {
 		preferredProject = data.Desk.ProjectID
 	}
 	h.writeWorkspacePage(w, r, "page_service_agent", user, workspaceID, data, "service-agent", preferredProject)
+}
+
+func (h *Handler) ServiceReports(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	deskID := r.PathValue("desk")
+	allowed, err := h.Store.IsServiceAgent(r.Context(), workspaceID, deskID, user.ID)
+	if err != nil || !allowed {
+		http.Error(w, "Service agent access is required.", http.StatusForbidden)
+		return
+	}
+	desk, err := h.Store.ServiceDesk(r.Context(), workspaceID, deskID)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	days := 30
+	if requested, parseErr := strconv.Atoi(r.URL.Query().Get("days")); parseErr == nil && (requested == 7 || requested == 30 || requested == 90) {
+		days = requested
+	}
+	report, err := h.Store.ServiceReport(r.Context(), workspaceID, deskID, days, time.Now().UTC())
+	if err != nil {
+		http.Error(w, "Could not load service reports.", http.StatusInternalServerError)
+		return
+	}
+	maximum := 1
+	for _, day := range report.Daily {
+		maximum = max(maximum, day.Count)
+	}
+	views := make([]serviceReportDayView, 0, len(report.Daily))
+	for _, day := range report.Daily {
+		views = append(views, serviceReportDayView{Day: day.Day, Count: day.Count, Width: day.Count * 100 / maximum})
+	}
+	h.writeWorkspacePage(w, r, "page_service_reports", user, workspaceID, servicePageData{Desk: desk, Report: report, ReportDays: views, CanAgent: true}, "service", desk.ProjectID)
 }
 
 func (h *Handler) ServiceAgentAssign(w http.ResponseWriter, r *http.Request) {

@@ -30,3 +30,12 @@ periods, targets, exports, subscriptions and scheduled delivery remain.
 Additional Jira and Agile reports—sprint, velocity, burndown, burnup,
 cumulative flow, control chart, created versus resolved and resolution
 time—remain on the active plan.
+
+Service managers and agents can open `/service/agent/{desk}/reports` for a
+permission-scoped 7, 30, or 90 day service overview. It reports request volume,
+current open and resolved counts, requests with any breached SLA cycle, CSAT
+average and response count, and an exact daily intake series. The daily chart
+has an accessible text alternative and keyboard-reachable data table. SLA
+breaches are calculated with the same desk calendar and holidays used on the
+customer request and attention queue. Request-type, organization, channel and
+priority segments, comparison periods, exports and scheduled delivery remain.

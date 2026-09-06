@@ -113,6 +113,11 @@ workspace. Changes are scoped to the selected service desk and audited. SLA
 calculation, queue urgency, customer-visible goal state, and the escalation
 worker all read those persisted exclusions.
 
+Agents and managers can open a desk report with 7, 30, or 90 day windows. It
+combines daily request intake, current open/resolved load, breached request
+counts, and CSAT averages from canonical service records. An accessible bar
+chart and its exact table expose the daily series.
+
 The request page shows on-track, paused, breached and completed goal state.
 Elapsed and breach time skip non-working days and persisted holidays and honor
 time-zone transitions. The two Jira SLA REST operations are agent-only and
@@ -166,7 +171,7 @@ documented ZZIRA search subset; conditional form logic, select, user, and
 Assets-backed portal fields, participant notifications,
 approval workflow configuration, image thumbnail generation,
 email delivery and notification preference administration, CSAT configuration
-and aggregate service reports, complete Assets object/schema/import APIs, full
+and advanced segmented service reports, complete Assets object/schema/import APIs, full
 status chronology, conditional SLA goal criteria,
 portal invitation email delivery, Atlassian knowledge ranking/analytics, and
 incident/problem/change configuration remain. Customer creation grants only the

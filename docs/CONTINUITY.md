@@ -1294,11 +1294,23 @@ Validation after service calendar holiday administration:
   audit records. The combined Chromium service journey passes holiday
   add/delete, WCAG scans and 320 px reflow.
 
+Validation after the initial service report workspace:
+
+- `/service/agent/{desk}/reports` gives service agents and managers selectable
+  7, 30, and 90 day summaries of request intake, current open/resolved load,
+  requests with breached SLA cycles, and CSAT average/response count.
+- The daily intake chart has a descriptive image role and an exact,
+  keyboard-reachable table. SLA breaches use the existing calendar-aware cycle
+  calculation, including manager-configured holidays.
+- PostgreSQL coverage proves aggregation, allowed windows and CSAT inclusion.
+  The Chromium manager journey verifies values, window selection, WCAG scans
+  and 320 px reflow.
+
 ## Current change
 
 1. Complete Jira Service Management journeys beyond the pinned contract:
    conditional SLA goals,
-   incident/problem/change linkage and service reports.
+   incident/problem/change linkage and advanced service report segmentation.
 2. Continue into the Confluence v1/v2 contract and knowledge collaboration
    workstreams after the remaining service journeys are browser-proven.
 
