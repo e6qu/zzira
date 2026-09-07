@@ -1753,6 +1753,21 @@ Validation after Confluence page governance:
 - Exact reviewed API coverage is 393 of 1,207 operations: 386 partial, 7
   missing, and 814 unassessed. Confluence coverage is 179 of 348 reviewed.
 
+Validation after Confluence page properties:
+
+- Migration 093 adds uniquely keyed page JSON properties with immutable
+  property-version history.
+- Five pinned v2 operations cover permission-scoped list/filter/sort, create,
+  exact read, optimistic update and delete. Mutations require page edit access,
+  commit their sync record atomically and preserve private-space and page
+  restriction filtering.
+- The page UI lists app properties and lets editors create, update and delete
+  them with explicit JSON and version feedback. PostgreSQL integration covers
+  duplicate keys, stale writes, CRUD and private-page action isolation; the
+  Chromium wiki journey covers creation and versioned update.
+- Exact reviewed API coverage is 398 of 1,207 operations: 391 partial, 7
+  missing, and 809 unassessed. Confluence coverage is 184 of 348 reviewed.
+
 ## Current change
 
 1. Resume the other Confluence content and administration operations.

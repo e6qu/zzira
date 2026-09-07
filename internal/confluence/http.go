@@ -68,6 +68,8 @@ func writeError(w http.ResponseWriter, err error) {
 		failure(w, 400, "A content property with this key already exists.")
 	case errors.As(err, &pgerr) && pgerr.Code == "23505" && pgerr.ConstraintName == "wiki_blog_post_properties_blog_post_id_key_key":
 		failure(w, 400, "A blog post property with this key already exists.")
+	case errors.As(err, &pgerr) && pgerr.Code == "23505" && pgerr.ConstraintName == "wiki_page_properties_page_id_key_key":
+		failure(w, 400, "A page property with this key already exists.")
 	case errors.As(err, &pgerr) && pgerr.Code == "23505":
 		failure(w, 400, "A space with this key or published content with this title already exists.")
 	default:
@@ -277,6 +279,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.setPageClassification(w, r, ws, actor, parts[1], true)
 	case len(parts) == 3 && parts[0] == "pages" && parts[2] == "custom-content" && r.Method == "GET":
 		h.pageCustomContent(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "pages" && parts[2] == "properties" && r.Method == "GET":
+		h.pageProperties(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "pages" && parts[2] == "properties" && r.Method == "POST":
+		h.createPageProperty(w, r, ws, actor, parts[1])
+	case len(parts) == 4 && parts[0] == "pages" && parts[2] == "properties" && r.Method == "GET":
+		h.pageProperty(w, r, ws, actor, parts[1], parts[3])
+	case len(parts) == 4 && parts[0] == "pages" && parts[2] == "properties" && r.Method == "PUT":
+		h.updatePageProperty(w, r, ws, actor, parts[1], parts[3])
+	case len(parts) == 4 && parts[0] == "pages" && parts[2] == "properties" && r.Method == "DELETE":
+		h.deletePageProperty(w, r, ws, actor, parts[1], parts[3])
 	case len(parts) == 3 && parts[0] == "pages" && parts[2] == "redact" && r.Method == "POST":
 		h.redactPage(w, r, ws, actor, parts[1])
 	case len(parts) == 1 && parts[0] == "inline-comments" && r.Method == "GET":

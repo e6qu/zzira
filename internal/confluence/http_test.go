@@ -231,6 +231,21 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	if custom := call(member, "GET", "/pages/"+governed.ID+"/custom-content?type=com.zzira:diagram&body-format=storage", nil, 200); !strings.Contains(custom.Body.String(), "Security topology") || !strings.Contains(custom.Body.String(), `"pageId":"`+governed.ID+`"`) {
 		t.Fatal(custom.Body.String())
 	}
+	pagePropertyResponse := call(member, "POST", "/pages/"+governed.ID+"/properties", map[string]any{"key": "security-metadata", "value": map[string]any{"tier": "restricted"}}, 200)
+	var pageProperty models.WikiContentProperty
+	if err := json.Unmarshal(pagePropertyResponse.Body.Bytes(), &pageProperty); err != nil || pageProperty.Version.Number != 1 {
+		t.Fatalf("unexpected page property: %+v %v", pageProperty, err)
+	}
+	call(member, "POST", "/pages/"+governed.ID+"/properties", map[string]any{"key": "security-metadata", "value": true}, 400)
+	if properties := call(actor, "GET", "/pages/"+governed.ID+"/properties?key=security-metadata&sort=-key", nil, 200); !strings.Contains(properties.Body.String(), "restricted") {
+		t.Fatal(properties.Body.String())
+	}
+	call(actor, "GET", "/pages/"+governed.ID+"/properties/"+pageProperty.ID, nil, 200)
+	call(member, "PUT", "/pages/"+governed.ID+"/properties/"+pageProperty.ID, map[string]any{"key": "security-metadata", "value": map[string]any{"tier": "confidential"}, "version": map[string]any{"number": 3}}, 409)
+	updatedPageProperty := call(member, "PUT", "/pages/"+governed.ID+"/properties/"+pageProperty.ID, map[string]any{"key": "security-metadata", "value": map[string]any{"tier": "confidential"}, "version": map[string]any{"number": 2, "message": "Adjusted handling"}}, 200)
+	if !strings.Contains(updatedPageProperty.Body.String(), "confidential") {
+		t.Fatal(updatedPageProperty.Body.String())
+	}
 	currentGovernedResponse := call(actor, "GET", "/pages/"+governed.ID+"?body-format=storage", nil, 200)
 	var currentGoverned struct {
 		Version models.WikiVersion
@@ -264,14 +279,20 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	if err := st.SetWikiPageLike(ctx, ws, actor, secret.ID, true); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := h.Commands.CreateWikiPageProperty(ctx, ws, actor, secret.ID, "private-page-metadata", json.RawMessage(`{"secret":true}`)); err != nil {
+		t.Fatal(err)
+	}
 	privatePageLikeActions, err := st.ActionsSince(ctx, ws, member, privatePageLikeHead, 20)
 	if err != nil || len(privatePageLikeActions) != 0 {
 		t.Fatalf("private page like leaked through sync: %+v %v", privatePageLikeActions, err)
 	}
 	ownerPageLikeActions, err := st.ActionsSince(ctx, ws, actor, privatePageLikeHead, 20)
-	if err != nil || len(ownerPageLikeActions) != 1 || ownerPageLikeActions[0].EntityType != "wiki_page_like" {
+	if err != nil || len(ownerPageLikeActions) != 2 || ownerPageLikeActions[0].EntityType != "wiki_page_like" || ownerPageLikeActions[1].EntityType != "wiki_page_property" {
 		t.Fatalf("page owner did not receive like action: %+v %v", ownerPageLikeActions, err)
 	}
+	call(member, "GET", "/pages/"+secret.ID+"/properties", nil, 404)
+	call(member, "DELETE", "/pages/"+governed.ID+"/properties/"+pageProperty.ID, nil, 204)
+	call(member, "GET", "/pages/"+governed.ID+"/properties/"+pageProperty.ID, nil, 404)
 	call(actor, "POST", "/blogposts?private=maybe", map[string]any{"spaceId": public, "title": "Invalid blog", "status": "current", "body": models.WikiBody{Representation: "storage", Value: "<p>Invalid</p>"}}, 400)
 	blogResponse := call(actor, "POST", "/blogposts", map[string]any{"spaceId": public, "title": "Release update", "status": "current", "createdAt": "2026-09-07T09:30:00Z", "body": models.WikiBody{Representation: "storage", Value: "<p>Release candidate is ready.</p>"}}, 200)
 	var blog struct {

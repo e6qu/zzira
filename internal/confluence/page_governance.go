@@ -9,6 +9,85 @@ import (
 	"github.com/e6qu/zzira/internal/store"
 )
 
+func (h *Handler) pageProperties(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
+	if !validPageID(w, id) || !supportedQuery(w, r, "key", "sort", "cursor", "limit") {
+		return
+	}
+	properties, err := h.Store.WikiPageProperties(r.Context(), ws, actor, id, r.URL.Query().Get("key"))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	order := r.URL.Query().Get("sort")
+	if order != "" && order != "key" && order != "-key" {
+		failure(w, 400, "Unsupported content property sort order.")
+		return
+	}
+	if order == "-key" {
+		sort.SliceStable(properties, func(i, j int) bool { return properties[i].Key > properties[j].Key })
+	}
+	values := make([]any, len(properties))
+	for i := range properties {
+		values[i] = properties[i]
+	}
+	h.list(w, r, values)
+}
+
+func (h *Handler) pageProperty(w http.ResponseWriter, r *http.Request, ws, actor, id, propertyID string) {
+	if !validPageID(w, id) || !validPageID(w, propertyID) || !supportedQuery(w, r) {
+		return
+	}
+	property, err := h.Store.WikiPageProperty(r.Context(), ws, actor, id, propertyID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	respond(w, 200, property)
+}
+
+func (h *Handler) createPageProperty(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
+	if !validPageID(w, id) || !supportedQuery(w, r) {
+		return
+	}
+	var input attachmentPropertyWrite
+	if !decode(w, r, &input) || !validAttachmentProperty(w, input, false) {
+		return
+	}
+	property, err := h.Commands.CreateWikiPageProperty(r.Context(), ws, actor, id, input.Key, input.Value)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	respond(w, 200, property)
+}
+
+func (h *Handler) updatePageProperty(w http.ResponseWriter, r *http.Request, ws, actor, id, propertyID string) {
+	if !validPageID(w, id) || !validPageID(w, propertyID) || !supportedQuery(w, r) {
+		return
+	}
+	var input attachmentPropertyWrite
+	if !decode(w, r, &input) || !validAttachmentProperty(w, input, true) {
+		return
+	}
+	property, err := h.Commands.UpdateWikiPageProperty(r.Context(), ws, actor, id, propertyID, input.Key, input.Value, input.Version.Number, input.Version.Message)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	respond(w, 200, property)
+}
+
+func (h *Handler) deletePageProperty(w http.ResponseWriter, r *http.Request, ws, actor, id, propertyID string) {
+	if !validPageID(w, id) || !validPageID(w, propertyID) || !supportedQuery(w, r) {
+		return
+	}
+	if err := h.Commands.DeleteWikiPageProperty(r.Context(), ws, actor, id, propertyID); err != nil {
+		writeError(w, err)
+		return
+	}
+	w.WriteHeader(204)
+}
+
 func (h *Handler) classificationLevels(w http.ResponseWriter, r *http.Request) {
 	if !supportedQuery(w, r) {
 		return

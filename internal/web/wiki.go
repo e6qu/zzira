@@ -42,6 +42,7 @@ type wikiData struct {
 	BlogLiked                             bool
 	PageLikeCount                         int
 	PageLiked                             bool
+	PageProperties                        []models.WikiContentProperty
 	Attachments                           []*models.WikiAttachment
 	AttachmentComments                    map[string][]wikiCommentNode
 	Restrictions                          []models.WikiPageRestriction
@@ -1062,6 +1063,14 @@ func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 			return
 		}
 		if page.Status == "current" {
+			data.PageProperties, err = h.Store.WikiPageProperties(r.Context(), ws, user.ID, page.ID, "")
+			if err != nil {
+				http.Error(w, "Could not load page properties.", 500)
+				return
+			}
+			for i := range data.PageProperties {
+				data.PageProperties[i].NextVersion = data.PageProperties[i].Version.Number + 1
+			}
 			pageLikes, likeErr := h.Store.WikiPageLikes(r.Context(), ws, user.ID, page.ID)
 			if likeErr != nil {
 				http.Error(w, "Could not load page likes.", 500)
@@ -1203,6 +1212,17 @@ func (h *Handler) WikiPageMetadata(w http.ResponseWriter, r *http.Request) {
 		}
 	case "classify":
 		_, err = h.Commands.SetWikiPageClassification(r.Context(), ws, user.ID, page.ID, r.PostFormValue("level"))
+	case "create-property":
+		_, err = h.Commands.CreateWikiPageProperty(r.Context(), ws, user.ID, page.ID, r.PostFormValue("key"), json.RawMessage(r.PostFormValue("value")))
+	case "update-property":
+		version, parseErr := strconv.Atoi(r.PostFormValue("version"))
+		if parseErr != nil {
+			err = fmt.Errorf("%w: property version must be an integer", store.ErrWikiValidation)
+		} else {
+			_, err = h.Commands.UpdateWikiPageProperty(r.Context(), ws, user.ID, page.ID, r.PostFormValue("propertyId"), r.PostFormValue("key"), json.RawMessage(r.PostFormValue("value")), version, r.PostFormValue("message"))
+		}
+	case "delete-property":
+		err = h.Commands.DeleteWikiPageProperty(r.Context(), ws, user.ID, page.ID, r.PostFormValue("propertyId"))
 	case "redact":
 		section, target := r.PostFormValue("section"), r.PostFormValue("text")
 		value := page.Body.Value

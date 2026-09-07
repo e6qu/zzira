@@ -105,6 +105,18 @@ test('wiki space, rich page, access, stale edits, child pages, history, trash an
   await page.getByLabel('Remove this text from earlier versions').check();
   await page.getByRole('button', { name: 'Redact page text', exact: true }).click();
   await expect(page.getByRole('article', { name: 'Page content' })).toContainText('[REDACTED] and publish release notes.');
+  const pageProperties = page.getByRole('region', { name: 'Page properties' });
+  await pageProperties.locator('summary').filter({ hasText: 'Create page property' }).click();
+  await pageProperties.getByLabel('New page property key').fill('release-metadata');
+  await pageProperties.getByLabel('New page property JSON value').fill('{"stage":"candidate"}');
+  await pageProperties.getByRole('button', { name: 'Create page property', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Page properties' })).toContainText('release-metadata');
+  const refreshedPageProperties = page.getByRole('region', { name: 'Page properties' });
+  await refreshedPageProperties.getByText('Edit release-metadata', { exact: true }).click();
+  await refreshedPageProperties.getByLabel('JSON value', { exact: true }).fill('{"stage":"production"}');
+  await refreshedPageProperties.getByLabel('What changed?', { exact: true }).fill('Promoted release stage');
+  await refreshedPageProperties.getByRole('button', { name: 'Save page property', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Page properties' })).toContainText('production');
   await checkWikiAccessibility(page);
   const pageURL = page.url().split('#')[0];
   await page.getByRole('button', { name: 'Watch page', exact: true }).click();
@@ -201,7 +213,7 @@ test('wiki space, rich page, access, stale edits, child pages, history, trash an
   await expect(page.locator('#wiki-attachments')).toContainText('release-file');
   await page.getByText('Metadata', { exact: true }).click();
   await page.getByLabel('New property key').fill('release-state');
-  await page.getByLabel('JSON value').fill('{"approved":false}');
+  await page.locator('#wiki-attachments').getByLabel('JSON value').fill('{"approved":false}');
   await page.getByRole('button', { name: 'Add property', exact: true }).click();
   await expect(page.locator('#wiki-attachments')).toContainText('release-state');
   await page.getByText('Edit property release-state', { exact: true }).click();

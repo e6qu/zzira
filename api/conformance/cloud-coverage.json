@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 393,
+  "assessedTotal": 398,
   "counts": {
     "delivered": 0,
-    "partial": 386,
+    "partial": 391,
     "missing": 7,
-    "unassessed": 814
+    "unassessed": 809
   },
   "countsByFamily": {
     "automation": {
@@ -18,9 +18,9 @@
     },
     "confluence": {
       "delivered": 0,
-      "partial": 179,
+      "partial": 184,
       "missing": 0,
-      "unassessed": 169
+      "unassessed": 164
     },
     "jira-platform": {
       "delivered": 0,
@@ -11086,41 +11086,86 @@
       "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{page-id}/properties",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/page_governance.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_page_properties.go",
+        "migrations/093_wiki_page_properties.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Lists permission-scoped versioned JSON properties for a visible current page with key filtering, documented key sort directions and cursor pagination; expansion flags remain."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/pages/{page-id}/properties",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/page_governance.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_page_properties.go",
+        "migrations/093_wiki_page_properties.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Creates validated uniquely keyed JSON properties on writable current pages atomically with version one and a permission-filtered sync action; app scope enforcement remains."
     },
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/pages/{page-id}/properties/{property-id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/page_governance.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_page_properties.go",
+        "migrations/093_wiki_page_properties.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Deletes an exact property from a writable current page atomically and emits a permission-filtered tombstone action; restore and app scope enforcement remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{page-id}/properties/{property-id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/page_governance.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_page_properties.go",
+        "migrations/093_wiki_page_properties.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Returns an exact versioned JSON property only through its visible current parent page; expansion flags remain."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/pages/{page-id}/properties/{property-id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/page_governance.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_page_properties.go",
+        "migrations/093_wiki_page_properties.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Updates a writable page property with exact key continuity, optimistic next-version checks, immutable version history and a permission-filtered sync action; app scope enforcement remains."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{page-id}/versions/{version-number}",
