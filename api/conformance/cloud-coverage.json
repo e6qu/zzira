@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 401,
+  "assessedTotal": 406,
   "counts": {
     "delivered": 0,
-    "partial": 394,
+    "partial": 399,
     "missing": 7,
-    "unassessed": 806
+    "unassessed": 801
   },
   "countsByFamily": {
     "automation": {
@@ -18,9 +18,9 @@
     },
     "confluence": {
       "delivered": 0,
-      "partial": 187,
+      "partial": 192,
       "missing": 0,
-      "unassessed": 161
+      "unassessed": 156
     },
     "jira-platform": {
       "delivered": 0,
@@ -10771,41 +10771,80 @@
       "operationId": "confluence-v2:GET:/wiki/api/v2/pages",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/http.go",
+        "internal/confluence/page_lifecycle.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki.go",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Lists permission-scoped current, author-draft and trashed pages globally or by space with ID/space/title/status/subtype filters, documented sort orders, storage bodies and cursor pagination; archived/deleted states and live documents remain explicit capability gaps."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/pages",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/http.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki.go",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Creates validated current or author-draft storage pages at the space root or beneath an existing page with immutable version one and an atomic permission-filtered action; embedded/private query modes, live documents, nested body forms and homepage-default parenting remain explicit capability gaps."
     },
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/pages/{id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/http.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki.go",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Moves a writable childless current page to trash through the canonical optimistic page command while preserving history and enforcing heterogeneous-child safety; draft deletion, permanent purge and archived/deleted state remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/page_lifecycle.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki.go",
+        "internal/store/wiki_page_properties.go",
+        "internal/store/wiki_page_governance.go",
+        "internal/store/wiki_hierarchy.go"
+      ],
+      "notes": "Returns a permission-scoped current or historical page with storage body and optional labels, properties, operations, likes, versions, favorite status, collaborators, direct children and version omission; web resources, live documents, archived/deleted states and remaining expansion metadata remain."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/pages/{id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/http.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki.go",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Updates writable pages with optimistic versions, rendered storage validation, same-space parent moves and cycle checks, draft/published/restore rules, immutable history, notifications and atomic sync; ownership transfer, live documents, nested bodies and archived state remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{id}/ancestors",

@@ -1782,6 +1782,25 @@ Validation after Confluence page version detail:
 - Exact reviewed API coverage is 401 of 1,207 operations: 394 partial, 7
   missing, and 806 unassessed. Confluence coverage is 187 of 348 reviewed.
 
+Validation after Confluence core page lifecycle:
+
+- Five core v2 operations now have reviewed behavior for page collection,
+  create, expanded and historical read, optimistic update and trash.
+- Collections accept multiple visible statuses, ID/space/title/subtype filters,
+  documented page sort orders, storage bodies and cursor pagination. Exact
+  reads can select a historical version and expand labels, app properties,
+  operations, likes, versions, favorite status, collaborators and direct
+  children, or omit the current version.
+- Page creation explicitly rejects unsupported private, embedded and live-doc
+  modes. Updates preserve same-space hierarchy, cycle checks, immutable
+  history, watchers and sync. Trash keeps heterogeneous-child safety; draft
+  deletion and permanent purge remain.
+- PostgreSQL integration covers accepted expansions and historical bodies plus
+  invalid booleans, filters, sorts, status mismatch and capability errors. The
+  existing Chromium page journey covers create/read/update/trash/restore.
+- Exact reviewed API coverage is 406 of 1,207 operations: 399 partial, 7
+  missing, and 801 unassessed. Confluence coverage is 192 of 348 reviewed.
+
 ## Current change
 
 1. Resume the other Confluence content and administration operations.

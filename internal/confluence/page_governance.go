@@ -256,11 +256,7 @@ func (h *Handler) pageOperations(w http.ResponseWriter, r *http.Request, ws, act
 		writeError(w, err)
 		return
 	}
-	operations := []any{map[string]string{"operation": "read", "targetType": "page"}}
-	if allowed {
-		operations = append(operations, map[string]string{"operation": "update", "targetType": "page"}, map[string]string{"operation": "delete", "targetType": "page"})
-	}
-	respond(w, 200, map[string]any{"operations": operations})
+	respond(w, 200, map[string]any{"operations": pageOperationsFor(allowed)})
 }
 
 func (h *Handler) pageCustomContent(w http.ResponseWriter, r *http.Request, ws, actor, id string) {

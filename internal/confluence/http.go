@@ -198,26 +198,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case len(parts) == 2 && parts[0] == "pages" && r.Method == "PUT":
 		h.savePage(w, r, ws, actor, parts[1])
 	case len(parts) == 2 && parts[0] == "pages" && r.Method == "GET":
-		if !supportedQuery(w, r, "body-format", "status") {
-			return
-		}
-		if !storageFormat(w, r) {
-			return
-		}
-		page, err := h.Store.WikiPage(r.Context(), ws, actor, parts[1])
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-		status := r.URL.Query().Get("status")
-		if status == "" {
-			status = "current"
-		}
-		if page.Status != status {
-			failure(w, 404, "Page not found with the requested status.")
-			return
-		}
-		respond(w, 200, h.pageBean(page, r.URL.Query().Get("body-format") != ""))
+		h.pageByID(w, r, ws, actor, parts[1])
 	case len(parts) == 2 && parts[0] == "pages" && r.Method == "DELETE":
 		if !supportedQuery(w, r) {
 			return
@@ -1215,24 +1196,50 @@ func queryContains(r *http.Request, key, value string) bool {
 }
 
 func (h *Handler) pages(w http.ResponseWriter, r *http.Request, ws, actor, space string) {
-	if !supportedQuery(w, r, "limit", "cursor", "space-id", "id", "status", "title", "body-format") {
+	if !supportedQuery(w, r, "limit", "cursor", "space-id", "id", "status", "title", "body-format", "sort", "subtype") {
 		return
 	}
 	if !storageFormat(w, r) {
 		return
 	}
 	q := r.URL.Query()
-	status := q.Get("status")
-	if status == "" {
-		status = "current"
-	}
-	if status != "current" && status != "draft" && status != "trashed" {
-		failure(w, 400, "Unsupported page status.")
+	if subtype := q.Get("subtype"); subtype != "" && subtype != "page" {
+		failure(w, 400, "Only standard pages are available.")
 		return
 	}
-	pages, err := h.Store.WikiPages(r.Context(), ws, actor, space, status, q.Get("title"))
-	if err != nil {
-		writeError(w, err)
+	statuses := []string{"current"}
+	if _, present := q["status"]; present {
+		statuses = nil
+		allowedStatus := map[string]bool{"current": true, "draft": true, "trashed": true}
+		for _, raw := range q["status"] {
+			for _, candidate := range strings.Split(raw, ",") {
+				if !allowedStatus[candidate] {
+					failure(w, 400, "Unsupported page status.")
+					return
+				}
+			}
+		}
+		for _, candidate := range []string{"current", "draft", "trashed"} {
+			if queryContains(r, "status", candidate) {
+				statuses = append(statuses, candidate)
+			}
+		}
+		if len(statuses) == 0 {
+			failure(w, 400, "Unsupported page status.")
+			return
+		}
+	}
+	pages := []*models.WikiPage{}
+	for _, status := range statuses {
+		found, err := h.Store.WikiPages(r.Context(), ws, actor, space, status, q.Get("title"))
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		pages = append(pages, found...)
+	}
+	if !sortPages(pages, q.Get("sort")) {
+		failure(w, 400, "Unsupported page sort order.")
 		return
 	}
 	values := []any{}
@@ -1245,7 +1252,7 @@ func (h *Handler) pages(w http.ResponseWriter, r *http.Request, ws, actor, space
 }
 
 func (h *Handler) savePage(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
-	if !supportedQuery(w, r, "root-level") {
+	if !supportedQuery(w, r, "root-level", "embedded", "private") {
 		return
 	}
 	var in struct {
@@ -1253,6 +1260,7 @@ func (h *Handler) savePage(w http.ResponseWriter, r *http.Request, ws, actor, id
 		ParentID                   *string
 		Body                       models.WikiBody
 		Version                    models.WikiVersion
+		Subtype                    string
 	}
 	if !decode(w, r, &in) {
 		return
@@ -1265,10 +1273,24 @@ func (h *Handler) savePage(w http.ResponseWriter, r *http.Request, ws, actor, id
 		failure(w, 400, "New page IDs are assigned by the server.")
 		return
 	}
-	if root := r.URL.Query().Get("root-level"); root != "" && root != "true" {
-		failure(w, 400, "Only root-level=true is supported.")
+	for _, key := range []string{"root-level", "embedded", "private"} {
+		if _, ok := queryBool(w, r, key); !ok {
+			return
+		}
+	}
+	if embedded, _ := queryBool(w, r, "embedded"); embedded {
+		failure(w, 400, "Embedded pages are not available.")
 		return
-	} else if root == "true" && in.ParentID != nil {
+	}
+	if private, _ := queryBool(w, r, "private"); private {
+		failure(w, 400, "Use page restrictions for private page access.")
+		return
+	}
+	if in.Subtype != "" {
+		failure(w, 400, "Live documents are not available through the page endpoint.")
+		return
+	}
+	if root := r.URL.Query().Get("root-level"); root == "true" && in.ParentID != nil {
 		failure(w, 400, "A root page cannot have a parentId.")
 		return
 	}

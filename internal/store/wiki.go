@@ -86,6 +86,15 @@ func (s *Store) WikiSpaces(ctx context.Context, ws, user string) ([]*models.Wiki
 func (s *Store) WikiPage(ctx context.Context, ws, user, id string) (*models.WikiPage, error) {
 	return scanWikiPage(s.Pool.QueryRow(ctx, wikiPageSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND p.id::text=$3`, ws, user, id))
 }
+
+func (s *Store) WikiPageAtVersion(ctx context.Context, ws, user, id string, version int) (*models.WikiPage, error) {
+	page, err := s.WikiPage(ctx, ws, user, id)
+	if err != nil {
+		return nil, err
+	}
+	err = s.Pool.QueryRow(ctx, `SELECT title,status,body,version,message,minor_edit,author_id,to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM wiki_page_versions WHERE page_id::text=$1 AND version=$2 AND (status<>'draft' OR author_id=$3)`, id, version, user).Scan(&page.Title, &page.Status, &page.Body.Value, &page.Version.Number, &page.Version.Message, &page.Version.MinorEdit, &page.Version.AuthorID, &page.Version.CreatedAt)
+	return page, err
+}
 func (s *Store) WikiPages(ctx context.Context, ws, user, space, status, title string) ([]*models.WikiPage, error) {
 	rows, err := s.Pool.Query(ctx, wikiPageSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND ($3='' OR s.id::text=$3) AND p.status=$4 AND ($5='' OR p.title=$5) ORDER BY p.id`, ws, user, space, status, title)
 	if err != nil {

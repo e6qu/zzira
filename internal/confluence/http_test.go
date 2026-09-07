@@ -203,6 +203,15 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	draft := create(public, "Private draft", "draft")
 	secret := create(private, "Secret guide", "current")
 	governed := create(public, "Security response", "current")
+	call(actor, "POST", "/pages?private=true", map[string]any{"spaceId": public, "title": "Private query", "status": "current", "body": models.WikiBody{Representation: "storage", Value: "<p>Private</p>"}}, 400)
+	call(actor, "POST", "/pages?embedded=maybe", map[string]any{"spaceId": public, "title": "Embedded query", "status": "current", "body": models.WikiBody{Representation: "storage", Value: "<p>Embedded</p>"}}, 400)
+	call(actor, "POST", "/pages", map[string]any{"spaceId": public, "title": "Live document", "status": "current", "subtype": "live", "body": models.WikiBody{Representation: "storage", Value: "<p>Live</p>"}}, 400)
+	if listed := call(actor, "GET", "/pages?status=current,draft&sort=-title&subtype=page", nil, 200); !strings.Contains(listed.Body.String(), "Private draft") || strings.Index(listed.Body.String(), "Security response") > strings.Index(listed.Body.String(), "Release guide") {
+		t.Fatal(listed.Body.String())
+	}
+	call(actor, "GET", "/pages?status=archived", nil, 400)
+	call(actor, "GET", "/pages?sort=unknown", nil, 400)
+	call(actor, "GET", "/pages?subtype=live", nil, 400)
 	if levels := call(member, "GET", "/classification-levels", nil, 200); !strings.Contains(levels.Body.String(), `"name":"Public"`) || !strings.Contains(levels.Body.String(), `"name":"Restricted"`) {
 		t.Fatal(levels.Body.String())
 	}
@@ -276,6 +285,19 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		t.Fatal(updatedPageTitle.Body.String())
 	}
 	call(member, "PUT", "/pages/"+governed.ID+"/title", map[string]string{"status": "draft", "title": "Invalid draft rename"}, 400)
+	if historicalPage := call(member, "GET", "/pages/"+governed.ID+"?version=1&body-format=storage", nil, 200); !strings.Contains(historicalPage.Body.String(), "[REDACTED]") || !strings.Contains(historicalPage.Body.String(), `"number":1`) {
+		t.Fatal(historicalPage.Body.String())
+	}
+	expandedPage := call(member, "GET", "/pages/"+governed.ID+"?include-labels=true&include-properties=true&include-operations=true&include-likes=true&include-versions=true&include-favorited-by-current-user-status=true&include-collaborators=true&include-direct-children=true", nil, 200)
+	for _, expected := range []string{"security-metadata", `"operation":"update"`, member, `"isFavoritedByCurrentUser":false`, `"directChildren"`} {
+		if !strings.Contains(expandedPage.Body.String(), expected) {
+			t.Fatalf("expanded page missing %q: %s", expected, expandedPage.Body.String())
+		}
+	}
+	if withoutVersion := call(member, "GET", "/pages/"+governed.ID+"?include-version=false", nil, 200); strings.Contains(withoutVersion.Body.String(), `"version"`) {
+		t.Fatal(withoutVersion.Body.String())
+	}
+	call(member, "GET", "/pages/"+governed.ID+"?include-webresources=true", nil, 400)
 	var historicalPageSensitive int
 	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM wiki_page_versions WHERE page_id::text=$1 AND body LIKE '%Release%'`, governed.ID).Scan(&historicalPageSensitive); err != nil || historicalPageSensitive != 0 {
 		t.Fatalf("historical page sensitive versions=%d: %v", historicalPageSensitive, err)
