@@ -193,6 +193,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			values = append(values, v)
 		}
 		h.list(w, r, values)
+	case len(parts) == 3 && parts[0] == "pages" && parts[2] == "children" && r.Method == "GET":
+		h.pageChildren(w, r, ws, actor, parts[1], false)
+	case len(parts) == 3 && parts[0] == "pages" && parts[2] == "direct-children" && r.Method == "GET":
+		h.pageChildren(w, r, ws, actor, parts[1], true)
+	case len(parts) == 3 && parts[0] == "pages" && parts[2] == "ancestors" && r.Method == "GET":
+		h.pageAncestors(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "pages" && parts[2] == "descendants" && r.Method == "GET":
+		h.pageDescendants(w, r, ws, actor, parts[1])
 	case len(parts) == 3 && parts[0] == "pages" && parts[2] == "footer-comments" && r.Method == "GET":
 		h.footerComments(w, r, ws, actor, parts[1], "")
 	case len(parts) == 3 && parts[0] == "pages" && parts[2] == "inline-comments" && r.Method == "GET":

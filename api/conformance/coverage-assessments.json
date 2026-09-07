@@ -3711,6 +3711,90 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ]
+    },
+    {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/content/{id}/descendant",
+      "status": "partial",
+      "notes": "Permission-filtered current page trees support direct child-page and generic-child shapes, bounded top-to-bottom descendant depth, top-to-bottom page ancestors, documented v2 child sorts/cursor pagination, and legacy v1 descendant map/type pagination; non-page hierarchical content, v1 comment/attachment descendant expansion, persisted manual child ordering, and ancestor continuation beyond the returned limit remain.",
+      "evidence": [
+        "internal/confluence/hierarchy.go",
+        "internal/confluence/v1_hierarchy.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_hierarchy.go",
+        "internal/store/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/content/{id}/descendant/{type}",
+      "status": "partial",
+      "notes": "Permission-filtered current page trees support direct child-page and generic-child shapes, bounded top-to-bottom descendant depth, top-to-bottom page ancestors, documented v2 child sorts/cursor pagination, and legacy v1 descendant map/type pagination; non-page hierarchical content, v1 comment/attachment descendant expansion, persisted manual child ordering, and ancestor continuation beyond the returned limit remain.",
+      "evidence": [
+        "internal/confluence/hierarchy.go",
+        "internal/confluence/v1_hierarchy.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_hierarchy.go",
+        "internal/store/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{id}/ancestors",
+      "status": "partial",
+      "notes": "Permission-filtered current page trees support direct child-page and generic-child shapes, bounded top-to-bottom descendant depth, top-to-bottom page ancestors, documented v2 child sorts/cursor pagination, and legacy v1 descendant map/type pagination; non-page hierarchical content, v1 comment/attachment descendant expansion, persisted manual child ordering, and ancestor continuation beyond the returned limit remain.",
+      "evidence": [
+        "internal/confluence/hierarchy.go",
+        "internal/confluence/v1_hierarchy.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_hierarchy.go",
+        "internal/store/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{id}/children",
+      "status": "partial",
+      "notes": "Permission-filtered current page trees support direct child-page and generic-child shapes, bounded top-to-bottom descendant depth, top-to-bottom page ancestors, documented v2 child sorts/cursor pagination, and legacy v1 descendant map/type pagination; non-page hierarchical content, v1 comment/attachment descendant expansion, persisted manual child ordering, and ancestor continuation beyond the returned limit remain.",
+      "evidence": [
+        "internal/confluence/hierarchy.go",
+        "internal/confluence/v1_hierarchy.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_hierarchy.go",
+        "internal/store/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{id}/descendants",
+      "status": "partial",
+      "notes": "Permission-filtered current page trees support direct child-page and generic-child shapes, bounded top-to-bottom descendant depth, top-to-bottom page ancestors, documented v2 child sorts/cursor pagination, and legacy v1 descendant map/type pagination; non-page hierarchical content, v1 comment/attachment descendant expansion, persisted manual child ordering, and ancestor continuation beyond the returned limit remain.",
+      "evidence": [
+        "internal/confluence/hierarchy.go",
+        "internal/confluence/v1_hierarchy.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_hierarchy.go",
+        "internal/store/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{id}/direct-children",
+      "status": "partial",
+      "notes": "Permission-filtered current page trees support direct child-page and generic-child shapes, bounded top-to-bottom descendant depth, top-to-bottom page ancestors, documented v2 child sorts/cursor pagination, and legacy v1 descendant map/type pagination; non-page hierarchical content, v1 comment/attachment descendant expansion, persisted manual child ordering, and ancestor continuation beyond the returned limit remain.",
+      "evidence": [
+        "internal/confluence/hierarchy.go",
+        "internal/confluence/v1_hierarchy.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_hierarchy.go",
+        "internal/store/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
     }
   ]
 }

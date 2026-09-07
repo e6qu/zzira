@@ -1539,9 +1539,25 @@ Validation after Confluence page tasks:
 - Exact reviewed API coverage is 298 of 1,207 operations: 291 partial, 7
   missing, and 909 unassessed. Confluence coverage is 84 of 348 reviewed.
 
+Validation after Confluence page hierarchy resources:
+
+- Recursive page hierarchy reads share the current space, draft/publication and
+  direct-user/group restriction boundaries. Descendants carry relative depth
+  and stable creation-order sibling positions; ancestors return highest first.
+- Four pinned v2 operations now expose page children, generic direct children,
+  depth-bounded descendants and ancestors with the documented minimal beans,
+  child sort choices, limit and cursor validation. Two pinned v1 operations
+  expose the legacy descendant map and typed page array with depth/start/limit.
+- PostgreSQL integration covers a two-level page tree, direct-versus-recursive
+  results, ancestor ordering, v1 shapes, invalid depth, cleanup safety and 404s
+  for restricted roots. The existing Chromium author journey already covers
+  parent selection, child creation and the permission-filtered page tree.
+- Exact reviewed API coverage is 304 of 1,207 operations: 297 partial, 7
+  missing, and 903 unassessed. Confluence coverage is 90 of 348 reviewed.
+
 ## Current change
 
-1. Continue generic Confluence content, ancestors and descendants.
+1. Continue generic Confluence content types and their hierarchy.
 2. Return to advanced service operations risk, CAB approval, on-call and
    post-incident review configuration after the next knowledge slice.
 

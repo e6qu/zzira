@@ -331,6 +331,39 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	callV1(member, "DELETE", "/user/watch/label/release-ready", nil, 204)
 	callV1(member, "DELETE", "/user/watch/space/PUBLIC", nil, 204)
 	call(actor, "DELETE", "/pages/"+child.ID, nil, 204)
+	hierarchyChildResponse := call(actor, "POST", "/pages", map[string]any{"spaceId": public, "parentId": page.ID, "title": "Hierarchy child", "status": "current", "body": models.WikiBody{Representation: "storage", Value: "<p>Child</p>"}}, 200)
+	var hierarchyChild models.WikiPage
+	if err := json.Unmarshal(hierarchyChildResponse.Body.Bytes(), &hierarchyChild); err != nil {
+		t.Fatal(err)
+	}
+	hierarchyGrandchildResponse := call(actor, "POST", "/pages", map[string]any{"spaceId": public, "parentId": hierarchyChild.ID, "title": "Hierarchy grandchild", "status": "current", "body": models.WikiBody{Representation: "storage", Value: "<p>Grandchild</p>"}}, 200)
+	var hierarchyGrandchild models.WikiPage
+	if err := json.Unmarshal(hierarchyGrandchildResponse.Body.Bytes(), &hierarchyGrandchild); err != nil {
+		t.Fatal(err)
+	}
+	hierarchyChildren := call(member, "GET", "/pages/"+page.ID+"/children?sort=-id&limit=1", nil, 200)
+	if !strings.Contains(hierarchyChildren.Body.String(), "Hierarchy child") || strings.Contains(hierarchyChildren.Body.String(), "Hierarchy grandchild") {
+		t.Fatal(hierarchyChildren.Body.String())
+	}
+	directChildren := call(member, "GET", "/pages/"+page.ID+"/direct-children?sort=title", nil, 200)
+	if !strings.Contains(directChildren.Body.String(), `"type":"page"`) {
+		t.Fatal(directChildren.Body.String())
+	}
+	descendants := call(member, "GET", "/pages/"+page.ID+"/descendants?depth=2", nil, 200)
+	if !strings.Contains(descendants.Body.String(), `"depth":1`) || !strings.Contains(descendants.Body.String(), `"depth":2`) {
+		t.Fatal(descendants.Body.String())
+	}
+	ancestors := call(member, "GET", "/pages/"+hierarchyGrandchild.ID+"/ancestors?limit=2", nil, 200)
+	if rootIndex, childIndex := strings.Index(ancestors.Body.String(), `"id":"`+page.ID+`"`), strings.Index(ancestors.Body.String(), `"id":"`+hierarchyChild.ID+`"`); rootIndex < 0 || childIndex < rootIndex {
+		t.Fatal(ancestors.Body.String())
+	}
+	v1Descendants := callV1(member, "GET", "/content/"+page.ID+"/descendant", nil, 200)
+	if !strings.Contains(v1Descendants.Body.String(), "Hierarchy grandchild") {
+		t.Fatal(v1Descendants.Body.String())
+	}
+	callV1(member, "GET", "/content/"+page.ID+"/descendant/page?depth=root&start=0&limit=1&expand=page", nil, 200)
+	callV1(member, "GET", "/content/"+page.ID+"/descendant/comment?depth=all", nil, 200)
+	callV1(member, "GET", "/content/"+page.ID+"/descendant/page?depth=101", nil, 400)
 	inlineResponse := call(member, "POST", "/inline-comments", map[string]any{"pageId": page.ID, "body": models.WikiBody{Representation: "storage", Value: "<p>Is this ready?</p>"}, "inlineCommentProperties": map[string]any{"textSelection": "Ready", "textSelectionMatchCount": 1, "textSelectionMatchIndex": 0}}, 201)
 	var inline models.WikiFooterComment
 	if err := json.Unmarshal(inlineResponse.Body.Bytes(), &inline); err != nil || inline.ID == "" || !strings.Contains(inlineResponse.Body.String(), `"resolutionStatus":"open"`) {
@@ -604,6 +637,8 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	update["version"] = map[string]int{"number": 3}
 	call(actor, "PUT", "/pages/"+page.ID, update, 400)
 	delete(update, "parentId")
+	call(actor, "DELETE", "/pages/"+hierarchyGrandchild.ID, nil, 204)
+	call(actor, "DELETE", "/pages/"+hierarchyChild.ID, nil, 204)
 	call(actor, "DELETE", "/pages/"+page.ID, nil, 204)
 	call(actor, "GET", "/pages/"+page.ID, nil, 404)
 	call(actor, "GET", "/pages/"+page.ID+"?status=trashed&body-format=storage", nil, 200)
@@ -642,6 +677,10 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		t.Fatal(rootRestrictions.Body.String())
 	}
 	call(member, "GET", "/pages/"+restricted.ID, nil, 404)
+	call(member, "GET", "/pages/"+restricted.ID+"/children", nil, 404)
+	call(member, "GET", "/pages/"+restricted.ID+"/ancestors", nil, 404)
+	call(member, "GET", "/pages/"+restricted.ID+"/descendants", nil, 404)
+	callV1(member, "GET", "/content/"+restricted.ID+"/descendant/page", nil, 404)
 	call(admin, "GET", "/pages/"+restricted.ID, nil, 200)
 	callV1(admin, "GET", "/content/"+restricted.ID+"/restriction", nil, 200)
 	callV1(actor, "GET", "/content/"+restricted.ID+"/restriction/byOperation", nil, 200)
