@@ -65,7 +65,7 @@ func writeError(w http.ResponseWriter, err error) {
 	case errors.As(err, &pgerr) && pgerr.Code == "23505" && pgerr.ConstraintName == "wiki_content_properties_content_id_key_key":
 		failure(w, 400, "A content property with this key already exists.")
 	case errors.As(err, &pgerr) && pgerr.Code == "23505":
-		failure(w, 400, "A space with this key or a published page with this title already exists.")
+		failure(w, 400, "A space with this key or published content with this title already exists.")
 	default:
 		log.Print("confluence operation: ", strconv.Quote(err.Error()))
 		failure(w, 500, "Could not complete the wiki operation.")
@@ -133,6 +133,22 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.pages(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "spaces" && parts[2] == "blogposts" && r.Method == "GET":
+		h.blogPosts(w, r, ws, actor, parts[1])
+	case len(parts) == 1 && parts[0] == "blogposts" && r.Method == "GET":
+		h.blogPosts(w, r, ws, actor, "")
+	case len(parts) == 1 && parts[0] == "blogposts" && r.Method == "POST":
+		h.saveBlogPost(w, r, ws, actor, "")
+	case len(parts) == 2 && parts[0] == "blogposts" && r.Method == "GET":
+		h.blogPost(w, r, ws, actor, parts[1])
+	case len(parts) == 2 && parts[0] == "blogposts" && r.Method == "PUT":
+		h.saveBlogPost(w, r, ws, actor, parts[1])
+	case len(parts) == 2 && parts[0] == "blogposts" && r.Method == "DELETE":
+		h.deleteBlogPost(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "blogposts" && parts[2] == "versions" && r.Method == "GET":
+		h.blogPostVersions(w, r, ws, actor, parts[1])
+	case len(parts) == 4 && parts[0] == "blogposts" && parts[2] == "versions" && r.Method == "GET":
+		h.blogPostVersion(w, r, ws, actor, parts[1], parts[3])
 	case len(parts) == 1 && parts[0] == "pages" && r.Method == "GET":
 		h.pages(w, r, ws, actor, "")
 	case len(parts) == 1 && parts[0] == "pages" && r.Method == "POST":

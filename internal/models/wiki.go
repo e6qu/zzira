@@ -40,6 +40,20 @@ type WikiPage struct {
 	Version     WikiVersion `json:"version"`
 }
 
+type WikiBlogPost struct {
+	ID          string      `json:"id"`
+	WorkspaceID string      `json:"-"`
+	SpaceID     string      `json:"spaceId"`
+	Title       string      `json:"title"`
+	Status      string      `json:"status"`
+	Published   bool        `json:"published"`
+	Private     bool        `json:"private,omitempty"`
+	AuthorID    string      `json:"authorId"`
+	CreatedAt   string      `json:"createdAt"`
+	Body        WikiBody    `json:"body"`
+	Version     WikiVersion `json:"version"`
+}
+
 type WikiContent struct {
 	ID                  string                `json:"id"`
 	Type                string                `json:"type"`

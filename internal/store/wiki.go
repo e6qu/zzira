@@ -12,7 +12,7 @@ import (
 
 var ErrWikiValidation = errors.New("invalid wiki content")
 
-var ErrWikiConflict = errors.New("the page changed; reload the latest version before saving")
+var ErrWikiConflict = errors.New("the content changed; reload the latest version before saving")
 
 var ErrWikiCommentConflict = errors.New("the comment changed; reload the latest version before saving")
 

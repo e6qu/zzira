@@ -1662,10 +1662,27 @@ Validation after Service Management operations governance:
 - This is product behavior beyond the pinned public JSM contract, so exact API
   coverage remains 358 of 1,207 and JSM remains 75 of 75 reviewed.
 
+Validation after Confluence blog posts:
+
+- Migration 087 adds public and author-private blog posts with draft, published
+  and trashed states plus immutable version history.
+- Eight pinned Confluence v2 operations now cover global and per-space blog
+  listing, create/read/update/delete, version listing and version detail.
+  Optimistic version checks prevent lost updates, published-title conflicts are
+  enforced per space, trash can be restored or permanently purged, and private
+  posts stay out of reads and synchronized action feeds for other members.
+- The Knowledge UI now gives authors a complete blog journey from space
+  navigation through create, read, edit, history, trash, restore and purge. The
+  clean Chromium journey and PostgreSQL integration cover that lifecycle.
+- Exact reviewed API coverage is 366 of 1,207 operations: 359 partial, 7
+  missing, and 841 unassessed. Confluence coverage is 152 of 348 reviewed.
+
 ## Current change
 
-1. Resume the remaining Confluence content and administration operations.
-2. Continue Service Management with dependency mapping, major-incident
+1. Extend blog posts with attachments, comments, labels, likes, properties,
+   classification and redaction across the remaining blog operations.
+2. Resume the other Confluence content and administration operations.
+3. Continue Service Management with dependency mapping, major-incident
    communications, change-conflict calendars and escalation policy.
 
 ## Resume here

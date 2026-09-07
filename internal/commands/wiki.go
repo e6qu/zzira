@@ -80,6 +80,41 @@ func (s *Service) SaveWikiPage(ctx context.Context, ws, actor string, p models.W
 	return s.Store.SaveWikiPage(ctx, ws, actor, p)
 }
 
+func (s *Service) SaveWikiBlogPost(ctx context.Context, ws, actor string, post models.WikiBlogPost) (*models.WikiBlogPost, error) {
+	post.Title = strings.TrimSpace(post.Title)
+	if post.Status == "" && post.ID == "" {
+		post.Status = "current"
+	}
+	if post.Status != "current" && post.Status != "draft" && post.Status != "trashed" {
+		return nil, fmt.Errorf("%w: choose current or draft blog post status", store.ErrWikiValidation)
+	}
+	if (post.Status == "current" && post.Title == "") || utf8.RuneCountInString(post.Title) > 255 {
+		return nil, fmt.Errorf("%w: blog post title is required for published posts (max 255 characters)", store.ErrWikiValidation)
+	}
+	if post.SpaceID == "" {
+		return nil, fmt.Errorf("%w: choose a space", store.ErrWikiValidation)
+	}
+	if post.Body.Representation != "storage" {
+		return nil, fmt.Errorf("%w: only the storage body representation is currently supported", store.ErrWikiValidation)
+	}
+	if _, err := wikimarkup.Render(post.Body.Value); err != nil {
+		return nil, fmt.Errorf("%w: %v", store.ErrWikiValidation, err)
+	}
+	if len(post.Version.Message) > 2000 {
+		return nil, fmt.Errorf("%w: version message must be at most 2000 bytes", store.ErrWikiValidation)
+	}
+	if post.CreatedAt != "" {
+		if _, err := time.Parse(time.RFC3339, post.CreatedAt); err != nil {
+			return nil, fmt.Errorf("%w: createdAt must be an RFC 3339 timestamp", store.ErrWikiValidation)
+		}
+	}
+	return s.Store.SaveWikiBlogPost(ctx, ws, actor, post)
+}
+
+func (s *Service) PurgeWikiBlogPost(ctx context.Context, ws, actor, id string) error {
+	return s.Store.PurgeWikiBlogPost(ctx, ws, actor, id)
+}
+
 func (s *Service) CreateWikiContent(ctx context.Context, ws, actor string, content models.WikiContent) (*models.WikiContent, error) {
 	content.Title = strings.TrimSpace(content.Title)
 	if content.Type != "folder" && content.Type != "database" && content.Type != "embed" && content.Type != "whiteboard" {

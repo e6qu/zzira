@@ -21,12 +21,14 @@ type wikiData struct {
 	Spaces                                []*models.WikiSpace
 	Space                                 *models.WikiSpace
 	Pages                                 []*models.WikiPage
+	BlogPosts                             []*models.WikiBlogPost
 	Folders                               []*models.WikiContent
 	SmartLinks                            []*models.WikiContent
 	Databases                             []*models.WikiContent
 	Whiteboards                           []*models.WikiContent
 	Tree                                  []wikiTreeNode
 	Page                                  *models.WikiPage
+	BlogPost                              *models.WikiBlogPost
 	Versions                              []models.WikiVersion
 	Comments                              []wikiCommentNode
 	InlineComments                        []wikiCommentNode
@@ -138,7 +140,7 @@ func wikiWebError(err error) (int, string) {
 	case errors.As(err, &pgerr) && pgerr.Code == "23505" && pgerr.ConstraintName == "wiki_content_properties_content_id_key_key":
 		return 400, "A content property with this key already exists."
 	case errors.As(err, &pgerr) && pgerr.Code == "23505":
-		return 400, "A space with this key or a published page with this title already exists."
+		return 400, "A space with this key or published content with this title already exists."
 	default:
 		log.Print("wiki: ", strconv.Quote(err.Error()))
 		return 500, "Could not complete the wiki operation."
@@ -205,11 +207,22 @@ func (h *Handler) WikiSpacePage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load pages.", 500)
 		return
 	}
+	blogPosts, err := h.Store.WikiBlogPosts(r.Context(), ws, user.ID, space.ID, status, "", "-created-date")
+	if err != nil {
+		http.Error(w, "Could not load blog posts.", 500)
+		return
+	}
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
 	filtered := make([]*models.WikiPage, 0, len(pages))
 	for _, page := range pages {
 		if query == "" || strings.Contains(strings.ToLower(page.Title), strings.ToLower(query)) {
 			filtered = append(filtered, page)
+		}
+	}
+	filteredBlogs := make([]*models.WikiBlogPost, 0, len(blogPosts))
+	for _, post := range blogPosts {
+		if query == "" || strings.Contains(strings.ToLower(post.Title), strings.ToLower(query)) {
+			filteredBlogs = append(filteredBlogs, post)
 		}
 	}
 	folders := []*models.WikiContent{}
@@ -279,7 +292,114 @@ func (h *Handler) WikiSpacePage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load space watch status.", 500)
 		return
 	}
-	h.writeWorkspacePage(w, r, "page_wiki_space", user, ws, wikiData{Space: space, Pages: filtered, Folders: folders, SmartLinks: smartLinks, Databases: databases, Whiteboards: whiteboards, Tree: wikiPageTree(filtered), Query: query, Status: status, WatchingSpace: watching}, "wiki", "")
+	h.writeWorkspacePage(w, r, "page_wiki_space", user, ws, wikiData{Space: space, Pages: filtered, BlogPosts: filteredBlogs, Folders: folders, SmartLinks: smartLinks, Databases: databases, Whiteboards: whiteboards, Tree: wikiPageTree(filtered), Query: query, Status: status, WatchingSpace: watching}, "wiki", "")
+}
+
+func (h *Handler) WikiBlogPostNew(w http.ResponseWriter, r *http.Request) {
+	h.wikiBlogPost(w, r, true)
+}
+
+func (h *Handler) WikiBlogPostPage(w http.ResponseWriter, r *http.Request) {
+	h.wikiBlogPost(w, r, false)
+}
+
+func (h *Handler) wikiBlogPost(w http.ResponseWriter, r *http.Request, creating bool) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	space, err := h.Store.WikiSpace(r.Context(), ws, user.ID, r.PathValue("space"))
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	post := &models.WikiBlogPost{SpaceID: space.ID, Status: "current", Body: models.WikiBody{Representation: "storage"}, Version: models.WikiVersion{Number: 1}}
+	if !creating {
+		post, err = h.Store.WikiBlogPost(r.Context(), ws, user.ID, r.PathValue("blogpost"))
+		if err != nil {
+			status, message := wikiWebError(err)
+			http.Error(w, message, status)
+			return
+		}
+		if post.SpaceID != space.ID {
+			http.NotFound(w, r)
+			return
+		}
+	}
+	editing := creating || r.URL.Query().Get("edit") == "true"
+	pageStatus := 200
+	errorMessage := ""
+	if r.Method == "POST" {
+		if !parseForm(w, r) {
+			return
+		}
+		post.Title = r.PostFormValue("title")
+		post.Body = models.WikiBody{Representation: "storage", Value: r.PostFormValue("body")}
+		post.Status = r.PostFormValue("status")
+		post.Version.Message = r.PostFormValue("message")
+		post.Version.MinorEdit = r.PostFormValue("minorEdit") == "true"
+		if creating {
+			post.Private = r.PostFormValue("private") == "true"
+		} else {
+			post.Version.Number++
+		}
+		saved, saveErr := h.Commands.SaveWikiBlogPost(r.Context(), ws, user.ID, *post)
+		if saveErr == nil {
+			redirectLocal(w, r, "/wiki/spaces/"+space.ID+"/blogposts/"+saved.ID)
+			return
+		}
+		pageStatus, errorMessage = wikiWebError(saveErr)
+		editing = true
+	}
+	versions := []models.WikiVersion{}
+	if post.ID != "" {
+		versions, err = h.Store.WikiBlogPostVersions(r.Context(), ws, user.ID, post.ID, "-modified-date")
+		if err != nil {
+			http.Error(w, "Could not load blog post history.", 500)
+			return
+		}
+	}
+	h.writeWorkspacePageStatus(w, r, "page_wiki_blogpost", user, ws, wikiData{Space: space, BlogPost: post, Versions: versions, Editing: editing, CanEdit: true, Error: errorMessage}, "wiki", "", pageStatus)
+}
+
+func (h *Handler) WikiBlogPostLifecycle(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	space, err := h.Store.WikiSpace(r.Context(), ws, user.ID, r.PathValue("space"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	post, err := h.Store.WikiBlogPost(r.Context(), ws, user.ID, r.PathValue("blogpost"))
+	if err != nil || post.SpaceID != space.ID {
+		http.NotFound(w, r)
+		return
+	}
+	action := r.PostFormValue("action")
+	if action == "purge" {
+		err = h.Commands.PurgeWikiBlogPost(r.Context(), ws, user.ID, post.ID)
+	} else {
+		post.Version.Number++
+		if action == "restore" {
+			post.Status, post.Version.Message = "current", "Restored"
+		} else {
+			post.Status, post.Version.Message = "trashed", "Moved to trash"
+		}
+		_, err = h.Commands.SaveWikiBlogPost(r.Context(), ws, user.ID, *post)
+	}
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	if action == "restore" {
+		redirectLocal(w, r, "/wiki/spaces/"+space.ID+"/blogposts/"+post.ID)
+		return
+	}
+	redirectLocal(w, r, "/wiki/spaces/"+space.ID+"?status=trashed")
 }
 
 func (h *Handler) WikiFolderCreate(w http.ResponseWriter, r *http.Request) {
