@@ -183,6 +183,13 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		t.Fatal("private space leaked")
 	}
 	call(member, "GET", "/spaces/"+private, nil, 404)
+	if permissions := call(member, "GET", "/spaces/"+public+"/permissions?limit=5", nil, 200); !strings.Contains(permissions.Body.String(), `"id":"workspace-member"`) || !strings.Contains(permissions.Body.String(), `"key":"read","targetType":"space"`) || !strings.Contains(permissions.Header().Get("Link"), "cursor=") {
+		t.Fatal(permissions.Body.String(), permissions.Header())
+	}
+	call(member, "GET", "/spaces/"+private+"/permissions", nil, 404)
+	if permissions := call(actor, "GET", "/spaces/"+private+"/permissions", nil, 200); !strings.Contains(permissions.Body.String(), `"type":"user"`) || !strings.Contains(permissions.Body.String(), `"id":"`+actor+`"`) {
+		t.Fatal(permissions.Body.String())
+	}
 	call(actor, "POST", "/spaces", map[string]any{"key": "UNSUPPORTED", "name": "Unsupported", "roleAssignments": []map[string]any{{"roleId": "1"}}}, 400)
 	if _, err := h.Commands.AddWikiSpaceLabels(ctx, ws, actor, public, []models.WikiLabel{{Prefix: "team", Name: "core-space"}}); err != nil {
 		t.Fatal(err)
@@ -194,8 +201,8 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	call(member, "GET", "/spaces?sort=unknown", nil, 400)
 	call(member, "GET", "/spaces?status=archived", nil, 400)
 	call(member, "GET", "/spaces?favorited-by="+member, nil, 400)
-	expandedSpace := call(actor, "GET", "/spaces/"+public+"?include-icon=true&include-operations=true&include-labels=true", nil, 200)
-	if !strings.Contains(expandedSpace.Body.String(), `"operation":"update"`) || !strings.Contains(expandedSpace.Body.String(), `"name":"core-space"`) || !strings.Contains(expandedSpace.Body.String(), `"icon"`) {
+	expandedSpace := call(actor, "GET", "/spaces/"+public+"?include-icon=true&include-operations=true&include-labels=true&include-permissions=true", nil, 200)
+	if !strings.Contains(expandedSpace.Body.String(), `"operation":"update"`) || !strings.Contains(expandedSpace.Body.String(), `"name":"core-space"`) || !strings.Contains(expandedSpace.Body.String(), `"icon"`) || !strings.Contains(expandedSpace.Body.String(), `"id":"workspace-admin"`) {
 		t.Fatal(expandedSpace.Body.String())
 	}
 	call(member, "POST", "/spaces/"+public+"/properties", map[string]any{"key": "app-config", "value": map[string]any{"mode": "read-only"}}, 403)

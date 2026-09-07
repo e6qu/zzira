@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 419,
+  "assessedTotal": 420,
   "counts": {
     "delivered": 0,
-    "partial": 412,
+    "partial": 413,
     "missing": 7,
-    "unassessed": 788
+    "unassessed": 787
   },
   "countsByFamily": {
     "automation": {
@@ -18,9 +18,9 @@
     },
     "confluence": {
       "delivered": 0,
-      "partial": 205,
+      "partial": 206,
       "missing": 0,
-      "unassessed": 143
+      "unassessed": 142
     },
     "jira-platform": {
       "delivered": 0,
@@ -11514,9 +11514,16 @@
       "operationId": "confluence-v2:GET:/wiki/api/v2/spaces/{id}/permissions",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_permissions.go",
+        "internal/confluence/http.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Projects enforced public-space content access and creator-only private-space access into cursor-paged Confluence permission assignments, with workspace administration shown separately and exact-space expansion; granular Confluence roles, group/user overrides and mutation remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/spaces/{id}/role-assignments",

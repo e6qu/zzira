@@ -139,7 +139,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			flags[key] = value
 		}
-		for _, key := range []string{"include-permissions", "include-role-assignments"} {
+		for _, key := range []string{"include-role-assignments"} {
 			if flags[key] {
 				failure(w, 400, key+" is not yet supported for spaces.")
 				return
@@ -183,9 +183,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			bean["properties"] = map[string]any{"results": values, "meta": map[string]any{"hasMore": false}, "_links": map[string]any{}}
 		}
+		if flags["include-permissions"] {
+			bean["permissions"] = map[string]any{"results": spacePermissionValues(space), "meta": map[string]any{"hasMore": false}, "_links": map[string]any{}}
+		}
 		respond(w, 200, bean)
 	case len(parts) == 3 && parts[0] == "spaces" && parts[2] == "operations" && r.Method == "GET":
 		h.spaceOperations(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "spaces" && parts[2] == "permissions" && r.Method == "GET":
+		h.spacePermissions(w, r, ws, actor, parts[1])
 	case len(parts) == 4 && parts[0] == "spaces" && parts[2] == "classification-level" && parts[3] == "default" && r.Method == "GET":
 		h.spaceDefaultClassification(w, r, ws, actor, parts[1])
 	case len(parts) == 4 && parts[0] == "spaces" && parts[2] == "classification-level" && parts[3] == "default" && r.Method == "PUT":

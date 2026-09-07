@@ -1847,10 +1847,22 @@ Validation after Confluence space properties:
 - Exact reviewed API coverage is 419 of 1,207 operations: 412 partial, 7
   missing, and 788 unassessed. Confluence coverage is 205 of 348 reviewed.
 
+Validation after Confluence space permission discovery:
+
+- The pinned v2 permission-assignment operation now projects the access rules
+  ZZIRA enforces for public and creator-private spaces into Confluence-shaped
+  user/role principals and content operations with cursor pagination.
+- Exact space reads expand the same assignments. The space manager UI explains
+  the effective access model without claiming unavailable granular controls.
+- PostgreSQL integration covers public member assignments, pagination,
+  creator-shaped private access, hidden private spaces and exact expansion.
+- Exact reviewed API coverage is 420 of 1,207 operations: 413 partial, 7
+  missing, and 787 unassessed. Confluence coverage is 206 of 348 reviewed.
+
 ## Current change
 
-1. Resume Confluence space permissions, role assignments and other
-   administration operations.
+1. Resume Confluence space roles, role assignments and other administration
+   operations.
 2. Continue Service Management with dependency mapping, major-incident
    communications, change-conflict calendars and escalation policy.
 3. Expand the app runtime from registered custom-content discovery into signed

@@ -5469,6 +5469,19 @@
         "internal/render/templates/wiki.gohtml"
       ],
       "notes": "Workspace administrators update exact-key JSON properties with optimistic next-version checks, immutable metadata and atomic sync; app scope enforcement and historical property reads remain."
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/spaces/{id}/permissions",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_permissions.go",
+        "internal/confluence/http.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Projects enforced public-space content access and creator-only private-space access into cursor-paged Confluence permission assignments, with workspace administration shown separately and exact-space expansion; granular Confluence roles, group/user overrides and mutation remain."
     }
   ]
 }
