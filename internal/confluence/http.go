@@ -54,6 +54,8 @@ func writeError(w http.ResponseWriter, err error) {
 		failure(w, 403, err.Error())
 	case errors.Is(err, store.ErrWikiConflict):
 		failure(w, 409, err.Error())
+	case errors.Is(err, store.ErrWikiBlogPostConflict):
+		failure(w, 409, err.Error())
 	case errors.Is(err, store.ErrWikiCommentConflict):
 		failure(w, 409, err.Error())
 	case errors.Is(err, store.ErrWikiPropertyConflict):
@@ -64,6 +66,8 @@ func writeError(w http.ResponseWriter, err error) {
 		failure(w, 400, "An attachment property with this key already exists.")
 	case errors.As(err, &pgerr) && pgerr.Code == "23505" && pgerr.ConstraintName == "wiki_content_properties_content_id_key_key":
 		failure(w, 400, "A content property with this key already exists.")
+	case errors.As(err, &pgerr) && pgerr.Code == "23505" && pgerr.ConstraintName == "wiki_blog_post_properties_blog_post_id_key_key":
+		failure(w, 400, "A blog post property with this key already exists.")
 	case errors.As(err, &pgerr) && pgerr.Code == "23505":
 		failure(w, 400, "A space with this key or published content with this title already exists.")
 	default:
@@ -149,6 +153,30 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.blogPostVersions(w, r, ws, actor, parts[1])
 	case len(parts) == 4 && parts[0] == "blogposts" && parts[2] == "versions" && r.Method == "GET":
 		h.blogPostVersion(w, r, ws, actor, parts[1], parts[3])
+	case len(parts) == 3 && parts[0] == "blogposts" && parts[2] == "labels" && r.Method == "GET":
+		h.blogPostLabels(w, r, ws, actor, parts[1])
+	case len(parts) == 4 && parts[0] == "blogposts" && parts[2] == "likes" && parts[3] == "count" && r.Method == "GET":
+		h.blogPostLikeCount(w, r, ws, actor, parts[1])
+	case len(parts) == 4 && parts[0] == "blogposts" && parts[2] == "likes" && parts[3] == "users" && r.Method == "GET":
+		h.blogPostLikeUsers(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "blogposts" && parts[2] == "properties" && r.Method == "GET":
+		h.blogPostProperties(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "blogposts" && parts[2] == "properties" && r.Method == "POST":
+		h.createBlogPostProperty(w, r, ws, actor, parts[1])
+	case len(parts) == 4 && parts[0] == "blogposts" && parts[2] == "properties" && r.Method == "GET":
+		h.blogPostProperty(w, r, ws, actor, parts[1], parts[3])
+	case len(parts) == 4 && parts[0] == "blogposts" && parts[2] == "properties" && r.Method == "PUT":
+		h.updateBlogPostProperty(w, r, ws, actor, parts[1], parts[3])
+	case len(parts) == 4 && parts[0] == "blogposts" && parts[2] == "properties" && r.Method == "DELETE":
+		h.deleteBlogPostProperty(w, r, ws, actor, parts[1], parts[3])
+	case len(parts) == 3 && parts[0] == "blogposts" && parts[2] == "operations" && r.Method == "GET":
+		h.blogPostOperations(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "blogposts" && parts[2] == "classification-level" && r.Method == "GET":
+		h.blogPostClassification(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "blogposts" && parts[2] == "classification-level" && r.Method == "PUT":
+		h.setBlogPostClassification(w, r, ws, actor, parts[1], false)
+	case len(parts) == 4 && parts[0] == "blogposts" && parts[2] == "classification-level" && parts[3] == "reset" && r.Method == "POST":
+		h.setBlogPostClassification(w, r, ws, actor, parts[1], true)
 	case len(parts) == 1 && parts[0] == "pages" && r.Method == "GET":
 		h.pages(w, r, ws, actor, "")
 	case len(parts) == 1 && parts[0] == "pages" && r.Method == "POST":
@@ -277,6 +305,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.labels(w, r, ws, actor)
 	case len(parts) == 3 && parts[0] == "labels" && parts[2] == "pages" && r.Method == "GET":
 		h.labelPages(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "labels" && parts[2] == "blogposts" && r.Method == "GET":
+		h.labelBlogPosts(w, r, ws, actor, parts[1])
 	case len(parts) == 3 && parts[0] == "labels" && parts[2] == "attachments" && r.Method == "GET":
 		h.labelAttachments(w, r, ws, actor, parts[1])
 	case len(parts) == 3 && parts[0] == "pages" && parts[2] == "labels" && r.Method == "GET":

@@ -352,6 +352,22 @@ func (s *Service) RemoveWikiAttachmentLabel(ctx context.Context, ws, actor, atta
 	return s.Store.RemoveWikiAttachmentLabel(ctx, ws, actor, attachmentID, labels[0])
 }
 
+func (s *Service) AddWikiBlogPostLabels(ctx context.Context, ws, actor, blogPostID string, labels []models.WikiLabel) ([]models.WikiLabel, error) {
+	labels, err := normalizeWikiLabels(labels)
+	if err != nil {
+		return nil, err
+	}
+	return s.Store.AddWikiBlogPostLabels(ctx, ws, actor, blogPostID, labels)
+}
+
+func (s *Service) RemoveWikiBlogPostLabel(ctx context.Context, ws, actor, blogPostID, prefix, name string) error {
+	labels, err := normalizeWikiLabels([]models.WikiLabel{{Prefix: prefix, Name: name}})
+	if err != nil {
+		return err
+	}
+	return s.Store.RemoveWikiBlogPostLabel(ctx, ws, actor, blogPostID, labels[0])
+}
+
 func validateWikiProperty(key string, value json.RawMessage) error {
 	if key == "" || utf8.RuneCountInString(key) > 255 {
 		return fmt.Errorf("%w: property key must contain between 1 and 255 characters", store.ErrWikiValidation)
@@ -402,6 +418,34 @@ func (s *Service) UpdateWikiContentProperty(ctx context.Context, ws, actor, cont
 
 func (s *Service) DeleteWikiContentProperty(ctx context.Context, ws, actor, contentID, contentType, propertyID string) error {
 	return s.Store.DeleteWikiContentProperty(ctx, ws, actor, contentID, contentType, propertyID)
+}
+
+func (s *Service) CreateWikiBlogPostProperty(ctx context.Context, ws, actor, blogPostID, key string, value json.RawMessage) (*models.WikiContentProperty, error) {
+	if err := validateWikiProperty(key, value); err != nil {
+		return nil, err
+	}
+	return s.Store.CreateWikiBlogPostProperty(ctx, ws, actor, blogPostID, key, value)
+}
+
+func (s *Service) UpdateWikiBlogPostProperty(ctx context.Context, ws, actor, blogPostID, propertyID, key string, value json.RawMessage, version int, message string) (*models.WikiContentProperty, error) {
+	if err := validateWikiProperty(key, value); err != nil {
+		return nil, err
+	}
+	if version < 2 || len(message) > 2000 {
+		return nil, fmt.Errorf("%w: the next property version and a message of at most 2000 bytes are required", store.ErrWikiValidation)
+	}
+	return s.Store.UpdateWikiBlogPostProperty(ctx, ws, actor, blogPostID, propertyID, key, value, version, message)
+}
+
+func (s *Service) DeleteWikiBlogPostProperty(ctx context.Context, ws, actor, blogPostID, propertyID string) error {
+	return s.Store.DeleteWikiBlogPostProperty(ctx, ws, actor, blogPostID, propertyID)
+}
+
+func (s *Service) SetWikiBlogPostClassification(ctx context.Context, ws, actor, id, levelID string) (*models.WikiBlogPost, error) {
+	if levelID != "" && levelID != "public" && levelID != "internal" && levelID != "confidential" && levelID != "restricted" {
+		return nil, fmt.Errorf("%w: choose a supported classification level", store.ErrWikiValidation)
+	}
+	return s.Store.SetWikiBlogPostClassification(ctx, ws, actor, id, levelID)
 }
 
 func (s *Service) SetWikiPageRestrictions(ctx context.Context, ws, actor, pageID, mode string, restrictions []models.WikiPageRestriction) ([]models.WikiPageRestriction, error) {

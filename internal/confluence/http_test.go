@@ -71,7 +71,7 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		exec(`INSERT INTO api_tokens(id,user_id,token_hash) VALUES ($1,$1,$2)`, id, store.HashToken(id))
 	}
 	t.Cleanup(func() {
-		for _, sql := range []string{`DELETE FROM wiki_content_property_versions WHERE property_id IN (SELECT cp.id FROM wiki_content_properties cp JOIN wiki_content c ON c.id=cp.content_id JOIN wiki_spaces s ON s.id=c.space_id WHERE s.workspace_id=$1)`, `DELETE FROM wiki_content_properties WHERE content_id IN (SELECT c.id FROM wiki_content c JOIN wiki_spaces s ON s.id=c.space_id WHERE s.workspace_id=$1)`, `DELETE FROM wiki_content_versions WHERE content_id IN (SELECT c.id FROM wiki_content c JOIN wiki_spaces s ON s.id=c.space_id WHERE s.workspace_id=$1)`, `DELETE FROM wiki_content WHERE space_id IN (SELECT id FROM wiki_spaces WHERE workspace_id=$1)`, `DELETE FROM wiki_blog_post_versions WHERE blog_post_id IN (SELECT b.id FROM wiki_blog_posts b JOIN wiki_spaces s ON s.id=b.space_id WHERE s.workspace_id=$1)`, `DELETE FROM wiki_blog_posts WHERE space_id IN (SELECT id FROM wiki_spaces WHERE workspace_id=$1)`, `DELETE FROM wiki_page_versions WHERE page_id IN (SELECT p.id FROM wiki_pages p JOIN wiki_spaces s ON s.id=p.space_id WHERE s.workspace_id=$1)`, `DELETE FROM wiki_pages WHERE space_id IN (SELECT id FROM wiki_spaces WHERE workspace_id=$1)`, `DELETE FROM wiki_spaces WHERE workspace_id=$1`, `DELETE FROM wiki_labels WHERE workspace_id=$1`, `DELETE FROM actions WHERE workspace_id=$1`, `DELETE FROM memberships WHERE workspace_id=$1`, `DELETE FROM workspaces WHERE id=$1`} {
+		for _, sql := range []string{`DELETE FROM wiki_content_property_versions WHERE property_id IN (SELECT cp.id FROM wiki_content_properties cp JOIN wiki_content c ON c.id=cp.content_id JOIN wiki_spaces s ON s.id=c.space_id WHERE s.workspace_id=$1)`, `DELETE FROM wiki_content_properties WHERE content_id IN (SELECT c.id FROM wiki_content c JOIN wiki_spaces s ON s.id=c.space_id WHERE s.workspace_id=$1)`, `DELETE FROM wiki_content_versions WHERE content_id IN (SELECT c.id FROM wiki_content c JOIN wiki_spaces s ON s.id=c.space_id WHERE s.workspace_id=$1)`, `DELETE FROM wiki_content WHERE space_id IN (SELECT id FROM wiki_spaces WHERE workspace_id=$1)`, `DELETE FROM wiki_blog_post_property_versions WHERE property_id IN (SELECT bp.id FROM wiki_blog_post_properties bp JOIN wiki_blog_posts b ON b.id=bp.blog_post_id JOIN wiki_spaces s ON s.id=b.space_id WHERE s.workspace_id=$1)`, `DELETE FROM wiki_blog_post_properties WHERE blog_post_id IN (SELECT b.id FROM wiki_blog_posts b JOIN wiki_spaces s ON s.id=b.space_id WHERE s.workspace_id=$1)`, `DELETE FROM wiki_blog_post_labels WHERE blog_post_id IN (SELECT b.id FROM wiki_blog_posts b JOIN wiki_spaces s ON s.id=b.space_id WHERE s.workspace_id=$1)`, `DELETE FROM wiki_blog_post_likes WHERE blog_post_id IN (SELECT b.id FROM wiki_blog_posts b JOIN wiki_spaces s ON s.id=b.space_id WHERE s.workspace_id=$1)`, `DELETE FROM wiki_blog_post_versions WHERE blog_post_id IN (SELECT b.id FROM wiki_blog_posts b JOIN wiki_spaces s ON s.id=b.space_id WHERE s.workspace_id=$1)`, `DELETE FROM wiki_blog_posts WHERE space_id IN (SELECT id FROM wiki_spaces WHERE workspace_id=$1)`, `DELETE FROM wiki_page_versions WHERE page_id IN (SELECT p.id FROM wiki_pages p JOIN wiki_spaces s ON s.id=p.space_id WHERE s.workspace_id=$1)`, `DELETE FROM wiki_pages WHERE space_id IN (SELECT id FROM wiki_spaces WHERE workspace_id=$1)`, `DELETE FROM wiki_spaces WHERE workspace_id=$1`, `DELETE FROM wiki_labels WHERE workspace_id=$1`, `DELETE FROM actions WHERE workspace_id=$1`, `DELETE FROM memberships WHERE workspace_id=$1`, `DELETE FROM workspaces WHERE id=$1`} {
 			exec(sql, ws)
 		}
 		for _, id := range []string{actor, admin, member, outsider} {
@@ -222,6 +222,7 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	if !strings.Contains(updatedBlog.Body.String(), "Published rollout") {
 		t.Fatal(updatedBlog.Body.String())
 	}
+	call(actor, "PUT", "/blogposts/"+blog.ID, map[string]any{"id": blog.ID, "spaceId": public, "title": "Stale update", "status": "current", "body": models.WikiBody{Representation: "storage", Value: "<p>Stale</p>"}, "version": map[string]any{"number": 2}}, 409)
 	if versions := call(member, "GET", "/blogposts/"+blog.ID+"/versions?sort=-modified-date", nil, 200); !strings.Contains(versions.Body.String(), "Published rollout") {
 		t.Fatal(versions.Body.String())
 	}
@@ -235,6 +236,68 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	call(member, "GET", "/blogposts/"+privateBlog.ID, nil, 404)
+	blogLabels, err := h.Commands.AddWikiBlogPostLabels(ctx, ws, actor, blog.ID, []models.WikiLabel{{Prefix: "global", Name: "release-update"}})
+	if err != nil || len(blogLabels) != 1 {
+		t.Fatalf("add blog label: %+v %v", blogLabels, err)
+	}
+	if labels := call(member, "GET", "/blogposts/"+blog.ID+"/labels?sort=name", nil, 200); !strings.Contains(labels.Body.String(), "release-update") {
+		t.Fatal(labels.Body.String())
+	}
+	if posts := call(member, "GET", "/labels/"+blogLabels[0].ID+"/blogposts?body-format=storage", nil, 200); !strings.Contains(posts.Body.String(), "Release candidate reached production") {
+		t.Fatal(posts.Body.String())
+	}
+	if operations := call(member, "GET", "/blogposts/"+blog.ID+"/operations", nil, 200); !strings.Contains(operations.Body.String(), `"operation":"update"`) {
+		t.Fatal(operations.Body.String())
+	}
+	call(member, "GET", "/blogposts/"+blog.ID+"/likes/count", nil, 200)
+	if err := st.SetWikiBlogPostLike(ctx, ws, member, blog.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if count := call(actor, "GET", "/blogposts/"+blog.ID+"/likes/count", nil, 200); !strings.Contains(count.Body.String(), `"count":1`) {
+		t.Fatal(count.Body.String())
+	}
+	if users := call(actor, "GET", "/blogposts/"+blog.ID+"/likes/users", nil, 200); !strings.Contains(users.Body.String(), member) {
+		t.Fatal(users.Body.String())
+	}
+	blogPropertyResponse := call(actor, "POST", "/blogposts/"+blog.ID+"/properties", map[string]any{"key": "release-metadata", "value": map[string]any{"ring": "canary"}}, 200)
+	var blogProperty models.WikiContentProperty
+	if err := json.Unmarshal(blogPropertyResponse.Body.Bytes(), &blogProperty); err != nil || blogProperty.Version.Number != 1 {
+		t.Fatalf("unexpected blog property: %+v %v", blogProperty, err)
+	}
+	call(actor, "POST", "/blogposts/"+blog.ID+"/properties", map[string]any{"key": "release-metadata", "value": true}, 400)
+	if properties := call(member, "GET", "/blogposts/"+blog.ID+"/properties?key=release-metadata", nil, 200); !strings.Contains(properties.Body.String(), "canary") {
+		t.Fatal(properties.Body.String())
+	}
+	call(member, "GET", "/blogposts/"+blog.ID+"/properties/"+blogProperty.ID, nil, 200)
+	updatedBlogProperty := call(actor, "PUT", "/blogposts/"+blog.ID+"/properties/"+blogProperty.ID, map[string]any{"key": "release-metadata", "value": map[string]any{"ring": "global"}, "version": map[string]any{"number": 2, "message": "Expanded rollout"}}, 200)
+	if !strings.Contains(updatedBlogProperty.Body.String(), "global") {
+		t.Fatal(updatedBlogProperty.Body.String())
+	}
+	call(actor, "PUT", "/blogposts/"+blog.ID+"/properties/"+blogProperty.ID, map[string]any{"key": "release-metadata", "value": false, "version": map[string]any{"number": 2}}, 409)
+	call(actor, "DELETE", "/blogposts/"+blog.ID+"/properties/"+blogProperty.ID, nil, 204)
+	call(actor, "GET", "/blogposts/"+blog.ID+"/classification-level", nil, 404)
+	call(actor, "PUT", "/blogposts/"+blog.ID+"/classification-level", map[string]string{"id": "internal", "status": "current"}, 204)
+	if classification := call(member, "GET", "/blogposts/"+blog.ID+"/classification-level?status=current", nil, 200); !strings.Contains(classification.Body.String(), "Internal") {
+		t.Fatal(classification.Body.String())
+	}
+	call(actor, "POST", "/blogposts/"+blog.ID+"/classification-level/reset", map[string]string{"status": "current"}, 204)
+	if _, err := h.Commands.CreateWikiBlogPostProperty(ctx, ws, actor, privateBlog.ID, "private-blog-metadata", json.RawMessage(`{"secret":true}`)); err != nil {
+		t.Fatal(err)
+	}
+	privateBlogLabels, err := h.Commands.AddWikiBlogPostLabels(ctx, ws, actor, privateBlog.ID, []models.WikiLabel{{Prefix: "global", Name: "secret-blog-label"}})
+	if err != nil || len(privateBlogLabels) != 1 {
+		t.Fatal(err)
+	}
+	if err := st.SetWikiBlogPostLike(ctx, ws, actor, privateBlog.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	call(member, "GET", "/blogposts/"+privateBlog.ID+"/properties", nil, 404)
+	call(member, "GET", "/blogposts/"+privateBlog.ID+"/labels", nil, 404)
+	call(member, "GET", "/blogposts/"+privateBlog.ID+"/likes/users", nil, 404)
+	call(member, "GET", "/labels/"+privateBlogLabels[0].ID+"/blogposts", nil, 404)
+	if labels := call(member, "GET", "/labels", nil, 200); strings.Contains(labels.Body.String(), "secret-blog-label") {
+		t.Fatal(labels.Body.String())
+	}
 	call(actor, "DELETE", "/blogposts/"+blog.ID, nil, 204)
 	call(actor, "GET", "/blogposts/"+blog.ID, nil, 404)
 	call(actor, "GET", "/blogposts/"+blog.ID+"?status=trashed", nil, 200)
@@ -996,7 +1059,7 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		if a.EntityType == "wiki_footer_comment_like" && strings.HasPrefix(a.EntityID, secretCommentBean.ID+":") {
 			t.Fatalf("private wiki like action leaked: %s", a.Payload)
 		}
-		if strings.Contains(string(a.Payload), "Private draft") || strings.Contains(string(a.Payload), "Secret guide") || strings.Contains(string(a.Payload), "PRIVATE") || strings.Contains(string(a.Payload), "Private launch phrase") || strings.Contains(string(a.Payload), "Private blog phrase") || strings.Contains(string(a.Payload), "Private folder") || strings.Contains(string(a.Payload), "secret-folder-property") || strings.Contains(string(a.Payload), "Private Smart Link") || strings.Contains(string(a.Payload), "private.example.test") || strings.Contains(string(a.Payload), "Private database") || strings.Contains(string(a.Payload), "private-database-property") || strings.Contains(string(a.Payload), "Private database child") || strings.Contains(string(a.Payload), "Private whiteboard") || strings.Contains(string(a.Payload), "secret-label") || strings.Contains(string(a.Payload), "Restricted launch plan") || strings.Contains(string(a.Payload), "Managers approved the launch") || strings.Contains(string(a.Payload), "classified-release") || strings.Contains(string(a.Payload), "classified-metadata") || strings.Contains(string(a.Payload), "classified-file") || strings.Contains(string(a.Payload), "Classified attachment discussion") || strings.Contains(string(a.Payload), "Classified inline discussion") || strings.Contains(string(a.Payload), "Classified task discussion") {
+		if strings.Contains(string(a.Payload), "Private draft") || strings.Contains(string(a.Payload), "Secret guide") || strings.Contains(string(a.Payload), "PRIVATE") || strings.Contains(string(a.Payload), "Private launch phrase") || strings.Contains(string(a.Payload), "Private blog phrase") || strings.Contains(string(a.Payload), "private-blog-metadata") || strings.Contains(string(a.Payload), "secret-blog-label") || strings.Contains(string(a.Payload), "Private folder") || strings.Contains(string(a.Payload), "secret-folder-property") || strings.Contains(string(a.Payload), "Private Smart Link") || strings.Contains(string(a.Payload), "private.example.test") || strings.Contains(string(a.Payload), "Private database") || strings.Contains(string(a.Payload), "private-database-property") || strings.Contains(string(a.Payload), "Private database child") || strings.Contains(string(a.Payload), "Private whiteboard") || strings.Contains(string(a.Payload), "secret-label") || strings.Contains(string(a.Payload), "Restricted launch plan") || strings.Contains(string(a.Payload), "Managers approved the launch") || strings.Contains(string(a.Payload), "classified-release") || strings.Contains(string(a.Payload), "classified-metadata") || strings.Contains(string(a.Payload), "classified-file") || strings.Contains(string(a.Payload), "Classified attachment discussion") || strings.Contains(string(a.Payload), "Classified inline discussion") || strings.Contains(string(a.Payload), "Classified task discussion") {
 			t.Fatalf("private wiki action leaked: %s", a.Payload)
 		}
 	}

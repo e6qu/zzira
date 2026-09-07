@@ -1677,10 +1677,24 @@ Validation after Confluence blog posts:
 - Exact reviewed API coverage is 366 of 1,207 operations: 359 partial, 7
   missing, and 841 unassessed. Confluence coverage is 152 of 348 reviewed.
 
+Validation after Confluence blog metadata:
+
+- Migration 088 adds blog-post labels, member likes, optimistic versioned JSON
+  properties and built-in data classification. All metadata mutations are
+  permission checked and enter the synchronized action feed.
+- Thirteen more pinned v2 operations cover blog labels and label discovery,
+  like counts/users, operation discovery, property CRUD and classification
+  read/set/reset. Private metadata and its parent post remain invisible to other
+  members in direct reads, global label discovery and synchronized actions.
+- The author UI exposes like/unlike, classification, label add/remove and app
+  property create/update/delete with responsive and accessible controls.
+- Exact reviewed API coverage is 379 of 1,207 operations: 372 partial, 7
+  missing, and 828 unassessed. Confluence coverage is 165 of 348 reviewed.
+
 ## Current change
 
-1. Extend blog posts with attachments, comments, labels, likes, properties,
-   classification and redaction across the remaining blog operations.
+1. Complete the remaining blog-post attachment, footer/inline-comment,
+   custom-content and redaction operations.
 2. Resume the other Confluence content and administration operations.
 3. Continue Service Management with dependency mapping, major-incident
    communications, change-conflict calendars and escalation policy.

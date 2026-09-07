@@ -3,6 +3,7 @@ package web
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"html"
 	"log"
 	"net/http"
@@ -35,6 +36,9 @@ type wikiData struct {
 	Tasks                                 []*models.WikiTask
 	TaskAssignees                         []*models.User
 	Labels                                []models.WikiLabel
+	BlogProperties                        []models.WikiContentProperty
+	BlogLikeCount                         int
+	BlogLiked                             bool
 	Attachments                           []*models.WikiAttachment
 	AttachmentComments                    map[string][]wikiCommentNode
 	Restrictions                          []models.WikiPageRestriction
@@ -131,6 +135,8 @@ func wikiWebError(err error) (int, string) {
 		return 403, err.Error()
 	case errors.Is(err, store.ErrWikiConflict):
 		return 409, err.Error()
+	case errors.Is(err, store.ErrWikiBlogPostConflict):
+		return 409, err.Error()
 	case errors.Is(err, store.ErrWikiPropertyConflict):
 		return 409, err.Error()
 	case errors.Is(err, store.ErrWikiValidation):
@@ -139,6 +145,8 @@ func wikiWebError(err error) (int, string) {
 		return 400, "An attachment property with this key already exists."
 	case errors.As(err, &pgerr) && pgerr.Code == "23505" && pgerr.ConstraintName == "wiki_content_properties_content_id_key_key":
 		return 400, "A content property with this key already exists."
+	case errors.As(err, &pgerr) && pgerr.Code == "23505" && pgerr.ConstraintName == "wiki_blog_post_properties_blog_post_id_key_key":
+		return 400, "A blog post property with this key already exists."
 	case errors.As(err, &pgerr) && pgerr.Code == "23505":
 		return 400, "A space with this key or published content with this title already exists."
 	default:
@@ -353,14 +361,96 @@ func (h *Handler) wikiBlogPost(w http.ResponseWriter, r *http.Request, creating 
 		editing = true
 	}
 	versions := []models.WikiVersion{}
+	labels := []models.WikiLabel{}
+	properties := []models.WikiContentProperty{}
+	likeCount, liked := 0, false
 	if post.ID != "" {
 		versions, err = h.Store.WikiBlogPostVersions(r.Context(), ws, user.ID, post.ID, "-modified-date")
 		if err != nil {
 			http.Error(w, "Could not load blog post history.", 500)
 			return
 		}
+		if post.Status == "current" {
+			labels, err = h.Store.WikiBlogPostLabels(r.Context(), ws, user.ID, post.ID)
+			if err != nil {
+				http.Error(w, "Could not load blog post labels.", 500)
+				return
+			}
+			properties, err = h.Store.WikiBlogPostProperties(r.Context(), ws, user.ID, post.ID, "")
+			if err != nil {
+				http.Error(w, "Could not load blog post properties.", 500)
+				return
+			}
+			for i := range properties {
+				properties[i].NextVersion = properties[i].Version.Number + 1
+			}
+			likes, likeErr := h.Store.WikiBlogPostLikes(r.Context(), ws, user.ID, post.ID)
+			if likeErr != nil {
+				http.Error(w, "Could not load blog post likes.", 500)
+				return
+			}
+			likeCount = len(likes)
+			for _, accountID := range likes {
+				if accountID == user.ID {
+					liked = true
+					break
+				}
+			}
+		}
 	}
-	h.writeWorkspacePageStatus(w, r, "page_wiki_blogpost", user, ws, wikiData{Space: space, BlogPost: post, Versions: versions, Editing: editing, CanEdit: true, Error: errorMessage}, "wiki", "", pageStatus)
+	h.writeWorkspacePageStatus(w, r, "page_wiki_blogpost", user, ws, wikiData{Space: space, BlogPost: post, Versions: versions, Labels: labels, BlogProperties: properties, BlogLikeCount: likeCount, BlogLiked: liked, Editing: editing, CanEdit: true, Error: errorMessage}, "wiki", "", pageStatus)
+}
+
+func (h *Handler) WikiBlogPostMetadata(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	space, err := h.Store.WikiSpace(r.Context(), ws, user.ID, r.PathValue("space"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	post, err := h.Store.WikiBlogPost(r.Context(), ws, user.ID, r.PathValue("blogpost"))
+	if err != nil || post.SpaceID != space.ID || post.Status != "current" {
+		http.NotFound(w, r)
+		return
+	}
+	action := r.PostFormValue("action")
+	switch action {
+	case "like":
+		liked, parseErr := strconv.ParseBool(r.PostFormValue("liked"))
+		if parseErr != nil {
+			err = fmt.Errorf("%w: liked must be true or false", store.ErrWikiValidation)
+		} else {
+			err = h.Store.SetWikiBlogPostLike(r.Context(), ws, user.ID, post.ID, liked)
+		}
+	case "add-label":
+		_, err = h.Commands.AddWikiBlogPostLabels(r.Context(), ws, user.ID, post.ID, []models.WikiLabel{{Name: r.PostFormValue("label"), Prefix: "global"}})
+	case "remove-label":
+		err = h.Commands.RemoveWikiBlogPostLabel(r.Context(), ws, user.ID, post.ID, r.PostFormValue("prefix"), r.PostFormValue("label"))
+	case "classify":
+		_, err = h.Commands.SetWikiBlogPostClassification(r.Context(), ws, user.ID, post.ID, r.PostFormValue("level"))
+	case "create-property":
+		_, err = h.Commands.CreateWikiBlogPostProperty(r.Context(), ws, user.ID, post.ID, r.PostFormValue("key"), json.RawMessage(r.PostFormValue("value")))
+	case "update-property":
+		version, parseErr := strconv.Atoi(r.PostFormValue("version"))
+		if parseErr != nil {
+			err = fmt.Errorf("%w: property version must be an integer", store.ErrWikiValidation)
+		} else {
+			_, err = h.Commands.UpdateWikiBlogPostProperty(r.Context(), ws, user.ID, post.ID, r.PostFormValue("propertyId"), r.PostFormValue("key"), json.RawMessage(r.PostFormValue("value")), version, r.PostFormValue("message"))
+		}
+	case "delete-property":
+		err = h.Commands.DeleteWikiBlogPostProperty(r.Context(), ws, user.ID, post.ID, r.PostFormValue("propertyId"))
+	default:
+		err = fmt.Errorf("%w: choose a blog post metadata action", store.ErrWikiValidation)
+	}
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	redirectLocal(w, r, "/wiki/spaces/"+space.ID+"/blogposts/"+post.ID)
 }
 
 func (h *Handler) WikiBlogPostLifecycle(w http.ResponseWriter, r *http.Request) {

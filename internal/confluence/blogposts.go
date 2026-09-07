@@ -2,7 +2,9 @@ package confluence
 
 import (
 	"net/http"
+	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/e6qu/zzira/internal/models"
 )
@@ -235,4 +237,246 @@ func (h *Handler) blogPostVersion(w http.ResponseWriter, r *http.Request, ws, ac
 		}
 	}
 	respond(w, 200, bean)
+}
+
+func (h *Handler) blogPostLabels(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
+	if !validPageID(w, id) || !labelQuery(w, r, false) {
+		return
+	}
+	labels, err := h.Store.WikiBlogPostLabels(r.Context(), ws, actor, id)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	prefix := r.URL.Query().Get("prefix")
+	filtered := make([]models.WikiLabel, 0, len(labels))
+	for _, label := range labels {
+		if prefix == "" || label.Prefix == prefix {
+			filtered = append(filtered, label)
+		}
+	}
+	sortWikiLabels(filtered, r.URL.Query().Get("sort"))
+	values := make([]any, len(filtered))
+	for i := range filtered {
+		values[i] = filtered[i]
+	}
+	h.list(w, r, values)
+}
+
+func sortBlogPosts(posts []*models.WikiBlogPost, order string) bool {
+	allowed := map[string]bool{"": true, "id": true, "-id": true, "created-date": true, "-created-date": true, "modified-date": true, "-modified-date": true}
+	if !allowed[order] {
+		return false
+	}
+	if order == "" || order == "id" {
+		return true
+	}
+	desc := strings.HasPrefix(order, "-")
+	field := strings.TrimPrefix(order, "-")
+	sort.SliceStable(posts, func(i, j int) bool {
+		left, right := posts[i].ID, posts[j].ID
+		if field == "created-date" {
+			left, right = posts[i].CreatedAt, posts[j].CreatedAt
+		} else if field == "modified-date" {
+			left, right = posts[i].Version.CreatedAt, posts[j].Version.CreatedAt
+		}
+		if desc {
+			return left > right
+		}
+		return left < right
+	})
+	return true
+}
+
+func (h *Handler) labelBlogPosts(w http.ResponseWriter, r *http.Request, ws, actor, labelID string) {
+	if !validPageID(w, labelID) || !supportedQuery(w, r, "space-id", "body-format", "sort", "cursor", "limit") || !storageFormat(w, r) {
+		return
+	}
+	posts, err := h.Store.WikiBlogPostsByLabel(r.Context(), ws, actor, labelID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	filtered := posts[:0]
+	for _, post := range posts {
+		if queryContains(r, "space-id", post.SpaceID) {
+			filtered = append(filtered, post)
+		}
+	}
+	if !sortBlogPosts(filtered, r.URL.Query().Get("sort")) {
+		failure(w, 400, "Unsupported blog post sort order.")
+		return
+	}
+	values := make([]any, len(filtered))
+	for i := range filtered {
+		values[i] = h.blogPostBean(filtered[i], r.URL.Query().Get("body-format") != "")
+	}
+	h.list(w, r, values)
+}
+
+func (h *Handler) blogPostLikeCount(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
+	if !validPageID(w, id) || !supportedQuery(w, r) {
+		return
+	}
+	likes, err := h.Store.WikiBlogPostLikes(r.Context(), ws, actor, id)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	respond(w, 200, map[string]int{"count": len(likes)})
+}
+
+func (h *Handler) blogPostLikeUsers(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
+	if !validPageID(w, id) || !supportedQuery(w, r, "cursor", "limit") {
+		return
+	}
+	likes, err := h.Store.WikiBlogPostLikes(r.Context(), ws, actor, id)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	values := make([]any, 0, len(likes))
+	for _, accountID := range likes {
+		values = append(values, map[string]string{"accountId": accountID})
+	}
+	h.list(w, r, values)
+}
+
+func (h *Handler) blogPostOperations(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
+	if !validPageID(w, id) || !supportedQuery(w, r) {
+		return
+	}
+	allowed, err := h.Store.CanUpdateWikiBlogPost(r.Context(), ws, actor, id)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	operations := []any{map[string]string{"operation": "read", "targetType": "blogpost"}}
+	if allowed {
+		operations = append(operations, map[string]string{"operation": "update", "targetType": "blogpost"}, map[string]string{"operation": "delete", "targetType": "blogpost"})
+	}
+	respond(w, 200, map[string]any{"operations": operations})
+}
+
+func (h *Handler) blogPostProperties(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
+	if !validPageID(w, id) || !supportedQuery(w, r, "key", "sort", "cursor", "limit") {
+		return
+	}
+	properties, err := h.Store.WikiBlogPostProperties(r.Context(), ws, actor, id, r.URL.Query().Get("key"))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	order := r.URL.Query().Get("sort")
+	if order != "" && order != "key" && order != "-key" {
+		failure(w, 400, "Unsupported content property sort order.")
+		return
+	}
+	if order == "-key" {
+		sort.SliceStable(properties, func(i, j int) bool { return properties[i].Key > properties[j].Key })
+	}
+	values := make([]any, len(properties))
+	for i := range properties {
+		values[i] = properties[i]
+	}
+	h.list(w, r, values)
+}
+
+func (h *Handler) blogPostProperty(w http.ResponseWriter, r *http.Request, ws, actor, id, propertyID string) {
+	if !validPageID(w, id) || !validPageID(w, propertyID) || !supportedQuery(w, r) {
+		return
+	}
+	property, err := h.Store.WikiBlogPostProperty(r.Context(), ws, actor, id, propertyID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	respond(w, 200, property)
+}
+
+func (h *Handler) createBlogPostProperty(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
+	if !validPageID(w, id) || !supportedQuery(w, r) {
+		return
+	}
+	var input attachmentPropertyWrite
+	if !decode(w, r, &input) || !validAttachmentProperty(w, input, false) {
+		return
+	}
+	property, err := h.Commands.CreateWikiBlogPostProperty(r.Context(), ws, actor, id, input.Key, input.Value)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	respond(w, 200, property)
+}
+
+func (h *Handler) updateBlogPostProperty(w http.ResponseWriter, r *http.Request, ws, actor, id, propertyID string) {
+	if !validPageID(w, id) || !validPageID(w, propertyID) || !supportedQuery(w, r) {
+		return
+	}
+	var input attachmentPropertyWrite
+	if !decode(w, r, &input) || !validAttachmentProperty(w, input, true) {
+		return
+	}
+	property, err := h.Commands.UpdateWikiBlogPostProperty(r.Context(), ws, actor, id, propertyID, input.Key, input.Value, input.Version.Number, input.Version.Message)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	respond(w, 200, property)
+}
+
+func (h *Handler) deleteBlogPostProperty(w http.ResponseWriter, r *http.Request, ws, actor, id, propertyID string) {
+	if !validPageID(w, id) || !validPageID(w, propertyID) || !supportedQuery(w, r) {
+		return
+	}
+	if err := h.Commands.DeleteWikiBlogPostProperty(r.Context(), ws, actor, id, propertyID); err != nil {
+		writeError(w, err)
+		return
+	}
+	w.WriteHeader(204)
+}
+
+func (h *Handler) blogPostClassification(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
+	if !validPageID(w, id) || !supportedQuery(w, r, "status") {
+		return
+	}
+	if status := r.URL.Query().Get("status"); status != "" && status != "current" {
+		failure(w, 400, "Only current blog post classification is supported.")
+		return
+	}
+	blog, err := h.Store.WikiBlogPost(r.Context(), ws, actor, id)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	level, ok := classificationLevels[blog.ClassificationLevel]
+	if !ok {
+		failure(w, 404, "Blog post does not have a classification level.")
+		return
+	}
+	respond(w, 200, level)
+}
+
+func (h *Handler) setBlogPostClassification(w http.ResponseWriter, r *http.Request, ws, actor, id string, reset bool) {
+	if !validPageID(w, id) || !supportedQuery(w, r) {
+		return
+	}
+	var input classificationWrite
+	if !decode(w, r, &input) {
+		return
+	}
+	if input.Status != "current" || (!reset && classificationLevels[input.ID] == nil) || (reset && input.ID != "") {
+		failure(w, 400, "A current, supported classification level is required.")
+		return
+	}
+	levelID := input.ID
+	if reset {
+		levelID = ""
+	}
+	if _, err := h.Commands.SetWikiBlogPostClassification(r.Context(), ws, actor, id, levelID); err != nil {
+		writeError(w, err)
+		return
+	}
+	w.WriteHeader(204)
 }

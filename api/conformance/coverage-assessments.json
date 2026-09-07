@@ -4710,6 +4710,214 @@
         "e2e/wiki.spec.ts"
       ],
       "notes": "Blog posts support public or creator-private current/draft creation, permission-filtered global and space collections, exact reads, optimistic updates, immutable version history/detail, trash, restore, purge, privacy-shaped actions and an accessible author UI; attachments, comments, labels, likes, properties, classification, redaction and full draft semantics remain."
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{id}/labels",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/blogposts.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_blog_post_metadata.go",
+        "internal/store/wiki_labels.go",
+        "migrations/088_wiki_blog_post_metadata.sql",
+        "internal/commands/wiki.go",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels, and the remaining attachment, comment, custom-content, and redaction routes remain."
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{id}/likes/count",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/blogposts.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_blog_post_metadata.go",
+        "internal/store/wiki_labels.go",
+        "migrations/088_wiki_blog_post_metadata.sql",
+        "internal/commands/wiki.go",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels, and the remaining attachment, comment, custom-content, and redaction routes remain."
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{id}/likes/users",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/blogposts.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_blog_post_metadata.go",
+        "internal/store/wiki_labels.go",
+        "migrations/088_wiki_blog_post_metadata.sql",
+        "internal/commands/wiki.go",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels, and the remaining attachment, comment, custom-content, and redaction routes remain."
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{blogpost-id}/properties",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/blogposts.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_blog_post_metadata.go",
+        "internal/store/wiki_labels.go",
+        "migrations/088_wiki_blog_post_metadata.sql",
+        "internal/commands/wiki.go",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels, and the remaining attachment, comment, custom-content, and redaction routes remain."
+    },
+    {
+      "operationId": "confluence-v2:POST:/wiki/api/v2/blogposts/{blogpost-id}/properties",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/blogposts.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_blog_post_metadata.go",
+        "internal/store/wiki_labels.go",
+        "migrations/088_wiki_blog_post_metadata.sql",
+        "internal/commands/wiki.go",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels, and the remaining attachment, comment, custom-content, and redaction routes remain."
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{blogpost-id}/properties/{property-id}",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/blogposts.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_blog_post_metadata.go",
+        "internal/store/wiki_labels.go",
+        "migrations/088_wiki_blog_post_metadata.sql",
+        "internal/commands/wiki.go",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels, and the remaining attachment, comment, custom-content, and redaction routes remain."
+    },
+    {
+      "operationId": "confluence-v2:PUT:/wiki/api/v2/blogposts/{blogpost-id}/properties/{property-id}",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/blogposts.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_blog_post_metadata.go",
+        "internal/store/wiki_labels.go",
+        "migrations/088_wiki_blog_post_metadata.sql",
+        "internal/commands/wiki.go",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels, and the remaining attachment, comment, custom-content, and redaction routes remain."
+    },
+    {
+      "operationId": "confluence-v2:DELETE:/wiki/api/v2/blogposts/{blogpost-id}/properties/{property-id}",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/blogposts.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_blog_post_metadata.go",
+        "internal/store/wiki_labels.go",
+        "migrations/088_wiki_blog_post_metadata.sql",
+        "internal/commands/wiki.go",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels, and the remaining attachment, comment, custom-content, and redaction routes remain."
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{id}/operations",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/blogposts.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_blog_post_metadata.go",
+        "internal/store/wiki_labels.go",
+        "migrations/088_wiki_blog_post_metadata.sql",
+        "internal/commands/wiki.go",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels, and the remaining attachment, comment, custom-content, and redaction routes remain."
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/labels/{id}/blogposts",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/blogposts.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_blog_post_metadata.go",
+        "internal/store/wiki_labels.go",
+        "migrations/088_wiki_blog_post_metadata.sql",
+        "internal/commands/wiki.go",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels, and the remaining attachment, comment, custom-content, and redaction routes remain."
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{id}/classification-level",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/blogposts.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_blog_post_metadata.go",
+        "internal/store/wiki_labels.go",
+        "migrations/088_wiki_blog_post_metadata.sql",
+        "internal/commands/wiki.go",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels, and the remaining attachment, comment, custom-content, and redaction routes remain."
+    },
+    {
+      "operationId": "confluence-v2:PUT:/wiki/api/v2/blogposts/{id}/classification-level",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/blogposts.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_blog_post_metadata.go",
+        "internal/store/wiki_labels.go",
+        "migrations/088_wiki_blog_post_metadata.sql",
+        "internal/commands/wiki.go",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels, and the remaining attachment, comment, custom-content, and redaction routes remain."
+    },
+    {
+      "operationId": "confluence-v2:POST:/wiki/api/v2/blogposts/{id}/classification-level/reset",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/blogposts.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_blog_post_metadata.go",
+        "internal/store/wiki_labels.go",
+        "migrations/088_wiki_blog_post_metadata.sql",
+        "internal/commands/wiki.go",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels, and the remaining attachment, comment, custom-content, and redaction routes remain."
     }
   ]
 }

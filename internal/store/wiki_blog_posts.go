@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -10,13 +11,15 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+var ErrWikiBlogPostConflict = errors.New("the blog post changed; reload the latest version before saving")
+
 const wikiBlogPostVisible = `(b.published OR b.author_id=$2) AND (NOT b.private OR b.author_id=$2)`
 const wikiBlogPostWritable = `(b.author_id=$2 OR NOT b.private)`
-const wikiBlogPostSelect = `SELECT b.id::text,s.workspace_id,b.space_id::text,b.title,b.status,b.published,b.private,b.body,b.author_id,to_char(b.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),v.version,v.message,v.minor_edit,v.author_id,to_char(v.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM wiki_blog_posts b JOIN wiki_spaces s ON s.id=b.space_id JOIN wiki_blog_post_versions v ON v.blog_post_id=b.id AND v.version=b.version`
+const wikiBlogPostSelect = `SELECT b.id::text,s.workspace_id,b.space_id::text,b.title,b.status,b.published,b.private,b.classification_level,b.body,b.author_id,to_char(b.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),v.version,v.message,v.minor_edit,v.author_id,to_char(v.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM wiki_blog_posts b JOIN wiki_spaces s ON s.id=b.space_id JOIN wiki_blog_post_versions v ON v.blog_post_id=b.id AND v.version=b.version`
 
 func scanWikiBlogPost(row pgx.Row) (*models.WikiBlogPost, error) {
 	b := &models.WikiBlogPost{Body: models.WikiBody{Representation: "storage"}}
-	err := row.Scan(&b.ID, &b.WorkspaceID, &b.SpaceID, &b.Title, &b.Status, &b.Published, &b.Private, &b.Body.Value, &b.AuthorID, &b.CreatedAt, &b.Version.Number, &b.Version.Message, &b.Version.MinorEdit, &b.Version.AuthorID, &b.Version.CreatedAt)
+	err := row.Scan(&b.ID, &b.WorkspaceID, &b.SpaceID, &b.Title, &b.Status, &b.Published, &b.Private, &b.ClassificationLevel, &b.Body.Value, &b.AuthorID, &b.CreatedAt, &b.Version.Number, &b.Version.Message, &b.Version.MinorEdit, &b.Version.AuthorID, &b.Version.CreatedAt)
 	return b, err
 }
 
@@ -66,7 +69,7 @@ func (s *Store) SaveWikiBlogPost(ctx context.Context, ws, actor string, input mo
 			return nil, fmt.Errorf("%w: moving blog posts between spaces is not supported", ErrWikiValidation)
 		}
 		if input.Version.Number != old.Version.Number+1 {
-			return nil, ErrWikiConflict
+			return nil, ErrWikiBlogPostConflict
 		}
 		if input.Status == "draft" && old.Published {
 			return nil, fmt.Errorf("%w: a published blog post cannot be converted to a draft", ErrWikiValidation)

@@ -41,17 +41,33 @@ type WikiPage struct {
 }
 
 type WikiBlogPost struct {
-	ID          string      `json:"id"`
-	WorkspaceID string      `json:"-"`
-	SpaceID     string      `json:"spaceId"`
-	Title       string      `json:"title"`
-	Status      string      `json:"status"`
-	Published   bool        `json:"published"`
-	Private     bool        `json:"private,omitempty"`
-	AuthorID    string      `json:"authorId"`
-	CreatedAt   string      `json:"createdAt"`
-	Body        WikiBody    `json:"body"`
-	Version     WikiVersion `json:"version"`
+	ID                  string      `json:"id"`
+	WorkspaceID         string      `json:"-"`
+	SpaceID             string      `json:"spaceId"`
+	Title               string      `json:"title"`
+	Status              string      `json:"status"`
+	Published           bool        `json:"published"`
+	Private             bool        `json:"private,omitempty"`
+	ClassificationLevel string      `json:"-"`
+	AuthorID            string      `json:"authorId"`
+	CreatedAt           string      `json:"createdAt"`
+	Body                WikiBody    `json:"body"`
+	Version             WikiVersion `json:"version"`
+}
+
+func (p WikiBlogPost) ClassificationName() string {
+	switch p.ClassificationLevel {
+	case "public":
+		return "Public"
+	case "internal":
+		return "Internal"
+	case "confidential":
+		return "Confidential"
+	case "restricted":
+		return "Restricted"
+	default:
+		return ""
+	}
 }
 
 type WikiContent struct {
@@ -91,11 +107,12 @@ func (c WikiContent) ClassificationName() string {
 }
 
 type WikiContentProperty struct {
-	ID        string          `json:"id"`
-	ContentID string          `json:"-"`
-	Key       string          `json:"key"`
-	Value     json.RawMessage `json:"value"`
-	Version   WikiVersion     `json:"version"`
+	ID          string          `json:"id"`
+	ContentID   string          `json:"-"`
+	Key         string          `json:"key"`
+	Value       json.RawMessage `json:"value"`
+	Version     WikiVersion     `json:"version"`
+	NextVersion int             `json:"-"`
 }
 
 type WikiContentRelation struct {
