@@ -90,6 +90,16 @@ test('wiki space, rich page, access, stale edits, child pages, history, trash an
   await expect(inlineThread).toContainText('notify watchers');
   await inlineThread.getByRole('button', { name: 'Resolve', exact: true }).click();
   await expect(page.locator('.wiki-inline-comment').filter({ hasText: 'Keep this guidance aligned' }).first()).toContainText('resolved');
+  await page.getByText('Add a task', { exact: true }).click();
+  await page.getByLabel('Task', { exact: true }).fill('Publish the customer release notes');
+  await page.getByLabel('Assignee', { exact: true }).selectOption({ label: 'Ana Soursop' });
+  await page.getByLabel('Due date', { exact: true }).fill('2030-01-02');
+  await page.getByRole('button', { name: 'Add task', exact: true }).click();
+  const wikiTask = page.locator('.wiki-task-list > li').filter({ hasText: 'Publish the customer release notes' }).first();
+  await expect(wikiTask).toContainText('Assigned to Ana Soursop');
+  await expect(wikiTask).toContainText('2030-01-02');
+  await wikiTask.getByRole('button', { name: 'Complete task', exact: true }).click();
+  await expect(page.locator('.wiki-task-list > li').filter({ hasText: 'Publish the customer release notes' }).first().getByText('complete', { exact: true })).toBeVisible();
   await page.getByText('Attach a file', { exact: true }).click();
   await page.getByLabel('File', { exact: true }).setInputFiles({ name: 'release-plan.txt', mimeType: 'text/plain', buffer: Buffer.from('Release plan v1') });
   await page.getByLabel('Comment', { exact: true }).fill('Initial release plan');

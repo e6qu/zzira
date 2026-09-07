@@ -8,6 +8,7 @@ import (
 	"io"
 	"regexp"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/e6qu/zzira/internal/models"
@@ -120,6 +121,40 @@ func (s *Service) UpdateWikiInlineComment(ctx context.Context, ws, actor string,
 		return nil, err
 	}
 	return s.Store.UpdateWikiInlineComment(ctx, ws, actor, comment, resolved)
+}
+
+func (s *Service) CreateWikiTask(ctx context.Context, ws, actor string, task models.WikiTask) (*models.WikiTask, error) {
+	task.AssignedTo = strings.TrimSpace(task.AssignedTo)
+	if task.PageID == "" {
+		return nil, fmt.Errorf("%w: task page is required", store.ErrWikiValidation)
+	}
+	if task.Body.Representation != "storage" {
+		return nil, fmt.Errorf("%w: only the storage task representation is currently supported", store.ErrWikiValidation)
+	}
+	if len(task.Body.Value) > 1<<20 {
+		return nil, fmt.Errorf("%w: task body must be at most 1 MiB", store.ErrWikiValidation)
+	}
+	if task.Body.Value != "" {
+		if _, err := wikimarkup.Render(task.Body.Value); err != nil {
+			return nil, fmt.Errorf("%w: %v", store.ErrWikiValidation, err)
+		}
+	}
+	if task.DueAt != "" {
+		due, err := time.Parse(time.RFC3339, task.DueAt)
+		if err != nil {
+			return nil, fmt.Errorf("%w: task due date must be RFC 3339", store.ErrWikiValidation)
+		}
+		task.DueAt = due.UTC().Format(time.RFC3339)
+	}
+	task.Status = "incomplete"
+	return s.Store.CreateWikiTask(ctx, ws, actor, task)
+}
+
+func (s *Service) UpdateWikiTask(ctx context.Context, ws, actor, id, status string) (*models.WikiTask, error) {
+	if id == "" || (status != "complete" && status != "incomplete") {
+		return nil, fmt.Errorf("%w: task id and complete or incomplete status are required", store.ErrWikiValidation)
+	}
+	return s.Store.UpdateWikiTask(ctx, ws, actor, id, status)
 }
 
 func validateWikiComment(comment models.WikiFooterComment) error {

@@ -121,3 +121,22 @@ type WikiAttachmentVersion struct {
 	Comment   string `json:"comment"`
 	Size      int64  `json:"fileSize"`
 }
+
+type WikiTask struct {
+	ID            string   `json:"id"`
+	LocalID       string   `json:"localId"`
+	SpaceID       string   `json:"spaceId"`
+	PageID        string   `json:"pageId"`
+	Status        string   `json:"status"`
+	Body          WikiBody `json:"-"`
+	CreatedBy     string   `json:"createdBy"`
+	CreatedName   string   `json:"-"`
+	AssignedTo    string   `json:"assignedTo,omitempty"`
+	AssignedName  string   `json:"-"`
+	CompletedBy   string   `json:"completedBy,omitempty"`
+	CompletedName string   `json:"-"`
+	CreatedAt     string   `json:"createdAt"`
+	UpdatedAt     string   `json:"updatedAt"`
+	DueAt         string   `json:"dueAt,omitempty"`
+	CompletedAt   string   `json:"completedAt,omitempty"`
+}

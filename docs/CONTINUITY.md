@@ -1519,9 +1519,29 @@ Validation after Confluence page inline comments:
 - Exact reviewed API coverage is 295 of 1,207 operations: 288 partial, 7
   missing, and 912 unassessed. Confluence coverage is 81 of 348 reviewed.
 
+Validation after Confluence page tasks:
+
+- Migration 082 adds durable page tasks with local IDs, storage bodies, status,
+  creator, optional assignee and due date, and completion actor/time. Cascading
+  page deletion and status invariants keep task lifecycle state coherent.
+- All three pinned Confluence v2 task operations now provide visible global and
+  item reads plus edit-permission status updates. The list validates and applies
+  every documented task, content, identity, status, blank-body and epoch-time
+  filter, including repeated/comma-separated values and cursor pagination.
+- Task changes emit page-scoped actions. PostgreSQL integration covers blank
+  tasks, storage bodies, cumulative filters, completion metadata, invalid
+  values and restricted-page item/action privacy. Omitted PostgreSQL array
+  parameters are explicitly treated as empty filters.
+- Page authors can add a task, choose an active workspace assignee and due date,
+  then complete or reopen it beside the page. The clean Chromium journey covers
+  task assignment and completion alongside the full wiki lifecycle, WCAG scan,
+  dark theme and 320 px reflow.
+- Exact reviewed API coverage is 298 of 1,207 operations: 291 partial, 7
+  missing, and 909 unassessed. Confluence coverage is 84 of 348 reviewed.
+
 ## Current change
 
-1. Continue Confluence tasks.
+1. Continue generic Confluence content, ancestors and descendants.
 2. Return to advanced service operations risk, CAB approval, on-call and
    post-incident review configuration after the next knowledge slice.
 

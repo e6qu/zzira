@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 295,
+  "assessedTotal": 298,
   "counts": {
     "delivered": 0,
-    "partial": 288,
+    "partial": 291,
     "missing": 7,
-    "unassessed": 912
+    "unassessed": 909
   },
   "countsByFamily": {
     "automation": {
@@ -18,9 +18,9 @@
     },
     "confluence": {
       "delivered": 0,
-      "partial": 81,
+      "partial": 84,
       "missing": 0,
-      "unassessed": 267
+      "unassessed": 264
     },
     "jira-platform": {
       "delivered": 0,
@@ -10736,25 +10736,52 @@
       "operationId": "confluence-v2:GET:/wiki/api/v2/tasks",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/tasks.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_tasks.go",
+        "migrations/082_wiki_tasks.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Durable page tasks support accessible list/item reads, all documented identity/content/status/date filters, blank-task selection, storage bodies, cursor pagination, edit-permission status changes, completion actor/time, private sync filtering, and page UI assignment/due-date/completion; extraction and reconciliation from Confluence storage task macros, blog-post tasks, ADF bodies, and full task authoring semantics remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/tasks/{id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/tasks.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_tasks.go",
+        "migrations/082_wiki_tasks.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Durable page tasks support accessible list/item reads, all documented identity/content/status/date filters, blank-task selection, storage bodies, cursor pagination, edit-permission status changes, completion actor/time, private sync filtering, and page UI assignment/due-date/completion; extraction and reconciliation from Confluence storage task macros, blog-post tasks, ADF bodies, and full task authoring semantics remain."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/tasks/{id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/tasks.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_tasks.go",
+        "migrations/082_wiki_tasks.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Durable page tasks support accessible list/item reads, all documented identity/content/status/date filters, blank-task selection, storage bodies, cursor pagination, edit-permission status changes, completion actor/time, private sync filtering, and page UI assignment/due-date/completion; extraction and reconciliation from Confluence storage task macros, blog-post tasks, ADF bodies, and full task authoring semantics remain."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/user/access/check-access-by-email",

@@ -285,6 +285,8 @@ func main() {
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/inline-comments", webHandler.WikiInlineCommentCreate)
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/inline-comments/{comment}", webHandler.WikiInlineCommentUpdate)
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/inline-comments/{comment}/delete", webHandler.WikiInlineCommentDelete)
+	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/tasks", webHandler.WikiTaskCreate)
+	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/tasks/{task}", webHandler.WikiTaskUpdate)
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/comments/{comment}", webHandler.WikiCommentUpdate)
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/comments/{comment}/delete", webHandler.WikiCommentDelete)
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/comments/{comment}/like", webHandler.WikiCommentLike)

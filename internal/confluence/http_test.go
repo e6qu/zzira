@@ -360,6 +360,38 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	call(member, "GET", "/inline-comments/"+inline.ID+"/versions?body-format=storage&sort=-modified-date", nil, 200)
 	call(member, "GET", "/inline-comments/"+inline.ID+"/versions/1", nil, 200)
 	call(actor, "DELETE", "/inline-comments/"+inlineReply.ID, nil, 204)
+	wikiTask, err := h.Commands.CreateWikiTask(ctx, ws, actor, models.WikiTask{PageID: page.ID, AssignedTo: member, DueAt: "2030-01-02T00:00:00Z", Body: models.WikiBody{Representation: "storage", Value: "<p>Publish the release notes</p>"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	blankTask, err := h.Commands.CreateWikiTask(ctx, ws, actor, models.WikiTask{PageID: page.ID, Body: models.WikiBody{Representation: "storage"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	taskFilters := []string{
+		"body-format=storage",
+		"status=incomplete", "task-id=" + wikiTask.ID, "space-id=" + public,
+		"page-id=" + page.ID, "created-by=" + actor, "assigned-to=" + member,
+		"created-at-from=0", "due-at-from=1893456000000", "due-at-to=1893628800000", "limit=1",
+	}
+	for i := range taskFilters {
+		taskList := call(member, "GET", "/tasks?"+strings.Join(taskFilters[:i+1], "&"), nil, 200)
+		if !strings.Contains(taskList.Body.String(), "Publish the release notes") || !strings.Contains(taskList.Body.String(), `"assignedTo":"`+member+`"`) {
+			t.Fatalf("task filter %q returned %s", taskFilters[i], taskList.Body.String())
+		}
+	}
+	nonBlankTasks := call(member, "GET", "/tasks?body-format=storage&include-blank-tasks=false&page-id="+page.ID, nil, 200)
+	if strings.Contains(nonBlankTasks.Body.String(), `"id":"`+blankTask.ID+`"`) {
+		t.Fatal(nonBlankTasks.Body.String())
+	}
+	call(member, "GET", "/tasks/"+wikiTask.ID+"?body-format=storage", nil, 200)
+	completedTask := call(member, "PUT", "/tasks/"+wikiTask.ID+"?body-format=storage", map[string]string{"status": "complete"}, 200)
+	if !strings.Contains(completedTask.Body.String(), `"status":"complete"`) || !strings.Contains(completedTask.Body.String(), `"completedBy":"`+member+`"`) {
+		t.Fatal(completedTask.Body.String())
+	}
+	call(actor, "GET", "/tasks?status=complete&completed-by="+member+"&completed-at-from=0", nil, 200)
+	call(actor, "PUT", "/tasks/"+wikiTask.ID, map[string]string{"status": "invalid"}, 400)
+	call(actor, "GET", "/tasks?task-id=invalid", nil, 400)
 	callV1(actor, "POST", "/content/"+secret.ID+"/label", map[string]string{"prefix": "global", "name": "secret-label"}, 200)
 	if leaked := call(member, "GET", "/labels", nil, 200); strings.Contains(leaked.Body.String(), "secret-label") {
 		t.Fatal("private page label leaked")
@@ -669,11 +701,16 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	if err := json.Unmarshal(restrictedInlineResponse.Body.Bytes(), &restrictedInlineComment); err != nil {
 		t.Fatal(err)
 	}
+	restrictedTask, err := h.Commands.CreateWikiTask(ctx, ws, actor, models.WikiTask{PageID: restricted.ID, Body: models.WikiBody{Representation: "storage", Value: "<p>Classified task discussion</p>"}})
+	if err != nil {
+		t.Fatal(err)
+	}
 	callV1(actor, "PUT", "/content/"+restricted.ID+"/restriction", actorOnly, 200)
 	call(member, "GET", "/pages/"+restricted.ID, nil, 404)
 	call(member, "GET", "/attachments/"+restrictedAttachmentID, nil, 404)
 	call(member, "GET", "/footer-comments/"+restrictedAttachmentComment.ID, nil, 404)
 	call(member, "GET", "/inline-comments/"+restrictedInlineComment.ID, nil, 404)
+	call(member, "GET", "/tasks/"+restrictedTask.ID, nil, 404)
 	if visibleAttachments := call(member, "GET", "/attachments", nil, 200); strings.Contains(visibleAttachments.Body.String(), "classified-release") {
 		t.Fatal("restricted attachment leaked through the global collection")
 	}
@@ -691,7 +728,7 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		if a.EntityType == "wiki_footer_comment_like" && strings.HasPrefix(a.EntityID, secretCommentBean.ID+":") {
 			t.Fatalf("private wiki like action leaked: %s", a.Payload)
 		}
-		if strings.Contains(string(a.Payload), "Private draft") || strings.Contains(string(a.Payload), "Secret guide") || strings.Contains(string(a.Payload), "PRIVATE") || strings.Contains(string(a.Payload), "Private launch phrase") || strings.Contains(string(a.Payload), "secret-label") || strings.Contains(string(a.Payload), "Restricted launch plan") || strings.Contains(string(a.Payload), "Managers approved the launch") || strings.Contains(string(a.Payload), "classified-release") || strings.Contains(string(a.Payload), "classified-metadata") || strings.Contains(string(a.Payload), "classified-file") || strings.Contains(string(a.Payload), "Classified attachment discussion") || strings.Contains(string(a.Payload), "Classified inline discussion") {
+		if strings.Contains(string(a.Payload), "Private draft") || strings.Contains(string(a.Payload), "Secret guide") || strings.Contains(string(a.Payload), "PRIVATE") || strings.Contains(string(a.Payload), "Private launch phrase") || strings.Contains(string(a.Payload), "secret-label") || strings.Contains(string(a.Payload), "Restricted launch plan") || strings.Contains(string(a.Payload), "Managers approved the launch") || strings.Contains(string(a.Payload), "classified-release") || strings.Contains(string(a.Payload), "classified-metadata") || strings.Contains(string(a.Payload), "classified-file") || strings.Contains(string(a.Payload), "Classified attachment discussion") || strings.Contains(string(a.Payload), "Classified inline discussion") || strings.Contains(string(a.Payload), "Classified task discussion") {
 			t.Fatalf("private wiki action leaked: %s", a.Payload)
 		}
 	}

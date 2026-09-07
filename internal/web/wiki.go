@@ -3,10 +3,12 @@ package web
 import (
 	"encoding/json"
 	"errors"
+	"html"
 	"log"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
@@ -24,6 +26,8 @@ type wikiData struct {
 	Versions                              []models.WikiVersion
 	Comments                              []wikiCommentNode
 	InlineComments                        []wikiCommentNode
+	Tasks                                 []*models.WikiTask
+	TaskAssignees                         []*models.User
 	Labels                                []models.WikiLabel
 	Attachments                           []*models.WikiAttachment
 	AttachmentComments                    map[string][]wikiCommentNode
@@ -442,6 +446,18 @@ func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 			}
 		}
 		data.InlineComments = wikiCommentTree(inlineComments, inlineLikes, inlineVersions, user.ID, wikiAdmin)
+		data.Tasks, err = h.Store.WikiTasks(r.Context(), ws, user.ID, store.WikiTaskFilter{PageIDs: []string{page.ID}, IncludeBlank: true})
+		if err != nil {
+			http.Error(w, "Could not load page tasks.", 500)
+			return
+		}
+		if canEdit && page.Status == "current" {
+			data.TaskAssignees, err = h.Store.MembersByWorkspace(r.Context(), ws)
+			if err != nil {
+				http.Error(w, "Could not load task assignees.", 500)
+				return
+			}
+		}
 	}
 	h.writeWorkspacePageStatus(w, r, "page_wiki_page", user, ws, data, "wiki", "", status)
 }
@@ -743,6 +759,67 @@ func (h *Handler) WikiInlineCommentDelete(w http.ResponseWriter, r *http.Request
 		return
 	}
 	redirectLocal(w, r, wikiPageURL(page)+"#wiki-inline-comments")
+}
+
+func (h *Handler) WikiTaskCreate(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	page, err := h.wikiPageForComment(r, ws, user.ID)
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	text := strings.TrimSpace(r.PostFormValue("body"))
+	if text == "" {
+		http.Error(w, "Task text is required.", 400)
+		return
+	}
+	dueAt := ""
+	if raw := r.PostFormValue("dueAt"); raw != "" {
+		due, parseErr := time.Parse("2006-01-02", raw)
+		if parseErr != nil {
+			http.Error(w, "Choose a valid task due date.", 400)
+			return
+		}
+		dueAt = due.UTC().Format(time.RFC3339)
+	}
+	task, err := h.Commands.CreateWikiTask(r.Context(), ws, user.ID, models.WikiTask{
+		PageID: page.ID, AssignedTo: r.PostFormValue("assignedTo"), DueAt: dueAt,
+		Body: models.WikiBody{Representation: "storage", Value: "<p>" + html.EscapeString(text) + "</p>"},
+	})
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	redirectLocal(w, r, wikiPageURL(page)+"#wiki-task-"+task.ID)
+}
+
+func (h *Handler) WikiTaskUpdate(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	page, err := h.wikiPageForComment(r, ws, user.ID)
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	task, err := h.Store.WikiTask(r.Context(), ws, user.ID, r.PathValue("task"))
+	if err != nil || task.PageID != page.ID {
+		http.NotFound(w, r)
+		return
+	}
+	if _, err = h.Commands.UpdateWikiTask(r.Context(), ws, user.ID, task.ID, r.PostFormValue("status")); err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	redirectLocal(w, r, wikiPageURL(page)+"#wiki-task-"+task.ID)
 }
 
 func (h *Handler) WikiSpaceWatch(w http.ResponseWriter, r *http.Request) {

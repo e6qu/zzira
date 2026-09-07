@@ -219,6 +219,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.inlineCommentLikeCount(w, r, ws, actor, parts[1])
 	case len(parts) == 4 && parts[0] == "inline-comments" && parts[2] == "likes" && parts[3] == "users" && r.Method == "GET":
 		h.inlineCommentLikeUsers(w, r, ws, actor, parts[1])
+	case len(parts) == 1 && parts[0] == "tasks" && r.Method == "GET":
+		h.tasks(w, r, ws, actor)
+	case len(parts) == 2 && parts[0] == "tasks" && r.Method == "GET":
+		h.task(w, r, ws, actor, parts[1])
+	case len(parts) == 2 && parts[0] == "tasks" && r.Method == "PUT":
+		h.updateTask(w, r, ws, actor, parts[1])
 	case len(parts) == 1 && parts[0] == "footer-comments" && r.Method == "GET":
 		h.footerComments(w, r, ws, actor, "", "")
 	case len(parts) == 1 && parts[0] == "footer-comments" && r.Method == "POST":

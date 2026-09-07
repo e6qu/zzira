@@ -82,7 +82,7 @@ use `/rest/zzira/1`.
 | Project versions and releases | 🟡 | Ten version operations, release hub/lifecycle, fix/affected membership, visible progress and notes; exact limits in [RELEASES.md](../../docs/RELEASES.md) |
 | Metrics and reports | 🟡 | Permission-filtered 7/30/90 day DORA metrics, immutable delivery facts, accessible daily SVG/table and recent production evidence; Jira/Agile report catalog, comparisons, exports, subscriptions and scheduled delivery remain; see `docs/REPORTS.md` |
 | Apps/plugins, diagrams and graphs | ⛔ | installation/runtime modules, diagram authoring and graph/report surfaces remain |
-| Confluence Cloud spaces, pages, labels, restrictions, attachments, comments and watches | 🟡 | Initial v2 space/page CRUD, drafts, versions, trash/restore, page/attachment footer comments, page inline-comment threads with exact anchors and resolution, labels, all 12 v1 page-restriction operations, 21 v1/v2 versioned page-attachment/property/label/thumbnail operations, and all 12 v1 content/space/label watch operations with deduplicated in-app delivery across 81 reviewed operations, plus permission-filtered action log; exact limits in CLOUD_PARITY.md |
+| Confluence Cloud spaces, pages, labels, restrictions, attachments, comments, tasks and watches | 🟡 | Initial v2 space/page CRUD, drafts, versions, trash/restore, page/attachment footer comments, page inline-comment threads with exact anchors and resolution, filtered page tasks with assignment/due/completion, labels, all 12 v1 page-restriction operations, 21 v1/v2 versioned page-attachment/property/label/thumbnail operations, and all 12 v1 content/space/label watch operations with deduplicated in-app delivery across 84 reviewed operations, plus permission-filtered action log; exact limits in CLOUD_PARITY.md |
 
 ## E2E (browser-proven, Playwright/Chromium)
 
@@ -97,7 +97,7 @@ use `/rest/zzira/1`.
 | Notifications inbox, private API mutations, unread filtering, and open-to-work flow | ✅ |
 | WCAG 2.2 A/AA axe sweep, target sizes, keyboard movement and 320px reflow | ✅ |
 | Service help center, request, queue, SLA, approval, file, notification, feedback, customer and organization management journey | ✅ |
-| Wiki author/member page access, authoring, stale edits, history, threaded footer and inline comments, child pages and trash/restore | ✅ |
+| Wiki author/member page access, authoring, stale edits, history, threaded footer/inline comments, assigned page tasks, child pages and trash/restore | ✅ |
 
 ## Load measurement
 

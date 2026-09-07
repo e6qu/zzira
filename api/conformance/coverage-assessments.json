@@ -3666,6 +3666,51 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/tasks",
+      "status": "partial",
+      "notes": "Durable page tasks support accessible list/item reads, all documented identity/content/status/date filters, blank-task selection, storage bodies, cursor pagination, edit-permission status changes, completion actor/time, private sync filtering, and page UI assignment/due-date/completion; extraction and reconciliation from Confluence storage task macros, blog-post tasks, ADF bodies, and full task authoring semantics remain.",
+      "evidence": [
+        "internal/confluence/tasks.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_tasks.go",
+        "migrations/082_wiki_tasks.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/tasks/{id}",
+      "status": "partial",
+      "notes": "Durable page tasks support accessible list/item reads, all documented identity/content/status/date filters, blank-task selection, storage bodies, cursor pagination, edit-permission status changes, completion actor/time, private sync filtering, and page UI assignment/due-date/completion; extraction and reconciliation from Confluence storage task macros, blog-post tasks, ADF bodies, and full task authoring semantics remain.",
+      "evidence": [
+        "internal/confluence/tasks.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_tasks.go",
+        "migrations/082_wiki_tasks.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:PUT:/wiki/api/v2/tasks/{id}",
+      "status": "partial",
+      "notes": "Durable page tasks support accessible list/item reads, all documented identity/content/status/date filters, blank-task selection, storage bodies, cursor pagination, edit-permission status changes, completion actor/time, private sync filtering, and page UI assignment/due-date/completion; extraction and reconciliation from Confluence storage task macros, blog-post tasks, ADF bodies, and full task authoring semantics remain.",
+      "evidence": [
+        "internal/confluence/tasks.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_tasks.go",
+        "migrations/082_wiki_tasks.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
     }
   ]
 }
