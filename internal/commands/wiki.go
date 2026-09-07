@@ -62,11 +62,14 @@ func (s *Service) CreateWikiFooterComment(ctx context.Context, ws, actor string,
 	if err := validateWikiComment(comment); err != nil {
 		return nil, err
 	}
-	if comment.PageID == "" && comment.ParentCommentID == "" {
-		return nil, fmt.Errorf("%w: pageId or parentCommentId is required", store.ErrWikiValidation)
+	targets := 0
+	for _, id := range []string{comment.PageID, comment.AttachmentID, comment.ParentCommentID} {
+		if id != "" {
+			targets++
+		}
 	}
-	if comment.PageID != "" && comment.ParentCommentID != "" {
-		return nil, fmt.Errorf("%w: choose either pageId or parentCommentId", store.ErrWikiValidation)
+	if targets != 1 {
+		return nil, fmt.Errorf("%w: choose exactly one of pageId, attachmentId, or parentCommentId", store.ErrWikiValidation)
 	}
 	return s.Store.CreateWikiFooterComment(ctx, ws, actor, comment)
 }

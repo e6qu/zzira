@@ -285,6 +285,7 @@ func main() {
 	mux.Handle("/wiki/api/v2/", confluenceHandler)
 	mux.Handle("/wiki/rest/api/", &confluence.V1Handler{Handler: confluenceHandler})
 	mux.Handle("/wiki/download/attachments/", &confluence.DownloadHandler{Handler: confluenceHandler})
+	mux.Handle("/wiki/download/thumbnails/", &confluence.ThumbnailHandler{Handler: confluenceHandler})
 	mux.HandleFunc("GET /projects/{key}/releases", webHandler.Releases)
 	mux.HandleFunc("POST /projects/{key}/releases", webHandler.Releases)
 	mux.HandleFunc("GET /projects/{key}/releases/{version}", webHandler.Release)

@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 269,
+  "assessedTotal": 271,
   "counts": {
     "delivered": 0,
-    "partial": 262,
+    "partial": 264,
     "missing": 7,
-    "unassessed": 938
+    "unassessed": 936
   },
   "countsByFamily": {
     "automation": {
@@ -18,9 +18,9 @@
     },
     "confluence": {
       "delivered": 0,
-      "partial": 55,
+      "partial": 57,
       "missing": 0,
-      "unassessed": 293
+      "unassessed": 291
     },
     "jira-platform": {
       "delivered": 0,
@@ -8851,9 +8851,17 @@
       "operationId": "confluence-v2:GET:/wiki/api/v2/attachments/{id}/footer-comments",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/http.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki.go",
+        "migrations/079_wiki_attachment_comments.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Returns version-validated, permission-scoped top-level attachment comments with storage bodies, documented sorts and cursor pagination; other body representations remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/attachments/{id}/labels",
@@ -8890,9 +8898,13 @@
       "operationId": "confluence-v2:GET:/wiki/api/v2/attachments/{id}/thumbnail/download",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/attachments.go",
+        "internal/confluence/http_test.go",
+        "cmd/server/main.go"
+      ],
+      "notes": "Redirects visible attachment versions to an authenticated byte path that performs bounded GIF, JPEG or PNG decoding and returns a requested-size PNG thumbnail."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/attachments/{id}/versions",
@@ -9638,7 +9650,7 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ],
-      "notes": "Lists all visible page footer comments with cursor pagination, storage bodies and four documented sort orders; non-page targets and other body formats remain."
+      "notes": "Lists all visible page and attachment footer comments with cursor pagination, storage bodies and four documented sort orders; other content targets and body formats remain."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/footer-comments",
@@ -9655,7 +9667,7 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ],
-      "notes": "Creates page comments and threaded replies from flat or representation-keyed storage bodies, returning the documented 201 and Location header; non-page targets and other body formats remain."
+      "notes": "Creates page and attachment comments plus threaded replies from flat or representation-keyed storage bodies, returning the documented 201 and Location header; other content targets and body formats remain."
     },
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/footer-comments/{comment-id}",
@@ -9672,7 +9684,7 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ],
-      "notes": "Deletes an author-owned comment or an administrator-moderated comment with cascading replies and the documented 204 behavior."
+      "notes": "Deletes an author-owned page or attachment comment, or an administrator-moderated comment, with cascading replies and the documented 204 behavior."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/footer-comments/{comment-id}",
@@ -9689,7 +9701,7 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ],
-      "notes": "Returns a visible page footer comment and optional storage body; historical version and expansion parameters remain."
+      "notes": "Returns a visible page or attachment footer comment and optional storage body; broader expansions remain."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/footer-comments/{comment-id}",
@@ -9706,7 +9718,7 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ],
-      "notes": "Updates an author-owned or administrator-moderated comment with strict next-version concurrency and immutable version persistence; other body formats remain."
+      "notes": "Updates an author-owned or administrator-moderated page or attachment comment with strict next-version concurrency and immutable version persistence; other body formats remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/footer-comments/{id}/children",
@@ -9723,7 +9735,7 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ],
-      "notes": "Lists direct visible replies with cursor pagination, storage bodies and all documented sort orders."
+      "notes": "Lists direct visible page or attachment replies with cursor pagination, storage bodies and all documented sort orders."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/footer-comments/{id}/likes/count",
@@ -9740,7 +9752,7 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ],
-      "notes": "Returns the persisted visible-user like count for a visible page footer comment."
+      "notes": "Returns the persisted visible-user like count for a visible page or attachment footer comment."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/footer-comments/{id}/likes/users",
@@ -9757,7 +9769,7 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ],
-      "notes": "Returns cursor-paginated account IDs for persisted likes on a visible page footer comment."
+      "notes": "Returns cursor-paginated account IDs for persisted likes on a visible page or attachment footer comment."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/footer-comments/{id}/operations",

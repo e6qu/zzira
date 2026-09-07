@@ -3,8 +3,10 @@ package confluence
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"image/png"
 	"log"
 	"mime/multipart"
 	"net/http"
@@ -302,6 +304,41 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		t.Fatal(expandedAttachment.Body.String())
 	}
 	call(member, "GET", "/attachments/"+attachmentID+"/operations", nil, 200)
+	attachmentCommentResponse := call(member, "POST", "/footer-comments", map[string]any{"attachmentId": attachmentID, "body": models.WikiBody{Representation: "storage", Value: "<p>Check the attached release plan.</p>"}}, 201)
+	var attachmentComment models.WikiFooterComment
+	if err := json.Unmarshal(attachmentCommentResponse.Body.Bytes(), &attachmentComment); err != nil || attachmentComment.ID == "" || attachmentComment.AttachmentID != attachmentID {
+		t.Fatalf("unexpected attachment comment: %+v %v", attachmentComment, err)
+	}
+	attachmentComments := call(member, "GET", "/attachments/"+attachmentID+"/footer-comments?body-format=storage&sort=-modified-date&version=1", nil, 200)
+	if !strings.Contains(attachmentComments.Body.String(), "Check the attached release plan") || strings.Contains(attachmentComments.Body.String(), `"pageId"`) {
+		t.Fatal(attachmentComments.Body.String())
+	}
+	attachmentReply := call(actor, "POST", "/footer-comments", map[string]any{"parentCommentId": attachmentComment.ID, "body": models.WikiBody{Representation: "storage", Value: "<p>Attachment approved.</p>"}}, 201)
+	if !strings.Contains(attachmentReply.Body.String(), `"attachmentId":"`+attachmentID+`"`) {
+		t.Fatal(attachmentReply.Body.String())
+	}
+	attachmentChildren := call(member, "GET", "/footer-comments/"+attachmentComment.ID+"/children?body-format=storage", nil, 200)
+	if !strings.Contains(attachmentChildren.Body.String(), "Attachment approved") {
+		t.Fatal(attachmentChildren.Body.String())
+	}
+	pngBytes, err := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")
+	if err != nil {
+		t.Fatal(err)
+	}
+	imageUpload := callV1Multipart(member, "POST", "/content/"+page.ID+"/child/attachment", "release-dot.png", string(pngBytes), "Release marker", 200)
+	var uploadedImage struct{ Results []models.WikiAttachment }
+	if err := json.Unmarshal(imageUpload.Body.Bytes(), &uploadedImage); err != nil || len(uploadedImage.Results) != 1 {
+		t.Fatalf("unexpected image attachment: %+v %v", uploadedImage, err)
+	}
+	thumbnailRedirect := call(member, "GET", "/attachments/"+uploadedImage.Results[0].ID+"/thumbnail/download?width=3&height=2&version=1", nil, 302)
+	thumbnailRequest := httptest.NewRequest(http.MethodGet, thumbnailRedirect.Header().Get("Location"), nil)
+	thumbnailRequest.SetBasicAuth(member+"@example.test", member)
+	thumbnailResponse := httptest.NewRecorder()
+	(&ThumbnailHandler{Handler: h}).ServeHTTP(thumbnailResponse, thumbnailRequest)
+	thumbnailConfig, err := png.DecodeConfig(bytes.NewReader(thumbnailResponse.Body.Bytes()))
+	if err != nil || thumbnailResponse.Code != 200 || thumbnailConfig.Width != 3 || thumbnailConfig.Height != 2 {
+		t.Fatalf("unexpected thumbnail: status=%d config=%+v err=%v body=%s", thumbnailResponse.Code, thumbnailConfig, err, thumbnailResponse.Body.String())
+	}
 	callV1Multipart(member, "POST", "/content/"+page.ID+"/child/attachment/"+attachmentID+"/data", "release.txt", "release two", "Updated release file", 200)
 	versionsResponse := call(member, "GET", "/attachments/"+attachmentID+"/versions", nil, 200)
 	if !strings.Contains(versionsResponse.Body.String(), `"number":2`) {
@@ -322,6 +359,7 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	call(member, "GET", "/attachments/"+attachmentID+"/properties/"+attachmentProperty.ID, nil, 404)
 	call(member, "DELETE", "/attachments/"+attachmentID, nil, 204)
 	call(member, "GET", "/attachments/"+attachmentID, nil, 404)
+	call(member, "GET", "/footer-comments/"+attachmentComment.ID, nil, 404)
 	topResponse := call(member, "POST", "/footer-comments", map[string]any{"pageId": page.ID, "body": map[string]any{"storage": models.WikiBody{Representation: "storage", Value: "<p>Ready for review</p>"}}}, 201)
 	var top struct {
 		ID      string
@@ -499,9 +537,15 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	if _, err := h.Commands.AddWikiAttachmentLabels(ctx, ws, actor, restrictedAttachmentID, []models.WikiLabel{{Prefix: "global", Name: "classified-file"}}); err != nil {
 		t.Fatal(err)
 	}
+	restrictedCommentResponse := call(actor, "POST", "/footer-comments", map[string]any{"attachmentId": restrictedAttachmentID, "body": models.WikiBody{Representation: "storage", Value: "<p>Classified attachment discussion</p>"}}, 201)
+	var restrictedAttachmentComment models.WikiFooterComment
+	if err := json.Unmarshal(restrictedCommentResponse.Body.Bytes(), &restrictedAttachmentComment); err != nil {
+		t.Fatal(err)
+	}
 	callV1(actor, "PUT", "/content/"+restricted.ID+"/restriction", actorOnly, 200)
 	call(member, "GET", "/pages/"+restricted.ID, nil, 404)
 	call(member, "GET", "/attachments/"+restrictedAttachmentID, nil, 404)
+	call(member, "GET", "/footer-comments/"+restrictedAttachmentComment.ID, nil, 404)
 	if visibleAttachments := call(member, "GET", "/attachments", nil, 200); strings.Contains(visibleAttachments.Body.String(), "classified-release") {
 		t.Fatal("restricted attachment leaked through the global collection")
 	}
@@ -519,7 +563,7 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		if a.EntityType == "wiki_footer_comment_like" && strings.HasPrefix(a.EntityID, secretCommentBean.ID+":") {
 			t.Fatalf("private wiki like action leaked: %s", a.Payload)
 		}
-		if strings.Contains(string(a.Payload), "Private draft") || strings.Contains(string(a.Payload), "Secret guide") || strings.Contains(string(a.Payload), "PRIVATE") || strings.Contains(string(a.Payload), "Private launch phrase") || strings.Contains(string(a.Payload), "secret-label") || strings.Contains(string(a.Payload), "Restricted launch plan") || strings.Contains(string(a.Payload), "Managers approved the launch") || strings.Contains(string(a.Payload), "classified-release") || strings.Contains(string(a.Payload), "classified-metadata") || strings.Contains(string(a.Payload), "classified-file") {
+		if strings.Contains(string(a.Payload), "Private draft") || strings.Contains(string(a.Payload), "Secret guide") || strings.Contains(string(a.Payload), "PRIVATE") || strings.Contains(string(a.Payload), "Private launch phrase") || strings.Contains(string(a.Payload), "secret-label") || strings.Contains(string(a.Payload), "Restricted launch plan") || strings.Contains(string(a.Payload), "Managers approved the launch") || strings.Contains(string(a.Payload), "classified-release") || strings.Contains(string(a.Payload), "classified-metadata") || strings.Contains(string(a.Payload), "classified-file") || strings.Contains(string(a.Payload), "Classified attachment discussion") {
 			t.Fatalf("private wiki action leaked: %s", a.Payload)
 		}
 	}

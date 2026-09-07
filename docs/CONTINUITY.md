@@ -1457,10 +1457,29 @@ Validation after Confluence attachment properties and labels:
 - Exact reviewed API coverage is 269 of 1,207 operations: 262 partial, 7
   missing, and 938 unassessed. Confluence coverage is 55 of 348 reviewed.
 
+Validation after Confluence attachment comments and thumbnails:
+
+- Migration 079 generalizes the existing immutable footer-comment lifecycle to
+  attachment targets while preserving the parent page used for space, content
+  restriction and action-log filtering. Replies retain their target; item,
+  history, operation and like resources work for both page and attachment
+  comments, and deleting an attachment cascades its discussion.
+- The v2 attachment-comment collection validates optional attachment versions,
+  supports storage bodies, documented sorts and cursor pagination. The v2
+  thumbnail operation redirects to an authenticated byte path with bounded
+  input size and decoded pixels, version selection, 1–4096 dimensions and
+  GIF/JPEG/PNG-to-PNG rendering.
+- Page attachments expose a threaded discussion journey that uses the shared
+  comment commands. PostgreSQL and filesystem integration covers attachment
+  comments, replies, cascade deletion, restricted-content action privacy and a
+  decoded 3×2 PNG result; Chromium covers comment creation alongside attachment
+  labels and properties.
+- Exact reviewed API coverage is 271 of 1,207 operations: 264 partial, 7
+  missing, and 936 unassessed. Confluence coverage is 57 of 348 reviewed.
+
 ## Current change
 
-1. Continue Confluence attachment comments and thumbnails, then page and space
-   watches.
+1. Continue Confluence page and space watches, then inline comments and tasks.
 2. Return to advanced service operations risk, CAB approval, on-call and
    post-incident review configuration after the next knowledge slice.
 

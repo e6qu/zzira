@@ -76,6 +76,12 @@ test('wiki space, rich page, access, stale edits, child pages, history, trash an
   await page.getByLabel('Version comment').fill('Approved plan');
   await page.getByRole('button', { name: 'Replace file', exact: true }).click();
   await expect(page.locator('#wiki-attachments')).toContainText('Version 2');
+  await page.getByText('Comments · 0', { exact: true }).click();
+  await page.getByLabel('Comment on release-plan.txt').fill('Reviewed the release attachment.');
+  await page.getByRole('button', { name: 'Add attachment comment', exact: true }).click();
+  await expect(page.getByText('Comments · 1', { exact: true })).toBeVisible();
+  await page.getByText('Comments · 1', { exact: true }).click();
+  await expect(page.locator('.wiki-attachment-comments')).toContainText('Reviewed the release attachment.');
   await page.getByText('Metadata', { exact: true }).click();
   await page.getByLabel('Add attachment labels').fill('release-file');
   await page.getByRole('button', { name: 'Add attachment labels', exact: true }).click();

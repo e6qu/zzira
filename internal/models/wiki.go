@@ -44,6 +44,7 @@ type WikiFooterComment struct {
 	ID              string      `json:"id"`
 	PageID          string      `json:"pageId"`
 	SpaceID         string      `json:"-"`
+	AttachmentID    string      `json:"attachmentId,omitempty"`
 	ParentCommentID string      `json:"parentCommentId,omitempty"`
 	AuthorID        string      `json:"authorId"`
 	AuthorName      string      `json:"-"`

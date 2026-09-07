@@ -44,7 +44,7 @@ const wikiPageWritable = `(
 )`
 const wikiSpaceSelect = `SELECT s.id::text,s.workspace_id,s.key,s.name,s.description,s.author_id,s.private,to_char(s.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM wiki_spaces s`
 const wikiPageSelect = `SELECT p.id::text,s.workspace_id,p.space_id::text,COALESCE(p.parent_id::text,''),p.title,p.status,p.published,p.body,p.author_id,to_char(p.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),v.version,v.message,v.minor_edit,v.author_id,to_char(v.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM wiki_pages p JOIN wiki_spaces s ON s.id=p.space_id JOIN wiki_page_versions v ON v.page_id=p.id AND v.version=p.version`
-const wikiCommentSelect = `SELECT c.id::text,c.page_id::text,p.space_id::text,COALESCE(c.parent_id::text,''),c.body,c.author_id,u.display_name,c.version,v.message,to_char(c.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),to_char(c.updated_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),v.author_id,to_char(v.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM wiki_footer_comments c JOIN wiki_pages p ON p.id=c.page_id JOIN wiki_spaces s ON s.id=p.space_id JOIN users u ON u.id=c.author_id JOIN wiki_footer_comment_versions v ON v.comment_id=c.id AND v.version=c.version`
+const wikiCommentSelect = `SELECT c.id::text,p.id::text,p.space_id::text,COALESCE(c.attachment_id::text,''),COALESCE(c.parent_id::text,''),c.body,c.author_id,u.display_name,c.version,v.message,to_char(c.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),to_char(c.updated_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),v.author_id,to_char(v.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM wiki_footer_comments c LEFT JOIN wiki_attachments ca ON ca.id=c.attachment_id JOIN wiki_pages p ON p.id=COALESCE(c.page_id,ca.page_id) JOIN wiki_spaces s ON s.id=p.space_id JOIN users u ON u.id=c.author_id JOIN wiki_footer_comment_versions v ON v.comment_id=c.id AND v.version=c.version`
 
 func scanWikiSpace(row pgx.Row) (*models.WikiSpace, error) {
 	s := &models.WikiSpace{}
@@ -59,7 +59,7 @@ func scanWikiPage(row pgx.Row) (*models.WikiPage, error) {
 
 func scanWikiFooterComment(row pgx.Row) (*models.WikiFooterComment, error) {
 	c := &models.WikiFooterComment{Body: models.WikiBody{Representation: "storage"}}
-	err := row.Scan(&c.ID, &c.PageID, &c.SpaceID, &c.ParentCommentID, &c.Body.Value, &c.AuthorID, &c.AuthorName, &c.Version.Number, &c.Version.Message, &c.CreatedAt, &c.UpdatedAt, &c.Version.AuthorID, &c.Version.CreatedAt)
+	err := row.Scan(&c.ID, &c.PageID, &c.SpaceID, &c.AttachmentID, &c.ParentCommentID, &c.Body.Value, &c.AuthorID, &c.AuthorName, &c.Version.Number, &c.Version.Message, &c.CreatedAt, &c.UpdatedAt, &c.Version.AuthorID, &c.Version.CreatedAt)
 	return c, err
 }
 
@@ -278,6 +278,30 @@ func (s *Store) WikiFooterCommentThread(ctx context.Context, ws, user, pageID st
 	return scanWikiFooterComments(rows)
 }
 
+func (s *Store) WikiAttachmentFooterComments(ctx context.Context, ws, user, attachmentID string) ([]*models.WikiFooterComment, error) {
+	if _, err := s.WikiAttachment(ctx, ws, user, attachmentID); err != nil {
+		return nil, err
+	}
+	rows, err := s.Pool.Query(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND p.status='current' AND c.attachment_id::text=$3 AND c.parent_id IS NULL ORDER BY c.created_at,c.id`, ws, user, attachmentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanWikiFooterComments(rows)
+}
+
+func (s *Store) WikiAttachmentFooterCommentThread(ctx context.Context, ws, user, attachmentID string) ([]*models.WikiFooterComment, error) {
+	if _, err := s.WikiAttachment(ctx, ws, user, attachmentID); err != nil {
+		return nil, err
+	}
+	rows, err := s.Pool.Query(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND p.status='current' AND c.attachment_id::text=$3 ORDER BY c.created_at,c.id`, ws, user, attachmentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanWikiFooterComments(rows)
+}
+
 func (s *Store) WikiFooterCommentChildren(ctx context.Context, ws, user, parentID string) ([]*models.WikiFooterComment, error) {
 	if _, err := s.WikiFooterComment(ctx, ws, user, parentID); err != nil {
 		return nil, err
@@ -313,7 +337,18 @@ func (s *Store) CreateWikiFooterComment(ctx context.Context, ws, actor string, i
 		if err != nil {
 			return nil, err
 		}
-		input.PageID = parent.PageID
+		if parent.AttachmentID != "" {
+			input.PageID = ""
+			input.AttachmentID = parent.AttachmentID
+		} else {
+			input.PageID = parent.PageID
+		}
+	} else if input.AttachmentID != "" {
+		var id string
+		err := tx.QueryRow(ctx, `SELECT a.id::text FROM wiki_attachments a JOIN wiki_pages p ON p.id=a.page_id JOIN wiki_spaces s ON s.id=p.space_id WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND p.status='current' AND a.status='current' AND a.id::text=$3 FOR SHARE OF a,p`, ws, actor, input.AttachmentID).Scan(&id)
+		if err != nil {
+			return nil, err
+		}
 	} else {
 		var id string
 		err := tx.QueryRow(ctx, `SELECT p.id::text FROM wiki_pages p JOIN wiki_spaces s ON s.id=p.space_id WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND p.status='current' AND p.id::text=$3 FOR SHARE OF p`, ws, actor, input.PageID).Scan(&id)
@@ -323,7 +358,7 @@ func (s *Store) CreateWikiFooterComment(ctx context.Context, ws, actor string, i
 	}
 	input.Version.Number = 1
 	input.AuthorID = actor
-	if err := tx.QueryRow(ctx, `INSERT INTO wiki_footer_comments(page_id,parent_id,body,author_id) VALUES ($1::bigint,$2::bigint,$3,$4) RETURNING id::text`, input.PageID, nilIfEmpty(input.ParentCommentID), input.Body.Value, actor).Scan(&input.ID); err != nil {
+	if err := tx.QueryRow(ctx, `INSERT INTO wiki_footer_comments(page_id,attachment_id,parent_id,body,author_id) VALUES ($1::bigint,$2::bigint,$3::bigint,$4,$5) RETURNING id::text`, nilIfEmpty(input.PageID), nilIfEmpty(input.AttachmentID), nilIfEmpty(input.ParentCommentID), input.Body.Value, actor).Scan(&input.ID); err != nil {
 		return nil, err
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO wiki_footer_comment_versions(comment_id,version,body,author_id,message) VALUES ($1::bigint,1,$2,$3,$4)`, input.ID, input.Body.Value, actor, input.Version.Message); err != nil {
@@ -485,11 +520,52 @@ func (s *Store) WikiFooterCommentLikesForPage(ctx context.Context, ws, user, pag
 	return likes, rows.Err()
 }
 
+func (s *Store) WikiFooterCommentLikesForAttachment(ctx context.Context, ws, user, attachmentID string) (map[string][]string, error) {
+	if _, err := s.WikiAttachment(ctx, ws, user, attachmentID); err != nil {
+		return nil, err
+	}
+	rows, err := s.Pool.Query(ctx, `SELECT l.comment_id::text,l.user_id FROM wiki_footer_comment_likes l JOIN wiki_footer_comments c ON c.id=l.comment_id JOIN users u ON u.id=l.user_id AND u.active WHERE c.attachment_id::text=$1 ORDER BY l.created_at,l.user_id`, attachmentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	likes := map[string][]string{}
+	for rows.Next() {
+		var commentID, accountID string
+		if err := rows.Scan(&commentID, &accountID); err != nil {
+			return nil, err
+		}
+		likes[commentID] = append(likes[commentID], accountID)
+	}
+	return likes, rows.Err()
+}
+
 func (s *Store) WikiFooterCommentVersionsForPage(ctx context.Context, ws, user, pageID string) (map[string][]models.WikiFooterCommentVersion, error) {
 	if _, err := s.WikiPage(ctx, ws, user, pageID); err != nil {
 		return nil, err
 	}
 	rows, err := s.Pool.Query(ctx, `SELECT v.comment_id::text,v.version,v.message,v.author_id,to_char(v.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),v.body FROM wiki_footer_comment_versions v JOIN wiki_footer_comments c ON c.id=v.comment_id WHERE c.page_id::text=$1 ORDER BY v.comment_id,v.version`, pageID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	versions := map[string][]models.WikiFooterCommentVersion{}
+	for rows.Next() {
+		var commentID string
+		version := models.WikiFooterCommentVersion{Body: models.WikiBody{Representation: "storage"}}
+		if err := rows.Scan(&commentID, &version.Number, &version.Message, &version.AuthorID, &version.CreatedAt, &version.Body.Value); err != nil {
+			return nil, err
+		}
+		versions[commentID] = append(versions[commentID], version)
+	}
+	return versions, rows.Err()
+}
+
+func (s *Store) WikiFooterCommentVersionsForAttachment(ctx context.Context, ws, user, attachmentID string) (map[string][]models.WikiFooterCommentVersion, error) {
+	if _, err := s.WikiAttachment(ctx, ws, user, attachmentID); err != nil {
+		return nil, err
+	}
+	rows, err := s.Pool.Query(ctx, `SELECT v.comment_id::text,v.version,v.message,v.author_id,to_char(v.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),v.body FROM wiki_footer_comment_versions v JOIN wiki_footer_comments c ON c.id=v.comment_id WHERE c.attachment_id::text=$1 ORDER BY v.comment_id,v.version`, attachmentID)
 	if err != nil {
 		return nil, err
 	}

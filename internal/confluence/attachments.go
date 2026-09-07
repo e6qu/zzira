@@ -1,7 +1,12 @@
 package confluence
 
 import (
+	"bytes"
 	"encoding/json"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	"image/png"
 	"io"
 	"log"
 	"mime"
@@ -340,6 +345,153 @@ func (h *Handler) attachmentVersion(w http.ResponseWriter, r *http.Request, ws, 
 		bean["nextVersion"] = v.Number + 1
 	}
 	respond(w, 200, bean)
+}
+
+func thumbnailDimension(w http.ResponseWriter, r *http.Request, key string) (int, bool) {
+	raw := r.URL.Query().Get(key)
+	if raw == "" {
+		return 0, true
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value < 1 || value > 4096 {
+		failure(w, 400, key+" must be between 1 and 4096.")
+		return 0, false
+	}
+	return value, true
+}
+
+func (h *Handler) attachmentThumbnail(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
+	if !supportedQuery(w, r, "version", "height", "width") {
+		return
+	}
+	version := 0
+	if raw := r.URL.Query().Get("version"); raw != "" {
+		var err error
+		version, err = strconv.Atoi(raw)
+		if err != nil || version < 1 {
+			failure(w, 400, "version must be positive.")
+			return
+		}
+	}
+	if _, ok := thumbnailDimension(w, r, "width"); !ok {
+		return
+	}
+	if _, ok := thumbnailDimension(w, r, "height"); !ok {
+		return
+	}
+	_, err := h.Store.WikiAttachment(r.Context(), ws, actor, id)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if version != 0 {
+		if _, err = h.Store.WikiAttachmentVersion(r.Context(), ws, actor, id, version); err != nil {
+			writeError(w, err)
+			return
+		}
+	}
+	target := "/wiki/download/thumbnails/" + id + ".png"
+	query := r.URL.Query()
+	if len(query) > 0 {
+		target += "?" + query.Encode()
+	}
+	http.Redirect(w, r, target, http.StatusFound)
+}
+
+type ThumbnailHandler struct{ *Handler }
+
+func scaleThumbnail(source image.Image, width, height int) *image.RGBA {
+	bounds := source.Bounds()
+	sourceWidth, sourceHeight := bounds.Dx(), bounds.Dy()
+	if width == 0 && height == 0 {
+		width, height = 250, 250
+	} else if width == 0 {
+		width = max(1, sourceWidth*height/sourceHeight)
+	} else if height == 0 {
+		height = max(1, sourceHeight*width/sourceWidth)
+	}
+	destination := image.NewRGBA(image.Rect(0, 0, width, height))
+	for y := range height {
+		sourceY := bounds.Min.Y + y*sourceHeight/height
+		for x := range width {
+			sourceX := bounds.Min.X + x*sourceWidth/width
+			destination.Set(x, y, source.At(sourceX, sourceY))
+		}
+	}
+	return destination
+}
+
+func (h *ThumbnailHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	actor, err := authn.Identify(r.Context(), h.Store, r)
+	if err != nil {
+		failure(w, 401, "Authentication required.")
+		return
+	}
+	ws, err := h.Store.WorkspaceBySlug(r.Context(), h.WorkspaceSlug)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	id := strings.TrimSuffix(strings.Trim(strings.TrimPrefix(r.URL.Path, "/wiki/download/thumbnails/"), "/"), ".png")
+	if id == "" {
+		failure(w, 404, "Attachment not found.")
+		return
+	}
+	width, ok := thumbnailDimension(w, r, "width")
+	if !ok {
+		return
+	}
+	height, ok := thumbnailDimension(w, r, "height")
+	if !ok {
+		return
+	}
+	version := 0
+	if raw := r.URL.Query().Get("version"); raw != "" {
+		version, err = strconv.Atoi(raw)
+		if err != nil || version < 1 {
+			failure(w, 400, "version must be positive.")
+			return
+		}
+	}
+	ref, _, _, err := h.Store.WikiAttachmentBlob(r.Context(), ws, actor, id, version)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	reader, size, err := h.Blobs.Get(r.Context(), ref)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	defer func() {
+		if err := reader.Close(); err != nil {
+			log.Printf("wiki thumbnail close: %v", err)
+		}
+	}()
+	if size > 25<<20 {
+		failure(w, 400, "The image is too large to create a thumbnail.")
+		return
+	}
+	data, err := io.ReadAll(io.LimitReader(reader, 25<<20+1))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	config, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil || config.Width < 1 || config.Height < 1 || int64(config.Width)*int64(config.Height) > 50_000_000 {
+		failure(w, 400, "The attachment is not a supported thumbnail image.")
+		return
+	}
+	source, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		failure(w, 400, "The attachment is not a supported thumbnail image.")
+		return
+	}
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Content-Disposition", "inline")
+	if err := png.Encode(w, scaleThumbnail(source, width, height)); err != nil {
+		log.Printf("wiki thumbnail encode: %v", err)
+	}
 }
 
 func parseWikiMultipart(w http.ResponseWriter, r *http.Request) ([]*models.WikiAttachment, []string, bool) {

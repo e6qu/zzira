@@ -25,6 +25,7 @@ type wikiData struct {
 	Comments                              []wikiCommentNode
 	Labels                                []models.WikiLabel
 	Attachments                           []*models.WikiAttachment
+	AttachmentComments                    map[string][]wikiCommentNode
 	Restrictions                          []models.WikiPageRestriction
 	RestrictionUsers                      []wikiRestrictionOption
 	RestrictionGroups                     []wikiRestrictionOption
@@ -330,6 +331,12 @@ func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 			http.Error(w, "Could not load page attachments.", 500)
 			return
 		}
+		wikiAdmin, adminErr := h.Store.IsAdmin(r.Context(), ws, user.ID)
+		if adminErr != nil {
+			http.Error(w, "Could not load comment permissions.", 500)
+			return
+		}
+		data.AttachmentComments = map[string][]wikiCommentNode{}
 		for _, attachment := range data.Attachments {
 			attachment.Labels, err = h.Store.WikiAttachmentLabels(r.Context(), ws, user.ID, attachment.ID)
 			if err != nil {
@@ -344,15 +351,26 @@ func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 			for i := range attachment.Properties {
 				attachment.Properties[i].NextVersion = attachment.Properties[i].Version.Number + 1
 			}
+			attachmentComments, commentErr := h.Store.WikiAttachmentFooterCommentThread(r.Context(), ws, user.ID, attachment.ID)
+			if commentErr != nil {
+				http.Error(w, "Could not load attachment comments.", 500)
+				return
+			}
+			attachmentLikes, commentErr := h.Store.WikiFooterCommentLikesForAttachment(r.Context(), ws, user.ID, attachment.ID)
+			if commentErr != nil {
+				http.Error(w, "Could not load attachment comment likes.", 500)
+				return
+			}
+			attachmentVersions, commentErr := h.Store.WikiFooterCommentVersionsForAttachment(r.Context(), ws, user.ID, attachment.ID)
+			if commentErr != nil {
+				http.Error(w, "Could not load attachment comment history.", 500)
+				return
+			}
+			data.AttachmentComments[attachment.ID] = wikiCommentTree(attachmentComments, attachmentLikes, attachmentVersions, user.ID, wikiAdmin)
 		}
 		comments, commentErr := h.Store.WikiFooterCommentThread(r.Context(), ws, user.ID, page.ID)
 		if commentErr != nil {
 			http.Error(w, "Could not load page comments.", 500)
-			return
-		}
-		admin, adminErr := h.Store.IsAdmin(r.Context(), ws, user.ID)
-		if adminErr != nil {
-			http.Error(w, "Could not load comment permissions.", 500)
 			return
 		}
 		likes, likesErr := h.Store.WikiFooterCommentLikesForPage(r.Context(), ws, user.ID, page.ID)
@@ -365,7 +383,7 @@ func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 			http.Error(w, "Could not load comment history.", 500)
 			return
 		}
-		data.Comments = wikiCommentTree(comments, likes, versions, user.ID, admin)
+		data.Comments = wikiCommentTree(comments, likes, versions, user.ID, wikiAdmin)
 	}
 	h.writeWorkspacePageStatus(w, r, "page_wiki_page", user, ws, data, "wiki", "", status)
 }
@@ -538,6 +556,14 @@ func (h *Handler) WikiCommentCreate(w http.ResponseWriter, r *http.Request) {
 	if parentID := r.PostFormValue("parentId"); parentID != "" {
 		comment.PageID = ""
 		comment.ParentCommentID = parentID
+	} else if attachmentID := r.PostFormValue("attachmentId"); attachmentID != "" {
+		attachment, attachmentErr := h.Store.WikiAttachment(r.Context(), ws, user.ID, attachmentID)
+		if attachmentErr != nil || attachment.PageID != page.ID {
+			http.NotFound(w, r)
+			return
+		}
+		comment.PageID = ""
+		comment.AttachmentID = attachmentID
 	}
 	created, err := h.Commands.CreateWikiFooterComment(r.Context(), ws, user.ID, comment)
 	if err != nil {
