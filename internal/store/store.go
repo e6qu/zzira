@@ -957,7 +957,7 @@ func (s *Store) ActionPageSince(ctx context.Context, workspaceID, userID string,
 		FROM actions a
 		WHERE a.workspace_id=$1 AND a.seq > $2 AND a.seq <= $6
 		  AND (a.entity_type <> 'dashboard' OR EXISTS (SELECT 1 FROM dashboards d WHERE d.workspace_id=$1 AND d.id=a.entity_id AND `+strings.ReplaceAll(dashboardAccess, "$2", "$3")+`))
-		  AND (a.entity_type NOT IN ('wiki_space','wiki_page','wiki_footer_comment','wiki_footer_comment_like','wiki_inline_comment','wiki_inline_comment_like','wiki_task','wiki_label','wiki_restriction','wiki_attachment','wiki_attachment_property') OR EXISTS (
+		  AND (a.entity_type NOT IN ('wiki_space','wiki_page','wiki_footer_comment','wiki_footer_comment_like','wiki_inline_comment','wiki_inline_comment_like','wiki_task','wiki_label','wiki_restriction','wiki_attachment','wiki_attachment_property','wiki_content','wiki_content_property') OR EXISTS (
 		    SELECT 1 FROM wiki_spaces s WHERE s.workspace_id=$1
 		      AND s.id::text=a.payload->>'wikiSpaceId'
 		      AND (NOT s.private OR s.author_id=$3)
@@ -973,8 +973,9 @@ func (s *Store) ActionPageSince(ctx context.Context, workspaceID, userID string,
 		        WHERE wp.id::text=a.payload->'wiki_label'->>'pageId'
 		          AND wp.space_id=s.id AND wp.status='current'
 		      ))
-		      AND (a.entity_type NOT IN ('wiki_page','wiki_footer_comment','wiki_footer_comment_like','wiki_inline_comment','wiki_inline_comment_like','wiki_task','wiki_label','wiki_restriction','wiki_attachment','wiki_attachment_property')
+		      AND (a.entity_type NOT IN ('wiki_page','wiki_footer_comment','wiki_footer_comment_like','wiki_inline_comment','wiki_inline_comment_like','wiki_task','wiki_label','wiki_restriction','wiki_attachment','wiki_attachment_property','wiki_content','wiki_content_property')
 		        OR COALESCE(a.payload->'wiki_label'->>'pageId','')='' AND a.entity_type='wiki_label'
+		        OR a.entity_type IN ('wiki_content','wiki_content_property') AND COALESCE(a.payload->>'rootPageId','')=''
 		        OR EXISTS (
 		          SELECT 1 FROM wiki_pages access_page
 		          WHERE access_page.id::text=CASE a.entity_type
@@ -988,8 +989,11 @@ func (s *Store) ActionPageSince(ctx context.Context, workspaceID, userID string,
 		            WHEN 'wiki_restriction' THEN a.payload->'wiki_restriction'->>'pageId'
 		            WHEN 'wiki_attachment' THEN a.payload->'wiki_attachment'->>'pageId'
 		            WHEN 'wiki_attachment_property' THEN a.payload->'wiki_attachment_property'->>'pageId'
+		            WHEN 'wiki_content' THEN a.payload->>'rootPageId'
+		            WHEN 'wiki_content_property' THEN a.payload->>'rootPageId'
 		          END
 		            AND access_page.space_id=s.id
+		            AND access_page.status='current'
 		            AND (
 		              access_page.author_id=$3
 		              OR EXISTS (SELECT 1 FROM memberships access_admin WHERE access_admin.workspace_id=$1 AND access_admin.user_id=$3 AND access_admin.role='admin')

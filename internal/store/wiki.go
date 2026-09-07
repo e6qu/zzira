@@ -200,11 +200,11 @@ func (s *Store) SaveWikiPage(ctx context.Context, ws, actor string, input models
 	}
 	if input.Status == "trashed" {
 		var children bool
-		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM wiki_pages WHERE parent_id::text=$1 AND status<>'trashed')`, input.ID).Scan(&children); err != nil {
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM wiki_pages WHERE parent_id::text=$1 AND status<>'trashed') OR EXISTS(SELECT 1 FROM wiki_content WHERE parent_page_id::text=$1 AND status='current')`, input.ID).Scan(&children); err != nil {
 			return nil, err
 		}
 		if children {
-			return nil, fmt.Errorf("%w: move or trash child pages before deleting this page", ErrWikiValidation)
+			return nil, fmt.Errorf("%w: move or trash child content before deleting this page", ErrWikiValidation)
 		}
 	}
 	if input.ID == "" {

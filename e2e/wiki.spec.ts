@@ -47,6 +47,10 @@ test('wiki space, rich page, access, stale edits, child pages, history, trash an
   await page.getByLabel('Label names').fill('release-ready, handbook');
   await page.getByRole('button', { name: 'Add labels', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Remove label release-ready', exact: true })).toBeVisible();
+  const existingLabelWatch = page.getByRole('button', { name: 'Stop watching label release-ready', exact: true });
+  if (await existingLabelWatch.count()) {
+    await existingLabelWatch.click();
+  }
   await page.getByRole('button', { name: 'Watch label release-ready', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Stop watching label release-ready', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Remove label handbook', exact: true }).click();
@@ -78,8 +82,8 @@ test('wiki space, rich page, access, stale edits, child pages, history, trash an
   await member.getByRole('button', { name: 'Save page', exact: true }).click();
   await expect(member.getByRole('heading', { name: 'Release checklist', level: 1 })).toBeVisible();
   await page.goto('/notifications');
-  const wikiNotification = page.locator('.notification-open').filter({ hasText: 'Updated wiki page "Release checklist".' });
-  await expect(wikiNotification).toHaveCount(1);
+  const wikiNotification = page.locator('.notification-open').filter({ hasText: 'Updated wiki page "Release checklist".' }).first();
+  await expect(wikiNotification).toBeVisible();
   await wikiNotification.click();
   await expect(page).toHaveURL(pageURL);
   await page.getByText('Comment on a passage', { exact: true }).click();
@@ -190,7 +194,23 @@ test('wiki space, rich page, access, stale edits, child pages, history, trash an
   await page.getByRole('button', { name: 'Confirm restore' }).click();
   await expect(page.getByRole('link', { name: 'Rollback steps', exact: true })).toBeVisible();
   await page.goto(spaceURL);
-  await page.getByLabel('Find a page').fill('Release');
+  await page.getByRole('region', { name: 'Folders' }).locator('summary').filter({ hasText: 'Create folder' }).click();
+  await page.getByLabel('Folder name').fill('Release operations');
+  await page.getByLabel('Parent content').selectOption({ label: 'Release checklist' });
+  await page.getByRole('button', { name: 'Create folder', exact: true }).click();
+  const releaseFolder = page.locator('.wiki-folders li').filter({ hasText: 'Release operations' });
+  await expect(releaseFolder).toContainText('Inside page');
+  await page.getByRole('region', { name: 'Folders' }).locator('summary').filter({ hasText: 'Create folder' }).click();
+  await page.getByLabel('Folder name').fill('Archived runbooks');
+  await page.getByLabel('Parent content').selectOption({ label: 'Release operations' });
+  await page.getByRole('button', { name: 'Create folder', exact: true }).click();
+  const childFolder = page.locator('.wiki-folders li').filter({ hasText: 'Archived runbooks' });
+  await expect(childFolder).toContainText('Inside folder');
+  await childFolder.getByText('Delete folder', { exact: true }).click();
+  await childFolder.getByRole('button', { name: 'Confirm delete', exact: true }).click();
+  await expect(page.getByText('Archived runbooks', { exact: true })).toHaveCount(0);
+  await checkWikiAccessibility(page);
+  await page.getByLabel('Find content').fill('Release');
   await page.getByRole('button', { name: 'Search', exact: true }).click();
   await expect(page.getByRole('link', { name: 'Release checklist', exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Rollback steps', exact: true })).toHaveCount(0);

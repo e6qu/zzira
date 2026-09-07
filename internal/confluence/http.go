@@ -62,6 +62,8 @@ func writeError(w http.ResponseWriter, err error) {
 		failure(w, 400, err.Error())
 	case errors.As(err, &pgerr) && pgerr.Code == "23505" && pgerr.ConstraintName == "wiki_attachment_properties_attachment_id_key_key":
 		failure(w, 400, "An attachment property with this key already exists.")
+	case errors.As(err, &pgerr) && pgerr.Code == "23505" && pgerr.ConstraintName == "wiki_content_properties_content_id_key_key":
+		failure(w, 400, "A content property with this key already exists.")
 	case errors.As(err, &pgerr) && pgerr.Code == "23505":
 		failure(w, 400, "A space with this key or a published page with this title already exists.")
 	default:
@@ -297,6 +299,30 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.attachmentVersion(w, r, ws, actor, parts[1], parts[3])
 	case len(parts) == 3 && parts[0] == "pages" && parts[2] == "attachments" && r.Method == "GET":
 		h.attachments(w, r, ws, actor, parts[1])
+	case len(parts) == 1 && parts[0] == "folders" && r.Method == "POST":
+		h.createFolder(w, r, ws, actor)
+	case len(parts) == 2 && parts[0] == "folders" && r.Method == "GET":
+		h.folder(w, r, ws, actor, parts[1])
+	case len(parts) == 2 && parts[0] == "folders" && r.Method == "DELETE":
+		h.deleteFolder(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "folders" && parts[2] == "ancestors" && r.Method == "GET":
+		h.folderAncestors(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "folders" && parts[2] == "descendants" && r.Method == "GET":
+		h.folderDescendants(w, r, ws, actor, parts[1], false)
+	case len(parts) == 3 && parts[0] == "folders" && parts[2] == "direct-children" && r.Method == "GET":
+		h.folderDescendants(w, r, ws, actor, parts[1], true)
+	case len(parts) == 3 && parts[0] == "folders" && parts[2] == "operations" && r.Method == "GET":
+		h.folderOperations(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "folders" && parts[2] == "properties" && r.Method == "GET":
+		h.folderProperties(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "folders" && parts[2] == "properties" && r.Method == "POST":
+		h.createFolderProperty(w, r, ws, actor, parts[1])
+	case len(parts) == 4 && parts[0] == "folders" && parts[2] == "properties" && r.Method == "GET":
+		h.folderProperty(w, r, ws, actor, parts[1], parts[3])
+	case len(parts) == 4 && parts[0] == "folders" && parts[2] == "properties" && r.Method == "PUT":
+		h.updateFolderProperty(w, r, ws, actor, parts[1], parts[3])
+	case len(parts) == 4 && parts[0] == "folders" && parts[2] == "properties" && r.Method == "DELETE":
+		h.deleteFolderProperty(w, r, ws, actor, parts[1], parts[3])
 	default:
 		failure(w, 404, "This Confluence resource is not implemented.")
 	}

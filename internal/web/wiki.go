@@ -21,6 +21,7 @@ type wikiData struct {
 	Spaces                                []*models.WikiSpace
 	Space                                 *models.WikiSpace
 	Pages                                 []*models.WikiPage
+	Folders                               []*models.WikiContent
 	Tree                                  []wikiTreeNode
 	Page                                  *models.WikiPage
 	Versions                              []models.WikiVersion
@@ -131,6 +132,8 @@ func wikiWebError(err error) (int, string) {
 		return 400, err.Error()
 	case errors.As(err, &pgerr) && pgerr.Code == "23505" && pgerr.ConstraintName == "wiki_attachment_properties_attachment_id_key_key":
 		return 400, "An attachment property with this key already exists."
+	case errors.As(err, &pgerr) && pgerr.Code == "23505" && pgerr.ConstraintName == "wiki_content_properties_content_id_key_key":
+		return 400, "A content property with this key already exists."
 	case errors.As(err, &pgerr) && pgerr.Code == "23505":
 		return 400, "A space with this key or a published page with this title already exists."
 	default:
@@ -206,12 +209,73 @@ func (h *Handler) WikiSpacePage(w http.ResponseWriter, r *http.Request) {
 			filtered = append(filtered, page)
 		}
 	}
+	folders := []*models.WikiContent{}
+	if status == "current" {
+		folders, err = h.Store.WikiContents(r.Context(), ws, user.ID, space.ID, "folder")
+		if err != nil {
+			http.Error(w, "Could not load folders.", 500)
+			return
+		}
+		if query != "" {
+			visible := folders[:0]
+			for _, folder := range folders {
+				if strings.Contains(strings.ToLower(folder.Title), strings.ToLower(query)) {
+					visible = append(visible, folder)
+				}
+			}
+			folders = visible
+		}
+	}
 	watching, err := h.Store.WikiWatchStatus(r.Context(), ws, user.ID, user.ID, "space", space.Key)
 	if err != nil {
 		http.Error(w, "Could not load space watch status.", 500)
 		return
 	}
-	h.writeWorkspacePage(w, r, "page_wiki_space", user, ws, wikiData{Space: space, Pages: filtered, Tree: wikiPageTree(filtered), Query: query, Status: status, WatchingSpace: watching}, "wiki", "")
+	h.writeWorkspacePage(w, r, "page_wiki_space", user, ws, wikiData{Space: space, Pages: filtered, Folders: folders, Tree: wikiPageTree(filtered), Query: query, Status: status, WatchingSpace: watching}, "wiki", "")
+}
+
+func (h *Handler) WikiFolderCreate(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	space, err := h.Store.WikiSpace(r.Context(), ws, user.ID, r.PathValue("space"))
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	folder, err := h.Commands.CreateWikiContent(r.Context(), ws, user.ID, models.WikiContent{Type: "folder", SpaceID: space.ID, Title: r.PostFormValue("title"), ParentID: r.PostFormValue("parentId")})
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	redirectLocal(w, r, "/wiki/spaces/"+space.ID+"#folder-"+folder.ID)
+}
+
+func (h *Handler) WikiFolderDelete(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	space, err := h.Store.WikiSpace(r.Context(), ws, user.ID, r.PathValue("space"))
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	folder, err := h.Store.WikiContent(r.Context(), ws, user.ID, r.PathValue("folder"), "folder")
+	if err != nil || folder.SpaceID != space.ID {
+		http.NotFound(w, r)
+		return
+	}
+	if err = h.Commands.DeleteWikiContent(r.Context(), ws, user.ID, folder.ID, "folder"); err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	redirectLocal(w, r, "/wiki/spaces/"+space.ID)
 }
 
 func (h *Handler) WikiPage(w http.ResponseWriter, r *http.Request) { h.wikiPage(w, r, false) }

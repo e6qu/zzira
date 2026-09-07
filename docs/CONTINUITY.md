@@ -1555,10 +1555,33 @@ Validation after Confluence page hierarchy resources:
 - Exact reviewed API coverage is 304 of 1,207 operations: 297 partial, 7
   missing, and 903 unassessed. Confluence coverage is 90 of 348 reviewed.
 
+Validation after Confluence folders:
+
+- Migration 083 adds a global-ID hierarchical-content substrate for folders,
+  databases, Smart Links and whiteboards, immutable content versions, and
+  optimistic versioned JSON properties. A stored root page carries page
+  restrictions through nested non-page content without copying grants.
+- All 12 pinned Confluence v2 folder operations now cover create/read/delete,
+  page/folder ancestors, bounded descendants, sorted cursor-paged direct
+  children, permission-shaped operations, and property list/create/read/update/
+  delete. Nonempty folders and pages with attached folders cannot be trashed.
+- Folder and property changes share atomic action records and action-feed
+  privacy. PostgreSQL integration covers nested hierarchy, expansions,
+  duplicate keys, stale property versions, deletion order, and private-space
+  isolation.
+- The space UI creates folders below pages or folders, shows their parent and
+  creation time, prevents nonempty deletion, searches across content, and
+  exposes an accessible delete flow. The clean-database Chromium wiki journey
+  passes, including WCAG scans, dark theme and 320 px reflow. Its persistent
+  label-watch and notification selectors are now repeat-run safe.
+- Exact reviewed API coverage is 316 of 1,207 operations: 309 partial, 7
+  missing, and 891 unassessed. Confluence coverage is 102 of 348 reviewed.
+
 ## Current change
 
-1. Continue generic Confluence content types and their hierarchy.
-2. Return to advanced service operations risk, CAB approval, on-call and
+1. Add Smart Links on the generic hierarchical-content and property substrate.
+2. Add databases and whiteboards to the same permission-shaped content tree.
+3. Return to advanced service operations risk, CAB approval, on-call and
    post-incident review configuration after the next knowledge slice.
 
 ## Resume here

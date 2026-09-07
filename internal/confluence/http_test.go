@@ -71,7 +71,7 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		exec(`INSERT INTO api_tokens(id,user_id,token_hash) VALUES ($1,$1,$2)`, id, store.HashToken(id))
 	}
 	t.Cleanup(func() {
-		for _, sql := range []string{`DELETE FROM wiki_page_versions WHERE page_id IN (SELECT p.id FROM wiki_pages p JOIN wiki_spaces s ON s.id=p.space_id WHERE s.workspace_id=$1)`, `DELETE FROM wiki_pages WHERE space_id IN (SELECT id FROM wiki_spaces WHERE workspace_id=$1)`, `DELETE FROM wiki_spaces WHERE workspace_id=$1`, `DELETE FROM wiki_labels WHERE workspace_id=$1`, `DELETE FROM actions WHERE workspace_id=$1`, `DELETE FROM memberships WHERE workspace_id=$1`, `DELETE FROM workspaces WHERE id=$1`} {
+		for _, sql := range []string{`DELETE FROM wiki_content_property_versions WHERE property_id IN (SELECT cp.id FROM wiki_content_properties cp JOIN wiki_content c ON c.id=cp.content_id JOIN wiki_spaces s ON s.id=c.space_id WHERE s.workspace_id=$1)`, `DELETE FROM wiki_content_properties WHERE content_id IN (SELECT c.id FROM wiki_content c JOIN wiki_spaces s ON s.id=c.space_id WHERE s.workspace_id=$1)`, `DELETE FROM wiki_content_versions WHERE content_id IN (SELECT c.id FROM wiki_content c JOIN wiki_spaces s ON s.id=c.space_id WHERE s.workspace_id=$1)`, `DELETE FROM wiki_content WHERE space_id IN (SELECT id FROM wiki_spaces WHERE workspace_id=$1)`, `DELETE FROM wiki_page_versions WHERE page_id IN (SELECT p.id FROM wiki_pages p JOIN wiki_spaces s ON s.id=p.space_id WHERE s.workspace_id=$1)`, `DELETE FROM wiki_pages WHERE space_id IN (SELECT id FROM wiki_spaces WHERE workspace_id=$1)`, `DELETE FROM wiki_spaces WHERE workspace_id=$1`, `DELETE FROM wiki_labels WHERE workspace_id=$1`, `DELETE FROM actions WHERE workspace_id=$1`, `DELETE FROM memberships WHERE workspace_id=$1`, `DELETE FROM workspaces WHERE id=$1`} {
 			exec(sql, ws)
 		}
 		for _, id := range []string{actor, admin, member, outsider} {
@@ -202,6 +202,48 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	page := create(public, "Release guide", "current")
 	draft := create(public, "Private draft", "draft")
 	secret := create(private, "Secret guide", "current")
+	rootFolderResponse := call(member, "POST", "/folders", map[string]any{"spaceId": public, "title": "Runbooks", "parentId": page.ID}, 200)
+	var rootFolder models.WikiContent
+	if err := json.Unmarshal(rootFolderResponse.Body.Bytes(), &rootFolder); err != nil || rootFolder.Type != "folder" || rootFolder.ParentType != "page" {
+		t.Fatalf("unexpected root folder: %+v %v", rootFolder, err)
+	}
+	childFolderResponse := call(member, "POST", "/folders", map[string]any{"spaceId": public, "title": "Database runbooks", "parentId": rootFolder.ID}, 200)
+	var childFolder models.WikiContent
+	if err := json.Unmarshal(childFolderResponse.Body.Bytes(), &childFolder); err != nil || childFolder.ParentType != "folder" {
+		t.Fatalf("unexpected child folder: %+v %v", childFolder, err)
+	}
+	if expanded := call(member, "GET", "/folders/"+rootFolder.ID+"?include-direct-children=true&include-operations=true&include-properties=true&include-collaborators=true", nil, 200); !strings.Contains(expanded.Body.String(), "Database runbooks") || !strings.Contains(expanded.Body.String(), `"operation":"delete"`) {
+		t.Fatal(expanded.Body.String())
+	}
+	if ancestors := call(member, "GET", "/folders/"+childFolder.ID+"/ancestors?limit=25", nil, 200); !strings.Contains(ancestors.Body.String(), `"id":"`+page.ID+`","type":"page"`) || !strings.Contains(ancestors.Body.String(), `"id":"`+rootFolder.ID+`","type":"folder"`) {
+		t.Fatal(ancestors.Body.String())
+	}
+	if descendants := call(member, "GET", "/folders/"+rootFolder.ID+"/descendants?depth=2&limit=25", nil, 200); !strings.Contains(descendants.Body.String(), `"depth":1`) || !strings.Contains(descendants.Body.String(), "Database runbooks") {
+		t.Fatal(descendants.Body.String())
+	}
+	folderPropertyResponse := call(member, "POST", "/folders/"+rootFolder.ID+"/properties", map[string]any{"key": "audience", "value": map[string]any{"team": "platform"}}, 200)
+	var folderProperty models.WikiContentProperty
+	if err := json.Unmarshal(folderPropertyResponse.Body.Bytes(), &folderProperty); err != nil || folderProperty.Version.Number != 1 {
+		t.Fatalf("unexpected folder property: %+v %v", folderProperty, err)
+	}
+	call(member, "POST", "/folders/"+rootFolder.ID+"/properties", map[string]any{"key": "audience", "value": true}, 400)
+	call(member, "GET", "/folders/"+rootFolder.ID+"/properties?key=audience&sort=-key", nil, 200)
+	call(member, "GET", "/folders/"+rootFolder.ID+"/properties/"+folderProperty.ID, nil, 200)
+	call(member, "PUT", "/folders/"+rootFolder.ID+"/properties/"+folderProperty.ID, map[string]any{"key": "audience", "value": map[string]any{"team": "operations"}, "version": map[string]any{"number": 3}}, 409)
+	call(member, "PUT", "/folders/"+rootFolder.ID+"/properties/"+folderProperty.ID, map[string]any{"key": "audience", "value": map[string]any{"team": "operations"}, "version": map[string]any{"number": 2, "message": "Broadened ownership"}}, 200)
+	call(member, "DELETE", "/folders/"+rootFolder.ID, nil, 400)
+	call(member, "DELETE", "/folders/"+rootFolder.ID+"/properties/"+folderProperty.ID, nil, 204)
+	call(member, "DELETE", "/folders/"+childFolder.ID, nil, 204)
+	call(member, "DELETE", "/folders/"+rootFolder.ID, nil, 204)
+	call(member, "GET", "/folders/"+rootFolder.ID, nil, 404)
+	call(member, "GET", "/folders/"+rootFolder.ID+"/properties", nil, 404)
+	secretFolderResponse := call(actor, "POST", "/folders", map[string]any{"spaceId": private, "title": "Private folder", "parentId": secret.ID}, 200)
+	var secretFolder models.WikiContent
+	if err := json.Unmarshal(secretFolderResponse.Body.Bytes(), &secretFolder); err != nil {
+		t.Fatal(err)
+	}
+	call(actor, "POST", "/folders/"+secretFolder.ID+"/properties", map[string]any{"key": "secret-folder-property", "value": true}, 200)
+	call(member, "GET", "/folders/"+secretFolder.ID, nil, 404)
 	secretComment := call(actor, "POST", "/footer-comments", map[string]any{"pageId": secret.ID, "body": models.WikiBody{Representation: "storage", Value: "<p>Private launch phrase</p>"}}, 201)
 	if secretComment.Header().Get("Location") == "" {
 		t.Fatal("created footer comment omitted Location")
@@ -767,7 +809,7 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		if a.EntityType == "wiki_footer_comment_like" && strings.HasPrefix(a.EntityID, secretCommentBean.ID+":") {
 			t.Fatalf("private wiki like action leaked: %s", a.Payload)
 		}
-		if strings.Contains(string(a.Payload), "Private draft") || strings.Contains(string(a.Payload), "Secret guide") || strings.Contains(string(a.Payload), "PRIVATE") || strings.Contains(string(a.Payload), "Private launch phrase") || strings.Contains(string(a.Payload), "secret-label") || strings.Contains(string(a.Payload), "Restricted launch plan") || strings.Contains(string(a.Payload), "Managers approved the launch") || strings.Contains(string(a.Payload), "classified-release") || strings.Contains(string(a.Payload), "classified-metadata") || strings.Contains(string(a.Payload), "classified-file") || strings.Contains(string(a.Payload), "Classified attachment discussion") || strings.Contains(string(a.Payload), "Classified inline discussion") || strings.Contains(string(a.Payload), "Classified task discussion") {
+		if strings.Contains(string(a.Payload), "Private draft") || strings.Contains(string(a.Payload), "Secret guide") || strings.Contains(string(a.Payload), "PRIVATE") || strings.Contains(string(a.Payload), "Private launch phrase") || strings.Contains(string(a.Payload), "Private folder") || strings.Contains(string(a.Payload), "secret-folder-property") || strings.Contains(string(a.Payload), "secret-label") || strings.Contains(string(a.Payload), "Restricted launch plan") || strings.Contains(string(a.Payload), "Managers approved the launch") || strings.Contains(string(a.Payload), "classified-release") || strings.Contains(string(a.Payload), "classified-metadata") || strings.Contains(string(a.Payload), "classified-file") || strings.Contains(string(a.Payload), "Classified attachment discussion") || strings.Contains(string(a.Payload), "Classified inline discussion") || strings.Contains(string(a.Payload), "Classified task discussion") {
 			t.Fatalf("private wiki action leaked: %s", a.Payload)
 		}
 	}

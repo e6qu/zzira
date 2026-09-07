@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 304,
+  "assessedTotal": 316,
   "counts": {
     "delivered": 0,
-    "partial": 297,
+    "partial": 309,
     "missing": 7,
-    "unassessed": 903
+    "unassessed": 891
   },
   "countsByFamily": {
     "automation": {
@@ -18,9 +18,9 @@
     },
     "confluence": {
       "delivered": 0,
-      "partial": 90,
+      "partial": 102,
       "missing": 0,
-      "unassessed": 258
+      "unassessed": 246
     },
     "jira-platform": {
       "delivered": 0,
@@ -9679,97 +9679,182 @@
       "operationId": "confluence-v2:POST:/wiki/api/v2/folders",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/folders.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "internal/commands/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Folder creation, current reads with supported expansions, nonempty deletion checks, inherited page/space permissions, synchronized action privacy, and the nested-folder space journey are tested; archive, restore, move/rename and heterogeneous child content remain."
     },
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/folders/{folder-id}/properties/{property-id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/folders.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "internal/store/wiki_content_properties.go",
+        "internal/commands/wiki.go"
+      ],
+      "notes": "Folder JSON properties support filtered and cursor-paged reads, create, exact-id reads, optimistic version updates, duplicate-key rejection, deletion, inherited visibility, and atomic action records; property version-history resources and non-folder content types remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/folders/{folder-id}/properties/{property-id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/folders.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "internal/store/wiki_content_properties.go",
+        "internal/commands/wiki.go"
+      ],
+      "notes": "Folder JSON properties support filtered and cursor-paged reads, create, exact-id reads, optimistic version updates, duplicate-key rejection, deletion, inherited visibility, and atomic action records; property version-history resources and non-folder content types remain."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/folders/{folder-id}/properties/{property-id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/folders.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "internal/store/wiki_content_properties.go",
+        "internal/commands/wiki.go"
+      ],
+      "notes": "Folder JSON properties support filtered and cursor-paged reads, create, exact-id reads, optimistic version updates, duplicate-key rejection, deletion, inherited visibility, and atomic action records; property version-history resources and non-folder content types remain."
     },
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/folders/{id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/folders.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "internal/commands/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Folder creation, current reads with supported expansions, nonempty deletion checks, inherited page/space permissions, synchronized action privacy, and the nested-folder space journey are tested; archive, restore, move/rename and heterogeneous child content remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/folders/{id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/folders.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "internal/commands/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Folder creation, current reads with supported expansions, nonempty deletion checks, inherited page/space permissions, synchronized action privacy, and the nested-folder space journey are tested; archive, restore, move/rename and heterogeneous child content remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/folders/{id}/ancestors",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/folders.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Folders support permission-filtered page/folder ancestors plus bounded folder descendants and direct children with documented sorting and cursor pagination; heterogeneous database, Smart Link, whiteboard and page children plus persisted manual ordering remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/folders/{id}/descendants",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/folders.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Folders support permission-filtered page/folder ancestors plus bounded folder descendants and direct children with documented sorting and cursor pagination; heterogeneous database, Smart Link, whiteboard and page children plus persisted manual ordering remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/folders/{id}/direct-children",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/folders.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Folders support permission-filtered page/folder ancestors plus bounded folder descendants and direct children with documented sorting and cursor pagination; heterogeneous database, Smart Link, whiteboard and page children plus persisted manual ordering remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/folders/{id}/operations",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/folders.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql"
+      ],
+      "notes": "The operation resource reports read and permission-shaped update/delete capabilities; the broader Confluence operation catalog and app-derived permissions remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/folders/{id}/properties",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/folders.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "internal/store/wiki_content_properties.go",
+        "internal/commands/wiki.go"
+      ],
+      "notes": "Folder JSON properties support filtered and cursor-paged reads, create, exact-id reads, optimistic version updates, duplicate-key rejection, deletion, inherited visibility, and atomic action records; property version-history resources and non-folder content types remain."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/folders/{id}/properties",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/folders.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "internal/store/wiki_content_properties.go",
+        "internal/commands/wiki.go"
+      ],
+      "notes": "Folder JSON properties support filtered and cursor-paged reads, create, exact-id reads, optimistic version updates, duplicate-key rejection, deletion, inherited visibility, and atomic action records; property version-history resources and non-folder content types remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/footer-comments",

@@ -69,6 +69,28 @@ func (s *Service) SaveWikiPage(ctx context.Context, ws, actor string, p models.W
 	return s.Store.SaveWikiPage(ctx, ws, actor, p)
 }
 
+func (s *Service) CreateWikiContent(ctx context.Context, ws, actor string, content models.WikiContent) (*models.WikiContent, error) {
+	content.Title = strings.TrimSpace(content.Title)
+	if content.Type != "folder" && content.Type != "database" && content.Type != "embed" && content.Type != "whiteboard" {
+		return nil, fmt.Errorf("%w: choose a supported hierarchical content type", store.ErrWikiValidation)
+	}
+	if content.SpaceID == "" {
+		return nil, fmt.Errorf("%w: choose a space", store.ErrWikiValidation)
+	}
+	if content.Title == "" || utf8.RuneCountInString(content.Title) > 255 {
+		return nil, fmt.Errorf("%w: content title is required (max 255 characters)", store.ErrWikiValidation)
+	}
+	if content.Type != "embed" && content.EmbedURL != "" {
+		return nil, fmt.Errorf("%w: only Smart Links accept an embed URL", store.ErrWikiValidation)
+	}
+	content.Status = "current"
+	return s.Store.CreateWikiContent(ctx, ws, actor, content)
+}
+
+func (s *Service) DeleteWikiContent(ctx context.Context, ws, actor, id, contentType string) error {
+	return s.Store.DeleteWikiContent(ctx, ws, actor, id, contentType)
+}
+
 func (s *Service) CreateWikiFooterComment(ctx context.Context, ws, actor string, comment models.WikiFooterComment) (*models.WikiFooterComment, error) {
 	if err := validateWikiComment(comment); err != nil {
 		return nil, err
@@ -254,7 +276,7 @@ func (s *Service) RemoveWikiAttachmentLabel(ctx context.Context, ws, actor, atta
 	return s.Store.RemoveWikiAttachmentLabel(ctx, ws, actor, attachmentID, labels[0])
 }
 
-func validateWikiAttachmentProperty(key string, value json.RawMessage) error {
+func validateWikiProperty(key string, value json.RawMessage) error {
 	if key == "" || utf8.RuneCountInString(key) > 255 {
 		return fmt.Errorf("%w: property key must contain between 1 and 255 characters", store.ErrWikiValidation)
 	}
@@ -265,14 +287,14 @@ func validateWikiAttachmentProperty(key string, value json.RawMessage) error {
 }
 
 func (s *Service) CreateWikiAttachmentProperty(ctx context.Context, ws, actor, attachmentID, key string, value json.RawMessage) (*models.WikiAttachmentProperty, error) {
-	if err := validateWikiAttachmentProperty(key, value); err != nil {
+	if err := validateWikiProperty(key, value); err != nil {
 		return nil, err
 	}
 	return s.Store.CreateWikiAttachmentProperty(ctx, ws, actor, attachmentID, key, value)
 }
 
 func (s *Service) UpdateWikiAttachmentProperty(ctx context.Context, ws, actor, attachmentID, propertyID, key string, value json.RawMessage, version int, message string) (*models.WikiAttachmentProperty, error) {
-	if err := validateWikiAttachmentProperty(key, value); err != nil {
+	if err := validateWikiProperty(key, value); err != nil {
 		return nil, err
 	}
 	if version < 2 || len(message) > 2000 {
@@ -283,6 +305,27 @@ func (s *Service) UpdateWikiAttachmentProperty(ctx context.Context, ws, actor, a
 
 func (s *Service) DeleteWikiAttachmentProperty(ctx context.Context, ws, actor, attachmentID, propertyID string) error {
 	return s.Store.DeleteWikiAttachmentProperty(ctx, ws, actor, attachmentID, propertyID)
+}
+
+func (s *Service) CreateWikiContentProperty(ctx context.Context, ws, actor, contentID, contentType, key string, value json.RawMessage) (*models.WikiContentProperty, error) {
+	if err := validateWikiProperty(key, value); err != nil {
+		return nil, err
+	}
+	return s.Store.CreateWikiContentProperty(ctx, ws, actor, contentID, contentType, key, value)
+}
+
+func (s *Service) UpdateWikiContentProperty(ctx context.Context, ws, actor, contentID, contentType, propertyID, key string, value json.RawMessage, version int, message string) (*models.WikiContentProperty, error) {
+	if err := validateWikiProperty(key, value); err != nil {
+		return nil, err
+	}
+	if version < 2 || len(message) > 2000 {
+		return nil, fmt.Errorf("%w: the next property version and a message of at most 2000 bytes are required", store.ErrWikiValidation)
+	}
+	return s.Store.UpdateWikiContentProperty(ctx, ws, actor, contentID, contentType, propertyID, key, value, version, message)
+}
+
+func (s *Service) DeleteWikiContentProperty(ctx context.Context, ws, actor, contentID, contentType, propertyID string) error {
+	return s.Store.DeleteWikiContentProperty(ctx, ws, actor, contentID, contentType, propertyID)
 }
 
 func (s *Service) SetWikiPageRestrictions(ctx context.Context, ws, actor, pageID, mode string, restrictions []models.WikiPageRestriction) ([]models.WikiPageRestriction, error) {

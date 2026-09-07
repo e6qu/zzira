@@ -40,6 +40,37 @@ type WikiPage struct {
 	Version     WikiVersion `json:"version"`
 }
 
+type WikiContent struct {
+	ID         string                `json:"id"`
+	Type       string                `json:"type"`
+	Status     string                `json:"status"`
+	Title      string                `json:"title"`
+	ParentID   string                `json:"parentId,omitempty"`
+	ParentType string                `json:"parentType,omitempty"`
+	Position   int                   `json:"position"`
+	AuthorID   string                `json:"authorId"`
+	OwnerID    string                `json:"ownerId"`
+	CreatedAt  string                `json:"createdAt"`
+	SpaceID    string                `json:"spaceId"`
+	EmbedURL   string                `json:"embedUrl,omitempty"`
+	Version    WikiVersion           `json:"version"`
+	Properties []WikiContentProperty `json:"-"`
+}
+
+type WikiContentProperty struct {
+	ID        string          `json:"id"`
+	ContentID string          `json:"-"`
+	Key       string          `json:"key"`
+	Value     json.RawMessage `json:"value"`
+	Version   WikiVersion     `json:"version"`
+}
+
+type WikiContentRelation struct {
+	Content       *WikiContent
+	Depth         int
+	ChildPosition int
+}
+
 type WikiFooterComment struct {
 	ID                   string      `json:"id"`
 	PageID               string      `json:"pageId"`
