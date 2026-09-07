@@ -461,6 +461,27 @@ func (s *Service) DeleteWikiPageProperty(ctx context.Context, ws, actor, pageID,
 	return s.Store.DeleteWikiPageProperty(ctx, ws, actor, pageID, propertyID)
 }
 
+func (s *Service) CreateWikiSpaceProperty(ctx context.Context, ws, actor, spaceID, key string, value json.RawMessage) (*models.WikiContentProperty, error) {
+	if err := validateWikiProperty(key, value); err != nil {
+		return nil, err
+	}
+	return s.Store.CreateWikiSpaceProperty(ctx, ws, actor, spaceID, key, value)
+}
+
+func (s *Service) UpdateWikiSpaceProperty(ctx context.Context, ws, actor, spaceID, propertyID, key string, value json.RawMessage, version int, message string) (*models.WikiContentProperty, error) {
+	if err := validateWikiProperty(key, value); err != nil {
+		return nil, err
+	}
+	if version < 2 || len(message) > 2000 {
+		return nil, fmt.Errorf("%w: the next property version and a message of at most 2000 bytes are required", store.ErrWikiValidation)
+	}
+	return s.Store.UpdateWikiSpaceProperty(ctx, ws, actor, spaceID, propertyID, key, value, version, message)
+}
+
+func (s *Service) DeleteWikiSpaceProperty(ctx context.Context, ws, actor, spaceID, propertyID string) error {
+	return s.Store.DeleteWikiSpaceProperty(ctx, ws, actor, spaceID, propertyID)
+}
+
 func (s *Service) UpdateWikiBlogPostProperty(ctx context.Context, ws, actor, blogPostID, propertyID, key string, value json.RawMessage, version int, message string) (*models.WikiContentProperty, error) {
 	if err := validateWikiProperty(key, value); err != nil {
 		return nil, err

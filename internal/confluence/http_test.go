@@ -198,7 +198,26 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	if !strings.Contains(expandedSpace.Body.String(), `"operation":"update"`) || !strings.Contains(expandedSpace.Body.String(), `"name":"core-space"`) || !strings.Contains(expandedSpace.Body.String(), `"icon"`) {
 		t.Fatal(expandedSpace.Body.String())
 	}
-	call(actor, "GET", "/spaces/"+public+"?include-properties=true", nil, 400)
+	call(member, "POST", "/spaces/"+public+"/properties", map[string]any{"key": "app-config", "value": map[string]any{"mode": "read-only"}}, 403)
+	spacePropertyResponse := call(actor, "POST", "/spaces/"+public+"/properties", map[string]any{"key": "app-config", "value": map[string]any{"mode": "active"}}, 200)
+	var spaceProperty models.WikiContentProperty
+	if err := json.Unmarshal(spacePropertyResponse.Body.Bytes(), &spaceProperty); err != nil || spaceProperty.Version.Number != 1 {
+		t.Fatalf("unexpected space property: %+v %v", spaceProperty, err)
+	}
+	call(actor, "POST", "/spaces/"+public+"/properties", map[string]any{"key": "app-config", "value": true}, 400)
+	if properties := call(member, "GET", "/spaces/"+public+"/properties?key=app-config&sort=-key", nil, 200); !strings.Contains(properties.Body.String(), `"mode":"active"`) {
+		t.Fatal(properties.Body.String())
+	}
+	call(member, "GET", "/spaces/"+public+"/properties/"+spaceProperty.ID, nil, 200)
+	call(actor, "PUT", "/spaces/"+public+"/properties/"+spaceProperty.ID, map[string]any{"key": "app-config", "value": map[string]any{"mode": "stale"}, "version": map[string]any{"number": 3}}, 409)
+	if updated := call(actor, "PUT", "/spaces/"+public+"/properties/"+spaceProperty.ID, map[string]any{"key": "app-config", "value": map[string]any{"mode": "managed"}, "version": map[string]any{"number": 2, "message": "Enabled management"}}, 200); !strings.Contains(updated.Body.String(), `"number":2`) {
+		t.Fatal(updated.Body.String())
+	}
+	if expanded := call(actor, "GET", "/spaces/"+public+"?include-properties=true", nil, 200); !strings.Contains(expanded.Body.String(), `"app-config"`) || !strings.Contains(expanded.Body.String(), `"mode":"managed"`) {
+		t.Fatal(expanded.Body.String())
+	}
+	call(actor, "DELETE", "/spaces/"+public+"/properties/"+spaceProperty.ID, nil, 204)
+	call(actor, "GET", "/spaces/"+public+"/properties/"+spaceProperty.ID, nil, 404)
 	create := func(space, title, status string) models.WikiPage {
 		t.Helper()
 		w := call(actor, "POST", "/pages", map[string]any{"spaceId": space, "title": title, "status": status, "body": models.WikiBody{Representation: "storage", Value: "<p><strong>Release</strong> notes</p>"}}, 200)

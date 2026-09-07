@@ -1831,9 +1831,25 @@ Validation after core Confluence spaces:
 - Exact reviewed API coverage is 414 of 1,207 operations: 407 partial, 7
   missing, and 793 unassessed. Confluence coverage is 200 of 348 reviewed.
 
+Validation after Confluence space properties:
+
+- All five pinned v2 space-property operations now provide permission-shaped
+  list/exact reads and administrator-controlled create/update/delete.
+- JSON values and unique keys are validated. Updates require the exact next
+  version and preserve immutable version metadata; mutations emit atomic sync
+  actions, including a delete action when a property is removed.
+- The space UI exposes readable app state and accessible administrator forms.
+  Exact space reads can expand current properties alongside labels and
+  operations.
+- PostgreSQL integration covers member write denial, duplicates, filtered and
+  exact reads, stale-version conflicts, successful update/expansion and delete.
+  The Chromium wiki journey creates space-level app configuration.
+- Exact reviewed API coverage is 419 of 1,207 operations: 412 partial, 7
+  missing, and 788 unassessed. Confluence coverage is 205 of 348 reviewed.
+
 ## Current change
 
-1. Resume Confluence space permissions, role assignments, properties and other
+1. Resume Confluence space permissions, role assignments and other
    administration operations.
 2. Continue Service Management with dependency mapping, major-incident
    communications, change-conflict calendars and escalation policy.

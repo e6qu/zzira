@@ -27,6 +27,12 @@ test('wiki space, rich page, access, stale edits, child pages, history, trash an
   await spaceGovernance.getByRole('combobox', { name: 'Default classification' }).selectOption('internal');
   await spaceGovernance.getByRole('button', { name: 'Save default classification', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Default classification' })).toContainText('Internal');
+  const spaceProperties = page.getByRole('region', { name: 'Space properties' });
+  await spaceProperties.locator('summary').filter({ hasText: 'Create space property' }).click();
+  await spaceProperties.getByLabel('New space property key').fill('handbook-config');
+  await spaceProperties.getByLabel('New space property JSON value').fill('{"audience":"engineering"}');
+  await spaceProperties.getByRole('button', { name: 'Create space property', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Space properties' })).toContainText('handbook-config');
   await page.getByRole('button', { name: 'Watch space', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Stop watching space', exact: true })).toBeVisible();
   await page.getByRole('link', { name: 'Write blog post', exact: true }).click();

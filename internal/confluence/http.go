@@ -139,7 +139,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			flags[key] = value
 		}
-		for _, key := range []string{"include-properties", "include-permissions", "include-role-assignments"} {
+		for _, key := range []string{"include-permissions", "include-role-assignments"} {
 			if flags[key] {
 				failure(w, 400, key+" is not yet supported for spaces.")
 				return
@@ -171,6 +171,18 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			bean["labels"] = map[string]any{"results": values, "meta": map[string]any{"hasMore": false}, "_links": map[string]any{}}
 		}
+		if flags["include-properties"] {
+			properties, propertyErr := h.Store.WikiSpaceProperties(r.Context(), ws, actor, space.ID, "")
+			if propertyErr != nil {
+				writeError(w, propertyErr)
+				return
+			}
+			values := make([]any, len(properties))
+			for i := range properties {
+				values[i] = properties[i]
+			}
+			bean["properties"] = map[string]any{"results": values, "meta": map[string]any{"hasMore": false}, "_links": map[string]any{}}
+		}
 		respond(w, 200, bean)
 	case len(parts) == 3 && parts[0] == "spaces" && parts[2] == "operations" && r.Method == "GET":
 		h.spaceOperations(w, r, ws, actor, parts[1])
@@ -180,6 +192,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.setSpaceDefaultClassification(w, r, ws, actor, parts[1])
 	case len(parts) == 4 && parts[0] == "spaces" && parts[2] == "classification-level" && parts[3] == "default" && r.Method == "DELETE":
 		h.deleteSpaceDefaultClassification(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "spaces" && parts[2] == "properties" && r.Method == "GET":
+		h.spaceProperties(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "spaces" && parts[2] == "properties" && r.Method == "POST":
+		h.createSpaceProperty(w, r, ws, actor, parts[1])
+	case len(parts) == 4 && parts[0] == "spaces" && parts[2] == "properties" && r.Method == "GET":
+		h.spaceProperty(w, r, ws, actor, parts[1], parts[3])
+	case len(parts) == 4 && parts[0] == "spaces" && parts[2] == "properties" && r.Method == "PUT":
+		h.updateSpaceProperty(w, r, ws, actor, parts[1], parts[3])
+	case len(parts) == 4 && parts[0] == "spaces" && parts[2] == "properties" && r.Method == "DELETE":
+		h.deleteSpaceProperty(w, r, ws, actor, parts[1], parts[3])
 	case len(parts) == 3 && parts[0] == "spaces" && parts[2] == "pages" && r.Method == "GET":
 		if _, err := h.Store.WikiSpace(r.Context(), ws, actor, parts[1]); err != nil {
 			writeError(w, err)

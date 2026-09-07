@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 414,
+  "assessedTotal": 419,
   "counts": {
     "delivered": 0,
-    "partial": 407,
+    "partial": 412,
     "missing": 7,
-    "unassessed": 793
+    "unassessed": 788
   },
   "countsByFamily": {
     "automation": {
@@ -18,9 +18,9 @@
     },
     "confluence": {
       "delivered": 0,
-      "partial": 200,
+      "partial": 205,
       "missing": 0,
-      "unassessed": 148
+      "unassessed": 143
     },
     "jira-platform": {
       "delivered": 0,
@@ -11538,41 +11538,79 @@
       "operationId": "confluence-v2:GET:/wiki/api/v2/spaces/{space-id}/properties",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_properties.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_space_properties.go",
+        "migrations/095_wiki_space_properties.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Lists versioned JSON properties on a visible space with key filtering, key sorting and cursor pagination; app scope enforcement remains."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/spaces/{space-id}/properties",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_properties.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_space_properties.go",
+        "migrations/095_wiki_space_properties.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Workspace administrators create uniquely keyed, validated JSON space properties through REST or the accessible UI with immutable version one and an atomic sync action; app scope enforcement remains."
     },
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/spaces/{space-id}/properties/{property-id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_properties.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_space_properties.go",
+        "migrations/095_wiki_space_properties.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml"
+      ],
+      "notes": "Workspace administrators delete an exact property from its space with an atomic delete sync action; app scope enforcement remains."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/spaces/{space-id}/properties/{property-id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_properties.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_space_properties.go",
+        "migrations/095_wiki_space_properties.sql"
+      ],
+      "notes": "Returns an exact current versioned JSON property from a visible space; app scope enforcement and historical property reads remain."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/spaces/{space-id}/properties/{property-id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_properties.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_space_properties.go",
+        "migrations/095_wiki_space_properties.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml"
+      ],
+      "notes": "Workspace administrators update exact-key JSON properties with optimistic next-version checks, immutable metadata and atomic sync; app scope enforcement and historical property reads remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/tasks",

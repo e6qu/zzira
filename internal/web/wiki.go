@@ -43,6 +43,7 @@ type wikiData struct {
 	PageLikeCount                         int
 	PageLiked                             bool
 	PageProperties                        []models.WikiContentProperty
+	SpaceProperties                       []models.WikiContentProperty
 	Attachments                           []*models.WikiAttachment
 	AttachmentComments                    map[string][]wikiCommentNode
 	Restrictions                          []models.WikiPageRestriction
@@ -309,7 +310,12 @@ func (h *Handler) WikiSpacePage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load space permissions.", 500)
 		return
 	}
-	h.writeWorkspacePage(w, r, "page_wiki_space", user, ws, wikiData{Space: space, Pages: filtered, BlogPosts: filteredBlogs, Folders: folders, SmartLinks: smartLinks, Databases: databases, Whiteboards: whiteboards, Tree: wikiPageTree(filtered), Query: query, Status: status, WatchingSpace: watching, CanAdmin: admin}, "wiki", "")
+	properties, err := h.Store.WikiSpaceProperties(r.Context(), ws, user.ID, space.ID, "")
+	if err != nil {
+		http.Error(w, "Could not load space properties.", 500)
+		return
+	}
+	h.writeWorkspacePage(w, r, "page_wiki_space", user, ws, wikiData{Space: space, Pages: filtered, BlogPosts: filteredBlogs, Folders: folders, SmartLinks: smartLinks, Databases: databases, Whiteboards: whiteboards, Tree: wikiPageTree(filtered), Query: query, Status: status, WatchingSpace: watching, CanAdmin: admin, SpaceProperties: properties}, "wiki", "")
 }
 
 func (h *Handler) WikiSpaceClassification(w http.ResponseWriter, r *http.Request) {
@@ -324,6 +330,36 @@ func (h *Handler) WikiSpaceClassification(w http.ResponseWriter, r *http.Request
 		return
 	}
 	redirectLocal(w, r, "/wiki/spaces/"+space.ID)
+}
+
+func (h *Handler) WikiSpaceProperty(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	spaceID := r.PathValue("space")
+	var err error
+	switch r.PostFormValue("action") {
+	case "create":
+		_, err = h.Commands.CreateWikiSpaceProperty(r.Context(), ws, user.ID, spaceID, r.PostFormValue("key"), json.RawMessage(r.PostFormValue("value")))
+	case "update":
+		version, parseErr := strconv.Atoi(r.PostFormValue("version"))
+		if parseErr != nil {
+			err = fmt.Errorf("%w: property version must be an integer", store.ErrWikiValidation)
+		} else {
+			_, err = h.Commands.UpdateWikiSpaceProperty(r.Context(), ws, user.ID, spaceID, r.PostFormValue("propertyId"), r.PostFormValue("key"), json.RawMessage(r.PostFormValue("value")), version, r.PostFormValue("message"))
+		}
+	case "delete":
+		err = h.Commands.DeleteWikiSpaceProperty(r.Context(), ws, user.ID, spaceID, r.PostFormValue("propertyId"))
+	default:
+		err = fmt.Errorf("%w: choose a space property action", store.ErrWikiValidation)
+	}
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	redirectLocal(w, r, "/wiki/spaces/"+spaceID+"#wiki-space-properties")
 }
 
 func (h *Handler) WikiBlogPostNew(w http.ResponseWriter, r *http.Request) {
