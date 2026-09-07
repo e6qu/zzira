@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -162,6 +163,53 @@ func (s *Service) RemoveWikiSpaceLabel(ctx context.Context, ws, actor, spaceID, 
 		return err
 	}
 	return s.Store.RemoveWikiSpaceLabel(ctx, ws, actor, spaceID, labels[0])
+}
+
+func (s *Service) AddWikiAttachmentLabels(ctx context.Context, ws, actor, attachmentID string, labels []models.WikiLabel) ([]models.WikiLabel, error) {
+	labels, err := normalizeWikiLabels(labels)
+	if err != nil {
+		return nil, err
+	}
+	return s.Store.AddWikiAttachmentLabels(ctx, ws, actor, attachmentID, labels)
+}
+
+func (s *Service) RemoveWikiAttachmentLabel(ctx context.Context, ws, actor, attachmentID, prefix, name string) error {
+	labels, err := normalizeWikiLabels([]models.WikiLabel{{Prefix: prefix, Name: name}})
+	if err != nil {
+		return err
+	}
+	return s.Store.RemoveWikiAttachmentLabel(ctx, ws, actor, attachmentID, labels[0])
+}
+
+func validateWikiAttachmentProperty(key string, value json.RawMessage) error {
+	if key == "" || utf8.RuneCountInString(key) > 255 {
+		return fmt.Errorf("%w: property key must contain between 1 and 255 characters", store.ErrWikiValidation)
+	}
+	if len(value) == 0 || !json.Valid(value) {
+		return fmt.Errorf("%w: property value must be valid JSON", store.ErrWikiValidation)
+	}
+	return nil
+}
+
+func (s *Service) CreateWikiAttachmentProperty(ctx context.Context, ws, actor, attachmentID, key string, value json.RawMessage) (*models.WikiAttachmentProperty, error) {
+	if err := validateWikiAttachmentProperty(key, value); err != nil {
+		return nil, err
+	}
+	return s.Store.CreateWikiAttachmentProperty(ctx, ws, actor, attachmentID, key, value)
+}
+
+func (s *Service) UpdateWikiAttachmentProperty(ctx context.Context, ws, actor, attachmentID, propertyID, key string, value json.RawMessage, version int, message string) (*models.WikiAttachmentProperty, error) {
+	if err := validateWikiAttachmentProperty(key, value); err != nil {
+		return nil, err
+	}
+	if version < 2 || len(message) > 2000 {
+		return nil, fmt.Errorf("%w: the next property version and a message of at most 2000 bytes are required", store.ErrWikiValidation)
+	}
+	return s.Store.UpdateWikiAttachmentProperty(ctx, ws, actor, attachmentID, propertyID, key, value, version, message)
+}
+
+func (s *Service) DeleteWikiAttachmentProperty(ctx context.Context, ws, actor, attachmentID, propertyID string) error {
+	return s.Store.DeleteWikiAttachmentProperty(ctx, ws, actor, attachmentID, propertyID)
 }
 
 func (s *Service) SetWikiPageRestrictions(ctx context.Context, ws, actor, pageID, mode string, restrictions []models.WikiPageRestriction) ([]models.WikiPageRestriction, error) {

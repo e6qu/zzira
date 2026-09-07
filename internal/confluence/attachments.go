@@ -1,11 +1,13 @@
 package confluence
 
 import (
+	"encoding/json"
 	"io"
 	"log"
 	"mime"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -16,7 +18,8 @@ import (
 
 func (h *Handler) attachmentBean(a *models.WikiAttachment) map[string]any {
 	download := "/wiki/download/attachments/" + a.PageID + "/" + a.ID + "/" + url.PathEscape(a.Filename)
-	return map[string]any{"id": a.ID, "status": a.Status, "title": a.Filename, "createdAt": a.CreatedAt, "pageId": a.PageID, "mediaType": a.MediaType, "mediaTypeDescription": a.MediaType, "comment": a.Comment, "fileId": a.FileID, "fileSize": a.Size, "webuiLink": "/wiki/spaces/pages/" + a.PageID, "downloadLink": download, "version": a.Version, "_links": map[string]string{"webui": "/pages/" + a.PageID, "download": download, "base": h.BaseURL + "/wiki"}}
+	webui := "/wiki/spaces/" + a.SpaceID + "/pages/" + a.PageID
+	return map[string]any{"id": a.ID, "status": a.Status, "title": a.Filename, "createdAt": a.CreatedAt, "pageId": a.PageID, "mediaType": a.MediaType, "mediaTypeDescription": a.MediaType, "comment": a.Comment, "fileId": a.FileID, "fileSize": a.Size, "webuiLink": webui, "downloadLink": download, "version": a.Version, "_links": map[string]string{"webui": webui, "download": download, "base": h.BaseURL + "/wiki"}}
 }
 
 func (h *Handler) attachments(w http.ResponseWriter, r *http.Request, ws, actor, pageID string) {
@@ -77,7 +80,198 @@ func (h *Handler) attachment(w http.ResponseWriter, r *http.Request, ws, actor, 
 		vs, _ := h.Store.WikiAttachmentVersions(r.Context(), ws, actor, id)
 		bean["versions"] = map[string]any{"results": vs}
 	}
+	if r.URL.Query().Get("include-labels") == "true" {
+		labels, err := h.Store.WikiAttachmentLabels(r.Context(), ws, actor, id)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		bean["labels"] = map[string]any{"results": labels}
+	}
+	if r.URL.Query().Get("include-properties") == "true" {
+		properties, err := h.Store.WikiAttachmentProperties(r.Context(), ws, actor, id, "")
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		bean["properties"] = map[string]any{"results": properties}
+	}
 	respond(w, 200, bean)
+}
+
+type attachmentPropertyWrite struct {
+	Key     string          `json:"key"`
+	Value   json.RawMessage `json:"value"`
+	Version struct {
+		Number  int    `json:"number"`
+		Message string `json:"message"`
+	} `json:"version"`
+}
+
+func validAttachmentProperty(w http.ResponseWriter, input attachmentPropertyWrite, update bool) bool {
+	if input.Key == "" || len(input.Key) > 255 {
+		failure(w, 400, "Property key must contain between 1 and 255 characters.")
+		return false
+	}
+	if len(input.Value) == 0 || !json.Valid(input.Value) {
+		failure(w, 400, "Property value must be valid JSON.")
+		return false
+	}
+	if update && input.Version.Number < 2 {
+		failure(w, 400, "Property version number must be at least 2.")
+		return false
+	}
+	return true
+}
+
+func sortAttachmentProperties(properties []models.WikiAttachmentProperty, order string) bool {
+	if order != "" && order != "key" && order != "-key" {
+		return false
+	}
+	if order == "-key" {
+		sort.SliceStable(properties, func(i, j int) bool { return properties[i].Key > properties[j].Key })
+	}
+	return true
+}
+
+func (h *Handler) attachmentProperties(w http.ResponseWriter, r *http.Request, ws, actor, attachmentID string) {
+	if !supportedQuery(w, r, "key", "sort", "cursor", "limit") {
+		return
+	}
+	properties, err := h.Store.WikiAttachmentProperties(r.Context(), ws, actor, attachmentID, r.URL.Query().Get("key"))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if !sortAttachmentProperties(properties, r.URL.Query().Get("sort")) {
+		failure(w, 400, "Unsupported content property sort order.")
+		return
+	}
+	values := make([]any, len(properties))
+	for i := range properties {
+		values[i] = properties[i]
+	}
+	h.list(w, r, values)
+}
+
+func (h *Handler) attachmentProperty(w http.ResponseWriter, r *http.Request, ws, actor, attachmentID, propertyID string) {
+	if !supportedQuery(w, r) {
+		return
+	}
+	property, err := h.Store.WikiAttachmentProperty(r.Context(), ws, actor, attachmentID, propertyID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	respond(w, 200, property)
+}
+
+func (h *Handler) createAttachmentProperty(w http.ResponseWriter, r *http.Request, ws, actor, attachmentID string) {
+	if !supportedQuery(w, r) {
+		return
+	}
+	var input attachmentPropertyWrite
+	if !decode(w, r, &input) || !validAttachmentProperty(w, input, false) {
+		return
+	}
+	property, err := h.Commands.CreateWikiAttachmentProperty(r.Context(), ws, actor, attachmentID, input.Key, input.Value)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	respond(w, 200, property)
+}
+
+func (h *Handler) updateAttachmentProperty(w http.ResponseWriter, r *http.Request, ws, actor, attachmentID, propertyID string) {
+	if !supportedQuery(w, r) {
+		return
+	}
+	var input attachmentPropertyWrite
+	if !decode(w, r, &input) || !validAttachmentProperty(w, input, true) {
+		return
+	}
+	property, err := h.Commands.UpdateWikiAttachmentProperty(r.Context(), ws, actor, attachmentID, propertyID, input.Key, input.Value, input.Version.Number, input.Version.Message)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	respond(w, 200, property)
+}
+
+func (h *Handler) deleteAttachmentProperty(w http.ResponseWriter, r *http.Request, ws, actor, attachmentID, propertyID string) {
+	if !supportedQuery(w, r) {
+		return
+	}
+	if err := h.Commands.DeleteWikiAttachmentProperty(r.Context(), ws, actor, attachmentID, propertyID); err != nil {
+		writeError(w, err)
+		return
+	}
+	w.WriteHeader(204)
+}
+
+func (h *Handler) attachmentLabels(w http.ResponseWriter, r *http.Request, ws, actor, attachmentID string) {
+	if !labelQuery(w, r, false) {
+		return
+	}
+	labels, err := h.Store.WikiAttachmentLabels(r.Context(), ws, actor, attachmentID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	prefix := r.URL.Query().Get("prefix")
+	filtered := make([]models.WikiLabel, 0, len(labels))
+	for _, label := range labels {
+		if prefix == "" || label.Prefix == prefix {
+			filtered = append(filtered, label)
+		}
+	}
+	sortWikiLabels(filtered, r.URL.Query().Get("sort"))
+	values := make([]any, len(filtered))
+	for i := range filtered {
+		values[i] = filtered[i]
+	}
+	h.list(w, r, values)
+}
+
+func sortLabelAttachments(attachments []*models.WikiAttachment, order string) bool {
+	if order != "" && order != "created-date" && order != "-created-date" && order != "modified-date" && order != "-modified-date" {
+		return false
+	}
+	desc := strings.HasPrefix(order, "-")
+	modified := strings.Contains(order, "modified")
+	if order != "" {
+		sort.SliceStable(attachments, func(i, j int) bool {
+			left, right := attachments[i].CreatedAt, attachments[j].CreatedAt
+			if modified {
+				left, right = attachments[i].Version.CreatedAt, attachments[j].Version.CreatedAt
+			}
+			if desc {
+				return left > right
+			}
+			return left < right
+		})
+	}
+	return true
+}
+
+func (h *Handler) labelAttachments(w http.ResponseWriter, r *http.Request, ws, actor, labelID string) {
+	if !supportedQuery(w, r, "sort", "cursor", "limit") {
+		return
+	}
+	attachments, err := h.Store.WikiAttachmentsByLabel(r.Context(), ws, actor, labelID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if !sortLabelAttachments(attachments, r.URL.Query().Get("sort")) {
+		failure(w, 400, "Unsupported attachment sort order.")
+		return
+	}
+	values := make([]any, len(attachments))
+	for i := range attachments {
+		values[i] = h.attachmentBean(attachments[i])
+	}
+	h.list(w, r, values)
 }
 
 func (h *Handler) deleteAttachment(w http.ResponseWriter, r *http.Request, ws, actor, id string) {

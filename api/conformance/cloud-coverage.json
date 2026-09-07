@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 262,
+  "assessedTotal": 269,
   "counts": {
     "delivered": 0,
-    "partial": 255,
+    "partial": 262,
     "missing": 7,
-    "unassessed": 945
+    "unassessed": 938
   },
   "countsByFamily": {
     "automation": {
@@ -18,9 +18,9 @@
     },
     "confluence": {
       "delivered": 0,
-      "partial": 48,
+      "partial": 55,
       "missing": 0,
-      "unassessed": 300
+      "unassessed": 293
     },
     "jira-platform": {
       "delivered": 0,
@@ -8730,41 +8730,71 @@
       "operationId": "confluence-v2:GET:/wiki/api/v2/attachments/{attachment-id}/properties",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/attachments.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_attachment_metadata.go",
+        "internal/store/wiki_labels.go",
+        "migrations/078_wiki_attachment_metadata.sql"
+      ],
+      "notes": "Permission-scoped attachment properties support JSON values, key filtering, cursor pagination, immutable optimistic versions, expansion, conflict handling and deletion; broader content-property targets remain separate."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/attachments/{attachment-id}/properties",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/attachments.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_attachment_metadata.go",
+        "internal/store/wiki_labels.go",
+        "migrations/078_wiki_attachment_metadata.sql"
+      ],
+      "notes": "Permission-scoped attachment properties support JSON values, key filtering, cursor pagination, immutable optimistic versions, expansion, conflict handling and deletion; broader content-property targets remain separate."
     },
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/attachments/{attachment-id}/properties/{property-id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/attachments.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_attachment_metadata.go",
+        "internal/store/wiki_labels.go",
+        "migrations/078_wiki_attachment_metadata.sql"
+      ],
+      "notes": "Permission-scoped attachment properties support JSON values, key filtering, cursor pagination, immutable optimistic versions, expansion, conflict handling and deletion; broader content-property targets remain separate."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/attachments/{attachment-id}/properties/{property-id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/attachments.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_attachment_metadata.go",
+        "internal/store/wiki_labels.go",
+        "migrations/078_wiki_attachment_metadata.sql"
+      ],
+      "notes": "Permission-scoped attachment properties support JSON values, key filtering, cursor pagination, immutable optimistic versions, expansion, conflict handling and deletion; broader content-property targets remain separate."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/attachments/{attachment-id}/properties/{property-id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/attachments.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_attachment_metadata.go",
+        "internal/store/wiki_labels.go",
+        "migrations/078_wiki_attachment_metadata.sql"
+      ],
+      "notes": "Permission-scoped attachment properties support JSON values, key filtering, cursor pagination, immutable optimistic versions, expansion, conflict handling and deletion; broader content-property targets remain separate."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/attachments/{attachment-id}/versions/{version-number}",
@@ -8829,9 +8859,15 @@
       "operationId": "confluence-v2:GET:/wiki/api/v2/attachments/{id}/labels",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/attachments.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_attachment_metadata.go",
+        "internal/store/wiki_labels.go",
+        "migrations/078_wiki_attachment_metadata.sql"
+      ],
+      "notes": "Attachment label and reverse attachment lookup reads are permission-scoped, filterable, sortable and cursor-paged; label mutation currently uses the shared internal command path."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/attachments/{id}/operations",
@@ -9884,9 +9920,15 @@
       "operationId": "confluence-v2:GET:/wiki/api/v2/labels/{id}/attachments",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/attachments.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_attachment_metadata.go",
+        "internal/store/wiki_labels.go",
+        "migrations/078_wiki_attachment_metadata.sql"
+      ],
+      "notes": "Attachment label and reverse attachment lookup reads are permission-scoped, filterable, sortable and cursor-paged; label mutation currently uses the shared internal command path."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/labels/{id}/blogposts",

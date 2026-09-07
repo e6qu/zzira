@@ -275,6 +275,7 @@ func main() {
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/labels", webHandler.WikiPageLabels)
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/restrictions", webHandler.WikiPageRestrictions)
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/attachments", webHandler.WikiAttachmentCreate)
+	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/attachments/{attachment}/metadata", webHandler.WikiAttachmentMetadata)
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/attachments/{attachment}/delete", webHandler.WikiAttachmentDelete)
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/comments", webHandler.WikiCommentCreate)
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/comments/{comment}", webHandler.WikiCommentUpdate)

@@ -30,6 +30,7 @@ func (s *Store) WikiLabels(ctx context.Context, ws, user string) ([]models.WikiL
 	rows, err := s.Pool.Query(ctx, wikiLabelSelect+` WHERE l.workspace_id=$1 AND (
 		EXISTS (SELECT 1 FROM wiki_page_labels pl JOIN wiki_pages p ON p.id=pl.page_id JOIN wiki_spaces s ON s.id=p.space_id WHERE pl.label_id=l.id AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND p.status='current')
 		OR EXISTS (SELECT 1 FROM wiki_space_labels sl JOIN wiki_spaces s ON s.id=sl.space_id WHERE sl.label_id=l.id AND `+wikiSpaceVisible+`)
+		OR EXISTS (SELECT 1 FROM wiki_attachment_labels al JOIN wiki_attachments a ON a.id=al.attachment_id JOIN wiki_pages p ON p.id=a.page_id JOIN wiki_spaces s ON s.id=p.space_id WHERE al.label_id=l.id AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND a.status='current')
 	) ORDER BY l.created_at,l.id`, ws, user)
 	if err != nil {
 		return nil, err
@@ -55,10 +56,12 @@ func (s *Store) WikiSpaceLabels(ctx context.Context, ws, user, spaceID string, c
 		return nil, err
 	}
 	query := wikiLabelSelect + ` JOIN wiki_space_labels sl ON sl.label_id=l.id WHERE sl.space_id::text=$1 ORDER BY l.created_at,l.id`
+	args := []any{spaceID}
 	if content {
-		query = wikiLabelSelect + ` WHERE EXISTS (SELECT 1 FROM wiki_page_labels pl JOIN wiki_pages p ON p.id=pl.page_id WHERE pl.label_id=l.id AND p.space_id::text=$1 AND p.status='current') ORDER BY l.created_at,l.id`
+		query = wikiLabelSelect + ` WHERE EXISTS (SELECT 1 FROM wiki_page_labels pl JOIN wiki_pages p ON p.id=pl.page_id JOIN wiki_spaces s ON s.id=p.space_id WHERE pl.label_id=l.id AND p.space_id::text=$1 AND p.status='current' AND ` + wikiPageVisible + `) OR EXISTS (SELECT 1 FROM wiki_attachment_labels al JOIN wiki_attachments a ON a.id=al.attachment_id JOIN wiki_pages p ON p.id=a.page_id JOIN wiki_spaces s ON s.id=p.space_id WHERE al.label_id=l.id AND p.space_id::text=$1 AND p.status='current' AND a.status='current' AND ` + wikiPageVisible + `) ORDER BY l.created_at,l.id`
+		args = append(args, user)
 	}
-	rows, err := s.Pool.Query(ctx, query, spaceID)
+	rows, err := s.Pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

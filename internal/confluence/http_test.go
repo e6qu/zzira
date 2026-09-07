@@ -269,7 +269,38 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	attachmentID := uploaded.Results[0].ID
 	call(member, "GET", "/pages/"+page.ID+"/attachments?filename=release.txt", nil, 200)
 	call(member, "GET", "/attachments?mediaType=application/octet-stream", nil, 200)
-	call(member, "GET", "/attachments/"+attachmentID+"?include-operations=true&include-versions=true", nil, 200)
+	propertyResponse := call(member, "POST", "/attachments/"+attachmentID+"/properties", map[string]any{"key": "release-state", "value": map[string]any{"approved": false}}, 200)
+	var attachmentProperty models.WikiAttachmentProperty
+	if err := json.Unmarshal(propertyResponse.Body.Bytes(), &attachmentProperty); err != nil || attachmentProperty.ID == "" || attachmentProperty.Version.Number != 1 {
+		t.Fatalf("unexpected attachment property: %+v %v", attachmentProperty, err)
+	}
+	call(member, "POST", "/attachments/"+attachmentID+"/properties", map[string]any{"key": "release-state", "value": true}, 400)
+	propertiesResponse := call(member, "GET", "/attachments/"+attachmentID+"/properties?key=release-state&sort=-key", nil, 200)
+	if !strings.Contains(propertiesResponse.Body.String(), `"approved":false`) {
+		t.Fatal(propertiesResponse.Body.String())
+	}
+	call(member, "GET", "/attachments/"+attachmentID+"/properties/"+attachmentProperty.ID, nil, 200)
+	call(member, "PUT", "/attachments/"+attachmentID+"/properties/"+attachmentProperty.ID, map[string]any{"key": "release-state", "value": map[string]any{"approved": true}, "version": map[string]any{"number": 3}}, 409)
+	updatedProperty := call(member, "PUT", "/attachments/"+attachmentID+"/properties/"+attachmentProperty.ID, map[string]any{"key": "release-state", "value": map[string]any{"approved": true}, "version": map[string]any{"number": 2, "message": "Release approved"}}, 200)
+	if !strings.Contains(updatedProperty.Body.String(), `"number":2`) || !strings.Contains(updatedProperty.Body.String(), `"approved":true`) {
+		t.Fatal(updatedProperty.Body.String())
+	}
+	attachmentLabels, err := h.Commands.AddWikiAttachmentLabels(ctx, ws, member, attachmentID, []models.WikiLabel{{Prefix: "global", Name: "release-file"}})
+	if err != nil || len(attachmentLabels) != 1 {
+		t.Fatalf("unexpected attachment labels: %+v %v", attachmentLabels, err)
+	}
+	attachmentLabelResponse := call(member, "GET", "/attachments/"+attachmentID+"/labels?prefix=global&sort=-name", nil, 200)
+	if !strings.Contains(attachmentLabelResponse.Body.String(), "release-file") {
+		t.Fatal(attachmentLabelResponse.Body.String())
+	}
+	labeledAttachments := call(member, "GET", "/labels/"+attachmentLabels[0].ID+"/attachments?sort=-modified-date", nil, 200)
+	if !strings.Contains(labeledAttachments.Body.String(), "release.txt") {
+		t.Fatal(labeledAttachments.Body.String())
+	}
+	expandedAttachment := call(member, "GET", "/attachments/"+attachmentID+"?include-operations=true&include-versions=true&include-labels=true&include-properties=true", nil, 200)
+	if !strings.Contains(expandedAttachment.Body.String(), "release-file") || !strings.Contains(expandedAttachment.Body.String(), "release-state") {
+		t.Fatal(expandedAttachment.Body.String())
+	}
 	call(member, "GET", "/attachments/"+attachmentID+"/operations", nil, 200)
 	callV1Multipart(member, "POST", "/content/"+page.ID+"/child/attachment/"+attachmentID+"/data", "release.txt", "release two", "Updated release file", 200)
 	versionsResponse := call(member, "GET", "/attachments/"+attachmentID+"/versions", nil, 200)
@@ -287,6 +318,8 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	if downloadResponse.Code != 200 || downloadResponse.Body.String() != "release two" {
 		t.Fatalf("unexpected attachment download: %d %s", downloadResponse.Code, downloadResponse.Body.String())
 	}
+	call(member, "DELETE", "/attachments/"+attachmentID+"/properties/"+attachmentProperty.ID, nil, 204)
+	call(member, "GET", "/attachments/"+attachmentID+"/properties/"+attachmentProperty.ID, nil, 404)
 	call(member, "DELETE", "/attachments/"+attachmentID, nil, 204)
 	call(member, "GET", "/attachments/"+attachmentID, nil, 404)
 	topResponse := call(member, "POST", "/footer-comments", map[string]any{"pageId": page.ID, "body": map[string]any{"storage": models.WikiBody{Representation: "storage", Value: "<p>Ready for review</p>"}}}, 201)
@@ -454,8 +487,30 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	call(member, "GET", "/pages/"+restricted.ID, nil, 200)
 	callV1(actor, "DELETE", "/content/"+restricted.ID+"/restriction", nil, 200)
 	call(member, "GET", "/pages/"+restricted.ID, nil, 200)
+	restrictedUpload := callV1Multipart(actor, "POST", "/content/"+restricted.ID+"/child/attachment", "classified-release.txt", "confidential", "Restricted file", 200)
+	var restrictedAttachments struct {
+		Results []models.WikiAttachment
+	}
+	if err := json.Unmarshal(restrictedUpload.Body.Bytes(), &restrictedAttachments); err != nil || len(restrictedAttachments.Results) != 1 {
+		t.Fatalf("unexpected restricted attachment: %+v %v", restrictedAttachments, err)
+	}
+	restrictedAttachmentID := restrictedAttachments.Results[0].ID
+	call(actor, "POST", "/attachments/"+restrictedAttachmentID+"/properties", map[string]any{"key": "classified-metadata", "value": "hidden"}, 200)
+	if _, err := h.Commands.AddWikiAttachmentLabels(ctx, ws, actor, restrictedAttachmentID, []models.WikiLabel{{Prefix: "global", Name: "classified-file"}}); err != nil {
+		t.Fatal(err)
+	}
 	callV1(actor, "PUT", "/content/"+restricted.ID+"/restriction", actorOnly, 200)
 	call(member, "GET", "/pages/"+restricted.ID, nil, 404)
+	call(member, "GET", "/attachments/"+restrictedAttachmentID, nil, 404)
+	if visibleAttachments := call(member, "GET", "/attachments", nil, 200); strings.Contains(visibleAttachments.Body.String(), "classified-release") {
+		t.Fatal("restricted attachment leaked through the global collection")
+	}
+	if visibleLabels := call(member, "GET", "/labels", nil, 200); strings.Contains(visibleLabels.Body.String(), "classified-file") {
+		t.Fatal("restricted attachment label leaked through the global collection")
+	}
+	if spaceContentLabels := call(member, "GET", "/spaces/"+public+"/content/labels", nil, 200); strings.Contains(spaceContentLabels.Body.String(), "classified-file") {
+		t.Fatal("restricted attachment label leaked through the space content collection")
+	}
 	actions, err := st.ActionsSince(ctx, ws, member, 0, 1000)
 	if err != nil {
 		t.Fatal(err)
@@ -464,7 +519,7 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		if a.EntityType == "wiki_footer_comment_like" && strings.HasPrefix(a.EntityID, secretCommentBean.ID+":") {
 			t.Fatalf("private wiki like action leaked: %s", a.Payload)
 		}
-		if strings.Contains(string(a.Payload), "Private draft") || strings.Contains(string(a.Payload), "Secret guide") || strings.Contains(string(a.Payload), "PRIVATE") || strings.Contains(string(a.Payload), "Private launch phrase") || strings.Contains(string(a.Payload), "secret-label") || strings.Contains(string(a.Payload), "Restricted launch plan") || strings.Contains(string(a.Payload), "Managers approved the launch") {
+		if strings.Contains(string(a.Payload), "Private draft") || strings.Contains(string(a.Payload), "Secret guide") || strings.Contains(string(a.Payload), "PRIVATE") || strings.Contains(string(a.Payload), "Private launch phrase") || strings.Contains(string(a.Payload), "secret-label") || strings.Contains(string(a.Payload), "Restricted launch plan") || strings.Contains(string(a.Payload), "Managers approved the launch") || strings.Contains(string(a.Payload), "classified-release") || strings.Contains(string(a.Payload), "classified-metadata") || strings.Contains(string(a.Payload), "classified-file") {
 			t.Fatalf("private wiki action leaked: %s", a.Payload)
 		}
 	}

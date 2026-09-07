@@ -1,6 +1,6 @@
 # Development continuity
 
-Updated: 2026-09-06
+Updated: 2026-09-07
 
 This file is the local handoff for the Jira Cloud completion program. Keep it
 short, factual, and current after each meaningful commit. Stable architecture
@@ -1436,10 +1436,31 @@ Validation after versioned Confluence page attachments:
 - Exact reviewed API coverage is 262 of 1,207 operations: 255 partial, 7
   missing, and 945 unassessed. Confluence coverage is 48 of 348 reviewed.
 
+Validation after Confluence attachment properties and labels:
+
+- Migration 078 adds attachment-scoped JSON properties with immutable
+  optimistic versions and attachment-to-workspace-label associations. Shared
+  commands validate property values and label names; page update restrictions
+  protect every mutation while page read restrictions protect direct, expanded
+  and reverse-lookup reads.
+- Five v2 property operations cover create, filtered and sorted collection
+  reads, item reads, version-checked updates and deletion. Two v2 label
+  operations cover attachment labels and label-to-attachment discovery. The
+  attachment resource now expands both collections and returns a usable page
+  link containing its space and page IDs.
+- The page UI displays attachment labels and JSON properties and lets editors
+  add/remove labels plus create, edit and delete properties. PostgreSQL tests
+  cover duplicate and stale updates, reverse lookup, expansions and deletion;
+  restricted attachment metadata is excluded from global API and action-log
+  reads. Chromium covers the full metadata journey with axe, dark-mode and
+  320 px reflow checks retained.
+- Exact reviewed API coverage is 269 of 1,207 operations: 262 partial, 7
+  missing, and 938 unassessed. Confluence coverage is 55 of 348 reviewed.
+
 ## Current change
 
-1. Continue Confluence attachment properties, labels, comments and thumbnails,
-   then page and space watches.
+1. Continue Confluence attachment comments and thumbnails, then page and space
+   watches.
 2. Return to advanced service operations risk, CAB approval, on-call and
    post-incident review configuration after the next knowledge slice.
 

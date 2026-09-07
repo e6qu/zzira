@@ -16,6 +16,8 @@ var ErrWikiConflict = errors.New("the page changed; reload the latest version be
 
 var ErrWikiCommentConflict = errors.New("the comment changed; reload the latest version before saving")
 
+var ErrWikiPropertyConflict = errors.New("the property changed; reload the latest version before saving")
+
 // Wiki visibility is always evaluated against current membership. Private
 // spaces and drafts belong to their author; an admin can manage public spaces.
 const wikiSpaceVisible = `EXISTS (

@@ -56,8 +56,12 @@ func writeError(w http.ResponseWriter, err error) {
 		failure(w, 409, err.Error())
 	case errors.Is(err, store.ErrWikiCommentConflict):
 		failure(w, 409, err.Error())
+	case errors.Is(err, store.ErrWikiPropertyConflict):
+		failure(w, 409, err.Error())
 	case errors.Is(err, store.ErrWikiValidation):
 		failure(w, 400, err.Error())
+	case errors.As(err, &pgerr) && pgerr.Code == "23505" && pgerr.ConstraintName == "wiki_attachment_properties_attachment_id_key_key":
+		failure(w, 400, "An attachment property with this key already exists.")
 	case errors.As(err, &pgerr) && pgerr.Code == "23505":
 		failure(w, 400, "A space with this key or a published page with this title already exists.")
 	default:
@@ -217,6 +221,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.labels(w, r, ws, actor)
 	case len(parts) == 3 && parts[0] == "labels" && parts[2] == "pages" && r.Method == "GET":
 		h.labelPages(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "labels" && parts[2] == "attachments" && r.Method == "GET":
+		h.labelAttachments(w, r, ws, actor, parts[1])
 	case len(parts) == 3 && parts[0] == "pages" && parts[2] == "labels" && r.Method == "GET":
 		h.contentLabels(w, r, ws, actor, "page", parts[1])
 	case len(parts) == 3 && parts[0] == "spaces" && parts[2] == "labels" && r.Method == "GET":
@@ -231,6 +237,18 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.deleteAttachment(w, r, ws, actor, parts[1])
 	case len(parts) == 3 && parts[0] == "attachments" && parts[2] == "operations" && r.Method == "GET":
 		h.attachmentOperations(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "attachments" && parts[2] == "labels" && r.Method == "GET":
+		h.attachmentLabels(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "attachments" && parts[2] == "properties" && r.Method == "GET":
+		h.attachmentProperties(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "attachments" && parts[2] == "properties" && r.Method == "POST":
+		h.createAttachmentProperty(w, r, ws, actor, parts[1])
+	case len(parts) == 4 && parts[0] == "attachments" && parts[2] == "properties" && r.Method == "GET":
+		h.attachmentProperty(w, r, ws, actor, parts[1], parts[3])
+	case len(parts) == 4 && parts[0] == "attachments" && parts[2] == "properties" && r.Method == "PUT":
+		h.updateAttachmentProperty(w, r, ws, actor, parts[1], parts[3])
+	case len(parts) == 4 && parts[0] == "attachments" && parts[2] == "properties" && r.Method == "DELETE":
+		h.deleteAttachmentProperty(w, r, ws, actor, parts[1], parts[3])
 	case len(parts) == 3 && parts[0] == "attachments" && parts[2] == "versions" && r.Method == "GET":
 		h.attachmentVersions(w, r, ws, actor, parts[1])
 	case len(parts) == 4 && parts[0] == "attachments" && parts[2] == "versions" && r.Method == "GET":

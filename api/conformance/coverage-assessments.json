@@ -3186,6 +3186,90 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/attachments/{attachment-id}/properties",
+      "status": "partial",
+      "notes": "Permission-scoped attachment properties support JSON values, key filtering, cursor pagination, immutable optimistic versions, expansion, conflict handling and deletion; broader content-property targets remain separate.",
+      "evidence": [
+        "internal/confluence/attachments.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_attachment_metadata.go",
+        "internal/store/wiki_labels.go",
+        "migrations/078_wiki_attachment_metadata.sql"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:POST:/wiki/api/v2/attachments/{attachment-id}/properties",
+      "status": "partial",
+      "notes": "Permission-scoped attachment properties support JSON values, key filtering, cursor pagination, immutable optimistic versions, expansion, conflict handling and deletion; broader content-property targets remain separate.",
+      "evidence": [
+        "internal/confluence/attachments.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_attachment_metadata.go",
+        "internal/store/wiki_labels.go",
+        "migrations/078_wiki_attachment_metadata.sql"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:DELETE:/wiki/api/v2/attachments/{attachment-id}/properties/{property-id}",
+      "status": "partial",
+      "notes": "Permission-scoped attachment properties support JSON values, key filtering, cursor pagination, immutable optimistic versions, expansion, conflict handling and deletion; broader content-property targets remain separate.",
+      "evidence": [
+        "internal/confluence/attachments.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_attachment_metadata.go",
+        "internal/store/wiki_labels.go",
+        "migrations/078_wiki_attachment_metadata.sql"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/attachments/{attachment-id}/properties/{property-id}",
+      "status": "partial",
+      "notes": "Permission-scoped attachment properties support JSON values, key filtering, cursor pagination, immutable optimistic versions, expansion, conflict handling and deletion; broader content-property targets remain separate.",
+      "evidence": [
+        "internal/confluence/attachments.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_attachment_metadata.go",
+        "internal/store/wiki_labels.go",
+        "migrations/078_wiki_attachment_metadata.sql"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:PUT:/wiki/api/v2/attachments/{attachment-id}/properties/{property-id}",
+      "status": "partial",
+      "notes": "Permission-scoped attachment properties support JSON values, key filtering, cursor pagination, immutable optimistic versions, expansion, conflict handling and deletion; broader content-property targets remain separate.",
+      "evidence": [
+        "internal/confluence/attachments.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_attachment_metadata.go",
+        "internal/store/wiki_labels.go",
+        "migrations/078_wiki_attachment_metadata.sql"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/attachments/{id}/labels",
+      "status": "partial",
+      "notes": "Attachment label and reverse attachment lookup reads are permission-scoped, filterable, sortable and cursor-paged; label mutation currently uses the shared internal command path.",
+      "evidence": [
+        "internal/confluence/attachments.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_attachment_metadata.go",
+        "internal/store/wiki_labels.go",
+        "migrations/078_wiki_attachment_metadata.sql"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/labels/{id}/attachments",
+      "status": "partial",
+      "notes": "Attachment label and reverse attachment lookup reads are permission-scoped, filterable, sortable and cursor-paged; label mutation currently uses the shared internal command path.",
+      "evidence": [
+        "internal/confluence/attachments.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_attachment_metadata.go",
+        "internal/store/wiki_labels.go",
+        "migrations/078_wiki_attachment_metadata.sql"
+      ]
     }
   ]
 }

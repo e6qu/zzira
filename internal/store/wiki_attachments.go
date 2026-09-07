@@ -8,11 +8,11 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const wikiAttachmentSelect = `SELECT a.id::text,a.page_id::text,a.file_id,a.filename,a.media_type,a.comment,a.size,a.status,a.author_id,to_char(a.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),a.version,v.message,v.minor_edit,v.author_id,to_char(v.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM wiki_attachments a JOIN wiki_pages p ON p.id=a.page_id JOIN wiki_spaces s ON s.id=p.space_id JOIN wiki_attachment_versions v ON v.attachment_id=a.id AND v.version=a.version`
+const wikiAttachmentSelect = `SELECT a.id::text,a.page_id::text,p.space_id::text,a.file_id,a.filename,a.media_type,a.comment,a.size,a.status,a.author_id,to_char(a.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),a.version,v.message,v.minor_edit,v.author_id,to_char(v.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM wiki_attachments a JOIN wiki_pages p ON p.id=a.page_id JOIN wiki_spaces s ON s.id=p.space_id JOIN wiki_attachment_versions v ON v.attachment_id=a.id AND v.version=a.version`
 
 func scanWikiAttachment(row pgx.Row) (*models.WikiAttachment, error) {
 	a := &models.WikiAttachment{}
-	err := row.Scan(&a.ID, &a.PageID, &a.FileID, &a.Filename, &a.MediaType, &a.Comment, &a.Size, &a.Status, &a.AuthorID, &a.CreatedAt, &a.Version.Number, &a.Version.Message, &a.Version.MinorEdit, &a.Version.AuthorID, &a.Version.CreatedAt)
+	err := row.Scan(&a.ID, &a.PageID, &a.SpaceID, &a.FileID, &a.Filename, &a.MediaType, &a.Comment, &a.Size, &a.Status, &a.AuthorID, &a.CreatedAt, &a.Version.Number, &a.Version.Message, &a.Version.MinorEdit, &a.Version.AuthorID, &a.Version.CreatedAt)
 	return a, err
 }
 

@@ -1,5 +1,7 @@
 package models
 
+import "encoding/json"
+
 type WikiBody struct {
 	Representation string `json:"representation"`
 	Value          string `json:"value"`
@@ -78,17 +80,29 @@ type WikiPageRestriction struct {
 }
 
 type WikiAttachment struct {
-	ID        string      `json:"id"`
-	PageID    string      `json:"pageId"`
-	FileID    string      `json:"fileId"`
-	Filename  string      `json:"title"`
-	MediaType string      `json:"mediaType"`
-	Comment   string      `json:"comment"`
-	Size      int64       `json:"fileSize"`
-	Status    string      `json:"status"`
-	AuthorID  string      `json:"authorId"`
-	CreatedAt string      `json:"createdAt"`
-	Version   WikiVersion `json:"version"`
+	ID         string                   `json:"id"`
+	PageID     string                   `json:"pageId"`
+	SpaceID    string                   `json:"-"`
+	FileID     string                   `json:"fileId"`
+	Filename   string                   `json:"title"`
+	MediaType  string                   `json:"mediaType"`
+	Comment    string                   `json:"comment"`
+	Size       int64                    `json:"fileSize"`
+	Status     string                   `json:"status"`
+	AuthorID   string                   `json:"authorId"`
+	CreatedAt  string                   `json:"createdAt"`
+	Version    WikiVersion              `json:"version"`
+	Labels     []WikiLabel              `json:"-"`
+	Properties []WikiAttachmentProperty `json:"-"`
+}
+
+type WikiAttachmentProperty struct {
+	ID           string          `json:"id"`
+	AttachmentID string          `json:"-"`
+	Key          string          `json:"key"`
+	Value        json.RawMessage `json:"value"`
+	Version      WikiVersion     `json:"version"`
+	NextVersion  int             `json:"-"`
 }
 
 type WikiAttachmentVersion struct {

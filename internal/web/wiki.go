@@ -1,6 +1,7 @@
 package web
 
 import (
+	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
@@ -115,8 +116,12 @@ func wikiWebError(err error) (int, string) {
 		return 403, err.Error()
 	case errors.Is(err, store.ErrWikiConflict):
 		return 409, err.Error()
+	case errors.Is(err, store.ErrWikiPropertyConflict):
+		return 409, err.Error()
 	case errors.Is(err, store.ErrWikiValidation):
 		return 400, err.Error()
+	case errors.As(err, &pgerr) && pgerr.Code == "23505" && pgerr.ConstraintName == "wiki_attachment_properties_attachment_id_key_key":
+		return 400, "An attachment property with this key already exists."
 	case errors.As(err, &pgerr) && pgerr.Code == "23505":
 		return 400, "A space with this key or a published page with this title already exists."
 	default:
@@ -325,6 +330,21 @@ func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 			http.Error(w, "Could not load page attachments.", 500)
 			return
 		}
+		for _, attachment := range data.Attachments {
+			attachment.Labels, err = h.Store.WikiAttachmentLabels(r.Context(), ws, user.ID, attachment.ID)
+			if err != nil {
+				http.Error(w, "Could not load attachment labels.", 500)
+				return
+			}
+			attachment.Properties, err = h.Store.WikiAttachmentProperties(r.Context(), ws, user.ID, attachment.ID, "")
+			if err != nil {
+				http.Error(w, "Could not load attachment properties.", 500)
+				return
+			}
+			for i := range attachment.Properties {
+				attachment.Properties[i].NextVersion = attachment.Properties[i].Version.Number + 1
+			}
+		}
 		comments, commentErr := h.Store.WikiFooterCommentThread(r.Context(), ws, user.ID, page.ID)
 		if commentErr != nil {
 			http.Error(w, "Could not load page comments.", 500)
@@ -403,6 +423,59 @@ func (h *Handler) WikiAttachmentDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	redirectLocal(w, r, wikiPageURL(page)+"#wiki-attachments")
+}
+
+func (h *Handler) WikiAttachmentMetadata(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	page, err := h.wikiPageForComment(r, ws, user.ID)
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	attachmentID := r.PathValue("attachment")
+	attachment, err := h.Store.WikiAttachment(r.Context(), ws, user.ID, attachmentID)
+	if err != nil || attachment.PageID != page.ID {
+		http.NotFound(w, r)
+		return
+	}
+	switch r.PostFormValue("action") {
+	case "add-labels":
+		values := strings.Split(r.PostFormValue("labels"), ",")
+		labels := make([]models.WikiLabel, 0, len(values))
+		for _, value := range values {
+			labels = append(labels, models.WikiLabel{Name: value, Prefix: "global"})
+		}
+		_, err = h.Commands.AddWikiAttachmentLabels(r.Context(), ws, user.ID, attachmentID, labels)
+	case "remove-label":
+		err = h.Commands.RemoveWikiAttachmentLabel(r.Context(), ws, user.ID, attachmentID, r.PostFormValue("prefix"), r.PostFormValue("name"))
+	case "create-property":
+		_, err = h.Commands.CreateWikiAttachmentProperty(r.Context(), ws, user.ID, attachmentID, r.PostFormValue("key"), json.RawMessage(r.PostFormValue("value")))
+	case "update-property":
+		version, versionErr := strconv.Atoi(r.PostFormValue("version"))
+		if versionErr != nil {
+			http.Error(w, "Invalid property version.", 400)
+			return
+		}
+		_, err = h.Commands.UpdateWikiAttachmentProperty(r.Context(), ws, user.ID, attachmentID, r.PostFormValue("propertyId"), r.PostFormValue("key"), json.RawMessage(r.PostFormValue("value")), version, r.PostFormValue("message"))
+	case "delete-property":
+		err = h.Commands.DeleteWikiAttachmentProperty(r.Context(), ws, user.ID, attachmentID, r.PostFormValue("propertyId"))
+	default:
+		http.Error(w, "Unknown attachment metadata action.", 400)
+		return
+	}
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	redirectLocal(w, r, wikiPageURL(page)+"#attachment-"+attachmentID)
 }
 
 func (h *Handler) WikiPageRestrictions(w http.ResponseWriter, r *http.Request) {

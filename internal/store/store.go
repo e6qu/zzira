@@ -957,7 +957,7 @@ func (s *Store) ActionPageSince(ctx context.Context, workspaceID, userID string,
 		FROM actions a
 		WHERE a.workspace_id=$1 AND a.seq > $2 AND a.seq <= $6
 		  AND (a.entity_type <> 'dashboard' OR EXISTS (SELECT 1 FROM dashboards d WHERE d.workspace_id=$1 AND d.id=a.entity_id AND `+strings.ReplaceAll(dashboardAccess, "$2", "$3")+`))
-		  AND (a.entity_type NOT IN ('wiki_space','wiki_page','wiki_footer_comment','wiki_footer_comment_like','wiki_label','wiki_restriction','wiki_attachment') OR EXISTS (
+		  AND (a.entity_type NOT IN ('wiki_space','wiki_page','wiki_footer_comment','wiki_footer_comment_like','wiki_label','wiki_restriction','wiki_attachment','wiki_attachment_property') OR EXISTS (
 		    SELECT 1 FROM wiki_spaces s WHERE s.workspace_id=$1
 		      AND s.id::text=a.payload->>'wikiSpaceId'
 		      AND (NOT s.private OR s.author_id=$3)
@@ -973,7 +973,7 @@ func (s *Store) ActionPageSince(ctx context.Context, workspaceID, userID string,
 		        WHERE wp.id::text=a.payload->'wiki_label'->>'pageId'
 		          AND wp.space_id=s.id AND wp.status='current'
 		      ))
-		      AND (a.entity_type NOT IN ('wiki_page','wiki_footer_comment','wiki_footer_comment_like','wiki_label','wiki_restriction','wiki_attachment')
+		      AND (a.entity_type NOT IN ('wiki_page','wiki_footer_comment','wiki_footer_comment_like','wiki_label','wiki_restriction','wiki_attachment','wiki_attachment_property')
 		        OR COALESCE(a.payload->'wiki_label'->>'pageId','')='' AND a.entity_type='wiki_label'
 		        OR EXISTS (
 		          SELECT 1 FROM wiki_pages access_page
@@ -984,6 +984,7 @@ func (s *Store) ActionPageSince(ctx context.Context, workspaceID, userID string,
 		            WHEN 'wiki_label' THEN a.payload->'wiki_label'->>'pageId'
 		            WHEN 'wiki_restriction' THEN a.payload->'wiki_restriction'->>'pageId'
 		            WHEN 'wiki_attachment' THEN a.payload->'wiki_attachment'->>'pageId'
+		            WHEN 'wiki_attachment_property' THEN a.payload->'wiki_attachment_property'->>'pageId'
 		          END
 		            AND access_page.space_id=s.id
 		            AND (
