@@ -183,6 +183,22 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		t.Fatal("private space leaked")
 	}
 	call(member, "GET", "/spaces/"+private, nil, 404)
+	call(actor, "POST", "/spaces", map[string]any{"key": "UNSUPPORTED", "name": "Unsupported", "roleAssignments": []map[string]any{{"roleId": "1"}}}, 400)
+	if _, err := h.Commands.AddWikiSpaceLabels(ctx, ws, actor, public, []models.WikiLabel{{Prefix: "team", Name: "core-space"}}); err != nil {
+		t.Fatal(err)
+	}
+	spaceList := call(member, "GET", "/spaces?keys=PUBLIC&labels=core-space&sort=-name&description-format=view&include-icon=true&limit=1", nil, 200)
+	if !strings.Contains(spaceList.Body.String(), `"representation":"view"`) || !strings.Contains(spaceList.Body.String(), `space-default.svg`) || !strings.Contains(spaceList.Body.String(), `"currentActiveAlias":"PUBLIC"`) {
+		t.Fatal(spaceList.Body.String())
+	}
+	call(member, "GET", "/spaces?sort=unknown", nil, 400)
+	call(member, "GET", "/spaces?status=archived", nil, 400)
+	call(member, "GET", "/spaces?favorited-by="+member, nil, 400)
+	expandedSpace := call(actor, "GET", "/spaces/"+public+"?include-icon=true&include-operations=true&include-labels=true", nil, 200)
+	if !strings.Contains(expandedSpace.Body.String(), `"operation":"update"`) || !strings.Contains(expandedSpace.Body.String(), `"name":"core-space"`) || !strings.Contains(expandedSpace.Body.String(), `"icon"`) {
+		t.Fatal(expandedSpace.Body.String())
+	}
+	call(actor, "GET", "/spaces/"+public+"?include-properties=true", nil, 400)
 	create := func(space, title, status string) models.WikiPage {
 		t.Helper()
 		w := call(actor, "POST", "/pages", map[string]any{"spaceId": space, "title": title, "status": status, "body": models.WikiBody{Representation: "storage", Value: "<p><strong>Release</strong> notes</p>"}}, 200)
@@ -230,6 +246,11 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	draft := create(public, "Private draft", "draft")
 	secret := create(private, "Secret guide", "current")
 	governed := create(public, "Security response", "current")
+	if pagesInSpace := call(member, "GET", "/spaces/"+public+"/pages?depth=root&status=current&sort=-title&body-format=storage&limit=2", nil, 200); !strings.Contains(pagesInSpace.Body.String(), `"storage"`) || !strings.Contains(pagesInSpace.Header().Get("Link"), "cursor=") {
+		t.Fatal(pagesInSpace.Body.String(), pagesInSpace.Header())
+	}
+	call(member, "GET", "/spaces/"+public+"/pages?depth=children", nil, 400)
+	call(member, "GET", "/spaces/"+public+"/pages?status=draft", nil, 400)
 	call(actor, "POST", "/pages?private=true", map[string]any{"spaceId": public, "title": "Private query", "status": "current", "body": models.WikiBody{Representation: "storage", Value: "<p>Private</p>"}}, 400)
 	call(actor, "POST", "/pages?embedded=maybe", map[string]any{"spaceId": public, "title": "Embedded query", "status": "current", "body": models.WikiBody{Representation: "storage", Value: "<p>Embedded</p>"}}, 400)
 	call(actor, "POST", "/pages", map[string]any{"spaceId": public, "title": "Live document", "status": "current", "subtype": "live", "body": models.WikiBody{Representation: "storage", Value: "<p>Live</p>"}}, 400)
@@ -859,6 +880,9 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	var hierarchyGrandchild models.WikiPage
 	if err := json.Unmarshal(hierarchyGrandchildResponse.Body.Bytes(), &hierarchyGrandchild); err != nil {
 		t.Fatal(err)
+	}
+	if roots := call(member, "GET", "/spaces/"+public+"/pages?depth=root&limit=250", nil, 200); strings.Contains(roots.Body.String(), "Hierarchy child") || strings.Contains(roots.Body.String(), "Hierarchy grandchild") {
+		t.Fatal(roots.Body.String())
 	}
 	hierarchyChildren := call(member, "GET", "/pages/"+page.ID+"/children?sort=-id&limit=1", nil, 200)
 	if !strings.Contains(hierarchyChildren.Body.String(), "Hierarchy child") || strings.Contains(hierarchyChildren.Body.String(), "Hierarchy grandchild") {

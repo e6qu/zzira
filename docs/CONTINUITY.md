@@ -1814,10 +1814,27 @@ Validation after Confluence space governance:
 - Exact reviewed API coverage is 410 of 1,207 operations: 403 partial, 7
   missing, and 797 unassessed. Confluence coverage is 196 of 348 reviewed.
 
+Validation after core Confluence spaces:
+
+- Four pinned v2 operations now cover membership-shaped global space listing,
+  administrator creation, expanded exact reads and per-space page collections.
+- Space lists filter by IDs, keys and all requested labels, support documented
+  ID/key/name sorts, cursor paging, plain or escaped view descriptions and a
+  retrievable default icon. Unsupported states, types and favorite filters
+  return explicit capability errors.
+- Exact reads expand role-shaped operations and labels. Per-space pages support
+  all/root depth, current/trashed filters, documented sorts, storage bodies and
+  pagination while excluding nested pages at root depth.
+- PostgreSQL integration covers private-space visibility, member create denial,
+  list filtering/sorting/paging, exact expansions, root depth, and explicit
+  errors for role-assignment creation and unsupported expansions.
+- Exact reviewed API coverage is 414 of 1,207 operations: 407 partial, 7
+  missing, and 793 unassessed. Confluence coverage is 200 of 348 reviewed.
+
 ## Current change
 
-1. Resume Confluence space collections, permissions and other administration
-   operations.
+1. Resume Confluence space permissions, role assignments, properties and other
+   administration operations.
 2. Continue Service Management with dependency mapping, major-incident
    communications, change-conflict calendars and escalation policy.
 3. Expand the app runtime from registered custom-content discovery into signed

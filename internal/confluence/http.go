@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net/http"
@@ -122,19 +123,55 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case len(parts) == 1 && parts[0] == "spaces" && r.Method == "POST":
 		h.createSpace(w, r, ws, actor)
 	case len(parts) == 2 && parts[0] == "spaces" && r.Method == "GET":
-		if !supportedQuery(w, r, "description-format") {
+		if !validPageID(w, parts[1]) || !supportedQuery(w, r, "description-format", "include-icon", "include-operations", "include-properties", "include-permissions", "include-role-assignments", "include-labels") {
 			return
 		}
-		if format := r.URL.Query().Get("description-format"); format != "" && format != "plain" {
-			failure(w, 400, "Only plain space descriptions are supported.")
+		format := r.URL.Query().Get("description-format")
+		if format != "" && format != "plain" && format != "view" {
+			failure(w, 400, "Unsupported space description format.")
 			return
+		}
+		flags := map[string]bool{}
+		for _, key := range []string{"include-icon", "include-operations", "include-properties", "include-permissions", "include-role-assignments", "include-labels"} {
+			value, ok := queryBool(w, r, key)
+			if !ok {
+				return
+			}
+			flags[key] = value
+		}
+		for _, key := range []string{"include-properties", "include-permissions", "include-role-assignments"} {
+			if flags[key] {
+				failure(w, 400, key+" is not yet supported for spaces.")
+				return
+			}
 		}
 		space, err := h.Store.WikiSpace(r.Context(), ws, actor, parts[1])
 		if err != nil {
 			writeError(w, err)
 			return
 		}
-		respond(w, 200, h.spaceBean(space))
+		bean := h.spaceBean(space, format, flags["include-icon"])
+		if flags["include-operations"] {
+			operations, operationErr := h.spaceOperationValues(r, ws, actor, space.ID)
+			if operationErr != nil {
+				writeError(w, operationErr)
+				return
+			}
+			bean["operations"] = map[string]any{"results": operations, "meta": map[string]any{"hasMore": false}, "_links": map[string]any{}}
+		}
+		if flags["include-labels"] {
+			labels, labelErr := h.Store.WikiSpaceLabels(r.Context(), ws, actor, space.ID, false)
+			if labelErr != nil {
+				writeError(w, labelErr)
+				return
+			}
+			values := make([]any, 0, len(labels))
+			for _, label := range labels {
+				values = append(values, label)
+			}
+			bean["labels"] = map[string]any{"results": values, "meta": map[string]any{"hasMore": false}, "_links": map[string]any{}}
+		}
+		respond(w, 200, bean)
 	case len(parts) == 3 && parts[0] == "spaces" && parts[2] == "operations" && r.Method == "GET":
 		h.spaceOperations(w, r, ws, actor, parts[1])
 	case len(parts) == 4 && parts[0] == "spaces" && parts[2] == "classification-level" && parts[3] == "default" && r.Method == "GET":
@@ -1114,8 +1151,19 @@ func storageFormat(w http.ResponseWriter, r *http.Request) bool {
 	}
 	return true
 }
-func (h *Handler) spaceBean(s *models.WikiSpace) map[string]any {
-	return map[string]any{"id": s.ID, "key": s.Key, "name": s.Name, "type": "global", "status": "current", "authorId": s.AuthorID, "spaceOwnerId": s.AuthorID, "createdAt": s.CreatedAt, "description": map[string]any{"plain": models.WikiBody{Representation: "plain", Value: s.Description}}, "_links": map[string]string{"webui": "/spaces/" + s.ID, "base": h.BaseURL + "/wiki"}}
+func (h *Handler) spaceBean(s *models.WikiSpace, descriptionFormat string, includeIcon bool) map[string]any {
+	if descriptionFormat == "" {
+		descriptionFormat = "plain"
+	}
+	description := models.WikiBody{Representation: descriptionFormat, Value: s.Description}
+	if descriptionFormat == "view" {
+		description.Value = "<p>" + strings.ReplaceAll(html.EscapeString(s.Description), "\n", "<br>") + "</p>"
+	}
+	bean := map[string]any{"id": s.ID, "key": s.Key, "name": s.Name, "type": "global", "status": "current", "authorId": s.AuthorID, "spaceOwnerId": s.AuthorID, "currentActiveAlias": s.Key, "createdAt": s.CreatedAt, "description": map[string]any{descriptionFormat: description}, "_links": map[string]string{"webui": "/spaces/" + s.ID, "base": h.BaseURL + "/wiki"}}
+	if includeIcon {
+		bean["icon"] = map[string]string{"path": "/static/img/space-default.svg", "apiDownloadLink": "/static/img/space-default.svg"}
+	}
+	return bean
 }
 func (h *Handler) pageBean(p *models.WikiPage, body bool) map[string]any {
 	bean := map[string]any{"id": p.ID, "status": p.Status, "title": p.Title, "spaceId": p.SpaceID, "authorId": p.AuthorID, "ownerId": p.AuthorID, "lastOwnerId": p.AuthorID, "createdAt": p.CreatedAt, "version": p.Version, "_links": map[string]string{"webui": "/spaces/" + p.SpaceID + "/pages/" + p.ID, "base": h.BaseURL + "/wiki"}}
@@ -1134,9 +1182,12 @@ func (h *Handler) createSpace(w http.ResponseWriter, r *http.Request, ws, actor 
 		return
 	}
 	var in struct {
-		Name, Key, Alias   string
-		Description        models.WikiBody
-		CreatePrivateSpace bool
+		Name, Key, Alias             string
+		Description                  models.WikiBody
+		CreatePrivateSpace           bool
+		RoleAssignments              []json.RawMessage
+		CopySpaceAccessConfiguration *int64
+		TemplateKey                  string
 	}
 	if !decode(w, r, &in) {
 		return
@@ -1151,21 +1202,42 @@ func (h *Handler) createSpace(w http.ResponseWriter, r *http.Request, ws, actor 
 		failure(w, 400, "Space description must use plain representation.")
 		return
 	}
+	if len(in.RoleAssignments) > 0 || in.CopySpaceAccessConfiguration != nil || in.TemplateKey != "" {
+		failure(w, 400, "Space role assignments, copied access and templates are not yet supported.")
+		return
+	}
 	s, err := h.Commands.CreateWikiSpace(r.Context(), ws, actor, in.Key, in.Name, in.Description.Value, in.CreatePrivateSpace)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	respond(w, 201, h.spaceBean(s))
+	respond(w, 201, h.spaceBean(s, "plain", false))
 }
 
 func (h *Handler) spaces(w http.ResponseWriter, r *http.Request, ws, actor string) {
-	if !supportedQuery(w, r, "limit", "cursor", "keys", "ids", "type", "status", "description-format") {
+	if !supportedQuery(w, r, "limit", "cursor", "keys", "ids", "type", "status", "labels", "favorited-by", "not-favorited-by", "sort", "description-format", "include-icon") {
 		return
 	}
 	q := r.URL.Query()
-	if f := q.Get("description-format"); f != "" && f != "plain" {
-		failure(w, 400, "Only plain space descriptions are supported.")
+	format := q.Get("description-format")
+	if format != "" && format != "plain" && format != "view" {
+		failure(w, 400, "Unsupported space description format.")
+		return
+	}
+	includeIcon, ok := queryBool(w, r, "include-icon")
+	if !ok {
+		return
+	}
+	if q.Get("favorited-by") != "" || q.Get("not-favorited-by") != "" {
+		failure(w, 400, "Space favorite filters are not yet supported.")
+		return
+	}
+	if kind := q.Get("type"); kind != "" && kind != "global" {
+		failure(w, 400, "Only global spaces are supported.")
+		return
+	}
+	if status := q.Get("status"); status != "" && status != "current" {
+		failure(w, 400, "Only current spaces are supported.")
 		return
 	}
 	items, err := h.Store.WikiSpaces(r.Context(), ws, actor)
@@ -1173,18 +1245,70 @@ func (h *Handler) spaces(w http.ResponseWriter, r *http.Request, ws, actor strin
 		writeError(w, err)
 		return
 	}
-	values := []any{}
+	filtered := make([]*models.WikiSpace, 0, len(items))
 	for _, s := range items {
 		if !queryContains(r, "keys", s.Key) || !queryContains(r, "ids", s.ID) {
 			continue
 		}
-		if q.Get("type") != "" && q.Get("type") != "global" {
-			continue
+		matchesLabels := true
+		if _, present := q["labels"]; present {
+			labels, labelErr := h.Store.WikiSpaceLabels(r.Context(), ws, actor, s.ID, false)
+			if labelErr != nil {
+				writeError(w, labelErr)
+				return
+			}
+			for _, raw := range q["labels"] {
+				for _, wanted := range strings.Split(raw, ",") {
+					found := false
+					for _, label := range labels {
+						if label.Name == wanted {
+							found = true
+							break
+						}
+					}
+					matchesLabels = matchesLabels && found
+				}
+			}
 		}
-		if q.Get("status") != "" && q.Get("status") != "current" {
-			continue
+		if matchesLabels {
+			filtered = append(filtered, s)
 		}
-		values = append(values, h.spaceBean(s))
+	}
+	order := q.Get("sort")
+	if order != "" && order != "id" && order != "-id" && order != "key" && order != "-key" && order != "name" && order != "-name" {
+		failure(w, 400, "Unsupported space sort order.")
+		return
+	}
+	desc := strings.HasPrefix(order, "-")
+	field := strings.TrimPrefix(order, "-")
+	if field == "" {
+		field = "id"
+	}
+	sort.SliceStable(filtered, func(i, j int) bool {
+		left, right := filtered[i].ID, filtered[j].ID
+		if field == "key" {
+			left, right = filtered[i].Key, filtered[j].Key
+		} else if field == "name" {
+			left, right = filtered[i].Name, filtered[j].Name
+		}
+		if field == "id" {
+			leftID, leftErr := strconv.ParseInt(left, 10, 64)
+			rightID, rightErr := strconv.ParseInt(right, 10, 64)
+			if leftErr == nil && rightErr == nil {
+				if desc {
+					return leftID > rightID
+				}
+				return leftID < rightID
+			}
+		}
+		if desc {
+			return left > right
+		}
+		return left < right
+	})
+	values := make([]any, 0, len(filtered))
+	for _, s := range filtered {
+		values = append(values, h.spaceBean(s, format, includeIcon))
 	}
 	h.list(w, r, values)
 }
@@ -1204,13 +1328,21 @@ func queryContains(r *http.Request, key, value string) bool {
 }
 
 func (h *Handler) pages(w http.ResponseWriter, r *http.Request, ws, actor, space string) {
-	if !supportedQuery(w, r, "limit", "cursor", "space-id", "id", "status", "title", "body-format", "sort", "subtype") {
+	allowed := []string{"limit", "cursor", "space-id", "id", "status", "title", "body-format", "sort", "subtype"}
+	if space != "" {
+		allowed = append(allowed, "depth")
+	}
+	if !supportedQuery(w, r, allowed...) {
 		return
 	}
 	if !storageFormat(w, r) {
 		return
 	}
 	q := r.URL.Query()
+	if depth := q.Get("depth"); depth != "" && depth != "all" && depth != "root" {
+		failure(w, 400, "depth must be all or root.")
+		return
+	}
 	if subtype := q.Get("subtype"); subtype != "" && subtype != "page" {
 		failure(w, 400, "Only standard pages are available.")
 		return
@@ -1218,7 +1350,7 @@ func (h *Handler) pages(w http.ResponseWriter, r *http.Request, ws, actor, space
 	statuses := []string{"current"}
 	if _, present := q["status"]; present {
 		statuses = nil
-		allowedStatus := map[string]bool{"current": true, "draft": true, "trashed": true}
+		allowedStatus := map[string]bool{"current": true, "draft": space == "", "trashed": true}
 		for _, raw := range q["status"] {
 			for _, candidate := range strings.Split(raw, ",") {
 				if !allowedStatus[candidate] {
@@ -1252,6 +1384,9 @@ func (h *Handler) pages(w http.ResponseWriter, r *http.Request, ws, actor, space
 	}
 	values := []any{}
 	for _, p := range pages {
+		if q.Get("depth") == "root" && p.ParentID != "" {
+			continue
+		}
 		if queryContains(r, "space-id", p.SpaceID) && queryContains(r, "id", p.ID) {
 			values = append(values, h.pageBean(p, q.Get("body-format") != ""))
 		}

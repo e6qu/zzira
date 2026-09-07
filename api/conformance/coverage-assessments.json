@@ -5349,6 +5349,58 @@
         "internal/store/wiki.go"
       ],
       "notes": "Returns read for visible spaces and exposes update/delete only to workspace administrators; Confluence-specific space roles and granular permissions remain."
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/spaces",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/http.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki.go",
+        "internal/store/wiki_labels.go",
+        "web/static/img/space-default.svg",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Lists membership-visible public and creator-private current global spaces with ID, key and all-label filters, documented ID/key/name sorts, plain or escaped view descriptions, optional icons and cursor pagination; archived/personal/system spaces and favorite filters remain explicit capability gaps."
+    },
+    {
+      "operationId": "confluence-v2:POST:/wiki/api/v2/spaces",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/http.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki.go",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Workspace administrators create validated public or creator-private global spaces with key/alias and plain descriptions through REST or the accessible UI; templates, copied access and Confluence-specific role assignments remain explicit capability gaps."
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/spaces/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/http.go",
+        "internal/confluence/space_governance.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki.go",
+        "internal/store/wiki_labels.go",
+        "web/static/img/space-default.svg"
+      ],
+      "notes": "Returns an exact visible current global space with plain or escaped view description, optional default icon, role-shaped operations and labels; properties, granular permissions, role assignments, homepage identity and other space types/states remain."
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/spaces/{id}/pages",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/http.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki.go"
+      ],
+      "notes": "Lists permission-scoped current or trashed pages in a visible space with all/root depth, title/status filters, documented sorts, optional storage bodies and cursor pagination; archived/deleted states and live documents remain."
     }
   ]
 }
