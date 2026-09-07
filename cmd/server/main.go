@@ -269,6 +269,8 @@ func main() {
 	mux.HandleFunc("GET /wiki/spaces/{space}", webHandler.WikiSpacePage)
 	mux.HandleFunc("POST /wiki/spaces/{space}/folders", webHandler.WikiFolderCreate)
 	mux.HandleFunc("POST /wiki/spaces/{space}/folders/{folder}/delete", webHandler.WikiFolderDelete)
+	mux.HandleFunc("POST /wiki/spaces/{space}/embeds", webHandler.WikiSmartLinkCreate)
+	mux.HandleFunc("POST /wiki/spaces/{space}/embeds/{embed}/delete", webHandler.WikiSmartLinkDelete)
 	mux.HandleFunc("POST /wiki/spaces/{space}/watch", webHandler.WikiSpaceWatch)
 	mux.HandleFunc("GET /wiki/spaces/{space}/pages/new", webHandler.WikiEdit)
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/new", webHandler.WikiEdit)

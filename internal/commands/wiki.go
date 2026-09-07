@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -82,6 +83,13 @@ func (s *Service) CreateWikiContent(ctx context.Context, ws, actor string, conte
 	}
 	if content.Type != "embed" && content.EmbedURL != "" {
 		return nil, fmt.Errorf("%w: only Smart Links accept an embed URL", store.ErrWikiValidation)
+	}
+	if content.Type == "embed" && content.EmbedURL != "" {
+		content.EmbedURL = strings.TrimSpace(content.EmbedURL)
+		parsed, err := url.Parse(content.EmbedURL)
+		if err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") || parsed.Host == "" || parsed.User != nil || len(content.EmbedURL) > 8192 {
+			return nil, fmt.Errorf("%w: Smart Link URL must be an absolute HTTP or HTTPS URL without credentials", store.ErrWikiValidation)
+		}
 	}
 	content.Status = "current"
 	return s.Store.CreateWikiContent(ctx, ws, actor, content)

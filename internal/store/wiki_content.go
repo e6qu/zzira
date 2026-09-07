@@ -130,7 +130,7 @@ func (s *Store) DeleteWikiContent(ctx context.Context, ws, actor, id, contentTyp
 		return err
 	}
 	if children {
-		return fmt.Errorf("%w: move or delete child content before deleting this folder", ErrWikiValidation)
+		return fmt.Errorf("%w: move or delete child content before deleting this content", ErrWikiValidation)
 	}
 	content.Status = "trashed"
 	content.Version.Number++

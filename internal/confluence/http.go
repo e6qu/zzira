@@ -323,6 +323,30 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.updateFolderProperty(w, r, ws, actor, parts[1], parts[3])
 	case len(parts) == 4 && parts[0] == "folders" && parts[2] == "properties" && r.Method == "DELETE":
 		h.deleteFolderProperty(w, r, ws, actor, parts[1], parts[3])
+	case len(parts) == 1 && parts[0] == "embeds" && r.Method == "POST":
+		h.createSmartLink(w, r, ws, actor)
+	case len(parts) == 2 && parts[0] == "embeds" && r.Method == "GET":
+		h.smartLink(w, r, ws, actor, parts[1])
+	case len(parts) == 2 && parts[0] == "embeds" && r.Method == "DELETE":
+		h.deleteSmartLink(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "embeds" && parts[2] == "ancestors" && r.Method == "GET":
+		h.smartLinkAncestors(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "embeds" && parts[2] == "descendants" && r.Method == "GET":
+		h.smartLinkDescendants(w, r, ws, actor, parts[1], false)
+	case len(parts) == 3 && parts[0] == "embeds" && parts[2] == "direct-children" && r.Method == "GET":
+		h.smartLinkDescendants(w, r, ws, actor, parts[1], true)
+	case len(parts) == 3 && parts[0] == "embeds" && parts[2] == "operations" && r.Method == "GET":
+		h.smartLinkOperations(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "embeds" && parts[2] == "properties" && r.Method == "GET":
+		h.smartLinkProperties(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "embeds" && parts[2] == "properties" && r.Method == "POST":
+		h.createSmartLinkProperty(w, r, ws, actor, parts[1])
+	case len(parts) == 4 && parts[0] == "embeds" && parts[2] == "properties" && r.Method == "GET":
+		h.smartLinkProperty(w, r, ws, actor, parts[1], parts[3])
+	case len(parts) == 4 && parts[0] == "embeds" && parts[2] == "properties" && r.Method == "PUT":
+		h.updateSmartLinkProperty(w, r, ws, actor, parts[1], parts[3])
+	case len(parts) == 4 && parts[0] == "embeds" && parts[2] == "properties" && r.Method == "DELETE":
+		h.deleteSmartLinkProperty(w, r, ws, actor, parts[1], parts[3])
 	default:
 		failure(w, 404, "This Confluence resource is not implemented.")
 	}

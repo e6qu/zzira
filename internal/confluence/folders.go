@@ -33,14 +33,18 @@ func boundedLimit(w http.ResponseWriter, r *http.Request, fallback, maximum int)
 	return boundedIntQuery(w, r, "limit", fallback, 1, maximum)
 }
 
-func (h *Handler) folderBean(content *models.WikiContent) map[string]any {
-	return map[string]any{
+func (h *Handler) contentBean(content *models.WikiContent) map[string]any {
+	bean := map[string]any{
 		"id": content.ID, "type": content.Type, "status": content.Status,
 		"title": content.Title, "parentId": content.ParentID, "parentType": content.ParentType,
 		"position": content.Position, "authorId": content.AuthorID, "ownerId": content.OwnerID,
 		"createdAt": content.CreatedAt, "spaceId": content.SpaceID, "version": content.Version,
-		"_links": map[string]string{"base": h.BaseURL + "/wiki", "webui": "/wiki/spaces/" + content.SpaceID + "#folder-" + content.ID},
+		"_links": map[string]string{"base": h.BaseURL + "/wiki", "webui": "/wiki/spaces/" + content.SpaceID + "#" + content.Type + "-" + content.ID},
 	}
+	if content.EmbedURL != "" {
+		bean["embedUrl"] = content.EmbedURL
+	}
+	return bean
 }
 
 func (h *Handler) createFolder(w http.ResponseWriter, r *http.Request, ws, actor string) {
@@ -56,24 +60,24 @@ func (h *Handler) createFolder(w http.ResponseWriter, r *http.Request, ws, actor
 		writeError(w, err)
 		return
 	}
-	respond(w, 200, h.folderBean(content))
+	respond(w, 200, h.contentBean(content))
 }
 
-func (h *Handler) folder(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
+func (h *Handler) hierarchicalContent(w http.ResponseWriter, r *http.Request, ws, actor, id, contentType string) {
 	if !validPageID(w, id) || !supportedQuery(w, r, "include-collaborators", "include-direct-children", "include-operations", "include-properties") {
 		return
 	}
-	content, err := h.Store.WikiContent(r.Context(), ws, actor, id, "folder")
+	content, err := h.Store.WikiContent(r.Context(), ws, actor, id, contentType)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	bean := h.folderBean(content)
+	bean := h.contentBean(content)
 	if r.URL.Query().Get("include-collaborators") == "true" {
 		bean["collaborators"] = map[string]any{"results": []any{}}
 	}
 	if r.URL.Query().Get("include-direct-children") == "true" {
-		relations, err := h.Store.WikiContentDescendants(r.Context(), ws, actor, id, "folder", 1)
+		relations, err := h.Store.WikiContentDescendants(r.Context(), ws, actor, id, contentType, 1)
 		if err != nil {
 			writeError(w, err)
 			return
@@ -81,7 +85,7 @@ func (h *Handler) folder(w http.ResponseWriter, r *http.Request, ws, actor, id s
 		bean["directChildren"] = map[string]any{"results": contentChildren(relations)}
 	}
 	if r.URL.Query().Get("include-operations") == "true" {
-		operations, err := h.folderOperationList(r, ws, actor, id)
+		operations, err := h.contentOperationList(r, ws, actor, id, contentType)
 		if err != nil {
 			writeError(w, err)
 			return
@@ -89,7 +93,7 @@ func (h *Handler) folder(w http.ResponseWriter, r *http.Request, ws, actor, id s
 		bean["operations"] = map[string]any{"results": operations}
 	}
 	if r.URL.Query().Get("include-properties") == "true" {
-		properties, err := h.Store.WikiContentProperties(r.Context(), ws, actor, id, "folder", "")
+		properties, err := h.Store.WikiContentProperties(r.Context(), ws, actor, id, contentType, "")
 		if err != nil {
 			writeError(w, err)
 			return
@@ -99,18 +103,18 @@ func (h *Handler) folder(w http.ResponseWriter, r *http.Request, ws, actor, id s
 	respond(w, 200, bean)
 }
 
-func (h *Handler) deleteFolder(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
+func (h *Handler) deleteHierarchicalContent(w http.ResponseWriter, r *http.Request, ws, actor, id, contentType string) {
 	if !validPageID(w, id) || !supportedQuery(w, r) {
 		return
 	}
-	if err := h.Commands.DeleteWikiContent(r.Context(), ws, actor, id, "folder"); err != nil {
+	if err := h.Commands.DeleteWikiContent(r.Context(), ws, actor, id, contentType); err != nil {
 		writeError(w, err)
 		return
 	}
 	w.WriteHeader(204)
 }
 
-func (h *Handler) folderAncestors(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
+func (h *Handler) contentAncestors(w http.ResponseWriter, r *http.Request, ws, actor, id, contentType string) {
 	if !validPageID(w, id) || !supportedQuery(w, r, "limit") {
 		return
 	}
@@ -118,7 +122,7 @@ func (h *Handler) folderAncestors(w http.ResponseWriter, r *http.Request, ws, ac
 	if !ok {
 		return
 	}
-	ancestors, err := h.Store.WikiContentAncestors(r.Context(), ws, actor, id, "folder")
+	ancestors, err := h.Store.WikiContentAncestors(r.Context(), ws, actor, id, contentType)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -137,7 +141,7 @@ func contentChildren(relations []models.WikiContentRelation) []any {
 	return values
 }
 
-func (h *Handler) folderDescendants(w http.ResponseWriter, r *http.Request, ws, actor, id string, direct bool) {
+func (h *Handler) contentDescendants(w http.ResponseWriter, r *http.Request, ws, actor, id, contentType string, direct bool) {
 	queries := []string{"cursor", "limit", "depth"}
 	if direct {
 		queries = []string{"cursor", "limit", "sort"}
@@ -153,7 +157,7 @@ func (h *Handler) folderDescendants(w http.ResponseWriter, r *http.Request, ws, 
 			return
 		}
 	}
-	relations, err := h.Store.WikiContentDescendants(r.Context(), ws, actor, id, "folder", depth)
+	relations, err := h.Store.WikiContentDescendants(r.Context(), ws, actor, id, contentType, depth)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -196,23 +200,23 @@ func (h *Handler) folderDescendants(w http.ResponseWriter, r *http.Request, ws, 
 	h.list(w, r, values)
 }
 
-func (h *Handler) folderOperationList(r *http.Request, ws, actor, id string) ([]any, error) {
-	allowed, err := h.Store.CanUpdateWikiContent(r.Context(), ws, actor, id, "folder")
+func (h *Handler) contentOperationList(r *http.Request, ws, actor, id, contentType string) ([]any, error) {
+	allowed, err := h.Store.CanUpdateWikiContent(r.Context(), ws, actor, id, contentType)
 	if err != nil {
 		return nil, err
 	}
-	operations := []any{map[string]string{"operation": "read", "targetType": "folder"}}
+	operations := []any{map[string]string{"operation": "read", "targetType": contentType}}
 	if allowed {
-		operations = append(operations, map[string]string{"operation": "update", "targetType": "folder"}, map[string]string{"operation": "delete", "targetType": "folder"})
+		operations = append(operations, map[string]string{"operation": "update", "targetType": contentType}, map[string]string{"operation": "delete", "targetType": contentType})
 	}
 	return operations, nil
 }
 
-func (h *Handler) folderOperations(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
+func (h *Handler) contentOperations(w http.ResponseWriter, r *http.Request, ws, actor, id, contentType string) {
 	if !validPageID(w, id) || !supportedQuery(w, r) {
 		return
 	}
-	operations, err := h.folderOperationList(r, ws, actor, id)
+	operations, err := h.contentOperationList(r, ws, actor, id, contentType)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -220,11 +224,11 @@ func (h *Handler) folderOperations(w http.ResponseWriter, r *http.Request, ws, a
 	respond(w, 200, map[string]any{"operations": operations})
 }
 
-func (h *Handler) folderProperties(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
+func (h *Handler) contentProperties(w http.ResponseWriter, r *http.Request, ws, actor, id, contentType string) {
 	if !validPageID(w, id) || !supportedQuery(w, r, "key", "sort", "cursor", "limit") {
 		return
 	}
-	properties, err := h.Store.WikiContentProperties(r.Context(), ws, actor, id, "folder", r.URL.Query().Get("key"))
+	properties, err := h.Store.WikiContentProperties(r.Context(), ws, actor, id, contentType, r.URL.Query().Get("key"))
 	if err != nil {
 		writeError(w, err)
 		return
@@ -244,11 +248,11 @@ func (h *Handler) folderProperties(w http.ResponseWriter, r *http.Request, ws, a
 	h.list(w, r, values)
 }
 
-func (h *Handler) folderProperty(w http.ResponseWriter, r *http.Request, ws, actor, id, propertyID string) {
+func (h *Handler) contentProperty(w http.ResponseWriter, r *http.Request, ws, actor, id, propertyID, contentType string) {
 	if !validPageID(w, id) || !validPageID(w, propertyID) || !supportedQuery(w, r) {
 		return
 	}
-	property, err := h.Store.WikiContentProperty(r.Context(), ws, actor, id, "folder", propertyID)
+	property, err := h.Store.WikiContentProperty(r.Context(), ws, actor, id, contentType, propertyID)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -256,7 +260,7 @@ func (h *Handler) folderProperty(w http.ResponseWriter, r *http.Request, ws, act
 	respond(w, 200, property)
 }
 
-func (h *Handler) createFolderProperty(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
+func (h *Handler) createContentProperty(w http.ResponseWriter, r *http.Request, ws, actor, id, contentType string) {
 	if !validPageID(w, id) || !supportedQuery(w, r) {
 		return
 	}
@@ -264,7 +268,7 @@ func (h *Handler) createFolderProperty(w http.ResponseWriter, r *http.Request, w
 	if !decode(w, r, &input) || !validAttachmentProperty(w, input, false) {
 		return
 	}
-	property, err := h.Commands.CreateWikiContentProperty(r.Context(), ws, actor, id, "folder", input.Key, input.Value)
+	property, err := h.Commands.CreateWikiContentProperty(r.Context(), ws, actor, id, contentType, input.Key, input.Value)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -272,7 +276,7 @@ func (h *Handler) createFolderProperty(w http.ResponseWriter, r *http.Request, w
 	respond(w, 200, property)
 }
 
-func (h *Handler) updateFolderProperty(w http.ResponseWriter, r *http.Request, ws, actor, id, propertyID string) {
+func (h *Handler) updateContentProperty(w http.ResponseWriter, r *http.Request, ws, actor, id, propertyID, contentType string) {
 	if !validPageID(w, id) || !validPageID(w, propertyID) || !supportedQuery(w, r) {
 		return
 	}
@@ -280,7 +284,7 @@ func (h *Handler) updateFolderProperty(w http.ResponseWriter, r *http.Request, w
 	if !decode(w, r, &input) || !validAttachmentProperty(w, input, true) {
 		return
 	}
-	property, err := h.Commands.UpdateWikiContentProperty(r.Context(), ws, actor, id, "folder", propertyID, input.Key, input.Value, input.Version.Number, input.Version.Message)
+	property, err := h.Commands.UpdateWikiContentProperty(r.Context(), ws, actor, id, contentType, propertyID, input.Key, input.Value, input.Version.Number, input.Version.Message)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -288,13 +292,44 @@ func (h *Handler) updateFolderProperty(w http.ResponseWriter, r *http.Request, w
 	respond(w, 200, property)
 }
 
-func (h *Handler) deleteFolderProperty(w http.ResponseWriter, r *http.Request, ws, actor, id, propertyID string) {
+func (h *Handler) deleteContentProperty(w http.ResponseWriter, r *http.Request, ws, actor, id, propertyID, contentType string) {
 	if !validPageID(w, id) || !validPageID(w, propertyID) || !supportedQuery(w, r) {
 		return
 	}
-	if err := h.Commands.DeleteWikiContentProperty(r.Context(), ws, actor, id, "folder", propertyID); err != nil {
+	if err := h.Commands.DeleteWikiContentProperty(r.Context(), ws, actor, id, contentType, propertyID); err != nil {
 		writeError(w, err)
 		return
 	}
 	w.WriteHeader(204)
+}
+
+func (h *Handler) folder(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
+	h.hierarchicalContent(w, r, ws, actor, id, "folder")
+}
+func (h *Handler) deleteFolder(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
+	h.deleteHierarchicalContent(w, r, ws, actor, id, "folder")
+}
+func (h *Handler) folderAncestors(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
+	h.contentAncestors(w, r, ws, actor, id, "folder")
+}
+func (h *Handler) folderDescendants(w http.ResponseWriter, r *http.Request, ws, actor, id string, direct bool) {
+	h.contentDescendants(w, r, ws, actor, id, "folder", direct)
+}
+func (h *Handler) folderOperations(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
+	h.contentOperations(w, r, ws, actor, id, "folder")
+}
+func (h *Handler) folderProperties(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
+	h.contentProperties(w, r, ws, actor, id, "folder")
+}
+func (h *Handler) folderProperty(w http.ResponseWriter, r *http.Request, ws, actor, id, propertyID string) {
+	h.contentProperty(w, r, ws, actor, id, propertyID, "folder")
+}
+func (h *Handler) createFolderProperty(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
+	h.createContentProperty(w, r, ws, actor, id, "folder")
+}
+func (h *Handler) updateFolderProperty(w http.ResponseWriter, r *http.Request, ws, actor, id, propertyID string) {
+	h.updateContentProperty(w, r, ws, actor, id, propertyID, "folder")
+}
+func (h *Handler) deleteFolderProperty(w http.ResponseWriter, r *http.Request, ws, actor, id, propertyID string) {
+	h.deleteContentProperty(w, r, ws, actor, id, propertyID, "folder")
 }

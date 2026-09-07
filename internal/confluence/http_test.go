@@ -212,6 +212,39 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	if err := json.Unmarshal(childFolderResponse.Body.Bytes(), &childFolder); err != nil || childFolder.ParentType != "folder" {
 		t.Fatalf("unexpected child folder: %+v %v", childFolder, err)
 	}
+	call(member, "POST", "/embeds", map[string]any{"spaceId": public, "title": "Unsafe link", "embedUrl": "javascript:alert(1)"}, 400)
+	smartLinkResponse := call(member, "POST", "/embeds", map[string]any{"spaceId": public, "title": "Incident dashboard", "parentId": childFolder.ID, "embedUrl": "https://status.example.test/incidents"}, 200)
+	var smartLink models.WikiContent
+	if err := json.Unmarshal(smartLinkResponse.Body.Bytes(), &smartLink); err != nil || smartLink.Type != "embed" || smartLink.EmbedURL != "https://status.example.test/incidents" {
+		t.Fatalf("unexpected Smart Link: %+v %v", smartLink, err)
+	}
+	linkChildResponse := call(member, "POST", "/folders", map[string]any{"spaceId": public, "title": "Incident exports", "parentId": smartLink.ID}, 200)
+	var linkChild models.WikiContent
+	if err := json.Unmarshal(linkChildResponse.Body.Bytes(), &linkChild); err != nil || linkChild.ParentType != "embed" {
+		t.Fatalf("unexpected Smart Link child: %+v %v", linkChild, err)
+	}
+	if expanded := call(member, "GET", "/embeds/"+smartLink.ID+"?include-direct-children=true&include-operations=true&include-properties=true&include-collaborators=true", nil, 200); !strings.Contains(expanded.Body.String(), "Incident exports") || !strings.Contains(expanded.Body.String(), `"embedUrl":"https://status.example.test/incidents"`) {
+		t.Fatal(expanded.Body.String())
+	}
+	if ancestors := call(member, "GET", "/embeds/"+smartLink.ID+"/ancestors", nil, 200); !strings.Contains(ancestors.Body.String(), `"id":"`+rootFolder.ID+`","type":"folder"`) || !strings.Contains(ancestors.Body.String(), `"id":"`+childFolder.ID+`","type":"folder"`) {
+		t.Fatal(ancestors.Body.String())
+	}
+	call(member, "GET", "/embeds/"+smartLink.ID+"/direct-children?sort=title", nil, 200)
+	call(member, "GET", "/embeds/"+smartLink.ID+"/descendants?depth=2", nil, 200)
+	call(member, "GET", "/embeds/"+smartLink.ID+"/operations", nil, 200)
+	linkPropertyResponse := call(member, "POST", "/embeds/"+smartLink.ID+"/properties", map[string]any{"key": "display", "value": "card"}, 200)
+	var linkProperty models.WikiContentProperty
+	if err := json.Unmarshal(linkPropertyResponse.Body.Bytes(), &linkProperty); err != nil || linkProperty.Version.Number != 1 {
+		t.Fatalf("unexpected Smart Link property: %+v %v", linkProperty, err)
+	}
+	call(member, "GET", "/embeds/"+smartLink.ID+"/properties?key=display", nil, 200)
+	call(member, "GET", "/embeds/"+smartLink.ID+"/properties/"+linkProperty.ID, nil, 200)
+	call(member, "PUT", "/embeds/"+smartLink.ID+"/properties/"+linkProperty.ID, map[string]any{"key": "display", "value": "embed", "version": map[string]any{"number": 2, "message": "Show inline"}}, 200)
+	call(member, "DELETE", "/embeds/"+smartLink.ID, nil, 400)
+	call(member, "DELETE", "/embeds/"+smartLink.ID+"/properties/"+linkProperty.ID, nil, 204)
+	call(member, "DELETE", "/folders/"+linkChild.ID, nil, 204)
+	call(member, "DELETE", "/embeds/"+smartLink.ID, nil, 204)
+	call(member, "GET", "/embeds/"+smartLink.ID, nil, 404)
 	if expanded := call(member, "GET", "/folders/"+rootFolder.ID+"?include-direct-children=true&include-operations=true&include-properties=true&include-collaborators=true", nil, 200); !strings.Contains(expanded.Body.String(), "Database runbooks") || !strings.Contains(expanded.Body.String(), `"operation":"delete"`) {
 		t.Fatal(expanded.Body.String())
 	}
@@ -244,6 +277,12 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	}
 	call(actor, "POST", "/folders/"+secretFolder.ID+"/properties", map[string]any{"key": "secret-folder-property", "value": true}, 200)
 	call(member, "GET", "/folders/"+secretFolder.ID, nil, 404)
+	secretLinkResponse := call(actor, "POST", "/embeds", map[string]any{"spaceId": private, "title": "Private Smart Link", "parentId": secretFolder.ID, "embedUrl": "https://private.example.test/secret-link"}, 200)
+	var secretLink models.WikiContent
+	if err := json.Unmarshal(secretLinkResponse.Body.Bytes(), &secretLink); err != nil {
+		t.Fatal(err)
+	}
+	call(member, "GET", "/embeds/"+secretLink.ID, nil, 404)
 	secretComment := call(actor, "POST", "/footer-comments", map[string]any{"pageId": secret.ID, "body": models.WikiBody{Representation: "storage", Value: "<p>Private launch phrase</p>"}}, 201)
 	if secretComment.Header().Get("Location") == "" {
 		t.Fatal("created footer comment omitted Location")
@@ -809,7 +848,7 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		if a.EntityType == "wiki_footer_comment_like" && strings.HasPrefix(a.EntityID, secretCommentBean.ID+":") {
 			t.Fatalf("private wiki like action leaked: %s", a.Payload)
 		}
-		if strings.Contains(string(a.Payload), "Private draft") || strings.Contains(string(a.Payload), "Secret guide") || strings.Contains(string(a.Payload), "PRIVATE") || strings.Contains(string(a.Payload), "Private launch phrase") || strings.Contains(string(a.Payload), "Private folder") || strings.Contains(string(a.Payload), "secret-folder-property") || strings.Contains(string(a.Payload), "secret-label") || strings.Contains(string(a.Payload), "Restricted launch plan") || strings.Contains(string(a.Payload), "Managers approved the launch") || strings.Contains(string(a.Payload), "classified-release") || strings.Contains(string(a.Payload), "classified-metadata") || strings.Contains(string(a.Payload), "classified-file") || strings.Contains(string(a.Payload), "Classified attachment discussion") || strings.Contains(string(a.Payload), "Classified inline discussion") || strings.Contains(string(a.Payload), "Classified task discussion") {
+		if strings.Contains(string(a.Payload), "Private draft") || strings.Contains(string(a.Payload), "Secret guide") || strings.Contains(string(a.Payload), "PRIVATE") || strings.Contains(string(a.Payload), "Private launch phrase") || strings.Contains(string(a.Payload), "Private folder") || strings.Contains(string(a.Payload), "secret-folder-property") || strings.Contains(string(a.Payload), "Private Smart Link") || strings.Contains(string(a.Payload), "private.example.test") || strings.Contains(string(a.Payload), "secret-label") || strings.Contains(string(a.Payload), "Restricted launch plan") || strings.Contains(string(a.Payload), "Managers approved the launch") || strings.Contains(string(a.Payload), "classified-release") || strings.Contains(string(a.Payload), "classified-metadata") || strings.Contains(string(a.Payload), "classified-file") || strings.Contains(string(a.Payload), "Classified attachment discussion") || strings.Contains(string(a.Payload), "Classified inline discussion") || strings.Contains(string(a.Payload), "Classified task discussion") {
 			t.Fatalf("private wiki action leaked: %s", a.Payload)
 		}
 	}

@@ -3952,6 +3952,175 @@
         "internal/store/wiki_content_properties.go",
         "internal/commands/wiki.go"
       ]
+    },
+    {
+      "operationId": "confluence-v2:POST:/wiki/api/v2/embeds",
+      "status": "partial",
+      "notes": "Smart Link creation, validated optional HTTP/HTTPS embed URLs, current reads with expansions, nonempty deletion checks, inherited page/space permissions, action privacy and the space UI journey are tested; archive, restore, move/rename and rich embed rendering remain.",
+      "evidence": [
+        "internal/confluence/embeds.go",
+        "internal/confluence/folders.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "internal/commands/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:DELETE:/wiki/api/v2/embeds/{embed-id}/properties/{property-id}",
+      "status": "partial",
+      "notes": "Smart Link JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with inherited visibility and atomic action records; property history resources remain.",
+      "evidence": [
+        "internal/confluence/embeds.go",
+        "internal/confluence/folders.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "internal/store/wiki_content_properties.go",
+        "internal/commands/wiki.go"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/embeds/{embed-id}/properties/{property-id}",
+      "status": "partial",
+      "notes": "Smart Link JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with inherited visibility and atomic action records; property history resources remain.",
+      "evidence": [
+        "internal/confluence/embeds.go",
+        "internal/confluence/folders.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "internal/store/wiki_content_properties.go",
+        "internal/commands/wiki.go"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:PUT:/wiki/api/v2/embeds/{embed-id}/properties/{property-id}",
+      "status": "partial",
+      "notes": "Smart Link JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with inherited visibility and atomic action records; property history resources remain.",
+      "evidence": [
+        "internal/confluence/embeds.go",
+        "internal/confluence/folders.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "internal/store/wiki_content_properties.go",
+        "internal/commands/wiki.go"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:DELETE:/wiki/api/v2/embeds/{id}",
+      "status": "partial",
+      "notes": "Smart Link creation, validated optional HTTP/HTTPS embed URLs, current reads with expansions, nonempty deletion checks, inherited page/space permissions, action privacy and the space UI journey are tested; archive, restore, move/rename and rich embed rendering remain.",
+      "evidence": [
+        "internal/confluence/embeds.go",
+        "internal/confluence/folders.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "internal/commands/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/embeds/{id}",
+      "status": "partial",
+      "notes": "Smart Link creation, validated optional HTTP/HTTPS embed URLs, current reads with expansions, nonempty deletion checks, inherited page/space permissions, action privacy and the space UI journey are tested; archive, restore, move/rename and rich embed rendering remain.",
+      "evidence": [
+        "internal/confluence/embeds.go",
+        "internal/confluence/folders.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "internal/commands/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/embeds/{id}/ancestors",
+      "status": "partial",
+      "notes": "Smart Links participate in permission-filtered heterogeneous page/folder/Smart-Link ancestry and bounded descendant reads with documented sorting and cursor pagination; database, whiteboard and page children plus persisted manual ordering remain.",
+      "evidence": [
+        "internal/confluence/embeds.go",
+        "internal/confluence/folders.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/embeds/{id}/descendants",
+      "status": "partial",
+      "notes": "Smart Links participate in permission-filtered heterogeneous page/folder/Smart-Link ancestry and bounded descendant reads with documented sorting and cursor pagination; database, whiteboard and page children plus persisted manual ordering remain.",
+      "evidence": [
+        "internal/confluence/embeds.go",
+        "internal/confluence/folders.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/embeds/{id}/direct-children",
+      "status": "partial",
+      "notes": "Smart Links participate in permission-filtered heterogeneous page/folder/Smart-Link ancestry and bounded descendant reads with documented sorting and cursor pagination; database, whiteboard and page children plus persisted manual ordering remain.",
+      "evidence": [
+        "internal/confluence/embeds.go",
+        "internal/confluence/folders.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/embeds/{id}/operations",
+      "status": "partial",
+      "notes": "The Smart Link operation resource reports read and permission-shaped update/delete capabilities; the broader Confluence operation catalog and app-derived permissions remain.",
+      "evidence": [
+        "internal/confluence/embeds.go",
+        "internal/confluence/folders.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/embeds/{id}/properties",
+      "status": "partial",
+      "notes": "Smart Link JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with inherited visibility and atomic action records; property history resources remain.",
+      "evidence": [
+        "internal/confluence/embeds.go",
+        "internal/confluence/folders.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "internal/store/wiki_content_properties.go",
+        "internal/commands/wiki.go"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:POST:/wiki/api/v2/embeds/{id}/properties",
+      "status": "partial",
+      "notes": "Smart Link JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with inherited visibility and atomic action records; property history resources remain.",
+      "evidence": [
+        "internal/confluence/embeds.go",
+        "internal/confluence/folders.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "internal/store/wiki_content_properties.go",
+        "internal/commands/wiki.go"
+      ]
     }
   ]
 }

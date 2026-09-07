@@ -1577,11 +1577,30 @@ Validation after Confluence folders:
 - Exact reviewed API coverage is 316 of 1,207 operations: 309 partial, 7
   missing, and 891 unassessed. Confluence coverage is 102 of 348 reviewed.
 
+Validation after Confluence Smart Links:
+
+- All 12 pinned Confluence v2 Smart Link operations reuse the hierarchical
+  content and optimistic property substrate for create/read/delete, ancestors,
+  descendants, direct children, operations and property lifecycle resources.
+- Smart Links accept optional absolute HTTP/HTTPS URLs without credentials;
+  unsafe schemes and credential-bearing URLs fail before persistence. Folder
+  and Smart Link reads now demonstrate heterogeneous nesting in both
+  directions while retaining root-page permission inheritance.
+- PostgreSQL integration covers every Smart Link route, supported expansions,
+  URL validation, page/folder/link ancestry, a folder child, nonempty deletion,
+  optimistic property updates and private-space action isolation. The shared
+  handler refactor keeps folder wire behavior covered by the same suite.
+- The space journey adds searchable Smart Links under pages, folders or links,
+  opens destinations with safe external-link attributes, and exposes guarded
+  deletion. A clean-database Chromium run passes the full wiki journey,
+  accessibility scans, dark theme and 320 px reflow.
+- Exact reviewed API coverage is 328 of 1,207 operations: 321 partial, 7
+  missing, and 879 unassessed. Confluence coverage is 114 of 348 reviewed.
+
 ## Current change
 
-1. Add Smart Links on the generic hierarchical-content and property substrate.
-2. Add databases and whiteboards to the same permission-shaped content tree.
-3. Return to advanced service operations risk, CAB approval, on-call and
+1. Add databases and whiteboards to the permission-shaped content tree.
+2. Return to advanced service operations risk, CAB approval, on-call and
    post-incident review configuration after the next knowledge slice.
 
 ## Resume here

@@ -22,6 +22,7 @@ type wikiData struct {
 	Space                                 *models.WikiSpace
 	Pages                                 []*models.WikiPage
 	Folders                               []*models.WikiContent
+	SmartLinks                            []*models.WikiContent
 	Tree                                  []wikiTreeNode
 	Page                                  *models.WikiPage
 	Versions                              []models.WikiVersion
@@ -210,6 +211,7 @@ func (h *Handler) WikiSpacePage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	folders := []*models.WikiContent{}
+	smartLinks := []*models.WikiContent{}
 	if status == "current" {
 		folders, err = h.Store.WikiContents(r.Context(), ws, user.ID, space.ID, "folder")
 		if err != nil {
@@ -225,13 +227,27 @@ func (h *Handler) WikiSpacePage(w http.ResponseWriter, r *http.Request) {
 			}
 			folders = visible
 		}
+		smartLinks, err = h.Store.WikiContents(r.Context(), ws, user.ID, space.ID, "embed")
+		if err != nil {
+			http.Error(w, "Could not load Smart Links.", 500)
+			return
+		}
+		if query != "" {
+			visible := smartLinks[:0]
+			for _, link := range smartLinks {
+				if strings.Contains(strings.ToLower(link.Title), strings.ToLower(query)) || strings.Contains(strings.ToLower(link.EmbedURL), strings.ToLower(query)) {
+					visible = append(visible, link)
+				}
+			}
+			smartLinks = visible
+		}
 	}
 	watching, err := h.Store.WikiWatchStatus(r.Context(), ws, user.ID, user.ID, "space", space.Key)
 	if err != nil {
 		http.Error(w, "Could not load space watch status.", 500)
 		return
 	}
-	h.writeWorkspacePage(w, r, "page_wiki_space", user, ws, wikiData{Space: space, Pages: filtered, Folders: folders, Tree: wikiPageTree(filtered), Query: query, Status: status, WatchingSpace: watching}, "wiki", "")
+	h.writeWorkspacePage(w, r, "page_wiki_space", user, ws, wikiData{Space: space, Pages: filtered, Folders: folders, SmartLinks: smartLinks, Tree: wikiPageTree(filtered), Query: query, Status: status, WatchingSpace: watching}, "wiki", "")
 }
 
 func (h *Handler) WikiFolderCreate(w http.ResponseWriter, r *http.Request) {
@@ -271,6 +287,50 @@ func (h *Handler) WikiFolderDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err = h.Commands.DeleteWikiContent(r.Context(), ws, user.ID, folder.ID, "folder"); err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	redirectLocal(w, r, "/wiki/spaces/"+space.ID)
+}
+
+func (h *Handler) WikiSmartLinkCreate(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	space, err := h.Store.WikiSpace(r.Context(), ws, user.ID, r.PathValue("space"))
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	link, err := h.Commands.CreateWikiContent(r.Context(), ws, user.ID, models.WikiContent{Type: "embed", SpaceID: space.ID, Title: r.PostFormValue("title"), ParentID: r.PostFormValue("parentId"), EmbedURL: r.PostFormValue("embedUrl")})
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	redirectLocal(w, r, "/wiki/spaces/"+space.ID+"#embed-"+link.ID)
+}
+
+func (h *Handler) WikiSmartLinkDelete(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	space, err := h.Store.WikiSpace(r.Context(), ws, user.ID, r.PathValue("space"))
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	link, err := h.Store.WikiContent(r.Context(), ws, user.ID, r.PathValue("embed"), "embed")
+	if err != nil || link.SpaceID != space.ID {
+		http.NotFound(w, r)
+		return
+	}
+	if err = h.Commands.DeleteWikiContent(r.Context(), ws, user.ID, link.ID, "embed"); err != nil {
 		status, message := wikiWebError(err)
 		http.Error(w, message, status)
 		return
