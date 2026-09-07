@@ -23,14 +23,24 @@ type wikiData struct {
 	Versions                              []models.WikiVersion
 	Comments                              []wikiCommentNode
 	Labels                                []models.WikiLabel
+	Restrictions                          []models.WikiPageRestriction
+	RestrictionUsers                      []wikiRestrictionOption
+	RestrictionGroups                     []wikiRestrictionOption
 	Error                                 string
 	CanAdmin                              bool
+	CanEdit                               bool
+	CanRestrict                           bool
 	Editing                               bool
 	SourceMode                            bool
 	Query                                 string
 	Status                                string
 	SpaceName, SpaceKey, SpaceDescription string
 	Private                               bool
+}
+
+type wikiRestrictionOption struct {
+	ID, Name     string
+	Read, Update bool
 }
 
 type wikiTreeNode struct {
@@ -199,6 +209,7 @@ func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 		return
 	}
 	page := &models.WikiPage{SpaceID: space.ID, ParentID: r.URL.Query().Get("parent"), Status: "current", Body: models.WikiBody{Representation: "storage"}, Version: models.WikiVersion{Number: 1}}
+	canEdit := true
 	if id := r.PathValue("page"); id != "" {
 		page, err = h.Store.WikiPage(r.Context(), ws, user.ID, id)
 		if err != nil {
@@ -210,11 +221,21 @@ func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 			http.NotFound(w, r)
 			return
 		}
+		allowed, permissionErr := h.Store.CanUpdateWikiPage(r.Context(), ws, user.ID, page.ID)
+		if permissionErr != nil {
+			http.Error(w, "Could not load page permissions.", 500)
+			return
+		}
+		canEdit = allowed
+		if edit && !canEdit {
+			http.Error(w, "You do not have permission to edit this page.", 403)
+			return
+		}
 		if edit {
 			page.Version.Number++
 		}
 	}
-	data := wikiData{Space: space, Page: page, Editing: edit}
+	data := wikiData{Space: space, Page: page, Editing: edit, CanEdit: canEdit}
 	status := 200
 	if r.Method == "POST" {
 		if !parseForm(w, r) {
@@ -247,6 +268,47 @@ func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 		_, err = wikimarkup.Render(page.Body.Value)
 		data.SourceMode = err != nil
 	} else {
+		data.Restrictions, err = h.Store.WikiPageRestrictions(r.Context(), ws, user.ID, page.ID)
+		if err != nil {
+			http.Error(w, "Could not load page access.", 500)
+			return
+		}
+		data.CanRestrict, err = h.Store.CanRestrictWikiPage(r.Context(), ws, user.ID, page.ID)
+		if err != nil {
+			http.Error(w, "Could not load page access.", 500)
+			return
+		}
+		if data.CanRestrict {
+			members, memberErr := h.Store.MembersByWorkspace(r.Context(), ws)
+			groups, groupErr := h.Store.WikiRestrictionGroups(r.Context(), ws)
+			if memberErr != nil || groupErr != nil {
+				http.Error(w, "Could not load page access choices.", 500)
+				return
+			}
+			readUsers, updateUsers, readGroups, updateGroups := map[string]bool{}, map[string]bool{}, map[string]bool{}, map[string]bool{}
+			for _, restriction := range data.Restrictions {
+				for _, subject := range restriction.Users {
+					if restriction.Operation == "read" {
+						readUsers[subject.ID] = true
+					} else {
+						updateUsers[subject.ID] = true
+					}
+				}
+				for _, subject := range restriction.Groups {
+					if restriction.Operation == "read" {
+						readGroups[subject.ID] = true
+					} else {
+						updateGroups[subject.ID] = true
+					}
+				}
+			}
+			for _, member := range members {
+				data.RestrictionUsers = append(data.RestrictionUsers, wikiRestrictionOption{ID: member.ID, Name: member.DisplayName, Read: readUsers[member.ID], Update: updateUsers[member.ID]})
+			}
+			for _, group := range groups {
+				data.RestrictionGroups = append(data.RestrictionGroups, wikiRestrictionOption{ID: group.ID, Name: group.Name, Read: readGroups[group.ID], Update: updateGroups[group.ID]})
+			}
+		}
 		data.Versions, err = h.Store.WikiVersions(r.Context(), ws, user.ID, page.ID)
 		if err != nil {
 			http.Error(w, "Could not load page history.", 500)
@@ -280,6 +342,41 @@ func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 		data.Comments = wikiCommentTree(comments, likes, versions, user.ID, admin)
 	}
 	h.writeWorkspacePageStatus(w, r, "page_wiki_page", user, ws, data, "wiki", "", status)
+}
+
+func (h *Handler) WikiPageRestrictions(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	page, err := h.wikiPageForComment(r, ws, user.ID)
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	input := []models.WikiPageRestriction{{Operation: "read", Users: []models.WikiRestrictionSubject{}, Groups: []models.WikiRestrictionSubject{}}, {Operation: "update", Users: []models.WikiRestrictionSubject{}, Groups: []models.WikiRestrictionSubject{}}}
+	for _, id := range r.PostForm["readUsers"] {
+		input[0].Users = append(input[0].Users, models.WikiRestrictionSubject{Type: "user", ID: id, AccountID: id})
+	}
+	for _, id := range r.PostForm["readGroups"] {
+		input[0].Groups = append(input[0].Groups, models.WikiRestrictionSubject{Type: "group", ID: id})
+	}
+	for _, id := range r.PostForm["updateUsers"] {
+		input[1].Users = append(input[1].Users, models.WikiRestrictionSubject{Type: "user", ID: id, AccountID: id})
+	}
+	for _, id := range r.PostForm["updateGroups"] {
+		input[1].Groups = append(input[1].Groups, models.WikiRestrictionSubject{Type: "group", ID: id})
+	}
+	if _, err = h.Commands.SetWikiPageRestrictions(r.Context(), ws, user.ID, page.ID, "replace", input); err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	redirectLocal(w, r, wikiPageURL(page)+"#wiki-access")
 }
 
 func (h *Handler) WikiCommentCreate(w http.ResponseWriter, r *http.Request) {

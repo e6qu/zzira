@@ -62,3 +62,17 @@ type WikiLabel struct {
 	Prefix    string `json:"prefix"`
 	CreatedAt string `json:"-"`
 }
+
+type WikiRestrictionSubject struct {
+	Type        string `json:"type"`
+	ID          string `json:"id,omitempty"`
+	AccountID   string `json:"accountId,omitempty"`
+	Name        string `json:"name,omitempty"`
+	DisplayName string `json:"displayName,omitempty"`
+}
+
+type WikiPageRestriction struct {
+	Operation string                   `json:"operation"`
+	Users     []WikiRestrictionSubject `json:"users"`
+	Groups    []WikiRestrictionSubject `json:"groups"`
+}

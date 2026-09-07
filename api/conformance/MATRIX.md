@@ -82,7 +82,7 @@ use `/rest/zzira/1`.
 | Project versions and releases | 🟡 | Ten version operations, release hub/lifecycle, fix/affected membership, visible progress and notes; exact limits in [RELEASES.md](../../docs/RELEASES.md) |
 | Metrics and reports | 🟡 | Permission-filtered 7/30/90 day DORA metrics, immutable delivery facts, accessible daily SVG/table and recent production evidence; Jira/Agile report catalog, comparisons, exports, subscriptions and scheduled delivery remain; see `docs/REPORTS.md` |
 | Apps/plugins, diagrams and graphs | ⛔ | installation/runtime modules, diagram authoring and graph/report surfaces remain |
-| Confluence Cloud spaces, pages, labels and footer comments | 🟡 | Initial v2 space/page CRUD, parent validation, storage subset, drafts, versions, trash/restore, threaded footer-comment CRUD/likes/history/operations, v1 label writes and v1/v2 label discovery across 24 reviewed operations, plus permission-filtered action log; exact limits in CLOUD_PARITY.md |
+| Confluence Cloud spaces, pages, labels, restrictions and footer comments | 🟡 | Initial v2 space/page CRUD, parent validation, storage subset, drafts, versions, trash/restore, threaded footer-comment CRUD/likes/history/operations, v1 label writes, v1/v2 label discovery, and all 12 v1 page-restriction operations across 36 reviewed operations, plus permission-filtered action log; exact limits in CLOUD_PARITY.md |
 
 ## E2E (browser-proven, Playwright/Chromium)
 
@@ -97,7 +97,7 @@ use `/rest/zzira/1`.
 | Notifications inbox, private API mutations, unread filtering, and open-to-work flow | ✅ |
 | WCAG 2.2 A/AA axe sweep, target sizes, keyboard movement and 320px reflow | ✅ |
 | Service help center, request, queue, SLA, approval, file, notification, feedback, customer and organization management journey | ✅ |
-| Wiki space/page authoring, stale edits, history, threaded footer comments, child pages and trash/restore | ✅ |
+| Wiki author/member page access, authoring, stale edits, history, threaded footer comments, child pages and trash/restore | ✅ |
 
 ## Load measurement
 

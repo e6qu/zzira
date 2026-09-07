@@ -1401,10 +1401,29 @@ Validation after Confluence labels:
 - Exact reviewed API coverage is 238 of 1,207 operations: 231 partial, 7
   missing, and 969 unassessed. Confluence coverage is 24 of 348 reviewed.
 
+Validation after Confluence page restrictions:
+
+- Migration 076 adds independent read and update grants for active workspace
+  users and groups from the site's organization directories. Page authors and
+  workspace administrators retain recovery access; every page, version,
+  comment, like, label and action-log read applies the current read grants, and
+  page, trash and label mutations apply the current update grants.
+- All 12 pinned legacy v1 restriction operations support complete replacement,
+  additive grants, clearing, operation-shaped reads, direct group status and
+  mutation, and `accountId` plus legacy user lookup. Responses include stable
+  hashes, legacy collection beans, relative links and boolean status results.
+- The page access workspace exposes separate view/edit choices for people and
+  groups and explains unrestricted columns. PostgreSQL covers author, member,
+  administrator and group access, permission revocation and private actions;
+  Chromium proves a two-account hidden → view-only → editor handoff, retained
+  authoring, axe accessibility, dark mode and 320 px reflow.
+- Exact reviewed API coverage is 250 of 1,207 operations: 243 partial, 7
+  missing, and 957 unassessed. Confluence coverage is 36 of 348 reviewed.
+
 ## Current change
 
 1. Continue Confluence v1/v2 contract and knowledge collaboration with page
-   attachments and restrictions.
+   attachments and watches.
 2. Return to advanced service operations risk, CAB approval, on-call and
    post-incident review configuration after the next knowledge slice.
 

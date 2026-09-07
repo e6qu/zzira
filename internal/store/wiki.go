@@ -26,7 +26,20 @@ const wikiSpaceVisible = `EXISTS (
     WHERE si.workspace_id=wm.workspace_id AND d.active AND du.active
   )
 ) AND (NOT s.private OR s.author_id=$2)`
-const wikiPageVisible = `(p.published OR p.author_id=$2)`
+const wikiPageVisible = `(p.published OR p.author_id=$2) AND (
+  p.author_id=$2
+  OR EXISTS (SELECT 1 FROM memberships am WHERE am.workspace_id=s.workspace_id AND am.user_id=$2 AND am.role='admin')
+  OR NOT EXISTS (SELECT 1 FROM wiki_page_restrictions wr WHERE wr.page_id=p.id AND wr.operation='read')
+  OR EXISTS (SELECT 1 FROM wiki_page_restrictions wr WHERE wr.page_id=p.id AND wr.operation='read' AND wr.subject_type='user' AND wr.subject_id=$2)
+  OR EXISTS (SELECT 1 FROM wiki_page_restrictions wr JOIN group_members gm ON wr.subject_type='group' AND gm.group_id::text=wr.subject_id WHERE wr.page_id=p.id AND wr.operation='read' AND gm.user_id=$2)
+)`
+const wikiPageWritable = `(
+  p.author_id=$2
+  OR EXISTS (SELECT 1 FROM memberships am WHERE am.workspace_id=s.workspace_id AND am.user_id=$2 AND am.role='admin')
+  OR NOT EXISTS (SELECT 1 FROM wiki_page_restrictions wr WHERE wr.page_id=p.id AND wr.operation='update')
+  OR EXISTS (SELECT 1 FROM wiki_page_restrictions wr WHERE wr.page_id=p.id AND wr.operation='update' AND wr.subject_type='user' AND wr.subject_id=$2)
+  OR EXISTS (SELECT 1 FROM wiki_page_restrictions wr JOIN group_members gm ON wr.subject_type='group' AND gm.group_id::text=wr.subject_id WHERE wr.page_id=p.id AND wr.operation='update' AND gm.user_id=$2)
+)`
 const wikiSpaceSelect = `SELECT s.id::text,s.workspace_id,s.key,s.name,s.description,s.author_id,s.private,to_char(s.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM wiki_spaces s`
 const wikiPageSelect = `SELECT p.id::text,s.workspace_id,p.space_id::text,COALESCE(p.parent_id::text,''),p.title,p.status,p.published,p.body,p.author_id,to_char(p.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),v.version,v.message,v.minor_edit,v.author_id,to_char(v.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM wiki_pages p JOIN wiki_spaces s ON s.id=p.space_id JOIN wiki_page_versions v ON v.page_id=p.id AND v.version=p.version`
 const wikiCommentSelect = `SELECT c.id::text,c.page_id::text,p.space_id::text,COALESCE(c.parent_id::text,''),c.body,c.author_id,u.display_name,c.version,v.message,to_char(c.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),to_char(c.updated_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),v.author_id,to_char(v.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM wiki_footer_comments c JOIN wiki_pages p ON p.id=c.page_id JOIN wiki_spaces s ON s.id=p.space_id JOIN users u ON u.id=c.author_id JOIN wiki_footer_comment_versions v ON v.comment_id=c.id AND v.version=c.version`
@@ -139,7 +152,7 @@ func (s *Store) SaveWikiPage(ctx context.Context, ws, actor string, input models
 		return nil, err
 	}
 	if input.ID != "" {
-		old, err := scanWikiPage(tx.QueryRow(ctx, wikiPageSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND p.id::text=$3`, ws, actor, input.ID))
+		old, err := scanWikiPage(tx.QueryRow(ctx, wikiPageSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND `+wikiPageWritable+` AND p.id::text=$3`, ws, actor, input.ID))
 		if err != nil {
 			return nil, err
 		}

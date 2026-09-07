@@ -46,7 +46,7 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	if err := store.Migrate(ctx, st.Pool); err != nil {
 		t.Fatal(err)
 	}
-	ws, actor, member, outsider := store.NewID("ws"), store.NewID("usr"), store.NewID("usr"), store.NewID("usr")
+	ws, actor, admin, member, outsider := store.NewID("ws"), store.NewID("usr"), store.NewID("usr"), store.NewID("usr"), store.NewID("usr")
 	exec := func(sql string, args ...any) {
 		t.Helper()
 		if _, err := st.Pool.Exec(ctx, sql, args...); err != nil {
@@ -54,10 +54,10 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		}
 	}
 	exec(`INSERT INTO workspaces(id,slug,name) VALUES ($1,$1,'Wiki test')`, ws)
-	for _, id := range []string{actor, member, outsider} {
+	for _, id := range []string{actor, admin, member, outsider} {
 		exec(`INSERT INTO users(id,email,password_hash,display_name) VALUES ($1,$2,'test','Wiki User')`, id, id+"@example.test")
 		role := "member"
-		if id == actor {
+		if id == actor || id == admin {
 			role = "admin"
 		}
 		if id != outsider {
@@ -69,7 +69,7 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		for _, sql := range []string{`DELETE FROM wiki_page_versions WHERE page_id IN (SELECT p.id FROM wiki_pages p JOIN wiki_spaces s ON s.id=p.space_id WHERE s.workspace_id=$1)`, `DELETE FROM wiki_pages WHERE space_id IN (SELECT id FROM wiki_spaces WHERE workspace_id=$1)`, `DELETE FROM wiki_spaces WHERE workspace_id=$1`, `DELETE FROM wiki_labels WHERE workspace_id=$1`, `DELETE FROM actions WHERE workspace_id=$1`, `DELETE FROM memberships WHERE workspace_id=$1`, `DELETE FROM workspaces WHERE id=$1`} {
 			exec(sql, ws)
 		}
-		for _, id := range []string{actor, member, outsider} {
+		for _, id := range []string{actor, admin, member, outsider} {
 			exec(`DELETE FROM api_tokens WHERE user_id=$1`, id)
 			exec(`DELETE FROM users WHERE id=$1`, id)
 		}
@@ -330,6 +330,62 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	if strings.Contains(trash.Body.String(), "Private draft") {
 		t.Fatal("trashed draft leaked")
 	}
+	restricted := create(public, "Restricted launch plan", "current")
+	var groupID string
+	if err := st.Pool.QueryRow(ctx, `INSERT INTO groups(directory_id,name,description)
+		SELECT d.id,'release-managers','Release coordination' FROM sites si JOIN directories d ON d.organization_id=si.organization_id
+		WHERE si.workspace_id=$1 ORDER BY d.id LIMIT 1 RETURNING id::text`, ws).Scan(&groupID); err != nil {
+		t.Fatal(err)
+	}
+	exec(`INSERT INTO group_members(group_id,user_id) VALUES($1::uuid,$2)`, groupID, member)
+	callV1(actor, "GET", "/content/"+restricted.ID+"/restriction", nil, 200)
+	callV1(actor, "PUT", "/content/"+restricted.ID+"/restriction", []map[string]any{{"operation": "update", "restrictions": map[string]any{"user": []map[string]string{{"type": "known", "accountId": actor}}}}}, 200)
+	callV1(member, "POST", "/content/"+restricted.ID+"/restriction", []map[string]any{{"operation": "read", "restrictions": map[string]any{"user": []map[string]string{{"type": "known", "accountId": member}}}}}, 403)
+	actorOnly := []map[string]any{{"operation": "read", "restrictions": map[string]any{"user": []map[string]string{{"type": "known", "accountId": actor}}}}}
+	rootRestrictions := callV1(actor, "PUT", "/content/"+restricted.ID+"/restriction", actorOnly, 200)
+	if !strings.Contains(rootRestrictions.Body.String(), `"operation":"read"`) || !strings.Contains(rootRestrictions.Body.String(), `"restrictionsHash"`) || !strings.Contains(rootRestrictions.Body.String(), `"base":"https://zzira.test/wiki"`) {
+		t.Fatal(rootRestrictions.Body.String())
+	}
+	call(member, "GET", "/pages/"+restricted.ID, nil, 404)
+	call(admin, "GET", "/pages/"+restricted.ID, nil, 200)
+	callV1(admin, "GET", "/content/"+restricted.ID+"/restriction", nil, 200)
+	callV1(actor, "GET", "/content/"+restricted.ID+"/restriction/byOperation", nil, 200)
+	callV1(actor, "GET", "/content/"+restricted.ID+"/restriction/byOperation/read", nil, 200)
+	groupPath := "/content/" + restricted.ID + "/restriction/byOperation/read/byGroupId/" + groupID
+	if status := callV1(actor, "GET", groupPath, nil, 200); strings.TrimSpace(status.Body.String()) != "false" {
+		t.Fatal(status.Body.String())
+	}
+	callV1(actor, "PUT", groupPath, nil, 200)
+	if status := callV1(member, "GET", groupPath, nil, 200); strings.TrimSpace(status.Body.String()) != "true" {
+		t.Fatal(status.Body.String())
+	}
+	call(member, "GET", "/pages/"+restricted.ID, nil, 200)
+	callV1(actor, "DELETE", groupPath, nil, 200)
+	call(member, "GET", "/pages/"+restricted.ID, nil, 404)
+	userPath := "/content/" + restricted.ID + "/restriction/byOperation/read/user?accountId=" + member
+	callV1(actor, "PUT", userPath, nil, 200)
+	if status := callV1(member, "GET", userPath, nil, 200); strings.TrimSpace(status.Body.String()) != "true" {
+		t.Fatal(status.Body.String())
+	}
+	callV1(actor, "GET", "/content/"+restricted.ID+"/restriction/byOperation/read/user?key="+member, nil, 200)
+	actorUpdatePath := "/content/" + restricted.ID + "/restriction/byOperation/update/user?accountId=" + actor
+	callV1(actor, "PUT", actorUpdatePath, nil, 200)
+	restrictedUpdate := map[string]any{"id": restricted.ID, "spaceId": public, "title": "Restricted launch plan", "status": "current", "body": models.WikiBody{Representation: "storage", Value: "<p>Managers approved the launch.</p>"}, "version": map[string]int{"number": 2}}
+	call(member, "PUT", "/pages/"+restricted.ID, restrictedUpdate, 404)
+	callV1(member, "POST", "/content/"+restricted.ID+"/label", map[string]string{"prefix": "global", "name": "denied-label"}, 404)
+	callV1(actor, "DELETE", actorUpdatePath, nil, 200)
+	updatePath := "/content/" + restricted.ID + "/restriction/byOperation/update/user?accountId=" + member
+	callV1(actor, "PUT", updatePath, nil, 200)
+	call(member, "PUT", "/pages/"+restricted.ID, restrictedUpdate, 200)
+	callV1(actor, "DELETE", updatePath, nil, 200)
+	callV1(actor, "DELETE", userPath, nil, 200)
+	call(member, "GET", "/pages/"+restricted.ID, nil, 404)
+	callV1(actor, "POST", "/content/"+restricted.ID+"/restriction", map[string]any{"results": []map[string]any{{"operation": "read", "restrictions": map[string]any{"group": []map[string]string{{"type": "group", "id": groupID}}}}}}, 200)
+	call(member, "GET", "/pages/"+restricted.ID, nil, 200)
+	callV1(actor, "DELETE", "/content/"+restricted.ID+"/restriction", nil, 200)
+	call(member, "GET", "/pages/"+restricted.ID, nil, 200)
+	callV1(actor, "PUT", "/content/"+restricted.ID+"/restriction", actorOnly, 200)
+	call(member, "GET", "/pages/"+restricted.ID, nil, 404)
 	actions, err := st.ActionsSince(ctx, ws, member, 0, 1000)
 	if err != nil {
 		t.Fatal(err)
@@ -338,7 +394,7 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		if a.EntityType == "wiki_footer_comment_like" && strings.HasPrefix(a.EntityID, secretCommentBean.ID+":") {
 			t.Fatalf("private wiki like action leaked: %s", a.Payload)
 		}
-		if strings.Contains(string(a.Payload), "Private draft") || strings.Contains(string(a.Payload), "Secret guide") || strings.Contains(string(a.Payload), "PRIVATE") || strings.Contains(string(a.Payload), "Private launch phrase") || strings.Contains(string(a.Payload), "secret-label") {
+		if strings.Contains(string(a.Payload), "Private draft") || strings.Contains(string(a.Payload), "Secret guide") || strings.Contains(string(a.Payload), "PRIVATE") || strings.Contains(string(a.Payload), "Private launch phrase") || strings.Contains(string(a.Payload), "secret-label") || strings.Contains(string(a.Payload), "Restricted launch plan") || strings.Contains(string(a.Payload), "Managers approved the launch") {
 			t.Fatalf("private wiki action leaked: %s", a.Payload)
 		}
 	}

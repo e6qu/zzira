@@ -8,7 +8,7 @@ async function checkWikiAccessibility(page: Page) {
 }
 
 
-test('wiki space, rich page, stale edits, child pages, history, trash and restore', async ({ page, context }) => {
+test('wiki space, rich page, access, stale edits, child pages, history, trash and restore', async ({ page, context, browser }) => {
   await page.goto('/login');
   await page.fill('#login-email', 'demo@zzira.dev');
   await page.fill('#login-password', 'demo1234');
@@ -29,17 +29,47 @@ test('wiki space, rich page, stale edits, child pages, history, trash and restor
   await page.getByRole('button', { name: 'Save page', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Release checklist', level: 1 })).toBeVisible();
   await expect(page.getByRole('article', { name: 'Page content' })).toContainText('Review changes');
+  const pageURL = page.url().split('#')[0];
+  const memberContext = await browser.newContext({ baseURL: new URL(pageURL).origin });
+  const member = await memberContext.newPage();
+  await member.goto('/login');
+  await member.fill('#login-email', 'ana@zzira.dev');
+  await member.fill('#login-password', 'ana12345');
+  await member.click('button[type=submit]');
+  await member.goto(pageURL);
+  await expect(member.getByRole('heading', { name: 'Release checklist', level: 1 })).toBeVisible();
+  await expect(member.getByRole('link', { name: 'Edit page', exact: true })).toBeVisible();
   await page.getByRole('region', { name: 'Labels' }).locator('summary').click();
   await page.getByLabel('Label names').fill('release-ready, handbook');
   await page.getByRole('button', { name: 'Add labels', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Remove label release-ready', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Remove label handbook', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Remove label handbook', exact: true })).toHaveCount(0);
+  await page.getByText('Page access', { exact: true }).click();
+  await page.getByLabel('Allow Demo User to view').check();
+  await page.getByLabel('Allow Demo User to edit').check();
+  await page.getByRole('button', { name: 'Save page access', exact: true }).click();
+  await expect(page.getByLabel('Allow Demo User to view')).toBeChecked();
+  await member.reload();
+  await expect(member.getByText(/does not exist or you do not have permission/)).toBeVisible();
+  await page.getByText('Page access', { exact: true }).click();
+  await page.getByLabel('Allow Ana Soursop to view').check();
+  await page.getByRole('button', { name: 'Save page access', exact: true }).click();
+  await member.reload();
+  await expect(member.getByRole('heading', { name: 'Release checklist', level: 1 })).toBeVisible();
+  await expect(member.getByRole('link', { name: 'Edit page', exact: true })).toHaveCount(0);
+  await member.getByText('Page access', { exact: true }).click();
+  await expect(member.locator('.wiki-access')).toContainText('View access');
+  await expect(member.getByRole('button', { name: 'Save page access', exact: true })).toHaveCount(0);
+  await page.getByText('Page access', { exact: true }).click();
+  await page.getByLabel('Allow Ana Soursop to edit').check();
+  await page.getByRole('button', { name: 'Save page access', exact: true }).click();
+  await member.reload();
+  await expect(member.getByRole('link', { name: 'Edit page', exact: true })).toBeVisible();
   await checkWikiAccessibility(page);
   await page.locator('[data-theme-toggle]').click();
   await checkWikiAccessibility(page);
   await page.locator('[data-theme-toggle]').click();
-  const pageURL = page.url().split('#')[0];
   const stale = await context.newPage();
   await stale.goto(pageURL + '/edit');
   await page.getByRole('link', { name: 'Edit page', exact: true }).click();
@@ -99,4 +129,5 @@ test('wiki space, rich page, stale edits, child pages, history, trash and restor
   await expect(page.getByRole('link', { name: 'Rollback steps', exact: true })).toHaveCount(0);
   await page.setViewportSize({ width: 320, height: 740 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await memberContext.close();
 });

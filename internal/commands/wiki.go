@@ -161,3 +161,11 @@ func (s *Service) RemoveWikiSpaceLabel(ctx context.Context, ws, actor, spaceID, 
 	}
 	return s.Store.RemoveWikiSpaceLabel(ctx, ws, actor, spaceID, labels[0])
 }
+
+func (s *Service) SetWikiPageRestrictions(ctx context.Context, ws, actor, pageID, mode string, restrictions []models.WikiPageRestriction) ([]models.WikiPageRestriction, error) {
+	return s.Store.SetWikiPageRestrictions(ctx, ws, actor, pageID, mode, restrictions)
+}
+
+func (s *Service) SetWikiPageRestrictionSubject(ctx context.Context, ws, actor, pageID, operation string, subject models.WikiRestrictionSubject, add bool) ([]models.WikiPageRestriction, error) {
+	return s.Store.SetWikiPageRestrictionSubject(ctx, ws, actor, pageID, operation, subject, add)
+}

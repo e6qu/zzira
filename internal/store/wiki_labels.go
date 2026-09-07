@@ -125,7 +125,7 @@ func (s *Store) AddWikiPageLabels(ctx context.Context, ws, actor, pageID string,
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	var spaceID string
-	if err := tx.QueryRow(ctx, `SELECT p.space_id::text FROM wiki_pages p JOIN wiki_spaces s ON s.id=p.space_id WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND p.status='current' AND p.id::text=$3 FOR SHARE OF p`, ws, actor, pageID).Scan(&spaceID); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT p.space_id::text FROM wiki_pages p JOIN wiki_spaces s ON s.id=p.space_id WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND `+wikiPageWritable+` AND p.status='current' AND p.id::text=$3 FOR SHARE OF p`, ws, actor, pageID).Scan(&spaceID); err != nil {
 		return nil, err
 	}
 	for _, item := range input {
@@ -157,7 +157,7 @@ func (s *Store) RemoveWikiPageLabel(ctx context.Context, ws, actor, pageID strin
 	defer func() { _ = tx.Rollback(ctx) }()
 	var spaceID string
 	var label models.WikiLabel
-	err = tx.QueryRow(ctx, `SELECT p.space_id::text,l.id::text,l.name,l.prefix,to_char(l.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM wiki_pages p JOIN wiki_spaces s ON s.id=p.space_id JOIN wiki_page_labels pl ON pl.page_id=p.id JOIN wiki_labels l ON l.id=pl.label_id WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND p.status='current' AND p.id::text=$3 AND l.prefix=$4 AND l.name=$5 FOR UPDATE OF pl`, ws, actor, pageID, input.Prefix, input.Name).Scan(&spaceID, &label.ID, &label.Name, &label.Prefix, &label.CreatedAt)
+	err = tx.QueryRow(ctx, `SELECT p.space_id::text,l.id::text,l.name,l.prefix,to_char(l.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM wiki_pages p JOIN wiki_spaces s ON s.id=p.space_id JOIN wiki_page_labels pl ON pl.page_id=p.id JOIN wiki_labels l ON l.id=pl.label_id WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND `+wikiPageWritable+` AND p.status='current' AND p.id::text=$3 AND l.prefix=$4 AND l.name=$5 FOR UPDATE OF pl`, ws, actor, pageID, input.Prefix, input.Name).Scan(&spaceID, &label.ID, &label.Name, &label.Prefix, &label.CreatedAt)
 	if err != nil {
 		return err
 	}

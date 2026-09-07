@@ -38,6 +38,16 @@ func (h *V1Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	parts := strings.Split(strings.Trim(strings.TrimPrefix(r.URL.Path, "/wiki/rest/api/"), "/"), "/")
 	switch {
+	case len(parts) == 3 && parts[0] == "content" && parts[2] == "restriction":
+		h.contentRestrictions(w, r, ws, actor, parts[1])
+	case len(parts) == 4 && parts[0] == "content" && parts[2] == "restriction" && parts[3] == "byOperation" && r.Method == "GET":
+		h.contentRestrictionsByOperation(w, r, ws, actor, parts[1])
+	case len(parts) == 5 && parts[0] == "content" && parts[2] == "restriction" && parts[3] == "byOperation" && r.Method == "GET":
+		h.contentRestrictionOperation(w, r, ws, actor, parts[1], parts[4])
+	case len(parts) == 7 && parts[0] == "content" && parts[2] == "restriction" && parts[3] == "byOperation" && parts[5] == "byGroupId":
+		h.contentRestrictionGroup(w, r, ws, actor, parts[1], parts[4], parts[6])
+	case len(parts) == 6 && parts[0] == "content" && parts[2] == "restriction" && parts[3] == "byOperation" && parts[5] == "user":
+		h.contentRestrictionUser(w, r, ws, actor, parts[1], parts[4])
 	case len(parts) == 3 && parts[0] == "content" && parts[2] == "label" && r.Method == "POST":
 		h.addContentLabels(w, r, ws, actor, parts[1])
 	case len(parts) == 3 && parts[0] == "content" && parts[2] == "label" && r.Method == "DELETE":

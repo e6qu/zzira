@@ -2802,6 +2802,210 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ]
+    },
+    {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/content/{id}/restriction",
+      "status": "partial",
+      "notes": "Returns paginated read and update restrictions for a visible page with stable hashes and legacy expansion/link shapes.",
+      "evidence": [
+        "internal/confluence/v1.go",
+        "internal/confluence/v1_restrictions.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki.go",
+        "internal/store/wiki_restrictions.go",
+        "migrations/076_wiki_page_restrictions.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v1:POST:/wiki/rest/api/content/{id}/restriction",
+      "status": "partial",
+      "notes": "Adds validated direct-user and organization-directory group grants without replacing existing restrictions.",
+      "evidence": [
+        "internal/confluence/v1.go",
+        "internal/confluence/v1_restrictions.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki.go",
+        "internal/store/wiki_restrictions.go",
+        "migrations/076_wiki_page_restrictions.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v1:PUT:/wiki/rest/api/content/{id}/restriction",
+      "status": "partial",
+      "notes": "Atomically replaces all page restrictions with validated direct-user and organization-directory group grants.",
+      "evidence": [
+        "internal/confluence/v1.go",
+        "internal/confluence/v1_restrictions.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki.go",
+        "internal/store/wiki_restrictions.go",
+        "migrations/076_wiki_page_restrictions.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v1:DELETE:/wiki/rest/api/content/{id}/restriction",
+      "status": "partial",
+      "notes": "Removes all page restrictions when the caller can edit the visible page.",
+      "evidence": [
+        "internal/confluence/v1.go",
+        "internal/confluence/v1_restrictions.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki.go",
+        "internal/store/wiki_restrictions.go",
+        "migrations/076_wiki_page_restrictions.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/content/{id}/restriction/byOperation",
+      "status": "partial",
+      "notes": "Returns read and update restrictions keyed by operation for a visible page.",
+      "evidence": [
+        "internal/confluence/v1.go",
+        "internal/confluence/v1_restrictions.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki.go",
+        "internal/store/wiki_restrictions.go",
+        "migrations/076_wiki_page_restrictions.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/content/{id}/restriction/byOperation/{operationKey}",
+      "status": "partial",
+      "notes": "Returns the legacy restriction bean for one validated read or update operation.",
+      "evidence": [
+        "internal/confluence/v1.go",
+        "internal/confluence/v1_restrictions.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki.go",
+        "internal/store/wiki_restrictions.go",
+        "migrations/076_wiki_page_restrictions.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/content/{id}/restriction/byOperation/{operationKey}/byGroupId/{groupId}",
+      "status": "partial",
+      "notes": "Returns the boolean status of an organization-directory group grant on a visible page.",
+      "evidence": [
+        "internal/confluence/v1.go",
+        "internal/confluence/v1_restrictions.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki.go",
+        "internal/store/wiki_restrictions.go",
+        "migrations/076_wiki_page_restrictions.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v1:PUT:/wiki/rest/api/content/{id}/restriction/byOperation/{operationKey}/byGroupId/{groupId}",
+      "status": "partial",
+      "notes": "Idempotently adds an organization-directory group grant when the caller can edit the page.",
+      "evidence": [
+        "internal/confluence/v1.go",
+        "internal/confluence/v1_restrictions.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki.go",
+        "internal/store/wiki_restrictions.go",
+        "migrations/076_wiki_page_restrictions.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v1:DELETE:/wiki/rest/api/content/{id}/restriction/byOperation/{operationKey}/byGroupId/{groupId}",
+      "status": "partial",
+      "notes": "Removes an organization-directory group grant when the caller can edit the page.",
+      "evidence": [
+        "internal/confluence/v1.go",
+        "internal/confluence/v1_restrictions.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki.go",
+        "internal/store/wiki_restrictions.go",
+        "migrations/076_wiki_page_restrictions.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/content/{id}/restriction/byOperation/{operationKey}/user",
+      "status": "partial",
+      "notes": "Returns direct-user restriction status through accountId and legacy key or username lookup.",
+      "evidence": [
+        "internal/confluence/v1.go",
+        "internal/confluence/v1_restrictions.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki.go",
+        "internal/store/wiki_restrictions.go",
+        "migrations/076_wiki_page_restrictions.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v1:PUT:/wiki/rest/api/content/{id}/restriction/byOperation/{operationKey}/user",
+      "status": "partial",
+      "notes": "Idempotently adds an active workspace user grant when the caller can edit the page.",
+      "evidence": [
+        "internal/confluence/v1.go",
+        "internal/confluence/v1_restrictions.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki.go",
+        "internal/store/wiki_restrictions.go",
+        "migrations/076_wiki_page_restrictions.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v1:DELETE:/wiki/rest/api/content/{id}/restriction/byOperation/{operationKey}/user",
+      "status": "partial",
+      "notes": "Removes an active workspace user grant when the caller can edit the page.",
+      "evidence": [
+        "internal/confluence/v1.go",
+        "internal/confluence/v1_restrictions.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki.go",
+        "internal/store/wiki_restrictions.go",
+        "migrations/076_wiki_page_restrictions.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
     }
   ]
 }
