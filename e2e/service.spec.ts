@@ -64,6 +64,22 @@ test('admin creates a service project with Jira Service Management request types
   });
   expect(articleResponse.status()).toBe(200);
 
+  await page.goto(`/service/agent/${desk.id}`);
+  const operationsSettings = page.locator('#operations-settings');
+  await expect(operationsSettings.getByRole('heading', { name: 'Risk, CAB, on-call, and reviews' })).toBeVisible();
+  await operationsSettings.getByLabel('CAB approval threshold').fill('9');
+  await operationsSettings.getByLabel('Incident review due in days').fill('3');
+  await operationsSettings.getByRole('checkbox', { name: 'Demo User' }).check();
+  await operationsSettings.getByRole('button', { name: 'Save operations policy' }).click();
+  const now = new Date();
+  const localDateTime = (value: Date) => value.toISOString().slice(0, 16);
+  await page.locator('#operations-settings').getByLabel('Rotation label').fill('Primary operations');
+  await page.locator('#operations-settings').getByLabel('On-call owner').selectOption({ label: 'Demo User' });
+  await page.locator('#operations-settings').getByLabel('Starts').fill(localDateTime(new Date(now.getTime() - 3_600_000)));
+  await page.locator('#operations-settings').getByLabel('Ends').fill(localDateTime(new Date(now.getTime() + 86_400_000)));
+  await page.locator('#operations-settings').getByRole('button', { name: 'Add on-call shift' }).click();
+  await expect(page.locator('#operations-settings')).toContainText('Primary operations');
+
   await page.goto('/service');
   await expect(page.getByRole('heading', { name: 'How can we help?', level: 1 })).toBeVisible();
   await accessible(page);
@@ -81,6 +97,15 @@ test('admin creates a service project with Jira Service Management request types
   await expect(page.locator('.service-current-status')).toHaveText('To Do');
   await expect(page.getByRole('heading', { name: 'Service goals' })).toBeVisible();
   await expect(page.locator('.service-sla-panel')).toContainText('Time to first response');
+  const incidentOperations = page.locator('#operations-control');
+  await expect(incidentOperations).toContainText('On call: Demo User');
+  await expect(incidentOperations).toContainText('Low risk');
+  await incidentOperations.getByLabel('Impact').selectOption('4');
+  await incidentOperations.getByLabel('Likelihood').selectOption('3');
+  await incidentOperations.getByLabel('Review status').selectOption('in_progress');
+  await incidentOperations.getByLabel('Review findings').fill('Review customer impact, detection, and recovery evidence.');
+  await incidentOperations.getByRole('button', { name: 'Save operations assessment' }).click();
+  await expect(page.locator('#operations-control')).toContainText('High risk');
   await expect(page.getByText('Customers receive an error when completing checkout.')).toBeVisible();
   await page.goto(`/service/portals/${desk.id}`);
   await expect(page.getByRole('link', { name: /Investigate a problem/ })).toBeVisible();
@@ -92,6 +117,19 @@ test('admin creates a service project with Jira Service Management request types
   await expect(page.getByRole('heading', { name: changeSummary, level: 1 })).toBeVisible();
   const changeKey = page.url().split('/').pop()!;
   await expect(page.locator('.service-request-side')).toContainText('Request a change');
+  const changeOperations = page.locator('#operations-control');
+  await changeOperations.getByLabel('Impact').selectOption('3');
+  await changeOperations.getByLabel('Likelihood').selectOption('3');
+  await changeOperations.getByLabel('Change type').selectOption('normal');
+  await changeOperations.getByLabel('Planned start').fill(localDateTime(new Date(now.getTime() + 172_800_000)));
+  await changeOperations.getByLabel('Planned end').fill(localDateTime(new Date(now.getTime() + 176_400_000)));
+  await changeOperations.getByLabel('Rollback plan').fill('Restore the previous worker count and confirm queue latency.');
+  await changeOperations.getByRole('button', { name: 'Save operations assessment' }).click();
+  await expect(page.locator('#approvals')).toContainText('Change advisory board');
+  await page.locator('#operations-control').getByRole('button', { name: 'Save operations assessment' }).click();
+  await expect(page.locator('#approvals .service-approvals > li')).toHaveCount(1);
+  await page.locator('#approvals').getByRole('button', { name: 'Approve' }).click();
+  await expect(page.locator('#approvals')).toContainText('approved');
   await page.goto(requestURL);
   const operationsLinks = page.locator('#operations-links');
   await operationsLinks.getByText('Link operations work').click();
@@ -307,4 +345,8 @@ test('admin creates a service project with Jira Service Management request types
   await accessible(page);
   await page.setViewportSize({ width: 320, height: 740 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto(`/service/agent/${desk.id}`);
+  await page.locator('#operations-settings').getByRole('button', { name: 'Remove shift Primary operations' }).click();
+  await expect(page.locator('#operations-settings')).not.toContainText('Primary operations');
 });

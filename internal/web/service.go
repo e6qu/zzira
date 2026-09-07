@@ -81,6 +81,8 @@ type servicePageData struct {
 	RequestTypeForms      []serviceRequestTypeFormView
 	RequestTypeFields     []models.ServiceRequestTypeField
 	RequestFieldValues    []serviceRequestFieldValueView
+	OperationsSettings    *models.ServiceOperationsSettings
+	OperationsProfile     *models.ServiceOperationsProfile
 	FieldValues           map[string]string
 	Transitions           []serviceTransitionView
 	CanAdmin              bool
@@ -140,6 +142,11 @@ func (h *Handler) ServiceAgent(w http.ResponseWriter, r *http.Request) {
 			data.Members, err = h.Store.MembersByWorkspace(r.Context(), workspaceID)
 			if err != nil {
 				http.Error(w, "Could not load workspace members.", http.StatusInternalServerError)
+				return
+			}
+			data.OperationsSettings, err = h.Store.ServiceOperationsSettings(r.Context(), workspaceID, deskID)
+			if err != nil {
+				http.Error(w, "Could not load operations settings.", http.StatusInternalServerError)
 				return
 			}
 			agents, err := h.Store.ServiceDeskAgents(r.Context(), workspaceID, deskID)
@@ -388,6 +395,62 @@ func (h *Handler) ServiceAgentSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	redirectLocal(w, r, "/service/agent/"+r.PathValue("desk")+"#agents")
+}
+
+func (h *Handler) ServiceOperationsSettings(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	deskID := r.PathValue("desk")
+	threshold, thresholdErr := strconv.Atoi(r.PostFormValue("cabRiskThreshold"))
+	reviewDays, reviewErr := strconv.Atoi(r.PostFormValue("reviewDueDays"))
+	if thresholdErr != nil || reviewErr != nil {
+		http.Error(w, "Operations settings are invalid.", http.StatusBadRequest)
+		return
+	}
+	if err := h.Commands.UpdateServiceOperationsSettings(r.Context(), user.ID, workspaceID, deskID, threshold, reviewDays, r.PostForm["cabMember"]); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	redirectLocal(w, r, "/service/agent/"+deskID+"#operations-settings")
+}
+
+func parseServiceDateTime(value string) (*time.Time, error) {
+	if value == "" {
+		return nil, nil
+	}
+	parsed, err := time.Parse("2006-01-02T15:04", value)
+	if err != nil {
+		return nil, err
+	}
+	parsed = parsed.UTC()
+	return &parsed, nil
+}
+
+func (h *Handler) ServiceOnCallSettings(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	deskID := r.PathValue("desk")
+	var err error
+	if r.PostFormValue("action") == "delete" {
+		err = h.Commands.DeleteServiceOnCallShift(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("shiftId"))
+	} else {
+		start, startErr := parseServiceDateTime(r.PostFormValue("startsAt"))
+		end, endErr := parseServiceDateTime(r.PostFormValue("endsAt"))
+		if startErr != nil || endErr != nil || start == nil || end == nil {
+			http.Error(w, "On-call window is invalid.", http.StatusBadRequest)
+			return
+		}
+		err = h.Commands.CreateServiceOnCallShift(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("accountId"), r.PostFormValue("label"), *start, *end)
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	redirectLocal(w, r, "/service/agent/"+deskID+"#operations-settings")
 }
 
 func (h *Handler) ServiceCustomerSettings(w http.ResponseWriter, r *http.Request) {
@@ -957,6 +1020,11 @@ func (h *Handler) ServiceRequestPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load request feedback.", http.StatusInternalServerError)
 		return
 	}
+	operations, operationsErr := h.Store.ServiceOperationsProfile(r.Context(), workspaceID, request.Issue.ID)
+	if operationsErr != nil && !errors.Is(operationsErr, pgx.ErrNoRows) {
+		http.Error(w, "Could not load operations controls.", http.StatusInternalServerError)
+		return
+	}
 	members := []*models.User{}
 	if canManage {
 		members, err = h.Store.MembersByWorkspace(r.Context(), workspaceID)
@@ -1014,7 +1082,7 @@ func (h *Handler) ServiceRequestPage(w http.ResponseWriter, r *http.Request) {
 		}
 		requestFields = append(requestFields, serviceRequestFieldValueView{Name: field.Name, Value: fmt.Sprint(value)})
 	}
-	h.writeWorkspacePage(w, r, "page_service_request", user, workspaceID, servicePageData{Request: request, RequestFieldValues: requestFields, Comments: comments, Attachments: attachments, Links: linkViews, LinkTypes: linkTypes, Approvals: approvals, Feedback: feedback, Participants: participants, Members: members, SLAs: slas, Transitions: transitions, CanAgent: canManage, CanManageParticipants: canManage || request.Customer.ID == user.ID, CurrentUserID: user.ID, Subscribed: subscribed, CanLeaveFeedback: request.Customer.ID == user.ID && request.Issue.Status.Category == "done"}, "service", request.Issue.ProjectID)
+	h.writeWorkspacePage(w, r, "page_service_request", user, workspaceID, servicePageData{Request: request, RequestFieldValues: requestFields, OperationsProfile: operations, Comments: comments, Attachments: attachments, Links: linkViews, LinkTypes: linkTypes, Approvals: approvals, Feedback: feedback, Participants: participants, Members: members, SLAs: slas, Transitions: transitions, CanAgent: canManage, CanManageParticipants: canManage || request.Customer.ID == user.ID, CurrentUserID: user.ID, Subscribed: subscribed, CanLeaveFeedback: request.Customer.ID == user.ID && request.Issue.Status.Category == "done"}, "service", request.Issue.ProjectID)
 }
 
 func (h *Handler) ServiceRequestLink(w http.ResponseWriter, r *http.Request) {
@@ -1181,6 +1249,36 @@ func (h *Handler) ServiceRequestApprovalDecision(w http.ResponseWriter, r *http.
 		return
 	}
 	redirectLocal(w, r, "/service/requests/"+request.Issue.Key+"#approvals")
+}
+
+func (h *Handler) ServiceRequestOperations(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	impact, impactErr := strconv.Atoi(r.PostFormValue("impact"))
+	likelihood, likelihoodErr := strconv.Atoi(r.PostFormValue("likelihood"))
+	plannedStart, startErr := parseServiceDateTime(r.PostFormValue("plannedStart"))
+	plannedEnd, endErr := parseServiceDateTime(r.PostFormValue("plannedEnd"))
+	reviewDue, dueErr := parseServiceDateTime(r.PostFormValue("reviewDueAt"))
+	if impactErr != nil || likelihoodErr != nil || startErr != nil || endErr != nil || dueErr != nil {
+		http.Error(w, "Operations assessment is invalid.", http.StatusBadRequest)
+		return
+	}
+	reviewRequired := r.PostFormValue("reviewRequired") == "true"
+	reviewStatus := r.PostFormValue("reviewStatus")
+	if !reviewRequired {
+		reviewStatus = "not_required"
+		reviewDue = nil
+	} else if reviewStatus == "not_required" {
+		reviewStatus = "pending"
+	}
+	_, err := h.Commands.UpdateServiceOperationsProfile(r.Context(), user.ID, workspaceID, r.PathValue("key"), models.ServiceOperationsProfile{Impact: impact, Likelihood: likelihood, ChangeType: r.PostFormValue("changeType"), PlannedStart: plannedStart, PlannedEnd: plannedEnd, RollbackPlan: r.PostFormValue("rollbackPlan"), OnCallUserID: r.PostFormValue("onCallUser"), ReviewRequired: reviewRequired, ReviewDueAt: reviewDue, ReviewStatus: reviewStatus, ReviewSummary: r.PostFormValue("reviewSummary")})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	redirectLocal(w, r, "/service/requests/"+r.PathValue("key")+"#operations-control")
 }
 
 func (h *Handler) ServiceRequestNotification(w http.ResponseWriter, r *http.Request) {

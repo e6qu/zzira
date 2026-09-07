@@ -161,3 +161,39 @@ type ServiceReport struct {
 	Daily                                         []ServiceReportDay
 	RequestTypes, Channels                        []ServiceReportSegment
 }
+
+type ServiceOperationsSettings struct {
+	ServiceDeskID, WorkspaceID string
+	CABRiskThreshold           int
+	ReviewDueDays              int
+	CABMembers                 []*User
+	OnCallShifts               []ServiceOnCallShift
+}
+
+type ServiceOnCallShift struct {
+	ID, ServiceDeskID, UserID, UserName, Label string
+	StartsAt, EndsAt                           time.Time
+}
+
+type ServiceOperationsProfile struct {
+	RequestIssueID, Kind, ChangeType, RollbackPlan, OnCallUserID string
+	Impact, Likelihood, RiskScore                                int
+	PlannedStart, PlannedEnd, ReviewDueAt                        *time.Time
+	OnCallUser                                                   *User
+	ReviewRequired                                               bool
+	ReviewStatus, ReviewSummary                                  string
+	UpdatedAt                                                    time.Time
+}
+
+func (p ServiceOperationsProfile) RiskLevel() string {
+	switch {
+	case p.RiskScore >= 13:
+		return "Critical"
+	case p.RiskScore >= 9:
+		return "High"
+	case p.RiskScore >= 4:
+		return "Medium"
+	default:
+		return "Low"
+	}
+}

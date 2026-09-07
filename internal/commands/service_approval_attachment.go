@@ -12,6 +12,10 @@ import (
 )
 
 func (s *Service) CreateServiceApproval(ctx context.Context, actorID, workspaceID, issueIDOrKey, name string, approverIDs []string) (*models.ServiceApproval, error) {
+	return s.createServiceApproval(ctx, actorID, workspaceID, issueIDOrKey, name, approverIDs, "")
+}
+
+func (s *Service) createServiceApproval(ctx context.Context, actorID, workspaceID, issueIDOrKey, name string, approverIDs []string, automationKey string) (*models.ServiceApproval, error) {
 	canManage, err := s.Store.CanManageServiceRequest(ctx, workspaceID, actorID, issueIDOrKey)
 	if err != nil {
 		return nil, err
@@ -30,12 +34,14 @@ func (s *Service) CreateServiceApproval(ctx context.Context, actorID, workspaceI
 	if len(approverIDs) == 0 {
 		return nil, fmt.Errorf("at least one approver is required")
 	}
-	approval, err := s.Store.CreateServiceApproval(ctx, workspaceID, request.Issue.ID, actorID, name, approverIDs)
+	approval, created, err := s.Store.CreateServiceApproval(ctx, workspaceID, request.Issue.ID, actorID, name, approverIDs, automationKey)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.notifyServiceRequestUsers(ctx, actorID, workspaceID, request, approverIDs, "service_approval", "requested your approval on "+request.Issue.Key, false); err != nil {
-		return nil, err
+	if created {
+		if err := s.notifyServiceRequestUsers(ctx, actorID, workspaceID, request, approverIDs, "service_approval", "requested your approval on "+request.Issue.Key, false); err != nil {
+			return nil, err
+		}
 	}
 	return approval, nil
 }

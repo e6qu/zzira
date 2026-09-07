@@ -1640,12 +1640,33 @@ Validation after Confluence whiteboards:
 - Exact reviewed API coverage is 358 of 1,207 operations: 351 partial, 7
   missing, and 849 unassessed. Confluence coverage is 144 of 348 reviewed.
 
+Validation after Service Management operations governance:
+
+- Migration 086 adds per-desk CAB and incident-review policy, active-member CAB
+  rosters, bounded on-call shifts, and request operations profiles for incident,
+  problem, and change intake.
+- Agents assess impact and likelihood on a four-by-four risk matrix, assign
+  on-call ownership, capture change type/window/rollback data, and track
+  post-incident review due dates, status, and findings. New operations requests
+  inherit the active on-call owner, and incidents start with a pending review.
+- Managers configure CAB thresholds and membership, incident-review deadlines,
+  and rotations. Changes at or above the threshold create exactly one durable
+  Change advisory board approval. Settings, shifts, and assessments are
+  permission checked and written to the organization audit log.
+- The Service Management Chromium journey covers manager policy and rotation
+  setup, incident ownership/risk/review, and automatic CAB approval for a
+  planned high-risk change, including idempotent reassessment and shift removal.
+  PostgreSQL integration on a fresh migration, the full Go suite, vet, the WASM
+  build, seven conformance checks, accessibility, dark theme and 320 px reflow
+  passed.
+- This is product behavior beyond the pinned public JSM contract, so exact API
+  coverage remains 358 of 1,207 and JSM remains 75 of 75 reviewed.
+
 ## Current change
 
-1. Add advanced service operations risk, CAB approval, on-call and
-   post-incident review configuration.
-2. Resume the remaining Confluence content and administration operations after
-   the service-operations checkpoint.
+1. Resume the remaining Confluence content and administration operations.
+2. Continue Service Management with dependency mapping, major-incident
+   communications, change-conflict calendars and escalation policy.
 
 ## Resume here
 

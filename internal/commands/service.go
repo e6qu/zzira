@@ -67,9 +67,13 @@ func (s *Service) CreateServiceRequest(ctx context.Context, in CreateServiceRequ
 		}
 	}
 	labels := make([]string, 0, len(labelSet))
+	operationKind := ""
 	for _, kind := range []string{"incident", "problem", "change"} {
 		if labelSet[kind] {
 			labels = append(labels, kind)
+			if operationKind == "" {
+				operationKind = kind
+			}
 		}
 	}
 	issue, _, err := s.CreateIssue(ctx, CreateIssueInput{
@@ -87,6 +91,12 @@ func (s *Service) CreateServiceRequest(ctx context.Context, in CreateServiceRequ
 	if err := s.Store.CreateServiceRequest(ctx, in.WorkspaceID, issue.ID, in.ServiceDeskID, in.RequestTypeID, in.CustomerID, channel); err != nil {
 		_, cleanupErr := s.DeleteIssue(ctx, in.ActorID, in.WorkspaceID, issue.ID, "service request creation failed")
 		return nil, errors.Join(err, cleanupErr)
+	}
+	if operationKind != "" {
+		if err := s.Store.CreateServiceOperationsProfile(ctx, in.WorkspaceID, in.ActorID, issue.ID, in.ServiceDeskID, operationKind); err != nil {
+			_, cleanupErr := s.DeleteIssue(ctx, in.ActorID, in.WorkspaceID, issue.ID, "service operations profile creation failed")
+			return nil, errors.Join(err, cleanupErr)
+		}
 	}
 	if err := s.Store.ApplyServiceSLAGoals(ctx, in.WorkspaceID, in.ActorID, in.ServiceDeskID, issue.ID); err != nil {
 		_, cleanupErr := s.DeleteIssue(ctx, in.ActorID, in.WorkspaceID, issue.ID, "service SLA goal selection failed")

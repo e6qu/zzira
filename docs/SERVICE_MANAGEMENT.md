@@ -72,6 +72,22 @@ approval as declined; otherwise it completes only after every approver accepts.
 Only a pending assigned approver can answer, and an approver can open the request
 even when they are neither its reporter nor a participant.
 
+## Operations governance
+
+Incident, problem, and change request types create an internal operations
+profile alongside the backing Jira issue. Agents assess impact and likelihood
+on a four-by-four matrix, assign an on-call owner, classify changes as standard,
+normal, or emergency, and record planned windows and rollback instructions.
+The request view shows the calculated Low, Medium, High, or Critical risk level.
+
+Service managers configure each desk's CAB threshold, approver roster, incident
+review deadline, and bounded on-call shifts. An active shift assigns its owner
+when a new operations request arrives. A change at or above the threshold
+creates one durable Change advisory board approval for the configured members.
+Incident reviews start pending with a calculated due date; agents can advance
+the review and persist its findings. Policy, rotation, and assessment changes
+are permission checked and recorded in the organization audit log.
+
 The portal and REST API share Jira's canonical attachment records and blob
 store. Uploads first receive a one-use service-desk temporary ID, then become a
 public or internal comment attachment in one finalize operation. Customers see
@@ -125,8 +141,8 @@ return Jira-compatible date, duration, completed-cycle and ongoing-cycle
 shapes. A durable minute worker emits one approaching-goal and one breached
 notification per clock and recipient, with transactionally synchronized
 notification actions. The SLA attention queue shows requests inside the final
-quarter of a goal and sorts breached requests first. Conditional goals,
-status-driven pauses and multiple calendars remain.
+quarter of a goal and sorts breached requests first. Status-driven pauses and
+multiple calendars remain.
 
 ## REST coverage
 
@@ -183,6 +199,6 @@ service report comparisons, SLA goal distributions, exports and scheduled
 delivery, complete Assets object/schema/import APIs, full
 status chronology, SLA rule reordering and advanced criteria,
 portal invitation email delivery, Atlassian knowledge ranking/analytics, and
-advanced incident/problem/change risk, approval, on-call, and post-incident
-review configuration remain. Customer creation grants only the
+advanced dependency mapping, major-incident communications, change-conflict
+calendars, escalation policy, and review templates remain. Customer creation grants only the
 site `atlassian/customer` role and never silently grants Jira product access.

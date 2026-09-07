@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -414,17 +415,28 @@ func (s *Store) ServiceRequestComment(ctx context.Context, requestIssueID, comme
 	return value, nil
 }
 
-func (s *Store) CreateServiceApproval(ctx context.Context, workspaceID, requestIssueID, actorID, name string, approverIDs []string) (*models.ServiceApproval, error) {
+func (s *Store) CreateServiceApproval(ctx context.Context, workspaceID, requestIssueID, actorID, name string, approverIDs []string, automationKey string) (*models.ServiceApproval, bool, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	var id string
-	err = tx.QueryRow(ctx, `INSERT INTO service_request_approvals(request_issue_id,name,created_by)
-		SELECT sr.issue_id,$3,$4 FROM service_requests sr WHERE sr.workspace_id=$1 AND sr.issue_id=$2 RETURNING id`, workspaceID, requestIssueID, name, actorID).Scan(&id)
+	err = tx.QueryRow(ctx, `INSERT INTO service_request_approvals(request_issue_id,name,created_by,automation_key)
+		SELECT sr.issue_id,$3,$4,NULLIF($5,'') FROM service_requests sr WHERE sr.workspace_id=$1 AND sr.issue_id=$2
+		ON CONFLICT (request_issue_id,automation_key) WHERE automation_key IS NOT NULL DO NOTHING RETURNING id`, workspaceID, requestIssueID, name, actorID, automationKey).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) && automationKey != "" {
+		if err := tx.QueryRow(ctx, `SELECT id FROM service_request_approvals WHERE request_issue_id=$1 AND automation_key=$2`, requestIssueID, automationKey).Scan(&id); err != nil {
+			return nil, false, err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return nil, false, err
+		}
+		approval, err := s.ServiceApproval(ctx, requestIssueID, id)
+		return approval, false, err
+	}
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	seen := map[string]bool{}
 	inserted := 0
@@ -438,23 +450,24 @@ func (s *Store) CreateServiceApproval(ctx context.Context, workspaceID, requestI
 			EXISTS(SELECT 1 FROM memberships m WHERE m.workspace_id=$3 AND m.user_id=u.id)
 			OR EXISTS(SELECT 1 FROM service_customers c WHERE c.workspace_id=$3 AND c.user_id=u.id AND c.active)) ON CONFLICT DO NOTHING`, id, userID, workspaceID)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		if result.RowsAffected() == 0 {
-			return nil, fmt.Errorf("approver %q is not an active user in this site", userID)
+			return nil, false, fmt.Errorf("approver %q is not an active user in this site", userID)
 		}
 		if _, err := tx.Exec(ctx, `INSERT INTO service_request_subscriptions(request_issue_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING`, requestIssueID, userID); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		inserted++
 	}
 	if inserted == 0 {
-		return nil, fmt.Errorf("at least one approver is required")
+		return nil, false, fmt.Errorf("at least one approver is required")
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return s.ServiceApproval(ctx, requestIssueID, id)
+	approval, err := s.ServiceApproval(ctx, requestIssueID, id)
+	return approval, true, err
 }
 
 func (s *Store) ServiceApprovals(ctx context.Context, requestIssueID string) ([]models.ServiceApproval, error) {
