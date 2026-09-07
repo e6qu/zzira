@@ -84,6 +84,9 @@ func (s *Service) CreateWikiContent(ctx context.Context, ws, actor string, conte
 	if content.Type != "embed" && content.EmbedURL != "" {
 		return nil, fmt.Errorf("%w: only Smart Links accept an embed URL", store.ErrWikiValidation)
 	}
+	if content.Type != "database" && content.Private {
+		return nil, fmt.Errorf("%w: only databases accept private content state", store.ErrWikiValidation)
+	}
 	if content.Type == "embed" && content.EmbedURL != "" {
 		content.EmbedURL = strings.TrimSpace(content.EmbedURL)
 		parsed, err := url.Parse(content.EmbedURL)
@@ -97,6 +100,15 @@ func (s *Service) CreateWikiContent(ctx context.Context, ws, actor string, conte
 
 func (s *Service) DeleteWikiContent(ctx context.Context, ws, actor, id, contentType string) error {
 	return s.Store.DeleteWikiContent(ctx, ws, actor, id, contentType)
+}
+
+func (s *Service) SetWikiContentClassification(ctx context.Context, ws, actor, id, contentType, levelID string) (*models.WikiContent, error) {
+	switch levelID {
+	case "", "public", "internal", "confidential", "restricted":
+	default:
+		return nil, fmt.Errorf("%w: choose a supported classification level", store.ErrWikiValidation)
+	}
+	return s.Store.SetWikiContentClassification(ctx, ws, actor, id, contentType, levelID)
 }
 
 func (s *Service) CreateWikiFooterComment(ctx context.Context, ws, actor string, comment models.WikiFooterComment) (*models.WikiFooterComment, error) {

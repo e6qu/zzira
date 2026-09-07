@@ -44,6 +44,9 @@ func (h *Handler) contentBean(content *models.WikiContent) map[string]any {
 	if content.EmbedURL != "" {
 		bean["embedUrl"] = content.EmbedURL
 	}
+	if content.Type == "database" {
+		bean["private"] = content.Private
+	}
 	return bean
 }
 

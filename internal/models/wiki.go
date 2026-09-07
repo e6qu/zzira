@@ -41,20 +41,37 @@ type WikiPage struct {
 }
 
 type WikiContent struct {
-	ID         string                `json:"id"`
-	Type       string                `json:"type"`
-	Status     string                `json:"status"`
-	Title      string                `json:"title"`
-	ParentID   string                `json:"parentId,omitempty"`
-	ParentType string                `json:"parentType,omitempty"`
-	Position   int                   `json:"position"`
-	AuthorID   string                `json:"authorId"`
-	OwnerID    string                `json:"ownerId"`
-	CreatedAt  string                `json:"createdAt"`
-	SpaceID    string                `json:"spaceId"`
-	EmbedURL   string                `json:"embedUrl,omitempty"`
-	Version    WikiVersion           `json:"version"`
-	Properties []WikiContentProperty `json:"-"`
+	ID                  string                `json:"id"`
+	Type                string                `json:"type"`
+	Status              string                `json:"status"`
+	Title               string                `json:"title"`
+	ParentID            string                `json:"parentId,omitempty"`
+	ParentType          string                `json:"parentType,omitempty"`
+	Position            int                   `json:"position"`
+	AuthorID            string                `json:"authorId"`
+	OwnerID             string                `json:"ownerId"`
+	CreatedAt           string                `json:"createdAt"`
+	SpaceID             string                `json:"spaceId"`
+	EmbedURL            string                `json:"embedUrl,omitempty"`
+	Private             bool                  `json:"private,omitempty"`
+	ClassificationLevel string                `json:"-"`
+	Version             WikiVersion           `json:"version"`
+	Properties          []WikiContentProperty `json:"-"`
+}
+
+func (c WikiContent) ClassificationName() string {
+	switch c.ClassificationLevel {
+	case "public":
+		return "Public"
+	case "internal":
+		return "Internal"
+	case "confidential":
+		return "Confidential"
+	case "restricted":
+		return "Restricted"
+	default:
+		return ""
+	}
 }
 
 type WikiContentProperty struct {

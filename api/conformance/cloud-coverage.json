@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 328,
+  "assessedTotal": 343,
   "counts": {
     "delivered": 0,
-    "partial": 321,
+    "partial": 336,
     "missing": 7,
-    "unassessed": 879
+    "unassessed": 864
   },
   "countsByFamily": {
     "automation": {
@@ -18,9 +18,9 @@
     },
     "confluence": {
       "delivered": 0,
-      "partial": 114,
+      "partial": 129,
       "missing": 0,
-      "unassessed": 234
+      "unassessed": 219
     },
     "jira-platform": {
       "delivered": 0,
@@ -9463,121 +9463,258 @@
       "operationId": "confluence-v2:POST:/wiki/api/v2/databases",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/databases.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "migrations/084_wiki_content_classification.sql",
+        "internal/commands/wiki.go",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Database containers support public or creator-private creation, current reads with optional expansions, inherited page/space permissions, nonempty deletion checks, privacy-shaped actions and a space UI journey. Database schemas, rows, views, archive, restore, move and rename remain."
     },
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/databases/{database-id}/properties/{property-id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/databases.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "migrations/084_wiki_content_classification.sql",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_content_properties.go"
+      ],
+      "notes": "Database JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with database privacy, inherited visibility and atomic action records; property history resources remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/databases/{database-id}/properties/{property-id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/databases.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "migrations/084_wiki_content_classification.sql",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_content_properties.go"
+      ],
+      "notes": "Database JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with database privacy, inherited visibility and atomic action records; property history resources remain."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/databases/{database-id}/properties/{property-id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/databases.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "migrations/084_wiki_content_classification.sql",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_content_properties.go"
+      ],
+      "notes": "Database JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with database privacy, inherited visibility and atomic action records; property history resources remain."
     },
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/databases/{id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/databases.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "migrations/084_wiki_content_classification.sql",
+        "internal/commands/wiki.go",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Database containers support public or creator-private creation, current reads with optional expansions, inherited page/space permissions, nonempty deletion checks, privacy-shaped actions and a space UI journey. Database schemas, rows, views, archive, restore, move and rename remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/databases/{id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/databases.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "migrations/084_wiki_content_classification.sql",
+        "internal/commands/wiki.go",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Database containers support public or creator-private creation, current reads with optional expansions, inherited page/space permissions, nonempty deletion checks, privacy-shaped actions and a space UI journey. Database schemas, rows, views, archive, restore, move and rename remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/databases/{id}/ancestors",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/databases.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "migrations/084_wiki_content_classification.sql",
+        "internal/commands/wiki.go",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Databases participate in a permission-filtered heterogeneous page/folder/Smart-Link/database tree with ordered ancestors, bounded descendants, documented sorting and cursor pagination; whiteboards, page children beneath non-page content and persisted manual ordering remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/databases/{id}/classification-level",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/databases.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "migrations/084_wiki_content_classification.sql",
+        "internal/commands/wiki.go",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Database classification supports read, set and reset against four durable built-in published levels through the REST API and UI with validation, permission checks and atomic actions; organization-defined level administration and entitlement semantics remain."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/databases/{id}/classification-level",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/databases.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "migrations/084_wiki_content_classification.sql",
+        "internal/commands/wiki.go",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Database classification supports read, set and reset against four durable built-in published levels through the REST API and UI with validation, permission checks and atomic actions; organization-defined level administration and entitlement semantics remain."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/databases/{id}/classification-level/reset",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/databases.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "migrations/084_wiki_content_classification.sql",
+        "internal/commands/wiki.go",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Database classification supports read, set and reset against four durable built-in published levels through the REST API and UI with validation, permission checks and atomic actions; organization-defined level administration and entitlement semantics remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/databases/{id}/descendants",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/databases.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "migrations/084_wiki_content_classification.sql",
+        "internal/commands/wiki.go",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Databases participate in a permission-filtered heterogeneous page/folder/Smart-Link/database tree with ordered ancestors, bounded descendants, documented sorting and cursor pagination; whiteboards, page children beneath non-page content and persisted manual ordering remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/databases/{id}/direct-children",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/databases.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "migrations/084_wiki_content_classification.sql",
+        "internal/commands/wiki.go",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Databases participate in a permission-filtered heterogeneous page/folder/Smart-Link/database tree with ordered ancestors, bounded descendants, documented sorting and cursor pagination; whiteboards, page children beneath non-page content and persisted manual ordering remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/databases/{id}/operations",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/databases.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "migrations/084_wiki_content_classification.sql",
+        "internal/commands/wiki.go"
+      ],
+      "notes": "The database operation resource reports read and permission-shaped update/delete capabilities; the broader Confluence operation catalog and app-derived permissions remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/databases/{id}/properties",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/databases.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "migrations/084_wiki_content_classification.sql",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_content_properties.go"
+      ],
+      "notes": "Database JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with database privacy, inherited visibility and atomic action records; property history resources remain."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/databases/{id}/properties",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/databases.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "migrations/084_wiki_content_classification.sql",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_content_properties.go"
+      ],
+      "notes": "Database JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with database privacy, inherited visibility and atomic action records; property history resources remain."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/embeds",

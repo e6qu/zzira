@@ -358,6 +358,9 @@ body.nav-collapsed .project-switcher-panel a { padding-inline: 9px; }
 .wiki-page-tree li > div { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--ds-border); }
 .wiki-page-tree a { overflow-wrap: anywhere; }
 .wiki-page-tree small { color: var(--ds-text-subtle); }
+.wiki-page-tree li > .wiki-content-actions { justify-content:flex-start; padding:8px 0 12px; border-bottom:0; }
+.wiki-content-actions details > form { min-width:min(360px,calc(100vw - 80px)); padding:12px 0; }
+@media (max-width:600px) { .wiki-content-actions,.wiki-content-actions details,.wiki-content-actions .btn { width:100%; }.wiki-content-actions details > form { min-width:0; width:100%; } }
 
 .wiki-discussion { max-width:960px; margin:24px 0; display:grid; gap:20px; }
 .wiki-discussion>header { display:flex; align-items:start; justify-content:space-between; gap:16px; }

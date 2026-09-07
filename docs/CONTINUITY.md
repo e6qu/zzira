@@ -1597,9 +1597,31 @@ Validation after Confluence Smart Links:
 - Exact reviewed API coverage is 328 of 1,207 operations: 321 partial, 7
   missing, and 879 unassessed. Confluence coverage is 114 of 348 reviewed.
 
+Validation after Confluence databases:
+
+- Migration 084 adds creator-private state and durable classification level
+  state to the shared hierarchical-content model. Private database content,
+  its properties and its action records remain visible only to the creator.
+- All 15 pinned Confluence v2 database operations now cover public/private
+  create, read/delete, ancestors, bounded descendants, cursor-paged direct
+  children, permission-shaped operations, optimistic JSON properties, and
+  classification read/set/reset. Classification currently uses four built-in
+  published levels; organization-defined level administration remains.
+- Database containers interoperate with pages, folders and Smart Links in the
+  heterogeneous tree. PostgreSQL integration covers expansions, nesting,
+  nonempty deletion, property conflicts, classification validation and reset,
+  private reads, and action-feed isolation.
+- The space UI creates public or creator-private databases under any delivered
+  parent type, searches them, shows privacy and classification state, updates
+  classification, and exposes guarded deletion. The Chromium journey covers
+  private creation below a folder, classification, accessibility and reflow.
+- Exact reviewed API coverage is 343 of 1,207 operations: 336 partial, 7
+  missing, and 864 unassessed. Confluence coverage is 129 of 348 reviewed.
+
 ## Current change
 
-1. Add databases and whiteboards to the permission-shaped content tree.
+1. Add whiteboards, including template/locale creation and classification, to
+   the permission-shaped content tree.
 2. Return to advanced service operations risk, CAB approval, on-call and
    post-incident review configuration after the next knowledge slice.
 

@@ -347,6 +347,36 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.updateSmartLinkProperty(w, r, ws, actor, parts[1], parts[3])
 	case len(parts) == 4 && parts[0] == "embeds" && parts[2] == "properties" && r.Method == "DELETE":
 		h.deleteSmartLinkProperty(w, r, ws, actor, parts[1], parts[3])
+	case len(parts) == 1 && parts[0] == "databases" && r.Method == "POST":
+		h.createDatabase(w, r, ws, actor)
+	case len(parts) == 2 && parts[0] == "databases" && r.Method == "GET":
+		h.database(w, r, ws, actor, parts[1])
+	case len(parts) == 2 && parts[0] == "databases" && r.Method == "DELETE":
+		h.deleteDatabase(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "databases" && parts[2] == "ancestors" && r.Method == "GET":
+		h.databaseAncestors(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "databases" && parts[2] == "descendants" && r.Method == "GET":
+		h.databaseDescendants(w, r, ws, actor, parts[1], false)
+	case len(parts) == 3 && parts[0] == "databases" && parts[2] == "direct-children" && r.Method == "GET":
+		h.databaseDescendants(w, r, ws, actor, parts[1], true)
+	case len(parts) == 3 && parts[0] == "databases" && parts[2] == "operations" && r.Method == "GET":
+		h.databaseOperations(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "databases" && parts[2] == "classification-level" && r.Method == "GET":
+		h.contentClassification(w, r, ws, actor, parts[1], "database")
+	case len(parts) == 3 && parts[0] == "databases" && parts[2] == "classification-level" && r.Method == "PUT":
+		h.setContentClassification(w, r, ws, actor, parts[1], "database", false)
+	case len(parts) == 4 && parts[0] == "databases" && parts[2] == "classification-level" && parts[3] == "reset" && r.Method == "POST":
+		h.setContentClassification(w, r, ws, actor, parts[1], "database", true)
+	case len(parts) == 3 && parts[0] == "databases" && parts[2] == "properties" && r.Method == "GET":
+		h.databaseProperties(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "databases" && parts[2] == "properties" && r.Method == "POST":
+		h.createDatabaseProperty(w, r, ws, actor, parts[1])
+	case len(parts) == 4 && parts[0] == "databases" && parts[2] == "properties" && r.Method == "GET":
+		h.databaseProperty(w, r, ws, actor, parts[1], parts[3])
+	case len(parts) == 4 && parts[0] == "databases" && parts[2] == "properties" && r.Method == "PUT":
+		h.updateDatabaseProperty(w, r, ws, actor, parts[1], parts[3])
+	case len(parts) == 4 && parts[0] == "databases" && parts[2] == "properties" && r.Method == "DELETE":
+		h.deleteDatabaseProperty(w, r, ws, actor, parts[1], parts[3])
 	default:
 		failure(w, 404, "This Confluence resource is not implemented.")
 	}

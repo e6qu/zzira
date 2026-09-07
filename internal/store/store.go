@@ -963,6 +963,7 @@ func (s *Store) ActionPageSince(ctx context.Context, workspaceID, userID string,
 		      AND (NOT s.private OR s.author_id=$3)
 		      AND (a.entity_type<>'wiki_page' OR a.payload->'wiki_page'->>'published'='true'
 		        OR a.payload->'wiki_page'->>'authorId'=$3)
+		      AND (a.entity_type NOT IN ('wiki_content','wiki_content_property') OR COALESCE((a.payload->>'contentPrivate')::boolean,false)=false OR a.payload->>'contentAuthorId'=$3)
 		      AND (a.entity_type NOT IN ('wiki_footer_comment','wiki_footer_comment_like','wiki_inline_comment','wiki_inline_comment_like','wiki_task') OR EXISTS (
 		        SELECT 1 FROM wiki_pages wp
 		        WHERE wp.id::text=COALESCE(a.payload->'wiki_footer_comment'->>'pageId',a.payload->'wiki_footer_comment_like'->>'pageId',a.payload->'wiki_inline_comment'->>'pageId',a.payload->'wiki_inline_comment_like'->>'pageId',a.payload->'wiki_task'->>'pageId')

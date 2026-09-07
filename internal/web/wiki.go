@@ -23,6 +23,7 @@ type wikiData struct {
 	Pages                                 []*models.WikiPage
 	Folders                               []*models.WikiContent
 	SmartLinks                            []*models.WikiContent
+	Databases                             []*models.WikiContent
 	Tree                                  []wikiTreeNode
 	Page                                  *models.WikiPage
 	Versions                              []models.WikiVersion
@@ -212,6 +213,7 @@ func (h *Handler) WikiSpacePage(w http.ResponseWriter, r *http.Request) {
 	}
 	folders := []*models.WikiContent{}
 	smartLinks := []*models.WikiContent{}
+	databases := []*models.WikiContent{}
 	if status == "current" {
 		folders, err = h.Store.WikiContents(r.Context(), ws, user.ID, space.ID, "folder")
 		if err != nil {
@@ -241,13 +243,27 @@ func (h *Handler) WikiSpacePage(w http.ResponseWriter, r *http.Request) {
 			}
 			smartLinks = visible
 		}
+		databases, err = h.Store.WikiContents(r.Context(), ws, user.ID, space.ID, "database")
+		if err != nil {
+			http.Error(w, "Could not load databases.", 500)
+			return
+		}
+		if query != "" {
+			visible := databases[:0]
+			for _, database := range databases {
+				if strings.Contains(strings.ToLower(database.Title), strings.ToLower(query)) {
+					visible = append(visible, database)
+				}
+			}
+			databases = visible
+		}
 	}
 	watching, err := h.Store.WikiWatchStatus(r.Context(), ws, user.ID, user.ID, "space", space.Key)
 	if err != nil {
 		http.Error(w, "Could not load space watch status.", 500)
 		return
 	}
-	h.writeWorkspacePage(w, r, "page_wiki_space", user, ws, wikiData{Space: space, Pages: filtered, Folders: folders, SmartLinks: smartLinks, Tree: wikiPageTree(filtered), Query: query, Status: status, WatchingSpace: watching}, "wiki", "")
+	h.writeWorkspacePage(w, r, "page_wiki_space", user, ws, wikiData{Space: space, Pages: filtered, Folders: folders, SmartLinks: smartLinks, Databases: databases, Tree: wikiPageTree(filtered), Query: query, Status: status, WatchingSpace: watching}, "wiki", "")
 }
 
 func (h *Handler) WikiFolderCreate(w http.ResponseWriter, r *http.Request) {
@@ -336,6 +352,77 @@ func (h *Handler) WikiSmartLinkDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	redirectLocal(w, r, "/wiki/spaces/"+space.ID)
+}
+
+func (h *Handler) WikiDatabaseCreate(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	space, err := h.Store.WikiSpace(r.Context(), ws, user.ID, r.PathValue("space"))
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	database, err := h.Commands.CreateWikiContent(r.Context(), ws, user.ID, models.WikiContent{
+		Type: "database", SpaceID: space.ID, Title: r.PostFormValue("title"),
+		ParentID: r.PostFormValue("parentId"), Private: r.PostFormValue("private") == "true",
+	})
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	redirectLocal(w, r, "/wiki/spaces/"+space.ID+"#database-"+database.ID)
+}
+
+func (h *Handler) WikiDatabaseDelete(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	space, err := h.Store.WikiSpace(r.Context(), ws, user.ID, r.PathValue("space"))
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	database, err := h.Store.WikiContent(r.Context(), ws, user.ID, r.PathValue("database"), "database")
+	if err != nil || database.SpaceID != space.ID {
+		http.NotFound(w, r)
+		return
+	}
+	if err = h.Commands.DeleteWikiContent(r.Context(), ws, user.ID, database.ID, "database"); err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	redirectLocal(w, r, "/wiki/spaces/"+space.ID)
+}
+
+func (h *Handler) WikiDatabaseClassification(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	space, err := h.Store.WikiSpace(r.Context(), ws, user.ID, r.PathValue("space"))
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	database, err := h.Store.WikiContent(r.Context(), ws, user.ID, r.PathValue("database"), "database")
+	if err != nil || database.SpaceID != space.ID {
+		http.NotFound(w, r)
+		return
+	}
+	if _, err = h.Commands.SetWikiContentClassification(r.Context(), ws, user.ID, database.ID, "database", r.PostFormValue("level")); err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	redirectLocal(w, r, "/wiki/spaces/"+space.ID+"#database-"+database.ID)
 }
 
 func (h *Handler) WikiPage(w http.ResponseWriter, r *http.Request) { h.wikiPage(w, r, false) }

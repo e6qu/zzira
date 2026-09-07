@@ -245,6 +245,60 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	call(member, "DELETE", "/folders/"+linkChild.ID, nil, 204)
 	call(member, "DELETE", "/embeds/"+smartLink.ID, nil, 204)
 	call(member, "GET", "/embeds/"+smartLink.ID, nil, 404)
+	call(member, "POST", "/databases?private=maybe", map[string]any{"spaceId": public, "title": "Invalid database"}, 400)
+	databaseResponse := call(member, "POST", "/databases", map[string]any{"spaceId": public, "title": "Service catalog", "parentId": childFolder.ID}, 200)
+	var database models.WikiContent
+	if err := json.Unmarshal(databaseResponse.Body.Bytes(), &database); err != nil || database.Type != "database" || database.ParentType != "folder" {
+		t.Fatalf("unexpected database: %+v %v", database, err)
+	}
+	databaseChildResponse := call(member, "POST", "/folders", map[string]any{"spaceId": public, "title": "Catalog guidance", "parentId": database.ID}, 200)
+	var databaseChild models.WikiContent
+	if err := json.Unmarshal(databaseChildResponse.Body.Bytes(), &databaseChild); err != nil || databaseChild.ParentType != "database" {
+		t.Fatalf("unexpected database child: %+v %v", databaseChild, err)
+	}
+	if expanded := call(member, "GET", "/databases/"+database.ID+"?include-direct-children=true&include-operations=true&include-properties=true&include-collaborators=true", nil, 200); !strings.Contains(expanded.Body.String(), "Catalog guidance") || !strings.Contains(expanded.Body.String(), `"targetType":"database"`) {
+		t.Fatal(expanded.Body.String())
+	}
+	if ancestors := call(member, "GET", "/databases/"+database.ID+"/ancestors", nil, 200); !strings.Contains(ancestors.Body.String(), `"id":"`+childFolder.ID+`","type":"folder"`) {
+		t.Fatal(ancestors.Body.String())
+	}
+	call(member, "GET", "/databases/"+database.ID+"/direct-children?sort=title", nil, 200)
+	call(member, "GET", "/databases/"+database.ID+"/descendants?depth=2", nil, 200)
+	call(member, "GET", "/databases/"+database.ID+"/operations", nil, 200)
+	call(member, "GET", "/databases/"+database.ID+"/classification-level", nil, 404)
+	call(member, "PUT", "/databases/"+database.ID+"/classification-level", map[string]any{"id": "unknown", "status": "current"}, 400)
+	call(member, "PUT", "/databases/"+database.ID+"/classification-level", map[string]any{"id": "confidential", "status": "current"}, 204)
+	if level := call(member, "GET", "/databases/"+database.ID+"/classification-level", nil, 200); !strings.Contains(level.Body.String(), `"name":"Confidential"`) || !strings.Contains(level.Body.String(), `"color":"ORANGE"`) {
+		t.Fatal(level.Body.String())
+	}
+	call(member, "POST", "/databases/"+database.ID+"/classification-level/reset", map[string]any{"status": "current"}, 204)
+	call(member, "GET", "/databases/"+database.ID+"/classification-level", nil, 404)
+	databasePropertyResponse := call(member, "POST", "/databases/"+database.ID+"/properties", map[string]any{"key": "schema", "value": map[string]any{"version": 1}}, 200)
+	var databaseProperty models.WikiContentProperty
+	if err := json.Unmarshal(databasePropertyResponse.Body.Bytes(), &databaseProperty); err != nil {
+		t.Fatal(err)
+	}
+	call(member, "GET", "/databases/"+database.ID+"/properties?key=schema", nil, 200)
+	call(member, "GET", "/databases/"+database.ID+"/properties/"+databaseProperty.ID, nil, 200)
+	call(member, "PUT", "/databases/"+database.ID+"/properties/"+databaseProperty.ID, map[string]any{"key": "schema", "value": map[string]any{"version": 2}, "version": map[string]any{"number": 2, "message": "Expanded fields"}}, 200)
+	call(member, "DELETE", "/databases/"+database.ID, nil, 400)
+	call(member, "DELETE", "/databases/"+database.ID+"/properties/"+databaseProperty.ID, nil, 204)
+	call(member, "DELETE", "/folders/"+databaseChild.ID, nil, 204)
+	call(member, "DELETE", "/databases/"+database.ID, nil, 204)
+	call(member, "GET", "/databases/"+database.ID, nil, 404)
+	privateDatabaseResponse := call(actor, "POST", "/databases?private=true", map[string]any{"spaceId": public, "title": "Private database", "parentId": page.ID}, 200)
+	var privateDatabase models.WikiContent
+	if err := json.Unmarshal(privateDatabaseResponse.Body.Bytes(), &privateDatabase); err != nil || !privateDatabase.Private {
+		t.Fatalf("unexpected private database: %+v %v", privateDatabase, err)
+	}
+	call(actor, "POST", "/databases/"+privateDatabase.ID+"/properties", map[string]any{"key": "private-database-property", "value": true}, 200)
+	call(member, "GET", "/databases/"+privateDatabase.ID, nil, 404)
+	privateDatabaseChildResponse := call(actor, "POST", "/folders", map[string]any{"spaceId": public, "title": "Private database child", "parentId": privateDatabase.ID}, 200)
+	var privateDatabaseChild models.WikiContent
+	if err := json.Unmarshal(privateDatabaseChildResponse.Body.Bytes(), &privateDatabaseChild); err != nil {
+		t.Fatal(err)
+	}
+	call(member, "GET", "/folders/"+privateDatabaseChild.ID, nil, 404)
 	if expanded := call(member, "GET", "/folders/"+rootFolder.ID+"?include-direct-children=true&include-operations=true&include-properties=true&include-collaborators=true", nil, 200); !strings.Contains(expanded.Body.String(), "Database runbooks") || !strings.Contains(expanded.Body.String(), `"operation":"delete"`) {
 		t.Fatal(expanded.Body.String())
 	}
@@ -720,6 +774,8 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	delete(update, "parentId")
 	call(actor, "DELETE", "/pages/"+hierarchyGrandchild.ID, nil, 204)
 	call(actor, "DELETE", "/pages/"+hierarchyChild.ID, nil, 204)
+	call(actor, "DELETE", "/folders/"+privateDatabaseChild.ID, nil, 204)
+	call(actor, "DELETE", "/databases/"+privateDatabase.ID, nil, 204)
 	call(actor, "DELETE", "/pages/"+page.ID, nil, 204)
 	call(actor, "GET", "/pages/"+page.ID, nil, 404)
 	call(actor, "GET", "/pages/"+page.ID+"?status=trashed&body-format=storage", nil, 200)
@@ -848,7 +904,7 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		if a.EntityType == "wiki_footer_comment_like" && strings.HasPrefix(a.EntityID, secretCommentBean.ID+":") {
 			t.Fatalf("private wiki like action leaked: %s", a.Payload)
 		}
-		if strings.Contains(string(a.Payload), "Private draft") || strings.Contains(string(a.Payload), "Secret guide") || strings.Contains(string(a.Payload), "PRIVATE") || strings.Contains(string(a.Payload), "Private launch phrase") || strings.Contains(string(a.Payload), "Private folder") || strings.Contains(string(a.Payload), "secret-folder-property") || strings.Contains(string(a.Payload), "Private Smart Link") || strings.Contains(string(a.Payload), "private.example.test") || strings.Contains(string(a.Payload), "secret-label") || strings.Contains(string(a.Payload), "Restricted launch plan") || strings.Contains(string(a.Payload), "Managers approved the launch") || strings.Contains(string(a.Payload), "classified-release") || strings.Contains(string(a.Payload), "classified-metadata") || strings.Contains(string(a.Payload), "classified-file") || strings.Contains(string(a.Payload), "Classified attachment discussion") || strings.Contains(string(a.Payload), "Classified inline discussion") || strings.Contains(string(a.Payload), "Classified task discussion") {
+		if strings.Contains(string(a.Payload), "Private draft") || strings.Contains(string(a.Payload), "Secret guide") || strings.Contains(string(a.Payload), "PRIVATE") || strings.Contains(string(a.Payload), "Private launch phrase") || strings.Contains(string(a.Payload), "Private folder") || strings.Contains(string(a.Payload), "secret-folder-property") || strings.Contains(string(a.Payload), "Private Smart Link") || strings.Contains(string(a.Payload), "private.example.test") || strings.Contains(string(a.Payload), "Private database") || strings.Contains(string(a.Payload), "private-database-property") || strings.Contains(string(a.Payload), "Private database child") || strings.Contains(string(a.Payload), "secret-label") || strings.Contains(string(a.Payload), "Restricted launch plan") || strings.Contains(string(a.Payload), "Managers approved the launch") || strings.Contains(string(a.Payload), "classified-release") || strings.Contains(string(a.Payload), "classified-metadata") || strings.Contains(string(a.Payload), "classified-file") || strings.Contains(string(a.Payload), "Classified attachment discussion") || strings.Contains(string(a.Payload), "Classified inline discussion") || strings.Contains(string(a.Payload), "Classified task discussion") {
 			t.Fatalf("private wiki action leaked: %s", a.Payload)
 		}
 	}

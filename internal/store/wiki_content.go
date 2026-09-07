@@ -9,8 +9,8 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const wikiContentVisible = `(` + wikiSpaceVisible + `) AND (c.root_page_id IS NULL OR (p.status='current' AND ` + wikiPageVisible + `))`
-const wikiContentWritable = `(` + wikiSpaceVisible + `) AND (c.root_page_id IS NULL OR (p.status='current' AND ` + wikiPageVisible + ` AND ` + wikiPageWritable + `))`
+const wikiContentVisible = `(` + wikiSpaceVisible + `) AND (NOT c.private OR c.author_id=$2) AND (c.root_page_id IS NULL OR (p.status='current' AND ` + wikiPageVisible + `))`
+const wikiContentWritable = `(` + wikiSpaceVisible + `) AND (NOT c.private OR c.author_id=$2) AND (c.root_page_id IS NULL OR (p.status='current' AND ` + wikiPageVisible + ` AND ` + wikiPageWritable + `))`
 const wikiContentSelect = `SELECT c.id::text,c.type,c.status,c.title,
   COALESCE(c.parent_content_id::text,c.parent_page_id::text,''),
   CASE WHEN c.parent_content_id IS NOT NULL THEN parent.type WHEN c.parent_page_id IS NOT NULL THEN 'page' ELSE '' END,
@@ -18,7 +18,7 @@ const wikiContentSelect = `SELECT c.id::text,c.type,c.status,c.title,
     AND sibling.parent_page_id IS NOT DISTINCT FROM c.parent_page_id
     AND sibling.parent_content_id IS NOT DISTINCT FROM c.parent_content_id AND sibling.id<c.id),
   c.author_id,c.owner_id,to_char(c.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),
-  c.space_id::text,c.embed_url,v.version,v.message,v.author_id,
+  c.space_id::text,c.embed_url,c.private,c.classification_level,v.version,v.message,v.author_id,
   to_char(v.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"')
   FROM wiki_content c JOIN wiki_spaces s ON s.id=c.space_id
   JOIN wiki_content_versions v ON v.content_id=c.id AND v.version=c.version
@@ -29,7 +29,7 @@ func scanWikiContent(row pgx.Row) (*models.WikiContent, error) {
 	content := &models.WikiContent{}
 	err := row.Scan(&content.ID, &content.Type, &content.Status, &content.Title,
 		&content.ParentID, &content.ParentType, &content.Position, &content.AuthorID,
-		&content.OwnerID, &content.CreatedAt, &content.SpaceID, &content.EmbedURL,
+		&content.OwnerID, &content.CreatedAt, &content.SpaceID, &content.EmbedURL, &content.Private, &content.ClassificationLevel,
 		&content.Version.Number, &content.Version.Message, &content.Version.AuthorID,
 		&content.Version.CreatedAt)
 	return content, err
@@ -85,18 +85,20 @@ func (s *Store) CreateWikiContent(ctx context.Context, ws, actor string, input m
 			return nil, pageErr
 		} else {
 			var parentID, parentType, parentRoot string
-			contentErr := tx.QueryRow(ctx, `SELECT c.id::text,c.type,COALESCE(c.root_page_id::text,'') FROM wiki_content c JOIN wiki_spaces s ON s.id=c.space_id LEFT JOIN wiki_pages p ON p.id=c.root_page_id WHERE s.workspace_id=$1 AND `+wikiContentWritable+` AND c.id::text=$3 AND c.space_id::text=$4 AND c.status='current' FOR SHARE OF c`, ws, actor, input.ParentID, spaceID).Scan(&parentID, &parentType, &parentRoot)
+			var parentPrivate bool
+			contentErr := tx.QueryRow(ctx, `SELECT c.id::text,c.type,COALESCE(c.root_page_id::text,''),c.private FROM wiki_content c JOIN wiki_spaces s ON s.id=c.space_id LEFT JOIN wiki_pages p ON p.id=c.root_page_id WHERE s.workspace_id=$1 AND `+wikiContentWritable+` AND c.id::text=$3 AND c.space_id::text=$4 AND c.status='current' FOR SHARE OF c`, ws, actor, input.ParentID, spaceID).Scan(&parentID, &parentType, &parentRoot, &parentPrivate)
 			if contentErr != nil {
 				return nil, fmt.Errorf("%w: choose visible parent content from this space", ErrWikiValidation)
 			}
 			parentContent, input.ParentType = parentID, parentType
+			input.Private = input.Private || parentPrivate
 			if parentRoot != "" {
 				rootPage = parentRoot
 			}
 		}
 	}
-	if err = tx.QueryRow(ctx, `INSERT INTO wiki_content(space_id,parent_page_id,parent_content_id,root_page_id,type,title,embed_url,author_id,owner_id)
-    VALUES($1::bigint,$2::bigint,$3::bigint,$4::bigint,$5,$6,$7,$8,$8) RETURNING id::text`, spaceID, parentPage, parentContent, rootPage, input.Type, input.Title, input.EmbedURL, actor).Scan(&input.ID); err != nil {
+	if err = tx.QueryRow(ctx, `INSERT INTO wiki_content(space_id,parent_page_id,parent_content_id,root_page_id,type,title,embed_url,private,author_id,owner_id)
+    VALUES($1::bigint,$2::bigint,$3::bigint,$4::bigint,$5,$6,$7,$8,$9,$9) RETURNING id::text`, spaceID, parentPage, parentContent, rootPage, input.Type, input.Title, input.EmbedURL, input.Private, actor).Scan(&input.ID); err != nil {
 		return nil, err
 	}
 	if _, err = tx.Exec(ctx, `INSERT INTO wiki_content_versions(content_id,version,title,status,embed_url,author_id) VALUES($1::bigint,1,$2,'current',$3,$4)`, input.ID, input.Title, input.EmbedURL, actor); err != nil {
@@ -156,7 +158,7 @@ func wikiContentAction(ctx context.Context, tx pgx.Tx, ws, actor string, content
 	if err = tx.QueryRow(ctx, `SELECT COALESCE(root_page_id::text,'') FROM wiki_content WHERE id::text=$1`, content.ID).Scan(&rootPage); err != nil {
 		return err
 	}
-	payload, err := json.Marshal(map[string]any{"wikiSpaceId": content.SpaceID, "rootPageId": rootPage, "wiki_content": content})
+	payload, err := json.Marshal(map[string]any{"wikiSpaceId": content.SpaceID, "rootPageId": rootPage, "contentPrivate": content.Private, "contentAuthorId": content.AuthorID, "wiki_content": content})
 	if err != nil {
 		return err
 	}

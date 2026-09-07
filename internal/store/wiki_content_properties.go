@@ -44,12 +44,12 @@ func (s *Store) WikiContentProperty(ctx context.Context, ws, user, contentID, co
 	return scanWikiContentProperty(s.Pool.QueryRow(ctx, wikiContentPropertySelect+` WHERE s.workspace_id=$1 AND `+wikiContentVisible+` AND c.id::text=$3 AND c.type=$4 AND c.status='current' AND cp.id::text=$5`, ws, user, contentID, contentType, propertyID))
 }
 
-func contentPropertyAction(ctx context.Context, tx pgx.Tx, ws, actor, spaceID, rootPage string, property *models.WikiContentProperty, op string) error {
+func contentPropertyAction(ctx context.Context, tx pgx.Tx, ws, actor, spaceID, rootPage, contentAuthor string, contentPrivate bool, property *models.WikiContentProperty, op string) error {
 	seq, err := nextSeq(ctx, tx, ws)
 	if err != nil {
 		return err
 	}
-	payload, err := json.Marshal(map[string]any{"wikiSpaceId": spaceID, "rootPageId": rootPage, "wiki_content_property": property})
+	payload, err := json.Marshal(map[string]any{"wikiSpaceId": spaceID, "rootPageId": rootPage, "contentPrivate": contentPrivate, "contentAuthorId": contentAuthor, "wiki_content_property": property})
 	if err != nil {
 		return err
 	}
@@ -62,8 +62,9 @@ func (s *Store) CreateWikiContentProperty(ctx context.Context, ws, actor, conten
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	var spaceID, rootPage string
-	if err = tx.QueryRow(ctx, `SELECT c.space_id::text,COALESCE(c.root_page_id::text,'') FROM wiki_content c JOIN wiki_spaces s ON s.id=c.space_id LEFT JOIN wiki_pages p ON p.id=c.root_page_id WHERE s.workspace_id=$1 AND `+wikiContentWritable+` AND c.id::text=$3 AND c.type=$4 AND c.status='current' FOR SHARE OF c`, ws, actor, contentID, contentType).Scan(&spaceID, &rootPage); err != nil {
+	var spaceID, rootPage, contentAuthor string
+	var contentPrivate bool
+	if err = tx.QueryRow(ctx, `SELECT c.space_id::text,COALESCE(c.root_page_id::text,''),c.author_id,c.private FROM wiki_content c JOIN wiki_spaces s ON s.id=c.space_id LEFT JOIN wiki_pages p ON p.id=c.root_page_id WHERE s.workspace_id=$1 AND `+wikiContentWritable+` AND c.id::text=$3 AND c.type=$4 AND c.status='current' FOR SHARE OF c`, ws, actor, contentID, contentType).Scan(&spaceID, &rootPage, &contentAuthor, &contentPrivate); err != nil {
 		return nil, err
 	}
 	var propertyID string
@@ -77,7 +78,7 @@ func (s *Store) CreateWikiContentProperty(ctx context.Context, ws, actor, conten
 	if err != nil {
 		return nil, err
 	}
-	if err = contentPropertyAction(ctx, tx, ws, actor, spaceID, rootPage, property, models.OpUpsert); err != nil {
+	if err = contentPropertyAction(ctx, tx, ws, actor, spaceID, rootPage, contentAuthor, contentPrivate, property, models.OpUpsert); err != nil {
 		return nil, err
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -92,9 +93,10 @@ func (s *Store) UpdateWikiContentProperty(ctx context.Context, ws, actor, conten
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	var spaceID, rootPage, oldKey string
+	var spaceID, rootPage, contentAuthor, oldKey string
+	var contentPrivate bool
 	var oldVersion int
-	if err = tx.QueryRow(ctx, `SELECT c.space_id::text,COALESCE(c.root_page_id::text,''),cp.key,cp.version FROM wiki_content_properties cp JOIN wiki_content c ON c.id=cp.content_id JOIN wiki_spaces s ON s.id=c.space_id LEFT JOIN wiki_pages p ON p.id=c.root_page_id WHERE s.workspace_id=$1 AND `+wikiContentWritable+` AND c.id::text=$3 AND c.type=$4 AND c.status='current' AND cp.id::text=$5 FOR UPDATE OF cp`, ws, actor, contentID, contentType, propertyID).Scan(&spaceID, &rootPage, &oldKey, &oldVersion); err != nil {
+	if err = tx.QueryRow(ctx, `SELECT c.space_id::text,COALESCE(c.root_page_id::text,''),c.author_id,c.private,cp.key,cp.version FROM wiki_content_properties cp JOIN wiki_content c ON c.id=cp.content_id JOIN wiki_spaces s ON s.id=c.space_id LEFT JOIN wiki_pages p ON p.id=c.root_page_id WHERE s.workspace_id=$1 AND `+wikiContentWritable+` AND c.id::text=$3 AND c.type=$4 AND c.status='current' AND cp.id::text=$5 FOR UPDATE OF cp`, ws, actor, contentID, contentType, propertyID).Scan(&spaceID, &rootPage, &contentAuthor, &contentPrivate, &oldKey, &oldVersion); err != nil {
 		return nil, err
 	}
 	if oldKey != key || version != oldVersion+1 {
@@ -110,7 +112,7 @@ func (s *Store) UpdateWikiContentProperty(ctx context.Context, ws, actor, conten
 	if err != nil {
 		return nil, err
 	}
-	if err = contentPropertyAction(ctx, tx, ws, actor, spaceID, rootPage, property, models.OpUpsert); err != nil {
+	if err = contentPropertyAction(ctx, tx, ws, actor, spaceID, rootPage, contentAuthor, contentPrivate, property, models.OpUpsert); err != nil {
 		return nil, err
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -129,14 +131,15 @@ func (s *Store) DeleteWikiContentProperty(ctx context.Context, ws, actor, conten
 	if err != nil {
 		return err
 	}
-	var spaceID, rootPage string
-	if err = tx.QueryRow(ctx, `SELECT space_id::text,COALESCE(root_page_id::text,'') FROM wiki_content WHERE id::text=$1`, contentID).Scan(&spaceID, &rootPage); err != nil {
+	var spaceID, rootPage, contentAuthor string
+	var contentPrivate bool
+	if err = tx.QueryRow(ctx, `SELECT space_id::text,COALESCE(root_page_id::text,''),author_id,private FROM wiki_content WHERE id::text=$1`, contentID).Scan(&spaceID, &rootPage, &contentAuthor, &contentPrivate); err != nil {
 		return err
 	}
 	if _, err = tx.Exec(ctx, `DELETE FROM wiki_content_properties WHERE id::text=$1`, propertyID); err != nil {
 		return err
 	}
-	if err = contentPropertyAction(ctx, tx, ws, actor, spaceID, rootPage, property, models.OpDelete); err != nil {
+	if err = contentPropertyAction(ctx, tx, ws, actor, spaceID, rootPage, contentAuthor, contentPrivate, property, models.OpDelete); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
