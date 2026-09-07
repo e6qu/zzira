@@ -2,7 +2,9 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"regexp"
 	"strings"
 	"unicode/utf8"
@@ -168,4 +170,51 @@ func (s *Service) SetWikiPageRestrictions(ctx context.Context, ws, actor, pageID
 
 func (s *Service) SetWikiPageRestrictionSubject(ctx context.Context, ws, actor, pageID, operation string, subject models.WikiRestrictionSubject, add bool) ([]models.WikiPageRestriction, error) {
 	return s.Store.SetWikiPageRestrictionSubject(ctx, ws, actor, pageID, operation, subject, add)
+}
+
+func (s *Service) SaveWikiAttachment(ctx context.Context, ws, actor, pageID, attachmentID, filename, mediaType, comment, message string, minor bool, r io.Reader) (*models.WikiAttachment, error) {
+	if s.Blobs == nil {
+		return nil, fmt.Errorf("attachment storage not configured")
+	}
+	var err error
+	filename, err = normalizedAttachmentFilename(filename)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", store.ErrWikiValidation, err)
+	}
+	mediaType, err = normalizedAttachmentMIMEType(mediaType)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", store.ErrWikiValidation, err)
+	}
+	if len(comment) > 2000 || len(message) > 2000 {
+		return nil, fmt.Errorf("%w: attachment comments must be at most 2000 bytes", store.ErrWikiValidation)
+	}
+	blobRef := store.NewID("blob")
+	size, err := s.Blobs.Put(ctx, blobRef, io.LimitReader(r, 100<<20+1))
+	if err != nil {
+		return nil, err
+	}
+	if size > 100<<20 {
+		_ = s.Blobs.Delete(ctx, blobRef)
+		return nil, fmt.Errorf("%w: attachments must be at most 100 MiB", store.ErrWikiValidation)
+	}
+	a, err := s.Store.SaveWikiAttachment(ctx, ws, actor, pageID, attachmentID, filename, mediaType, comment, message, minor, size, blobRef)
+	if err != nil {
+		return nil, errors.Join(err, s.Blobs.Delete(ctx, blobRef))
+	}
+	return a, nil
+}
+
+func (s *Service) DeleteWikiAttachment(ctx context.Context, ws, actor, id string) error {
+	refs, err := s.Store.DeleteWikiAttachment(ctx, ws, actor, id)
+	if err != nil {
+		return err
+	}
+	for _, ref := range refs {
+		if s.Blobs != nil {
+			if cleanupErr := s.Blobs.Delete(ctx, ref); cleanupErr != nil {
+				err = errors.Join(err, cleanupErr)
+			}
+		}
+	}
+	return err
 }

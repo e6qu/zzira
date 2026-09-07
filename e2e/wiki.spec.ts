@@ -66,6 +66,16 @@ test('wiki space, rich page, access, stale edits, child pages, history, trash an
   await page.getByRole('button', { name: 'Save page access', exact: true }).click();
   await member.reload();
   await expect(member.getByRole('link', { name: 'Edit page', exact: true })).toBeVisible();
+  await page.getByText('Attach a file', { exact: true }).click();
+  await page.getByLabel('File', { exact: true }).setInputFiles({ name: 'release-plan.txt', mimeType: 'text/plain', buffer: Buffer.from('Release plan v1') });
+  await page.getByLabel('Comment', { exact: true }).fill('Initial release plan');
+  await page.getByRole('button', { name: 'Upload file', exact: true }).click();
+  await expect(page.getByRole('link', { name: 'release-plan.txt', exact: true })).toBeVisible();
+  await page.getByText('Replace', { exact: true }).click();
+  await page.getByLabel('Replacement file for release-plan.txt').setInputFiles({ name: 'release-plan.txt', mimeType: 'text/plain', buffer: Buffer.from('Release plan v2') });
+  await page.getByLabel('Version comment').fill('Approved plan');
+  await page.getByRole('button', { name: 'Replace file', exact: true }).click();
+  await expect(page.locator('#wiki-attachments')).toContainText('Version 2');
   await checkWikiAccessibility(page);
   await page.locator('[data-theme-toggle]').click();
   await checkWikiAccessibility(page);

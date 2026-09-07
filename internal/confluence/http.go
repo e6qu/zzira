@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/e6qu/zzira/internal/attachments"
 	"github.com/e6qu/zzira/internal/authn"
 	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/models"
@@ -25,6 +26,7 @@ import (
 type Handler struct {
 	Store                  *store.Store
 	Commands               *commands.Service
+	Blobs                  attachments.Store
 	WorkspaceSlug, BaseURL string
 }
 
@@ -221,6 +223,20 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.contentLabels(w, r, ws, actor, "space", parts[1])
 	case len(parts) == 4 && parts[0] == "spaces" && parts[2] == "content" && parts[3] == "labels" && r.Method == "GET":
 		h.contentLabels(w, r, ws, actor, "space-content", parts[1])
+	case len(parts) == 1 && parts[0] == "attachments" && r.Method == "GET":
+		h.attachments(w, r, ws, actor, "")
+	case len(parts) == 2 && parts[0] == "attachments" && r.Method == "GET":
+		h.attachment(w, r, ws, actor, parts[1])
+	case len(parts) == 2 && parts[0] == "attachments" && r.Method == "DELETE":
+		h.deleteAttachment(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "attachments" && parts[2] == "operations" && r.Method == "GET":
+		h.attachmentOperations(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "attachments" && parts[2] == "versions" && r.Method == "GET":
+		h.attachmentVersions(w, r, ws, actor, parts[1])
+	case len(parts) == 4 && parts[0] == "attachments" && parts[2] == "versions" && r.Method == "GET":
+		h.attachmentVersion(w, r, ws, actor, parts[1], parts[3])
+	case len(parts) == 3 && parts[0] == "pages" && parts[2] == "attachments" && r.Method == "GET":
+		h.attachments(w, r, ws, actor, parts[1])
 	default:
 		failure(w, 404, "This Confluence resource is not implemented.")
 	}

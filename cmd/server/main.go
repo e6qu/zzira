@@ -274,13 +274,16 @@ func main() {
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/trash", webHandler.WikiTrash)
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/labels", webHandler.WikiPageLabels)
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/restrictions", webHandler.WikiPageRestrictions)
+	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/attachments", webHandler.WikiAttachmentCreate)
+	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/attachments/{attachment}/delete", webHandler.WikiAttachmentDelete)
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/comments", webHandler.WikiCommentCreate)
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/comments/{comment}", webHandler.WikiCommentUpdate)
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/comments/{comment}/delete", webHandler.WikiCommentDelete)
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/comments/{comment}/like", webHandler.WikiCommentLike)
-	confluenceHandler := &confluence.Handler{Store: st, Commands: api.Commands, WorkspaceSlug: workspaceSlug, BaseURL: api.BaseURL}
+	confluenceHandler := &confluence.Handler{Store: st, Commands: api.Commands, Blobs: blobs, WorkspaceSlug: workspaceSlug, BaseURL: api.BaseURL}
 	mux.Handle("/wiki/api/v2/", confluenceHandler)
 	mux.Handle("/wiki/rest/api/", &confluence.V1Handler{Handler: confluenceHandler})
+	mux.Handle("/wiki/download/attachments/", &confluence.DownloadHandler{Handler: confluenceHandler})
 	mux.HandleFunc("GET /projects/{key}/releases", webHandler.Releases)
 	mux.HandleFunc("POST /projects/{key}/releases", webHandler.Releases)
 	mux.HandleFunc("GET /projects/{key}/releases/{version}", webHandler.Release)

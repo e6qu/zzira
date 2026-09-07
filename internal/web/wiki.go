@@ -23,6 +23,7 @@ type wikiData struct {
 	Versions                              []models.WikiVersion
 	Comments                              []wikiCommentNode
 	Labels                                []models.WikiLabel
+	Attachments                           []*models.WikiAttachment
 	Restrictions                          []models.WikiPageRestriction
 	RestrictionUsers                      []wikiRestrictionOption
 	RestrictionGroups                     []wikiRestrictionOption
@@ -319,6 +320,11 @@ func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 			http.Error(w, "Could not load page labels.", 500)
 			return
 		}
+		data.Attachments, err = h.Store.WikiAttachments(r.Context(), ws, user.ID, page.ID, "", "", "current")
+		if err != nil {
+			http.Error(w, "Could not load page attachments.", 500)
+			return
+		}
 		comments, commentErr := h.Store.WikiFooterCommentThread(r.Context(), ws, user.ID, page.ID)
 		if commentErr != nil {
 			http.Error(w, "Could not load page comments.", 500)
@@ -342,6 +348,61 @@ func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 		data.Comments = wikiCommentTree(comments, likes, versions, user.ID, admin)
 	}
 	h.writeWorkspacePageStatus(w, r, "page_wiki_page", user, ws, data, "wiki", "", status)
+}
+
+func (h *Handler) WikiAttachmentCreate(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, (100<<20)+1)
+	if err := r.ParseMultipartForm(4 << 20); err != nil {
+		http.Error(w, "Invalid attachment upload.", 400)
+		return
+	}
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "Choose a file to attach.", 400)
+		return
+	}
+	defer file.Close()
+	page, err := h.wikiPageForComment(r, ws, user.ID)
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	a, err := h.Commands.SaveWikiAttachment(r.Context(), ws, user.ID, page.ID, r.PostFormValue("attachmentId"), header.Filename, header.Header.Get("Content-Type"), r.PostFormValue("comment"), r.PostFormValue("message"), false, file)
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	redirectLocal(w, r, wikiPageURL(page)+"#attachment-"+a.ID)
+}
+
+func (h *Handler) WikiAttachmentDelete(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	page, err := h.wikiPageForComment(r, ws, user.ID)
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	a, err := h.Store.WikiAttachment(r.Context(), ws, user.ID, r.PathValue("attachment"))
+	if err != nil || a.PageID != page.ID {
+		http.NotFound(w, r)
+		return
+	}
+	if err = h.Commands.DeleteWikiAttachment(r.Context(), ws, user.ID, a.ID); err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	redirectLocal(w, r, wikiPageURL(page)+"#wiki-attachments")
 }
 
 func (h *Handler) WikiPageRestrictions(w http.ResponseWriter, r *http.Request) {

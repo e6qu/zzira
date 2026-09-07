@@ -38,6 +38,14 @@ func (h *V1Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	parts := strings.Split(strings.Trim(strings.TrimPrefix(r.URL.Path, "/wiki/rest/api/"), "/"), "/")
 	switch {
+	case len(parts) == 4 && parts[0] == "content" && parts[2] == "child" && parts[3] == "attachment":
+		h.v1SaveAttachments(w, r, ws, actor, parts[1])
+	case len(parts) == 5 && parts[0] == "content" && parts[2] == "child" && parts[3] == "attachment" && r.Method == "PUT":
+		h.v1UpdateAttachmentProperties(w, r, ws, actor, parts[1], parts[4])
+	case len(parts) == 6 && parts[0] == "content" && parts[2] == "child" && parts[3] == "attachment" && parts[5] == "data" && r.Method == "POST":
+		h.v1UpdateAttachmentData(w, r, ws, actor, parts[1], parts[4])
+	case len(parts) == 6 && parts[0] == "content" && parts[2] == "child" && parts[3] == "attachment" && parts[5] == "download" && r.Method == "GET":
+		h.v1DownloadAttachment(w, r, ws, actor, parts[1], parts[4])
 	case len(parts) == 3 && parts[0] == "content" && parts[2] == "restriction":
 		h.contentRestrictions(w, r, ws, actor, parts[1])
 	case len(parts) == 4 && parts[0] == "content" && parts[2] == "restriction" && parts[3] == "byOperation" && r.Method == "GET":

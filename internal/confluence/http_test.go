@@ -6,11 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"mime/multipart"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
 
+	"github.com/e6qu/zzira/internal/attachments"
 	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
@@ -74,7 +77,11 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 			exec(`DELETE FROM users WHERE id=$1`, id)
 		}
 	})
-	h := &Handler{Store: st, Commands: &commands.Service{Store: st}, WorkspaceSlug: ws, BaseURL: "https://zzira.test"}
+	blobs, err := attachments.NewFS(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := &Handler{Store: st, Commands: &commands.Service{Store: st, Blobs: blobs}, Blobs: blobs, WorkspaceSlug: ws, BaseURL: "https://zzira.test"}
 	v1 := &V1Handler{Handler: h}
 	call := func(user, method, path string, body any, want int) *httptest.ResponseRecorder {
 		t.Helper()
@@ -107,6 +114,36 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		v1.ServeHTTP(w, r)
 		if w.Code != want {
 			t.Fatalf("v1 %s %s: got %d want %d: %s", method, path, w.Code, want, w.Body.String())
+		}
+		return w
+	}
+	callV1Multipart := func(user, method, path, filename, content, comment string, want int) *httptest.ResponseRecorder {
+		t.Helper()
+		var body bytes.Buffer
+		writer := multipart.NewWriter(&body)
+		part, err := writer.CreateFormFile("file", filename)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := part.Write([]byte(content)); err != nil {
+			t.Fatal(err)
+		}
+		if err := writer.WriteField("comment", comment); err != nil {
+			t.Fatal(err)
+		}
+		if err := writer.WriteField("minorEdit", "false"); err != nil {
+			t.Fatal(err)
+		}
+		if err := writer.Close(); err != nil {
+			t.Fatal(err)
+		}
+		r := httptest.NewRequest(method, "/wiki/rest/api"+path, &body)
+		r.Header.Set("Content-Type", writer.FormDataContentType())
+		r.SetBasicAuth(user+"@example.test", user)
+		w := httptest.NewRecorder()
+		v1.ServeHTTP(w, r)
+		if w.Code != want {
+			t.Fatalf("v1 multipart %s %s: got %d want %d: %s", method, path, w.Code, want, w.Body.String())
 		}
 		return w
 	}
@@ -219,6 +256,39 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	if remaining := call(member, "GET", "/pages/"+page.ID+"/labels", nil, 200); strings.Contains(remaining.Body.String(), "release-ready") || strings.Contains(remaining.Body.String(), "handbook") {
 		t.Fatal(remaining.Body.String())
 	}
+	upload := callV1Multipart(member, "POST", "/content/"+page.ID+"/child/attachment", "release.txt", "release one", "Initial release file", 200)
+	var uploaded struct {
+		Results []struct {
+			ID      string
+			Version models.WikiVersion
+		}
+	}
+	if err := json.Unmarshal(upload.Body.Bytes(), &uploaded); err != nil || len(uploaded.Results) != 1 {
+		t.Fatalf("unexpected attachment: %v %s", err, upload.Body.String())
+	}
+	attachmentID := uploaded.Results[0].ID
+	call(member, "GET", "/pages/"+page.ID+"/attachments?filename=release.txt", nil, 200)
+	call(member, "GET", "/attachments?mediaType=application/octet-stream", nil, 200)
+	call(member, "GET", "/attachments/"+attachmentID+"?include-operations=true&include-versions=true", nil, 200)
+	call(member, "GET", "/attachments/"+attachmentID+"/operations", nil, 200)
+	callV1Multipart(member, "POST", "/content/"+page.ID+"/child/attachment/"+attachmentID+"/data", "release.txt", "release two", "Updated release file", 200)
+	versionsResponse := call(member, "GET", "/attachments/"+attachmentID+"/versions", nil, 200)
+	if !strings.Contains(versionsResponse.Body.String(), `"number":2`) {
+		t.Fatal(versionsResponse.Body.String())
+	}
+	call(member, "GET", "/attachments/"+attachmentID+"/versions/1", nil, 200)
+	properties := map[string]any{"id": attachmentID, "type": "attachment", "title": "release-notes.txt", "metadata": map[string]string{"mediaType": "text/plain"}, "version": map[string]any{"number": 3, "message": "Renamed file"}}
+	callV1(member, "PUT", "/content/"+page.ID+"/child/attachment/"+attachmentID, properties, 200)
+	redirect := callV1(member, "GET", "/content/"+page.ID+"/child/attachment/"+attachmentID+"/download?version=2", nil, 302)
+	downloadRequest := httptest.NewRequest(http.MethodGet, redirect.Header().Get("Location"), nil)
+	downloadRequest.SetBasicAuth(member+"@example.test", member)
+	downloadResponse := httptest.NewRecorder()
+	(&DownloadHandler{Handler: h}).ServeHTTP(downloadResponse, downloadRequest)
+	if downloadResponse.Code != 200 || downloadResponse.Body.String() != "release two" {
+		t.Fatalf("unexpected attachment download: %d %s", downloadResponse.Code, downloadResponse.Body.String())
+	}
+	call(member, "DELETE", "/attachments/"+attachmentID, nil, 204)
+	call(member, "GET", "/attachments/"+attachmentID, nil, 404)
 	topResponse := call(member, "POST", "/footer-comments", map[string]any{"pageId": page.ID, "body": map[string]any{"storage": models.WikiBody{Representation: "storage", Value: "<p>Ready for review</p>"}}}, 201)
 	var top struct {
 		ID      string

@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 250,
+  "assessedTotal": 262,
   "counts": {
     "delivered": 0,
-    "partial": 243,
+    "partial": 255,
     "missing": 7,
-    "unassessed": 957
+    "unassessed": 945
   },
   "countsByFamily": {
     "automation": {
@@ -18,9 +18,9 @@
     },
     "confluence": {
       "delivered": 0,
-      "partial": 36,
+      "partial": 48,
       "missing": 0,
-      "unassessed": 312
+      "unassessed": 300
     },
     "jira-platform": {
       "delivered": 0,
@@ -7474,41 +7474,86 @@
       "operationId": "confluence-v1:POST:/wiki/rest/api/content/{id}/child/attachment",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/attachments.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_attachments.go",
+        "migrations/077_wiki_attachments.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; advanced expansions and media processing remain."
     },
     {
       "operationId": "confluence-v1:PUT:/wiki/rest/api/content/{id}/child/attachment",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/attachments.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_attachments.go",
+        "migrations/077_wiki_attachments.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; advanced expansions and media processing remain."
     },
     {
       "operationId": "confluence-v1:PUT:/wiki/rest/api/content/{id}/child/attachment/{attachmentId}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/attachments.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_attachments.go",
+        "migrations/077_wiki_attachments.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; advanced expansions and media processing remain."
     },
     {
       "operationId": "confluence-v1:POST:/wiki/rest/api/content/{id}/child/attachment/{attachmentId}/data",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/attachments.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_attachments.go",
+        "migrations/077_wiki_attachments.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; advanced expansions and media processing remain."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/content/{id}/child/attachment/{attachmentId}/download",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/attachments.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_attachments.go",
+        "migrations/077_wiki_attachments.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; advanced expansions and media processing remain."
     },
     {
       "operationId": "confluence-v1:POST:/wiki/rest/api/content/{id}/copy",
@@ -8668,9 +8713,18 @@
       "operationId": "confluence-v2:GET:/wiki/api/v2/attachments",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/attachments.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_attachments.go",
+        "migrations/077_wiki_attachments.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; advanced expansions and media processing remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/attachments/{attachment-id}/properties",
@@ -8716,25 +8770,52 @@
       "operationId": "confluence-v2:GET:/wiki/api/v2/attachments/{attachment-id}/versions/{version-number}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/attachments.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_attachments.go",
+        "migrations/077_wiki_attachments.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; advanced expansions and media processing remain."
     },
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/attachments/{id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/attachments.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_attachments.go",
+        "migrations/077_wiki_attachments.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; advanced expansions and media processing remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/attachments/{id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/attachments.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_attachments.go",
+        "migrations/077_wiki_attachments.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; advanced expansions and media processing remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/attachments/{id}/footer-comments",
@@ -8756,9 +8837,18 @@
       "operationId": "confluence-v2:GET:/wiki/api/v2/attachments/{id}/operations",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/attachments.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_attachments.go",
+        "migrations/077_wiki_attachments.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; advanced expansions and media processing remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/attachments/{id}/thumbnail/download",
@@ -8772,9 +8862,18 @@
       "operationId": "confluence-v2:GET:/wiki/api/v2/attachments/{id}/versions",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/attachments.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_attachments.go",
+        "migrations/077_wiki_attachments.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; advanced expansions and media processing remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts",
@@ -9867,9 +9966,18 @@
       "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{id}/attachments",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/attachments.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_attachments.go",
+        "migrations/077_wiki_attachments.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; advanced expansions and media processing remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{id}/children",

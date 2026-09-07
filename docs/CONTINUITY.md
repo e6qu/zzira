@@ -1420,10 +1420,26 @@ Validation after Confluence page restrictions:
 - Exact reviewed API coverage is 250 of 1,207 operations: 243 partial, 7
   missing, and 957 unassessed. Confluence coverage is 36 of 348 reviewed.
 
+Validation after versioned Confluence page attachments:
+
+- Migration 077 stores page attachment identity and immutable file versions;
+  blobs stream through the existing bounded filesystem abstraction with orphan
+  cleanup. Current read and update restrictions protect metadata, bytes and
+  mutations, and attachment actions inherit page visibility.
+- Five legacy v1 and seven v2 operations cover upload/create-or-update,
+  replacement, metadata update, redirect/download, global and page listing,
+  version reads, permitted operations and deletion. The page UI exposes upload,
+  replacement, download and deletion with retained comments and versions.
+- PostgreSQL and filesystem integration exercise the complete three-version
+  lifecycle, historical bytes, both API generations and deletion. Chromium
+  covers upload and replacement within the two-account restricted-page journey.
+- Exact reviewed API coverage is 262 of 1,207 operations: 255 partial, 7
+  missing, and 945 unassessed. Confluence coverage is 48 of 348 reviewed.
+
 ## Current change
 
-1. Continue Confluence v1/v2 contract and knowledge collaboration with page
-   attachments and watches.
+1. Continue Confluence attachment properties, labels, comments and thumbnails,
+   then page and space watches.
 2. Return to advanced service operations risk, CAB approval, on-call and
    post-incident review configuration after the next knowledge slice.
 

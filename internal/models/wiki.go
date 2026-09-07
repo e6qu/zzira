@@ -76,3 +76,25 @@ type WikiPageRestriction struct {
 	Users     []WikiRestrictionSubject `json:"users"`
 	Groups    []WikiRestrictionSubject `json:"groups"`
 }
+
+type WikiAttachment struct {
+	ID        string      `json:"id"`
+	PageID    string      `json:"pageId"`
+	FileID    string      `json:"fileId"`
+	Filename  string      `json:"title"`
+	MediaType string      `json:"mediaType"`
+	Comment   string      `json:"comment"`
+	Size      int64       `json:"fileSize"`
+	Status    string      `json:"status"`
+	AuthorID  string      `json:"authorId"`
+	CreatedAt string      `json:"createdAt"`
+	Version   WikiVersion `json:"version"`
+}
+
+type WikiAttachmentVersion struct {
+	WikiVersion
+	Filename  string `json:"title"`
+	MediaType string `json:"mediaType"`
+	Comment   string `json:"comment"`
+	Size      int64  `json:"fileSize"`
+}
