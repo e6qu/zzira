@@ -1734,6 +1734,25 @@ Validation after Confluence blog discussions:
 - Exact reviewed API coverage is 384 of 1,207 operations: 377 partial, 7
   missing, and 823 unassessed. Confluence coverage is 170 of 348 reviewed.
 
+Validation after Confluence page governance:
+
+- Migration 092 adds durable page classification, active-user likes, UUID
+  redaction records and page-contained registered custom content.
+- Nine more pinned v2 operations cover the ordered classification-level
+  catalog; page classification read/set/reset; like count/users; permission
+  operations; guarded redaction; and typed custom-content discovery.
+- Redaction checks the current timestamp and version, Unicode ranges and
+  rendered storage markup, creates a new page version, can scrub matching text
+  from prior versions, records an organization audit event and emits a
+  permission-filtered sync action. Like actions retain page visibility and
+  direct-user/group restrictions in sync.
+- The author UI exposes like/unlike, page classification and exact-text
+  redaction with optional history cleaning. PostgreSQL integration covers
+  catalog order, validation, persistence, paging shapes, custom-content type
+  isolation, stale redaction, history cleanup and private-space isolation.
+- Exact reviewed API coverage is 393 of 1,207 operations: 386 partial, 7
+  missing, and 814 unassessed. Confluence coverage is 179 of 348 reviewed.
+
 ## Current change
 
 1. Resume the other Confluence content and administration operations.

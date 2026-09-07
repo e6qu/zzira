@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 384,
+  "assessedTotal": 393,
   "counts": {
     "delivered": 0,
-    "partial": 377,
+    "partial": 386,
     "missing": 7,
-    "unassessed": 823
+    "unassessed": 814
   },
   "countsByFamily": {
     "automation": {
@@ -18,9 +18,9 @@
     },
     "confluence": {
       "delivered": 0,
-      "partial": 170,
+      "partial": 179,
       "missing": 0,
-      "unassessed": 178
+      "unassessed": 169
     },
     "jira-platform": {
       "delivered": 0,
@@ -9484,9 +9484,15 @@
       "operationId": "confluence-v2:GET:/wiki/api/v2/classification-levels",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/page_governance.go",
+        "internal/confluence/http_test.go",
+        "internal/confluence/databases.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Returns the four ordered built-in published classification levels used consistently by page, blog-post, database and whiteboard APIs and author controls; organization-defined level administration and edition entitlements remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/comments/{comment-id}/properties",
@@ -10854,33 +10860,65 @@
       "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{id}/classification-level",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/page_governance.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_page_governance.go",
+        "migrations/092_wiki_page_governance.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Permission-scoped page classification supports reads for matching page status and durable published-level state through the REST API and author UI; archived pages, organization-defined levels and entitlement semantics remain."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/pages/{id}/classification-level",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/page_governance.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_page_governance.go",
+        "migrations/092_wiki_page_governance.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Writable current pages accept validated built-in classification assignments atomically, publish a permission-filtered sync action and expose the state in the author UI; organization-defined levels and entitlement semantics remain."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/pages/{id}/classification-level/reset",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/page_governance.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_page_governance.go",
+        "migrations/092_wiki_page_governance.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Writable current pages can atomically reset classification state with validated request semantics and permission-filtered sync; space-default inheritance and edition entitlements remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{id}/custom-content",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/page_governance.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_page_governance.go",
+        "migrations/089_wiki_blog_redaction_custom_content.sql",
+        "migrations/092_wiki_page_governance.sql"
+      ],
+      "notes": "Discovers registered page-owned custom content by required type with documented sorts, cursor pagination and storage or raw bodies under page visibility; custom-content lifecycle, ADF bodies and expansion flags remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{id}/descendants",
@@ -10970,33 +11008,63 @@
       "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{id}/likes/count",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/page_governance.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_page_governance.go",
+        "migrations/092_wiki_page_governance.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Returns the durable active-user like count for a visible current page, with like and unlike available in the author UI; public REST mutation is outside the pinned v2 contract."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{id}/likes/users",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/page_governance.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_page_governance.go",
+        "migrations/092_wiki_page_governance.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Returns cursor-paginated account IDs for active users who like a visible current page, while durable UI mutations emit permission-filtered sync actions; advanced user expansions remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{id}/operations",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/page_governance.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_restrictions.go",
+        "migrations/076_wiki_page_restrictions.sql"
+      ],
+      "notes": "Returns read plus update and delete operations according to current page visibility and direct-user/group edit restrictions; the complete Confluence permission-operation vocabulary remains."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/pages/{id}/redact",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/page_governance.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_page_governance.go",
+        "migrations/092_wiki_page_governance.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Guarded current-page redaction validates optimistic timestamps and versions, JSON-pointer rune ranges, non-overlap normalization and rendered markup, creates immutable redaction IDs and a new page version, optionally scrubs matching historical text, records an organization audit event, emits permission-filtered sync and supports exact-text author workflows; restoration and code-block-specific semantics remain."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/pages/{id}/title",

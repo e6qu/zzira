@@ -40,6 +40,8 @@ type wikiData struct {
 	BlogProperties                        []models.WikiContentProperty
 	BlogLikeCount                         int
 	BlogLiked                             bool
+	PageLikeCount                         int
+	PageLiked                             bool
 	Attachments                           []*models.WikiAttachment
 	AttachmentComments                    map[string][]wikiCommentNode
 	Restrictions                          []models.WikiPageRestriction
@@ -1060,6 +1062,18 @@ func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 			return
 		}
 		if page.Status == "current" {
+			pageLikes, likeErr := h.Store.WikiPageLikes(r.Context(), ws, user.ID, page.ID)
+			if likeErr != nil {
+				http.Error(w, "Could not load page likes.", 500)
+				return
+			}
+			data.PageLikeCount = len(pageLikes)
+			for _, accountID := range pageLikes {
+				if accountID == user.ID {
+					data.PageLiked = true
+					break
+				}
+			}
 			data.WatchingPage, err = h.Store.WikiWatchStatus(r.Context(), ws, user.ID, user.ID, "content", page.ID)
 			if err != nil {
 				http.Error(w, "Could not load page watch status.", 500)
@@ -1167,6 +1181,63 @@ func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 		}
 	}
 	h.writeWorkspacePageStatus(w, r, "page_wiki_page", user, ws, data, "wiki", "", status)
+}
+
+func (h *Handler) WikiPageMetadata(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	page, err := h.wikiPageForComment(r, ws, user.ID)
+	if err != nil || page.Status != "current" {
+		http.NotFound(w, r)
+		return
+	}
+	switch r.PostFormValue("action") {
+	case "like":
+		liked, parseErr := strconv.ParseBool(r.PostFormValue("liked"))
+		if parseErr != nil {
+			err = fmt.Errorf("%w: liked must be true or false", store.ErrWikiValidation)
+		} else {
+			err = h.Store.SetWikiPageLike(r.Context(), ws, user.ID, page.ID, liked)
+		}
+	case "classify":
+		_, err = h.Commands.SetWikiPageClassification(r.Context(), ws, user.ID, page.ID, r.PostFormValue("level"))
+	case "redact":
+		section, target := r.PostFormValue("section"), r.PostFormValue("text")
+		value := page.Body.Value
+		pointer := "/body/storage/value"
+		if section == "title" {
+			value, pointer = page.Title, "/title"
+		} else if section != "body" {
+			err = fmt.Errorf("%w: choose title or body redaction", store.ErrWikiValidation)
+			break
+		}
+		byteIndex := strings.Index(value, target)
+		if target == "" || byteIndex < 0 {
+			err = fmt.Errorf("%w: the exact text to redact was not found", store.ErrWikiValidation)
+			break
+		}
+		from := utf8.RuneCountInString(value[:byteIndex])
+		to := from + utf8.RuneCountInString(target)
+		reason := r.PostFormValue("reason")
+		redaction := models.WikiRedactionPointer{Pointer: pointer, From: &from, To: &to, Reason: &reason}
+		var title, body []models.WikiRedactionPointer
+		if section == "title" {
+			title = []models.WikiRedactionPointer{redaction}
+		} else {
+			body = []models.WikiRedactionPointer{redaction}
+		}
+		_, _, _, err = h.Commands.RedactWikiPage(r.Context(), ws, user.ID, page.ID, page.Version.CreatedAt, page.Version.Number, r.PostFormValue("cleanHistory") == "true", title, body)
+	default:
+		err = fmt.Errorf("%w: choose a page metadata action", store.ErrWikiValidation)
+	}
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	redirectLocal(w, r, wikiPageURL(page))
 }
 
 func (h *Handler) WikiAttachmentCreate(w http.ResponseWriter, r *http.Request) {

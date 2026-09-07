@@ -94,6 +94,18 @@ test('wiki space, rich page, access, stale edits, child pages, history, trash an
   await page.getByRole('button', { name: 'Save page', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Release checklist', level: 1 })).toBeVisible();
   await expect(page.getByRole('article', { name: 'Page content' })).toContainText('Review changes');
+  await page.getByRole('button', { name: 'Like', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Unlike · 1', exact: true })).toBeVisible();
+  await page.getByLabel('Data classification').selectOption('confidential');
+  await page.getByRole('button', { name: 'Save page classification', exact: true }).click();
+  await expect(page.getByText(/Page · Confidential/)).toBeVisible();
+  await page.getByText('Redact sensitive text', { exact: true }).click();
+  await page.getByLabel('Exact text').fill('Review changes');
+  await page.getByLabel('Reason').fill('Remove internal review wording');
+  await page.getByLabel('Remove this text from earlier versions').check();
+  await page.getByRole('button', { name: 'Redact page text', exact: true }).click();
+  await expect(page.getByRole('article', { name: 'Page content' })).toContainText('[REDACTED] and publish release notes.');
+  await checkWikiAccessibility(page);
   const pageURL = page.url().split('#')[0];
   await page.getByRole('button', { name: 'Watch page', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Stop watching page', exact: true })).toBeVisible();

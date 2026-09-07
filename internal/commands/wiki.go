@@ -454,6 +454,23 @@ func (s *Service) SetWikiBlogPostClassification(ctx context.Context, ws, actor, 
 	return s.Store.SetWikiBlogPostClassification(ctx, ws, actor, id, levelID)
 }
 
+func (s *Service) SetWikiPageClassification(ctx context.Context, ws, actor, id, levelID string) (*models.WikiPage, error) {
+	if levelID != "" && levelID != "public" && levelID != "internal" && levelID != "confidential" && levelID != "restricted" {
+		return nil, fmt.Errorf("%w: choose a supported classification level", store.ErrWikiValidation)
+	}
+	return s.Store.SetWikiPageClassification(ctx, ws, actor, id, levelID)
+}
+
+func (s *Service) RedactWikiPage(ctx context.Context, ws, actor, id, createdAt string, version int, cleanHistory bool, title, body []models.WikiRedactionPointer) (*models.WikiPage, []models.WikiRedactionResult, []models.WikiRedactionResult, error) {
+	if id == "" || createdAt == "" || version < 0 {
+		return nil, nil, nil, fmt.Errorf("%w: page, createdAt and a nonnegative version are required", store.ErrWikiValidation)
+	}
+	if _, err := time.Parse(time.RFC3339, createdAt); err != nil {
+		return nil, nil, nil, fmt.Errorf("%w: createdAt must be an RFC 3339 timestamp", store.ErrWikiValidation)
+	}
+	return s.Store.RedactWikiPage(ctx, ws, actor, id, createdAt, version, cleanHistory, title, body)
+}
+
 func (s *Service) RedactWikiBlogPost(ctx context.Context, ws, actor, id, createdAt string, version int, cleanHistory bool, title, body []models.WikiRedactionPointer) (*models.WikiBlogPost, []models.WikiRedactionResult, []models.WikiRedactionResult, error) {
 	if id == "" || createdAt == "" || version < 0 {
 		return nil, nil, nil, fmt.Errorf("%w: blog post, createdAt and a nonnegative version are required", store.ErrWikiValidation)

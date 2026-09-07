@@ -43,7 +43,7 @@ const wikiPageWritable = `(
   OR EXISTS (SELECT 1 FROM wiki_page_restrictions wr JOIN group_members gm ON wr.subject_type='group' AND gm.group_id::text=wr.subject_id WHERE wr.page_id=p.id AND wr.operation='update' AND gm.user_id=$2)
 )`
 const wikiSpaceSelect = `SELECT s.id::text,s.workspace_id,s.key,s.name,s.description,s.author_id,s.private,to_char(s.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM wiki_spaces s`
-const wikiPageSelect = `SELECT p.id::text,s.workspace_id,p.space_id::text,COALESCE(p.parent_id::text,''),p.title,p.status,p.published,p.body,p.author_id,to_char(p.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),v.version,v.message,v.minor_edit,v.author_id,to_char(v.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM wiki_pages p JOIN wiki_spaces s ON s.id=p.space_id JOIN wiki_page_versions v ON v.page_id=p.id AND v.version=p.version`
+const wikiPageSelect = `SELECT p.id::text,s.workspace_id,p.space_id::text,COALESCE(p.parent_id::text,''),p.title,p.status,p.published,p.classification_level,p.body,p.author_id,to_char(p.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),v.version,v.message,v.minor_edit,v.author_id,to_char(v.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM wiki_pages p JOIN wiki_spaces s ON s.id=p.space_id JOIN wiki_page_versions v ON v.page_id=p.id AND v.version=p.version`
 const wikiCommentSelect = `SELECT c.id::text,COALESCE(p.id::text,''),COALESCE(bp.id::text,''),COALESCE(p.space_id,bp.space_id)::text,COALESCE(c.attachment_id::text,''),COALESCE(c.parent_id::text,''),c.body,c.author_id,u.display_name,c.version,v.message,to_char(c.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),to_char(c.updated_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),v.author_id,to_char(v.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),c.comment_type,c.inline_selection,c.inline_match_count,c.inline_match_index,c.inline_marker_ref,c.resolution_status,COALESCE(c.resolution_modifier_id,''),COALESCE(to_char(c.resolution_modified_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),COALESCE(bp.author_id,''),COALESCE(bp.private,false),COALESCE(bp.published,false) FROM wiki_footer_comments c LEFT JOIN wiki_attachments ca ON ca.id=c.attachment_id LEFT JOIN wiki_pages p ON p.id=COALESCE(c.page_id,ca.page_id) LEFT JOIN wiki_blog_posts bp ON bp.id=COALESCE(c.blog_post_id,ca.blog_post_id) JOIN wiki_spaces s ON s.id=COALESCE(p.space_id,bp.space_id) JOIN users u ON u.id=c.author_id JOIN wiki_footer_comment_versions v ON v.comment_id=c.id AND v.version=c.version`
 const wikiCommentVisible = `((p.id IS NOT NULL AND p.status='current' AND ` + wikiPageVisible + `) OR (bp.id IS NOT NULL AND bp.status='current' AND (bp.published OR bp.author_id=$2) AND (NOT bp.private OR bp.author_id=$2)))`
 
@@ -54,7 +54,7 @@ func scanWikiSpace(row pgx.Row) (*models.WikiSpace, error) {
 }
 func scanWikiPage(row pgx.Row) (*models.WikiPage, error) {
 	p := &models.WikiPage{Body: models.WikiBody{Representation: "storage"}}
-	err := row.Scan(&p.ID, &p.WorkspaceID, &p.SpaceID, &p.ParentID, &p.Title, &p.Status, &p.Published, &p.Body.Value, &p.AuthorID, &p.CreatedAt, &p.Version.Number, &p.Version.Message, &p.Version.MinorEdit, &p.Version.AuthorID, &p.Version.CreatedAt)
+	err := row.Scan(&p.ID, &p.WorkspaceID, &p.SpaceID, &p.ParentID, &p.Title, &p.Status, &p.Published, &p.ClassificationLevel, &p.Body.Value, &p.AuthorID, &p.CreatedAt, &p.Version.Number, &p.Version.Message, &p.Version.MinorEdit, &p.Version.AuthorID, &p.Version.CreatedAt)
 	return p, err
 }
 

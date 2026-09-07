@@ -202,6 +202,76 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	page := create(public, "Release guide", "current")
 	draft := create(public, "Private draft", "draft")
 	secret := create(private, "Secret guide", "current")
+	governed := create(public, "Security response", "current")
+	if levels := call(member, "GET", "/classification-levels", nil, 200); !strings.Contains(levels.Body.String(), `"name":"Public"`) || !strings.Contains(levels.Body.String(), `"name":"Restricted"`) {
+		t.Fatal(levels.Body.String())
+	}
+	call(member, "GET", "/pages/"+governed.ID+"/classification-level", nil, 404)
+	call(member, "PUT", "/pages/"+governed.ID+"/classification-level", map[string]string{"id": "unknown", "status": "current"}, 400)
+	call(member, "PUT", "/pages/"+governed.ID+"/classification-level", map[string]string{"id": "restricted", "status": "current"}, 204)
+	if level := call(actor, "GET", "/pages/"+governed.ID+"/classification-level?status=current", nil, 200); !strings.Contains(level.Body.String(), `"name":"Restricted"`) {
+		t.Fatal(level.Body.String())
+	}
+	if operations := call(member, "GET", "/pages/"+governed.ID+"/operations", nil, 200); !strings.Contains(operations.Body.String(), `"operation":"update"`) || !strings.Contains(operations.Body.String(), `"targetType":"page"`) {
+		t.Fatal(operations.Body.String())
+	}
+	call(actor, "GET", "/pages/"+governed.ID+"/likes/count", nil, 200)
+	if err := st.SetWikiPageLike(ctx, ws, member, governed.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if count := call(actor, "GET", "/pages/"+governed.ID+"/likes/count", nil, 200); !strings.Contains(count.Body.String(), `"count":1`) {
+		t.Fatal(count.Body.String())
+	}
+	if users := call(actor, "GET", "/pages/"+governed.ID+"/likes/users", nil, 200); !strings.Contains(users.Body.String(), member) {
+		t.Fatal(users.Body.String())
+	}
+	call(actor, "GET", "/pages/"+governed.ID+"/custom-content", nil, 400)
+	call(actor, "GET", "/pages/"+governed.ID+"/custom-content?type=com.example:unknown", nil, 404)
+	exec(`INSERT INTO wiki_page_custom_content(page_id,type,title,body,author_id) VALUES($1::bigint,'com.zzira:diagram','Security topology','<p>Restricted service graph</p>',$2)`, governed.ID, actor)
+	if custom := call(member, "GET", "/pages/"+governed.ID+"/custom-content?type=com.zzira:diagram&body-format=storage", nil, 200); !strings.Contains(custom.Body.String(), "Security topology") || !strings.Contains(custom.Body.String(), `"pageId":"`+governed.ID+`"`) {
+		t.Fatal(custom.Body.String())
+	}
+	currentGovernedResponse := call(actor, "GET", "/pages/"+governed.ID+"?body-format=storage", nil, 200)
+	var currentGoverned struct {
+		Version models.WikiVersion
+		Body    map[string]models.WikiBody
+	}
+	if err := json.Unmarshal(currentGovernedResponse.Body.Bytes(), &currentGoverned); err != nil {
+		t.Fatal(err)
+	}
+	governedText := currentGoverned.Body["storage"].Value
+	governedFrom := strings.Index(governedText, "Release")
+	governedTo := governedFrom + len("Release")
+	call(actor, "POST", "/pages/"+governed.ID+"/redact", map[string]any{"createdAt": "2020-01-01T00:00:00Z", "body": map[string]any{"redactions": []any{map[string]any{"pointer": "/body/storage/value", "from": governedFrom, "to": governedTo}}}}, 400)
+	redactedPage := call(actor, "POST", "/pages/"+governed.ID+"/redact", map[string]any{"createdAt": currentGoverned.Version.CreatedAt, "versionNumber": currentGoverned.Version.Number, "cleanHistory": true, "body": map[string]any{"redactions": []any{map[string]any{"pointer": "/body/storage/value", "from": governedFrom, "to": governedTo, "reason": "Security incident"}}}}, 202)
+	if !strings.Contains(redactedPage.Body.String(), "redactionId") {
+		t.Fatal(redactedPage.Body.String())
+	}
+	if current := call(member, "GET", "/pages/"+governed.ID+"?body-format=storage", nil, 200); strings.Contains(current.Body.String(), "Release") || !strings.Contains(current.Body.String(), "[REDACTED]") {
+		t.Fatal(current.Body.String())
+	}
+	var historicalPageSensitive int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM wiki_page_versions WHERE page_id::text=$1 AND body LIKE '%Release%'`, governed.ID).Scan(&historicalPageSensitive); err != nil || historicalPageSensitive != 0 {
+		t.Fatalf("historical page sensitive versions=%d: %v", historicalPageSensitive, err)
+	}
+	call(member, "POST", "/pages/"+governed.ID+"/classification-level/reset", map[string]string{"status": "current"}, 204)
+	call(member, "GET", "/pages/"+secret.ID+"/likes/users", nil, 404)
+	call(member, "GET", "/pages/"+secret.ID+"/custom-content?type=com.zzira:diagram", nil, 404)
+	privatePageLikeHead, err := st.Head(ctx, ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetWikiPageLike(ctx, ws, actor, secret.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	privatePageLikeActions, err := st.ActionsSince(ctx, ws, member, privatePageLikeHead, 20)
+	if err != nil || len(privatePageLikeActions) != 0 {
+		t.Fatalf("private page like leaked through sync: %+v %v", privatePageLikeActions, err)
+	}
+	ownerPageLikeActions, err := st.ActionsSince(ctx, ws, actor, privatePageLikeHead, 20)
+	if err != nil || len(ownerPageLikeActions) != 1 || ownerPageLikeActions[0].EntityType != "wiki_page_like" {
+		t.Fatalf("page owner did not receive like action: %+v %v", ownerPageLikeActions, err)
+	}
 	call(actor, "POST", "/blogposts?private=maybe", map[string]any{"spaceId": public, "title": "Invalid blog", "status": "current", "body": models.WikiBody{Representation: "storage", Value: "<p>Invalid</p>"}}, 400)
 	blogResponse := call(actor, "POST", "/blogposts", map[string]any{"spaceId": public, "title": "Release update", "status": "current", "createdAt": "2026-09-07T09:30:00Z", "body": models.WikiBody{Representation: "storage", Value: "<p>Release candidate is ready.</p>"}}, 200)
 	var blog struct {

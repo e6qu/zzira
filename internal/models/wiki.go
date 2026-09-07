@@ -27,17 +27,33 @@ type WikiVersion struct {
 }
 
 type WikiPage struct {
-	ID          string      `json:"id"`
-	WorkspaceID string      `json:"-"`
-	SpaceID     string      `json:"spaceId"`
-	ParentID    string      `json:"parentId,omitempty"`
-	Title       string      `json:"title"`
-	Status      string      `json:"status"`
-	Published   bool        `json:"published"`
-	AuthorID    string      `json:"authorId"`
-	CreatedAt   string      `json:"createdAt"`
-	Body        WikiBody    `json:"body"`
-	Version     WikiVersion `json:"version"`
+	ID                  string      `json:"id"`
+	WorkspaceID         string      `json:"-"`
+	SpaceID             string      `json:"spaceId"`
+	ParentID            string      `json:"parentId,omitempty"`
+	Title               string      `json:"title"`
+	Status              string      `json:"status"`
+	Published           bool        `json:"published"`
+	ClassificationLevel string      `json:"-"`
+	AuthorID            string      `json:"authorId"`
+	CreatedAt           string      `json:"createdAt"`
+	Body                WikiBody    `json:"body"`
+	Version             WikiVersion `json:"version"`
+}
+
+func (p WikiPage) ClassificationName() string {
+	switch p.ClassificationLevel {
+	case "public":
+		return "Public"
+	case "internal":
+		return "Internal"
+	case "confidential":
+		return "Confidential"
+	case "restricted":
+		return "Restricted"
+	default:
+		return ""
+	}
 }
 
 type WikiBlogPost struct {
@@ -136,6 +152,7 @@ type WikiBlogCustomContent struct {
 	Status             string      `json:"status"`
 	Title              string      `json:"title"`
 	SpaceID            string      `json:"spaceId"`
+	PageID             string      `json:"pageId,omitempty"`
 	BlogPostID         string      `json:"blogPostId"`
 	AuthorID           string      `json:"authorId"`
 	CreatedAt          string      `json:"createdAt"`

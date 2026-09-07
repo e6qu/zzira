@@ -113,6 +113,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	parts := strings.Split(strings.Trim(strings.TrimPrefix(r.URL.Path, "/wiki/api/v2/"), "/"), "/")
 	switch {
+	case len(parts) == 1 && parts[0] == "classification-levels" && r.Method == "GET":
+		h.classificationLevels(w, r)
 	case len(parts) == 1 && parts[0] == "spaces" && r.Method == "GET":
 		h.spaces(w, r, ws, actor)
 	case len(parts) == 1 && parts[0] == "spaces" && r.Method == "POST":
@@ -261,6 +263,22 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.footerComments(w, r, ws, actor, parts[1], "")
 	case len(parts) == 3 && parts[0] == "pages" && parts[2] == "inline-comments" && r.Method == "GET":
 		h.inlineComments(w, r, ws, actor, parts[1], "")
+	case len(parts) == 4 && parts[0] == "pages" && parts[2] == "likes" && parts[3] == "count" && r.Method == "GET":
+		h.pageLikeCount(w, r, ws, actor, parts[1])
+	case len(parts) == 4 && parts[0] == "pages" && parts[2] == "likes" && parts[3] == "users" && r.Method == "GET":
+		h.pageLikeUsers(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "pages" && parts[2] == "operations" && r.Method == "GET":
+		h.pageOperations(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "pages" && parts[2] == "classification-level" && r.Method == "GET":
+		h.pageClassification(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "pages" && parts[2] == "classification-level" && r.Method == "PUT":
+		h.setPageClassification(w, r, ws, actor, parts[1], false)
+	case len(parts) == 4 && parts[0] == "pages" && parts[2] == "classification-level" && parts[3] == "reset" && r.Method == "POST":
+		h.setPageClassification(w, r, ws, actor, parts[1], true)
+	case len(parts) == 3 && parts[0] == "pages" && parts[2] == "custom-content" && r.Method == "GET":
+		h.pageCustomContent(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "pages" && parts[2] == "redact" && r.Method == "POST":
+		h.redactPage(w, r, ws, actor, parts[1])
 	case len(parts) == 1 && parts[0] == "inline-comments" && r.Method == "GET":
 		h.inlineComments(w, r, ws, actor, "", "")
 	case len(parts) == 1 && parts[0] == "inline-comments" && r.Method == "POST":

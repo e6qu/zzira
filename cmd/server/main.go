@@ -299,6 +299,7 @@ func main() {
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/edit", webHandler.WikiEdit)
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/trash", webHandler.WikiTrash)
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/labels", webHandler.WikiPageLabels)
+	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/metadata", webHandler.WikiPageMetadata)
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/watch", webHandler.WikiPageWatch)
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/labels/{label}/watch", webHandler.WikiLabelWatch)
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/restrictions", webHandler.WikiPageRestrictions)
