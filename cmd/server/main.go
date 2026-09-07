@@ -276,6 +276,8 @@ func main() {
 	mux.HandleFunc("POST /wiki/spaces/{space}/blogposts/{blogpost}", webHandler.WikiBlogPostPage)
 	mux.HandleFunc("POST /wiki/spaces/{space}/blogposts/{blogpost}/lifecycle", webHandler.WikiBlogPostLifecycle)
 	mux.HandleFunc("POST /wiki/spaces/{space}/blogposts/{blogpost}/metadata", webHandler.WikiBlogPostMetadata)
+	mux.HandleFunc("POST /wiki/spaces/{space}/blogposts/{blogpost}/attachments", webHandler.WikiBlogAttachmentCreate)
+	mux.HandleFunc("POST /wiki/spaces/{space}/blogposts/{blogpost}/attachments/{attachment}/delete", webHandler.WikiBlogAttachmentDelete)
 	mux.HandleFunc("POST /wiki/spaces/{space}/folders", webHandler.WikiFolderCreate)
 	mux.HandleFunc("POST /wiki/spaces/{space}/folders/{folder}/delete", webHandler.WikiFolderDelete)
 	mux.HandleFunc("POST /wiki/spaces/{space}/embeds", webHandler.WikiSmartLinkCreate)

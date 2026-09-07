@@ -22,9 +22,19 @@ import (
 )
 
 func (h *Handler) attachmentBean(a *models.WikiAttachment) map[string]any {
-	download := "/wiki/download/attachments/" + a.PageID + "/" + a.ID + "/" + url.PathEscape(a.Filename)
-	webui := "/wiki/spaces/" + a.SpaceID + "/pages/" + a.PageID
-	return map[string]any{"id": a.ID, "status": a.Status, "title": a.Filename, "createdAt": a.CreatedAt, "pageId": a.PageID, "mediaType": a.MediaType, "mediaTypeDescription": a.MediaType, "comment": a.Comment, "fileId": a.FileID, "fileSize": a.Size, "webuiLink": webui, "downloadLink": download, "version": a.Version, "_links": map[string]string{"webui": webui, "download": download, "base": h.BaseURL + "/wiki"}}
+	parentID, contentType := a.PageID, "pages"
+	if a.BlogPostID != "" {
+		parentID, contentType = a.BlogPostID, "blogposts"
+	}
+	download := "/wiki/download/attachments/" + parentID + "/" + a.ID + "/" + url.PathEscape(a.Filename)
+	webui := "/wiki/spaces/" + a.SpaceID + "/" + contentType + "/" + parentID
+	bean := map[string]any{"id": a.ID, "status": a.Status, "title": a.Filename, "createdAt": a.CreatedAt, "mediaType": a.MediaType, "mediaTypeDescription": a.MediaType, "comment": a.Comment, "fileId": a.FileID, "fileSize": a.Size, "webuiLink": webui, "downloadLink": download, "version": a.Version, "_links": map[string]string{"webui": webui, "download": download, "base": h.BaseURL + "/wiki"}}
+	if a.BlogPostID != "" {
+		bean["blogPostId"] = a.BlogPostID
+	} else {
+		bean["pageId"] = a.PageID
+	}
+	return bean
 }
 
 func (h *Handler) attachments(w http.ResponseWriter, r *http.Request, ws, actor, pageID string) {
@@ -40,6 +50,30 @@ func (h *Handler) attachments(w http.ResponseWriter, r *http.Request, ws, actor,
 		status = "current"
 	}
 	items, err := h.Store.WikiAttachments(r.Context(), ws, actor, pageID, r.URL.Query().Get("mediaType"), r.URL.Query().Get("filename"), status)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	values := make([]any, 0, len(items))
+	for _, a := range items {
+		values = append(values, h.attachmentBean(a))
+	}
+	h.list(w, r, values)
+}
+
+func (h *Handler) blogAttachments(w http.ResponseWriter, r *http.Request, ws, actor, blogPostID string) {
+	if !supportedQuery(w, r, "sort", "cursor", "status", "mediaType", "filename", "limit") {
+		return
+	}
+	status := r.URL.Query().Get("status")
+	if strings.Contains(status, ",") {
+		failure(w, 400, "Only one attachment status is currently supported.")
+		return
+	}
+	if status == "" {
+		status = "current"
+	}
+	items, err := h.Store.WikiBlogAttachments(r.Context(), ws, actor, blogPostID, r.URL.Query().Get("mediaType"), r.URL.Query().Get("filename"), status)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -292,7 +326,13 @@ func (h *Handler) deleteAttachment(w http.ResponseWriter, r *http.Request, ws, a
 
 func (h *Handler) attachmentOperationValues(r *http.Request, ws, actor string, a *models.WikiAttachment) []any {
 	ops := []any{map[string]string{"operation": "read", "targetType": "attachment"}}
-	if ok, _ := h.Store.CanUpdateWikiPage(r.Context(), ws, actor, a.PageID); ok {
+	canUpdate := false
+	if a.BlogPostID != "" {
+		canUpdate, _ = h.Store.CanUpdateWikiBlogPost(r.Context(), ws, actor, a.BlogPostID)
+	} else {
+		canUpdate, _ = h.Store.CanUpdateWikiPage(r.Context(), ws, actor, a.PageID)
+	}
+	if canUpdate {
 		ops = append(ops, map[string]string{"operation": "update", "targetType": "attachment"}, map[string]string{"operation": "delete", "targetType": "attachment"})
 	}
 	return ops
@@ -657,7 +697,7 @@ func (h *DownloadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		version, _ = strconv.Atoi(raw)
 	}
 	a, err := h.Store.WikiAttachment(r.Context(), ws, actor, parts[1])
-	if err != nil || a.PageID != parts[0] {
+	if err != nil || (a.PageID != parts[0] && a.BlogPostID != parts[0]) {
 		writeError(w, pgx.ErrNoRows)
 		return
 	}

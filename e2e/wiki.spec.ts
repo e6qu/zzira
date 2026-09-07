@@ -49,6 +49,16 @@ test('wiki space, rich page, access, stale edits, child pages, history, trash an
   await page.getByLabel('JSON value').fill('{"ring":"global"}');
   await page.getByRole('button', { name: 'Create property', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Blog post details' })).toContainText('release-metadata');
+  await page.getByText('Attach a file', { exact: true }).click();
+  await page.getByLabel('File', { exact: true }).setInputFiles({ name: 'release-evidence.txt', mimeType: 'text/plain', buffer: Buffer.from('Release evidence v1') });
+  await page.getByLabel('Comment', { exact: true }).fill('Production evidence');
+  await page.getByRole('button', { name: 'Upload file', exact: true }).click();
+  await expect(page.locator('#wiki-blog-attachments')).toContainText('release-evidence.txt');
+  await page.getByText('Replace', { exact: true }).click();
+  await page.getByLabel('Replacement file for release-evidence.txt').setInputFiles({ name: 'release-evidence.txt', mimeType: 'text/plain', buffer: Buffer.from('Release evidence v2') });
+  await page.getByLabel('Version comment').fill('Approved evidence');
+  await page.getByRole('button', { name: 'Replace file', exact: true }).click();
+  await expect(page.locator('#wiki-blog-attachments')).toContainText('Version 2');
   await page.getByText('Redact sensitive text', { exact: true }).click();
   await page.getByLabel('Exact text').fill('reached production');
   await page.getByLabel('Reason').fill('Remove sensitive rollout detail');

@@ -467,6 +467,18 @@ func (s *Service) SetWikiPageRestrictionSubject(ctx context.Context, ws, actor, 
 }
 
 func (s *Service) SaveWikiAttachment(ctx context.Context, ws, actor, pageID, attachmentID, filename, mediaType, comment, message string, minor bool, r io.Reader) (*models.WikiAttachment, error) {
+	return s.saveWikiAttachment(ctx, filename, mediaType, comment, message, r, func(filename, mediaType string, size int64, blobRef string) (*models.WikiAttachment, error) {
+		return s.Store.SaveWikiAttachment(ctx, ws, actor, pageID, attachmentID, filename, mediaType, comment, message, minor, size, blobRef)
+	})
+}
+
+func (s *Service) SaveWikiBlogAttachment(ctx context.Context, ws, actor, blogPostID, attachmentID, filename, mediaType, comment, message string, minor bool, r io.Reader) (*models.WikiAttachment, error) {
+	return s.saveWikiAttachment(ctx, filename, mediaType, comment, message, r, func(filename, mediaType string, size int64, blobRef string) (*models.WikiAttachment, error) {
+		return s.Store.SaveWikiBlogAttachment(ctx, ws, actor, blogPostID, attachmentID, filename, mediaType, comment, message, minor, size, blobRef)
+	})
+}
+
+func (s *Service) saveWikiAttachment(ctx context.Context, filename, mediaType, comment, message string, r io.Reader, persist func(string, string, int64, string) (*models.WikiAttachment, error)) (*models.WikiAttachment, error) {
 	if s.Blobs == nil {
 		return nil, fmt.Errorf("attachment storage not configured")
 	}
@@ -491,7 +503,7 @@ func (s *Service) SaveWikiAttachment(ctx context.Context, ws, actor, pageID, att
 		_ = s.Blobs.Delete(ctx, blobRef)
 		return nil, fmt.Errorf("%w: attachments must be at most 100 MiB", store.ErrWikiValidation)
 	}
-	a, err := s.Store.SaveWikiAttachment(ctx, ws, actor, pageID, attachmentID, filename, mediaType, comment, message, minor, size, blobRef)
+	a, err := persist(filename, mediaType, size, blobRef)
 	if err != nil {
 		return nil, errors.Join(err, s.Blobs.Delete(ctx, blobRef))
 	}

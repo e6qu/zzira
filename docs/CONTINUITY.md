@@ -1708,10 +1708,22 @@ Validation after Confluence blog governance:
 - Exact reviewed API coverage is 381 of 1,207 operations: 374 partial, 7
   missing, and 826 unassessed. Confluence coverage is 167 of 348 reviewed.
 
+Validation after Confluence blog attachments:
+
+- Migration 090 generalizes the existing attachment record to exactly one page
+  or blog-post parent while retaining immutable file versions and blob storage.
+- Blog attachment collection, detail, versions, operation discovery, thumbnails
+  and authenticated downloads enforce space and public/private post visibility.
+- The blog UI supports upload, replacement and deletion, including version and
+  comment feedback. PostgreSQL integration covers filtering, parent shape,
+  operation discovery and private-post isolation.
+- Exact reviewed API coverage is 382 of 1,207 operations: 375 partial, 7
+  missing, and 825 unassessed. Confluence coverage is 168 of 348 reviewed.
+
 ## Current change
 
-1. Complete the remaining blog-post attachment and footer/inline-comment
-   operations through the shared media and discussion models.
+1. Complete blog-post footer and inline-comment operations through the shared
+   discussion model.
 2. Resume the other Confluence content and administration operations.
 3. Continue Service Management with dependency mapping, major-incident
    communications, change-conflict calendars and escalation policy.

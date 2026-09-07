@@ -179,6 +179,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.setBlogPostClassification(w, r, ws, actor, parts[1], true)
 	case len(parts) == 3 && parts[0] == "blogposts" && parts[2] == "custom-content" && r.Method == "GET":
 		h.blogPostCustomContent(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "blogposts" && parts[2] == "attachments" && r.Method == "GET":
+		h.blogAttachments(w, r, ws, actor, parts[1])
 	case len(parts) == 3 && parts[0] == "blogposts" && parts[2] == "redact" && r.Method == "POST":
 		h.redactBlogPost(w, r, ws, actor, parts[1])
 	case len(parts) == 1 && parts[0] == "pages" && r.Method == "GET":

@@ -966,6 +966,8 @@ func (s *Store) ActionPageSince(ctx context.Context, workspaceID, userID string,
 		      AND (a.entity_type NOT IN ('wiki_blogpost','wiki_blogpost_property','wiki_blogpost_label','wiki_blogpost_like') OR (a.payload->'wiki_blogpost'->>'published'='true'
 		        OR a.payload->'wiki_blogpost'->>'authorId'=$3) AND (COALESCE((a.payload->'wiki_blogpost'->>'private')::boolean,false)=false OR a.payload->'wiki_blogpost'->>'authorId'=$3))
 		      AND (a.entity_type NOT IN ('wiki_content','wiki_content_property') OR COALESCE((a.payload->>'contentPrivate')::boolean,false)=false OR a.payload->>'contentAuthorId'=$3)
+		      AND (a.entity_type<>'wiki_attachment' OR COALESCE(a.payload->'wiki_attachment'->>'blogPostId','')='' OR
+		        ((a.payload->>'blogPublished'='true' OR a.payload->>'blogAuthorId'=$3) AND (COALESCE((a.payload->>'blogPrivate')::boolean,false)=false OR a.payload->>'blogAuthorId'=$3)))
 		      AND (a.entity_type NOT IN ('wiki_footer_comment','wiki_footer_comment_like','wiki_inline_comment','wiki_inline_comment_like','wiki_task') OR EXISTS (
 		        SELECT 1 FROM wiki_pages wp
 		        WHERE wp.id::text=COALESCE(a.payload->'wiki_footer_comment'->>'pageId',a.payload->'wiki_footer_comment_like'->>'pageId',a.payload->'wiki_inline_comment'->>'pageId',a.payload->'wiki_inline_comment_like'->>'pageId',a.payload->'wiki_task'->>'pageId')
@@ -979,6 +981,7 @@ func (s *Store) ActionPageSince(ctx context.Context, workspaceID, userID string,
 		      AND (a.entity_type NOT IN ('wiki_page','wiki_blogpost','wiki_blogpost_property','wiki_blogpost_label','wiki_blogpost_like','wiki_footer_comment','wiki_footer_comment_like','wiki_inline_comment','wiki_inline_comment_like','wiki_task','wiki_label','wiki_restriction','wiki_attachment','wiki_attachment_property','wiki_content','wiki_content_property')
 		        OR COALESCE(a.payload->'wiki_label'->>'pageId','')='' AND a.entity_type='wiki_label'
 		        OR a.entity_type IN ('wiki_blogpost','wiki_blogpost_property','wiki_blogpost_label','wiki_blogpost_like')
+		        OR a.entity_type='wiki_attachment' AND COALESCE(a.payload->'wiki_attachment'->>'blogPostId','')<>''
 		        OR a.entity_type IN ('wiki_content','wiki_content_property') AND COALESCE(a.payload->>'rootPageId','')=''
 		        OR EXISTS (
 		          SELECT 1 FROM wiki_pages access_page

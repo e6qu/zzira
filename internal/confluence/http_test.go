@@ -230,12 +230,26 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	if !strings.Contains(detail.Body.String(), `"prevVersion":1`) {
 		t.Fatal(detail.Body.String())
 	}
+	blogAttachment, err := h.Commands.SaveWikiBlogAttachment(ctx, ws, actor, blog.ID, "", "release-evidence.txt", "text/plain", "Production evidence", "", false, strings.NewReader("release evidence v1"))
+	if err != nil || blogAttachment.BlogPostID != blog.ID {
+		t.Fatalf("save blog attachment: %+v %v", blogAttachment, err)
+	}
+	if listed := call(member, "GET", "/blogposts/"+blog.ID+"/attachments?filename=release-evidence.txt", nil, 200); !strings.Contains(listed.Body.String(), "release-evidence.txt") || !strings.Contains(listed.Body.String(), `"blogPostId":"`+blog.ID+`"`) {
+		t.Fatal(listed.Body.String())
+	}
+	if attachment := call(member, "GET", "/attachments/"+blogAttachment.ID+"?include-versions=true&include-operations=true", nil, 200); !strings.Contains(attachment.Body.String(), "Production evidence") || !strings.Contains(attachment.Body.String(), `"operation":"update"`) {
+		t.Fatal(attachment.Body.String())
+	}
 	privateBlogResponse := call(actor, "POST", "/blogposts?private=true", map[string]any{"spaceId": public, "title": "Private launch journal", "status": "current", "body": models.WikiBody{Representation: "storage", Value: "<p>Private blog phrase</p>"}}, 200)
 	var privateBlog struct{ ID string }
 	if err := json.Unmarshal(privateBlogResponse.Body.Bytes(), &privateBlog); err != nil {
 		t.Fatal(err)
 	}
 	call(member, "GET", "/blogposts/"+privateBlog.ID, nil, 404)
+	if _, err := h.Commands.SaveWikiBlogAttachment(ctx, ws, actor, privateBlog.ID, "", "private-evidence.txt", "text/plain", "", "", false, strings.NewReader("private evidence")); err != nil {
+		t.Fatal(err)
+	}
+	call(member, "GET", "/blogposts/"+privateBlog.ID+"/attachments", nil, 404)
 	blogLabels, err := h.Commands.AddWikiBlogPostLabels(ctx, ws, actor, blog.ID, []models.WikiLabel{{Prefix: "global", Name: "release-update"}})
 	if err != nil || len(blogLabels) != 1 {
 		t.Fatalf("add blog label: %+v %v", blogLabels, err)
@@ -1089,12 +1103,19 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	publicBlogAttachmentVisible := false
 	for _, a := range actions {
+		if a.EntityType == "wiki_attachment" && a.EntityID == blogAttachment.ID {
+			publicBlogAttachmentVisible = true
+		}
 		if a.EntityType == "wiki_footer_comment_like" && strings.HasPrefix(a.EntityID, secretCommentBean.ID+":") {
 			t.Fatalf("private wiki like action leaked: %s", a.Payload)
 		}
-		if strings.Contains(string(a.Payload), "Private draft") || strings.Contains(string(a.Payload), "Secret guide") || strings.Contains(string(a.Payload), "PRIVATE") || strings.Contains(string(a.Payload), "Private launch phrase") || strings.Contains(string(a.Payload), "Private blog phrase") || strings.Contains(string(a.Payload), "private-blog-metadata") || strings.Contains(string(a.Payload), "secret-blog-label") || strings.Contains(string(a.Payload), "Private folder") || strings.Contains(string(a.Payload), "secret-folder-property") || strings.Contains(string(a.Payload), "Private Smart Link") || strings.Contains(string(a.Payload), "private.example.test") || strings.Contains(string(a.Payload), "Private database") || strings.Contains(string(a.Payload), "private-database-property") || strings.Contains(string(a.Payload), "Private database child") || strings.Contains(string(a.Payload), "Private whiteboard") || strings.Contains(string(a.Payload), "secret-label") || strings.Contains(string(a.Payload), "Restricted launch plan") || strings.Contains(string(a.Payload), "Managers approved the launch") || strings.Contains(string(a.Payload), "classified-release") || strings.Contains(string(a.Payload), "classified-metadata") || strings.Contains(string(a.Payload), "classified-file") || strings.Contains(string(a.Payload), "Classified attachment discussion") || strings.Contains(string(a.Payload), "Classified inline discussion") || strings.Contains(string(a.Payload), "Classified task discussion") {
+		if strings.Contains(string(a.Payload), "Private draft") || strings.Contains(string(a.Payload), "Secret guide") || strings.Contains(string(a.Payload), "PRIVATE") || strings.Contains(string(a.Payload), "Private launch phrase") || strings.Contains(string(a.Payload), "Private blog phrase") || strings.Contains(string(a.Payload), "private-blog-metadata") || strings.Contains(string(a.Payload), "secret-blog-label") || strings.Contains(string(a.Payload), "private-evidence.txt") || strings.Contains(string(a.Payload), "Private folder") || strings.Contains(string(a.Payload), "secret-folder-property") || strings.Contains(string(a.Payload), "Private Smart Link") || strings.Contains(string(a.Payload), "private.example.test") || strings.Contains(string(a.Payload), "Private database") || strings.Contains(string(a.Payload), "private-database-property") || strings.Contains(string(a.Payload), "Private database child") || strings.Contains(string(a.Payload), "Private whiteboard") || strings.Contains(string(a.Payload), "secret-label") || strings.Contains(string(a.Payload), "Restricted launch plan") || strings.Contains(string(a.Payload), "Managers approved the launch") || strings.Contains(string(a.Payload), "classified-release") || strings.Contains(string(a.Payload), "classified-metadata") || strings.Contains(string(a.Payload), "classified-file") || strings.Contains(string(a.Payload), "Classified attachment discussion") || strings.Contains(string(a.Payload), "Classified inline discussion") || strings.Contains(string(a.Payload), "Classified task discussion") {
 			t.Fatalf("private wiki action leaked: %s", a.Payload)
 		}
+	}
+	if !publicBlogAttachmentVisible {
+		t.Fatal("public blog attachment action was not synchronized")
 	}
 }

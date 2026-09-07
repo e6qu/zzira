@@ -364,6 +364,7 @@ func (h *Handler) wikiBlogPost(w http.ResponseWriter, r *http.Request, creating 
 	versions := []models.WikiVersion{}
 	labels := []models.WikiLabel{}
 	properties := []models.WikiContentProperty{}
+	attachments := []*models.WikiAttachment{}
 	likeCount, liked := 0, false
 	if post.ID != "" {
 		versions, err = h.Store.WikiBlogPostVersions(r.Context(), ws, user.ID, post.ID, "-modified-date")
@@ -372,6 +373,11 @@ func (h *Handler) wikiBlogPost(w http.ResponseWriter, r *http.Request, creating 
 			return
 		}
 		if post.Status == "current" {
+			attachments, err = h.Store.WikiBlogAttachments(r.Context(), ws, user.ID, post.ID, "", "", "current")
+			if err != nil {
+				http.Error(w, "Could not load blog post attachments.", 500)
+				return
+			}
 			labels, err = h.Store.WikiBlogPostLabels(r.Context(), ws, user.ID, post.ID)
 			if err != nil {
 				http.Error(w, "Could not load blog post labels.", 500)
@@ -399,7 +405,60 @@ func (h *Handler) wikiBlogPost(w http.ResponseWriter, r *http.Request, creating 
 			}
 		}
 	}
-	h.writeWorkspacePageStatus(w, r, "page_wiki_blogpost", user, ws, wikiData{Space: space, BlogPost: post, Versions: versions, Labels: labels, BlogProperties: properties, BlogLikeCount: likeCount, BlogLiked: liked, Editing: editing, CanEdit: true, Error: errorMessage}, "wiki", "", pageStatus)
+	h.writeWorkspacePageStatus(w, r, "page_wiki_blogpost", user, ws, wikiData{Space: space, BlogPost: post, Versions: versions, Labels: labels, BlogProperties: properties, BlogLikeCount: likeCount, BlogLiked: liked, Attachments: attachments, Editing: editing, CanEdit: true, Error: errorMessage}, "wiki", "", pageStatus)
+}
+
+func (h *Handler) WikiBlogAttachmentCreate(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, (100<<20)+1)
+	if err := r.ParseMultipartForm(4 << 20); err != nil {
+		http.Error(w, "Invalid attachment upload.", 400)
+		return
+	}
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "Choose a file to attach.", 400)
+		return
+	}
+	defer file.Close()
+	post, err := h.Store.WikiBlogPost(r.Context(), ws, user.ID, r.PathValue("blogpost"))
+	if err != nil || post.SpaceID != r.PathValue("space") || post.Status != "current" {
+		http.NotFound(w, r)
+		return
+	}
+	a, err := h.Commands.SaveWikiBlogAttachment(r.Context(), ws, user.ID, post.ID, r.PostFormValue("attachmentId"), header.Filename, header.Header.Get("Content-Type"), r.PostFormValue("comment"), r.PostFormValue("message"), false, file)
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	redirectLocal(w, r, "/wiki/spaces/"+post.SpaceID+"/blogposts/"+post.ID+"#attachment-"+a.ID)
+}
+
+func (h *Handler) WikiBlogAttachmentDelete(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	post, err := h.Store.WikiBlogPost(r.Context(), ws, user.ID, r.PathValue("blogpost"))
+	if err != nil || post.SpaceID != r.PathValue("space") || post.Status != "current" {
+		http.NotFound(w, r)
+		return
+	}
+	a, err := h.Store.WikiAttachment(r.Context(), ws, user.ID, r.PathValue("attachment"))
+	if err != nil || a.BlogPostID != post.ID {
+		http.NotFound(w, r)
+		return
+	}
+	if err = h.Commands.DeleteWikiAttachment(r.Context(), ws, user.ID, a.ID); err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	redirectLocal(w, r, "/wiki/spaces/"+post.SpaceID+"/blogposts/"+post.ID+"#wiki-blog-attachments")
 }
 
 func (h *Handler) WikiBlogPostMetadata(w http.ResponseWriter, r *http.Request) {
