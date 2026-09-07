@@ -281,6 +281,40 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		t.Fatal(classification.Body.String())
 	}
 	call(actor, "POST", "/blogposts/"+blog.ID+"/classification-level/reset", map[string]string{"status": "current"}, 204)
+	call(actor, "GET", "/blogposts/"+blog.ID+"/custom-content", nil, 400)
+	call(actor, "GET", "/blogposts/"+blog.ID+"/custom-content?type=com.example:unknown", nil, 404)
+	exec(`INSERT INTO wiki_blog_custom_content(blog_post_id,type,title,body,author_id) VALUES($1::bigint,'com.zzira:diagram','Release topology','<p>Service graph</p>',$2)`, blog.ID, actor)
+	if custom := call(member, "GET", "/blogposts/"+blog.ID+"/custom-content?type=com.zzira:diagram&body-format=storage", nil, 200); !strings.Contains(custom.Body.String(), "Release topology") || !strings.Contains(custom.Body.String(), "Service graph") {
+		t.Fatal(custom.Body.String())
+	}
+	call(member, "GET", "/blogposts/"+privateBlog.ID+"/custom-content?type=com.zzira:diagram", nil, 404)
+	currentBlogResponse := call(actor, "GET", "/blogposts/"+blog.ID+"?body-format=storage", nil, 200)
+	var currentBlog struct {
+		Version models.WikiVersion
+		Body    map[string]models.WikiBody
+	}
+	if err := json.Unmarshal(currentBlogResponse.Body.Bytes(), &currentBlog); err != nil {
+		t.Fatal(err)
+	}
+	redactionText := currentBlog.Body["storage"].Value
+	redactionFrom := strings.Index(redactionText, "production")
+	redactionTo := redactionFrom + len("production")
+	call(actor, "POST", "/blogposts/"+blog.ID+"/redact", map[string]any{"createdAt": "2020-01-01T00:00:00Z", "body": map[string]any{"redactions": []any{map[string]any{"pointer": "/body/storage/value", "from": redactionFrom, "to": redactionTo}}}}, 400)
+	redacted := call(actor, "POST", "/blogposts/"+blog.ID+"/redact", map[string]any{"createdAt": currentBlog.Version.CreatedAt, "versionNumber": currentBlog.Version.Number, "cleanHistory": true, "body": map[string]any{"redactions": []any{map[string]any{"pointer": "/body/storage/value", "from": redactionFrom, "to": redactionTo, "reason": "Customer data"}}}}, 202)
+	if !strings.Contains(redacted.Body.String(), "redactionId") {
+		t.Fatal(redacted.Body.String())
+	}
+	if post := call(member, "GET", "/blogposts/"+blog.ID+"?body-format=storage", nil, 200); strings.Contains(post.Body.String(), "production") || !strings.Contains(post.Body.String(), "[REDACTED]") {
+		t.Fatal(post.Body.String())
+	}
+	var historicalSensitive int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM wiki_blog_post_versions WHERE blog_post_id::text=$1 AND body LIKE '%production%'`, blog.ID).Scan(&historicalSensitive); err != nil || historicalSensitive != 0 {
+		t.Fatalf("historical sensitive versions=%d: %v", historicalSensitive, err)
+	}
+	var redactionAudit int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM organization_audit_events WHERE target_type='wiki_blogpost' AND target_id=$1 AND action='wiki.blogpost.redacted'`, blog.ID).Scan(&redactionAudit); err != nil || redactionAudit != 1 {
+		t.Fatalf("redaction audit=%d: %v", redactionAudit, err)
+	}
 	if _, err := h.Commands.CreateWikiBlogPostProperty(ctx, ws, actor, privateBlog.ID, "private-blog-metadata", json.RawMessage(`{"secret":true}`)); err != nil {
 		t.Fatal(err)
 	}
@@ -301,7 +335,7 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	call(actor, "DELETE", "/blogposts/"+blog.ID, nil, 204)
 	call(actor, "GET", "/blogposts/"+blog.ID, nil, 404)
 	call(actor, "GET", "/blogposts/"+blog.ID+"?status=trashed", nil, 200)
-	call(actor, "PUT", "/blogposts/"+blog.ID, map[string]any{"id": blog.ID, "spaceId": public, "title": "Ignored during restore", "status": "current", "body": models.WikiBody{Representation: "storage", Value: "<p>Ignored</p>"}, "version": map[string]any{"number": 4, "message": "Restored"}}, 200)
+	call(actor, "PUT", "/blogposts/"+blog.ID, map[string]any{"id": blog.ID, "spaceId": public, "title": "Ignored during restore", "status": "current", "body": models.WikiBody{Representation: "storage", Value: "<p>Ignored</p>"}, "version": map[string]any{"number": 5, "message": "Restored"}}, 200)
 	call(actor, "DELETE", "/blogposts/"+blog.ID, nil, 204)
 	call(actor, "DELETE", "/blogposts/"+blog.ID+"?purge=true", nil, 204)
 	call(actor, "GET", "/blogposts/"+blog.ID+"?status=trashed", nil, 404)

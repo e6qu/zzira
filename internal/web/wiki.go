@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
@@ -442,6 +443,31 @@ func (h *Handler) WikiBlogPostMetadata(w http.ResponseWriter, r *http.Request) {
 		}
 	case "delete-property":
 		err = h.Commands.DeleteWikiBlogPostProperty(r.Context(), ws, user.ID, post.ID, r.PostFormValue("propertyId"))
+	case "redact":
+		section, target := r.PostFormValue("section"), r.PostFormValue("text")
+		value := post.Body.Value
+		pointer := "/body/storage/value"
+		if section == "title" {
+			value, pointer = post.Title, "/title"
+		} else if section != "body" {
+			err = fmt.Errorf("%w: choose title or body redaction", store.ErrWikiValidation)
+			break
+		}
+		byteIndex := strings.Index(value, target)
+		if target == "" || byteIndex < 0 {
+			err = fmt.Errorf("%w: the exact text to redact was not found", store.ErrWikiValidation)
+			break
+		}
+		from, to := utf8.RuneCountInString(value[:byteIndex]), utf8.RuneCountInString(value[:byteIndex])+utf8.RuneCountInString(target)
+		reason := r.PostFormValue("reason")
+		redaction := models.WikiRedactionPointer{Pointer: pointer, From: &from, To: &to, Reason: &reason}
+		var title, body []models.WikiRedactionPointer
+		if section == "title" {
+			title = []models.WikiRedactionPointer{redaction}
+		} else {
+			body = []models.WikiRedactionPointer{redaction}
+		}
+		_, _, _, err = h.Commands.RedactWikiBlogPost(r.Context(), ws, user.ID, post.ID, post.Version.CreatedAt, post.Version.Number, r.PostFormValue("cleanHistory") == "true", title, body)
 	default:
 		err = fmt.Errorf("%w: choose a blog post metadata action", store.ErrWikiValidation)
 	}

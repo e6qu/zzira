@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 379,
+  "assessedTotal": 381,
   "counts": {
     "delivered": 0,
-    "partial": 372,
+    "partial": 374,
     "missing": 7,
-    "unassessed": 828
+    "unassessed": 826
   },
   "countsByFamily": {
     "automation": {
@@ -18,9 +18,9 @@
     },
     "confluence": {
       "delivered": 0,
-      "partial": 165,
+      "partial": 167,
       "missing": 0,
-      "unassessed": 183
+      "unassessed": 181
     },
     "jira-platform": {
       "delivered": 0,
@@ -9317,9 +9317,18 @@
       "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{id}/custom-content",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/blogposts.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_blog_redaction.go",
+        "migrations/089_wiki_blog_redaction_custom_content.sql",
+        "internal/commands/wiki.go",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Blog redaction supports current-version timestamp/version guards, validated and overlap-merged Unicode ranges, title/body markers, optional prior-version scrubbing, privacy-shaped sync and organization audit without retaining removed text. Registered plugin content types support permission-filtered, sorted and paged blog collections. A restoration route, arbitrary ADF node pointers, historical-version-only redaction, and custom-content mutation/install lifecycle remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{id}/footer-comments",
@@ -9413,9 +9422,18 @@
       "operationId": "confluence-v2:POST:/wiki/api/v2/blogposts/{id}/redact",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/blogposts.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_blog_redaction.go",
+        "migrations/089_wiki_blog_redaction_custom_content.sql",
+        "internal/commands/wiki.go",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Blog redaction supports current-version timestamp/version guards, validated and overlap-merged Unicode ranges, title/body markers, optional prior-version scrubbing, privacy-shaped sync and organization audit without retaining removed text. Registered plugin content types support permission-filtered, sorted and paged blog collections. A restoration route, arbitrary ADF node pointers, historical-version-only redaction, and custom-content mutation/install lifecycle remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{id}/versions",

@@ -1,12 +1,14 @@
 package confluence
 
 import (
+	"errors"
 	"net/http"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/e6qu/zzira/internal/models"
+	"github.com/e6qu/zzira/internal/store"
 )
 
 type blogPostBodyWrite struct {
@@ -479,4 +481,70 @@ func (h *Handler) setBlogPostClassification(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	w.WriteHeader(204)
+}
+
+func (h *Handler) blogPostCustomContent(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
+	if !validPageID(w, id) || !supportedQuery(w, r, "type", "sort", "cursor", "limit", "body-format") {
+		return
+	}
+	contentType := strings.TrimSpace(r.URL.Query().Get("type"))
+	if contentType == "" {
+		failure(w, 400, "Custom content type is required.")
+		return
+	}
+	format := r.URL.Query().Get("body-format")
+	if format != "" && format != "storage" && format != "raw" {
+		failure(w, 400, "Only storage or raw custom-content bodies are supported.")
+		return
+	}
+	contents, err := h.Store.WikiBlogCustomContent(r.Context(), ws, actor, id, contentType, r.URL.Query().Get("sort"))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	values := make([]any, 0, len(contents))
+	for _, content := range contents {
+		bean := map[string]any{"id": content.ID, "type": content.Type, "status": content.Status, "title": content.Title, "spaceId": content.SpaceID, "blogPostId": content.BlogPostID, "authorId": content.AuthorID, "createdAt": content.CreatedAt, "version": content.Version, "_links": map[string]string{"base": h.BaseURL + "/wiki", "webui": "/spaces/" + content.SpaceID + "/blogposts/" + content.BlogPostID}}
+		if format != "" {
+			if format != content.BodyRepresentation {
+				failure(w, 400, "The requested body format is unavailable for this custom content type.")
+				return
+			}
+			bean["body"] = map[string]any{format: content.Body}
+		}
+		values = append(values, bean)
+	}
+	h.list(w, r, values)
+}
+
+type blogRedactionWrite struct {
+	CreatedAt     string `json:"createdAt"`
+	CleanHistory  bool   `json:"cleanHistory"`
+	VersionNumber int    `json:"versionNumber"`
+	Title         struct {
+		Redactions []models.WikiRedactionPointer `json:"redactions"`
+	} `json:"title"`
+	Body struct {
+		Redactions []models.WikiRedactionPointer `json:"redactions"`
+	} `json:"body"`
+}
+
+func (h *Handler) redactBlogPost(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
+	if !validPageID(w, id) || !supportedQuery(w, r) {
+		return
+	}
+	var input blogRedactionWrite
+	if !decode(w, r, &input) {
+		return
+	}
+	_, title, body, err := h.Commands.RedactWikiBlogPost(r.Context(), ws, actor, id, input.CreatedAt, input.VersionNumber, input.CleanHistory, input.Title.Redactions, input.Body.Redactions)
+	if err != nil {
+		if errors.Is(err, store.ErrWikiBlogPostConflict) {
+			failure(w, 400, "createdAt or versionNumber is out of date.")
+			return
+		}
+		writeError(w, err)
+		return
+	}
+	respond(w, 202, map[string]any{"title": map[string]any{"redactions": title}, "body": map[string]any{"redactions": body}})
 }

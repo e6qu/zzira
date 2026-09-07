@@ -1691,10 +1691,27 @@ Validation after Confluence blog metadata:
 - Exact reviewed API coverage is 379 of 1,207 operations: 372 partial, 7
   missing, and 828 unassessed. Confluence coverage is 165 of 348 reviewed.
 
+Validation after Confluence blog governance:
+
+- Migration 089 adds durable UUID redaction metadata, registered custom-content
+  types and blog-contained custom-content storage for the future app runtime.
+- Current-version redaction validates timestamps, version numbers, Unicode
+  ranges and storage markup; merges overlaps; creates a new version; optionally
+  removes the selected text from earlier versions; emits permission-shaped sync;
+  and writes an organization audit record without retaining removed text.
+- Known custom-content types return sorted, cursor-paged, permission-filtered
+  collections. Unknown types and private parent posts return 404.
+- The author UI provides exact-text title/body redaction with an explicit
+  history-cleaning choice. PostgreSQL integration covers stale requests,
+  history cleanup, audit evidence and privacy. History cleanup is the explicit,
+  audited compliance exception to otherwise immutable content versions.
+- Exact reviewed API coverage is 381 of 1,207 operations: 374 partial, 7
+  missing, and 826 unassessed. Confluence coverage is 167 of 348 reviewed.
+
 ## Current change
 
-1. Complete the remaining blog-post attachment, footer/inline-comment,
-   custom-content and redaction operations.
+1. Complete the remaining blog-post attachment and footer/inline-comment
+   operations through the shared media and discussion models.
 2. Resume the other Confluence content and administration operations.
 3. Continue Service Management with dependency mapping, major-incident
    communications, change-conflict calendars and escalation policy.

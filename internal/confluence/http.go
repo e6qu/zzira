@@ -177,6 +177,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.setBlogPostClassification(w, r, ws, actor, parts[1], false)
 	case len(parts) == 4 && parts[0] == "blogposts" && parts[2] == "classification-level" && parts[3] == "reset" && r.Method == "POST":
 		h.setBlogPostClassification(w, r, ws, actor, parts[1], true)
+	case len(parts) == 3 && parts[0] == "blogposts" && parts[2] == "custom-content" && r.Method == "GET":
+		h.blogPostCustomContent(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "blogposts" && parts[2] == "redact" && r.Method == "POST":
+		h.redactBlogPost(w, r, ws, actor, parts[1])
 	case len(parts) == 1 && parts[0] == "pages" && r.Method == "GET":
 		h.pages(w, r, ws, actor, "")
 	case len(parts) == 1 && parts[0] == "pages" && r.Method == "POST":

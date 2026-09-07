@@ -115,6 +115,35 @@ type WikiContentProperty struct {
 	NextVersion int             `json:"-"`
 }
 
+type WikiRedactionPointer struct {
+	Pointer string  `json:"pointer"`
+	From    *int    `json:"from,omitempty"`
+	To      *int    `json:"to,omitempty"`
+	Reason  *string `json:"reason,omitempty"`
+}
+
+type WikiRedactionResult struct {
+	Pointer     string `json:"pointer"`
+	From        int    `json:"from"`
+	To          int    `json:"to"`
+	Reason      string `json:"reason,omitempty"`
+	RedactionID string `json:"redactionId"`
+}
+
+type WikiBlogCustomContent struct {
+	ID                 string      `json:"id"`
+	Type               string      `json:"type"`
+	Status             string      `json:"status"`
+	Title              string      `json:"title"`
+	SpaceID            string      `json:"spaceId"`
+	BlogPostID         string      `json:"blogPostId"`
+	AuthorID           string      `json:"authorId"`
+	CreatedAt          string      `json:"createdAt"`
+	BodyRepresentation string      `json:"-"`
+	Body               WikiBody    `json:"body"`
+	Version            WikiVersion `json:"version"`
+}
+
 type WikiContentRelation struct {
 	Content       *WikiContent
 	Depth         int

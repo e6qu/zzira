@@ -49,6 +49,12 @@ test('wiki space, rich page, access, stale edits, child pages, history, trash an
   await page.getByLabel('JSON value').fill('{"ring":"global"}');
   await page.getByRole('button', { name: 'Create property', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Blog post details' })).toContainText('release-metadata');
+  await page.getByText('Redact sensitive text', { exact: true }).click();
+  await page.getByLabel('Exact text').fill('reached production');
+  await page.getByLabel('Reason').fill('Remove sensitive rollout detail');
+  await page.getByLabel('Remove this text from earlier versions').check();
+  await page.getByRole('button', { name: 'Redact text', exact: true }).click();
+  await expect(page.getByRole('article', { name: 'Blog post content' })).toContainText('[REDACTED] successfully');
   await page.getByText('Blog post history', { exact: true }).click();
   await expect(page.locator('.wiki-history')).toContainText('Published rollout result');
   await page.getByText('Move to trash', { exact: true }).click();

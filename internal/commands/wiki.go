@@ -448,6 +448,16 @@ func (s *Service) SetWikiBlogPostClassification(ctx context.Context, ws, actor, 
 	return s.Store.SetWikiBlogPostClassification(ctx, ws, actor, id, levelID)
 }
 
+func (s *Service) RedactWikiBlogPost(ctx context.Context, ws, actor, id, createdAt string, version int, cleanHistory bool, title, body []models.WikiRedactionPointer) (*models.WikiBlogPost, []models.WikiRedactionResult, []models.WikiRedactionResult, error) {
+	if id == "" || createdAt == "" || version < 0 {
+		return nil, nil, nil, fmt.Errorf("%w: blog post, createdAt and a nonnegative version are required", store.ErrWikiValidation)
+	}
+	if _, err := time.Parse(time.RFC3339, createdAt); err != nil {
+		return nil, nil, nil, fmt.Errorf("%w: createdAt must be an RFC 3339 timestamp", store.ErrWikiValidation)
+	}
+	return s.Store.RedactWikiBlogPost(ctx, ws, actor, id, createdAt, version, cleanHistory, title, body)
+}
+
 func (s *Service) SetWikiPageRestrictions(ctx context.Context, ws, actor, pageID, mode string, restrictions []models.WikiPageRestriction) ([]models.WikiPageRestriction, error) {
 	return s.Store.SetWikiPageRestrictions(ctx, ws, actor, pageID, mode, restrictions)
 }
