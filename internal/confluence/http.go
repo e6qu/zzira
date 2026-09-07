@@ -211,6 +211,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.footerCommentLikeCount(w, r, ws, actor, parts[1])
 	case len(parts) == 4 && parts[0] == "footer-comments" && parts[2] == "likes" && parts[3] == "users" && r.Method == "GET":
 		h.footerCommentLikeUsers(w, r, ws, actor, parts[1])
+	case len(parts) == 1 && parts[0] == "labels" && r.Method == "GET":
+		h.labels(w, r, ws, actor)
+	case len(parts) == 3 && parts[0] == "labels" && parts[2] == "pages" && r.Method == "GET":
+		h.labelPages(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "pages" && parts[2] == "labels" && r.Method == "GET":
+		h.contentLabels(w, r, ws, actor, "page", parts[1])
+	case len(parts) == 3 && parts[0] == "spaces" && parts[2] == "labels" && r.Method == "GET":
+		h.contentLabels(w, r, ws, actor, "space", parts[1])
+	case len(parts) == 4 && parts[0] == "spaces" && parts[2] == "content" && parts[3] == "labels" && r.Method == "GET":
+		h.contentLabels(w, r, ws, actor, "space-content", parts[1])
 	default:
 		failure(w, 404, "This Confluence resource is not implemented.")
 	}
@@ -508,6 +518,179 @@ func (h *Handler) footerCommentLikeUsers(w http.ResponseWriter, r *http.Request,
 	values := make([]any, 0, len(likes))
 	for _, accountID := range likes {
 		values = append(values, map[string]string{"accountId": accountID})
+	}
+	h.list(w, r, values)
+}
+
+func validLabelPrefix(prefix string) bool {
+	return prefix == "global" || prefix == "my" || prefix == "team" || prefix == "system"
+}
+
+func labelQuery(w http.ResponseWriter, r *http.Request, global bool) bool {
+	allowed := []string{"prefix", "sort", "cursor", "limit"}
+	if global {
+		allowed = append(allowed, "label-id")
+	}
+	if !supportedQuery(w, r, allowed...) {
+		return false
+	}
+	for _, raw := range r.URL.Query()["prefix"] {
+		for _, prefix := range strings.Split(raw, ",") {
+			if prefix != "" && !validLabelPrefix(prefix) {
+				failure(w, 400, "Unsupported label prefix.")
+				return false
+			}
+		}
+	}
+	order := r.URL.Query().Get("sort")
+	if order != "" && order != "created-date" && order != "-created-date" && order != "id" && order != "-id" && order != "name" && order != "-name" {
+		failure(w, 400, "Unsupported label sort order.")
+		return false
+	}
+	return true
+}
+
+func sortWikiLabels(labels []models.WikiLabel, order string) {
+	if order == "" || order == "created-date" {
+		return
+	}
+	desc := strings.HasPrefix(order, "-")
+	field := strings.TrimPrefix(order, "-")
+	sort.SliceStable(labels, func(i, j int) bool {
+		left, right := labels[i].CreatedAt, labels[j].CreatedAt
+		switch field {
+		case "id":
+			left, right = labels[i].ID, labels[j].ID
+		case "name":
+			left, right = labels[i].Name, labels[j].Name
+		}
+		if desc {
+			return left > right
+		}
+		return left < right
+	})
+}
+
+func (h *Handler) labels(w http.ResponseWriter, r *http.Request, ws, actor string) {
+	if !labelQuery(w, r, true) {
+		return
+	}
+	labels, err := h.Store.WikiLabels(r.Context(), ws, actor)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	filtered := make([]models.WikiLabel, 0, len(labels))
+	for _, label := range labels {
+		if queryContains(r, "label-id", label.ID) && queryContains(r, "prefix", label.Prefix) {
+			filtered = append(filtered, label)
+		}
+	}
+	sortWikiLabels(filtered, r.URL.Query().Get("sort"))
+	values := make([]any, 0, len(filtered))
+	for _, label := range filtered {
+		values = append(values, label)
+	}
+	h.list(w, r, values)
+}
+
+func (h *Handler) contentLabels(w http.ResponseWriter, r *http.Request, ws, actor, kind, id string) {
+	if !labelQuery(w, r, false) {
+		return
+	}
+	var labels []models.WikiLabel
+	var err error
+	switch kind {
+	case "page":
+		labels, err = h.Store.WikiPageLabels(r.Context(), ws, actor, id)
+	case "space":
+		labels, err = h.Store.WikiSpaceLabels(r.Context(), ws, actor, id, false)
+	case "space-content":
+		labels, err = h.Store.WikiSpaceLabels(r.Context(), ws, actor, id, true)
+	}
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	filtered := labels[:0]
+	prefix := r.URL.Query().Get("prefix")
+	if (kind == "space" || kind == "space-content") && prefix != "" && prefix != "my" && prefix != "team" {
+		failure(w, 400, "Space labels only support my or team prefixes.")
+		return
+	}
+	if prefix != "" {
+		for _, label := range labels {
+			if label.Prefix == prefix {
+				filtered = append(filtered, label)
+			}
+		}
+	} else if kind == "space" || kind == "space-content" {
+		for _, label := range labels {
+			if label.Prefix == "my" || label.Prefix == "team" {
+				filtered = append(filtered, label)
+			}
+		}
+	} else {
+		filtered = labels
+	}
+	sortWikiLabels(filtered, r.URL.Query().Get("sort"))
+	values := make([]any, 0, len(filtered))
+	for _, label := range filtered {
+		values = append(values, label)
+	}
+	h.list(w, r, values)
+}
+
+func sortLabelPages(pages []*models.WikiPage, order string) bool {
+	allowed := map[string]bool{"": true, "id": true, "-id": true, "created-date": true, "-created-date": true, "modified-date": true, "-modified-date": true, "title": true, "-title": true}
+	if !allowed[order] {
+		return false
+	}
+	if order == "" || order == "id" {
+		return true
+	}
+	desc := strings.HasPrefix(order, "-")
+	field := strings.TrimPrefix(order, "-")
+	sort.SliceStable(pages, func(i, j int) bool {
+		left, right := pages[i].ID, pages[j].ID
+		switch field {
+		case "created-date":
+			left, right = pages[i].CreatedAt, pages[j].CreatedAt
+		case "modified-date":
+			left, right = pages[i].Version.CreatedAt, pages[j].Version.CreatedAt
+		case "title":
+			left, right = pages[i].Title, pages[j].Title
+		}
+		if desc {
+			return left > right
+		}
+		return left < right
+	})
+	return true
+}
+
+func (h *Handler) labelPages(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
+	if !supportedQuery(w, r, "space-id", "body-format", "sort", "cursor", "limit") || !storageFormat(w, r) {
+		return
+	}
+	pages, err := h.Store.WikiPagesByLabel(r.Context(), ws, actor, id)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	filtered := pages[:0]
+	for _, page := range pages {
+		if queryContains(r, "space-id", page.SpaceID) {
+			filtered = append(filtered, page)
+		}
+	}
+	if !sortLabelPages(filtered, r.URL.Query().Get("sort")) {
+		failure(w, 400, "Unsupported page sort order.")
+		return
+	}
+	values := make([]any, 0, len(filtered))
+	for _, page := range filtered {
+		values = append(values, h.pageBean(page, r.URL.Query().Get("body-format") != ""))
 	}
 	h.list(w, r, values)
 }

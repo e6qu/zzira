@@ -2610,6 +2610,198 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ]
+    },
+    {
+      "operationId": "confluence-v1:DELETE:/wiki/rest/api/content/{id}/label",
+      "status": "partial",
+      "notes": "Removes an attached global label by required query name from a visible current page.",
+      "evidence": [
+        "internal/confluence/http.go",
+        "internal/confluence/v1.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_labels.go",
+        "migrations/075_wiki_labels.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v1:POST:/wiki/rest/api/content/{id}/label",
+      "status": "partial",
+      "notes": "Adds one or up to 100 validated label objects to a visible current page and returns the legacy LabelArray shape.",
+      "evidence": [
+        "internal/confluence/http.go",
+        "internal/confluence/v1.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_labels.go",
+        "migrations/075_wiki_labels.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v1:DELETE:/wiki/rest/api/content/{id}/label/{label}",
+      "status": "partial",
+      "notes": "Removes an attached global label by path name from a visible current page.",
+      "evidence": [
+        "internal/confluence/http.go",
+        "internal/confluence/v1.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_labels.go",
+        "migrations/075_wiki_labels.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/label",
+      "status": "partial",
+      "notes": "Returns a visible label and its associated current page content; non-page content types remain.",
+      "evidence": [
+        "internal/confluence/http.go",
+        "internal/confluence/v1.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_labels.go",
+        "migrations/075_wiki_labels.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v1:DELETE:/wiki/rest/api/space/{spaceKey}/label",
+      "status": "partial",
+      "notes": "Removes a named space label with workspace-administrator authorization.",
+      "evidence": [
+        "internal/confluence/http.go",
+        "internal/confluence/v1.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_labels.go",
+        "migrations/075_wiki_labels.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/space/{spaceKey}/label",
+      "status": "partial",
+      "notes": "Returns a legacy paginated LabelArray for a visible space with prefix filtering.",
+      "evidence": [
+        "internal/confluence/http.go",
+        "internal/confluence/v1.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_labels.go",
+        "migrations/075_wiki_labels.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v1:POST:/wiki/rest/api/space/{spaceKey}/label",
+      "status": "partial",
+      "notes": "Adds validated labels to a visible space with workspace-administrator authorization and legacy response shape.",
+      "evidence": [
+        "internal/confluence/http.go",
+        "internal/confluence/v1.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_labels.go",
+        "migrations/075_wiki_labels.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/labels",
+      "status": "partial",
+      "notes": "Lists labels attached to visible pages or spaces with ID/prefix filters, documented ordering and cursor pagination.",
+      "evidence": [
+        "internal/confluence/http.go",
+        "internal/confluence/v1.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_labels.go",
+        "migrations/075_wiki_labels.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/labels/{id}/pages",
+      "status": "partial",
+      "notes": "Lists visible current pages for a label with space filters, storage bodies, documented ordering and cursor pagination.",
+      "evidence": [
+        "internal/confluence/http.go",
+        "internal/confluence/v1.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_labels.go",
+        "migrations/075_wiki_labels.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{id}/labels",
+      "status": "partial",
+      "notes": "Lists labels for a visible page with prefix filtering, documented ordering and cursor pagination.",
+      "evidence": [
+        "internal/confluence/http.go",
+        "internal/confluence/v1.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_labels.go",
+        "migrations/075_wiki_labels.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/spaces/{id}/content/labels",
+      "status": "partial",
+      "notes": "Lists my/team labels used by current page content in a visible space.",
+      "evidence": [
+        "internal/confluence/http.go",
+        "internal/confluence/v1.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_labels.go",
+        "migrations/075_wiki_labels.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/spaces/{id}/labels",
+      "status": "partial",
+      "notes": "Lists my/team labels attached directly to a visible space.",
+      "evidence": [
+        "internal/confluence/http.go",
+        "internal/confluence/v1.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_labels.go",
+        "migrations/075_wiki_labels.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
     }
   ]
 }

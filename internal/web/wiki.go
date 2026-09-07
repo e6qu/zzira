@@ -22,6 +22,7 @@ type wikiData struct {
 	Page                                  *models.WikiPage
 	Versions                              []models.WikiVersion
 	Comments                              []wikiCommentNode
+	Labels                                []models.WikiLabel
 	Error                                 string
 	CanAdmin                              bool
 	Editing                               bool
@@ -251,6 +252,11 @@ func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 			http.Error(w, "Could not load page history.", 500)
 			return
 		}
+		data.Labels, err = h.Store.WikiPageLabels(r.Context(), ws, user.ID, page.ID)
+		if err != nil {
+			http.Error(w, "Could not load page labels.", 500)
+			return
+		}
 		comments, commentErr := h.Store.WikiFooterCommentThread(r.Context(), ws, user.ID, page.ID)
 		if commentErr != nil {
 			http.Error(w, "Could not load page comments.", 500)
@@ -309,6 +315,42 @@ func (h *Handler) WikiCommentCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	redirectLocal(w, r, wikiPageURL(page)+"#comment-"+created.ID)
+}
+
+func (h *Handler) WikiPageLabels(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	page, err := h.wikiPageForComment(r, ws, user.ID)
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	switch r.PostFormValue("action") {
+	case "add":
+		values := strings.Split(r.PostFormValue("labels"), ",")
+		labels := make([]models.WikiLabel, 0, len(values))
+		for _, value := range values {
+			labels = append(labels, models.WikiLabel{Name: value, Prefix: "global"})
+		}
+		_, err = h.Commands.AddWikiPageLabels(r.Context(), ws, user.ID, page.ID, labels)
+	case "remove":
+		err = h.Commands.RemoveWikiPageLabel(r.Context(), ws, user.ID, page.ID, r.PostFormValue("prefix"), r.PostFormValue("name"))
+	default:
+		http.Error(w, "Unknown label action.", 400)
+		return
+	}
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	redirectLocal(w, r, wikiPageURL(page)+"#wiki-labels")
 }
 
 func (h *Handler) WikiCommentUpdate(w http.ResponseWriter, r *http.Request) {

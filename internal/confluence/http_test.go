@@ -66,7 +66,7 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		exec(`INSERT INTO api_tokens(id,user_id,token_hash) VALUES ($1,$1,$2)`, id, store.HashToken(id))
 	}
 	t.Cleanup(func() {
-		for _, sql := range []string{`DELETE FROM wiki_page_versions WHERE page_id IN (SELECT p.id FROM wiki_pages p JOIN wiki_spaces s ON s.id=p.space_id WHERE s.workspace_id=$1)`, `DELETE FROM wiki_pages WHERE space_id IN (SELECT id FROM wiki_spaces WHERE workspace_id=$1)`, `DELETE FROM wiki_spaces WHERE workspace_id=$1`, `DELETE FROM actions WHERE workspace_id=$1`, `DELETE FROM memberships WHERE workspace_id=$1`, `DELETE FROM workspaces WHERE id=$1`} {
+		for _, sql := range []string{`DELETE FROM wiki_page_versions WHERE page_id IN (SELECT p.id FROM wiki_pages p JOIN wiki_spaces s ON s.id=p.space_id WHERE s.workspace_id=$1)`, `DELETE FROM wiki_pages WHERE space_id IN (SELECT id FROM wiki_spaces WHERE workspace_id=$1)`, `DELETE FROM wiki_spaces WHERE workspace_id=$1`, `DELETE FROM wiki_labels WHERE workspace_id=$1`, `DELETE FROM actions WHERE workspace_id=$1`, `DELETE FROM memberships WHERE workspace_id=$1`, `DELETE FROM workspaces WHERE id=$1`} {
 			exec(sql, ws)
 		}
 		for _, id := range []string{actor, member, outsider} {
@@ -75,6 +75,7 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		}
 	})
 	h := &Handler{Store: st, Commands: &commands.Service{Store: st}, WorkspaceSlug: ws, BaseURL: "https://zzira.test"}
+	v1 := &V1Handler{Handler: h}
 	call := func(user, method, path string, body any, want int) *httptest.ResponseRecorder {
 		t.Helper()
 		raw, err := json.Marshal(body)
@@ -89,6 +90,23 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		h.ServeHTTP(w, r)
 		if w.Code != want {
 			t.Fatalf("%s %s: got %d want %d: %s", method, path, w.Code, want, w.Body.String())
+		}
+		return w
+	}
+	callV1 := func(user, method, path string, body any, want int) *httptest.ResponseRecorder {
+		t.Helper()
+		raw, err := json.Marshal(body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := httptest.NewRequest(method, "/wiki/rest/api"+path, strings.NewReader(string(raw)))
+		if user != "" {
+			r.SetBasicAuth(user+"@example.test", user)
+		}
+		w := httptest.NewRecorder()
+		v1.ServeHTTP(w, r)
+		if w.Code != want {
+			t.Fatalf("v1 %s %s: got %d want %d: %s", method, path, w.Code, want, w.Body.String())
 		}
 		return w
 	}
@@ -148,6 +166,59 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	update := map[string]any{"id": page.ID, "spaceId": public, "title": "Release guide updated", "status": "current", "body": models.WikiBody{Representation: "storage", Value: "<h2>Ready</h2>"}, "version": map[string]any{"number": 2, "message": "Updated release instructions"}}
 	call(member, "PUT", "/pages/"+page.ID, update, 200)
 	call(actor, "PUT", "/pages/"+page.ID, update, 409)
+	labelsResponse := callV1(member, "POST", "/content/"+page.ID+"/label", []map[string]string{{"prefix": "global", "name": "release-ready"}, {"prefix": "global", "name": "handbook"}, {"prefix": "team", "name": "engineering-content"}}, 200)
+	var labels struct{ Results []models.WikiLabel }
+	if err := json.Unmarshal(labelsResponse.Body.Bytes(), &labels); err != nil {
+		t.Fatal(err)
+	}
+	if len(labels.Results) != 3 {
+		t.Fatalf("unexpected v1 labels: %s", labelsResponse.Body.String())
+	}
+	var releaseLabelID string
+	for _, label := range labels.Results {
+		if label.Name == "release-ready" {
+			releaseLabelID = label.ID
+		}
+	}
+	if releaseLabelID == "" {
+		t.Fatal("release label id missing")
+	}
+	pageLabels := call(member, "GET", "/pages/"+page.ID+"/labels?sort=name", nil, 200)
+	if !strings.Contains(pageLabels.Body.String(), "release-ready") || !strings.Contains(pageLabels.Body.String(), "handbook") {
+		t.Fatal(pageLabels.Body.String())
+	}
+	globalLabels := call(member, "GET", "/labels?prefix=global&label-id="+releaseLabelID, nil, 200)
+	if !strings.Contains(globalLabels.Body.String(), "release-ready") || strings.Contains(globalLabels.Body.String(), "handbook") {
+		t.Fatal(globalLabels.Body.String())
+	}
+	labeledPages := call(member, "GET", "/labels/"+releaseLabelID+"/pages?space-id="+public+"&body-format=storage&sort=-title", nil, 200)
+	if !strings.Contains(labeledPages.Body.String(), "Release guide updated") {
+		t.Fatal(labeledPages.Body.String())
+	}
+	legacyContent := callV1(member, "GET", "/label?name=release-ready&type=page", nil, 200)
+	if !strings.Contains(legacyContent.Body.String(), "Release guide updated") {
+		t.Fatal(legacyContent.Body.String())
+	}
+	callV1(actor, "POST", "/content/"+secret.ID+"/label", map[string]string{"prefix": "global", "name": "secret-label"}, 200)
+	if leaked := call(member, "GET", "/labels", nil, 200); strings.Contains(leaked.Body.String(), "secret-label") {
+		t.Fatal("private page label leaked")
+	}
+	callV1(member, "POST", "/space/PUBLIC/label", []map[string]string{{"prefix": "team", "name": "engineering"}}, 403)
+	callV1(actor, "POST", "/space/PUBLIC/label", []map[string]string{{"prefix": "team", "name": "engineering"}}, 200)
+	spaceLabels := call(actor, "GET", "/spaces/"+public+"/labels?prefix=team", nil, 200)
+	if !strings.Contains(spaceLabels.Body.String(), "engineering") {
+		t.Fatal(spaceLabels.Body.String())
+	}
+	contentLabels := call(actor, "GET", "/spaces/"+public+"/content/labels?prefix=team", nil, 200)
+	if !strings.Contains(contentLabels.Body.String(), "engineering-content") {
+		t.Fatal(contentLabels.Body.String())
+	}
+	callV1(actor, "DELETE", "/space/PUBLIC/label?name=engineering&prefix=team", nil, 204)
+	callV1(member, "DELETE", "/content/"+page.ID+"/label/handbook", nil, 204)
+	callV1(member, "DELETE", "/content/"+page.ID+"/label?name=release-ready", nil, 204)
+	if remaining := call(member, "GET", "/pages/"+page.ID+"/labels", nil, 200); strings.Contains(remaining.Body.String(), "release-ready") || strings.Contains(remaining.Body.String(), "handbook") {
+		t.Fatal(remaining.Body.String())
+	}
 	topResponse := call(member, "POST", "/footer-comments", map[string]any{"pageId": page.ID, "body": map[string]any{"storage": models.WikiBody{Representation: "storage", Value: "<p>Ready for review</p>"}}}, 201)
 	var top struct {
 		ID      string
@@ -267,7 +338,7 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		if a.EntityType == "wiki_footer_comment_like" && strings.HasPrefix(a.EntityID, secretCommentBean.ID+":") {
 			t.Fatalf("private wiki like action leaked: %s", a.Payload)
 		}
-		if strings.Contains(string(a.Payload), "Private draft") || strings.Contains(string(a.Payload), "Secret guide") || strings.Contains(string(a.Payload), "PRIVATE") || strings.Contains(string(a.Payload), "Private launch phrase") {
+		if strings.Contains(string(a.Payload), "Private draft") || strings.Contains(string(a.Payload), "Secret guide") || strings.Contains(string(a.Payload), "PRIVATE") || strings.Contains(string(a.Payload), "Private launch phrase") || strings.Contains(string(a.Payload), "secret-label") {
 			t.Fatalf("private wiki action leaked: %s", a.Payload)
 		}
 	}

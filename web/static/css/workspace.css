@@ -331,6 +331,7 @@ body.nav-collapsed .project-switcher-panel a { padding-inline: 9px; }
 .wiki-document table, .wiki-editor table { border-collapse: collapse; max-width: 100%; }
 .wiki-document td, .wiki-document th, .wiki-editor td, .wiki-editor th { border: 1px solid var(--ds-border); padding: 8px; }
 .wiki-trash form { max-width: 420px; padding: 16px; }
+.wiki-labels { max-width:960px; margin:0 0 16px; display:flex; align-items:center; flex-wrap:wrap; gap:10px; }.wiki-labels h2 { margin:0; font-size:13px; }.wiki-label-list { display:flex; flex-wrap:wrap; gap:6px; }.wiki-label-list form { display:flex; align-items:center; overflow:hidden; color:var(--ds-text); background:var(--ds-background-neutral); border-radius:999px; }.wiki-label-list span { padding:4px 2px 4px 10px; }.wiki-label-list button { min-width:30px; min-height:30px; border:0; color:inherit; background:transparent; cursor:pointer; }.wiki-label-form { width:min(480px,calc(100vw - 48px)); display:grid; gap:8px; padding:12px 0; }.wiki-label-form input { min-width:0; padding:10px; color:var(--ds-text); background:var(--ds-surface); border:1px solid var(--ds-border); border-radius:var(--ds-radius); }.wiki-label-form small { color:var(--ds-text-subtle); }
 
 .wiki-page-tree { list-style: none; padding-left: 0; margin: 0; }
 .wiki-page-tree .wiki-page-tree { margin-left: 12px; padding-left: 12px; border-left: 1px solid var(--ds-border); }

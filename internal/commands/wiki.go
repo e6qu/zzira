@@ -13,6 +13,7 @@ import (
 )
 
 var spaceKeyPattern = regexp.MustCompile(`^[A-Za-z0-9]{1,255}$`)
+var wikiLabelPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,254}$`)
 
 func (s *Service) CreateWikiSpace(ctx context.Context, ws, actor, key, name, description string, private bool) (*models.WikiSpace, error) {
 	name = strings.TrimSpace(name)
@@ -97,4 +98,66 @@ func validateWikiComment(comment models.WikiFooterComment) error {
 		return fmt.Errorf("%w: version message must be at most 2000 bytes", store.ErrWikiValidation)
 	}
 	return nil
+}
+
+func normalizeWikiLabels(labels []models.WikiLabel) ([]models.WikiLabel, error) {
+	result := make([]models.WikiLabel, 0, len(labels))
+	seen := map[string]bool{}
+	for _, label := range labels {
+		label.Name = strings.ToLower(strings.TrimSpace(label.Name))
+		if label.Name == "" {
+			continue
+		}
+		label.Prefix = strings.ToLower(strings.TrimSpace(label.Prefix))
+		if label.Prefix == "" {
+			label.Prefix = "global"
+		}
+		if label.Prefix == "system" || (label.Prefix != "global" && label.Prefix != "my" && label.Prefix != "team") {
+			return nil, fmt.Errorf("%w: label prefix must be global, my, or team", store.ErrWikiValidation)
+		}
+		if !wikiLabelPattern.MatchString(label.Name) {
+			return nil, fmt.Errorf("%w: label names must contain 1–255 lowercase letters, numbers, dots, underscores, or hyphens", store.ErrWikiValidation)
+		}
+		key := label.Prefix + "\x00" + label.Name
+		if !seen[key] {
+			seen[key] = true
+			result = append(result, label)
+		}
+	}
+	if len(result) == 0 || len(result) > 100 {
+		return nil, fmt.Errorf("%w: provide between 1 and 100 labels", store.ErrWikiValidation)
+	}
+	return result, nil
+}
+
+func (s *Service) AddWikiPageLabels(ctx context.Context, ws, actor, pageID string, labels []models.WikiLabel) ([]models.WikiLabel, error) {
+	labels, err := normalizeWikiLabels(labels)
+	if err != nil {
+		return nil, err
+	}
+	return s.Store.AddWikiPageLabels(ctx, ws, actor, pageID, labels)
+}
+
+func (s *Service) RemoveWikiPageLabel(ctx context.Context, ws, actor, pageID, prefix, name string) error {
+	labels, err := normalizeWikiLabels([]models.WikiLabel{{Prefix: prefix, Name: name}})
+	if err != nil {
+		return err
+	}
+	return s.Store.RemoveWikiPageLabel(ctx, ws, actor, pageID, labels[0])
+}
+
+func (s *Service) AddWikiSpaceLabels(ctx context.Context, ws, actor, spaceID string, labels []models.WikiLabel) ([]models.WikiLabel, error) {
+	labels, err := normalizeWikiLabels(labels)
+	if err != nil {
+		return nil, err
+	}
+	return s.Store.AddWikiSpaceLabels(ctx, ws, actor, spaceID, labels)
+}
+
+func (s *Service) RemoveWikiSpaceLabel(ctx context.Context, ws, actor, spaceID, prefix, name string) error {
+	labels, err := normalizeWikiLabels([]models.WikiLabel{{Prefix: prefix, Name: name}})
+	if err != nil {
+		return err
+	}
+	return s.Store.RemoveWikiSpaceLabel(ctx, ws, actor, spaceID, labels[0])
 }

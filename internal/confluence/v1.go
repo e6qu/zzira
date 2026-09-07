@@ -1,0 +1,248 @@
+package confluence
+
+import (
+	"encoding/json"
+	"io"
+	"net/http"
+	"strconv"
+	"strings"
+
+	"github.com/e6qu/zzira/internal/authn"
+	"github.com/e6qu/zzira/internal/models"
+)
+
+// V1Handler exposes the legacy Confluence routes still used for label writes.
+// It shares the same command and visibility boundaries as the v2 handler.
+type V1Handler struct{ *Handler }
+
+func (h *V1Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	actor, err := authn.Identify(r.Context(), h.Store, r)
+	if err != nil {
+		w.Header().Set("WWW-Authenticate", `Basic realm="zzira"`)
+		failure(w, 401, "Authentication required.")
+		return
+	}
+	ws, err := h.Store.WorkspaceBySlug(r.Context(), h.WorkspaceSlug)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	member, err := h.Store.IsMember(r.Context(), ws, actor)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if !member {
+		failure(w, 403, "Workspace membership required.")
+		return
+	}
+	parts := strings.Split(strings.Trim(strings.TrimPrefix(r.URL.Path, "/wiki/rest/api/"), "/"), "/")
+	switch {
+	case len(parts) == 3 && parts[0] == "content" && parts[2] == "label" && r.Method == "POST":
+		h.addContentLabels(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "content" && parts[2] == "label" && r.Method == "DELETE":
+		h.removeContentLabel(w, r, ws, actor, parts[1], r.URL.Query().Get("name"))
+	case len(parts) == 4 && parts[0] == "content" && parts[2] == "label" && r.Method == "DELETE":
+		h.removeContentLabel(w, r, ws, actor, parts[1], parts[3])
+	case len(parts) == 1 && parts[0] == "label" && r.Method == "GET":
+		h.labelContent(w, r, ws, actor)
+	case len(parts) == 3 && parts[0] == "space" && parts[2] == "label" && r.Method == "GET":
+		h.spaceLabels(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "space" && parts[2] == "label" && r.Method == "POST":
+		h.addSpaceLabels(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "space" && parts[2] == "label" && r.Method == "DELETE":
+		h.removeSpaceLabel(w, r, ws, actor, parts[1])
+	default:
+		failure(w, 404, "This Confluence v1 resource is not implemented.")
+	}
+}
+
+func decodeV1Labels(w http.ResponseWriter, r *http.Request) ([]models.WikiLabel, bool) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	raw, err := io.ReadAll(r.Body)
+	if err != nil {
+		failure(w, 400, "Invalid label request.")
+		return nil, false
+	}
+	var labels []models.WikiLabel
+	if err := json.Unmarshal(raw, &labels); err != nil {
+		var label models.WikiLabel
+		if objectErr := json.Unmarshal(raw, &label); objectErr != nil {
+			failure(w, 400, "Expected a label object or array.")
+			return nil, false
+		}
+		labels = []models.WikiLabel{label}
+	}
+	return labels, true
+}
+
+func v1LabelBean(label models.WikiLabel) map[string]string {
+	return map[string]string{"id": label.ID, "name": label.Name, "prefix": label.Prefix, "label": label.Prefix + ":" + label.Name}
+}
+
+func (h *V1Handler) v1LabelList(w http.ResponseWriter, r *http.Request, labels []models.WikiLabel) {
+	start, limit := 0, 200
+	if raw := r.URL.Query().Get("start"); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 0 {
+			failure(w, 400, "start must be zero or greater.")
+			return
+		}
+		start = value
+	}
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 0 || value > 1000 {
+			failure(w, 400, "limit must be between 0 and 1000.")
+			return
+		}
+		limit = value
+	}
+	start = min(start, len(labels))
+	end := min(start+limit, len(labels))
+	results := make([]any, 0, end-start)
+	for _, label := range labels[start:end] {
+		results = append(results, v1LabelBean(label))
+	}
+	respond(w, 200, map[string]any{"results": results, "start": start, "limit": limit, "size": len(results), "_links": map[string]string{"base": h.BaseURL + "/wiki"}})
+}
+
+func (h *V1Handler) addContentLabels(w http.ResponseWriter, r *http.Request, ws, actor, pageID string) {
+	if !supportedQuery(w, r) {
+		return
+	}
+	labels, ok := decodeV1Labels(w, r)
+	if !ok {
+		return
+	}
+	labels, err := h.Commands.AddWikiPageLabels(r.Context(), ws, actor, pageID, labels)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	h.v1LabelList(w, r, labels)
+}
+
+func (h *V1Handler) removeContentLabel(w http.ResponseWriter, r *http.Request, ws, actor, pageID, name string) {
+	if name == "" {
+		failure(w, 400, "Label name is required.")
+		return
+	}
+	if err := h.Commands.RemoveWikiPageLabel(r.Context(), ws, actor, pageID, "global", name); err != nil {
+		writeError(w, err)
+		return
+	}
+	w.WriteHeader(204)
+}
+
+func (h *V1Handler) labelContent(w http.ResponseWriter, r *http.Request, ws, actor string) {
+	if !supportedQuery(w, r, "name", "type", "start", "limit") {
+		return
+	}
+	name := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("name")))
+	if name == "" {
+		failure(w, 400, "Label name is required.")
+		return
+	}
+	if contentType := r.URL.Query().Get("type"); contentType != "" && contentType != "page" {
+		failure(w, 400, "Only page label content is currently supported.")
+		return
+	}
+	labels, err := h.Store.WikiLabels(r.Context(), ws, actor)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	var label *models.WikiLabel
+	for i := range labels {
+		if labels[i].Name == name && (label == nil || labels[i].Prefix == "global") {
+			copy := labels[i]
+			label = &copy
+		}
+	}
+	if label == nil {
+		failure(w, 404, "Label not found.")
+		return
+	}
+	pages, err := h.Store.WikiPagesByLabel(r.Context(), ws, actor, label.ID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	results := make([]any, 0, len(pages))
+	for _, page := range pages {
+		results = append(results, map[string]any{"id": page.ID, "type": "page", "status": page.Status, "title": page.Title, "_links": map[string]string{"webui": "/spaces/" + page.SpaceID + "/pages/" + page.ID}})
+	}
+	respond(w, 200, map[string]any{"label": v1LabelBean(*label), "associatedContents": map[string]any{"results": results, "start": 0, "limit": len(results), "size": len(results)}})
+}
+
+func (h *V1Handler) spaceLabels(w http.ResponseWriter, r *http.Request, ws, actor, key string) {
+	if !supportedQuery(w, r, "prefix", "start", "limit") {
+		return
+	}
+	if prefix := r.URL.Query().Get("prefix"); prefix != "" && prefix != "global" && prefix != "my" && prefix != "team" {
+		failure(w, 400, "Unsupported label prefix.")
+		return
+	}
+	space, err := h.Store.WikiSpaceByKey(r.Context(), ws, actor, key)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	labels, err := h.Store.WikiSpaceLabels(r.Context(), ws, actor, space.ID, false)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if prefix := r.URL.Query().Get("prefix"); prefix != "" {
+		filtered := labels[:0]
+		for _, label := range labels {
+			if label.Prefix == prefix {
+				filtered = append(filtered, label)
+			}
+		}
+		labels = filtered
+	}
+	h.v1LabelList(w, r, labels)
+}
+
+func (h *V1Handler) addSpaceLabels(w http.ResponseWriter, r *http.Request, ws, actor, key string) {
+	if !supportedQuery(w, r) {
+		return
+	}
+	space, err := h.Store.WikiSpaceByKey(r.Context(), ws, actor, key)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	labels, ok := decodeV1Labels(w, r)
+	if !ok {
+		return
+	}
+	labels, err = h.Commands.AddWikiSpaceLabels(r.Context(), ws, actor, space.ID, labels)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	h.v1LabelList(w, r, labels)
+}
+
+func (h *V1Handler) removeSpaceLabel(w http.ResponseWriter, r *http.Request, ws, actor, key string) {
+	if !supportedQuery(w, r, "name", "prefix") {
+		return
+	}
+	space, err := h.Store.WikiSpaceByKey(r.Context(), ws, actor, key)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	name, prefix := r.URL.Query().Get("name"), r.URL.Query().Get("prefix")
+	if prefix == "" {
+		prefix = "global"
+	}
+	if err := h.Commands.RemoveWikiSpaceLabel(r.Context(), ws, actor, space.ID, prefix, name); err != nil {
+		writeError(w, err)
+		return
+	}
+	w.WriteHeader(204)
+}

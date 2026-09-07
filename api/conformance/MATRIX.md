@@ -82,7 +82,7 @@ use `/rest/zzira/1`.
 | Project versions and releases | 🟡 | Ten version operations, release hub/lifecycle, fix/affected membership, visible progress and notes; exact limits in [RELEASES.md](../../docs/RELEASES.md) |
 | Metrics and reports | 🟡 | Permission-filtered 7/30/90 day DORA metrics, immutable delivery facts, accessible daily SVG/table and recent production evidence; Jira/Agile report catalog, comparisons, exports, subscriptions and scheduled delivery remain; see `docs/REPORTS.md` |
 | Apps/plugins, diagrams and graphs | ⛔ | installation/runtime modules, diagram authoring and graph/report surfaces remain |
-| Confluence Cloud /wiki/api/v2 spaces, pages and footer comments | 🟡 | Initial space/page CRUD, parent validation, storage subset, drafts, versions, trash/restore, threaded footer-comment CRUD, likes, history and permitted operations across twelve reviewed operations, and permission-filtered action log; exact limits in CLOUD_PARITY.md |
+| Confluence Cloud spaces, pages, labels and footer comments | 🟡 | Initial v2 space/page CRUD, parent validation, storage subset, drafts, versions, trash/restore, threaded footer-comment CRUD/likes/history/operations, v1 label writes and v1/v2 label discovery across 24 reviewed operations, plus permission-filtered action log; exact limits in CLOUD_PARITY.md |
 
 ## E2E (browser-proven, Playwright/Chromium)
 

@@ -55,3 +55,10 @@ type WikiFooterCommentVersion struct {
 	WikiVersion
 	Body WikiBody `json:"body"`
 }
+
+type WikiLabel struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Prefix    string `json:"prefix"`
+	CreatedAt string `json:"-"`
+}

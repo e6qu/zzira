@@ -1383,10 +1383,28 @@ Validation after footer-comment history, operations and likes:
 - Exact reviewed API coverage is 226 of 1,207 operations: 219 partial, 7
   missing, and 981 unassessed. Confluence coverage is 12 of 348 reviewed.
 
+Validation after Confluence labels:
+
+- Migration 075 adds reusable workspace labels plus page and space
+  associations. Adds are canonical, bounded and idempotent; removal and every
+  changed association emit permission-filtered local-first actions. Orphaned
+  label records never appear in discovery results.
+- Seven legacy v1 operations add/remove content and space labels, return the
+  expected LabelArray/LabelDetails shapes, and enforce workspace administration
+  for space changes. Five v2 operations provide visible global, page, space,
+  space-content and label-to-page discovery with prefix/ID filters, documented
+  sorts and cursor pagination.
+- The page journey adds comma-separated labels, exposes compact removable
+  chips, and retains them across page edits. PostgreSQL coverage crosses v1
+  writes with v2 reads and proves private page/action isolation; Chromium proves
+  add/remove, persistence, axe accessibility and 320 px reflow.
+- Exact reviewed API coverage is 238 of 1,207 operations: 231 partial, 7
+  missing, and 969 unassessed. Confluence coverage is 24 of 348 reviewed.
+
 ## Current change
 
 1. Continue Confluence v1/v2 contract and knowledge collaboration with page
-   attachments, labels and restrictions.
+   attachments and restrictions.
 2. Return to advanced service operations risk, CAB approval, on-call and
    post-incident review configuration after the next knowledge slice.
 
