@@ -56,8 +56,8 @@ func (s *Store) SaveWikiBlogPost(ctx context.Context, ws, actor string, input mo
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	var spaceID string
-	if err := tx.QueryRow(ctx, `SELECT s.id::text FROM wiki_spaces s WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND s.id::text=$3 FOR UPDATE`, ws, actor, input.SpaceID).Scan(&spaceID); err != nil {
+	var spaceID, defaultClassification string
+	if err := tx.QueryRow(ctx, `SELECT s.id::text,s.default_classification_level FROM wiki_spaces s WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND s.id::text=$3 FOR UPDATE`, ws, actor, input.SpaceID).Scan(&spaceID, &defaultClassification); err != nil {
 		return nil, err
 	}
 	if !isNew {
@@ -80,6 +80,7 @@ func (s *Store) SaveWikiBlogPost(ctx context.Context, ws, actor string, input mo
 		input.AuthorID, input.Private, input.CreatedAt = old.AuthorID, old.Private, old.CreatedAt
 	} else {
 		input.Version.Number, input.AuthorID = 1, actor
+		input.ClassificationLevel = defaultClassification
 	}
 	if isNew {
 		var createdAt *time.Time
@@ -90,7 +91,7 @@ func (s *Store) SaveWikiBlogPost(ctx context.Context, ws, actor string, input mo
 			}
 			createdAt = &value
 		}
-		err = tx.QueryRow(ctx, `INSERT INTO wiki_blog_posts(space_id,title,status,body,author_id,private,published,created_at) VALUES($1::bigint,$2,$3,$4,$5,$6,$3='current',COALESCE($7::timestamptz,now())) RETURNING id::text`, spaceID, input.Title, input.Status, input.Body.Value, actor, input.Private, createdAt).Scan(&input.ID)
+		err = tx.QueryRow(ctx, `INSERT INTO wiki_blog_posts(space_id,title,status,body,author_id,private,published,created_at,classification_level) VALUES($1::bigint,$2,$3,$4,$5,$6,$3='current',COALESCE($7::timestamptz,now()),$8) RETURNING id::text`, spaceID, input.Title, input.Status, input.Body.Value, actor, input.Private, createdAt, input.ClassificationLevel).Scan(&input.ID)
 	} else {
 		_, err = tx.Exec(ctx, `UPDATE wiki_blog_posts SET title=$2,status=$3,body=$4,version=$5,published=(published OR $3='current') WHERE id::text=$1`, input.ID, input.Title, input.Status, input.Body.Value, input.Version.Number)
 	}

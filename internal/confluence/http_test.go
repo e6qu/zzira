@@ -199,6 +199,33 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		page = models.WikiPage{ID: bean.ID, SpaceID: bean.SpaceID, Title: bean.Title, Status: bean.Status, Version: bean.Version, Body: bean.Body["storage"]}
 		return page
 	}
+	call(member, "GET", "/spaces/"+public+"/classification-level/default", nil, 404)
+	call(member, "PUT", "/spaces/"+public+"/classification-level/default", map[string]string{"id": "internal"}, 403)
+	call(actor, "PUT", "/spaces/"+public+"/classification-level/default", map[string]string{"id": "unknown"}, 400)
+	call(actor, "PUT", "/spaces/"+public+"/classification-level/default", map[string]string{"id": "internal"}, 204)
+	if level := call(member, "GET", "/spaces/"+public+"/classification-level/default", nil, 200); !strings.Contains(level.Body.String(), `"name":"Internal"`) {
+		t.Fatal(level.Body.String())
+	}
+	if operations := call(member, "GET", "/spaces/"+public+"/operations", nil, 200); !strings.Contains(operations.Body.String(), `"operation":"read"`) || strings.Contains(operations.Body.String(), `"operation":"update"`) {
+		t.Fatal(operations.Body.String())
+	}
+	if operations := call(actor, "GET", "/spaces/"+public+"/operations", nil, 200); !strings.Contains(operations.Body.String(), `"operation":"update"`) || !strings.Contains(operations.Body.String(), `"targetType":"space"`) {
+		t.Fatal(operations.Body.String())
+	}
+	inheritedPage := create(public, "Inherited handling guide", "current")
+	if level := call(member, "GET", "/pages/"+inheritedPage.ID+"/classification-level", nil, 200); !strings.Contains(level.Body.String(), `"name":"Internal"`) {
+		t.Fatal(level.Body.String())
+	}
+	inheritedBlog := call(actor, "POST", "/blogposts", map[string]any{"spaceId": public, "title": "Inherited handling update", "status": "current", "body": models.WikiBody{Representation: "storage", Value: "<p>Inherited handling.</p>"}}, 200)
+	var inheritedBlogBean struct{ ID string }
+	if err := json.Unmarshal(inheritedBlog.Body.Bytes(), &inheritedBlogBean); err != nil {
+		t.Fatal(err)
+	}
+	if level := call(member, "GET", "/blogposts/"+inheritedBlogBean.ID+"/classification-level", nil, 200); !strings.Contains(level.Body.String(), `"name":"Internal"`) {
+		t.Fatal(level.Body.String())
+	}
+	call(actor, "DELETE", "/spaces/"+public+"/classification-level/default", nil, 204)
+	call(actor, "GET", "/spaces/"+public+"/classification-level/default", nil, 404)
 	page := create(public, "Release guide", "current")
 	draft := create(public, "Private draft", "draft")
 	secret := create(private, "Secret guide", "current")

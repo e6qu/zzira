@@ -1801,9 +1801,23 @@ Validation after Confluence core page lifecycle:
 - Exact reviewed API coverage is 406 of 1,207 operations: 399 partial, 7
   missing, and 801 unassessed. Confluence coverage is 192 of 348 reviewed.
 
+Validation after Confluence space governance:
+
+- Four pinned v2 operations now cover reading, setting and clearing a space's
+  default classification plus role-shaped space operation discovery.
+- Workspace administrators choose one of the built-in levels in REST or the
+  accessible space UI. New pages and blog posts inherit that level atomically;
+  clearing the default affects future content without rewriting existing data.
+- PostgreSQL integration covers missing/default/reset states, invalid levels,
+  member denial, administrator operations and both inheritance paths. The
+  Chromium wiki journey manages a default and observes inherited blog metadata.
+- Exact reviewed API coverage is 410 of 1,207 operations: 403 partial, 7
+  missing, and 797 unassessed. Confluence coverage is 196 of 348 reviewed.
+
 ## Current change
 
-1. Resume the other Confluence content and administration operations.
+1. Resume Confluence space collections, permissions and other administration
+   operations.
 2. Continue Service Management with dependency mapping, major-incident
    communications, change-conflict calendars and escalation policy.
 3. Expand the app runtime from registered custom-content discovery into signed

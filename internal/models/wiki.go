@@ -8,14 +8,19 @@ type WikiBody struct {
 }
 
 type WikiSpace struct {
-	ID          string `json:"id"`
-	WorkspaceID string `json:"-"`
-	Key         string `json:"key"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	AuthorID    string `json:"authorId"`
-	CreatedAt   string `json:"createdAt"`
-	Private     bool   `json:"private"`
+	ID                         string `json:"id"`
+	WorkspaceID                string `json:"-"`
+	Key                        string `json:"key"`
+	Name                       string `json:"name"`
+	Description                string `json:"description"`
+	AuthorID                   string `json:"authorId"`
+	CreatedAt                  string `json:"createdAt"`
+	Private                    bool   `json:"private"`
+	DefaultClassificationLevel string `json:"-"`
+}
+
+func (s WikiSpace) DefaultClassificationName() string {
+	return wikiClassificationName(s.DefaultClassificationLevel)
 }
 
 type WikiVersion struct {
@@ -42,7 +47,11 @@ type WikiPage struct {
 }
 
 func (p WikiPage) ClassificationName() string {
-	switch p.ClassificationLevel {
+	return wikiClassificationName(p.ClassificationLevel)
+}
+
+func wikiClassificationName(level string) string {
+	switch level {
 	case "public":
 		return "Public"
 	case "internal":
@@ -72,18 +81,7 @@ type WikiBlogPost struct {
 }
 
 func (p WikiBlogPost) ClassificationName() string {
-	switch p.ClassificationLevel {
-	case "public":
-		return "Public"
-	case "internal":
-		return "Internal"
-	case "confidential":
-		return "Confidential"
-	case "restricted":
-		return "Restricted"
-	default:
-		return ""
-	}
+	return wikiClassificationName(p.ClassificationLevel)
 }
 
 type WikiContent struct {

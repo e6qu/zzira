@@ -5294,6 +5294,61 @@
         "e2e/wiki.spec.ts"
       ],
       "notes": "Moves a writable childless current page to trash through the canonical optimistic page command while preserving history and enforcing heterogeneous-child safety; draft deletion, permanent purge and archived/deleted state remain."
+    },
+    {
+      "operationId": "confluence-v2:DELETE:/wiki/api/v2/spaces/{id}/classification-level/default",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_governance.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki.go",
+        "migrations/094_wiki_space_classification.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Workspace administrators can clear a visible space's default built-in classification; new page and blog post writes then stop inheriting a level. Organization-defined levels remain."
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/spaces/{id}/classification-level/default",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_governance.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki.go",
+        "migrations/094_wiki_space_classification.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Returns the built-in default classification for a visible space and reports no default as not found. Organization-defined levels remain."
+    },
+    {
+      "operationId": "confluence-v2:PUT:/wiki/api/v2/spaces/{id}/classification-level/default",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_governance.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki.go",
+        "migrations/094_wiki_space_classification.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Workspace administrators can select a validated built-in space default through REST or the accessible UI; new pages and blog posts inherit it. Organization-defined levels remain."
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/spaces/{id}/operations",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_governance.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki.go"
+      ],
+      "notes": "Returns read for visible spaces and exposes update/delete only to workspace administrators; Confluence-specific space roles and granular permissions remain."
     }
   ]
 }

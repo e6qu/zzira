@@ -135,6 +135,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		respond(w, 200, h.spaceBean(space))
+	case len(parts) == 3 && parts[0] == "spaces" && parts[2] == "operations" && r.Method == "GET":
+		h.spaceOperations(w, r, ws, actor, parts[1])
+	case len(parts) == 4 && parts[0] == "spaces" && parts[2] == "classification-level" && parts[3] == "default" && r.Method == "GET":
+		h.spaceDefaultClassification(w, r, ws, actor, parts[1])
+	case len(parts) == 4 && parts[0] == "spaces" && parts[2] == "classification-level" && parts[3] == "default" && r.Method == "PUT":
+		h.setSpaceDefaultClassification(w, r, ws, actor, parts[1])
+	case len(parts) == 4 && parts[0] == "spaces" && parts[2] == "classification-level" && parts[3] == "default" && r.Method == "DELETE":
+		h.deleteSpaceDefaultClassification(w, r, ws, actor, parts[1])
 	case len(parts) == 3 && parts[0] == "spaces" && parts[2] == "pages" && r.Method == "GET":
 		if _, err := h.Store.WikiSpace(r.Context(), ws, actor, parts[1]); err != nil {
 			writeError(w, err)

@@ -304,7 +304,26 @@ func (h *Handler) WikiSpacePage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load space watch status.", 500)
 		return
 	}
-	h.writeWorkspacePage(w, r, "page_wiki_space", user, ws, wikiData{Space: space, Pages: filtered, BlogPosts: filteredBlogs, Folders: folders, SmartLinks: smartLinks, Databases: databases, Whiteboards: whiteboards, Tree: wikiPageTree(filtered), Query: query, Status: status, WatchingSpace: watching}, "wiki", "")
+	admin, err := h.Store.IsAdmin(r.Context(), ws, user.ID)
+	if err != nil {
+		http.Error(w, "Could not load space permissions.", 500)
+		return
+	}
+	h.writeWorkspacePage(w, r, "page_wiki_space", user, ws, wikiData{Space: space, Pages: filtered, BlogPosts: filteredBlogs, Folders: folders, SmartLinks: smartLinks, Databases: databases, Whiteboards: whiteboards, Tree: wikiPageTree(filtered), Query: query, Status: status, WatchingSpace: watching, CanAdmin: admin}, "wiki", "")
+}
+
+func (h *Handler) WikiSpaceClassification(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	space, err := h.Commands.SetWikiSpaceDefaultClassification(r.Context(), ws, user.ID, r.PathValue("space"), r.PostFormValue("level"))
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	redirectLocal(w, r, "/wiki/spaces/"+space.ID)
 }
 
 func (h *Handler) WikiBlogPostNew(w http.ResponseWriter, r *http.Request) {

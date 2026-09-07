@@ -22,6 +22,11 @@ test('wiki space, rich page, access, stale edits, child pages, history, trash an
   await page.getByRole('button', { name: 'Create space', exact: true }).click();
   await expect(page).toHaveURL(/\/wiki\/spaces\/\d+$/);
   const spaceURL = page.url();
+  const spaceGovernance = page.getByRole('region', { name: 'Default classification' });
+  await spaceGovernance.getByText('Manage default classification', { exact: true }).click();
+  await spaceGovernance.getByRole('combobox', { name: 'Default classification' }).selectOption('internal');
+  await spaceGovernance.getByRole('button', { name: 'Save default classification', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Default classification' })).toContainText('Internal');
   await page.getByRole('button', { name: 'Watch space', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Stop watching space', exact: true })).toBeVisible();
   await page.getByRole('link', { name: 'Write blog post', exact: true }).click();
@@ -31,6 +36,7 @@ test('wiki space, rich page, access, stale edits, child pages, history, trash an
   await page.getByRole('button', { name: 'Create blog post', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Engineering release update', level: 1 })).toBeVisible();
   await expect(page.getByRole('article', { name: 'Blog post content' })).toContainText('staged rollout');
+  await expect(page.getByText(/Blog post · Internal/)).toBeVisible();
   await page.getByRole('link', { name: 'Edit post', exact: true }).click();
   await page.getByLabel('Content', { exact: true }).fill('The release candidate reached production successfully.');
   await page.getByLabel('What changed?', { exact: true }).fill('Published rollout result');
