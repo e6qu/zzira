@@ -251,10 +251,20 @@ func (s *Store) SaveWikiPage(ctx context.Context, ws, actor string, input models
 }
 
 func (s *Store) WikiVersions(ctx context.Context, ws, user, id string) ([]models.WikiVersion, error) {
+	return s.WikiVersionsSorted(ctx, ws, user, id, "")
+}
+
+func (s *Store) WikiVersionsSorted(ctx context.Context, ws, user, id, order string) ([]models.WikiVersion, error) {
 	if _, err := s.WikiPage(ctx, ws, user, id); err != nil {
 		return nil, err
 	}
-	rows, err := s.Pool.Query(ctx, `SELECT version,message,minor_edit,author_id,to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM wiki_page_versions WHERE page_id::text=$1 AND (status<>'draft' OR author_id=$2) ORDER BY version`, id, user)
+	orderSQL := "created_at,version"
+	if order == "-modified-date" {
+		orderSQL = "created_at DESC,version DESC"
+	} else if order != "" && order != "modified-date" {
+		return nil, fmt.Errorf("%w: unsupported version sort order", ErrWikiValidation)
+	}
+	rows, err := s.Pool.Query(ctx, `SELECT version,message,minor_edit,author_id,to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM wiki_page_versions WHERE page_id::text=$1 AND (status<>'draft' OR author_id=$2) ORDER BY `+orderSQL, id, user)
 	if err != nil {
 		return nil, err
 	}
@@ -268,6 +278,15 @@ func (s *Store) WikiVersions(ctx context.Context, ws, user, id string) ([]models
 		out = append(out, v)
 	}
 	return out, rows.Err()
+}
+
+func (s *Store) WikiPageVersion(ctx context.Context, ws, user, id string, version int) (*models.WikiVersion, error) {
+	if _, err := s.WikiPage(ctx, ws, user, id); err != nil {
+		return nil, err
+	}
+	value := &models.WikiVersion{}
+	err := s.Pool.QueryRow(ctx, `SELECT version,message,minor_edit,author_id,to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM wiki_page_versions WHERE page_id::text=$1 AND version=$2 AND (status<>'draft' OR author_id=$3)`, id, version, user).Scan(&value.Number, &value.Message, &value.MinorEdit, &value.AuthorID, &value.CreatedAt)
+	return value, err
 }
 
 func (s *Store) WikiFooterComment(ctx context.Context, ws, user, id string) (*models.WikiFooterComment, error) {

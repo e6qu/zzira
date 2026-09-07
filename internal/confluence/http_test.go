@@ -265,6 +265,17 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	if current := call(member, "GET", "/pages/"+governed.ID+"?body-format=storage", nil, 200); strings.Contains(current.Body.String(), "Release") || !strings.Contains(current.Body.String(), "[REDACTED]") {
 		t.Fatal(current.Body.String())
 	}
+	if versions := call(member, "GET", "/pages/"+governed.ID+"/versions?sort=-modified-date&body-format=storage", nil, 200); !strings.Contains(versions.Body.String(), "Sensitive content redacted") {
+		t.Fatal(versions.Body.String())
+	}
+	if version := call(member, "GET", "/pages/"+governed.ID+"/versions/2", nil, 200); !strings.Contains(version.Body.String(), `"prevVersion":1`) || !strings.Contains(version.Body.String(), `"contentTypeModified":false`) {
+		t.Fatal(version.Body.String())
+	}
+	updatedPageTitle := call(member, "PUT", "/pages/"+governed.ID+"/title", map[string]string{"status": "current", "title": "Security response updated"}, 200)
+	if !strings.Contains(updatedPageTitle.Body.String(), "Security response updated") || !strings.Contains(updatedPageTitle.Body.String(), `"number":3`) {
+		t.Fatal(updatedPageTitle.Body.String())
+	}
+	call(member, "PUT", "/pages/"+governed.ID+"/title", map[string]string{"status": "draft", "title": "Invalid draft rename"}, 400)
 	var historicalPageSensitive int
 	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM wiki_page_versions WHERE page_id::text=$1 AND body LIKE '%Release%'`, governed.ID).Scan(&historicalPageSensitive); err != nil || historicalPageSensitive != 0 {
 		t.Fatalf("historical page sensitive versions=%d: %v", historicalPageSensitive, err)

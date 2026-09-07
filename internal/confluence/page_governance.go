@@ -4,10 +4,73 @@ import (
 	"errors"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 
+	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
 )
+
+func (h *Handler) pageVersion(w http.ResponseWriter, r *http.Request, ws, actor, id, rawVersion string) {
+	if !validPageID(w, id) || !validPageID(w, rawVersion) || !supportedQuery(w, r) {
+		return
+	}
+	versionNumber, _ := strconv.Atoi(rawVersion)
+	version, err := h.Store.WikiPageVersion(r.Context(), ws, actor, id, versionNumber)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	versions, err := h.Store.WikiVersionsSorted(r.Context(), ws, actor, id, "")
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	bean := map[string]any{"number": version.Number, "message": version.Message, "minorEdit": version.MinorEdit, "authorId": version.AuthorID, "createdAt": version.CreatedAt, "contentTypeModified": false, "collaborators": []string{}}
+	for i := range versions {
+		if versions[i].Number != version.Number {
+			continue
+		}
+		if i > 0 {
+			bean["prevVersion"] = versions[i-1].Number
+		}
+		if i+1 < len(versions) {
+			bean["nextVersion"] = versions[i+1].Number
+		}
+		break
+	}
+	respond(w, 200, bean)
+}
+
+func (h *Handler) updatePageTitle(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
+	if !validPageID(w, id) || !supportedQuery(w, r) {
+		return
+	}
+	var input struct {
+		Status string `json:"status"`
+		Title  string `json:"title"`
+	}
+	if !decode(w, r, &input) {
+		return
+	}
+	page, err := h.Store.WikiPage(r.Context(), ws, actor, id)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if input.Status != page.Status || (input.Status != "current" && input.Status != "draft") {
+		failure(w, 400, "Title status must match the current page status.")
+		return
+	}
+	page.Title = input.Title
+	page.Version = models.WikiVersion{Number: page.Version.Number + 1, Message: "Title updated"}
+	updated, err := h.Commands.SaveWikiPage(r.Context(), ws, actor, *page)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	respond(w, 200, h.pageBean(updated, true))
+}
 
 func (h *Handler) pageProperties(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
 	if !validPageID(w, id) || !supportedQuery(w, r, "key", "sort", "cursor", "limit") {

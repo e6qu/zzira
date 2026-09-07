@@ -1768,6 +1768,20 @@ Validation after Confluence page properties:
 - Exact reviewed API coverage is 398 of 1,207 operations: 391 partial, 7
   missing, and 809 unassessed. Confluence coverage is 184 of 348 reviewed.
 
+Validation after Confluence page version detail:
+
+- Three more pinned v2 operations cover ordered, cursor-paged page version
+  metadata, exact version detail with previous/next linkage, and a title-only
+  update through the canonical optimistic page command.
+- Version reads preserve page and draft visibility. Title updates require
+  current status to match, preserve body and hierarchy, create an immutable
+  page version and emit the existing permission-filtered page action.
+- PostgreSQL integration covers descending history, exact detail, immutable
+  version increment and rejected status mismatch. The existing page history UI
+  and Chromium lifecycle consume the same stored versions.
+- Exact reviewed API coverage is 401 of 1,207 operations: 394 partial, 7
+  missing, and 806 unassessed. Confluence coverage is 187 of 348 reviewed.
+
 ## Current change
 
 1. Resume the other Confluence content and administration operations.
