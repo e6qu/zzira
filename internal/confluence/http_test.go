@@ -119,6 +119,22 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		}
 		return w
 	}
+	callV1NoCheck := func(user, method, path string, body any, want int) *httptest.ResponseRecorder {
+		t.Helper()
+		raw, err := json.Marshal(body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := httptest.NewRequest(method, "/wiki/rest/api"+path, strings.NewReader(string(raw)))
+		r.SetBasicAuth(user+"@example.test", user)
+		r.Header.Set("X-Atlassian-Token", "no-check")
+		w := httptest.NewRecorder()
+		v1.ServeHTTP(w, r)
+		if w.Code != want {
+			t.Fatalf("v1 no-check %s %s: got %d want %d: %s", method, path, w.Code, want, w.Body.String())
+		}
+		return w
+	}
 	callV1Multipart := func(user, method, path, filename, content, comment string, want int) *httptest.ResponseRecorder {
 		t.Helper()
 		var body bytes.Buffer
@@ -238,6 +254,83 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	if !strings.Contains(legacyContent.Body.String(), "Release guide updated") {
 		t.Fatal(legacyContent.Body.String())
 	}
+	watchHead, err := st.Head(ctx, ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	callV1(member, "POST", "/user/watch/content/"+page.ID, nil, 204)
+	memberWatchActions, err := st.ActionsSince(ctx, ws, member, watchHead, 20)
+	if err != nil || len(memberWatchActions) != 1 || memberWatchActions[0].EntityType != store.EntityWikiWatch {
+		t.Fatalf("watcher did not receive private watch action: %+v %v", memberWatchActions, err)
+	}
+	actorWatchActions, err := st.ActionsSince(ctx, ws, actor, watchHead, 20)
+	if err != nil || len(actorWatchActions) != 0 {
+		t.Fatalf("private watch action leaked to administrator: %+v %v", actorWatchActions, err)
+	}
+	if status := callV1(member, "GET", "/user/watch/content/"+page.ID, nil, 200); !strings.Contains(status.Body.String(), `"watching":true`) {
+		t.Fatal(status.Body.String())
+	}
+	callV1(member, "POST", "/user/watch/label/release-ready", nil, 403)
+	callV1NoCheck(member, "POST", "/user/watch/label/release-ready", nil, 204)
+	callV1NoCheck(member, "POST", "/user/watch/space/PUBLIC", nil, 204)
+	if status := callV1(member, "GET", "/user/watch/label/release-ready", nil, 200); !strings.Contains(status.Body.String(), `"watching":true`) {
+		t.Fatal(status.Body.String())
+	}
+	if status := callV1(member, "GET", "/user/watch/space/PUBLIC", nil, 200); !strings.Contains(status.Body.String(), `"watching":true`) {
+		t.Fatal(status.Body.String())
+	}
+	exec(`UPDATE users SET username='ana-watch' WHERE id=$1`, member)
+	if status := callV1(actor, "GET", "/user/watch/content/"+page.ID+"?username=ana-watch", nil, 200); !strings.Contains(status.Body.String(), `"watching":true`) {
+		t.Fatal(status.Body.String())
+	}
+	callV1(actor, "POST", "/user/watch/content/"+page.ID+"?accountId="+admin, nil, 204)
+	callV1(member, "GET", "/user/watch/content/"+page.ID+"?accountId="+actor, nil, 403)
+	pageWatches := callV1(actor, "GET", "/content/"+page.ID+"/notification/child-created?limit=1", nil, 200)
+	if !strings.Contains(pageWatches.Body.String(), `"type":"page"`) || !strings.Contains(pageWatches.Body.String(), `"size":1`) || !strings.Contains(pageWatches.Body.String(), `"contentId":`+page.ID) || !strings.Contains(pageWatches.Body.String(), `"profilePicture"`) {
+		t.Fatal(pageWatches.Body.String())
+	}
+	spaceWatches := callV1(actor, "GET", "/content/"+page.ID+"/notification/created", nil, 200)
+	if !strings.Contains(spaceWatches.Body.String(), member) {
+		t.Fatal(spaceWatches.Body.String())
+	}
+	spaceWatchList := callV1(actor, "GET", "/space/PUBLIC/watch", nil, 200)
+	if !strings.Contains(spaceWatchList.Body.String(), `"spaceKey":"PUBLIC"`) {
+		t.Fatal(spaceWatchList.Body.String())
+	}
+	childResponse := call(actor, "POST", "/pages", map[string]any{"spaceId": public, "parentId": page.ID, "title": "Watched child", "status": "current", "body": models.WikiBody{Representation: "storage", Value: "<p>Draft release details</p>"}}, 200)
+	var child struct {
+		ID      string
+		Version models.WikiVersion
+	}
+	if err := json.Unmarshal(childResponse.Body.Bytes(), &child); err != nil || child.ID == "" {
+		t.Fatalf("unexpected watched child: %+v %v", child, err)
+	}
+	if notifications, err := st.NotificationsByUser(ctx, ws, member, 20); err != nil || len(notifications) != 1 || notifications[0].EntityID != child.ID {
+		t.Fatalf("expected one deduplicated child notification: %+v %v", notifications, err)
+	}
+	callV1(actor, "POST", "/content/"+child.ID+"/label", map[string]string{"prefix": "global", "name": "release-ready"}, 200)
+	call(actor, "PUT", "/pages/"+child.ID, map[string]any{"id": child.ID, "spaceId": public, "parentId": page.ID, "title": "Watched child updated", "status": "current", "body": models.WikiBody{Representation: "storage", Value: "<p>Ready</p>"}, "version": map[string]any{"number": 2}}, 200)
+	if notifications, err := st.NotificationsByUser(ctx, ws, member, 20); err != nil || len(notifications) != 2 {
+		t.Fatalf("expected label and space watches to deduplicate: %+v %v", notifications, err)
+	}
+	childPage, err := st.WikiPage(ctx, ws, actor, child.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	childPage.Version.Number++
+	childPage.Version.MinorEdit = true
+	childPage.Body.Value = "<p>Spelling corrected</p>"
+	if _, err := h.Commands.SaveWikiPage(ctx, ws, actor, *childPage); err != nil {
+		t.Fatal(err)
+	}
+	if notifications, err := st.NotificationsByUser(ctx, ws, member, 20); err != nil || len(notifications) != 2 {
+		t.Fatalf("minor edit generated a notification: %+v %v", notifications, err)
+	}
+	callV1(member, "DELETE", "/user/watch/content/"+page.ID, nil, 403)
+	callV1NoCheck(member, "DELETE", "/user/watch/content/"+page.ID, nil, 204)
+	callV1(member, "DELETE", "/user/watch/label/release-ready", nil, 204)
+	callV1(member, "DELETE", "/user/watch/space/PUBLIC", nil, 204)
+	call(actor, "DELETE", "/pages/"+child.ID, nil, 204)
 	callV1(actor, "POST", "/content/"+secret.ID+"/label", map[string]string{"prefix": "global", "name": "secret-label"}, 200)
 	if leaked := call(member, "GET", "/labels", nil, 200); strings.Contains(leaked.Body.String(), "secret-label") {
 		t.Fatal("private page label leaked")

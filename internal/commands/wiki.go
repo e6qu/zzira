@@ -32,6 +32,16 @@ func (s *Service) CreateWikiSpace(ctx context.Context, ws, actor, key, name, des
 	return s.Store.CreateWikiSpace(ctx, ws, actor, key, name, description, private)
 }
 
+func (s *Service) SetWikiWatch(ctx context.Context, ws, actor, userID, targetType, targetID string, watching bool) error {
+	if targetType == "label" {
+		targetID = strings.ToLower(strings.TrimSpace(targetID))
+		if !wikiLabelPattern.MatchString(targetID) {
+			return fmt.Errorf("%w: label name is invalid", store.ErrWikiValidation)
+		}
+	}
+	return s.Store.SetWikiWatch(ctx, ws, actor, userID, targetType, targetID, watching)
+}
+
 func (s *Service) SaveWikiPage(ctx context.Context, ws, actor string, p models.WikiPage) (*models.WikiPage, error) {
 	p.Title = strings.TrimSpace(p.Title)
 	if p.Status == "" && p.ID == "" {

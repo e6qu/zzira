@@ -3294,6 +3294,198 @@
         "internal/confluence/http_test.go",
         "cmd/server/main.go"
       ]
+    },
+    {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/content/{id}/notification/child-created",
+      "status": "partial",
+      "notes": "Durable page-content, space, and label watches support current-user and administrator-targeted status/mutation, XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; other content types, Confluence space-admin roles, and email delivery remain.",
+      "evidence": [
+        "internal/confluence/v1_watches.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_watches.go",
+        "internal/store/wiki.go",
+        "migrations/080_wiki_watches.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/content/{id}/notification/created",
+      "status": "partial",
+      "notes": "Durable page-content, space, and label watches support current-user and administrator-targeted status/mutation, XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; other content types, Confluence space-admin roles, and email delivery remain.",
+      "evidence": [
+        "internal/confluence/v1_watches.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_watches.go",
+        "internal/store/wiki.go",
+        "migrations/080_wiki_watches.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/space/{spaceKey}/watch",
+      "status": "partial",
+      "notes": "Durable page-content, space, and label watches support current-user and administrator-targeted status/mutation, XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; other content types, Confluence space-admin roles, and email delivery remain.",
+      "evidence": [
+        "internal/confluence/v1_watches.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_watches.go",
+        "internal/store/wiki.go",
+        "migrations/080_wiki_watches.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/user/watch/content/{contentId}",
+      "status": "partial",
+      "notes": "Durable page-content, space, and label watches support current-user and administrator-targeted status/mutation, XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; other content types, Confluence space-admin roles, and email delivery remain.",
+      "evidence": [
+        "internal/confluence/v1_watches.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_watches.go",
+        "internal/store/wiki.go",
+        "migrations/080_wiki_watches.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v1:POST:/wiki/rest/api/user/watch/content/{contentId}",
+      "status": "partial",
+      "notes": "Durable page-content, space, and label watches support current-user and administrator-targeted status/mutation, XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; other content types, Confluence space-admin roles, and email delivery remain.",
+      "evidence": [
+        "internal/confluence/v1_watches.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_watches.go",
+        "internal/store/wiki.go",
+        "migrations/080_wiki_watches.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v1:DELETE:/wiki/rest/api/user/watch/content/{contentId}",
+      "status": "partial",
+      "notes": "Durable page-content, space, and label watches support current-user and administrator-targeted status/mutation, XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; other content types, Confluence space-admin roles, and email delivery remain.",
+      "evidence": [
+        "internal/confluence/v1_watches.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_watches.go",
+        "internal/store/wiki.go",
+        "migrations/080_wiki_watches.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/user/watch/label/{labelName}",
+      "status": "partial",
+      "notes": "Durable page-content, space, and label watches support current-user and administrator-targeted status/mutation, XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; other content types, Confluence space-admin roles, and email delivery remain.",
+      "evidence": [
+        "internal/confluence/v1_watches.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_watches.go",
+        "internal/store/wiki.go",
+        "migrations/080_wiki_watches.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v1:POST:/wiki/rest/api/user/watch/label/{labelName}",
+      "status": "partial",
+      "notes": "Durable page-content, space, and label watches support current-user and administrator-targeted status/mutation, XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; other content types, Confluence space-admin roles, and email delivery remain.",
+      "evidence": [
+        "internal/confluence/v1_watches.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_watches.go",
+        "internal/store/wiki.go",
+        "migrations/080_wiki_watches.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v1:DELETE:/wiki/rest/api/user/watch/label/{labelName}",
+      "status": "partial",
+      "notes": "Durable page-content, space, and label watches support current-user and administrator-targeted status/mutation, XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; other content types, Confluence space-admin roles, and email delivery remain.",
+      "evidence": [
+        "internal/confluence/v1_watches.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_watches.go",
+        "internal/store/wiki.go",
+        "migrations/080_wiki_watches.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/user/watch/space/{spaceKey}",
+      "status": "partial",
+      "notes": "Durable page-content, space, and label watches support current-user and administrator-targeted status/mutation, XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; other content types, Confluence space-admin roles, and email delivery remain.",
+      "evidence": [
+        "internal/confluence/v1_watches.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_watches.go",
+        "internal/store/wiki.go",
+        "migrations/080_wiki_watches.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v1:POST:/wiki/rest/api/user/watch/space/{spaceKey}",
+      "status": "partial",
+      "notes": "Durable page-content, space, and label watches support current-user and administrator-targeted status/mutation, XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; other content types, Confluence space-admin roles, and email delivery remain.",
+      "evidence": [
+        "internal/confluence/v1_watches.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_watches.go",
+        "internal/store/wiki.go",
+        "migrations/080_wiki_watches.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v1:DELETE:/wiki/rest/api/user/watch/space/{spaceKey}",
+      "status": "partial",
+      "notes": "Durable page-content, space, and label watches support current-user and administrator-targeted status/mutation, XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; other content types, Confluence space-admin roles, and email delivery remain.",
+      "evidence": [
+        "internal/confluence/v1_watches.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_watches.go",
+        "internal/store/wiki.go",
+        "migrations/080_wiki_watches.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
     }
   ]
 }

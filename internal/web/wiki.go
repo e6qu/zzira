@@ -39,6 +39,9 @@ type wikiData struct {
 	Status                                string
 	SpaceName, SpaceKey, SpaceDescription string
 	Private                               bool
+	WatchingSpace                         bool
+	WatchingPage                          bool
+	WatchedLabels                         map[string]bool
 }
 
 type wikiRestrictionOption struct {
@@ -198,11 +201,29 @@ func (h *Handler) WikiSpacePage(w http.ResponseWriter, r *http.Request) {
 			filtered = append(filtered, page)
 		}
 	}
-	h.writeWorkspacePage(w, r, "page_wiki_space", user, ws, wikiData{Space: space, Pages: filtered, Tree: wikiPageTree(filtered), Query: query, Status: status}, "wiki", "")
+	watching, err := h.Store.WikiWatchStatus(r.Context(), ws, user.ID, user.ID, "space", space.Key)
+	if err != nil {
+		http.Error(w, "Could not load space watch status.", 500)
+		return
+	}
+	h.writeWorkspacePage(w, r, "page_wiki_space", user, ws, wikiData{Space: space, Pages: filtered, Tree: wikiPageTree(filtered), Query: query, Status: status, WatchingSpace: watching}, "wiki", "")
 }
 
 func (h *Handler) WikiPage(w http.ResponseWriter, r *http.Request) { h.wikiPage(w, r, false) }
 func (h *Handler) WikiEdit(w http.ResponseWriter, r *http.Request) { h.wikiPage(w, r, true) }
+
+func (h *Handler) WikiPageRedirect(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	page, err := h.Store.WikiPage(r.Context(), ws, user.ID, r.PathValue("page"))
+	if err != nil || page.Status != "current" {
+		http.NotFound(w, r)
+		return
+	}
+	redirectLocal(w, r, wikiPageURL(page))
+}
 
 func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 	user, ws, ok := h.pageContext(w, r)
@@ -325,6 +346,24 @@ func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 		if err != nil {
 			http.Error(w, "Could not load page labels.", 500)
 			return
+		}
+		if page.Status == "current" {
+			data.WatchingPage, err = h.Store.WikiWatchStatus(r.Context(), ws, user.ID, user.ID, "content", page.ID)
+			if err != nil {
+				http.Error(w, "Could not load page watch status.", 500)
+				return
+			}
+			data.WatchedLabels = map[string]bool{}
+			for _, label := range data.Labels {
+				if _, seen := data.WatchedLabels[label.Name]; seen {
+					continue
+				}
+				data.WatchedLabels[label.Name], err = h.Store.WikiWatchStatus(r.Context(), ws, user.ID, user.ID, "label", label.Name)
+				if err != nil {
+					http.Error(w, "Could not load label watch status.", 500)
+					return
+				}
+			}
 		}
 		data.Attachments, err = h.Store.WikiAttachments(r.Context(), ws, user.ID, page.ID, "", "", "current")
 		if err != nil {
@@ -601,6 +640,66 @@ func (h *Handler) WikiPageLabels(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "Unknown label action.", 400)
 		return
+	}
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	redirectLocal(w, r, wikiPageURL(page)+"#wiki-labels")
+}
+
+func (h *Handler) WikiSpaceWatch(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	space, err := h.Store.WikiSpace(r.Context(), ws, user.ID, r.PathValue("space"))
+	if err == nil {
+		err = h.Commands.SetWikiWatch(r.Context(), ws, user.ID, user.ID, "space", space.Key, r.PostFormValue("watching") == "true")
+	}
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	redirectLocal(w, r, "/wiki/spaces/"+space.ID)
+}
+
+func (h *Handler) WikiPageWatch(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	page, err := h.wikiPageForComment(r, ws, user.ID)
+	if err == nil {
+		err = h.Commands.SetWikiWatch(r.Context(), ws, user.ID, user.ID, "content", page.ID, r.PostFormValue("watching") == "true")
+	}
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	redirectLocal(w, r, wikiPageURL(page))
+}
+
+func (h *Handler) WikiLabelWatch(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	page, err := h.wikiPageForComment(r, ws, user.ID)
+	if err == nil {
+		err = h.Commands.SetWikiWatch(r.Context(), ws, user.ID, user.ID, "label", r.PathValue("label"), r.PostFormValue("watching") == "true")
 	}
 	if err != nil {
 		status, message := wikiWebError(err)

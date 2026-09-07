@@ -54,6 +54,9 @@ func notificationDestination(notification *models.Notification) string {
 	if notification.EntityType == models.EntityIssue && notification.EntityID != "" {
 		return "/browse/" + url.PathEscape(notification.EntityID)
 	}
+	if notification.EntityType == "wiki_page" && notification.EntityID != "" {
+		return "/wiki/pages/" + url.PathEscape(notification.EntityID)
+	}
 	return "/notifications"
 }
 

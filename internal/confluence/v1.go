@@ -40,6 +40,8 @@ func (h *V1Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case len(parts) == 4 && parts[0] == "content" && parts[2] == "child" && parts[3] == "attachment":
 		h.v1SaveAttachments(w, r, ws, actor, parts[1])
+	case len(parts) == 4 && parts[0] == "content" && parts[2] == "notification" && (parts[3] == "child-created" || parts[3] == "created") && r.Method == "GET":
+		h.v1ContentWatches(w, r, ws, actor, parts[1], parts[3])
 	case len(parts) == 5 && parts[0] == "content" && parts[2] == "child" && parts[3] == "attachment" && r.Method == "PUT":
 		h.v1UpdateAttachmentProperties(w, r, ws, actor, parts[1], parts[4])
 	case len(parts) == 6 && parts[0] == "content" && parts[2] == "child" && parts[3] == "attachment" && parts[5] == "data" && r.Method == "POST":
@@ -70,6 +72,10 @@ func (h *V1Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.addSpaceLabels(w, r, ws, actor, parts[1])
 	case len(parts) == 3 && parts[0] == "space" && parts[2] == "label" && r.Method == "DELETE":
 		h.removeSpaceLabel(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "space" && parts[2] == "watch" && r.Method == "GET":
+		h.v1SpaceWatchers(w, r, ws, actor, parts[1])
+	case len(parts) == 4 && parts[0] == "user" && parts[1] == "watch":
+		h.v1UserWatch(w, r, ws, actor, parts[2], parts[3])
 	default:
 		failure(w, 404, "This Confluence v1 resource is not implemented.")
 	}

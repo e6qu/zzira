@@ -143,6 +143,7 @@ func (s *Store) CreateWikiSpace(ctx context.Context, ws, actor, key, name, descr
 // SaveWikiPage serializes writes within a space, validates parent membership
 // and cycles, then writes the page, immutable version and action atomically.
 func (s *Store) SaveWikiPage(ctx context.Context, ws, actor string, input models.WikiPage) (*models.WikiPage, error) {
+	isNew := input.ID == ""
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -224,6 +225,11 @@ func (s *Store) SaveWikiPage(ctx context.Context, ws, actor string, input models
 	}
 	if err := wikiAction(ctx, tx, ws, actor, "wiki_page", page.ID, spaceID, page); err != nil {
 		return nil, err
+	}
+	if page.Status == "current" && !page.Version.MinorEdit {
+		if err := wikiWatchNotifications(ctx, tx, ws, actor, page, isNew); err != nil {
+			return nil, err
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err

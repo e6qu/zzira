@@ -1477,9 +1477,32 @@ Validation after Confluence attachment comments and thumbnails:
 - Exact reviewed API coverage is 271 of 1,207 operations: 264 partial, 7
   missing, and 936 unassessed. Confluence coverage is 57 of 348 reviewed.
 
+Validation after Confluence content, space and label watches:
+
+- Migration 080 stores one durable subscription model for page content, space
+  keys and label names. Current users manage their own watches; workspace
+  administrators can use Cloud `accountId` and deprecated username/key
+  selectors for another active directory member. Mutations are idempotent and
+  changed state emits a watcher-private sync action.
+- All 12 pinned Confluence v1 watch operations now support status, mutation,
+  watcher discovery, legacy required watcher fields, numeric content IDs,
+  validated pagination and each operation's documented XSRF header. Page,
+  space, and label targets retain current content visibility boundaries.
+- Published page changes deliver one synchronized in-app notification per
+  visible watcher across overlapping content, parent-content, space, and label
+  subscriptions. Minor edits suppress delivery. Notifications resolve through
+  a permission-checked wiki redirect; email delivery remains future work.
+- Space, page, and label watch controls are available in the knowledge UI.
+  PostgreSQL integration covers self/admin targeting, legacy lookup, XSRF,
+  pagination, deduplication, minor edits and private action filtering. Chromium
+  covers watch persistence, a second editor's update, one notification, its
+  return to the page, accessibility, dark mode and 320 px reflow.
+- Exact reviewed API coverage is 283 of 1,207 operations: 276 partial, 7
+  missing, and 924 unassessed. Confluence coverage is 69 of 348 reviewed.
+
 ## Current change
 
-1. Continue Confluence page and space watches, then inline comments and tasks.
+1. Continue Confluence inline comments and tasks.
 2. Return to advanced service operations risk, CAB approval, on-call and
    post-incident review configuration after the next knowledge slice.
 

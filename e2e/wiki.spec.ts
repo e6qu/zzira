@@ -22,6 +22,8 @@ test('wiki space, rich page, access, stale edits, child pages, history, trash an
   await page.getByRole('button', { name: 'Create space', exact: true }).click();
   await expect(page).toHaveURL(/\/wiki\/spaces\/\d+$/);
   const spaceURL = page.url();
+  await page.getByRole('button', { name: 'Watch space', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Stop watching space', exact: true })).toBeVisible();
   await page.getByRole('link', { name: 'Create page', exact: true }).click();
   await checkWikiAccessibility(page);
   await page.getByLabel('Page title').fill('Release checklist');
@@ -30,6 +32,8 @@ test('wiki space, rich page, access, stale edits, child pages, history, trash an
   await expect(page.getByRole('heading', { name: 'Release checklist', level: 1 })).toBeVisible();
   await expect(page.getByRole('article', { name: 'Page content' })).toContainText('Review changes');
   const pageURL = page.url().split('#')[0];
+  await page.getByRole('button', { name: 'Watch page', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Stop watching page', exact: true })).toBeVisible();
   const memberContext = await browser.newContext({ baseURL: new URL(pageURL).origin });
   const member = await memberContext.newPage();
   await member.goto('/login');
@@ -43,6 +47,8 @@ test('wiki space, rich page, access, stale edits, child pages, history, trash an
   await page.getByLabel('Label names').fill('release-ready, handbook');
   await page.getByRole('button', { name: 'Add labels', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Remove label release-ready', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Watch label release-ready', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Stop watching label release-ready', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Remove label handbook', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Remove label handbook', exact: true })).toHaveCount(0);
   await page.getByText('Page access', { exact: true }).click();
@@ -66,6 +72,16 @@ test('wiki space, rich page, access, stale edits, child pages, history, trash an
   await page.getByRole('button', { name: 'Save page access', exact: true }).click();
   await member.reload();
   await expect(member.getByRole('link', { name: 'Edit page', exact: true })).toBeVisible();
+  await member.getByRole('link', { name: 'Edit page', exact: true }).click();
+  await member.getByRole('textbox', { name: 'Page content' }).fill('Review changes, notify watchers, and publish release notes.');
+  await member.getByLabel('What changed?').fill('Added watcher guidance');
+  await member.getByRole('button', { name: 'Save page', exact: true }).click();
+  await expect(member.getByRole('heading', { name: 'Release checklist', level: 1 })).toBeVisible();
+  await page.goto('/notifications');
+  const wikiNotification = page.locator('.notification-open').filter({ hasText: 'Updated wiki page "Release checklist".' });
+  await expect(wikiNotification).toHaveCount(1);
+  await wikiNotification.click();
+  await expect(page).toHaveURL(pageURL);
   await page.getByText('Attach a file', { exact: true }).click();
   await page.getByLabel('File', { exact: true }).setInputFiles({ name: 'release-plan.txt', mimeType: 'text/plain', buffer: Buffer.from('Release plan v1') });
   await page.getByLabel('Comment', { exact: true }).fill('Initial release plan');

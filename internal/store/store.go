@@ -1001,6 +1001,7 @@ func (s *Store) ActionPageSince(ctx context.Context, workspaceID, userID string,
 		    CASE a.entity_type
 		      WHEN $4 THEN a.payload->'notification'->>'userId'
 		      WHEN $5 THEN a.payload->>'userId'
+		      WHEN 'wiki_watch' THEN a.payload->'wiki_watch'->>'userId'
 		      ELSE $3
 		    END = $3
 			  )
