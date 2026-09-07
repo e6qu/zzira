@@ -1720,13 +1720,27 @@ Validation after Confluence blog attachments:
 - Exact reviewed API coverage is 382 of 1,207 operations: 375 partial, 7
   missing, and 825 unassessed. Confluence coverage is 168 of 348 reviewed.
 
+Validation after Confluence blog discussions:
+
+- Migration 091 adds a mutually exclusive blog-post target to the shared
+  versioned footer/inline comment record and preserves page and attachment
+  comment behavior.
+- Blog footer comments support threads, replies and the common update, delete,
+  version, like and operation APIs. Inline discussions validate exact storage
+  passages and support replies plus resolve/reopen state.
+- Public/private post visibility shapes reads and synchronized comment actions,
+  including after the parent is purged. The UI covers authoring, replies and
+  inline resolution, and the clean Chromium journey exercises the workflow.
+- Exact reviewed API coverage is 384 of 1,207 operations: 377 partial, 7
+  missing, and 823 unassessed. Confluence coverage is 170 of 348 reviewed.
+
 ## Current change
 
-1. Complete blog-post footer and inline-comment operations through the shared
-   discussion model.
-2. Resume the other Confluence content and administration operations.
-3. Continue Service Management with dependency mapping, major-incident
+1. Resume the other Confluence content and administration operations.
+2. Continue Service Management with dependency mapping, major-incident
    communications, change-conflict calendars and escalation policy.
+3. Expand the app runtime from registered custom-content discovery into signed
+   installation, scopes and module rendering.
 
 ## Resume here
 

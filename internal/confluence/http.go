@@ -181,6 +181,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.blogPostCustomContent(w, r, ws, actor, parts[1])
 	case len(parts) == 3 && parts[0] == "blogposts" && parts[2] == "attachments" && r.Method == "GET":
 		h.blogAttachments(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "blogposts" && parts[2] == "footer-comments" && r.Method == "GET":
+		h.blogFooterComments(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "blogposts" && parts[2] == "inline-comments" && r.Method == "GET":
+		h.blogInlineComments(w, r, ws, actor, parts[1])
 	case len(parts) == 3 && parts[0] == "blogposts" && parts[2] == "redact" && r.Method == "POST":
 		h.redactBlogPost(w, r, ws, actor, parts[1])
 	case len(parts) == 1 && parts[0] == "pages" && r.Method == "GET":
@@ -511,13 +515,19 @@ func decodeCommentBody(raw json.RawMessage) (models.WikiBody, error) {
 }
 
 func (h *Handler) footerCommentBean(comment *models.WikiFooterComment, body bool) map[string]any {
+	parentType, parentID := "pages", comment.PageID
+	if comment.BlogPostID != "" {
+		parentType, parentID = "blogposts", comment.BlogPostID
+	}
 	bean := map[string]any{
 		"id": comment.ID, "status": "current", "title": "",
 		"createdAt": comment.CreatedAt, "version": comment.Version,
-		"_links": map[string]string{"webui": "/spaces/" + comment.SpaceID + "/pages/" + comment.PageID + "#comment-" + comment.ID, "base": h.BaseURL + "/wiki"},
+		"_links": map[string]string{"webui": "/spaces/" + comment.SpaceID + "/" + parentType + "/" + parentID + "#comment-" + comment.ID, "base": h.BaseURL + "/wiki"},
 	}
 	if comment.AttachmentID != "" {
 		bean["attachmentId"] = comment.AttachmentID
+	} else if comment.BlogPostID != "" {
+		bean["blogPostId"] = comment.BlogPostID
 	} else {
 		bean["pageId"] = comment.PageID
 	}
@@ -639,6 +649,23 @@ func (h *Handler) footerComments(w http.ResponseWriter, r *http.Request, ws, act
 		}
 		comments, err = h.Store.WikiFooterComments(r.Context(), ws, actor, pageID)
 	}
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	sortFooterComments(comments, r.URL.Query().Get("sort"))
+	values := make([]any, 0, len(comments))
+	for _, comment := range comments {
+		values = append(values, h.footerCommentBean(comment, r.URL.Query().Get("body-format") != ""))
+	}
+	h.list(w, r, values)
+}
+
+func (h *Handler) blogFooterComments(w http.ResponseWriter, r *http.Request, ws, actor, blogPostID string) {
+	if !commentQuery(w, r, true) {
+		return
+	}
+	comments, err := h.Store.WikiBlogFooterComments(r.Context(), ws, actor, blogPostID)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -971,7 +998,7 @@ func (h *Handler) labelPages(w http.ResponseWriter, r *http.Request, ws, actor, 
 }
 
 func unsupportedCommentTarget(in footerCommentWrite) bool {
-	return in.BlogPostID != "" || in.CustomContentID != ""
+	return in.CustomContentID != ""
 }
 
 func (h *Handler) createFooterComment(w http.ResponseWriter, r *http.Request, ws, actor string) {
@@ -983,7 +1010,7 @@ func (h *Handler) createFooterComment(w http.ResponseWriter, r *http.Request, ws
 		return
 	}
 	if unsupportedCommentTarget(in) {
-		failure(w, 400, "Blog post and custom-content footer comments are not currently supported.")
+		failure(w, 400, "Custom-content footer comments are not currently supported.")
 		return
 	}
 	body, err := decodeCommentBody(in.Body)
@@ -991,7 +1018,7 @@ func (h *Handler) createFooterComment(w http.ResponseWriter, r *http.Request, ws
 		failure(w, 400, err.Error())
 		return
 	}
-	comment, err := h.Commands.CreateWikiFooterComment(r.Context(), ws, actor, models.WikiFooterComment{PageID: in.PageID, AttachmentID: in.AttachmentID, ParentCommentID: in.ParentCommentID, Body: body})
+	comment, err := h.Commands.CreateWikiFooterComment(r.Context(), ws, actor, models.WikiFooterComment{PageID: in.PageID, BlogPostID: in.BlogPostID, AttachmentID: in.AttachmentID, ParentCommentID: in.ParentCommentID, Body: body})
 	if err != nil {
 		writeError(w, err)
 		return

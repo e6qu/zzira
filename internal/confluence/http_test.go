@@ -240,6 +240,10 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	if attachment := call(member, "GET", "/attachments/"+blogAttachment.ID+"?include-versions=true&include-operations=true", nil, 200); !strings.Contains(attachment.Body.String(), "Production evidence") || !strings.Contains(attachment.Body.String(), `"operation":"update"`) {
 		t.Fatal(attachment.Body.String())
 	}
+	call(member, "POST", "/footer-comments", map[string]any{"attachmentId": blogAttachment.ID, "body": map[string]any{"storage": models.WikiBody{Representation: "storage", Value: "<p>Blog attachment feedback</p>"}}}, 201)
+	if comments := call(actor, "GET", "/attachments/"+blogAttachment.ID+"/footer-comments?body-format=storage", nil, 200); !strings.Contains(comments.Body.String(), "Blog attachment feedback") {
+		t.Fatal(comments.Body.String())
+	}
 	privateBlogResponse := call(actor, "POST", "/blogposts?private=true", map[string]any{"spaceId": public, "title": "Private launch journal", "status": "current", "body": models.WikiBody{Representation: "storage", Value: "<p>Private blog phrase</p>"}}, 200)
 	var privateBlog struct{ ID string }
 	if err := json.Unmarshal(privateBlogResponse.Body.Bytes(), &privateBlog); err != nil {
@@ -250,6 +254,33 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	call(member, "GET", "/blogposts/"+privateBlog.ID+"/attachments", nil, 404)
+	blogCommentResponse := call(member, "POST", "/footer-comments", map[string]any{"blogPostId": blog.ID, "body": map[string]any{"storage": models.WikiBody{Representation: "storage", Value: "<p>Public blog feedback</p>"}}}, 201)
+	var blogComment struct {
+		ID      string
+		Version models.WikiVersion
+	}
+	if err := json.Unmarshal(blogCommentResponse.Body.Bytes(), &blogComment); err != nil || blogComment.ID == "" {
+		t.Fatalf("unexpected blog comment: %+v %v", blogComment, err)
+	}
+	if comments := call(actor, "GET", "/blogposts/"+blog.ID+"/footer-comments?body-format=storage", nil, 200); !strings.Contains(comments.Body.String(), "Public blog feedback") || !strings.Contains(comments.Body.String(), `"blogPostId":"`+blog.ID+`"`) {
+		t.Fatal(comments.Body.String())
+	}
+	call(member, "PUT", "/footer-comments/"+blogComment.ID, map[string]any{"body": map[string]any{"storage": models.WikiBody{Representation: "storage", Value: "<p>Updated public blog feedback</p>"}}, "version": map[string]any{"number": 2, "message": "Clarified feedback"}}, 200)
+	blogInlineResponse := call(member, "POST", "/inline-comments", map[string]any{"blogPostId": blog.ID, "body": map[string]any{"storage": models.WikiBody{Representation: "storage", Value: "<p>Explain the rollout.</p>"}}, "inlineCommentProperties": map[string]any{"textSelection": "production", "textSelectionMatchCount": 1, "textSelectionMatchIndex": 0}}, 201)
+	var blogInline struct {
+		ID      string
+		Version models.WikiVersion
+	}
+	if err := json.Unmarshal(blogInlineResponse.Body.Bytes(), &blogInline); err != nil || blogInline.ID == "" {
+		t.Fatalf("unexpected blog inline comment: %+v %v", blogInline, err)
+	}
+	if comments := call(actor, "GET", "/blogposts/"+blog.ID+"/inline-comments?body-format=storage&resolution-status=open", nil, 200); !strings.Contains(comments.Body.String(), "Explain the rollout") || !strings.Contains(comments.Body.String(), `"blogPostId":"`+blog.ID+`"`) {
+		t.Fatal(comments.Body.String())
+	}
+	call(member, "PUT", "/inline-comments/"+blogInline.ID, map[string]any{"body": map[string]any{"storage": models.WikiBody{Representation: "storage", Value: "<p>Rollout explained.</p>"}}, "resolved": true, "version": map[string]any{"number": 2, "message": "Resolved"}}, 200)
+	call(actor, "POST", "/footer-comments", map[string]any{"blogPostId": privateBlog.ID, "body": map[string]any{"storage": models.WikiBody{Representation: "storage", Value: "<p>Private blog feedback</p>"}}}, 201)
+	call(member, "GET", "/blogposts/"+privateBlog.ID+"/footer-comments", nil, 404)
+	call(member, "GET", "/blogposts/"+privateBlog.ID+"/inline-comments", nil, 404)
 	blogLabels, err := h.Commands.AddWikiBlogPostLabels(ctx, ws, actor, blog.ID, []models.WikiLabel{{Prefix: "global", Name: "release-update"}})
 	if err != nil || len(blogLabels) != 1 {
 		t.Fatalf("add blog label: %+v %v", blogLabels, err)
@@ -1104,18 +1135,28 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	publicBlogAttachmentVisible := false
+	publicBlogCommentVisible, publicBlogInlineVisible := false, false
 	for _, a := range actions {
 		if a.EntityType == "wiki_attachment" && a.EntityID == blogAttachment.ID {
 			publicBlogAttachmentVisible = true
 		}
+		if a.EntityType == "wiki_footer_comment" && a.EntityID == blogComment.ID {
+			publicBlogCommentVisible = true
+		}
+		if a.EntityType == "wiki_inline_comment" && a.EntityID == blogInline.ID {
+			publicBlogInlineVisible = true
+		}
 		if a.EntityType == "wiki_footer_comment_like" && strings.HasPrefix(a.EntityID, secretCommentBean.ID+":") {
 			t.Fatalf("private wiki like action leaked: %s", a.Payload)
 		}
-		if strings.Contains(string(a.Payload), "Private draft") || strings.Contains(string(a.Payload), "Secret guide") || strings.Contains(string(a.Payload), "PRIVATE") || strings.Contains(string(a.Payload), "Private launch phrase") || strings.Contains(string(a.Payload), "Private blog phrase") || strings.Contains(string(a.Payload), "private-blog-metadata") || strings.Contains(string(a.Payload), "secret-blog-label") || strings.Contains(string(a.Payload), "private-evidence.txt") || strings.Contains(string(a.Payload), "Private folder") || strings.Contains(string(a.Payload), "secret-folder-property") || strings.Contains(string(a.Payload), "Private Smart Link") || strings.Contains(string(a.Payload), "private.example.test") || strings.Contains(string(a.Payload), "Private database") || strings.Contains(string(a.Payload), "private-database-property") || strings.Contains(string(a.Payload), "Private database child") || strings.Contains(string(a.Payload), "Private whiteboard") || strings.Contains(string(a.Payload), "secret-label") || strings.Contains(string(a.Payload), "Restricted launch plan") || strings.Contains(string(a.Payload), "Managers approved the launch") || strings.Contains(string(a.Payload), "classified-release") || strings.Contains(string(a.Payload), "classified-metadata") || strings.Contains(string(a.Payload), "classified-file") || strings.Contains(string(a.Payload), "Classified attachment discussion") || strings.Contains(string(a.Payload), "Classified inline discussion") || strings.Contains(string(a.Payload), "Classified task discussion") {
+		if strings.Contains(string(a.Payload), "Private draft") || strings.Contains(string(a.Payload), "Secret guide") || strings.Contains(string(a.Payload), "PRIVATE") || strings.Contains(string(a.Payload), "Private launch phrase") || strings.Contains(string(a.Payload), "Private blog phrase") || strings.Contains(string(a.Payload), "Private blog feedback") || strings.Contains(string(a.Payload), "private-blog-metadata") || strings.Contains(string(a.Payload), "secret-blog-label") || strings.Contains(string(a.Payload), "private-evidence.txt") || strings.Contains(string(a.Payload), "Private folder") || strings.Contains(string(a.Payload), "secret-folder-property") || strings.Contains(string(a.Payload), "Private Smart Link") || strings.Contains(string(a.Payload), "private.example.test") || strings.Contains(string(a.Payload), "Private database") || strings.Contains(string(a.Payload), "private-database-property") || strings.Contains(string(a.Payload), "Private database child") || strings.Contains(string(a.Payload), "Private whiteboard") || strings.Contains(string(a.Payload), "secret-label") || strings.Contains(string(a.Payload), "Restricted launch plan") || strings.Contains(string(a.Payload), "Managers approved the launch") || strings.Contains(string(a.Payload), "classified-release") || strings.Contains(string(a.Payload), "classified-metadata") || strings.Contains(string(a.Payload), "classified-file") || strings.Contains(string(a.Payload), "Classified attachment discussion") || strings.Contains(string(a.Payload), "Classified inline discussion") || strings.Contains(string(a.Payload), "Classified task discussion") {
 			t.Fatalf("private wiki action leaked: %s", a.Payload)
 		}
 	}
 	if !publicBlogAttachmentVisible {
 		t.Fatal("public blog attachment action was not synchronized")
+	}
+	if !publicBlogCommentVisible || !publicBlogInlineVisible {
+		t.Fatal("public blog discussion actions were not synchronized")
 	}
 }

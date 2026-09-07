@@ -32,14 +32,22 @@ type inlineCommentUpdate struct {
 }
 
 func (h *Handler) inlineCommentBean(comment *models.WikiFooterComment, body bool) map[string]any {
+	parentType, parentID := "pages", comment.PageID
+	if comment.BlogPostID != "" {
+		parentType, parentID = "blogposts", comment.BlogPostID
+	}
 	bean := map[string]any{
 		"id": comment.ID, "status": "current", "title": "", "version": comment.Version,
 		"resolutionStatus": comment.ResolutionStatus,
 		"properties":       map[string]any{"inlineMarkerRef": comment.InlineMarkerRef, "inlineOriginalSelection": comment.InlineSelection},
-		"_links":           map[string]string{"webui": "/spaces/" + comment.SpaceID + "/pages/" + comment.PageID + "#inline-comment-" + comment.ID, "base": h.BaseURL + "/wiki"},
+		"_links":           map[string]string{"webui": "/spaces/" + comment.SpaceID + "/" + parentType + "/" + parentID + "#inline-comment-" + comment.ID, "base": h.BaseURL + "/wiki"},
 	}
 	if comment.ParentCommentID == "" {
-		bean["pageId"] = comment.PageID
+		if comment.BlogPostID != "" {
+			bean["blogPostId"] = comment.BlogPostID
+		} else {
+			bean["pageId"] = comment.PageID
+		}
 	} else {
 		bean["parentCommentId"] = comment.ParentCommentID
 	}
@@ -118,6 +126,29 @@ func (h *Handler) inlineComments(w http.ResponseWriter, r *http.Request, ws, act
 	h.list(w, r, values)
 }
 
+func (h *Handler) blogInlineComments(w http.ResponseWriter, r *http.Request, ws, actor, blogPostID string) {
+	if !inlineCommentQuery(w, r, true) {
+		return
+	}
+	comments, err := h.Store.WikiBlogInlineComments(r.Context(), ws, actor, blogPostID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	filtered := comments[:0]
+	for _, comment := range comments {
+		if queryContains(r, "resolution-status", comment.ResolutionStatus) {
+			filtered = append(filtered, comment)
+		}
+	}
+	sortFooterComments(filtered, r.URL.Query().Get("sort"))
+	values := make([]any, 0, len(filtered))
+	for _, comment := range filtered {
+		values = append(values, h.inlineCommentBean(comment, r.URL.Query().Get("body-format") != ""))
+	}
+	h.list(w, r, values)
+}
+
 func (h *Handler) createInlineComment(w http.ResponseWriter, r *http.Request, ws, actor string) {
 	if !supportedQuery(w, r) {
 		return
@@ -126,16 +157,12 @@ func (h *Handler) createInlineComment(w http.ResponseWriter, r *http.Request, ws
 	if !decode(w, r, &in) {
 		return
 	}
-	if in.BlogPostID != "" {
-		failure(w, 400, "Blog post inline comments are not currently supported.")
-		return
-	}
 	body, err := decodeCommentBody(in.Body)
 	if err != nil {
 		failure(w, 400, err.Error())
 		return
 	}
-	comment, err := h.Commands.CreateWikiInlineComment(r.Context(), ws, actor, models.WikiFooterComment{PageID: in.PageID, ParentCommentID: in.ParentCommentID, Body: body, InlineSelection: in.InlineCommentProperties.TextSelection, InlineMatchCount: in.InlineCommentProperties.TextSelectionMatchCount, InlineMatchIndex: in.InlineCommentProperties.TextSelectionMatchIndex})
+	comment, err := h.Commands.CreateWikiInlineComment(r.Context(), ws, actor, models.WikiFooterComment{PageID: in.PageID, BlogPostID: in.BlogPostID, ParentCommentID: in.ParentCommentID, Body: body, InlineSelection: in.InlineCommentProperties.TextSelection, InlineMatchCount: in.InlineCommentProperties.TextSelectionMatchCount, InlineMatchIndex: in.InlineCommentProperties.TextSelectionMatchIndex})
 	if err != nil {
 		writeError(w, err)
 		return

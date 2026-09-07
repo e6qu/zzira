@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 
 	"github.com/e6qu/zzira/internal/models"
@@ -10,11 +9,11 @@ import (
 )
 
 func (s *Store) WikiInlineComment(ctx context.Context, ws, user, id string) (*models.WikiFooterComment, error) {
-	return scanWikiFooterComment(s.Pool.QueryRow(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND p.status='current' AND c.comment_type='inline' AND c.id::text=$3`, ws, user, id))
+	return scanWikiFooterComment(s.Pool.QueryRow(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiCommentVisible+` AND c.comment_type='inline' AND c.id::text=$3`, ws, user, id))
 }
 
 func (s *Store) WikiInlineComments(ctx context.Context, ws, user, pageID string) ([]*models.WikiFooterComment, error) {
-	rows, err := s.Pool.Query(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND p.status='current' AND c.comment_type='inline' AND c.parent_id IS NULL AND ($3='' OR c.page_id::text=$3) ORDER BY c.created_at,c.id`, ws, user, pageID)
+	rows, err := s.Pool.Query(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiCommentVisible+` AND c.comment_type='inline' AND c.parent_id IS NULL AND ($3='' OR c.page_id::text=$3) ORDER BY c.created_at,c.id`, ws, user, pageID)
 	if err != nil {
 		return nil, err
 	}
@@ -26,7 +25,31 @@ func (s *Store) WikiInlineCommentThread(ctx context.Context, ws, user, pageID st
 	if _, err := s.WikiPage(ctx, ws, user, pageID); err != nil {
 		return nil, err
 	}
-	rows, err := s.Pool.Query(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND p.status='current' AND c.comment_type='inline' AND c.page_id::text=$3 ORDER BY c.created_at,c.id`, ws, user, pageID)
+	rows, err := s.Pool.Query(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiCommentVisible+` AND c.comment_type='inline' AND c.page_id::text=$3 ORDER BY c.created_at,c.id`, ws, user, pageID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanWikiFooterComments(rows)
+}
+
+func (s *Store) WikiBlogInlineComments(ctx context.Context, ws, user, blogPostID string) ([]*models.WikiFooterComment, error) {
+	if _, err := s.WikiBlogPost(ctx, ws, user, blogPostID); err != nil {
+		return nil, err
+	}
+	rows, err := s.Pool.Query(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiCommentVisible+` AND c.comment_type='inline' AND c.parent_id IS NULL AND c.blog_post_id::text=$3 ORDER BY c.created_at,c.id`, ws, user, blogPostID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanWikiFooterComments(rows)
+}
+
+func (s *Store) WikiBlogInlineCommentThread(ctx context.Context, ws, user, blogPostID string) ([]*models.WikiFooterComment, error) {
+	if _, err := s.WikiBlogPost(ctx, ws, user, blogPostID); err != nil {
+		return nil, err
+	}
+	rows, err := s.Pool.Query(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiCommentVisible+` AND c.comment_type='inline' AND c.blog_post_id::text=$3 ORDER BY c.created_at,c.id`, ws, user, blogPostID)
 	if err != nil {
 		return nil, err
 	}
@@ -38,7 +61,7 @@ func (s *Store) WikiInlineCommentChildren(ctx context.Context, ws, user, parentI
 	if _, err := s.WikiInlineComment(ctx, ws, user, parentID); err != nil {
 		return nil, err
 	}
-	rows, err := s.Pool.Query(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND p.status='current' AND c.comment_type='inline' AND c.parent_id::text=$3 ORDER BY c.created_at,c.id`, ws, user, parentID)
+	rows, err := s.Pool.Query(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiCommentVisible+` AND c.comment_type='inline' AND c.parent_id::text=$3 ORDER BY c.created_at,c.id`, ws, user, parentID)
 	if err != nil {
 		return nil, err
 	}
@@ -53,12 +76,21 @@ func (s *Store) CreateWikiInlineComment(ctx context.Context, ws, actor string, i
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	if input.ParentCommentID != "" {
-		parent, err := scanWikiFooterComment(tx.QueryRow(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND p.status='current' AND c.comment_type='inline' AND c.id::text=$3 FOR SHARE OF c`, ws, actor, input.ParentCommentID))
+		parent, err := scanWikiFooterComment(tx.QueryRow(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiCommentVisible+` AND c.comment_type='inline' AND c.id::text=$3 FOR SHARE OF c`, ws, actor, input.ParentCommentID))
 		if err != nil {
 			return nil, err
 		}
-		input.PageID, input.InlineSelection = parent.PageID, parent.InlineSelection
+		input.PageID, input.BlogPostID, input.InlineSelection = parent.PageID, parent.BlogPostID, parent.InlineSelection
 		input.InlineMatchCount, input.InlineMatchIndex = parent.InlineMatchCount, parent.InlineMatchIndex
+	} else if input.BlogPostID != "" {
+		blog, err := scanWikiBlogPost(tx.QueryRow(ctx, wikiBlogPostSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiBlogPostVisible+` AND b.status='current' AND b.id::text=$3 FOR SHARE OF b`, ws, actor, input.BlogPostID))
+		if err != nil {
+			return nil, err
+		}
+		matches := strings.Count(blog.Body.Value, input.InlineSelection)
+		if matches == 0 || matches != input.InlineMatchCount || input.InlineMatchIndex < 0 || input.InlineMatchIndex >= matches {
+			return nil, ErrWikiValidation
+		}
 	} else {
 		page, err := scanWikiPage(tx.QueryRow(ctx, wikiPageSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND p.status='current' AND p.id::text=$3 FOR SHARE OF p`, ws, actor, input.PageID))
 		if err != nil {
@@ -70,7 +102,7 @@ func (s *Store) CreateWikiInlineComment(ctx context.Context, ws, actor string, i
 		}
 	}
 	input.Version.Number, input.AuthorID, input.CommentType, input.ResolutionStatus = 1, actor, "inline", "open"
-	if err := tx.QueryRow(ctx, `INSERT INTO wiki_footer_comments(page_id,parent_id,body,author_id,comment_type,inline_selection,inline_match_count,inline_match_index,inline_marker_ref) VALUES($1::bigint,$2::bigint,$3,$4,'inline',$5,$6,$7,'pending') RETURNING id::text`, input.PageID, nilIfEmpty(input.ParentCommentID), input.Body.Value, actor, input.InlineSelection, input.InlineMatchCount, input.InlineMatchIndex).Scan(&input.ID); err != nil {
+	if err := tx.QueryRow(ctx, `INSERT INTO wiki_footer_comments(page_id,blog_post_id,parent_id,body,author_id,comment_type,inline_selection,inline_match_count,inline_match_index,inline_marker_ref) VALUES($1::bigint,$2::bigint,$3::bigint,$4,$5,'inline',$6,$7,$8,'pending') RETURNING id::text`, nilIfEmpty(input.PageID), nilIfEmpty(input.BlogPostID), nilIfEmpty(input.ParentCommentID), input.Body.Value, actor, input.InlineSelection, input.InlineMatchCount, input.InlineMatchIndex).Scan(&input.ID); err != nil {
 		return nil, err
 	}
 	input.InlineMarkerRef = "inline-comment-" + input.ID
@@ -84,7 +116,7 @@ func (s *Store) CreateWikiInlineComment(ctx context.Context, ws, actor string, i
 	if err != nil {
 		return nil, err
 	}
-	if err := wikiAction(ctx, tx, ws, actor, "wiki_inline_comment", comment.ID, comment.SpaceID, comment); err != nil {
+	if err := wikiCommentAction(ctx, tx, ws, actor, "wiki_inline_comment", comment, models.OpUpsert); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -99,7 +131,7 @@ func (s *Store) UpdateWikiInlineComment(ctx context.Context, ws, actor string, i
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	old, err := scanWikiFooterComment(tx.QueryRow(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND p.status='current' AND c.comment_type='inline' AND c.id::text=$3 FOR UPDATE OF c`, ws, actor, input.ID))
+	old, err := scanWikiFooterComment(tx.QueryRow(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiCommentVisible+` AND c.comment_type='inline' AND c.id::text=$3 FOR UPDATE OF c`, ws, actor, input.ID))
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +164,7 @@ func (s *Store) UpdateWikiInlineComment(ctx context.Context, ws, actor string, i
 	if err != nil {
 		return nil, err
 	}
-	if err := wikiAction(ctx, tx, ws, actor, "wiki_inline_comment", comment.ID, comment.SpaceID, comment); err != nil {
+	if err := wikiCommentAction(ctx, tx, ws, actor, "wiki_inline_comment", comment, models.OpUpsert); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -147,22 +179,14 @@ func (s *Store) DeleteWikiInlineComment(ctx context.Context, ws, actor, id strin
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	comment, err := scanWikiFooterComment(tx.QueryRow(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND p.status='current' AND c.comment_type='inline' AND c.id::text=$3 FOR UPDATE OF c`, ws, actor, id))
+	comment, err := scanWikiFooterComment(tx.QueryRow(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiCommentVisible+` AND c.comment_type='inline' AND c.id::text=$3 FOR UPDATE OF c`, ws, actor, id))
 	if err != nil {
 		return err
 	}
 	if err := wikiCommentAuthorOrAdmin(ctx, tx, ws, actor, comment.AuthorID); err != nil {
 		return err
 	}
-	seq, err := nextSeq(ctx, tx, ws)
-	if err != nil {
-		return err
-	}
-	payload, err := json.Marshal(map[string]any{"wikiSpaceId": comment.SpaceID, "wiki_inline_comment": comment})
-	if err != nil {
-		return err
-	}
-	if err := appendAction(ctx, tx, &models.Action{WorkspaceID: ws, Seq: seq, EntityType: "wiki_inline_comment", EntityID: id, Op: models.OpDelete, SchemaV: models.SchemaVersion, Payload: payload, ActorID: actor}); err != nil {
+	if err := wikiCommentAction(ctx, tx, ws, actor, "wiki_inline_comment", comment, models.OpDelete); err != nil {
 		return err
 	}
 	if tag, err := tx.Exec(ctx, `DELETE FROM wiki_footer_comments WHERE id::text=$1 AND comment_type='inline'`, id); err != nil {

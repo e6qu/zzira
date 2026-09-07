@@ -365,6 +365,7 @@ func (h *Handler) wikiBlogPost(w http.ResponseWriter, r *http.Request, creating 
 	labels := []models.WikiLabel{}
 	properties := []models.WikiContentProperty{}
 	attachments := []*models.WikiAttachment{}
+	blogComments, blogInlineComments := []wikiCommentNode{}, []wikiCommentNode{}
 	likeCount, liked := 0, false
 	if post.ID != "" {
 		versions, err = h.Store.WikiBlogPostVersions(r.Context(), ws, user.ID, post.ID, "-modified-date")
@@ -378,6 +379,37 @@ func (h *Handler) wikiBlogPost(w http.ResponseWriter, r *http.Request, creating 
 				http.Error(w, "Could not load blog post attachments.", 500)
 				return
 			}
+			footerThread, commentErr := h.Store.WikiBlogFooterCommentThread(r.Context(), ws, user.ID, post.ID)
+			inlineThread, inlineErr := h.Store.WikiBlogInlineCommentThread(r.Context(), ws, user.ID, post.ID)
+			wikiAdmin, adminErr := h.Store.IsAdmin(r.Context(), ws, user.ID)
+			if commentErr != nil || inlineErr != nil || adminErr != nil {
+				http.Error(w, "Could not load blog post discussions.", 500)
+				return
+			}
+			footerLikes, footerVersions := map[string][]string{}, map[string][]models.WikiFooterCommentVersion{}
+			for _, comment := range footerThread {
+				footerLikes[comment.ID], commentErr = h.Store.WikiFooterCommentLikes(r.Context(), ws, user.ID, comment.ID)
+				if commentErr == nil {
+					footerVersions[comment.ID], commentErr = h.Store.WikiFooterCommentVersions(r.Context(), ws, user.ID, comment.ID)
+				}
+				if commentErr != nil {
+					http.Error(w, "Could not load blog comment details.", 500)
+					return
+				}
+			}
+			inlineLikes, inlineVersions := map[string][]string{}, map[string][]models.WikiFooterCommentVersion{}
+			for _, comment := range inlineThread {
+				inlineLikes[comment.ID], inlineErr = h.Store.WikiInlineCommentLikes(r.Context(), ws, user.ID, comment.ID)
+				if inlineErr == nil {
+					inlineVersions[comment.ID], inlineErr = h.Store.WikiInlineCommentVersions(r.Context(), ws, user.ID, comment.ID)
+				}
+				if inlineErr != nil {
+					http.Error(w, "Could not load blog inline comment details.", 500)
+					return
+				}
+			}
+			blogComments = wikiCommentTree(footerThread, footerLikes, footerVersions, user.ID, wikiAdmin)
+			blogInlineComments = wikiCommentTree(inlineThread, inlineLikes, inlineVersions, user.ID, wikiAdmin)
 			labels, err = h.Store.WikiBlogPostLabels(r.Context(), ws, user.ID, post.ID)
 			if err != nil {
 				http.Error(w, "Could not load blog post labels.", 500)
@@ -405,7 +437,89 @@ func (h *Handler) wikiBlogPost(w http.ResponseWriter, r *http.Request, creating 
 			}
 		}
 	}
-	h.writeWorkspacePageStatus(w, r, "page_wiki_blogpost", user, ws, wikiData{Space: space, BlogPost: post, Versions: versions, Labels: labels, BlogProperties: properties, BlogLikeCount: likeCount, BlogLiked: liked, Attachments: attachments, Editing: editing, CanEdit: true, Error: errorMessage}, "wiki", "", pageStatus)
+	h.writeWorkspacePageStatus(w, r, "page_wiki_blogpost", user, ws, wikiData{Space: space, BlogPost: post, Versions: versions, Labels: labels, BlogProperties: properties, BlogLikeCount: likeCount, BlogLiked: liked, Attachments: attachments, Comments: blogComments, InlineComments: blogInlineComments, Editing: editing, CanEdit: true, Error: errorMessage}, "wiki", "", pageStatus)
+}
+
+func (h *Handler) wikiBlogForDiscussion(w http.ResponseWriter, r *http.Request, ws, userID string) (*models.WikiBlogPost, bool) {
+	post, err := h.Store.WikiBlogPost(r.Context(), ws, userID, r.PathValue("blogpost"))
+	if err != nil || post.SpaceID != r.PathValue("space") || post.Status != "current" {
+		http.NotFound(w, r)
+		return nil, false
+	}
+	return post, true
+}
+
+func (h *Handler) WikiBlogCommentCreate(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	post, ok := h.wikiBlogForDiscussion(w, r, ws, user.ID)
+	if !ok {
+		return
+	}
+	comment := models.WikiFooterComment{BlogPostID: post.ID, ParentCommentID: r.PostFormValue("parentId"), Body: models.WikiBody{Representation: "storage", Value: r.PostFormValue("body")}}
+	if comment.ParentCommentID != "" {
+		comment.BlogPostID = ""
+	}
+	created, err := h.Commands.CreateWikiFooterComment(r.Context(), ws, user.ID, comment)
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	redirectLocal(w, r, "/wiki/spaces/"+post.SpaceID+"/blogposts/"+post.ID+"#comment-"+created.ID)
+}
+
+func (h *Handler) WikiBlogInlineCommentCreate(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	post, ok := h.wikiBlogForDiscussion(w, r, ws, user.ID)
+	if !ok {
+		return
+	}
+	parentID, selection := r.PostFormValue("parentId"), r.PostFormValue("selection")
+	comment := models.WikiFooterComment{BlogPostID: post.ID, ParentCommentID: parentID, Body: models.WikiBody{Representation: "storage", Value: r.PostFormValue("body")}, InlineSelection: selection, InlineMatchCount: strings.Count(post.Body.Value, selection)}
+	if parentID != "" {
+		comment.BlogPostID, comment.InlineSelection, comment.InlineMatchCount = "", "", 0
+	}
+	created, err := h.Commands.CreateWikiInlineComment(r.Context(), ws, user.ID, comment)
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	redirectLocal(w, r, "/wiki/spaces/"+post.SpaceID+"/blogposts/"+post.ID+"#inline-comment-"+created.ID)
+}
+
+func (h *Handler) WikiBlogInlineCommentUpdate(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	post, ok := h.wikiBlogForDiscussion(w, r, ws, user.ID)
+	if !ok {
+		return
+	}
+	comment, err := h.Store.WikiInlineComment(r.Context(), ws, user.ID, r.PathValue("comment"))
+	if err != nil || comment.BlogPostID != post.ID {
+		http.NotFound(w, r)
+		return
+	}
+	resolved, parseErr := strconv.ParseBool(r.PostFormValue("resolved"))
+	if parseErr != nil {
+		http.Error(w, "Choose whether to resolve or reopen the discussion.", 400)
+		return
+	}
+	_, err = h.Commands.UpdateWikiInlineComment(r.Context(), ws, user.ID, models.WikiFooterComment{ID: comment.ID, Body: comment.Body, Version: models.WikiVersion{Number: comment.Version.Number + 1, Message: "Resolution changed"}}, &resolved)
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	redirectLocal(w, r, "/wiki/spaces/"+post.SpaceID+"/blogposts/"+post.ID+"#inline-comment-"+comment.ID)
 }
 
 func (h *Handler) WikiBlogAttachmentCreate(w http.ResponseWriter, r *http.Request) {

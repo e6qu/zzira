@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 382,
+  "assessedTotal": 384,
   "counts": {
     "delivered": 0,
-    "partial": 375,
+    "partial": 377,
     "missing": 7,
-    "unassessed": 825
+    "unassessed": 823
   },
   "countsByFamily": {
     "automation": {
@@ -18,9 +18,9 @@
     },
     "confluence": {
       "delivered": 0,
-      "partial": 168,
+      "partial": 170,
       "missing": 0,
-      "unassessed": 180
+      "unassessed": 178
     },
     "jira-platform": {
       "delivered": 0,
@@ -9344,17 +9344,35 @@
       "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{id}/footer-comments",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/http.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki.go",
+        "migrations/091_wiki_blog_comments.sql",
+        "internal/commands/wiki.go",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Blog posts share the threaded, versioned footer-comment lifecycle with pages. Collections support body format, status, sort and cursor paging; create, reply, update, delete, versions, likes and operations use the common comment APIs, public/private visibility shapes reads and sync, and the UI supports authoring and replies. Rich editor mentions and live collaboration remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{id}/inline-comments",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/inline_comments.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_inline_comments.go",
+        "migrations/091_wiki_blog_comments.sql",
+        "internal/commands/wiki.go",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Blog posts share exact-passage inline threads with pages, including replies, optimistic versions, resolve/reopen state, likes and operations. Collections support body format, status, resolution status, sort and cursor paging; public/private visibility shapes reads and sync, and the UI supports authoring and resolution. Rich anchor relocation after edits and live collaboration remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{id}/labels",

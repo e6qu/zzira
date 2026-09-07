@@ -172,13 +172,13 @@ func (s *Service) CreateWikiFooterComment(ctx context.Context, ws, actor string,
 		return nil, err
 	}
 	targets := 0
-	for _, id := range []string{comment.PageID, comment.AttachmentID, comment.ParentCommentID} {
+	for _, id := range []string{comment.PageID, comment.BlogPostID, comment.AttachmentID, comment.ParentCommentID} {
 		if id != "" {
 			targets++
 		}
 	}
 	if targets != 1 {
-		return nil, fmt.Errorf("%w: choose exactly one of pageId, attachmentId, or parentCommentId", store.ErrWikiValidation)
+		return nil, fmt.Errorf("%w: choose exactly one of pageId, blogPostId, attachmentId, or parentCommentId", store.ErrWikiValidation)
 	}
 	return s.Store.CreateWikiFooterComment(ctx, ws, actor, comment)
 }
@@ -200,8 +200,14 @@ func (s *Service) CreateWikiInlineComment(ctx context.Context, ws, actor string,
 	if err := validateWikiComment(comment); err != nil {
 		return nil, err
 	}
-	if (comment.PageID == "") == (comment.ParentCommentID == "") {
-		return nil, fmt.Errorf("%w: choose exactly one of pageId or parentCommentId", store.ErrWikiValidation)
+	parents := 0
+	for _, id := range []string{comment.PageID, comment.BlogPostID, comment.ParentCommentID} {
+		if id != "" {
+			parents++
+		}
+	}
+	if parents != 1 {
+		return nil, fmt.Errorf("%w: choose exactly one of pageId, blogPostId, or parentCommentId", store.ErrWikiValidation)
 	}
 	if comment.ParentCommentID == "" {
 		if strings.TrimSpace(comment.InlineSelection) == "" || len(comment.InlineSelection) > 10000 || comment.InlineMatchCount < 1 || comment.InlineMatchIndex < 0 || comment.InlineMatchIndex >= comment.InlineMatchCount {

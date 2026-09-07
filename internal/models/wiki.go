@@ -152,7 +152,8 @@ type WikiContentRelation struct {
 
 type WikiFooterComment struct {
 	ID                   string      `json:"id"`
-	PageID               string      `json:"pageId"`
+	PageID               string      `json:"pageId,omitempty"`
+	BlogPostID           string      `json:"blogPostId,omitempty"`
 	SpaceID              string      `json:"-"`
 	AttachmentID         string      `json:"attachmentId,omitempty"`
 	ParentCommentID      string      `json:"parentCommentId,omitempty"`
@@ -170,6 +171,9 @@ type WikiFooterComment struct {
 	ResolutionStatus     string      `json:"-"`
 	ResolutionModifierID string      `json:"-"`
 	ResolutionModifiedAt string      `json:"-"`
+	ParentAuthorID       string      `json:"-"`
+	ParentPrivate        bool        `json:"-"`
+	ParentPublished      bool        `json:"-"`
 }
 
 type WikiFooterCommentVersion struct {

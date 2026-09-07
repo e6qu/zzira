@@ -59,6 +59,17 @@ test('wiki space, rich page, access, stale edits, child pages, history, trash an
   await page.getByLabel('Version comment').fill('Approved evidence');
   await page.getByRole('button', { name: 'Replace file', exact: true }).click();
   await expect(page.locator('#wiki-blog-attachments')).toContainText('Version 2');
+  await page.getByText('Comment on a passage', { exact: true }).click();
+  await page.getByLabel('Exact passage').fill('production successfully');
+  await page.getByLabel('Inline comment', { exact: true }).fill('Keep the rollout claim linked to evidence.');
+  await page.getByRole('button', { name: 'Add inline comment', exact: true }).click();
+  const blogInline = page.locator('#wiki-blog-inline-comments .wiki-inline-comment').filter({ hasText: 'Keep the rollout claim linked' }).first();
+  await expect(blogInline).toContainText('production successfully');
+  await blogInline.getByRole('button', { name: 'Resolve', exact: true }).click();
+  await expect(page.locator('#wiki-blog-inline-comments .wiki-inline-comment').filter({ hasText: 'Keep the rollout claim linked' }).first()).toContainText('resolved');
+  await page.getByLabel('Add a comment').fill('The release evidence has been reviewed.');
+  await page.getByRole('button', { name: 'Comment', exact: true }).click();
+  await expect(page.locator('#wiki-blog-discussion')).toContainText('The release evidence has been reviewed.');
   await page.getByText('Redact sensitive text', { exact: true }).click();
   await page.getByLabel('Exact text').fill('reached production');
   await page.getByLabel('Reason').fill('Remove sensitive rollout detail');
