@@ -1500,9 +1500,28 @@ Validation after Confluence content, space and label watches:
 - Exact reviewed API coverage is 283 of 1,207 operations: 276 partial, 7
   missing, and 924 unassessed. Confluence coverage is 69 of 348 reviewed.
 
+Validation after Confluence page inline comments:
+
+- Migration 081 extends the durable comment model with page inline anchors,
+  match coordinates and open, reopened, resolved or dangling state while
+  keeping footer and inline collections separate.
+- Twelve pinned Confluence v2 operations now cover global and page collections,
+  creation, item update/delete, children, operations, likes and immutable
+  versions. Top-level creation verifies the exact storage-text match; replies
+  inherit the parent anchor; edits and resolution use optimistic versions.
+- Inline actions remain private when page restrictions change. PostgreSQL
+  integration covers validation, replies, collection separation, resolution,
+  likes, versions, deletion and restricted-content reads/action filtering.
+- The page UI adds exact-passage discussions, replies, resolve/reopen and delete
+  controls. The clean Chromium author journey covers creation and resolution,
+  then passes the complete wiki lifecycle, WCAG scan, dark theme and 320 px
+  reflow. Its scan also prompted a 32 px minimum label-chip target fix.
+- Exact reviewed API coverage is 295 of 1,207 operations: 288 partial, 7
+  missing, and 912 unassessed. Confluence coverage is 81 of 348 reviewed.
+
 ## Current change
 
-1. Continue Confluence inline comments and tasks.
+1. Continue Confluence tasks.
 2. Return to advanced service operations risk, CAB approval, on-call and
    post-incident review configuration after the next knowledge slice.
 

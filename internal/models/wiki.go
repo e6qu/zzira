@@ -41,17 +41,25 @@ type WikiPage struct {
 }
 
 type WikiFooterComment struct {
-	ID              string      `json:"id"`
-	PageID          string      `json:"pageId"`
-	SpaceID         string      `json:"-"`
-	AttachmentID    string      `json:"attachmentId,omitempty"`
-	ParentCommentID string      `json:"parentCommentId,omitempty"`
-	AuthorID        string      `json:"authorId"`
-	AuthorName      string      `json:"-"`
-	CreatedAt       string      `json:"createdAt"`
-	UpdatedAt       string      `json:"-"`
-	Body            WikiBody    `json:"body"`
-	Version         WikiVersion `json:"version"`
+	ID                   string      `json:"id"`
+	PageID               string      `json:"pageId"`
+	SpaceID              string      `json:"-"`
+	AttachmentID         string      `json:"attachmentId,omitempty"`
+	ParentCommentID      string      `json:"parentCommentId,omitempty"`
+	AuthorID             string      `json:"authorId"`
+	AuthorName           string      `json:"-"`
+	CreatedAt            string      `json:"createdAt"`
+	UpdatedAt            string      `json:"-"`
+	Body                 WikiBody    `json:"body"`
+	Version              WikiVersion `json:"version"`
+	CommentType          string      `json:"-"`
+	InlineSelection      string      `json:"-"`
+	InlineMatchCount     int         `json:"-"`
+	InlineMatchIndex     int         `json:"-"`
+	InlineMarkerRef      string      `json:"-"`
+	ResolutionStatus     string      `json:"-"`
+	ResolutionModifierID string      `json:"-"`
+	ResolutionModifiedAt string      `json:"-"`
 }
 
 type WikiFooterCommentVersion struct {

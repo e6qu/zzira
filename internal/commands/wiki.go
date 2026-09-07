@@ -97,6 +97,31 @@ func (s *Service) UpdateWikiFooterComment(ctx context.Context, ws, actor string,
 	return s.Store.UpdateWikiFooterComment(ctx, ws, actor, comment)
 }
 
+func (s *Service) CreateWikiInlineComment(ctx context.Context, ws, actor string, comment models.WikiFooterComment) (*models.WikiFooterComment, error) {
+	if err := validateWikiComment(comment); err != nil {
+		return nil, err
+	}
+	if (comment.PageID == "") == (comment.ParentCommentID == "") {
+		return nil, fmt.Errorf("%w: choose exactly one of pageId or parentCommentId", store.ErrWikiValidation)
+	}
+	if comment.ParentCommentID == "" {
+		if strings.TrimSpace(comment.InlineSelection) == "" || len(comment.InlineSelection) > 10000 || comment.InlineMatchCount < 1 || comment.InlineMatchIndex < 0 || comment.InlineMatchIndex >= comment.InlineMatchCount {
+			return nil, fmt.Errorf("%w: valid inline text selection metadata is required", store.ErrWikiValidation)
+		}
+	}
+	return s.Store.CreateWikiInlineComment(ctx, ws, actor, comment)
+}
+
+func (s *Service) UpdateWikiInlineComment(ctx context.Context, ws, actor string, comment models.WikiFooterComment, resolved *bool) (*models.WikiFooterComment, error) {
+	if comment.ID == "" || comment.Version.Number < 2 {
+		return nil, fmt.Errorf("%w: comment id and next version are required", store.ErrWikiValidation)
+	}
+	if err := validateWikiComment(comment); err != nil {
+		return nil, err
+	}
+	return s.Store.UpdateWikiInlineComment(ctx, ws, actor, comment, resolved)
+}
+
 func validateWikiComment(comment models.WikiFooterComment) error {
 	if comment.Body.Representation != "storage" {
 		return fmt.Errorf("%w: only the storage comment representation is currently supported", store.ErrWikiValidation)

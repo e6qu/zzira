@@ -195,6 +195,30 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.list(w, r, values)
 	case len(parts) == 3 && parts[0] == "pages" && parts[2] == "footer-comments" && r.Method == "GET":
 		h.footerComments(w, r, ws, actor, parts[1], "")
+	case len(parts) == 3 && parts[0] == "pages" && parts[2] == "inline-comments" && r.Method == "GET":
+		h.inlineComments(w, r, ws, actor, parts[1], "")
+	case len(parts) == 1 && parts[0] == "inline-comments" && r.Method == "GET":
+		h.inlineComments(w, r, ws, actor, "", "")
+	case len(parts) == 1 && parts[0] == "inline-comments" && r.Method == "POST":
+		h.createInlineComment(w, r, ws, actor)
+	case len(parts) == 2 && parts[0] == "inline-comments" && r.Method == "GET":
+		h.inlineComment(w, r, ws, actor, parts[1])
+	case len(parts) == 2 && parts[0] == "inline-comments" && r.Method == "PUT":
+		h.updateInlineComment(w, r, ws, actor, parts[1])
+	case len(parts) == 2 && parts[0] == "inline-comments" && r.Method == "DELETE":
+		h.deleteInlineComment(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "inline-comments" && parts[2] == "children" && r.Method == "GET":
+		h.inlineComments(w, r, ws, actor, "", parts[1])
+	case len(parts) == 3 && parts[0] == "inline-comments" && parts[2] == "versions" && r.Method == "GET":
+		h.inlineCommentVersions(w, r, ws, actor, parts[1])
+	case len(parts) == 4 && parts[0] == "inline-comments" && parts[2] == "versions" && r.Method == "GET":
+		h.inlineCommentVersion(w, r, ws, actor, parts[1], parts[3])
+	case len(parts) == 3 && parts[0] == "inline-comments" && parts[2] == "operations" && r.Method == "GET":
+		h.inlineCommentOperations(w, r, ws, actor, parts[1])
+	case len(parts) == 4 && parts[0] == "inline-comments" && parts[2] == "likes" && parts[3] == "count" && r.Method == "GET":
+		h.inlineCommentLikeCount(w, r, ws, actor, parts[1])
+	case len(parts) == 4 && parts[0] == "inline-comments" && parts[2] == "likes" && parts[3] == "users" && r.Method == "GET":
+		h.inlineCommentLikeUsers(w, r, ws, actor, parts[1])
 	case len(parts) == 1 && parts[0] == "footer-comments" && r.Method == "GET":
 		h.footerComments(w, r, ws, actor, "", "")
 	case len(parts) == 1 && parts[0] == "footer-comments" && r.Method == "POST":

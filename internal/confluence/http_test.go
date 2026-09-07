@@ -331,6 +331,35 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	callV1(member, "DELETE", "/user/watch/label/release-ready", nil, 204)
 	callV1(member, "DELETE", "/user/watch/space/PUBLIC", nil, 204)
 	call(actor, "DELETE", "/pages/"+child.ID, nil, 204)
+	inlineResponse := call(member, "POST", "/inline-comments", map[string]any{"pageId": page.ID, "body": models.WikiBody{Representation: "storage", Value: "<p>Is this ready?</p>"}, "inlineCommentProperties": map[string]any{"textSelection": "Ready", "textSelectionMatchCount": 1, "textSelectionMatchIndex": 0}}, 201)
+	var inline models.WikiFooterComment
+	if err := json.Unmarshal(inlineResponse.Body.Bytes(), &inline); err != nil || inline.ID == "" || !strings.Contains(inlineResponse.Body.String(), `"resolutionStatus":"open"`) {
+		t.Fatalf("unexpected inline comment: %+v %v %s", inline, err, inlineResponse.Body.String())
+	}
+	call(member, "POST", "/inline-comments", map[string]any{"pageId": page.ID, "body": models.WikiBody{Representation: "storage", Value: "<p>Bad anchor</p>"}, "inlineCommentProperties": map[string]any{"textSelection": "Missing", "textSelectionMatchCount": 1, "textSelectionMatchIndex": 0}}, 400)
+	inlineReplyResponse := call(actor, "POST", "/inline-comments", map[string]any{"parentCommentId": inline.ID, "body": models.WikiBody{Representation: "storage", Value: "<p>Yes.</p>"}}, 201)
+	var inlineReply models.WikiFooterComment
+	if err := json.Unmarshal(inlineReplyResponse.Body.Bytes(), &inlineReply); err != nil || inlineReply.ID == "" {
+		t.Fatal(err)
+	}
+	call(member, "GET", "/pages/"+page.ID+"/inline-comments?body-format=storage&resolution-status=open", nil, 200)
+	call(member, "GET", "/inline-comments?body-format=storage", nil, 200)
+	exec(`INSERT INTO wiki_footer_comment_likes(comment_id,user_id) VALUES($1::bigint,$2)`, inline.ID, actor)
+	expandedInline := call(member, "GET", "/inline-comments/"+inline.ID+"?body-format=storage&include-operations=true&include-likes=true&include-versions=true", nil, 200)
+	if !strings.Contains(expandedInline.Body.String(), actor) || !strings.Contains(expandedInline.Body.String(), "inlineOriginalSelection") {
+		t.Fatal(expandedInline.Body.String())
+	}
+	call(member, "GET", "/inline-comments/"+inline.ID+"/children?body-format=storage", nil, 200)
+	call(member, "GET", "/inline-comments/"+inline.ID+"/operations", nil, 200)
+	call(member, "GET", "/inline-comments/"+inline.ID+"/likes/count", nil, 200)
+	call(member, "GET", "/inline-comments/"+inline.ID+"/likes/users", nil, 200)
+	resolvedInline := call(member, "PUT", "/inline-comments/"+inline.ID, map[string]any{"version": map[string]any{"number": 2, "message": "Question answered"}, "resolved": true}, 200)
+	if !strings.Contains(resolvedInline.Body.String(), `"resolutionStatus":"resolved"`) {
+		t.Fatal(resolvedInline.Body.String())
+	}
+	call(member, "GET", "/inline-comments/"+inline.ID+"/versions?body-format=storage&sort=-modified-date", nil, 200)
+	call(member, "GET", "/inline-comments/"+inline.ID+"/versions/1", nil, 200)
+	call(actor, "DELETE", "/inline-comments/"+inlineReply.ID, nil, 204)
 	callV1(actor, "POST", "/content/"+secret.ID+"/label", map[string]string{"prefix": "global", "name": "secret-label"}, 200)
 	if leaked := call(member, "GET", "/labels", nil, 200); strings.Contains(leaked.Body.String(), "secret-label") {
 		t.Fatal("private page label leaked")
@@ -476,7 +505,7 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		t.Fatalf("unexpected footer reply: %+v", reply)
 	}
 	pageComments := call(actor, "GET", "/pages/"+page.ID+"/footer-comments?body-format=storage&sort=-created-date", nil, 200)
-	if !strings.Contains(pageComments.Body.String(), "Ready for review") || strings.Contains(pageComments.Body.String(), "Approval recorded") {
+	if !strings.Contains(pageComments.Body.String(), "Ready for review") || strings.Contains(pageComments.Body.String(), "Approval recorded") || strings.Contains(pageComments.Body.String(), "Is this ready?") {
 		t.Fatalf("page collection should contain top-level comments only: %s", pageComments.Body.String())
 	}
 	children := call(member, "GET", "/footer-comments/"+top.ID+"/children?body-format=storage", nil, 200)
@@ -635,10 +664,16 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	if err := json.Unmarshal(restrictedCommentResponse.Body.Bytes(), &restrictedAttachmentComment); err != nil {
 		t.Fatal(err)
 	}
+	restrictedInlineResponse := call(actor, "POST", "/inline-comments", map[string]any{"pageId": restricted.ID, "body": models.WikiBody{Representation: "storage", Value: "<p>Classified inline discussion</p>"}, "inlineCommentProperties": map[string]any{"textSelection": "Managers approved", "textSelectionMatchCount": 1, "textSelectionMatchIndex": 0}}, 201)
+	var restrictedInlineComment models.WikiFooterComment
+	if err := json.Unmarshal(restrictedInlineResponse.Body.Bytes(), &restrictedInlineComment); err != nil {
+		t.Fatal(err)
+	}
 	callV1(actor, "PUT", "/content/"+restricted.ID+"/restriction", actorOnly, 200)
 	call(member, "GET", "/pages/"+restricted.ID, nil, 404)
 	call(member, "GET", "/attachments/"+restrictedAttachmentID, nil, 404)
 	call(member, "GET", "/footer-comments/"+restrictedAttachmentComment.ID, nil, 404)
+	call(member, "GET", "/inline-comments/"+restrictedInlineComment.ID, nil, 404)
 	if visibleAttachments := call(member, "GET", "/attachments", nil, 200); strings.Contains(visibleAttachments.Body.String(), "classified-release") {
 		t.Fatal("restricted attachment leaked through the global collection")
 	}
@@ -656,7 +691,7 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		if a.EntityType == "wiki_footer_comment_like" && strings.HasPrefix(a.EntityID, secretCommentBean.ID+":") {
 			t.Fatalf("private wiki like action leaked: %s", a.Payload)
 		}
-		if strings.Contains(string(a.Payload), "Private draft") || strings.Contains(string(a.Payload), "Secret guide") || strings.Contains(string(a.Payload), "PRIVATE") || strings.Contains(string(a.Payload), "Private launch phrase") || strings.Contains(string(a.Payload), "secret-label") || strings.Contains(string(a.Payload), "Restricted launch plan") || strings.Contains(string(a.Payload), "Managers approved the launch") || strings.Contains(string(a.Payload), "classified-release") || strings.Contains(string(a.Payload), "classified-metadata") || strings.Contains(string(a.Payload), "classified-file") || strings.Contains(string(a.Payload), "Classified attachment discussion") {
+		if strings.Contains(string(a.Payload), "Private draft") || strings.Contains(string(a.Payload), "Secret guide") || strings.Contains(string(a.Payload), "PRIVATE") || strings.Contains(string(a.Payload), "Private launch phrase") || strings.Contains(string(a.Payload), "secret-label") || strings.Contains(string(a.Payload), "Restricted launch plan") || strings.Contains(string(a.Payload), "Managers approved the launch") || strings.Contains(string(a.Payload), "classified-release") || strings.Contains(string(a.Payload), "classified-metadata") || strings.Contains(string(a.Payload), "classified-file") || strings.Contains(string(a.Payload), "Classified attachment discussion") || strings.Contains(string(a.Payload), "Classified inline discussion") {
 			t.Fatalf("private wiki action leaked: %s", a.Payload)
 		}
 	}

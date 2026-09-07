@@ -3486,6 +3486,186 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/inline-comments",
+      "status": "partial",
+      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog-post comments, ADF bodies, rich anchor relocation/dangling detection, and the remaining expansion semantics remain.",
+      "evidence": [
+        "internal/confluence/inline_comments.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_inline_comments.go",
+        "migrations/081_wiki_inline_comments.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:POST:/wiki/api/v2/inline-comments",
+      "status": "partial",
+      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog-post comments, ADF bodies, rich anchor relocation/dangling detection, and the remaining expansion semantics remain.",
+      "evidence": [
+        "internal/confluence/inline_comments.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_inline_comments.go",
+        "migrations/081_wiki_inline_comments.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:DELETE:/wiki/api/v2/inline-comments/{comment-id}",
+      "status": "partial",
+      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog-post comments, ADF bodies, rich anchor relocation/dangling detection, and the remaining expansion semantics remain.",
+      "evidence": [
+        "internal/confluence/inline_comments.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_inline_comments.go",
+        "migrations/081_wiki_inline_comments.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/inline-comments/{comment-id}",
+      "status": "partial",
+      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog-post comments, ADF bodies, rich anchor relocation/dangling detection, and the remaining expansion semantics remain.",
+      "evidence": [
+        "internal/confluence/inline_comments.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_inline_comments.go",
+        "migrations/081_wiki_inline_comments.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:PUT:/wiki/api/v2/inline-comments/{comment-id}",
+      "status": "partial",
+      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog-post comments, ADF bodies, rich anchor relocation/dangling detection, and the remaining expansion semantics remain.",
+      "evidence": [
+        "internal/confluence/inline_comments.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_inline_comments.go",
+        "migrations/081_wiki_inline_comments.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/inline-comments/{id}/children",
+      "status": "partial",
+      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog-post comments, ADF bodies, rich anchor relocation/dangling detection, and the remaining expansion semantics remain.",
+      "evidence": [
+        "internal/confluence/inline_comments.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_inline_comments.go",
+        "migrations/081_wiki_inline_comments.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/inline-comments/{id}/likes/count",
+      "status": "partial",
+      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog-post comments, ADF bodies, rich anchor relocation/dangling detection, and the remaining expansion semantics remain.",
+      "evidence": [
+        "internal/confluence/inline_comments.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_inline_comments.go",
+        "migrations/081_wiki_inline_comments.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/inline-comments/{id}/likes/users",
+      "status": "partial",
+      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog-post comments, ADF bodies, rich anchor relocation/dangling detection, and the remaining expansion semantics remain.",
+      "evidence": [
+        "internal/confluence/inline_comments.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_inline_comments.go",
+        "migrations/081_wiki_inline_comments.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/inline-comments/{id}/operations",
+      "status": "partial",
+      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog-post comments, ADF bodies, rich anchor relocation/dangling detection, and the remaining expansion semantics remain.",
+      "evidence": [
+        "internal/confluence/inline_comments.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_inline_comments.go",
+        "migrations/081_wiki_inline_comments.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/inline-comments/{id}/versions",
+      "status": "partial",
+      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog-post comments, ADF bodies, rich anchor relocation/dangling detection, and the remaining expansion semantics remain.",
+      "evidence": [
+        "internal/confluence/inline_comments.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_inline_comments.go",
+        "migrations/081_wiki_inline_comments.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/inline-comments/{id}/versions/{version-number}",
+      "status": "partial",
+      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog-post comments, ADF bodies, rich anchor relocation/dangling detection, and the remaining expansion semantics remain.",
+      "evidence": [
+        "internal/confluence/inline_comments.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_inline_comments.go",
+        "migrations/081_wiki_inline_comments.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{id}/inline-comments",
+      "status": "partial",
+      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog-post comments, ADF bodies, rich anchor relocation/dangling detection, and the remaining expansion semantics remain.",
+      "evidence": [
+        "internal/confluence/inline_comments.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_inline_comments.go",
+        "migrations/081_wiki_inline_comments.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
     }
   ]
 }

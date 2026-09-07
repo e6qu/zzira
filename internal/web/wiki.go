@@ -23,6 +23,7 @@ type wikiData struct {
 	Page                                  *models.WikiPage
 	Versions                              []models.WikiVersion
 	Comments                              []wikiCommentNode
+	InlineComments                        []wikiCommentNode
 	Labels                                []models.WikiLabel
 	Attachments                           []*models.WikiAttachment
 	AttachmentComments                    map[string][]wikiCommentNode
@@ -423,6 +424,24 @@ func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 			return
 		}
 		data.Comments = wikiCommentTree(comments, likes, versions, user.ID, wikiAdmin)
+		inlineComments, inlineErr := h.Store.WikiInlineCommentThread(r.Context(), ws, user.ID, page.ID)
+		if inlineErr != nil {
+			http.Error(w, "Could not load inline comments.", 500)
+			return
+		}
+		inlineLikes := map[string][]string{}
+		inlineVersions := map[string][]models.WikiFooterCommentVersion{}
+		for _, comment := range inlineComments {
+			inlineLikes[comment.ID], inlineErr = h.Store.WikiInlineCommentLikes(r.Context(), ws, user.ID, comment.ID)
+			if inlineErr == nil {
+				inlineVersions[comment.ID], inlineErr = h.Store.WikiInlineCommentVersions(r.Context(), ws, user.ID, comment.ID)
+			}
+			if inlineErr != nil {
+				http.Error(w, "Could not load inline comment details.", 500)
+				return
+			}
+		}
+		data.InlineComments = wikiCommentTree(inlineComments, inlineLikes, inlineVersions, user.ID, wikiAdmin)
 	}
 	h.writeWorkspacePageStatus(w, r, "page_wiki_page", user, ws, data, "wiki", "", status)
 }
@@ -647,6 +666,83 @@ func (h *Handler) WikiPageLabels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	redirectLocal(w, r, wikiPageURL(page)+"#wiki-labels")
+}
+
+func (h *Handler) WikiInlineCommentCreate(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	page, err := h.wikiPageForComment(r, ws, user.ID)
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	comment := models.WikiFooterComment{PageID: page.ID, Body: models.WikiBody{Representation: "storage", Value: r.PostFormValue("body")}}
+	if parentID := r.PostFormValue("parentId"); parentID != "" {
+		comment.PageID, comment.ParentCommentID = "", parentID
+	} else {
+		comment.InlineSelection = r.PostFormValue("selection")
+		comment.InlineMatchCount = strings.Count(page.Body.Value, comment.InlineSelection)
+	}
+	created, err := h.Commands.CreateWikiInlineComment(r.Context(), ws, user.ID, comment)
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	redirectLocal(w, r, wikiPageURL(page)+"#inline-comment-"+created.ID)
+}
+
+func (h *Handler) WikiInlineCommentUpdate(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	page, err := h.wikiPageForComment(r, ws, user.ID)
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	comment, err := h.Store.WikiInlineComment(r.Context(), ws, user.ID, r.PathValue("comment"))
+	if err != nil || comment.PageID != page.ID {
+		http.NotFound(w, r)
+		return
+	}
+	resolved := r.PostFormValue("resolved") == "true"
+	comment.Version.Number++
+	if _, err = h.Commands.UpdateWikiInlineComment(r.Context(), ws, user.ID, *comment, &resolved); err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	redirectLocal(w, r, wikiPageURL(page)+"#inline-comment-"+comment.ID)
+}
+
+func (h *Handler) WikiInlineCommentDelete(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	page, err := h.wikiPageForComment(r, ws, user.ID)
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	comment, err := h.Store.WikiInlineComment(r.Context(), ws, user.ID, r.PathValue("comment"))
+	if err != nil || comment.PageID != page.ID {
+		http.NotFound(w, r)
+		return
+	}
+	if err = h.Store.DeleteWikiInlineComment(r.Context(), ws, user.ID, comment.ID); err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	redirectLocal(w, r, wikiPageURL(page)+"#wiki-inline-comments")
 }
 
 func (h *Handler) WikiSpaceWatch(w http.ResponseWriter, r *http.Request) {

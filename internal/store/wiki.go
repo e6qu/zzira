@@ -44,7 +44,7 @@ const wikiPageWritable = `(
 )`
 const wikiSpaceSelect = `SELECT s.id::text,s.workspace_id,s.key,s.name,s.description,s.author_id,s.private,to_char(s.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM wiki_spaces s`
 const wikiPageSelect = `SELECT p.id::text,s.workspace_id,p.space_id::text,COALESCE(p.parent_id::text,''),p.title,p.status,p.published,p.body,p.author_id,to_char(p.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),v.version,v.message,v.minor_edit,v.author_id,to_char(v.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM wiki_pages p JOIN wiki_spaces s ON s.id=p.space_id JOIN wiki_page_versions v ON v.page_id=p.id AND v.version=p.version`
-const wikiCommentSelect = `SELECT c.id::text,p.id::text,p.space_id::text,COALESCE(c.attachment_id::text,''),COALESCE(c.parent_id::text,''),c.body,c.author_id,u.display_name,c.version,v.message,to_char(c.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),to_char(c.updated_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),v.author_id,to_char(v.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM wiki_footer_comments c LEFT JOIN wiki_attachments ca ON ca.id=c.attachment_id JOIN wiki_pages p ON p.id=COALESCE(c.page_id,ca.page_id) JOIN wiki_spaces s ON s.id=p.space_id JOIN users u ON u.id=c.author_id JOIN wiki_footer_comment_versions v ON v.comment_id=c.id AND v.version=c.version`
+const wikiCommentSelect = `SELECT c.id::text,p.id::text,p.space_id::text,COALESCE(c.attachment_id::text,''),COALESCE(c.parent_id::text,''),c.body,c.author_id,u.display_name,c.version,v.message,to_char(c.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),to_char(c.updated_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),v.author_id,to_char(v.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),c.comment_type,c.inline_selection,c.inline_match_count,c.inline_match_index,c.inline_marker_ref,c.resolution_status,COALESCE(c.resolution_modifier_id,''),COALESCE(to_char(c.resolution_modified_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),'') FROM wiki_footer_comments c LEFT JOIN wiki_attachments ca ON ca.id=c.attachment_id JOIN wiki_pages p ON p.id=COALESCE(c.page_id,ca.page_id) JOIN wiki_spaces s ON s.id=p.space_id JOIN users u ON u.id=c.author_id JOIN wiki_footer_comment_versions v ON v.comment_id=c.id AND v.version=c.version`
 
 func scanWikiSpace(row pgx.Row) (*models.WikiSpace, error) {
 	s := &models.WikiSpace{}
@@ -59,7 +59,7 @@ func scanWikiPage(row pgx.Row) (*models.WikiPage, error) {
 
 func scanWikiFooterComment(row pgx.Row) (*models.WikiFooterComment, error) {
 	c := &models.WikiFooterComment{Body: models.WikiBody{Representation: "storage"}}
-	err := row.Scan(&c.ID, &c.PageID, &c.SpaceID, &c.AttachmentID, &c.ParentCommentID, &c.Body.Value, &c.AuthorID, &c.AuthorName, &c.Version.Number, &c.Version.Message, &c.CreatedAt, &c.UpdatedAt, &c.Version.AuthorID, &c.Version.CreatedAt)
+	err := row.Scan(&c.ID, &c.PageID, &c.SpaceID, &c.AttachmentID, &c.ParentCommentID, &c.Body.Value, &c.AuthorID, &c.AuthorName, &c.Version.Number, &c.Version.Message, &c.CreatedAt, &c.UpdatedAt, &c.Version.AuthorID, &c.Version.CreatedAt, &c.CommentType, &c.InlineSelection, &c.InlineMatchCount, &c.InlineMatchIndex, &c.InlineMarkerRef, &c.ResolutionStatus, &c.ResolutionModifierID, &c.ResolutionModifiedAt)
 	return c, err
 }
 
@@ -258,13 +258,13 @@ func (s *Store) WikiVersions(ctx context.Context, ws, user, id string) ([]models
 }
 
 func (s *Store) WikiFooterComment(ctx context.Context, ws, user, id string) (*models.WikiFooterComment, error) {
-	return scanWikiFooterComment(s.Pool.QueryRow(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND p.status='current' AND c.id::text=$3`, ws, user, id))
+	return scanWikiFooterComment(s.Pool.QueryRow(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND p.status='current' AND c.comment_type='footer' AND c.id::text=$3`, ws, user, id))
 }
 
 // WikiFooterComments returns every visible footer comment when pageID is
 // empty, and the top-level comments for a page otherwise.
 func (s *Store) WikiFooterComments(ctx context.Context, ws, user, pageID string) ([]*models.WikiFooterComment, error) {
-	rows, err := s.Pool.Query(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND p.status='current' AND ($3='' OR (c.page_id::text=$3 AND c.parent_id IS NULL)) ORDER BY c.created_at,c.id`, ws, user, pageID)
+	rows, err := s.Pool.Query(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND p.status='current' AND c.comment_type='footer' AND ($3='' OR (c.page_id::text=$3 AND c.parent_id IS NULL)) ORDER BY c.created_at,c.id`, ws, user, pageID)
 	if err != nil {
 		return nil, err
 	}
@@ -276,7 +276,7 @@ func (s *Store) WikiFooterCommentThread(ctx context.Context, ws, user, pageID st
 	if _, err := s.WikiPage(ctx, ws, user, pageID); err != nil {
 		return nil, err
 	}
-	rows, err := s.Pool.Query(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND p.status='current' AND c.page_id::text=$3 ORDER BY c.created_at,c.id`, ws, user, pageID)
+	rows, err := s.Pool.Query(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND p.status='current' AND c.comment_type='footer' AND c.page_id::text=$3 ORDER BY c.created_at,c.id`, ws, user, pageID)
 	if err != nil {
 		return nil, err
 	}
@@ -288,7 +288,7 @@ func (s *Store) WikiAttachmentFooterComments(ctx context.Context, ws, user, atta
 	if _, err := s.WikiAttachment(ctx, ws, user, attachmentID); err != nil {
 		return nil, err
 	}
-	rows, err := s.Pool.Query(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND p.status='current' AND c.attachment_id::text=$3 AND c.parent_id IS NULL ORDER BY c.created_at,c.id`, ws, user, attachmentID)
+	rows, err := s.Pool.Query(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND p.status='current' AND c.comment_type='footer' AND c.attachment_id::text=$3 AND c.parent_id IS NULL ORDER BY c.created_at,c.id`, ws, user, attachmentID)
 	if err != nil {
 		return nil, err
 	}
@@ -300,7 +300,7 @@ func (s *Store) WikiAttachmentFooterCommentThread(ctx context.Context, ws, user,
 	if _, err := s.WikiAttachment(ctx, ws, user, attachmentID); err != nil {
 		return nil, err
 	}
-	rows, err := s.Pool.Query(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND p.status='current' AND c.attachment_id::text=$3 ORDER BY c.created_at,c.id`, ws, user, attachmentID)
+	rows, err := s.Pool.Query(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND p.status='current' AND c.comment_type='footer' AND c.attachment_id::text=$3 ORDER BY c.created_at,c.id`, ws, user, attachmentID)
 	if err != nil {
 		return nil, err
 	}
@@ -312,7 +312,7 @@ func (s *Store) WikiFooterCommentChildren(ctx context.Context, ws, user, parentI
 	if _, err := s.WikiFooterComment(ctx, ws, user, parentID); err != nil {
 		return nil, err
 	}
-	rows, err := s.Pool.Query(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND p.status='current' AND c.parent_id::text=$3 ORDER BY c.created_at,c.id`, ws, user, parentID)
+	rows, err := s.Pool.Query(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND p.status='current' AND c.comment_type='footer' AND c.parent_id::text=$3 ORDER BY c.created_at,c.id`, ws, user, parentID)
 	if err != nil {
 		return nil, err
 	}
@@ -339,7 +339,7 @@ func (s *Store) CreateWikiFooterComment(ctx context.Context, ws, actor string, i
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	if input.ParentCommentID != "" {
-		parent, err := scanWikiFooterComment(tx.QueryRow(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND p.status='current' AND c.id::text=$3 FOR SHARE OF c`, ws, actor, input.ParentCommentID))
+		parent, err := scanWikiFooterComment(tx.QueryRow(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND p.status='current' AND c.comment_type='footer' AND c.id::text=$3 FOR SHARE OF c`, ws, actor, input.ParentCommentID))
 		if err != nil {
 			return nil, err
 		}
@@ -396,7 +396,7 @@ func (s *Store) UpdateWikiFooterComment(ctx context.Context, ws, actor string, i
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	old, err := scanWikiFooterComment(tx.QueryRow(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND p.status='current' AND c.id::text=$3 FOR UPDATE OF c`, ws, actor, input.ID))
+	old, err := scanWikiFooterComment(tx.QueryRow(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND p.status='current' AND c.comment_type='footer' AND c.id::text=$3 FOR UPDATE OF c`, ws, actor, input.ID))
 	if err != nil {
 		return nil, err
 	}
@@ -431,7 +431,7 @@ func (s *Store) DeleteWikiFooterComment(ctx context.Context, ws, actor, id strin
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	comment, err := scanWikiFooterComment(tx.QueryRow(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND p.status='current' AND c.id::text=$3 FOR UPDATE OF c`, ws, actor, id))
+	comment, err := scanWikiFooterComment(tx.QueryRow(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND p.status='current' AND c.comment_type='footer' AND c.id::text=$3 FOR UPDATE OF c`, ws, actor, id))
 	if err != nil {
 		return err
 	}
@@ -594,7 +594,7 @@ func (s *Store) SetWikiFooterCommentLike(ctx context.Context, ws, actor, id stri
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	comment, err := scanWikiFooterComment(tx.QueryRow(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND p.status='current' AND c.id::text=$3 FOR SHARE OF c`, ws, actor, id))
+	comment, err := scanWikiFooterComment(tx.QueryRow(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND p.status='current' AND c.comment_type='footer' AND c.id::text=$3 FOR SHARE OF c`, ws, actor, id))
 	if err != nil {
 		return err
 	}

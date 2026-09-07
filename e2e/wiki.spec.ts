@@ -82,6 +82,14 @@ test('wiki space, rich page, access, stale edits, child pages, history, trash an
   await expect(wikiNotification).toHaveCount(1);
   await wikiNotification.click();
   await expect(page).toHaveURL(pageURL);
+  await page.getByText('Comment on a passage', { exact: true }).click();
+  await page.getByLabel('Exact passage').fill('notify watchers');
+  await page.getByLabel('Inline comment', { exact: true }).fill('Keep this guidance aligned with the notification policy.');
+  await page.getByRole('button', { name: 'Add inline comment', exact: true }).click();
+  const inlineThread = page.locator('.wiki-inline-comment').filter({ hasText: 'Keep this guidance aligned' }).first();
+  await expect(inlineThread).toContainText('notify watchers');
+  await inlineThread.getByRole('button', { name: 'Resolve', exact: true }).click();
+  await expect(page.locator('.wiki-inline-comment').filter({ hasText: 'Keep this guidance aligned' }).first()).toContainText('resolved');
   await page.getByText('Attach a file', { exact: true }).click();
   await page.getByLabel('File', { exact: true }).setInputFiles({ name: 'release-plan.txt', mimeType: 'text/plain', buffer: Buffer.from('Release plan v1') });
   await page.getByLabel('Comment', { exact: true }).fill('Initial release plan');
