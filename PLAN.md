@@ -1,6 +1,6 @@
 # ZZIRA — Jira Cloud completion plan
 
-Updated: 2026-09-06
+Updated: 2026-09-07
 
 ZZIRA is a self-hosted work, service, knowledge, and administration platform.
 The active program targets the reproducible public surface of Jira Cloud,
@@ -307,14 +307,17 @@ browser UI, sync behavior where applicable, and tests.
     Existing and new desks seed help, incident, problem and change intake; the
     latter two require descriptions, all operations requests receive stable Jira
     labels, and agents link visible related work from the request journey.
-12. **Confluence contract completion.** Add the v1 and remaining v2 APIs, generic
-    versioned content, ancestors/descendants, operations, remaining comments, attachments,
-    labels, likes, watches, tasks, properties, restrictions, space roles, CQL,
+12. **Confluence contract completion.** The delivered page foundation now covers
+    v1 and v2 spaces and pages, permission-filtered page hierarchy, drafts,
+    versions and trash, footer and inline comments, labels, restrictions,
+    attachments, properties, thumbnails, watches, notifications and page tasks
+    across 90 reviewed operations. Continue with generic versioned content and
+    non-page hierarchy, followed by the remaining operations, space roles, CQL,
     templates, macros, imports, exports, analytics and audit.
-13. **Knowledge collaboration and diagrams.** Add pages, blogs, live documents,
-    whiteboards, databases, folders, Smart Links, live editing, presence,
-    diagrams, embedding, object links, accessible descriptions, and SVG/PNG/PDF
-    export.
+13. **Knowledge collaboration and diagrams.** Extend the page journey to blogs,
+    live documents, whiteboards, databases, folders and Smart Links; add live
+    editing, presence, diagrams, embedding, object links, accessible
+    descriptions, and SVG/PNG/PDF export.
 14. **App runtime.** Add installation lifecycle, signed callbacks, app
     identities, scopes, isolated storage, web items, panels, issue tabs,
     dashboard gadgets, workflow modules, custom fields, webhooks, scheduled
