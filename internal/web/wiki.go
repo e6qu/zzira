@@ -24,6 +24,7 @@ type wikiData struct {
 	Folders                               []*models.WikiContent
 	SmartLinks                            []*models.WikiContent
 	Databases                             []*models.WikiContent
+	Whiteboards                           []*models.WikiContent
 	Tree                                  []wikiTreeNode
 	Page                                  *models.WikiPage
 	Versions                              []models.WikiVersion
@@ -214,6 +215,7 @@ func (h *Handler) WikiSpacePage(w http.ResponseWriter, r *http.Request) {
 	folders := []*models.WikiContent{}
 	smartLinks := []*models.WikiContent{}
 	databases := []*models.WikiContent{}
+	whiteboards := []*models.WikiContent{}
 	if status == "current" {
 		folders, err = h.Store.WikiContents(r.Context(), ws, user.ID, space.ID, "folder")
 		if err != nil {
@@ -257,13 +259,27 @@ func (h *Handler) WikiSpacePage(w http.ResponseWriter, r *http.Request) {
 			}
 			databases = visible
 		}
+		whiteboards, err = h.Store.WikiContents(r.Context(), ws, user.ID, space.ID, "whiteboard")
+		if err != nil {
+			http.Error(w, "Could not load whiteboards.", 500)
+			return
+		}
+		if query != "" {
+			visible := whiteboards[:0]
+			for _, whiteboard := range whiteboards {
+				if strings.Contains(strings.ToLower(whiteboard.Title), strings.ToLower(query)) || strings.Contains(strings.ToLower(whiteboard.TemplateKey), strings.ToLower(query)) {
+					visible = append(visible, whiteboard)
+				}
+			}
+			whiteboards = visible
+		}
 	}
 	watching, err := h.Store.WikiWatchStatus(r.Context(), ws, user.ID, user.ID, "space", space.Key)
 	if err != nil {
 		http.Error(w, "Could not load space watch status.", 500)
 		return
 	}
-	h.writeWorkspacePage(w, r, "page_wiki_space", user, ws, wikiData{Space: space, Pages: filtered, Folders: folders, SmartLinks: smartLinks, Databases: databases, Tree: wikiPageTree(filtered), Query: query, Status: status, WatchingSpace: watching}, "wiki", "")
+	h.writeWorkspacePage(w, r, "page_wiki_space", user, ws, wikiData{Space: space, Pages: filtered, Folders: folders, SmartLinks: smartLinks, Databases: databases, Whiteboards: whiteboards, Tree: wikiPageTree(filtered), Query: query, Status: status, WatchingSpace: watching}, "wiki", "")
 }
 
 func (h *Handler) WikiFolderCreate(w http.ResponseWriter, r *http.Request) {
@@ -423,6 +439,77 @@ func (h *Handler) WikiDatabaseClassification(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	redirectLocal(w, r, "/wiki/spaces/"+space.ID+"#database-"+database.ID)
+}
+
+func (h *Handler) WikiWhiteboardCreate(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	space, err := h.Store.WikiSpace(r.Context(), ws, user.ID, r.PathValue("space"))
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	whiteboard, err := h.Commands.CreateWikiContent(r.Context(), ws, user.ID, models.WikiContent{
+		Type: "whiteboard", SpaceID: space.ID, Title: r.PostFormValue("title"), ParentID: r.PostFormValue("parentId"),
+		Private: r.PostFormValue("private") == "true", TemplateKey: r.PostFormValue("templateKey"), Locale: r.PostFormValue("locale"),
+	})
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	redirectLocal(w, r, "/wiki/spaces/"+space.ID+"#whiteboard-"+whiteboard.ID)
+}
+
+func (h *Handler) WikiWhiteboardDelete(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	space, err := h.Store.WikiSpace(r.Context(), ws, user.ID, r.PathValue("space"))
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	whiteboard, err := h.Store.WikiContent(r.Context(), ws, user.ID, r.PathValue("whiteboard"), "whiteboard")
+	if err != nil || whiteboard.SpaceID != space.ID {
+		http.NotFound(w, r)
+		return
+	}
+	if err = h.Commands.DeleteWikiContent(r.Context(), ws, user.ID, whiteboard.ID, "whiteboard"); err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	redirectLocal(w, r, "/wiki/spaces/"+space.ID)
+}
+
+func (h *Handler) WikiWhiteboardClassification(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	space, err := h.Store.WikiSpace(r.Context(), ws, user.ID, r.PathValue("space"))
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	whiteboard, err := h.Store.WikiContent(r.Context(), ws, user.ID, r.PathValue("whiteboard"), "whiteboard")
+	if err != nil || whiteboard.SpaceID != space.ID {
+		http.NotFound(w, r)
+		return
+	}
+	if _, err = h.Commands.SetWikiContentClassification(r.Context(), ws, user.ID, whiteboard.ID, "whiteboard", r.PostFormValue("level")); err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	redirectLocal(w, r, "/wiki/spaces/"+space.ID+"#whiteboard-"+whiteboard.ID)
 }
 
 func (h *Handler) WikiPage(w http.ResponseWriter, r *http.Request) { h.wikiPage(w, r, false) }

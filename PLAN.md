@@ -76,7 +76,7 @@ semantics.
 | Automation | Eight rule-management routes, fixed intervals, durable runs, JQL and three issue actions | Cron/events/manual triggers, conditions, branches, smart values, templates and action catalog |
 | Releases | Version lifecycle, fix/affects membership, progress and notes | Ordering, related work, approvals, custom fields, exports and cross-project releases |
 | Dashboards | CRUD, layouts, favourites, sharing and native issue gadgets | Full shares, subscriptions, report gadgets, app gadgets and offline data |
-| Knowledge | Spaces, permission-filtered page, folder, Smart Link and database hierarchies, creator-private database containers, built-in classification state, safe external Smart Links, page editing, drafts, versions, trash, labels, threaded page/attachment footer comments, page inline discussions with exact-text anchors and resolution, assigned/due page tasks with completion, direct-user/group page restrictions, versioned attachment upload/download/properties/labels/thumbnails, hierarchical-content properties, and durable page/space/label watches with in-app delivery across v1/v2; 129 Confluence operations reviewed | Remaining Confluence v1/v2, database schemas/rows/views, whiteboards, blogs and other non-page content, page children beneath non-page content, manual child ordering, organization-defined classification levels, storage-macro task extraction, rich anchor relocation, Confluence-specific space roles, mentions, watch email delivery, live collaboration, macros, CQL and export |
+| Knowledge | Spaces, permission-filtered page, folder, Smart Link, database and whiteboard hierarchies, creator-private database/whiteboard containers, all documented whiteboard templates/locales, built-in classification state, safe external Smart Links, page editing, drafts, versions, trash, labels, threaded page/attachment footer comments, page inline discussions with exact-text anchors and resolution, assigned/due page tasks with completion, direct-user/group page restrictions, versioned attachment upload/download/properties/labels/thumbnails, hierarchical-content properties, and durable page/space/label watches with in-app delivery across v1/v2; 144 Confluence operations reviewed | Remaining Confluence v1/v2, database schemas/rows/views, whiteboard canvas objects/editing, blogs and other non-page content, page children beneath non-page content, manual child ordering, organization-defined classification levels, storage-macro task extraction, rich anchor relocation, Confluence-specific space roles, mentions, watch email delivery, live collaboration, macros, CQL and export |
 | Service management | Help center, service projects, seeded help/incident/problem/change request types with deterministic labels and related-work links, request-type-specific forms with typed custom fields, customer requests, participants, public/private conversation and attachments, assigned-user approvals, request subscriptions and inbox notifications, completed-request CSAT, status transitions, per-desk agents, built-in and manager-defined JQL queues, business calendars with holiday administration, ordered JQL-based conditional/default first-response and resolution SLA goals with stable cycle snapshots, durable escalation notifications, customer-only accounts, open/closed portal access, customer organizations, linked knowledge suggestions, request-type metadata/properties/permissions, Assets workspace discovery, filterable volume/SLA/CSAT reports with request-type and channel breakdowns, and all 75 pinned REST operations reviewed | Conditional/advanced portal fields, complete JQL beyond labels, SLA rule reordering and advanced criteria, approval configuration, email delivery, CSAT configuration, comparisons, SLA goal distributions, exports and scheduled report delivery, complete Assets APIs and advanced incident/problem/change risk, approval, on-call and review management |
 | Analytics | Dashboard groupings and release progress | Historical reports, development facts, DORA, exports and scheduled delivery |
 | Administration | All 47 organization operations reviewed with tested organization/site/product/directory, DNS claim, policy/resource, event, group and managed-account subsets; limited project settings | Runtime policy enforcement, provider administration and Jira/Confluence schemes |
@@ -311,15 +311,15 @@ browser UI, sync behavior where applicable, and tests.
     v1 and v2 spaces and pages, permission-filtered page hierarchy, drafts,
     versions and trash, footer and inline comments, labels, restrictions,
     attachments, properties, thumbnails, watches, notifications and page tasks
-    across 129 reviewed operations, including nested folders, Smart Links,
-    creator-private databases, classification state and versioned properties.
-    Continue the generic content substrate with whiteboards and extend the
-    heterogeneous hierarchy,
+    across 144 reviewed operations, including nested folders, Smart Links,
+    creator-private databases and whiteboards, template/locale creation,
+    classification state and versioned properties. Continue with remaining
+    content types and operations,
     followed by the remaining operations, space roles, CQL,
     templates, macros, imports, exports, analytics and audit.
 13. **Knowledge collaboration and diagrams.** Extend the page journey to blogs,
-    live documents and whiteboards, enrich databases with schemas, rows and
-    views, and add live
+    live documents, enrich whiteboards with canvas objects and editing, enrich
+    databases with schemas, rows and views, and add live
     editing, presence, diagrams, embedding, object links, accessible
     descriptions, and SVG/PNG/PDF export.
 14. **App runtime.** Add installation lifecycle, signed callbacks, app

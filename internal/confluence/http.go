@@ -377,6 +377,36 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.updateDatabaseProperty(w, r, ws, actor, parts[1], parts[3])
 	case len(parts) == 4 && parts[0] == "databases" && parts[2] == "properties" && r.Method == "DELETE":
 		h.deleteDatabaseProperty(w, r, ws, actor, parts[1], parts[3])
+	case len(parts) == 1 && parts[0] == "whiteboards" && r.Method == "POST":
+		h.createWhiteboard(w, r, ws, actor)
+	case len(parts) == 2 && parts[0] == "whiteboards" && r.Method == "GET":
+		h.whiteboard(w, r, ws, actor, parts[1])
+	case len(parts) == 2 && parts[0] == "whiteboards" && r.Method == "DELETE":
+		h.deleteWhiteboard(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "whiteboards" && parts[2] == "ancestors" && r.Method == "GET":
+		h.whiteboardAncestors(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "whiteboards" && parts[2] == "descendants" && r.Method == "GET":
+		h.whiteboardDescendants(w, r, ws, actor, parts[1], false)
+	case len(parts) == 3 && parts[0] == "whiteboards" && parts[2] == "direct-children" && r.Method == "GET":
+		h.whiteboardDescendants(w, r, ws, actor, parts[1], true)
+	case len(parts) == 3 && parts[0] == "whiteboards" && parts[2] == "operations" && r.Method == "GET":
+		h.whiteboardOperations(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "whiteboards" && parts[2] == "classification-level" && r.Method == "GET":
+		h.contentClassification(w, r, ws, actor, parts[1], "whiteboard")
+	case len(parts) == 3 && parts[0] == "whiteboards" && parts[2] == "classification-level" && r.Method == "PUT":
+		h.setContentClassification(w, r, ws, actor, parts[1], "whiteboard", false)
+	case len(parts) == 4 && parts[0] == "whiteboards" && parts[2] == "classification-level" && parts[3] == "reset" && r.Method == "POST":
+		h.setContentClassification(w, r, ws, actor, parts[1], "whiteboard", true)
+	case len(parts) == 3 && parts[0] == "whiteboards" && parts[2] == "properties" && r.Method == "GET":
+		h.whiteboardProperties(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "whiteboards" && parts[2] == "properties" && r.Method == "POST":
+		h.createWhiteboardProperty(w, r, ws, actor, parts[1])
+	case len(parts) == 4 && parts[0] == "whiteboards" && parts[2] == "properties" && r.Method == "GET":
+		h.whiteboardProperty(w, r, ws, actor, parts[1], parts[3])
+	case len(parts) == 4 && parts[0] == "whiteboards" && parts[2] == "properties" && r.Method == "PUT":
+		h.updateWhiteboardProperty(w, r, ws, actor, parts[1], parts[3])
+	case len(parts) == 4 && parts[0] == "whiteboards" && parts[2] == "properties" && r.Method == "DELETE":
+		h.deleteWhiteboardProperty(w, r, ws, actor, parts[1], parts[3])
 	default:
 		failure(w, 404, "This Confluence resource is not implemented.")
 	}

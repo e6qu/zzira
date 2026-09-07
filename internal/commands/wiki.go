@@ -19,6 +19,16 @@ import (
 
 var spaceKeyPattern = regexp.MustCompile(`^[A-Za-z0-9]{1,255}$`)
 var wikiLabelPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,254}$`)
+var wikiWhiteboardTemplates = stringSet("2x2-prioritization", "4ls-retro", "annual-calendar", "brainwriting", "concept-map", "crazy-8s", "daily-sync", "disruptive-brainstorm", "dot-voting", "elevator-pitch", "flow-chart", "gap-analysis", "ice-breakers", "incident-postmortem", "journey-mapping-kit", "kanban-board", "lean-coffee", "network-of-teams", "org-chart", "pi-planning", "prioritization", "prioritization-experiment", "product-roadmap", "product-vision-board", "rice", "sailboat-retro", "service-blueprint", "simple-retrospective", "sprint-planning", "sticky-note-pack", "swimlanes", "team-formation-guide", "timeline", "timeline-workflow", "user-story-map", "workflow", "vision-board", "venn-diagram", "storyboard", "action-plan", "root-cause-analysis", "executive-summary", "stakeholder-mapping", "annual-calendar-2025-2026", "health-monitor", "okr-planning", "swot-analysis", "poker-planning", "fishbone-diagram", "risk-assessment", "bounded-context", "hopes-and-fears", "swimlane-vertical")
+var wikiWhiteboardLocales = stringSet("de-DE", "cs-CZ", "ko-KR", "fr-FR", "it-IT", "ja-JP", "nl-NL", "nb-NO", "da-DK", "sv-SE", "fi-FI", "ru-RU", "pl-PL", "tr-TR", "hu-HU", "en-GB", "en-US", "pt-BR", "zh-CN", "zh-TW", "es-ES")
+
+func stringSet(values ...string) map[string]bool {
+	set := make(map[string]bool, len(values))
+	for _, value := range values {
+		set[value] = true
+	}
+	return set
+}
 
 func (s *Service) CreateWikiSpace(ctx context.Context, ws, actor, key, name, description string, private bool) (*models.WikiSpace, error) {
 	name = strings.TrimSpace(name)
@@ -84,8 +94,19 @@ func (s *Service) CreateWikiContent(ctx context.Context, ws, actor string, conte
 	if content.Type != "embed" && content.EmbedURL != "" {
 		return nil, fmt.Errorf("%w: only Smart Links accept an embed URL", store.ErrWikiValidation)
 	}
-	if content.Type != "database" && content.Private {
-		return nil, fmt.Errorf("%w: only databases accept private content state", store.ErrWikiValidation)
+	if content.Type != "database" && content.Type != "whiteboard" && content.Private {
+		return nil, fmt.Errorf("%w: only databases and whiteboards accept private content state", store.ErrWikiValidation)
+	}
+	if content.Type != "whiteboard" && (content.TemplateKey != "" || content.Locale != "") {
+		return nil, fmt.Errorf("%w: only whiteboards accept template and locale", store.ErrWikiValidation)
+	}
+	if content.Type == "whiteboard" {
+		if content.TemplateKey != "" && !wikiWhiteboardTemplates[content.TemplateKey] {
+			return nil, fmt.Errorf("%w: choose a supported whiteboard template", store.ErrWikiValidation)
+		}
+		if content.Locale != "" && (content.TemplateKey == "" || !wikiWhiteboardLocales[content.Locale]) {
+			return nil, fmt.Errorf("%w: choose a supported whiteboard template locale", store.ErrWikiValidation)
+		}
 	}
 	if content.Type == "embed" && content.EmbedURL != "" {
 		content.EmbedURL = strings.TrimSpace(content.EmbedURL)

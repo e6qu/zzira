@@ -47,6 +47,9 @@ func (h *Handler) contentBean(content *models.WikiContent) map[string]any {
 	if content.Type == "database" {
 		bean["private"] = content.Private
 	}
+	if content.Type == "whiteboard" {
+		bean["_links"].(map[string]string)["editui"] = "/wiki/spaces/" + content.SpaceID + "#whiteboard-" + content.ID
+	}
 	return bean
 }
 

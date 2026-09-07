@@ -18,7 +18,7 @@ const wikiContentSelect = `SELECT c.id::text,c.type,c.status,c.title,
     AND sibling.parent_page_id IS NOT DISTINCT FROM c.parent_page_id
     AND sibling.parent_content_id IS NOT DISTINCT FROM c.parent_content_id AND sibling.id<c.id),
   c.author_id,c.owner_id,to_char(c.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),
-  c.space_id::text,c.embed_url,c.private,c.classification_level,v.version,v.message,v.author_id,
+	c.space_id::text,c.embed_url,c.private,c.classification_level,c.template_key,c.locale,v.version,v.message,v.author_id,
   to_char(v.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"')
   FROM wiki_content c JOIN wiki_spaces s ON s.id=c.space_id
   JOIN wiki_content_versions v ON v.content_id=c.id AND v.version=c.version
@@ -29,7 +29,7 @@ func scanWikiContent(row pgx.Row) (*models.WikiContent, error) {
 	content := &models.WikiContent{}
 	err := row.Scan(&content.ID, &content.Type, &content.Status, &content.Title,
 		&content.ParentID, &content.ParentType, &content.Position, &content.AuthorID,
-		&content.OwnerID, &content.CreatedAt, &content.SpaceID, &content.EmbedURL, &content.Private, &content.ClassificationLevel,
+		&content.OwnerID, &content.CreatedAt, &content.SpaceID, &content.EmbedURL, &content.Private, &content.ClassificationLevel, &content.TemplateKey, &content.Locale,
 		&content.Version.Number, &content.Version.Message, &content.Version.AuthorID,
 		&content.Version.CreatedAt)
 	return content, err
@@ -97,8 +97,8 @@ func (s *Store) CreateWikiContent(ctx context.Context, ws, actor string, input m
 			}
 		}
 	}
-	if err = tx.QueryRow(ctx, `INSERT INTO wiki_content(space_id,parent_page_id,parent_content_id,root_page_id,type,title,embed_url,private,author_id,owner_id)
-    VALUES($1::bigint,$2::bigint,$3::bigint,$4::bigint,$5,$6,$7,$8,$9,$9) RETURNING id::text`, spaceID, parentPage, parentContent, rootPage, input.Type, input.Title, input.EmbedURL, input.Private, actor).Scan(&input.ID); err != nil {
+	if err = tx.QueryRow(ctx, `INSERT INTO wiki_content(space_id,parent_page_id,parent_content_id,root_page_id,type,title,embed_url,private,template_key,locale,author_id,owner_id)
+    VALUES($1::bigint,$2::bigint,$3::bigint,$4::bigint,$5,$6,$7,$8,$9,$10,$11,$11) RETURNING id::text`, spaceID, parentPage, parentContent, rootPage, input.Type, input.Title, input.EmbedURL, input.Private, input.TemplateKey, input.Locale, actor).Scan(&input.ID); err != nil {
 		return nil, err
 	}
 	if _, err = tx.Exec(ctx, `INSERT INTO wiki_content_versions(content_id,version,title,status,embed_url,author_id) VALUES($1::bigint,1,$2,'current',$3,$4)`, input.ID, input.Title, input.EmbedURL, actor); err != nil {

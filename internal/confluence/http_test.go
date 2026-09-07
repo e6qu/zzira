@@ -299,6 +299,57 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	call(member, "GET", "/folders/"+privateDatabaseChild.ID, nil, 404)
+	call(member, "POST", "/whiteboards?private=sometimes", map[string]any{"spaceId": public, "title": "Invalid private"}, 400)
+	call(member, "POST", "/whiteboards", map[string]any{"spaceId": public, "title": "Invalid template", "templateKey": "unknown"}, 400)
+	call(member, "POST", "/whiteboards", map[string]any{"spaceId": public, "title": "Invalid locale", "locale": "en-US"}, 400)
+	whiteboardResponse := call(member, "POST", "/whiteboards", map[string]any{"spaceId": public, "title": "Incident review canvas", "parentId": childFolder.ID, "templateKey": "incident-postmortem", "locale": "en-US"}, 200)
+	var whiteboard models.WikiContent
+	if err := json.Unmarshal(whiteboardResponse.Body.Bytes(), &whiteboard); err != nil || whiteboard.Type != "whiteboard" || whiteboard.ParentType != "folder" {
+		t.Fatalf("unexpected whiteboard: %+v %v", whiteboard, err)
+	}
+	storedWhiteboard, err := st.WikiContent(ctx, ws, member, whiteboard.ID, "whiteboard")
+	if err != nil || storedWhiteboard.TemplateKey != "incident-postmortem" || storedWhiteboard.Locale != "en-US" {
+		t.Fatalf("unexpected stored whiteboard template: %+v %v", storedWhiteboard, err)
+	}
+	whiteboardChildResponse := call(member, "POST", "/embeds", map[string]any{"spaceId": public, "title": "Canvas evidence", "parentId": whiteboard.ID, "embedUrl": "https://example.test/canvas-evidence"}, 200)
+	var whiteboardChild models.WikiContent
+	if err := json.Unmarshal(whiteboardChildResponse.Body.Bytes(), &whiteboardChild); err != nil || whiteboardChild.ParentType != "whiteboard" {
+		t.Fatalf("unexpected whiteboard child: %+v %v", whiteboardChild, err)
+	}
+	if expanded := call(member, "GET", "/whiteboards/"+whiteboard.ID+"?include-direct-children=true&include-operations=true&include-properties=true&include-collaborators=true", nil, 200); !strings.Contains(expanded.Body.String(), "Canvas evidence") || !strings.Contains(expanded.Body.String(), `"targetType":"whiteboard"`) || !strings.Contains(expanded.Body.String(), `"editui"`) {
+		t.Fatal(expanded.Body.String())
+	}
+	if ancestors := call(member, "GET", "/whiteboards/"+whiteboard.ID+"/ancestors", nil, 200); !strings.Contains(ancestors.Body.String(), `"id":"`+childFolder.ID+`","type":"folder"`) {
+		t.Fatal(ancestors.Body.String())
+	}
+	call(member, "GET", "/whiteboards/"+whiteboard.ID+"/direct-children?sort=title", nil, 200)
+	call(member, "GET", "/whiteboards/"+whiteboard.ID+"/descendants?depth=2", nil, 200)
+	call(member, "GET", "/whiteboards/"+whiteboard.ID+"/operations", nil, 200)
+	call(member, "GET", "/whiteboards/"+whiteboard.ID+"/classification-level", nil, 404)
+	call(member, "PUT", "/whiteboards/"+whiteboard.ID+"/classification-level", map[string]any{"id": "restricted", "status": "current"}, 204)
+	if level := call(member, "GET", "/whiteboards/"+whiteboard.ID+"/classification-level", nil, 200); !strings.Contains(level.Body.String(), `"name":"Restricted"`) {
+		t.Fatal(level.Body.String())
+	}
+	call(member, "POST", "/whiteboards/"+whiteboard.ID+"/classification-level/reset", map[string]any{"status": "current"}, 204)
+	whiteboardPropertyResponse := call(member, "POST", "/whiteboards/"+whiteboard.ID+"/properties", map[string]any{"key": "canvas", "value": map[string]any{"nodes": 3}}, 200)
+	var whiteboardProperty models.WikiContentProperty
+	if err := json.Unmarshal(whiteboardPropertyResponse.Body.Bytes(), &whiteboardProperty); err != nil {
+		t.Fatal(err)
+	}
+	call(member, "GET", "/whiteboards/"+whiteboard.ID+"/properties?key=canvas", nil, 200)
+	call(member, "GET", "/whiteboards/"+whiteboard.ID+"/properties/"+whiteboardProperty.ID, nil, 200)
+	call(member, "PUT", "/whiteboards/"+whiteboard.ID+"/properties/"+whiteboardProperty.ID, map[string]any{"key": "canvas", "value": map[string]any{"nodes": 4}, "version": map[string]any{"number": 2}}, 200)
+	call(member, "DELETE", "/whiteboards/"+whiteboard.ID, nil, 400)
+	call(member, "DELETE", "/whiteboards/"+whiteboard.ID+"/properties/"+whiteboardProperty.ID, nil, 204)
+	call(member, "DELETE", "/embeds/"+whiteboardChild.ID, nil, 204)
+	call(member, "DELETE", "/whiteboards/"+whiteboard.ID, nil, 204)
+	call(member, "GET", "/whiteboards/"+whiteboard.ID, nil, 404)
+	privateWhiteboardResponse := call(actor, "POST", "/whiteboards?private=true", map[string]any{"spaceId": public, "title": "Private whiteboard", "parentId": page.ID, "templateKey": "workflow", "locale": "en-GB"}, 200)
+	var privateWhiteboard models.WikiContent
+	if err := json.Unmarshal(privateWhiteboardResponse.Body.Bytes(), &privateWhiteboard); err != nil {
+		t.Fatal(err)
+	}
+	call(member, "GET", "/whiteboards/"+privateWhiteboard.ID, nil, 404)
 	if expanded := call(member, "GET", "/folders/"+rootFolder.ID+"?include-direct-children=true&include-operations=true&include-properties=true&include-collaborators=true", nil, 200); !strings.Contains(expanded.Body.String(), "Database runbooks") || !strings.Contains(expanded.Body.String(), `"operation":"delete"`) {
 		t.Fatal(expanded.Body.String())
 	}
@@ -776,6 +827,7 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	call(actor, "DELETE", "/pages/"+hierarchyChild.ID, nil, 204)
 	call(actor, "DELETE", "/folders/"+privateDatabaseChild.ID, nil, 204)
 	call(actor, "DELETE", "/databases/"+privateDatabase.ID, nil, 204)
+	call(actor, "DELETE", "/whiteboards/"+privateWhiteboard.ID, nil, 204)
 	call(actor, "DELETE", "/pages/"+page.ID, nil, 204)
 	call(actor, "GET", "/pages/"+page.ID, nil, 404)
 	call(actor, "GET", "/pages/"+page.ID+"?status=trashed&body-format=storage", nil, 200)
@@ -904,7 +956,7 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		if a.EntityType == "wiki_footer_comment_like" && strings.HasPrefix(a.EntityID, secretCommentBean.ID+":") {
 			t.Fatalf("private wiki like action leaked: %s", a.Payload)
 		}
-		if strings.Contains(string(a.Payload), "Private draft") || strings.Contains(string(a.Payload), "Secret guide") || strings.Contains(string(a.Payload), "PRIVATE") || strings.Contains(string(a.Payload), "Private launch phrase") || strings.Contains(string(a.Payload), "Private folder") || strings.Contains(string(a.Payload), "secret-folder-property") || strings.Contains(string(a.Payload), "Private Smart Link") || strings.Contains(string(a.Payload), "private.example.test") || strings.Contains(string(a.Payload), "Private database") || strings.Contains(string(a.Payload), "private-database-property") || strings.Contains(string(a.Payload), "Private database child") || strings.Contains(string(a.Payload), "secret-label") || strings.Contains(string(a.Payload), "Restricted launch plan") || strings.Contains(string(a.Payload), "Managers approved the launch") || strings.Contains(string(a.Payload), "classified-release") || strings.Contains(string(a.Payload), "classified-metadata") || strings.Contains(string(a.Payload), "classified-file") || strings.Contains(string(a.Payload), "Classified attachment discussion") || strings.Contains(string(a.Payload), "Classified inline discussion") || strings.Contains(string(a.Payload), "Classified task discussion") {
+		if strings.Contains(string(a.Payload), "Private draft") || strings.Contains(string(a.Payload), "Secret guide") || strings.Contains(string(a.Payload), "PRIVATE") || strings.Contains(string(a.Payload), "Private launch phrase") || strings.Contains(string(a.Payload), "Private folder") || strings.Contains(string(a.Payload), "secret-folder-property") || strings.Contains(string(a.Payload), "Private Smart Link") || strings.Contains(string(a.Payload), "private.example.test") || strings.Contains(string(a.Payload), "Private database") || strings.Contains(string(a.Payload), "private-database-property") || strings.Contains(string(a.Payload), "Private database child") || strings.Contains(string(a.Payload), "Private whiteboard") || strings.Contains(string(a.Payload), "secret-label") || strings.Contains(string(a.Payload), "Restricted launch plan") || strings.Contains(string(a.Payload), "Managers approved the launch") || strings.Contains(string(a.Payload), "classified-release") || strings.Contains(string(a.Payload), "classified-metadata") || strings.Contains(string(a.Payload), "classified-file") || strings.Contains(string(a.Payload), "Classified attachment discussion") || strings.Contains(string(a.Payload), "Classified inline discussion") || strings.Contains(string(a.Payload), "Classified task discussion") {
 			t.Fatalf("private wiki action leaked: %s", a.Payload)
 		}
 	}

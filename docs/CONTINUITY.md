@@ -1618,12 +1618,34 @@ Validation after Confluence databases:
 - Exact reviewed API coverage is 343 of 1,207 operations: 336 partial, 7
   missing, and 864 unassessed. Confluence coverage is 129 of 348 reviewed.
 
+Validation after Confluence whiteboards:
+
+- Migration 085 adds whiteboard template-key and locale state to the shared
+  hierarchical-content model. The command path validates every template and
+  locale enumerated by the pinned Confluence v2 contract, including the rule
+  that a locale accompanies a template.
+- All 15 pinned Confluence v2 whiteboard operations now cover public/private
+  create, read/delete, ancestors, bounded descendants, cursor-paged direct
+  children, permission-shaped operations, optimistic JSON properties, and
+  classification read/set/reset. Canvas objects and editing are still separate
+  product work because the pinned REST surface only models its container.
+- PostgreSQL integration covers template persistence, invalid template/locale
+  combinations, heterogeneous children, expansions, nonempty deletion,
+  properties, classification, private reads and action-feed isolation.
+- The space UI creates blank or template-backed whiteboards with all documented
+  locales under any delivered parent type, shows template/privacy/classification
+  state, updates classification, searches whiteboards and guards deletion. The
+  clean Chromium wiki journey covers a localized incident-postmortem canvas,
+  classification, accessibility, dark theme and 320 px reflow.
+- Exact reviewed API coverage is 358 of 1,207 operations: 351 partial, 7
+  missing, and 849 unassessed. Confluence coverage is 144 of 348 reviewed.
+
 ## Current change
 
-1. Add whiteboards, including template/locale creation and classification, to
-   the permission-shaped content tree.
-2. Return to advanced service operations risk, CAB approval, on-call and
-   post-incident review configuration after the next knowledge slice.
+1. Add advanced service operations risk, CAB approval, on-call and
+   post-incident review configuration.
+2. Resume the remaining Confluence content and administration operations after
+   the service-operations checkpoint.
 
 ## Resume here
 

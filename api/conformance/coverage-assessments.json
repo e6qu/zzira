@@ -4348,6 +4348,248 @@
         "migrations/084_wiki_content_classification.sql",
         "internal/commands/wiki.go"
       ]
+    },
+    {
+      "operationId": "confluence-v2:POST:/wiki/api/v2/whiteboards",
+      "status": "partial",
+      "notes": "Whiteboards support public or creator-private creation, every documented template key and locale, current reads with optional expansions, inherited page/space permissions, nonempty deletion checks, privacy-shaped actions and a space UI journey; canvas objects/editing, archive, restore, move and rename remain.",
+      "evidence": [
+        "internal/confluence/whiteboards.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "migrations/084_wiki_content_classification.sql",
+        "migrations/085_wiki_whiteboard_templates.sql",
+        "internal/commands/wiki.go",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:DELETE:/wiki/api/v2/whiteboards/{id}",
+      "status": "partial",
+      "notes": "Whiteboards support public or creator-private creation, every documented template key and locale, current reads with optional expansions, inherited page/space permissions, nonempty deletion checks, privacy-shaped actions and a space UI journey; canvas objects/editing, archive, restore, move and rename remain.",
+      "evidence": [
+        "internal/confluence/whiteboards.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "migrations/084_wiki_content_classification.sql",
+        "migrations/085_wiki_whiteboard_templates.sql",
+        "internal/commands/wiki.go",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/whiteboards/{id}",
+      "status": "partial",
+      "notes": "Whiteboards support public or creator-private creation, every documented template key and locale, current reads with optional expansions, inherited page/space permissions, nonempty deletion checks, privacy-shaped actions and a space UI journey; canvas objects/editing, archive, restore, move and rename remain.",
+      "evidence": [
+        "internal/confluence/whiteboards.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "migrations/084_wiki_content_classification.sql",
+        "migrations/085_wiki_whiteboard_templates.sql",
+        "internal/commands/wiki.go",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:DELETE:/wiki/api/v2/whiteboards/{whiteboard-id}/properties/{property-id}",
+      "status": "partial",
+      "notes": "Whiteboard JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with creator privacy, inherited visibility and atomic action records; property history resources remain.",
+      "evidence": [
+        "internal/confluence/whiteboards.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "migrations/084_wiki_content_classification.sql",
+        "migrations/085_wiki_whiteboard_templates.sql",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_content_properties.go"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/whiteboards/{whiteboard-id}/properties/{property-id}",
+      "status": "partial",
+      "notes": "Whiteboard JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with creator privacy, inherited visibility and atomic action records; property history resources remain.",
+      "evidence": [
+        "internal/confluence/whiteboards.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "migrations/084_wiki_content_classification.sql",
+        "migrations/085_wiki_whiteboard_templates.sql",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_content_properties.go"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:PUT:/wiki/api/v2/whiteboards/{whiteboard-id}/properties/{property-id}",
+      "status": "partial",
+      "notes": "Whiteboard JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with creator privacy, inherited visibility and atomic action records; property history resources remain.",
+      "evidence": [
+        "internal/confluence/whiteboards.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "migrations/084_wiki_content_classification.sql",
+        "migrations/085_wiki_whiteboard_templates.sql",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_content_properties.go"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/whiteboards/{id}/properties",
+      "status": "partial",
+      "notes": "Whiteboard JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with creator privacy, inherited visibility and atomic action records; property history resources remain.",
+      "evidence": [
+        "internal/confluence/whiteboards.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "migrations/084_wiki_content_classification.sql",
+        "migrations/085_wiki_whiteboard_templates.sql",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_content_properties.go"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:POST:/wiki/api/v2/whiteboards/{id}/properties",
+      "status": "partial",
+      "notes": "Whiteboard JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with creator privacy, inherited visibility and atomic action records; property history resources remain.",
+      "evidence": [
+        "internal/confluence/whiteboards.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "migrations/084_wiki_content_classification.sql",
+        "migrations/085_wiki_whiteboard_templates.sql",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_content_properties.go"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/whiteboards/{id}/ancestors",
+      "status": "partial",
+      "notes": "Whiteboards participate in the permission-filtered heterogeneous page/folder/Smart-Link/database/whiteboard tree with ordered ancestors, bounded descendants, documented sorting and cursor pagination; page children beneath non-page content and persisted manual ordering remain.",
+      "evidence": [
+        "internal/confluence/whiteboards.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "migrations/084_wiki_content_classification.sql",
+        "migrations/085_wiki_whiteboard_templates.sql",
+        "internal/commands/wiki.go",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/whiteboards/{id}/descendants",
+      "status": "partial",
+      "notes": "Whiteboards participate in the permission-filtered heterogeneous page/folder/Smart-Link/database/whiteboard tree with ordered ancestors, bounded descendants, documented sorting and cursor pagination; page children beneath non-page content and persisted manual ordering remain.",
+      "evidence": [
+        "internal/confluence/whiteboards.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "migrations/084_wiki_content_classification.sql",
+        "migrations/085_wiki_whiteboard_templates.sql",
+        "internal/commands/wiki.go",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/whiteboards/{id}/direct-children",
+      "status": "partial",
+      "notes": "Whiteboards participate in the permission-filtered heterogeneous page/folder/Smart-Link/database/whiteboard tree with ordered ancestors, bounded descendants, documented sorting and cursor pagination; page children beneath non-page content and persisted manual ordering remain.",
+      "evidence": [
+        "internal/confluence/whiteboards.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "migrations/084_wiki_content_classification.sql",
+        "migrations/085_wiki_whiteboard_templates.sql",
+        "internal/commands/wiki.go",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/whiteboards/{id}/classification-level",
+      "status": "partial",
+      "notes": "Whiteboard classification supports read, set and reset against four durable built-in published levels through the REST API and UI with validation, permission checks and atomic actions; organization-defined level administration and entitlement semantics remain.",
+      "evidence": [
+        "internal/confluence/whiteboards.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "migrations/084_wiki_content_classification.sql",
+        "migrations/085_wiki_whiteboard_templates.sql",
+        "internal/commands/wiki.go",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:PUT:/wiki/api/v2/whiteboards/{id}/classification-level",
+      "status": "partial",
+      "notes": "Whiteboard classification supports read, set and reset against four durable built-in published levels through the REST API and UI with validation, permission checks and atomic actions; organization-defined level administration and entitlement semantics remain.",
+      "evidence": [
+        "internal/confluence/whiteboards.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "migrations/084_wiki_content_classification.sql",
+        "migrations/085_wiki_whiteboard_templates.sql",
+        "internal/commands/wiki.go",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:POST:/wiki/api/v2/whiteboards/{id}/classification-level/reset",
+      "status": "partial",
+      "notes": "Whiteboard classification supports read, set and reset against four durable built-in published levels through the REST API and UI with validation, permission checks and atomic actions; organization-defined level administration and entitlement semantics remain.",
+      "evidence": [
+        "internal/confluence/whiteboards.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "migrations/084_wiki_content_classification.sql",
+        "migrations/085_wiki_whiteboard_templates.sql",
+        "internal/commands/wiki.go",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/whiteboards/{id}/operations",
+      "status": "partial",
+      "notes": "The whiteboard operation resource reports read and permission-shaped update/delete capabilities; the broader Confluence operation catalog and app-derived permissions remain.",
+      "evidence": [
+        "internal/confluence/whiteboards.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_content.go",
+        "migrations/083_wiki_hierarchical_content.sql",
+        "migrations/084_wiki_content_classification.sql",
+        "migrations/085_wiki_whiteboard_templates.sql",
+        "internal/commands/wiki.go"
+      ]
     }
   ]
 }

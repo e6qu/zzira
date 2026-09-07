@@ -54,7 +54,9 @@ type WikiContent struct {
 	SpaceID             string                `json:"spaceId"`
 	EmbedURL            string                `json:"embedUrl,omitempty"`
 	Private             bool                  `json:"private,omitempty"`
-	ClassificationLevel string                `json:"-"`
+	ClassificationLevel string                `json:"classificationLevel,omitempty"`
+	TemplateKey         string                `json:"templateKey,omitempty"`
+	Locale              string                `json:"locale,omitempty"`
 	Version             WikiVersion           `json:"version"`
 	Properties          []WikiContentProperty `json:"-"`
 }
