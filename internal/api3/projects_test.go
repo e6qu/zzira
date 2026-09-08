@@ -162,6 +162,9 @@ func TestProjectAPILifecycle(t *testing.T) {
 	if err != nil || saved.Assignee != nil || !jsonEqual(saved.Description, []byte(document)) {
 		t.Fatalf("rich description or explicit unassignment was lost: %v %v", saved, err)
 	}
+	if _, err := st.SetIssueProperty(ctx, saved.ID, "release.flag", json.RawMessage(`{"ready":true}`)); err != nil {
+		t.Fatal(err)
+	}
 	call(actor, "POST", "/rest/api/3/issue", `{"fields":{"project":{"key":"TEAM"},"summary":"Invalid content","issuetype":{"name":"Task"},"description":{"type":"paragraph"}}}`, 400)
 	autoComplete := call(actor, "GET", "/rest/api/3/jql/autocompletedata", "", 200)
 	if !strings.Contains(autoComplete.Body.String(), `"value":"status"`) || !strings.Contains(autoComplete.Body.String(), `"value":"currentUser()"`) {
@@ -200,6 +203,45 @@ func TestProjectAPILifecycle(t *testing.T) {
 	if !strings.Contains(legacyPost.Body.String(), `"startAt":1`) || !strings.Contains(legacyPost.Body.String(), `"total":2`) {
 		t.Fatal(legacyPost.Body.String())
 	}
+	expandedSearch := call(actor, "GET", "/rest/api/3/search?jql=key%3D"+saved.Key+"&fields=summary,description&expand=renderedFields,names,schema&properties=release.flag", "", 200)
+	var expandedResult struct {
+		Expand string
+		Names  map[string]string
+		Schema map[string]map[string]any
+		Issues []map[string]any
+	}
+	if err := json.Unmarshal(expandedSearch.Body.Bytes(), &expandedResult); err != nil {
+		t.Fatal(err)
+	}
+	expandedIssue := expandedResult.Issues[0]
+	expandedFields := expandedIssue["fields"].(map[string]any)
+	properties := expandedIssue["properties"].(map[string]any)
+	if expandedResult.Expand != "renderedFields,names,schema" || len(expandedFields) != 2 || expandedResult.Names["summary"] != "Summary" || expandedResult.Schema["description"]["type"] != "doc" || properties["release.flag"].(map[string]any)["ready"] != true {
+		t.Fatalf("expanded legacy search = %#v", expandedResult)
+	}
+	renderedFields := expandedIssue["renderedFields"].(map[string]any)
+	if renderedFields["description"] == "" || renderedFields["summary"] == nil {
+		t.Fatalf("rendered fields = %#v", renderedFields)
+	}
+	enhancedExpanded := call(actor, "POST", "/rest/api/3/search/jql", `{"jql":"key=`+saved.Key+`","fields":["description"],"expand":"renderedFields,names,schema","properties":["release.flag"]}`, 200)
+	var enhancedExpandedResult struct {
+		Names  map[string]string
+		Schema map[string]map[string]any
+		Issues []map[string]any
+	}
+	if err := json.Unmarshal(enhancedExpanded.Body.Bytes(), &enhancedExpandedResult); err != nil {
+		t.Fatal(err)
+	}
+	enhancedExpandedIssue := enhancedExpandedResult.Issues[0]
+	if enhancedExpandedResult.Names["description"] != "Description" || enhancedExpandedResult.Schema["description"]["type"] != "doc" || enhancedExpandedIssue["properties"].(map[string]any)["release.flag"].(map[string]any)["ready"] != true || enhancedExpandedIssue["renderedFields"].(map[string]any)["description"] == "" {
+		t.Fatalf("expanded enhanced search = %#v", enhancedExpandedResult)
+	}
+	call(actor, "GET", "/rest/api/3/search?properties=1,2,3,4,5,6", "", 400)
+	call(actor, "GET", "/rest/api/3/search?fieldsByKeys=maybe", "", 400)
+	call(actor, "GET", "/rest/api/3/search?expand=changelog", "", 400)
+	call(actor, "POST", "/rest/api/3/search", `{"jql":"project=TEAM","unknown":true}`, 400)
+	call(actor, "POST", "/rest/api/3/search/approximate-count", `{"jql":"project=TEAM","unknown":true}`, 400)
+	call(actor, "POST", "/rest/api/3/search/approximate-count", `{"jql":""}`, 400)
 	counted := call(actor, "POST", "/rest/api/3/search/approximate-count", `{"jql":"project=TEAM"}`, 200)
 	if !strings.Contains(counted.Body.String(), `"count":2`) {
 		t.Fatal(counted.Body.String())

@@ -14,8 +14,8 @@ boundaries, dependencies, and acceptance gates belong in
 - Delivery unit: PR 1 — Jira Platform and administration completion
 - Pull request: not opened yet
 - State: implementation in progress
-- Current checkpoint: saved-filter management, JQL/search expansion, seven JQL
-  helpers, and three app-function precomputation operations implemented and tested
+- Current checkpoint: saved-filter management, JQL grammar/helpers/app
+  precomputations, and search field/property projection implemented and tested
 - Blockers: none
 
 ## Contract baseline
@@ -50,6 +50,12 @@ operations now use durable installation-owned records, app-principal
 authorization, paging and filtering, ID search, and atomic value/error updates.
 Compiler invocation of registered app functions remains separate work.
 
+Legacy and enhanced search now share strict option validation, selected-field
+projection, installed-app field-key aliases, names/schema/rendered expansion,
+and permission-safe requested issue properties. Approximate count now enforces
+its bounded-query contract. Remaining expansions and strong-consistency cursor
+behavior are the next search work.
+
 ## Validation baseline
 
 Merged PR #68 passed the complete GitHub CI matrix, including all 58 Playwright
@@ -62,8 +68,8 @@ also run the PostgreSQL integration suite from an empty migrated database.
 
 ## Resume here
 
-1. Complete function, multi-value field, expansion, property, reconciliation,
-   and snapshot/keyset search semantics.
+1. Complete function and multi-value field semantics, remaining search
+   expansions, reconciliation, and snapshot/keyset paging.
 2. Add filter-subscription scheduling and delivery after shared scheduled-work
    primitives are ready.
 3. Continue into bulk work-item and project administration slices.

@@ -41,6 +41,16 @@ permission-filtered store query. Enhanced search defaults to issue IDs, honors
 selected fields, rejects unbounded queries and offset pagination, and rejects a
 cursor reused with another query, workspace, or user.
 
+Legacy and enhanced search accept repeated or comma-delimited field selectors,
+`*all`/`*navigable`, exclusions, and custom-field IDs or installed-app keys.
+`fieldsByKeys` controls installed-app output keys. The `names`, `schema`, and
+`renderedFields` expansions follow the selected field set, and each issue can
+include as many as five requested JSON properties. Request bodies reject
+unknown fields and trailing JSON; unsupported expansion names, invalid boolean
+options, archived-project requests before archive support exists, and numeric
+reconciliation requests before numeric issue IDs exist return explicit errors.
+Approximate count requires a bounded query like enhanced search.
+
 ## Reference and query services
 
 ZZIRA exposes the pinned GET/POST reference-data resources and returns only
@@ -77,7 +87,8 @@ The search and JQL service resources remain assessed as partial. The remaining
 PR 1 work adds app-function invocation in the compiler, more built-in functions
 and multi-value fields, complete personal-data migration for list/history
 operands and unknown-user reporting; project-aware validation warnings; exact
-expansion/property selection; strong-consistency reconciliation; and
+transition, operation, edit metadata, changelog and versioned-representation
+expansions; strong-consistency reconciliation; and
 snapshot/keyset semantics for pages whose matching work items change between
 requests.
 
