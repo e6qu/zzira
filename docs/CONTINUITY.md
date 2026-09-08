@@ -13,8 +13,8 @@ boundaries, dependencies, and acceptance gates belong in
 - Base: `origin/main` after PR #65
 - Delivery unit: PR 0 — Integrated Cloud foundation
 - Pull request: #68
-- State: open; full CI passed at `af7f077`, with the final explicit redirect
-  guard checkpoint awaiting confirmation
+- State: open and mergeable; full CI passes at `c674ce7` and all review
+  threads are resolved
 - Last product checkpoint: Connect site administration pages
 - Blockers: none
 
