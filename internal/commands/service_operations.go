@@ -42,6 +42,9 @@ func (s *Service) UpdateServiceOperationsProfile(ctx context.Context, actorID, w
 		return nil, fmt.Errorf("operations profile does not exist")
 	}
 	profile.RequestIssueID, profile.Kind = current.RequestIssueID, current.Kind
+	if profile.Kind != "incident" {
+		profile.MajorIncident = false
+	}
 	if profile.Impact < 1 || profile.Impact > 4 || profile.Likelihood < 1 || profile.Likelihood > 4 {
 		return nil, fmt.Errorf("impact and likelihood must be between 1 and 4")
 	}
@@ -93,4 +96,35 @@ func (s *Service) UpdateServiceOperationsProfile(ctx context.Context, actorID, w
 		}
 	}
 	return s.Store.ServiceOperationsProfile(ctx, workspaceID, request.Issue.ID)
+}
+
+func (s *Service) CreateServiceIncidentUpdate(ctx context.Context, actorID, workspaceID, issueIDOrKey, audience, message string) (*models.ServiceIncidentUpdate, error) {
+	audience = strings.TrimSpace(audience)
+	message = strings.TrimSpace(message)
+	if audience != "public" && audience != "internal" {
+		return nil, fmt.Errorf("incident update audience must be public or internal")
+	}
+	if message == "" || len(message) > 10000 {
+		return nil, fmt.Errorf("incident update must contain 1 to 10000 characters")
+	}
+	canManage, err := s.Store.CanManageServiceRequest(ctx, workspaceID, actorID, issueIDOrKey)
+	if err != nil || !canManage {
+		return nil, fmt.Errorf("service agent access is required")
+	}
+	request, err := s.Store.ServiceRequest(ctx, workspaceID, actorID, issueIDOrKey, true)
+	if err != nil {
+		return nil, fmt.Errorf("request does not exist")
+	}
+	profile, err := s.Store.ServiceOperationsProfile(ctx, workspaceID, request.Issue.ID)
+	if err != nil || profile.Kind != "incident" || !profile.MajorIncident {
+		return nil, fmt.Errorf("declare this request as a major incident before publishing updates")
+	}
+	update, err := s.Store.CreateServiceIncidentUpdate(ctx, workspaceID, actorID, request.Issue.ID, audience, message)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.notifyServiceRequestSubscribers(ctx, actorID, workspaceID, request, "service_incident_update", "published a "+audience+" incident update on "+request.Issue.Key, audience == "internal"); err != nil {
+		return nil, err
+	}
+	return update, nil
 }

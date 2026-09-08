@@ -154,7 +154,7 @@ func (s *Store) ServiceOperationsProfile(ctx context.Context, workspaceID, issue
 	var onCall *string
 	var onCallEmail, onCallName, onCallTimeZone string
 	var onCallActive bool
-	err := s.Pool.QueryRow(ctx, `SELECT o.kind,o.impact,o.likelihood,o.impact*o.likelihood,o.change_type,o.planned_start,o.planned_end,o.rollback_plan,o.on_call_user_id,COALESCE(u.email,''),COALESCE(u.display_name,'Former user'),COALESCE(u.time_zone,'UTC'),COALESCE(u.active,false),o.review_required,o.review_due_at,o.review_status,o.review_summary,o.updated_at FROM service_request_operations o JOIN service_requests r ON r.issue_id=o.request_issue_id LEFT JOIN users u ON u.id=o.on_call_user_id WHERE r.workspace_id=$1 AND o.request_issue_id=$2`, workspaceID, issueID).Scan(&v.Kind, &v.Impact, &v.Likelihood, &v.RiskScore, &v.ChangeType, &v.PlannedStart, &v.PlannedEnd, &v.RollbackPlan, &onCall, &onCallEmail, &onCallName, &onCallTimeZone, &onCallActive, &v.ReviewRequired, &v.ReviewDueAt, &v.ReviewStatus, &v.ReviewSummary, &v.UpdatedAt)
+	err := s.Pool.QueryRow(ctx, `SELECT o.kind,o.impact,o.likelihood,o.impact*o.likelihood,o.change_type,o.planned_start,o.planned_end,o.rollback_plan,o.on_call_user_id,COALESCE(u.email,''),COALESCE(u.display_name,'Former user'),COALESCE(u.time_zone,'UTC'),COALESCE(u.active,false),o.major_incident,o.review_required,o.review_due_at,o.review_status,o.review_summary,o.updated_at FROM service_request_operations o JOIN service_requests r ON r.issue_id=o.request_issue_id LEFT JOIN users u ON u.id=o.on_call_user_id WHERE r.workspace_id=$1 AND o.request_issue_id=$2`, workspaceID, issueID).Scan(&v.Kind, &v.Impact, &v.Likelihood, &v.RiskScore, &v.ChangeType, &v.PlannedStart, &v.PlannedEnd, &v.RollbackPlan, &onCall, &onCallEmail, &onCallName, &onCallTimeZone, &onCallActive, &v.MajorIncident, &v.ReviewRequired, &v.ReviewDueAt, &v.ReviewStatus, &v.ReviewSummary, &v.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -303,16 +303,75 @@ func (s *Store) UpdateServiceOperationsProfile(ctx context.Context, workspaceID,
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	tag, err := tx.Exec(ctx, `UPDATE service_request_operations o SET impact=$4,likelihood=$5,change_type=$6,planned_start=$7,planned_end=$8,rollback_plan=$9,on_call_user_id=NULLIF($10,''),review_required=$11,review_due_at=$12,review_status=$13,review_summary=$14,updated_by=$3,updated_at=now() FROM service_requests r WHERE r.issue_id=o.request_issue_id AND r.workspace_id=$1 AND o.request_issue_id=$2`, workspaceID, issueID, actorID, v.Impact, v.Likelihood, v.ChangeType, v.PlannedStart, v.PlannedEnd, v.RollbackPlan, v.OnCallUserID, v.ReviewRequired, v.ReviewDueAt, v.ReviewStatus, v.ReviewSummary)
+	tag, err := tx.Exec(ctx, `UPDATE service_request_operations o SET impact=$4,likelihood=$5,change_type=$6,planned_start=$7,planned_end=$8,rollback_plan=$9,on_call_user_id=NULLIF($10,''),major_incident=$11,review_required=$12,review_due_at=$13,review_status=$14,review_summary=$15,updated_by=$3,updated_at=now() FROM service_requests r WHERE r.issue_id=o.request_issue_id AND r.workspace_id=$1 AND o.request_issue_id=$2`, workspaceID, issueID, actorID, v.Impact, v.Likelihood, v.ChangeType, v.PlannedStart, v.PlannedEnd, v.RollbackPlan, v.OnCallUserID, v.MajorIncident, v.ReviewRequired, v.ReviewDueAt, v.ReviewStatus, v.ReviewSummary)
 	if err != nil {
 		return err
 	}
 	if tag.RowsAffected() == 0 {
 		return pgx.ErrNoRows
 	}
-	detail, _ := json.Marshal(map[string]any{"impact": v.Impact, "likelihood": v.Likelihood, "riskScore": v.Impact * v.Likelihood, "changeType": v.ChangeType, "onCallUserId": v.OnCallUserID, "reviewRequired": v.ReviewRequired, "reviewStatus": v.ReviewStatus})
+	detail, _ := json.Marshal(map[string]any{"impact": v.Impact, "likelihood": v.Likelihood, "riskScore": v.Impact * v.Likelihood, "changeType": v.ChangeType, "onCallUserId": v.OnCallUserID, "majorIncident": v.MajorIncident, "reviewRequired": v.ReviewRequired, "reviewStatus": v.ReviewStatus})
 	if _, err = tx.Exec(ctx, `INSERT INTO organization_audit_events(organization_id,actor_id,action,target_type,target_id,detail) SELECT organization_id,$2,'service_operations_assessed','service_request',$3,$4::jsonb FROM sites WHERE workspace_id=$1`, workspaceID, actorID, issueID, detail); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+func (s *Store) ServiceIncidentUpdates(ctx context.Context, workspaceID, actorID, issueID string) ([]models.ServiceIncidentUpdate, error) {
+	canManage, err := s.CanManageServiceRequest(ctx, workspaceID, actorID, issueID)
+	if err != nil {
+		return nil, err
+	}
+	if !canManage {
+		if _, err := s.ServiceRequest(ctx, workspaceID, actorID, issueID, false); err != nil {
+			return nil, err
+		}
+	}
+	rows, err := s.Pool.Query(ctx, `SELECT u.id,u.request_issue_id,u.author_id,a.display_name,u.audience,u.message,u.created_at FROM service_incident_updates u JOIN service_requests r ON r.issue_id=u.request_issue_id JOIN service_request_operations o ON o.request_issue_id=r.issue_id JOIN users a ON a.id=u.author_id WHERE r.workspace_id=$1 AND u.request_issue_id=$2 AND o.kind='incident' AND ($3 OR u.audience='public') ORDER BY u.created_at DESC,u.id::bigint DESC`, workspaceID, issueID, canManage)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	updates := []models.ServiceIncidentUpdate{}
+	for rows.Next() {
+		var update models.ServiceIncidentUpdate
+		if err := rows.Scan(&update.ID, &update.RequestIssueID, &update.AuthorID, &update.AuthorName, &update.Audience, &update.Message, &update.CreatedAt); err != nil {
+			return nil, err
+		}
+		update.CreatedAt = update.CreatedAt.UTC()
+		updates = append(updates, update)
+	}
+	return updates, rows.Err()
+}
+
+func (s *Store) CreateServiceIncidentUpdate(ctx context.Context, workspaceID, actorID, issueID, audience, message string) (*models.ServiceIncidentUpdate, error) {
+	canManage, err := s.CanManageServiceRequest(ctx, workspaceID, actorID, issueID)
+	if err != nil {
+		return nil, err
+	}
+	if !canManage {
+		return nil, ErrProjectPermission
+	}
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var update models.ServiceIncidentUpdate
+	err = tx.QueryRow(ctx, `INSERT INTO service_incident_updates(request_issue_id,author_id,audience,message) SELECT o.request_issue_id,$3,$4,$5 FROM service_request_operations o JOIN service_requests r ON r.issue_id=o.request_issue_id WHERE r.workspace_id=$1 AND o.request_issue_id=$2 AND o.kind='incident' AND o.major_incident RETURNING id,request_issue_id,author_id,audience,message,created_at`, workspaceID, issueID, actorID, audience, message).Scan(&update.ID, &update.RequestIssueID, &update.AuthorID, &update.Audience, &update.Message, &update.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.QueryRow(ctx, `SELECT display_name FROM users WHERE id=$1`, actorID).Scan(&update.AuthorName); err != nil {
+		return nil, err
+	}
+	detail, _ := json.Marshal(map[string]any{"audience": audience})
+	if _, err := tx.Exec(ctx, `INSERT INTO organization_audit_events(organization_id,actor_id,action,target_type,target_id,detail) SELECT organization_id,$2,'service_major_incident_update_created','service_request',$3,$4::jsonb FROM sites WHERE workspace_id=$1`, workspaceID, actorID, issueID, detail); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	update.CreatedAt = update.CreatedAt.UTC()
+	return &update, nil
 }

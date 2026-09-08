@@ -87,6 +87,7 @@ type servicePageData struct {
 	ChangeConflicts       []models.ServiceChangeWindow
 	DependencyEdges       []models.ServiceDependencyEdge
 	DependencyNodeCount   int
+	IncidentUpdates       []models.ServiceIncidentUpdate
 	FieldValues           map[string]string
 	Transitions           []serviceTransitionView
 	CanAdmin              bool
@@ -1072,6 +1073,14 @@ func (h *Handler) ServiceRequestPage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	incidentUpdates := []models.ServiceIncidentUpdate{}
+	if operations != nil && operations.Kind == "incident" {
+		incidentUpdates, err = h.Store.ServiceIncidentUpdates(r.Context(), workspaceID, user.ID, request.Issue.ID)
+		if err != nil {
+			http.Error(w, "Could not load incident updates.", http.StatusInternalServerError)
+			return
+		}
+	}
 	members := []*models.User{}
 	if canManage {
 		members, err = h.Store.MembersByWorkspace(r.Context(), workspaceID)
@@ -1129,7 +1138,7 @@ func (h *Handler) ServiceRequestPage(w http.ResponseWriter, r *http.Request) {
 		}
 		requestFields = append(requestFields, serviceRequestFieldValueView{Name: field.Name, Value: fmt.Sprint(value)})
 	}
-	h.writeWorkspacePage(w, r, "page_service_request", user, workspaceID, servicePageData{Request: request, RequestFieldValues: requestFields, OperationsProfile: operations, ChangeConflicts: changeConflicts, Comments: comments, Attachments: attachments, Links: linkViews, LinkTypes: linkTypes, Approvals: approvals, Feedback: feedback, Participants: participants, Members: members, SLAs: slas, Transitions: transitions, CanAgent: canManage, CanManageParticipants: canManage || request.Customer.ID == user.ID, CurrentUserID: user.ID, Subscribed: subscribed, CanLeaveFeedback: request.Customer.ID == user.ID && request.Issue.Status.Category == "done"}, "service", request.Issue.ProjectID)
+	h.writeWorkspacePage(w, r, "page_service_request", user, workspaceID, servicePageData{Request: request, RequestFieldValues: requestFields, OperationsProfile: operations, ChangeConflicts: changeConflicts, IncidentUpdates: incidentUpdates, Comments: comments, Attachments: attachments, Links: linkViews, LinkTypes: linkTypes, Approvals: approvals, Feedback: feedback, Participants: participants, Members: members, SLAs: slas, Transitions: transitions, CanAgent: canManage, CanManageParticipants: canManage || request.Customer.ID == user.ID, CurrentUserID: user.ID, Subscribed: subscribed, CanLeaveFeedback: request.Customer.ID == user.ID && request.Issue.Status.Category == "done"}, "service", request.Issue.ProjectID)
 }
 
 func (h *Handler) ServiceRequestLink(w http.ResponseWriter, r *http.Request) {
@@ -1320,12 +1329,24 @@ func (h *Handler) ServiceRequestOperations(w http.ResponseWriter, r *http.Reques
 	} else if reviewStatus == "not_required" {
 		reviewStatus = "pending"
 	}
-	_, err := h.Commands.UpdateServiceOperationsProfile(r.Context(), user.ID, workspaceID, r.PathValue("key"), models.ServiceOperationsProfile{Impact: impact, Likelihood: likelihood, ChangeType: r.PostFormValue("changeType"), PlannedStart: plannedStart, PlannedEnd: plannedEnd, RollbackPlan: r.PostFormValue("rollbackPlan"), OnCallUserID: r.PostFormValue("onCallUser"), ReviewRequired: reviewRequired, ReviewDueAt: reviewDue, ReviewStatus: reviewStatus, ReviewSummary: r.PostFormValue("reviewSummary")})
+	_, err := h.Commands.UpdateServiceOperationsProfile(r.Context(), user.ID, workspaceID, r.PathValue("key"), models.ServiceOperationsProfile{Impact: impact, Likelihood: likelihood, ChangeType: r.PostFormValue("changeType"), PlannedStart: plannedStart, PlannedEnd: plannedEnd, RollbackPlan: r.PostFormValue("rollbackPlan"), OnCallUserID: r.PostFormValue("onCallUser"), MajorIncident: r.PostFormValue("majorIncident") == "true", ReviewRequired: reviewRequired, ReviewDueAt: reviewDue, ReviewStatus: reviewStatus, ReviewSummary: r.PostFormValue("reviewSummary")})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	redirectLocal(w, r, "/service/requests/"+r.PathValue("key")+"#operations-control")
+}
+
+func (h *Handler) ServiceIncidentUpdate(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	if _, err := h.Commands.CreateServiceIncidentUpdate(r.Context(), user.ID, workspaceID, r.PathValue("key"), r.PostFormValue("audience"), r.PostFormValue("message")); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	redirectLocal(w, r, "/service/requests/"+r.PathValue("key")+"#incident-updates")
 }
 
 func (h *Handler) ServiceRequestNotification(w http.ResponseWriter, r *http.Request) {

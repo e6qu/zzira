@@ -1984,10 +1984,31 @@ Validation after the Service Management dependency map:
   UTC-labeled agent schedule renders them. Focused PostgreSQL coverage verifies
   both the location and the original instants across a non-UTC server locale.
 
+Validation after major-incident communications:
+
+- Migration 098 adds an explicit major-incident flag and a durable, ordered
+  status-update timeline with public and internal response-team audiences.
+- Agents declare an incident from its operations assessment and publish status
+  updates from the same request. Reporters, participants and approvers receive
+  only public updates and notifications; desk agents receive both audiences.
+  Publications are recorded in the organization audit log, and the timeline
+  remains readable after an incident is declassified while new publications
+  are rejected.
+- Commands reject blank, oversized or invalid-audience updates, the store
+  requires an agent-managed declared incident, and all returned timestamps are
+  UTC normalized.
+- PostgreSQL integration covers declaration, both audiences, customer
+  filtering and notifications, customer write denial, declassification and
+  history retention. The Chromium service journey declares a major incident
+  and publishes a visible customer update.
+- The focused and full PostgreSQL Go suites, vet, WebAssembly build, Chromium
+  service journey, seven conformance tests, generated inventory/coverage checks
+  and diff validation pass. Exact API coverage remains 427 of 1,207 operations
+  because this checkpoint adds service behavior outside the pinned REST set.
+
 ## Current change
 
-1. Continue Service Management with major-incident
-   communications and escalation policy.
+1. Continue Service Management with escalation policy.
 2. Expand the app runtime from registered custom-content discovery into signed
    installation, scopes and module rendering.
 3. Continue Confluence with database schemas/rows/views and whiteboard canvas

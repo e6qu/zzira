@@ -180,9 +180,14 @@ type ServiceOperationsProfile struct {
 	Impact, Likelihood, RiskScore                                int
 	PlannedStart, PlannedEnd, ReviewDueAt                        *time.Time
 	OnCallUser                                                   *User
-	ReviewRequired                                               bool
+	ReviewRequired, MajorIncident                                bool
 	ReviewStatus, ReviewSummary                                  string
 	UpdatedAt                                                    time.Time
+}
+
+type ServiceIncidentUpdate struct {
+	ID, RequestIssueID, AuthorID, AuthorName, Audience, Message string
+	CreatedAt                                                   time.Time
 }
 
 type ServiceChangeWindow struct {

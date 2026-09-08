@@ -88,6 +88,14 @@ links agents manage on request pages. It includes links touching desk incidents,
 problems, or changes, labels their direction, and omits either endpoint unless
 the current agent can read both Jira issues.
 
+Agents can declare an operations request with the incident profile to be a
+major incident. The request then gains a durable status-update timeline with
+public and internal audiences. Reporters, participants, and approvers see only
+public updates, while assigned desk agents see both and can publish updates.
+Subscribers receive notifications through the same audience boundary. Every
+publication records its audience in the organization audit log. Declassifying
+the incident preserves its timeline and closes it to new publications.
+
 Service managers configure each desk's CAB threshold, approver roster, incident
 review deadline, and bounded on-call shifts. An active shift assigns its owner
 when a new operations request arrives. A change at or above the threshold
@@ -207,6 +215,6 @@ service report comparisons, SLA goal distributions, exports and scheduled
 delivery, complete Assets object/schema/import APIs, full
 status chronology, SLA rule reordering and advanced criteria,
 portal invitation email delivery, Atlassian knowledge ranking/analytics, and
-Assets-backed dependency topology and impact analysis, major-incident communications, escalation policy,
+Assets-backed dependency topology and impact analysis, escalation policy,
 and review templates remain. Customer creation grants only the
 site `atlassian/customer` role and never silently grants Jira product access.

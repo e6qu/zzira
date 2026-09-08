@@ -310,6 +310,49 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if err != nil || !strings.Contains(strings.Join(issue.Labels, ","), "incident") {
 		t.Fatalf("incident issue = %+v, %v", issue, err)
 	}
+	incidentProfile := models.ServiceOperationsProfile{Impact: 4, Likelihood: 3, ChangeType: "normal", MajorIncident: true, ReviewRequired: true, ReviewStatus: "pending"}
+	if _, err := handler.Commands.UpdateServiceOperationsProfile(ctx, actorID, workspaceID, issue.ID, incidentProfile); err != nil {
+		t.Fatalf("declare major incident: %v", err)
+	}
+	if _, err := handler.Commands.CreateServiceIncidentUpdate(ctx, actorID, workspaceID, issue.ID, "public", "Checkout is unavailable; responders are investigating."); err != nil {
+		t.Fatalf("publish incident update: %v", err)
+	}
+	if _, err := handler.Commands.CreateServiceIncidentUpdate(ctx, actorID, workspaceID, issue.ID, "internal", "Database saturation is the leading hypothesis."); err != nil {
+		t.Fatalf("publish internal incident update: %v", err)
+	}
+	agentUpdates, err := st.ServiceIncidentUpdates(ctx, workspaceID, actorID, issue.ID)
+	if err != nil || len(agentUpdates) != 2 || agentUpdates[0].CreatedAt.Location() != time.UTC {
+		t.Fatalf("agent incident updates = %+v, %v", agentUpdates, err)
+	}
+	customerUpdates, err := st.ServiceIncidentUpdates(ctx, workspaceID, customerID, issue.ID)
+	if err != nil || len(customerUpdates) != 1 || customerUpdates[0].Audience != "public" {
+		t.Fatalf("customer incident updates = %+v, %v", customerUpdates, err)
+	}
+	if _, err := handler.Commands.CreateServiceIncidentUpdate(ctx, customerID, workspaceID, issue.ID, "public", "Unauthorized update"); err == nil {
+		t.Fatal("customer published a major incident update")
+	}
+	if _, err := handler.Commands.CreateServiceIncidentUpdate(ctx, actorID, workspaceID, issue.ID, "stakeholders", "Invalid audience"); err == nil {
+		t.Fatal("invalid incident update audience succeeded")
+	}
+	var incidentUpdateAudits int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM organization_audit_events WHERE actor_id=$1 AND target_id=$2 AND action='service_major_incident_update_created'`, actorID, issue.ID).Scan(&incidentUpdateAudits); err != nil || incidentUpdateAudits != 2 {
+		t.Fatalf("incident update audits = %d, %v", incidentUpdateAudits, err)
+	}
+	var customerIncidentNotifications int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM notifications WHERE workspace_id=$1 AND user_id=$2 AND entity_id=$3 AND kind='service_incident_update'`, workspaceID, customerID, issue.Key).Scan(&customerIncidentNotifications); err != nil || customerIncidentNotifications != 1 {
+		t.Fatalf("customer incident notifications = %d, %v", customerIncidentNotifications, err)
+	}
+	incidentProfile.MajorIncident = false
+	if _, err := handler.Commands.UpdateServiceOperationsProfile(ctx, actorID, workspaceID, issue.ID, incidentProfile); err != nil {
+		t.Fatalf("declassify major incident: %v", err)
+	}
+	archivedUpdates, err := st.ServiceIncidentUpdates(ctx, workspaceID, customerID, issue.ID)
+	if err != nil || len(archivedUpdates) != 1 {
+		t.Fatalf("archived public incident updates = %+v, %v", archivedUpdates, err)
+	}
+	if _, err := handler.Commands.CreateServiceIncidentUpdate(ctx, actorID, workspaceID, issue.ID, "public", "Published after declassification"); err == nil {
+		t.Fatal("published an update after major incident declassification")
+	}
 	var problemTypeID, changeTypeID string
 	if err := st.Pool.QueryRow(ctx, `SELECT id FROM service_request_types WHERE service_desk_id=$1 AND name='Investigate a problem'`, serviceDeskID).Scan(&problemTypeID); err != nil {
 		t.Fatal(err)

@@ -102,10 +102,16 @@ test('admin creates a service project with Jira Service Management request types
   await expect(incidentOperations).toContainText('Low risk');
   await incidentOperations.getByLabel('Impact').selectOption('4');
   await incidentOperations.getByLabel('Likelihood').selectOption('3');
+  await incidentOperations.getByRole('checkbox', { name: 'Coordinate as a major incident' }).check();
   await incidentOperations.getByLabel('Review status').selectOption('in_progress');
   await incidentOperations.getByLabel('Review findings').fill('Review customer impact, detection, and recovery evidence.');
   await incidentOperations.getByRole('button', { name: 'Save operations assessment' }).click();
   await expect(page.locator('#operations-control')).toContainText('High risk');
+  const incidentUpdates = page.locator('#incident-updates');
+  await expect(incidentUpdates.getByRole('heading', { name: 'Status updates' })).toBeVisible();
+  await incidentUpdates.getByLabel('Update').fill('Checkout is unavailable. The response team is investigating.');
+  await incidentUpdates.getByRole('button', { name: 'Publish status update' }).click();
+  await expect(page.locator('#incident-updates')).toContainText('Checkout is unavailable. The response team is investigating.');
   await expect(page.getByText('Customers receive an error when completing checkout.')).toBeVisible();
   await page.goto(`/service/portals/${desk.id}`);
   await expect(page.getByRole('link', { name: /Investigate a problem/ })).toBeVisible();
