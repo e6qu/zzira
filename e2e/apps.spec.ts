@@ -187,6 +187,7 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
   const reportTitle = `Delivery risk ${suffix}`;
   const dashboardItemTitle = `Release health ${suffix}`;
   const issueContextTitle = `Delivery context ${suffix}`;
+  const issueGlanceTitle = `Legacy glance ${suffix}`;
   const descriptor = {
     key: `connect.journey.${suffix}`,
     name: appName,
@@ -205,6 +206,7 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
       jiraReports: [{ key: 'delivery-risk', name: { value: reportTitle }, description: { value: 'Release and incident risk from the app' }, url: '/remote-report?selected={project.key}', reportCategory: 'AGILE', thumbnailUrl: '/report.svg' }],
       jiraDashboardItems: [{ key: 'release-health', name: { value: dashboardItemTitle }, description: { value: 'Release health from the Connect app' }, url: '/remote-dashboard?item={dashboardItem.id}', thumbnailUrl: 'dashboard.svg' }],
       jiraIssueContexts: [{ key: 'delivery-context', name: { value: issueContextTitle }, icon: { width: 24, height: 24, url: 'context.svg' }, content: { type: 'label', label: { value: '3 linked deployments' } }, target: { type: 'web_panel', url: '/remote-context?selected={issue.key}' } }],
+      jiraIssueGlances: [{ key: 'legacy-glance', name: { value: issueGlanceTitle }, icon: { width: 24, height: 24, url: 'glance.svg' }, content: { type: 'label', label: { value: 'Legacy status' } }, target: { type: 'web_panel', url: '/legacy-glance' } }],
     },
   };
   await page.goto('/admin#admin-apps');
@@ -255,6 +257,7 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
 
   await page.goto('/browse/ZZ-1');
   const issueContext = page.locator('details.issue-context-panel', { hasText: issueContextTitle });
+  await expect(page.getByText(issueGlanceTitle)).toHaveCount(0);
   await expect(issueContext).toContainText('3 linked deployments');
   await expect(issueContext.locator('img')).toBeVisible();
   await issueContext.locator('summary').click();

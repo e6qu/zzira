@@ -70,6 +70,7 @@ func TestParseConnectDescriptorTranslatesSupportedModules(t *testing.T) {
     "jiraReports":[{"key":"delivery-risk","url":"/delivery-risk?project={project.key}","name":{"value":"Delivery risk"},"description":{"value":"Release and incident risk"},"reportCategory":"AGILE","thumbnailUrl":"/delivery-risk.svg"}],
     "jiraDashboardItems":[{"key":"release-health","url":"/release-health?item={dashboardItem.id}","name":{"value":"Release health"},"description":{"value":"Current release health"},"thumbnailUrl":"release-health.svg"}],
     "jiraIssueContexts":[{"key":"delivery-context","name":{"value":"Delivery context"},"icon":{"url":"context.svg"},"content":{"type":"label","label":{"value":"3 linked deployments"}},"target":{"type":"web_panel","url":"/delivery-context?issue={issue.key}"}}],
+    "jiraIssueGlances":[{"key":"legacy-glance","name":{"value":"Legacy glance"},"icon":{"url":"glance.svg"},"content":{"type":"label","label":{"value":"Legacy status"}},"target":{"type":"web_panel","url":"/legacy-glance"}}],
     "webhooks":[{"event":"jira:issue_updated","url":"/hooks/issues","filter":"project = OPS"}]
   }
 }`)
@@ -77,7 +78,7 @@ func TestParseConnectDescriptorTranslatesSupportedModules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if descriptor.Format != "connect" || descriptor.Version != "connect-v1" || len(descriptor.Modules) != 10 || len(descriptor.Webhooks) != 1 || len(descriptor.IssueFields) != 1 {
+	if descriptor.Format != "connect" || descriptor.Version != "connect-v1" || len(descriptor.Modules) != 11 || len(descriptor.Webhooks) != 1 || len(descriptor.IssueFields) != 1 {
 		t.Fatalf("Connect descriptor = %+v", descriptor)
 	}
 	if descriptor.Key != "Connect.Operations" {
@@ -89,6 +90,7 @@ func TestParseConnectDescriptorTranslatesSupportedModules(t *testing.T) {
 	report := false
 	dashboardItem := false
 	issueContext := false
+	issueGlance := false
 	for _, module := range descriptor.Modules {
 		if module.RemoteURL != "" {
 			remoteModules++
@@ -108,8 +110,11 @@ func TestParseConnectDescriptorTranslatesSupportedModules(t *testing.T) {
 		if module.Key == "delivery-context" && module.Type == "jira:issueContext" && module.Location == "jira.issue.context" && strings.Contains(module.Body, "3 linked deployments") {
 			issueContext = true
 		}
+		if module.Key == "legacy-glance" && module.Type == "jira:issueGlance" && module.Location == "jira.issue.context" && strings.Contains(module.Body, "Legacy status") {
+			issueGlance = true
+		}
 	}
-	if remoteModules != 10 || !projectPage || !projectAdminPage || !report || !dashboardItem || !issueContext || descriptor.Webhooks[0].Key != "connect-webhook-1" {
+	if remoteModules != 11 || !projectPage || !projectAdminPage || !report || !dashboardItem || !issueContext || !issueGlance || descriptor.Webhooks[0].Key != "connect-webhook-1" {
 		t.Fatalf("translated modules = %+v, hooks = %+v", descriptor.Modules, descriptor.Webhooks)
 	}
 	for _, scope := range []string{"read:jira-work", "write:jira-work", "read:confluence-content", "write:confluence-content", "manage:webhooks"} {

@@ -188,12 +188,24 @@ func parseConnectDescriptor(raw []byte) (models.AppDescriptor, error) {
 		wire.Scopes = append(wire.Scopes, scope)
 	}
 	sort.Strings(wire.Scopes)
-	supported := map[string]bool{"generalPages": true, "jiraProjectPages": true, "jiraProjectAdminTabPanels": true, "jiraReports": true, "jiraDashboardItems": true, "webPanels": true, "contentBylineItems": true, "webhooks": true, "jiraIssueFields": true, "webItems": true, "jiraIssueContents": true, "jiraIssueContexts": true}
+	supported := map[string]bool{"generalPages": true, "jiraProjectPages": true, "jiraProjectAdminTabPanels": true, "jiraReports": true, "jiraDashboardItems": true, "webPanels": true, "contentBylineItems": true, "webhooks": true, "jiraIssueFields": true, "webItems": true, "jiraIssueContents": true, "jiraIssueContexts": true, "jiraIssueGlances": true}
 	for moduleType, payload := range connect.Modules {
 		if !supported[moduleType] {
 			return models.AppDescriptor{}, fmt.Errorf("Connect module %q is not supported yet", moduleType)
 		}
 		switch moduleType {
+		case "jiraIssueGlances":
+			var modules []connectIssueContextWire
+			if err := json.Unmarshal(payload, &modules); err != nil {
+				return models.AppDescriptor{}, fmt.Errorf("invalid Connect jiraIssueGlances: %w", err)
+			}
+			for _, module := range modules {
+				translated, err := translateConnectIssueViewContext(module, "jira:issueGlance")
+				if err != nil {
+					return models.AppDescriptor{}, err
+				}
+				wire.Modules = append(wire.Modules, translated)
+			}
 		case "jiraIssueContexts":
 			var modules []connectIssueContextWire
 			if err := json.Unmarshal(payload, &modules); err != nil {
@@ -329,6 +341,10 @@ func parseConnectDescriptor(raw []byte) (models.AppDescriptor, error) {
 }
 
 func translateConnectIssueContext(module connectIssueContextWire) (moduleWire, error) {
+	return translateConnectIssueViewContext(module, "jira:issueContext")
+}
+
+func translateConnectIssueViewContext(module connectIssueContextWire, translatedType string) (moduleWire, error) {
 	module.Key = strings.TrimSpace(module.Key)
 	module.Name.Value = strings.TrimSpace(module.Name.Value)
 	module.Icon.URL = strings.TrimSpace(module.Icon.URL)
@@ -341,13 +357,13 @@ func translateConnectIssueContext(module connectIssueContextWire) (moduleWire, e
 		icon = "/" + icon
 	}
 	if !moduleKeyPattern.MatchString(module.Key) || module.Name.Value == "" || len(module.Name.Value) > 1500 || module.Content.Type != "label" || module.Content.Label.Value == "" || len(module.Content.Label.Value) > 1500 || module.Target.Type != "web_panel" || !validAppCallbackPath(module.Target.URL) || !validAppCallbackPath(icon) {
-		return moduleWire{}, fmt.Errorf("Connect issue context needs a valid key, name, label content, relative icon, and web_panel target")
+		return moduleWire{}, fmt.Errorf("Connect issue context or glance needs a valid key, name, label content, relative icon, and web_panel target")
 	}
 	if len(module.Conditions) > 0 {
 		return moduleWire{}, fmt.Errorf("Connect issue context %q uses unsupported conditions", module.Key)
 	}
 	meta, _ := json.Marshal(connectIssueContextMeta{IconURL: module.Icon.URL, Label: module.Content.Label.Value})
-	return moduleWire{Key: module.Key, Type: "jira:issueContext", Location: "jira.issue.context", Title: module.Name.Value, Body: string(meta), URL: module.Target.URL}, nil
+	return moduleWire{Key: module.Key, Type: translatedType, Location: "jira.issue.context", Title: module.Name.Value, Body: string(meta), URL: module.Target.URL}, nil
 }
 
 func translateConnectDashboardItem(module connectDashboardItemWire) (moduleWire, error) {

@@ -87,6 +87,9 @@ shape:
     "jiraIssueContexts": [
       {"key": "delivery-context", "name": {"value": "Delivery context"}, "icon": {"url": "context.svg"}, "content": {"type": "label", "label": {"value": "3 linked deployments"}}, "target": {"type": "web_panel", "url": "/delivery-context?issue={issue.key}"}}
     ],
+    "jiraIssueGlances": [
+      {"key": "legacy-status", "name": {"value": "Legacy status"}, "icon": {"url": "status.svg"}, "content": {"type": "label", "label": {"value": "Ready"}}, "target": {"type": "web_panel", "url": "/legacy-status"}}
+    ],
     "webhooks": [
       {"event": "jira:issue_updated", "url": "/webhooks/issues", "filter": "project = OPS"}
     ]
@@ -101,7 +104,7 @@ and Confluence grants. Supported Connect module families are `generalPages`,
 `webPanels`, Confluence
 `contentBylineItems`, scalar
 `jiraIssueFields`, quick-add `jiraIssueContents`, collapsible
-`jiraIssueContexts`, Jira/Confluence navigation
+`jiraIssueContexts`, legacy `jiraIssueGlances`, Jira/Confluence navigation
 `webItems`, and `webhooks`.
 The parser rejects unsupported authentication modes, scopes, module families,
 and web-panel locations instead of silently ignoring them.
@@ -157,6 +160,10 @@ Conditions, issue-property status badges and frontend change events remain
 explicit gaps; conditions fail installation instead of being ignored.
 Connect i18n display names and labels retain the documented 1,500-character
 validation bound; native ZZIRA module titles retain their 255-character bound.
+Legacy issue glances use the same validated icon, label and target contract.
+When an app declares modern issue contexts, they replace its legacy glance
+surface; otherwise ZZIRA shows only the first installed glance, matching Jira's
+single-glance behavior.
 
 Connect project pages validate the required key, name, relative URL and
 relative `iconUrl`, and honor descriptor weight when ordering multiple app
@@ -197,7 +204,7 @@ by reports.
 Supported scopes are `read:jira-work`, `write:jira-work`,
 `read:confluence-content`, `write:confluence-content`, `read:app-storage`,
 `write:app-storage`, and `manage:webhooks`. Supported module contracts are Jira
-global and project pages, issue panels, issue contexts and dashboard gadgets,
+global and project pages, issue panels, issue contexts/glances and dashboard gadgets,
 plus Confluence global pages and content byline items. Active global pages join
 product navigation, issue panels and contexts join visible work-item views, app
 gadgets can be added and positioned on custom dashboards, and byline items join

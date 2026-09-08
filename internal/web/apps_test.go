@@ -37,3 +37,16 @@ func TestDecorateIssueContext(t *testing.T) {
 		t.Fatalf("decorated module = %+v", module)
 	}
 }
+
+func TestSelectIssueContextModules(t *testing.T) {
+	glances := []models.AppModule{{Key: "first", Type: "jira:issueGlance"}, {Key: "second", Type: "jira:issueGlance"}}
+	selected := selectIssueContextModules(glances)
+	if len(selected) != 1 || selected[0].Key != "first" {
+		t.Fatalf("selected glances = %+v", selected)
+	}
+	modules := append(glances, models.AppModule{Key: "modern", Type: "jira:issueContext"})
+	selected = selectIssueContextModules(modules)
+	if len(selected) != 1 || selected[0].Key != "modern" {
+		t.Fatalf("selected modern contexts = %+v", selected)
+	}
+}

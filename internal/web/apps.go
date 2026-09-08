@@ -146,7 +146,7 @@ func (h *Handler) appModuleAsset(w http.ResponseWriter, r *http.Request, kind st
 			assetURL = appModuleThumbnailURL(*module)
 		}
 	case "icon":
-		if module.Type == "jira:projectPage" || module.Type == "jira:issueContext" {
+		if module.Type == "jira:projectPage" || module.Type == "jira:issueContext" || module.Type == "jira:issueGlance" {
 			assetURL = appModuleIconURL(*module)
 		}
 	}

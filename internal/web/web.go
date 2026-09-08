@@ -564,6 +564,7 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	if err != nil {
 		return nil, err
 	}
+	appContexts = selectIssueContextModules(appContexts)
 	for index := range appContexts {
 		decorateIssueContext(&appContexts[index])
 	}
@@ -603,6 +604,24 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 		AppContexts:       appContexts,
 		AppIssueContent:   appIssueContent,
 	}, nil
+}
+
+func selectIssueContextModules(modules []models.AppModule) []models.AppModule {
+	contexts := make([]models.AppModule, 0, len(modules))
+	for _, module := range modules {
+		if module.Type == "jira:issueContext" {
+			contexts = append(contexts, module)
+		}
+	}
+	if len(contexts) > 0 {
+		return contexts
+	}
+	for _, module := range modules {
+		if module.Type == "jira:issueGlance" {
+			return []models.AppModule{module}
+		}
+	}
+	return nil
 }
 
 func (h *Handler) SetIssueAppContent(w http.ResponseWriter, r *http.Request, key, moduleID string) {

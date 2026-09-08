@@ -2435,6 +2435,22 @@ Validation after Connect issue contexts:
   tests, generated inventory/coverage checks and diff validation pass. The
   pinned inventory remains 433 assessed operations out of 1,207.
 
+Validation after legacy Connect issue glances:
+
+- Standard descriptors accept `jiraIssueGlances` through the same validated
+  icon, label and `web_panel` target contract as issue contexts, preserving a
+  distinct `jira:issueGlance` module identity for lifecycle and review.
+- Selection matches the migration contract: modern issue contexts replace the
+  legacy surface when present; a glance-only installation exposes its first
+  eligible glance through the collapsible signed issue-side runtime.
+- Parser and selection tests pass. The Chromium Connect journey verifies that
+  a descriptor containing both families installs successfully and renders the
+  modern context without duplicating its legacy glance. The complete
+  PostgreSQL Go suite, native server/load-test and WebAssembly builds, vet,
+  seven conformance tests, generated inventory/coverage checks and diff
+  validation pass. The pinned inventory remains 433 assessed operations out of
+  1,207.
+
 ## Current change
 
 1. Continue the app runtime with remaining Connect module families, dynamic
