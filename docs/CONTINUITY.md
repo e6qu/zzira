@@ -64,6 +64,10 @@ documents. PR 0 does not claim complete Jira Cloud fidelity.
 
 ## Validation baseline
 
+The PR 0 CI harness now provisions package-scoped bootstrap administrators for
+integration tests that require administrative state. The complete suite passes
+from an empty PostgreSQL database without running the demo seed command.
+
 The last implementation checkpoint passed:
 
 - the complete PostgreSQL Go suite;

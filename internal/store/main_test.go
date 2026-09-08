@@ -25,5 +25,11 @@ func TestMain(m *testing.M) {
 		fmt.Fprintln(os.Stderr, "migrate test database:", err)
 		os.Exit(1)
 	}
-	os.Exit(m.Run())
+	if err := st.EnsureBootstrapAdmin(context.Background(), "store-tests@zzira.invalid", "Store test administrator", "!test-only!", "admin"); err != nil {
+		fmt.Fprintln(os.Stderr, "bootstrap test administrator:", err)
+		os.Exit(1)
+	}
+	code := m.Run()
+	st.Close()
+	os.Exit(code)
 }
