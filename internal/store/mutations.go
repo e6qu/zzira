@@ -555,17 +555,25 @@ func (s *Store) CreateCustomField(ctx context.Context, id, name, fieldType, desc
 	return &models.CustomField{ID: id, Name: name, Type: fieldType, Description: description}, nil
 }
 
-func (s *Store) CustomFields(ctx context.Context) ([]*models.CustomField, error) {
-	rows, err := s.Pool.Query(ctx,
-		`SELECT id, name, type, COALESCE(description,'') FROM custom_fields ORDER BY id`)
+// CreateWorkspaceCustomField registers an administrator-created field for one
+// workspace. Legacy fields with no workspace remain available to every site.
+func (s *Store) CreateWorkspaceCustomField(ctx context.Context, workspaceID, id, name, fieldType, description string) (*models.CustomField, error) {
+	_, err := s.Pool.Exec(ctx,
+		`INSERT INTO custom_fields (id,name,type,description,workspace_id) VALUES ($1,$2,$3,$4,$5)`,
+		id, name, fieldType, description, workspaceID)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	return &models.CustomField{ID: id, Name: name, Type: fieldType, Description: description, WorkspaceID: workspaceID, Active: true}, nil
+}
+
+const customFieldSelect = `SELECT cf.id,cf.name,cf.type,COALESCE(cf.description,''),COALESCE(cf.workspace_id,''),COALESCE(cf.app_installation_id,''),COALESCE(ai.app_key,''),cf.app_module_key,cf.dynamic,cf.active FROM custom_fields cf LEFT JOIN app_installations ai ON ai.id=cf.app_installation_id `
+
+func scanCustomFields(rows pgx.Rows) ([]*models.CustomField, error) {
 	var out []*models.CustomField
 	for rows.Next() {
 		f := &models.CustomField{}
-		if err := rows.Scan(&f.ID, &f.Name, &f.Type, &f.Description); err != nil {
+		if err := rows.Scan(&f.ID, &f.Name, &f.Type, &f.Description, &f.WorkspaceID, &f.AppInstallationID, &f.AppKey, &f.AppModuleKey, &f.Dynamic, &f.Active); err != nil {
 			return nil, err
 		}
 		out = append(out, f)
@@ -573,27 +581,39 @@ func (s *Store) CustomFields(ctx context.Context) ([]*models.CustomField, error)
 	return out, rows.Err()
 }
 
+func (s *Store) CustomFields(ctx context.Context) ([]*models.CustomField, error) {
+	rows, err := s.Pool.Query(ctx, customFieldSelect+`WHERE cf.active AND (cf.app_installation_id IS NULL OR ai.status='active') ORDER BY cf.id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanCustomFields(rows)
+}
+
+func (s *Store) CustomFieldsForWorkspace(ctx context.Context, workspaceID string) ([]*models.CustomField, error) {
+	rows, err := s.Pool.Query(ctx, customFieldSelect+`WHERE cf.active AND (cf.workspace_id IS NULL OR cf.workspace_id=$1) AND (cf.app_installation_id IS NULL OR ai.status='active') ORDER BY cf.id`, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanCustomFields(rows)
+}
+
 // CustomFieldsForProject returns fields with a global or project-scoped context.
 func (s *Store) CustomFieldsForProject(ctx context.Context, projectID string) ([]*models.CustomField, error) {
-	rows, err := s.Pool.Query(ctx, `
-		SELECT DISTINCT cf.id, cf.name, cf.type, COALESCE(cf.description,'')
-		FROM custom_fields cf
+	rows, err := s.Pool.Query(ctx, customFieldSelect+`
+		JOIN projects p ON p.id=$1
 		LEFT JOIN field_contexts fc ON fc.field_id = cf.id
-		WHERE fc.project_id IS NULL OR fc.project_id = $1
+		WHERE cf.active
+		  AND (cf.workspace_id IS NULL OR cf.workspace_id=p.workspace_id)
+		  AND (cf.app_installation_id IS NULL OR ai.status='active')
+		  AND (fc.project_id IS NULL OR fc.project_id=$1)
 		ORDER BY cf.id`, projectID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []*models.CustomField
-	for rows.Next() {
-		f := &models.CustomField{}
-		if err := rows.Scan(&f.ID, &f.Name, &f.Type, &f.Description); err != nil {
-			return nil, err
-		}
-		out = append(out, f)
-	}
-	return out, rows.Err()
+	return scanCustomFields(rows)
 }
 
 // ---- webhooks ----
@@ -851,21 +871,7 @@ func (s *Store) SetFilterFavourite(ctx context.Context, workspaceID, userID, id 
 
 // NextCustomFieldNumber returns the next suffix for customfield_NNNNN ids.
 func (s *Store) NextCustomFieldNumber(ctx context.Context) (int, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT id FROM custom_fields`)
-	if err != nil {
-		return 0, err
-	}
-	defer rows.Close()
-	maxNum := 0
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return 0, err
-		}
-		var n int
-		if _, err := fmt.Sscanf(id, "customfield_%d", &n); err == nil && n > maxNum {
-			maxNum = n
-		}
-	}
-	return maxNum - 10000 + 1, rows.Err()
+	var suffix int
+	err := s.Pool.QueryRow(ctx, `SELECT nextval('jira_app_custom_field_id')::INT`).Scan(&suffix)
+	return suffix - 10000, err
 }

@@ -63,6 +63,9 @@ shape:
     "contentBylineItems": [
       {"key": "review", "url": "/review?content={content.id}", "name": {"value": "Page review"}}
     ],
+    "jiraIssueFields": [
+      {"key": "risk-score", "name": {"value": "Risk score"}, "description": {"value": "Calculated release risk"}, "type": "number"}
+    ],
     "webhooks": [
       {"event": "jira:issue_updated", "url": "/webhooks/issues", "filter": "project = OPS"}
     ]
@@ -72,15 +75,17 @@ shape:
 
 Connect `READ` and write-capable scopes translate into the corresponding Jira
 and Confluence grants. Supported Connect module families are `generalPages`,
-Jira issue-view `webPanels`, Confluence `contentBylineItems`, and `webhooks`.
+Jira issue-view `webPanels`, Confluence `contentBylineItems`, scalar
+`jiraIssueFields`, and `webhooks`.
 The parser rejects unsupported authentication modes, scopes, module families,
 and web-panel locations instead of silently ignoring them.
 
-Connect apps can manage tenant-specific remote issue panels and keyed Jira
-webhooks through the
+Connect apps can manage tenant-specific remote issue panels, scalar issue
+fields and keyed Jira webhooks through the
 standard JWT-signed `GET`, `POST`, and `DELETE`
 `/rest/atlassian-connect/1/app/module/dynamic` resource. `POST` accepts the
-descriptor-shaped `webPanels` object and registers the request atomically;
+descriptor-shaped `webPanels`, `jiraIssueFields`, and `webhooks` objects and
+registers the request atomically;
 duplicate static/dynamic keys or any invalid entry reject the whole request.
 `GET` returns the original grouped definitions. `DELETE` accepts repeated
 `moduleKey` query parameters and removes every dynamic module when none are
@@ -91,6 +96,17 @@ body exclusion are rejected until their delivery semantics are available.
 Dynamic definitions survive uninstall/reinstall, while an upgrade that
 promotes the same key to a static module removes the conflicting definition.
 The same resource is available beneath both Jira and Confluence base paths.
+
+Connect issue fields support `string`, `text`, `rich_text`, `number`, `date`,
+and `datetime` descriptor types on the canonical text, number, and date-time
+field model. Each field is workspace-owned and receives a stable
+`customfield_NNNNN` ID. REST callers can also use the documented
+`app-key__module-key` key for field discovery, create/edit/transition values,
+and JQL. Active fields appear in issue create/edit/view metadata and the normal
+Jira field resources. Uninstall hides them without deleting issue data;
+reinstallation restores the same IDs, and dynamic-to-static promotion updates
+the field in place. Select/read-only types, options, extraction definitions,
+and field migration tasks remain explicit gaps.
 
 Supported scopes are `read:jira-work`, `write:jira-work`,
 `read:confluence-content`, `write:confluence-content`, `read:app-storage`,
@@ -178,5 +194,5 @@ reinstallation.
 The runtime is a ZZIRA execution contract for remotely hosted apps. Remaining
 Connect module families, the remaining dynamic module types and webhook
 options, workflow modules,
-custom fields, descriptor-driven upgrade migrations, and Atlassian-hosted Forge
-compute remain separate future slices.
+select/read-only issue fields and option APIs, descriptor-driven upgrade
+migrations, and Atlassian-hosted Forge compute remain separate future slices.

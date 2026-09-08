@@ -123,7 +123,7 @@ func (s *Store) serviceSLAGoalMatches(ctx context.Context, workspaceID, actorID,
 		return false, err
 	}
 	resolver := jql.DefaultResolver()
-	fields, err := s.CustomFields(ctx)
+	fields, err := s.CustomFieldsForWorkspace(ctx, workspaceID)
 	if err != nil {
 		return false, err
 	}

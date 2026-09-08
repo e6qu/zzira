@@ -127,6 +127,7 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
   const moduleTitle = `Remote releases ${suffix}`;
   const panelTitle = `Remote risk ${suffix}`;
   const bylineTitle = `Remote review ${suffix}`;
+  const fieldName = `Remote risk score ${suffix}`;
   const descriptor = {
     key: `connect.journey.${suffix}`,
     name: appName,
@@ -137,6 +138,7 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
       generalPages: [{ key: 'remote-releases', url: '/remote-page?view=releases', name: { value: moduleTitle } }],
       webPanels: [{ key: 'remote-risk', url: '/remote-panel?selected={issue.key}', location: 'atl.jira.view.issue.right.context', name: { value: panelTitle } }],
       contentBylineItems: [{ key: 'remote-review', url: '/remote-review?content={content.id}', name: { value: bylineTitle } }],
+      jiraIssueFields: [{ key: 'remote-risk-score', name: { value: fieldName }, description: { value: 'Risk supplied by the Connect app' }, type: 'number' }],
     },
   };
   await page.goto('/admin#admin-apps');
@@ -148,6 +150,8 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
   let app = page.locator('.admin-app', { hasText: appName });
   await expect(app).toContainText('connect descriptor');
   await expect(app).toContainText('/remote-page?view=releases');
+  await expect(app).toContainText(fieldName);
+  await expect(app).toContainText(`${descriptor.key}__remote-risk-score`);
   await page.locator('#workspace-navigation').getByRole('link', { name: moduleTitle }).click();
   await expect(page.getByRole('heading', { name: moduleTitle, level: 1 })).toBeVisible();
   const remote = page.frameLocator('iframe.app-module-frame');
@@ -159,6 +163,12 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
   const issuePanel = page.locator('.app-context-module', { has: page.getByRole('heading', { name: panelTitle, level: 2 }) });
   await expect(issuePanel).toBeVisible();
   await expect(issuePanel.frameLocator('iframe').getByRole('heading', { name: 'Remote issue risk' })).toBeVisible();
+  await page.locator('details.more-fields').click();
+  const issueField = page.getByLabel(fieldName);
+  await expect(issueField).toBeVisible();
+  await issueField.fill('7');
+  await page.getByRole('button', { name: `Save ${fieldName}` }).click();
+  await expect(page.getByLabel(fieldName)).toHaveValue('7');
 
   await page.goto('/wiki');
   await page.getByRole('link', { name: 'Browse pages', exact: true }).first().click();

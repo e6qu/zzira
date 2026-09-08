@@ -455,8 +455,8 @@ type FieldResolver struct {
 	DefaultOrder map[string]string
 }
 
-// WithCustomFields extends a resolver with customfield_NNNNN columns.
-// Values live in issues.fields JSONB; numbers compare numerically.
+// WithCustomFields extends a resolver with customfield_NNNNN columns and app
+// aliases. Values live in issues.fields JSONB; numbers compare numerically.
 func WithCustomFields(base FieldResolver, fields []*models.CustomField) FieldResolver {
 	res := base
 	if res.Columns == nil {
@@ -469,6 +469,9 @@ func WithCustomFields(base FieldResolver, fields []*models.CustomField) FieldRes
 		}
 		res.Columns[f.ID] = col
 		res.Columns[strings.ToLower(f.Name)] = col
+		if f.AppKey != "" {
+			res.Columns[strings.ToLower(f.AppKey+"__"+f.AppModuleKey)] = col
+		}
 		res.TextColumns = append(res.TextColumns, `i.fields->>'`+f.ID+`'`)
 	}
 	return res

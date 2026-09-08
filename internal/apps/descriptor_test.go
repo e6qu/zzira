@@ -59,6 +59,7 @@ func TestParseConnectDescriptorTranslatesSupportedModules(t *testing.T) {
     "generalPages":[{"key":"operations","url":"/operations","name":{"value":"Operations"}}],
     "webPanels":[{"key":"issue-risk","url":"/risk?issue={issue.key}","location":"atl.jira.view.issue.right.context","name":{"value":"Issue risk"}}],
     "contentBylineItems":[{"key":"review","url":"/review?content={content.id}","name":{"value":"Review"}}],
+    "jiraIssueFields":[{"key":"impact-score","name":{"value":"Impact score"},"description":{"value":"Operational impact"},"type":"number"}],
     "webhooks":[{"event":"jira:issue_updated","url":"/hooks/issues","filter":"project = OPS"}]
   }
 }`)
@@ -66,7 +67,7 @@ func TestParseConnectDescriptorTranslatesSupportedModules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if descriptor.Format != "connect" || descriptor.Version != "connect-v1" || len(descriptor.Modules) != 3 || len(descriptor.Webhooks) != 1 {
+	if descriptor.Format != "connect" || descriptor.Version != "connect-v1" || len(descriptor.Modules) != 3 || len(descriptor.Webhooks) != 1 || len(descriptor.IssueFields) != 1 {
 		t.Fatalf("Connect descriptor = %+v", descriptor)
 	}
 	if descriptor.Key != "Connect.Operations" {
@@ -90,8 +91,11 @@ func TestParseConnectDescriptorTranslatesSupportedModules(t *testing.T) {
 			t.Errorf("translated scope %q missing from %v", scope, descriptor.Scopes)
 		}
 	}
-	if _, err := ParseDescriptor([]byte(`{"key":"connect.bad","name":"Bad","baseUrl":"https://connect.example.test","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"jiraIssueFields":[]}}`)); err == nil {
-		t.Fatal("accepted an unsupported Connect module")
+	if descriptor.IssueFields[0].Key != "impact-score" || descriptor.IssueFields[0].Type != "number" {
+		t.Fatalf("translated issue fields = %+v", descriptor.IssueFields)
+	}
+	if _, err := ParseDescriptor([]byte(`{"key":"connect.bad","name":"Bad","baseUrl":"https://connect.example.test","authentication":{"type":"jwt"},"scopes":[],"modules":{"jiraIssueFields":[{"key":"bad","name":{"value":"Bad"},"type":"user"}]}}`)); err == nil {
+		t.Fatal("accepted an unsupported Connect issue-field type")
 	}
 	if _, err := ParseDescriptor([]byte(`{"key":"connect.bad","name":"Bad","baseUrl":"https://connect.example.test","authentication":{"type":"none"},"scopes":[],"modules":{}}`)); err == nil {
 		t.Fatal("accepted a Connect descriptor without JWT authentication")

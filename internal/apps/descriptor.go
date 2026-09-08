@@ -51,6 +51,7 @@ type descriptorWire struct {
 	Lifecycle         map[string]string      `json:"lifecycle"`
 	Webhooks          []webhookWire          `json:"webhooks"`
 	ScheduledTriggers []scheduledTriggerWire `json:"scheduledTriggers"`
+	IssueFields       []models.AppIssueField `json:"-"`
 	Format            string                 `json:"-"`
 }
 
@@ -134,7 +135,15 @@ func validateDescriptorWire(wire descriptorWire) (models.AppDescriptor, error) {
 		descriptor.Scopes = append(descriptor.Scopes, scope)
 	}
 	sort.Strings(descriptor.Scopes)
-	moduleKeys := map[string]bool{}
+	issueFieldKeys := map[string]bool{}
+	for _, field := range wire.IssueFields {
+		if issueFieldKeys[field.Key] {
+			return models.AppDescriptor{}, fmt.Errorf("Connect issue field keys must be unique")
+		}
+		issueFieldKeys[field.Key] = true
+		descriptor.IssueFields = append(descriptor.IssueFields, field)
+	}
+	moduleKeys := issueFieldKeys
 	for _, input := range wire.Modules {
 		input.Key, input.Type, input.Location, input.Title, input.URL = strings.TrimSpace(input.Key), strings.TrimSpace(input.Type), strings.TrimSpace(input.Location), strings.TrimSpace(input.Title), strings.TrimSpace(input.URL)
 		requirement, ok := moduleRequirements[input.Type]
@@ -163,10 +172,9 @@ func validateDescriptorWire(wire descriptorWire) (models.AppDescriptor, error) {
 	if len(wire.Webhooks) > 0 && !scopes["manage:webhooks"] {
 		return models.AppDescriptor{}, fmt.Errorf("declarative webhooks require scope manage:webhooks")
 	}
-	webhookKeys := map[string]bool{}
 	for _, webhook := range wire.Webhooks {
 		webhook.Key, webhook.URL, webhook.JQL = strings.TrimSpace(webhook.Key), strings.TrimSpace(webhook.URL), strings.TrimSpace(webhook.JQL)
-		if !moduleKeyPattern.MatchString(webhook.Key) || webhookKeys[webhook.Key] || !validAppCallbackPath(webhook.URL) || len(webhook.Events) == 0 || len(webhook.Events) > 20 || len(webhook.JQL) > 2000 {
+		if !moduleKeyPattern.MatchString(webhook.Key) || moduleKeys[webhook.Key] || !validAppCallbackPath(webhook.URL) || len(webhook.Events) == 0 || len(webhook.Events) > 20 || len(webhook.JQL) > 2000 {
 			return models.AppDescriptor{}, fmt.Errorf("webhooks need a unique key, relative URL, and 1 to 20 events")
 		}
 		if webhook.JQL != "" {
@@ -183,22 +191,22 @@ func validateDescriptorWire(wire descriptorWire) (models.AppDescriptor, error) {
 			webhook.Events[index] = event
 			eventSeen[event] = true
 		}
-		webhookKeys[webhook.Key] = true
+		moduleKeys[webhook.Key] = true
 		descriptor.Webhooks = append(descriptor.Webhooks, models.AppWebhook{Key: webhook.Key, Path: webhook.URL, Events: webhook.Events, JQL: webhook.JQL})
 	}
 	if len(wire.ScheduledTriggers) > 5 {
 		return models.AppDescriptor{}, fmt.Errorf("an app may declare at most five scheduled triggers")
 	}
-	scheduleKeys, fiveMinute := map[string]bool{}, 0
+	fiveMinute := 0
 	for _, trigger := range wire.ScheduledTriggers {
 		trigger.Key, trigger.URL, trigger.Interval = strings.TrimSpace(trigger.Key), strings.TrimSpace(trigger.URL), strings.TrimSpace(trigger.Interval)
-		if !moduleKeyPattern.MatchString(trigger.Key) || scheduleKeys[trigger.Key] || !validAppCallbackPath(trigger.URL) || !map[string]bool{"fiveMinute": true, "hour": true, "day": true, "week": true}[trigger.Interval] {
+		if !moduleKeyPattern.MatchString(trigger.Key) || moduleKeys[trigger.Key] || !validAppCallbackPath(trigger.URL) || !map[string]bool{"fiveMinute": true, "hour": true, "day": true, "week": true}[trigger.Interval] {
 			return models.AppDescriptor{}, fmt.Errorf("scheduled triggers need a unique key, relative URL, and supported interval")
 		}
 		if trigger.Interval == "fiveMinute" {
 			fiveMinute++
 		}
-		scheduleKeys[trigger.Key] = true
+		moduleKeys[trigger.Key] = true
 		descriptor.ScheduledTriggers = append(descriptor.ScheduledTriggers, models.AppScheduledTrigger{Key: trigger.Key, Path: trigger.URL, Interval: trigger.Interval})
 	}
 	if fiveMinute > 1 {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/jackc/pgx/v5"
@@ -24,7 +25,7 @@ func (s *Store) RegisterDynamicAppModules(ctx context.Context, installation *mod
 	}
 	for position, module := range modules {
 		var exists bool
-		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM app_modules WHERE installation_id=$1 AND module_key=$2 UNION ALL SELECT 1 FROM app_webhook_modules WHERE installation_id=$1 AND module_key=$2 UNION ALL SELECT 1 FROM app_dynamic_modules WHERE installation_id=$1 AND module_key=$2)`, installation.ID, module.Key).Scan(&exists); err != nil {
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM app_modules WHERE installation_id=$1 AND module_key=$2 UNION ALL SELECT 1 FROM app_webhook_modules WHERE installation_id=$1 AND module_key=$2 UNION ALL SELECT 1 FROM custom_fields WHERE app_installation_id=$1 AND app_module_key=$2 AND active UNION ALL SELECT 1 FROM app_dynamic_modules WHERE installation_id=$1 AND module_key=$2)`, installation.ID, module.Key).Scan(&exists); err != nil {
 			return err
 		}
 		if exists {
@@ -42,6 +43,10 @@ func (s *Store) RegisterDynamicAppModules(ctx context.Context, installation *mod
 		case "webhooks":
 			value := module.Webhook
 			if _, err := tx.Exec(ctx, `INSERT INTO app_webhook_modules(installation_id,module_key,path,events,jql,last_seq,dynamic,exclude_body) SELECT $1,$2,$3,$4,$5,w.seq,true,$6 FROM workspaces w WHERE w.id=$7`, installation.ID, value.Key, value.Path, value.Events, value.JQL, value.ExcludeBody, installation.WorkspaceID); err != nil {
+				return err
+			}
+		case "jiraIssueFields":
+			if err := writeAppIssueField(ctx, tx, installation.ID, module.IssueField, true); err != nil {
 				return err
 			}
 		default:
@@ -84,6 +89,9 @@ func (s *Store) DeleteDynamicAppModules(ctx context.Context, installationID stri
 		if _, err := tx.Exec(ctx, `DELETE FROM app_webhook_modules WHERE installation_id=$1 AND dynamic`, installationID); err != nil {
 			return err
 		}
+		if _, err := tx.Exec(ctx, `UPDATE custom_fields SET active=false WHERE app_installation_id=$1 AND dynamic`, installationID); err != nil {
+			return err
+		}
 	} else {
 		if _, err := tx.Exec(ctx, `DELETE FROM app_modules WHERE installation_id=$1 AND dynamic AND module_key=ANY($2)`, installationID, keys); err != nil {
 			return err
@@ -92,6 +100,9 @@ func (s *Store) DeleteDynamicAppModules(ctx context.Context, installationID stri
 			return err
 		}
 		if _, err := tx.Exec(ctx, `DELETE FROM app_webhook_modules WHERE installation_id=$1 AND dynamic AND module_key=ANY($2)`, installationID, keys); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `UPDATE custom_fields SET active=false WHERE app_installation_id=$1 AND dynamic AND app_module_key=ANY($2)`, installationID, keys); err != nil {
 			return err
 		}
 	}
@@ -153,6 +164,24 @@ func restoreDynamicAppModules(ctx context.Context, tx pgx.Tx, installationID str
 				return err
 			}
 			if _, err := tx.Exec(ctx, `INSERT INTO app_webhook_modules(installation_id,module_key,path,events,jql,last_seq,dynamic,exclude_body) SELECT $1,$2,$3,$4,$5,w.seq,true,$6 FROM app_installations i JOIN workspaces w ON w.id=i.workspace_id WHERE i.id=$1`, installationID, module.key, webhook.URL, []string{webhook.Event}, webhook.Filter, webhook.ExcludeBody); err != nil {
+				return err
+			}
+		case "jiraIssueFields":
+			var field struct {
+				Key  string `json:"key"`
+				Name struct {
+					Value string `json:"value"`
+				} `json:"name"`
+				Description struct {
+					Value string `json:"value"`
+				} `json:"description"`
+				Type string `json:"type"`
+			}
+			if err := json.Unmarshal(module.raw, &field); err != nil {
+				return err
+			}
+			fieldType := map[string]string{"string": models.CustomFieldText, "text": models.CustomFieldText, "rich_text": models.CustomFieldText, "number": models.CustomFieldNumber, "date": models.CustomFieldDatetime, "datetime": models.CustomFieldDatetime}[strings.ToLower(strings.TrimSpace(field.Type))]
+			if err := writeAppIssueField(ctx, tx, installationID, models.AppIssueField{Key: module.key, Name: field.Name.Value, Description: field.Description.Value, Type: fieldType}, true); err != nil {
 				return err
 			}
 		default:

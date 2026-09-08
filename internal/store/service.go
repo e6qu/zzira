@@ -613,7 +613,7 @@ func (s *Store) ServiceQueueRequests(ctx context.Context, workspaceID, viewerID,
 			return nil, nil, err
 		}
 		resolver := jql.DefaultResolver()
-		if customFields, err := s.CustomFields(ctx); err == nil {
+		if customFields, err := s.CustomFieldsForWorkspace(ctx, workspaceID); err == nil {
 			resolver = jql.WithCustomFields(resolver, customFields)
 		} else {
 			return nil, nil, err

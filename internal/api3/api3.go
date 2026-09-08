@@ -474,6 +474,11 @@ func (h *Handler) createIssue(w http.ResponseWriter, r *http.Request) {
 	if projectIDOrKey == "" {
 		projectIDOrKey = req.Fields.Project.ID
 	}
+	customFields, err := h.resolveCustomFieldAliases(r.Context(), wsID, customFieldsFromBody(body))
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
 	issue, _, err := h.Commands.CreateIssue(r.Context(), commands.CreateIssueInput{
 		ActorID:        userID,
 		WorkspaceID:    wsID,
@@ -500,7 +505,7 @@ func (h *Handler) createIssue(w http.ResponseWriter, r *http.Request) {
 			return req.Fields.Security.ID
 		}(),
 		Labels: labels,
-		Fields: customFieldsFromBody(body),
+		Fields: customFields,
 	})
 	if err != nil {
 		jiraFieldError(w, http.StatusBadRequest, createIssueFieldError(err))
@@ -525,7 +530,7 @@ func unsupportedCreateFields(body []byte) map[string]string {
 		"assignee": {}, "security": {}, "labels": {}, "fixVersions": {}, "versions": {}, "parent": {},
 	}
 	for field := range raw.Fields {
-		if _, ok := supported[field]; ok || customFieldIDPattern.MatchString(field) {
+		if _, ok := supported[field]; ok || customFieldIDPattern.MatchString(field) || appCustomFieldKeyPattern.MatchString(field) {
 			continue
 		}
 		return map[string]string{field: "Field is not available on the create screen."}
@@ -607,7 +612,11 @@ func (h *Handler) putIssue(w http.ResponseWriter, r *http.Request, idOrKey strin
 			up.AssigneeID = &a.AccountID
 		}
 	}
-	fields := customFieldsFromBody(body)
+	fields, err := h.resolveCustomFieldAliases(r.Context(), wsID, customFieldsFromBody(body))
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
 	var rawFields struct {
 		Fields map[string]json.RawMessage `json:"fields"`
 	}
@@ -988,7 +997,12 @@ func (h *Handler) performTransition(w http.ResponseWriter, r *http.Request, idOr
 		jiraFieldError(w, http.StatusBadRequest, map[string]string{"transition": "Transition id is required."})
 		return
 	}
-	update, fieldErrors := transitionIssueUpdate(req.Fields)
+	resolvedFields, err := h.resolveCustomFieldAliases(r.Context(), wsID, req.Fields)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	update, fieldErrors := transitionIssueUpdate(resolvedFields)
 	if len(fieldErrors) > 0 {
 		jiraFieldError(w, http.StatusBadRequest, fieldErrors)
 		return

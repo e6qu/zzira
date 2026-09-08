@@ -30,6 +30,23 @@ func TestServerInfoCloudDeploymentType(t *testing.T) {
 	}
 }
 
+func TestConnectIssueFieldUsesRESTKey(t *testing.T) {
+	h := goldenHandler()
+	field := &models.CustomField{ID: "customfield_20000", Name: "Risk score", Type: models.CustomFieldNumber, AppKey: "example.connect", AppModuleKey: "risk-score"}
+	bean := h.customFieldBean(field)
+	if bean["key"] != "example.connect__risk-score" {
+		t.Fatalf("Connect field key = %v", bean["key"])
+	}
+	schema, _ := bean["schema"].(map[string]any)
+	if schema["custom"] != "example.connect__risk-score" {
+		t.Fatalf("Connect field schema = %+v", schema)
+	}
+	fields := customFieldsFromBody([]byte(`{"fields":{"example.connect__risk-score":7,"summary":"ignored"}}`))
+	if string(fields["example.connect__risk-score"]) != "7" || fields["summary"] != nil {
+		t.Fatalf("extracted Connect fields = %+v", fields)
+	}
+}
+
 func TestIssueBeanGolden(t *testing.T) {
 	h := goldenHandler()
 	issue := &models.Issue{

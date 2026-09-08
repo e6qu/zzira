@@ -54,7 +54,7 @@ func (s *Store) DashboardGadgetResults(ctx context.Context, ws, user, id string,
 		if g.ModuleKey == "com.zzira:assigned-to-me" {
 			q.Root = jql.And{Terms: []jql.Node{q.Root, jql.Clause{Field: "assignee", Op: "=", Values: []string{"currentUser()"}}}}
 		}
-		fields, e := s.CustomFields(ctx)
+		fields, e := s.CustomFieldsForWorkspace(ctx, ws)
 		if e != nil {
 			return out, e
 		}

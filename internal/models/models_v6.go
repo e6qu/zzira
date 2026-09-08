@@ -30,10 +30,16 @@ type SecurityScheme struct {
 }
 
 type CustomField struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Type        string `json:"type"`
-	Description string `json:"description,omitempty"`
+	ID                string `json:"id"`
+	Name              string `json:"name"`
+	Type              string `json:"type"`
+	Description       string `json:"description,omitempty"`
+	WorkspaceID       string `json:"-"`
+	AppInstallationID string `json:"-"`
+	AppKey            string `json:"-"`
+	AppModuleKey      string `json:"-"`
+	Dynamic           bool   `json:"-"`
+	Active            bool   `json:"-"`
 }
 
 type Webhook struct {

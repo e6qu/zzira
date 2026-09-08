@@ -251,9 +251,6 @@ func (h *Handler) DynamicModules(w http.ResponseWriter, r *http.Request) {
 }
 
 func parseDynamicModules(body []byte, installation *models.AppInstallation) ([]models.AppDynamicModule, error) {
-	if !store.AppHasScope(installation, "read:jira-work") {
-		return nil, fmt.Errorf("dynamic web panels require READ scope")
-	}
 	var groups map[string]json.RawMessage
 	if err := json.Unmarshal(body, &groups); err != nil || len(groups) == 0 {
 		return nil, fmt.Errorf("dynamic modules must be a non-empty JSON object")
@@ -261,14 +258,33 @@ func parseDynamicModules(body []byte, installation *models.AppInstallation) ([]m
 	modules := []models.AppDynamicModule{}
 	keys := map[string]bool{}
 	for moduleType, raw := range groups {
-		if moduleType != "webPanels" && moduleType != "webhooks" {
+		if moduleType != "webPanels" && moduleType != "webhooks" && moduleType != "jiraIssueFields" {
 			return nil, fmt.Errorf("dynamic module type %q is not supported yet", moduleType)
+		}
+		if (moduleType == "webPanels" || moduleType == "webhooks") && !store.AppHasScope(installation, "read:jira-work") {
+			return nil, fmt.Errorf("dynamic %s require READ scope", moduleType)
 		}
 		var entries []json.RawMessage
 		if err := json.Unmarshal(raw, &entries); err != nil || len(entries) == 0 {
 			return nil, fmt.Errorf("dynamic %s must be a non-empty array", moduleType)
 		}
 		for _, entry := range entries {
+			if moduleType == "jiraIssueFields" {
+				var input connectIssueFieldWire
+				if err := json.Unmarshal(entry, &input); err != nil {
+					return nil, fmt.Errorf("invalid dynamic Jira issue field: %w", err)
+				}
+				field, err := translateConnectIssueField(input, true)
+				if err != nil {
+					return nil, err
+				}
+				if keys[field.Key] {
+					return nil, fmt.Errorf("dynamic module keys must be unique")
+				}
+				keys[field.Key] = true
+				modules = append(modules, models.AppDynamicModule{Type: moduleType, Key: field.Key, Descriptor: entry, IssueField: field})
+				continue
+			}
 			if moduleType == "webhooks" {
 				var input connectWebhookWire
 				if err := json.Unmarshal(entry, &input); err != nil {

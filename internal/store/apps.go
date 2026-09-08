@@ -94,6 +94,23 @@ func (s *Store) loadAppChildren(ctx context.Context, value *models.AppInstallati
 		return err
 	}
 	webhookRows.Close()
+	fieldRows, err := s.Pool.Query(ctx, `SELECT cf.id,cf.app_installation_id,i.app_key,cf.app_module_key,cf.name,cf.type,cf.description,cf.dynamic,cf.active FROM custom_fields cf JOIN app_installations i ON i.id=cf.app_installation_id WHERE cf.app_installation_id=$1 ORDER BY cf.created_at,cf.id`, value.ID)
+	if err != nil {
+		return err
+	}
+	for fieldRows.Next() {
+		var field models.AppIssueField
+		if err := fieldRows.Scan(&field.ID, &field.InstallationID, &field.AppKey, &field.Key, &field.Name, &field.Type, &field.Description, &field.Dynamic, &field.Active); err != nil {
+			fieldRows.Close()
+			return err
+		}
+		value.IssueFields = append(value.IssueFields, field)
+	}
+	if err := fieldRows.Err(); err != nil {
+		fieldRows.Close()
+		return err
+	}
+	fieldRows.Close()
 	scheduleRows, err := s.Pool.Query(ctx, `SELECT id::text,module_key,path,interval_name,next_run_at FROM app_scheduled_triggers WHERE installation_id=$1 ORDER BY module_key`, value.ID)
 	if err != nil {
 		return err
@@ -159,6 +176,11 @@ func writeAppChildren(ctx context.Context, tx pgx.Tx, installationID string, des
 			return err
 		}
 	}
+	for _, field := range descriptor.IssueFields {
+		if err := writeAppIssueField(ctx, tx, installationID, field, false); err != nil {
+			return err
+		}
+	}
 	for event, path := range descriptor.Lifecycle {
 		if _, err := tx.Exec(ctx, `INSERT INTO app_lifecycle_callbacks(installation_id,event,path) VALUES($1,$2,$3)`, installationID, event, path); err != nil {
 			return err
@@ -176,6 +198,18 @@ func writeAppChildren(ctx context.Context, tx pgx.Tx, installationID string, des
 		}
 	}
 	return nil
+}
+
+func writeAppIssueField(ctx context.Context, tx pgx.Tx, installationID string, field models.AppIssueField, dynamic bool) error {
+	_, err := tx.Exec(ctx, `
+		INSERT INTO custom_fields(id,name,type,description,workspace_id,app_installation_id,app_module_key,dynamic,active)
+		SELECT 'customfield_' || nextval('jira_app_custom_field_id'),$2,$3,$4,i.workspace_id,i.id,$5,$6,true
+		FROM app_installations i WHERE i.id=$1
+		ON CONFLICT(app_installation_id,app_module_key) DO UPDATE SET
+		  name=EXCLUDED.name,type=EXCLUDED.type,description=EXCLUDED.description,
+		  workspace_id=EXCLUDED.workspace_id,dynamic=EXCLUDED.dynamic,active=true`,
+		installationID, field.Name, field.Type, field.Description, field.Key, dynamic)
+	return err
 }
 
 func (s *Store) InstallApp(ctx context.Context, workspaceID, actorID string, descriptor models.AppDescriptor, rawDescriptor, secretCiphertext []byte) (*models.AppInstallation, error) {
@@ -222,6 +256,9 @@ func (s *Store) InstallApp(ctx context.Context, workspaceID, actorID string, des
 	if _, err := tx.Exec(ctx, `DELETE FROM app_modules WHERE installation_id=$1`, installationID); err != nil {
 		return nil, err
 	}
+	if _, err := tx.Exec(ctx, `UPDATE custom_fields SET active=false WHERE app_installation_id=$1`, installationID); err != nil {
+		return nil, err
+	}
 	if currentStatus == "uninstalled" {
 		// A reinstallation establishes a new credential generation. Do not send
 		// an old generation's pending callbacks with its replacement secret.
@@ -244,6 +281,9 @@ func (s *Store) InstallApp(ctx context.Context, workspaceID, actorID string, des
 	}
 	for _, webhook := range descriptor.Webhooks {
 		staticModuleKeys = append(staticModuleKeys, webhook.Key)
+	}
+	for _, field := range descriptor.IssueFields {
+		staticModuleKeys = append(staticModuleKeys, field.Key)
 	}
 	if err := restoreDynamicAppModules(ctx, tx, installationID, staticModuleKeys); err != nil {
 		return nil, err
@@ -359,6 +399,9 @@ func (s *Store) UpgradeApp(ctx context.Context, workspaceID, appKey string, desc
 	for _, webhook := range descriptor.Webhooks {
 		conflictKeys = append(conflictKeys, webhook.Key)
 	}
+	for _, field := range descriptor.IssueFields {
+		conflictKeys = append(conflictKeys, field.Key)
+	}
 	if len(conflictKeys) > 0 {
 		if _, err := tx.Exec(ctx, `DELETE FROM app_modules WHERE installation_id=$1 AND dynamic AND module_key=ANY($2)`, installationID, conflictKeys); err != nil {
 			return err
@@ -371,6 +414,13 @@ func (s *Store) UpgradeApp(ctx context.Context, workspaceID, appKey string, desc
 		}
 	}
 	if err := writeAppChildren(ctx, tx, installationID, descriptor); err != nil {
+		return err
+	}
+	staticFieldKeys := make([]string, 0, len(descriptor.IssueFields))
+	for _, field := range descriptor.IssueFields {
+		staticFieldKeys = append(staticFieldKeys, field.Key)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE custom_fields SET active=false WHERE app_installation_id=$1 AND NOT dynamic AND NOT(app_module_key=ANY($2))`, installationID, staticFieldKeys); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(ctx, `DELETE FROM dashboard_gadgets WHERE module_key IN (SELECT 'app:' || id FROM app_modules WHERE installation_id=$1 AND NOT dynamic AND NOT(module_key=ANY($2)))`, installationID, moduleKeys); err != nil {

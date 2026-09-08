@@ -12,6 +12,12 @@ type AppDescriptor struct {
 	Lifecycle                           map[string]string
 	Webhooks                            []AppWebhook
 	ScheduledTriggers                   []AppScheduledTrigger
+	IssueFields                         []AppIssueField
+}
+
+type AppIssueField struct {
+	ID, InstallationID, AppKey, Key, Name, Type, Description string
+	Dynamic, Active                                          bool
 }
 
 type AppInstallation struct {
@@ -23,6 +29,7 @@ type AppInstallation struct {
 	Lifecycle                                                                              map[string]string
 	Webhooks                                                                               []AppWebhook
 	ScheduledTriggers                                                                      []AppScheduledTrigger
+	IssueFields                                                                            []AppIssueField
 	OutboundDeliveries                                                                     []AppOutboundDelivery
 	InstalledAt, UpdatedAt                                                                 time.Time
 }
@@ -60,6 +67,7 @@ type AppDynamicModule struct {
 	Descriptor json.RawMessage
 	Module     AppModule
 	Webhook    AppWebhook
+	IssueField AppIssueField
 }
 
 type AppStorageValue struct {

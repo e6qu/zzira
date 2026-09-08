@@ -386,7 +386,7 @@ func querySetContains(values map[string]struct{}, candidates ...string) bool {
 
 // ---- search ----
 
-func (h *Handler) compileJQL(ctx context.Context, raw, currentUser string) (jql.Compiled, *jerr) {
+func (h *Handler) compileJQL(ctx context.Context, workspaceID, raw, currentUser string) (jql.Compiled, *jerr) {
 	if raw == "" {
 		raw = "ORDER BY updated DESC"
 	}
@@ -395,7 +395,7 @@ func (h *Handler) compileJQL(ctx context.Context, raw, currentUser string) (jql.
 		return jql.Compiled{}, &jerr{http.StatusBadRequest, "Error in the JQL Query: " + err.Error(), nil}
 	}
 	resolver := jql.DefaultResolver()
-	if customFields, err := h.Store.CustomFields(ctx); err == nil {
+	if customFields, err := h.Store.CustomFieldsForWorkspace(ctx, workspaceID); err == nil {
 		resolver = jql.WithCustomFields(resolver, customFields)
 	}
 	// offset 2: store.Search reserves $1 for the workspace predicate
@@ -452,7 +452,7 @@ func (h *Handler) runSearch(w http.ResponseWriter, r *http.Request, jqlText stri
 		writeJerr(w, e)
 		return
 	}
-	c, e := h.compileJQL(r.Context(), jqlText, userID)
+	c, e := h.compileJQL(r.Context(), wsID, jqlText, userID)
 	if e != nil {
 		writeJerr(w, e)
 		return
@@ -586,7 +586,7 @@ func (h *Handler) searchJQL(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, 400, "Enhanced search requires a bounded JQL query.")
 		return
 	}
-	c, e := h.compileJQL(r.Context(), req.JQL, userID)
+	c, e := h.compileJQL(r.Context(), wsID, req.JQL, userID)
 	if e != nil {
 		writeJerr(w, e)
 		return
@@ -622,7 +622,7 @@ func (h *Handler) searchCount(w http.ResponseWriter, r *http.Request) {
 		writeJerr(w, e)
 		return
 	}
-	c, e := h.compileJQL(r.Context(), req.JQL, userID)
+	c, e := h.compileJQL(r.Context(), wsID, req.JQL, userID)
 	if e != nil {
 		writeJerr(w, e)
 		return

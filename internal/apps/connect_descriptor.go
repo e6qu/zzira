@@ -28,6 +28,13 @@ type connectNameWire struct {
 	Value string `json:"value"`
 }
 
+type connectIssueFieldWire struct {
+	Key         string          `json:"key"`
+	Name        connectNameWire `json:"name"`
+	Description connectNameWire `json:"description"`
+	Type        string          `json:"type"`
+}
+
 type connectRemoteModuleWire struct {
 	Key      string          `json:"key"`
 	URL      string          `json:"url"`
@@ -83,12 +90,24 @@ func parseConnectDescriptor(raw []byte) (models.AppDescriptor, error) {
 		wire.Scopes = append(wire.Scopes, scope)
 	}
 	sort.Strings(wire.Scopes)
-	supported := map[string]bool{"generalPages": true, "webPanels": true, "contentBylineItems": true, "webhooks": true}
+	supported := map[string]bool{"generalPages": true, "webPanels": true, "contentBylineItems": true, "webhooks": true, "jiraIssueFields": true}
 	for moduleType, payload := range connect.Modules {
 		if !supported[moduleType] {
 			return models.AppDescriptor{}, fmt.Errorf("Connect module %q is not supported yet", moduleType)
 		}
 		switch moduleType {
+		case "jiraIssueFields":
+			var fields []connectIssueFieldWire
+			if err := json.Unmarshal(payload, &fields); err != nil {
+				return models.AppDescriptor{}, fmt.Errorf("invalid Connect jiraIssueFields: %w", err)
+			}
+			for _, field := range fields {
+				translated, err := translateConnectIssueField(field, false)
+				if err != nil {
+					return models.AppDescriptor{}, err
+				}
+				wire.IssueFields = append(wire.IssueFields, translated)
+			}
 		case "webhooks":
 			var hooks []connectWebhookWire
 			if err := json.Unmarshal(payload, &hooks); err != nil {
@@ -125,6 +144,26 @@ func parseConnectDescriptor(raw []byte) (models.AppDescriptor, error) {
 		wire.Scopes = append(wire.Scopes, scope)
 	}
 	return validateDescriptorWire(wire)
+}
+
+func translateConnectIssueField(field connectIssueFieldWire, dynamic bool) (models.AppIssueField, error) {
+	field.Key = strings.TrimSpace(field.Key)
+	field.Name.Value = strings.TrimSpace(field.Name.Value)
+	field.Description.Value = strings.TrimSpace(field.Description.Value)
+	field.Type = strings.ToLower(strings.TrimSpace(field.Type))
+	fieldType := ""
+	switch field.Type {
+	case "string", "text", "rich_text":
+		fieldType = models.CustomFieldText
+	case "number":
+		fieldType = models.CustomFieldNumber
+	case "date", "datetime":
+		fieldType = models.CustomFieldDatetime
+	}
+	if !moduleKeyPattern.MatchString(field.Key) || field.Name.Value == "" || len(field.Name.Value) > 255 || len(field.Description.Value) > 2000 || fieldType == "" {
+		return models.AppIssueField{}, fmt.Errorf("Connect issue field needs a valid key, name, description, and supported string, text, rich_text, number, date, or datetime type")
+	}
+	return models.AppIssueField{Key: field.Key, Name: field.Name.Value, Description: field.Description.Value, Type: fieldType, Dynamic: dynamic, Active: true}, nil
 }
 
 func connectIssuePanelLocation(location string) bool {

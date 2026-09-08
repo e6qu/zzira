@@ -12,9 +12,23 @@ import (
 	"time"
 
 	"github.com/e6qu/zzira/internal/authn"
+	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/secretbox"
 	"github.com/e6qu/zzira/internal/store"
 )
+
+func TestParseDynamicJiraIssueFieldNeedsNoReadScope(t *testing.T) {
+	modules, err := parseDynamicModules([]byte(`{"jiraIssueFields":[{"key":"risk-score","name":{"value":"Risk score"},"description":{"value":"Calculated risk"},"type":"number"}]}`), &models.AppInstallation{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(modules) != 1 || modules[0].Type != "jiraIssueFields" || modules[0].IssueField.Type != models.CustomFieldNumber || !modules[0].IssueField.Dynamic {
+		t.Fatalf("dynamic issue fields = %+v", modules)
+	}
+	if _, err := parseDynamicModules([]byte(`{"jiraIssueFields":[{"key":"owner","name":{"value":"Owner"},"type":"user"}]}`), &models.AppInstallation{}); err == nil {
+		t.Fatal("accepted an unsupported dynamic issue-field type")
+	}
+}
 
 func TestSignedLifecycleAndScopedStorage(t *testing.T) {
 	dsn := os.Getenv("TEST_DATABASE_URL")
@@ -309,7 +323,7 @@ func TestAppPrincipalScopesAndContextualModules(t *testing.T) {
 	}
 }
 
-func TestConnectDynamicIssuePanels(t *testing.T) {
+func TestConnectDynamicModulesAndIssueFields(t *testing.T) {
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	if dsn == "" {
 		t.Skip("TEST_DATABASE_URL not set")
@@ -337,7 +351,7 @@ func TestConnectDynamicIssuePanels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	descriptorRaw := []byte(fmt.Sprintf(`{"key":%q,"name":"Dynamic test","baseUrl":"https://connect.example.test/base","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"webPanels":[{"key":"static-panel","url":"/static","location":"atl.jira.view.issue.right.context","name":{"value":"Static panel"}}]}}`, appKey))
+	descriptorRaw := []byte(fmt.Sprintf(`{"key":%q,"name":"Dynamic test","baseUrl":"https://connect.example.test/base","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"webPanels":[{"key":"static-panel","url":"/static","location":"atl.jira.view.issue.right.context","name":{"value":"Static panel"}}],"jiraIssueFields":[{"key":"static-score","name":{"value":"Static score"},"description":{"value":"Installed with the app"},"type":"number"}]}}`, appKey))
 	descriptor, err := ParseDescriptor(descriptorRaw)
 	if err != nil {
 		t.Fatal(err)
@@ -356,6 +370,32 @@ func TestConnectDynamicIssuePanels(t *testing.T) {
 		_, _ = st.Pool.Exec(ctx, `DELETE FROM users WHERE id=$1`, installation.PrincipalID)
 		_, _ = st.Pool.Exec(ctx, `DELETE FROM organization_audit_events WHERE target_type='app' AND target_id=$1`, appKey)
 	})
+	fieldByKey := func(fields []*models.CustomField, key string) *models.CustomField {
+		t.Helper()
+		for _, field := range fields {
+			if field.AppInstallationID == installation.ID && field.AppModuleKey == key {
+				return field
+			}
+		}
+		return nil
+	}
+	fields, err := st.CustomFieldsForWorkspace(ctx, workspaceID)
+	if err != nil || fieldByKey(fields, "static-score") == nil {
+		t.Fatalf("static Connect issue field = %+v, %v", fields, err)
+	}
+	staticFieldID := fieldByKey(fields, "static-score").ID
+	otherWorkspaceFields, err := st.CustomFieldsForWorkspace(ctx, "different-workspace")
+	if err != nil || fieldByKey(otherWorkspaceFields, "static-score") != nil {
+		t.Fatalf("app field leaked across workspaces: %+v, %v", otherWorkspaceFields, err)
+	}
+	var projectID string
+	if err := st.Pool.QueryRow(ctx, `SELECT id FROM projects WHERE workspace_id=$1 ORDER BY id LIMIT 1`, workspaceID).Scan(&projectID); err != nil {
+		t.Fatal(err)
+	}
+	projectFields, err := st.CustomFieldsForProject(ctx, projectID)
+	if err != nil || fieldByKey(projectFields, "static-score") == nil {
+		t.Fatalf("app field missing from issue metadata: %+v, %v", projectFields, err)
+	}
 
 	handler := &Handler{Store: st, Secrets: box, WorkspaceSlug: workspaceSlug}
 	dynamicPath := "/rest/atlassian-connect/1/app/module/dynamic"
@@ -383,10 +423,10 @@ func TestConnectDynamicIssuePanels(t *testing.T) {
 		return response
 	}
 
-	dynamic := `{"webPanels":[{"key":"dynamic-risk","url":"/risk?issue={issue.key}","location":"atl.jira.view.issue.right.context","name":{"value":"Dynamic risk"}}],"webhooks":[{"key":"dynamic-hook","event":"jira:issue_created","url":"/hooks/dynamic","filter":"project = ZZ"}]}`
+	dynamic := `{"webPanels":[{"key":"dynamic-risk","url":"/risk?issue={issue.key}","location":"atl.jira.view.issue.right.context","name":{"value":"Dynamic risk"}}],"webhooks":[{"key":"dynamic-hook","event":"jira:issue_created","url":"/hooks/dynamic","filter":"project = ZZ"}],"jiraIssueFields":[{"key":"dynamic-score","name":{"value":"Dynamic score"},"description":{"value":"Registered at runtime"},"type":"number"}]}`
 	call(http.MethodPost, dynamicPath, dynamic, http.StatusOK)
 	listed := call(http.MethodGet, dynamicPath, "", http.StatusOK)
-	if !strings.Contains(listed.Body.String(), `"dynamic-risk"`) || !strings.Contains(listed.Body.String(), `"webPanels"`) || !strings.Contains(listed.Body.String(), `"dynamic-hook"`) {
+	if !strings.Contains(listed.Body.String(), `"dynamic-risk"`) || !strings.Contains(listed.Body.String(), `"webPanels"`) || !strings.Contains(listed.Body.String(), `"dynamic-hook"`) || !strings.Contains(listed.Body.String(), `"dynamic-score"`) {
 		t.Fatalf("dynamic modules = %s", listed.Body.String())
 	}
 	wikiListed := call(http.MethodGet, "/wiki"+dynamicPath, "", http.StatusOK)
@@ -417,9 +457,19 @@ func TestConnectDynamicIssuePanels(t *testing.T) {
 	if !found {
 		t.Fatalf("dynamic webhook not materialized: %+v", hooks)
 	}
+	fields, err = st.CustomFieldsForWorkspace(ctx, workspaceID)
+	dynamicField := fieldByKey(fields, "dynamic-score")
+	if err != nil || dynamicField == nil || !dynamicField.Dynamic || dynamicField.Type != models.CustomFieldNumber {
+		t.Fatalf("dynamic issue field not materialized: %+v, %v", fields, err)
+	}
+	dynamicFieldID := dynamicField.ID
 	call(http.MethodPost, dynamicPath, `{"webPanels":[{"key":"static-panel","url":"/duplicate","location":"atl.jira.view.issue.right.context","name":{"value":"Duplicate"}}]}`, http.StatusBadRequest)
 	if err := st.UpdateAppState(ctx, workspaceID, adminID, appKey, "uninstalled", true); err != nil {
 		t.Fatal(err)
+	}
+	fields, err = st.CustomFieldsForWorkspace(ctx, workspaceID)
+	if err != nil || fieldByKey(fields, "static-score") != nil || fieldByKey(fields, "dynamic-score") != nil {
+		t.Fatalf("uninstalled app fields remain visible: %+v, %v", fields, err)
 	}
 	if _, err := st.InstallApp(ctx, workspaceID, adminID, descriptor, descriptorRaw, ciphertext); err != nil {
 		t.Fatal(err)
@@ -435,8 +485,13 @@ func TestConnectDynamicIssuePanels(t *testing.T) {
 	if !found {
 		t.Fatalf("dynamic issue panel was not restored after reinstall: %+v", modules)
 	}
+	fields, err = st.CustomFieldsForWorkspace(ctx, workspaceID)
+	reinstalledStatic, reinstalledDynamic := fieldByKey(fields, "static-score"), fieldByKey(fields, "dynamic-score")
+	if err != nil || reinstalledStatic == nil || reinstalledDynamic == nil || reinstalledStatic.ID != staticFieldID || reinstalledDynamic.ID != dynamicFieldID {
+		t.Fatalf("reinstalled app fields did not retain IDs: %+v, %v", fields, err)
+	}
 
-	upgradeRaw := []byte(fmt.Sprintf(`{"key":%q,"name":"Dynamic test","baseUrl":"https://connect.example.test/base","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"webPanels":[{"key":"dynamic-risk","url":"/promoted","location":"atl.jira.view.issue.right.context","name":{"value":"Promoted static risk"}}]}}`, appKey))
+	upgradeRaw := []byte(fmt.Sprintf(`{"key":%q,"name":"Dynamic test","baseUrl":"https://connect.example.test/base","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"webPanels":[{"key":"dynamic-risk","url":"/promoted","location":"atl.jira.view.issue.right.context","name":{"value":"Promoted static risk"}}],"jiraIssueFields":[{"key":"static-score","name":{"value":"Static score"},"description":{"value":"Installed with the app"},"type":"number"},{"key":"dynamic-score","name":{"value":"Promoted score"},"description":{"value":"Now static"},"type":"number"}]}}`, appKey))
 	upgrade, err := ParseDescriptor(upgradeRaw)
 	if err != nil {
 		t.Fatal(err)
@@ -448,11 +503,22 @@ func TestConnectDynamicIssuePanels(t *testing.T) {
 	if strings.Contains(listed.Body.String(), "dynamic-risk") {
 		t.Fatalf("static upgrade did not remove conflicting dynamic module: %s", listed.Body.String())
 	}
+	fields, err = st.CustomFieldsForWorkspace(ctx, workspaceID)
+	promotedField := fieldByKey(fields, "dynamic-score")
+	if err != nil || promotedField == nil || promotedField.Dynamic || promotedField.ID != dynamicFieldID || promotedField.Name != "Promoted score" {
+		t.Fatalf("dynamic issue field was not promoted in place: %+v, %v", fields, err)
+	}
 	call(http.MethodPost, dynamicPath, `{"webPanels":[{"key":"dynamic-remove","url":"/remove","location":"atl.jira.view.issue.right.context","name":{"value":"Remove me"}}]}`, http.StatusOK)
 	call(http.MethodDelete, dynamicPath+"?moduleKey=dynamic-remove", "", http.StatusNoContent)
 	listed = call(http.MethodGet, dynamicPath, "", http.StatusOK)
 	if strings.Contains(listed.Body.String(), "dynamic-remove") {
 		t.Fatalf("deleted dynamic module remains: %s", listed.Body.String())
+	}
+	call(http.MethodPost, dynamicPath, `{"jiraIssueFields":[{"key":"remove-field","name":{"value":"Remove field"},"type":"string"}]}`, http.StatusOK)
+	call(http.MethodDelete, dynamicPath+"?moduleKey=remove-field", "", http.StatusNoContent)
+	fields, err = st.CustomFieldsForWorkspace(ctx, workspaceID)
+	if err != nil || fieldByKey(fields, "remove-field") != nil {
+		t.Fatalf("deleted dynamic issue field remains visible: %+v, %v", fields, err)
 	}
 	call(http.MethodDelete, dynamicPath, "", http.StatusNoContent)
 	listed = call(http.MethodGet, dynamicPath, "", http.StatusOK)

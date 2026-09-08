@@ -249,7 +249,7 @@ func (s *Service) UpdateServiceSLAMetric(ctx context.Context, actorID, workspace
 	return s.Store.UpdateServiceSLAMetric(ctx, workspaceID, actorID, serviceDeskID, metricID, goalMillis)
 }
 
-func (s *Service) validateServiceSLAGoal(ctx context.Context, name, query string, goalMillis int64) (string, string, error) {
+func (s *Service) validateServiceSLAGoal(ctx context.Context, workspaceID, name, query string, goalMillis int64) (string, string, error) {
 	name, query = strings.TrimSpace(name), strings.TrimSpace(query)
 	if name == "" || len(name) > 255 {
 		return "", "", fmt.Errorf("SLA goal name is required and accepts at most 255 characters")
@@ -268,7 +268,7 @@ func (s *Service) validateServiceSLAGoal(ctx context.Context, name, query string
 		return "", "", fmt.Errorf("conditional SLA goal JQL cannot contain ORDER BY")
 	}
 	resolver := jql.DefaultResolver()
-	fields, err := s.Store.CustomFields(ctx)
+	fields, err := s.Store.CustomFieldsForWorkspace(ctx, workspaceID)
 	if err != nil {
 		return "", "", err
 	}
@@ -282,7 +282,7 @@ func (s *Service) CreateServiceSLAGoal(ctx context.Context, actorID, workspaceID
 	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
 		return nil, err
 	}
-	name, query, err := s.validateServiceSLAGoal(ctx, name, query, goalMillis)
+	name, query, err := s.validateServiceSLAGoal(ctx, workspaceID, name, query, goalMillis)
 	if err != nil {
 		return nil, err
 	}
@@ -293,7 +293,7 @@ func (s *Service) UpdateServiceSLAGoal(ctx context.Context, actorID, workspaceID
 	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
 		return err
 	}
-	name, query, err := s.validateServiceSLAGoal(ctx, name, query, goalMillis)
+	name, query, err := s.validateServiceSLAGoal(ctx, workspaceID, name, query, goalMillis)
 	if err != nil {
 		return err
 	}
@@ -344,7 +344,7 @@ func (s *Service) DeleteServiceCalendarHoliday(ctx context.Context, actorID, wor
 	return s.Store.DeleteServiceCalendarHoliday(ctx, workspaceID, actorID, serviceDeskID, holiday)
 }
 
-func (s *Service) validateServiceQueue(ctx context.Context, name, query string) (string, string, error) {
+func (s *Service) validateServiceQueue(ctx context.Context, workspaceID, name, query string) (string, string, error) {
 	name, query = strings.TrimSpace(name), strings.TrimSpace(query)
 	if name == "" || len(name) > 255 {
 		return "", "", fmt.Errorf("queue name is required and accepts at most 255 characters")
@@ -357,7 +357,7 @@ func (s *Service) validateServiceQueue(ctx context.Context, name, query string) 
 		return "", "", err
 	}
 	resolver := jql.DefaultResolver()
-	fields, err := s.Store.CustomFields(ctx)
+	fields, err := s.Store.CustomFieldsForWorkspace(ctx, workspaceID)
 	if err != nil {
 		return "", "", err
 	}
@@ -371,7 +371,7 @@ func (s *Service) CreateServiceQueue(ctx context.Context, actorID, workspaceID, 
 	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
 		return nil, err
 	}
-	name, query, err := s.validateServiceQueue(ctx, name, query)
+	name, query, err := s.validateServiceQueue(ctx, workspaceID, name, query)
 	if err != nil {
 		return nil, err
 	}
@@ -382,7 +382,7 @@ func (s *Service) UpdateServiceQueue(ctx context.Context, actorID, workspaceID, 
 	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
 		return err
 	}
-	name, query, err := s.validateServiceQueue(ctx, name, query)
+	name, query, err := s.validateServiceQueue(ctx, workspaceID, name, query)
 	if err != nil {
 		return err
 	}

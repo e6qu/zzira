@@ -2248,11 +2248,37 @@ Validation after Connect dynamic issue panels and webhooks:
   coverage to 433 of 1,207. The complete PostgreSQL Go suite, server and
   WebAssembly builds, vet, seven conformance checks and diff validation pass.
 
+Validation after Connect issue fields:
+
+- Migration 109 makes new administrator and app custom fields workspace-owned,
+  keeps legacy fields globally compatible, records app/module ownership and
+  static/dynamic/active state, and allocates collision-safe field IDs from a
+  shared sequence. Field discovery, project metadata, validation, dashboards,
+  search, service queues and SLA JQL now resolve only fields available in the
+  active workspace.
+- Standard descriptors and dynamic-module registration accept validated scalar
+  `jiraIssueFields`. Text, rich-text, number, date and date-time definitions
+  materialize on ZZIRA's canonical field model and immediately join issue
+  create, edit and view journeys. Jira field resources expose the stable ID and
+  documented `app-key__module-key`; create/edit/transition requests and JQL can
+  use either reference.
+- App uninstall hides owned fields without discarding issue values.
+  Reinstallation restores static and dynamic fields with the same IDs,
+  selective/delete-all dynamic removal hides only matching dynamic fields, and
+  descriptor upgrades can promote a dynamic field to static in place. Focused
+  PostgreSQL integration covers tenant isolation, project metadata, original
+  dynamic definitions, stable restoration, promotion and deletion. Select and
+  read-only field types, options/extractions and Connect-to-Forge field
+  migration tasks remain. The complete PostgreSQL Go suite, server and
+  WebAssembly builds, vet, seven conformance checks, diff validation and both
+  Chromium app journeys pass; the Connect journey installs a field, reviews it
+  in app administration, edits it on an issue and verifies the saved value.
+
 ## Current change
 
 1. Continue the app runtime with remaining Connect module families, dynamic
-   module types and webhook options, workflow/custom-field modules and upgrade
-   migrations.
+   module types and webhook options, select/read-only field options, workflow
+   modules and upgrade migrations.
 2. Continue Confluence with advanced whiteboard objects, direct manipulation,
    exports and the remaining rich content/editor surface.
 3. Continue Service Management with public Assets object/schema/import API
