@@ -367,6 +367,7 @@ func main() {
 	mux.HandleFunc("POST /projects/new", webHandler.NewProject)
 	mux.HandleFunc("GET /projects/{key}/settings", webHandler.ProjectSettings)
 	mux.HandleFunc("POST /projects/{key}/settings", webHandler.ProjectSettings)
+	mux.HandleFunc("GET /projects/{key}/settings/apps/{module}", webHandler.ProjectAdminAppModulePage)
 	mux.HandleFunc("GET /projects/{key}/apps/{module}", webHandler.ProjectAppModulePage)
 	mux.HandleFunc("GET /projects/{key}", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.ProjectOverview(w, r, r.PathValue("key"))

@@ -120,6 +120,13 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
       await route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main><h1>Remote project intelligence</h1><p>Project context received.</p></main></body></html>' });
       return;
     }
+    if (target.pathname.endsWith('/remote-project-admin')) {
+      expect(target.searchParams.get('project.key')).toBe('ZZ');
+      expect(target.searchParams.get('project.id')).toBeTruthy();
+      expect(target.searchParams.get('source')).toBe('settings');
+      await route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main><h1>Remote project controls</h1><p>Administrator project context received.</p></main></body></html>' });
+      return;
+    }
     if (target.pathname.endsWith('/remote-review')) {
       expect(target.searchParams.get('content.id')).toBeTruthy();
       expect(target.searchParams.get('content')).toBe(target.searchParams.get('content.id'));
@@ -147,6 +154,7 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
   const shortcutTitle = `Remote shortcut ${suffix}`;
   const contentTitle = `Incident runbook ${suffix}`;
   const projectPageTitle = `Project intelligence ${suffix}`;
+  const projectAdminTitle = `Project controls ${suffix}`;
   const descriptor = {
     key: `connect.journey.${suffix}`,
     name: appName,
@@ -161,6 +169,7 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
       webItems: [{ key: 'remote-shortcut', url: '/remote-shortcut', location: 'system.top.navigation.bar', name: { value: shortcutTitle } }],
       jiraIssueContents: [{ key: 'incident-runbook', name: { value: contentTitle }, tooltip: { value: 'Add incident runbook' }, icon: { url: '/runbook.svg' }, target: { type: 'web_panel', url: '/remote-content?issue={issue.key}' } }],
       jiraProjectPages: [{ key: 'project-intelligence', name: { value: projectPageTitle }, url: '/remote-project?selected={project.key}', iconUrl: '/project.svg', weight: 40 }],
+      jiraProjectAdminTabPanels: [{ key: 'project-controls', name: { value: projectAdminTitle }, url: '/remote-project-admin', location: 'projectgroup3', weight: 20, params: { source: 'settings' } }],
     },
   };
   await page.goto('/admin#admin-apps');
@@ -186,6 +195,11 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
   await page.locator('#workspace-navigation').getByRole('link', { name: projectPageTitle }).click();
   await expect(page.getByRole('heading', { name: projectPageTitle, level: 1 })).toBeVisible();
   await expect(page.frameLocator('iframe.app-module-frame').getByRole('heading', { name: 'Remote project intelligence' })).toBeVisible();
+  await accessible(page);
+  await page.goto('/projects/ZZ/settings');
+  await page.locator('#workspace-navigation').getByRole('link', { name: projectAdminTitle }).click();
+  await expect(page.getByRole('heading', { name: projectAdminTitle, level: 1 })).toBeVisible();
+  await expect(page.frameLocator('iframe.app-module-frame').getByRole('heading', { name: 'Remote project controls' })).toBeVisible();
   await accessible(page);
 
   await page.goto('/browse/ZZ-1');

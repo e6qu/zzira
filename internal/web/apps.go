@@ -55,6 +55,27 @@ func (h *Handler) ProjectAppModulePage(w http.ResponseWriter, r *http.Request) {
 	}, "project-app-module:"+module.ID, project.ID)
 }
 
+func (h *Handler) ProjectAdminAppModulePage(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok {
+		return
+	}
+	project, err := h.Store.ProjectByIDOrKey(r.Context(), workspaceID, r.PathValue("key"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	module, err := h.Store.ActiveAppModule(r.Context(), workspaceID, r.PathValue("module"))
+	if err != nil || module.Location != "jira.project.settings" {
+		http.NotFound(w, r)
+		return
+	}
+	contextValues := url.Values{"project.key": {project.Key}, "project.id": {project.ID}}
+	h.writeWorkspacePage(w, r, "page_project_admin_app_module", user, workspaceID, projectAppModulePageData{
+		Project: project, Module: module, FrameURL: remoteModuleFramePath(module, contextValues),
+	}, "project-admin-app-module:"+module.ID, project.ID)
+}
+
 func remoteModuleFramePath(module *models.AppModule, values url.Values) string {
 	if module == nil || module.RemoteURL == "" {
 		return ""

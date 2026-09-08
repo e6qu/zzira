@@ -7,6 +7,15 @@
 </main></div></body></html>
 {{end}}
 
+{{define "page_project_admin_app_module"}}
+<!doctype html><html lang="en"><head><title>{{.Data.Module.Title}} · Project settings · ZZIRA</title>{{template "head" .}}</head>
+<body class="page-project-settings"><a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}<div class="app-shell">{{template "workspace_nav" .}}<main class="page page-fluid" id="main-content" tabindex="-1">
+<nav class="issue-breadcrumbs" aria-label="Breadcrumb"><a href="/projects">Projects</a><span aria-hidden="true">/</span><a href="/projects/{{.Data.Project.Key}}">{{.Data.Project.Name}}</a><span aria-hidden="true">/</span><a href="/projects/{{.Data.Project.Key}}/settings">Project settings</a><span aria-hidden="true">/</span><span aria-current="page">{{.Data.Module.Title}}</span></nav>
+<header class="page-header"><div><span class="eyebrow">{{.Data.Module.AppName}} · Project administration</span><h1>{{.Data.Module.Title}}</h1><p>App settings for {{.Data.Project.Name}} ({{.Data.Project.Key}}).</p></div></header>
+<section class="surface-card app-module-content" aria-labelledby="project-admin-app-content-heading"><h2 class="sr-only" id="project-admin-app-content-heading">Module content</h2><iframe class="app-module-frame" src="{{.Data.FrameURL}}" title="{{.Data.Module.Title}}" sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts"></iframe></section>
+</main></div><div id="modal-root"></div><div id="sync-banner" class="sync-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div></body></html>
+{{end}}
+
 {{define "page_project_app_module"}}
 <!doctype html><html lang="en"><head><title>{{.Data.Module.Title}} · {{.Data.Project.Name}} · ZZIRA</title>{{template "head" .}}</head>
 <body class="page-app-module"><a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}<div class="app-shell">{{template "workspace_nav" .}}<main class="page page-fluid" id="main-content" tabindex="-1">

@@ -3,6 +3,7 @@ package apps
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"sort"
 	"strings"
 
@@ -70,6 +71,16 @@ type connectProjectPageWire struct {
 	Conditions []json.RawMessage `json:"conditions"`
 }
 
+type connectProjectAdminPageWire struct {
+	Key        string            `json:"key"`
+	URL        string            `json:"url"`
+	Location   string            `json:"location"`
+	Name       connectNameWire   `json:"name"`
+	Weight     int               `json:"weight"`
+	Params     map[string]string `json:"params"`
+	Conditions []json.RawMessage `json:"conditions"`
+}
+
 type connectWebhookWire struct {
 	Key          string          `json:"key"`
 	Event        string          `json:"event"`
@@ -118,12 +129,24 @@ func parseConnectDescriptor(raw []byte) (models.AppDescriptor, error) {
 		wire.Scopes = append(wire.Scopes, scope)
 	}
 	sort.Strings(wire.Scopes)
-	supported := map[string]bool{"generalPages": true, "jiraProjectPages": true, "webPanels": true, "contentBylineItems": true, "webhooks": true, "jiraIssueFields": true, "webItems": true, "jiraIssueContents": true}
+	supported := map[string]bool{"generalPages": true, "jiraProjectPages": true, "jiraProjectAdminTabPanels": true, "webPanels": true, "contentBylineItems": true, "webhooks": true, "jiraIssueFields": true, "webItems": true, "jiraIssueContents": true}
 	for moduleType, payload := range connect.Modules {
 		if !supported[moduleType] {
 			return models.AppDescriptor{}, fmt.Errorf("Connect module %q is not supported yet", moduleType)
 		}
 		switch moduleType {
+		case "jiraProjectAdminTabPanels":
+			var modules []connectProjectAdminPageWire
+			if err := json.Unmarshal(payload, &modules); err != nil {
+				return models.AppDescriptor{}, fmt.Errorf("invalid Connect jiraProjectAdminTabPanels: %w", err)
+			}
+			for _, module := range modules {
+				translated, err := translateConnectProjectAdminPage(module)
+				if err != nil {
+					return models.AppDescriptor{}, err
+				}
+				wire.Modules = append(wire.Modules, translated)
+			}
 		case "jiraProjectPages":
 			var modules []connectProjectPageWire
 			if err := json.Unmarshal(payload, &modules); err != nil {
@@ -208,6 +231,33 @@ func parseConnectDescriptor(raw []byte) (models.AppDescriptor, error) {
 		wire.Scopes = append(wire.Scopes, scope)
 	}
 	return validateDescriptorWire(wire)
+}
+
+func translateConnectProjectAdminPage(module connectProjectAdminPageWire) (moduleWire, error) {
+	module.Key = strings.TrimSpace(module.Key)
+	module.URL = strings.TrimSpace(module.URL)
+	module.Location = strings.TrimSpace(module.Location)
+	module.Name.Value = strings.TrimSpace(module.Name.Value)
+	group := map[string]int{"projectgroup1": 1000, "projectgroup2": 2000, "projectgroup3": 3000, "projectgroup4": 4000}[module.Location]
+	if !moduleKeyPattern.MatchString(module.Key) || module.Name.Value == "" || len(module.Name.Value) > 1500 || !validAppCallbackPath(module.URL) || group == 0 {
+		return moduleWire{}, fmt.Errorf("Connect project admin tab needs a valid key, name, relative URL, and projectgroup1 through projectgroup4 location")
+	}
+	if len(module.Conditions) > 0 {
+		return moduleWire{}, fmt.Errorf("Connect project admin tab %q uses unsupported conditions", module.Key)
+	}
+	if len(module.Params) > 0 {
+		parsed, _ := url.Parse(module.URL)
+		query := parsed.Query()
+		for key, value := range module.Params {
+			if strings.TrimSpace(key) == "" {
+				return moduleWire{}, fmt.Errorf("Connect project admin tab %q has an empty parameter key", module.Key)
+			}
+			query.Set(key, value)
+		}
+		parsed.RawQuery = query.Encode()
+		module.URL = parsed.String()
+	}
+	return moduleWire{Key: module.Key, Type: "jira:projectAdminPage", Location: "jira.project.settings", Title: module.Name.Value, URL: module.URL, Position: group + module.Weight}, nil
 }
 
 func translateConnectProjectPage(module connectProjectPageWire) (moduleWire, error) {

@@ -2328,13 +2328,29 @@ Validation after Connect project pages:
   inventory/coverage checks and diff validation pass. The pinned inventory
   remains 433 assessed operations out of 1,207.
 
+Validation after Connect project administration tabs:
+
+- Standard descriptors accept `jiraProjectAdminTabPanels`, validate the four
+  documented project groups, combine group and weight ordering, and append
+  static descriptor parameters to the signed remote URL. Unsupported groups
+  and conditions fail explicitly.
+- Only administrators see or can open app tabs in project settings. The remote
+  frame receives signed `project.key` and `project.id` context, uses the common
+  sandbox, and retains the selected project in navigation.
+- Parser and render tests pass. The Chromium Connect journey verifies the
+  administrator navigation, static parameter, project context, signed remote
+  content and accessibility. The complete PostgreSQL Go suite, native
+  server/load-test and WebAssembly builds, vet, seven conformance tests,
+  generated inventory/coverage checks and diff validation pass. The pinned
+  inventory remains 433 assessed operations out of 1,207.
+
 ## Current change
 
 1. Continue the app runtime with remaining Connect module families, dynamic
    module types and webhook options, issue-content presence conditions/native
-   rendering, project-page conditions/icons, additional web-item locations and
-   conditions, select/read-only field options, workflow modules and upgrade
-   migrations.
+   rendering, project-page icons and page/admin conditions, additional web-item
+   locations and conditions, select/read-only field options, workflow modules
+   and upgrade migrations.
 2. Continue Confluence with advanced whiteboard objects, direct manipulation,
    exports and the remaining rich content/editor surface.
 3. Continue Service Management with public Assets object/schema/import API

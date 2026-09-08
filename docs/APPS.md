@@ -60,6 +60,9 @@ shape:
     "jiraProjectPages": [
       {"key": "project-health", "url": "/project-health?project={project.key}", "iconUrl": "/project-health.svg", "weight": 40, "name": {"value": "Project health"}}
     ],
+    "jiraProjectAdminTabPanels": [
+      {"key": "project-controls", "url": "/project-controls", "location": "projectgroup3", "weight": 20, "params": {"source": "settings"}, "name": {"value": "Project controls"}}
+    ],
     "webPanels": [
       {"key": "risk", "url": "/risk?issue={issue.key}", "location": "atl.jira.view.issue.right.context", "name": {"value": "Release risk"}}
     ],
@@ -84,7 +87,7 @@ shape:
 
 Connect `READ` and write-capable scopes translate into the corresponding Jira
 and Confluence grants. Supported Connect module families are `generalPages`,
-`jiraProjectPages`, Jira issue-view `webPanels`, Confluence
+`jiraProjectPages`, `jiraProjectAdminTabPanels`, Jira issue-view `webPanels`, Confluence
 `contentBylineItems`, scalar
 `jiraIssueFields`, quick-add `jiraIssueContents`, Jira/Confluence navigation
 `webItems`, and `webhooks`.
@@ -140,6 +143,13 @@ in a project-scoped, sandboxed signed iframe. The remote request expands and
 supplies both `project.key` and `project.id`; changing projects therefore opens
 the same module with the selected project context. Project-page conditions and
 rendering the descriptor-provided icon remain explicit gaps.
+
+Connect project administration tabs validate the four standard
+`projectgroup1` through `projectgroup4` locations, preserve group and weight
+ordering, and append descriptor `params` to the signed remote URL. They appear
+only in project settings for administrators and receive the same verified
+`project.key` and `project.id` context as project pages. Conditions remain an
+explicit gap and fail descriptor installation instead of being ignored.
 
 Supported scopes are `read:jira-work`, `write:jira-work`,
 `read:confluence-content`, `write:confluence-content`, `read:app-storage`,
@@ -226,6 +236,6 @@ reinstallation.
 
 The runtime is a ZZIRA execution contract for remotely hosted apps. Remaining
 Connect module families, the remaining dynamic module types and webhook
-options, project-page conditions and icons, workflow modules,
+options, project-page icons and page/admin conditions, workflow modules,
 select/read-only issue fields and option APIs, descriptor-driven upgrade
 migrations, and Atlassian-hosted Forge compute remain separate future slices.
