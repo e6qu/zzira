@@ -163,9 +163,9 @@ Connect reports validate their key, name, description, relative URL, optional
 relative thumbnail and the `agile`, `issue_analysis`, `forecast_management` or
 `other` category. They join the selected project's report directory beside the
 built-in DORA report. Opening an app report uses the common sandboxed frame and
-expands, supplies and signs both `project.key` and `project.id`. Thumbnail
-rendering remains an explicit presentation gap; its descriptor value is
-preserved with the report metadata.
+expands, supplies and signs both `project.key` and `project.id`. The report
+directory renders the descriptor thumbnail through an authenticated endpoint
+that signs the validated app-relative image request.
 
 Connect dashboard items validate their required key, name, description,
 relative URL and thumbnail URL. They join the custom-dashboard gadget catalog
@@ -173,8 +173,10 @@ with their descriptor metadata and use the existing add, position, copy,
 property and removal lifecycle. Remote items render in the common sandboxed
 frame with expanded and signed `dashboard.id`, `dashboardItem.id`,
 `dashboardItem.key` and `dashboardItem.viewType` context. Configuration
-callbacks, refresh opt-in, conditions and thumbnail presentation remain
-explicit gaps; descriptors that request unsupported behavior fail installation.
+callbacks, refresh opt-in and conditions remain explicit gaps; descriptors that
+request unsupported behavior fail installation. The gadget catalog renders the
+descriptor thumbnail through the same authenticated signed-image endpoint used
+by reports.
 
 Supported scopes are `read:jira-work`, `write:jira-work`,
 `read:confluence-content`, `write:confluence-content`, `read:app-storage`,
@@ -261,8 +263,8 @@ reinstallation.
 
 The runtime is a ZZIRA execution contract for remotely hosted apps. Remaining
 Connect module families, the remaining dynamic module types and webhook
-options, project-page icons and page/admin conditions, report and dashboard-item
-thumbnail presentation, dashboard-item configuration/refresh/conditions,
-workflow modules, select/read-only issue fields and option APIs,
+options, project-page icons and page/admin conditions, dashboard-item
+configuration/refresh/conditions, workflow modules, select/read-only issue
+fields and option APIs,
 descriptor-driven upgrade migrations, and Atlassian-hosted Forge compute remain
 separate future slices.

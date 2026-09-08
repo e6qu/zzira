@@ -1,6 +1,7 @@
 package web
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/url"
 	"strings"
@@ -113,6 +114,62 @@ func (h *Handler) AppModuleFrame(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, target, http.StatusFound)
+}
+
+// AppModuleThumbnail resolves a descriptor-owned thumbnail through the same
+// authenticated, signed gateway as remote module frames. The route fixes the
+// source to validated installation metadata instead of accepting a caller URL.
+func (h *Handler) AppModuleThumbnail(w http.ResponseWriter, r *http.Request) {
+	_, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	module, err := h.Store.ActiveAppModule(r.Context(), workspaceID, r.PathValue("module"))
+	if err != nil || (module.Type != "jira:report" && module.Type != "jira:dashboardGadget") {
+		http.NotFound(w, r)
+		return
+	}
+	thumbnail := appModuleThumbnailURL(*module)
+	if thumbnail == "" {
+		http.NotFound(w, r)
+		return
+	}
+	if !strings.HasPrefix(thumbnail, "/") {
+		thumbnail = "/" + thumbnail
+	}
+	if h.ProviderSecrets == nil {
+		http.Error(w, "App credential encryption is unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	secret, err := h.ProviderSecrets.Open(module.SecretCiphertext, workspaceID+"/"+module.AppKey)
+	if err != nil {
+		http.Error(w, "App credentials are unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	target, err := appRuntime.ConnectModuleURL(module.BaseURL, thumbnail, h.BaseURL, workspaceID, secret, "zzira-"+module.ID+"-thumbnail", nil, time.Now().UTC())
+	if err != nil {
+		http.Error(w, "Remote app thumbnail is invalid", http.StatusBadGateway)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	http.Redirect(w, r, target, http.StatusFound)
+}
+
+func appModuleThumbnailURL(module models.AppModule) string {
+	var metadata struct {
+		ThumbnailURL string `json:"thumbnailUrl"`
+	}
+	if json.Unmarshal([]byte(module.Body), &metadata) != nil {
+		return ""
+	}
+	return strings.TrimSpace(metadata.ThumbnailURL)
+}
+
+func appModuleThumbnailPath(module models.AppModule) string {
+	if appModuleThumbnailURL(module) == "" {
+		return ""
+	}
+	return "/app-modules/" + module.ID + "/thumbnail"
 }
 
 func appModuleContextValues(r *http.Request) url.Values {

@@ -134,7 +134,7 @@ func (h *Handler) CustomDashboard(w http.ResponseWriter, r *http.Request) {
 		if json.Unmarshal([]byte(module.Body), &metadata) == nil && metadata.Description != "" {
 			description = metadata.Description
 		}
-		data.Catalog = append(data.Catalog, models.GadgetDefinition{ModuleKey: "app:" + module.ID, Title: module.Title, Description: description})
+		data.Catalog = append(data.Catalog, models.GadgetDefinition{ModuleKey: "app:" + module.ID, Title: module.Title, Description: description, Thumbnail: appModuleThumbnailPath(module)})
 	}
 	status := 200
 	if r.Method == http.MethodPost {

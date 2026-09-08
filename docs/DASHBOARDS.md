@@ -49,9 +49,11 @@ while module removal or uninstall removes the corresponding placements.
 Standard Connect `jiraDashboardItems` use the same lifecycle and retain their
 descriptor description in the catalog. A remote item opens in a sandboxed,
 signed iframe with `dashboard.id`, `dashboardItem.id`, `dashboardItem.key` and
-`dashboardItem.viewType` context. Configuration callbacks, refresh opt-in,
-conditions and descriptor-thumbnail presentation are not implemented yet, so
-descriptors that request behavioral options are rejected explicitly.
+`dashboardItem.viewType` context. The catalog renders its descriptor thumbnail
+through an authenticated endpoint that signs the validated app-relative image
+request. Configuration callbacks, refresh opt-in and conditions are not
+implemented yet, so descriptors that request behavioral options are rejected
+explicitly.
 
 The browser supports Jira-style one, two and three-column layouts (`A`, `AA`,
 `AB`, `BA`, `AAA`), gadget reordering, eight accent colors, favourites, manual

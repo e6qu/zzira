@@ -52,6 +52,9 @@ func TestSecurityHeaders(t *testing.T) {
 			t.Errorf("%s is missing", header)
 		}
 	}
+	if csp := w.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "img-src 'self' data: https:") {
+		t.Fatalf("Content-Security-Policy = %q, want HTTPS app thumbnails", csp)
+	}
 }
 
 // TestSecurityHeadersAllowsTheOIDCProviderInFormAction covers RP-initiated

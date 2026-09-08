@@ -81,7 +81,11 @@ func decodeAppReport(module models.AppModule) appReportView {
 		Thumbnail   string `json:"thumbnailUrl"`
 	}
 	_ = json.Unmarshal([]byte(module.Body), &meta)
-	return appReportView{Module: module, Description: meta.Description, Category: meta.Category, Thumbnail: meta.Thumbnail}
+	thumbnail := ""
+	if meta.Thumbnail != "" {
+		thumbnail = appModuleThumbnailPath(module)
+	}
+	return appReportView{Module: module, Description: meta.Description, Category: meta.Category, Thumbnail: thumbnail}
 }
 
 // DORAReport renders the permission-filtered project delivery metrics journey.

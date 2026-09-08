@@ -2382,14 +2382,31 @@ Validation after Connect Jira dashboard items:
   validation pass. The pinned inventory remains 433 assessed operations out of
   1,207.
 
+Validation after Connect report and dashboard thumbnails:
+
+- Report and dashboard-item descriptor thumbnails now render in their report
+  cards and gadget-catalog entries with bounded responsive presentation and
+  decorative alternative text. Both leading-slash and dashboard-item relative
+  thumbnail paths retain their documented behavior.
+- An authenticated same-origin route loads only active report or dashboard
+  module metadata, fixes the image source to the validated descriptor-relative
+  path, decrypts the installation secret server-side and redirects to a
+  short-lived Connect JWT-signed HTTPS request. The CSP admits HTTPS images and
+  each image suppresses referrer data.
+- Focused web, render, authentication and server tests pass. The Chromium
+  Connect journey verifies signed report and dashboard thumbnail requests,
+  visible presentation and accessibility. The complete PostgreSQL Go suite,
+  native server/load-test and WebAssembly builds, vet, seven conformance tests,
+  generated inventory/coverage checks and diff validation pass. The pinned
+  inventory remains 433 assessed operations out of 1,207.
+
 ## Current change
 
 1. Continue the app runtime with remaining Connect module families, dynamic
    module types and webhook options, issue-content presence conditions/native
    rendering, project-page icons and page/admin conditions, additional web-item
-   locations and conditions, report/dashboard-item thumbnail presentation,
-   dashboard-item configuration/refresh/conditions, select/read-only field
-   options, workflow modules and upgrade migrations.
+   locations and conditions, dashboard-item configuration/refresh/conditions,
+   select/read-only field options, workflow modules and upgrade migrations.
 2. Continue Confluence with advanced whiteboard objects, direct manipulation,
    exports and the remaining rich content/editor surface.
 3. Continue Service Management with public Assets object/schema/import API

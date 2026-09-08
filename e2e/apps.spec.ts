@@ -102,6 +102,10 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
     expect(target.searchParams.get('jwt')).toBeTruthy();
     expect(target.searchParams.get('xdm_e')).toBe('http://localhost:8080');
     expect(target.searchParams.get('xdm_c')).toMatch(/^zzira-/);
+    if (target.pathname.endsWith('/report.svg') || target.pathname.endsWith('/dashboard.svg')) {
+      await route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 60"><rect width="80" height="60" rx="8" fill="#1868db"/><path d="M18 42V30m15 12V18m15 24V25m15 17V12" stroke="white" stroke-width="5"/></svg>' });
+      return;
+    }
     if (target.pathname.endsWith('/remote-panel')) {
       expect(target.searchParams.get('issue.key')).toBe('ZZ-1');
       expect(target.searchParams.get('selected')).toBe('ZZ-1');
@@ -223,6 +227,7 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
   await accessible(page);
   await page.goto('/projects/ZZ/reports');
   await expect(page.getByRole('heading', { name: reportTitle, level: 2 })).toBeVisible();
+  await expect(page.locator('.app-report-card img.app-module-thumbnail')).toBeVisible();
   await page.getByRole('link', { name: `Open ${reportTitle}` }).click();
   await expect(page.getByRole('heading', { name: reportTitle, level: 1 })).toBeVisible();
   await expect(page.frameLocator('iframe.app-module-frame').getByRole('heading', { name: 'Remote delivery risk' })).toBeVisible();
@@ -231,6 +236,7 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
   await page.getByLabel('Dashboard name', { exact: true }).fill(`Connect dashboard ${suffix}`);
   await page.getByRole('button', { name: 'Create dashboard', exact: true }).click();
   await expect(page.getByText('Release health from the Connect app')).toBeVisible();
+  await expect(page.locator('.gadget-catalog img.app-module-thumbnail')).toBeVisible();
   await page.getByRole('button', { name: `Add ${dashboardItemTitle}`, exact: true }).click();
   await expect(page.locator('.app-dashboard-module').frameLocator('iframe').getByRole('heading', { name: 'Remote release health' })).toBeVisible();
   await accessible(page);
