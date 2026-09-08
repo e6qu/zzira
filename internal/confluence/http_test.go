@@ -190,6 +190,27 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	if permissions := call(actor, "GET", "/spaces/"+private+"/permissions", nil, 200); !strings.Contains(permissions.Body.String(), `"type":"user"`) || !strings.Contains(permissions.Body.String(), `"id":"`+actor+`"`) {
 		t.Fatal(permissions.Body.String())
 	}
+	if roles := call(member, "GET", "/space-roles?role-type=SYSTEM&limit=2", nil, 200); !strings.Contains(roles.Body.String(), `"id":"system-member"`) || !strings.Contains(roles.Header().Get("Link"), "cursor=") {
+		t.Fatal(roles.Body.String(), roles.Header())
+	}
+	call(member, "POST", "/space-roles", map[string]any{"name": "Release editors", "description": "Manage release pages", "spacePermissions": []string{"read/space", "update/page"}}, 403)
+	customRoleResponse := call(actor, "POST", "/space-roles", map[string]any{"name": "Release editors", "description": "Manage release pages", "spacePermissions": []string{"read/space", "update/page"}}, 201)
+	var customRole models.WikiSpaceRole
+	if err := json.Unmarshal(customRoleResponse.Body.Bytes(), &customRole); err != nil || customRole.Type != "CUSTOM" {
+		t.Fatalf("unexpected custom role: %+v %v", customRole, err)
+	}
+	call(member, "GET", "/space-roles/"+customRole.ID, nil, 200)
+	call(actor, "PUT", "/space-roles/system-member", map[string]any{"name": "Changed", "description": "No", "spacePermissions": []string{"read/space"}}, 400)
+	call(actor, "PUT", "/space-roles/"+customRole.ID, map[string]any{"name": "Release governors", "description": "Govern release pages", "spacePermissions": []string{"read/space", "create/page", "update/page"}}, 200)
+	assignmentBody := []map[string]any{{"roleId": customRole.ID, "principal": map[string]string{"principalType": "ACCESS_CLASS", "principalId": "authenticated-users"}}}
+	call(member, "POST", "/spaces/"+public+"/role-assignments", assignmentBody, 403)
+	call(actor, "POST", "/spaces/"+public+"/role-assignments", assignmentBody, 204)
+	if assignments := call(member, "GET", "/spaces/"+public+"/role-assignments?role-id="+customRole.ID+"&principal-type=ACCESS_CLASS&principal-id=authenticated-users", nil, 200); !strings.Contains(assignments.Body.String(), `"roleId":"`+customRole.ID+`"`) {
+		t.Fatal(assignments.Body.String())
+	}
+	if roles := call(member, "GET", "/space-roles?space-id="+public+"&principal-type=ACCESS_CLASS&principal-id=authenticated-users", nil, 200); !strings.Contains(roles.Body.String(), "Release governors") {
+		t.Fatal(roles.Body.String())
+	}
 	call(actor, "POST", "/spaces", map[string]any{"key": "UNSUPPORTED", "name": "Unsupported", "roleAssignments": []map[string]any{{"roleId": "1"}}}, 400)
 	if _, err := h.Commands.AddWikiSpaceLabels(ctx, ws, actor, public, []models.WikiLabel{{Prefix: "team", Name: "core-space"}}); err != nil {
 		t.Fatal(err)
@@ -201,10 +222,12 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	call(member, "GET", "/spaces?sort=unknown", nil, 400)
 	call(member, "GET", "/spaces?status=archived", nil, 400)
 	call(member, "GET", "/spaces?favorited-by="+member, nil, 400)
-	expandedSpace := call(actor, "GET", "/spaces/"+public+"?include-icon=true&include-operations=true&include-labels=true&include-permissions=true", nil, 200)
-	if !strings.Contains(expandedSpace.Body.String(), `"operation":"update"`) || !strings.Contains(expandedSpace.Body.String(), `"name":"core-space"`) || !strings.Contains(expandedSpace.Body.String(), `"icon"`) || !strings.Contains(expandedSpace.Body.String(), `"id":"workspace-admin"`) {
+	expandedSpace := call(actor, "GET", "/spaces/"+public+"?include-icon=true&include-operations=true&include-labels=true&include-permissions=true&include-role-assignments=true", nil, 200)
+	if !strings.Contains(expandedSpace.Body.String(), `"operation":"update"`) || !strings.Contains(expandedSpace.Body.String(), `"name":"core-space"`) || !strings.Contains(expandedSpace.Body.String(), `"icon"`) || !strings.Contains(expandedSpace.Body.String(), `"id":"workspace-admin"`) || !strings.Contains(expandedSpace.Body.String(), `"roleId":"`+customRole.ID+`"`) {
 		t.Fatal(expandedSpace.Body.String())
 	}
+	call(actor, "DELETE", "/space-roles/"+customRole.ID, nil, 204)
+	call(actor, "GET", "/space-roles/"+customRole.ID, nil, 404)
 	call(member, "POST", "/spaces/"+public+"/properties", map[string]any{"key": "app-config", "value": map[string]any{"mode": "read-only"}}, 403)
 	spacePropertyResponse := call(actor, "POST", "/spaces/"+public+"/properties", map[string]any{"key": "app-config", "value": map[string]any{"mode": "active"}}, 200)
 	var spaceProperty models.WikiContentProperty

@@ -19,6 +19,26 @@ type WikiSpace struct {
 	DefaultClassificationLevel string `json:"-"`
 }
 
+type WikiSpaceRole struct {
+	ID               string   `json:"id"`
+	WorkspaceID      string   `json:"-"`
+	Type             string   `json:"type"`
+	Name             string   `json:"name"`
+	Description      string   `json:"description"`
+	SpacePermissions []string `json:"spacePermissions"`
+}
+
+type WikiSpaceRoleAssignment struct {
+	SpaceID       string `json:"-"`
+	RoleID        string `json:"roleId"`
+	PrincipalType string `json:"-"`
+	PrincipalID   string `json:"-"`
+}
+
+func (a WikiSpaceRoleAssignment) Principal() map[string]string {
+	return map[string]string{"principalType": a.PrincipalType, "principalId": a.PrincipalID}
+}
+
 func (s WikiSpace) DefaultClassificationName() string {
 	return wikiClassificationName(s.DefaultClassificationLevel)
 }

@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 420,
+  "assessedTotal": 427,
   "counts": {
     "delivered": 0,
-    "partial": 413,
+    "partial": 420,
     "missing": 7,
-    "unassessed": 787
+    "unassessed": 780
   },
   "countsByFamily": {
     "automation": {
@@ -18,9 +18,9 @@
     },
     "confluence": {
       "delivered": 0,
-      "partial": 206,
+      "partial": 213,
       "missing": 0,
-      "unassessed": 142
+      "unassessed": 135
     },
     "jira-platform": {
       "delivered": 0,
@@ -11290,41 +11290,75 @@
       "operationId": "confluence-v2:GET:/wiki/api/v2/space-roles",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_roles.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_space_roles.go",
+        "migrations/096_wiki_space_roles.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Lists built-in and custom roles with type, space and paired principal filters plus cursor pagination; tenant-wide principal filtering and Atlassian-managed role catalogs remain."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/space-roles",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_roles.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_space_roles.go",
+        "migrations/096_wiki_space_roles.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Workspace administrators create uniquely named custom roles from validated supported permission IDs through REST or the space manager UI; advanced permission dependencies remain."
     },
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/space-roles/{id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_roles.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_space_roles.go",
+        "migrations/096_wiki_space_roles.sql"
+      ],
+      "notes": "Workspace administrators delete custom roles and their assignments atomically while protected system roles reject deletion; reassignment workflows remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/space-roles/{id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_roles.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_space_roles.go",
+        "migrations/096_wiki_space_roles.sql"
+      ],
+      "notes": "Returns an exact built-in or workspace custom role to an active member; Atlassian-managed role metadata remains."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/space-roles/{id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_roles.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_space_roles.go",
+        "migrations/096_wiki_space_roles.sql"
+      ],
+      "notes": "Workspace administrators update custom role names, descriptions and validated permission bundles while system roles remain immutable; anonymous and guest reassignment migrations remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/spaces",
@@ -11529,17 +11563,35 @@
       "operationId": "confluence-v2:GET:/wiki/api/v2/spaces/{id}/role-assignments",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_roles.go",
+        "internal/confluence/http.go",
+        "internal/confluence/http_test.go",
+        "internal/store/wiki_space_roles.go",
+        "migrations/096_wiki_space_roles.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Lists explicit or effective default user/access-class assignments in a visible space with role/type/principal filters and cursor pagination; assignment-driven runtime access enforcement and group expansion remain."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/spaces/{id}/role-assignments",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_roles.go",
+        "internal/confluence/http_test.go",
+        "internal/commands/wiki.go",
+        "internal/store/wiki_space_roles.go",
+        "migrations/096_wiki_space_roles.sql",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml",
+        "e2e/wiki.spec.ts"
+      ],
+      "notes": "Workspace administrators atomically replace a space's validated user, group or supported access-class role assignments through REST or the manager UI; assignment-driven runtime access enforcement remains."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/spaces/{space-id}/properties",

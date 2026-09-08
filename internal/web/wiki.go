@@ -44,6 +44,8 @@ type wikiData struct {
 	PageLiked                             bool
 	PageProperties                        []models.WikiContentProperty
 	SpaceProperties                       []models.WikiContentProperty
+	SpaceRoles                            []*models.WikiSpaceRole
+	SpaceRoleAssignments                  []models.WikiSpaceRoleAssignment
 	Attachments                           []*models.WikiAttachment
 	AttachmentComments                    map[string][]wikiCommentNode
 	Restrictions                          []models.WikiPageRestriction
@@ -315,7 +317,17 @@ func (h *Handler) WikiSpacePage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load space properties.", 500)
 		return
 	}
-	h.writeWorkspacePage(w, r, "page_wiki_space", user, ws, wikiData{Space: space, Pages: filtered, BlogPosts: filteredBlogs, Folders: folders, SmartLinks: smartLinks, Databases: databases, Whiteboards: whiteboards, Tree: wikiPageTree(filtered), Query: query, Status: status, WatchingSpace: watching, CanAdmin: admin, SpaceProperties: properties}, "wiki", "")
+	roles, err := h.Store.WikiSpaceRoles(r.Context(), ws, user.ID)
+	if err != nil {
+		http.Error(w, "Could not load space roles.", 500)
+		return
+	}
+	assignments, err := h.Store.WikiSpaceRoleAssignments(r.Context(), ws, user.ID, space.ID)
+	if err != nil {
+		http.Error(w, "Could not load space role assignments.", 500)
+		return
+	}
+	h.writeWorkspacePage(w, r, "page_wiki_space", user, ws, wikiData{Space: space, Pages: filtered, BlogPosts: filteredBlogs, Folders: folders, SmartLinks: smartLinks, Databases: databases, Whiteboards: whiteboards, Tree: wikiPageTree(filtered), Query: query, Status: status, WatchingSpace: watching, CanAdmin: admin, SpaceProperties: properties, SpaceRoles: roles, SpaceRoleAssignments: assignments}, "wiki", "")
 }
 
 func (h *Handler) WikiSpaceClassification(w http.ResponseWriter, r *http.Request) {
@@ -360,6 +372,33 @@ func (h *Handler) WikiSpaceProperty(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	redirectLocal(w, r, "/wiki/spaces/"+spaceID+"#wiki-space-properties")
+}
+
+func (h *Handler) WikiSpaceRoleCreate(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	if _, err := h.Commands.CreateWikiSpaceRole(r.Context(), ws, user.ID, r.PostFormValue("name"), r.PostFormValue("description"), r.PostForm["permissions"]); err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	redirectLocal(w, r, "/wiki/spaces/"+r.PathValue("space")+"#wiki-space-roles")
+}
+
+func (h *Handler) WikiSpaceRoleAssignments(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	assignment := models.WikiSpaceRoleAssignment{RoleID: r.PostFormValue("roleId"), PrincipalType: "ACCESS_CLASS", PrincipalID: r.PostFormValue("principalId")}
+	if err := h.Commands.SetWikiSpaceRoleAssignments(r.Context(), ws, user.ID, r.PathValue("space"), []models.WikiSpaceRoleAssignment{assignment}); err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	redirectLocal(w, r, "/wiki/spaces/"+r.PathValue("space")+"#wiki-space-roles")
 }
 
 func (h *Handler) WikiBlogPostNew(w http.ResponseWriter, r *http.Request) {

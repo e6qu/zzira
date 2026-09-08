@@ -116,6 +116,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	parts := strings.Split(strings.Trim(strings.TrimPrefix(r.URL.Path, "/wiki/api/v2/"), "/"), "/")
 	switch {
+	case len(parts) == 1 && parts[0] == "space-roles" && r.Method == "GET":
+		h.spaceRoles(w, r, ws, actor)
+	case len(parts) == 1 && parts[0] == "space-roles" && r.Method == "POST":
+		h.createSpaceRole(w, r, ws, actor)
+	case len(parts) == 2 && parts[0] == "space-roles" && r.Method == "GET":
+		h.spaceRole(w, r, ws, actor, parts[1])
+	case len(parts) == 2 && parts[0] == "space-roles" && r.Method == "PUT":
+		h.updateSpaceRole(w, r, ws, actor, parts[1])
+	case len(parts) == 2 && parts[0] == "space-roles" && r.Method == "DELETE":
+		h.deleteSpaceRole(w, r, ws, actor, parts[1])
 	case len(parts) == 1 && parts[0] == "classification-levels" && r.Method == "GET":
 		h.classificationLevels(w, r)
 	case len(parts) == 1 && parts[0] == "spaces" && r.Method == "GET":
@@ -138,12 +148,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			flags[key] = value
-		}
-		for _, key := range []string{"include-role-assignments"} {
-			if flags[key] {
-				failure(w, 400, key+" is not yet supported for spaces.")
-				return
-			}
 		}
 		space, err := h.Store.WikiSpace(r.Context(), ws, actor, parts[1])
 		if err != nil {
@@ -186,11 +190,27 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if flags["include-permissions"] {
 			bean["permissions"] = map[string]any{"results": spacePermissionValues(space), "meta": map[string]any{"hasMore": false}, "_links": map[string]any{}}
 		}
+		if flags["include-role-assignments"] {
+			assignments, assignmentErr := h.Store.WikiSpaceRoleAssignments(r.Context(), ws, actor, space.ID)
+			if assignmentErr != nil {
+				writeError(w, assignmentErr)
+				return
+			}
+			values := make([]any, len(assignments))
+			for i := range assignments {
+				values[i] = roleAssignmentBean(assignments[i])
+			}
+			bean["roleAssignments"] = map[string]any{"results": values, "meta": map[string]any{"hasMore": false}, "_links": map[string]any{}}
+		}
 		respond(w, 200, bean)
 	case len(parts) == 3 && parts[0] == "spaces" && parts[2] == "operations" && r.Method == "GET":
 		h.spaceOperations(w, r, ws, actor, parts[1])
 	case len(parts) == 3 && parts[0] == "spaces" && parts[2] == "permissions" && r.Method == "GET":
 		h.spacePermissions(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "spaces" && parts[2] == "role-assignments" && r.Method == "GET":
+		h.spaceRoleAssignments(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "spaces" && parts[2] == "role-assignments" && r.Method == "POST":
+		h.setSpaceRoleAssignments(w, r, ws, actor, parts[1])
 	case len(parts) == 4 && parts[0] == "spaces" && parts[2] == "classification-level" && parts[3] == "default" && r.Method == "GET":
 		h.spaceDefaultClassification(w, r, ws, actor, parts[1])
 	case len(parts) == 4 && parts[0] == "spaces" && parts[2] == "classification-level" && parts[3] == "default" && r.Method == "PUT":

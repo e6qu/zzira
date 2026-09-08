@@ -1859,10 +1859,26 @@ Validation after Confluence space permission discovery:
 - Exact reviewed API coverage is 420 of 1,207 operations: 413 partial, 7
   missing, and 787 unassessed. Confluence coverage is 206 of 348 reviewed.
 
+Validation after Confluence space roles and assignments:
+
+- Seven pinned v2 operations now cover paged built-in/custom role discovery,
+  administrator custom-role create/update/delete, exact reads, per-space
+  assignment filtering and atomic replacement.
+- Custom roles validate unique names and supported permission IDs. System roles
+  are immutable. Assignments support user, group and supported access-class
+  principals and exact-space expansion; deletion also clears role assignments.
+- The space manager UI lists permission bundles and principals and provides
+  accessible custom-role and access-class assignment forms.
+- PostgreSQL integration covers member mutation denial, system-role protection,
+  custom CRUD, filters, assignment replacement, exact expansion and cleanup.
+  Assignment-driven runtime access enforcement remains explicit work.
+- Exact reviewed API coverage is 427 of 1,207 operations: 420 partial, 7
+  missing, and 780 unassessed. Confluence coverage is 213 of 348 reviewed.
+
 ## Current change
 
-1. Resume Confluence space roles, role assignments and other administration
-   operations.
+1. Connect Confluence role assignments to runtime content authorization, then
+   resume remaining space-permission transition operations.
 2. Continue Service Management with dependency mapping, major-incident
    communications, change-conflict calendars and escalation policy.
 3. Expand the app runtime from registered custom-content discovery into signed

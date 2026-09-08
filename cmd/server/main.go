@@ -272,6 +272,8 @@ func main() {
 	mux.HandleFunc("GET /wiki/spaces/{space}", webHandler.WikiSpacePage)
 	mux.HandleFunc("POST /wiki/spaces/{space}/classification", webHandler.WikiSpaceClassification)
 	mux.HandleFunc("POST /wiki/spaces/{space}/properties", webHandler.WikiSpaceProperty)
+	mux.HandleFunc("POST /wiki/spaces/{space}/roles", webHandler.WikiSpaceRoleCreate)
+	mux.HandleFunc("POST /wiki/spaces/{space}/role-assignments", webHandler.WikiSpaceRoleAssignments)
 	mux.HandleFunc("GET /wiki/spaces/{space}/blogposts/new", webHandler.WikiBlogPostNew)
 	mux.HandleFunc("POST /wiki/spaces/{space}/blogposts/new", webHandler.WikiBlogPostNew)
 	mux.HandleFunc("GET /wiki/spaces/{space}/blogposts/{blogpost}", webHandler.WikiBlogPostPage)

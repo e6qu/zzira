@@ -21,6 +21,7 @@ var spaceKeyPattern = regexp.MustCompile(`^[A-Za-z0-9]{1,255}$`)
 var wikiLabelPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,254}$`)
 var wikiWhiteboardTemplates = stringSet("2x2-prioritization", "4ls-retro", "annual-calendar", "brainwriting", "concept-map", "crazy-8s", "daily-sync", "disruptive-brainstorm", "dot-voting", "elevator-pitch", "flow-chart", "gap-analysis", "ice-breakers", "incident-postmortem", "journey-mapping-kit", "kanban-board", "lean-coffee", "network-of-teams", "org-chart", "pi-planning", "prioritization", "prioritization-experiment", "product-roadmap", "product-vision-board", "rice", "sailboat-retro", "service-blueprint", "simple-retrospective", "sprint-planning", "sticky-note-pack", "swimlanes", "team-formation-guide", "timeline", "timeline-workflow", "user-story-map", "workflow", "vision-board", "venn-diagram", "storyboard", "action-plan", "root-cause-analysis", "executive-summary", "stakeholder-mapping", "annual-calendar-2025-2026", "health-monitor", "okr-planning", "swot-analysis", "poker-planning", "fishbone-diagram", "risk-assessment", "bounded-context", "hopes-and-fears", "swimlane-vertical")
 var wikiWhiteboardLocales = stringSet("de-DE", "cs-CZ", "ko-KR", "fr-FR", "it-IT", "ja-JP", "nl-NL", "nb-NO", "da-DK", "sv-SE", "fi-FI", "ru-RU", "pl-PL", "tr-TR", "hu-HU", "en-GB", "en-US", "pt-BR", "zh-CN", "zh-TW", "es-ES")
+var wikiSpacePermissions = stringSet("read/space", "administer/space", "create/page", "read/page", "update/page", "delete/page", "create/blogpost", "read/blogpost", "update/blogpost", "delete/blogpost", "create/comment", "read/comment", "update/comment", "delete/comment", "create/attachment", "read/attachment", "update/attachment", "delete/attachment", "create/folder", "read/folder", "update/folder", "delete/folder", "create/embed", "read/embed", "update/embed", "delete/embed", "create/database", "read/database", "update/database", "delete/database", "create/whiteboard", "read/whiteboard", "update/whiteboard", "delete/whiteboard")
 
 func stringSet(values ...string) map[string]bool {
 	set := make(map[string]bool, len(values))
@@ -49,6 +50,54 @@ func (s *Service) SetWikiSpaceDefaultClassification(ctx context.Context, ws, act
 		return nil, fmt.Errorf("%w: choose a supported classification level", store.ErrWikiValidation)
 	}
 	return s.Store.SetWikiSpaceDefaultClassification(ctx, ws, actor, id, levelID)
+}
+
+func validateWikiSpaceRole(name, description string, permissions []string) error {
+	if strings.TrimSpace(name) == "" || utf8.RuneCountInString(name) > 255 || len(description) > 2000 || len(permissions) == 0 {
+		return fmt.Errorf("%w: role name, description and at least one permission are required", store.ErrWikiValidation)
+	}
+	seen := map[string]bool{}
+	for _, permission := range permissions {
+		if !wikiSpacePermissions[permission] || seen[permission] {
+			return fmt.Errorf("%w: choose unique supported space permissions", store.ErrWikiValidation)
+		}
+		seen[permission] = true
+	}
+	return nil
+}
+
+func (s *Service) CreateWikiSpaceRole(ctx context.Context, ws, actor, name, description string, permissions []string) (*models.WikiSpaceRole, error) {
+	name = strings.TrimSpace(name)
+	if err := validateWikiSpaceRole(name, description, permissions); err != nil {
+		return nil, err
+	}
+	return s.Store.CreateWikiSpaceRole(ctx, ws, actor, name, description, permissions)
+}
+
+func (s *Service) UpdateWikiSpaceRole(ctx context.Context, ws, actor, id, name, description string, permissions []string) (*models.WikiSpaceRole, error) {
+	name = strings.TrimSpace(name)
+	if err := validateWikiSpaceRole(name, description, permissions); err != nil {
+		return nil, err
+	}
+	return s.Store.UpdateWikiSpaceRole(ctx, ws, actor, id, name, description, permissions)
+}
+
+func (s *Service) DeleteWikiSpaceRole(ctx context.Context, ws, actor, id string) error {
+	return s.Store.DeleteWikiSpaceRole(ctx, ws, actor, id)
+}
+
+func (s *Service) SetWikiSpaceRoleAssignments(ctx context.Context, ws, actor, spaceID string, assignments []models.WikiSpaceRoleAssignment) error {
+	if len(assignments) == 0 {
+		return fmt.Errorf("%w: at least one space role assignment is required", store.ErrWikiValidation)
+	}
+	accessClasses := stringSet("anonymous-users", "jsm-project-admins", "authenticated-users", "all-licensed-users", "all-product-admins")
+	for i := range assignments {
+		assignments[i].SpaceID = spaceID
+		if assignments[i].RoleID == "" || assignments[i].PrincipalID == "" || (assignments[i].PrincipalType != "USER" && assignments[i].PrincipalType != "GROUP" && assignments[i].PrincipalType != "ACCESS_CLASS") || (assignments[i].PrincipalType == "ACCESS_CLASS" && !accessClasses[assignments[i].PrincipalID]) {
+			return fmt.Errorf("%w: each role assignment requires a supported role and principal", store.ErrWikiValidation)
+		}
+	}
+	return s.Store.SetWikiSpaceRoleAssignments(ctx, ws, actor, spaceID, assignments)
 }
 
 func (s *Service) SetWikiWatch(ctx context.Context, ws, actor, userID, targetType, targetID string, watching bool) error {
