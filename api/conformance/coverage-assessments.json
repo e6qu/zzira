@@ -5672,6 +5672,177 @@
         "migrations/111_issue_properties.sql"
       ],
       "notes": "Deletes a visible issue property with Jira 204 and not-found behavior; fine-grained Edit issues project permission modeling remains."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/filter",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_filters_test.go",
+        "docs/FILTERS.md"
+      ],
+      "notes": "Atomic creation, default/private sharing, JQL validation, favorites and audited ownership are integration-tested; the final exact assessment waits for PR 1 JQL certification."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/filter/defaultShareScope",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_filters_test.go",
+        "docs/FILTERS.md"
+      ],
+      "notes": "Per-user private/authenticated defaults and Jira GLOBAL normalization are persisted and integration-tested; cross-product dashboard default coupling remains."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/filter/defaultShareScope",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_filters_test.go",
+        "docs/FILTERS.md"
+      ],
+      "notes": "Per-user private/authenticated defaults and Jira GLOBAL normalization are persisted and integration-tested; cross-product dashboard default coupling remains."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/filter/favourite",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_filters_test.go",
+        "docs/FILTERS.md"
+      ],
+      "notes": "Per-user favorites require filter visibility and return durable favorite counts through the Jira HTTP methods; final expansion certification remains."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/filter/my",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_filters_test.go",
+        "docs/FILTERS.md"
+      ],
+      "notes": "Owned filters and the includeFavourites union are visibility-filtered and integration-tested; final expansion certification remains."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/filter/search",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_filters_test.go",
+        "docs/FILTERS.md"
+      ],
+      "notes": "Visibility filtering, documented owner/share/name/ID options, ordering and offset pagination are integration-tested; the final exact assessment waits for PR 1 search cursor and expansion certification."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/filter/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_filters_test.go",
+        "docs/FILTERS.md"
+      ],
+      "notes": "Visibility-filtered lifecycle behavior and Jira-shaped FilterBean responses are integration-tested; exact expansion and JQL certification remain."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/filter/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_filters_test.go",
+        "docs/FILTERS.md"
+      ],
+      "notes": "Visibility-filtered lifecycle behavior and Jira-shaped FilterBean responses are integration-tested; exact expansion and JQL certification remain."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/filter/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_filters_test.go",
+        "docs/FILTERS.md"
+      ],
+      "notes": "Visibility-filtered lifecycle behavior and Jira-shaped FilterBean responses are integration-tested; exact expansion and JQL certification remain."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/filter/{id}/columns",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_filters_test.go",
+        "docs/FILTERS.md"
+      ],
+      "notes": "Owner-managed filter columns, visibility-filtered reads, validation and reset behavior are integration-tested; exact custom-field navigability certification remains."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/filter/{id}/columns",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_filters_test.go",
+        "docs/FILTERS.md"
+      ],
+      "notes": "Owner-managed filter columns, visibility-filtered reads, validation and reset behavior are integration-tested; exact custom-field navigability certification remains."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/filter/{id}/columns",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_filters_test.go",
+        "docs/FILTERS.md"
+      ],
+      "notes": "Owner-managed filter columns, visibility-filtered reads, validation and reset behavior are integration-tested; exact custom-field navigability certification remains."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/filter/{id}/favourite",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_filters_test.go",
+        "docs/FILTERS.md"
+      ],
+      "notes": "Per-user favorites require filter visibility and return durable favorite counts through the Jira HTTP methods; final expansion certification remains."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/filter/{id}/favourite",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_filters_test.go",
+        "docs/FILTERS.md"
+      ],
+      "notes": "Per-user favorites require filter visibility and return durable favorite counts through the Jira HTTP methods; final expansion certification remains."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/filter/{id}/owner",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_filters_test.go",
+        "docs/FILTERS.md"
+      ],
+      "notes": "Owner/admin transfer validates workspace membership and case-insensitive name conflicts with audit evidence; exact global-admin edge behavior remains."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/filter/{id}/permission",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_filters_test.go",
+        "docs/FILTERS.md"
+      ],
+      "notes": "Stable view/edit share permissions and owner-scoped mutation across user, group, project, project-role and authenticated scopes are integration-tested; exact edge-error certification remains."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/filter/{id}/permission",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_filters_test.go",
+        "docs/FILTERS.md"
+      ],
+      "notes": "Stable view/edit share permissions and owner-scoped mutation across user, group, project, project-role and authenticated scopes are integration-tested; exact edge-error certification remains."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/filter/{id}/permission/{permissionId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_filters_test.go",
+        "docs/FILTERS.md"
+      ],
+      "notes": "Stable view/edit share permissions and owner-scoped mutation across user, group, project, project-role and authenticated scopes are integration-tested; exact edge-error certification remains."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/filter/{id}/permission/{permissionId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_filters_test.go",
+        "docs/FILTERS.md"
+      ],
+      "notes": "Stable view/edit share permissions and owner-scoped mutation across user, group, project, project-role and authenticated scopes are integration-tested; exact edge-error certification remains."
     }
   ]
 }

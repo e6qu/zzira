@@ -14,7 +14,8 @@ boundaries, dependencies, and acceptance gates belong in
 - Delivery unit: PR 1 — Jira Platform and administration completion
 - Pull request: not opened yet
 - State: implementation in progress
-- Current checkpoint: saved filters, sharing, subscriptions, and complete JQL
+- Current checkpoint: saved-filter API and permission model implemented; browser
+  management journey next
 - Blockers: none
 
 ## Contract baseline
@@ -54,12 +55,11 @@ also run the PostgreSQL integration suite from an empty migrated database.
 
 ## Resume here
 
-1. Complete the saved-filter persistence and permission model.
-2. Expose the pinned filter operations with exact methods and response shapes.
-3. Add the user and administrator browser journeys.
-4. Expand JQL grammar, functions, history predicates, and deterministic paging.
-5. Update the compatibility and persona ledgers with reviewed evidence.
-6. Commit each independently buildable checkpoint and keep this handoff current.
+1. Add the saved-filter user and administrator browser journeys.
+2. Expand JQL grammar, functions, history predicates, and deterministic paging.
+3. Update the compatibility and persona ledgers with browser evidence.
+4. Continue into bulk work-item and project administration slices.
+5. Commit each independently buildable checkpoint and keep this handoff current.
 
 ## Evidence map
 
@@ -69,6 +69,7 @@ also run the PostgreSQL integration suite from an empty migrated database.
 - [Operation coverage](../api/conformance/cloud-coverage.json)
 - [UI and persona journeys](UI_PARITY.md)
 - [Administration behavior](ADMIN.md)
+- [Saved filters and sharing](FILTERS.md)
 
 ## Continuity rules
 

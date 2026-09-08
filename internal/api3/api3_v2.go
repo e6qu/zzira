@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"io"
-	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -633,59 +632,6 @@ func (h *Handler) searchCount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"count": total})
-}
-
-// ---- saved filters (read-only in V2) ----
-
-func (h *Handler) filterBean(f *models.Filter) map[string]any {
-	owner := map[string]any{}
-	if f.OwnerID != "" {
-		owner = map[string]any{"accountId": f.OwnerID, "displayName": f.OwnerName, "active": true, "accountType": "atlassian"}
-	}
-	return map[string]any{
-		"id":               f.ID,
-		"name":             f.Name,
-		"self":             h.BaseURL + "/rest/api/3/filter/" + f.ID,
-		"jql":              f.JQL,
-		"description":      f.Description,
-		"owner":            owner,
-		"favourite":        f.Favourite,
-		"favouriteCount":   1,
-		"sharePermissions": []map[string]any{{"type": "global"}},
-	}
-}
-
-func (h *Handler) listFilters(w http.ResponseWriter, r *http.Request) {
-	wsID, userID, e := h.authWorkspace(r)
-	if e != nil {
-		writeJerr(w, e)
-		return
-	}
-	filters, err := h.Store.ListFilters(r.Context(), wsID, userID)
-	if err != nil {
-		log.Printf("listFilters: %v", err)
-		jiraError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	out := make([]map[string]any, 0, len(filters))
-	for _, f := range filters {
-		out = append(out, h.filterBean(f))
-	}
-	writeJSON(w, http.StatusOK, out)
-}
-
-func (h *Handler) getFilter(w http.ResponseWriter, r *http.Request, id string) {
-	wsID, userID, e := h.authWorkspace(r)
-	if e != nil {
-		writeJerr(w, e)
-		return
-	}
-	f, err := h.Store.FilterByID(r.Context(), wsID, userID, id)
-	if err != nil {
-		jiraError(w, http.StatusNotFound, "Filter does not exist.")
-		return
-	}
-	writeJSON(w, http.StatusOK, h.filterBean(f))
 }
 
 // ---- bootstrap (custom delta-sync endpoint) ----

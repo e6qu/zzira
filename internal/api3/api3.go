@@ -139,6 +139,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.roleRoute(w, r)
 	case path == "/webhook" || path == "/webhook/refresh" || strings.HasPrefix(path, "/webhook/"):
 		h.webhookRoute(w, r)
+	case path == "/filter/defaultShareScope":
+		h.filterDefaultShareScope(w, r)
+	case path == "/filter/favourite" && r.Method == http.MethodGet:
+		h.filterCollection(w, r, "favourite")
+	case path == "/filter/my" && r.Method == http.MethodGet:
+		h.filterCollection(w, r, "my")
+	case path == "/filter/search" && r.Method == http.MethodGet:
+		h.searchFilters(w, r)
 	case path == "/filter" && r.Method == http.MethodPost:
 		h.createFilter(w, r)
 	case path == "/version":

@@ -62,7 +62,7 @@ use `/rest/zzira/1`.
 | /issue/createmeta + /editmeta include custom fields | ✅ | context-aware |
 | Custom fields in issue beans + JQL | ✅ | incl. numeric compare |
 | POST/GET /rest/api/3/webhook · DELETE /webhook/{id} · GET /webhook/refresh | ✅ | log-driven dispatcher, watermark, exactly-once claims |
-| /filter CRUD + /filter/{id}/favourite | ✅ | |
+| 19 Jira filter, sharing, column and default-scope operations | 🟡 | Visibility-filtered create/read/update/delete, owned/favorite collections, paginated search, per-user favorites, view/edit shares for users/groups/projects/roles, owner transfer and navigator columns; full JQL and scheduled subscription delivery remain; see [FILTERS.md](../../docs/FILTERS.md) |
 | GET /rest/api/3/workflow/search · modern workflow create/update/search/preview/capabilities · POST /workflow · GET/PUT /workflow/project/{key} | ✅ | **enforced**: project workflows, designer layouts, and executable transition rules round-trip through admin APIs and runtime |
 | GET /rest/api/3/task/{taskId} · POST /task/{taskId}/cancel | ✅ | durable ENQUEUED/RUNNING/terminal progress, creator/admin visibility, safe cancellation, failure results and stale-claim recovery |
 | GET /rest/api/3/role | 🟡 | registry list |

@@ -303,43 +303,6 @@ func derefIssues(in []*models.Issue) []models.Issue {
 	return out
 }
 
-// ---- saved filters (read-only in V2) ----
-
-func (s *Store) ListFilters(ctx context.Context, workspaceID, userID string) ([]*models.Filter, error) {
-	rows, err := s.Pool.Query(ctx, `
-		SELECT f.id, f.name, COALESCE(f.jql,''), COALESCE(f.description,''), COALESCE(f.owner_id,''), COALESCE(u.display_name,''),
-		       EXISTS(SELECT 1 FROM filter_favourites ff WHERE ff.filter_id=f.id AND ff.user_id=$2) AS favourite
-		FROM filters f LEFT JOIN users u ON u.id = f.owner_id
-		WHERE f.workspace_id=$1 ORDER BY favourite DESC, f.name`, workspaceID, userID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []*models.Filter
-	for rows.Next() {
-		f := &models.Filter{}
-		if err := rows.Scan(&f.ID, &f.Name, &f.JQL, &f.Description, &f.OwnerID, &f.OwnerName, &f.Favourite); err != nil {
-			return nil, err
-		}
-		out = append(out, f)
-	}
-	return out, rows.Err()
-}
-
-func (s *Store) FilterByID(ctx context.Context, workspaceID, userID, id string) (*models.Filter, error) {
-	f := &models.Filter{}
-	err := s.Pool.QueryRow(ctx, `
-		SELECT f.id, f.name, COALESCE(f.jql,''), COALESCE(f.description,''), COALESCE(f.owner_id,''), COALESCE(u.display_name,''),
-		       EXISTS(SELECT 1 FROM filter_favourites ff WHERE ff.filter_id=f.id AND ff.user_id=$3)
-		FROM filters f LEFT JOIN users u ON u.id = f.owner_id
-		WHERE f.id=$1 AND f.workspace_id=$2`, id, workspaceID, userID).
-		Scan(&f.ID, &f.Name, &f.JQL, &f.Description, &f.OwnerID, &f.OwnerName, &f.Favourite)
-	if err != nil {
-		return nil, err
-	}
-	return f, nil
-}
-
 // SecuritySchemes lists all stored schemes.
 func (s *Store) SecuritySchemes(ctx context.Context) ([]models.SecurityScheme, error) {
 	rows, err := s.Pool.Query(ctx, `SELECT id, name, levels FROM security_schemes ORDER BY id`)
