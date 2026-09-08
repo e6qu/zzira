@@ -86,3 +86,17 @@ type AppStorageValue struct {
 	Version   int64           `json:"version"`
 	UpdatedAt time.Time       `json:"updatedAt"`
 }
+
+// JQLFunctionPrecomputation is the durable replacement fragment for one
+// invocation of an app-provided JQL function.
+type JQLFunctionPrecomputation struct {
+	ID, FunctionKey, FunctionName, Field, Operator string
+	Arguments                                      []string
+	Value, Error                                   *string
+	CreatedAt, UpdatedAt, UsedAt                   time.Time
+}
+
+type JQLFunctionPrecomputationUpdate struct {
+	ID           string
+	Value, Error *string
+}

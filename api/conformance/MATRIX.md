@@ -33,6 +33,7 @@ use `/rest/zzira/1`.
 | POST /issue/{idOrKey}/attachments · /attachment/{id} · /attachment/content/{id} | ✅ | X-Atlassian-Token semantics |
 | GET /rest/api/3/search · POST /search · GET/POST /search/jql · POST /search/approximate-count | 🟡 | Permission-filtered JQL with history/date operators; enhanced search supports bounded queries, IDs-only defaults, field projections, isLast, deterministic ordering, query/user/workspace-bound seven-day tokens and 1–5000 result limits; expansions, reconciliation and snapshot/keyset semantics remain |
 | Seven JQL reference, suggestion, parse, match, sanitize and migration operations | 🟡 | Supported fields/functions are discoverable, issue-derived suggestions apply visibility, parse returns structured per-query results, and match is bounded to requested IDs; exact personal-data migration and remaining functions/validation warnings remain |
+| GET/POST `/rest/api/3/jql/function/computation` · POST `/jql/function/computation/search` | 🟡 | Signed apps can page/filter and retrieve only their installation-owned durable records, then atomically replace a value or error with optional missing-ID skips; compiler invocation of registered app functions remains |
 | GET /rest/api/3/mypermissions · POST /permissions/check | ✅ | evaluated from workspace role |
 | /issueLinkType · POST /issueLink · DELETE /issueLink/{id} | ✅ | links sync to replicas |
 | GET /rest/api/3/label | ✅ | distinct labels + query |

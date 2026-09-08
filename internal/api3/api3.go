@@ -192,6 +192,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.jqlPersonalDataMigration(w, r)
 	case path == "/jql/sanitize" && r.Method == http.MethodPost:
 		h.jqlSanitize(w, r)
+	case path == "/jql/function/computation" && (r.Method == http.MethodGet || r.Method == http.MethodPost):
+		h.jqlFunctionPrecomputations(w, r)
+	case path == "/jql/function/computation/search" && r.Method == http.MethodPost:
+		h.jqlFunctionPrecomputationsByID(w, r)
 	case path == "/filter" && r.Method == http.MethodGet:
 		h.listFilters(w, r)
 	case strings.HasPrefix(path, "/filter/"):

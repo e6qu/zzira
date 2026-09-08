@@ -14,8 +14,8 @@ boundaries, dependencies, and acceptance gates belong in
 - Delivery unit: PR 1 — Jira Platform and administration completion
 - Pull request: not opened yet
 - State: implementation in progress
-- Current checkpoint: saved-filter management, JQL/search expansion, and seven
-  JQL helper operations implemented and tested; app precomputations next
+- Current checkpoint: saved-filter management, JQL/search expansion, seven JQL
+  helpers, and three app-function precomputation operations implemented and tested
 - Blockers: none
 
 ## Contract baseline
@@ -44,10 +44,11 @@ integration evidence. Issue visibility remains enforced before pagination and
 serialization.
 
 The seven pinned reference/suggestion, parse, match, sanitize, and personal-data
-migration operations now share the same parser, compiler, field registry, and
-permission-filtered issue search. The next checkpoint implements the three
-app-function precomputation operations with tenant-scoped durable storage, then
-continues field/function and reconciliation semantics.
+migration operations share the same parser, compiler, field registry, and
+permission-filtered issue search. The three app-function precomputation
+operations now use durable installation-owned records, app-principal
+authorization, paging and filtering, ID search, and atomic value/error updates.
+Compiler invocation of registered app functions remains separate work.
 
 ## Validation baseline
 
@@ -61,13 +62,12 @@ also run the PostgreSQL integration suite from an empty migrated database.
 
 ## Resume here
 
-1. Implement and test the three app-function precomputation resources.
-2. Complete function, multi-value field, expansion, property, reconciliation,
+1. Complete function, multi-value field, expansion, property, reconciliation,
    and snapshot/keyset search semantics.
-3. Add filter-subscription scheduling and delivery after shared scheduled-work
+2. Add filter-subscription scheduling and delivery after shared scheduled-work
    primitives are ready.
-4. Continue into bulk work-item and project administration slices.
-5. Update compatibility evidence and commit each independently buildable
+3. Continue into bulk work-item and project administration slices.
+4. Update compatibility evidence and commit each independently buildable
    checkpoint.
 
 ## Evidence map

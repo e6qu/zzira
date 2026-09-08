@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 468,
+  "assessedTotal": 471,
   "counts": {
     "delivered": 0,
-    "partial": 461,
+    "partial": 464,
     "missing": 7,
-    "unassessed": 739
+    "unassessed": 736
   },
   "countsByFamily": {
     "automation": {
@@ -24,9 +24,9 @@
     },
     "jira-platform": {
       "delivered": 0,
-      "partial": 100,
+      "partial": 103,
       "missing": 0,
-      "unassessed": 517
+      "unassessed": 514
     },
     "jira-service-management": {
       "delivered": 0,
@@ -2526,25 +2526,37 @@
       "operationId": "jira-v3:GET:/rest/api/3/jql/function/computation",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_jql_precomputations_test.go",
+        "internal/store/jql_function_precomputations.go",
+        "docs/JQL.md"
+      ],
+      "notes": "Signed app-only ownership, durable invocation identity, function filtering, ordering, offset paging, tenant isolation and Jira-shaped records are integration-tested; compiler invocation and complete Forge identity semantics remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/jql/function/computation",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_jql_precomputations_test.go",
+        "internal/store/jql_function_precomputations.go",
+        "docs/JQL.md"
+      ],
+      "notes": "Installation-owned value/error replacement, strict batches, atomic missing-ID failure and explicit skip responses are integration-tested; recalculation dispatch from the compiler remains."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/jql/function/computation/search",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_jql_precomputations_test.go",
+        "internal/store/jql_function_precomputations.go",
+        "docs/JQL.md"
+      ],
+      "notes": "Bounded ID retrieval, ordering, missing IDs and cross-app/tenant non-disclosure are integration-tested; complete Forge identity semantics remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/jql/match",

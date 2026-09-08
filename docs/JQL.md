@@ -57,11 +57,25 @@ visible issue IDs. Sanitization returns per-query errors without failing the
 batch. Personal-data migration converts known workspace member email/display
 operands on assignee, reporter, and creator equality clauses to account IDs.
 
+## App function precomputations
+
+Installed apps can list, page, filter, retrieve, and update only the durable
+precomputations owned by their installation through the three Jira app JQL
+function resources. Signed ZZIRA and Connect requests use the app's stable
+non-human principal; ordinary users receive a forbidden response. Connect
+keeps Atlassian's `READ` scope behavior for reads and recalculation updates.
+
+Each invocation identity is stable across repeated use and tracks created,
+updated, and last-used timestamps. Bulk recalculation replaces either the JQL
+fragment or its user-facing error. Updates are atomic when missing IDs are not
+skipped; the opt-in skip mode applies found updates and returns missing IDs.
+ID search treats foreign-tenant and foreign-app records as missing.
+
 ## Current limits
 
 The search and JQL service resources remain assessed as partial. The remaining
-PR 1 work adds app-function precomputation resources; more built-in functions
-and multi-value fields; complete personal-data migration for list/history
+PR 1 work adds app-function invocation in the compiler, more built-in functions
+and multi-value fields, complete personal-data migration for list/history
 operands and unknown-user reporting; project-aware validation warnings; exact
 expansion/property selection; strong-consistency reconciliation; and
 snapshot/keyset semantics for pages whose matching work items change between

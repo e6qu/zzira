@@ -5992,6 +5992,36 @@
         "docs/JQL.md"
       ],
       "notes": "Per-viewer compile validation and per-query success/error results are integration-tested; visibility-driven name-to-ID rewriting remains."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/jql/function/computation",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_jql_precomputations_test.go",
+        "internal/store/jql_function_precomputations.go",
+        "docs/JQL.md"
+      ],
+      "notes": "Signed app-only ownership, durable invocation identity, function filtering, ordering, offset paging, tenant isolation and Jira-shaped records are integration-tested; compiler invocation and complete Forge identity semantics remain."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/jql/function/computation",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_jql_precomputations_test.go",
+        "internal/store/jql_function_precomputations.go",
+        "docs/JQL.md"
+      ],
+      "notes": "Installation-owned value/error replacement, strict batches, atomic missing-ID failure and explicit skip responses are integration-tested; recalculation dispatch from the compiler remains."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/jql/function/computation/search",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_jql_precomputations_test.go",
+        "internal/store/jql_function_precomputations.go",
+        "docs/JQL.md"
+      ],
+      "notes": "Bounded ID retrieval, ordering, missing IDs and cross-app/tenant non-disclosure are integration-tested; complete Forge identity semantics remain."
     }
   ]
 }

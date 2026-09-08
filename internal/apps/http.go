@@ -137,6 +137,11 @@ func appAPIScope(r *http.Request) (string, bool) {
 	if r.URL.Path == "/rest/atlassian-connect/1/app/module/dynamic" || r.URL.Path == "/wiki/rest/atlassian-connect/1/app/module/dynamic" {
 		return "", true
 	}
+	// Atlassian Connect classifies both reads and recalculation writes for this
+	// app-owned resource under its READ scope.
+	if r.URL.Path == "/rest/api/3/jql/function/computation" || r.URL.Path == "/rest/api/3/jql/function/computation/search" {
+		return "read:jira-work", true
+	}
 	product := ""
 	switch {
 	case strings.HasPrefix(r.URL.Path, "/rest/api/"), strings.HasPrefix(r.URL.Path, "/rest/agile/"), strings.HasPrefix(r.URL.Path, "/rest/servicedeskapi/"):
