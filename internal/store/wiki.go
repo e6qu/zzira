@@ -18,8 +18,10 @@ var ErrWikiCommentConflict = errors.New("the comment changed; reload the latest 
 
 var ErrWikiPropertyConflict = errors.New("the property changed; reload the latest version before saving")
 
-// Wiki visibility is always evaluated against current membership. Private
-// spaces and drafts belong to their author; an admin can manage public spaces.
+// Wiki visibility is always evaluated against current membership and directory
+// access. Stored role assignments replace the legacy public/private rule; a
+// caller must match a role that can read the space. Spaces without stored
+// assignments retain their historical public/member or private/author access.
 const wikiSpaceVisible = `EXISTS (
   SELECT 1 FROM memberships wm JOIN users wu ON wu.id=wm.user_id AND wu.active
   WHERE wm.workspace_id=s.workspace_id AND wm.user_id=$2 AND EXISTS (
@@ -27,7 +29,37 @@ const wikiSpaceVisible = `EXISTS (
     JOIN directory_users du ON du.directory_id=d.id AND du.user_id=wm.user_id
     WHERE si.workspace_id=wm.workspace_id AND d.active AND du.active
   )
-) AND (NOT s.private OR s.author_id=$2)`
+) AND (
+  (
+    NOT EXISTS (SELECT 1 FROM wiki_space_role_assignments wra0 WHERE wra0.space_id=s.id)
+    AND (NOT s.private OR s.author_id=$2)
+  )
+  OR EXISTS (
+    SELECT 1
+    FROM wiki_space_role_assignments wra
+    LEFT JOIN wiki_space_roles wrr ON wrr.id::text=wra.role_id AND wrr.workspace_id=s.workspace_id
+    WHERE wra.space_id=s.id
+      AND (
+        (wra.principal_type='USER' AND wra.principal_id=$2)
+        OR (wra.principal_type='GROUP' AND EXISTS (
+          SELECT 1 FROM group_members gm WHERE gm.group_id::text=wra.principal_id AND gm.user_id=$2
+        ))
+        OR (wra.principal_type='ACCESS_CLASS' AND wra.principal_id IN ('authenticated-users','all-licensed-users'))
+        OR (
+          wra.principal_type='ACCESS_CLASS'
+          AND wra.principal_id IN ('all-product-admins','jsm-project-admins')
+          AND EXISTS (
+            SELECT 1 FROM memberships ram
+            WHERE ram.workspace_id=s.workspace_id AND ram.user_id=$2 AND ram.role='admin'
+          )
+        )
+      )
+      AND (
+        wra.role_id IN ('system-admin','system-member','system-viewer')
+        OR 'read/space'=ANY(wrr.space_permissions)
+      )
+  )
+)`
 const wikiPageVisible = `(p.published OR p.author_id=$2) AND (
   p.author_id=$2
   OR EXISTS (SELECT 1 FROM memberships am WHERE am.workspace_id=s.workspace_id AND am.user_id=$2 AND am.role='admin')

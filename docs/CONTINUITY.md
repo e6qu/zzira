@@ -1875,10 +1875,34 @@ Validation after Confluence space roles and assignments:
 - Exact reviewed API coverage is 427 of 1,207 operations: 420 partial, 7
   missing, and 780 unassessed. Confluence coverage is 213 of 348 reviewed.
 
+Validation after Confluence role-aware runtime reads:
+
+- Stored role assignments now replace the legacy public/private visibility rule
+  for spaces and every content read that shares the central knowledge predicate.
+  Direct users, directory groups, authenticated/licensed users and product-admin
+  access classes resolve at request time against active membership and directory
+  access. Built-in roles and custom roles containing `read/space` grant access.
+- Spaces without stored assignments preserve existing public-member and
+  private-author behavior, so the migration does not silently change established
+  spaces.
+- PostgreSQL integration proves a direct-user assignment hides both a space and
+  its nested page from another active member, including collection results, and
+  that the product-admin access class admits administrators while excluding the
+  member. Exact API coverage remains 427 of 1,207 operations and Confluence
+  coverage remains 213 of 348 because this checkpoint strengthens existing
+  operations rather than adding contract surface.
+- Migration 097 repairs an upgrade-path gap for installations that recorded
+  migration 086 before approval-automation idempotency was added to that file;
+  the missing column and partial unique index are now applied by a new forward,
+  idempotent migration.
+- The focused Confluence PostgreSQL journey, full Go suite against the upgraded
+  database, vet, WASM build, seven conformance tests, inventory check and diff
+  validation pass.
+
 ## Current change
 
-1. Connect Confluence role assignments to runtime content authorization, then
-   resume remaining space-permission transition operations.
+1. Enforce granular Confluence role permissions on create, update and delete
+   paths, then resume remaining space-permission transition operations.
 2. Continue Service Management with dependency mapping, major-incident
    communications, change-conflict calendars and escalation policy.
 3. Expand the app runtime from registered custom-content discovery into signed

@@ -211,6 +211,24 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	if roles := call(member, "GET", "/space-roles?space-id="+public+"&principal-type=ACCESS_CLASS&principal-id=authenticated-users", nil, 200); !strings.Contains(roles.Body.String(), "Release governors") {
 		t.Fatal(roles.Body.String())
 	}
+	restrictedSpace := space("ROLELOCK", false)
+	restrictedAssignments := []map[string]any{{"roleId": customRole.ID, "principal": map[string]string{"principalType": "USER", "principalId": actor}}}
+	call(actor, "POST", "/spaces/"+restrictedSpace+"/role-assignments", restrictedAssignments, 204)
+	restrictedPageResponse := call(actor, "POST", "/pages", map[string]any{"spaceId": restrictedSpace, "title": "Restricted runbook", "status": "current", "body": models.WikiBody{Representation: "storage", Value: "<p>Administrators only.</p>"}}, 200)
+	var restrictedPage models.WikiPage
+	if err := json.Unmarshal(restrictedPageResponse.Body.Bytes(), &restrictedPage); err != nil {
+		t.Fatal(err)
+	}
+	call(actor, "GET", "/spaces/"+restrictedSpace, nil, 200)
+	call(actor, "GET", "/pages/"+restrictedPage.ID, nil, 200)
+	call(member, "GET", "/spaces/"+restrictedSpace, nil, 404)
+	call(member, "GET", "/pages/"+restrictedPage.ID, nil, 404)
+	if spaces := call(member, "GET", "/spaces", nil, 200); strings.Contains(spaces.Body.String(), "ROLELOCK") {
+		t.Fatal("role-restricted space leaked into the collection")
+	}
+	call(actor, "POST", "/spaces/"+restrictedSpace+"/role-assignments", []map[string]any{{"roleId": "system-admin", "principal": map[string]string{"principalType": "ACCESS_CLASS", "principalId": "all-product-admins"}}}, 204)
+	call(admin, "GET", "/spaces/"+restrictedSpace, nil, 200)
+	call(member, "GET", "/spaces/"+restrictedSpace, nil, 404)
 	call(actor, "POST", "/spaces", map[string]any{"key": "UNSUPPORTED", "name": "Unsupported", "roleAssignments": []map[string]any{{"roleId": "1"}}}, 400)
 	if _, err := h.Commands.AddWikiSpaceLabels(ctx, ws, actor, public, []models.WikiLabel{{Prefix: "team", Name: "core-space"}}); err != nil {
 		t.Fatal(err)
