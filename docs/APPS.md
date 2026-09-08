@@ -60,6 +60,9 @@ shape:
     "webPanels": [
       {"key": "risk", "url": "/risk?issue={issue.key}", "location": "atl.jira.view.issue.right.context", "name": {"value": "Release risk"}}
     ],
+    "webItems": [
+      {"key": "shortcut", "url": "/shortcut", "location": "system.top.navigation.bar", "name": {"value": "Team shortcut"}}
+    ],
     "contentBylineItems": [
       {"key": "review", "url": "/review?content={content.id}", "name": {"value": "Page review"}}
     ],
@@ -76,15 +79,15 @@ shape:
 Connect `READ` and write-capable scopes translate into the corresponding Jira
 and Confluence grants. Supported Connect module families are `generalPages`,
 Jira issue-view `webPanels`, Confluence `contentBylineItems`, scalar
-`jiraIssueFields`, and `webhooks`.
+`jiraIssueFields`, Jira/Confluence navigation `webItems`, and `webhooks`.
 The parser rejects unsupported authentication modes, scopes, module families,
 and web-panel locations instead of silently ignoring them.
 
-Connect apps can manage tenant-specific remote issue panels, scalar issue
-fields and keyed Jira webhooks through the
+Connect apps can manage tenant-specific remote issue panels, navigation web
+items, scalar issue fields and keyed Jira webhooks through the
 standard JWT-signed `GET`, `POST`, and `DELETE`
 `/rest/atlassian-connect/1/app/module/dynamic` resource. `POST` accepts the
-descriptor-shaped `webPanels`, `jiraIssueFields`, and `webhooks` objects and
+descriptor-shaped `webPanels`, `webItems`, `jiraIssueFields`, and `webhooks` objects and
 registers the request atomically;
 duplicate static/dynamic keys or any invalid entry reject the whole request.
 `GET` returns the original grouped definitions. `DELETE` accepts repeated
@@ -96,6 +99,10 @@ body exclusion are rejected until their delivery semantics are available.
 Dynamic definitions survive uninstall/reinstall, while an upgrade that
 promotes the same key to a static module removes the conflicting definition.
 The same resource is available beneath both Jira and Confluence base paths.
+Navigation web items support Jira `system.top.navigation.bar` and Confluence
+`system.header/left` or `system.header/right`. They need no data scope to
+render, open through the signed remote-page gateway, and reject unevaluated
+conditions or unsupported locations explicitly.
 
 Connect issue fields support `string`, `text`, `rich_text`, `number`, `date`,
 and `datetime` descriptor types on the canonical text, number, and date-time

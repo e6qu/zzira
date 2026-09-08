@@ -35,7 +35,7 @@ func (s *Store) RegisterDynamicAppModules(ctx context.Context, installation *mod
 			return err
 		}
 		switch module.Type {
-		case "webPanels":
+		case "webPanels", "webItems":
 			value := module.Module
 			if _, err := tx.Exec(ctx, `INSERT INTO app_modules(installation_id,module_key,module_type,location,title,body,remote_url,position,dynamic) VALUES($1,$2,$3,$4,$5,$6,$7,$8,true)`, installation.ID, value.Key, value.Type, value.Location, value.Title, value.Body, value.RemoteURL, 10000+count+position); err != nil {
 				return err
@@ -151,6 +151,19 @@ func restoreDynamicAppModules(ctx context.Context, tx pgx.Tx, installationID str
 		switch module.moduleType {
 		case "webPanels":
 			if _, err := tx.Exec(ctx, `INSERT INTO app_modules(installation_id,module_key,module_type,location,title,body,remote_url,position,dynamic) VALUES($1,$2,'jira:issuePanel','jira.issue.view',$3,'',$4,$5,true)`, installationID, module.key, input.Name.Value, input.URL, 10000+position); err != nil {
+				return err
+			}
+		case "webItems":
+			moduleType, location := "", ""
+			switch strings.TrimSpace(input.Location) {
+			case "system.top.navigation.bar":
+				moduleType, location = "jira:webItem", "jira.navigation"
+			case "system.header/left", "system.header/right":
+				moduleType, location = "confluence:webItem", "confluence.navigation"
+			default:
+				return fmt.Errorf("stored dynamic web item location %q is unsupported", input.Location)
+			}
+			if _, err := tx.Exec(ctx, `INSERT INTO app_modules(installation_id,module_key,module_type,location,title,body,remote_url,position,dynamic) VALUES($1,$2,$3,$4,$5,'',$6,$7,true)`, installationID, module.key, moduleType, location, input.Name.Value, input.URL, 10000+position); err != nil {
 				return err
 			}
 		case "webhooks":

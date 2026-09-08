@@ -114,6 +114,10 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
       await route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main><h1>Remote page review</h1><p>Content context received.</p></main></body></html>' });
       return;
     }
+    if (target.pathname.endsWith('/remote-shortcut')) {
+      await route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main><h1>Remote team shortcut</h1><p>Web item context received.</p></main></body></html>' });
+      return;
+    }
     expect(target.pathname).toContain('/connect/base/remote-page');
     await route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main><h1>Remote release intelligence</h1><p>Signed Connect context received.</p></main></body></html>' });
   });
@@ -128,6 +132,7 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
   const panelTitle = `Remote risk ${suffix}`;
   const bylineTitle = `Remote review ${suffix}`;
   const fieldName = `Remote risk score ${suffix}`;
+  const shortcutTitle = `Remote shortcut ${suffix}`;
   const descriptor = {
     key: `connect.journey.${suffix}`,
     name: appName,
@@ -139,6 +144,7 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
       webPanels: [{ key: 'remote-risk', url: '/remote-panel?selected={issue.key}', location: 'atl.jira.view.issue.right.context', name: { value: panelTitle } }],
       contentBylineItems: [{ key: 'remote-review', url: '/remote-review?content={content.id}', name: { value: bylineTitle } }],
       jiraIssueFields: [{ key: 'remote-risk-score', name: { value: fieldName }, description: { value: 'Risk supplied by the Connect app' }, type: 'number' }],
+      webItems: [{ key: 'remote-shortcut', url: '/remote-shortcut', location: 'system.top.navigation.bar', name: { value: shortcutTitle } }],
     },
   };
   await page.goto('/admin#admin-apps');
@@ -158,6 +164,8 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
   await expect(remote.getByRole('heading', { name: 'Remote release intelligence' })).toBeVisible();
   await expect(remote.getByText('Signed Connect context received.')).toBeVisible();
   await accessible(page);
+  await page.locator('#workspace-navigation').getByRole('link', { name: shortcutTitle }).click();
+  await expect(page.frameLocator('iframe.app-module-frame').getByRole('heading', { name: 'Remote team shortcut' })).toBeVisible();
 
   await page.goto('/browse/ZZ-1');
   const issuePanel = page.locator('.app-context-module', { has: page.getByRole('heading', { name: panelTitle, level: 2 }) });

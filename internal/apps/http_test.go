@@ -423,10 +423,10 @@ func TestConnectDynamicModulesAndIssueFields(t *testing.T) {
 		return response
 	}
 
-	dynamic := `{"webPanels":[{"key":"dynamic-risk","url":"/risk?issue={issue.key}","location":"atl.jira.view.issue.right.context","name":{"value":"Dynamic risk"}}],"webhooks":[{"key":"dynamic-hook","event":"jira:issue_created","url":"/hooks/dynamic","filter":"project = ZZ"}],"jiraIssueFields":[{"key":"dynamic-score","name":{"value":"Dynamic score"},"description":{"value":"Registered at runtime"},"type":"number"}]}`
+	dynamic := `{"webPanels":[{"key":"dynamic-risk","url":"/risk?issue={issue.key}","location":"atl.jira.view.issue.right.context","name":{"value":"Dynamic risk"}}],"webItems":[{"key":"dynamic-nav","url":"/dynamic-nav","location":"system.top.navigation.bar","name":{"value":"Dynamic navigation"}}],"webhooks":[{"key":"dynamic-hook","event":"jira:issue_created","url":"/hooks/dynamic","filter":"project = ZZ"}],"jiraIssueFields":[{"key":"dynamic-score","name":{"value":"Dynamic score"},"description":{"value":"Registered at runtime"},"type":"number"}]}`
 	call(http.MethodPost, dynamicPath, dynamic, http.StatusOK)
 	listed := call(http.MethodGet, dynamicPath, "", http.StatusOK)
-	if !strings.Contains(listed.Body.String(), `"dynamic-risk"`) || !strings.Contains(listed.Body.String(), `"webPanels"`) || !strings.Contains(listed.Body.String(), `"dynamic-hook"`) || !strings.Contains(listed.Body.String(), `"dynamic-score"`) {
+	if !strings.Contains(listed.Body.String(), `"dynamic-risk"`) || !strings.Contains(listed.Body.String(), `"webPanels"`) || !strings.Contains(listed.Body.String(), `"dynamic-nav"`) || !strings.Contains(listed.Body.String(), `"dynamic-hook"`) || !strings.Contains(listed.Body.String(), `"dynamic-score"`) {
 		t.Fatalf("dynamic modules = %s", listed.Body.String())
 	}
 	wikiListed := call(http.MethodGet, "/wiki"+dynamicPath, "", http.StatusOK)
@@ -445,6 +445,17 @@ func TestConnectDynamicModulesAndIssueFields(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("dynamic issue panel not materialized: %+v", modules)
+	}
+	navigation, err := st.AppNavigationModules(ctx, workspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found = false
+	for _, module := range navigation {
+		found = found || module.InstallationID == installation.ID && module.Key == "dynamic-nav" && module.Dynamic && module.Type == "jira:webItem"
+	}
+	if !found {
+		t.Fatalf("dynamic web item not materialized: %+v", navigation)
 	}
 	hooks, err := st.ActiveAppWebhooks(ctx, workspaceID)
 	if err != nil {
@@ -491,7 +502,7 @@ func TestConnectDynamicModulesAndIssueFields(t *testing.T) {
 		t.Fatalf("reinstalled app fields did not retain IDs: %+v, %v", fields, err)
 	}
 
-	upgradeRaw := []byte(fmt.Sprintf(`{"key":%q,"name":"Dynamic test","baseUrl":"https://connect.example.test/base","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"webPanels":[{"key":"dynamic-risk","url":"/promoted","location":"atl.jira.view.issue.right.context","name":{"value":"Promoted static risk"}}],"jiraIssueFields":[{"key":"static-score","name":{"value":"Static score"},"description":{"value":"Installed with the app"},"type":"number"},{"key":"dynamic-score","name":{"value":"Promoted score"},"description":{"value":"Now static"},"type":"number"}]}}`, appKey))
+	upgradeRaw := []byte(fmt.Sprintf(`{"key":%q,"name":"Dynamic test","baseUrl":"https://connect.example.test/base","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"webPanels":[{"key":"dynamic-risk","url":"/promoted","location":"atl.jira.view.issue.right.context","name":{"value":"Promoted static risk"}}],"webItems":[{"key":"dynamic-nav","url":"/promoted-nav","location":"system.top.navigation.bar","name":{"value":"Promoted navigation"}}],"jiraIssueFields":[{"key":"static-score","name":{"value":"Static score"},"description":{"value":"Installed with the app"},"type":"number"},{"key":"dynamic-score","name":{"value":"Promoted score"},"description":{"value":"Now static"},"type":"number"}]}}`, appKey))
 	upgrade, err := ParseDescriptor(upgradeRaw)
 	if err != nil {
 		t.Fatal(err)
@@ -500,7 +511,7 @@ func TestConnectDynamicModulesAndIssueFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	listed = call(http.MethodGet, dynamicPath, "", http.StatusOK)
-	if strings.Contains(listed.Body.String(), "dynamic-risk") {
+	if strings.Contains(listed.Body.String(), "dynamic-risk") || strings.Contains(listed.Body.String(), "dynamic-nav") {
 		t.Fatalf("static upgrade did not remove conflicting dynamic module: %s", listed.Body.String())
 	}
 	fields, err = st.CustomFieldsForWorkspace(ctx, workspaceID)

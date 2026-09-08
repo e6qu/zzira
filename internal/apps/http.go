@@ -258,7 +258,7 @@ func parseDynamicModules(body []byte, installation *models.AppInstallation) ([]m
 	modules := []models.AppDynamicModule{}
 	keys := map[string]bool{}
 	for moduleType, raw := range groups {
-		if moduleType != "webPanels" && moduleType != "webhooks" && moduleType != "jiraIssueFields" {
+		if moduleType != "webPanels" && moduleType != "webhooks" && moduleType != "jiraIssueFields" && moduleType != "webItems" {
 			return nil, fmt.Errorf("dynamic module type %q is not supported yet", moduleType)
 		}
 		if (moduleType == "webPanels" || moduleType == "webhooks") && !store.AppHasScope(installation, "read:jira-work") {
@@ -269,6 +269,22 @@ func parseDynamicModules(body []byte, installation *models.AppInstallation) ([]m
 			return nil, fmt.Errorf("dynamic %s must be a non-empty array", moduleType)
 		}
 		for _, entry := range entries {
+			if moduleType == "webItems" {
+				var input connectWebItemWire
+				if err := json.Unmarshal(entry, &input); err != nil {
+					return nil, fmt.Errorf("invalid dynamic web item: %w", err)
+				}
+				translated, err := translateConnectWebItem(input)
+				if err != nil {
+					return nil, err
+				}
+				if !moduleKeyPattern.MatchString(translated.Key) || keys[translated.Key] || !validAppCallbackPath(translated.URL) || translated.Title == "" || len(translated.Title) > 255 {
+					return nil, fmt.Errorf("dynamic web item needs a unique key, name, relative URL, and supported navigation location")
+				}
+				keys[translated.Key] = true
+				modules = append(modules, models.AppDynamicModule{Type: moduleType, Key: translated.Key, Descriptor: entry, Module: models.AppModule{Key: translated.Key, Type: translated.Type, Location: translated.Location, Title: translated.Title, RemoteURL: translated.URL, Dynamic: true}})
+				continue
+			}
 			if moduleType == "jiraIssueFields" {
 				var input connectIssueFieldWire
 				if err := json.Unmarshal(entry, &input); err != nil {

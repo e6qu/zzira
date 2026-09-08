@@ -37,8 +37,10 @@ var moduleRequirements = map[string]struct {
 	"jira:globalPage":              {Location: "jira.navigation", Scope: "read:jira-work"},
 	"jira:issuePanel":              {Location: "jira.issue.view", Scope: "read:jira-work"},
 	"jira:dashboardGadget":         {Location: "jira.dashboard", Scope: "read:jira-work"},
+	"jira:webItem":                 {Location: "jira.navigation", Scope: ""},
 	"confluence:globalPage":        {Location: "confluence.navigation", Scope: "read:confluence-content"},
 	"confluence:contentBylineItem": {Location: "confluence.content.byline", Scope: "read:confluence-content"},
+	"confluence:webItem":           {Location: "confluence.navigation", Scope: ""},
 }
 
 type descriptorWire struct {
@@ -150,7 +152,7 @@ func validateDescriptorWire(wire descriptorWire) (models.AppDescriptor, error) {
 		if !ok || requirement.Location != input.Location {
 			return models.AppDescriptor{}, fmt.Errorf("module %q has an unsupported type or location", input.Key)
 		}
-		if !scopes[requirement.Scope] {
+		if requirement.Scope != "" && !scopes[requirement.Scope] {
 			return models.AppDescriptor{}, fmt.Errorf("module %q requires scope %s", input.Key, requirement.Scope)
 		}
 		if !moduleKeyPattern.MatchString(input.Key) || moduleKeys[input.Key] || input.Title == "" || len(input.Title) > 255 || len(input.Body) > 20000 || (input.Body == "" && !validAppCallbackPath(input.URL)) || (input.Body != "" && input.URL != "") {

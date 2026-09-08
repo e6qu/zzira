@@ -2274,11 +2274,29 @@ Validation after Connect issue fields:
   Chromium app journeys pass; the Connect journey installs a field, reviews it
   in app administration, edits it on an issue and verifies the saved value.
 
+Validation after Connect navigation web items:
+
+- Standard descriptors and dynamic registration accept `webItems` at Jira
+  `system.top.navigation.bar` and Confluence `system.header/left` or
+  `system.header/right`. They materialize in the matching product navigation
+  and open relative app URLs through the existing sandboxed, context-complete,
+  JWT-signed remote page. Rendering a link requires no data scope.
+- Dynamic web items share atomic registration, the installation-wide 100-module
+  limit, original-shape reads, selective/delete-all removal,
+  uninstall/reinstall restoration and static-upgrade conflict semantics with
+  the existing dynamic runtime. Unsupported locations and conditions fail
+  explicitly. Parser tests cover Jira and Confluence translation and scope-free
+  installation; PostgreSQL integration covers materialization and promotion.
+  The complete PostgreSQL Go suite, server and WebAssembly builds, vet, seven
+  conformance checks and diff validation pass. The Chromium Connect journey
+  verifies the navigation link and signed remote destination.
+
 ## Current change
 
 1. Continue the app runtime with remaining Connect module families, dynamic
-   module types and webhook options, select/read-only field options, workflow
-   modules and upgrade migrations.
+   module types and webhook options, additional web-item locations and
+   conditions, select/read-only field options, workflow modules and upgrade
+   migrations.
 2. Continue Confluence with advanced whiteboard objects, direct manipulation,
    exports and the remaining rich content/editor surface.
 3. Continue Service Management with public Assets object/schema/import API

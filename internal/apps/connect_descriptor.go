@@ -42,6 +42,11 @@ type connectRemoteModuleWire struct {
 	Name     connectNameWire `json:"name"`
 }
 
+type connectWebItemWire struct {
+	connectRemoteModuleWire
+	Conditions []json.RawMessage `json:"conditions"`
+}
+
 type connectWebhookWire struct {
 	Key          string          `json:"key"`
 	Event        string          `json:"event"`
@@ -90,7 +95,7 @@ func parseConnectDescriptor(raw []byte) (models.AppDescriptor, error) {
 		wire.Scopes = append(wire.Scopes, scope)
 	}
 	sort.Strings(wire.Scopes)
-	supported := map[string]bool{"generalPages": true, "webPanels": true, "contentBylineItems": true, "webhooks": true, "jiraIssueFields": true}
+	supported := map[string]bool{"generalPages": true, "webPanels": true, "contentBylineItems": true, "webhooks": true, "jiraIssueFields": true, "webItems": true}
 	for moduleType, payload := range connect.Modules {
 		if !supported[moduleType] {
 			return models.AppDescriptor{}, fmt.Errorf("Connect module %q is not supported yet", moduleType)
@@ -107,6 +112,18 @@ func parseConnectDescriptor(raw []byte) (models.AppDescriptor, error) {
 					return models.AppDescriptor{}, err
 				}
 				wire.IssueFields = append(wire.IssueFields, translated)
+			}
+		case "webItems":
+			var modules []connectWebItemWire
+			if err := json.Unmarshal(payload, &modules); err != nil {
+				return models.AppDescriptor{}, fmt.Errorf("invalid Connect webItems: %w", err)
+			}
+			for _, module := range modules {
+				translated, err := translateConnectWebItem(module)
+				if err != nil {
+					return models.AppDescriptor{}, err
+				}
+				wire.Modules = append(wire.Modules, translated)
 			}
 		case "webhooks":
 			var hooks []connectWebhookWire
@@ -144,6 +161,26 @@ func parseConnectDescriptor(raw []byte) (models.AppDescriptor, error) {
 		wire.Scopes = append(wire.Scopes, scope)
 	}
 	return validateDescriptorWire(wire)
+}
+
+func translateConnectWebItem(module connectWebItemWire) (moduleWire, error) {
+	module.Key = strings.TrimSpace(module.Key)
+	module.URL = strings.TrimSpace(module.URL)
+	module.Location = strings.TrimSpace(module.Location)
+	module.Name.Value = strings.TrimSpace(module.Name.Value)
+	translated := moduleWire{Key: module.Key, URL: module.URL, Title: module.Name.Value}
+	switch module.Location {
+	case "system.top.navigation.bar":
+		translated.Type, translated.Location = "jira:webItem", "jira.navigation"
+	case "system.header/left", "system.header/right":
+		translated.Type, translated.Location = "confluence:webItem", "confluence.navigation"
+	default:
+		return moduleWire{}, fmt.Errorf("Connect web item %q uses unsupported location %q", module.Key, module.Location)
+	}
+	if len(module.Conditions) > 0 {
+		return moduleWire{}, fmt.Errorf("Connect web item %q uses unsupported conditions", module.Key)
+	}
+	return translated, nil
 }
 
 func translateConnectIssueField(field connectIssueFieldWire, dynamic bool) (models.AppIssueField, error) {
