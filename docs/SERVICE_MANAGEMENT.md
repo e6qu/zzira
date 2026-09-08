@@ -111,6 +111,29 @@ calculated due date; agents can advance the review and persist its findings.
 Policy, rotation, escalation, and assessment changes are permission checked and
 recorded in the organization audit log.
 
+## Assets and request impact
+
+Each service desk has an administrator-managed inventory inside its durable
+Assets workspace. A schema defines up to 30 required or optional text, number,
+date, boolean, and select attributes. Objects validate their values against that
+schema and keep explicit canvas coordinates. Administrators can create and
+delete schemas, create, edit, move, and delete objects, and connect two objects
+with a named directional relationship. Schema and object deletion cascade to
+their relationships and request links. Every mutation writes its state and
+ordered action in one transaction.
+
+The Assets workspace presents the same dependency data as a scalable SVG map
+and an accessible relationship table. The source of an arrow depends on its
+target. Assigned desk agents can inspect the inventory but only site
+administrators can change it; portal customers cannot read inventory data.
+
+On an agent-visible request, an agent can mark an object as directly affected or
+as a request dependency. Impact analysis walks the reverse dependency graph so
+every upstream object is listed with its shortest relationship depth. Traversal
+is cycle-safe, bounded to eight levels, desk-scoped, and ordered consistently.
+Direct links remain editable on the request while inferred impact stays derived
+from the current topology.
+
 The portal and REST API share Jira's canonical attachment records and blob
 store. Uploads first receive a one-use service-desk temporary ID, then become a
 public or internal comment attachment in one finalize operation. Customers see
@@ -219,9 +242,8 @@ Assets-backed portal fields, participant notifications,
 approval workflow configuration, image thumbnail generation,
 email delivery and notification preference administration, CSAT configuration,
 service report comparisons, SLA goal distributions, exports and scheduled
-delivery, complete Assets object/schema/import APIs, full
+delivery, complete public Assets object/schema/import API parity, full
 status chronology, SLA rule reordering and advanced criteria,
-portal invitation email delivery, Atlassian knowledge ranking/analytics, and
-Assets-backed dependency topology and impact analysis and review templates
+portal invitation email delivery, Atlassian knowledge ranking/analytics, and asset import/reconciliation and review templates
 remain. Customer creation grants only the
 site `atlassian/customer` role and never silently grants Jira product access.

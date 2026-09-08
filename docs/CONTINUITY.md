@@ -2129,13 +2129,38 @@ Validation after editable Confluence whiteboards:
   canvas editing extends the UI beyond the pinned public whiteboard-container
   operations.
 
+Validation after the Service Management Assets and impact checkpoint:
+
+- Migration 104 adds desk-scoped typed asset schemas, validated inventory
+  objects with topology positions, named directional relationships, and direct
+  affected/dependency request links beneath the existing Assets workspace.
+- The command and store layers enforce administrator mutation, agent-only
+  inventory reads, same-desk relationship endpoints, typed required values,
+  atomic action records, cascade-safe deletion, and rejection of false-success
+  links and disconnects.
+- The Assets workspace combines a scalable SVG dependency map with an
+  accessible relationship table, schema and object administration, position
+  editing and relationship lifecycle. The queue header links directly to it.
+- Agent request detail connects direct assets and derives cycle-safe upstream
+  impact to eight levels with deterministic depth/label ordering. Customers do
+  not receive inventory or impact data.
+- Focused PostgreSQL integration covers schema normalization, typed validation,
+  inventory persistence, self-link rejection, direct request linking, inferred
+  impact and non-agent isolation. The Chromium journey covers the full
+  manager-to-agent flow and WCAG A/AA scans in light and dark themes.
+- The complete PostgreSQL Go suite, vet, WebAssembly build, seven conformance
+  tests, generated inventory/coverage checks, focused Chromium journey and diff
+  validation pass. The API count remains 427 of 1,207 because this checkpoint
+  adds the user and manager product surface before public Assets API parity.
+
 ## Current change
 
-1. Continue Service Management with Assets-backed topology and impact analysis.
-2. Continue the app runtime with outbound lifecycle delivery, app webhooks and
+1. Continue the app runtime with outbound lifecycle delivery, app webhooks and
    scheduled triggers.
-3. Continue Confluence with advanced whiteboard objects, direct manipulation,
+2. Continue Confluence with advanced whiteboard objects, direct manipulation,
    exports and the remaining rich content/editor surface.
+3. Continue Service Management with public Assets object/schema/import API
+   parity, reconciliation and Assets-backed portal fields.
 
 ## Resume here
 

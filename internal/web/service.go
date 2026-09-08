@@ -89,6 +89,8 @@ type servicePageData struct {
 	DependencyNodeCount   int
 	IncidentUpdates       []models.ServiceIncidentUpdate
 	EscalationSteps       []models.ServiceEscalationStep
+	AssetInventory        *models.ServiceAssetInventory
+	RequestAssets         []models.ServiceRequestAsset
 	FieldValues           map[string]string
 	Transitions           []serviceTransitionView
 	CanAdmin              bool
@@ -1171,7 +1173,21 @@ func (h *Handler) ServiceRequestPage(w http.ResponseWriter, r *http.Request) {
 		}
 		requestFields = append(requestFields, serviceRequestFieldValueView{Name: field.Name, Value: fmt.Sprint(value)})
 	}
-	h.writeWorkspacePage(w, r, "page_service_request", user, workspaceID, servicePageData{Request: request, RequestFieldValues: requestFields, OperationsProfile: operations, ChangeConflicts: changeConflicts, IncidentUpdates: incidentUpdates, EscalationSteps: escalationSteps, Comments: comments, Attachments: attachments, Links: linkViews, LinkTypes: linkTypes, Approvals: approvals, Feedback: feedback, Participants: participants, Members: members, SLAs: slas, Transitions: transitions, CanAgent: canManage, CanManageParticipants: canManage || request.Customer.ID == user.ID, CurrentUserID: user.ID, Subscribed: subscribed, CanLeaveFeedback: request.Customer.ID == user.ID && request.Issue.Status.Category == "done"}, "service", request.Issue.ProjectID)
+	var assetInventory *models.ServiceAssetInventory
+	requestAssets := []models.ServiceRequestAsset{}
+	if canManage {
+		assetInventory, err = h.Store.ServiceAssetInventory(r.Context(), workspaceID, user.ID, request.ServiceDesk.ID)
+		if err != nil {
+			http.Error(w, "Could not load service assets.", http.StatusInternalServerError)
+			return
+		}
+		requestAssets, err = h.Store.ServiceRequestAssetImpact(r.Context(), workspaceID, user.ID, request.Issue.ID)
+		if err != nil {
+			http.Error(w, "Could not calculate asset impact.", http.StatusInternalServerError)
+			return
+		}
+	}
+	h.writeWorkspacePage(w, r, "page_service_request", user, workspaceID, servicePageData{Request: request, RequestFieldValues: requestFields, OperationsProfile: operations, ChangeConflicts: changeConflicts, IncidentUpdates: incidentUpdates, EscalationSteps: escalationSteps, AssetInventory: assetInventory, RequestAssets: requestAssets, Comments: comments, Attachments: attachments, Links: linkViews, LinkTypes: linkTypes, Approvals: approvals, Feedback: feedback, Participants: participants, Members: members, SLAs: slas, Transitions: transitions, CanAgent: canManage, CanManageParticipants: canManage || request.Customer.ID == user.ID, CurrentUserID: user.ID, Subscribed: subscribed, CanLeaveFeedback: request.Customer.ID == user.ID && request.Issue.Status.Category == "done"}, "service", request.Issue.ProjectID)
 }
 
 func (h *Handler) ServiceRequestLink(w http.ResponseWriter, r *http.Request) {
