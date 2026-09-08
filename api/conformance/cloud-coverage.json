@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 461,
+  "assessedTotal": 468,
   "counts": {
     "delivered": 0,
-    "partial": 454,
+    "partial": 461,
     "missing": 7,
-    "unassessed": 746
+    "unassessed": 739
   },
   "countsByFamily": {
     "automation": {
@@ -24,9 +24,9 @@
     },
     "jira-platform": {
       "delivered": 0,
-      "partial": 93,
+      "partial": 100,
       "missing": 0,
-      "unassessed": 524
+      "unassessed": 517
     },
     "jira-service-management": {
       "delivered": 0,
@@ -2490,25 +2490,37 @@
       "operationId": "jira-v3:GET:/rest/api/3/jql/autocompletedata",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/projects_test.go",
+        "internal/api3/api3_jql_test.go",
+        "docs/JQL.md"
+      ],
+      "notes": "Supported system/custom fields, operators and functions are workspace-scoped and integration-tested; collapsed duplicate-name and complete Jira catalogs remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/jql/autocompletedata",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/projects_test.go",
+        "internal/api3/api3_jql_test.go",
+        "docs/JQL.md"
+      ],
+      "notes": "Supported system/custom fields, operators and functions are workspace-scoped and integration-tested; exact project-ID filtering and collapsed fields remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/jql/autocompletedata/suggestions",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/projects_test.go",
+        "internal/api3/api3_jql_test.go",
+        "docs/JQL.md"
+      ],
+      "notes": "Project and permission-filtered issue-derived suggestions, filtering, quoting, safe highlighting and bounds are tested; remaining Jira field providers remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/jql/function/computation",
@@ -2538,33 +2550,49 @@
       "operationId": "jira-v3:POST:/rest/api/3/jql/match",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/projects_test.go",
+        "internal/api3/api3_jql_test.go",
+        "docs/JQL.md"
+      ],
+      "notes": "Per-query compilation and matching bounded to requested visible IDs are integration-tested; numeric Jira ID compatibility and exact service limits remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/jql/parse",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/projects_test.go",
+        "internal/api3/api3_jql_test.go",
+        "docs/JQL.md"
+      ],
+      "notes": "Per-query Jira-shaped structures, syntax/compile errors, history/functions/multi-order and validation modes are tested; complete Jira AST validation warnings remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/jql/pdcleaner",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/projects_test.go",
+        "internal/api3/api3_jql_test.go",
+        "docs/JQL.md"
+      ],
+      "notes": "Bounded batch conversion of known equality-clause user identities is tested; list/history operands and unknown-user reporting remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/jql/sanitize",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/projects_test.go",
+        "internal/api3/api3_jql_test.go",
+        "docs/JQL.md"
+      ],
+      "notes": "Per-viewer compile validation and per-query success/error results are integration-tested; visibility-driven name-to-ID rewriting remains."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/label",

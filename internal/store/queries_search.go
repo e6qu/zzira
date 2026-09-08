@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 
@@ -76,6 +77,89 @@ func (s *Store) Search(ctx context.Context, workspaceID, userID string, c jql.Co
 		out = append(out, i)
 	}
 	return out, total, rows.Err()
+}
+
+// MatchIssueIDs evaluates one compiled query only against the caller-supplied
+// issue IDs. This keeps Jira's bulk match resource bounded independently of the
+// workspace's total issue count and applies the same issue-security predicate
+// used by normal search.
+func (s *Store) MatchIssueIDs(ctx context.Context, workspaceID, userID string, c jql.Compiled, issueIDs []string) ([]string, error) {
+	if c.Err != nil {
+		return nil, c.Err
+	}
+	if len(issueIDs) == 0 {
+		return []string{}, nil
+	}
+	where := "i.workspace_id = $1"
+	args := []any{workspaceID}
+	if c.Where != "" {
+		where += " AND (" + c.Where + ")"
+		args = append(args, c.Args...)
+	}
+	userPH := "$" + fmt.Sprintf("%d", len(args)+1)
+	args = append(args, userID)
+	where += " AND " + VisibleIssuePredicate("i", userPH)
+	idsPH := "$" + fmt.Sprintf("%d", len(args)+1)
+	args = append(args, issueIDs)
+	where += " AND i.id=ANY(" + idsPH + "::TEXT[])"
+	rows, err := s.Pool.Query(ctx, `SELECT i.id `+searchJoin+` WHERE `+where, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	matched := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		matched = append(matched, id)
+	}
+	return matched, rows.Err()
+}
+
+// JQLFieldSuggestions returns distinct values observed on issues the viewer can
+// browse. The field switch chooses fixed SQL fragments; user input is always a
+// bound value.
+func (s *Store) JQLFieldSuggestions(ctx context.Context, workspaceID, userID, field, needle string, limit int) ([]string, error) {
+	if limit < 1 || limit > 100 {
+		limit = 50
+	}
+	var valueSQL, extraJoin, present string
+	switch strings.ToLower(field) {
+	case "labels":
+		valueSQL, extraJoin, present = "label", "CROSS JOIN LATERAL unnest(i.labels) label", "label <> ''"
+	case "component", "sprint", "resolution":
+		key := strings.ToLower(field)
+		valueSQL = `i.fields->>'` + key + `'`
+		present = valueSQL + " IS NOT NULL AND " + valueSQL + " <> ''"
+	case "fixversion", "affectedversion":
+		key := "fixVersions"
+		if strings.EqualFold(field, "affectedversion") {
+			key = "versions"
+		}
+		extraJoin = `CROSS JOIN LATERAL jsonb_array_elements(COALESCE(i.fields->'` + key + `','[]'::jsonb)) version`
+		valueSQL, present = `COALESCE(version->>'name',version->>'id')`, `COALESCE(version->>'name',version->>'id','') <> ''`
+	default:
+		return nil, fmt.Errorf("field does not provide stored suggestions")
+	}
+	rows, err := s.Pool.Query(ctx, `SELECT DISTINCT `+valueSQL+` AS value `+searchJoin+` `+extraJoin+`
+		WHERE i.workspace_id=$1 AND `+VisibleIssuePredicate("i", "$2")+` AND `+present+`
+		  AND ($3='' OR `+valueSQL+` ILIKE '%'||$3||'%')
+		ORDER BY value LIMIT `+fmt.Sprintf("%d", limit), workspaceID, userID, needle)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	values := []string{}
+	for rows.Next() {
+		var value string
+		if err := rows.Scan(&value); err != nil {
+			return nil, err
+		}
+		values = append(values, value)
+	}
+	return values, rows.Err()
 }
 
 // MembersByWorkspace lists workspace members (assignee pickers, user search).

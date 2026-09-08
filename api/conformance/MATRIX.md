@@ -31,7 +31,8 @@ use `/rest/zzira/1`.
 | GET /rest/api/3/issue/{idOrKey}/changelog | ✅ | derived from the action log |
 | /worklog CRUD | ✅ | author-only delete |
 | POST /issue/{idOrKey}/attachments · /attachment/{id} · /attachment/content/{id} | ✅ | X-Atlassian-Token semantics |
-| GET /rest/api/3/search · POST /search · GET/POST /search/jql · POST /search/approximate-count | 🟡 | JQL subset; enhanced search supports bounded queries, IDs-only defaults, field projections, isLast/tokens and 1–5000 result limits; expansions and stable cursor semantics remain |
+| GET /rest/api/3/search · POST /search · GET/POST /search/jql · POST /search/approximate-count | 🟡 | Permission-filtered JQL with history/date operators; enhanced search supports bounded queries, IDs-only defaults, field projections, isLast, deterministic ordering, query/user/workspace-bound seven-day tokens and 1–5000 result limits; expansions, reconciliation and snapshot/keyset semantics remain |
+| Seven JQL reference, suggestion, parse, match, sanitize and migration operations | 🟡 | Supported fields/functions are discoverable, issue-derived suggestions apply visibility, parse returns structured per-query results, and match is bounded to requested IDs; exact personal-data migration and remaining functions/validation warnings remain |
 | GET /rest/api/3/mypermissions · POST /permissions/check | ✅ | evaluated from workspace role |
 | /issueLinkType · POST /issueLink · DELETE /issueLink/{id} | ✅ | links sync to replicas |
 | GET /rest/api/3/label | ✅ | distinct labels + query |

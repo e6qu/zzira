@@ -154,7 +154,7 @@ func TestProjectAPILifecycle(t *testing.T) {
 		t.Fatalf("default assignee: %v %v", assigned, err)
 	}
 	document := `{"type":"doc","version":1,"content":[{"type":"heading","attrs":{"level":2},"content":[{"type":"text","text":"Release","marks":[{"type":"strong"}]}]},{"type":"bulletList","content":[{"type":"listItem","content":[{"type":"paragraph","content":[{"type":"text","text":"Ready"}]}]}]}]}`
-	rich := call(actor, "POST", "/rest/api/3/issue", `{"fields":{"project":{"key":"TEAM"},"summary":"Rich content","issuetype":{"name":"Task"},"assignee":null,"description":`+document+`}}`, 201)
+	rich := call(actor, "POST", "/rest/api/3/issue", `{"fields":{"project":{"key":"TEAM"},"summary":"Rich content","issuetype":{"name":"Task"},"assignee":null,"labels":["release-ready"],"description":`+document+`}}`, 201)
 	if err := json.Unmarshal(rich.Body.Bytes(), &createdIssue); err != nil {
 		t.Fatal(err)
 	}
@@ -163,6 +163,35 @@ func TestProjectAPILifecycle(t *testing.T) {
 		t.Fatalf("rich description or explicit unassignment was lost: %v %v", saved, err)
 	}
 	call(actor, "POST", "/rest/api/3/issue", `{"fields":{"project":{"key":"TEAM"},"summary":"Invalid content","issuetype":{"name":"Task"},"description":{"type":"paragraph"}}}`, 400)
+	autoComplete := call(actor, "GET", "/rest/api/3/jql/autocompletedata", "", 200)
+	if !strings.Contains(autoComplete.Body.String(), `"value":"status"`) || !strings.Contains(autoComplete.Body.String(), `"value":"currentUser()"`) {
+		t.Fatal(autoComplete.Body.String())
+	}
+	call(actor, "POST", "/rest/api/3/jql/autocompletedata", `{"includeCollapsedFields":true,"projectIds":[]}`, 200)
+	suggestions := call(actor, "GET", "/rest/api/3/jql/autocompletedata/suggestions?fieldName=project&fieldValue=del", "", 200)
+	if !strings.Contains(suggestions.Body.String(), `"value":"TEAM"`) || !strings.Contains(suggestions.Body.String(), `\u003cb\u003eDel\u003c/b\u003eivery`) {
+		t.Fatal(suggestions.Body.String())
+	}
+	labelSuggestions := call(actor, "GET", "/rest/api/3/jql/autocompletedata/suggestions?fieldName=labels&fieldValue=ready", "", 200)
+	if !strings.Contains(labelSuggestions.Body.String(), `"value":"release-ready"`) {
+		t.Fatal(labelSuggestions.Body.String())
+	}
+	parsed := call(actor, "POST", "/rest/api/3/jql/parse?validation=strict", `{"queries":["status WAS \"To Do\" ORDER BY updated DESC, key ASC","status ="]}`, 200)
+	if !strings.Contains(parsed.Body.String(), `"structure"`) || !strings.Contains(parsed.Body.String(), `"errors":["JQL syntax error`) {
+		t.Fatal(parsed.Body.String())
+	}
+	matched := call(actor, "POST", "/rest/api/3/jql/match", `{"issueIds":["`+saved.ID+`"],"jqls":["project=TEAM","project=NEXT","status ="]}`, 200)
+	if !strings.Contains(matched.Body.String(), `"matchedIssues":["`+saved.ID+`"]`) || !strings.Contains(matched.Body.String(), `"matchedIssues":[]`) || !strings.Contains(matched.Body.String(), `"errors":["Error in the JQL Query`) {
+		t.Fatal(matched.Body.String())
+	}
+	cleaned := call(actor, "POST", "/rest/api/3/jql/pdcleaner", `{"queryStrings":["assignee = currentUser()"]}`, 200)
+	if !strings.Contains(cleaned.Body.String(), `"queryStrings":["assignee = currentUser()"]`) {
+		t.Fatal(cleaned.Body.String())
+	}
+	sanitized := call(actor, "POST", "/rest/api/3/jql/sanitize", `{"queries":[{"query":"project=TEAM"},{"accountId":"`+actor+`","query":"unknown = value"}]}`, 200)
+	if !strings.Contains(sanitized.Body.String(), `"sanitizedQuery":"project=TEAM"`) || !strings.Contains(sanitized.Body.String(), `"sanitizedQuery":null`) {
+		t.Fatal(sanitized.Body.String())
+	}
 	legacy := call(actor, "GET", "/rest/api/3/search?jql=project%3DTEAM&maxResults=1", "", 200)
 	if !strings.Contains(legacy.Body.String(), `"total":2`) || !strings.Contains(legacy.Body.String(), `"maxResults":1`) {
 		t.Fatal(legacy.Body.String())

@@ -41,14 +41,31 @@ permission-filtered store query. Enhanced search defaults to issue IDs, honors
 selected fields, rejects unbounded queries and offset pagination, and rejects a
 cursor reused with another query, workspace, or user.
 
+## Reference and query services
+
+ZZIRA exposes the pinned GET/POST reference-data resources and returns only
+fields, operators, and functions supported by its compiler, including typed
+custom fields. Project, status/category, priority, issue-type, user, label,
+component, sprint, resolution, and version suggestions are generated from the
+current workspace. Suggestions derived from work items apply issue visibility
+before collecting distinct values.
+
+The parse resource returns one Jira-shaped structure or error list per input
+query and supports strict, warning, and syntax-only validation. Bulk matching
+compiles each query independently and evaluates it only against the requested,
+visible issue IDs. Sanitization returns per-query errors without failing the
+batch. Personal-data migration converts known workspace member email/display
+operands on assignee, reporter, and creator equality clauses to account IDs.
+
 ## Current limits
 
-The search resources remain assessed as partial. The remaining PR 1 work adds
-the Jira JQL reference, suggestion, parse, match, sanitize, personal-data
-migration, and app-function precomputation resources; more built-in functions
-and multi-value fields; project-aware validation warnings; expansion/property
-selection; strong-consistency reconciliation; and snapshot/keyset semantics for
-pages whose matching work items change between requests.
+The search and JQL service resources remain assessed as partial. The remaining
+PR 1 work adds app-function precomputation resources; more built-in functions
+and multi-value fields; complete personal-data migration for list/history
+operands and unknown-user reporting; project-aware validation warnings; exact
+expansion/property selection; strong-consistency reconciliation; and
+snapshot/keyset semantics for pages whose matching work items change between
+requests.
 
 Some Jira history fields cannot be queried until their mutations persist a
 structured diff. Unsupported functions fail during compilation instead of

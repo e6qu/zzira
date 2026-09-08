@@ -180,6 +180,18 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.searchJQL(w, r)
 	case path == "/search/approximate-count" && r.Method == http.MethodPost:
 		h.searchCount(w, r)
+	case path == "/jql/autocompletedata" && (r.Method == http.MethodGet || r.Method == http.MethodPost):
+		h.jqlAutoCompleteData(w, r)
+	case path == "/jql/autocompletedata/suggestions" && r.Method == http.MethodGet:
+		h.jqlSuggestions(w, r)
+	case path == "/jql/parse" && r.Method == http.MethodPost:
+		h.jqlParse(w, r)
+	case path == "/jql/match" && r.Method == http.MethodPost:
+		h.jqlMatch(w, r)
+	case path == "/jql/pdcleaner" && r.Method == http.MethodPost:
+		h.jqlPersonalDataMigration(w, r)
+	case path == "/jql/sanitize" && r.Method == http.MethodPost:
+		h.jqlSanitize(w, r)
 	case path == "/filter" && r.Method == http.MethodGet:
 		h.listFilters(w, r)
 	case strings.HasPrefix(path, "/filter/"):

@@ -14,8 +14,8 @@ boundaries, dependencies, and acceptance gates belong in
 - Delivery unit: PR 1 — Jira Platform and administration completion
 - Pull request: not opened yet
 - State: implementation in progress
-- Current checkpoint: saved-filter management and the first JQL/search expansion
-  implemented and tested; JQL helper resources next
+- Current checkpoint: saved-filter management, JQL/search expansion, and seven
+  JQL helper operations implemented and tested; app precomputations next
 - Blockers: none
 
 ## Contract baseline
@@ -43,9 +43,11 @@ and user. Legacy, enhanced, and approximate-count search paths now have direct
 integration evidence. Issue visibility remains enforced before pagination and
 serialization.
 
-The next checkpoint implements the pinned JQL reference, suggestion, parse,
-match, sanitize, personal-data migration, and app-function precomputation
-resources, then continues field/function and reconciliation semantics.
+The seven pinned reference/suggestion, parse, match, sanitize, and personal-data
+migration operations now share the same parser, compiler, field registry, and
+permission-filtered issue search. The next checkpoint implements the three
+app-function precomputation operations with tenant-scoped durable storage, then
+continues field/function and reconciliation semantics.
 
 ## Validation baseline
 
@@ -59,7 +61,7 @@ also run the PostgreSQL integration suite from an empty migrated database.
 
 ## Resume here
 
-1. Implement and test the remaining pinned JQL helper resources.
+1. Implement and test the three app-function precomputation resources.
 2. Complete function, multi-value field, expansion, property, reconciliation,
    and snapshot/keyset search semantics.
 3. Add filter-subscription scheduling and delivery after shared scheduled-work
