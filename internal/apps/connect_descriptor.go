@@ -43,6 +43,15 @@ type connectRemoteModuleWire struct {
 	Name     connectNameWire `json:"name"`
 }
 
+type connectIssueTabPanelWire struct {
+	Key        string            `json:"key"`
+	URL        string            `json:"url"`
+	Name       connectNameWire   `json:"name"`
+	Weight     int               `json:"weight"`
+	Params     map[string]string `json:"params"`
+	Conditions []json.RawMessage `json:"conditions"`
+}
+
 type connectWebItemWire struct {
 	connectRemoteModuleWire
 	Conditions []json.RawMessage `json:"conditions"`
@@ -188,12 +197,24 @@ func parseConnectDescriptor(raw []byte) (models.AppDescriptor, error) {
 		wire.Scopes = append(wire.Scopes, scope)
 	}
 	sort.Strings(wire.Scopes)
-	supported := map[string]bool{"generalPages": true, "jiraProjectPages": true, "jiraProjectAdminTabPanels": true, "jiraReports": true, "jiraDashboardItems": true, "webPanels": true, "contentBylineItems": true, "webhooks": true, "jiraIssueFields": true, "webItems": true, "jiraIssueContents": true, "jiraIssueContexts": true, "jiraIssueGlances": true}
+	supported := map[string]bool{"generalPages": true, "jiraProjectPages": true, "jiraProjectAdminTabPanels": true, "jiraReports": true, "jiraDashboardItems": true, "jiraIssueTabPanels": true, "webPanels": true, "contentBylineItems": true, "webhooks": true, "jiraIssueFields": true, "webItems": true, "jiraIssueContents": true, "jiraIssueContexts": true, "jiraIssueGlances": true}
 	for moduleType, payload := range connect.Modules {
 		if !supported[moduleType] {
 			return models.AppDescriptor{}, fmt.Errorf("Connect module %q is not supported yet", moduleType)
 		}
 		switch moduleType {
+		case "jiraIssueTabPanels":
+			var modules []connectIssueTabPanelWire
+			if err := json.Unmarshal(payload, &modules); err != nil {
+				return models.AppDescriptor{}, fmt.Errorf("invalid Connect jiraIssueTabPanels: %w", err)
+			}
+			for _, module := range modules {
+				translated, err := translateConnectIssueTabPanel(module)
+				if err != nil {
+					return models.AppDescriptor{}, err
+				}
+				wire.Modules = append(wire.Modules, translated)
+			}
 		case "jiraIssueGlances":
 			var modules []connectIssueContextWire
 			if err := json.Unmarshal(payload, &modules); err != nil {
@@ -340,6 +361,27 @@ func parseConnectDescriptor(raw []byte) (models.AppDescriptor, error) {
 	return validateDescriptorWire(wire)
 }
 
+func translateConnectIssueTabPanel(module connectIssueTabPanelWire) (moduleWire, error) {
+	module.Key = strings.TrimSpace(module.Key)
+	module.Name.Value = strings.TrimSpace(module.Name.Value)
+	module.URL = strings.TrimSpace(module.URL)
+	if !connectModuleKeyPattern.MatchString(module.Key) || module.Name.Value == "" || len(module.Name.Value) > 1500 || !validAppCallbackPath(module.URL) {
+		return moduleWire{}, fmt.Errorf("Connect issue tab panel needs a valid key, name, and relative URL")
+	}
+	if len(module.Conditions) > 0 {
+		return moduleWire{}, fmt.Errorf("Connect issue tab panel %q uses unsupported conditions", module.Key)
+	}
+	var err error
+	if module.URL, err = appendConnectParams(module.URL, module.Params); err != nil {
+		return moduleWire{}, fmt.Errorf("Connect issue tab panel %q: %w", module.Key, err)
+	}
+	weight := module.Weight
+	if weight == 0 {
+		weight = 100
+	}
+	return moduleWire{Key: module.Key, Type: "jira:issueTabPanel", Location: "jira.issue.activity", Title: module.Name.Value, URL: module.URL, Position: weight}, nil
+}
+
 func translateConnectIssueContext(module connectIssueContextWire) (moduleWire, error) {
 	return translateConnectIssueViewContext(module, "jira:issueContext")
 }
@@ -415,19 +457,29 @@ func translateConnectProjectAdminPage(module connectProjectAdminPageWire) (modul
 	if len(module.Conditions) > 0 {
 		return moduleWire{}, fmt.Errorf("Connect project admin tab %q uses unsupported conditions", module.Key)
 	}
-	if len(module.Params) > 0 {
-		parsed, _ := url.Parse(module.URL)
-		query := parsed.Query()
-		for key, value := range module.Params {
-			if strings.TrimSpace(key) == "" {
-				return moduleWire{}, fmt.Errorf("Connect project admin tab %q has an empty parameter key", module.Key)
-			}
-			query.Set(key, value)
-		}
-		parsed.RawQuery = query.Encode()
-		module.URL = parsed.String()
+	var err error
+	if module.URL, err = appendConnectParams(module.URL, module.Params); err != nil {
+		return moduleWire{}, fmt.Errorf("Connect project admin tab %q: %w", module.Key, err)
 	}
 	return moduleWire{Key: module.Key, Type: "jira:projectAdminPage", Location: "jira.project.settings", Title: module.Name.Value, URL: module.URL, Position: group + module.Weight}, nil
+}
+
+func appendConnectParams(moduleURL string, params map[string]string) (string, error) {
+	if len(params) == 0 {
+		return moduleURL, nil
+	}
+	values := url.Values{}
+	for key, value := range params {
+		if strings.TrimSpace(key) == "" {
+			return "", fmt.Errorf("parameter keys cannot be empty")
+		}
+		values.Set(key, value)
+	}
+	separator := "?"
+	if strings.Contains(moduleURL, "?") {
+		separator = "&"
+	}
+	return moduleURL + separator + values.Encode(), nil
 }
 
 func translateConnectProjectPage(module connectProjectPageWire) (moduleWire, error) {

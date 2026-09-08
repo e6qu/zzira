@@ -576,6 +576,10 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 		decorateIssueContext(&appContexts[index])
 		decorateIssueContextStatus(&appContexts[index], issueProperties[issueContextStatusPropertyKey(appContexts[index])], issue.Key)
 	}
+	appActivityTabs, err := h.Store.AppModulesByLocation(r.Context(), wsID, "jira.issue.activity")
+	if err != nil {
+		return nil, err
+	}
 	appIssueContent, err := h.Store.AppIssueContentForIssue(r.Context(), wsID, issue.ID)
 	if err != nil {
 		return nil, err
@@ -609,6 +613,7 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 		Development:       development,
 		Delivery:          delivery,
 		AppPanels:         appPanels,
+		AppActivityTabs:   appActivityTabs,
 		AppContexts:       appContexts,
 		AppIssueContent:   appIssueContent,
 	}, nil

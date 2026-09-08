@@ -100,7 +100,7 @@ shape:
 Connect `READ` and write-capable scopes translate into the corresponding Jira
 and Confluence grants. Supported Connect module families are `generalPages`,
 `jiraProjectPages`, `jiraProjectAdminTabPanels`, `jiraReports`,
-`jiraDashboardItems`, Jira issue-view
+`jiraDashboardItems`, `jiraIssueTabPanels`, Jira issue-view
 `webPanels`, Confluence
 `contentBylineItems`, scalar
 `jiraIssueFields`, quick-add `jiraIssueContents`, collapsible
@@ -170,6 +170,15 @@ When an app declares modern issue contexts, they replace its legacy glance
 surface; otherwise ZZIRA shows only the first installed glance for that app,
 matching Jira's single-glance behavior.
 
+Connect issue tab panels validate their required key, name and relative URL,
+accept the standard `params` map, use the default weight of 100, and preserve explicit weight when
+ordering multiple tabs. Each active module joins Comments, Work log and History
+in the issue activity switcher. Selecting it hides the native activity composer
+and ledger and then loads a sandboxed signed iframe with expanded `issue.key`,
+`issue.id`, `project.key` and `project.id` context. Returning to a native filter
+restores its previous sort direction. Conditions remain an explicit gap and
+fail descriptor installation instead of being ignored.
+
 Connect project pages validate the required key, name, relative URL and
 relative `iconUrl`, and honor descriptor weight when ordering multiple app
 pages. Each active page appears in the current project's navigation and opens
@@ -209,7 +218,7 @@ by reports.
 Supported scopes are `read:jira-work`, `write:jira-work`,
 `read:confluence-content`, `write:confluence-content`, `read:app-storage`,
 `write:app-storage`, and `manage:webhooks`. Supported module contracts are Jira
-global and project pages, issue panels, issue contexts/glances and dashboard gadgets,
+global and project pages, issue panels, issue activity tabs, issue contexts/glances and dashboard gadgets,
 plus Confluence global pages and content byline items. Active global pages join
 product navigation, issue panels and contexts join visible work-item views, app
 gadgets can be added and positioned on custom dashboards, and byline items join
@@ -298,7 +307,7 @@ bulk issue-property mutations remain a separate API slice.
 
 The runtime is a ZZIRA execution contract for remotely hosted apps. Remaining
 Connect module families, the remaining dynamic module types and webhook
-options, project/page-admin and issue-context conditions, dashboard-item
+options, project/page-admin, issue-tab and issue-context conditions, dashboard-item
 configuration/refresh/conditions, workflow modules, select/read-only issue
 fields and option APIs,
 descriptor-driven upgrade migrations, and Atlassian-hosted Forge compute remain

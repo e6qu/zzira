@@ -69,6 +69,7 @@ func TestParseConnectDescriptorTranslatesSupportedModules(t *testing.T) {
     "jiraProjectAdminTabPanels":[{"key":"project-controls","url":"/project-controls?project={project.key}","location":"projectgroup3","weight":20,"params":{"source":"settings"},"name":{"value":"Project controls"}}],
     "jiraReports":[{"key":"delivery-risk","url":"/delivery-risk?project={project.key}","name":{"value":"Delivery risk"},"description":{"value":"Release and incident risk"},"reportCategory":"AGILE","thumbnailUrl":"/delivery-risk.svg"}],
     "jiraDashboardItems":[{"key":"release-health","url":"/release-health?item={dashboardItem.id}","name":{"value":"Release health"},"description":{"value":"Current release health"},"thumbnailUrl":"release-health.svg"}],
+    "jiraIssueTabPanels":[{"key":"deployment-activity","url":"/deployment-activity?issue={issue.key}","name":{"value":"Deployments"},"weight":80,"params":{"source":"activity"}}],
     "jiraIssueContexts":[{"key":"delivery-context","name":{"value":"Delivery context"},"icon":{"url":"context.svg"},"content":{"type":"label","label":{"value":"3 linked deployments"}},"target":{"type":"web_panel","url":"/delivery-context?issue={issue.key}"}}],
     "jiraIssueGlances":[{"key":"legacy-glance","name":{"value":"Legacy glance"},"icon":{"url":"glance.svg"},"content":{"type":"label","label":{"value":"Legacy status"}},"target":{"type":"web_panel","url":"/legacy-glance"}}],
     "webhooks":[{"event":"jira:issue_updated","url":"/hooks/issues","filter":"project = OPS"}]
@@ -78,7 +79,7 @@ func TestParseConnectDescriptorTranslatesSupportedModules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if descriptor.Format != "connect" || descriptor.Version != "connect-v1" || len(descriptor.Modules) != 11 || len(descriptor.Webhooks) != 1 || len(descriptor.IssueFields) != 1 {
+	if descriptor.Format != "connect" || descriptor.Version != "connect-v1" || len(descriptor.Modules) != 12 || len(descriptor.Webhooks) != 1 || len(descriptor.IssueFields) != 1 {
 		t.Fatalf("Connect descriptor = %+v", descriptor)
 	}
 	if descriptor.Key != "Connect.Operations" {
@@ -91,6 +92,7 @@ func TestParseConnectDescriptorTranslatesSupportedModules(t *testing.T) {
 	dashboardItem := false
 	issueContext := false
 	issueGlance := false
+	issueTabPanel := false
 	for _, module := range descriptor.Modules {
 		if module.RemoteURL != "" {
 			remoteModules++
@@ -113,8 +115,11 @@ func TestParseConnectDescriptorTranslatesSupportedModules(t *testing.T) {
 		if module.Key == "legacy-glance" && module.Type == "jira:issueGlance" && module.Location == "jira.issue.context" && strings.Contains(module.Body, "Legacy status") {
 			issueGlance = true
 		}
+		if module.Key == "deployment-activity" && module.Type == "jira:issueTabPanel" && module.Location == "jira.issue.activity" && module.Position == 80 && strings.Contains(module.RemoteURL, "issue={issue.key}") && strings.Contains(module.RemoteURL, "source=activity") {
+			issueTabPanel = true
+		}
 	}
-	if remoteModules != 11 || !projectPage || !projectAdminPage || !report || !dashboardItem || !issueContext || !issueGlance || descriptor.Webhooks[0].Key != "connect-webhook-1" {
+	if remoteModules != 12 || !projectPage || !projectAdminPage || !report || !dashboardItem || !issueContext || !issueGlance || !issueTabPanel || descriptor.Webhooks[0].Key != "connect-webhook-1" {
 		t.Fatalf("translated modules = %+v, hooks = %+v", descriptor.Modules, descriptor.Webhooks)
 	}
 	for _, scope := range []string{"read:jira-work", "write:jira-work", "read:confluence-content", "write:confluence-content", "manage:webhooks"} {
@@ -157,10 +162,31 @@ func TestParseConnectDescriptorTranslatesSupportedModules(t *testing.T) {
 	if _, err := ParseDescriptor([]byte(`{"key":"connect.bad-context","name":"Bad context","baseUrl":"https://connect.example.test","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"jiraIssueContexts":[{"key":"context","name":{"value":"Context"},"icon":{"url":"/context.svg"},"content":{"type":"label","label":{"value":"Context"}},"target":{"type":"web_panel","url":"/context"},"conditions":[{"condition":"user_is_logged_in"}]}]}}`)); err == nil {
 		t.Fatal("accepted unsupported issue context conditions")
 	}
+	if _, err := ParseDescriptor([]byte(`{"key":"connect.bad-tab","name":"Bad tab","baseUrl":"https://connect.example.test","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"jiraIssueTabPanels":[{"key":"activity","name":{"value":"Activity"},"url":"https://outside.example.test/activity"}]}}`)); err == nil {
+		t.Fatal("accepted an absolute issue-tab URL")
+	}
+	if _, err := ParseDescriptor([]byte(`{"key":"connect.bad-tab","name":"Bad tab","baseUrl":"https://connect.example.test","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"jiraIssueTabPanels":[{"key":"activity","name":{"value":"Activity"},"url":"/activity","conditions":[{"condition":"user_is_logged_in"}]}]}}`)); err == nil {
+		t.Fatal("accepted unsupported issue-tab conditions")
+	}
 	if _, err := ParseDescriptor([]byte(`{"key":"connect.bad","name":"Bad","baseUrl":"https://connect.example.test","authentication":{"type":"none"},"scopes":[],"modules":{}}`)); err == nil {
 		t.Fatal("accepted a Connect descriptor without JWT authentication")
 	}
 	if _, err := ParseDescriptor([]byte(`{"key":"Connect_Default_JWT","name":"Default JWT","baseUrl":"https://connect.example.test","authentication":{},"scopes":[],"modules":{}}`)); err != nil {
 		t.Fatalf("Connect descriptor with default JWT authentication: %v", err)
+	}
+}
+
+func TestTranslateConnectIssueTabPanelDefaultsWeight(t *testing.T) {
+	module, err := translateConnectIssueTabPanel(connectIssueTabPanelWire{
+		Key: strings.Repeat("a", 100), URL: "/deployments?issue={issue.key}", Name: connectNameWire{Value: "Deployments"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if module.Type != "jira:issueTabPanel" || module.Location != "jira.issue.activity" || module.Position != 100 {
+		t.Fatalf("translated issue tab = %+v", module)
+	}
+	if _, err := translateConnectIssueTabPanel(connectIssueTabPanelWire{Key: "bad_key", URL: "/deployments", Name: connectNameWire{Value: "Deployments"}}); err == nil {
+		t.Fatal("accepted an issue-tab key outside the Connect key pattern")
 	}
 }

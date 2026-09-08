@@ -291,10 +291,12 @@
           <button type="button" data-activity-filter="comment" aria-pressed="true">Comments <span>{{len .Comments}}</span></button>
           <button type="button" data-activity-filter="worklog" aria-pressed="false">Work log <span>{{len .Worklogs}}</span></button>
           <button type="button" data-activity-filter="history" aria-pressed="false">History <span>{{len .History}}</span></button>
+          {{range .AppActivityTabs}}<button type="button" class="activity-app-tab" data-activity-filter="app-{{.ID}}" aria-pressed="false">{{.Title}}</button>{{end}}
         </div><button type="button" class="activity-sort" data-activity-sort aria-label="Sort activity oldest first" aria-pressed="false">Newest first ↓</button></div>
       </div>
 
       <section class="issue-section issue-activity" aria-labelledby="activity-title">
+        <div data-native-activity-panel>
         {{if .CanEdit}}<details class="activity-composer" open><summary>Add an update</summary>
         <form class="comment-form" method="post" action="/issues/{{.Issue.Key}}/comments" hx-post="/issues/{{.Issue.Key}}/comments" hx-target="#issue-root" hx-swap="outerHTML">
           <div class="editor-toolbar" role="group" aria-label="Comment formatting" data-editor-toolbar>
@@ -323,6 +325,8 @@
         </article>{{else}}<div class="empty-state" data-activity-empty><strong>No activity yet</strong><small>Comments, work logs, and field changes will appear here.</small></div>{{end}}
         <div class="empty-state" data-activity-filter-empty {{if .Comments}}hidden{{end}}><strong>No matching activity</strong><small>Choose another activity filter.</small></div>
         </div>
+        </div>
+        {{range .AppActivityTabs}}<div class="app-activity-panel" data-app-activity-panel="app-{{.ID}}" hidden><div class="app-activity-heading"><span class="eyebrow">{{.AppName}} app</span><h3>{{.Title}}</h3></div><iframe class="app-context-frame" data-app-frame-src="/app-modules/{{.ID}}/frame?issueKey={{$.Issue.Key}}&amp;issueId={{$.Issue.ID}}&amp;projectKey={{$.ProjectKey}}&amp;projectId={{$.Issue.ProjectID}}" title="{{.Title}}" sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts"></iframe></div>{{end}}
       </section>
     </div>
     <aside class="issue-details" aria-label="Issue details">

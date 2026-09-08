@@ -2484,11 +2484,32 @@ Validation after Connect issue-context status:
   inventory/coverage checks and diff validation pass. The pinned inventory
   remains 437 assessed operations out of 1,207.
 
+Validation after Connect issue activity tabs:
+
+- Standard descriptors accept `jiraIssueTabPanels` with a 1–100 character
+  alphanumeric/dash key, Connect i18n name, relative URL, optional parameters
+  and weight, and no unevaluated conditions. The
+  runtime maps them to ordered `jira.issue.activity` modules and applies the
+  documented default weight of 100.
+- Active tabs join the issue's native activity filters. Selecting one hides the
+  comment/work-log composer and chronological ledger, then opens its remote
+  content on demand in the common sandboxed, Connect JWT-signed iframe with expanded
+  issue key/ID and project key/ID context. Returning to Comments restores the
+  native activity surface and its sort state.
+- Parser and render coverage verify the translated contract and signed frame
+  context. The Chromium Connect journey installs the module, opens it from a
+  work item, verifies its remote context and returns to native comments with
+  accessibility checks. This descriptor module does not change the pinned API
+  inventory of 437 assessed operations out of 1,207. The complete PostgreSQL
+  Go suite, native server/load-test and WebAssembly builds, vet, seven
+  conformance tests, generated inventory/coverage checks and diff validation
+  pass.
+
 ## Current change
 
 1. Continue remaining Connect module families, dynamic module types and webhook
    options, issue-content presence conditions/native rendering,
-   project/page-admin and issue-context conditions,
+   project/page-admin, issue-tab and issue-context conditions,
    additional web-item
    locations and conditions, dashboard-item configuration/refresh/conditions,
    select/read-only field options, workflow modules and upgrade migrations.

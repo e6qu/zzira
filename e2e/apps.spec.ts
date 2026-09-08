@@ -126,6 +126,16 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
       await route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main><h1>Remote delivery context</h1><p>Issue and project context received.</p></main></body></html>' });
       return;
     }
+    if (target.pathname.endsWith('/remote-activity')) {
+      expect(target.searchParams.get('issue.key')).toBe('ZZ-1');
+      expect(target.searchParams.get('issue.id')).toBeTruthy();
+      expect(target.searchParams.get('project.key')).toBe('ZZ');
+      expect(target.searchParams.get('project.id')).toBeTruthy();
+      expect(target.searchParams.get('selected')).toBe('ZZ-1');
+      expect(target.searchParams.get('source')).toBe('activity');
+      await route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main><h1>Remote deployment activity</h1><p>Issue activity context received.</p></main></body></html>' });
+      return;
+    }
     if (target.pathname.endsWith('/remote-project')) {
       expect(target.searchParams.get('project.key')).toBe('ZZ');
       expect(target.searchParams.get('project.id')).toBeTruthy();
@@ -188,6 +198,7 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
   const dashboardItemTitle = `Release health ${suffix}`;
   const issueContextTitle = `Delivery context ${suffix}`;
   const issueGlanceTitle = `Legacy glance ${suffix}`;
+  const issueActivityTitle = `Deployments ${suffix}`;
   const descriptor = {
     key: `connect.journey.${suffix}`,
     name: appName,
@@ -207,6 +218,7 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
       jiraDashboardItems: [{ key: 'release-health', name: { value: dashboardItemTitle }, description: { value: 'Release health from the Connect app' }, url: '/remote-dashboard?item={dashboardItem.id}', thumbnailUrl: 'dashboard.svg' }],
       jiraIssueContexts: [{ key: 'delivery-context', name: { value: issueContextTitle }, icon: { width: 24, height: 24, url: 'context.svg' }, content: { type: 'label', label: { value: '3 linked deployments' } }, target: { type: 'web_panel', url: '/remote-context?selected={issue.key}' } }],
       jiraIssueGlances: [{ key: 'legacy-glance', name: { value: issueGlanceTitle }, icon: { width: 24, height: 24, url: 'glance.svg' }, content: { type: 'label', label: { value: 'Legacy status' } }, target: { type: 'web_panel', url: '/legacy-glance' } }],
+      jiraIssueTabPanels: [{ key: 'deployment-activity', name: { value: issueActivityTitle }, url: '/remote-activity?selected={issue.key}', weight: 80, params: { source: 'activity' } }],
     },
   };
   await page.goto('/admin#admin-apps');
@@ -267,6 +279,12 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
   let statusResponse = await setIssueContextStatus({ type: 'lozenge', value: { label: 'At risk', type: 'moved' } });
   expect(statusResponse.status, statusResponse.body).toBe(201);
   await page.goto('/browse/ZZ-1');
+  await page.getByRole('button', { name: issueActivityTitle, exact: true }).click();
+  const activityPanel = page.locator('[data-app-activity-panel]:not([hidden])');
+  await expect(activityPanel.frameLocator('iframe').getByRole('heading', { name: 'Remote deployment activity' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Add comment' })).toBeHidden();
+  await page.getByRole('button', { name: /Comments/ }).click();
+  await expect(page.getByRole('button', { name: 'Add comment' })).toBeVisible();
   const issueContext = page.locator('details.issue-context-panel', { hasText: issueContextTitle });
   await expect(page.getByText(issueGlanceTitle)).toHaveCount(0);
   await expect(issueContext).toContainText('3 linked deployments');

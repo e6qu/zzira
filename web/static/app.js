@@ -383,6 +383,19 @@
   function applyActivityView(root) {
     const ledger = root.querySelector('[data-activity-ledger]');
     if (!ledger) return;
+    const filterButtons = Array.from(root.querySelectorAll('[data-activity-filter]'));
+    if (!filterButtons.some((button) => button.dataset.activityFilter === activityFilter)) activityFilter = 'comment';
+    const appSelected = activityFilter.startsWith('app-');
+    const nativePanel = root.querySelector('[data-native-activity-panel]');
+    if (nativePanel) nativePanel.hidden = appSelected;
+    root.querySelectorAll('[data-app-activity-panel]').forEach((panel) => {
+      const selected = panel.dataset.appActivityPanel === activityFilter;
+      panel.hidden = !selected;
+      if (selected) {
+        const frame = panel.querySelector('[data-app-frame-src]');
+        if (frame && !frame.getAttribute('src')) frame.setAttribute('src', frame.dataset.appFrameSrc || '');
+      }
+    });
     const entries = Array.from(ledger.querySelectorAll('[data-activity-kind]'));
     const empty = ledger.querySelector('[data-activity-filter-empty]');
     let visible = 0;
@@ -395,11 +408,12 @@
       return activityOldestFirst ? order : -order;
     }).forEach((entry) => ledger.insertBefore(entry, empty));
     if (empty) empty.hidden = visible !== 0 || entries.length === 0;
-    root.querySelectorAll('[data-activity-filter]').forEach((button) => {
+    filterButtons.forEach((button) => {
       button.setAttribute('aria-pressed', String(button.dataset.activityFilter === activityFilter));
     });
     const sortButton = root.querySelector('[data-activity-sort]');
     if (sortButton) {
+      sortButton.hidden = appSelected;
       sortButton.setAttribute('aria-pressed', String(activityOldestFirst));
       sortButton.setAttribute('aria-label', activityOldestFirst ? 'Sort activity newest first' : 'Sort activity oldest first');
       sortButton.textContent = activityOldestFirst ? 'Oldest first ↑' : 'Newest first ↓';
