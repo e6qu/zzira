@@ -72,6 +72,47 @@ func wikiSpacePermissionAllowed(permission string) string {
 )`
 }
 
+// wikiSpaceAdmin accepts workspace administrators and principals explicitly
+// assigned a role with administer/space in this space. The explicit-assignment
+// check is required because legacy spaces without role assignments keep their
+// historical member content access, which must not imply space administration.
+func wikiSpaceAdmin(ctx context.Context, tx pgx.Tx, ws, actor, spaceID string) error {
+	if err := projectAdmin(ctx, tx, ws, actor); err == nil {
+		return nil
+	} else if !errors.Is(err, ErrProjectPermission) {
+		return err
+	}
+	var allowed bool
+	err := tx.QueryRow(ctx, `SELECT EXISTS(
+		SELECT 1 FROM wiki_spaces s
+		WHERE s.workspace_id=$1 AND s.id::text=$3
+		  AND `+wikiActiveMember+`
+		  AND EXISTS(SELECT 1 FROM wiki_space_role_assignments wra0 WHERE wra0.space_id=s.id)
+		  AND `+wikiSpacePermissionAllowed("administer/space")+`
+	)`, ws, actor, spaceID).Scan(&allowed)
+	if err != nil {
+		return err
+	}
+	if !allowed {
+		return ErrProjectPermission
+	}
+	return nil
+}
+
+func (s *Store) CanAdministerWikiSpace(ctx context.Context, ws, actor, spaceID string) (bool, error) {
+	var allowed bool
+	err := s.Pool.QueryRow(ctx, `SELECT EXISTS(
+		SELECT 1 FROM wiki_spaces s
+		WHERE s.workspace_id=$1 AND s.id::text=$3 AND (
+		  EXISTS(SELECT 1 FROM memberships am WHERE am.workspace_id=s.workspace_id AND am.user_id=$2 AND am.role='admin')
+		  OR (`+wikiActiveMember+`
+		    AND EXISTS(SELECT 1 FROM wiki_space_role_assignments wra0 WHERE wra0.space_id=s.id)
+		    AND `+wikiSpacePermissionAllowed("administer/space")+`)
+		)
+	)`, ws, actor, spaceID).Scan(&allowed)
+	return allowed, err
+}
+
 // Stored role assignments replace the legacy public/private rule. Spaces
 // without stored assignments retain their historical member/author behavior.
 var wikiSpaceVisible = `(` + wikiActiveMember + `) AND (` + wikiSpacePermissionAllowed("read/space") + `) AND (
@@ -238,7 +279,7 @@ func (s *Store) SetWikiSpaceDefaultClassification(ctx context.Context, ws, actor
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if err := projectAdmin(ctx, tx, ws, actor); err != nil {
+	if err := wikiSpaceAdmin(ctx, tx, ws, actor, id); err != nil {
 		return nil, err
 	}
 	space, err := scanWikiSpace(tx.QueryRow(ctx, wikiSpaceSelect+` WHERE s.workspace_id=$1 AND s.id::text=$2 FOR UPDATE`, ws, id))

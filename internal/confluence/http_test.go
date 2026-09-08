@@ -245,6 +245,38 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		t.Fatal(operations.Body.String())
 	}
 	call(member, "POST", "/pages", map[string]any{"spaceId": restrictedSpace, "title": "Viewer write", "status": "current", "body": models.WikiBody{Representation: "storage", Value: "<p>Denied</p>"}}, 404)
+	spaceAdminRoleResponse := call(actor, "POST", "/space-roles", map[string]any{"name": "Space stewards", "description": "Manage one knowledge space", "spacePermissions": []string{"administer/space"}}, 201)
+	var spaceAdminRole models.WikiSpaceRole
+	if err := json.Unmarshal(spaceAdminRoleResponse.Body.Bytes(), &spaceAdminRole); err != nil {
+		t.Fatal(err)
+	}
+	var spaceAdminGroupID string
+	if err := st.Pool.QueryRow(ctx, `INSERT INTO groups(directory_id,name,description)
+		SELECT d.id,'space-stewards','Scoped Confluence administration' FROM sites si JOIN directories d ON d.organization_id=si.organization_id
+		WHERE si.workspace_id=$1 ORDER BY d.id LIMIT 1 RETURNING id::text`, ws).Scan(&spaceAdminGroupID); err != nil {
+		t.Fatal(err)
+	}
+	exec(`INSERT INTO group_members(group_id,user_id) VALUES($1::uuid,$2)`, spaceAdminGroupID, member)
+	managedSpace := space("MANAGED", false)
+	managedAssignments := []map[string]any{
+		{"roleId": "system-admin", "principal": map[string]string{"principalType": "ACCESS_CLASS", "principalId": "all-product-admins"}},
+		{"roleId": spaceAdminRole.ID, "principal": map[string]string{"principalType": "GROUP", "principalId": spaceAdminGroupID}},
+		{"roleId": "system-viewer", "principal": map[string]string{"principalType": "USER", "principalId": admin}},
+	}
+	call(actor, "POST", "/spaces/"+managedSpace+"/role-assignments", managedAssignments, 204)
+	if operations := call(member, "GET", "/spaces/"+managedSpace+"/operations", nil, 200); !strings.Contains(operations.Body.String(), `"operation":"update"`) || !strings.Contains(operations.Body.String(), `"operation":"delete"`) {
+		t.Fatal(operations.Body.String())
+	}
+	call(member, "PUT", "/spaces/"+managedSpace+"/classification-level/default", map[string]string{"id": "confidential"}, 204)
+	managedPropertyResponse := call(member, "POST", "/spaces/"+managedSpace+"/properties", map[string]any{"key": "steward-config", "value": map[string]any{"managed": true}}, 200)
+	var managedProperty models.WikiContentProperty
+	if err := json.Unmarshal(managedPropertyResponse.Body.Bytes(), &managedProperty); err != nil {
+		t.Fatal(err)
+	}
+	call(member, "DELETE", "/spaces/"+managedSpace+"/properties/"+managedProperty.ID, nil, 204)
+	callV1(member, "POST", "/space/MANAGED/label", []map[string]string{{"prefix": "team", "name": "stewarded"}}, 200)
+	call(member, "POST", "/spaces/"+managedSpace+"/role-assignments", managedAssignments, 204)
+	call(actor, "DELETE", "/space-roles/"+spaceAdminRole.ID, nil, 204)
 	call(actor, "POST", "/spaces", map[string]any{"key": "UNSUPPORTED", "name": "Unsupported", "roleAssignments": []map[string]any{{"roleId": "1"}}}, 400)
 	if _, err := h.Commands.AddWikiSpaceLabels(ctx, ws, actor, public, []models.WikiLabel{{Prefix: "team", Name: "core-space"}}); err != nil {
 		t.Fatal(err)

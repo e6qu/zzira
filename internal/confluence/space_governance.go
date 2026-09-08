@@ -68,7 +68,7 @@ func (h *Handler) spaceOperationValues(r *http.Request, ws, actor, id string) ([
 		return nil, err
 	}
 	operations := []any{map[string]string{"operation": "read", "targetType": "space"}}
-	admin, err := h.Store.IsAdmin(r.Context(), ws, actor)
+	admin, err := h.Store.CanAdministerWikiSpace(r.Context(), ws, actor, id)
 	if err != nil {
 		return nil, err
 	}

@@ -46,6 +46,10 @@ type wikiData struct {
 	SpaceProperties                       []models.WikiContentProperty
 	SpaceRoles                            []*models.WikiSpaceRole
 	SpaceRoleAssignments                  []models.WikiSpaceRoleAssignment
+	SpaceRoleUsers                        []*models.User
+	SpaceRoleGroups                       []models.WikiRestrictionSubject
+	SpaceRoleNames                        map[string]string
+	SpaceRolePrincipalNames               map[string]string
 	Attachments                           []*models.WikiAttachment
 	AttachmentComments                    map[string][]wikiCommentNode
 	Restrictions                          []models.WikiPageRestriction
@@ -53,6 +57,7 @@ type wikiData struct {
 	RestrictionGroups                     []wikiRestrictionOption
 	Error                                 string
 	CanAdmin                              bool
+	CanManageSpace                        bool
 	CanEdit                               bool
 	CanRestrict                           bool
 	Editing                               bool
@@ -312,6 +317,11 @@ func (h *Handler) WikiSpacePage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load space permissions.", 500)
 		return
 	}
+	canManageSpace, err := h.Store.CanAdministerWikiSpace(r.Context(), ws, user.ID, space.ID)
+	if err != nil {
+		http.Error(w, "Could not load space permissions.", 500)
+		return
+	}
 	properties, err := h.Store.WikiSpaceProperties(r.Context(), ws, user.ID, space.ID, "")
 	if err != nil {
 		http.Error(w, "Could not load space properties.", 500)
@@ -327,7 +337,36 @@ func (h *Handler) WikiSpacePage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load space role assignments.", 500)
 		return
 	}
-	h.writeWorkspacePage(w, r, "page_wiki_space", user, ws, wikiData{Space: space, Pages: filtered, BlogPosts: filteredBlogs, Folders: folders, SmartLinks: smartLinks, Databases: databases, Whiteboards: whiteboards, Tree: wikiPageTree(filtered), Query: query, Status: status, WatchingSpace: watching, CanAdmin: admin, SpaceProperties: properties, SpaceRoles: roles, SpaceRoleAssignments: assignments}, "wiki", "")
+	roleNames := make(map[string]string, len(roles))
+	for _, role := range roles {
+		roleNames[role.ID] = role.Name
+	}
+	principalNames := map[string]string{
+		"authenticated-users": "Authenticated users",
+		"all-licensed-users":  "All licensed users",
+		"all-product-admins":  "All product administrators",
+		"jsm-project-admins":  "JSM project administrators",
+		"anonymous-users":     "Anonymous users",
+	}
+	roleUsers := []*models.User{}
+	roleGroups := []models.WikiRestrictionSubject{}
+	roleUsers, err = h.Store.MembersByWorkspace(r.Context(), ws)
+	if err != nil {
+		http.Error(w, "Could not load space role users.", 500)
+		return
+	}
+	roleGroups, err = h.Store.WikiRestrictionGroups(r.Context(), ws)
+	if err != nil {
+		http.Error(w, "Could not load space role groups.", 500)
+		return
+	}
+	for _, member := range roleUsers {
+		principalNames[member.ID] = member.DisplayName
+	}
+	for _, group := range roleGroups {
+		principalNames[group.ID] = group.Name
+	}
+	h.writeWorkspacePage(w, r, "page_wiki_space", user, ws, wikiData{Space: space, Pages: filtered, BlogPosts: filteredBlogs, Folders: folders, SmartLinks: smartLinks, Databases: databases, Whiteboards: whiteboards, Tree: wikiPageTree(filtered), Query: query, Status: status, WatchingSpace: watching, CanAdmin: admin, CanManageSpace: canManageSpace, SpaceProperties: properties, SpaceRoles: roles, SpaceRoleAssignments: assignments, SpaceRoleUsers: roleUsers, SpaceRoleGroups: roleGroups, SpaceRoleNames: roleNames, SpaceRolePrincipalNames: principalNames}, "wiki", "")
 }
 
 func (h *Handler) WikiSpaceClassification(w http.ResponseWriter, r *http.Request) {
@@ -392,13 +431,54 @@ func (h *Handler) WikiSpaceRoleAssignments(w http.ResponseWriter, r *http.Reques
 	if !ok || !parseForm(w, r) {
 		return
 	}
-	assignment := models.WikiSpaceRoleAssignment{RoleID: r.PostFormValue("roleId"), PrincipalType: "ACCESS_CLASS", PrincipalID: r.PostFormValue("principalId")}
-	if err := h.Commands.SetWikiSpaceRoleAssignments(r.Context(), ws, user.ID, r.PathValue("space"), []models.WikiSpaceRoleAssignment{assignment}); err != nil {
+	spaceID := r.PathValue("space")
+	assignments, err := h.Store.WikiSpaceRoleAssignments(r.Context(), ws, user.ID, spaceID)
+	if err != nil {
 		status, message := wikiWebError(err)
 		http.Error(w, message, status)
 		return
 	}
-	redirectLocal(w, r, "/wiki/spaces/"+r.PathValue("space")+"#wiki-space-roles")
+	principalType := r.PostFormValue("principalType")
+	if principalType == "" {
+		principalType = "ACCESS_CLASS"
+	}
+	target := models.WikiSpaceRoleAssignment{SpaceID: spaceID, RoleID: r.PostFormValue("roleId"), PrincipalType: principalType, PrincipalID: r.PostFormValue("principalId")}
+	action := r.PostFormValue("action")
+	if action == "" {
+		action = "add"
+	}
+	switch action {
+	case "add":
+		found := false
+		for _, assignment := range assignments {
+			if assignment.RoleID == target.RoleID && assignment.PrincipalType == target.PrincipalType && assignment.PrincipalID == target.PrincipalID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			assignments = append(assignments, target)
+		}
+	case "remove":
+		kept := assignments[:0]
+		for _, assignment := range assignments {
+			if assignment.RoleID != target.RoleID || assignment.PrincipalType != target.PrincipalType || assignment.PrincipalID != target.PrincipalID {
+				kept = append(kept, assignment)
+			}
+		}
+		assignments = kept
+	default:
+		err = fmt.Errorf("%w: choose a role assignment action", store.ErrWikiValidation)
+	}
+	if err == nil {
+		err = h.Commands.SetWikiSpaceRoleAssignments(r.Context(), ws, user.ID, spaceID, assignments)
+	}
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	redirectLocal(w, r, "/wiki/spaces/"+spaceID+"#wiki-space-roles")
 }
 
 func (h *Handler) WikiBlogPostNew(w http.ResponseWriter, r *http.Request) {

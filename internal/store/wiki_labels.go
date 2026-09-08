@@ -180,7 +180,7 @@ func (s *Store) AddWikiSpaceLabels(ctx context.Context, ws, actor, spaceID strin
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if err := projectAdmin(ctx, tx, ws, actor); err != nil {
+	if err := wikiSpaceAdmin(ctx, tx, ws, actor, spaceID); err != nil {
 		return nil, err
 	}
 	if _, err := scanWikiSpace(tx.QueryRow(ctx, wikiSpaceSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND s.id::text=$3 FOR SHARE OF s`, ws, actor, spaceID)); err != nil {
@@ -213,7 +213,7 @@ func (s *Store) RemoveWikiSpaceLabel(ctx context.Context, ws, actor, spaceID str
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if err := projectAdmin(ctx, tx, ws, actor); err != nil {
+	if err := wikiSpaceAdmin(ctx, tx, ws, actor, spaceID); err != nil {
 		return err
 	}
 	var label models.WikiLabel

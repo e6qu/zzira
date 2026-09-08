@@ -42,9 +42,14 @@ test('wiki space, rich page, access, stale edits, child pages, history, trash an
   spaceRoles = page.getByRole('region', { name: 'Space roles' });
   await expect(spaceRoles).toContainText('Handbook editors');
   await spaceRoles.locator('summary').filter({ hasText: 'Set access-class assignment' }).click();
-  await spaceRoles.getByRole('combobox', { name: 'Role' }).selectOption({ label: 'Handbook editors' });
-  await spaceRoles.getByRole('button', { name: 'Save role assignment', exact: true }).click();
+  await spaceRoles.getByRole('combobox', { name: 'Access-class role' }).selectOption({ label: 'Handbook editors' });
+  await spaceRoles.getByRole('button', { name: 'Add access-class assignment', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Space roles' })).toContainText('authenticated-users');
+  spaceRoles = page.getByRole('region', { name: 'Space roles' });
+  await spaceRoles.locator('summary').filter({ hasText: 'Assign user' }).click();
+  await spaceRoles.getByRole('combobox', { name: 'User role' }).selectOption({ label: 'Space viewers' });
+  await spaceRoles.getByRole('button', { name: 'Add user assignment', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Space roles' })).toContainText('USER');
   await page.getByRole('button', { name: 'Watch space', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Stop watching space', exact: true })).toBeVisible();
   await page.getByRole('link', { name: 'Write blog post', exact: true }).click();

@@ -1921,14 +1921,36 @@ Validation after granular Confluence space-role authorization:
   coverage remains 427 of 1,207 operations and Confluence coverage remains 213
   of 348 because this checkpoint hardens existing operations.
 
+Validation after scoped Confluence space administration:
+
+- Workspace administrators retain global control of reusable role definitions,
+  while direct users, directory groups and access classes explicitly granted a
+  role containing `administer/space` can manage that space's assignments,
+  default classification, labels and versioned app properties.
+- Space operation discovery reports update/delete for the same scoped
+  administrators. Assignment writes validate that users are active workspace
+  members and groups belong to an active workspace directory.
+- The space manager UI resolves readable role and principal names, preserves
+  the current access policy when adding an assignment, and supports direct
+  user, directory-group and access-class assignment plus individual removal.
+  Reusable custom-role creation remains limited to workspace administrators.
+- PostgreSQL integration covers a group-granted custom space administrator
+  changing governance, metadata and assignments; the Chromium knowledge
+  journey covers additive access-class and direct-user assignment management.
+  Exact API coverage remains 427 of 1,207 operations and Confluence coverage
+  remains 213 of 348 because this completes existing contract behavior.
+- The focused and full PostgreSQL Go suites, vet, WebAssembly build, Chromium
+  wiki journey, seven conformance tests, generated inventory/coverage checks
+  and diff validation pass.
+
 ## Current change
 
-1. Complete Confluence space-administration role transitions and direct
-   user/group assignment management in the space UI.
-2. Continue Service Management with dependency mapping, major-incident
+1. Continue Service Management with dependency mapping, major-incident
    communications, change-conflict calendars and escalation policy.
-3. Expand the app runtime from registered custom-content discovery into signed
+2. Expand the app runtime from registered custom-content discovery into signed
    installation, scopes and module rendering.
+3. Continue Confluence with database schemas/rows/views and whiteboard canvas
+   objects/editing.
 
 ## Resume here
 

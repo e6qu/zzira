@@ -60,7 +60,7 @@ func (s *Store) CreateWikiSpaceProperty(ctx context.Context, ws, actor, spaceID,
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if err := projectAdmin(ctx, tx, ws, actor); err != nil {
+	if err := wikiSpaceAdmin(ctx, tx, ws, actor, spaceID); err != nil {
 		return nil, err
 	}
 	space, err := scanWikiSpace(tx.QueryRow(ctx, wikiSpaceSelect+` WHERE s.workspace_id=$1 AND s.id::text=$2 FOR SHARE`, ws, spaceID))
@@ -93,7 +93,7 @@ func (s *Store) UpdateWikiSpaceProperty(ctx context.Context, ws, actor, spaceID,
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if err := projectAdmin(ctx, tx, ws, actor); err != nil {
+	if err := wikiSpaceAdmin(ctx, tx, ws, actor, spaceID); err != nil {
 		return nil, err
 	}
 	space, err := scanWikiSpace(tx.QueryRow(ctx, wikiSpaceSelect+` WHERE s.workspace_id=$1 AND s.id::text=$2 FOR SHARE`, ws, spaceID))
@@ -133,7 +133,7 @@ func (s *Store) DeleteWikiSpaceProperty(ctx context.Context, ws, actor, spaceID,
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if err := projectAdmin(ctx, tx, ws, actor); err != nil {
+	if err := wikiSpaceAdmin(ctx, tx, ws, actor, spaceID); err != nil {
 		return err
 	}
 	space, err := scanWikiSpace(tx.QueryRow(ctx, wikiSpaceSelect+` WHERE s.workspace_id=$1 AND s.id::text=$2 FOR SHARE`, ws, spaceID))
