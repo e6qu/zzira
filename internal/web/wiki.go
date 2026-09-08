@@ -1052,7 +1052,7 @@ func (h *Handler) WikiWhiteboardCreate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, message, status)
 		return
 	}
-	redirectLocal(w, r, "/wiki/spaces/"+space.ID+"#whiteboard-"+whiteboard.ID)
+	redirectLocal(w, r, "/wiki/spaces/"+space.ID+"/whiteboards/"+whiteboard.ID)
 }
 
 func (h *Handler) WikiWhiteboardDelete(w http.ResponseWriter, r *http.Request) {

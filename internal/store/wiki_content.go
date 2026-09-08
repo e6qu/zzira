@@ -67,6 +67,16 @@ func (s *Store) CanDeleteWikiContent(ctx context.Context, ws, user, id, contentT
 	return allowed, err
 }
 
+func finishWikiContentMutation(ctx context.Context, tx pgx.Tx, ws, actor string, content *models.WikiContent) error {
+	if _, err := tx.Exec(ctx, `UPDATE wiki_content SET updated_at=now() WHERE id::text=$1`, content.ID); err != nil {
+		return err
+	}
+	if err := wikiContentAction(ctx, tx, ws, actor, content, models.OpUpsert); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
 func (s *Store) WikiContents(ctx context.Context, ws, user, spaceID, contentType string) ([]*models.WikiContent, error) {
 	rows, err := s.Pool.Query(ctx, wikiContentSelect+` WHERE s.workspace_id=$1 AND `+wikiContentVisibleFor(contentType)+` AND c.space_id::text=$3 AND c.type=$4 AND c.status='current' ORDER BY c.id`, ws, user, spaceID, contentType)
 	if err != nil {

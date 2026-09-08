@@ -77,16 +77,6 @@ func lockWikiDatabase(ctx context.Context, tx pgx.Tx, ws, actor, databaseID stri
 	return scanWikiContent(tx.QueryRow(ctx, wikiContentSelect+` WHERE s.workspace_id=$1 AND `+wikiContentWritableFor("database")+` AND c.id::text=$3 AND c.type='database' AND c.status='current' FOR UPDATE OF c`, ws, actor, databaseID))
 }
 
-func finishWikiDatabaseMutation(ctx context.Context, tx pgx.Tx, ws, actor string, database *models.WikiContent) error {
-	if _, err := tx.Exec(ctx, `UPDATE wiki_content SET updated_at=now() WHERE id::text=$1`, database.ID); err != nil {
-		return err
-	}
-	if err := wikiContentAction(ctx, tx, ws, actor, database, models.OpUpsert); err != nil {
-		return err
-	}
-	return tx.Commit(ctx)
-}
-
 func (s *Store) AddWikiDatabaseColumn(ctx context.Context, ws, actor, databaseID string, column models.WikiDatabaseColumn) (*models.WikiDatabaseColumn, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
@@ -106,7 +96,7 @@ func (s *Store) AddWikiDatabaseColumn(ctx context.Context, ws, actor, databaseID
 	if err != nil {
 		return nil, err
 	}
-	if err := finishWikiDatabaseMutation(ctx, tx, ws, actor, database); err != nil {
+	if err := finishWikiContentMutation(ctx, tx, ws, actor, database); err != nil {
 		return nil, err
 	}
 	return &column, nil
@@ -132,7 +122,7 @@ func (s *Store) DeleteWikiDatabaseColumn(ctx context.Context, ws, actor, databas
 	if _, err := tx.Exec(ctx, `UPDATE wiki_database_views SET sort_key=CASE WHEN sort_key=$2 THEN '' ELSE sort_key END,filter_key=CASE WHEN filter_key=$2 THEN '' ELSE filter_key END,filter_value=CASE WHEN filter_key=$2 THEN '' ELSE filter_value END WHERE database_id::text=$1`, databaseID, key); err != nil {
 		return err
 	}
-	return finishWikiDatabaseMutation(ctx, tx, ws, actor, database)
+	return finishWikiContentMutation(ctx, tx, ws, actor, database)
 }
 
 func (s *Store) SaveWikiDatabaseRow(ctx context.Context, ws, actor, databaseID, rowID string, values map[string]string) (*models.WikiDatabaseRow, error) {
@@ -158,7 +148,7 @@ func (s *Store) SaveWikiDatabaseRow(ctx context.Context, ws, actor, databaseID, 
 	if err != nil {
 		return nil, err
 	}
-	if err := finishWikiDatabaseMutation(ctx, tx, ws, actor, database); err != nil {
+	if err := finishWikiContentMutation(ctx, tx, ws, actor, database); err != nil {
 		return nil, err
 	}
 	return row, nil
@@ -181,7 +171,7 @@ func (s *Store) DeleteWikiDatabaseRow(ctx context.Context, ws, actor, databaseID
 	if tag.RowsAffected() == 0 {
 		return pgx.ErrNoRows
 	}
-	return finishWikiDatabaseMutation(ctx, tx, ws, actor, database)
+	return finishWikiContentMutation(ctx, tx, ws, actor, database)
 }
 
 func (s *Store) SaveWikiDatabaseView(ctx context.Context, ws, actor, databaseID string, view models.WikiDatabaseView) (*models.WikiDatabaseView, error) {
@@ -199,7 +189,7 @@ func (s *Store) SaveWikiDatabaseView(ctx context.Context, ws, actor, databaseID 
 	if err != nil {
 		return nil, err
 	}
-	if err := finishWikiDatabaseMutation(ctx, tx, ws, actor, database); err != nil {
+	if err := finishWikiContentMutation(ctx, tx, ws, actor, database); err != nil {
 		return nil, err
 	}
 	return &view, nil
@@ -222,7 +212,7 @@ func (s *Store) DeleteWikiDatabaseView(ctx context.Context, ws, actor, databaseI
 	if tag.RowsAffected() == 0 {
 		return pgx.ErrNoRows
 	}
-	if err := finishWikiDatabaseMutation(ctx, tx, ws, actor, database); err != nil {
+	if err := finishWikiContentMutation(ctx, tx, ws, actor, database); err != nil {
 		return fmt.Errorf("finish database view deletion: %w", err)
 	}
 	return nil

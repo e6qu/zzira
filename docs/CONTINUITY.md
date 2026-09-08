@@ -2106,12 +2106,36 @@ Validation after editable Confluence databases:
   database record editing extends the product UI outside the pinned public
   Confluence database-container operations.
 
+Validation after editable Confluence whiteboards:
+
+- Migration 103 adds positioned sticky-note, text and shape objects plus
+  directional solid/dashed connectors beneath the existing whiteboard content
+  type. Object deletion removes attached connectors through database cascades.
+- Object type, color, bounded text, canvas coordinates and dimensions are
+  command-validated. Connector endpoints must be distinct objects on the same
+  board. Every mutation locks the permission-shaped whiteboard and records its
+  updated hierarchical content action atomically.
+- The whiteboard detail page combines a scalable SVG canvas with an equivalent
+  object and relationship list. Editors can create, reposition, resize, restyle
+  and delete objects and create/delete labelled connectors; viewers receive
+  disabled read-only fields. Private whiteboards remain creator-only.
+- Focused PostgreSQL integration covers validation, private isolation,
+  cross-board connector rejection, endpoint geometry, updates and deletion.
+  The Chromium journey builds and edits a connected flow, scans WCAG A/AA in
+  light and dark themes and verifies 320 px reflow.
+- The full PostgreSQL Go suite, vet, WebAssembly build, seven conformance tests,
+  generated inventory/coverage checks, Chromium whiteboard journey and diff
+  validation pass. Exact API coverage remains 427 of 1,207 operations because
+  canvas editing extends the UI beyond the pinned public whiteboard-container
+  operations.
+
 ## Current change
 
-1. Continue Confluence with whiteboard canvas objects/editing.
-2. Continue Service Management with Assets-backed topology and impact analysis.
-3. Continue the app runtime with outbound lifecycle delivery, app webhooks and
+1. Continue Service Management with Assets-backed topology and impact analysis.
+2. Continue the app runtime with outbound lifecycle delivery, app webhooks and
    scheduled triggers.
+3. Continue Confluence with advanced whiteboard objects, direct manipulation,
+   exports and the remaining rich content/editor surface.
 
 ## Resume here
 
