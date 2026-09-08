@@ -43,6 +43,8 @@ func (s *Store) ServiceOperationsSettings(ctx context.Context, workspaceID, desk
 		if err := shiftRows.Scan(&sh.ID, &sh.UserID, &sh.UserName, &sh.Label, &sh.StartsAt, &sh.EndsAt); err != nil {
 			return nil, err
 		}
+		sh.StartsAt = sh.StartsAt.UTC()
+		sh.EndsAt = sh.EndsAt.UTC()
 		v.OnCallShifts = append(v.OnCallShifts, sh)
 	}
 	return v, shiftRows.Err()

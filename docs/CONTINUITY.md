@@ -1980,6 +1980,9 @@ Validation after the Service Management dependency map:
   service journey, seven conformance tests, generated inventory/coverage checks
   and diff validation pass. Exact API coverage remains 427 of 1,207 operations
   because the graph completes existing issue-link behavior.
+- On-call shift reads now normalize start and end instants to UTC before the
+  UTC-labeled agent schedule renders them. Focused PostgreSQL coverage verifies
+  both the location and the original instants across a non-UTC server locale.
 
 ## Current change
 

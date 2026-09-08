@@ -62,7 +62,7 @@ func TestServiceOperationsPolicyAndOnCallAudit(t *testing.T) {
 		t.Fatalf("create shift: %v", err)
 	}
 	settings, err = st.ServiceOperationsSettings(ctx, workspaceID, deskID)
-	if err != nil || len(settings.OnCallShifts) != 1 {
+	if err != nil || len(settings.OnCallShifts) != 1 || settings.OnCallShifts[0].StartsAt.Location() != time.UTC || !settings.OnCallShifts[0].StartsAt.Equal(startsAt) || !settings.OnCallShifts[0].EndsAt.Equal(endsAt) {
 		t.Fatalf("on-call shifts = %+v, %v", settings.OnCallShifts, err)
 	}
 	shiftID := settings.OnCallShifts[0].ID
