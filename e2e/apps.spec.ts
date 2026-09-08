@@ -102,7 +102,7 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
     expect(target.searchParams.get('jwt')).toBeTruthy();
     expect(target.searchParams.get('xdm_e')).toBe('http://localhost:8080');
     expect(target.searchParams.get('xdm_c')).toMatch(/^zzira-/);
-    if (target.pathname.endsWith('/report.svg') || target.pathname.endsWith('/dashboard.svg') || target.pathname.endsWith('/project.svg') || target.pathname.endsWith('/context.svg')) {
+    if (target.pathname.endsWith('/report.svg') || target.pathname.endsWith('/dashboard.svg') || target.pathname.endsWith('/project.svg') || target.pathname.endsWith('/context.svg') || target.pathname.endsWith('/status.svg')) {
       await route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 60"><rect width="80" height="60" rx="8" fill="#1868db"/><path d="M18 42V30m15 12V18m15 24V25m15 17V12" stroke="white" stroke-width="5"/></svg>' });
       return;
     }
@@ -193,7 +193,7 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
     name: appName,
     baseUrl: 'https://connect.example.test/connect/base',
     authentication: { type: 'jwt' },
-    scopes: ['READ'],
+    scopes: ['READ', 'WRITE'],
     modules: {
       generalPages: [{ key: 'remote-releases', url: '/remote-page?view=releases', name: { value: moduleTitle } }],
       webPanels: [{ key: 'remote-risk', url: '/remote-panel?selected={issue.key}', location: 'atl.jira.view.issue.right.context', name: { value: panelTitle } }],
@@ -229,8 +229,9 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
   await page.locator('#workspace-navigation').getByRole('link', { name: shortcutTitle }).click();
   await expect(page.frameLocator('iframe.app-module-frame').getByRole('heading', { name: 'Remote team shortcut' })).toBeVisible();
   await page.goto('/projects/ZZ');
-  await expect(page.locator('.nav-project-app-module img.nav-app-icon')).toBeVisible();
-  await page.locator('#workspace-navigation').getByRole('link', { name: projectPageTitle }).click();
+  const projectPageLink = page.locator('#workspace-navigation').getByRole('link', { name: projectPageTitle });
+  await expect(projectPageLink.locator('img.nav-app-icon')).toBeVisible();
+  await projectPageLink.click();
   await expect(page.getByRole('heading', { name: projectPageTitle, level: 1 })).toBeVisible();
   await expect(page.frameLocator('iframe.app-module-frame').getByRole('heading', { name: 'Remote project intelligence' })).toBeVisible();
   await accessible(page);
@@ -240,8 +241,9 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
   await expect(page.frameLocator('iframe.app-module-frame').getByRole('heading', { name: 'Remote project controls' })).toBeVisible();
   await accessible(page);
   await page.goto('/projects/ZZ/reports');
-  await expect(page.getByRole('heading', { name: reportTitle, level: 2 })).toBeVisible();
-  await expect(page.locator('.app-report-card img.app-module-thumbnail')).toBeVisible();
+  const reportCard = page.locator('.app-report-card', { has: page.getByRole('heading', { name: reportTitle, level: 2 }) });
+  await expect(reportCard).toBeVisible();
+  await expect(reportCard.locator('img.app-module-thumbnail')).toBeVisible();
   await page.getByRole('link', { name: `Open ${reportTitle}` }).click();
   await expect(page.getByRole('heading', { name: reportTitle, level: 1 })).toBeVisible();
   await expect(page.frameLocator('iframe.app-module-frame').getByRole('heading', { name: 'Remote delivery risk' })).toBeVisible();
@@ -249,19 +251,39 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
   await page.goto('/dashboards');
   await page.getByLabel('Dashboard name', { exact: true }).fill(`Connect dashboard ${suffix}`);
   await page.getByRole('button', { name: 'Create dashboard', exact: true }).click();
-  await expect(page.getByText('Release health from the Connect app')).toBeVisible();
-  await expect(page.locator('.gadget-catalog img.app-module-thumbnail')).toBeVisible();
+  const gadgetChoice = page.locator('.gadget-catalog form', { has: page.getByRole('button', { name: `Add ${dashboardItemTitle}`, exact: true }) });
+  await expect(gadgetChoice.getByText('Release health from the Connect app')).toBeVisible();
+  await expect(gadgetChoice.locator('img.app-module-thumbnail')).toBeVisible();
   await page.getByRole('button', { name: `Add ${dashboardItemTitle}`, exact: true }).click();
   await expect(page.locator('.app-dashboard-module').frameLocator('iframe').getByRole('heading', { name: 'Remote release health' })).toBeVisible();
   await accessible(page);
 
+  const issueContextStatusKey = `com.atlassian.jira.issue:${descriptor.key}:delivery-context:status`;
+  const issueContextStatusURL = `/rest/api/3/issue/ZZ-1/properties/${encodeURIComponent(issueContextStatusKey)}`;
+  const setIssueContextStatus = async (value: object) => page.evaluate(async ({ path, value }) => {
+    const response = await fetch(path, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(value) });
+    return { status: response.status, body: await response.text() };
+  }, { path: issueContextStatusURL, value });
+  let statusResponse = await setIssueContextStatus({ type: 'lozenge', value: { label: 'At risk', type: 'moved' } });
+  expect(statusResponse.status, statusResponse.body).toBe(201);
   await page.goto('/browse/ZZ-1');
   const issueContext = page.locator('details.issue-context-panel', { hasText: issueContextTitle });
   await expect(page.getByText(issueGlanceTitle)).toHaveCount(0);
   await expect(issueContext).toContainText('3 linked deployments');
+  await expect(issueContext.locator('.issue-context-status-lozenge')).toHaveText('At risk');
+  await expect(issueContext.locator('.issue-context-status-lozenge')).toHaveClass(/lozenge-moved/);
   await expect(issueContext.locator('img')).toBeVisible();
   await issueContext.locator('summary').click();
   await expect(issueContext.frameLocator('iframe').getByRole('heading', { name: 'Remote delivery context' })).toBeVisible();
+  statusResponse = await setIssueContextStatus({ type: 'badge', value: { label: '123' } });
+  expect(statusResponse.status, statusResponse.body).toBe(200);
+  await page.reload();
+  await expect(issueContext.locator('.issue-context-status-badge')).toHaveText('99+');
+  await expect(issueContext.locator('.issue-context-status-badge')).toHaveAttribute('aria-label', '123');
+  statusResponse = await setIssueContextStatus({ type: 'icon', value: { label: '/status.svg' } });
+  expect(statusResponse.status, statusResponse.body).toBe(200);
+  await page.reload();
+  await expect(issueContext.locator('.issue-context-status-icon')).toBeVisible();
   const issuePanel = page.locator('.app-context-module', { has: page.getByRole('heading', { name: panelTitle, level: 2 }) });
   await expect(issuePanel).toBeVisible();
   await expect(issuePanel.frameLocator('iframe').getByRole('heading', { name: 'Remote issue risk' })).toBeVisible();

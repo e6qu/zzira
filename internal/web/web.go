@@ -565,8 +565,16 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 		return nil, err
 	}
 	appContexts = selectIssueContextModules(appContexts)
+	issueProperties := map[string]json.RawMessage{}
+	if len(appContexts) > 0 {
+		issueProperties, err = h.Store.IssueProperties(r.Context(), issue.ID)
+		if err != nil {
+			return nil, err
+		}
+	}
 	for index := range appContexts {
 		decorateIssueContext(&appContexts[index])
+		decorateIssueContextStatus(&appContexts[index], issueProperties[issueContextStatusPropertyKey(appContexts[index])], issue.Key)
 	}
 	appIssueContent, err := h.Store.AppIssueContentForIssue(r.Context(), wsID, issue.ID)
 	if err != nil {
@@ -607,21 +615,22 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 }
 
 func selectIssueContextModules(modules []models.AppModule) []models.AppModule {
-	contexts := make([]models.AppModule, 0, len(modules))
+	modernApps := map[string]bool{}
 	for _, module := range modules {
 		if module.Type == "jira:issueContext" {
-			contexts = append(contexts, module)
+			modernApps[module.AppKey] = true
 		}
 	}
-	if len(contexts) > 0 {
-		return contexts
-	}
+	selectedApps := map[string]bool{}
+	selected := make([]models.AppModule, 0, len(modernApps))
 	for _, module := range modules {
-		if module.Type == "jira:issueGlance" {
-			return []models.AppModule{module}
+		eligible := module.Type == "jira:issueContext" || (module.Type == "jira:issueGlance" && !modernApps[module.AppKey])
+		if eligible && !selectedApps[module.AppKey] {
+			selected = append(selected, module)
+			selectedApps[module.AppKey] = true
 		}
 	}
-	return nil
+	return selected
 }
 
 func (h *Handler) SetIssueAppContent(w http.ResponseWriter, r *http.Request, key, moduleID string) {

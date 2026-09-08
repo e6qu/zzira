@@ -60,6 +60,9 @@ type AppModule struct {
 	Key, Type, Location, Title, Body, RemoteURL  string
 	IconURL                                      string
 	ContextLabel                                 string
+	ContextStatusType, ContextStatusLabel        string
+	ContextStatusClass, ContextStatusIconURL     string
+	ContextStatusAccessibleLabel                 string
 	Position                                     int
 	Dynamic                                      bool
 }

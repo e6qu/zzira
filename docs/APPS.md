@@ -152,18 +152,23 @@ rendering flags remain unsupported and fail explicitly when they would change
 host behavior.
 
 Connect issue contexts validate their required key, name, label content,
-relative icon and relative `web_panel` target. Each module appears as a
+relative icon and relative `web_panel` target. The selected module appears as a
 collapsible panel below the issue field groups, retains its open state for the
 current user, and renders its signed icon and remote content. The request
 expands and supplies `issue.key`, `issue.id`, `project.key` and `project.id`.
-Conditions, issue-property status badges and frontend change events remain
+Each app contributes its first eligible modern context, matching Jira's
+single-context-per-app behavior. A standard issue property named
+`com.atlassian.jira.issue:{appKey}:{moduleKey}:status` can add a positive
+numeric badge, any of Jira's six lozenge appearances, or a signed relative
+status icon. Badges above 99 display as `99+`; malformed status data is ignored
+without hiding the context. Conditions and frontend change events remain
 explicit gaps; conditions fail installation instead of being ignored.
 Connect i18n display names and labels retain the documented 1,500-character
 validation bound; native ZZIRA module titles retain their 255-character bound.
 Legacy issue glances use the same validated icon, label and target contract.
 When an app declares modern issue contexts, they replace its legacy glance
-surface; otherwise ZZIRA shows only the first installed glance, matching Jira's
-single-glance behavior.
+surface; otherwise ZZIRA shows only the first installed glance for that app,
+matching Jira's single-glance behavior.
 
 Connect project pages validate the required key, name, relative URL and
 relative `iconUrl`, and honor descriptor weight when ordering multiple app
@@ -293,7 +298,7 @@ bulk issue-property mutations remain a separate API slice.
 
 The runtime is a ZZIRA execution contract for remotely hosted apps. Remaining
 Connect module families, the remaining dynamic module types and webhook
-options, project/page-admin and issue-context conditions/status, dashboard-item
+options, project/page-admin and issue-context conditions, dashboard-item
 configuration/refresh/conditions, workflow modules, select/read-only issue
 fields and option APIs,
 descriptor-driven upgrade migrations, and Atlassian-hosted Forge compute remain

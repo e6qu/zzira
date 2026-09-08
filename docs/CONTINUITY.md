@@ -2466,12 +2466,29 @@ Validation after Jira issue properties:
   Bulk property mutations, anonymous project access and exact Edit issues
   permission modeling remain separate gaps.
 
+Validation after Connect issue-context status:
+
+- Each installed app exposes its first eligible modern issue context; a modern
+  context suppresses that app's legacy glances while contexts from other apps
+  remain independently available. This matches the current Jira issue-view
+  guidance and preserves descriptor order.
+- The standard `com.atlassian.jira.issue:{appKey}:{moduleKey}:status` issue
+  property drives numeric badges, all six documented lozenge appearances and
+  relative status icons. Badges above 99 display as `99+`; icon requests are
+  permission checked and resolved through the installed app's signed asset
+  gateway without accepting a caller-selected remote URL.
+- Both Chromium app journeys pass; the Connect journey sets the property
+  through Jira REST and verifies lozenge, capped badge and signed icon states
+  plus accessibility. The complete PostgreSQL Go suite, native server/load-test
+  and WebAssembly builds, vet, seven conformance tests, generated
+  inventory/coverage checks and diff validation pass. The pinned inventory
+  remains 437 assessed operations out of 1,207.
+
 ## Current change
 
-1. Render Connect issue-context badge and lozenge status from the delivered
-   standard issue-property contract, then continue remaining Connect module
-   families, dynamic module types and webhook options, issue-content presence
-   conditions/native rendering, project/page-admin and issue-context conditions,
+1. Continue remaining Connect module families, dynamic module types and webhook
+   options, issue-content presence conditions/native rendering,
+   project/page-admin and issue-context conditions,
    additional web-item
    locations and conditions, dashboard-item configuration/refresh/conditions,
    select/read-only field options, workflow modules and upgrade migrations.

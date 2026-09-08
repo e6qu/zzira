@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -129,6 +130,37 @@ func (h *Handler) AppModuleIcon(w http.ResponseWriter, r *http.Request) {
 	h.appModuleAsset(w, r, "icon")
 }
 
+// AppModuleStatusIcon resolves the issue-specific icon path stored in Jira's
+// standard issue-context status property. Callers select the issue, never the
+// remote asset URL.
+func (h *Handler) AppModuleStatusIcon(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	module, err := h.Store.ActiveAppModule(r.Context(), workspaceID, r.PathValue("module"))
+	if err != nil || (module.Type != "jira:issueContext" && module.Type != "jira:issueGlance") {
+		http.NotFound(w, r)
+		return
+	}
+	issue, err := h.issueForUser(r, user, workspaceID, strings.TrimSpace(r.URL.Query().Get("issueKey")))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	raw, err := h.Store.IssueProperty(r.Context(), issue.ID, issueContextStatusPropertyKey(*module))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	status := parseIssueContextStatus(raw)
+	if status.kind != "icon" || status.iconPath == "" {
+		http.NotFound(w, r)
+		return
+	}
+	h.redirectAppModuleAsset(w, r, workspaceID, module, status.iconPath, "status-icon")
+}
+
 func (h *Handler) appModuleAsset(w http.ResponseWriter, r *http.Request, kind string) {
 	_, workspaceID, ok := h.pageContext(w, r)
 	if !ok {
@@ -154,6 +186,10 @@ func (h *Handler) appModuleAsset(w http.ResponseWriter, r *http.Request, kind st
 		http.NotFound(w, r)
 		return
 	}
+	h.redirectAppModuleAsset(w, r, workspaceID, module, assetURL, kind)
+}
+
+func (h *Handler) redirectAppModuleAsset(w http.ResponseWriter, r *http.Request, workspaceID string, module *models.AppModule, assetURL, kind string) {
 	if !strings.HasPrefix(assetURL, "/") {
 		assetURL = "/" + assetURL
 	}
@@ -206,6 +242,77 @@ func decorateIssueContext(module *models.AppModule) {
 	module.ContextLabel = strings.TrimSpace(metadata.Label)
 	if strings.TrimSpace(metadata.IconURL) != "" {
 		module.IconURL = "/app-modules/" + module.ID + "/icon"
+	}
+}
+
+type issueContextStatus struct {
+	kind, label, appearance, iconPath, accessibleLabel string
+}
+
+func issueContextStatusPropertyKey(module models.AppModule) string {
+	return "com.atlassian.jira.issue:" + module.AppKey + ":" + module.Key + ":status"
+}
+
+func parseIssueContextStatus(raw json.RawMessage) issueContextStatus {
+	var value struct {
+		Type  string `json:"type"`
+		Value struct {
+			Label string `json:"label"`
+			URL   string `json:"url"`
+			Type  string `json:"type"`
+		} `json:"value"`
+	}
+	if len(raw) == 0 || json.Unmarshal(raw, &value) != nil {
+		return issueContextStatus{}
+	}
+	switch value.Type {
+	case "badge":
+		count, err := strconv.ParseUint(value.Value.Label, 10, 64)
+		if err != nil || count == 0 {
+			return issueContextStatus{}
+		}
+		label := strconv.FormatUint(count, 10)
+		if count > 99 {
+			label = "99+"
+		}
+		return issueContextStatus{kind: "badge", label: label, accessibleLabel: strconv.FormatUint(count, 10)}
+	case "lozenge":
+		label := strings.TrimSpace(value.Value.Label)
+		appearances := map[string]string{
+			"default": "lozenge-default", "inprogress": "lozenge-current", "moved": "lozenge-moved",
+			"new": "lozenge-new", "removed": "lozenge-danger", "success": "lozenge-success",
+		}
+		class, ok := appearances[value.Value.Type]
+		if label == "" || !ok {
+			return issueContextStatus{}
+		}
+		return issueContextStatus{kind: "lozenge", label: label, appearance: class}
+	case "icon":
+		path := strings.TrimSpace(value.Value.Label)
+		if path == "" {
+			path = strings.TrimSpace(value.Value.URL)
+		}
+		parsed, err := url.Parse(path)
+		if err != nil || path == "" || parsed.IsAbs() || parsed.Host != "" || strings.HasPrefix(path, "//") {
+			return issueContextStatus{}
+		}
+		return issueContextStatus{kind: "icon", iconPath: path}
+	default:
+		return issueContextStatus{}
+	}
+}
+
+func decorateIssueContextStatus(module *models.AppModule, raw json.RawMessage, issueKey string) {
+	if module == nil {
+		return
+	}
+	status := parseIssueContextStatus(raw)
+	module.ContextStatusType = status.kind
+	module.ContextStatusLabel = status.label
+	module.ContextStatusClass = status.appearance
+	module.ContextStatusAccessibleLabel = status.accessibleLabel
+	if status.kind == "icon" {
+		module.ContextStatusIconURL = "/app-modules/" + module.ID + "/status-icon?issueKey=" + url.QueryEscape(issueKey)
 	}
 }
 
