@@ -308,3 +308,134 @@ func TestAppPrincipalScopesAndContextualModules(t *testing.T) {
 		t.Fatalf("reinstalled principal user = %+v, %v", user, err)
 	}
 }
+
+func TestConnectDynamicIssuePanels(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	st, err := store.Open(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := store.Migrate(ctx, st.Pool); err != nil {
+		t.Fatal(err)
+	}
+	workspaceID, workspaceSlug, err := st.DefaultWorkspace(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adminID, err := st.FirstAdminID(ctx, workspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	appKey := "dynamic." + strings.ReplaceAll(strings.ToLower(store.NewID("test")), "_", "-")
+	secret := []byte("dynamic-connect-secret-that-is-long-enough")
+	box, err := secretbox.New(bytes.Repeat([]byte{13}, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	descriptorRaw := []byte(fmt.Sprintf(`{"key":%q,"name":"Dynamic test","baseUrl":"https://connect.example.test/base","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"webPanels":[{"key":"static-panel","url":"/static","location":"atl.jira.view.issue.right.context","name":{"value":"Static panel"}}]}}`, appKey))
+	descriptor, err := ParseDescriptor(descriptorRaw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ciphertext, err := box.Seal(secret, workspaceID+"/"+appKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	installation, err := st.InstallApp(ctx, workspaceID, adminID, descriptor, descriptorRaw, ciphertext)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM app_installations WHERE id=$1`, installation.ID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM memberships WHERE user_id=$1`, installation.PrincipalID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM users WHERE id=$1`, installation.PrincipalID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM organization_audit_events WHERE target_type='app' AND target_id=$1`, appKey)
+	})
+
+	handler := &Handler{Store: st, Secrets: box, WorkspaceSlug: workspaceSlug}
+	dynamicPath := "/rest/atlassian-connect/1/app/module/dynamic"
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET "+dynamicPath, handler.DynamicModules)
+	mux.HandleFunc("POST "+dynamicPath, handler.DynamicModules)
+	mux.HandleFunc("DELETE "+dynamicPath, handler.DynamicModules)
+	secured := handler.APIPrincipal(mux)
+	now := time.Now().UTC().Truncate(time.Second)
+	call := func(method, target, body string, want int) *httptest.ResponseRecorder {
+		t.Helper()
+		request := httptest.NewRequest(method, target, strings.NewReader(body))
+		token, err := SignConnectJWT(secret, appKey, request, []byte(body), now, 3*time.Minute)
+		if err != nil {
+			t.Fatal(err)
+		}
+		request.Header.Set("Authorization", "JWT "+token)
+		request.Header.Set("Content-Type", "application/json")
+		response := httptest.NewRecorder()
+		secured.ServeHTTP(response, request)
+		if response.Code != want {
+			t.Fatalf("%s %s = %d, want %d: %s", method, target, response.Code, want, response.Body.String())
+		}
+		return response
+	}
+
+	dynamic := `{"webPanels":[{"key":"dynamic-risk","url":"/risk?issue={issue.key}","location":"atl.jira.view.issue.right.context","name":{"value":"Dynamic risk"}}]}`
+	call(http.MethodPost, dynamicPath, dynamic, http.StatusNoContent)
+	listed := call(http.MethodGet, dynamicPath, "", http.StatusOK)
+	if !strings.Contains(listed.Body.String(), `"dynamic-risk"`) || !strings.Contains(listed.Body.String(), `"webPanels"`) {
+		t.Fatalf("dynamic modules = %s", listed.Body.String())
+	}
+	modules, err := st.AppModulesByLocation(ctx, workspaceID, "jira.issue.view")
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, module := range modules {
+		if module.InstallationID == installation.ID && module.Key == "dynamic-risk" && module.Dynamic && module.RemoteURL == "/risk?issue={issue.key}" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("dynamic issue panel not materialized: %+v", modules)
+	}
+	call(http.MethodPost, dynamicPath, `{"webPanels":[{"key":"static-panel","url":"/duplicate","location":"atl.jira.view.issue.right.context","name":{"value":"Duplicate"}}]}`, http.StatusBadRequest)
+	if err := st.UpdateAppState(ctx, workspaceID, adminID, appKey, "uninstalled", true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.InstallApp(ctx, workspaceID, adminID, descriptor, descriptorRaw, ciphertext); err != nil {
+		t.Fatal(err)
+	}
+	modules, err = st.AppModulesByLocation(ctx, workspaceID, "jira.issue.view")
+	if err != nil {
+		t.Fatal(err)
+	}
+	found = false
+	for _, module := range modules {
+		found = found || module.InstallationID == installation.ID && module.Key == "dynamic-risk" && module.Dynamic
+	}
+	if !found {
+		t.Fatalf("dynamic issue panel was not restored after reinstall: %+v", modules)
+	}
+
+	upgradeRaw := []byte(fmt.Sprintf(`{"key":%q,"name":"Dynamic test","baseUrl":"https://connect.example.test/base","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"webPanels":[{"key":"dynamic-risk","url":"/promoted","location":"atl.jira.view.issue.right.context","name":{"value":"Promoted static risk"}}]}}`, appKey))
+	upgrade, err := ParseDescriptor(upgradeRaw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.UpgradeApp(ctx, workspaceID, appKey, upgrade, upgradeRaw); err != nil {
+		t.Fatal(err)
+	}
+	listed = call(http.MethodGet, dynamicPath, "", http.StatusOK)
+	if strings.Contains(listed.Body.String(), "dynamic-risk") {
+		t.Fatalf("static upgrade did not remove conflicting dynamic module: %s", listed.Body.String())
+	}
+	call(http.MethodPost, dynamicPath, `{"webPanels":[{"key":"dynamic-remove","url":"/remove","location":"atl.jira.view.issue.right.context","name":{"value":"Remove me"}}]}`, http.StatusNoContent)
+	call(http.MethodDelete, dynamicPath+"?moduleKey=dynamic-remove", "", http.StatusNoContent)
+	listed = call(http.MethodGet, dynamicPath, "", http.StatusOK)
+	if strings.Contains(listed.Body.String(), "dynamic-remove") {
+		t.Fatalf("deleted dynamic module remains: %s", listed.Body.String())
+	}
+}

@@ -2,6 +2,7 @@ package apps
 
 import (
 	"bytes"
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -24,6 +25,8 @@ import (
 
 var storageKeyPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$`)
 var requestIDPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._:-]{7,127}$`)
+
+type appInstallationContextKey struct{}
 
 type Handler struct {
 	Store         *store.Store
@@ -129,6 +132,9 @@ func (h *Handler) authenticateKey(r *http.Request, appKey string) (*models.AppIn
 }
 
 func appAPIScope(r *http.Request) (string, bool) {
+	if r.URL.Path == "/rest/atlassian-connect/1/app/module/dynamic" {
+		return "", true
+	}
 	product := ""
 	switch {
 	case strings.HasPrefix(r.URL.Path, "/rest/api/"), strings.HasPrefix(r.URL.Path, "/rest/agile/"), strings.HasPrefix(r.URL.Path, "/rest/servicedeskapi/"):
@@ -179,13 +185,101 @@ func (h *Handler) APIPrincipal(next http.Handler) http.Handler {
 			appFailure(w, http.StatusForbidden, fmt.Errorf("app is suspended"))
 			return
 		}
-		if !store.AppHasScope(installation, scope) {
+		if scope != "" && !store.AppHasScope(installation, scope) {
 			appFailure(w, http.StatusForbidden, fmt.Errorf("%s scope is required", scope))
 			return
 		}
-		ctx := authn.WithPrincipal(r.Context(), installation.PrincipalID)
+		ctx := context.WithValue(authn.WithPrincipal(r.Context(), installation.PrincipalID), appInstallationContextKey{}, installation)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+func (h *Handler) DynamicModules(w http.ResponseWriter, r *http.Request) {
+	installation, ok := r.Context().Value(appInstallationContextKey{}).(*models.AppInstallation)
+	if !ok || installation == nil || connectToken(r) == "" {
+		appFailure(w, http.StatusUnauthorized, fmt.Errorf("Connect JWT authentication is required"))
+		return
+	}
+	if installation.Status != "active" {
+		appFailure(w, http.StatusForbidden, fmt.Errorf("app is suspended"))
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		modules, err := h.Store.DynamicAppModules(r.Context(), installation.ID)
+		if err != nil {
+			appFailure(w, http.StatusInternalServerError, err)
+			return
+		}
+		grouped := map[string][]json.RawMessage{}
+		for _, module := range modules {
+			grouped[module.Type] = append(grouped[module.Type], module.Descriptor)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(grouped)
+	case http.MethodPost:
+		body, err := io.ReadAll(io.LimitReader(r.Body, (256<<10)+1))
+		if err != nil || len(body) > 256<<10 {
+			appFailure(w, http.StatusBadRequest, fmt.Errorf("dynamic module request must contain at most 256 KiB"))
+			return
+		}
+		modules, err := parseDynamicModules(body, installation)
+		if err == nil {
+			err = h.Store.RegisterDynamicAppModules(r.Context(), installation, modules)
+		}
+		if err != nil {
+			appFailure(w, http.StatusBadRequest, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	case http.MethodDelete:
+		keys := r.URL.Query()["moduleKey"]
+		for _, key := range keys {
+			if !moduleKeyPattern.MatchString(key) {
+				appFailure(w, http.StatusBadRequest, fmt.Errorf("dynamic module key is invalid"))
+				return
+			}
+		}
+		if err := h.Store.DeleteDynamicAppModules(r.Context(), installation.ID, keys); err != nil {
+			appFailure(w, http.StatusInternalServerError, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func parseDynamicModules(body []byte, installation *models.AppInstallation) ([]models.AppDynamicModule, error) {
+	if !store.AppHasScope(installation, "read:jira-work") {
+		return nil, fmt.Errorf("dynamic web panels require READ scope")
+	}
+	var groups map[string]json.RawMessage
+	if err := json.Unmarshal(body, &groups); err != nil || len(groups) == 0 {
+		return nil, fmt.Errorf("dynamic modules must be a non-empty JSON object")
+	}
+	modules := []models.AppDynamicModule{}
+	keys := map[string]bool{}
+	for moduleType, raw := range groups {
+		if moduleType != "webPanels" {
+			return nil, fmt.Errorf("dynamic module type %q is not supported yet", moduleType)
+		}
+		var entries []json.RawMessage
+		if err := json.Unmarshal(raw, &entries); err != nil || len(entries) == 0 {
+			return nil, fmt.Errorf("dynamic webPanels must be a non-empty array")
+		}
+		for _, entry := range entries {
+			var input connectRemoteModuleWire
+			if err := json.Unmarshal(entry, &input); err != nil {
+				return nil, fmt.Errorf("invalid dynamic web panel: %w", err)
+			}
+			input.Key, input.URL, input.Location, input.Name.Value = strings.TrimSpace(input.Key), strings.TrimSpace(input.URL), strings.TrimSpace(input.Location), strings.TrimSpace(input.Name.Value)
+			if !moduleKeyPattern.MatchString(input.Key) || keys[input.Key] || !validAppCallbackPath(input.URL) || !connectIssuePanelLocation(input.Location) || input.Name.Value == "" || len(input.Name.Value) > 255 {
+				return nil, fmt.Errorf("dynamic web panel needs a unique key, name, relative URL, and supported issue-view location")
+			}
+			keys[input.Key] = true
+			modules = append(modules, models.AppDynamicModule{Type: moduleType, Key: input.Key, Descriptor: entry, Module: models.AppModule{Key: input.Key, Type: "jira:issuePanel", Location: "jira.issue.view", Title: input.Name.Value, RemoteURL: input.URL, Dynamic: true}})
+		}
+	}
+	return modules, nil
 }
 
 func appFailure(w http.ResponseWriter, status int, err error) {

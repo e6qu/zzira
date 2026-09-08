@@ -2225,10 +2225,27 @@ Validation after standard Connect descriptors and remote modules:
   uninstall. Complete repository validation is recorded in the checkpoint
   commit.
 
+Validation after Connect dynamic issue panels:
+
+- Migration 107 distinguishes static and dynamic rendered modules and stores
+  the original tenant-specific Connect definitions independently. Dynamic
+  records survive uninstall/reinstall; descriptor upgrades remove a dynamic
+  definition only when a new static module claims the same key.
+- JWT/QSH-authenticated Connect apps can call the standard dynamic-module GET,
+  POST and DELETE resource. Registration is atomic, rejects static/dynamic key
+  conflicts, validates supported issue-view web-panel locations and relative
+  URLs, requires translated READ access and enforces the 100-module limit.
+  Deletion supports repeated `moduleKey` values or all modules.
+- Registered panels join Jira issue views through the existing signed iframe
+  gateway and appear as dynamic in administrator capability review. PostgreSQL
+  integration covers registration, original-shape retrieval, materialization,
+  duplicate rejection, uninstall/reinstall restoration, static upgrade
+  promotion and selective deletion.
+
 ## Current change
 
-1. Continue the app runtime with remaining Connect module families, dynamic
-   modules, workflow/custom-field modules and upgrade migrations.
+1. Continue the app runtime with remaining Connect module families and dynamic
+   module types, workflow/custom-field modules and upgrade migrations.
 2. Continue Confluence with advanced whiteboard objects, direct manipulation,
    exports and the remaining rich content/editor surface.
 3. Continue Service Management with public Assets object/schema/import API

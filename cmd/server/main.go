@@ -610,6 +610,9 @@ func main() {
 	mux.HandleFunc("GET /apps/{appKey}/storage/{key}", appAPI.Storage)
 	mux.HandleFunc("PUT /apps/{appKey}/storage/{key}", appAPI.Storage)
 	mux.HandleFunc("DELETE /apps/{appKey}/storage/{key}", appAPI.Storage)
+	mux.HandleFunc("GET /rest/atlassian-connect/1/app/module/dynamic", appAPI.DynamicModules)
+	mux.HandleFunc("POST /rest/atlassian-connect/1/app/module/dynamic", appAPI.DynamicModules)
+	mux.HandleFunc("DELETE /rest/atlassian-connect/1/app/module/dynamic", appAPI.DynamicModules)
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.Dir(static))))
 	mux.HandleFunc("GET /sw.js", func(w http.ResponseWriter, r *http.Request) {
 		// Root scope is required for the service worker to control page navigations.

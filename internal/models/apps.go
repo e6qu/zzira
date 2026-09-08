@@ -51,6 +51,13 @@ type AppModule struct {
 	SecretCiphertext                             []byte
 	Key, Type, Location, Title, Body, RemoteURL  string
 	Position                                     int
+	Dynamic                                      bool
+}
+
+type AppDynamicModule struct {
+	Type, Key  string
+	Descriptor json.RawMessage
+	Module     AppModule
 }
 
 type AppStorageValue struct {
