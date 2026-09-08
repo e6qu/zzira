@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 
+	appRuntime "github.com/e6qu/zzira/internal/apps"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/e6qu/zzira/internal/authn"
@@ -27,6 +28,7 @@ type adminPageData struct {
 	Domains                           []*models.OrganizationDomain
 	Policies                          []*models.OrganizationPolicy
 	IdentityProviders                 []LoginProvider
+	Apps                              []*models.AppInstallation
 	Directory                         *models.Directory
 	Groups                            []adminGroupRow
 	Users                             []*models.User
@@ -41,6 +43,7 @@ type adminPageData struct {
 	CurrentUserID                     string
 	InvitationNotificationsConfigured bool
 	ProviderRegistrationConfigured    bool
+	AppRegistrationConfigured         bool
 }
 
 type adminAuditAction struct {
@@ -64,6 +67,11 @@ var adminAuditActions = []adminAuditAction{
 	{Value: "identity.provider.registered", Name: "Provider registered"},
 	{Value: "identity.provider.credentials.rotated", Name: "Provider credentials rotated"},
 	{Value: "identity.provider.deleted", Name: "Provider deleted"},
+	{Value: "app.installed", Name: "App installed"},
+	{Value: "app.active", Name: "App enabled"},
+	{Value: "app.suspended", Name: "App suspended"},
+	{Value: "app.uninstalled", Name: "App uninstalled"},
+	{Value: "app.upgraded", Name: "App upgraded"},
 	{Value: "policy.created", Name: "Policy created"},
 	{Value: "policy.deleted", Name: "Policy deleted"},
 	{Value: "policy.resource.added", Name: "Policy resource added"},
@@ -132,6 +140,11 @@ func (h *Handler) adminData(r *http.Request, workspaceID, message string) (admin
 		Saved:                             r.URL.Query().Get("saved"),
 		InvitationNotificationsConfigured: h.InvitationNotificationsConfigured,
 		ProviderRegistrationConfigured:    h.ProviderSecrets != nil,
+		AppRegistrationConfigured:         h.ProviderSecrets != nil,
+	}
+	data.Apps, err = h.Store.AppInstallations(r.Context(), workspaceID)
+	if err != nil {
+		return adminPageData{}, err
 	}
 	if len(directories) == 0 {
 		return data, nil
@@ -173,6 +186,65 @@ func (h *Handler) adminData(r *http.Request, workspaceID, message string) (admin
 		return adminPageData{}, err
 	}
 	return data, nil
+}
+
+func (h *Handler) CreateAdminApp(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok {
+		return
+	}
+	if h.ProviderSecrets == nil {
+		http.Error(w, "stored apps require ZZIRA_IDENTITY_ENCRYPTION_KEY", http.StatusServiceUnavailable)
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	raw := []byte(r.PostFormValue("descriptor"))
+	descriptor, err := appRuntime.ParseDescriptor(raw)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	secret := r.PostFormValue("sharedSecret")
+	if len(secret) < 16 || len(secret) > 256 {
+		http.Error(w, "app shared secret must contain 16 to 256 characters", http.StatusBadRequest)
+		return
+	}
+	ciphertext, err := h.ProviderSecrets.Seal([]byte(secret), workspaceID+"/"+descriptor.Key)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if _, err := h.Store.InstallApp(r.Context(), workspaceID, user.ID, descriptor, raw, ciphertext); err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	http.Redirect(w, r, "/admin?saved="+url.QueryEscape(descriptor.Name+" installed")+"#admin-apps", http.StatusSeeOther)
+}
+
+func (h *Handler) UpdateAdminApp(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	status := ""
+	switch r.PostFormValue("action") {
+	case "resume":
+		status = "active"
+	case "suspend":
+		status = "suspended"
+	case "uninstall":
+		status = "uninstalled"
+	default:
+		http.Error(w, "unknown app action", http.StatusBadRequest)
+		return
+	}
+	if err := h.Store.UpdateAppState(r.Context(), workspaceID, user.ID, r.PathValue("appKey"), status, true); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	http.Redirect(w, r, "/admin?saved="+url.QueryEscape("App state updated")+"#admin-apps", http.StatusSeeOther)
 }
 
 func (h *Handler) CreateAdminIdentityProvider(w http.ResponseWriter, r *http.Request) {

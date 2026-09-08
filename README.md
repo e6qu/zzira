@@ -59,7 +59,8 @@ cd e2e && npm i && npx playwright install chromium && npm test   # browser specs
 `PLAN.md` (architecture + execution map) · `docs/CONTINUITY.md` (active handoff) ·
 `api/` (pinned Atlassian specs + conformance) ·
 `internal/render` (the one HTML renderer, server + wasm) · `internal/commands`
-(the one mutation layer) · `cmd/client` (browser sync worker) · `e2e/` (Playwright).
+(the one mutation layer) · [docs/APPS.md](docs/APPS.md) (signed app runtime) ·
+`cmd/client` (browser sync worker) · `e2e/` (Playwright).
 
 ---
 

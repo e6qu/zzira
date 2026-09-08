@@ -1,0 +1,8 @@
+{{define "page_app_module"}}
+<!doctype html><html lang="en"><head><title>{{.Data.Module.Title}} · {{.Data.Module.AppName}} · ZZIRA</title>{{template "head" .}}</head>
+<body><a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}<div class="app-shell">{{template "workspace_nav" .}}
+<main class="page app-module-page" id="main-content" tabindex="-1"><nav class="issue-breadcrumbs" aria-label="Breadcrumb"><span>Apps</span><span aria-hidden="true">/</span><span>{{.Data.Module.AppName}}</span><span aria-hidden="true">/</span><span aria-current="page">{{.Data.Module.Title}}</span></nav>
+<header class="page-header"><div><span class="eyebrow">{{.Data.Module.AppName}} · {{.Data.Module.Type}}</span><h1>{{.Data.Module.Title}}</h1><p>Host-rendered app module with workspace identity and navigation.</p></div></header>
+<section class="surface-card app-module-content" aria-labelledby="app-module-content-heading"><h2 class="sr-only" id="app-module-content-heading">Module content</h2><p>{{.Data.Module.Body}}</p><dl><div><dt>App key</dt><dd><code>{{.Data.Module.AppKey}}</code></dd></div><div><dt>Module key</dt><dd><code>{{.Data.Module.Key}}</code></dd></div><div><dt>Location</dt><dd><code>{{.Data.Module.Location}}</code></dd></div></dl></section>
+</main></div></body></html>
+{{end}}

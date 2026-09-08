@@ -2028,10 +2028,36 @@ Validation after major-incident escalation policies:
   and diff validation pass. Exact API coverage remains 427 of 1,207 operations
   because this checkpoint adds service behavior outside the pinned REST set.
 
+Validation after the signed app-runtime foundation:
+
+- Migration 100 adds workspace app installations, explicit scopes, validated
+  modules, isolated versioned JSON storage, lifecycle history and durable
+  signed-request replay claims.
+- Site administrators install or reinstall a JSON descriptor with an encrypted
+  shared secret, review scopes and modules, and suspend, resume or uninstall an
+  app from the organization UI. Every state change is organization audited.
+- App callbacks sign the timestamp, unique request ID, method, escaped path and
+  body digest with HMAC-SHA256. The runtime enforces a five-minute window,
+  constant-time verification and 24-hour replay rejection. Signed upgrades
+  cannot add scopes without new administrator consent.
+- Active apps receive scope-checked isolated storage. Global Jira and
+  Confluence page modules render inside the authenticated workspace shell and
+  disappear immediately on suspension or uninstall; uninstall also clears
+  scopes, modules and storage.
+- Focused unit coverage validates strict descriptor, scope and module rules.
+  PostgreSQL integration covers signatures, replay, scoped storage, lifecycle,
+  safe upgrade, encrypted secrets, cleanup and audit. The Chromium admin
+  journey installs an app, opens its host-rendered module, scans accessibility,
+  suspends, resumes and uninstalls it.
+- The full PostgreSQL Go suite, vet, WebAssembly build, Chromium app and administration journeys,
+  seven conformance tests, generated inventory/coverage checks and diff
+  validation pass. Exact API coverage remains 427 of 1,207 operations because
+  this ZZIRA runtime is outside the pinned Atlassian REST contracts.
+
 ## Current change
 
-1. Expand the app runtime from registered custom-content discovery into signed
-   installation, scopes and module rendering.
+1. Continue the app runtime with app principals, issue panels, dashboard
+   gadgets and Confluence byline modules.
 2. Continue Confluence with database schemas/rows/views and whiteboard canvas
    objects/editing.
 3. Continue Service Management with Assets-backed topology and impact analysis.

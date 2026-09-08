@@ -21,6 +21,7 @@ import (
 	"github.com/e6qu/zzira/internal/admin"
 	"github.com/e6qu/zzira/internal/agile"
 	"github.com/e6qu/zzira/internal/api3"
+	"github.com/e6qu/zzira/internal/apps"
 	"github.com/e6qu/zzira/internal/attachments"
 	"github.com/e6qu/zzira/internal/authn"
 	"github.com/e6qu/zzira/internal/automation"
@@ -150,6 +151,7 @@ func main() {
 	api := &api3.Handler{Store: st, Commands: cmdSvc, Blobs: blobs, BaseURL: baseURL, WorkspaceSlug: workspaceSlug}
 	agileAPI := &agile.Handler{Store: st, Commands: cmdSvc, IssueBean: api.IssueBean, BaseURL: envOr("BASE_URL", "http://localhost:"+port), WorkspaceSlug: workspaceSlug}
 	automationAPI := &automation.Handler{Service: automationSvc, WorkspaceSlug: workspaceSlug}
+	appAPI := &apps.Handler{Store: st, Secrets: providerSecrets, WorkspaceSlug: workspaceSlug}
 	adminAPI := &admin.Handler{
 		Store: st, BaseURL: api.BaseURL, WorkspaceSlug: workspaceSlug,
 		InvitationNotificationsConfigured: smtpSender != nil,
@@ -256,6 +258,8 @@ func main() {
 	mux.HandleFunc("POST /service/agent/{desk}/sla/{metric}/goals", webHandler.ServiceSLAGoalSettings)
 	mux.HandleFunc("POST /service/agent/{desk}/requests/{key}/assign", webHandler.ServiceAgentAssign)
 	mux.HandleFunc("GET /admin", webHandler.AdminPage)
+	mux.HandleFunc("POST /admin/apps", webHandler.CreateAdminApp)
+	mux.HandleFunc("POST /admin/apps/{appKey}", webHandler.UpdateAdminApp)
 	mux.HandleFunc("POST /admin/identity-providers/{provider}", webHandler.UpdateAdminIdentityProvider)
 	mux.HandleFunc("POST /admin/identity-providers", webHandler.CreateAdminIdentityProvider)
 	mux.HandleFunc("POST /admin/groups", webHandler.CreateAdminGroup)
@@ -573,6 +577,11 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
+	mux.HandleFunc("GET /apps/modules/{module}", webHandler.AppModulePage)
+	mux.HandleFunc("POST /apps/{appKey}/lifecycle/{event}", appAPI.Lifecycle)
+	mux.HandleFunc("GET /apps/{appKey}/storage/{key}", appAPI.Storage)
+	mux.HandleFunc("PUT /apps/{appKey}/storage/{key}", appAPI.Storage)
+	mux.HandleFunc("DELETE /apps/{appKey}/storage/{key}", appAPI.Storage)
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.Dir(static))))
 	mux.HandleFunc("GET /sw.js", func(w http.ResponseWriter, r *http.Request) {
 		// Root scope is required for the service worker to control page navigations.
