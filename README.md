@@ -16,7 +16,7 @@ Linear's ["Rebuilding delta sync read path"](https://linear.app/now/rebuilding-d
   credential rotation, server-side sessions, and login audit;
   see [identity provider sign-in](docs/shauth-sso.md).
 
-The current architecture, hard rules, one-PR execution map, and completion gates
+The current architecture, dependency-ordered PR roadmap, and completion gates
 live in [PLAN.md](PLAN.md). Continue active work from
 [docs/CONTINUITY.md](docs/CONTINUITY.md).
 
@@ -56,7 +56,7 @@ cd e2e && npm i && npx playwright install chromium && npm test   # browser specs
 
 ## Layout
 
-`PLAN.md` (architecture + execution map) · `docs/CONTINUITY.md` (active handoff) ·
+`PLAN.md` (architecture + PR roadmap) · `docs/CONTINUITY.md` (active handoff) ·
 `api/` (pinned Atlassian specs + conformance) ·
 `internal/render` (the one HTML renderer, server + wasm) · `internal/commands`
 (the one mutation layer) · [docs/APPS.md](docs/APPS.md) (signed app runtime) ·
