@@ -285,6 +285,12 @@ security, page restriction and command-audit paths as other callers. It is
 disabled on uninstall and restored with the same ID on an authorized
 reinstallation.
 
+Connect apps can use Jira's standard single-issue property routes to create,
+replace, list, read and delete JSON values. The implementation preserves the
+255-character key and 32,768-byte value limits plus Jira's create/update status
+codes. This provides the storage contract required by issue-context status metadata;
+bulk issue-property mutations remain a separate API slice.
+
 The runtime is a ZZIRA execution contract for remotely hosted apps. Remaining
 Connect module families, the remaining dynamic module types and webhook
 options, project/page-admin and issue-context conditions/status, dashboard-item

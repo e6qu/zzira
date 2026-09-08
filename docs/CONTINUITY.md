@@ -2451,11 +2451,27 @@ Validation after legacy Connect issue glances:
   validation pass. The pinned inventory remains 433 assessed operations out of
   1,207.
 
+Validation after Jira issue properties:
+
+- Jira's four single-issue property operations now list stable key/self beans,
+  read arbitrary JSON values, create with `201`, replace with `200`, delete with
+  `204`, and preserve Jira-shaped missing issue/property errors.
+- Property keys accept 1–255 Unicode characters and values accept any valid,
+  nonempty JSON body up to 32,768 bytes. Values are isolated by issue, cascade
+  with issue deletion and remain behind the canonical issue visibility gate.
+- The complete PostgreSQL Go suite, native server/load-test and WebAssembly
+  builds, vet, seven conformance tests, generated inventory/coverage checks and
+  diff validation pass. Four newly reviewed Jira Platform operations bring
+  exact coverage to 437 of 1,207: 430 partial, 7 missing and 770 unassessed.
+  Bulk property mutations, anonymous project access and exact Edit issues
+  permission modeling remain separate gaps.
+
 ## Current change
 
-1. Continue the app runtime with remaining Connect module families, dynamic
-   module types and webhook options, issue-content presence conditions/native
-   rendering, project/page-admin and issue-context conditions/status,
+1. Render Connect issue-context badge and lozenge status from the delivered
+   standard issue-property contract, then continue remaining Connect module
+   families, dynamic module types and webhook options, issue-content presence
+   conditions/native rendering, project/page-admin and issue-context conditions,
    additional web-item
    locations and conditions, dashboard-item configuration/refresh/conditions,
    select/read-only field options, workflow modules and upgrade migrations.

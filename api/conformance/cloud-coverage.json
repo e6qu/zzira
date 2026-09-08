@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 433,
+  "assessedTotal": 437,
   "counts": {
     "delivered": 0,
-    "partial": 426,
+    "partial": 430,
     "missing": 7,
-    "unassessed": 774
+    "unassessed": 770
   },
   "countsByFamily": {
     "automation": {
@@ -24,9 +24,9 @@
     },
     "jira-platform": {
       "delivered": 0,
-      "partial": 65,
+      "partial": 69,
       "missing": 0,
-      "unassessed": 552
+      "unassessed": 548
     },
     "jira-service-management": {
       "delivered": 0,
@@ -1692,33 +1692,51 @@
       "operationId": "jira-v3:GET:/rest/api/3/issue/{issueIdOrKey}/properties",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_properties_test.go",
+        "internal/api3/issue_properties.go",
+        "internal/store/issue_properties.go"
+      ],
+      "notes": "Permission-shaped single-issue key listing returns stable Jira property beans; anonymous-project access remains unsupported."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/issue/{issueIdOrKey}/properties/{propertyKey}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_properties_test.go",
+        "internal/api3/issue_properties.go",
+        "internal/store/issue_properties.go",
+        "migrations/111_issue_properties.sql"
+      ],
+      "notes": "Deletes a visible issue property with Jira 204 and not-found behavior; fine-grained Edit issues project permission modeling remains."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issue/{issueIdOrKey}/properties/{propertyKey}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_properties_test.go",
+        "internal/api3/issue_properties.go",
+        "internal/store/issue_properties.go"
+      ],
+      "notes": "Visible issue properties round-trip arbitrary JSON values with Jira-shaped not-found behavior; anonymous-project access remains unsupported."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/issue/{issueIdOrKey}/properties/{propertyKey}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_properties_test.go",
+        "internal/api3/issue_properties.go",
+        "internal/store/issue_properties.go",
+        "migrations/111_issue_properties.sql"
+      ],
+      "notes": "Creates or replaces tenant-bound JSON values with exact key/value limits and Jira 201/200 status behavior; fine-grained Edit issues project permission modeling remains."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/issue/{issueIdOrKey}/remotelink",

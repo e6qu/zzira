@@ -20,6 +20,7 @@ use `/rest/zzira/1`.
 | GET/POST /rest/api/3/project · GET /project/search · GET/PUT /project/{keyOrId} | 🟡 | Shared create/details commands and browser journey; software Scrum/Kanban templates; pagination/filtering/order; schemes, project roles and lifecycle remain |
 | POST /rest/api/3/issue | ✅ | Project key/id, ADF description, assignee, priority, labels, fix/affected versions, security and typed context-aware custom fields; unsupported fields are explicit errors |
 | GET/PUT/DELETE /rest/api/3/issue/{idOrKey} | ✅ | expand=renderedFields |
+| GET/PUT/DELETE /rest/api/3/issue/{idOrKey}/properties[/{key}] | 🟡 | Permission-shaped key listing and arbitrary JSON property lifecycle with Jira limits/status codes; anonymous project access and exact Edit issues permission remain |
 | GET/PUT /rest/api/3/issue/{idOrKey}/assignee | ✅ | PUT fields.assignee + dedicated assignee endpoint |
 | GET /rest/api/3/issue/{idOrKey}/editmeta | 🟡 | system + custom fields |
 | GET /rest/api/3/issue/createmeta (+ paginated project/type routes) | ✅ | legacy filters/expanded fields plus current per-project issue-type and field metadata shapes |

@@ -202,6 +202,11 @@ func (h *Handler) issueRoute(w http.ResponseWriter, r *http.Request, parts []str
 	case len(parts) == 4 && idOrKey == "createmeta" && parts[2] == "issuetypes" && r.Method == http.MethodGet:
 		h.createMetaFields(w, r, parts[1], parts[3])
 		return
+	case len(parts) == 2 && parts[1] == "properties":
+		h.issueProperties(w, r, idOrKey, nil)
+	case len(parts) >= 3 && parts[1] == "properties":
+		propertyKey := strings.Join(parts[2:], "/")
+		h.issueProperties(w, r, idOrKey, &propertyKey)
 	case len(parts) == 1:
 		switch r.Method {
 		case http.MethodGet:
