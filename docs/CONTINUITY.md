@@ -13,7 +13,7 @@ boundaries, dependencies, and acceptance gates belong in
 - Base: `origin/main` after PR #65
 - Delivery unit: PR 0 — Integrated Cloud foundation
 - Pull request: #68
-- State: open; PR security hardening is locally clean and awaiting CI confirmation
+- State: open; security checks pass and E2E isolation fixes await CI confirmation
 - Last product checkpoint: Connect site administration pages
 - Blockers: none
 
@@ -74,6 +74,12 @@ OAuth requests use pinned Cloud endpoints and checked redirect chains, stored
 JSON is safely re-encoded, multipart bodies stay explicitly capped, and numeric
 inputs and report allocations no longer narrow or allocate from unchecked input.
 
+The E2E journeys now create their own issue and wiki fixtures, use unique
+workspace-scoped wiki role names across retries, follow database and whiteboard
+detail redirects, and wait for the issue-type metadata refresh before asserting
+sub-task fields. This removes hidden dependencies on suite order and stale UI
+route assumptions.
+
 The last implementation checkpoint passed:
 
 - the complete PostgreSQL Go suite;
@@ -81,6 +87,8 @@ The last implementation checkpoint passed:
 - the WebAssembly build;
 - `go vet`;
 - gosec 2.29 with zero findings;
+- focused Playwright app, wiki, and create journeys against an empty seeded
+  database; and
 - seven conformance tests;
 - generated inventory and coverage freshness checks; and
 - diff validation.

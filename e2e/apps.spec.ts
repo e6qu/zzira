@@ -7,6 +7,34 @@ async function accessible(page: import('@playwright/test').Page) {
   expect(violations).toEqual([]);
 }
 
+async function createWikiPageFixture(page: import('@playwright/test').Page, suffix: string) {
+  await page.goto('/wiki');
+  await page.locator('.wiki-create-space > summary').click();
+  await page.getByLabel('Space name').fill(`App fixture ${suffix}`);
+  await page.getByLabel('Space key').fill(`APP${suffix}`);
+  await page.getByLabel('Description', { exact: true }).fill('App module browser fixture');
+  await page.getByRole('button', { name: 'Create space', exact: true }).click();
+  await page.getByRole('link', { name: 'Create page', exact: true }).click();
+  await page.getByLabel('Page title').fill(`App fixture page ${suffix}`);
+  await page.getByRole('textbox', { name: 'Page content' }).fill('A stable page for app module assertions.');
+  await page.getByRole('button', { name: 'Save page', exact: true }).click();
+  await expect(page.getByRole('heading', { name: `App fixture page ${suffix}`, level: 1 })).toBeVisible();
+  return page.url();
+}
+
+async function createIssueFixture(page: import('@playwright/test').Page, suffix: string) {
+  const result = await page.evaluate(async summary => {
+    const response = await fetch('/rest/api/3/issue', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields: { project: { key: 'ZZ' }, issuetype: { id: 'it_task' }, summary } }),
+    });
+    return { status: response.status, body: await response.text() };
+  }, `App fixture issue ${suffix}`);
+  expect(result.status, result.body).toBe(201);
+  return (JSON.parse(result.body) as { key: string }).key;
+}
+
 test('admin installs and manages a scoped host-rendered app', async ({ page }) => {
   await page.goto('/login');
   await page.fill('#login-email', 'demo@zzira.dev');
@@ -14,6 +42,8 @@ test('admin installs and manages a scoped host-rendered app', async ({ page }) =
   await page.click('button[type=submit]');
 
   const suffix = String(Date.now());
+  const wikiPageURL = await createWikiPageFixture(page, suffix);
+  const issueKey = await createIssueFixture(page, suffix);
   const appKey = `journey.${suffix}`;
   const appName = `Journey app ${suffix}`;
   const moduleTitle = `Release companion ${suffix}`;
@@ -57,7 +87,7 @@ test('admin installs and manages a scoped host-rendered app', async ({ page }) =
   await expect(page.getByText('Release readiness and incident context from the installed app.')).toBeVisible();
   await accessible(page);
 
-  await page.goto('/browse/ZZ-1');
+  await page.goto(`/browse/${issueKey}`);
   const issuePanel = page.locator('.app-context-module', { has: page.getByRole('heading', { name: issuePanelTitle, level: 2 }) });
   await expect(issuePanel).toBeVisible();
   await expect(issuePanel).toContainText('No cross-service release risk detected.');
@@ -68,11 +98,7 @@ test('admin installs and manages a scoped host-rendered app', async ({ page }) =
   await page.getByRole('button', { name: `Add ${gadgetTitle}`, exact: true }).click();
   await expect(page.locator('.app-dashboard-module')).toContainText('All app checks are healthy.');
 
-  await page.goto('/wiki');
-  await page.getByRole('link', { name: 'Browse pages', exact: true }).first().click();
-  const wikiPage = page.locator('a[href*="/wiki/spaces/"][href*="/pages/"]:not([href$="/new"])').first();
-  await expect(wikiPage).toBeVisible();
-  await wikiPage.click();
+  await page.goto(wikiPageURL);
   const byline = page.locator('.app-byline > span', { hasText: bylineTitle });
   await expect(byline).toBeVisible();
   await expect(byline).toContainText('Reviewed by the installed app.');
@@ -97,6 +123,7 @@ test('admin installs and manages a scoped host-rendered app', async ({ page }) =
 });
 
 test('admin installs a standard Connect descriptor and opens its signed remote page', async ({ page }) => {
+  let issueKey = '';
   await page.route('https://connect.example.test/**', async route => {
     const target = new URL(route.request().url());
     expect(target.searchParams.get('jwt')).toBeTruthy();
@@ -107,31 +134,31 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
       return;
     }
     if (target.pathname.endsWith('/remote-panel')) {
-      expect(target.searchParams.get('issue.key')).toBe('ZZ-1');
-      expect(target.searchParams.get('selected')).toBe('ZZ-1');
+      expect(target.searchParams.get('issue.key')).toBe(issueKey);
+      expect(target.searchParams.get('selected')).toBe(issueKey);
       await route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main><h1>Remote issue risk</h1><p>Issue context received.</p></main></body></html>' });
       return;
     }
     if (target.pathname.endsWith('/remote-content')) {
-      expect(target.searchParams.get('issue.key')).toBe('ZZ-1');
+      expect(target.searchParams.get('issue.key')).toBe(issueKey);
       await route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main><h1>Remote incident runbook</h1><p>Quick-add issue context received.</p></main></body></html>' });
       return;
     }
     if (target.pathname.endsWith('/remote-context')) {
-      expect(target.searchParams.get('issue.key')).toBe('ZZ-1');
+      expect(target.searchParams.get('issue.key')).toBe(issueKey);
       expect(target.searchParams.get('issue.id')).toBeTruthy();
       expect(target.searchParams.get('project.key')).toBe('ZZ');
       expect(target.searchParams.get('project.id')).toBeTruthy();
-      expect(target.searchParams.get('selected')).toBe('ZZ-1');
+      expect(target.searchParams.get('selected')).toBe(issueKey);
       await route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main><h1>Remote delivery context</h1><p>Issue and project context received.</p></main></body></html>' });
       return;
     }
     if (target.pathname.endsWith('/remote-activity')) {
-      expect(target.searchParams.get('issue.key')).toBe('ZZ-1');
+      expect(target.searchParams.get('issue.key')).toBe(issueKey);
       expect(target.searchParams.get('issue.id')).toBeTruthy();
       expect(target.searchParams.get('project.key')).toBe('ZZ');
       expect(target.searchParams.get('project.id')).toBeTruthy();
-      expect(target.searchParams.get('selected')).toBe('ZZ-1');
+      expect(target.searchParams.get('selected')).toBe(issueKey);
       expect(target.searchParams.get('source')).toBe('activity');
       await route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main><h1>Remote deployment activity</h1><p>Issue activity context received.</p></main></body></html>' });
       return;
@@ -190,6 +217,8 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
   await page.click('button[type=submit]');
 
   const suffix = String(Date.now());
+  const wikiPageURL = await createWikiPageFixture(page, suffix);
+  issueKey = await createIssueFixture(page, suffix);
   const appName = `Connect journey ${suffix}`;
   const moduleTitle = `Remote releases ${suffix}`;
   const panelTitle = `Remote risk ${suffix}`;
@@ -282,14 +311,14 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
   await accessible(page);
 
   const issueContextStatusKey = `com.atlassian.jira.issue:${descriptor.key}:delivery-context:status`;
-  const issueContextStatusURL = `/rest/api/3/issue/ZZ-1/properties/${encodeURIComponent(issueContextStatusKey)}`;
+  const issueContextStatusURL = `/rest/api/3/issue/${issueKey}/properties/${encodeURIComponent(issueContextStatusKey)}`;
   const setIssueContextStatus = async (value: object) => page.evaluate(async ({ path, value }) => {
     const response = await fetch(path, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(value) });
     return { status: response.status, body: await response.text() };
   }, { path: issueContextStatusURL, value });
   let statusResponse = await setIssueContextStatus({ type: 'lozenge', value: { label: 'At risk', type: 'moved' } });
   expect(statusResponse.status, statusResponse.body).toBe(201);
-  await page.goto('/browse/ZZ-1');
+  await page.goto(`/browse/${issueKey}`);
   await page.getByRole('button', { name: issueActivityTitle, exact: true }).click();
   const activityPanel = page.locator('[data-app-activity-panel]:not([hidden])');
   await expect(activityPanel.frameLocator('iframe').getByRole('heading', { name: 'Remote deployment activity' })).toBeVisible();
@@ -329,10 +358,7 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
   await appContent.getByRole('button', { name: 'Remove' }).click();
   await expect(page.getByRole('button', { name: `Add ${contentTitle}` })).toBeVisible();
 
-  await page.goto('/wiki');
-  await page.getByRole('link', { name: 'Browse pages', exact: true }).first().click();
-  const wikiPage = page.locator('a[href*="/wiki/spaces/"][href*="/pages/"]:not([href$="/new"])').first();
-  await wikiPage.click();
+  await page.goto(wikiPageURL);
   await page.getByRole('link', { name: bylineTitle }).click();
   await expect(page.getByRole('heading', { name: bylineTitle, level: 1 })).toBeVisible();
   await expect(page.frameLocator('iframe.app-module-frame').getByRole('heading', { name: 'Remote page review' })).toBeVisible();

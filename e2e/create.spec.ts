@@ -128,7 +128,13 @@ test('create journey and createmeta share every supported field', async ({ page,
 
 	await page.locator('#global-create-issue').click();
 	const subtaskDialog = page.getByRole('dialog', { name: 'Create issue' });
+	await expect(subtaskDialog).toBeVisible();
+	const metadataRefresh = page.waitForResponse(response => {
+		const url = new URL(response.url());
+		return response.request().method() === 'GET' && url.pathname === '/issues/new' && url.searchParams.get('issuetype') === 'it_subtask';
+	});
 	await page.selectOption('#create-issuetype', 'it_subtask');
+	expect((await metadataRefresh).ok()).toBe(true);
 	await expect(page.locator('#create-issuetype')).toHaveValue('it_subtask');
 	await expect(page.locator('#create-parent')).toHaveAttribute('required', '');
 	await page.fill('#create-summary', `Hierarchy child ${unique}`);

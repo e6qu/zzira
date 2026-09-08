@@ -16,6 +16,7 @@ test('wiki space, rich page, access, stale edits, child pages, history, trash an
   await page.getByRole('link', { name: 'Wiki', exact: true }).click();
   await page.locator('.wiki-create-space > summary').click();
   const key = `W${Date.now().toString(36).toUpperCase()}`;
+  const editorRole = `Handbook editors ${key}`;
   await page.getByLabel('Space name').fill('Engineering handbook');
   await page.getByLabel('Space key').fill(key);
   await page.getByLabel('Description', { exact: true }).fill('How we build and release');
@@ -35,14 +36,14 @@ test('wiki space, rich page, access, stale edits, child pages, history, trash an
   await expect(page.getByRole('region', { name: 'Space properties' })).toContainText('handbook-config');
   let spaceRoles = page.getByRole('region', { name: 'Space roles' });
   await spaceRoles.locator('summary').filter({ hasText: 'Create custom role' }).click();
-  await spaceRoles.getByLabel('Role name').fill('Handbook editors');
+  await spaceRoles.getByLabel('Role name').fill(editorRole);
   await spaceRoles.getByLabel('Description').fill('Edit governed handbook pages');
   await spaceRoles.getByLabel('Update pages').check();
   await spaceRoles.getByRole('button', { name: 'Create custom role', exact: true }).click();
   spaceRoles = page.getByRole('region', { name: 'Space roles' });
-  await expect(spaceRoles).toContainText('Handbook editors');
+  await expect(spaceRoles).toContainText(editorRole);
   await spaceRoles.locator('summary').filter({ hasText: 'Set access-class assignment' }).click();
-  await spaceRoles.getByRole('combobox', { name: 'Access-class role' }).selectOption({ label: 'Handbook editors' });
+  await spaceRoles.getByRole('combobox', { name: 'Access-class role' }).selectOption({ label: editorRole });
   await spaceRoles.getByRole('button', { name: 'Add access-class assignment', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Space roles' })).toContainText('authenticated-users');
   spaceRoles = page.getByRole('region', { name: 'Space roles' });
@@ -339,6 +340,9 @@ test('wiki space, rich page, access, stale edits, child pages, history, trash an
   await databases.getByLabel('Private database').check();
   await databases.getByLabel('Parent content').selectOption({ label: 'Release operations' });
   await databases.getByRole('button', { name: 'Create database', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Service catalog', level: 1 })).toBeVisible();
+  await expect(page.locator('.page-header')).toContainText('Private');
+  await page.goto(spaceURL);
   const serviceCatalog = page.locator('.wiki-databases li').filter({ hasText: 'Service catalog' });
   await expect(serviceCatalog).toContainText('Private');
   await expect(serviceCatalog).toContainText('Inside folder');
@@ -353,6 +357,8 @@ test('wiki space, rich page, access, stale edits, child pages, history, trash an
   await whiteboards.getByLabel('Template language').selectOption('en-US');
   await whiteboards.getByLabel('Parent content').selectOption({ label: 'Release operations' });
   await whiteboards.getByRole('button', { name: 'Create whiteboard', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Incident review canvas', level: 1 })).toBeVisible();
+  await page.goto(spaceURL);
   const incidentCanvas = page.locator('.wiki-whiteboards li').filter({ hasText: 'Incident review canvas' });
   await expect(incidentCanvas).toContainText('Template: incident-postmortem (en-US)');
   await expect(incidentCanvas).toContainText('Inside folder');
