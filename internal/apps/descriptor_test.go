@@ -60,6 +60,7 @@ func TestParseConnectDescriptorTranslatesSupportedModules(t *testing.T) {
   "lifecycle":{"installed":"/installed","uninstalled":"/uninstalled"},
   "modules":{
     "generalPages":[{"key":"operations","url":"/operations","name":{"value":"Operations"}}],
+    "adminPages":[{"key":"site-controls","url":"/site-controls","name":{"value":"Site controls"},"weight":70,"params":{"source":"admin"}}],
     "webPanels":[{"key":"issue-risk","url":"/risk?issue={issue.key}","location":"atl.jira.view.issue.right.context","name":{"value":"Issue risk"}}],
     "contentBylineItems":[{"key":"review","url":"/review?content={content.id}","name":{"value":"Review"}}],
     "webItems":[{"key":"top-link","url":"/top","location":"system.top.navigation.bar","name":{"value":"Top link"}}],
@@ -79,7 +80,7 @@ func TestParseConnectDescriptorTranslatesSupportedModules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if descriptor.Format != "connect" || descriptor.Version != "connect-v1" || len(descriptor.Modules) != 12 || len(descriptor.Webhooks) != 1 || len(descriptor.IssueFields) != 1 {
+	if descriptor.Format != "connect" || descriptor.Version != "connect-v1" || len(descriptor.Modules) != 13 || len(descriptor.Webhooks) != 1 || len(descriptor.IssueFields) != 1 {
 		t.Fatalf("Connect descriptor = %+v", descriptor)
 	}
 	if descriptor.Key != "Connect.Operations" {
@@ -93,6 +94,7 @@ func TestParseConnectDescriptorTranslatesSupportedModules(t *testing.T) {
 	issueContext := false
 	issueGlance := false
 	issueTabPanel := false
+	adminPage := false
 	for _, module := range descriptor.Modules {
 		if module.RemoteURL != "" {
 			remoteModules++
@@ -118,8 +120,11 @@ func TestParseConnectDescriptorTranslatesSupportedModules(t *testing.T) {
 		if module.Key == "deployment-activity" && module.Type == "jira:issueTabPanel" && module.Location == "jira.issue.activity" && module.Position == 80 && strings.Contains(module.RemoteURL, "issue={issue.key}") && strings.Contains(module.RemoteURL, "source=activity") {
 			issueTabPanel = true
 		}
+		if module.Key == "site-controls" && module.Type == "jira:adminPage" && module.Location == "jira.admin" && module.Position == 70 && strings.Contains(module.RemoteURL, "source=admin") {
+			adminPage = true
+		}
 	}
-	if remoteModules != 12 || !projectPage || !projectAdminPage || !report || !dashboardItem || !issueContext || !issueGlance || !issueTabPanel || descriptor.Webhooks[0].Key != "connect-webhook-1" {
+	if remoteModules != 13 || !projectPage || !projectAdminPage || !report || !dashboardItem || !issueContext || !issueGlance || !issueTabPanel || !adminPage || descriptor.Webhooks[0].Key != "connect-webhook-1" {
 		t.Fatalf("translated modules = %+v, hooks = %+v", descriptor.Modules, descriptor.Webhooks)
 	}
 	for _, scope := range []string{"read:jira-work", "write:jira-work", "read:confluence-content", "write:confluence-content", "manage:webhooks"} {
@@ -167,6 +172,9 @@ func TestParseConnectDescriptorTranslatesSupportedModules(t *testing.T) {
 	}
 	if _, err := ParseDescriptor([]byte(`{"key":"connect.bad-tab","name":"Bad tab","baseUrl":"https://connect.example.test","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"jiraIssueTabPanels":[{"key":"activity","name":{"value":"Activity"},"url":"/activity","conditions":[{"condition":"user_is_logged_in"}]}]}}`)); err == nil {
 		t.Fatal("accepted unsupported issue-tab conditions")
+	}
+	if _, err := ParseDescriptor([]byte(`{"key":"connect.bad-admin","name":"Bad admin","baseUrl":"https://connect.example.test","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"adminPages":[{"key":"admin","name":{"value":"Admin"},"url":"/admin","fullPage":true}]}}`)); err == nil {
+		t.Fatal("accepted unsupported full-page admin behavior")
 	}
 	if _, err := ParseDescriptor([]byte(`{"key":"connect.bad","name":"Bad","baseUrl":"https://connect.example.test","authentication":{"type":"none"},"scopes":[],"modules":{}}`)); err == nil {
 		t.Fatal("accepted a Connect descriptor without JWT authentication")

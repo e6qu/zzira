@@ -78,6 +78,21 @@ func (h *Handler) ProjectAdminAppModulePage(w http.ResponseWriter, r *http.Reque
 	}, "project-admin-app-module:"+module.ID, project.ID)
 }
 
+func (h *Handler) AdminAppModulePage(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok {
+		return
+	}
+	module, err := h.Store.ActiveAppModule(r.Context(), workspaceID, r.PathValue("module"))
+	if err != nil || module.Location != "jira.admin" {
+		http.NotFound(w, r)
+		return
+	}
+	h.writeWorkspacePage(w, r, "page_admin_app_module", user, workspaceID, appModulePageData{
+		Module: module, FrameURL: remoteModuleFramePath(module, nil),
+	}, "admin-app-module:"+module.ID, "")
+}
+
 func remoteModuleFramePath(module *models.AppModule, values url.Values) string {
 	if module == nil || module.RemoteURL == "" {
 		return ""
@@ -90,7 +105,7 @@ func remoteModuleFramePath(module *models.AppModule, values url.Values) string {
 }
 
 func (h *Handler) AppModuleFrame(w http.ResponseWriter, r *http.Request) {
-	_, workspaceID, ok := h.pageContext(w, r)
+	user, workspaceID, ok := h.pageContext(w, r)
 	if !ok {
 		return
 	}
@@ -98,6 +113,13 @@ func (h *Handler) AppModuleFrame(w http.ResponseWriter, r *http.Request) {
 	if err != nil || module.RemoteURL == "" {
 		http.NotFound(w, r)
 		return
+	}
+	if module.Location == "jira.admin" || module.Location == "jira.project.settings" {
+		isAdmin, adminErr := h.Store.IsAdmin(r.Context(), workspaceID, user.ID)
+		if adminErr != nil || !isAdmin {
+			http.NotFound(w, r)
+			return
+		}
 	}
 	if h.ProviderSecrets == nil {
 		http.Error(w, "App credential encryption is unavailable", http.StatusServiceUnavailable)

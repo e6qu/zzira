@@ -98,7 +98,7 @@ shape:
 ```
 
 Connect `READ` and write-capable scopes translate into the corresponding Jira
-and Confluence grants. Supported Connect module families are `generalPages`,
+and Confluence grants. Supported Connect module families are `adminPages`, `generalPages`,
 `jiraProjectPages`, `jiraProjectAdminTabPanels`, `jiraReports`,
 `jiraDashboardItems`, `jiraIssueTabPanels`, Jira issue-view
 `webPanels`, Confluence
@@ -195,6 +195,13 @@ ordering, and append descriptor `params` to the signed remote URL. They appear
 only in project settings for administrators and receive the same verified
 `project.key` and `project.id` context as project pages. Conditions remain an
 explicit gap and fail descriptor installation instead of being ignored.
+
+Connect `adminPages` validate their 1–100 character key, i18n name, relative
+URL, optional parameters and weight. Active pages join the site administration
+navigation only for administrators and open in the shared sandboxed,
+JWT-signed remote frame. The default Jira administration location is supported;
+custom locations, conditions, cacheable requests, full-page presentation,
+icons and the singleton `configurePage` remain explicit gaps.
 
 Connect reports validate their key, name, description, relative URL, optional
 relative thumbnail and the `agile`, `issue_analysis`, `forecast_management` or
@@ -307,7 +314,7 @@ bulk issue-property mutations remain a separate API slice.
 
 The runtime is a ZZIRA execution contract for remotely hosted apps. Remaining
 Connect module families, the remaining dynamic module types and webhook
-options, project/page-admin, issue-tab and issue-context conditions, dashboard-item
+options, `configurePage`, custom admin-page behavior, project/page-admin, issue-tab and issue-context conditions, dashboard-item
 configuration/refresh/conditions, workflow modules, select/read-only issue
 fields and option APIs,
 descriptor-driven upgrade migrations, and Atlassian-hosted Forge compute remain

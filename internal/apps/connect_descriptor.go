@@ -52,6 +52,18 @@ type connectIssueTabPanelWire struct {
 	Conditions []json.RawMessage `json:"conditions"`
 }
 
+type connectAdminPageWire struct {
+	Key        string            `json:"key"`
+	URL        string            `json:"url"`
+	Name       connectNameWire   `json:"name"`
+	Location   string            `json:"location"`
+	Weight     int               `json:"weight"`
+	Params     map[string]string `json:"params"`
+	Cacheable  bool              `json:"cacheable"`
+	FullPage   bool              `json:"fullPage"`
+	Conditions []json.RawMessage `json:"conditions"`
+}
+
 type connectWebItemWire struct {
 	connectRemoteModuleWire
 	Conditions []json.RawMessage `json:"conditions"`
@@ -197,12 +209,24 @@ func parseConnectDescriptor(raw []byte) (models.AppDescriptor, error) {
 		wire.Scopes = append(wire.Scopes, scope)
 	}
 	sort.Strings(wire.Scopes)
-	supported := map[string]bool{"generalPages": true, "jiraProjectPages": true, "jiraProjectAdminTabPanels": true, "jiraReports": true, "jiraDashboardItems": true, "jiraIssueTabPanels": true, "webPanels": true, "contentBylineItems": true, "webhooks": true, "jiraIssueFields": true, "webItems": true, "jiraIssueContents": true, "jiraIssueContexts": true, "jiraIssueGlances": true}
+	supported := map[string]bool{"adminPages": true, "generalPages": true, "jiraProjectPages": true, "jiraProjectAdminTabPanels": true, "jiraReports": true, "jiraDashboardItems": true, "jiraIssueTabPanels": true, "webPanels": true, "contentBylineItems": true, "webhooks": true, "jiraIssueFields": true, "webItems": true, "jiraIssueContents": true, "jiraIssueContexts": true, "jiraIssueGlances": true}
 	for moduleType, payload := range connect.Modules {
 		if !supported[moduleType] {
 			return models.AppDescriptor{}, fmt.Errorf("Connect module %q is not supported yet", moduleType)
 		}
 		switch moduleType {
+		case "adminPages":
+			var modules []connectAdminPageWire
+			if err := json.Unmarshal(payload, &modules); err != nil {
+				return models.AppDescriptor{}, fmt.Errorf("invalid Connect adminPages: %w", err)
+			}
+			for _, module := range modules {
+				translated, err := translateConnectAdminPage(module)
+				if err != nil {
+					return models.AppDescriptor{}, err
+				}
+				wire.Modules = append(wire.Modules, translated)
+			}
 		case "jiraIssueTabPanels":
 			var modules []connectIssueTabPanelWire
 			if err := json.Unmarshal(payload, &modules); err != nil {
@@ -359,6 +383,34 @@ func parseConnectDescriptor(raw []byte) (models.AppDescriptor, error) {
 		wire.Scopes = append(wire.Scopes, scope)
 	}
 	return validateDescriptorWire(wire)
+}
+
+func translateConnectAdminPage(module connectAdminPageWire) (moduleWire, error) {
+	module.Key = strings.TrimSpace(module.Key)
+	module.Name.Value = strings.TrimSpace(module.Name.Value)
+	module.URL = strings.TrimSpace(module.URL)
+	module.Location = strings.TrimSpace(module.Location)
+	if module.Location == "" {
+		module.Location = "advanced_menu_section/advanced_section"
+	}
+	if !connectModuleKeyPattern.MatchString(module.Key) || module.Name.Value == "" || len(module.Name.Value) > 1500 || !validAppCallbackPath(module.URL) {
+		return moduleWire{}, fmt.Errorf("Connect admin page needs a valid key, name, and relative URL")
+	}
+	if module.Location != "advanced_menu_section/advanced_section" {
+		return moduleWire{}, fmt.Errorf("Connect admin page %q uses unsupported location %q", module.Key, module.Location)
+	}
+	if module.Cacheable || module.FullPage || len(module.Conditions) > 0 {
+		return moduleWire{}, fmt.Errorf("Connect admin page %q uses unsupported cacheable, fullPage, or conditions behavior", module.Key)
+	}
+	var err error
+	if module.URL, err = appendConnectParams(module.URL, module.Params); err != nil {
+		return moduleWire{}, fmt.Errorf("Connect admin page %q: %w", module.Key, err)
+	}
+	weight := module.Weight
+	if weight == 0 {
+		weight = 100
+	}
+	return moduleWire{Key: module.Key, Type: "jira:adminPage", Location: "jira.admin", Title: module.Name.Value, URL: module.URL, Position: weight}, nil
 }
 
 func translateConnectIssueTabPanel(module connectIssueTabPanelWire) (moduleWire, error) {

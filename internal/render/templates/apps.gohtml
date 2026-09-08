@@ -7,6 +7,15 @@
 </main></div></body></html>
 {{end}}
 
+{{define "page_admin_app_module"}}
+<!doctype html><html lang="en"><head><title>{{.Data.Module.Title}} · Administration · ZZIRA</title>{{template "head" .}}</head>
+<body><a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}<div class="app-shell">{{template "workspace_nav" .}}<main class="page page-fluid" id="main-content" tabindex="-1">
+<nav class="issue-breadcrumbs" aria-label="Breadcrumb"><a href="/admin">Administration</a><span aria-hidden="true">/</span><span>{{.Data.Module.AppName}}</span><span aria-hidden="true">/</span><span aria-current="page">{{.Data.Module.Title}}</span></nav>
+<header class="page-header"><div><span class="eyebrow">{{.Data.Module.AppName}} · Site administration</span><h1>{{.Data.Module.Title}}</h1><p>Administrator-only app configuration for this ZZIRA site.</p></div></header>
+<section class="surface-card app-module-content" aria-labelledby="admin-app-content-heading"><h2 class="sr-only" id="admin-app-content-heading">Module content</h2><iframe class="app-module-frame" src="{{.Data.FrameURL}}" title="{{.Data.Module.Title}}" sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts"></iframe></section>
+</main></div><div id="modal-root"></div><div id="sync-banner" class="sync-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div></body></html>
+{{end}}
+
 {{define "page_project_admin_app_module"}}
 <!doctype html><html lang="en"><head><title>{{.Data.Module.Title}} · Project settings · ZZIRA</title>{{template "head" .}}</head>
 <body class="page-project-settings"><a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}<div class="app-shell">{{template "workspace_nav" .}}<main class="page page-fluid" id="main-content" tabindex="-1">

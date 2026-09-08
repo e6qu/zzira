@@ -2505,9 +2505,29 @@ Validation after Connect issue activity tabs:
   conformance tests, generated inventory/coverage checks and diff validation
   pass.
 
+Validation after Connect site administration pages:
+
+- Standard descriptors accept `adminPages` with the exact Connect key/name/URL
+  contract, optional parameters and weight, and Jira's default administration
+  location. Unsupported locations, conditions, cacheable requests and full-page
+  presentation fail installation explicitly.
+- Active modules join the site administration navigation only for
+  administrators. Their dedicated page and common frame routes repeat the
+  administrator gate, verify tenant ownership and active module location, and open the remote
+  page through the common sandboxed Connect JWT frame with descriptor
+  parameters.
+- Focused parser, render, web and server tests pass. The Chromium Connect
+  journey installs the admin page, opens it from administrator navigation,
+  verifies signed remote parameters and accessibility, then completes the
+  existing app journey. This descriptor module leaves the pinned API inventory
+  at 437 assessed operations out of 1,207. The complete PostgreSQL Go suite,
+  native server/load-test and WebAssembly builds, vet, seven conformance tests,
+  generated inventory/coverage checks and diff validation pass.
+
 ## Current change
 
-1. Continue remaining Connect module families, dynamic module types and webhook
+1. Continue remaining Connect module families, including singleton
+   `configurePage`, dynamic module types and webhook
    options, issue-content presence conditions/native rendering,
    project/page-admin, issue-tab and issue-context conditions,
    additional web-item

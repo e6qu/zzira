@@ -136,6 +136,11 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
       await route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main><h1>Remote deployment activity</h1><p>Issue activity context received.</p></main></body></html>' });
       return;
     }
+    if (target.pathname.endsWith('/remote-site-admin')) {
+      expect(target.searchParams.get('source')).toBe('site');
+      await route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main><h1>Remote site controls</h1><p>Administrator context received.</p></main></body></html>' });
+      return;
+    }
     if (target.pathname.endsWith('/remote-project')) {
       expect(target.searchParams.get('project.key')).toBe('ZZ');
       expect(target.searchParams.get('project.id')).toBeTruthy();
@@ -199,6 +204,7 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
   const issueContextTitle = `Delivery context ${suffix}`;
   const issueGlanceTitle = `Legacy glance ${suffix}`;
   const issueActivityTitle = `Deployments ${suffix}`;
+  const siteAdminTitle = `Site controls ${suffix}`;
   const descriptor = {
     key: `connect.journey.${suffix}`,
     name: appName,
@@ -207,6 +213,7 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
     scopes: ['READ', 'WRITE'],
     modules: {
       generalPages: [{ key: 'remote-releases', url: '/remote-page?view=releases', name: { value: moduleTitle } }],
+      adminPages: [{ key: 'site-controls', url: '/remote-site-admin', name: { value: siteAdminTitle }, weight: 70, params: { source: 'site' } }],
       webPanels: [{ key: 'remote-risk', url: '/remote-panel?selected={issue.key}', location: 'atl.jira.view.issue.right.context', name: { value: panelTitle } }],
       contentBylineItems: [{ key: 'remote-review', url: '/remote-review?content={content.id}', name: { value: bylineTitle } }],
       jiraIssueFields: [{ key: 'remote-risk-score', name: { value: fieldName }, description: { value: 'Risk supplied by the Connect app' }, type: 'number' }],
@@ -232,6 +239,10 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
   await expect(app).toContainText('/remote-page?view=releases');
   await expect(app).toContainText(fieldName);
   await expect(app).toContainText(`${descriptor.key}__remote-risk-score`);
+  await page.locator('#workspace-navigation').getByRole('link', { name: siteAdminTitle }).click();
+  await expect(page.getByRole('heading', { name: siteAdminTitle, level: 1 })).toBeVisible();
+  await expect(page.frameLocator('iframe.app-module-frame').getByRole('heading', { name: 'Remote site controls' })).toBeVisible();
+  await accessible(page);
   await page.locator('#workspace-navigation').getByRole('link', { name: moduleTitle }).click();
   await expect(page.getByRole('heading', { name: moduleTitle, level: 1 })).toBeVisible();
   const remote = page.frameLocator('iframe.app-module-frame');

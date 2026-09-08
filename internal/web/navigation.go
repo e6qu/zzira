@@ -29,6 +29,7 @@ type workspaceNavigation struct {
 	AppModules             []models.AppModule
 	ProjectAppModules      []models.AppModule
 	ProjectAdminAppModules []models.AppModule
+	AdminAppModules        []models.AppModule
 	Current                *projectNavigationItem
 	CanAdmin               bool
 	CanServiceAgent        bool
@@ -61,6 +62,10 @@ func (h *Handler) workspaceNavigation(r *http.Request, workspaceID, preferred st
 	if err != nil {
 		return nil, fmt.Errorf("list project admin app modules for navigation: %w", err)
 	}
+	adminAppModules, err := h.Store.AppModulesByLocation(r.Context(), workspaceID, "jira.admin")
+	if err != nil {
+		return nil, fmt.Errorf("list admin app modules for navigation: %w", err)
+	}
 
 	firstBoard := make(map[string]*models.Board, len(boards))
 	for _, board := range boards {
@@ -69,7 +74,7 @@ func (h *Handler) workspaceNavigation(r *http.Request, workspaceID, preferred st
 		}
 	}
 
-	navigation := &workspaceNavigation{Projects: make([]projectNavigationItem, 0, len(projects)), AppModules: appModules, ProjectAppModules: projectAppModules, ProjectAdminAppModules: projectAdminAppModules}
+	navigation := &workspaceNavigation{Projects: make([]projectNavigationItem, 0, len(projects)), AppModules: appModules, ProjectAppModules: projectAppModules, ProjectAdminAppModules: projectAdminAppModules, AdminAppModules: adminAppModules}
 	if user := h.currentUser(r); user != nil {
 		navigation.CanAdmin, err = h.Store.IsAdmin(r.Context(), workspaceID, user.ID)
 		if err != nil {
