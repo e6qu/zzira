@@ -134,6 +134,15 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
       await route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main><h1>Remote delivery risk</h1><p>Project report context received.</p></main></body></html>' });
       return;
     }
+    if (target.pathname.endsWith('/remote-dashboard')) {
+      expect(target.searchParams.get('dashboard.id')).toBeTruthy();
+      expect(target.searchParams.get('dashboardItem.id')).toBeTruthy();
+      expect(target.searchParams.get('dashboardItem.key')).toBe('release-health');
+      expect(target.searchParams.get('dashboardItem.viewType')).toBe('default');
+      expect(target.searchParams.get('item')).toBe(target.searchParams.get('dashboardItem.id'));
+      await route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main><h1>Remote release health</h1><p>Dashboard item context received.</p></main></body></html>' });
+      return;
+    }
     if (target.pathname.endsWith('/remote-review')) {
       expect(target.searchParams.get('content.id')).toBeTruthy();
       expect(target.searchParams.get('content')).toBe(target.searchParams.get('content.id'));
@@ -163,6 +172,7 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
   const projectPageTitle = `Project intelligence ${suffix}`;
   const projectAdminTitle = `Project controls ${suffix}`;
   const reportTitle = `Delivery risk ${suffix}`;
+  const dashboardItemTitle = `Release health ${suffix}`;
   const descriptor = {
     key: `connect.journey.${suffix}`,
     name: appName,
@@ -179,6 +189,7 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
       jiraProjectPages: [{ key: 'project-intelligence', name: { value: projectPageTitle }, url: '/remote-project?selected={project.key}', iconUrl: '/project.svg', weight: 40 }],
       jiraProjectAdminTabPanels: [{ key: 'project-controls', name: { value: projectAdminTitle }, url: '/remote-project-admin', location: 'projectgroup3', weight: 20, params: { source: 'settings' } }],
       jiraReports: [{ key: 'delivery-risk', name: { value: reportTitle }, description: { value: 'Release and incident risk from the app' }, url: '/remote-report?selected={project.key}', reportCategory: 'AGILE', thumbnailUrl: '/report.svg' }],
+      jiraDashboardItems: [{ key: 'release-health', name: { value: dashboardItemTitle }, description: { value: 'Release health from the Connect app' }, url: '/remote-dashboard?item={dashboardItem.id}', thumbnailUrl: 'dashboard.svg' }],
     },
   };
   await page.goto('/admin#admin-apps');
@@ -215,6 +226,13 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
   await page.getByRole('link', { name: `Open ${reportTitle}` }).click();
   await expect(page.getByRole('heading', { name: reportTitle, level: 1 })).toBeVisible();
   await expect(page.frameLocator('iframe.app-module-frame').getByRole('heading', { name: 'Remote delivery risk' })).toBeVisible();
+  await accessible(page);
+  await page.goto('/dashboards');
+  await page.getByLabel('Dashboard name', { exact: true }).fill(`Connect dashboard ${suffix}`);
+  await page.getByRole('button', { name: 'Create dashboard', exact: true }).click();
+  await expect(page.getByText('Release health from the Connect app')).toBeVisible();
+  await page.getByRole('button', { name: `Add ${dashboardItemTitle}`, exact: true }).click();
+  await expect(page.locator('.app-dashboard-module').frameLocator('iframe').getByRole('heading', { name: 'Remote release health' })).toBeVisible();
   await accessible(page);
 
   await page.goto('/browse/ZZ-1');

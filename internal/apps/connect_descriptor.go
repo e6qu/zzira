@@ -96,6 +96,22 @@ type connectReportMeta struct {
 	ThumbnailURL string `json:"thumbnailUrl,omitempty"`
 }
 
+type connectDashboardItemWire struct {
+	Key          string            `json:"key"`
+	URL          string            `json:"url"`
+	Name         connectNameWire   `json:"name"`
+	Description  connectNameWire   `json:"description"`
+	ThumbnailURL string            `json:"thumbnailUrl"`
+	Configurable bool              `json:"configurable"`
+	Refreshable  bool              `json:"refreshable"`
+	Conditions   []json.RawMessage `json:"conditions"`
+}
+
+type connectDashboardItemMeta struct {
+	Description  string `json:"description"`
+	ThumbnailURL string `json:"thumbnailUrl"`
+}
+
 type connectWebhookWire struct {
 	Key          string          `json:"key"`
 	Event        string          `json:"event"`
@@ -144,12 +160,24 @@ func parseConnectDescriptor(raw []byte) (models.AppDescriptor, error) {
 		wire.Scopes = append(wire.Scopes, scope)
 	}
 	sort.Strings(wire.Scopes)
-	supported := map[string]bool{"generalPages": true, "jiraProjectPages": true, "jiraProjectAdminTabPanels": true, "jiraReports": true, "webPanels": true, "contentBylineItems": true, "webhooks": true, "jiraIssueFields": true, "webItems": true, "jiraIssueContents": true}
+	supported := map[string]bool{"generalPages": true, "jiraProjectPages": true, "jiraProjectAdminTabPanels": true, "jiraReports": true, "jiraDashboardItems": true, "webPanels": true, "contentBylineItems": true, "webhooks": true, "jiraIssueFields": true, "webItems": true, "jiraIssueContents": true}
 	for moduleType, payload := range connect.Modules {
 		if !supported[moduleType] {
 			return models.AppDescriptor{}, fmt.Errorf("Connect module %q is not supported yet", moduleType)
 		}
 		switch moduleType {
+		case "jiraDashboardItems":
+			var modules []connectDashboardItemWire
+			if err := json.Unmarshal(payload, &modules); err != nil {
+				return models.AppDescriptor{}, fmt.Errorf("invalid Connect jiraDashboardItems: %w", err)
+			}
+			for _, module := range modules {
+				translated, err := translateConnectDashboardItem(module)
+				if err != nil {
+					return models.AppDescriptor{}, err
+				}
+				wire.Modules = append(wire.Modules, translated)
+			}
 		case "jiraReports":
 			var modules []connectReportWire
 			if err := json.Unmarshal(payload, &modules); err != nil {
@@ -258,6 +286,26 @@ func parseConnectDescriptor(raw []byte) (models.AppDescriptor, error) {
 		wire.Scopes = append(wire.Scopes, scope)
 	}
 	return validateDescriptorWire(wire)
+}
+
+func translateConnectDashboardItem(module connectDashboardItemWire) (moduleWire, error) {
+	module.Key = strings.TrimSpace(module.Key)
+	module.URL = strings.TrimSpace(module.URL)
+	module.Name.Value = strings.TrimSpace(module.Name.Value)
+	module.Description.Value = strings.TrimSpace(module.Description.Value)
+	module.ThumbnailURL = strings.TrimSpace(module.ThumbnailURL)
+	thumbnail := module.ThumbnailURL
+	if thumbnail != "" && !strings.HasPrefix(thumbnail, "/") {
+		thumbnail = "/" + thumbnail
+	}
+	if !moduleKeyPattern.MatchString(module.Key) || module.Name.Value == "" || module.Description.Value == "" || len(module.Name.Value) > 1500 || len(module.Description.Value) > 1500 || !validAppCallbackPath(module.URL) || !validAppCallbackPath(thumbnail) {
+		return moduleWire{}, fmt.Errorf("Connect dashboard item needs a valid key, name, description, relative URL, and thumbnailUrl")
+	}
+	if module.Configurable || module.Refreshable || len(module.Conditions) > 0 {
+		return moduleWire{}, fmt.Errorf("Connect dashboard item %q uses unsupported configuration, refresh, or conditions", module.Key)
+	}
+	meta, _ := json.Marshal(connectDashboardItemMeta{Description: module.Description.Value, ThumbnailURL: module.ThumbnailURL})
+	return moduleWire{Key: module.Key, Type: "jira:dashboardGadget", Location: "jira.dashboard", Title: module.Name.Value, Body: string(meta), URL: module.URL}, nil
 }
 
 func translateConnectReport(module connectReportWire) (moduleWire, error) {

@@ -66,6 +66,9 @@ shape:
     "jiraReports": [
       {"key": "delivery-risk", "url": "/delivery-risk?project={project.key}", "name": {"value": "Delivery risk"}, "description": {"value": "Release and incident risk"}, "reportCategory": "agile", "thumbnailUrl": "/delivery-risk.svg"}
     ],
+    "jiraDashboardItems": [
+      {"key": "release-health", "url": "/release-health?item={dashboardItem.id}", "name": {"value": "Release health"}, "description": {"value": "Current release health"}, "thumbnailUrl": "release-health.svg"}
+    ],
     "webPanels": [
       {"key": "risk", "url": "/risk?issue={issue.key}", "location": "atl.jira.view.issue.right.context", "name": {"value": "Release risk"}}
     ],
@@ -90,7 +93,8 @@ shape:
 
 Connect `READ` and write-capable scopes translate into the corresponding Jira
 and Confluence grants. Supported Connect module families are `generalPages`,
-`jiraProjectPages`, `jiraProjectAdminTabPanels`, `jiraReports`, Jira issue-view
+`jiraProjectPages`, `jiraProjectAdminTabPanels`, `jiraReports`,
+`jiraDashboardItems`, Jira issue-view
 `webPanels`, Confluence
 `contentBylineItems`, scalar
 `jiraIssueFields`, quick-add `jiraIssueContents`, Jira/Confluence navigation
@@ -162,6 +166,15 @@ built-in DORA report. Opening an app report uses the common sandboxed frame and
 expands, supplies and signs both `project.key` and `project.id`. Thumbnail
 rendering remains an explicit presentation gap; its descriptor value is
 preserved with the report metadata.
+
+Connect dashboard items validate their required key, name, description,
+relative URL and thumbnail URL. They join the custom-dashboard gadget catalog
+with their descriptor metadata and use the existing add, position, copy,
+property and removal lifecycle. Remote items render in the common sandboxed
+frame with expanded and signed `dashboard.id`, `dashboardItem.id`,
+`dashboardItem.key` and `dashboardItem.viewType` context. Configuration
+callbacks, refresh opt-in, conditions and thumbnail presentation remain
+explicit gaps; descriptors that request unsupported behavior fail installation.
 
 Supported scopes are `read:jira-work`, `write:jira-work`,
 `read:confluence-content`, `write:confluence-content`, `read:app-storage`,
@@ -248,6 +261,8 @@ reinstallation.
 
 The runtime is a ZZIRA execution contract for remotely hosted apps. Remaining
 Connect module families, the remaining dynamic module types and webhook
-options, project-page icons and page/admin conditions, report thumbnails, workflow modules,
-select/read-only issue fields and option APIs, descriptor-driven upgrade
-migrations, and Atlassian-hosted Forge compute remain separate future slices.
+options, project-page icons and page/admin conditions, report and dashboard-item
+thumbnail presentation, dashboard-item configuration/refresh/conditions,
+workflow modules, select/read-only issue fields and option APIs,
+descriptor-driven upgrade migrations, and Atlassian-hosted Forge compute remain
+separate future slices.

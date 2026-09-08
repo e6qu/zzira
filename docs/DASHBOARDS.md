@@ -46,6 +46,12 @@ catalog. Their escaped host-rendered body can be placed, titled, colored,
 positioned, copied and removed like a built-in gadget. Stable module IDs keep
 placements intact through upgrades; suspension shows an unavailable state,
 while module removal or uninstall removes the corresponding placements.
+Standard Connect `jiraDashboardItems` use the same lifecycle and retain their
+descriptor description in the catalog. A remote item opens in a sandboxed,
+signed iframe with `dashboard.id`, `dashboardItem.id`, `dashboardItem.key` and
+`dashboardItem.viewType` context. Configuration callbacks, refresh opt-in,
+conditions and descriptor-thumbnail presentation are not implemented yet, so
+descriptors that request behavioral options are rejected explicitly.
 
 The browser supports Jira-style one, two and three-column layouts (`A`, `AA`,
 `AB`, `BA`, `AAA`), gadget reordering, eight accent colors, favourites, manual
@@ -58,7 +64,8 @@ share clears a viewer's rendered gadgets on their next refresh.
 ZZIRA validates REST-created module keys against its built-in catalog and
 browser-created app gadgets against active installed modules. Installed native
 gadgets may use escaped host-rendered content or a declared HTTPS remote module
-with signed Connect context. ZZIRA does not execute unmanaged gadget URLs,
+with signed Connect context. Standard Connect dashboard items must use a
+relative URL beneath their descriptor `baseUrl`. ZZIRA does not execute unmanaged gadget URLs,
 Forge modules, or unknown Jira system gadget module keys. Clients sending a
 URI, an unknown module key, or `ignoreUriAndModuleKeyValidation=true` receive an
 explicit validation error.

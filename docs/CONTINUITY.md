@@ -2362,13 +2362,34 @@ Validation after Connect Jira reports:
   diff validation pass. The release/DORA Chromium regression journey also
   passes. The pinned inventory remains 433 assessed operations out of 1,207.
 
+Validation after Connect Jira dashboard items:
+
+- Standard descriptors accept `jiraDashboardItems` with required key, name,
+  description, relative URL and thumbnail URL. They translate into the existing
+  `jira:dashboardGadget` lifecycle while retaining catalog description and
+  thumbnail metadata. Configurable, refreshable and conditional items fail
+  installation explicitly until those host contracts are implemented.
+- Active items join the custom-dashboard catalog and support the normal add,
+  position, copy, property, suspension, uninstall and reinstall behavior.
+  Remote items use the shared sandbox and receive expanded and signed
+  `dashboard.id`, `dashboardItem.id`, `dashboardItem.key` and
+  `dashboardItem.viewType` context.
+- Focused parser, render and server tests pass. The Chromium Connect journey
+  verifies installation, metadata discovery, placement, descriptor-placeholder
+  expansion, signed context, remote rendering and accessibility. The complete
+  PostgreSQL Go suite, native server/load-test and WebAssembly builds, vet,
+  seven conformance tests, generated inventory/coverage checks and diff
+  validation pass. The pinned inventory remains 433 assessed operations out of
+  1,207.
+
 ## Current change
 
 1. Continue the app runtime with remaining Connect module families, dynamic
    module types and webhook options, issue-content presence conditions/native
    rendering, project-page icons and page/admin conditions, additional web-item
-   locations and conditions, report thumbnails, select/read-only field options,
-   workflow modules and upgrade migrations.
+   locations and conditions, report/dashboard-item thumbnail presentation,
+   dashboard-item configuration/refresh/conditions, select/read-only field
+   options, workflow modules and upgrade migrations.
 2. Continue Confluence with advanced whiteboard objects, direct manipulation,
    exports and the remaining rich content/editor surface.
 3. Continue Service Management with public Assets object/schema/import API

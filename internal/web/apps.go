@@ -137,5 +137,12 @@ func appModuleContextValues(r *http.Request) url.Values {
 	} else if projectID := strings.TrimSpace(r.URL.Query().Get("project.id")); projectID != "" {
 		values.Set("project.id", projectID)
 	}
+	for queryKey, contextKey := range map[string]string{"dashboardId": "dashboard.id", "dashboardItemId": "dashboardItem.id", "dashboardItemKey": "dashboardItem.key", "dashboardItemViewType": "dashboardItem.viewType"} {
+		if value := strings.TrimSpace(r.URL.Query().Get(queryKey)); value != "" {
+			values.Set(contextKey, value)
+		} else if value := strings.TrimSpace(r.URL.Query().Get(contextKey)); value != "" {
+			values.Set(contextKey, value)
+		}
+	}
 	return values
 }

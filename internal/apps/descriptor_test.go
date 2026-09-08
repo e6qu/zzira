@@ -68,6 +68,7 @@ func TestParseConnectDescriptorTranslatesSupportedModules(t *testing.T) {
     "jiraProjectPages":[{"key":"project-release","url":"/project-release?project={project.key}","iconUrl":"/project-release.svg","weight":40,"name":{"value":"Release intelligence"}}],
     "jiraProjectAdminTabPanels":[{"key":"project-controls","url":"/project-controls?project={project.key}","location":"projectgroup3","weight":20,"params":{"source":"settings"},"name":{"value":"Project controls"}}],
     "jiraReports":[{"key":"delivery-risk","url":"/delivery-risk?project={project.key}","name":{"value":"Delivery risk"},"description":{"value":"Release and incident risk"},"reportCategory":"AGILE","thumbnailUrl":"/delivery-risk.svg"}],
+    "jiraDashboardItems":[{"key":"release-health","url":"/release-health?item={dashboardItem.id}","name":{"value":"Release health"},"description":{"value":"Current release health"},"thumbnailUrl":"release-health.svg"}],
     "webhooks":[{"event":"jira:issue_updated","url":"/hooks/issues","filter":"project = OPS"}]
   }
 }`)
@@ -75,7 +76,7 @@ func TestParseConnectDescriptorTranslatesSupportedModules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if descriptor.Format != "connect" || descriptor.Version != "connect-v1" || len(descriptor.Modules) != 8 || len(descriptor.Webhooks) != 1 || len(descriptor.IssueFields) != 1 {
+	if descriptor.Format != "connect" || descriptor.Version != "connect-v1" || len(descriptor.Modules) != 9 || len(descriptor.Webhooks) != 1 || len(descriptor.IssueFields) != 1 {
 		t.Fatalf("Connect descriptor = %+v", descriptor)
 	}
 	if descriptor.Key != "Connect.Operations" {
@@ -85,6 +86,7 @@ func TestParseConnectDescriptorTranslatesSupportedModules(t *testing.T) {
 	projectPage := false
 	projectAdminPage := false
 	report := false
+	dashboardItem := false
 	for _, module := range descriptor.Modules {
 		if module.RemoteURL != "" {
 			remoteModules++
@@ -98,8 +100,11 @@ func TestParseConnectDescriptorTranslatesSupportedModules(t *testing.T) {
 		if module.Key == "delivery-risk" && module.Type == "jira:report" && module.Location == "jira.report" && strings.Contains(module.Body, `"category":"agile"`) {
 			report = true
 		}
+		if module.Key == "release-health" && module.Type == "jira:dashboardGadget" && module.Location == "jira.dashboard" && strings.Contains(module.Body, "Current release health") {
+			dashboardItem = true
+		}
 	}
-	if remoteModules != 8 || !projectPage || !projectAdminPage || !report || descriptor.Webhooks[0].Key != "connect-webhook-1" {
+	if remoteModules != 9 || !projectPage || !projectAdminPage || !report || !dashboardItem || descriptor.Webhooks[0].Key != "connect-webhook-1" {
 		t.Fatalf("translated modules = %+v, hooks = %+v", descriptor.Modules, descriptor.Webhooks)
 	}
 	for _, scope := range []string{"read:jira-work", "write:jira-work", "read:confluence-content", "write:confluence-content", "manage:webhooks"} {
@@ -135,6 +140,9 @@ func TestParseConnectDescriptorTranslatesSupportedModules(t *testing.T) {
 	}
 	if _, err := ParseDescriptor([]byte(`{"key":"connect.bad-report","name":"Bad report","baseUrl":"https://connect.example.test","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"jiraReports":[{"key":"report","name":{"value":"Report"},"description":{"value":"Report"},"url":"/report","reportCategory":"finance"}]}}`)); err == nil {
 		t.Fatal("accepted unsupported report category")
+	}
+	if _, err := ParseDescriptor([]byte(`{"key":"connect.bad-dashboard","name":"Bad dashboard","baseUrl":"https://connect.example.test","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"jiraDashboardItems":[{"key":"item","name":{"value":"Item"},"description":{"value":"Item"},"url":"/item","thumbnailUrl":"/item.svg","configurable":true}]}}`)); err == nil {
+		t.Fatal("accepted unsupported configurable dashboard item")
 	}
 	if _, err := ParseDescriptor([]byte(`{"key":"connect.bad","name":"Bad","baseUrl":"https://connect.example.test","authentication":{"type":"none"},"scopes":[],"modules":{}}`)); err == nil {
 		t.Fatal("accepted a Connect descriptor without JWT authentication")

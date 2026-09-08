@@ -127,7 +127,14 @@ func (h *Handler) CustomDashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, module := range appGadgets {
-		data.Catalog = append(data.Catalog, models.GadgetDefinition{ModuleKey: "app:" + module.ID, Title: module.Title, Description: module.AppName + " app gadget"})
+		description := module.AppName + " app gadget"
+		var metadata struct {
+			Description string `json:"description"`
+		}
+		if json.Unmarshal([]byte(module.Body), &metadata) == nil && metadata.Description != "" {
+			description = metadata.Description
+		}
+		data.Catalog = append(data.Catalog, models.GadgetDefinition{ModuleKey: "app:" + module.ID, Title: module.Title, Description: description})
 	}
 	status := 200
 	if r.Method == http.MethodPost {
