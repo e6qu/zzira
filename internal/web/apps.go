@@ -15,6 +15,12 @@ type appModulePageData struct {
 	FrameURL string
 }
 
+type projectAppModulePageData struct {
+	Project  *models.Project
+	Module   *models.AppModule
+	FrameURL string
+}
+
 func (h *Handler) AppModulePage(w http.ResponseWriter, r *http.Request) {
 	user, workspaceID, ok := h.pageContext(w, r)
 	if !ok {
@@ -26,6 +32,27 @@ func (h *Handler) AppModulePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.writeWorkspacePage(w, r, "page_app_module", user, workspaceID, appModulePageData{Module: module, FrameURL: remoteModuleFramePath(module, appModuleContextValues(r))}, "app-module:"+module.ID, "")
+}
+
+func (h *Handler) ProjectAppModulePage(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	project, err := h.Store.ProjectByIDOrKey(r.Context(), workspaceID, r.PathValue("key"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	module, err := h.Store.ActiveAppModule(r.Context(), workspaceID, r.PathValue("module"))
+	if err != nil || module.Location != "jira.project.page" {
+		http.NotFound(w, r)
+		return
+	}
+	contextValues := url.Values{"project.key": {project.Key}, "project.id": {project.ID}}
+	h.writeWorkspacePage(w, r, "page_project_app_module", user, workspaceID, projectAppModulePageData{
+		Project: project, Module: module, FrameURL: remoteModuleFramePath(module, contextValues),
+	}, "project-app-module:"+module.ID, project.ID)
 }
 
 func remoteModuleFramePath(module *models.AppModule, values url.Values) string {
@@ -78,6 +105,16 @@ func appModuleContextValues(r *http.Request) url.Values {
 		values.Set("content.id", pageID)
 	} else if pageID := strings.TrimSpace(r.URL.Query().Get("content.id")); pageID != "" {
 		values.Set("content.id", pageID)
+	}
+	if projectKey := strings.TrimSpace(r.URL.Query().Get("projectKey")); projectKey != "" {
+		values.Set("project.key", projectKey)
+	} else if projectKey := strings.TrimSpace(r.URL.Query().Get("project.key")); projectKey != "" {
+		values.Set("project.key", projectKey)
+	}
+	if projectID := strings.TrimSpace(r.URL.Query().Get("projectId")); projectID != "" {
+		values.Set("project.id", projectID)
+	} else if projectID := strings.TrimSpace(r.URL.Query().Get("project.id")); projectID != "" {
+		values.Set("project.id", projectID)
 	}
 	return values
 }

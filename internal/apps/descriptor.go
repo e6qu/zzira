@@ -35,6 +35,7 @@ var moduleRequirements = map[string]struct {
 	Scope    string
 }{
 	"jira:globalPage":              {Location: "jira.navigation", Scope: "read:jira-work"},
+	"jira:projectPage":             {Location: "jira.project.page", Scope: "read:jira-work"},
 	"jira:issuePanel":              {Location: "jira.issue.view", Scope: "read:jira-work"},
 	"jira:issueContent":            {Location: "jira.issue.content", Scope: ""},
 	"jira:dashboardGadget":         {Location: "jira.dashboard", Scope: "read:jira-work"},
@@ -78,6 +79,7 @@ type moduleWire struct {
 	Title    string `json:"title"`
 	Body     string `json:"body"`
 	URL      string `json:"url"`
+	Position int    `json:"position"`
 }
 
 func ParseDescriptor(raw []byte) (models.AppDescriptor, error) {
@@ -160,7 +162,7 @@ func validateDescriptorWire(wire descriptorWire) (models.AppDescriptor, error) {
 			return models.AppDescriptor{}, fmt.Errorf("module keys must be unique and valid; title and body limits must be respected")
 		}
 		moduleKeys[input.Key] = true
-		descriptor.Modules = append(descriptor.Modules, models.AppModule{Key: input.Key, Type: input.Type, Location: input.Location, Title: input.Title, Body: input.Body, RemoteURL: input.URL})
+		descriptor.Modules = append(descriptor.Modules, models.AppModule{Key: input.Key, Type: input.Type, Location: input.Location, Title: input.Title, Body: input.Body, RemoteURL: input.URL, Position: input.Position})
 	}
 	descriptor.Lifecycle = map[string]string{}
 	for event, path := range wire.Lifecycle {

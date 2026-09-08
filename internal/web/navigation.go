@@ -25,11 +25,12 @@ type projectNavigationItem struct {
 }
 
 type workspaceNavigation struct {
-	Projects        []projectNavigationItem
-	AppModules      []models.AppModule
-	Current         *projectNavigationItem
-	CanAdmin        bool
-	CanServiceAgent bool
+	Projects          []projectNavigationItem
+	AppModules        []models.AppModule
+	ProjectAppModules []models.AppModule
+	Current           *projectNavigationItem
+	CanAdmin          bool
+	CanServiceAgent   bool
 }
 
 // workspaceNavigation builds the project-aware application shell. preferred
@@ -48,6 +49,10 @@ func (h *Handler) workspaceNavigation(r *http.Request, workspaceID, preferred st
 	if err != nil {
 		return nil, fmt.Errorf("list app modules for navigation: %w", err)
 	}
+	projectAppModules, err := h.Store.AppModulesByLocation(r.Context(), workspaceID, "jira.project.page")
+	if err != nil {
+		return nil, fmt.Errorf("list project app modules for navigation: %w", err)
+	}
 
 	firstBoard := make(map[string]*models.Board, len(boards))
 	for _, board := range boards {
@@ -56,7 +61,7 @@ func (h *Handler) workspaceNavigation(r *http.Request, workspaceID, preferred st
 		}
 	}
 
-	navigation := &workspaceNavigation{Projects: make([]projectNavigationItem, 0, len(projects)), AppModules: appModules}
+	navigation := &workspaceNavigation{Projects: make([]projectNavigationItem, 0, len(projects)), AppModules: appModules, ProjectAppModules: projectAppModules}
 	if user := h.currentUser(r); user != nil {
 		navigation.CanAdmin, err = h.Store.IsAdmin(r.Context(), workspaceID, user.ID)
 		if err != nil {

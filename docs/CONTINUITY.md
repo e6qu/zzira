@@ -2311,12 +2311,30 @@ Validation after Connect issue content:
   generated inventory/coverage checks and diff validation pass. The pinned
   inventory remains 433 assessed operations out of 1,207.
 
+Validation after Connect project pages:
+
+- Standard Connect descriptors accept `jiraProjectPages` with validated keys,
+  names, relative URLs and relative `iconUrl` values. Descriptor weights order
+  project app links, while unsupported conditions fail explicitly.
+- Active project pages appear in the selected project's navigation and open on
+  a dedicated project app route. The existing sandboxed Connect frame expands,
+  supplies and signs `project.key` and `project.id`, and switching project
+  context changes both values.
+- Descriptor, module URL, render and browser tests cover parsing, ordering,
+  placeholder expansion, navigation, signed remote content and accessibility.
+  Project-page conditions and rendering descriptor icon assets remain explicit
+  gaps. The complete PostgreSQL Go suite, native server/load-test and
+  WebAssembly builds, vet, seven conformance tests, generated
+  inventory/coverage checks and diff validation pass. The pinned inventory
+  remains 433 assessed operations out of 1,207.
+
 ## Current change
 
 1. Continue the app runtime with remaining Connect module families, dynamic
    module types and webhook options, issue-content presence conditions/native
-   rendering, additional web-item locations and conditions, select/read-only
-   field options, workflow modules and upgrade migrations.
+   rendering, project-page conditions/icons, additional web-item locations and
+   conditions, select/read-only field options, workflow modules and upgrade
+   migrations.
 2. Continue Confluence with advanced whiteboard objects, direct manipulation,
    exports and the remaining rich content/editor surface.
 3. Continue Service Management with public Assets object/schema/import API

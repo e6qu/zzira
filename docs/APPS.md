@@ -57,6 +57,9 @@ shape:
     "generalPages": [
       {"key": "operations", "url": "/operations", "name": {"value": "Operations"}}
     ],
+    "jiraProjectPages": [
+      {"key": "project-health", "url": "/project-health?project={project.key}", "iconUrl": "/project-health.svg", "weight": 40, "name": {"value": "Project health"}}
+    ],
     "webPanels": [
       {"key": "risk", "url": "/risk?issue={issue.key}", "location": "atl.jira.view.issue.right.context", "name": {"value": "Release risk"}}
     ],
@@ -81,7 +84,8 @@ shape:
 
 Connect `READ` and write-capable scopes translate into the corresponding Jira
 and Confluence grants. Supported Connect module families are `generalPages`,
-Jira issue-view `webPanels`, Confluence `contentBylineItems`, scalar
+`jiraProjectPages`, Jira issue-view `webPanels`, Confluence
+`contentBylineItems`, scalar
 `jiraIssueFields`, quick-add `jiraIssueContents`, Jira/Confluence navigation
 `webItems`, and `webhooks`.
 The parser rejects unsupported authentication modes, scopes, module families,
@@ -129,11 +133,19 @@ does not discard the user's choice. Content-presence conditions and native-app
 rendering flags remain unsupported and fail explicitly when they would change
 host behavior.
 
+Connect project pages validate the required key, name, relative URL and
+relative `iconUrl`, and honor descriptor weight when ordering multiple app
+pages. Each active page appears in the current project's navigation and opens
+in a project-scoped, sandboxed signed iframe. The remote request expands and
+supplies both `project.key` and `project.id`; changing projects therefore opens
+the same module with the selected project context. Project-page conditions and
+rendering the descriptor-provided icon remain explicit gaps.
+
 Supported scopes are `read:jira-work`, `write:jira-work`,
 `read:confluence-content`, `write:confluence-content`, `read:app-storage`,
 `write:app-storage`, and `manage:webhooks`. Supported module contracts are Jira
-global pages, issue panels and dashboard gadgets, plus Confluence global pages
-and content byline items. Active global pages join product navigation, issue
+global and project pages, issue panels and dashboard gadgets, plus Confluence
+global pages and content byline items. Active global pages join product navigation, issue
 panels join visible work-item views, app gadgets can be added and positioned on
 custom dashboards, and byline items join published wiki pages. Native module
 text is host-rendered and escaped. A module with a relative `url`, including a
@@ -214,6 +226,6 @@ reinstallation.
 
 The runtime is a ZZIRA execution contract for remotely hosted apps. Remaining
 Connect module families, the remaining dynamic module types and webhook
-options, workflow modules,
+options, project-page conditions and icons, workflow modules,
 select/read-only issue fields and option APIs, descriptor-driven upgrade
 migrations, and Atlassian-hosted Forge compute remain separate future slices.

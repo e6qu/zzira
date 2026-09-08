@@ -62,6 +62,7 @@ func TestParseConnectDescriptorTranslatesSupportedModules(t *testing.T) {
     "webItems":[{"key":"top-link","url":"/top","location":"system.top.navigation.bar","name":{"value":"Top link"}}],
     "jiraIssueFields":[{"key":"impact-score","name":{"value":"Impact score"},"description":{"value":"Operational impact"},"type":"number"}],
     "jiraIssueContents":[{"key":"runbook","name":{"value":"Runbook"},"tooltip":{"value":"Add runbook"},"icon":{"url":"/runbook.svg"},"target":{"type":"web_panel","url":"/runbook?issue={issue.key}"}}],
+    "jiraProjectPages":[{"key":"project-release","url":"/project-release?project={project.key}","iconUrl":"/project-release.svg","weight":40,"name":{"value":"Release intelligence"}}],
     "webhooks":[{"event":"jira:issue_updated","url":"/hooks/issues","filter":"project = OPS"}]
   }
 }`)
@@ -69,19 +70,23 @@ func TestParseConnectDescriptorTranslatesSupportedModules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if descriptor.Format != "connect" || descriptor.Version != "connect-v1" || len(descriptor.Modules) != 5 || len(descriptor.Webhooks) != 1 || len(descriptor.IssueFields) != 1 {
+	if descriptor.Format != "connect" || descriptor.Version != "connect-v1" || len(descriptor.Modules) != 6 || len(descriptor.Webhooks) != 1 || len(descriptor.IssueFields) != 1 {
 		t.Fatalf("Connect descriptor = %+v", descriptor)
 	}
 	if descriptor.Key != "Connect.Operations" {
 		t.Fatalf("Connect key = %q", descriptor.Key)
 	}
 	remoteModules := 0
+	projectPage := false
 	for _, module := range descriptor.Modules {
 		if module.RemoteURL != "" {
 			remoteModules++
 		}
+		if module.Key == "project-release" && module.Type == "jira:projectPage" && module.Location == "jira.project.page" && module.Position == 40 {
+			projectPage = true
+		}
 	}
-	if remoteModules != 5 || descriptor.Webhooks[0].Key != "connect-webhook-1" {
+	if remoteModules != 6 || !projectPage || descriptor.Webhooks[0].Key != "connect-webhook-1" {
 		t.Fatalf("translated modules = %+v, hooks = %+v", descriptor.Modules, descriptor.Webhooks)
 	}
 	for _, scope := range []string{"read:jira-work", "write:jira-work", "read:confluence-content", "write:confluence-content", "manage:webhooks"} {
@@ -108,6 +113,9 @@ func TestParseConnectDescriptorTranslatesSupportedModules(t *testing.T) {
 	}
 	if _, err := ParseDescriptor([]byte(`{"key":"connect.bad-content","name":"Bad content","baseUrl":"https://connect.example.test","authentication":{"type":"jwt"},"scopes":[],"modules":{"jiraIssueContents":[{"key":"content","name":{"value":"Content"},"tooltip":{"value":"Add"},"icon":{"url":"/icon.svg"},"target":{"type":"web_panel","url":"/content"},"contentPresentConditions":[{"condition":"user_is_admin"}]}]}}`)); err == nil {
 		t.Fatal("accepted unsupported issue-content presence conditions")
+	}
+	if _, err := ParseDescriptor([]byte(`{"key":"connect.bad-project-page","name":"Bad project page","baseUrl":"https://connect.example.test","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"jiraProjectPages":[{"key":"project","name":{"value":"Project"},"url":"/project","iconUrl":"/icon.svg","conditions":[{"condition":"user_is_admin"}]}]}}`)); err == nil {
+		t.Fatal("accepted unsupported project-page conditions")
 	}
 	if _, err := ParseDescriptor([]byte(`{"key":"connect.bad","name":"Bad","baseUrl":"https://connect.example.test","authentication":{"type":"none"},"scopes":[],"modules":{}}`)); err == nil {
 		t.Fatal("accepted a Connect descriptor without JWT authentication")

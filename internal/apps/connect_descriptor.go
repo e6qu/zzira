@@ -61,6 +61,15 @@ type connectIssueContentWire struct {
 	ContentPresentConditions []json.RawMessage `json:"contentPresentConditions"`
 }
 
+type connectProjectPageWire struct {
+	Key        string            `json:"key"`
+	URL        string            `json:"url"`
+	IconURL    string            `json:"iconUrl"`
+	Name       connectNameWire   `json:"name"`
+	Weight     int               `json:"weight"`
+	Conditions []json.RawMessage `json:"conditions"`
+}
+
 type connectWebhookWire struct {
 	Key          string          `json:"key"`
 	Event        string          `json:"event"`
@@ -109,12 +118,24 @@ func parseConnectDescriptor(raw []byte) (models.AppDescriptor, error) {
 		wire.Scopes = append(wire.Scopes, scope)
 	}
 	sort.Strings(wire.Scopes)
-	supported := map[string]bool{"generalPages": true, "webPanels": true, "contentBylineItems": true, "webhooks": true, "jiraIssueFields": true, "webItems": true, "jiraIssueContents": true}
+	supported := map[string]bool{"generalPages": true, "jiraProjectPages": true, "webPanels": true, "contentBylineItems": true, "webhooks": true, "jiraIssueFields": true, "webItems": true, "jiraIssueContents": true}
 	for moduleType, payload := range connect.Modules {
 		if !supported[moduleType] {
 			return models.AppDescriptor{}, fmt.Errorf("Connect module %q is not supported yet", moduleType)
 		}
 		switch moduleType {
+		case "jiraProjectPages":
+			var modules []connectProjectPageWire
+			if err := json.Unmarshal(payload, &modules); err != nil {
+				return models.AppDescriptor{}, fmt.Errorf("invalid Connect jiraProjectPages: %w", err)
+			}
+			for _, module := range modules {
+				translated, err := translateConnectProjectPage(module)
+				if err != nil {
+					return models.AppDescriptor{}, err
+				}
+				wire.Modules = append(wire.Modules, translated)
+			}
 		case "jiraIssueContents":
 			var modules []connectIssueContentWire
 			if err := json.Unmarshal(payload, &modules); err != nil {
@@ -187,6 +208,24 @@ func parseConnectDescriptor(raw []byte) (models.AppDescriptor, error) {
 		wire.Scopes = append(wire.Scopes, scope)
 	}
 	return validateDescriptorWire(wire)
+}
+
+func translateConnectProjectPage(module connectProjectPageWire) (moduleWire, error) {
+	module.Key = strings.TrimSpace(module.Key)
+	module.URL = strings.TrimSpace(module.URL)
+	module.IconURL = strings.TrimSpace(module.IconURL)
+	module.Name.Value = strings.TrimSpace(module.Name.Value)
+	if !moduleKeyPattern.MatchString(module.Key) || module.Name.Value == "" || len(module.Name.Value) > 1500 || !validAppCallbackPath(module.URL) || !validAppCallbackPath(module.IconURL) {
+		return moduleWire{}, fmt.Errorf("Connect project page needs a valid key, name, relative URL, and relative iconUrl")
+	}
+	if len(module.Conditions) > 0 {
+		return moduleWire{}, fmt.Errorf("Connect project page %q uses unsupported conditions", module.Key)
+	}
+	weight := module.Weight
+	if weight == 0 {
+		weight = 100
+	}
+	return moduleWire{Key: module.Key, Type: "jira:projectPage", Location: "jira.project.page", Title: module.Name.Value, URL: module.URL, Position: weight}, nil
 }
 
 func translateConnectIssueContent(module connectIssueContentWire) (moduleWire, error) {

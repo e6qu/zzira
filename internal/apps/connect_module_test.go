@@ -33,3 +33,17 @@ func TestConnectModuleURLPreservesBasePathAndSignsAppRelativeRequest(t *testing.
 		t.Fatalf("module JWT verification: %v", err)
 	}
 }
+
+func TestConnectModuleURLExpandsProjectContext(t *testing.T) {
+	target, err := ConnectModuleURL("https://app.example.test/connect", "/project?selected={project.key}&id={project.id}", "https://zzira.example.test", "workspace-client-key", []byte("remote-module-secret"), "channel-project", url.Values{"project.key": {"OPS"}, "project.id": {"10001"}}, time.Unix(1_800_000_000, 0).UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := url.Parse(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Query().Get("selected") != "OPS" || parsed.Query().Get("id") != "10001" || parsed.Query().Get("project.key") != "OPS" || parsed.Query().Get("project.id") != "10001" {
+		t.Fatalf("project module URL = %s", target)
+	}
+}

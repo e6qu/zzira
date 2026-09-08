@@ -171,7 +171,11 @@ func writeAppChildren(ctx context.Context, tx pgx.Tx, installationID string, des
 			return err
 		}
 	}
-	for position, module := range descriptor.Modules {
+	for index, module := range descriptor.Modules {
+		position := module.Position
+		if position == 0 {
+			position = index
+		}
 		if _, err := tx.Exec(ctx, `INSERT INTO app_modules(installation_id,module_key,module_type,location,title,body,remote_url,position,dynamic) VALUES($1,$2,$3,$4,$5,$6,$7,$8,false) ON CONFLICT(installation_id,module_key) DO UPDATE SET module_type=EXCLUDED.module_type,location=EXCLUDED.location,title=EXCLUDED.title,body=EXCLUDED.body,remote_url=EXCLUDED.remote_url,position=EXCLUDED.position,dynamic=false`, installationID, module.Key, module.Type, module.Location, module.Title, module.Body, module.RemoteURL, position); err != nil {
 			return err
 		}
