@@ -152,7 +152,7 @@ func (h *Handler) boardConfiguration(w http.ResponseWriter, r *http.Request, boa
 	columns := make([]map[string]any, 0, len(board.ColumnStatusIDs))
 	constraintType := "none"
 	for _, statusID := range board.ColumnStatusIDs {
-		status, err := h.Store.StatusByID(r.Context(), statusID)
+		status, err := h.Store.StatusByIDForProject(r.Context(), statusID, board.ProjectID)
 		if err != nil {
 			jiraError(w, http.StatusInternalServerError, "internal error")
 			return

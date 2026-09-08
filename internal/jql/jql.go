@@ -455,8 +455,8 @@ type FieldResolver struct {
 	DefaultOrder map[string]string
 }
 
-// WithCustomFields extends a resolver with customfield_NNNNN columns.
-// Values live in issues.fields JSONB; numbers compare numerically.
+// WithCustomFields extends a resolver with customfield_NNNNN columns and app
+// aliases. Values live in issues.fields JSONB; numbers compare numerically.
 func WithCustomFields(base FieldResolver, fields []*models.CustomField) FieldResolver {
 	res := base
 	if res.Columns == nil {
@@ -469,6 +469,9 @@ func WithCustomFields(base FieldResolver, fields []*models.CustomField) FieldRes
 		}
 		res.Columns[f.ID] = col
 		res.Columns[strings.ToLower(f.Name)] = col
+		if f.AppKey != "" {
+			res.Columns[strings.ToLower(f.AppKey+"__"+f.AppModuleKey)] = col
+		}
 		res.TextColumns = append(res.TextColumns, `i.fields->>'`+f.ID+`'`)
 	}
 	return res
@@ -487,6 +490,7 @@ func DefaultResolver() FieldResolver {
 			"issuetype": "it.name",
 			"updated":   "i.updated_at",
 			"created":   "i.created_at",
+			"labels":    "i.labels",
 		},
 		TextColumns: []string{"i.summary", "i.description::text"},
 		DefaultOrder: map[string]string{
@@ -588,6 +592,9 @@ func (c *compiler) clause(cl Clause) string {
 	if cl.Field == "fixversion" || cl.Field == "affectedversion" {
 		return c.versionClause(cl)
 	}
+	if cl.Field == "labels" {
+		return c.labelsClause(cl)
+	}
 	col, ok := c.res.Columns[cl.Field]
 	if !ok {
 		c.err = &SyntaxError{0, "field does not exist or is not searchable: " + cl.Field}
@@ -612,6 +619,33 @@ func (c *compiler) clause(cl Clause) string {
 		return "(" + col + " IS NULL OR " + col + " = '')"
 	case "notempty":
 		return "(" + col + " IS NOT NULL AND " + col + " <> '')"
+	}
+	c.err = &SyntaxError{0, "unsupported operator " + cl.Op}
+	return ""
+}
+
+func (c *compiler) labelsClause(cl Clause) string {
+	array := "i.labels"
+	nonempty := "cardinality(" + array + ") > 0"
+	switch cl.Op {
+	case "=":
+		return c.arg(cl.Values[0]) + " = ANY(" + array + ")"
+	case "!=":
+		return "(" + nonempty + " AND NOT (" + c.arg(cl.Values[0]) + " = ANY(" + array + ")))"
+	case "~":
+		return "array_to_string(" + array + ",' ') ILIKE " + c.arg("%"+cl.Values[0]+"%")
+	case "!~":
+		return "(" + nonempty + " AND array_to_string(" + array + ",' ') NOT ILIKE " + c.arg("%"+cl.Values[0]+"%") + ")"
+	case "in":
+		parts := make([]string, 0, len(cl.Values))
+		for _, value := range cl.Values {
+			parts = append(parts, c.arg(value)+" = ANY("+array+")")
+		}
+		return "(" + strings.Join(parts, " OR ") + ")"
+	case "empty":
+		return "cardinality(" + array + ") = 0"
+	case "notempty":
+		return nonempty
 	}
 	c.err = &SyntaxError{0, "unsupported operator " + cl.Op}
 	return ""

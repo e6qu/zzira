@@ -37,15 +37,18 @@ func appendAction(ctx context.Context, tx pgx.Tx, a *models.Action) error {
 // ---- Issue update / delete (V1) ----
 
 type IssueUpdate struct {
-	VersionOperations map[string][]map[string]json.RawMessage
-	Summary           *string
-	Description       json.RawMessage // non-nil = replace
-	PriorityID        *string         // "" = clear, nil = unchanged
-	AssigneeID        *string         // "" = unassign, nil = unchanged
-	StatusID          *string         // transitions only; "" invalid
-	SecurityLevelID   *string         // "" = public, nil = unchanged
-	Labels            *[]string       // empty = clear, nil = unchanged
-	Fields            map[string]json.RawMessage
+	VersionOperations   map[string][]map[string]json.RawMessage
+	ExpectedUpdatedSeq  *int64
+	Summary             *string
+	Description         json.RawMessage // non-nil = replace
+	PriorityID          *string         // "" = clear, nil = unchanged
+	AssigneeID          *string         // "" = unassign, nil = unchanged
+	ParentID            *string         // "" = clear, nil = unchanged
+	StatusID            *string         // transitions only; "" invalid
+	SecurityLevelID     *string         // "" = public, nil = unchanged
+	Labels              *[]string       // empty = clear, nil = unchanged
+	Fields              map[string]json.RawMessage
+	TriggeredWebhookIDs []string
 }
 
 func diffItem(field, from, fromString, to, toString string) models.ChangeItem {
@@ -66,6 +69,18 @@ func (s *Store) UpdateIssue(ctx context.Context, actorID, workspaceID, issueID s
 	current, err := scanIssue(tx.QueryRow(ctx, issueJoin+`WHERE i.workspace_id=$1 AND i.id=$2 FOR UPDATE OF i`, workspaceID, issueID))
 	if err != nil {
 		return nil, nil, err
+	}
+	if up.ExpectedUpdatedSeq != nil && current.UpdatedSeq != *up.ExpectedUpdatedSeq {
+		return nil, nil, fmt.Errorf("issue changed while applying transition")
+	}
+	for _, webhookID := range up.TriggeredWebhookIDs {
+		var lockedID string
+		if err := tx.QueryRow(ctx, `SELECT id FROM webhooks WHERE id=$1 AND workspace_id=$2 AND active FOR KEY SHARE`, webhookID, workspaceID).Scan(&lockedID); err != nil {
+			if err == pgx.ErrNoRows {
+				return nil, nil, fmt.Errorf("workflow webhook %q is not an active registration", webhookID)
+			}
+			return nil, nil, err
+		}
 	}
 	if len(up.VersionOperations) > 0 {
 		up.Fields, err = applyVersionOperations(ctx, tx, projectID, current.Fields, up.Fields, up.VersionOperations)
@@ -116,7 +131,7 @@ func (s *Store) UpdateIssue(ctx context.Context, actorID, workspaceID, issueID s
 	}
 	if up.StatusID != nil && *up.StatusID != current.Status.ID {
 		var newName, newCategory string
-		if err := tx.QueryRow(ctx, `SELECT name, category FROM statuses WHERE id=$1`, *up.StatusID).Scan(&newName, &newCategory); err != nil {
+		if err := tx.QueryRow(ctx, `SELECT name, category FROM statuses WHERE id=$1 AND (workspace_id IS NULL OR workspace_id=$2) AND (project_id IS NULL OR project_id=$3)`, *up.StatusID, current.WorkspaceID, current.ProjectID).Scan(&newName, &newCategory); err != nil {
 			return nil, nil, fmt.Errorf("unknown status %q", *up.StatusID)
 		}
 		diff["status"] = diffItem("status", current.Status.ID, current.Status.Name, *up.StatusID, newName)
@@ -156,8 +171,25 @@ func (s *Store) UpdateIssue(ctx context.Context, actorID, workspaceID, issueID s
 			sets = append(sets, "assignee_id = "+arg(nilIfEmpty(newID)))
 		}
 	}
+	if up.ParentID != nil {
+		newID := *up.ParentID
+		oldID, oldKey := "", ""
+		if current.Parent != nil {
+			oldID, oldKey = current.Parent.ID, current.Parent.Key
+		}
+		if newID != oldID {
+			newKey := ""
+			if newID != "" {
+				if err := tx.QueryRow(ctx, `SELECT key FROM issues WHERE id=$1 AND workspace_id=$2 AND project_id=$3`, newID, workspaceID, current.ProjectID).Scan(&newKey); err != nil {
+					return nil, nil, fmt.Errorf("unknown parent %q", newID)
+				}
+			}
+			diff["parent"] = diffItem("parent", oldID, oldKey, newID, newKey)
+			sets = append(sets, "parent_id = "+arg(nilIfEmpty(newID)))
+		}
+	}
 
-	if len(sets) == 0 {
+	if len(sets) == 0 && len(up.TriggeredWebhookIDs) == 0 {
 		return current, nil, nil // nothing to do: no action
 	}
 
@@ -177,7 +209,7 @@ func (s *Store) UpdateIssue(ctx context.Context, actorID, workspaceID, issueID s
 	if err != nil {
 		return nil, nil, err
 	}
-	payload, err := json.Marshal(models.IssueUpdatePayload{Diff: diff, Issue: *updated})
+	payload, err := json.Marshal(models.IssueUpdatePayload{Diff: diff, Issue: *updated, TriggeredWebhookIDs: up.TriggeredWebhookIDs})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -523,17 +555,25 @@ func (s *Store) CreateCustomField(ctx context.Context, id, name, fieldType, desc
 	return &models.CustomField{ID: id, Name: name, Type: fieldType, Description: description}, nil
 }
 
-func (s *Store) CustomFields(ctx context.Context) ([]*models.CustomField, error) {
-	rows, err := s.Pool.Query(ctx,
-		`SELECT id, name, type, COALESCE(description,'') FROM custom_fields ORDER BY id`)
+// CreateWorkspaceCustomField registers an administrator-created field for one
+// workspace. Legacy fields with no workspace remain available to every site.
+func (s *Store) CreateWorkspaceCustomField(ctx context.Context, workspaceID, id, name, fieldType, description string) (*models.CustomField, error) {
+	_, err := s.Pool.Exec(ctx,
+		`INSERT INTO custom_fields (id,name,type,description,workspace_id) VALUES ($1,$2,$3,$4,$5)`,
+		id, name, fieldType, description, workspaceID)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	return &models.CustomField{ID: id, Name: name, Type: fieldType, Description: description, WorkspaceID: workspaceID, Active: true}, nil
+}
+
+const customFieldSelect = `SELECT cf.id,cf.name,cf.type,COALESCE(cf.description,''),COALESCE(cf.workspace_id,''),COALESCE(cf.app_installation_id,''),COALESCE(ai.app_key,''),cf.app_module_key,cf.dynamic,cf.active FROM custom_fields cf LEFT JOIN app_installations ai ON ai.id=cf.app_installation_id `
+
+func scanCustomFields(rows pgx.Rows) ([]*models.CustomField, error) {
 	var out []*models.CustomField
 	for rows.Next() {
 		f := &models.CustomField{}
-		if err := rows.Scan(&f.ID, &f.Name, &f.Type, &f.Description); err != nil {
+		if err := rows.Scan(&f.ID, &f.Name, &f.Type, &f.Description, &f.WorkspaceID, &f.AppInstallationID, &f.AppKey, &f.AppModuleKey, &f.Dynamic, &f.Active); err != nil {
 			return nil, err
 		}
 		out = append(out, f)
@@ -541,27 +581,39 @@ func (s *Store) CustomFields(ctx context.Context) ([]*models.CustomField, error)
 	return out, rows.Err()
 }
 
+func (s *Store) CustomFields(ctx context.Context) ([]*models.CustomField, error) {
+	rows, err := s.Pool.Query(ctx, customFieldSelect+`WHERE cf.active AND (cf.app_installation_id IS NULL OR ai.status='active') ORDER BY cf.id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanCustomFields(rows)
+}
+
+func (s *Store) CustomFieldsForWorkspace(ctx context.Context, workspaceID string) ([]*models.CustomField, error) {
+	rows, err := s.Pool.Query(ctx, customFieldSelect+`WHERE cf.active AND (cf.workspace_id IS NULL OR cf.workspace_id=$1) AND (cf.app_installation_id IS NULL OR ai.status='active') ORDER BY cf.id`, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanCustomFields(rows)
+}
+
 // CustomFieldsForProject returns fields with a global or project-scoped context.
 func (s *Store) CustomFieldsForProject(ctx context.Context, projectID string) ([]*models.CustomField, error) {
-	rows, err := s.Pool.Query(ctx, `
-		SELECT DISTINCT cf.id, cf.name, cf.type, COALESCE(cf.description,'')
-		FROM custom_fields cf
+	rows, err := s.Pool.Query(ctx, customFieldSelect+`
+		JOIN projects p ON p.id=$1
 		LEFT JOIN field_contexts fc ON fc.field_id = cf.id
-		WHERE fc.project_id IS NULL OR fc.project_id = $1
+		WHERE cf.active
+		  AND (cf.workspace_id IS NULL OR cf.workspace_id=p.workspace_id)
+		  AND (cf.app_installation_id IS NULL OR ai.status='active')
+		  AND (fc.project_id IS NULL OR fc.project_id=$1)
 		ORDER BY cf.id`, projectID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []*models.CustomField
-	for rows.Next() {
-		f := &models.CustomField{}
-		if err := rows.Scan(&f.ID, &f.Name, &f.Type, &f.Description); err != nil {
-			return nil, err
-		}
-		out = append(out, f)
-	}
-	return out, rows.Err()
+	return scanCustomFields(rows)
 }
 
 // ---- webhooks ----
@@ -819,21 +871,7 @@ func (s *Store) SetFilterFavourite(ctx context.Context, workspaceID, userID, id 
 
 // NextCustomFieldNumber returns the next suffix for customfield_NNNNN ids.
 func (s *Store) NextCustomFieldNumber(ctx context.Context) (int, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT id FROM custom_fields`)
-	if err != nil {
-		return 0, err
-	}
-	defer rows.Close()
-	maxNum := 0
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return 0, err
-		}
-		var n int
-		if _, err := fmt.Sscanf(id, "customfield_%d", &n); err == nil && n > maxNum {
-			maxNum = n
-		}
-	}
-	return maxNum - 10000 + 1, rows.Err()
+	var suffix int
+	err := s.Pool.QueryRow(ctx, `SELECT nextval('jira_app_custom_field_id')::INT`).Scan(&suffix)
+	return suffix - 10000, err
 }

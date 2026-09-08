@@ -19,6 +19,7 @@ import (
 	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
+	"github.com/e6qu/zzira/internal/workflow"
 )
 
 type Handler struct {
@@ -30,6 +31,26 @@ type Handler struct {
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if strings.HasPrefix(r.URL.Path, "/rest/servicedeskapi/") {
+		h.serviceDeskRoute(w, r)
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/jira/forms/cloud/") {
+		h.issueFormsRoute(w, r)
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/rest/devinfo/0.10/") || strings.HasPrefix(r.URL.Path, "/jira/devinfo/0.1/cloud/") {
+		h.developmentRoute(w, r)
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/rest/builds/0.1/") || strings.HasPrefix(r.URL.Path, "/jira/builds/0.1/cloud/") {
+		h.softwareDeliveryRoute(w, r, "builds")
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/rest/deployments/0.1/") || strings.HasPrefix(r.URL.Path, "/jira/deployments/0.1/cloud/") {
+		h.softwareDeliveryRoute(w, r, "deployments")
+		return
+	}
 	path := strings.TrimPrefix(r.URL.Path, "/rest/api/3")
 	switch {
 	case path == "/dashboard":
@@ -62,8 +83,20 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.prioritiesEndpoint(w, r)
 	case path == "/status" && r.Method == http.MethodGet:
 		h.statusesEndpoint(w, r)
+	case strings.HasPrefix(path, "/status/") && r.Method == http.MethodGet:
+		h.statusDetailEndpoint(w, r, strings.TrimPrefix(path, "/status/"))
 	case path == "/statuscategory" && r.Method == http.MethodGet:
 		h.statusCategoryEndpoint(w, r)
+	case strings.HasPrefix(path, "/statuscategory/") && r.Method == http.MethodGet:
+		h.statusCategoryDetailEndpoint(w, r, strings.TrimPrefix(path, "/statuscategory/"))
+	case path == "/statuses" && (r.Method == http.MethodGet || r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodDelete):
+		h.bulkStatusesEndpoint(w, r)
+	case path == "/statuses/byNames" && r.Method == http.MethodGet:
+		h.statusesByNameEndpoint(w, r)
+	case path == "/statuses/search" && r.Method == http.MethodGet:
+		h.searchStatusesEndpoint(w, r)
+	case strings.HasPrefix(path, "/statuses/") && r.Method == http.MethodGet:
+		h.statusUsageEndpoint(w, r, strings.Split(strings.TrimPrefix(path, "/statuses/"), "/"))
 	case path == "/resolution" && r.Method == http.MethodGet:
 		h.resolutionsEndpoint(w, r)
 	case path == "/mypermissions" && r.Method == http.MethodGet:
@@ -74,8 +107,30 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.workflowRoute(w, r)
 	case path == "/workflow" && r.Method == http.MethodPost:
 		h.workflowRoute(w, r)
+	case path == "/workflows/defaultEditor" && r.Method == http.MethodGet:
+		h.workflowDefaultEditor(w, r)
+	case path == "/workflows/search" && r.Method == http.MethodGet:
+		h.workflowSearch(w, r)
+	case path == "/workflows/capabilities" && r.Method == http.MethodGet:
+		h.workflowCapabilities(w, r)
+	case path == "/workflows/create/validation" && r.Method == http.MethodPost:
+		h.workflowCreateValidation(w, r)
+	case path == "/workflows/update/validation" && r.Method == http.MethodPost:
+		h.workflowUpdateValidation(w, r)
+	case path == "/workflows/create" && r.Method == http.MethodPost:
+		h.workflowCreate(w, r)
+	case path == "/workflows/update" && r.Method == http.MethodPost:
+		h.workflowUpdate(w, r)
+	case path == "/workflows/preview" && r.Method == http.MethodPost:
+		h.workflowPreview(w, r)
+	case path == "/workflowscheme" || path == "/workflowscheme/project" || strings.HasPrefix(path, "/workflowscheme/"):
+		h.workflowSchemeRoute(w, r, path)
+	case strings.HasPrefix(path, "/task/"):
+		h.taskRoute(w, r, path)
 	case strings.HasPrefix(path, "/workflow/project/"):
 		h.workflowRoute(w, r)
+	case strings.HasPrefix(path, "/workflow/"):
+		h.workflowUsageRoute(w, r, path)
 	case path == "/issuesecurityschemes" && (r.Method == http.MethodGet || r.Method == http.MethodPost):
 		h.securitySchemeRoute(w, r)
 	case strings.HasPrefix(path, "/issuesecurityschemes/"):
@@ -147,6 +202,11 @@ func (h *Handler) issueRoute(w http.ResponseWriter, r *http.Request, parts []str
 	case len(parts) == 4 && idOrKey == "createmeta" && parts[2] == "issuetypes" && r.Method == http.MethodGet:
 		h.createMetaFields(w, r, parts[1], parts[3])
 		return
+	case len(parts) == 2 && parts[1] == "properties":
+		h.issueProperties(w, r, idOrKey, nil)
+	case len(parts) >= 3 && parts[1] == "properties":
+		propertyKey := strings.Join(parts[2:], "/")
+		h.issueProperties(w, r, idOrKey, &propertyKey)
 	case len(parts) == 1:
 		switch r.Method {
 		case http.MethodGet:
@@ -256,6 +316,7 @@ func (h *Handler) statusBean(s models.Status) map[string]any {
 		"self":           h.BaseURL + "/rest/api/3/status/" + s.ID,
 		"id":             s.ID,
 		"name":           s.Name,
+		"description":    s.Description,
 		"statusCategory": statusCategoryBean(s.Category),
 	}
 }
@@ -297,13 +358,17 @@ func (h *Handler) myself(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) userBean(u *models.User) map[string]any {
+	accountType := "atlassian"
+	if strings.HasPrefix(u.ID, "app_") {
+		accountType = "app"
+	}
 	return map[string]any{
 		"accountId":    u.ID,
 		"emailAddress": u.Email,
 		"displayName":  u.DisplayName,
 		"active":       u.Active,
 		"timeZone":     u.TimeZone,
-		"accountType":  "atlassian",
+		"accountType":  accountType,
 		"avatarUrls": map[string]string{
 			"48x48": h.BaseURL + "/static/img/avatar-default.svg",
 			"24x24": h.BaseURL + "/static/img/avatar-default.svg",
@@ -326,6 +391,10 @@ type createIssueRequest struct {
 			ID   string `json:"id"`
 			Name string `json:"name"`
 		} `json:"issuetype"`
+		Parent *struct {
+			ID  string `json:"id"`
+			Key string `json:"key"`
+		} `json:"parent"`
 		Priority *struct {
 			ID   string `json:"id"`
 			Name string `json:"name"`
@@ -410,13 +479,27 @@ func (h *Handler) createIssue(w http.ResponseWriter, r *http.Request) {
 	if projectIDOrKey == "" {
 		projectIDOrKey = req.Fields.Project.ID
 	}
+	customFields, err := h.resolveCustomFieldAliases(r.Context(), wsID, customFieldsFromBody(body))
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
 	issue, _, err := h.Commands.CreateIssue(r.Context(), commands.CreateIssueInput{
-		ActorID:                   userID,
-		WorkspaceID:               wsID,
-		ProjectIDOrKey:            projectIDOrKey,
-		Summary:                   req.Fields.Summary,
-		DescriptionADF:            req.Fields.Description,
-		IssueTypeID:               issueTypeID,
+		ActorID:        userID,
+		WorkspaceID:    wsID,
+		ProjectIDOrKey: projectIDOrKey,
+		Summary:        req.Fields.Summary,
+		DescriptionADF: req.Fields.Description,
+		IssueTypeID:    issueTypeID,
+		ParentIDOrKey: func() string {
+			if req.Fields.Parent == nil {
+				return ""
+			}
+			if req.Fields.Parent.Key != "" {
+				return req.Fields.Parent.Key
+			}
+			return req.Fields.Parent.ID
+		}(),
 		PriorityID:                priorityID,
 		AssigneeID:                assigneeID,
 		UseProjectDefaultAssignee: !assigneeProvided || assigneeID == "-1",
@@ -427,7 +510,7 @@ func (h *Handler) createIssue(w http.ResponseWriter, r *http.Request) {
 			return req.Fields.Security.ID
 		}(),
 		Labels: labels,
-		Fields: customFieldsFromBody(body),
+		Fields: customFields,
 	})
 	if err != nil {
 		jiraFieldError(w, http.StatusBadRequest, createIssueFieldError(err))
@@ -449,10 +532,10 @@ func unsupportedCreateFields(body []byte) map[string]string {
 	}
 	supported := map[string]struct{}{
 		"project": {}, "summary": {}, "description": {}, "issuetype": {}, "priority": {},
-		"assignee": {}, "security": {}, "labels": {}, "fixVersions": {}, "versions": {},
+		"assignee": {}, "security": {}, "labels": {}, "fixVersions": {}, "versions": {}, "parent": {},
 	}
 	for field := range raw.Fields {
-		if _, ok := supported[field]; ok || customFieldIDPattern.MatchString(field) {
+		if _, ok := supported[field]; ok || customFieldIDPattern.MatchString(field) || appCustomFieldKeyPattern.MatchString(field) {
 			continue
 		}
 		return map[string]string{field: "Field is not available on the create screen."}
@@ -462,7 +545,7 @@ func unsupportedCreateFields(body []byte) map[string]string {
 
 func createIssueFieldError(err error) map[string]string {
 	message := err.Error()
-	for _, field := range []string{"summary", "project", "priority", "assignee", "security", "labels", "description"} {
+	for _, field := range []string{"summary", "project", "priority", "assignee", "security", "labels", "description", "parent"} {
 		if strings.Contains(message, field) {
 			return map[string]string{field: message}
 		}
@@ -534,7 +617,34 @@ func (h *Handler) putIssue(w http.ResponseWriter, r *http.Request, idOrKey strin
 			up.AssigneeID = &a.AccountID
 		}
 	}
-	fields := customFieldsFromBody(body)
+	fields, err := h.resolveCustomFieldAliases(r.Context(), wsID, customFieldsFromBody(body))
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	var rawFields struct {
+		Fields map[string]json.RawMessage `json:"fields"`
+	}
+	_ = json.Unmarshal(body, &rawFields)
+	var parentIDOrKey *string
+	if rawParent, provided := rawFields.Fields["parent"]; provided {
+		value := ""
+		if string(rawParent) != "null" {
+			var parent struct {
+				ID  string `json:"id"`
+				Key string `json:"key"`
+			}
+			if err := json.Unmarshal(rawParent, &parent); err != nil || (parent.ID == "" && parent.Key == "") {
+				jiraFieldError(w, http.StatusBadRequest, map[string]string{"parent": "Parent requires an issue id or key."})
+				return
+			}
+			value = parent.Key
+			if value == "" {
+				value = parent.ID
+			}
+		}
+		parentIDOrKey = &value
+	}
 	var securityID *string
 	if req.Fields.Security != nil {
 		sid := req.Fields.Security.ID
@@ -544,9 +654,14 @@ func (h *Handler) putIssue(w http.ResponseWriter, r *http.Request, idOrKey strin
 		ActorID: userID, WorkspaceID: wsID, IssueIDOrKey: idOrKey,
 		Summary: up.Summary, Description: up.Description,
 		PriorityID: up.PriorityID, AssigneeID: up.AssigneeID,
+		ParentIDOrKey:   parentIDOrKey,
 		SecurityLevelID: securityID, Labels: req.Fields.Labels, Fields: fields, VersionOperations: req.Update,
 	}); err != nil {
-		jiraFieldError(w, http.StatusBadRequest, map[string]string{"fields": err.Error()})
+		field := "fields"
+		if strings.Contains(err.Error(), "parent") || strings.Contains(err.Error(), "sub-task") {
+			field = "parent"
+		}
+		jiraFieldError(w, http.StatusBadRequest, map[string]string{field: err.Error()})
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -626,7 +741,15 @@ func (h *Handler) issueBean(i *models.Issue) map[string]any {
 			"id":      i.IssueType.ID,
 			"name":    i.IssueType.Name,
 			"iconUrl": h.BaseURL + "/static/img/issuetype-task.svg",
+			"subtask": i.IssueType.Subtask,
 		},
+	}
+	if i.Parent != nil {
+		fields["parent"] = map[string]any{
+			"id": i.Parent.ID, "key": i.Parent.Key,
+			"self":   h.BaseURL + "/rest/api/3/issue/" + i.Parent.ID,
+			"fields": map[string]any{"summary": i.Parent.Summary},
+		}
 	}
 	if i.Priority != nil {
 		fields["priority"] = map[string]any{"id": i.Priority.ID, "name": i.Priority.Name}
@@ -659,15 +782,21 @@ func (h *Handler) issueBean(i *models.Issue) map[string]any {
 
 func statusCategoryBean(category string) map[string]any {
 	name := category
+	id := 2
+	color := "blue-gray"
 	switch category {
 	case "new":
 		name = "To Do"
 	case "indeterminate":
 		name = "In Progress"
+		id = 4
+		color = "yellow"
 	case "done":
 		name = "Done"
+		id = 3
+		color = "green"
 	}
-	return map[string]any{"key": category, "name": name}
+	return map[string]any{"id": id, "key": category, "name": name, "colorName": color}
 }
 
 func projectKeyOf(i *models.Issue) string {
@@ -795,7 +924,7 @@ func (h *Handler) deleteComment(w http.ResponseWriter, r *http.Request, idOrKey,
 // ---- transitions ----
 
 func (h *Handler) listTransitions(w http.ResponseWriter, r *http.Request, idOrKey string) {
-	wsID, _, e := h.authWorkspace(r)
+	wsID, userID, e := h.authWorkspace(r)
 	if e != nil {
 		writeJerr(w, e)
 		return
@@ -805,28 +934,50 @@ func (h *Handler) listTransitions(w http.ResponseWriter, r *http.Request, idOrKe
 		writeJerr(w, e)
 		return
 	}
-	wf, err := h.Store.WorkflowForProject(r.Context(), issue.ProjectID)
+	wf, err := h.Store.WorkflowForProjectAndIssueType(r.Context(), issue.ProjectID, issue.IssueType.ID)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	beans := []map[string]any{}
-	for _, t := range wf.Available(issue.Status.ID) {
-		status, err := h.Store.StatusByID(r.Context(), t.To)
+	evaluation := workflow.ContextForIssue(userID, issue)
+	evaluation.IsAPI = true
+	evaluation.StatusHistory, err = h.Store.IssueStatusHistory(r.Context(), wsID, issue.ID)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	evaluation.Transitions, err = h.Store.IssueTransitionHistory(r.Context(), wsID, issue.ID)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	evaluation.ParentStatus, evaluation.ChildStatuses, err = h.Store.IssueHierarchyStatuses(r.Context(), wsID, issue.ID)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	for _, t := range wf.AvailableFor(issue.Status.ID, evaluation) {
+		status, err := h.Store.StatusByIDForProject(r.Context(), t.To, issue.ProjectID)
 		if err != nil {
 			jiraError(w, http.StatusInternalServerError, "internal error")
 			return
+		}
+		fields := map[string]any{}
+		required := t.RequiredFields()
+		for _, field := range t.ScreenFields() {
+			fields[field] = transitionFieldMetadata(field, required[field])
 		}
 		beans = append(beans, map[string]any{
 			"id":            t.ID,
 			"name":          t.Name,
 			"to":            h.statusBean(status),
-			"hasScreen":     false,
+			"hasScreen":     t.Screen != nil,
 			"isGlobal":      false,
 			"isInitial":     false,
-			"isConditional": false,
+			"isConditional": t.Conditions != nil,
 			"isAvailable":   true,
-			"fields":        map[string]any{},
+			"fields":        fields,
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -845,16 +996,103 @@ func (h *Handler) performTransition(w http.ResponseWriter, r *http.Request, idOr
 		Transition struct {
 			ID string `json:"id"`
 		} `json:"transition"`
+		Fields map[string]json.RawMessage `json:"fields"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Transition.ID == "" {
 		jiraFieldError(w, http.StatusBadRequest, map[string]string{"transition": "Transition id is required."})
 		return
 	}
-	if _, _, err := h.Commands.TransitionIssue(r.Context(), userID, wsID, idOrKey, req.Transition.ID); err != nil {
+	resolvedFields, err := h.resolveCustomFieldAliases(r.Context(), wsID, req.Fields)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	update, fieldErrors := transitionIssueUpdate(resolvedFields)
+	if len(fieldErrors) > 0 {
+		jiraFieldError(w, http.StatusBadRequest, fieldErrors)
+		return
+	}
+	if _, _, err := h.Commands.TransitionIssueWithUpdateFromAPI(r.Context(), userID, wsID, idOrKey, req.Transition.ID, update); err != nil {
 		jiraError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func transitionFieldMetadata(field string, required bool) map[string]any {
+	name := field
+	schema := map[string]any{"type": "string"}
+	switch field {
+	case "summary":
+		name = "Summary"
+	case "description":
+		name, schema = "Description", map[string]any{"type": "any", "system": "description"}
+	case "labels":
+		name, schema = "Labels", map[string]any{"type": "array", "items": "string", "system": "labels"}
+	case "assignee":
+		name, schema = "Assignee", map[string]any{"type": "user", "system": "assignee"}
+	case "priority":
+		name, schema = "Priority", map[string]any{"type": "priority", "system": "priority"}
+	}
+	return map[string]any{"required": required, "name": name, "schema": schema, "operations": []string{"set"}}
+}
+
+func transitionIssueUpdate(fields map[string]json.RawMessage) (store.IssueUpdate, map[string]string) {
+	update := store.IssueUpdate{}
+	errors := make(map[string]string)
+	for field, raw := range fields {
+		switch field {
+		case "summary":
+			var value string
+			if err := json.Unmarshal(raw, &value); err != nil {
+				errors[field] = "Summary must be a string."
+			} else {
+				update.Summary = &value
+			}
+		case "description":
+			update.Description = raw
+		case "labels":
+			var value []string
+			if err := json.Unmarshal(raw, &value); err != nil {
+				errors[field] = "Labels must be an array of strings."
+			} else {
+				update.Labels = &value
+			}
+		case "assignee", "priority":
+			value := ""
+			if string(raw) != "null" {
+				var object map[string]any
+				if err := json.Unmarshal(raw, &object); err != nil {
+					errors[field] = "Field value must be an object or null."
+					continue
+				}
+				key := "id"
+				if field == "assignee" {
+					key = "accountId"
+				}
+				value, _ = object[key].(string)
+				if value == "" {
+					errors[field] = "Field value requires " + key + "."
+					continue
+				}
+			}
+			if field == "assignee" {
+				update.AssigneeID = &value
+			} else {
+				update.PriorityID = &value
+			}
+		default:
+			if strings.HasPrefix(field, "customfield_") {
+				if update.Fields == nil {
+					update.Fields = make(map[string]json.RawMessage)
+				}
+				update.Fields[field] = raw
+			} else {
+				errors[field] = "Field is not supported during a transition."
+			}
+		}
+	}
+	return update, errors
 }
 
 // ---- changelog (derived view of the log) ----

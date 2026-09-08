@@ -8,6 +8,14 @@ import (
 	"github.com/e6qu/zzira/internal/workflow"
 )
 
+func (h *Handler) workflowDefaultEditor(w http.ResponseWriter, r *http.Request) {
+	if _, _, err := h.authWorkspace(r); err != nil {
+		writeJerr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"value": "NEW"})
+}
+
 // workflowRoute serves the admin workflow surface:
 //
 //	GET  /rest/api/3/workflow/search  → list stored workflows
@@ -15,14 +23,15 @@ import (
 //	PUT  /rest/api/3/workflow/project/{keyOrId} {workflowId: …} → assign
 //	GET  /rest/api/3/workflow/project/{keyOrId}              → current id
 func (h *Handler) workflowRoute(w http.ResponseWriter, r *http.Request) {
-	if _, _, e := h.authWorkspaceAdmin(r); e != nil {
+	workspaceID, _, e := h.authWorkspaceAdmin(r)
+	if e != nil {
 		writeJerr(w, e)
 		return
 	}
 	rel := strings.TrimPrefix(r.URL.Path, "/rest/api/3")
 	switch {
 	case rel == "/workflow/search" && r.Method == http.MethodGet:
-		workflows, err := h.Store.ListWorkflows(r.Context())
+		workflows, err := h.Store.ListWorkflows(r.Context(), workspaceID)
 		if err != nil {
 			jiraError(w, http.StatusInternalServerError, "internal error")
 			return
@@ -63,7 +72,7 @@ func (h *Handler) workflowRoute(w http.ResponseWriter, r *http.Request) {
 		for _, t := range req.Transitions {
 			wf.Transitions = append(wf.Transitions, workflow.Transition{ID: t.ID, Name: t.Name, From: t.From, To: t.To})
 		}
-		if err := h.Store.CreateWorkflow(r.Context(), wf); err != nil {
+		if err := h.Store.CreateWorkflow(r.Context(), workspaceID, wf); err != nil {
 			jiraError(w, http.StatusBadRequest, err.Error())
 			return
 		}
@@ -99,11 +108,11 @@ func (h *Handler) workflowRoute(w http.ResponseWriter, r *http.Request) {
 				jiraFieldError(w, http.StatusBadRequest, map[string]string{"workflowId": "workflowId is required."})
 				return
 			}
-			if _, err := h.Store.WorkflowByID(r.Context(), req.WorkflowID); err != nil {
+			if _, err := h.Store.WorkflowByID(r.Context(), wsID, req.WorkflowID); err != nil {
 				jiraFieldError(w, http.StatusBadRequest, map[string]string{"workflowId": "The workflow does not exist."})
 				return
 			}
-			if err := h.Store.AssignWorkflowToProject(r.Context(), project.ID, req.WorkflowID); err != nil {
+			if err := h.Store.AssignWorkflowToProject(r.Context(), wsID, project.ID, req.WorkflowID); err != nil {
 				jiraError(w, http.StatusInternalServerError, "internal error")
 				return
 			}

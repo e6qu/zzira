@@ -15,27 +15,51 @@ const (
 )
 
 type User struct {
-	ID          string `json:"accountId"`
-	Email       string `json:"emailAddress,omitempty"`
-	DisplayName string `json:"displayName"`
-	TimeZone    string `json:"timeZone,omitempty"`
-	Active      bool   `json:"active"`
-	AccountType string `json:"accountType"`
+	ID               string `json:"accountId"`
+	Email            string `json:"emailAddress,omitempty"`
+	DisplayName      string `json:"displayName"`
+	TimeZone         string `json:"timeZone,omitempty"`
+	Active           bool   `json:"active"`
+	AccountType      string `json:"accountType"`
+	AccountActive    bool   `json:"-"`
+	AddedAt          string `json:"-"`
+	SuspendedAt      string `json:"-"`
+	DeactivatedAt    string `json:"-"`
+	ManagementSource string `json:"-"`
+	Nickname         string `json:"-"`
+	JobTitle         string `json:"-"`
+	Department       string `json:"-"`
+	OrganizationName string `json:"-"`
+	Location         string `json:"-"`
+	PictureURL       string `json:"-"`
+	AvatarURL        string `json:"-"`
+	EmailVerified    bool   `json:"-"`
+	MFAEnabled       bool   `json:"-"`
 	// Username is a display handle for the UI's account control, not a Jira
 	// Cloud REST API field (accountId is the API identity); excluded from JSON.
 	Username string `json:"-"`
 }
 
 type Status struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Category string `json:"category"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Category    string `json:"category"`
+	ProjectID   string `json:"-"`
+	Protected   bool   `json:"-"`
 }
 
 type IssueType struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Icon string `json:"icon"`
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Icon    string `json:"icon"`
+	Subtask bool   `json:"subtask"`
+}
+
+type IssueParent struct {
+	ID      string `json:"id"`
+	Key     string `json:"key"`
+	Summary string `json:"summary"`
 }
 
 type Priority struct {
@@ -44,15 +68,16 @@ type Priority struct {
 }
 
 type Project struct {
-	ID            string `json:"id"`
-	WorkspaceID   string `json:"-"`
-	Key           string `json:"key"`
-	Name          string `json:"name"`
-	WorkflowID    string `json:"-"`
-	Description   string `json:"description"`
-	URL           string `json:"url"`
-	LeadAccountID string `json:"leadAccountId,omitempty"`
-	AssigneeType  string `json:"assigneeType"`
+	ID             string `json:"id"`
+	WorkspaceID    string `json:"-"`
+	Key            string `json:"key"`
+	Name           string `json:"name"`
+	WorkflowID     string `json:"-"`
+	Description    string `json:"description"`
+	URL            string `json:"url"`
+	LeadAccountID  string `json:"leadAccountId,omitempty"`
+	AssigneeType   string `json:"assigneeType"`
+	ProjectTypeKey string `json:"projectTypeKey"`
 
 	SecuritySchemeID string `json:"-"`
 }
@@ -67,6 +92,7 @@ type Issue struct {
 	Description json.RawMessage `json:"description"`
 	Status      Status          `json:"status"`
 	IssueType   IssueType       `json:"issuetype"`
+	Parent      *IssueParent    `json:"parent,omitempty"`
 	Priority    *Priority       `json:"priority"`
 	Assignee    *User           `json:"assignee"`
 	Reporter    *User           `json:"reporter"`
@@ -139,6 +165,15 @@ type IssueView struct {
 	IsWatching        bool
 	Links             []IssueLinkView
 	LinkTypes         []LinkType
+	Children          []Issue
+	ParentOptions     []CreateFieldOption
+	Forms             []IssueForm
+	Development       []DevelopmentItem
+	Delivery          []DeliveryItem
+	AppPanels         []AppModule
+	AppActivityTabs   []AppModule
+	AppContexts       []AppModule
+	AppIssueContent   []AppIssueContent
 }
 
 // IssueActivityItem is one entry in the issue's chronological activity ledger.
@@ -165,8 +200,9 @@ type IssueLinkView struct {
 
 // WorkflowTransition decouples the view from the workflow package.
 type WorkflowTransition struct {
-	ID   string
-	Name string
+	ID           string
+	Name         string
+	ScreenFields []string
 }
 
 // EditDialogView drives the edit-issue dialog; rendered by both server and

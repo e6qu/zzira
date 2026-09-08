@@ -41,7 +41,9 @@ seed:
 	go run ./cmd/server -mode=seed
 
 conformance: build
+	python3 -m unittest api/conformance/test_inventory.py api/conformance/test_coverage.py
 	python3 api/conformance/inventory.py --check
+	python3 api/conformance/coverage.py --check
 	go test ./internal/api3 ./internal/confluence -v
 
 loadtest: build

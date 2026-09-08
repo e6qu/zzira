@@ -1,4 +1,4 @@
-import { test, expect, Page } from '@playwright/test';
+import { test, expect, APIRequestContext, Page } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -10,17 +10,19 @@ function authFor(email: string): string {
   return 'Basic ' + Buffer.from(`${email}:${token}`).toString('base64');
 }
 
-async function login(page: Page) {
+async function loginAsAna(page: Page) {
   await page.goto('/login');
-  await page.fill('input[name=email]', DEMO.email);
-  await page.fill('input[name=password]', DEMO.password);
+  await page.fill('input[name=email]', 'ana@zzira.dev');
+  await page.fill('input[name=password]', 'ana12345');
   await page.click('button[type=submit]');
   await expect(page).toHaveURL('/');
 }
 
-test('V5 done-when: security level hides an issue from ana (404 + tombstone in her sync)', async ({ request }) => {
+test('V5 done-when: security level hides an issue from ana (404 + tombstone in her sync)', async ({ browser, request }) => {
   const demo = { headers: { Authorization: authFor(DEMO.email) } };
-  const ana = { headers: { Authorization: authFor('ana@zzira.dev') } };
+  const anaContext = await browser.newContext();
+  const anaPage = await anaContext.newPage();
+  await loginAsAna(anaPage);
 
   const me = await request.get('/rest/api/3/myself', demo);
   const demoId = (await me.json()).accountId;
@@ -36,7 +38,7 @@ test('V5 done-when: security level hides an issue from ana (404 + tombstone in h
   const issueId = createdBody.id;
 
   // ana can see it now
-  expect((await request.get(`/rest/api/3/issue/${key}`, ana)).status()).toBe(200);
+  expect((await anaContext.request.get(`/rest/api/3/issue/${key}`)).status()).toBe(200);
 
   // scheme: level restricted to demo
   await request.post('/rest/api/3/issuesecurityschemes', {
@@ -50,15 +52,15 @@ test('V5 done-when: security level hides an issue from ana (404 + tombstone in h
 
   // demo 200, ana 404
   expect((await request.get(`/rest/api/3/issue/${key}`, demo)).status()).toBe(200);
-  expect((await request.get(`/rest/api/3/issue/${key}`, ana)).status()).toBe(404);
+  expect((await anaContext.request.get(`/rest/api/3/issue/${key}`)).status()).toBe(404);
 
   // ana's sync stream carries the per-user tombstone for THIS issue;
   // demo's stream never carries tombstones (members keep their replica).
-  const tombstonesFor = async (auth: { headers: { Authorization: string } }) => {
+  const tombstonesFor = async (client: APIRequestContext, auth?: { headers: { Authorization: string } }) => {
     let since = 0;
     const actions: any[] = [];
     for (let page = 0; page < 100; page += 1) {
-      const r = await request.get(`/sync?workspace=zzira&since=${since}&limit=1000`, auth);
+      const r = await client.get(`/sync?workspace=zzira&since=${since}&limit=1000`, auth);
       if (r.status() === 304) break;
       expect(r.status()).toBe(200);
       const body = await r.json();
@@ -69,6 +71,7 @@ test('V5 done-when: security level hides an issue from ana (404 + tombstone in h
     }
     return actions.filter((a: any) => a.entityType === 'tombstone' && JSON.stringify(a.payload).includes(`"${issueId}"`));
   };
-  expect((await tombstonesFor(ana)).length).toBeGreaterThanOrEqual(1);
-  expect((await tombstonesFor(demo)).length).toBe(0);
+  expect((await tombstonesFor(anaContext.request)).length).toBeGreaterThanOrEqual(1);
+  expect((await tombstonesFor(request, demo)).length).toBe(0);
+  await anaContext.close();
 });

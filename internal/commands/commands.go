@@ -22,12 +22,14 @@ type Service struct {
 
 type CreateIssueInput struct {
 	ActorID                   string
+	ReporterID                string
 	WorkspaceID               string
 	ProjectIDOrKey            string
 	Summary                   string
 	Description               string // plain text in V0; stored as an ADF paragraph
 	DescriptionADF            json.RawMessage
 	IssueTypeID               string
+	ParentIDOrKey             string
 	PriorityID                string
 	AssigneeID                string
 	UseProjectDefaultAssignee bool
@@ -42,6 +44,13 @@ func (s *Service) DeleteIssue(ctx context.Context, actorID, workspaceID, issueID
 	issue, err := s.visibleIssue(ctx, actorID, workspaceID, issueIDOrKey)
 	if err != nil {
 		return nil, err
+	}
+	children, err := s.Store.ChildIssues(ctx, workspaceID, issue.ID)
+	if err != nil {
+		return nil, err
+	}
+	if len(children) > 0 {
+		return nil, fmt.Errorf("move or delete sub-tasks before deleting their parent")
 	}
 	action, blobRefs, err := s.Store.DeleteIssue(ctx, actorID, workspaceID, issue.ID, reason)
 	if err != nil {
@@ -80,6 +89,22 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 	issueType, err := s.Store.IssueTypeByIDOrName(ctx, in.IssueTypeID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("issue type %q not found", in.IssueTypeID)
+	}
+	parentID := ""
+	if issueType.Subtask {
+		if strings.TrimSpace(in.ParentIDOrKey) == "" {
+			return nil, nil, fmt.Errorf("parent is required for a sub-task")
+		}
+		parent, err := s.visibleIssue(ctx, in.ActorID, in.WorkspaceID, in.ParentIDOrKey)
+		if err != nil || parent.ProjectID != project.ID {
+			return nil, nil, fmt.Errorf("parent must be a visible work item in this project")
+		}
+		if parent.IssueType.Subtask {
+			return nil, nil, fmt.Errorf("a sub-task cannot be the parent of another sub-task")
+		}
+		parentID = parent.ID
+	} else if strings.TrimSpace(in.ParentIDOrKey) != "" {
+		return nil, nil, fmt.Errorf("parent is only available for sub-tasks")
 	}
 	priorityID := ""
 	if in.PriorityID != "" {
@@ -152,8 +177,8 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 		}
 		description = in.DescriptionADF
 	}
-	issue, action, err := s.Store.CreateIssue(ctx, in.ActorID, project.ID, in.Summary,
-		description, "st_todo", issueType.ID, priorityID, in.AssigneeID, labels, in.Fields, in.SecurityLevelID)
+	issue, action, err := s.Store.CreateIssueForReporter(ctx, in.ActorID, in.ReporterID, project.ID, in.Summary,
+		description, "st_todo", issueType.ID, priorityID, in.AssigneeID, labels, in.Fields, in.SecurityLevelID, parentID)
 	if err != nil {
 		return nil, nil, err
 	}

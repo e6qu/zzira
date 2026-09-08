@@ -25,7 +25,7 @@ func (h *Handler) projectBean(p *models.Project) map[string]any {
 		"url":            p.URL,
 		"assigneeType":   p.AssigneeType,
 		"self":           h.BaseURL + "/rest/api/3/project/" + p.Key,
-		"projectTypeKey": "software",
+		"projectTypeKey": p.ProjectTypeKey,
 		"simplified":     true,
 		"style":          "classic",
 		"avatarUrls": map[string]string{
@@ -182,7 +182,11 @@ func (h *Handler) createMeta(w http.ResponseWriter, r *http.Request) {
 			bean := h.createMetaIssueTypeBean(issueType)
 			if includeFields {
 				fields := make(map[string]any, len(project.Fields))
-				for _, field := range project.Fields {
+				for _, source := range project.Fields {
+					field := source
+					if field.ID == "parent" {
+						field.Required = issueType.Subtask
+					}
 					fields[field.ID] = h.legacyCreateFieldBean(field)
 				}
 				bean["fields"] = fields
@@ -230,14 +234,15 @@ func (h *Handler) createMetaFields(w http.ResponseWriter, r *http.Request, proje
 		writeJerr(w, e)
 		return
 	}
-	found := false
+	var selectedType *models.IssueType
 	for _, issueType := range project.IssueTypes {
 		if issueType.ID == issueTypeID {
-			found = true
+			selected := issueType
+			selectedType = &selected
 			break
 		}
 	}
-	if !found {
+	if selectedType == nil {
 		jiraError(w, http.StatusBadRequest, "The issue type is not available in this project.")
 		return
 	}
@@ -249,7 +254,11 @@ func (h *Handler) createMetaFields(w http.ResponseWriter, r *http.Request, proje
 	safeStart := min(start, len(project.Fields))
 	end := min(safeStart+limit, len(project.Fields))
 	values := make([]map[string]any, 0, end-safeStart)
-	for _, field := range project.Fields[safeStart:end] {
+	for _, source := range project.Fields[safeStart:end] {
+		field := source
+		if field.ID == "parent" {
+			field.Required = selectedType.Subtask
+		}
 		values = append(values, h.createFieldBean(field))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -277,7 +286,7 @@ func (h *Handler) createMetaProject(r *http.Request, projectIDOrKey string) (*mo
 
 func (h *Handler) createMetaIssueTypeBean(issueType models.IssueType) map[string]any {
 	return map[string]any{
-		"id": issueType.ID, "name": issueType.Name, "description": "", "subtask": false,
+		"id": issueType.ID, "name": issueType.Name, "description": "", "subtask": issueType.Subtask,
 		"iconUrl": h.BaseURL + "/static/img/issuetype-task.svg",
 		"self":    h.BaseURL + "/rest/api/3/issuetype/" + issueType.ID,
 	}
@@ -377,7 +386,7 @@ func querySetContains(values map[string]struct{}, candidates ...string) bool {
 
 // ---- search ----
 
-func (h *Handler) compileJQL(ctx context.Context, raw, currentUser string) (jql.Compiled, *jerr) {
+func (h *Handler) compileJQL(ctx context.Context, workspaceID, raw, currentUser string) (jql.Compiled, *jerr) {
 	if raw == "" {
 		raw = "ORDER BY updated DESC"
 	}
@@ -386,7 +395,7 @@ func (h *Handler) compileJQL(ctx context.Context, raw, currentUser string) (jql.
 		return jql.Compiled{}, &jerr{http.StatusBadRequest, "Error in the JQL Query: " + err.Error(), nil}
 	}
 	resolver := jql.DefaultResolver()
-	if customFields, err := h.Store.CustomFields(ctx); err == nil {
+	if customFields, err := h.Store.CustomFieldsForWorkspace(ctx, workspaceID); err == nil {
 		resolver = jql.WithCustomFields(resolver, customFields)
 	}
 	// offset 2: store.Search reserves $1 for the workspace predicate
@@ -443,7 +452,7 @@ func (h *Handler) runSearch(w http.ResponseWriter, r *http.Request, jqlText stri
 		writeJerr(w, e)
 		return
 	}
-	c, e := h.compileJQL(r.Context(), jqlText, userID)
+	c, e := h.compileJQL(r.Context(), wsID, jqlText, userID)
 	if e != nil {
 		writeJerr(w, e)
 		return
@@ -577,7 +586,7 @@ func (h *Handler) searchJQL(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, 400, "Enhanced search requires a bounded JQL query.")
 		return
 	}
-	c, e := h.compileJQL(r.Context(), req.JQL, userID)
+	c, e := h.compileJQL(r.Context(), wsID, req.JQL, userID)
 	if e != nil {
 		writeJerr(w, e)
 		return
@@ -613,7 +622,7 @@ func (h *Handler) searchCount(w http.ResponseWriter, r *http.Request) {
 		writeJerr(w, e)
 		return
 	}
-	c, e := h.compileJQL(r.Context(), req.JQL, userID)
+	c, e := h.compileJQL(r.Context(), wsID, req.JQL, userID)
 	if e != nil {
 		writeJerr(w, e)
 		return

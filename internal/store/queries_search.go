@@ -20,13 +20,16 @@ JOIN issue_types it ON it.id = i.issuetype_id
 LEFT JOIN priorities pr2 ON pr2.id = i.priority_id
 LEFT JOIN users a ON a.id = i.assignee_id
 LEFT JOIN users r ON r.id = i.reporter_id
+LEFT JOIN issues parent ON parent.id = i.parent_id
 JOIN projects pr ON pr.id = i.project_id
 `
 
 const searchSelect = `
 SELECT i.id, i.workspace_id, i.project_id, i.key, i.summary, i.description,
        st.id, st.name, st.category,
-       it.id, it.name, it.icon,
+	       it.id, it.name, it.icon,
+	       it.subtask,
+	       parent.id, parent.key, parent.summary,
        pr2.id, pr2.name,
        a.id, a.display_name,
 	       r.id, r.display_name,
@@ -78,9 +81,13 @@ func (s *Store) Search(ctx context.Context, workspaceID, userID string, c jql.Co
 // MembersByWorkspace lists workspace members (assignee pickers, user search).
 func (s *Store) MembersByWorkspace(ctx context.Context, workspaceID string) ([]*models.User, error) {
 	rows, err := s.Pool.Query(ctx, `
-		SELECT u.id, u.email, u.display_name, u.time_zone
+		SELECT DISTINCT u.id, u.email, u.display_name, u.time_zone
 		FROM memberships m JOIN users u ON u.id = m.user_id
-		WHERE m.workspace_id=$1 AND u.active
+		WHERE m.workspace_id=$1 AND u.active AND u.id NOT LIKE 'app!_%' ESCAPE '!'
+		  AND EXISTS (
+		    SELECT 1 FROM sites si JOIN directories d ON d.organization_id=si.organization_id
+		    JOIN directory_users du ON du.directory_id=d.id AND du.user_id=u.id
+		    WHERE si.workspace_id=m.workspace_id AND d.active AND du.active)
 		ORDER BY u.display_name`, workspaceID)
 	if err != nil {
 		return nil, err
@@ -106,7 +113,11 @@ func (s *Store) MemberByID(ctx context.Context, workspaceID, userID string) (*mo
 		SELECT u.email, u.display_name, u.time_zone
 		FROM memberships m
 		JOIN users u ON u.id = m.user_id
-		WHERE m.workspace_id=$1 AND u.id=$2 AND u.active`, workspaceID, userID).
+		WHERE m.workspace_id=$1 AND u.id=$2 AND u.active
+		  AND EXISTS (
+		    SELECT 1 FROM sites si JOIN directories d ON d.organization_id=si.organization_id
+		    JOIN directory_users du ON du.directory_id=d.id AND du.user_id=u.id
+		    WHERE si.workspace_id=m.workspace_id AND d.active AND du.active)`, workspaceID, userID).
 		Scan(&u.Email, &u.DisplayName, &u.TimeZone)
 	if err != nil {
 		return nil, err
@@ -117,9 +128,13 @@ func (s *Store) MemberByID(ctx context.Context, workspaceID, userID string) (*mo
 // SearchMembers filters workspace members by name/email substring.
 func (s *Store) SearchMembers(ctx context.Context, workspaceID, query string) ([]*models.User, error) {
 	rows, err := s.Pool.Query(ctx, `
-		SELECT u.id, u.email, u.display_name, u.time_zone
+		SELECT DISTINCT u.id, u.email, u.display_name, u.time_zone
 		FROM memberships m JOIN users u ON u.id = m.user_id
-		WHERE m.workspace_id=$1 AND u.active
+		WHERE m.workspace_id=$1 AND u.active AND u.id NOT LIKE 'app!_%' ESCAPE '!'
+		  AND EXISTS (
+		    SELECT 1 FROM sites si JOIN directories d ON d.organization_id=si.organization_id
+		    JOIN directory_users du ON du.directory_id=d.id AND du.user_id=u.id
+		    WHERE si.workspace_id=m.workspace_id AND d.active AND du.active)
 		  AND (u.display_name ILIKE $2 OR u.email ILIKE $2)
 		ORDER BY u.display_name LIMIT 50`, workspaceID, "%"+query+"%")
 	if err != nil {
@@ -140,7 +155,7 @@ func (s *Store) SearchMembers(ctx context.Context, workspaceID, query string) ([
 // ProjectsByWorkspace lists all projects in a workspace (V2: all visible to members).
 func (s *Store) ProjectsByWorkspace(ctx context.Context, workspaceID string) ([]*models.Project, error) {
 	rows, err := s.Pool.Query(ctx,
-		`SELECT id, workspace_id, key, name, COALESCE(workflow_id,''), COALESCE(security_scheme_id,''), description, url, COALESCE(lead_account_id,''), assignee_type FROM projects WHERE workspace_id=$1 ORDER BY key`, workspaceID)
+		`SELECT id, workspace_id, key, name, COALESCE(workflow_id,''), COALESCE(security_scheme_id,''), description, url, COALESCE(lead_account_id,''), assignee_type, project_type_key FROM projects WHERE workspace_id=$1 ORDER BY key`, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -148,7 +163,7 @@ func (s *Store) ProjectsByWorkspace(ctx context.Context, workspaceID string) ([]
 	var out []*models.Project
 	for rows.Next() {
 		p := &models.Project{}
-		if err := rows.Scan(&p.ID, &p.WorkspaceID, &p.Key, &p.Name, &p.WorkflowID, &p.SecuritySchemeID, &p.Description, &p.URL, &p.LeadAccountID, &p.AssigneeType); err != nil {
+		if err := rows.Scan(&p.ID, &p.WorkspaceID, &p.Key, &p.Name, &p.WorkflowID, &p.SecuritySchemeID, &p.Description, &p.URL, &p.LeadAccountID, &p.AssigneeType, &p.ProjectTypeKey); err != nil {
 			return nil, err
 		}
 		out = append(out, p)
@@ -276,6 +291,7 @@ func issueJoinTables() string {
 	LEFT JOIN priorities pr2 ON pr2.id = i.priority_id
 	LEFT JOIN users a ON a.id = i.assignee_id
 	LEFT JOIN users r ON r.id = i.reporter_id
+	LEFT JOIN issues parent ON parent.id = i.parent_id
 	JOIN projects pr ON pr.id = i.project_id`
 }
 

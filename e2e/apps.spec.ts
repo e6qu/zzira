@@ -1,0 +1,371 @@
+import { expect, test } from '@playwright/test';
+import axe from 'axe-core';
+
+async function accessible(page: import('@playwright/test').Page) {
+  await page.addScriptTag({ content: axe.source });
+  const violations = await page.evaluate(async () => (await (window as any).axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'] } })).violations);
+  expect(violations).toEqual([]);
+}
+
+async function createWikiPageFixture(page: import('@playwright/test').Page, suffix: string) {
+  await page.goto('/wiki');
+  await page.locator('.wiki-create-space > summary').click();
+  await page.getByLabel('Space name').fill(`App fixture ${suffix}`);
+  await page.getByLabel('Space key').fill(`APP${suffix}`);
+  await page.getByLabel('Description', { exact: true }).fill('App module browser fixture');
+  await page.getByRole('button', { name: 'Create space', exact: true }).click();
+  await page.getByRole('link', { name: 'Create page', exact: true }).click();
+  await page.getByLabel('Page title').fill(`App fixture page ${suffix}`);
+  await page.getByRole('textbox', { name: 'Page content' }).fill('A stable page for app module assertions.');
+  await page.getByRole('button', { name: 'Save page', exact: true }).click();
+  await expect(page.getByRole('heading', { name: `App fixture page ${suffix}`, level: 1 })).toBeVisible();
+  return page.url();
+}
+
+async function createIssueFixture(page: import('@playwright/test').Page, suffix: string) {
+  const result = await page.evaluate(async summary => {
+    const response = await fetch('/rest/api/3/issue', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields: { project: { key: 'ZZ' }, issuetype: { id: 'it_task' }, summary } }),
+    });
+    return { status: response.status, body: await response.text() };
+  }, `App fixture issue ${suffix}`);
+  expect(result.status, result.body).toBe(201);
+  return (JSON.parse(result.body) as { key: string }).key;
+}
+
+test('admin installs and manages a scoped host-rendered app', async ({ page }) => {
+  await page.goto('/login');
+  await page.fill('#login-email', 'demo@zzira.dev');
+  await page.fill('#login-password', 'demo1234');
+  await page.click('button[type=submit]');
+
+  const suffix = String(Date.now());
+  const wikiPageURL = await createWikiPageFixture(page, suffix);
+  const issueKey = await createIssueFixture(page, suffix);
+  const appKey = `journey.${suffix}`;
+  const appName = `Journey app ${suffix}`;
+  const moduleTitle = `Release companion ${suffix}`;
+  const issuePanelTitle = `Issue risk ${suffix}`;
+  const gadgetTitle = `App health ${suffix}`;
+  const bylineTitle = `Page review ${suffix}`;
+  const descriptor = {
+    key: appKey,
+    name: appName,
+    baseUrl: `https://apps.example.test/${suffix}`,
+    version: '1.0.0',
+    scopes: ['read:jira-work', 'read:confluence-content', 'read:app-storage', 'write:app-storage', 'manage:webhooks'],
+    modules: [
+      { key: 'release-companion', type: 'jira:globalPage', location: 'jira.navigation', title: moduleTitle, body: 'Release readiness and incident context from the installed app.' },
+      { key: 'issue-risk', type: 'jira:issuePanel', location: 'jira.issue.view', title: issuePanelTitle, body: 'No cross-service release risk detected.' },
+      { key: 'app-health', type: 'jira:dashboardGadget', location: 'jira.dashboard', title: gadgetTitle, body: 'All app checks are healthy.' },
+      { key: 'page-review', type: 'confluence:contentBylineItem', location: 'confluence.content.byline', title: bylineTitle, body: 'Reviewed by the installed app.' },
+    ],
+    lifecycle: { installed: '/lifecycle/installed', disabled: '/lifecycle/disabled', enabled: '/lifecycle/enabled', uninstalled: '/lifecycle/uninstalled' },
+    webhooks: [{ key: 'issue-events', url: '/webhooks/issues', events: ['jira:issue_created', 'jira:issue_updated'], jql: 'project = ZZ' }],
+    scheduledTriggers: [{ key: 'hourly-sync', url: '/scheduled/hourly', interval: 'hour' }],
+  };
+
+  await page.goto('/admin#admin-apps');
+  await page.locator('#admin-apps summary', { hasText: 'Install app' }).click();
+  await page.getByLabel('App descriptor').fill(JSON.stringify(descriptor, null, 2));
+  await page.getByLabel('Shared signing secret').fill('browser-test-shared-secret-123456');
+  await page.getByRole('button', { name: 'Install app' }).click();
+
+  let app = page.locator('.admin-app', { hasText: appName });
+  await expect(app).toContainText('active');
+  await expect(app).toContainText('read:jira-work');
+  await expect(app).toContainText('app_principal_');
+  await expect(app).toContainText('/lifecycle/installed');
+  await expect(app).toContainText('issue-events');
+  await expect(app).toContainText('hourly-sync');
+  await accessible(page);
+  await expect(page.locator('#workspace-navigation').getByRole('link', { name: moduleTitle })).toBeVisible();
+  await page.locator('#workspace-navigation').getByRole('link', { name: moduleTitle }).click();
+  await expect(page.getByRole('heading', { name: moduleTitle, level: 1 })).toBeVisible();
+  await expect(page.getByText('Release readiness and incident context from the installed app.')).toBeVisible();
+  await accessible(page);
+
+  await page.goto(`/browse/${issueKey}`);
+  const issuePanel = page.locator('.app-context-module', { has: page.getByRole('heading', { name: issuePanelTitle, level: 2 }) });
+  await expect(issuePanel).toBeVisible();
+  await expect(issuePanel).toContainText('No cross-service release risk detected.');
+
+  await page.goto('/dashboards');
+  await page.getByLabel('Dashboard name', { exact: true }).fill(`App dashboard ${suffix}`);
+  await page.getByRole('button', { name: 'Create dashboard', exact: true }).click();
+  await page.getByRole('button', { name: `Add ${gadgetTitle}`, exact: true }).click();
+  await expect(page.locator('.app-dashboard-module')).toContainText('All app checks are healthy.');
+
+  await page.goto(wikiPageURL);
+  const byline = page.locator('.app-byline > span', { hasText: bylineTitle });
+  await expect(byline).toBeVisible();
+  await expect(byline).toContainText('Reviewed by the installed app.');
+  await accessible(page);
+
+  await page.goto('/admin#admin-apps');
+  app = page.locator('.admin-app', { hasText: appName });
+  await app.getByRole('button', { name: `Suspend ${appName}` }).click();
+  app = page.locator('.admin-app', { hasText: appName });
+  await expect(app).toContainText('suspended');
+  await expect(page.locator('#workspace-navigation').getByRole('link', { name: moduleTitle })).toHaveCount(0);
+
+  await app.getByRole('button', { name: `Resume ${appName}` }).click();
+  app = page.locator('.admin-app', { hasText: appName });
+  await expect(app).toContainText('active');
+  await expect(page.locator('#workspace-navigation').getByRole('link', { name: moduleTitle })).toBeVisible();
+
+  await app.getByRole('button', { name: `Uninstall ${appName}` }).click();
+  app = page.locator('.admin-app', { hasText: appName });
+  await expect(app).toContainText('uninstalled');
+  await expect(page.locator('#workspace-navigation').getByRole('link', { name: moduleTitle })).toHaveCount(0);
+});
+
+test('admin installs a standard Connect descriptor and opens its signed remote page', async ({ page }) => {
+  let issueKey = '';
+  await page.route('https://connect.example.test/**', async route => {
+    const target = new URL(route.request().url());
+    expect(target.searchParams.get('jwt')).toBeTruthy();
+    expect(target.searchParams.get('xdm_e')).toBe('http://localhost:8080');
+    expect(target.searchParams.get('xdm_c')).toMatch(/^zzira-/);
+    if (target.pathname.endsWith('/report.svg') || target.pathname.endsWith('/dashboard.svg') || target.pathname.endsWith('/project.svg') || target.pathname.endsWith('/context.svg') || target.pathname.endsWith('/status.svg')) {
+      await route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 60"><rect width="80" height="60" rx="8" fill="#1868db"/><path d="M18 42V30m15 12V18m15 24V25m15 17V12" stroke="white" stroke-width="5"/></svg>' });
+      return;
+    }
+    if (target.pathname.endsWith('/remote-panel')) {
+      expect(target.searchParams.get('issue.key')).toBe(issueKey);
+      expect(target.searchParams.get('selected')).toBe(issueKey);
+      await route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main><h1>Remote issue risk</h1><p>Issue context received.</p></main></body></html>' });
+      return;
+    }
+    if (target.pathname.endsWith('/remote-content')) {
+      expect(target.searchParams.get('issue.key')).toBe(issueKey);
+      await route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main><h1>Remote incident runbook</h1><p>Quick-add issue context received.</p></main></body></html>' });
+      return;
+    }
+    if (target.pathname.endsWith('/remote-context')) {
+      expect(target.searchParams.get('issue.key')).toBe(issueKey);
+      expect(target.searchParams.get('issue.id')).toBeTruthy();
+      expect(target.searchParams.get('project.key')).toBe('ZZ');
+      expect(target.searchParams.get('project.id')).toBeTruthy();
+      expect(target.searchParams.get('selected')).toBe(issueKey);
+      await route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main><h1>Remote delivery context</h1><p>Issue and project context received.</p></main></body></html>' });
+      return;
+    }
+    if (target.pathname.endsWith('/remote-activity')) {
+      expect(target.searchParams.get('issue.key')).toBe(issueKey);
+      expect(target.searchParams.get('issue.id')).toBeTruthy();
+      expect(target.searchParams.get('project.key')).toBe('ZZ');
+      expect(target.searchParams.get('project.id')).toBeTruthy();
+      expect(target.searchParams.get('selected')).toBe(issueKey);
+      expect(target.searchParams.get('source')).toBe('activity');
+      await route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main><h1>Remote deployment activity</h1><p>Issue activity context received.</p></main></body></html>' });
+      return;
+    }
+    if (target.pathname.endsWith('/remote-site-admin')) {
+      expect(target.searchParams.get('source')).toBe('site');
+      await route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main><h1>Remote site controls</h1><p>Administrator context received.</p></main></body></html>' });
+      return;
+    }
+    if (target.pathname.endsWith('/remote-project')) {
+      expect(target.searchParams.get('project.key')).toBe('ZZ');
+      expect(target.searchParams.get('project.id')).toBeTruthy();
+      expect(target.searchParams.get('selected')).toBe('ZZ');
+      await route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main><h1>Remote project intelligence</h1><p>Project context received.</p></main></body></html>' });
+      return;
+    }
+    if (target.pathname.endsWith('/remote-project-admin')) {
+      expect(target.searchParams.get('project.key')).toBe('ZZ');
+      expect(target.searchParams.get('project.id')).toBeTruthy();
+      expect(target.searchParams.get('source')).toBe('settings');
+      await route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main><h1>Remote project controls</h1><p>Administrator project context received.</p></main></body></html>' });
+      return;
+    }
+    if (target.pathname.endsWith('/remote-report')) {
+      expect(target.searchParams.get('project.key')).toBe('ZZ');
+      expect(target.searchParams.get('project.id')).toBeTruthy();
+      expect(target.searchParams.get('selected')).toBe('ZZ');
+      await route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main><h1>Remote delivery risk</h1><p>Project report context received.</p></main></body></html>' });
+      return;
+    }
+    if (target.pathname.endsWith('/remote-dashboard')) {
+      expect(target.searchParams.get('dashboard.id')).toBeTruthy();
+      expect(target.searchParams.get('dashboardItem.id')).toBeTruthy();
+      expect(target.searchParams.get('dashboardItem.key')).toBe('release-health');
+      expect(target.searchParams.get('dashboardItem.viewType')).toBe('default');
+      expect(target.searchParams.get('item')).toBe(target.searchParams.get('dashboardItem.id'));
+      await route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main><h1>Remote release health</h1><p>Dashboard item context received.</p></main></body></html>' });
+      return;
+    }
+    if (target.pathname.endsWith('/remote-review')) {
+      expect(target.searchParams.get('content.id')).toBeTruthy();
+      expect(target.searchParams.get('content')).toBe(target.searchParams.get('content.id'));
+      await route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main><h1>Remote page review</h1><p>Content context received.</p></main></body></html>' });
+      return;
+    }
+    if (target.pathname.endsWith('/remote-shortcut')) {
+      await route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main><h1>Remote team shortcut</h1><p>Web item context received.</p></main></body></html>' });
+      return;
+    }
+    expect(target.pathname).toContain('/connect/base/remote-page');
+    await route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main><h1>Remote release intelligence</h1><p>Signed Connect context received.</p></main></body></html>' });
+  });
+  await page.goto('/login');
+  await page.fill('#login-email', 'demo@zzira.dev');
+  await page.fill('#login-password', 'demo1234');
+  await page.click('button[type=submit]');
+
+  const suffix = String(Date.now());
+  const wikiPageURL = await createWikiPageFixture(page, suffix);
+  issueKey = await createIssueFixture(page, suffix);
+  const appName = `Connect journey ${suffix}`;
+  const moduleTitle = `Remote releases ${suffix}`;
+  const panelTitle = `Remote risk ${suffix}`;
+  const bylineTitle = `Remote review ${suffix}`;
+  const fieldName = `Remote risk score ${suffix}`;
+  const shortcutTitle = `Remote shortcut ${suffix}`;
+  const contentTitle = `Incident runbook ${suffix}`;
+  const projectPageTitle = `Project intelligence ${suffix}`;
+  const projectAdminTitle = `Project controls ${suffix}`;
+  const reportTitle = `Delivery risk ${suffix}`;
+  const dashboardItemTitle = `Release health ${suffix}`;
+  const issueContextTitle = `Delivery context ${suffix}`;
+  const issueGlanceTitle = `Legacy glance ${suffix}`;
+  const issueActivityTitle = `Deployments ${suffix}`;
+  const siteAdminTitle = `Site controls ${suffix}`;
+  const descriptor = {
+    key: `connect.journey.${suffix}`,
+    name: appName,
+    baseUrl: 'https://connect.example.test/connect/base',
+    authentication: { type: 'jwt' },
+    scopes: ['READ', 'WRITE'],
+    modules: {
+      generalPages: [{ key: 'remote-releases', url: '/remote-page?view=releases', name: { value: moduleTitle } }],
+      adminPages: [{ key: 'site-controls', url: '/remote-site-admin', name: { value: siteAdminTitle }, weight: 70, params: { source: 'site' } }],
+      webPanels: [{ key: 'remote-risk', url: '/remote-panel?selected={issue.key}', location: 'atl.jira.view.issue.right.context', name: { value: panelTitle } }],
+      contentBylineItems: [{ key: 'remote-review', url: '/remote-review?content={content.id}', name: { value: bylineTitle } }],
+      jiraIssueFields: [{ key: 'remote-risk-score', name: { value: fieldName }, description: { value: 'Risk supplied by the Connect app' }, type: 'number' }],
+      webItems: [{ key: 'remote-shortcut', url: '/remote-shortcut', location: 'system.top.navigation.bar', name: { value: shortcutTitle } }],
+      jiraIssueContents: [{ key: 'incident-runbook', name: { value: contentTitle }, tooltip: { value: 'Add incident runbook' }, icon: { url: '/runbook.svg' }, target: { type: 'web_panel', url: '/remote-content?issue={issue.key}' } }],
+      jiraProjectPages: [{ key: 'project-intelligence', name: { value: projectPageTitle }, url: '/remote-project?selected={project.key}', iconUrl: '/project.svg', weight: 40 }],
+      jiraProjectAdminTabPanels: [{ key: 'project-controls', name: { value: projectAdminTitle }, url: '/remote-project-admin', location: 'projectgroup3', weight: 20, params: { source: 'settings' } }],
+      jiraReports: [{ key: 'delivery-risk', name: { value: reportTitle }, description: { value: 'Release and incident risk from the app' }, url: '/remote-report?selected={project.key}', reportCategory: 'AGILE', thumbnailUrl: '/report.svg' }],
+      jiraDashboardItems: [{ key: 'release-health', name: { value: dashboardItemTitle }, description: { value: 'Release health from the Connect app' }, url: '/remote-dashboard?item={dashboardItem.id}', thumbnailUrl: 'dashboard.svg' }],
+      jiraIssueContexts: [{ key: 'delivery-context', name: { value: issueContextTitle }, icon: { width: 24, height: 24, url: 'context.svg' }, content: { type: 'label', label: { value: '3 linked deployments' } }, target: { type: 'web_panel', url: '/remote-context?selected={issue.key}' } }],
+      jiraIssueGlances: [{ key: 'legacy-glance', name: { value: issueGlanceTitle }, icon: { width: 24, height: 24, url: 'glance.svg' }, content: { type: 'label', label: { value: 'Legacy status' } }, target: { type: 'web_panel', url: '/legacy-glance' } }],
+      jiraIssueTabPanels: [{ key: 'deployment-activity', name: { value: issueActivityTitle }, url: '/remote-activity?selected={issue.key}', weight: 80, params: { source: 'activity' } }],
+    },
+  };
+  await page.goto('/admin#admin-apps');
+  await page.locator('#admin-apps summary', { hasText: 'Install app' }).click();
+  await page.getByLabel('App descriptor').fill(JSON.stringify(descriptor, null, 2));
+  await page.getByLabel('Shared signing secret').fill('connect-browser-shared-secret-123456');
+  await page.getByRole('button', { name: 'Install app' }).click();
+
+  let app = page.locator('.admin-app', { hasText: appName });
+  await expect(app).toContainText('connect descriptor');
+  await expect(app).toContainText('/remote-page?view=releases');
+  await expect(app).toContainText(fieldName);
+  await expect(app).toContainText(`${descriptor.key}__remote-risk-score`);
+  await page.locator('#workspace-navigation').getByRole('link', { name: siteAdminTitle }).click();
+  await expect(page.getByRole('heading', { name: siteAdminTitle, level: 1 })).toBeVisible();
+  await expect(page.frameLocator('iframe.app-module-frame').getByRole('heading', { name: 'Remote site controls' })).toBeVisible();
+  await accessible(page);
+  await page.locator('#workspace-navigation').getByRole('link', { name: moduleTitle }).click();
+  await expect(page.getByRole('heading', { name: moduleTitle, level: 1 })).toBeVisible();
+  const remote = page.frameLocator('iframe.app-module-frame');
+  await expect(remote.getByRole('heading', { name: 'Remote release intelligence' })).toBeVisible();
+  await expect(remote.getByText('Signed Connect context received.')).toBeVisible();
+  await accessible(page);
+  await page.locator('#workspace-navigation').getByRole('link', { name: shortcutTitle }).click();
+  await expect(page.frameLocator('iframe.app-module-frame').getByRole('heading', { name: 'Remote team shortcut' })).toBeVisible();
+  await page.goto('/projects/ZZ');
+  const projectPageLink = page.locator('#workspace-navigation').getByRole('link', { name: projectPageTitle });
+  await expect(projectPageLink.locator('img.nav-app-icon')).toBeVisible();
+  await projectPageLink.click();
+  await expect(page.getByRole('heading', { name: projectPageTitle, level: 1 })).toBeVisible();
+  await expect(page.frameLocator('iframe.app-module-frame').getByRole('heading', { name: 'Remote project intelligence' })).toBeVisible();
+  await accessible(page);
+  await page.goto('/projects/ZZ/settings');
+  await page.locator('#workspace-navigation').getByRole('link', { name: projectAdminTitle }).click();
+  await expect(page.getByRole('heading', { name: projectAdminTitle, level: 1 })).toBeVisible();
+  await expect(page.frameLocator('iframe.app-module-frame').getByRole('heading', { name: 'Remote project controls' })).toBeVisible();
+  await accessible(page);
+  await page.goto('/projects/ZZ/reports');
+  const reportCard = page.locator('.app-report-card', { has: page.getByRole('heading', { name: reportTitle, level: 2 }) });
+  await expect(reportCard).toBeVisible();
+  await expect(reportCard.locator('img.app-module-thumbnail')).toBeVisible();
+  await page.getByRole('link', { name: `Open ${reportTitle}` }).click();
+  await expect(page.getByRole('heading', { name: reportTitle, level: 1 })).toBeVisible();
+  await expect(page.frameLocator('iframe.app-module-frame').getByRole('heading', { name: 'Remote delivery risk' })).toBeVisible();
+  await accessible(page);
+  await page.goto('/dashboards');
+  await page.getByLabel('Dashboard name', { exact: true }).fill(`Connect dashboard ${suffix}`);
+  await page.getByRole('button', { name: 'Create dashboard', exact: true }).click();
+  const gadgetChoice = page.locator('.gadget-catalog form', { has: page.getByRole('button', { name: `Add ${dashboardItemTitle}`, exact: true }) });
+  await expect(gadgetChoice.getByText('Release health from the Connect app')).toBeVisible();
+  await expect(gadgetChoice.locator('img.app-module-thumbnail')).toBeVisible();
+  await page.getByRole('button', { name: `Add ${dashboardItemTitle}`, exact: true }).click();
+  await expect(page.locator('.app-dashboard-module').frameLocator('iframe').getByRole('heading', { name: 'Remote release health' })).toBeVisible();
+  await accessible(page);
+
+  const issueContextStatusKey = `com.atlassian.jira.issue:${descriptor.key}:delivery-context:status`;
+  const issueContextStatusURL = `/rest/api/3/issue/${issueKey}/properties/${encodeURIComponent(issueContextStatusKey)}`;
+  const setIssueContextStatus = async (value: object) => page.evaluate(async ({ path, value }) => {
+    const response = await fetch(path, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(value) });
+    return { status: response.status, body: await response.text() };
+  }, { path: issueContextStatusURL, value });
+  let statusResponse = await setIssueContextStatus({ type: 'lozenge', value: { label: 'At risk', type: 'moved' } });
+  expect(statusResponse.status, statusResponse.body).toBe(201);
+  await page.goto(`/browse/${issueKey}`);
+  await page.getByRole('button', { name: issueActivityTitle, exact: true }).click();
+  const activityPanel = page.locator('[data-app-activity-panel]:not([hidden])');
+  await expect(activityPanel.frameLocator('iframe').getByRole('heading', { name: 'Remote deployment activity' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Add comment' })).toBeHidden();
+  await page.getByRole('button', { name: /Comments/ }).click();
+  await expect(page.getByRole('button', { name: 'Add comment' })).toBeVisible();
+  const issueContext = page.locator('details.issue-context-panel', { hasText: issueContextTitle });
+  await expect(page.getByText(issueGlanceTitle)).toHaveCount(0);
+  await expect(issueContext).toContainText('3 linked deployments');
+  await expect(issueContext.locator('.issue-context-status-lozenge')).toHaveText('At risk');
+  await expect(issueContext.locator('.issue-context-status-lozenge')).toHaveClass(/lozenge-moved/);
+  await expect(issueContext.locator('img')).toBeVisible();
+  await issueContext.locator('summary').click();
+  await expect(issueContext.frameLocator('iframe').getByRole('heading', { name: 'Remote delivery context' })).toBeVisible();
+  statusResponse = await setIssueContextStatus({ type: 'badge', value: { label: '123' } });
+  expect(statusResponse.status, statusResponse.body).toBe(200);
+  await page.reload();
+  await expect(issueContext.locator('.issue-context-status-badge')).toHaveText('99+');
+  await expect(issueContext.locator('.issue-context-status-badge')).toHaveAttribute('aria-label', '123');
+  statusResponse = await setIssueContextStatus({ type: 'icon', value: { label: '/status.svg' } });
+  expect(statusResponse.status, statusResponse.body).toBe(200);
+  await page.reload();
+  await expect(issueContext.locator('.issue-context-status-icon')).toBeVisible();
+  const issuePanel = page.locator('.app-context-module', { has: page.getByRole('heading', { name: panelTitle, level: 2 }) });
+  await expect(issuePanel).toBeVisible();
+  await expect(issuePanel.frameLocator('iframe').getByRole('heading', { name: 'Remote issue risk' })).toBeVisible();
+  await page.locator('details.more-fields').click();
+  const issueField = page.getByLabel(fieldName);
+  await expect(issueField).toBeVisible();
+  await issueField.fill('7');
+  await page.getByRole('button', { name: `Save ${fieldName}` }).click();
+  await expect(page.getByLabel(fieldName)).toHaveValue('7');
+  await page.getByRole('button', { name: `Add ${contentTitle}` }).click();
+  const appContent = page.locator('.app-issue-content', { has: page.getByRole('heading', { name: contentTitle, level: 2 }) });
+  await expect(appContent).toBeVisible();
+  await expect(appContent.frameLocator('iframe').getByRole('heading', { name: 'Remote incident runbook' })).toBeVisible();
+  await appContent.getByRole('button', { name: 'Remove' }).click();
+  await expect(page.getByRole('button', { name: `Add ${contentTitle}` })).toBeVisible();
+
+  await page.goto(wikiPageURL);
+  await page.getByRole('link', { name: bylineTitle }).click();
+  await expect(page.getByRole('heading', { name: bylineTitle, level: 1 })).toBeVisible();
+  await expect(page.frameLocator('iframe.app-module-frame').getByRole('heading', { name: 'Remote page review' })).toBeVisible();
+  await accessible(page);
+
+  await page.goto('/admin#admin-apps');
+  app = page.locator('.admin-app', { hasText: appName });
+  await app.getByRole('button', { name: `Uninstall ${appName}` }).click();
+  await expect(page.locator('#workspace-navigation').getByRole('link', { name: moduleTitle })).toHaveCount(0);
+});

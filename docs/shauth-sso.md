@@ -1,9 +1,10 @@
-# ShAuth SSO
+# Identity provider sign-in
 
-ZZIRA supports optional browser SSO through OpenID Connect Discovery. The
-`SHAUTH` name reflects the reference provider used by e6qu, but the
-implementation uses the standard Authorization Code flow with S256 PKCE and
-works with any compliant provider.
+ZZIRA supports simultaneous browser sign-in through Shauth-compatible OpenID
+Connect, Google, Microsoft Entra ID, and Atlassian accounts. Google, Microsoft,
+and Shauth use the OpenID Connect Authorization Code flow with S256 PKCE.
+Atlassian uses its OAuth 2.0 three-legged authorization flow and User Identity
+API because Atlassian 3LO does not return an OpenID Connect ID token.
 
 SSO is enabled only when all settings below are set. Leaving all of them unset
 keeps the normal password sign-in flow; a partial configuration prevents the
@@ -14,14 +15,51 @@ server from starting rather than silently changing authentication behavior.
 | `ZZIRA_SHAUTH_ISSUER` | Provider issuer URL. HTTPS is required in production. |
 | `ZZIRA_SHAUTH_CLIENT_ID` | Registered OIDC client ID. |
 | `ZZIRA_SHAUTH_CLIENT_SECRET` | Registered OIDC client secret. |
+| `ZZIRA_GOOGLE_CLIENT_ID` | Google OAuth client ID. |
+| `ZZIRA_GOOGLE_CLIENT_SECRET` | Google OAuth client secret. |
+| `ZZIRA_MICROSOFT_CLIENT_ID` | Microsoft Entra application client ID. |
+| `ZZIRA_MICROSOFT_CLIENT_SECRET` | Microsoft Entra application client secret. |
+| `ZZIRA_MICROSOFT_TENANT_ID` | Tenant UUID or verified tenant domain. Tenant-independent authorities are rejected so the token issuer can be checked exactly. |
+| `ZZIRA_ATLASSIAN_CLIENT_ID` | Atlassian OAuth 2.0 integration client ID. |
+| `ZZIRA_ATLASSIAN_CLIENT_SECRET` | Atlassian OAuth 2.0 integration client secret. The integration must include the User Identity API and `read:me` scope. |
+| `ZZIRA_IDENTITY_ENCRYPTION_KEY` | Optional base64-encoded 32-byte AES key. Required before organization administrators can register custom OIDC providers or rotate their secrets in the UI. Keep this key stable and supply it to every server replica. |
 | `ZZIRA_EXTERNAL_URL` | Canonical externally reachable ZZIRA origin. |
 | `ZZIRA_ALLOW_INSECURE_OIDC=true` | Local-development only: permits an HTTP loopback issuer. Never set this in production. |
 | `COOKIE_SECURE` | Optional override for cookie transport security. If unset, an HTTPS `ZZIRA_EXTERNAL_URL` enables secure cookies automatically; never disable it for a production HTTPS origin. |
 | `ZZIRA_BOOTSTRAP_ADMIN_EMAIL` | Optional. Grants this email admin membership in the default workspace on every boot, creating the user first if none exists. A first OIDC sign-in provisions an ordinary `member`; set this to your identity provider's break-glass account (or any account that needs admin) to give it the admin role instead. |
 
-Register the client with the provider using:
+Configure any provider by setting its complete variable group. A partial group
+prevents startup. The sign-in page shows every configured provider alongside
+password sign-in, and the administration page reports the active provider,
+protocol, and issuer without exposing secrets. An organization administrator
+can disable a configured provider immediately: ZZIRA removes it from new sign-in
+and connection journeys, revokes that issuer's browser sessions, audits the
+change, and restores the setting after restart. Re-enabling makes the retained
+deployment configuration available again.
 
-- Redirect URI: `<ZZIRA_EXTERNAL_URL>/auth/shauth/callback`
+When `ZZIRA_IDENTITY_ENCRYPTION_KEY` is configured, an organization
+administrator can add a discovered OpenID Connect provider from `/admin` using
+its issuer, client ID, and client secret. Provider keys become callback paths:
+`<ZZIRA_EXTERNAL_URL>/auth/<provider-key>/callback`. ZZIRA validates discovery
+and every advertised endpoint before saving the provider, encrypts the secret
+with AES-256-GCM bound to the workspace and provider key, and never renders the
+secret or ciphertext. Rotation replaces the encrypted credential only after a
+fresh discovery check. Deletion revokes sessions for that issuer. Registration,
+rotation, deletion, enable, and disable operations are audited. Providers whose
+credentials come from environment variables are labeled deployment-managed and
+cannot be overwritten, rotated, or deleted in the UI.
+
+Register callback URLs as follows:
+
+| Provider | Callback URL |
+| --- | --- |
+| Shauth | `<ZZIRA_EXTERNAL_URL>/auth/shauth/callback` |
+| Google | `<ZZIRA_EXTERNAL_URL>/auth/google/callback` |
+| Microsoft | `<ZZIRA_EXTERNAL_URL>/auth/microsoft/callback` |
+| Atlassian | `<ZZIRA_EXTERNAL_URL>/auth/atlassian/callback` |
+
+Shauth additionally supports:
+
 - Post-logout redirect URI: `<ZZIRA_EXTERNAL_URL>/auth/shauth/logout/complete`
 - Back-channel logout URI: `<ZZIRA_EXTERNAL_URL>/auth/shauth/backchannel-logout`
 - Grant: `authorization_code`
@@ -47,25 +85,39 @@ rather than revoking sessions a second time.
 (`e6qu.monitoring/v2`) for centralized collection: real database reachability
 and a real stored-issue count, never a cached or fabricated figure.
 
-The ID token must include a stable subject, `nonce`, `aud`, and a verified
-`email` (`email_verified: true`). A token with multiple audiences must identify
-ZZIRA as its authorized party (`azp`). On the first sign-in ZZIRA binds the trusted
-provider's immutable `(issuer, subject)` pair to an existing active member
+OIDC ID tokens must include a stable subject, `nonce`, and `aud`. Google and
+Shauth must also assert `email_verified: true`. Microsoft Entra tenant tokens
+are accepted only after signature, audience, nonce, and exact tenant issuer
+validation; ZZIRA uses `email`, or an email-shaped `preferred_username` when
+the optional email claim is absent. A token with multiple audiences must
+identify ZZIRA as its authorized party (`azp`). Atlassian identities must have
+an active `atlassian` account type, stable `account_id`, and valid email from
+`GET https://api.atlassian.com/me` using the newly exchanged access token.
+
+On the first sign-in ZZIRA binds the trusted provider's immutable
+`(issuer, subject)` pair to an existing active member
 with that email if one exists, or otherwise provisions a new `member` of the
 default workspace for that email; later sign-ins use the immutable pair, not
-a mutable email or username. The identity provider is the authorization
-boundary: it already decided this person may reach ZZIRA at all (Shauth's own
-catalog registration, GitHub-org membership, and role mapping), so ZZIRA does
-not additionally require an operator to pre-invite every real member by hand
-before they can sign in.
+a mutable email or username. Multiple providers with the same trusted email
+link to the same ZZIRA account. Each successful provider sign-in is recorded in
+the organization audit log.
 
-If the ID token carries a `preferred_username` claim, it is recorded as the
+Signed-in users can review connected provider name, issuer, current asserted
+email, immutable subject, and connection time on their profile. Connecting a
+new provider starts a provider-bound authorization transaction tied to the
+current user instead of relying on email matching. Disconnecting a provider
+revokes every browser session from that issuer while preserving sessions from
+other providers. ZZIRA refuses to remove the last external identity, preventing
+an externally provisioned account from losing its final known sign-in path.
+
+If an identity carries a `preferred_username` or Atlassian nickname, it is recorded as the
 account’s display handle (`data-shauth-user` on the account control in the
 product header) and refreshed on every sign-in. Its absence is not an error —
 the account control falls back to the email’s local part.
 
-The flow keeps state, nonce, and PKCE verifier server-side with a ten-minute,
-single-use lifetime. State is also HMAC-bound to a short-lived, HttpOnly,
+The flow keeps the provider key, state, nonce, and PKCE verifier server-side
+with a ten-minute, single-use lifetime. A state issued for one provider cannot
+be consumed by another. State is also HMAC-bound to a short-lived, HttpOnly,
 SameSite browser cookie, preventing a callback initiated in another browser
 from swapping that browser into the attacker's identity. Browser session
 cookies contain only ZZIRA’s opaque token;
@@ -85,3 +137,6 @@ Standards references:
 - [OpenID Connect Back-Channel Logout 1.0](https://openid.net/specs/openid-connect-backchannel-1_0.html)
 - [OpenID Connect RP-Initiated Logout 1.0](https://openid.net/specs/openid-connect-rpinitiated-1_0.html)
 - [OAuth 2.0 Security Best Current Practice (RFC 9700)](https://www.rfc-editor.org/rfc/rfc9700.html)
+- [Google OpenID Connect](https://developers.google.com/identity/openid-connect/openid-connect)
+- [Microsoft identity platform OpenID Connect](https://learn.microsoft.com/en-us/entra/identity-platform/v2-protocols-oidc)
+- [Atlassian OAuth 2.0 (3LO)](https://developer.atlassian.com/cloud/jira/platform/oauth-2-3lo-apps/)

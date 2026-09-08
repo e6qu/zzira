@@ -54,7 +54,12 @@ func (h *Handler) projectSettings(w http.ResponseWriter, r *http.Request, key st
 			return
 		}
 		data.Saved = false
-		data.Values = commands.CreateProjectInput{Key: r.PostFormValue("key"), Name: r.PostFormValue("name"), Description: r.PostFormValue("description"), URL: r.PostFormValue("url"), LeadAccountID: r.PostFormValue("leadAccountId"), AssigneeType: r.PostFormValue("assigneeType"), ProjectTypeKey: "software", ProjectTemplateKey: r.PostFormValue("projectTemplateKey")}
+		projectTemplateKey := r.PostFormValue("projectTemplateKey")
+		projectTypeKey := "software"
+		if projectTemplateKey == "com.atlassian.servicedesk:simplified-it-service-management" {
+			projectTypeKey = "service_desk"
+		}
+		data.Values = commands.CreateProjectInput{Key: r.PostFormValue("key"), Name: r.PostFormValue("name"), Description: r.PostFormValue("description"), URL: r.PostFormValue("url"), LeadAccountID: r.PostFormValue("leadAccountId"), AssigneeType: r.PostFormValue("assigneeType"), ProjectTypeKey: projectTypeKey, ProjectTemplateKey: projectTemplateKey}
 		var p *models.Project
 		var err error
 		if data.Creating {

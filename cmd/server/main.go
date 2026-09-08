@@ -11,14 +11,17 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 	"unicode"
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/e6qu/zzira/internal/admin"
 	"github.com/e6qu/zzira/internal/agile"
 	"github.com/e6qu/zzira/internal/api3"
+	"github.com/e6qu/zzira/internal/apps"
 	"github.com/e6qu/zzira/internal/attachments"
 	"github.com/e6qu/zzira/internal/authn"
 	"github.com/e6qu/zzira/internal/automation"
@@ -26,7 +29,9 @@ import (
 	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/confluence"
 	"github.com/e6qu/zzira/internal/jql"
+	"github.com/e6qu/zzira/internal/mailer"
 	"github.com/e6qu/zzira/internal/notifybus"
+	"github.com/e6qu/zzira/internal/secretbox"
 	"github.com/e6qu/zzira/internal/store"
 	"github.com/e6qu/zzira/internal/syncapi"
 	"github.com/e6qu/zzira/internal/web"
@@ -112,41 +117,86 @@ func main() {
 	}
 	cmdSvc := &commands.Service{Store: st, Blobs: blobs}
 	automationSvc := &automation.Service{Store: st, Commands: cmdSvc}
-
-	oidcSSO, err := web.NewOIDC(ctx)
+	smtpSender, err := mailer.SMTPFromEnv()
 	if err != nil {
-		log.Fatalf("configure OIDC SSO: %v", err)
+		log.Fatalf("configure invitation email: %v", err)
 	}
-	webHandler := &web.Handler{Store: st, Commands: cmdSvc, Automation: automationSvc, OIDC: oidcSSO, WorkspaceSlug: workspaceSlug}
-	api := &api3.Handler{Store: st, Commands: cmdSvc, Blobs: blobs, BaseURL: envOr("BASE_URL", "http://localhost:"+port), WorkspaceSlug: workspaceSlug}
+
+	identityProviders, err := web.NewIdentityProviders(ctx)
+	if err != nil {
+		log.Fatalf("configure identity providers: %v", err)
+	}
+	identityExternalURL := strings.TrimRight(os.Getenv("ZZIRA_EXTERNAL_URL"), "/")
+	providerSecrets, err := secretbox.FromEnv("ZZIRA_IDENTITY_ENCRYPTION_KEY")
+	if err != nil {
+		log.Fatalf("configure identity provider credential encryption: %v", err)
+	}
+	registrations, err := st.IdentityProviderRegistrationsByWorkspace(ctx, workspaceID)
+	if err != nil {
+		log.Fatalf("load identity provider registrations: %v", err)
+	}
+	if err := identityProviders.LoadStored(ctx, registrations, providerSecrets, workspaceID, identityExternalURL); err != nil {
+		log.Fatalf("configure stored identity providers: %v", err)
+	}
+	providerSettings, err := st.IdentityProviderSettingsByWorkspace(ctx, workspaceID)
+	if err != nil {
+		log.Fatalf("load identity provider settings: %v", err)
+	}
+	identityProviders.ApplyEnabled(providerSettings)
+	baseURL := envOr("BASE_URL", "http://localhost:"+port)
+	webHandler := &web.Handler{
+		Store: st, Commands: cmdSvc, Automation: automationSvc, OIDC: identityProviders.Provider("shauth"), IdentityProviders: identityProviders, ProviderSecrets: providerSecrets, IdentityExternalURL: identityExternalURL,
+		WorkspaceSlug: workspaceSlug, BaseURL: baseURL, InvitationNotificationsConfigured: smtpSender != nil,
+	}
+	api := &api3.Handler{Store: st, Commands: cmdSvc, Blobs: blobs, BaseURL: baseURL, WorkspaceSlug: workspaceSlug}
 	agileAPI := &agile.Handler{Store: st, Commands: cmdSvc, IssueBean: api.IssueBean, BaseURL: envOr("BASE_URL", "http://localhost:"+port), WorkspaceSlug: workspaceSlug}
 	automationAPI := &automation.Handler{Service: automationSvc, WorkspaceSlug: workspaceSlug}
+	appAPI := &apps.Handler{Store: st, Secrets: providerSecrets, WorkspaceSlug: workspaceSlug}
+	adminAPI := &admin.Handler{
+		Store: st, BaseURL: api.BaseURL, WorkspaceSlug: workspaceSlug,
+		InvitationNotificationsConfigured: smtpSender != nil,
+	}
 	bus := notifybus.New()
 	sse := &syncapi.SSEHandler{Store: st, Bus: bus, WorkspaceSlug: workspaceSlug}
 	sync := &syncapi.Handler{Store: st, WorkspaceSlug: workspaceSlug}
+	webhookSearch := func(ctx context.Context, wsID, jqlText string) (bool, error) {
+		// Webhooks are admin-configured, so their filters use a workspace
+		// administrator's complete issue view.
+		adminID, err := st.FirstAdminID(ctx, wsID)
+		if err != nil {
+			return false, err
+		}
+		q, err := jql.Parse(jqlText)
+		if err != nil {
+			return false, err
+		}
+		compiled := jql.CompileAt(q, adminID, jql.DefaultResolver(), 1)
+		if compiled.Err != nil {
+			return false, compiled.Err
+		}
+		issues, _, err := st.Search(ctx, wsID, adminID, compiled, 1, 0)
+		return err == nil && len(issues) > 0, nil
+	}
 	dispatcher := &webhooks.Dispatcher{
-		Store:  st,
-		Client: &http.Client{Timeout: 10 * time.Second},
-		Checker: &webhooks.JQLChecker{Search: func(ctx context.Context, wsID, jqlText string) (bool, error) {
-			// webhooks are admin-configured: evaluate JQL as a workspace admin
-			adminID, err := st.FirstAdminID(ctx, wsID)
-			if err != nil {
-				return false, err
-			}
-			q, err := jql.Parse(jqlText)
-			if err != nil {
-				return false, err
-			}
-			compiled := jql.CompileAt(q, adminID, jql.DefaultResolver(), 1)
-			if compiled.Err != nil {
-				return false, compiled.Err
-			}
-			issues, _, err := st.Search(ctx, wsID, adminID, compiled, 1, 0)
-			return err == nil && len(issues) > 0, nil
-		}},
+		Store:   st,
+		Client:  &http.Client{Timeout: 10 * time.Second},
+		Checker: &webhooks.JQLChecker{Search: webhookSearch},
 	}
 	go dispatcher.Run(ctx, workspaceID)
+	if providerSecrets != nil {
+		go (&apps.OutboundRunner{
+			Store: st, Secrets: providerSecrets,
+			Client: &http.Client{Timeout: 10 * time.Second}, Search: webhookSearch,
+		}).Run(ctx, workspaceID)
+	}
 	go (&automation.Runner{Service: automationSvc}).Run(ctx, workspaceID)
+	go (&store.APITaskRunner{Store: st}).Run(ctx, workspaceID)
+	go (&store.ServiceSLARunner{Store: st}).Run(ctx, workspaceID)
+	go (&store.ServiceIncidentEscalationRunner{Store: st}).Run(ctx, workspaceID)
+	go (&commands.ServiceTemporaryAttachmentRunner{Service: cmdSvc}).Run(ctx)
+	if smtpSender != nil {
+		go (&mailer.Runner{Store: st, Sender: smtpSender}).Run(ctx)
+	}
 	go func() {
 		for {
 			if err := bus.Listen(ctx, st.Pool); err != nil && ctx.Err() == nil {
@@ -170,43 +220,190 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", webHandler.Home)
 	mux.HandleFunc("GET /login", webHandler.LoginForm)
-	mux.HandleFunc("GET /auth/shauth", webHandler.OIDCLogin)
-	mux.HandleFunc("GET /auth/shauth/callback", webHandler.OIDCCallback)
-	mux.HandleFunc("GET /auth/shauth/logout/complete", webHandler.OIDCLogoutComplete)
+	mux.HandleFunc("GET /auth/{provider}", webHandler.OIDCLogin)
+	mux.HandleFunc("GET /auth/{provider}/link", webHandler.IdentityProviderLink)
+	mux.HandleFunc("GET /auth/{provider}/callback", webHandler.OIDCCallback)
+	mux.HandleFunc("GET /auth/{provider}/logout/complete", webHandler.OIDCLogoutComplete)
 	mux.HandleFunc("GET /auth/validation", webHandler.Validation)
 	mux.HandleFunc("GET /monitoring/observation", webHandler.Monitoring)
-	mux.HandleFunc("POST /auth/shauth/backchannel-logout", webHandler.BackChannelLogout)
+	mux.HandleFunc("POST /auth/{provider}/backchannel-logout", webHandler.BackChannelLogout)
 	mux.HandleFunc("POST /login", webHandler.LoginSubmit)
 	mux.HandleFunc("POST /logout", webHandler.Logout)
 	mux.HandleFunc("GET /signed-out", webHandler.SignedOut)
 	mux.HandleFunc("GET /projects", webHandler.ProjectsPage)
+	mux.HandleFunc("GET /service", webHandler.ServiceHome)
+	mux.HandleFunc("GET /service/portals/{desk}", webHandler.ServicePortal)
+	mux.HandleFunc("GET /service/knowledge/{page}", webHandler.ServiceKnowledgePage)
+	mux.HandleFunc("GET /service/portals/{desk}/request/{requestType}", webHandler.ServiceRequestForm)
+	mux.HandleFunc("POST /service/portals/{desk}/request/{requestType}", webHandler.ServiceRequestForm)
+	mux.HandleFunc("GET /service/requests/{key}", webHandler.ServiceRequestPage)
+	mux.HandleFunc("POST /service/requests/{key}/comments", webHandler.ServiceRequestComment)
+	mux.HandleFunc("POST /service/requests/{key}/approvals", webHandler.ServiceRequestApproval)
+	mux.HandleFunc("POST /service/requests/{key}/approvals/{approval}", webHandler.ServiceRequestApprovalDecision)
+	mux.HandleFunc("POST /service/requests/{key}/operations", webHandler.ServiceRequestOperations)
+	mux.HandleFunc("POST /service/requests/{key}/incident-updates", webHandler.ServiceIncidentUpdate)
+	mux.HandleFunc("POST /service/requests/{key}/notification", webHandler.ServiceRequestNotification)
+	mux.HandleFunc("POST /service/requests/{key}/feedback", webHandler.ServiceRequestFeedback)
+	mux.HandleFunc("POST /service/requests/{key}/transition", webHandler.ServiceRequestTransition)
+	mux.HandleFunc("POST /service/requests/{key}/participants", webHandler.ServiceRequestParticipant)
+	mux.HandleFunc("POST /service/requests/{key}/links", webHandler.ServiceRequestLink)
+	mux.HandleFunc("POST /service/requests/{key}/links/{link}/delete", webHandler.ServiceRequestLinkDelete)
+	mux.HandleFunc("POST /service/requests/{key}/assets", webHandler.ServiceRequestAssetSettings)
+	mux.HandleFunc("GET /service/agent", webHandler.ServiceAgent)
+	mux.HandleFunc("GET /service/agent/{desk}", webHandler.ServiceAgent)
+	mux.HandleFunc("GET /service/agent/{desk}/reports", webHandler.ServiceReports)
+	mux.HandleFunc("GET /service/agent/{desk}/assets", webHandler.ServiceAssetsPage)
+	mux.HandleFunc("POST /service/agent/{desk}/assets/schemas", webHandler.ServiceAssetSchemaSettings)
+	mux.HandleFunc("POST /service/agent/{desk}/assets/objects", webHandler.ServiceAssetObjectSettings)
+	mux.HandleFunc("POST /service/agent/{desk}/assets/relationships", webHandler.ServiceAssetRelationshipSettings)
+	mux.HandleFunc("POST /service/agent/{desk}/agents", webHandler.ServiceAgentSettings)
+	mux.HandleFunc("POST /service/agent/{desk}/operations", webHandler.ServiceOperationsSettings)
+	mux.HandleFunc("POST /service/agent/{desk}/on-call", webHandler.ServiceOnCallSettings)
+	mux.HandleFunc("POST /service/agent/{desk}/escalations", webHandler.ServiceEscalationSettings)
+	mux.HandleFunc("POST /service/agent/{desk}/queues", webHandler.ServiceQueueSettings)
+	mux.HandleFunc("POST /service/agent/{desk}/request-types/{requestType}/fields", webHandler.ServiceRequestTypeFieldSettings)
+	mux.HandleFunc("POST /service/agent/{desk}/customers", webHandler.ServiceCustomerSettings)
+	mux.HandleFunc("POST /service/agent/{desk}/organizations", webHandler.ServiceOrganizationSettings)
+	mux.HandleFunc("POST /service/agent/{desk}/knowledge", webHandler.ServiceKnowledgeSettings)
+	mux.HandleFunc("POST /service/agent/{desk}/calendar", webHandler.ServiceCalendarSettings)
+	mux.HandleFunc("POST /service/agent/{desk}/calendar/holidays", webHandler.ServiceCalendarHolidaySettings)
+	mux.HandleFunc("POST /service/agent/{desk}/sla/{metric}", webHandler.ServiceSLASettings)
+	mux.HandleFunc("POST /service/agent/{desk}/sla/{metric}/goals", webHandler.ServiceSLAGoalSettings)
+	mux.HandleFunc("POST /service/agent/{desk}/requests/{key}/assign", webHandler.ServiceAgentAssign)
+	mux.HandleFunc("GET /admin", webHandler.AdminPage)
+	mux.HandleFunc("GET /admin/apps/modules/{module}", webHandler.AdminAppModulePage)
+	mux.HandleFunc("POST /admin/apps", webHandler.CreateAdminApp)
+	mux.HandleFunc("POST /admin/apps/{appKey}", webHandler.UpdateAdminApp)
+	mux.HandleFunc("POST /admin/identity-providers/{provider}", webHandler.UpdateAdminIdentityProvider)
+	mux.HandleFunc("POST /admin/identity-providers", webHandler.CreateAdminIdentityProvider)
+	mux.HandleFunc("POST /admin/groups", webHandler.CreateAdminGroup)
+	mux.HandleFunc("POST /admin/groups/{groupId}/delete", webHandler.DeleteAdminGroup)
+	mux.HandleFunc("POST /admin/groups/{groupId}/members", webHandler.UpdateAdminGroupMember)
+	mux.HandleFunc("POST /admin/groups/{groupId}/roles", webHandler.UpdateAdminGroupRole)
+	mux.HandleFunc("POST /admin/users/invite", webHandler.InviteAdminUser)
+	mux.HandleFunc("POST /admin/users/{accountId}", webHandler.UpdateAdminUserStatus)
+	mux.HandleFunc("POST /admin/users/{accountId}/profile", webHandler.UpdateAdminUserProfile)
+	mux.HandleFunc("POST /admin/domains", webHandler.CreateAdminDomain)
+	mux.HandleFunc("POST /admin/domains/{domainId}", webHandler.UpdateAdminDomain)
+	mux.HandleFunc("POST /admin/policies", webHandler.CreateAdminPolicy)
+	mux.HandleFunc("POST /admin/policies/{policyId}", webHandler.UpdateAdminPolicy)
 	mux.HandleFunc("GET /wiki", webHandler.WikiHome)
+	mux.HandleFunc("GET /wiki/pages/{page}", webHandler.WikiPageRedirect)
 	mux.HandleFunc("POST /wiki/spaces", webHandler.WikiHome)
 	mux.HandleFunc("GET /wiki/spaces/{space}", webHandler.WikiSpacePage)
+	mux.HandleFunc("POST /wiki/spaces/{space}/classification", webHandler.WikiSpaceClassification)
+	mux.HandleFunc("POST /wiki/spaces/{space}/properties", webHandler.WikiSpaceProperty)
+	mux.HandleFunc("POST /wiki/spaces/{space}/roles", webHandler.WikiSpaceRoleCreate)
+	mux.HandleFunc("POST /wiki/spaces/{space}/role-assignments", webHandler.WikiSpaceRoleAssignments)
+	mux.HandleFunc("GET /wiki/spaces/{space}/blogposts/new", webHandler.WikiBlogPostNew)
+	mux.HandleFunc("POST /wiki/spaces/{space}/blogposts/new", webHandler.WikiBlogPostNew)
+	mux.HandleFunc("GET /wiki/spaces/{space}/blogposts/{blogpost}", webHandler.WikiBlogPostPage)
+	mux.HandleFunc("POST /wiki/spaces/{space}/blogposts/{blogpost}", webHandler.WikiBlogPostPage)
+	mux.HandleFunc("POST /wiki/spaces/{space}/blogposts/{blogpost}/lifecycle", webHandler.WikiBlogPostLifecycle)
+	mux.HandleFunc("POST /wiki/spaces/{space}/blogposts/{blogpost}/metadata", webHandler.WikiBlogPostMetadata)
+	mux.HandleFunc("POST /wiki/spaces/{space}/blogposts/{blogpost}/attachments", webHandler.WikiBlogAttachmentCreate)
+	mux.HandleFunc("POST /wiki/spaces/{space}/blogposts/{blogpost}/attachments/{attachment}/delete", webHandler.WikiBlogAttachmentDelete)
+	mux.HandleFunc("POST /wiki/spaces/{space}/blogposts/{blogpost}/comments", webHandler.WikiBlogCommentCreate)
+	mux.HandleFunc("POST /wiki/spaces/{space}/blogposts/{blogpost}/inline-comments", webHandler.WikiBlogInlineCommentCreate)
+	mux.HandleFunc("POST /wiki/spaces/{space}/blogposts/{blogpost}/inline-comments/{comment}", webHandler.WikiBlogInlineCommentUpdate)
+	mux.HandleFunc("POST /wiki/spaces/{space}/folders", webHandler.WikiFolderCreate)
+	mux.HandleFunc("POST /wiki/spaces/{space}/folders/{folder}/delete", webHandler.WikiFolderDelete)
+	mux.HandleFunc("POST /wiki/spaces/{space}/embeds", webHandler.WikiSmartLinkCreate)
+	mux.HandleFunc("POST /wiki/spaces/{space}/embeds/{embed}/delete", webHandler.WikiSmartLinkDelete)
+	mux.HandleFunc("POST /wiki/spaces/{space}/databases", webHandler.WikiDatabaseCreate)
+	mux.HandleFunc("GET /wiki/spaces/{space}/databases/{database}", webHandler.WikiDatabasePage)
+	mux.HandleFunc("POST /wiki/spaces/{space}/databases/{database}/columns", webHandler.WikiDatabaseColumnCreate)
+	mux.HandleFunc("POST /wiki/spaces/{space}/databases/{database}/columns/{column}/delete", webHandler.WikiDatabaseColumnDelete)
+	mux.HandleFunc("POST /wiki/spaces/{space}/databases/{database}/rows", webHandler.WikiDatabaseRowSave)
+	mux.HandleFunc("POST /wiki/spaces/{space}/databases/{database}/rows/{row}", webHandler.WikiDatabaseRowSave)
+	mux.HandleFunc("POST /wiki/spaces/{space}/databases/{database}/rows/{row}/delete", webHandler.WikiDatabaseRowDelete)
+	mux.HandleFunc("POST /wiki/spaces/{space}/databases/{database}/views", webHandler.WikiDatabaseViewSave)
+	mux.HandleFunc("POST /wiki/spaces/{space}/databases/{database}/views/{view}/delete", webHandler.WikiDatabaseViewDelete)
+	mux.HandleFunc("POST /wiki/spaces/{space}/databases/{database}/classification", webHandler.WikiDatabaseClassification)
+	mux.HandleFunc("POST /wiki/spaces/{space}/databases/{database}/delete", webHandler.WikiDatabaseDelete)
+	mux.HandleFunc("POST /wiki/spaces/{space}/whiteboards", webHandler.WikiWhiteboardCreate)
+	mux.HandleFunc("GET /wiki/spaces/{space}/whiteboards/{whiteboard}", webHandler.WikiWhiteboardPage)
+	mux.HandleFunc("POST /wiki/spaces/{space}/whiteboards/{whiteboard}/objects", webHandler.WikiWhiteboardObjectSave)
+	mux.HandleFunc("POST /wiki/spaces/{space}/whiteboards/{whiteboard}/objects/{object}", webHandler.WikiWhiteboardObjectSave)
+	mux.HandleFunc("POST /wiki/spaces/{space}/whiteboards/{whiteboard}/objects/{object}/delete", webHandler.WikiWhiteboardObjectDelete)
+	mux.HandleFunc("POST /wiki/spaces/{space}/whiteboards/{whiteboard}/connectors", webHandler.WikiWhiteboardConnectorSave)
+	mux.HandleFunc("POST /wiki/spaces/{space}/whiteboards/{whiteboard}/connectors/{connector}/delete", webHandler.WikiWhiteboardConnectorDelete)
+	mux.HandleFunc("POST /wiki/spaces/{space}/whiteboards/{whiteboard}/classification", webHandler.WikiWhiteboardClassification)
+	mux.HandleFunc("POST /wiki/spaces/{space}/whiteboards/{whiteboard}/delete", webHandler.WikiWhiteboardDelete)
+	mux.HandleFunc("POST /wiki/spaces/{space}/watch", webHandler.WikiSpaceWatch)
 	mux.HandleFunc("GET /wiki/spaces/{space}/pages/new", webHandler.WikiEdit)
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/new", webHandler.WikiEdit)
 	mux.HandleFunc("GET /wiki/spaces/{space}/pages/{page}", webHandler.WikiPage)
 	mux.HandleFunc("GET /wiki/spaces/{space}/pages/{page}/edit", webHandler.WikiEdit)
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/edit", webHandler.WikiEdit)
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/trash", webHandler.WikiTrash)
-	mux.Handle("/wiki/api/v2/", &confluence.Handler{Store: st, Commands: api.Commands, WorkspaceSlug: workspaceSlug, BaseURL: api.BaseURL})
+	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/labels", webHandler.WikiPageLabels)
+	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/metadata", webHandler.WikiPageMetadata)
+	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/watch", webHandler.WikiPageWatch)
+	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/labels/{label}/watch", webHandler.WikiLabelWatch)
+	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/restrictions", webHandler.WikiPageRestrictions)
+	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/attachments", webHandler.WikiAttachmentCreate)
+	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/attachments/{attachment}/metadata", webHandler.WikiAttachmentMetadata)
+	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/attachments/{attachment}/delete", webHandler.WikiAttachmentDelete)
+	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/comments", webHandler.WikiCommentCreate)
+	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/inline-comments", webHandler.WikiInlineCommentCreate)
+	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/inline-comments/{comment}", webHandler.WikiInlineCommentUpdate)
+	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/inline-comments/{comment}/delete", webHandler.WikiInlineCommentDelete)
+	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/tasks", webHandler.WikiTaskCreate)
+	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/tasks/{task}", webHandler.WikiTaskUpdate)
+	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/comments/{comment}", webHandler.WikiCommentUpdate)
+	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/comments/{comment}/delete", webHandler.WikiCommentDelete)
+	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/comments/{comment}/like", webHandler.WikiCommentLike)
+	confluenceHandler := &confluence.Handler{Store: st, Commands: api.Commands, Blobs: blobs, WorkspaceSlug: workspaceSlug, BaseURL: api.BaseURL}
+	mux.Handle("/wiki/api/v2/", confluenceHandler)
+	mux.Handle("/wiki/rest/api/", &confluence.V1Handler{Handler: confluenceHandler})
+	mux.Handle("/wiki/download/attachments/", &confluence.DownloadHandler{Handler: confluenceHandler})
+	mux.Handle("/wiki/download/thumbnails/", &confluence.ThumbnailHandler{Handler: confluenceHandler})
 	mux.HandleFunc("GET /projects/{key}/releases", webHandler.Releases)
 	mux.HandleFunc("POST /projects/{key}/releases", webHandler.Releases)
 	mux.HandleFunc("GET /projects/{key}/releases/{version}", webHandler.Release)
 	mux.HandleFunc("POST /projects/{key}/releases/{version}", webHandler.Release)
+	mux.HandleFunc("GET /projects/{key}/reports", webHandler.ProjectReports)
+	mux.HandleFunc("GET /projects/{key}/reports/apps/{module}", webHandler.ProjectAppReport)
+	mux.HandleFunc("GET /projects/{key}/reports/dora", webHandler.DORAReport)
 	mux.HandleFunc("GET /projects/new", webHandler.NewProject)
 	mux.HandleFunc("POST /projects/new", webHandler.NewProject)
 	mux.HandleFunc("GET /projects/{key}/settings", webHandler.ProjectSettings)
 	mux.HandleFunc("POST /projects/{key}/settings", webHandler.ProjectSettings)
+	mux.HandleFunc("GET /projects/{key}/settings/apps/{module}", webHandler.ProjectAdminAppModulePage)
+	mux.HandleFunc("GET /projects/{key}/apps/{module}", webHandler.ProjectAppModulePage)
 	mux.HandleFunc("GET /projects/{key}", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.ProjectOverview(w, r, r.PathValue("key"))
 	})
 	mux.HandleFunc("GET /people", webHandler.PeoplePage)
 	mux.HandleFunc("GET /profile", webHandler.SelfProfile)
+	mux.HandleFunc("POST /profile/identities/{provider}/unlink", webHandler.UnlinkIdentityProvider)
 	mux.HandleFunc("GET /people/{id}", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.ProfilePage(w, r, r.PathValue("id"))
 	})
 	mux.HandleFunc("GET /settings/workflows", webHandler.WorkflowsPage)
+	mux.HandleFunc("GET /settings/statuses", webHandler.StatusesPage)
+	mux.HandleFunc("GET /settings/workflow-schemes", webHandler.WorkflowSchemesPage)
+	mux.HandleFunc("POST /settings/workflow-schemes", webHandler.CreateWorkflowScheme)
+	mux.HandleFunc("GET /settings/workflow-schemes/{id}", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.WorkflowSchemePage(w, r, r.PathValue("id"))
+	})
+	mux.HandleFunc("POST /settings/workflow-schemes/{id}", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.SaveWorkflowSchemeDraft(w, r, r.PathValue("id"))
+	})
+	mux.HandleFunc("POST /settings/workflow-schemes/{id}/draft", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.FinishWorkflowSchemeDraft(w, r, r.PathValue("id"))
+	})
+	mux.HandleFunc("POST /settings/workflow-schemes/{id}/projects", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.AssignWorkflowScheme(w, r, r.PathValue("id"))
+	})
+	mux.HandleFunc("POST /settings/statuses", webHandler.CreateStatus)
+	mux.HandleFunc("POST /settings/statuses/{id}", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.UpdateStatus(w, r, r.PathValue("id"))
+	})
+	mux.HandleFunc("POST /settings/statuses/{id}/delete", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.DeleteStatus(w, r, r.PathValue("id"))
+	})
 	mux.HandleFunc("POST /settings/workflows", webHandler.CreateWorkflow)
 	mux.HandleFunc("GET /settings/workflows/{id}", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.WorkflowPage(w, r, r.PathValue("id"))
@@ -217,8 +414,14 @@ func main() {
 	mux.HandleFunc("POST /settings/workflows/{id}/transitions/{transition}/delete", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.DeleteWorkflowTransition(w, r, r.PathValue("id"), r.PathValue("transition"))
 	})
+	mux.HandleFunc("POST /settings/workflows/{id}/layout", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.SaveWorkflowLayout(w, r, r.PathValue("id"))
+	})
 	mux.HandleFunc("POST /settings/workflows/{id}/projects", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.AssignProjectWorkflow(w, r, r.PathValue("id"))
+	})
+	mux.HandleFunc("POST /settings/workflows/{id}/draft", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.FinishWorkflowDraft(w, r, r.PathValue("id"))
 	})
 	mux.HandleFunc("GET /settings/automation", webHandler.AutomationRules)
 	mux.HandleFunc("POST /settings/automation", webHandler.AutomationCreate)
@@ -248,6 +451,12 @@ func main() {
 	mux.HandleFunc("POST /issues/{key}/attachments", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.UploadAttachment(w, r, r.PathValue("key"))
 	})
+	mux.HandleFunc("POST /issues/{key}/forms", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.AttachIssueForm(w, r, r.PathValue("key"))
+	})
+	mux.HandleFunc("POST /issues/{key}/forms/{form}/action/{action}", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.UpdateIssueForm(w, r, r.PathValue("key"), r.PathValue("form"), r.PathValue("action"))
+	})
 	mux.HandleFunc("POST /issues/{key}/worklogs", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.AddWorklog(w, r, r.PathValue("key"))
 	})
@@ -265,6 +474,9 @@ func main() {
 	})
 	mux.HandleFunc("POST /issues/{key}/fields", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.UpdateIssueField(w, r, r.PathValue("key"))
+	})
+	mux.HandleFunc("POST /issues/{key}/app-content/{module}", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.SetIssueAppContent(w, r, r.PathValue("key"), r.PathValue("module"))
 	})
 	mux.HandleFunc("POST /issues/{key}/watch", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.SetWatching(w, r, r.PathValue("key"))
@@ -336,14 +548,85 @@ func main() {
 		api.NotificationHandler(w, r, r.PathValue("id"))
 	})
 	mux.HandleFunc("POST /rest/zzira/1/notifications/read-all", api.MarkAllNotificationsReadHandler)
+	mux.HandleFunc("POST /rest/zzira/1/product-activity", webHandler.RecordProductActivity)
 	mux.Handle("/rest/agile/1.0/", agileAPI)
 	mux.Handle("/rest/api/3/", api)
+	mux.Handle("/rest/servicedeskapi/", api)
+	mux.Handle("/jira/forms/cloud/", api)
+	mux.Handle("/rest/devinfo/0.10/", api)
+	mux.Handle("/jira/devinfo/0.1/cloud/", api)
+	mux.Handle("/rest/builds/0.1/", api)
+	mux.Handle("/jira/builds/0.1/cloud/", api)
+	mux.Handle("/rest/deployments/0.1/", api)
+	mux.Handle("/jira/deployments/0.1/cloud/", api)
 	mux.HandleFunc("GET /_edge/tenant_info", automationAPI.TenantInfo)
 	mux.Handle("/gateway/api/automation/public/jira/", automationAPI)
+	mux.HandleFunc("GET /admin/v1/orgs", adminAPI.Organizations)
+	mux.HandleFunc("GET /admin/v1/orgs/{orgId}", adminAPI.Organization)
+	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories", adminAPI.Directories)
+	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories/{directoryId}/groups", adminAPI.Groups)
+	mux.HandleFunc("POST /admin/v2/orgs/{orgId}/directories/{directoryId}/groups", adminAPI.Groups)
+	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories/{directoryId}/groups/count", adminAPI.GroupCount)
+	mux.HandleFunc("POST /admin/v2/orgs/{orgId}/directories/{directoryId}/groups/search", adminAPI.SearchGroups)
+	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories/{directoryId}/groups/stats", adminAPI.GroupStats)
+	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}", adminAPI.GroupDetails)
+	mux.HandleFunc("DELETE /admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}", adminAPI.GroupDetails)
+	mux.HandleFunc("POST /admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/memberships", adminAPI.GroupMembership)
+	mux.HandleFunc("DELETE /admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/memberships/{accountId}", adminAPI.DeleteGroupMembership)
+	mux.HandleFunc("POST /admin/v2/orgs/{orgId}/workspaces", adminAPI.Workspaces)
+	mux.HandleFunc("POST /admin/v1/orgs/{orgId}/users/{userId}/role-assignments/assign", adminAPI.UserRoleMutation)
+	mux.HandleFunc("POST /admin/v1/orgs/{orgId}/users/{userId}/role-assignments/revoke", adminAPI.UserRoleMutation)
+	mux.HandleFunc("POST /admin/v1/orgs/{orgId}/users/{userId}/roles/assign", adminAPI.UserRoleMutation)
+	mux.HandleFunc("POST /admin/v1/orgs/{orgId}/users/{userId}/roles/revoke", adminAPI.UserRoleMutation)
+	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/role-assignments", adminAPI.RoleAssignments)
+	mux.HandleFunc("POST /admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/role-assignments/assign", adminAPI.GroupRoleMutation)
+	mux.HandleFunc("POST /admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/role-assignments/revoke", adminAPI.GroupRoleMutation)
+	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories/{directoryId}/users/{accountId}/role-assignments", adminAPI.RoleAssignments)
+	mux.HandleFunc("GET /admin/v1/orgs/{orgId}/users", adminAPI.ManagedUsers)
+	mux.HandleFunc("GET /admin/v1/orgs/{orgId}/directory/users/{accountId}/last-active-dates", adminAPI.UserLastActiveDates)
+	mux.HandleFunc("GET /admin/v1/orgs/{orgId}/events", adminAPI.Events)
+	mux.HandleFunc("GET /admin/v1/orgs/{orgId}/events-stream", adminAPI.Events)
+	mux.HandleFunc("GET /admin/v1/orgs/{orgId}/events/{eventId}", adminAPI.EventDetails)
+	mux.HandleFunc("GET /admin/v1/orgs/{orgId}/event-actions", adminAPI.EventActions)
+	mux.HandleFunc("GET /admin/v1/orgs/{orgId}/domains", adminAPI.Domains)
+	mux.HandleFunc("GET /admin/v1/orgs/{orgId}/domains/{domainId}", adminAPI.DomainDetails)
+	mux.HandleFunc("GET /admin/v1/orgs/{orgId}/policies", adminAPI.Policies)
+	mux.HandleFunc("POST /admin/v1/orgs/{orgId}/policies", adminAPI.Policies)
+	mux.HandleFunc("GET /admin/v1/orgs/{orgId}/policies/{policyId}", adminAPI.PolicyDetails)
+	mux.HandleFunc("PUT /admin/v1/orgs/{orgId}/policies/{policyId}", adminAPI.PolicyDetails)
+	mux.HandleFunc("DELETE /admin/v1/orgs/{orgId}/policies/{policyId}", adminAPI.PolicyDetails)
+	mux.HandleFunc("POST /admin/v1/orgs/{orgId}/policies/{policyId}/resources", adminAPI.PolicyResources)
+	mux.HandleFunc("PUT /admin/v1/orgs/{orgId}/policies/{policyId}/resources/{resourceId}", adminAPI.PolicyResourceDetails)
+	mux.HandleFunc("DELETE /admin/v1/orgs/{orgId}/policies/{policyId}/resources/{resourceId}", adminAPI.PolicyResourceDetails)
+	mux.HandleFunc("GET /admin/v1/orgs/{orgId}/policies/{policyId}/validate", adminAPI.ValidatePolicy)
+	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories/{directoryId}/users", adminAPI.DirectoryUsers)
+	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories/{directoryId}/users/count", adminAPI.DirectoryUserCount)
+	mux.HandleFunc("POST /admin/v2/orgs/{orgId}/directories/{directoryId}/users/search", adminAPI.SearchUsers)
+	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories/{directoryId}/users/stats", adminAPI.UserStats)
+	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories/{directoryId}/users/{userId}", adminAPI.DirectoryUserDetails)
+	mux.HandleFunc("DELETE /admin/v2/orgs/{orgId}/directories/{directoryId}/users/{accountId}", adminAPI.DirectoryUserLifecycle)
+	mux.HandleFunc("POST /admin/v2/orgs/{orgId}/directories/{directoryId}/users/{accountId}/suspend", adminAPI.DirectoryUserLifecycle)
+	mux.HandleFunc("POST /admin/v2/orgs/{orgId}/directories/{directoryId}/users/{accountId}/restore", adminAPI.DirectoryUserLifecycle)
+	mux.HandleFunc("POST /admin/v2/orgs/{orgId}/users/invite", adminAPI.InviteUsers)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
+	mux.HandleFunc("GET /apps/modules/{module}", webHandler.AppModulePage)
+	mux.HandleFunc("GET /app-modules/{module}/frame", webHandler.AppModuleFrame)
+	mux.HandleFunc("GET /app-modules/{module}/thumbnail", webHandler.AppModuleThumbnail)
+	mux.HandleFunc("GET /app-modules/{module}/icon", webHandler.AppModuleIcon)
+	mux.HandleFunc("GET /app-modules/{module}/status-icon", webHandler.AppModuleStatusIcon)
+	mux.HandleFunc("POST /apps/{appKey}/lifecycle/{event}", appAPI.Lifecycle)
+	mux.HandleFunc("GET /apps/{appKey}/storage/{key}", appAPI.Storage)
+	mux.HandleFunc("PUT /apps/{appKey}/storage/{key}", appAPI.Storage)
+	mux.HandleFunc("DELETE /apps/{appKey}/storage/{key}", appAPI.Storage)
+	mux.HandleFunc("GET /rest/atlassian-connect/1/app/module/dynamic", appAPI.DynamicModules)
+	mux.HandleFunc("POST /rest/atlassian-connect/1/app/module/dynamic", appAPI.DynamicModules)
+	mux.HandleFunc("DELETE /rest/atlassian-connect/1/app/module/dynamic", appAPI.DynamicModules)
+	mux.HandleFunc("GET /wiki/rest/atlassian-connect/1/app/module/dynamic", appAPI.DynamicModules)
+	mux.HandleFunc("POST /wiki/rest/atlassian-connect/1/app/module/dynamic", appAPI.DynamicModules)
+	mux.HandleFunc("DELETE /wiki/rest/atlassian-connect/1/app/module/dynamic", appAPI.DynamicModules)
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.Dir(static))))
 	mux.HandleFunc("GET /sw.js", func(w http.ResponseWriter, r *http.Request) {
 		// Root scope is required for the service worker to control page navigations.
@@ -353,7 +636,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              address,
-		Handler:           http.MaxBytesHandler(authn.SecurityHeaders(authn.ProtectCookieMutations(mux), oidcSSO.FormActionOrigin()), 34<<20),
+		Handler:           http.MaxBytesHandler(authn.SecurityHeadersDynamic(authn.ProtectCookieMutations(appAPI.APIPrincipal(mux)), identityProviders.FormActionOrigins), 34<<20),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      60 * time.Second,

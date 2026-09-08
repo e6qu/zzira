@@ -17,3 +17,16 @@ func TestStorageRenderingPreservesFormattingAndRejectsExecutableMarkup(t *testin
 		}
 	}
 }
+
+func TestTextExtractsReadableContentFromValidatedStorage(t *testing.T) {
+	got, err := Text(`<h2>Decision &amp; rationale</h2><p><strong>Ship</strong><br/>after verification</p>`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "Decision & rationale Ship after verification" {
+		t.Fatalf("Text() = %q", got)
+	}
+	if _, err := Text(`<script>alert(1)</script>`); err == nil {
+		t.Fatal("Text accepted unsupported storage markup")
+	}
+}

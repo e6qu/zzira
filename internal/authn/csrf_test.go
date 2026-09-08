@@ -52,6 +52,9 @@ func TestSecurityHeaders(t *testing.T) {
 			t.Errorf("%s is missing", header)
 		}
 	}
+	if csp := w.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "img-src 'self' data: https:") {
+		t.Fatalf("Content-Security-Policy = %q, want HTTPS app thumbnails", csp)
+	}
 }
 
 // TestSecurityHeadersAllowsTheOIDCProviderInFormAction covers RP-initiated
@@ -75,6 +78,24 @@ func TestSecurityHeadersAllowsTheOIDCProviderInFormAction(t *testing.T) {
 	}
 }
 
+func TestSecurityHeadersRefreshesRuntimeProviderOrigins(t *testing.T) {
+	origins := ""
+	handler := SecurityHeadersDynamic(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}), func() string { return origins })
+	first := httptest.NewRecorder()
+	handler.ServeHTTP(first, httptest.NewRequest(http.MethodGet, "https://zzira.example/", nil))
+	if strings.Contains(first.Header().Get("Content-Security-Policy"), "login.example.test") {
+		t.Fatal("unregistered provider origin was allowed")
+	}
+	origins = "https://login.example.test"
+	second := httptest.NewRecorder()
+	handler.ServeHTTP(second, httptest.NewRequest(http.MethodGet, "https://zzira.example/", nil))
+	if !strings.Contains(second.Header().Get("Content-Security-Policy"), "form-action 'self' https://login.example.test") {
+		t.Fatalf("runtime provider origin missing from %q", second.Header().Get("Content-Security-Policy"))
+	}
+}
+
 func TestSecureCookiesDefaultToTheExternalURL(t *testing.T) {
 	t.Setenv("COOKIE_SECURE", "")
 	t.Setenv("ZZIRA_EXTERNAL_URL", "https://zzira.example")
@@ -93,5 +114,15 @@ func TestSecureCookiesDefaultToTheExternalURL(t *testing.T) {
 	t.Setenv("ZZIRA_EXTERNAL_URL", "https://zzira.example")
 	if SecureCookies() {
 		t.Fatal("explicit COOKIE_SECURE=false was ignored")
+	}
+}
+
+func TestIdentifyBearerRejectsMalformedAuthorization(t *testing.T) {
+	for _, authorization := range []string{"", "Bearer", "Bearer one two", "Basic token"} {
+		r := httptest.NewRequest(http.MethodGet, "https://zzira.example/admin/v1/orgs", nil)
+		r.Header.Set("Authorization", authorization)
+		if _, err := IdentifyBearer(r.Context(), nil, r); err != ErrUnauthorized {
+			t.Errorf("Authorization %q returned %v, want ErrUnauthorized", authorization, err)
+		}
 	}
 }

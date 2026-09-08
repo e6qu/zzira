@@ -13,6 +13,7 @@ import (
 	"github.com/e6qu/zzira/internal/jql"
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
+	"github.com/e6qu/zzira/internal/workflow"
 )
 
 // TestCreateIssueToSyncPipeline is the V0 integration gate: it runs against a
@@ -97,6 +98,30 @@ func TestCreateIssueToSyncPipeline(t *testing.T) {
 	}
 }
 
+func TestApplyWorkflowFieldUpdateSupportsCustomText(t *testing.T) {
+	issue := &models.Issue{Summary: "Ready", Fields: map[string]json.RawMessage{"customfield_10001": json.RawMessage(`"release"`)}}
+	update := store.IssueUpdate{}
+	if err := applyWorkflowFieldUpdate(issue, &update, workflow.FieldUpdateEffect{Field: "customfield_10001", Value: `" notes"`, Mode: "append"}); err != nil {
+		t.Fatal(err)
+	}
+	var value string
+	if err := json.Unmarshal(update.Fields["customfield_10001"], &value); err != nil || value != "release notes" {
+		t.Fatalf("custom field = %q, %v", value, err)
+	}
+	if err := applyWorkflowFieldUpdate(issue, &update, workflow.FieldUpdateEffect{Field: "summary", Value: " complete", Mode: "append"}); err != nil {
+		t.Fatal(err)
+	}
+	if update.Summary == nil || *update.Summary != "Ready complete" {
+		t.Fatalf("summary = %v", update.Summary)
+	}
+	if err := applyWorkflowFieldCopy(issue, &update, "summary", "description"); err != nil {
+		t.Fatal(err)
+	}
+	if got := adf.PlainText(update.Description); got != "Ready complete" {
+		t.Fatalf("copied description = %q", got)
+	}
+}
+
 func TestUpdateTransitionCommentChangelogPipeline(t *testing.T) {
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	if dsn == "" {
@@ -143,7 +168,7 @@ func TestUpdateTransitionCommentChangelogPipeline(t *testing.T) {
 
 	// Transition 21: To Do → In Progress (project pinned to the default
 	// workflow so earlier live assigns of other workflows cannot skew this).
-	if err := st.AssignWorkflowToProject(ctx, issue.ProjectID, "wf_default"); err != nil {
+	if err := st.AssignWorkflowToProject(ctx, "ws_default", issue.ProjectID, "wf_default"); err != nil {
 		t.Fatalf("assign workflow: %v", err)
 	}
 	_, tAction, err := svc.TransitionIssue(ctx, "usr_test", "ws_default", issue.Key, "21")

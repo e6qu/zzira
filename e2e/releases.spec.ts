@@ -1,5 +1,13 @@
 import { expect, test, Page } from '@playwright/test';
 import axe from 'axe-core';
+import * as fs from 'fs';
+import * as path from 'path';
+
+function apiAuthHeader(): string {
+  const tokens = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'seed-tokens.json'), 'utf8'));
+  const token = process.env.ZZIRA_API_TOKEN ?? tokens['demo@zzira.dev'];
+  return 'Basic ' + Buffer.from(`demo@zzira.dev:${token}`).toString('base64');
+}
 
 async function accessible(page: Page) {
   await page.addScriptTag({ content: axe.source });
@@ -38,7 +46,25 @@ test('plan a release, assign scope, publish notes, archive and delete', async ({
   await dialog.getByRole('button', { name: 'Create issue', exact: true }).click();
   await expect(page).toHaveURL(/\/browse\/ZZ-\d+$/);
   const issue = { key: page.url().split('/').pop()! };
+  const deliverySequence = Date.now();
+  const buildResponse = await page.request.post('/rest/builds/0.1/bulk', { headers: { Authorization: apiAuthHeader() }, data: {
+    properties: { accountId: 'release-e2e' }, builds: [{ pipelineId: `release-${deliverySequence}`, buildNumber: 1,
+      updateSequenceNumber: deliverySequence, displayName: 'Release candidate build', url: 'https://ci.example/release/build',
+      state: 'successful', lastUpdated: '2026-09-06T12:00:00Z', issueKeys: [issue.key] }],
+  } });
+  expect(buildResponse.status()).toBe(202);
+  const deploymentResponse = await page.request.post('/rest/deployments/0.1/bulk', { headers: { Authorization: apiAuthHeader() }, data: {
+    properties: { accountId: 'release-e2e' }, deployments: [{ deploymentSequenceNumber: deliverySequence,
+      updateSequenceNumber: deliverySequence, displayName: 'Production rollout', url: 'https://deploy.example/release',
+      description: 'Release deployment', lastUpdated: '2026-09-06T13:00:00Z', state: 'successful', issueKeys: [issue.key],
+      pipeline: { id: `release-${deliverySequence}`, displayName: 'Release pipeline', url: 'https://ci.example/release' },
+      environment: { id: 'production', displayName: 'Production', type: 'production' } }],
+  } });
+  expect(deploymentResponse.status()).toBe(202);
+  await page.reload();
   await expect(page.getByRole('link', { name: `Fix version: ${name}`, exact: true })).toBeVisible();
+  await expect(page.locator('.issue-delivery')).toContainText('Release candidate build');
+  await expect(page.locator('.issue-delivery')).toContainText('Production rollout');
   await page.goto(releaseURL);
   await page.getByRole('button', { name: `Remove ${issue.key} from release`, exact: true }).click();
   await page.getByLabel('Add work item by key').fill(issue.key);
@@ -46,6 +72,30 @@ test('plan a release, assign scope, publish notes, archive and delete', async ({
   await expect(page.locator('.release-issues')).toContainText(issue.key);
   await expect(page.locator('.release-progress')).toContainText('0 of 1 done');
   await expect(page.locator('.release-notes')).toContainText(issue.key);
+  await expect(page.locator('#release-delivery-list')).toContainText('Release candidate build');
+  await expect(page.locator('#release-delivery-list')).toContainText('Production rollout');
+  await page.getByRole('link', { name: 'Reports', exact: true }).click();
+  await expect(page).toHaveURL('/projects/ZZ/reports');
+  await page.getByRole('link', { name: 'Open DORA metrics' }).click();
+  await expect(page).toHaveURL('/projects/ZZ/reports/dora');
+  await expect(page.getByRole('heading', { name: 'DORA metrics', level: 1 })).toBeVisible();
+  const doraSummary = page.getByRole('region', { name: 'DORA summary' });
+  await expect(doraSummary.getByText('Deployment frequency', { exact: true })).toBeVisible();
+  await expect(doraSummary.getByText('Lead time for changes', { exact: true })).toBeVisible();
+  await expect(doraSummary.getByText('Change failure rate', { exact: true })).toBeVisible();
+  await expect(doraSummary.getByText('Time to restore service', { exact: true })).toBeVisible();
+  await expect(page.locator('.dora-chart')).toBeVisible();
+  await expect(page.locator('.dora-detail-grid')).toContainText('Production rollout');
+  await page.getByText('View daily data', { exact: true }).click();
+  await expect(page.getByRole('table')).toBeVisible();
+  await accessible(page);
+  await page.locator('[data-theme-toggle]').click();
+  await accessible(page);
+  await page.setViewportSize({ width: 320, height: 740 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.locator('[data-theme-toggle]').click();
+  await page.goto(releaseURL);
   await page.getByRole('link', { name: 'Open in search' }).click();
   await expect(page.locator('.issue-list')).toContainText(issue.key);
   await page.goto(`/browse/${issue.key}`);

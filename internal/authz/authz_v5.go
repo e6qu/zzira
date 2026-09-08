@@ -1,6 +1,3 @@
-// Package authz: server-side permission decisions.
-// V5: workspace membership + role (admins see everything) + issue security
-// levels from the project's security scheme.
 package authz
 
 import (
@@ -11,7 +8,7 @@ import (
 
 // IsWorkspaceAdmin reports admin role (admins bypass issue security).
 func IsWorkspaceAdmin(ctx context.Context, st *store.Store, workspaceID, userID string) (bool, error) {
-	return st.IsAdmin(ctx, workspaceID, userID)
+	return Allowed(ctx, st, workspaceID, userID, AdministerSite)
 }
 
 // CanSeeIssue evaluates the issue's security level against the caller.

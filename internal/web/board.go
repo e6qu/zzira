@@ -175,7 +175,7 @@ func (h *Handler) buildBoardView(r *http.Request, user *models.User, wsID string
 		HasSwimlanes: board.SwimlaneStrategy == "assignee", Admin: admin,
 	}
 	for _, statusID := range board.ColumnStatusIDs {
-		status, err := h.Store.StatusByID(r.Context(), statusID)
+		status, err := h.Store.StatusByIDForProject(r.Context(), statusID, board.ProjectID)
 		if err != nil {
 			return boardViewData{}, err
 		}
@@ -319,7 +319,7 @@ func (h *Handler) boardSettingsData(r *http.Request, board *models.Board, messag
 		}
 	}
 	for _, statusID := range board.ColumnStatusIDs {
-		status, err := h.Store.StatusByID(r.Context(), statusID)
+		status, err := h.Store.StatusByIDForProject(r.Context(), statusID, board.ProjectID)
 		if err != nil {
 			return boardSettingsData{}, err
 		}

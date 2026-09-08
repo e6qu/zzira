@@ -49,6 +49,22 @@
         </ul>
       </section>
 
+      <section class="issue-section issue-forms" aria-labelledby="forms-title">
+        <div class="section-heading"><h2 id="forms-title">Forms <span class="section-count">0</span></h2></div>
+        <p class="muted">No forms attached.</p>
+        <details class="link-create"><summary class="quiet-action">Attach form</summary><form method="post" action="/issues/ZZ-1/forms" hx-post="/issues/ZZ-1/forms" hx-target="#issue-root" hx-swap="outerHTML"><label for="form-template">Template ID</label><input id="form-template" name="template" maxlength="255" required placeholder="employee-onboarding"><label for="form-name">Form name</label><input id="form-name" name="name" maxlength="255" placeholder="Employee onboarding"><button type="submit" class="btn btn-primary">Attach form</button></form></details>
+      </section>
+
+      <section class="issue-section issue-development" aria-labelledby="development-title">
+        <div class="section-heading"><h2 id="development-title">Development <span class="section-count">0</span></h2></div>
+        <p class="muted">No branches, commits, or pull requests linked.</p>
+      </section>
+
+      <section class="issue-section issue-delivery" aria-labelledby="delivery-title">
+        <div class="section-heading"><h2 id="delivery-title">Builds and deployments <span class="section-count">0</span></h2></div>
+        <p class="muted">No builds or deployments linked.</p>
+      </section>
+
       <section class="issue-section issue-attachments" aria-labelledby="attachments-title">
         <div class="section-heading"><h2 id="attachments-title">Attachments <span class="section-count">1</span></h2></div>
         <ul id="attachments-list" class="attachment-list">
@@ -64,10 +80,12 @@
           <button type="button" data-activity-filter="comment" aria-pressed="true">Comments <span>1</span></button>
           <button type="button" data-activity-filter="worklog" aria-pressed="false">Work log <span>1</span></button>
           <button type="button" data-activity-filter="history" aria-pressed="false">History <span>0</span></button>
+          <button type="button" class="activity-app-tab" data-activity-filter="app-712" aria-pressed="false">Deployments</button>
         </div><button type="button" class="activity-sort" data-activity-sort aria-label="Sort activity oldest first" aria-pressed="false">Newest first ↓</button></div>
       </div>
 
       <section class="issue-section issue-activity" aria-labelledby="activity-title">
+        <div data-native-activity-panel>
         <details class="activity-composer" open><summary>Add an update</summary>
         <form class="comment-form" method="post" action="/issues/ZZ-1/comments" hx-post="/issues/ZZ-1/comments" hx-target="#issue-root" hx-swap="outerHTML">
           <div class="editor-toolbar" role="group" aria-label="Comment formatting" data-editor-toolbar>
@@ -101,6 +119,8 @@
         </article>
         <div class="empty-state" data-activity-filter-empty hidden><strong>No matching activity</strong><small>Choose another activity filter.</small></div>
         </div>
+        </div>
+        <div class="app-activity-panel" data-app-activity-panel="app-712" hidden><div class="app-activity-heading"><span class="eyebrow">Delivery tools app</span><h3>Deployments</h3></div><iframe class="app-context-frame" data-app-frame-src="/app-modules/712/frame?issueKey=ZZ-1&amp;issueId=iss_abc123&amp;projectKey=ZZ&amp;projectId=prj_default" title="Deployments" sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts"></iframe></div>
       </section>
     </div>
     <aside class="issue-details" aria-label="Issue details">

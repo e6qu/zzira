@@ -25,9 +25,14 @@ type projectNavigationItem struct {
 }
 
 type workspaceNavigation struct {
-	Projects []projectNavigationItem
-	Current  *projectNavigationItem
-	CanAdmin bool
+	Projects               []projectNavigationItem
+	AppModules             []models.AppModule
+	ProjectAppModules      []models.AppModule
+	ProjectAdminAppModules []models.AppModule
+	AdminAppModules        []models.AppModule
+	Current                *projectNavigationItem
+	CanAdmin               bool
+	CanServiceAgent        bool
 }
 
 // workspaceNavigation builds the project-aware application shell. preferred
@@ -42,6 +47,25 @@ func (h *Handler) workspaceNavigation(r *http.Request, workspaceID, preferred st
 	if err != nil {
 		return nil, fmt.Errorf("list boards for navigation: %w", err)
 	}
+	appModules, err := h.Store.AppNavigationModules(r.Context(), workspaceID)
+	if err != nil {
+		return nil, fmt.Errorf("list app modules for navigation: %w", err)
+	}
+	projectAppModules, err := h.Store.AppModulesByLocation(r.Context(), workspaceID, "jira.project.page")
+	if err != nil {
+		return nil, fmt.Errorf("list project app modules for navigation: %w", err)
+	}
+	for index := range projectAppModules {
+		projectAppModules[index].IconURL = appModuleIconPath(projectAppModules[index])
+	}
+	projectAdminAppModules, err := h.Store.AppModulesByLocation(r.Context(), workspaceID, "jira.project.settings")
+	if err != nil {
+		return nil, fmt.Errorf("list project admin app modules for navigation: %w", err)
+	}
+	adminAppModules, err := h.Store.AppModulesByLocation(r.Context(), workspaceID, "jira.admin")
+	if err != nil {
+		return nil, fmt.Errorf("list admin app modules for navigation: %w", err)
+	}
 
 	firstBoard := make(map[string]*models.Board, len(boards))
 	for _, board := range boards {
@@ -50,9 +74,13 @@ func (h *Handler) workspaceNavigation(r *http.Request, workspaceID, preferred st
 		}
 	}
 
-	navigation := &workspaceNavigation{Projects: make([]projectNavigationItem, 0, len(projects))}
+	navigation := &workspaceNavigation{Projects: make([]projectNavigationItem, 0, len(projects)), AppModules: appModules, ProjectAppModules: projectAppModules, ProjectAdminAppModules: projectAdminAppModules, AdminAppModules: adminAppModules}
 	if user := h.currentUser(r); user != nil {
 		navigation.CanAdmin, err = h.Store.IsAdmin(r.Context(), workspaceID, user.ID)
+		if err != nil {
+			return nil, err
+		}
+		navigation.CanServiceAgent, err = h.Store.IsAnyServiceAgent(r.Context(), workspaceID, user.ID)
 		if err != nil {
 			return nil, err
 		}

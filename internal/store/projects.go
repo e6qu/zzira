@@ -55,12 +55,49 @@ func (s *Store) CreateProject(ctx context.Context, actorID string, p models.Proj
 		return nil, err
 	}
 	p.WorkflowID = "wf_default"
-	_, err = tx.Exec(ctx, `INSERT INTO projects (id,workspace_id,key,name,workflow_id,description,url,lead_account_id,assignee_type) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`, p.ID, p.WorkspaceID, p.Key, p.Name, p.WorkflowID, p.Description, p.URL, nilIfEmpty(p.LeadAccountID), p.AssigneeType)
+	_, err = tx.Exec(ctx, `INSERT INTO projects (id,workspace_id,key,name,workflow_id,description,url,lead_account_id,assignee_type,project_type_key) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, p.ID, p.WorkspaceID, p.Key, p.Name, p.WorkflowID, p.Description, p.URL, nilIfEmpty(p.LeadAccountID), p.AssigneeType, p.ProjectTypeKey)
 	if err != nil {
 		return nil, err
 	}
 	if err := writeProjectAction(ctx, tx, actorID, &p); err != nil {
 		return nil, err
+	}
+	if p.ProjectTypeKey == "service_desk" {
+		var serviceDeskID string
+		if _, err := tx.Exec(ctx, `INSERT INTO service_assets_workspaces(workspace_id) VALUES($1) ON CONFLICT DO NOTHING`, p.WorkspaceID); err != nil {
+			return nil, err
+		}
+		if err := tx.QueryRow(ctx, `INSERT INTO service_desks(workspace_id,project_id,portal_name) VALUES($1,$2,$3) RETURNING id`, p.WorkspaceID, p.ID, p.Name).Scan(&serviceDeskID); err != nil {
+			return nil, err
+		}
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO service_request_types(service_desk_id,name,description,help_text,issue_type_id,group_ids)
+			VALUES ($1,'Get IT help','Request help from the service team.','Describe what you need and its impact.','it_task',ARRAY['help']),
+			       ($1,'Report an incident','Report a service interruption or degradation.','Include the affected service and when the impact began.','it_task',ARRAY['incidents']),
+			       ($1,'Investigate a problem','Investigate the underlying cause of recurring incidents.','Describe the affected service, related incidents, and known symptoms.','it_task',ARRAY['problems']),
+			       ($1,'Request a change','Plan, assess, approve, and track a service change.','Describe the change, expected impact, implementation plan, and rollback plan.','it_task',ARRAY['changes'])`, serviceDeskID); err != nil {
+			return nil, err
+		}
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO service_request_type_groups(service_desk_id,id,name,position) VALUES
+			($1,'help','Help and support',0),($1,'incidents','Incidents',1),
+			($1,'problems','Problems',2),($1,'changes','Changes',3)`, serviceDeskID); err != nil {
+			return nil, err
+		}
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO service_request_type_fields(request_type_id,field_id,required,help_text,position)
+			SELECT id,'summary',TRUE,help_text,0 FROM service_request_types WHERE service_desk_id=$1
+			UNION ALL SELECT id,'description',name IN ('Investigate a problem','Request a change'),'Describe the request.',1 FROM service_request_types WHERE service_desk_id=$1`, serviceDeskID); err != nil {
+			return nil, err
+		}
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO service_queues(service_desk_id,name,jql,kind,position) VALUES
+			($1,'All open requests','resolution = Unresolved ORDER BY created ASC','all_open',0),
+			($1,'SLA attention','resolution = Unresolved ORDER BY created ASC','sla_attention',1),
+			($1,'Unassigned requests','assignee is EMPTY AND resolution = Unresolved ORDER BY created ASC','unassigned',2),
+			($1,'Assigned to me','assignee = currentUser() AND resolution = Unresolved ORDER BY created ASC','assigned_to_me',3)`, serviceDeskID); err != nil {
+			return nil, err
+		}
 	}
 	board := models.Board{ID: NewID("brd"), ProjectID: p.ID, Name: p.Name + " board", Type: boardType}
 	err = tx.QueryRow(ctx, `INSERT INTO boards (id,project_id,name,type,filter_jql) VALUES ($1,$2,$3,$4,$5) RETURNING column_status_ids,filter_jql,quick_filters,swimlane_strategy,card_fields,column_limits`, board.ID, p.ID, board.Name, board.Type, "project = "+p.Key).Scan(&board.ColumnStatusIDs, &board.FilterJQL, &board.QuickFilters, &board.SwimlaneStrategy, &board.CardFields, &board.ColumnLimits)
@@ -94,7 +131,7 @@ func (s *Store) UpdateProject(ctx context.Context, actorID, workspaceID, idOrKey
 		return nil, err
 	}
 	p := &models.Project{}
-	err = tx.QueryRow(ctx, `UPDATE projects SET name=COALESCE($3,name),description=COALESCE($4,description),url=COALESCE($5,url),lead_account_id=CASE WHEN $6::text IS NULL THEN lead_account_id ELSE NULLIF($6,'') END,assignee_type=COALESCE($7,assignee_type) WHERE workspace_id=$1 AND (id=$2 OR upper(key)=upper($2)) RETURNING id,workspace_id,key,name,COALESCE(workflow_id,''),COALESCE(security_scheme_id,''),description,url,COALESCE(lead_account_id,''),assignee_type`, workspaceID, idOrKey, up.Name, up.Description, up.URL, up.LeadAccountID, up.AssigneeType).Scan(&p.ID, &p.WorkspaceID, &p.Key, &p.Name, &p.WorkflowID, &p.SecuritySchemeID, &p.Description, &p.URL, &p.LeadAccountID, &p.AssigneeType)
+	err = tx.QueryRow(ctx, `UPDATE projects SET name=COALESCE($3,name),description=COALESCE($4,description),url=COALESCE($5,url),lead_account_id=CASE WHEN $6::text IS NULL THEN lead_account_id ELSE NULLIF($6,'') END,assignee_type=COALESCE($7,assignee_type) WHERE workspace_id=$1 AND (id=$2 OR upper(key)=upper($2)) RETURNING id,workspace_id,key,name,COALESCE(workflow_id,''),COALESCE(security_scheme_id,''),description,url,COALESCE(lead_account_id,''),assignee_type,project_type_key`, workspaceID, idOrKey, up.Name, up.Description, up.URL, up.LeadAccountID, up.AssigneeType).Scan(&p.ID, &p.WorkspaceID, &p.Key, &p.Name, &p.WorkflowID, &p.SecuritySchemeID, &p.Description, &p.URL, &p.LeadAccountID, &p.AssigneeType, &p.ProjectTypeKey)
 	if err != nil {
 		return nil, err
 	}

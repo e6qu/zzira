@@ -136,6 +136,46 @@ func TestResolveOIDCUserBindsAnExistingActiveMemberWithoutHashing(t *testing.T) 
 	}
 }
 
+func TestResolveOIDCUserLinksMultipleProvidersToOneAccountEmail(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	st, err := Open(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := Migrate(ctx, st.Pool); err != nil {
+		t.Fatal(err)
+	}
+	email := NewID("multi-provider") + "@example.invalid"
+	first, err := st.ResolveOIDCUser(ctx, "https://accounts.google.com", NewID("google-subject"), email, "Linked user", func() (string, error) { return "unusable", nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := st.ResolveOIDCUser(ctx, "https://auth.atlassian.com", NewID("atlassian-subject"), email, "Linked user", unusedPasswordHash(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM oidc_identities WHERE user_id=$1`, first)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM memberships WHERE user_id=$1`, first)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM users WHERE id=$1`, first)
+	}()
+	if first != second {
+		t.Fatalf("provider identities resolved to %q and %q", first, second)
+	}
+	var identityCount int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM oidc_identities WHERE user_id=$1`, first).Scan(&identityCount); err != nil {
+		t.Fatal(err)
+	}
+	if identityCount != 2 {
+		t.Fatalf("identity count = %d, want 2", identityCount)
+	}
+}
+
 func TestResolveOIDCUserRejectsAnInactiveBoundIdentity(t *testing.T) {
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	if dsn == "" {

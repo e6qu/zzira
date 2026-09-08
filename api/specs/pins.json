@@ -1,6 +1,8 @@
 [
   {
     "name": "jira-v3",
+    "family": "jira-platform",
+    "hostClass": "site",
     "file": "api/specs/jira-v3.json",
     "source": "https://dac-static.atlassian.com/cloud/jira/platform/swagger-v3.v3.json?_v=1.8516.101",
     "retrieved": "2026-09-05",
@@ -10,6 +12,8 @@
   },
   {
     "name": "jira-software",
+    "family": "jira-software",
+    "hostClass": "site",
     "file": "api/specs/jira-software.json",
     "source": "https://dac-static.atlassian.com/cloud/jira/software/swagger.v3.json?_v=1.8516.101",
     "retrieved": "2026-09-05",
@@ -18,12 +22,58 @@
     "prefix": ""
   },
   {
+    "name": "jira-service-management",
+    "family": "jira-service-management",
+    "hostClass": "site",
+    "file": "api/specs/jira-service-management.json",
+    "source": "https://dac-static.atlassian.com/cloud/jira/service-desk/swagger.v3.json?_v=1.8516.101",
+    "retrieved": "2026-09-06",
+    "sha256": "b1cd69f13c17b076eb1fbd3faafb08cca5dfeb7511421a028adda81bb4fad396",
+    "version": "1001.0.0-SNAPSHOT-82b018affa468e58f284fbe4df33536469d757df",
+    "prefix": ""
+  },
+  {
+    "name": "confluence-v1",
+    "family": "confluence",
+    "hostClass": "site",
+    "file": "api/specs/confluence-v1.json",
+    "source": "https://dac-static.atlassian.com/cloud/confluence/swagger.v3.json?_v=1.8516.101",
+    "retrieved": "2026-09-06",
+    "sha256": "70088490f4069e0a5b082411ac5296b822041b2848256444f0dfca3f3d319e73",
+    "version": "1.0.0",
+    "prefix": ""
+  },
+  {
     "name": "confluence-v2",
+    "family": "confluence",
+    "hostClass": "site",
     "file": "api/specs/confluence-v2.json",
     "source": "https://dac-static.atlassian.com/cloud/confluence/openapi-v2.v3.json?_v=1.8516.101",
     "retrieved": "2026-09-05",
     "sha256": "451377c5a598ee8155acc11b611404f309bed4a4292ea87f88ed3bfed38fa0a8",
     "version": "2.0.0",
     "prefix": "/wiki/api/v2"
+  },
+  {
+    "name": "automation",
+    "family": "automation",
+    "hostClass": "site-gateway",
+    "file": "api/specs/automation.json",
+    "source": "https://developer.atlassian.com/cloud/automation/swagger.v3.json",
+    "retrieved": "2026-09-06",
+    "sha256": "2b3b0965fef8647f4d481db7f0a13c9f876fd4288d7e1bf7f26308f2e96aa7b6",
+    "version": "1.1",
+    "prefix": "/gateway/api/automation/public/{product}/{cloudid}"
+  },
+  {
+    "name": "organization-admin",
+    "family": "organization-admin",
+    "hostClass": "central",
+    "file": "api/specs/organization-admin.json",
+    "source": "https://developer.atlassian.com/cloud/admin/organization/swagger.v3.json",
+    "retrieved": "2026-09-06",
+    "sha256": "c2e5d2903268aadd28a6de1e82d09a7aa410a05d328139f5bf01bef443e68807",
+    "version": "1.0",
+    "prefix": "/admin"
   }
 ]

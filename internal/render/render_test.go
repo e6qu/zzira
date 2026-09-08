@@ -45,6 +45,7 @@ func fixtureIssue() models.IssueView {
 			{Kind: "worklog", ID: "wl_1", AuthorID: "usr_1", AuthorName: "Demo User", Created: "2026-08-28T12:00:00Z", TimeSpentSeconds: 3600, CanDelete: true},
 			{Kind: "comment", ID: "cmt_1", AuthorID: "usr_1", AuthorName: "Demo User", Created: "2026-08-28T11:00:00Z", Body: json.RawMessage(`{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":"Ready for review."}]}]}`)},
 		},
+		AppActivityTabs: []models.AppModule{{ID: "712", AppName: "Delivery tools", Title: "Deployments", RemoteURL: "/deployments"}},
 	}
 }
 

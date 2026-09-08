@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-labelledby="title">
+  <title id="title">Knowledge space</title>
+  <rect width="48" height="48" rx="12" fill="#0C66E4"/>
+  <path d="M13 13.5c0-1.38 1.12-2.5 2.5-2.5H24v25h-8.5a2.5 2.5 0 0 0-2.5 2.5v-25Zm22 0c0-1.38-1.12-2.5-2.5-2.5H24v25h8.5a2.5 2.5 0 0 1 2.5 2.5v-25Z" fill="#fff"/>
+  <path d="M17 17h4m-4 5h4m6-5h4m-4 5h4" fill="none" stroke="#0C66E4" stroke-linecap="round" stroke-width="2"/>
+</svg>

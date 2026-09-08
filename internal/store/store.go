@@ -207,6 +207,35 @@ func (s *Store) CreateOIDCSession(ctx context.Context, tokenHash, userID, idToke
 	return err
 }
 
+// CreateIdentityProviderSession records a provider-backed browser session and
+// its login evidence in one transaction. A user may belong to more than one
+// organization; each organization receives its own immutable audit event.
+func (s *Store) CreateIdentityProviderSession(ctx context.Context, tokenHash, userID, idToken, issuer, subject, sid, providerKey string, ttl time.Duration) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO sessions (token_hash, user_id, oidc_id_token, oidc_issuer, oidc_subject, oidc_session_id, expires_at)
+		 VALUES ($1,$2,NULLIF($3,''),$4,$5,NULLIF($6,''),now() + $7::interval)`,
+		tokenHash, userID, idToken, issuer, subject, sid, fmt.Sprintf("%d seconds", int(ttl.Seconds()))); err != nil {
+		return err
+	}
+	detail, err := json.Marshal(map[string]any{"provider": providerKey, "issuer": issuer})
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO organization_audit_events(organization_id,actor_id,action,target_type,target_id,detail)
+		SELECT DISTINCT d.organization_id,$1,'identity.login','user',$1,$2::jsonb
+		FROM directory_users du JOIN directories d ON d.id=du.directory_id
+		WHERE du.user_id=$1`, userID, detail); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
 func (s *Store) SessionUser(ctx context.Context, tokenHash string) (string, error) {
 	var userID string
 	err := s.Pool.QueryRow(ctx,
@@ -261,24 +290,209 @@ func (s *Store) ClaimOIDCLogoutAndDeleteSessions(ctx context.Context, jti string
 }
 
 func (s *Store) OIDCSessionToken(ctx context.Context, tokenHash string) (string, error) {
-	var idToken string
-	err := s.Pool.QueryRow(ctx, `SELECT COALESCE(oidc_id_token, '') FROM sessions WHERE token_hash=$1 AND expires_at > now()`, tokenHash).Scan(&idToken)
+	idToken, _, err := s.IdentityProviderSession(ctx, tokenHash)
 	return idToken, err
 }
 
+func (s *Store) IdentityProviderSession(ctx context.Context, tokenHash string) (idToken, issuer string, err error) {
+	err = s.Pool.QueryRow(ctx, `SELECT COALESCE(oidc_id_token, ''),COALESCE(oidc_issuer, '') FROM sessions WHERE token_hash=$1 AND expires_at > now()`, tokenHash).Scan(&idToken, &issuer)
+	return idToken, issuer, err
+}
+
 func (s *Store) CreateOIDCLoginState(ctx context.Context, state, nonce, codeVerifier string, ttl time.Duration) error {
+	return s.CreateIdentityProviderLoginState(ctx, state, "shauth", nonce, codeVerifier, ttl)
+}
+
+func (s *Store) CreateIdentityProviderLoginState(ctx context.Context, state, providerKey, nonce, codeVerifier string, ttl time.Duration) error {
+	return s.createIdentityProviderState(ctx, state, providerKey, nonce, codeVerifier, "", ttl)
+}
+
+func (s *Store) CreateIdentityProviderLinkState(ctx context.Context, state, providerKey, nonce, codeVerifier, userID string, ttl time.Duration) error {
+	return s.createIdentityProviderState(ctx, state, providerKey, nonce, codeVerifier, userID, ttl)
+}
+
+func (s *Store) createIdentityProviderState(ctx context.Context, state, providerKey, nonce, codeVerifier, userID string, ttl time.Duration) error {
 	_, err := s.Pool.Exec(ctx,
 		`WITH expired AS (DELETE FROM oidc_login_states WHERE expires_at <= now())
-		 INSERT INTO oidc_login_states (state_hash, nonce, code_verifier, expires_at) VALUES ($1,$2,$3,now() + $4::interval)`,
-		HashToken(state), nonce, codeVerifier, fmt.Sprintf("%d seconds", int(ttl.Seconds())))
+		 INSERT INTO oidc_login_states (state_hash, provider_key, nonce, code_verifier, link_user_id, expires_at)
+		 VALUES ($1,$2,$3,$4,NULLIF($5,''),now() + $6::interval)`,
+		HashToken(state), providerKey, nonce, codeVerifier, userID, fmt.Sprintf("%d seconds", int(ttl.Seconds())))
 	return err
 }
 
 func (s *Store) ConsumeOIDCLoginState(ctx context.Context, state string) (nonce, codeVerifier string, err error) {
-	err = s.Pool.QueryRow(ctx,
-		`DELETE FROM oidc_login_states WHERE state_hash=$1 AND expires_at > now() RETURNING nonce, code_verifier`, HashToken(state)).
-		Scan(&nonce, &codeVerifier)
+	return s.ConsumeIdentityProviderLoginState(ctx, state, "shauth")
+}
+
+func (s *Store) ConsumeIdentityProviderLoginState(ctx context.Context, state, providerKey string) (nonce, codeVerifier string, err error) {
+	nonce, codeVerifier, _, err = s.ConsumeIdentityProviderState(ctx, state, providerKey)
 	return nonce, codeVerifier, err
+}
+
+func (s *Store) ConsumeIdentityProviderState(ctx context.Context, state, providerKey string) (nonce, codeVerifier, linkUserID string, err error) {
+	err = s.Pool.QueryRow(ctx,
+		`DELETE FROM oidc_login_states WHERE state_hash=$1 AND provider_key=$2 AND expires_at > now()
+		 RETURNING nonce,code_verifier,COALESCE(link_user_id,'')`, HashToken(state), providerKey).
+		Scan(&nonce, &codeVerifier, &linkUserID)
+	return nonce, codeVerifier, linkUserID, err
+}
+
+type OIDCIdentity struct {
+	Issuer    string
+	Subject   string
+	Email     string
+	CreatedAt time.Time
+}
+
+func (s *Store) OIDCIdentitiesByUser(ctx context.Context, userID string) ([]OIDCIdentity, error) {
+	rows, err := s.Pool.Query(ctx, `SELECT issuer,subject,email,created_at FROM oidc_identities WHERE user_id=$1 ORDER BY created_at,issuer,subject`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	identities := make([]OIDCIdentity, 0)
+	for rows.Next() {
+		var identity OIDCIdentity
+		if err := rows.Scan(&identity.Issuer, &identity.Subject, &identity.Email, &identity.CreatedAt); err != nil {
+			return nil, err
+		}
+		identities = append(identities, identity)
+	}
+	return identities, rows.Err()
+}
+
+func (s *Store) LinkOIDCIdentity(ctx context.Context, userID, issuer, subject, email string) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var active bool
+	if err := tx.QueryRow(ctx, `SELECT active FROM users WHERE id=$1 FOR UPDATE`, userID).Scan(&active); err != nil {
+		return err
+	}
+	if !active {
+		return ErrInactiveUser
+	}
+	var existingUserID string
+	err = tx.QueryRow(ctx, `SELECT user_id FROM oidc_identities WHERE issuer=$1 AND subject=$2`, issuer, subject).Scan(&existingUserID)
+	if err == nil {
+		if existingUserID != userID {
+			return fmt.Errorf("%w: identity is already linked to another account", ErrAdminConflict)
+		}
+		if _, err := tx.Exec(ctx, `UPDATE oidc_identities SET email=$3 WHERE issuer=$1 AND subject=$2`, issuer, subject, email); err != nil {
+			return err
+		}
+		return tx.Commit(ctx)
+	}
+	if err != pgx.ErrNoRows {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO oidc_identities(issuer,subject,user_id,email) VALUES($1,$2,$3,$4)`, issuer, subject, userID, email); err != nil {
+		return err
+	}
+	if err := addIdentityAudit(ctx, tx, userID, "identity.linked", issuer); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (s *Store) UnlinkOIDCIdentity(ctx context.Context, userID, issuer string) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var count int
+	if err := tx.QueryRow(ctx, `SELECT count(*) FROM (SELECT issuer FROM oidc_identities WHERE user_id=$1 FOR UPDATE) locked`, userID).Scan(&count); err != nil {
+		return err
+	}
+	if count <= 1 {
+		return fmt.Errorf("%w: the last linked provider cannot be removed", ErrAdminConflict)
+	}
+	tag, err := tx.Exec(ctx, `DELETE FROM oidc_identities WHERE user_id=$1 AND issuer=$2`, userID, issuer)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("%w: linked identity was not found", ErrAdminNotFound)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM sessions WHERE user_id=$1 AND oidc_issuer=$2`, userID, issuer); err != nil {
+		return err
+	}
+	if err := addIdentityAudit(ctx, tx, userID, "identity.unlinked", issuer); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func addIdentityAudit(ctx context.Context, tx pgx.Tx, userID, action, issuer string) error {
+	detail, err := json.Marshal(map[string]any{"issuer": issuer})
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, `
+		INSERT INTO organization_audit_events(organization_id,actor_id,action,target_type,target_id,detail)
+		SELECT DISTINCT d.organization_id,$1,$2,'user',$1,$3::jsonb
+		FROM directory_users du JOIN directories d ON d.id=du.directory_id WHERE du.user_id=$1`, userID, action, detail)
+	return err
+}
+
+func (s *Store) IdentityProviderSettingsByWorkspace(ctx context.Context, workspaceID string) (map[string]bool, error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT settings.provider_key,settings.enabled
+		FROM identity_provider_settings settings
+		JOIN sites site ON site.organization_id=settings.organization_id
+		WHERE site.workspace_id=$1`, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	settings := map[string]bool{}
+	for rows.Next() {
+		var key string
+		var enabled bool
+		if err := rows.Scan(&key, &enabled); err != nil {
+			return nil, err
+		}
+		settings[key] = enabled
+	}
+	return settings, rows.Err()
+}
+
+func (s *Store) SetIdentityProviderEnabled(ctx context.Context, workspaceID, actorID, providerKey, issuer string, enabled bool) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var organizationID string
+	if err := tx.QueryRow(ctx, `SELECT organization_id::text FROM sites WHERE workspace_id=$1`, workspaceID).Scan(&organizationID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO identity_provider_settings(organization_id,provider_key,enabled,updated_by)
+		VALUES($1::uuid,$2,$3,$4)
+		ON CONFLICT(organization_id,provider_key) DO UPDATE
+		SET enabled=EXCLUDED.enabled,updated_by=EXCLUDED.updated_by,updated_at=now()`, organizationID, providerKey, enabled, actorID); err != nil {
+		return err
+	}
+	if !enabled {
+		if _, err := tx.Exec(ctx, `DELETE FROM sessions WHERE oidc_issuer=$1`, issuer); err != nil {
+			return err
+		}
+	}
+	detail, err := json.Marshal(map[string]any{"provider": providerKey, "issuer": issuer, "enabled": enabled})
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO organization_audit_events(organization_id,actor_id,action,target_type,target_id,detail)
+		VALUES($1::uuid,$2,$3,'identity-provider',$4,$5::jsonb)`, organizationID, actorID,
+		map[bool]string{true: "identity.provider.enabled", false: "identity.provider.disabled"}[enabled], providerKey, detail); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // ResolveOIDCUser binds a verified sign-in to its immutable (issuer, subject)
@@ -314,6 +528,9 @@ func (s *Store) ResolveOIDCUser(ctx context.Context, issuer, subject, email, dis
 		if !active {
 			return "", ErrInactiveUser
 		}
+		if _, err := tx.Exec(ctx, `UPDATE oidc_identities SET email=$3 WHERE issuer=$1 AND subject=$2`, issuer, subject, email); err != nil {
+			return "", err
+		}
 		if err := tx.Commit(ctx); err != nil {
 			return "", err
 		}
@@ -338,7 +555,9 @@ func (s *Store) ResolveOIDCUser(ctx context.Context, issuer, subject, email, dis
 			return "", err
 		}
 		var workspaceID string
-		if err := tx.QueryRow(ctx, `SELECT id FROM workspaces ORDER BY id LIMIT 1`).Scan(&workspaceID); err != nil {
+		if err := tx.QueryRow(ctx, `
+			SELECT id FROM workspaces
+			ORDER BY (id='ws_default') DESC,id LIMIT 1`).Scan(&workspaceID); err != nil {
 			return "", err
 		}
 		if _, err := tx.Exec(ctx,
@@ -347,7 +566,7 @@ func (s *Store) ResolveOIDCUser(ctx context.Context, issuer, subject, email, dis
 			return "", err
 		}
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO oidc_identities (issuer, subject, user_id) VALUES ($1,$2,$3)`, issuer, subject, userID); err != nil {
+	if _, err := tx.Exec(ctx, `INSERT INTO oidc_identities (issuer, subject, user_id, email) VALUES ($1,$2,$3,$4)`, issuer, subject, userID, email); err != nil {
 		return "", err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -360,9 +579,10 @@ func (s *Store) ResolveOIDCUser(ctx context.Context, issuer, subject, email, dis
 // in the default workspace, creating the user first if none exists yet. An
 // OIDC-only identity signs in by its immutable (issuer, subject) pair, never
 // by password, so unusablePasswordHash only needs to satisfy the NOT NULL
-// column and never successfully compare. A user or membership that already
-// exists is left untouched -- this only ever adds, on every boot, matching
-// migrations/002_seed.sql's own idempotent shape.
+// column and never successfully compare. Existing user profile and credential
+// fields are left untouched; an existing membership is promoted to the
+// requested role so the configured break-glass administrator cannot silently
+// remain an ordinary member.
 func (s *Store) EnsureBootstrapAdmin(ctx context.Context, email, displayName, unusablePasswordHash, role string) error {
 	workspaceID, _, err := s.DefaultWorkspace(ctx)
 	if err != nil {
@@ -387,7 +607,8 @@ func (s *Store) EnsureBootstrapAdmin(ctx context.Context, email, displayName, un
 		}
 	}
 	if _, err := tx.Exec(ctx,
-		`INSERT INTO memberships (workspace_id, user_id, role) VALUES ($1,$2,$3) ON CONFLICT (workspace_id, user_id) DO NOTHING`,
+		`INSERT INTO memberships (workspace_id, user_id, role) VALUES ($1,$2,$3)
+		 ON CONFLICT (workspace_id, user_id) DO UPDATE SET role=EXCLUDED.role`,
 		workspaceID, userID, role); err != nil {
 		return err
 	}
@@ -425,7 +646,9 @@ func (s *Store) UserByAPIToken(ctx context.Context, tokenHash string) (string, e
 // ---- Workspace / authz ----
 
 func (s *Store) DefaultWorkspace(ctx context.Context) (id, slug string, err error) {
-	err = s.Pool.QueryRow(ctx, `SELECT id, slug FROM workspaces ORDER BY id LIMIT 1`).Scan(&id, &slug)
+	err = s.Pool.QueryRow(ctx, `
+		SELECT id,slug FROM workspaces
+		ORDER BY (id='ws_default') DESC,id LIMIT 1`).Scan(&id, &slug)
 	return
 }
 
@@ -435,16 +658,13 @@ func (s *Store) WorkspaceBySlug(ctx context.Context, slug string) (string, error
 	return id, err
 }
 
-// IsMember is the V0 authz scope: workspace membership grants the workspace log.
+// IsMember resolves membership from the organization/site/product role model.
+// The legacy memberships table is mirrored into role_bindings by migration
+// triggers so older command and fixture paths remain consistent during the
+// authorization migration.
 func (s *Store) IsMember(ctx context.Context, workspaceID, userID string) (bool, error) {
-	var ok bool
-	err := s.Pool.QueryRow(ctx,
-		`SELECT EXISTS(
-			SELECT 1 FROM memberships m JOIN users u ON u.id=m.user_id
-			WHERE m.workspace_id=$1 AND m.user_id=$2 AND u.active
-		)`,
-		workspaceID, userID).Scan(&ok)
-	return ok, err
+	roles, err := s.RolesForUserInWorkspace(ctx, workspaceID, userID)
+	return len(roles) > 0, err
 }
 
 func (s *Store) AddMember(ctx context.Context, workspaceID, userID, role string) error {
@@ -459,8 +679,8 @@ func (s *Store) AddMember(ctx context.Context, workspaceID, userID, role string)
 func (s *Store) ProjectByKey(ctx context.Context, workspaceID, key string) (*models.Project, error) {
 	p := &models.Project{WorkspaceID: workspaceID, Key: key}
 	err := s.Pool.QueryRow(ctx,
-		`SELECT id, name, COALESCE(workflow_id,''), COALESCE(security_scheme_id,''), description, url, COALESCE(lead_account_id,''), assignee_type FROM projects WHERE workspace_id=$1 AND upper(key)=upper($2)`,
-		workspaceID, key).Scan(&p.ID, &p.Name, &p.WorkflowID, &p.SecuritySchemeID, &p.Description, &p.URL, &p.LeadAccountID, &p.AssigneeType)
+		`SELECT id, name, COALESCE(workflow_id,''), COALESCE(security_scheme_id,''), description, url, COALESCE(lead_account_id,''), assignee_type, project_type_key FROM projects WHERE workspace_id=$1 AND upper(key)=upper($2)`,
+		workspaceID, key).Scan(&p.ID, &p.Name, &p.WorkflowID, &p.SecuritySchemeID, &p.Description, &p.URL, &p.LeadAccountID, &p.AssigneeType, &p.ProjectTypeKey)
 	if err != nil {
 		return nil, err
 	}
@@ -472,7 +692,9 @@ func (s *Store) ProjectByKey(ctx context.Context, workspaceID, key string) (*mod
 const issueJoin = `
 SELECT i.id, i.workspace_id, i.project_id, i.key, i.summary, i.description,
        st.id, st.name, st.category,
-       it.id, it.name, it.icon,
+	       it.id, it.name, it.icon,
+	       it.subtask,
+	       parent.id, parent.key, parent.summary,
        pr.id, pr.name,
        a.id, a.display_name,
 	       r.id, r.display_name,
@@ -485,6 +707,7 @@ JOIN issue_types it ON it.id = i.issuetype_id
 LEFT JOIN priorities pr ON pr.id = i.priority_id
 LEFT JOIN users a ON a.id = i.assignee_id
 LEFT JOIN users r ON r.id = i.reporter_id
+LEFT JOIN issues parent ON parent.id = i.parent_id
 `
 
 func scanIssue(row pgx.Row) (*models.Issue, error) {
@@ -492,12 +715,14 @@ func scanIssue(row pgx.Row) (*models.Issue, error) {
 	var priorityID, priorityName *string
 	var assigneeID, assigneeName *string
 	var reporterID, reporterName *string
+	var parentID, parentKey, parentSummary *string
 	var updatedAt time.Time
 	var securityLevelID *string
 	var fieldsJSON []byte
 	err := row.Scan(&i.ID, &i.WorkspaceID, &i.ProjectID, &i.Key, &i.Summary, &i.Description,
 		&i.Status.ID, &i.Status.Name, &i.Status.Category,
-		&i.IssueType.ID, &i.IssueType.Name, &i.IssueType.Icon,
+		&i.IssueType.ID, &i.IssueType.Name, &i.IssueType.Icon, &i.IssueType.Subtask,
+		&parentID, &parentKey, &parentSummary,
 		&priorityID, &priorityName,
 		&assigneeID, &assigneeName,
 		&reporterID, &reporterName,
@@ -531,6 +756,9 @@ func scanIssue(row pgx.Row) (*models.Issue, error) {
 	if reporterID != nil {
 		i.Reporter = &models.User{ID: *reporterID, DisplayName: *reporterName, Active: true, AccountType: "atlassian"}
 	}
+	if parentID != nil {
+		i.Parent = &models.IssueParent{ID: *parentID, Key: *parentKey, Summary: *parentSummary}
+	}
 	return i, nil
 }
 
@@ -541,7 +769,13 @@ func (s *Store) IssueByIDOrKey(ctx context.Context, workspaceID, idOrKey string)
 
 // CreateIssue runs the canonical write transaction: state change + action append +
 // notify, all-or-nothing. Returns the persisted issue and its action.
-func (s *Store) CreateIssue(ctx context.Context, actorID, projectID, summary string, description json.RawMessage, statusID, issueTypeID, priorityID, assigneeID string, labels []string, fields map[string]json.RawMessage, securityLevelID string) (*models.Issue, *models.Action, error) {
+func (s *Store) CreateIssue(ctx context.Context, actorID, projectID, summary string, description json.RawMessage, statusID, issueTypeID, priorityID, assigneeID string, labels []string, fields map[string]json.RawMessage, securityLevelID, parentID string) (*models.Issue, *models.Action, error) {
+	return s.CreateIssueForReporter(ctx, actorID, actorID, projectID, summary, description, statusID, issueTypeID, priorityID, assigneeID, labels, fields, securityLevelID, parentID)
+}
+
+// CreateIssueForReporter separates the authenticated change actor from the
+// issue reporter for on-behalf-of service requests.
+func (s *Store) CreateIssueForReporter(ctx context.Context, actorID, reporterID, projectID, summary string, description json.RawMessage, statusID, issueTypeID, priorityID, assigneeID string, labels []string, fields map[string]json.RawMessage, securityLevelID, parentID string) (*models.Issue, *models.Action, error) {
 	if labels == nil {
 		labels = []string{}
 	}
@@ -567,7 +801,19 @@ func (s *Store) CreateIssue(ctx context.Context, actorID, projectID, summary str
 	issueID := NewID("iss")
 	issueKey := fmt.Sprintf("%s-%d", projectKey, issueNum)
 
-	reporter := actorID
+	reporter := reporterID
+	if reporter == "" {
+		reporter = actorID
+	}
+	if reporter != actorID {
+		var reporterExists bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE id=$1 AND active)`, reporter).Scan(&reporterExists); err != nil {
+			return nil, nil, err
+		}
+		if !reporterExists {
+			return nil, nil, fmt.Errorf("reporter account does not exist")
+		}
+	}
 	if assigneeID != "" {
 		var exists bool
 		err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE id=$1)`, assigneeID).Scan(&exists)
@@ -585,9 +831,9 @@ func (s *Store) CreateIssue(ctx context.Context, actorID, projectID, summary str
 	}
 	_, err = tx.Exec(ctx, `
 		INSERT INTO issues (id, workspace_id, project_id, key, summary, description, fields, labels,
-		                    status_id, issuetype_id, priority_id, assignee_id, reporter_id, security_level_id, updated_seq)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,0)`,
-		issueID, wsID, projectID, issueKey, summary, description, fieldsJSON, labels, statusID, issueTypeID, nilIfEmpty(priorityID), nilIfEmpty(assigneeID), reporter, nilIfEmpty(securityLevelID))
+		                    status_id, issuetype_id, priority_id, assignee_id, reporter_id, security_level_id, parent_id, updated_seq)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,0)`,
+		issueID, wsID, projectID, issueKey, summary, description, fieldsJSON, labels, statusID, issueTypeID, nilIfEmpty(priorityID), nilIfEmpty(assigneeID), reporter, nilIfEmpty(securityLevelID), nilIfEmpty(parentID))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -711,17 +957,72 @@ func (s *Store) ActionPageSince(ctx context.Context, workspaceID, userID string,
 		FROM actions a
 		WHERE a.workspace_id=$1 AND a.seq > $2 AND a.seq <= $6
 		  AND (a.entity_type <> 'dashboard' OR EXISTS (SELECT 1 FROM dashboards d WHERE d.workspace_id=$1 AND d.id=a.entity_id AND `+strings.ReplaceAll(dashboardAccess, "$2", "$3")+`))
-		  AND (a.entity_type NOT IN ('wiki_space','wiki_page') OR EXISTS (
+		  AND (a.entity_type NOT IN ('wiki_space','wiki_page','wiki_page_like','wiki_page_property','wiki_blogpost','wiki_blogpost_property','wiki_blogpost_label','wiki_blogpost_like','wiki_footer_comment','wiki_footer_comment_like','wiki_inline_comment','wiki_inline_comment_like','wiki_task','wiki_label','wiki_restriction','wiki_attachment','wiki_attachment_property','wiki_content','wiki_content_property') OR EXISTS (
 		    SELECT 1 FROM wiki_spaces s WHERE s.workspace_id=$1
 		      AND s.id::text=a.payload->>'wikiSpaceId'
 		      AND (NOT s.private OR s.author_id=$3)
-		      AND (a.entity_type<>'wiki_page' OR a.payload->'wiki_page'->>'published'='true'
+		      AND (a.entity_type NOT IN ('wiki_page','wiki_page_like','wiki_page_property') OR a.payload->'wiki_page'->>'published'='true'
 		        OR a.payload->'wiki_page'->>'authorId'=$3)
+		      AND (a.entity_type NOT IN ('wiki_blogpost','wiki_blogpost_property','wiki_blogpost_label','wiki_blogpost_like') OR (a.payload->'wiki_blogpost'->>'published'='true'
+		        OR a.payload->'wiki_blogpost'->>'authorId'=$3) AND (COALESCE((a.payload->'wiki_blogpost'->>'private')::boolean,false)=false OR a.payload->'wiki_blogpost'->>'authorId'=$3))
+		      AND (a.entity_type NOT IN ('wiki_content','wiki_content_property') OR COALESCE((a.payload->>'contentPrivate')::boolean,false)=false OR a.payload->>'contentAuthorId'=$3)
+		      AND (a.entity_type<>'wiki_attachment' OR COALESCE(a.payload->'wiki_attachment'->>'blogPostId','')='' OR
+		        ((a.payload->>'blogPublished'='true' OR a.payload->>'blogAuthorId'=$3) AND (COALESCE((a.payload->>'blogPrivate')::boolean,false)=false OR a.payload->>'blogAuthorId'=$3)))
+		      AND (a.entity_type NOT IN ('wiki_footer_comment','wiki_footer_comment_like','wiki_inline_comment','wiki_inline_comment_like') OR
+		        COALESCE(a.payload->'wiki_footer_comment'->>'blogPostId',a.payload->'wiki_footer_comment_like'->>'blogPostId',a.payload->'wiki_inline_comment'->>'blogPostId',a.payload->'wiki_inline_comment_like'->>'blogPostId','')='' OR
+		        ((a.payload->>'blogPublished'='true' OR a.payload->>'blogAuthorId'=$3) AND (COALESCE((a.payload->>'blogPrivate')::boolean,false)=false OR a.payload->>'blogAuthorId'=$3)))
+		      AND (a.entity_type NOT IN ('wiki_footer_comment','wiki_footer_comment_like','wiki_inline_comment','wiki_inline_comment_like','wiki_task') OR EXISTS (
+		        SELECT 1 FROM wiki_pages wp
+		        WHERE wp.id::text=COALESCE(a.payload->'wiki_footer_comment'->>'pageId',a.payload->'wiki_footer_comment_like'->>'pageId',a.payload->'wiki_inline_comment'->>'pageId',a.payload->'wiki_inline_comment_like'->>'pageId',a.payload->'wiki_task'->>'pageId')
+		          AND wp.space_id=s.id AND wp.status='current'
+		      ) OR COALESCE(a.payload->'wiki_footer_comment'->>'blogPostId',a.payload->'wiki_footer_comment_like'->>'blogPostId',a.payload->'wiki_inline_comment'->>'blogPostId',a.payload->'wiki_inline_comment_like'->>'blogPostId','')<>'')
+		      AND (a.entity_type<>'wiki_label' OR COALESCE(a.payload->'wiki_label'->>'pageId','')='' OR EXISTS (
+		        SELECT 1 FROM wiki_pages wp
+		        WHERE wp.id::text=a.payload->'wiki_label'->>'pageId'
+		          AND wp.space_id=s.id AND wp.status='current'
+		      ))
+		      AND (a.entity_type NOT IN ('wiki_page','wiki_page_like','wiki_page_property','wiki_blogpost','wiki_blogpost_property','wiki_blogpost_label','wiki_blogpost_like','wiki_footer_comment','wiki_footer_comment_like','wiki_inline_comment','wiki_inline_comment_like','wiki_task','wiki_label','wiki_restriction','wiki_attachment','wiki_attachment_property','wiki_content','wiki_content_property')
+		        OR COALESCE(a.payload->'wiki_label'->>'pageId','')='' AND a.entity_type='wiki_label'
+		        OR a.entity_type IN ('wiki_blogpost','wiki_blogpost_property','wiki_blogpost_label','wiki_blogpost_like')
+		        OR a.entity_type='wiki_attachment' AND COALESCE(a.payload->'wiki_attachment'->>'blogPostId','')<>''
+		        OR a.entity_type IN ('wiki_footer_comment','wiki_footer_comment_like','wiki_inline_comment','wiki_inline_comment_like') AND
+		          COALESCE(a.payload->'wiki_footer_comment'->>'blogPostId',a.payload->'wiki_footer_comment_like'->>'blogPostId',a.payload->'wiki_inline_comment'->>'blogPostId',a.payload->'wiki_inline_comment_like'->>'blogPostId','')<>''
+		        OR a.entity_type IN ('wiki_content','wiki_content_property') AND COALESCE(a.payload->>'rootPageId','')=''
+		        OR EXISTS (
+		          SELECT 1 FROM wiki_pages access_page
+		          WHERE access_page.id::text=CASE a.entity_type
+		            WHEN 'wiki_page' THEN a.payload->'wiki_page'->>'id'
+		            WHEN 'wiki_page_like' THEN a.payload->'wiki_page'->>'id'
+		            WHEN 'wiki_page_property' THEN a.payload->'wiki_page'->>'id'
+		            WHEN 'wiki_footer_comment' THEN a.payload->'wiki_footer_comment'->>'pageId'
+		            WHEN 'wiki_footer_comment_like' THEN a.payload->'wiki_footer_comment_like'->>'pageId'
+		            WHEN 'wiki_inline_comment' THEN a.payload->'wiki_inline_comment'->>'pageId'
+		            WHEN 'wiki_inline_comment_like' THEN a.payload->'wiki_inline_comment_like'->>'pageId'
+		            WHEN 'wiki_task' THEN a.payload->'wiki_task'->>'pageId'
+		            WHEN 'wiki_label' THEN a.payload->'wiki_label'->>'pageId'
+		            WHEN 'wiki_restriction' THEN a.payload->'wiki_restriction'->>'pageId'
+		            WHEN 'wiki_attachment' THEN a.payload->'wiki_attachment'->>'pageId'
+		            WHEN 'wiki_attachment_property' THEN a.payload->'wiki_attachment_property'->>'pageId'
+		            WHEN 'wiki_content' THEN a.payload->>'rootPageId'
+		            WHEN 'wiki_content_property' THEN a.payload->>'rootPageId'
+		          END
+		            AND access_page.space_id=s.id
+		            AND access_page.status='current'
+		            AND (
+		              access_page.author_id=$3
+		              OR EXISTS (SELECT 1 FROM memberships access_admin WHERE access_admin.workspace_id=$1 AND access_admin.user_id=$3 AND access_admin.role='admin')
+		              OR NOT EXISTS (SELECT 1 FROM wiki_page_restrictions access_restriction WHERE access_restriction.page_id=access_page.id AND access_restriction.operation='read')
+		              OR EXISTS (SELECT 1 FROM wiki_page_restrictions access_restriction WHERE access_restriction.page_id=access_page.id AND access_restriction.operation='read' AND access_restriction.subject_type='user' AND access_restriction.subject_id=$3)
+		              OR EXISTS (SELECT 1 FROM wiki_page_restrictions access_restriction JOIN group_members access_member ON access_restriction.subject_type='group' AND access_member.group_id::text=access_restriction.subject_id WHERE access_restriction.page_id=access_page.id AND access_restriction.operation='read' AND access_member.user_id=$3)
+		            )
+		        )
+		      )
 		  ))
 		  AND (
 		    CASE a.entity_type
 		      WHEN $4 THEN a.payload->'notification'->>'userId'
 		      WHEN $5 THEN a.payload->>'userId'
+		      WHEN 'wiki_watch' THEN a.payload->'wiki_watch'->>'userId'
 		      ELSE $3
 		    END = $3
 			  )

@@ -78,10 +78,13 @@ test('WCAG A/AA: every primary page passes axe in light and dark themes', async 
 
   await login(page);
   const issueHref = await firstIssueHref(page);
+  await page.goto('/settings/workflow-schemes');
+  const schemeHref = await page.locator('.workflow-list-item h2 a').first().getAttribute('href');
+  expect(schemeHref).toMatch(/^\/settings\/workflow-schemes\//);
   const pages = [
     '/', '/dashboard', '/notifications', '/projects', '/projects/ZZ', '/people', '/profile',
-    '/settings/workflows', '/settings/workflows/wf_default', '/projects/new', '/projects/ZZ/settings', '/wiki',
-    '/issues/ZZ', '/board/brd_default/backlog', '/board/brd_default', '/board/brd_default/settings', issueHref,
+    '/settings/workflows', '/settings/workflows/wf_default', '/settings/workflow-schemes', '/settings/statuses', '/projects/new', '/projects/ZZ/settings', '/wiki',
+    '/issues/ZZ', '/board/brd_default/backlog', '/board/brd_default', '/board/brd_default/settings', issueHref, schemeHref!,
   ];
 
   for (const path of pages) {
@@ -236,10 +239,13 @@ test('board cards expose keyboard and non-drag movement controls without nested 
 test('controls meet WCAG 2.2 minimum target size', async ({ page }) => {
   await login(page);
   const issueHref = await firstIssueHref(page);
+  await page.goto('/settings/workflow-schemes');
+  const schemeHref = await page.locator('.workflow-list-item h2 a').first().getAttribute('href');
+  expect(schemeHref).toMatch(/^\/settings\/workflow-schemes\//);
   for (const path of [
     '/', '/projects', '/projects/ZZ', '/people', '/profile',
-    '/settings/workflows', '/settings/workflows/wf_default', '/projects/new', '/projects/ZZ/settings', '/wiki',
-    '/issues/ZZ', '/board/brd_default/backlog', '/board/brd_default', '/board/brd_default/settings', issueHref,
+    '/settings/workflows', '/settings/workflows/wf_default', '/settings/workflow-schemes', '/settings/statuses', '/projects/new', '/projects/ZZ/settings', '/wiki',
+    '/issues/ZZ', '/board/brd_default/backlog', '/board/brd_default', '/board/brd_default/settings', issueHref, schemeHref!,
   ]) {
     await page.goto(path);
     const columnPicker = page.locator('.column-picker summary');
@@ -261,11 +267,14 @@ test('controls meet WCAG 2.2 minimum target size', async ({ page }) => {
 test('primary pages reflow without document-level horizontal scrolling at 320px', async ({ page }) => {
   await login(page);
   const issueHref = await firstIssueHref(page);
+  await page.goto('/settings/workflow-schemes');
+  const schemeHref = await page.locator('.workflow-list-item h2 a').first().getAttribute('href');
+  expect(schemeHref).toMatch(/^\/settings\/workflow-schemes\//);
   await page.setViewportSize({ width: 320, height: 720 });
   for (const path of [
     '/', '/projects', '/projects/ZZ', '/people', '/profile',
-    '/settings/workflows', '/settings/workflows/wf_default', '/projects/new', '/projects/ZZ/settings', '/wiki',
-    '/issues/ZZ', '/board/brd_default/backlog', '/board/brd_default', '/board/brd_default/settings', issueHref,
+    '/settings/workflows', '/settings/workflows/wf_default', '/settings/workflow-schemes', '/settings/statuses', '/projects/new', '/projects/ZZ/settings', '/wiki',
+    '/issues/ZZ', '/board/brd_default/backlog', '/board/brd_default', '/board/brd_default/settings', issueHref, schemeHref!,
   ]) {
     await page.goto(path);
     const viewportDoesNotOverflow = await page.evaluate(

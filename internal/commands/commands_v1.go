@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"github.com/e6qu/zzira/internal/authz"
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
+	"github.com/e6qu/zzira/internal/workflow"
 )
 
 // UpdateIssue applies a partial update. nil pointers = unchanged.
@@ -27,6 +29,7 @@ type UpdateIssueInput struct {
 	Description       json.RawMessage // ADF; nil = unchanged
 	PriorityID        *string
 	AssigneeID        *string
+	ParentIDOrKey     *string
 	StatusID          *string // transitions only
 
 	SecurityLevelID *string                    // "" = public, nil = unchanged
@@ -64,6 +67,23 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 		if _, err := s.Store.MemberByID(ctx, in.WorkspaceID, *in.AssigneeID); err != nil {
 			return nil, nil, fmt.Errorf("assignee is not an active workspace member")
 		}
+	}
+	var parentID *string
+	if in.ParentIDOrKey != nil {
+		resolved := ""
+		if issue.IssueType.Subtask {
+			if strings.TrimSpace(*in.ParentIDOrKey) == "" {
+				return nil, nil, fmt.Errorf("parent is required for a sub-task")
+			}
+			parent, err := s.visibleIssue(ctx, in.ActorID, in.WorkspaceID, *in.ParentIDOrKey)
+			if err != nil || parent.ProjectID != issue.ProjectID || parent.ID == issue.ID || parent.IssueType.Subtask {
+				return nil, nil, fmt.Errorf("parent must be a visible non-sub-task in this project")
+			}
+			resolved = parent.ID
+		} else if strings.TrimSpace(*in.ParentIDOrKey) != "" {
+			return nil, nil, fmt.Errorf("parent is only available for sub-tasks")
+		}
+		parentID = &resolved
 	}
 	if in.SecurityLevelID != nil && *in.SecurityLevelID != "" {
 		scheme, err := s.Store.SecuritySchemeForProject(ctx, issue.ProjectID)
@@ -105,6 +125,7 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 		Description:       in.Description,
 		PriorityID:        in.PriorityID,
 		AssigneeID:        in.AssigneeID,
+		ParentID:          parentID,
 		StatusID:          in.StatusID,
 		SecurityLevelID:   in.SecurityLevelID,
 		Labels:            in.Labels,
@@ -244,11 +265,41 @@ func (s *Service) notifyAssignee(ctx context.Context, in UpdateIssueInput, issue
 // TransitionIssue validates and applies a workflow transition using the
 // issue's project workflow (Default when unassigned).
 func (s *Service) TransitionIssue(ctx context.Context, actorID, workspaceID, issueIDOrKey, transitionID string) (*models.Issue, *models.Action, error) {
+	return s.transitionIssueWithUpdate(ctx, actorID, workspaceID, issueIDOrKey, transitionID, store.IssueUpdate{}, false)
+}
+
+func (s *Service) TransitionIssueWithUpdate(ctx context.Context, actorID, workspaceID, issueIDOrKey, transitionID string, update store.IssueUpdate) (*models.Issue, *models.Action, error) {
+	return s.transitionIssueWithUpdate(ctx, actorID, workspaceID, issueIDOrKey, transitionID, update, false)
+}
+
+// TransitionIssueWithUpdateFromAPI preserves Jira's distinction between rules
+// that block people in the UI and rules that also block REST transitions.
+func (s *Service) TransitionIssueWithUpdateFromAPI(ctx context.Context, actorID, workspaceID, issueIDOrKey, transitionID string, update store.IssueUpdate) (*models.Issue, *models.Action, error) {
+	return s.transitionIssueWithUpdate(ctx, actorID, workspaceID, issueIDOrKey, transitionID, update, true)
+}
+
+func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, workspaceID, issueIDOrKey, transitionID string, update store.IssueUpdate, isAPI bool) (*models.Issue, *models.Action, error) {
 	issue, err := s.visibleIssue(ctx, actorID, workspaceID, issueIDOrKey)
 	if err != nil {
 		return nil, nil, fmt.Errorf("issue %q not found", issueIDOrKey)
 	}
-	wf, err := s.Store.WorkflowForProject(ctx, issue.ProjectID)
+	if update.Summary != nil && (len(*update.Summary) == 0 || len(*update.Summary) > 255) {
+		return nil, nil, fmt.Errorf("summary is required (max 255 chars)")
+	}
+	if len(update.Description) > 1<<20 {
+		return nil, nil, fmt.Errorf("description must be at most 1 MiB")
+	}
+	if err := s.validateCustomFields(ctx, issue.ProjectID, update.Fields); err != nil {
+		return nil, nil, err
+	}
+	if update.Labels != nil {
+		labels, err := normalizeLabels(*update.Labels)
+		if err != nil {
+			return nil, nil, err
+		}
+		update.Labels = &labels
+	}
+	wf, err := s.Store.WorkflowForProjectAndIssueType(ctx, issue.ProjectID, issue.IssueType.ID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -256,8 +307,346 @@ func (s *Service) TransitionIssue(ctx context.Context, actorID, workspaceID, iss
 	if !ok {
 		return nil, nil, fmt.Errorf("transition %q is not valid from status %q", transitionID, issue.Status.Name)
 	}
+	context := workflow.ContextForIssue(actorID, issue)
+	context.IsAPI = isAPI
+	context.StatusHistory, err = s.Store.IssueStatusHistory(ctx, workspaceID, issue.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+	context.Transitions, err = s.Store.IssueTransitionHistory(ctx, workspaceID, issue.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+	context.ParentStatus, context.ChildStatuses, err = s.Store.IssueHierarchyStatuses(ctx, workspaceID, issue.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+	context.FormsAttached, context.FormsSubmitted, err = s.Store.IssueFormState(ctx, workspaceID, issue.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !t.ConditionsAllow(context) {
+		return nil, nil, fmt.Errorf("transition %q is not available to this user", transitionID)
+	}
+	requestedFields := make(map[string]bool)
+	for field, changed := range map[string]bool{
+		"summary": update.Summary != nil, "description": update.Description != nil,
+		"priority": update.PriorityID != nil, "assignee": update.AssigneeID != nil,
+		"labels": update.Labels != nil,
+	} {
+		if changed {
+			requestedFields[field] = true
+		}
+	}
+	for field := range update.Fields {
+		requestedFields[field] = true
+	}
+	context.ChangedFields = changedTransitionFields(issue, update)
+	allowed := make(map[string]bool)
+	for _, field := range t.ScreenFields() {
+		allowed[field] = true
+	}
+	for field := range requestedFields {
+		if !allowed[field] {
+			return nil, nil, fmt.Errorf("field %q is not available on transition %q", field, transitionID)
+		}
+	}
+	if update.Summary != nil {
+		context.FieldPresent["summary"] = strings.TrimSpace(*update.Summary) != ""
+	}
+	if update.Description != nil {
+		context.FieldPresent["description"] = strings.TrimSpace(adf.PlainText(update.Description)) != ""
+	}
+	if update.PriorityID != nil {
+		context.FieldPresent["priority"] = *update.PriorityID != ""
+	}
+	if update.AssigneeID != nil {
+		context.FieldPresent["assignee"] = *update.AssigneeID != ""
+		if *update.AssigneeID != "" {
+			if _, err := s.Store.MemberByID(ctx, workspaceID, *update.AssigneeID); err != nil {
+				return nil, nil, fmt.Errorf("assignee is not an active workspace member")
+			}
+		}
+	}
+	if update.Labels != nil {
+		context.FieldPresent["labels"] = len(*update.Labels) > 0
+	}
+	for field, value := range update.Fields {
+		context.FieldPresent[field] = workflow.FieldValuePresent(value)
+	}
+	for field := range requestedFields {
+		context.FieldValues[field] = workflowFieldRaw(issue, &update, field)
+	}
+	context.Permissions, err = authz.JiraPermissions(ctx, s.Store, workspaceID, actorID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := t.ValidateRules(context); err != nil {
+		return nil, nil, err
+	}
+	assigneeID, changeAssignee, err := t.AssigneeEffect(context)
+	if err != nil {
+		return nil, nil, err
+	}
+	if changeAssignee && assigneeID != "" {
+		if _, err := s.Store.MemberByID(ctx, workspaceID, assigneeID); err != nil {
+			return nil, nil, fmt.Errorf("workflow assignee is not an active workspace member")
+		}
+	}
 	newStatus := t.To
-	return s.Store.UpdateIssue(ctx, actorID, workspaceID, issue.ID, store.IssueUpdate{StatusID: &newStatus})
+	update.StatusID = &newStatus
+	update.ExpectedUpdatedSeq = &issue.UpdatedSeq
+	if changeAssignee {
+		update.AssigneeID = &assigneeID
+	}
+	fieldEffects, err := t.FieldUpdateEffects()
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, effect := range fieldEffects {
+		var err error
+		if effect.SourceField != "" {
+			sourceIssue := issue
+			sourceUpdate := &update
+			if effect.IssueSource == "PARENT" {
+				if issue.Parent == nil {
+					return nil, nil, fmt.Errorf("copy-field parent source requires a parent issue")
+				}
+				sourceIssue, err = s.Store.IssueByIDOrKey(ctx, workspaceID, issue.Parent.ID)
+				sourceUpdate = &store.IssueUpdate{}
+				if err != nil {
+					return nil, nil, fmt.Errorf("copy-field parent source is unavailable")
+				}
+			}
+			err = applyWorkflowFieldCopyFrom(sourceIssue, sourceUpdate, &update, effect.SourceField, effect.Field)
+		} else {
+			err = applyWorkflowFieldUpdate(issue, &update, effect)
+		}
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	triggeredWebhookIDs, err := t.TriggerWebhookIDs()
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(triggeredWebhookIDs) > 0 {
+		update.TriggeredWebhookIDs = triggeredWebhookIDs
+	}
+	if update.Summary != nil && (len(*update.Summary) == 0 || len(*update.Summary) > 255) {
+		return nil, nil, fmt.Errorf("workflow summary update must be between 1 and 255 characters")
+	}
+	if update.AssigneeID != nil && *update.AssigneeID != "" {
+		if _, err := s.Store.MemberByID(ctx, workspaceID, *update.AssigneeID); err != nil {
+			return nil, nil, fmt.Errorf("workflow assignee is not an active workspace member")
+		}
+	}
+	if err := s.validateCustomFields(ctx, issue.ProjectID, update.Fields); err != nil {
+		return nil, nil, err
+	}
+	return s.Store.UpdateIssue(ctx, actorID, workspaceID, issue.ID, update)
+}
+
+func changedTransitionFields(issue *models.Issue, update store.IssueUpdate) map[string]bool {
+	changed := make(map[string]bool)
+	if update.Summary != nil && *update.Summary != issue.Summary {
+		changed["summary"] = true
+	}
+	if update.Description != nil && !adf.Equal(update.Description, issue.Description) {
+		changed["description"] = true
+	}
+	priorityID := ""
+	if issue.Priority != nil {
+		priorityID = issue.Priority.ID
+	}
+	if update.PriorityID != nil && *update.PriorityID != priorityID {
+		changed["priority"] = true
+	}
+	assigneeID := ""
+	if issue.Assignee != nil {
+		assigneeID = issue.Assignee.ID
+	}
+	if update.AssigneeID != nil && *update.AssigneeID != assigneeID {
+		changed["assignee"] = true
+	}
+	if update.Labels != nil && !slices.Equal(*update.Labels, issue.Labels) {
+		changed["labels"] = true
+	}
+	for field, value := range update.Fields {
+		var submitted, current any
+		currentValid := true
+		if raw := issue.Fields[field]; len(raw) > 0 {
+			currentValid = json.Unmarshal(raw, &current) == nil
+		}
+		if json.Unmarshal(value, &submitted) != nil || !currentValid || !reflect.DeepEqual(submitted, current) {
+			changed[field] = true
+		}
+	}
+	return changed
+}
+
+func workflowFieldRaw(issue *models.Issue, update *store.IssueUpdate, field string) json.RawMessage {
+	encode := func(value any) json.RawMessage {
+		encoded, _ := json.Marshal(value)
+		return encoded
+	}
+	switch field {
+	case "summary":
+		if update.Summary != nil {
+			return encode(*update.Summary)
+		}
+		return encode(issue.Summary)
+	case "description":
+		if update.Description != nil {
+			return encode(adf.PlainText(update.Description))
+		}
+		return encode(adf.PlainText(issue.Description))
+	case "labels":
+		if update.Labels != nil {
+			return encode(*update.Labels)
+		}
+		return encode(issue.Labels)
+	case "assignee":
+		if update.AssigneeID != nil {
+			return encode(*update.AssigneeID)
+		}
+		if issue.Assignee != nil {
+			return encode(issue.Assignee.ID)
+		}
+	case "reporter":
+		if issue.Reporter != nil {
+			return encode(issue.Reporter.ID)
+		}
+	case "priority":
+		if update.PriorityID != nil {
+			return encode(*update.PriorityID)
+		}
+		if issue.Priority != nil {
+			return encode(issue.Priority.ID)
+		}
+	case "status":
+		return encode(issue.Status.ID)
+	default:
+		if update.Fields != nil {
+			if value, exists := update.Fields[field]; exists {
+				return value
+			}
+		}
+		return issue.Fields[field]
+	}
+	return json.RawMessage("null")
+}
+
+func applyWorkflowFieldCopy(issue *models.Issue, update *store.IssueUpdate, source, target string) error {
+	return applyWorkflowFieldCopyFrom(issue, update, update, source, target)
+}
+
+func applyWorkflowFieldCopyFrom(sourceIssue *models.Issue, sourceUpdate, targetUpdate *store.IssueUpdate, source, target string) error {
+	raw := workflowFieldRaw(sourceIssue, sourceUpdate, source)
+	if target == "labels" {
+		var labels []string
+		if json.Unmarshal(raw, &labels) != nil {
+			var value string
+			if json.Unmarshal(raw, &value) != nil {
+				return fmt.Errorf("workflow field %q cannot be copied to labels", source)
+			}
+			labels = strings.Split(value, ",")
+		}
+		normalized, err := normalizeLabels(labels)
+		if err != nil {
+			return fmt.Errorf("workflow field copy: %w", err)
+		}
+		targetUpdate.Labels = &normalized
+		return nil
+	}
+	if target == "summary" || target == "description" || target == "priority" {
+		var value string
+		if json.Unmarshal(raw, &value) != nil {
+			return fmt.Errorf("workflow field %q cannot be copied to %s", source, target)
+		}
+		switch target {
+		case "summary":
+			targetUpdate.Summary = &value
+		case "description":
+			targetUpdate.Description = adf.ParagraphDoc(value)
+		case "priority":
+			targetUpdate.PriorityID = &value
+		}
+		return nil
+	}
+	if targetUpdate.Fields == nil {
+		targetUpdate.Fields = make(map[string]json.RawMessage)
+	}
+	targetUpdate.Fields[target] = append(json.RawMessage(nil), raw...)
+	return nil
+}
+
+func applyWorkflowFieldUpdate(issue *models.Issue, update *store.IssueUpdate, effect workflow.FieldUpdateEffect) error {
+	appendText := func(current string) string {
+		if effect.Mode == "replace" {
+			return effect.Value
+		}
+		return current + effect.Value
+	}
+	switch effect.Field {
+	case "summary":
+		current := issue.Summary
+		if update.Summary != nil {
+			current = *update.Summary
+		}
+		value := appendText(current)
+		update.Summary = &value
+	case "description":
+		current := adf.PlainText(issue.Description)
+		if update.Description != nil {
+			current = adf.PlainText(update.Description)
+		}
+		update.Description = adf.ParagraphDoc(appendText(current))
+	case "labels":
+		labels := append([]string(nil), issue.Labels...)
+		if update.Labels != nil {
+			labels = append([]string(nil), (*update.Labels)...)
+		}
+		values := strings.Split(effect.Value, ",")
+		if strings.TrimSpace(effect.Value) == "" {
+			values = []string{}
+		}
+		if effect.Mode == "replace" {
+			labels = values
+		} else {
+			labels = append(labels, values...)
+		}
+		normalized, err := normalizeLabels(labels)
+		if err != nil {
+			return fmt.Errorf("workflow label update: %w", err)
+		}
+		update.Labels = &normalized
+	case "priority":
+		value := effect.Value
+		update.PriorityID = &value
+	default:
+		if update.Fields == nil {
+			update.Fields = make(map[string]json.RawMessage)
+		}
+		incoming := json.RawMessage(effect.Value)
+		if !json.Valid(incoming) {
+			incoming, _ = json.Marshal(effect.Value)
+		}
+		if effect.Mode == "replace" {
+			update.Fields[effect.Field] = incoming
+			break
+		}
+		current := issue.Fields[effect.Field]
+		if changed, ok := update.Fields[effect.Field]; ok {
+			current = changed
+		}
+		var currentText, incomingText string
+		if json.Unmarshal(current, &currentText) != nil || json.Unmarshal(incoming, &incomingText) != nil {
+			return fmt.Errorf("workflow field %q only supports append for text values", effect.Field)
+		}
+		update.Fields[effect.Field], _ = json.Marshal(currentText + incomingText)
+	}
+	return nil
 }
 
 type AddCommentInput struct {

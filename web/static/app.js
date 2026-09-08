@@ -37,6 +37,57 @@
   }
   document.addEventListener('DOMContentLoaded', initThemeToggle);
 
+  function initIssueContexts(root) {
+    root.querySelectorAll('[data-issue-context-key]').forEach((panel) => {
+      if (panel.dataset.ready) return;
+      panel.dataset.ready = '1';
+      const storageKey = 'zzira-issue-context:' + panel.dataset.issueContextKey;
+      panel.open = localStorage.getItem(storageKey) === 'open';
+      panel.addEventListener('toggle', () => {
+        localStorage.setItem(storageKey, panel.open ? 'open' : 'closed');
+      });
+    });
+  }
+  document.addEventListener('DOMContentLoaded', () => initIssueContexts(document));
+  document.body.addEventListener('htmx:afterSettle', (event) => initIssueContexts(event.target));
+
+  function productKeyForPage() {
+    if (location.pathname === '/login' || location.pathname === '/signed-out' || location.pathname.startsWith('/auth/') || location.pathname.startsWith('/admin')) return '';
+    if (location.pathname === '/wiki' || location.pathname.startsWith('/wiki/')) return 'confluence';
+    if (location.pathname === '/servicedesk' || location.pathname.startsWith('/servicedesk/')) return 'jira-service-management';
+    return 'jira-software';
+  }
+
+  function initProductActivity() {
+    const productKey = productKeyForPage();
+    if (!productKey) return;
+    let visibleTimer = 0;
+    const stop = () => {
+      if (visibleTimer) window.clearTimeout(visibleTimer);
+      visibleTimer = 0;
+    };
+    const start = () => {
+      stop();
+      if (document.visibilityState !== 'visible') return;
+      visibleTimer = window.setTimeout(() => {
+        visibleTimer = 0;
+        fetch('/rest/zzira/1/product-activity', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ productKey }),
+          keepalive: true,
+        }).then((response) => {
+          if (!response.ok) console.warn('ZZIRA product activity was not recorded:', response.status);
+        }).catch((error) => console.warn('ZZIRA product activity was not recorded:', error));
+      }, 2000);
+    };
+    document.addEventListener('visibilitychange', start);
+    window.addEventListener('pagehide', stop, { once: true });
+    start();
+  }
+  document.addEventListener('DOMContentLoaded', initProductActivity);
+
   // ---- Application shell: persistent sidebar + Jira-style search shortcut ----
   function setNavigationState(open) {
     const mobile = window.matchMedia('(max-width: 960px)').matches;
@@ -332,6 +383,19 @@
   function applyActivityView(root) {
     const ledger = root.querySelector('[data-activity-ledger]');
     if (!ledger) return;
+    const filterButtons = Array.from(root.querySelectorAll('[data-activity-filter]'));
+    if (!filterButtons.some((button) => button.dataset.activityFilter === activityFilter)) activityFilter = 'comment';
+    const appSelected = activityFilter.startsWith('app-');
+    const nativePanel = root.querySelector('[data-native-activity-panel]');
+    if (nativePanel) nativePanel.hidden = appSelected;
+    root.querySelectorAll('[data-app-activity-panel]').forEach((panel) => {
+      const selected = panel.dataset.appActivityPanel === activityFilter;
+      panel.hidden = !selected;
+      if (selected) {
+        const frame = panel.querySelector('[data-app-frame-src]');
+        if (frame && !frame.getAttribute('src')) frame.setAttribute('src', frame.dataset.appFrameSrc || '');
+      }
+    });
     const entries = Array.from(ledger.querySelectorAll('[data-activity-kind]'));
     const empty = ledger.querySelector('[data-activity-filter-empty]');
     let visible = 0;
@@ -344,11 +408,12 @@
       return activityOldestFirst ? order : -order;
     }).forEach((entry) => ledger.insertBefore(entry, empty));
     if (empty) empty.hidden = visible !== 0 || entries.length === 0;
-    root.querySelectorAll('[data-activity-filter]').forEach((button) => {
+    filterButtons.forEach((button) => {
       button.setAttribute('aria-pressed', String(button.dataset.activityFilter === activityFilter));
     });
     const sortButton = root.querySelector('[data-activity-sort]');
     if (sortButton) {
+      sortButton.hidden = appSelected;
       sortButton.setAttribute('aria-pressed', String(activityOldestFirst));
       sortButton.setAttribute('aria-label', activityOldestFirst ? 'Sort activity newest first' : 'Sort activity oldest first');
       sortButton.textContent = activityOldestFirst ? 'Oldest first ↑' : 'Newest first ↓';
@@ -419,7 +484,7 @@
     return id;
   }
   const worker = replicaView && typeof Worker === 'function'
-    ? new Worker('/static/worker.js?v=11&replica=' + encodeURIComponent(replicaID()))
+    ? new Worker('/static/worker.js?v=13&replica=' + encodeURIComponent(replicaID()))
     : null;
   const banner = () => document.getElementById('sync-banner');
   let workerReady = false;
@@ -568,6 +633,14 @@
       case 'offline':
         announce('offline \u2014 showing local copy', 4000);
         setSyncRail('offline', 'Offline', 'Showing local copy');
+        break;
+      case 'revoked':
+        worker.terminate();
+        sessionStorage.removeItem('zzira-replica-id');
+        if (navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_PRIVATE_CACHE' });
+        }
+        location.replace('/signed-out');
         break;
       case 'html':
         // Skip the worker's redundant initial render: the server already
@@ -764,10 +837,12 @@
     setSyncRail('syncing', 'Back online', 'Syncing changes');
     // Reconnection is a protocol event, not an opportunity to wait for the
     // next maintenance tick. This message follows buffered offline commands.
+    postWorker({ type: 'network-state', online: true });
     postWorker({ type: 'sync-now' });
   });
   window.addEventListener('offline', () => {
     offlineMode = true;
+    postWorker({ type: 'network-state', online: false });
     setSyncRail('offline', 'Offline', 'Showing local copy');
   });
 

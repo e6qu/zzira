@@ -136,7 +136,32 @@ func LoginOIDC(ctx context.Context, st *store.Store, userID, idToken, issuer, su
 	return token, nil
 }
 
+// LoginIdentityProvider creates a session for either OIDC or OAuth identity
+// providers. OAuth-only providers do not issue an ID token, so idToken may be
+// empty; issuer and subject remain the immutable identity key.
+func LoginIdentityProvider(ctx context.Context, st *store.Store, userID, idToken, issuer, subject, sid, providerKey string) (string, error) {
+	if userID == "" || issuer == "" || subject == "" || providerKey == "" {
+		return "", ErrUnauthorized
+	}
+	token, err := randomToken()
+	if err != nil {
+		return "", err
+	}
+	if err := st.CreateIdentityProviderSession(ctx, hashToken(token), userID, idToken, issuer, subject, sid, providerKey, sessionTTL); err != nil {
+		return "", err
+	}
+	return token, nil
+}
+
 var ErrUnauthorized = unauthorized{}
+
+type principalContextKey struct{}
+
+// WithPrincipal attaches an already-authenticated non-human account to a
+// request. The app runtime verifies its signed request before using this hook.
+func WithPrincipal(ctx context.Context, principalID string) context.Context {
+	return context.WithValue(ctx, principalContextKey{}, principalID)
+}
 
 type unauthorized struct{}
 
@@ -145,6 +170,9 @@ func (unauthorized) Error() string { return "unauthorized" }
 // Identify resolves the caller from (1) Basic auth email:api-token, or
 // (2) the session cookie. Returns userID or ErrUnauthorized.
 func Identify(ctx context.Context, st *store.Store, r *http.Request) (string, error) {
+	if principalID, _ := ctx.Value(principalContextKey{}).(string); principalID != "" {
+		return principalID, nil
+	}
 	if user, pass, ok := r.BasicAuth(); ok {
 		if i := strings.IndexByte(user, '@'); i > 0 { // Jira-style: email + API token
 			userID, err := st.UserByAPIToken(ctx, hashToken(pass))
@@ -156,11 +184,29 @@ func Identify(ctx context.Context, st *store.Store, r *http.Request) (string, er
 		}
 		return "", ErrUnauthorized
 	}
+	if strings.HasPrefix(strings.ToLower(r.Header.Get("Authorization")), "bearer ") {
+		return IdentifyBearer(ctx, st, r)
+	}
 	c, err := r.Cookie(sessionCookie)
 	if err != nil || c.Value == "" {
 		return "", ErrUnauthorized
 	}
 	return st.SessionUser(ctx, hashToken(c.Value))
+}
+
+// IdentifyBearer resolves an API token presented with the bearer scheme. Jira
+// site APIs commonly use email/token Basic authentication, while Atlassian's
+// organization administration API presents an admin API key as a bearer token.
+func IdentifyBearer(ctx context.Context, st *store.Store, r *http.Request) (string, error) {
+	parts := strings.Fields(r.Header.Get("Authorization"))
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") || parts[1] == "" {
+		return "", ErrUnauthorized
+	}
+	userID, err := st.UserByAPIToken(ctx, hashToken(parts[1]))
+	if err != nil {
+		return "", ErrUnauthorized
+	}
+	return userID, nil
 }
 
 // ProtectCookieMutations rejects cross-origin unsafe requests authenticated by
@@ -200,14 +246,21 @@ func ProtectCookieMutations(next http.Handler) http.Handler {
 // with no further navigation at all) until the provider's origin was
 // explicitly allowed here.
 func SecurityHeaders(next http.Handler, oidcFormActionOrigin string) http.Handler {
-	formAction := "form-action 'self'"
-	if oidcFormActionOrigin != "" {
-		formAction += " " + oidcFormActionOrigin
-	}
+	return SecurityHeadersDynamic(next, func() string { return oidcFormActionOrigin })
+}
+
+// SecurityHeadersDynamic refreshes allowed logout origins for providers added
+// or rotated at runtime. The registry returns origins only from validated OIDC
+// discovery documents.
+func SecurityHeadersDynamic(next http.Handler, oidcFormActionOrigins func() string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		formAction := "form-action 'self'"
+		if origins := oidcFormActionOrigins(); origins != "" {
+			formAction += " " + origins
+		}
 		w.Header().Set("Content-Security-Policy",
 			"default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; "+
-				"style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; "+
+				"style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; frame-src 'self' https:; "+
 				"worker-src 'self' blob:; object-src 'none'; base-uri 'self'; "+
 				"frame-ancestors 'none'; "+formAction)
 		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")

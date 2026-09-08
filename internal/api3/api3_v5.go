@@ -1,6 +1,7 @@
 package api3
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 )
 
 var customFieldIDPattern = regexp.MustCompile(`^customfield_[0-9]+$`)
+var appCustomFieldKeyPattern = regexp.MustCompile(`^[a-zA-Z0-9._-]{1,64}__[a-zA-Z][a-zA-Z0-9._-]{0,63}$`)
 var customFieldInMessagePattern = regexp.MustCompile(`customfield_[0-9]+`)
 
 // customFieldsFromBody extracts custom fields and version references from the raw
@@ -27,7 +29,7 @@ func customFieldsFromBody(body []byte) map[string]json.RawMessage {
 	}
 	var out map[string]json.RawMessage
 	for k, v := range req.Fields {
-		if !customFieldIDPattern.MatchString(k) && k != "fixVersions" && k != "versions" {
+		if !customFieldIDPattern.MatchString(k) && !appCustomFieldKeyPattern.MatchString(k) && k != "fixVersions" && k != "versions" {
 			continue
 		}
 		if out == nil {
@@ -36,6 +38,30 @@ func customFieldsFromBody(body []byte) map[string]json.RawMessage {
 		out[k] = v
 	}
 	return out
+}
+
+func (h *Handler) resolveCustomFieldAliases(ctx context.Context, workspaceID string, values map[string]json.RawMessage) (map[string]json.RawMessage, error) {
+	if len(values) == 0 {
+		return values, nil
+	}
+	fields, err := h.Store.CustomFieldsForWorkspace(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	aliases := make(map[string]string)
+	for _, field := range fields {
+		if field.AppKey != "" {
+			aliases[field.AppKey+"__"+field.AppModuleKey] = field.ID
+		}
+	}
+	resolved := make(map[string]json.RawMessage, len(values))
+	for key, value := range values {
+		if id := aliases[key]; id != "" {
+			key = id
+		}
+		resolved[key] = value
+	}
+	return resolved, nil
 }
 
 // ---- custom fields ----
@@ -60,13 +86,18 @@ func (h *Handler) fieldRoute(w http.ResponseWriter, r *http.Request, parts []str
 }
 
 func (h *Handler) getCustomField(w http.ResponseWriter, r *http.Request, id string) {
-	fields, err := h.Store.CustomFields(r.Context())
+	workspaceID, _, authErr := h.authWorkspace(r)
+	if authErr != nil {
+		writeJerr(w, authErr)
+		return
+	}
+	fields, err := h.Store.CustomFieldsForWorkspace(r.Context(), workspaceID)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	for _, f := range fields {
-		if f.ID == id {
+		if f.ID == id || (f.AppKey != "" && f.AppKey+"__"+f.AppModuleKey == id) {
 			writeJSON(w, http.StatusOK, h.customFieldBean(f))
 			return
 		}
@@ -75,22 +106,36 @@ func (h *Handler) getCustomField(w http.ResponseWriter, r *http.Request, id stri
 }
 
 func (h *Handler) customFieldBean(f *models.CustomField) map[string]any {
-	return map[string]any{
+	schema := map[string]any{"type": f.Type}
+	bean := map[string]any{
 		"id":          f.ID,
+		"key":         f.ID,
 		"name":        f.Name,
 		"custom":      true,
-		"schema":      map[string]any{"type": f.Type},
+		"orderable":   true,
+		"navigable":   true,
+		"searchable":  true,
+		"clauseNames": []string{f.ID, f.Name},
+		"schema":      schema,
 		"description": f.Description,
 		"self":        h.BaseURL + "/rest/api/3/field/" + f.ID,
 	}
+	if f.AppKey != "" {
+		key := f.AppKey + "__" + f.AppModuleKey
+		bean["key"] = key
+		bean["clauseNames"] = []string{f.ID, key, f.Name}
+		schema["custom"] = key
+	}
+	return bean
 }
 
 func (h *Handler) listFields(w http.ResponseWriter, r *http.Request) {
-	if _, _, e := h.authWorkspace(r); e != nil {
+	workspaceID, _, e := h.authWorkspace(r)
+	if e != nil {
 		writeJerr(w, e)
 		return
 	}
-	fields, err := h.Store.CustomFields(r.Context())
+	fields, err := h.Store.CustomFieldsForWorkspace(r.Context(), workspaceID)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -108,7 +153,8 @@ func (h *Handler) listFields(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) createField(w http.ResponseWriter, r *http.Request) {
-	if _, _, e := h.authWorkspaceAdmin(r); e != nil {
+	workspaceID, _, e := h.authWorkspaceAdmin(r)
+	if e != nil {
 		writeJerr(w, e)
 		return
 	}
@@ -137,7 +183,7 @@ func (h *Handler) createField(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := fmt.Sprintf("customfield_%d", 10000+seq)
-	field, err := h.Store.CreateCustomField(r.Context(), id, req.Name, fieldType, req.Description)
+	field, err := h.Store.CreateWorkspaceCustomField(r.Context(), workspaceID, id, req.Name, fieldType, req.Description)
 	if err != nil {
 		jiraError(w, http.StatusBadRequest, err.Error())
 		return

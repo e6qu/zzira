@@ -8,6 +8,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,6 +17,8 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"syscall/js"
 	"time"
 
@@ -27,10 +30,16 @@ import (
 )
 
 var (
-	db          js.Value
-	currentView string // issue id the page is currently showing
-	window      = js.Global()
-	messageFunc js.Func
+	db                  js.Value
+	currentView         string // issue id the page is currently showing
+	window              = js.Global()
+	messageFunc         js.Func
+	maintenance         atomic.Bool
+	maintenancePending  atomic.Bool
+	networkOffline      atomic.Bool
+	requestMu           sync.Mutex
+	activeRequestCancel context.CancelFunc
+	httpClient          = &http.Client{Timeout: 5 * time.Second}
 )
 
 func main() {
@@ -55,11 +64,50 @@ func main() {
 	// sync after the command loop is live.
 	ticker := time.NewTicker(3 * time.Second)
 	for range ticker.C {
-		if draining, _ := drainOutbox(); draining {
-			syncOnce()
-			continue
+		runProtected("maintenance", func() { maintenanceCycle(false) })
+	}
+}
+
+func maintenanceCycle(drainAll bool) {
+	// Fetch waits yield back to the worker event loop. A UI-triggered sync can
+	// therefore arrive while the timer cycle is still pending; skip that
+	// duplicate without blocking the event loop that will settle the fetch.
+	if !maintenance.CompareAndSwap(false, true) {
+		maintenancePending.Store(true)
+		return
+	}
+	defer maintenance.Store(false)
+	for {
+		maintenancePending.Store(false)
+		maintenancePass(drainAll)
+		if !maintenancePending.Swap(false) {
+			return
 		}
-		bootstrapIfEmpty()
+		drainAll = true
+	}
+}
+
+func maintenancePass(drainAll bool) {
+	if networkOffline.Load() || !window.Get("navigator").Get("onLine").Bool() {
+		post(map[string]any{"type": "offline"})
+		return
+	}
+	bootstrapIfEmpty()
+	if syncOnce() != syncclient.SyncAccepted {
+		return
+	}
+	drainedAny := false
+	for {
+		draining, remaining := drainOutbox()
+		if !draining {
+			break
+		}
+		drainedAny = true
+		if !drainAll || remaining == 0 {
+			break
+		}
+	}
+	if drainedAny {
 		syncOnce()
 	}
 }
@@ -85,7 +133,7 @@ func bootstrapIfEmpty() {
 	if len(rows) > 0 && int64Of(rows[0], "n") > 0 {
 		return
 	}
-	resp, err := http.Get("/bootstrap")
+	resp, err := get("/bootstrap")
 	if err != nil {
 		return // offline fresh client: stays empty until online
 	}
@@ -387,35 +435,40 @@ func setKV(k, v string) {
 
 // ---- sync ----
 
-func syncOnce() {
+func syncOnce() syncclient.SyncDisposition {
 	cp := checkpoint()
 	url := fmt.Sprintf("/sync?since=%d&limit=500", cp)
-	resp, err := http.Get(url)
+	resp, err := get(url)
 	if err != nil {
 		post(map[string]any{"type": "offline"})
-		return
+		return syncclient.SyncRetry
 	}
 	body, err := readAndClose(resp)
 	if err != nil {
 		post(map[string]any{"type": "offline"})
-		return
+		return syncclient.SyncRetry
 	}
 	if resp.StatusCode == http.StatusNotModified {
 		post(map[string]any{"type": "synced", "seq": cp})
-		return
+		return syncclient.SyncAccepted
+	}
+	if syncclient.DispositionForSyncStatus(resp.StatusCode) == syncclient.SyncRevoked {
+		purgePrivateReplica()
+		post(map[string]any{"type": "revoked"})
+		return syncclient.SyncRevoked
 	}
 	if resp.StatusCode != http.StatusOK {
 		post(map[string]any{"type": "error", "message": fmt.Sprintf("sync http %d", resp.StatusCode)})
-		return
+		return syncclient.SyncRetry
 	}
 	var delta models.SyncResponse
 	if err := json.Unmarshal(body, &delta); err != nil {
 		post(map[string]any{"type": "error", "message": "bad sync payload"})
-		return
+		return syncclient.SyncRetry
 	}
 	if delta.From != cp || delta.To < cp || delta.To > delta.Head {
 		post(map[string]any{"type": "error", "message": "invalid sync checkpoint range"})
-		return
+		return syncclient.SyncRetry
 	}
 
 	changedIssues := make(map[string]bool)
@@ -430,12 +483,12 @@ func syncOnce() {
 	for _, a := range delta.Actions {
 		if a.Seq <= lastSeq || a.Seq > delta.To {
 			post(map[string]any{"type": "error", "message": "invalid sync action order"})
-			return
+			return syncclient.SyncRetry
 		}
 		ids, err := apply(a)
 		if err != nil {
 			post(map[string]any{"type": "error", "message": "apply failed: " + err.Error()})
-			return
+			return syncclient.SyncRetry
 		}
 		for _, id := range ids {
 			changedIssues[id] = true
@@ -450,12 +503,53 @@ func syncOnce() {
 	if currentView != "" && changedIssues[currentView] {
 		pushCurrentView()
 	}
+	return syncclient.SyncAccepted
+}
+
+func purgePrivateReplica() {
+	exec(`BEGIN;
+		DELETE FROM comments; DELETE FROM attachments; DELETE FROM worklogs; DELETE FROM watchers;
+		DELETE FROM notifications; DELETE FROM sprint_issues; DELETE FROM issue_links; DELETE FROM issues;
+		DELETE FROM sprints; DELETE FROM boards; DELETE FROM actions; DELETE FROM outbox; DELETE FROM meta;
+		COMMIT`, nil)
 }
 
 func readAndClose(resp *http.Response) ([]byte, error) {
 	body, readErr := io.ReadAll(resp.Body)
 	closeErr := resp.Body.Close()
 	return body, errors.Join(readErr, closeErr)
+}
+
+func get(path string) (*http.Response, error) {
+	req, err := http.NewRequest(http.MethodGet, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("X-Zzira-Replica", "browser")
+	return do(req)
+}
+
+func do(req *http.Request) (*http.Response, error) {
+	ctx, cancel := context.WithCancel(req.Context())
+	requestMu.Lock()
+	activeRequestCancel = cancel
+	requestMu.Unlock()
+	defer func() {
+		cancel()
+		requestMu.Lock()
+		activeRequestCancel = nil
+		requestMu.Unlock()
+	}()
+	return httpClient.Do(req.WithContext(ctx))
+}
+
+func cancelActiveRequest() {
+	requestMu.Lock()
+	cancel := activeRequestCancel
+	requestMu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
 }
 
 // apply materializes one action; returns issue ids whose view may have changed.
@@ -826,7 +920,7 @@ func drainOutbox() (bool, int64) {
 		return false, n
 	}
 	req.Header.Set("Content-Type", ct)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := do(req)
 	if err != nil {
 		post(map[string]any{"type": "offline"})
 		return false, n
@@ -885,13 +979,15 @@ func onMessage(_ js.Value, args []js.Value) any {
 		currentView = msg.Get("issueId").String()
 		pushCurrentView()
 	case "sync-now":
-		for {
-			drained, remaining := drainOutbox()
-			if !drained || remaining == 0 {
-				break
-			}
+		// Network work must outlive this syscall/js callback. Running it inline
+		// blocks the worker event loop that fetch itself needs to resolve.
+		go runProtected("reconnect", func() { maintenanceCycle(true) })
+	case "network-state":
+		offline := !msg.Get("online").Bool()
+		networkOffline.Store(offline)
+		if offline {
+			cancelActiveRequest()
 		}
-		syncOnce()
 	case "edit-dialog":
 		issueID := ""
 		if data := msg.Get("data"); !data.IsUndefined() {

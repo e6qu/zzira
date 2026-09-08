@@ -51,14 +51,15 @@ type GadgetDefinition struct {
 	ModuleKey   string `json:"moduleKey"`
 	Title       string `json:"title"`
 	Description string `json:"-"`
+	Thumbnail   string `json:"-"`
 }
 
 func GadgetCatalog() []GadgetDefinition {
 	return []GadgetDefinition{
-		{"com.zzira:filter-results", "Filter results", "A list of work items from a saved filter or JQL query."},
-		{"com.zzira:issue-statistics", "Issue statistics", "Compare work by status, priority, type or assignee."},
-		{"com.zzira:pie-chart", "Pie chart", "See how work is distributed, with an accessible data table."},
-		{"com.zzira:assigned-to-me", "Assigned to me", "Your assigned work, evaluated for whoever views the dashboard."},
+		{"com.zzira:filter-results", "Filter results", "A list of work items from a saved filter or JQL query.", ""},
+		{"com.zzira:issue-statistics", "Issue statistics", "Compare work by status, priority, type or assignee.", ""},
+		{"com.zzira:pie-chart", "Pie chart", "See how work is distributed, with an accessible data table.", ""},
+		{"com.zzira:assigned-to-me", "Assigned to me", "Your assigned work, evaluated for whoever views the dashboard.", ""},
 	}
 }
 

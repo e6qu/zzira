@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -1169,15 +1170,19 @@ func (s *Store) IssuesBySprint(ctx context.Context, sprintID, userID string) ([]
 	return out, rows.Err()
 }
 
-// IsAdmin reports the workspace admin role.
+// IsAdmin reports an organization or site administrator role from the shared
+// authorization model.
 func (s *Store) IsAdmin(ctx context.Context, workspaceID, userID string) (bool, error) {
-	var role string
-	err := s.Pool.QueryRow(ctx,
-		`SELECT role FROM memberships WHERE workspace_id=$1 AND user_id=$2`, workspaceID, userID).Scan(&role)
+	roles, err := s.RolesForUserInWorkspace(ctx, workspaceID, userID)
 	if err != nil {
 		return false, err
 	}
-	return role == "admin", nil
+	for _, role := range roles {
+		if role == "atlassian/org-admin" || role == "atlassian/site-admin" {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // SecuritySchemeForProject resolves the project's security scheme (nil = none).
@@ -1220,7 +1225,23 @@ func (s *Store) SecurityLevelName(ctx context.Context, projectID, levelID string
 func (s *Store) FirstAdminID(ctx context.Context, workspaceID string) (string, error) {
 	var id string
 	err := s.Pool.QueryRow(ctx, `
-		SELECT user_id FROM memberships WHERE workspace_id=$1 AND role='admin' ORDER BY user_id LIMIT 1`,
+		WITH context AS (
+			SELECT id AS site_id,organization_id FROM sites WHERE workspace_id=$1
+		), principals AS (
+			SELECT rb.principal_id AS user_id,rb.scope_type,rb.scope_id,rb.role_key
+			FROM role_bindings rb WHERE rb.principal_type='user'
+			UNION ALL
+			SELECT gm.user_id,rb.scope_type,rb.scope_id,rb.role_key
+			FROM role_bindings rb JOIN group_members gm ON gm.group_id::text=rb.principal_id
+			WHERE rb.principal_type='group'
+		)
+		SELECT DISTINCT p.user_id FROM principals p
+		JOIN users u ON u.id=p.user_id AND u.active
+		CROSS JOIN context c
+		WHERE p.role_key IN ('atlassian/org-admin','atlassian/site-admin')
+		  AND ((p.scope_type='organization' AND p.scope_id=c.organization_id::text)
+		    OR (p.scope_type='site' AND p.scope_id=c.site_id::text))
+		ORDER BY p.user_id LIMIT 1`,
 		workspaceID).Scan(&id)
 	return id, err
 }
@@ -1228,72 +1249,173 @@ func (s *Store) FirstAdminID(ctx context.Context, workspaceID string) (string, e
 // WorkflowForProject resolves the project's workflow, Default when unassigned
 // or the stored def is unusable.
 func (s *Store) WorkflowForProject(ctx context.Context, projectID string) (workflow.Workflow, error) {
-	var def []byte
-	err := s.Pool.QueryRow(ctx, `
-		SELECT w.def FROM projects p JOIN workflows w ON w.id = p.workflow_id
-		WHERE p.id=$1`, projectID).Scan(&def)
+	wf, err := s.WorkflowForProjectAndIssueType(ctx, projectID, "")
 	if errors.Is(err, pgx.ErrNoRows) {
 		return workflow.Default(), nil
 	}
-	if err != nil {
-		return workflow.Workflow{}, err
-	}
-	var wf workflow.Workflow
-	if err := json.Unmarshal(def, &wf); err != nil {
-		return workflow.Default(), fmt.Errorf("workflow def for project %s: %w", projectID, err)
-	}
-	if len(wf.Transitions) == 0 {
-		return workflow.Default(), nil
-	}
-	return wf, nil
+	return wf, err
 }
 
 // CreateWorkflow stores a workflow definition.
-func (s *Store) CreateWorkflow(ctx context.Context, wf workflow.Workflow) error {
-	if strings.TrimSpace(wf.ID) == "" || strings.TrimSpace(wf.Name) == "" || len(wf.Transitions) == 0 {
-		return fmt.Errorf("workflow id, name, and at least one transition are required")
+func (s *Store) CreateWorkflow(ctx context.Context, workspaceID string, wf workflow.Workflow) error {
+	if wf.ID == workflow.Default().ID || workspaceID == "" {
+		return fmt.Errorf("custom workflows require a workspace")
 	}
-	statuses, err := s.AllStatuses(ctx)
+	def, err := s.validateWorkflow(ctx, workspaceID, wf)
 	if err != nil {
 		return err
+	}
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if wf.ProjectID != "" {
+		var valid bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM projects WHERE id=$1 AND workspace_id=$2)`, wf.ProjectID, workspaceID).Scan(&valid); err != nil {
+			return err
+		}
+		if !valid {
+			return fmt.Errorf("%w: workflow project does not exist in this workspace", ErrAdminValidation)
+		}
+	}
+	if err := workflowNameAvailable(ctx, tx, workspaceID, wf.ProjectID, wf.ID, wf.Name); err != nil {
+		return err
+	}
+	tag, err := tx.Exec(ctx,
+		`INSERT INTO workflows (id,name,def,workspace_id,project_id) VALUES ($1,$2,$3,$4,$5)
+		 ON CONFLICT (id) DO UPDATE SET name=$2,def=$3
+		 WHERE workflows.workspace_id=$4 AND workflows.project_id IS NOT DISTINCT FROM $5`, wf.ID, wf.Name, def, workspaceID, nilIfEmpty(wf.ProjectID))
+	if err != nil {
+		if isUniqueViolation(err) {
+			return fmt.Errorf("%w: a workflow already uses that name or id", ErrAdminConflict)
+		}
+		return err
+	}
+	if tag.RowsAffected() != 1 {
+		return fmt.Errorf("%w: workflow id belongs to another workspace", ErrAdminConflict)
+	}
+	return tx.Commit(ctx)
+}
+
+func (s *Store) validateWorkflow(ctx context.Context, workspaceID string, wf workflow.Workflow) ([]byte, error) {
+	var statuses []models.Status
+	var err error
+	if workspaceID == "" {
+		statuses, err = s.AllStatuses(ctx)
+	} else if wf.ProjectID != "" {
+		statuses, err = s.StatusesForProject(ctx, workspaceID, wf.ProjectID, true)
+	} else {
+		statuses, err = s.StatusesForWorkspace(ctx, workspaceID)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return validateWorkflowAgainstStatuses(wf, statuses)
+}
+
+func validateWorkflowAgainstStatuses(wf workflow.Workflow, statuses []models.Status) ([]byte, error) {
+	if strings.TrimSpace(wf.ID) == "" || strings.TrimSpace(wf.Name) == "" || len(wf.Transitions) == 0 {
+		return nil, fmt.Errorf("workflow id, name, and at least one transition are required")
+	}
+	if len(wf.Name) > 255 || len(wf.Description) > 1000 {
+		return nil, fmt.Errorf("workflow name or description is too long")
 	}
 	knownStatuses := make(map[string]struct{}, len(statuses))
 	for _, status := range statuses {
 		knownStatuses[status.ID] = struct{}{}
 	}
 	transitionIDs := make(map[string]struct{}, len(wf.Transitions))
+	validLayout := func(layout *workflow.Layout) bool {
+		return layout == nil || (!math.IsNaN(layout.X) && !math.IsInf(layout.X, 0) && !math.IsNaN(layout.Y) && !math.IsInf(layout.Y, 0) && layout.X >= -10000 && layout.X <= 10000 && layout.Y >= -10000 && layout.Y <= 10000)
+	}
+	if !validLayout(wf.StartPointLayout) || !validLayout(wf.LoopedTransitionContainerLayout) {
+		return nil, fmt.Errorf("workflow designer coordinates are invalid")
+	}
+	statusLayouts := make(map[string]struct{}, len(wf.Statuses))
+	for _, status := range wf.Statuses {
+		if _, ok := knownStatuses[status.StatusReference]; !ok {
+			return nil, fmt.Errorf("workflow layout has unknown status %q", status.StatusReference)
+		}
+		if _, duplicate := statusLayouts[status.StatusReference]; duplicate {
+			return nil, fmt.Errorf("workflow layout status %q is duplicated", status.StatusReference)
+		}
+		if !validLayout(status.Layout) {
+			return nil, fmt.Errorf("workflow layout for status %q has invalid coordinates", status.StatusReference)
+		}
+		statusLayouts[status.StatusReference] = struct{}{}
+	}
 	for _, transition := range wf.Transitions {
 		if strings.TrimSpace(transition.ID) == "" || strings.TrimSpace(transition.Name) == "" || transition.To == "" || len(transition.From) == 0 {
-			return fmt.Errorf("every workflow transition requires an id, name, source, and destination")
+			return nil, fmt.Errorf("every workflow transition requires an id, name, source, and destination")
 		}
 		if _, duplicate := transitionIDs[transition.ID]; duplicate {
-			return fmt.Errorf("workflow transition id %q is duplicated", transition.ID)
+			return nil, fmt.Errorf("workflow transition id %q is duplicated", transition.ID)
 		}
 		transitionIDs[transition.ID] = struct{}{}
 		if _, ok := knownStatuses[transition.To]; !ok {
-			return fmt.Errorf("workflow transition %q has unknown destination status %q", transition.ID, transition.To)
+			return nil, fmt.Errorf("workflow transition %q has unknown destination status %q", transition.ID, transition.To)
 		}
 		for _, from := range transition.From {
 			if _, ok := knownStatuses[from]; !ok {
-				return fmt.Errorf("workflow transition %q has unknown source status %q", transition.ID, from)
+				return nil, fmt.Errorf("workflow transition %q has unknown source status %q", transition.ID, from)
 			}
+		}
+		if err := workflow.ValidateTransitionRules(transition); err != nil {
+			return nil, fmt.Errorf("workflow transition %q rules: %w", transition.ID, err)
 		}
 	}
 	def, err := json.Marshal(wf)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	_, err = s.Pool.Exec(ctx,
-		`INSERT INTO workflows (id, name, def) VALUES ($1,$2,$3)
-		 ON CONFLICT (id) DO UPDATE SET name=$2, def=$3`, wf.ID, wf.Name, def)
+	return def, nil
+}
+
+func (s *Store) ValidateWorkflowDefinition(ctx context.Context, workspaceID string, wf workflow.Workflow) error {
+	_, err := s.validateWorkflow(ctx, workspaceID, wf)
 	return err
 }
 
+func (s *Store) SaveWorkflowDraft(ctx context.Context, workspaceID string, wf workflow.Workflow) error {
+	if wf.ID == workflow.Default().ID {
+		return fmt.Errorf("the built-in workflow is read-only")
+	}
+	if err := s.Pool.QueryRow(ctx, `SELECT COALESCE(project_id,'') FROM workflows WHERE id=$1 AND workspace_id=$2`, wf.ID, workspaceID).Scan(&wf.ProjectID); err != nil {
+		return err
+	}
+	def, err := s.validateWorkflow(ctx, workspaceID, wf)
+	if err != nil {
+		return err
+	}
+	result, err := s.Pool.Exec(ctx, `UPDATE workflows SET draft_def=$3,draft_updated_at=now() WHERE id=$1 AND workspace_id=$2`, wf.ID, workspaceID, def)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() != 1 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
 // WorkflowByID returns one stored workflow definition.
-func (s *Store) WorkflowByID(ctx context.Context, id string) (workflow.Workflow, error) {
+func (s *Store) WorkflowByID(ctx context.Context, workspaceID, id string) (workflow.Workflow, error) {
 	var wf workflow.Workflow
 	var def []byte
-	err := s.Pool.QueryRow(ctx, `SELECT def FROM workflows WHERE id=$1`, id).Scan(&def)
+	err := s.Pool.QueryRow(ctx, `SELECT def,version,draft_def IS NOT NULL,COALESCE(project_id,'') FROM workflows WHERE id=$1 AND (workspace_id=$2 OR (id='wf_default' AND workspace_id IS NULL))`, id, workspaceID).Scan(&def, &wf.Version, &wf.HasDraft, &wf.ProjectID)
+	if err != nil {
+		return wf, err
+	}
+	if err := json.Unmarshal(def, &wf); err != nil {
+		return workflow.Workflow{}, err
+	}
+	return wf, nil
+}
+
+func (s *Store) WorkflowDraftByID(ctx context.Context, workspaceID, id string) (workflow.Workflow, error) {
+	var wf workflow.Workflow
+	var def []byte
+	err := s.Pool.QueryRow(ctx, `SELECT COALESCE(draft_def,def),version,draft_def IS NOT NULL,COALESCE(project_id,'') FROM workflows WHERE id=$1 AND (workspace_id=$2 OR (id='wf_default' AND workspace_id IS NULL))`, id, workspaceID).Scan(&def, &wf.Version, &wf.HasDraft, &wf.ProjectID)
 	if err != nil {
 		return wf, err
 	}
@@ -1304,8 +1426,8 @@ func (s *Store) WorkflowByID(ctx context.Context, id string) (workflow.Workflow,
 }
 
 // ListWorkflows returns all stored workflow definitions.
-func (s *Store) ListWorkflows(ctx context.Context) ([]workflow.Workflow, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT id, name, def FROM workflows ORDER BY id`)
+func (s *Store) ListWorkflows(ctx context.Context, workspaceID string) ([]workflow.Workflow, error) {
+	rows, err := s.Pool.Query(ctx, `SELECT id,name,def,version,draft_def IS NOT NULL,COALESCE(project_id,'') FROM workflows WHERE workspace_id=$1 OR (id='wf_default' AND workspace_id IS NULL) ORDER BY id`, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -1314,7 +1436,7 @@ func (s *Store) ListWorkflows(ctx context.Context) ([]workflow.Workflow, error) 
 	for rows.Next() {
 		var wf workflow.Workflow
 		var def []byte
-		if err := rows.Scan(&wf.ID, &wf.Name, &def); err != nil {
+		if err := rows.Scan(&wf.ID, &wf.Name, &def, &wf.Version, &wf.HasDraft, &wf.ProjectID); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal(def, &wf); err != nil {
@@ -1325,16 +1447,108 @@ func (s *Store) ListWorkflows(ctx context.Context) ([]workflow.Workflow, error) 
 	return out, rows.Err()
 }
 
-// AssignWorkflowToProject points a project at a stored workflow.
-func (s *Store) AssignWorkflowToProject(ctx context.Context, projectID, workflowID string) error {
-	result, err := s.Pool.Exec(ctx, `UPDATE projects SET workflow_id=$2 WHERE id=$1`, projectID, workflowID)
+func (s *Store) ListGlobalWorkflows(ctx context.Context, workspaceID string) ([]workflow.Workflow, error) {
+	items, err := s.ListWorkflows(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	global := make([]workflow.Workflow, 0, len(items))
+	for _, item := range items {
+		if item.ProjectID == "" {
+			global = append(global, item)
+		}
+	}
+	return global, nil
+}
+
+func (s *Store) PublishWorkflowDraft(ctx context.Context, workspaceID, actorID, workflowID string) error {
+	return s.finishWorkflowDraft(ctx, workspaceID, actorID, workflowID, true)
+}
+
+func (s *Store) DiscardWorkflowDraft(ctx context.Context, workspaceID, actorID, workflowID string) error {
+	return s.finishWorkflowDraft(ctx, workspaceID, actorID, workflowID, false)
+}
+
+func (s *Store) finishWorkflowDraft(ctx context.Context, workspaceID, actorID, workflowID string, publish bool) error {
+	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
-	if result.RowsAffected() == 0 {
+	defer func() { _ = tx.Rollback(ctx) }()
+	var organizationID string
+	if err := tx.QueryRow(ctx, `SELECT organization_id::text FROM sites WHERE workspace_id=$1`, workspaceID).Scan(&organizationID); err != nil {
+		return err
+	}
+	var affected int64
+	if publish {
+		result, updateErr := tx.Exec(ctx, `UPDATE workflows SET def=draft_def,draft_def=NULL,draft_updated_at=NULL,version=version+1,published_at=now() WHERE id=$1 AND workspace_id=$2 AND draft_def IS NOT NULL`, workflowID, workspaceID)
+		err = updateErr
+		affected = result.RowsAffected()
+	} else {
+		result, updateErr := tx.Exec(ctx, `UPDATE workflows SET draft_def=NULL,draft_updated_at=NULL WHERE id=$1 AND workspace_id=$2 AND draft_def IS NOT NULL`, workflowID, workspaceID)
+		err = updateErr
+		affected = result.RowsAffected()
+	}
+	if err != nil {
+		return err
+	}
+	if affected != 1 {
+		return ErrAdminConflict
+	}
+	action := "workflow.draft.discarded"
+	if publish {
+		action = "workflow.published"
+	}
+	detail, err := json.Marshal(map[string]any{"workflow": workflowID})
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO organization_audit_events(organization_id,actor_id,action,target_type,target_id,detail) VALUES($1::uuid,$2,$3,'workflow',$4,$5::jsonb)`, organizationID, actorID, action, workflowID, detail); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// AssignWorkflowToProject points a project at a stored workflow.
+func (s *Store) AssignWorkflowToProject(ctx context.Context, workspaceID, projectID, workflowID string) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var projectKey string
+	if err := tx.QueryRow(ctx, `SELECT key FROM projects WHERE id=$1 AND workspace_id=$2 FOR UPDATE`, projectID, workspaceID).Scan(&projectKey); err != nil {
 		return fmt.Errorf("project %q does not exist", projectID)
 	}
-	return nil
+	var workflowProjectID string
+	if err := tx.QueryRow(ctx, `SELECT COALESCE(project_id,'') FROM workflows WHERE id=$1 AND (workspace_id=$2 OR (id='wf_default' AND workspace_id IS NULL))`, workflowID, workspaceID).Scan(&workflowProjectID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("workflow %q does not exist", workflowID)
+		}
+		return err
+	}
+	if workflowProjectID != "" && workflowProjectID != projectID {
+		return fmt.Errorf("workflow %q does not exist", workflowID)
+	}
+	if workflowProjectID != "" {
+		if _, err := tx.Exec(ctx, `UPDATE projects SET workflow_id=$3,workflow_scheme_id=NULL WHERE id=$1 AND workspace_id=$2`, projectID, workspaceID, workflowID); err != nil {
+			return err
+		}
+		return tx.Commit(ctx)
+	}
+	schemeID := "scheme_project_" + projectID
+	schemeName := projectKey + " project workflow scheme " + projectID[len(projectID)-min(6, len(projectID)):]
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO workflow_schemes(id,workspace_id,name,default_workflow_id)
+		VALUES($1,$2,$3,$4)
+		ON CONFLICT(id) DO UPDATE SET default_workflow_id=$4,issue_type_mappings='{}',draft_def=NULL,version=workflow_schemes.version+1,updated_at=now()
+		WHERE workflow_schemes.workspace_id=$2`, schemeID, workspaceID, schemeName, workflowID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE projects SET workflow_id=$3,workflow_scheme_id=$4 WHERE id=$1 AND workspace_id=$2`, projectID, workspaceID, workflowID, schemeID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // CreateSecurityScheme upserts a security scheme definition.

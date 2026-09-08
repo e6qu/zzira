@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"unicode/utf8"
@@ -90,6 +91,15 @@ func (s *Store) SaveDashboardGadget(ctx context.Context, ws, user, id string, gi
 			if def.ModuleKey == g.ModuleKey {
 				known = true
 				g.Title = def.Title
+			}
+		}
+		if !known && strings.HasPrefix(g.ModuleKey, "app:") {
+			var title string
+			err := tx.QueryRow(ctx, `SELECT m.title FROM app_modules m JOIN app_installations i ON i.id=m.installation_id WHERE i.workspace_id=$1 AND i.status='active' AND m.location='jira.dashboard' AND m.id=$2`, ws, strings.TrimPrefix(g.ModuleKey, "app:")).Scan(&title)
+			if err == nil {
+				known, g.Title = true, title
+			} else if !errors.Is(err, pgx.ErrNoRows) {
+				return nil, err
 			}
 		}
 		if !known {

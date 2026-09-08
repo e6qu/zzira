@@ -57,6 +57,18 @@ func init() {
 		"timeSpent": func(seconds int) string {
 			return models.TimeSpentLabel(seconds)
 		},
+		"slaMinutes": func(millis int64) int64 { return millis / 60000 },
+		"clockMinute": func(minute int16) string {
+			return fmt.Sprintf("%02d:%02d", minute/60, minute%60)
+		},
+		"workingDay": func(days []int16, day int) bool {
+			for _, configured := range days {
+				if int(configured) == day {
+					return true
+				}
+			}
+			return false
+		},
 		"join":            strings.Join,
 		"selectedVersion": func(csv, id string) bool { return slices.Contains(strings.Split(csv, ","), id) },
 		"humanSize": func(n int64) string {
