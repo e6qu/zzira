@@ -108,6 +108,11 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
       await route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main><h1>Remote issue risk</h1><p>Issue context received.</p></main></body></html>' });
       return;
     }
+    if (target.pathname.endsWith('/remote-content')) {
+      expect(target.searchParams.get('issue.key')).toBe('ZZ-1');
+      await route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main><h1>Remote incident runbook</h1><p>Quick-add issue context received.</p></main></body></html>' });
+      return;
+    }
     if (target.pathname.endsWith('/remote-review')) {
       expect(target.searchParams.get('content.id')).toBeTruthy();
       expect(target.searchParams.get('content')).toBe(target.searchParams.get('content.id'));
@@ -133,6 +138,7 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
   const bylineTitle = `Remote review ${suffix}`;
   const fieldName = `Remote risk score ${suffix}`;
   const shortcutTitle = `Remote shortcut ${suffix}`;
+  const contentTitle = `Incident runbook ${suffix}`;
   const descriptor = {
     key: `connect.journey.${suffix}`,
     name: appName,
@@ -145,6 +151,7 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
       contentBylineItems: [{ key: 'remote-review', url: '/remote-review?content={content.id}', name: { value: bylineTitle } }],
       jiraIssueFields: [{ key: 'remote-risk-score', name: { value: fieldName }, description: { value: 'Risk supplied by the Connect app' }, type: 'number' }],
       webItems: [{ key: 'remote-shortcut', url: '/remote-shortcut', location: 'system.top.navigation.bar', name: { value: shortcutTitle } }],
+      jiraIssueContents: [{ key: 'incident-runbook', name: { value: contentTitle }, tooltip: { value: 'Add incident runbook' }, icon: { url: '/runbook.svg' }, target: { type: 'web_panel', url: '/remote-content?issue={issue.key}' } }],
     },
   };
   await page.goto('/admin#admin-apps');
@@ -177,6 +184,12 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
   await issueField.fill('7');
   await page.getByRole('button', { name: `Save ${fieldName}` }).click();
   await expect(page.getByLabel(fieldName)).toHaveValue('7');
+  await page.getByRole('button', { name: `Add ${contentTitle}` }).click();
+  const appContent = page.locator('.app-issue-content', { has: page.getByRole('heading', { name: contentTitle, level: 2 }) });
+  await expect(appContent).toBeVisible();
+  await expect(appContent.frameLocator('iframe').getByRole('heading', { name: 'Remote incident runbook' })).toBeVisible();
+  await appContent.getByRole('button', { name: 'Remove' }).click();
+  await expect(page.getByRole('button', { name: `Add ${contentTitle}` })).toBeVisible();
 
   await page.goto('/wiki');
   await page.getByRole('link', { name: 'Browse pages', exact: true }).first().click();

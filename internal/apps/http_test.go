@@ -337,7 +337,8 @@ func TestConnectDynamicModulesAndIssueFields(t *testing.T) {
 	if err := store.Migrate(ctx, st.Pool); err != nil {
 		t.Fatal(err)
 	}
-	workspaceID, workspaceSlug, err := st.DefaultWorkspace(ctx)
+	workspaceSlug := "zzira"
+	workspaceID, err := st.WorkspaceBySlug(ctx, workspaceSlug)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -351,7 +352,7 @@ func TestConnectDynamicModulesAndIssueFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	descriptorRaw := []byte(fmt.Sprintf(`{"key":%q,"name":"Dynamic test","baseUrl":"https://connect.example.test/base","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"webPanels":[{"key":"static-panel","url":"/static","location":"atl.jira.view.issue.right.context","name":{"value":"Static panel"}}],"jiraIssueFields":[{"key":"static-score","name":{"value":"Static score"},"description":{"value":"Installed with the app"},"type":"number"}]}}`, appKey))
+	descriptorRaw := []byte(fmt.Sprintf(`{"key":%q,"name":"Dynamic test","baseUrl":"https://connect.example.test/base","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"webPanels":[{"key":"static-panel","url":"/static","location":"atl.jira.view.issue.right.context","name":{"value":"Static panel"}}],"jiraIssueFields":[{"key":"static-score","name":{"value":"Static score"},"description":{"value":"Installed with the app"},"type":"number"}],"jiraIssueContents":[{"key":"runbook","name":{"value":"Runbook"},"tooltip":{"value":"Add runbook"},"icon":{"url":"/runbook.svg"},"target":{"type":"web_panel","url":"/runbook?issue={issue.key}"}}]}}`, appKey))
 	descriptor, err := ParseDescriptor(descriptorRaw)
 	if err != nil {
 		t.Fatal(err)
@@ -388,13 +389,34 @@ func TestConnectDynamicModulesAndIssueFields(t *testing.T) {
 	if err != nil || fieldByKey(otherWorkspaceFields, "static-score") != nil {
 		t.Fatalf("app field leaked across workspaces: %+v, %v", otherWorkspaceFields, err)
 	}
-	var projectID string
-	if err := st.Pool.QueryRow(ctx, `SELECT id FROM projects WHERE workspace_id=$1 ORDER BY id LIMIT 1`, workspaceID).Scan(&projectID); err != nil {
+	var projectID, issueID string
+	if err := st.Pool.QueryRow(ctx, `SELECT project_id,id FROM issues WHERE workspace_id=$1 ORDER BY id LIMIT 1`, workspaceID).Scan(&projectID, &issueID); err != nil {
 		t.Fatal(err)
 	}
 	projectFields, err := st.CustomFieldsForProject(ctx, projectID)
 	if err != nil || fieldByKey(projectFields, "static-score") == nil {
 		t.Fatalf("app field missing from issue metadata: %+v, %v", projectFields, err)
+	}
+	issueContentModules, err := st.AppModulesByLocation(ctx, workspaceID, "jira.issue.content")
+	var issueContentModule *models.AppModule
+	for index := range issueContentModules {
+		if issueContentModules[index].InstallationID == installation.ID && issueContentModules[index].Key == "runbook" {
+			issueContentModule = &issueContentModules[index]
+		}
+	}
+	if err != nil || issueContentModule == nil {
+		t.Fatalf("issue content modules = %+v, %v", issueContentModules, err)
+	}
+	if err := st.SetAppIssueContent(ctx, workspaceID, issueID, adminID, issueContentModule.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	issueContent, err := st.AppIssueContentForIssue(ctx, workspaceID, issueID)
+	contentAdded := false
+	for _, content := range issueContent {
+		contentAdded = contentAdded || content.Module.InstallationID == installation.ID && content.Module.Key == "runbook" && content.Added
+	}
+	if err != nil || !contentAdded {
+		t.Fatalf("added issue content = %+v, %v", issueContent, err)
 	}
 
 	handler := &Handler{Store: st, Secrets: box, WorkspaceSlug: workspaceSlug}
@@ -496,13 +518,21 @@ func TestConnectDynamicModulesAndIssueFields(t *testing.T) {
 	if !found {
 		t.Fatalf("dynamic issue panel was not restored after reinstall: %+v", modules)
 	}
+	issueContent, err = st.AppIssueContentForIssue(ctx, workspaceID, issueID)
+	contentAdded = false
+	for _, content := range issueContent {
+		contentAdded = contentAdded || content.Module.InstallationID == installation.ID && content.Module.Key == "runbook" && content.Added
+	}
+	if err != nil || !contentAdded {
+		t.Fatalf("issue content state was not restored after reinstall: %+v, %v", issueContent, err)
+	}
 	fields, err = st.CustomFieldsForWorkspace(ctx, workspaceID)
 	reinstalledStatic, reinstalledDynamic := fieldByKey(fields, "static-score"), fieldByKey(fields, "dynamic-score")
 	if err != nil || reinstalledStatic == nil || reinstalledDynamic == nil || reinstalledStatic.ID != staticFieldID || reinstalledDynamic.ID != dynamicFieldID {
 		t.Fatalf("reinstalled app fields did not retain IDs: %+v, %v", fields, err)
 	}
 
-	upgradeRaw := []byte(fmt.Sprintf(`{"key":%q,"name":"Dynamic test","baseUrl":"https://connect.example.test/base","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"webPanels":[{"key":"dynamic-risk","url":"/promoted","location":"atl.jira.view.issue.right.context","name":{"value":"Promoted static risk"}}],"webItems":[{"key":"dynamic-nav","url":"/promoted-nav","location":"system.top.navigation.bar","name":{"value":"Promoted navigation"}}],"jiraIssueFields":[{"key":"static-score","name":{"value":"Static score"},"description":{"value":"Installed with the app"},"type":"number"},{"key":"dynamic-score","name":{"value":"Promoted score"},"description":{"value":"Now static"},"type":"number"}]}}`, appKey))
+	upgradeRaw := []byte(fmt.Sprintf(`{"key":%q,"name":"Dynamic test","baseUrl":"https://connect.example.test/base","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"webPanels":[{"key":"dynamic-risk","url":"/promoted","location":"atl.jira.view.issue.right.context","name":{"value":"Promoted static risk"}}],"webItems":[{"key":"dynamic-nav","url":"/promoted-nav","location":"system.top.navigation.bar","name":{"value":"Promoted navigation"}}],"jiraIssueFields":[{"key":"static-score","name":{"value":"Static score"},"description":{"value":"Installed with the app"},"type":"number"},{"key":"dynamic-score","name":{"value":"Promoted score"},"description":{"value":"Now static"},"type":"number"}],"jiraIssueContents":[{"key":"runbook","name":{"value":"Updated runbook"},"tooltip":{"value":"Add runbook"},"icon":{"url":"/runbook.svg"},"target":{"type":"web_panel","url":"/updated-runbook"}}]}}`, appKey))
 	upgrade, err := ParseDescriptor(upgradeRaw)
 	if err != nil {
 		t.Fatal(err)

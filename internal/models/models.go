@@ -171,6 +171,7 @@ type IssueView struct {
 	Development       []DevelopmentItem
 	Delivery          []DeliveryItem
 	AppPanels         []AppModule
+	AppIssueContent   []AppIssueContent
 }
 
 // IssueActivityItem is one entry in the issue's chronological activity ledger.

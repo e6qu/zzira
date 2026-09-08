@@ -2291,12 +2291,32 @@ Validation after Connect navigation web items:
   conformance checks and diff validation pass. The Chromium Connect journey
   verifies the navigation link and signed remote destination.
 
+Validation after Connect issue content:
+
+- Migration 110 persists issue-specific quick-add instances by workspace,
+  issue, installation and descriptor module key. Reinstalling an app may
+  replace its materialized module row without losing a user's added content.
+- Standard Connect descriptors accept validated `jiraIssueContents` modules
+  with a key, name, tooltip, relative icon and relative `web_panel` target.
+  Unsupported content-presence conditions fail explicitly.
+- The issue journey exposes accessible quick-add actions, opens added content
+  in the existing sandboxed JWT-signed remote frame with `issue.key`, and
+  restores the action when the user removes the content. Existing issue access
+  and mutation checks protect both actions, and app administration includes the
+  materialized module in its inventory.
+- Focused descriptor and PostgreSQL integration tests pass, including
+  uninstall/reinstall restoration. The Chromium Connect journey passes for
+  add, signed remote rendering and remove. The complete PostgreSQL Go suite,
+  native server/load-test and WebAssembly builds, vet, seven conformance tests,
+  generated inventory/coverage checks and diff validation pass. The pinned
+  inventory remains 433 assessed operations out of 1,207.
+
 ## Current change
 
 1. Continue the app runtime with remaining Connect module families, dynamic
-   module types and webhook options, additional web-item locations and
-   conditions, select/read-only field options, workflow modules and upgrade
-   migrations.
+   module types and webhook options, issue-content presence conditions/native
+   rendering, additional web-item locations and conditions, select/read-only
+   field options, workflow modules and upgrade migrations.
 2. Continue Confluence with advanced whiteboard objects, direct manipulation,
    exports and the remaining rich content/editor surface.
 3. Continue Service Management with public Assets object/schema/import API

@@ -62,6 +62,11 @@ type AppModule struct {
 	Dynamic                                      bool
 }
 
+type AppIssueContent struct {
+	Module AppModule
+	Added  bool
+}
+
 type AppDynamicModule struct {
 	Type, Key  string
 	Descriptor json.RawMessage

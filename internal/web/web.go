@@ -560,6 +560,10 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	if err != nil {
 		return nil, err
 	}
+	appIssueContent, err := h.Store.AppIssueContentForIssue(r.Context(), wsID, issue.ID)
+	if err != nil {
+		return nil, err
+	}
 	return &models.IssueView{
 		Issue:             *issue,
 		ProjectKey:        project.Key,
@@ -589,7 +593,26 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 		Development:       development,
 		Delivery:          delivery,
 		AppPanels:         appPanels,
+		AppIssueContent:   appIssueContent,
 	}, nil
+}
+
+func (h *Handler) SetIssueAppContent(w http.ResponseWriter, r *http.Request, key, moduleID string) {
+	user, wsID, ok := h.issueMutationContext(w, r, key)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	issue, err := h.issueForUser(r, user, wsID, key)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	added := r.PostFormValue("action") != "remove"
+	if err := h.Store.SetAppIssueContent(r.Context(), wsID, issue.ID, user.ID, moduleID, added); err != nil {
+		http.Error(w, "issue content module is unavailable", http.StatusBadRequest)
+		return
+	}
+	h.serveIssue(w, r, user, wsID, key)
 }
 
 func derefForms(in []*models.IssueForm) []models.IssueForm {

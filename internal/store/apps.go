@@ -478,6 +478,60 @@ func (s *Store) AppModulesByLocation(ctx context.Context, workspaceID, location 
 	return values, rows.Err()
 }
 
+func (s *Store) AppIssueContentForIssue(ctx context.Context, workspaceID, issueID string) ([]models.AppIssueContent, error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT m.id,m.installation_id,i.app_key,i.name,m.module_key,m.module_type,m.location,m.title,m.body,m.remote_url,m.position,m.dynamic,
+		       EXISTS(SELECT 1 FROM app_issue_content_instances c WHERE c.issue_id=$2 AND c.installation_id=m.installation_id AND c.module_key=m.module_key)
+		FROM app_modules m
+		JOIN app_installations i ON i.id=m.installation_id
+		JOIN issues issue ON issue.id=$2 AND issue.workspace_id=$1
+		WHERE i.workspace_id=$1 AND i.status='active' AND m.location='jira.issue.content'
+		ORDER BY m.position,m.id::bigint`, workspaceID, issueID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	values := []models.AppIssueContent{}
+	for rows.Next() {
+		var value models.AppIssueContent
+		if err := rows.Scan(&value.Module.ID, &value.Module.InstallationID, &value.Module.AppKey, &value.Module.AppName, &value.Module.Key, &value.Module.Type, &value.Module.Location, &value.Module.Title, &value.Module.Body, &value.Module.RemoteURL, &value.Module.Position, &value.Module.Dynamic, &value.Added); err != nil {
+			return nil, err
+		}
+		values = append(values, value)
+	}
+	return values, rows.Err()
+}
+
+func (s *Store) SetAppIssueContent(ctx context.Context, workspaceID, issueID, actorID, moduleID string, added bool) error {
+	if added {
+		tag, err := s.Pool.Exec(ctx, `
+			INSERT INTO app_issue_content_instances(workspace_id,issue_id,installation_id,module_key,created_by)
+			SELECT $1,issue.id,m.installation_id,m.module_key,$4
+			FROM issues issue,app_modules m
+			JOIN app_installations i ON i.id=m.installation_id
+			WHERE issue.id=$2 AND issue.workspace_id=$1 AND m.id=$3 AND m.location='jira.issue.content' AND i.workspace_id=$1 AND i.status='active'
+			ON CONFLICT DO NOTHING`, workspaceID, issueID, moduleID, actorID)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			var exists bool
+			if err := s.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM app_issue_content_instances c JOIN app_modules m ON m.installation_id=c.installation_id AND m.module_key=c.module_key JOIN app_installations i ON i.id=m.installation_id WHERE c.workspace_id=$1 AND c.issue_id=$2 AND m.id=$3 AND i.status='active')`, workspaceID, issueID, moduleID).Scan(&exists); err != nil || !exists {
+				return pgx.ErrNoRows
+			}
+		}
+		return nil
+	}
+	tag, err := s.Pool.Exec(ctx, `DELETE FROM app_issue_content_instances c USING app_modules m,app_installations i WHERE c.workspace_id=$1 AND c.issue_id=$2 AND m.id=$3 AND m.installation_id=c.installation_id AND m.module_key=c.module_key AND i.id=m.installation_id AND i.workspace_id=$1`, workspaceID, issueID, moduleID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
 func (s *Store) ActiveAppModule(ctx context.Context, workspaceID, moduleID string) (*models.AppModule, error) {
 	var value models.AppModule
 	err := s.Pool.QueryRow(ctx, `SELECT m.id,m.installation_id,i.app_key,i.name,i.base_url,i.secret_ciphertext,m.module_key,m.module_type,m.location,m.title,m.body,m.remote_url,m.position,m.dynamic FROM app_modules m JOIN app_installations i ON i.id=m.installation_id WHERE i.workspace_id=$1 AND i.status='active' AND m.id=$2`, workspaceID, moduleID).Scan(&value.ID, &value.InstallationID, &value.AppKey, &value.AppName, &value.BaseURL, &value.SecretCiphertext, &value.Key, &value.Type, &value.Location, &value.Title, &value.Body, &value.RemoteURL, &value.Position, &value.Dynamic)

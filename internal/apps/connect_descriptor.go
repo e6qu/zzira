@@ -47,6 +47,20 @@ type connectWebItemWire struct {
 	Conditions []json.RawMessage `json:"conditions"`
 }
 
+type connectIssueContentWire struct {
+	Key     string          `json:"key"`
+	Name    connectNameWire `json:"name"`
+	Tooltip connectNameWire `json:"tooltip"`
+	Icon    struct {
+		URL string `json:"url"`
+	} `json:"icon"`
+	Target struct {
+		Type string `json:"type"`
+		URL  string `json:"url"`
+	} `json:"target"`
+	ContentPresentConditions []json.RawMessage `json:"contentPresentConditions"`
+}
+
 type connectWebhookWire struct {
 	Key          string          `json:"key"`
 	Event        string          `json:"event"`
@@ -95,12 +109,24 @@ func parseConnectDescriptor(raw []byte) (models.AppDescriptor, error) {
 		wire.Scopes = append(wire.Scopes, scope)
 	}
 	sort.Strings(wire.Scopes)
-	supported := map[string]bool{"generalPages": true, "webPanels": true, "contentBylineItems": true, "webhooks": true, "jiraIssueFields": true, "webItems": true}
+	supported := map[string]bool{"generalPages": true, "webPanels": true, "contentBylineItems": true, "webhooks": true, "jiraIssueFields": true, "webItems": true, "jiraIssueContents": true}
 	for moduleType, payload := range connect.Modules {
 		if !supported[moduleType] {
 			return models.AppDescriptor{}, fmt.Errorf("Connect module %q is not supported yet", moduleType)
 		}
 		switch moduleType {
+		case "jiraIssueContents":
+			var modules []connectIssueContentWire
+			if err := json.Unmarshal(payload, &modules); err != nil {
+				return models.AppDescriptor{}, fmt.Errorf("invalid Connect jiraIssueContents: %w", err)
+			}
+			for _, module := range modules {
+				translated, err := translateConnectIssueContent(module)
+				if err != nil {
+					return models.AppDescriptor{}, err
+				}
+				wire.Modules = append(wire.Modules, translated)
+			}
 		case "jiraIssueFields":
 			var fields []connectIssueFieldWire
 			if err := json.Unmarshal(payload, &fields); err != nil {
@@ -161,6 +187,25 @@ func parseConnectDescriptor(raw []byte) (models.AppDescriptor, error) {
 		wire.Scopes = append(wire.Scopes, scope)
 	}
 	return validateDescriptorWire(wire)
+}
+
+func translateConnectIssueContent(module connectIssueContentWire) (moduleWire, error) {
+	module.Key = strings.TrimSpace(module.Key)
+	module.Name.Value = strings.TrimSpace(module.Name.Value)
+	module.Tooltip.Value = strings.TrimSpace(module.Tooltip.Value)
+	module.Icon.URL = strings.TrimSpace(module.Icon.URL)
+	module.Target.Type = strings.TrimSpace(module.Target.Type)
+	module.Target.URL = strings.TrimSpace(module.Target.URL)
+	if !moduleKeyPattern.MatchString(module.Key) || module.Name.Value == "" || len(module.Name.Value) > 255 || module.Tooltip.Value == "" || len(module.Tooltip.Value) > 1500 || module.Icon.URL == "" || module.Target.Type != "web_panel" || !validAppCallbackPath(module.Target.URL) {
+		return moduleWire{}, fmt.Errorf("Connect issue content needs a valid key, name, tooltip, icon, and relative web_panel target")
+	}
+	if !validAppCallbackPath(module.Icon.URL) {
+		return moduleWire{}, fmt.Errorf("Connect issue content %q requires a relative icon URL", module.Key)
+	}
+	if len(module.ContentPresentConditions) > 0 {
+		return moduleWire{}, fmt.Errorf("Connect issue content %q uses unsupported presence conditions", module.Key)
+	}
+	return moduleWire{Key: module.Key, Type: "jira:issueContent", Location: "jira.issue.content", Title: module.Name.Value, URL: module.Target.URL}, nil
 }
 
 func translateConnectWebItem(module connectWebItemWire) (moduleWire, error) {

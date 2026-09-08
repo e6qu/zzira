@@ -69,6 +69,9 @@ shape:
     "jiraIssueFields": [
       {"key": "risk-score", "name": {"value": "Risk score"}, "description": {"value": "Calculated release risk"}, "type": "number"}
     ],
+    "jiraIssueContents": [
+      {"key": "runbook", "name": {"value": "Incident runbook"}, "tooltip": {"value": "Add incident runbook"}, "icon": {"url": "/runbook.svg"}, "target": {"type": "web_panel", "url": "/runbook?issue={issue.key}"}}
+    ],
     "webhooks": [
       {"event": "jira:issue_updated", "url": "/webhooks/issues", "filter": "project = OPS"}
     ]
@@ -79,7 +82,8 @@ shape:
 Connect `READ` and write-capable scopes translate into the corresponding Jira
 and Confluence grants. Supported Connect module families are `generalPages`,
 Jira issue-view `webPanels`, Confluence `contentBylineItems`, scalar
-`jiraIssueFields`, Jira/Confluence navigation `webItems`, and `webhooks`.
+`jiraIssueFields`, quick-add `jiraIssueContents`, Jira/Confluence navigation
+`webItems`, and `webhooks`.
 The parser rejects unsupported authentication modes, scopes, module families,
 and web-panel locations instead of silently ignoring them.
 
@@ -114,6 +118,16 @@ Jira field resources. Uninstall hides them without deleting issue data;
 reinstallation restores the same IDs, and dynamic-to-static promotion updates
 the field in place. Select/read-only types, options, extraction definitions,
 and field migration tasks remain explicit gaps.
+
+Connect issue content validates the required key, name, tooltip, relative icon,
+and relative `web_panel` target. Each active module appears beside the issue
+description as an accessible quick-add action. Adding it persists an
+issue-specific instance and opens the remote panel through the signed iframe
+gateway with `issue.key`; removing it restores the quick-add action. Instances
+are keyed by installation and descriptor module key, so reinstalling the app
+does not discard the user's choice. Content-presence conditions and native-app
+rendering flags remain unsupported and fail explicitly when they would change
+host behavior.
 
 Supported scopes are `read:jira-work`, `write:jira-work`,
 `read:confluence-content`, `write:confluence-content`, `read:app-storage`,

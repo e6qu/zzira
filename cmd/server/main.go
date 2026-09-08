@@ -470,6 +470,9 @@ func main() {
 	mux.HandleFunc("POST /issues/{key}/fields", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.UpdateIssueField(w, r, r.PathValue("key"))
 	})
+	mux.HandleFunc("POST /issues/{key}/app-content/{module}", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.SetIssueAppContent(w, r, r.PathValue("key"), r.PathValue("module"))
+	})
 	mux.HandleFunc("POST /issues/{key}/watch", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.SetWatching(w, r, r.PathValue("key"))
 	})
