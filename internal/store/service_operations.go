@@ -156,11 +156,111 @@ func (s *Store) ServiceOperationsProfile(ctx context.Context, workspaceID, issue
 	if err != nil {
 		return nil, err
 	}
+	if v.PlannedStart != nil {
+		value := v.PlannedStart.UTC()
+		v.PlannedStart = &value
+	}
+	if v.PlannedEnd != nil {
+		value := v.PlannedEnd.UTC()
+		v.PlannedEnd = &value
+	}
+	if v.ReviewDueAt != nil {
+		value := v.ReviewDueAt.UTC()
+		v.ReviewDueAt = &value
+	}
 	if onCall != nil {
 		v.OnCallUserID = *onCall
 		v.OnCallUser = &models.User{ID: *onCall, Email: onCallEmail, DisplayName: onCallName, TimeZone: onCallTimeZone, Active: onCallActive, AccountType: "atlassian"}
 	}
 	return v, nil
+}
+
+func scanServiceChangeWindow(row pgx.Row) (models.ServiceChangeWindow, error) {
+	var v models.ServiceChangeWindow
+	err := row.Scan(&v.IssueID, &v.IssueKey, &v.Summary, &v.StatusName, &v.StatusCategory, &v.PlannedStart, &v.PlannedEnd, &v.RiskScore, &v.ConflictCount)
+	if err != nil {
+		return v, err
+	}
+	v.PlannedStart = v.PlannedStart.UTC()
+	v.PlannedEnd = v.PlannedEnd.UTC()
+	v.RiskLevel = (models.ServiceOperationsProfile{RiskScore: v.RiskScore}).RiskLevel()
+	return v, nil
+}
+
+// ServiceChangeCalendar returns active change windows visible to an agent for one desk.
+// ConflictCount is calculated from the same non-completed desk schedule.
+func (s *Store) ServiceChangeCalendar(ctx context.Context, workspaceID, actorID, deskID string, from, until time.Time) ([]models.ServiceChangeWindow, error) {
+	if !until.After(from) {
+		return nil, fmt.Errorf("change calendar end must be after start")
+	}
+	agent, err := s.IsServiceAgent(ctx, workspaceID, deskID, actorID)
+	if err != nil {
+		return nil, err
+	}
+	if !agent {
+		return nil, ErrProjectPermission
+	}
+	rows, err := s.Pool.Query(ctx, `
+		SELECT i.id,i.key,i.summary,st.name,st.category,o.planned_start,o.planned_end,o.impact*o.likelihood,
+		  (SELECT count(*)::int FROM service_request_operations other
+		   JOIN service_requests other_request ON other_request.issue_id=other.request_issue_id
+		   JOIN issues other_issue ON other_issue.id=other.request_issue_id
+		   JOIN statuses other_status ON other_status.id=other_issue.status_id
+		   WHERE other_request.service_desk_id=r.service_desk_id AND other.kind='change'
+		     AND other.request_issue_id<>o.request_issue_id AND other_status.category<>'done'
+		     AND other.planned_start IS NOT NULL AND other.planned_end IS NOT NULL
+		     AND other.planned_start<o.planned_end AND other.planned_end>o.planned_start)
+		FROM service_request_operations o
+		JOIN service_requests r ON r.issue_id=o.request_issue_id
+		JOIN issues i ON i.id=o.request_issue_id
+		JOIN statuses st ON st.id=i.status_id
+		WHERE r.workspace_id=$1 AND r.service_desk_id=$2 AND o.kind='change'
+		  AND st.category<>'done' AND o.planned_start IS NOT NULL AND o.planned_end IS NOT NULL
+		  AND o.planned_start<$4 AND o.planned_end>$3
+		ORDER BY o.planned_start,i.key`, workspaceID, deskID, from, until)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	values := []models.ServiceChangeWindow{}
+	for rows.Next() {
+		value, err := scanServiceChangeWindow(rows)
+		if err != nil {
+			return nil, err
+		}
+		values = append(values, value)
+	}
+	return values, rows.Err()
+}
+
+func (s *Store) ServiceChangeConflicts(ctx context.Context, workspaceID, actorID, issueID string) ([]models.ServiceChangeWindow, error) {
+	var deskID string
+	var startsAt, endsAt *time.Time
+	err := s.Pool.QueryRow(ctx, `SELECT r.service_desk_id,o.planned_start,o.planned_end FROM service_request_operations o JOIN service_requests r ON r.issue_id=o.request_issue_id WHERE r.workspace_id=$1 AND o.request_issue_id=$2 AND o.kind='change'`, workspaceID, issueID).Scan(&deskID, &startsAt, &endsAt)
+	if err != nil {
+		return nil, err
+	}
+	agent, err := s.IsServiceAgent(ctx, workspaceID, deskID, actorID)
+	if err != nil {
+		return nil, err
+	}
+	if !agent {
+		return nil, ErrProjectPermission
+	}
+	if startsAt == nil || endsAt == nil {
+		return []models.ServiceChangeWindow{}, nil
+	}
+	values, err := s.ServiceChangeCalendar(ctx, workspaceID, actorID, deskID, *startsAt, *endsAt)
+	if err != nil {
+		return nil, err
+	}
+	conflicts := values[:0]
+	for _, value := range values {
+		if value.IssueID != issueID {
+			conflicts = append(conflicts, value)
+		}
+	}
+	return conflicts, nil
 }
 
 func (s *Store) UpdateServiceOperationsProfile(ctx context.Context, workspaceID, actorID, issueID string, v models.ServiceOperationsProfile) error {

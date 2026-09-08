@@ -83,6 +83,8 @@ type servicePageData struct {
 	RequestFieldValues    []serviceRequestFieldValueView
 	OperationsSettings    *models.ServiceOperationsSettings
 	OperationsProfile     *models.ServiceOperationsProfile
+	ChangeWindows         []models.ServiceChangeWindow
+	ChangeConflicts       []models.ServiceChangeWindow
 	FieldValues           map[string]string
 	Transitions           []serviceTransitionView
 	CanAdmin              bool
@@ -138,6 +140,12 @@ func (h *Handler) ServiceAgent(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		data.Desk = desk
+		now := time.Now().UTC()
+		data.ChangeWindows, err = h.Store.ServiceChangeCalendar(r.Context(), workspaceID, user.ID, deskID, now.AddDate(0, 0, -7), now.AddDate(0, 0, 90))
+		if err != nil {
+			http.Error(w, "Could not load the change calendar.", http.StatusInternalServerError)
+			return
+		}
 		if admin {
 			data.Members, err = h.Store.MembersByWorkspace(r.Context(), workspaceID)
 			if err != nil {
@@ -1025,6 +1033,14 @@ func (h *Handler) ServiceRequestPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load operations controls.", http.StatusInternalServerError)
 		return
 	}
+	changeConflicts := []models.ServiceChangeWindow{}
+	if canManage && operations != nil && operations.Kind == "change" {
+		changeConflicts, err = h.Store.ServiceChangeConflicts(r.Context(), workspaceID, user.ID, request.Issue.ID)
+		if err != nil {
+			http.Error(w, "Could not load change conflicts.", http.StatusInternalServerError)
+			return
+		}
+	}
 	members := []*models.User{}
 	if canManage {
 		members, err = h.Store.MembersByWorkspace(r.Context(), workspaceID)
@@ -1082,7 +1098,7 @@ func (h *Handler) ServiceRequestPage(w http.ResponseWriter, r *http.Request) {
 		}
 		requestFields = append(requestFields, serviceRequestFieldValueView{Name: field.Name, Value: fmt.Sprint(value)})
 	}
-	h.writeWorkspacePage(w, r, "page_service_request", user, workspaceID, servicePageData{Request: request, RequestFieldValues: requestFields, OperationsProfile: operations, Comments: comments, Attachments: attachments, Links: linkViews, LinkTypes: linkTypes, Approvals: approvals, Feedback: feedback, Participants: participants, Members: members, SLAs: slas, Transitions: transitions, CanAgent: canManage, CanManageParticipants: canManage || request.Customer.ID == user.ID, CurrentUserID: user.ID, Subscribed: subscribed, CanLeaveFeedback: request.Customer.ID == user.ID && request.Issue.Status.Category == "done"}, "service", request.Issue.ProjectID)
+	h.writeWorkspacePage(w, r, "page_service_request", user, workspaceID, servicePageData{Request: request, RequestFieldValues: requestFields, OperationsProfile: operations, ChangeConflicts: changeConflicts, Comments: comments, Attachments: attachments, Links: linkViews, LinkTypes: linkTypes, Approvals: approvals, Feedback: feedback, Participants: participants, Members: members, SLAs: slas, Transitions: transitions, CanAgent: canManage, CanManageParticipants: canManage || request.Customer.ID == user.ID, CurrentUserID: user.ID, Subscribed: subscribed, CanLeaveFeedback: request.Customer.ID == user.ID && request.Issue.Status.Category == "done"}, "service", request.Issue.ProjectID)
 }
 
 func (h *Handler) ServiceRequestLink(w http.ResponseWriter, r *http.Request) {

@@ -1,6 +1,6 @@
 # Development continuity
 
-Updated: 2026-09-07
+Updated: 2026-09-08
 
 This file is the local handoff for the Jira Cloud completion program. Keep it
 short, factual, and current after each meaningful commit. Stable architecture
@@ -1943,10 +1943,31 @@ Validation after scoped Confluence space administration:
   wiki journey, seven conformance tests, generated inventory/coverage checks
   and diff validation pass.
 
+Validation after the Service Management change calendar:
+
+- Agents can inspect active planned changes for their assigned desk over the
+  previous seven and next 90 days. Each row links to the canonical service
+  request and shows its UTC window, status, risk score and active overlap count.
+- Change request pages warn agents about each overlapping active change.
+  Completed work is excluded, portal customers are denied calendar and
+  conflict reads, and invalid calendar ranges fail explicitly.
+- Operations timestamps are normalized to UTC when read, preventing repeated
+  form saves from shifting planned windows when the server uses another time
+  zone.
+- PostgreSQL integration proves overlap counts, risk labels, customer denial,
+  completed-change exclusion and fixture isolation. The Chromium service
+  journey creates overlapping changes, verifies both request warnings and the
+  calendar, repeats a change save to cover UTC stability, and passes its full
+  accessibility, reporting, portal and management lifecycle.
+- The focused and full PostgreSQL Go suites, vet, WebAssembly build, Chromium
+  service journey, seven conformance tests, generated inventory/coverage checks
+  and diff validation pass. Exact API coverage remains 427 of 1,207 operations
+  because this checkpoint adds a user-facing view over existing service data.
+
 ## Current change
 
 1. Continue Service Management with dependency mapping, major-incident
-   communications, change-conflict calendars and escalation policy.
+   communications and escalation policy.
 2. Expand the app runtime from registered custom-content discovery into signed
    installation, scopes and module rendering.
 3. Continue Confluence with database schemas/rows/views and whiteboard canvas

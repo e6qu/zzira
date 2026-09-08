@@ -335,6 +335,53 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if err != nil || !slices.Equal(changeIssue.Labels, []string{"change"}) {
 		t.Fatalf("change issue = %+v, %v", changeIssue, err)
 	}
+	overlapResponse := callAs(customerID, "POST", "/rest/servicedeskapi/request", `{"serviceDeskId":"`+serviceDeskID+`","requestTypeId":"`+changeTypeID+`","requestFieldValues":{"summary":"Rotate checkout credentials","description":"Rotate credentials during the planned capacity change."}}`, 201)
+	var overlapBean map[string]any
+	if err := json.Unmarshal(overlapResponse.Body.Bytes(), &overlapBean); err != nil {
+		t.Fatal(err)
+	}
+	overlapIssue, err := st.IssueByIDOrKey(ctx, workspaceID, overlapBean["issueKey"].(string))
+	if err != nil {
+		t.Fatal(err)
+	}
+	windowStart := time.Now().UTC().Add(time.Hour).Truncate(time.Second)
+	windowEnd := windowStart.Add(2 * time.Hour)
+	overlapStart := windowStart.Add(time.Hour)
+	overlapEnd := windowEnd.Add(time.Hour)
+	profile := models.ServiceOperationsProfile{Impact: 3, Likelihood: 3, ChangeType: "normal", PlannedStart: &windowStart, PlannedEnd: &windowEnd, RollbackPlan: "Restore the prior worker capacity.", ReviewStatus: "not_required"}
+	if err := st.UpdateServiceOperationsProfile(ctx, workspaceID, actorID, changeIssue.ID, profile); err != nil {
+		t.Fatalf("plan first change: %v", err)
+	}
+	storedProfile, err := st.ServiceOperationsProfile(ctx, workspaceID, changeIssue.ID)
+	if err != nil || storedProfile.PlannedStart == nil || storedProfile.PlannedEnd == nil || storedProfile.PlannedStart.Location() != time.UTC || !storedProfile.PlannedStart.Equal(windowStart) || !storedProfile.PlannedEnd.Equal(windowEnd) {
+		t.Fatalf("UTC change profile = %+v, %v", storedProfile, err)
+	}
+	profile.Impact, profile.Likelihood = 2, 2
+	profile.PlannedStart, profile.PlannedEnd = &overlapStart, &overlapEnd
+	profile.RollbackPlan = "Restore the previous credentials."
+	if err := st.UpdateServiceOperationsProfile(ctx, workspaceID, actorID, overlapIssue.ID, profile); err != nil {
+		t.Fatalf("plan overlapping change: %v", err)
+	}
+	changeCalendar, err := st.ServiceChangeCalendar(ctx, workspaceID, actorID, serviceDeskID, windowStart.Add(-time.Hour), overlapEnd.Add(time.Hour))
+	if err != nil || len(changeCalendar) != 2 || changeCalendar[0].ConflictCount != 1 || changeCalendar[1].ConflictCount != 1 || changeCalendar[0].RiskLevel != "High" || changeCalendar[1].RiskLevel != "Medium" || changeCalendar[0].PlannedStart.Location() != time.UTC {
+		t.Fatalf("change calendar = %+v, %v", changeCalendar, err)
+	}
+	conflicts, err := st.ServiceChangeConflicts(ctx, workspaceID, actorID, changeIssue.ID)
+	if err != nil || len(conflicts) != 1 || conflicts[0].IssueID != overlapIssue.ID {
+		t.Fatalf("change conflicts = %+v, %v", conflicts, err)
+	}
+	if _, err := st.ServiceChangeCalendar(ctx, workspaceID, customerID, serviceDeskID, windowStart, overlapEnd); !errors.Is(err, store.ErrProjectPermission) {
+		t.Fatalf("customer calendar access error = %v, want project permission", err)
+	}
+	if _, err := st.ServiceChangeConflicts(ctx, workspaceID, customerID, changeIssue.ID); !errors.Is(err, store.ErrProjectPermission) {
+		t.Fatalf("customer conflict access error = %v, want project permission", err)
+	}
+	exec(`UPDATE issues SET status_id='st_done' WHERE id=$1`, overlapIssue.ID)
+	changeCalendar, err = st.ServiceChangeCalendar(ctx, workspaceID, actorID, serviceDeskID, windowStart.Add(-time.Hour), overlapEnd.Add(time.Hour))
+	if err != nil || len(changeCalendar) != 1 || changeCalendar[0].IssueID != changeIssue.ID || changeCalendar[0].ConflictCount != 0 {
+		t.Fatalf("calendar after completed change = %+v, %v", changeCalendar, err)
+	}
+	exec(`DELETE FROM issues WHERE id=$1`, overlapIssue.ID)
 	linkTypes, err := st.LinkTypes(ctx)
 	if err != nil || len(linkTypes) == 0 {
 		t.Fatalf("operations link types = %+v, %v", linkTypes, err)

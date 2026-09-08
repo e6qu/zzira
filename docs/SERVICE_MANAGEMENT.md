@@ -1,6 +1,6 @@
 # Jira Service Management
 
-Updated: 2026-09-06
+Updated: 2026-09-08
 
 ZZIRA service projects use regular Jira issues as their workflow, automation,
 search, security, release, and reporting record. Service request metadata adds
@@ -79,6 +79,10 @@ profile alongside the backing Jira issue. Agents assess impact and likelihood
 on a four-by-four matrix, assign an on-call owner, classify changes as standard,
 normal, or emergency, and record planned windows and rollback instructions.
 The request view shows the calculated Low, Medium, High, or Critical risk level.
+Every agent can inspect the desk's active change calendar for the previous seven
+and next 90 days. It derives conflicts from overlapping persisted windows,
+excludes completed work, and links each change to its request. A planned change
+also shows its conflicting active requests beside the operations assessment.
 
 Service managers configure each desk's CAB threshold, approver roster, incident
 review deadline, and bounded on-call shifts. An active shift assigns its owner
@@ -199,6 +203,6 @@ service report comparisons, SLA goal distributions, exports and scheduled
 delivery, complete Assets object/schema/import APIs, full
 status chronology, SLA rule reordering and advanced criteria,
 portal invitation email delivery, Atlassian knowledge ranking/analytics, and
-advanced dependency mapping, major-incident communications, change-conflict
-calendars, escalation policy, and review templates remain. Customer creation grants only the
+advanced dependency mapping, major-incident communications, escalation policy,
+and review templates remain. Customer creation grants only the
 site `atlassian/customer` role and never silently grants Jira product access.

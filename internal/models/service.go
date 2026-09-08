@@ -185,6 +185,12 @@ type ServiceOperationsProfile struct {
 	UpdatedAt                                                    time.Time
 }
 
+type ServiceChangeWindow struct {
+	IssueID, IssueKey, Summary, StatusName, StatusCategory, RiskLevel string
+	PlannedStart, PlannedEnd                                          time.Time
+	RiskScore, ConflictCount                                          int
+}
+
 func (p ServiceOperationsProfile) RiskLevel() string {
 	switch {
 	case p.RiskScore >= 13:
