@@ -195,6 +195,7 @@ func compileNavigatorSearch(projectKey, userID string, p navigatorParams) (jql.C
 	}}
 	if p.Mode == "basic" || p.SortSet {
 		query.OrderBy = &jql.Order{Field: p.Sort, Desc: p.Direction == "desc"}
+		query.Orders = nil
 	}
 	compiled := jql.CompileAt(query, userID, jql.DefaultResolver(), 2)
 	if compiled.Err != nil {

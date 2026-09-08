@@ -25,6 +25,17 @@ func TestCompileNavigatorSearchAlwaysScopesProject(t *testing.T) {
 	}
 }
 
+func TestNavigatorExplicitSortOverridesAdvancedJQLOrder(t *testing.T) {
+	params := navigatorParams{Mode: "advanced", JQL: `status != Done ORDER BY updated DESC, priority ASC`, Sort: "summary", Direction: "asc", SortSet: true}
+	compiled, err := compileNavigatorSearch("ZZ", "usr_me", params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if compiled.OrderSQL != "i.summary ASC, i.id ASC" {
+		t.Fatalf("order = %q", compiled.OrderSQL)
+	}
+}
+
 func TestEncodeWebCustomFieldPreservesTypes(t *testing.T) {
 	number, err := encodeWebCustomField(models.CustomFieldNumber, "42.5")
 	if err != nil || string(number) != "42.5" {
@@ -51,7 +62,7 @@ func TestCompileNavigatorBasicFiltersAndSort(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if compiled.OrderSQL != "a.display_name ASC" {
+	if compiled.OrderSQL != "a.display_name ASC, i.id ASC" {
 		t.Fatalf("order = %q", compiled.OrderSQL)
 	}
 	want := []any{"ZZ", "%release gate%", "%release gate%", "In Progress", "usr_me"}

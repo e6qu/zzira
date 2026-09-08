@@ -163,6 +163,18 @@ func TestProjectAPILifecycle(t *testing.T) {
 		t.Fatalf("rich description or explicit unassignment was lost: %v %v", saved, err)
 	}
 	call(actor, "POST", "/rest/api/3/issue", `{"fields":{"project":{"key":"TEAM"},"summary":"Invalid content","issuetype":{"name":"Task"},"description":{"type":"paragraph"}}}`, 400)
+	legacy := call(actor, "GET", "/rest/api/3/search?jql=project%3DTEAM&maxResults=1", "", 200)
+	if !strings.Contains(legacy.Body.String(), `"total":2`) || !strings.Contains(legacy.Body.String(), `"maxResults":1`) {
+		t.Fatal(legacy.Body.String())
+	}
+	legacyPost := call(actor, "POST", "/rest/api/3/search", `{"jql":"project=TEAM","startAt":1,"maxResults":1}`, 200)
+	if !strings.Contains(legacyPost.Body.String(), `"startAt":1`) || !strings.Contains(legacyPost.Body.String(), `"total":2`) {
+		t.Fatal(legacyPost.Body.String())
+	}
+	counted := call(actor, "POST", "/rest/api/3/search/approximate-count", `{"jql":"project=TEAM"}`, 200)
+	if !strings.Contains(counted.Body.String(), `"count":2`) {
+		t.Fatal(counted.Body.String())
+	}
 	search := call(actor, "GET", "/rest/api/3/search/jql?jql=project%3DTEAM&maxResults=1&fields=summary", "", 200)
 	var enhanced struct {
 		Issues        []map[string]any
@@ -179,6 +191,7 @@ func TestProjectAPILifecycle(t *testing.T) {
 	if len(selected) != 1 || selected["summary"] == nil {
 		t.Fatal(search.Body.String())
 	}
+	call(actor, "GET", "/rest/api/3/search/jql?jql=project%3DNEXT&maxResults=1&nextPageToken="+enhanced.NextPageToken, "", 400)
 	last := call(actor, "POST", "/rest/api/3/search/jql", `{"jql":"project=TEAM","maxResults":1,"nextPageToken":"`+enhanced.NextPageToken+`"}`, 200)
 	enhanced.NextPageToken = ""
 	enhanced.Issues = nil

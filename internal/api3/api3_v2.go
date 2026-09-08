@@ -2,12 +2,15 @@ package api3
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/e6qu/zzira/internal/jql"
 	"github.com/e6qu/zzira/internal/models"
@@ -482,6 +485,44 @@ type searchRequest struct {
 	NextPageToken string   `json:"nextPageToken"`
 }
 
+type enhancedSearchCursor struct {
+	Version   int    `json:"v"`
+	Offset    int    `json:"o"`
+	QueryHash string `json:"q"`
+	Workspace string `json:"w"`
+	User      string `json:"u"`
+	ExpiresAt int64  `json:"e"`
+}
+
+func enhancedSearchQueryHash(query string) string {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(query)))
+	return base64.RawURLEncoding.EncodeToString(sum[:16])
+}
+
+func encodeEnhancedSearchCursor(offset int, query, workspaceID, userID string, now time.Time) string {
+	payload, _ := json.Marshal(enhancedSearchCursor{
+		Version: 1, Offset: offset, QueryHash: enhancedSearchQueryHash(query),
+		Workspace: workspaceID, User: userID, ExpiresAt: now.Add(7 * 24 * time.Hour).Unix(),
+	})
+	return base64.RawURLEncoding.EncodeToString(payload)
+}
+
+func decodeEnhancedSearchCursor(token, query, workspaceID, userID string, now time.Time) (int, error) {
+	raw, err := base64.RawURLEncoding.DecodeString(token)
+	if err != nil {
+		return 0, err
+	}
+	var cursor enhancedSearchCursor
+	if err = json.Unmarshal(raw, &cursor); err != nil {
+		return 0, err
+	}
+	if cursor.Version != 1 || cursor.Offset < 0 || cursor.ExpiresAt < now.Unix() ||
+		cursor.QueryHash != enhancedSearchQueryHash(query) || cursor.Workspace != workspaceID || cursor.User != userID {
+		return 0, errors.New("cursor does not match this search")
+	}
+	return cursor.Offset, nil
+}
+
 func (h *Handler) search(w http.ResponseWriter, r *http.Request) {
 	jqlText := r.URL.Query().Get("jql")
 	startAt, maxResults, e := querySearchPage(r)
@@ -558,23 +599,19 @@ func (h *Handler) searchJQL(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, 400, "maxResults must be between 1 and 5000.")
 		return
 	}
-	startAt := 0
-	if req.NextPageToken != "" {
-		raw, err := base64.URLEncoding.DecodeString(req.NextPageToken)
-		if err != nil {
-			jiraError(w, http.StatusBadRequest, "Invalid nextPageToken.")
-			return
-		}
-		startAt, err = strconv.Atoi(string(raw))
-		if err != nil || startAt < 0 {
-			jiraError(w, http.StatusBadRequest, "Invalid nextPageToken.")
-			return
-		}
-	}
 	wsID, userID, e := h.authWorkspace(r)
 	if e != nil {
 		writeJerr(w, e)
 		return
+	}
+	startAt := 0
+	if req.NextPageToken != "" {
+		var err error
+		startAt, err = decodeEnhancedSearchCursor(req.NextPageToken, req.JQL, wsID, userID, time.Now())
+		if err != nil {
+			jiraError(w, http.StatusBadRequest, "Invalid nextPageToken.")
+			return
+		}
 	}
 	parsed, err := jql.Parse(req.JQL)
 	if err != nil {
@@ -605,7 +642,7 @@ func (h *Handler) searchJQL(w http.ResponseWriter, r *http.Request) {
 	}
 	resp := map[string]any{"issues": beans, "isLast": !hasMore}
 	if hasMore {
-		resp["nextPageToken"] = base64.URLEncoding.EncodeToString([]byte(strconv.Itoa(startAt + maxResults)))
+		resp["nextPageToken"] = encodeEnhancedSearchCursor(startAt+maxResults, req.JQL, wsID, userID, time.Now())
 	}
 	writeJSON(w, http.StatusOK, resp)
 }

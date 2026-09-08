@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParseBasic(t *testing.T) {
@@ -80,7 +81,7 @@ func TestCompileUnknownFieldAndOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c := Compile(q, "u", DefaultResolver()); c.Err != nil || c.OrderSQL != "st.name ASC" {
+	if c := Compile(q, "u", DefaultResolver()); c.Err != nil || c.OrderSQL != "st.name ASC, i.id ASC" {
 		t.Fatalf("status sort = %q, %v", c.OrderSQL, c.Err)
 	}
 	q, err = Parse("ORDER BY bogus")
@@ -89,6 +90,84 @@ func TestCompileUnknownFieldAndOrder(t *testing.T) {
 	}
 	if c := Compile(q, "u", DefaultResolver()); c.Err == nil {
 		t.Fatal("unknown order field must fail at compile")
+	}
+}
+
+func TestParseAndCompileNotIn(t *testing.T) {
+	query, err := Parse(`status NOT IN (Done, Closed) AND labels NOT IN (archived, stale)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled := Compile(query, "usr_me", DefaultResolver())
+	if compiled.Err != nil {
+		t.Fatal(compiled.Err)
+	}
+	if !strings.Contains(compiled.Where, "st.name IS NOT NULL AND NOT (st.name IN") ||
+		!strings.Contains(compiled.Where, "cardinality(i.labels) > 0 AND NOT") {
+		t.Fatalf("NOT IN SQL = %s", compiled.Where)
+	}
+}
+
+func TestRelativeDateFunctionsAndCurrentUser(t *testing.T) {
+	query, err := Parse(`updated >= startOfMonth(-1M) AND created < endOfDay() AND due >= -5d AND assignee = currentUser()`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled := Compile(query, "usr_me", DefaultResolver())
+	if compiled.Err != nil {
+		t.Fatal(compiled.Err)
+	}
+	if len(compiled.Args) != 4 || compiled.Args[3] != "usr_me" {
+		t.Fatalf("args = %#v", compiled.Args)
+	}
+	for _, value := range compiled.Args[:3] {
+		if _, ok := value.(time.Time); !ok {
+			t.Fatalf("date function resolved to %T, want time.Time", value)
+		}
+	}
+}
+
+func TestHistoryClausesCompileAgainstImmutableActions(t *testing.T) {
+	query, err := Parse(`status WAS IN ("In Progress", Done) BY currentUser() BEFORE startOfDay() OR assignee CHANGED FROM currentUser() DURING (startOfMonth(-1M), endOfMonth())`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled := Compile(query, "usr_me", DefaultResolver())
+	if compiled.Err != nil {
+		t.Fatal(compiled.Err)
+	}
+	if strings.Count(compiled.Where, "FROM actions ah") != 2 ||
+		!strings.Contains(compiled.Where, "ah.payload->'diff' ? 'status'") ||
+		!strings.Contains(compiled.Where, "ah.payload->'diff' ? 'assignee'") ||
+		!strings.Contains(compiled.Where, "ah.created_at BETWEEN") {
+		t.Fatalf("history SQL = %s", compiled.Where)
+	}
+}
+
+func TestMultipleOrderFieldsAreBoundedAndDeterministic(t *testing.T) {
+	query, err := Parse(`project = ZZ ORDER BY priority DESC, updated ASC, key DESC`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled := Compile(query, "usr_me", DefaultResolver())
+	if compiled.Err != nil {
+		t.Fatal(compiled.Err)
+	}
+	if compiled.OrderSQL != "pr2.name DESC, i.updated_at ASC, i.key DESC, i.id ASC" {
+		t.Fatalf("order = %q", compiled.OrderSQL)
+	}
+	if _, err := Parse(`project = ZZ ORDER BY key,key,key,key,key,key,key,key`); err == nil {
+		t.Fatal("accepted more than seven ORDER BY fields")
+	}
+}
+
+func TestUnsupportedFunctionIsACompileError(t *testing.T) {
+	query, err := Parse(`assignee = membersOf(engineering)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if compiled := Compile(query, "usr_me", DefaultResolver()); compiled.Err == nil {
+		t.Fatal("unsupported function compiled as a literal")
 	}
 }
 

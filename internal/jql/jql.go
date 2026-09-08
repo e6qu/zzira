@@ -2,18 +2,22 @@
 // a Postgres SQL compiler with mandatory permission predicates injected by the
 // caller. Pure — shared by server and wasm targets.
 //
-// V1 grammar (case-insensitive keywords, unquoted/quoted values):
+// Grammar (case-insensitive keywords, unquoted/quoted values):
 //
-//	query   := orExpr [ ORDER BY field [ASC|DESC] ]
+//	query   := orExpr [ ORDER BY field [ASC|DESC] (, field [ASC|DESC])* ]
 //	orExpr  := andExpr ( OR andExpr )*
 //	andExpr := unit ( AND unit )*
-//	unit    := NOT unit | '(' query ')' | field op value | text
-//	op      := = | != | ~ | !~ | in '(' value, ... ')' | is empty | is not empty
+//	unit    := NOT unit | '(' query ')' | field op value | field history | text
+//	op      := = | != | ~ | !~ | < | <= | > | >= | [NOT] IN (...) | IS [NOT] EMPTY
+//	history := WAS [NOT] [IN] value | CHANGED [FROM value] [TO value]
+//	           [BY value] [BEFORE value] [AFTER value] [DURING (value,value)]
 package jql
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/e6qu/zzira/internal/models"
 )
@@ -23,6 +27,7 @@ import (
 type Query struct {
 	Root    Node
 	OrderBy *Order
+	Orders  []Order
 }
 
 type Order struct {
@@ -42,13 +47,26 @@ type Clause struct {
 	Values []string
 }
 
+type HistoryPredicate struct {
+	Kind   string
+	Values []string
+}
+
+type HistoryClause struct {
+	Field      string
+	Op         string
+	Values     []string
+	Predicates []HistoryPredicate
+}
+
 type Text struct{ Value string }
 
-func (Or) isNode()     {}
-func (And) isNode()    {}
-func (Not) isNode()    {}
-func (Clause) isNode() {}
-func (Text) isNode()   {}
+func (Or) isNode()            {}
+func (And) isNode()           {}
+func (Not) isNode()           {}
+func (Clause) isNode()        {}
+func (HistoryClause) isNode() {}
+func (Text) isNode()          {}
 
 // ---- Errors ----
 
@@ -185,21 +203,31 @@ func Parse(src string) (*Query, error) {
 	q := &Query{Root: root}
 	if orderToks != nil {
 		op := &parser{toks: orderToks}
-		field, err := op.expectWord("field after ORDER BY")
-		if err != nil {
-			return nil, err
-		}
-		desc := false
-		if op.atWord("desc") {
-			desc = true
-			op.next()
-		} else if op.atWord("asc") {
+		for {
+			field, err := op.expectWord("field after ORDER BY")
+			if err != nil {
+				return nil, err
+			}
+			order := Order{Field: strings.ToLower(field)}
+			if op.atWord("desc") {
+				order.Desc = true
+				op.next()
+			} else if op.atWord("asc") {
+				op.next()
+			}
+			q.Orders = append(q.Orders, order)
+			if len(q.Orders) > 7 {
+				return nil, &SyntaxError{op.peek().pos, "ORDER BY accepts at most 7 fields"}
+			}
+			if op.peek().kind != "comma" {
+				break
+			}
 			op.next()
 		}
 		if op.peek().kind != "eof" {
 			return nil, &SyntaxError{op.peek().pos, "unexpected input after ORDER BY field"}
 		}
-		q.OrderBy = &Order{Field: strings.ToLower(field), Desc: desc}
+		q.OrderBy = &q.Orders[0]
 	}
 	if p.peek().kind != "eof" {
 		t := p.peek()
@@ -358,7 +386,8 @@ func (p *parser) parseUnit() (Node, error) {
 
 func reserved(w string) bool {
 	switch w {
-	case "order", "by", "asc", "desc", "and", "or", "not", "in", "is", "empty", "null":
+	case "order", "by", "asc", "desc", "and", "or", "not", "in", "is", "empty", "null",
+		"was", "changed", "from", "to", "before", "after", "during":
 		return true
 	}
 	return false
@@ -372,7 +401,8 @@ func (p *parser) isClauseStart() bool {
 	if _, ok := operators[op]; ok {
 		return true
 	}
-	return strings.EqualFold(op, "in") || strings.EqualFold(op, "is")
+	return strings.EqualFold(op, "in") || strings.EqualFold(op, "is") ||
+		strings.EqualFold(op, "not") || strings.EqualFold(op, "was") || strings.EqualFold(op, "changed")
 }
 
 func (p *parser) parseClause() (Node, error) {
@@ -387,28 +417,17 @@ func (p *parser) parseClause() (Node, error) {
 		}
 		return Clause{Field: field, Op: op, Values: []string{val}}, nil
 	case strings.EqualFold(opTok.text, "in"):
-		if p.peek().kind != "lparen" {
-			return nil, &SyntaxError{p.peek().pos, "expected ( after IN"}
+		return p.parseInClause(field, false)
+	case strings.EqualFold(opTok.text, "not"):
+		if !p.atWord("in") {
+			return nil, &SyntaxError{p.peek().pos, "expected IN after NOT"}
 		}
 		p.next()
-		var vals []string
-		for {
-			v, err := p.parseValue()
-			if err != nil {
-				return nil, err
-			}
-			vals = append(vals, v)
-			if p.peek().kind == "comma" {
-				p.next()
-				continue
-			}
-			break
-		}
-		if p.peek().kind != "rparen" {
-			return nil, &SyntaxError{p.peek().pos, "expected ) to close IN"}
-		}
-		p.next()
-		return Clause{Field: field, Op: "in", Values: vals}, nil
+		return p.parseInClause(field, true)
+	case strings.EqualFold(opTok.text, "was"):
+		return p.parseWasClause(field)
+	case strings.EqualFold(opTok.text, "changed"):
+		return p.parseChangedClause(field)
 	case strings.EqualFold(opTok.text, "is"):
 		neg := false
 		if p.atWord("not") {
@@ -427,18 +446,196 @@ func (p *parser) parseClause() (Node, error) {
 	return nil, &SyntaxError{opTok.pos, "unsupported operator " + opTok.text}
 }
 
+func (p *parser) parseInClause(field string, negated bool) (Node, error) {
+	if p.peek().kind != "lparen" {
+		return nil, &SyntaxError{p.peek().pos, "expected ( after IN"}
+	}
+	p.next()
+	var vals []string
+	for {
+		v, err := p.parseValue()
+		if err != nil {
+			return nil, err
+		}
+		vals = append(vals, v)
+		if p.peek().kind == "comma" {
+			p.next()
+			continue
+		}
+		break
+	}
+	if p.peek().kind != "rparen" {
+		return nil, &SyntaxError{p.peek().pos, "expected ) to close IN"}
+	}
+	p.next()
+	op := "in"
+	if negated {
+		op = "notin"
+	}
+	return Clause{Field: field, Op: op, Values: vals}, nil
+}
+
+func (p *parser) parseWasClause(field string) (Node, error) {
+	negated := false
+	if p.atWord("not") {
+		negated = true
+		p.next()
+	}
+	if p.atWord("in") {
+		p.next()
+		clause, err := p.parseInClause(field, negated)
+		if err != nil {
+			return nil, err
+		}
+		values := clause.(Clause).Values
+		op := "wasin"
+		if negated {
+			op = "wasnotin"
+		}
+		predicates, err := p.parseWasPredicates()
+		if err != nil {
+			return nil, err
+		}
+		return HistoryClause{Field: field, Op: op, Values: values, Predicates: predicates}, nil
+	}
+	value, err := p.parseValue()
+	if err != nil {
+		return nil, err
+	}
+	op := "was"
+	if negated {
+		op = "wasnot"
+	}
+	predicates, err := p.parseWasPredicates()
+	if err != nil {
+		return nil, err
+	}
+	return HistoryClause{Field: field, Op: op, Values: []string{value}, Predicates: predicates}, nil
+}
+
+func (p *parser) parseWasPredicates() ([]HistoryPredicate, error) {
+	predicates := []HistoryPredicate{}
+	seen := map[string]bool{}
+	for p.peek().kind == "word" {
+		kind := strings.ToLower(p.peek().text)
+		if kind != "by" && kind != "before" && kind != "after" && kind != "during" {
+			break
+		}
+		if seen[kind] {
+			return nil, &SyntaxError{p.peek().pos, "duplicate " + strings.ToUpper(kind) + " predicate"}
+		}
+		seen[kind] = true
+		p.next()
+		predicate := HistoryPredicate{Kind: kind}
+		if kind == "during" {
+			if p.peek().kind != "lparen" {
+				return nil, &SyntaxError{p.peek().pos, "expected ( after DURING"}
+			}
+			p.next()
+			first, err := p.parseValue()
+			if err != nil {
+				return nil, err
+			}
+			if p.peek().kind != "comma" {
+				return nil, &SyntaxError{p.peek().pos, "expected comma in DURING"}
+			}
+			p.next()
+			second, err := p.parseValue()
+			if err != nil {
+				return nil, err
+			}
+			if p.peek().kind != "rparen" {
+				return nil, &SyntaxError{p.peek().pos, "expected ) to close DURING"}
+			}
+			p.next()
+			predicate.Values = []string{first, second}
+		} else {
+			value, err := p.parseValue()
+			if err != nil {
+				return nil, err
+			}
+			predicate.Values = []string{value}
+		}
+		predicates = append(predicates, predicate)
+	}
+	return predicates, nil
+}
+
+func (p *parser) parseChangedClause(field string) (Node, error) {
+	clause := HistoryClause{Field: field, Op: "changed"}
+	seen := map[string]bool{}
+	for p.peek().kind == "word" {
+		kind := strings.ToLower(p.peek().text)
+		if kind != "from" && kind != "to" && kind != "by" && kind != "before" && kind != "after" && kind != "during" {
+			break
+		}
+		if seen[kind] {
+			return nil, &SyntaxError{p.peek().pos, "duplicate " + strings.ToUpper(kind) + " predicate"}
+		}
+		seen[kind] = true
+		p.next()
+		predicate := HistoryPredicate{Kind: kind}
+		if kind == "during" {
+			if p.peek().kind != "lparen" {
+				return nil, &SyntaxError{p.peek().pos, "expected ( after DURING"}
+			}
+			p.next()
+			first, err := p.parseValue()
+			if err != nil {
+				return nil, err
+			}
+			if p.peek().kind != "comma" {
+				return nil, &SyntaxError{p.peek().pos, "expected comma in DURING"}
+			}
+			p.next()
+			second, err := p.parseValue()
+			if err != nil {
+				return nil, err
+			}
+			if p.peek().kind != "rparen" {
+				return nil, &SyntaxError{p.peek().pos, "expected ) to close DURING"}
+			}
+			p.next()
+			predicate.Values = []string{first, second}
+		} else {
+			value, err := p.parseValue()
+			if err != nil {
+				return nil, err
+			}
+			predicate.Values = []string{value}
+		}
+		clause.Predicates = append(clause.Predicates, predicate)
+	}
+	return clause, nil
+}
+
 func (p *parser) parseValue() (string, error) {
 	t := p.peek()
 	if t.kind == "word" || t.kind == "quoted" {
 		p.next()
-		// function call: word followed immediately by () (e.g. currentUser())
-		if t.kind == "word" && p.peek().kind == "lparen" && p.peek().pos == t.pos+len(t.text) {
+		// Function calls retain their arguments for semantic resolution by the
+		// compiler (for example startOfMonth(-1M) or currentUser()).
+		if t.kind == "word" && p.peek().kind == "lparen" {
 			p.next()
-			if p.peek().kind == "rparen" {
-				p.next()
-				return t.text + "()", nil
+			args := []string{}
+			if p.peek().kind != "rparen" {
+				for {
+					arg, err := p.parseValue()
+					if err != nil {
+						return "", err
+					}
+					args = append(args, arg)
+					if p.peek().kind != "comma" {
+						break
+					}
+					p.next()
+				}
 			}
-			return "", &SyntaxError{p.peek().pos, "expected ) after function call"}
+			if p.peek().kind != "rparen" {
+				return "", &SyntaxError{p.peek().pos, "expected ) after function call"}
+			}
+			p.next()
+			return t.text + "(" + strings.Join(args, ",") + ")", nil
 		}
 		return t.text, nil
 	}
@@ -480,22 +677,36 @@ func WithCustomFields(base FieldResolver, fields []*models.CustomField) FieldRes
 func DefaultResolver() FieldResolver {
 	return FieldResolver{
 		Columns: map[string]string{
-			"key":       "i.key",
-			"summary":   "i.summary",
-			"status":    "st.name",
-			"project":   "pr.key",
-			"assignee":  "i.assignee_id",
-			"reporter":  "i.reporter_id",
-			"priority":  "pr2.name",
-			"issuetype": "it.name",
-			"updated":   "i.updated_at",
-			"created":   "i.created_at",
-			"labels":    "i.labels",
+			"key":            "i.key",
+			"issue":          "i.key",
+			"id":             "i.id",
+			"summary":        "i.summary",
+			"description":    "i.description::text",
+			"status":         "st.name",
+			"statuscategory": "st.category",
+			"project":        "pr.key",
+			"assignee":       "i.assignee_id",
+			"reporter":       "i.reporter_id",
+			"creator":        "i.reporter_id",
+			"priority":       "pr2.name",
+			"issuetype":      "it.name",
+			"updated":        "i.updated_at",
+			"created":        "i.created_at",
+			"labels":         "i.labels",
+			"parent":         "parent.key",
+			"resolution":     `i.fields->>'resolution'`,
+			"resolutiondate": `NULLIF(i.fields->>'resolutiondate','')::timestamptz`,
+			"due":            `NULLIF(i.fields->>'duedate','')::timestamptz`,
+			"environment":    `i.fields->>'environment'`,
+			"component":      `i.fields->>'component'`,
+			"sprint":         `i.fields->>'sprint'`,
 		},
 		TextColumns: []string{"i.summary", "i.description::text"},
 		DefaultOrder: map[string]string{
 			"updated": "i.updated_at", "created": "i.created_at", "key": "i.key", "summary": "i.summary",
 			"status": "st.name", "priority": "pr2.name", "assignee": "a.display_name", "issuetype": "it.name",
+			"reporter": "r.display_name", "project": "pr.key", "parent": "parent.key", "resolution": `i.fields->>'resolution'`,
+			"due": `NULLIF(i.fields->>'duedate','')::timestamptz`, "resolutiondate": `NULLIF(i.fields->>'resolutiondate','')::timestamptz`,
 		},
 	}
 }
@@ -521,23 +732,37 @@ func CompileAt(q *Query, currentUserID string, res FieldResolver, paramOffset in
 		return Compiled{Err: &SyntaxError{0, "empty query"}}
 	}
 	c := &compiler{res: res, user: currentUserID, offset: paramOffset - 1}
+	c.now = time.Now().UTC()
 	where := c.node(q.Root)
 	if c.err != nil {
 		return Compiled{Err: c.err}
 	}
-	order := "i.updated_at DESC"
-	if q.OrderBy != nil {
-		if col, ok := res.DefaultOrder[q.OrderBy.Field]; ok {
+	orders := q.Orders
+	if len(orders) == 0 && q.OrderBy != nil {
+		orders = []Order{*q.OrderBy}
+	}
+	orderParts := []string{}
+	if len(orders) == 0 {
+		orderParts = append(orderParts, "i.updated_at DESC")
+	} else {
+		for _, requested := range orders {
+			col, ok := res.DefaultOrder[requested.Field]
+			if !ok {
+				return Compiled{Err: &SyntaxError{0, "cannot order by " + requested.Field}}
+			}
 			dir := "ASC"
-			if q.OrderBy.Desc {
+			if requested.Desc {
 				dir = "DESC"
 			}
-			order = col + " " + dir
-		} else {
-			return Compiled{Err: &SyntaxError{0, "cannot order by " + q.OrderBy.Field}}
+			orderParts = append(orderParts, col+" "+dir)
 		}
 	}
-	return Compiled{Where: where, Args: c.args, OrderSQL: order}
+	// A stable final key prevents duplicate or skipped rows when requested sort
+	// values are equal and is required by Jira's cursor search contract.
+	if !strings.Contains(strings.Join(orderParts, ","), "i.id ") {
+		orderParts = append(orderParts, "i.id ASC")
+	}
+	return Compiled{Where: where, Args: c.args, OrderSQL: strings.Join(orderParts, ", ")}
 }
 
 type compiler struct {
@@ -546,6 +771,7 @@ type compiler struct {
 	args   []any
 	err    error
 	offset int
+	now    time.Time
 }
 
 func (c *compiler) arg(v any) string {
@@ -583,6 +809,8 @@ func (c *compiler) node(n Node) string {
 		return "(" + strings.Join(likes, " OR ") + ")"
 	case Clause:
 		return c.clause(t)
+	case HistoryClause:
+		return c.historyClause(t)
 	}
 	c.err = &SyntaxError{0, "unknown node"}
 	return ""
@@ -602,19 +830,33 @@ func (c *compiler) clause(cl Clause) string {
 	}
 	switch cl.Op {
 	case "=":
-		return col + " = " + c.arg(c.fieldValue(cl.Field, cl.Values[0]))
+		value := c.fieldValue(cl.Field, cl.Values[0])
+		if value == nil {
+			return col + " IS NULL"
+		}
+		return col + " = " + c.arg(value)
 	case "!=":
-		return "(" + col + " IS DISTINCT FROM " + c.arg(c.fieldValue(cl.Field, cl.Values[0])) + ")"
+		value := c.fieldValue(cl.Field, cl.Values[0])
+		if value == nil {
+			return col + " IS NOT NULL"
+		}
+		return "(" + col + " IS DISTINCT FROM " + c.arg(value) + ")"
 	case "~":
 		return col + " ILIKE " + c.arg("%"+cl.Values[0]+"%")
 	case "!~":
 		return "(" + col + " NOT ILIKE " + c.arg("%"+cl.Values[0]+"%") + " OR " + col + " IS NULL)"
-	case "in":
+	case "in", "notin":
 		placeholders := make([]string, 0, len(cl.Values))
 		for _, v := range cl.Values {
 			placeholders = append(placeholders, c.arg(c.fieldValue(cl.Field, v)))
 		}
-		return col + " IN (" + strings.Join(placeholders, ",") + ")"
+		membership := col + " IN (" + strings.Join(placeholders, ",") + ")"
+		if cl.Op == "notin" {
+			return "(" + col + " IS NOT NULL AND NOT (" + membership + "))"
+		}
+		return membership
+	case ">", ">=", "<", "<=":
+		return col + " " + cl.Op + " " + c.arg(c.fieldValue(cl.Field, cl.Values[0]))
 	case "empty":
 		return "(" + col + " IS NULL OR " + col + " = '')"
 	case "notempty":
@@ -622,6 +864,82 @@ func (c *compiler) clause(cl Clause) string {
 	}
 	c.err = &SyntaxError{0, "unsupported operator " + cl.Op}
 	return ""
+}
+
+func (c *compiler) historyClause(cl HistoryClause) string {
+	keys := map[string]string{
+		"status": "status", "assignee": "assignee", "reporter": "reporter",
+		"priority": "priority", "parent": "parent", "labels": "labels",
+		"summary": "summary", "description": "description", "security": "security",
+		"fixversion": "fixVersions", "affectedversion": "versions",
+	}
+	key, ok := keys[cl.Field]
+	if !ok {
+		c.err = &SyntaxError{0, "history is not searchable for field: " + cl.Field}
+		return ""
+	}
+	base := []string{
+		"ah.workspace_id=i.workspace_id",
+		"ah.entity_type='issue'",
+		"ah.entity_id=i.id",
+		"ah.payload->'diff' ? '" + key + "'",
+	}
+	for _, predicate := range cl.Predicates {
+		switch predicate.Kind {
+		case "from", "to":
+			base = append(base, c.historyValueMatch(key, predicate.Kind, predicate.Values))
+		case "by":
+			base = append(base, "ah.actor_id="+c.arg(c.fieldValue("assignee", predicate.Values[0])))
+		case "before", "after":
+			op := "<"
+			if predicate.Kind == "after" {
+				op = ">"
+			}
+			base = append(base, "ah.created_at"+op+c.arg(c.fieldValue("updated", predicate.Values[0])))
+		case "during":
+			base = append(base, "ah.created_at BETWEEN "+c.arg(c.fieldValue("updated", predicate.Values[0]))+
+				" AND "+c.arg(c.fieldValue("updated", predicate.Values[1])))
+		}
+	}
+	if cl.Op == "changed" {
+		return "EXISTS (SELECT 1 FROM actions ah WHERE " + strings.Join(base, " AND ") + ")"
+	}
+
+	match := c.historyValueMatch(key, "either", cl.Values)
+	exists := "EXISTS (SELECT 1 FROM actions ah WHERE " + strings.Join(append(base, match), " AND ") + ")"
+	if current, present := c.res.Columns[cl.Field]; present && len(cl.Predicates) == 0 {
+		currentMatches := make([]string, 0, len(cl.Values))
+		for _, value := range cl.Values {
+			currentMatches = append(currentMatches, "lower(COALESCE("+current+"::text,''))=lower("+c.arg(c.fieldValue(cl.Field, value))+"::text)")
+		}
+		exists = "(" + exists + " OR " + strings.Join(currentMatches, " OR ") + ")"
+	}
+	if cl.Op == "wasnot" || cl.Op == "wasnotin" {
+		return "NOT (" + exists + ")"
+	}
+	return exists
+}
+
+func (c *compiler) historyValueMatch(key, side string, values []string) string {
+	parts := make([]string, 0, len(values))
+	for _, value := range values {
+		placeholder := c.arg(c.fieldValue(key, value))
+		columns := []string{}
+		switch side {
+		case "from":
+			columns = []string{"from", "fromString"}
+		case "to":
+			columns = []string{"to", "toString"}
+		default:
+			columns = []string{"from", "fromString", "to", "toString"}
+		}
+		matches := make([]string, 0, len(columns))
+		for _, column := range columns {
+			matches = append(matches, "lower(COALESCE(ah.payload->'diff'->'"+key+"'->>'"+column+"',''))=lower("+placeholder+"::text)")
+		}
+		parts = append(parts, "("+strings.Join(matches, " OR ")+")")
+	}
+	return "(" + strings.Join(parts, " OR ") + ")"
 }
 
 func (c *compiler) labelsClause(cl Clause) string {
@@ -636,12 +954,16 @@ func (c *compiler) labelsClause(cl Clause) string {
 		return "array_to_string(" + array + ",' ') ILIKE " + c.arg("%"+cl.Values[0]+"%")
 	case "!~":
 		return "(" + nonempty + " AND array_to_string(" + array + ",' ') NOT ILIKE " + c.arg("%"+cl.Values[0]+"%") + ")"
-	case "in":
+	case "in", "notin":
 		parts := make([]string, 0, len(cl.Values))
 		for _, value := range cl.Values {
 			parts = append(parts, c.arg(value)+" = ANY("+array+")")
 		}
-		return "(" + strings.Join(parts, " OR ") + ")"
+		membership := "(" + strings.Join(parts, " OR ") + ")"
+		if cl.Op == "notin" {
+			return "(" + nonempty + " AND NOT " + membership + ")"
+		}
+		return membership
 	case "empty":
 		return "cardinality(" + array + ") = 0"
 	case "notempty":
@@ -653,11 +975,39 @@ func (c *compiler) labelsClause(cl Clause) string {
 
 // fieldValue resolves semantic values: status names, currentUser(), EMPTY/null.
 func (c *compiler) fieldValue(field, value string) any {
-	switch field {
-	case "assignee", "reporter":
-		if strings.EqualFold(value, "currentUser()") {
-			return c.user
+	if name, args, ok := splitFunction(value); ok {
+		switch strings.ToLower(name) {
+		case "currentuser":
+			if len(args) == 0 && (field == "assignee" || field == "reporter" || field == "creator") {
+				return c.user
+			}
+		case "now", "startofday", "endofday", "startofweek", "endofweek", "startofmonth", "endofmonth", "startofyear", "endofyear":
+			resolved, err := resolveDateFunction(name, args, c.now)
+			if err == nil {
+				return resolved
+			}
+			c.err = &SyntaxError{0, err.Error()}
+			return value
 		}
+		c.err = &SyntaxError{0, "unsupported function " + name + "() for " + field}
+		return value
+	}
+	if field == "updated" || field == "created" || field == "due" || field == "resolutiondate" {
+		if len(value) >= 2 {
+			if relative, err := applyDateIncrement(c.now, value); err == nil {
+				return relative
+			}
+		}
+		for _, layout := range []string{time.RFC3339, "2006/01/02 15:04", "2006-01-02 15:04", "2006/01/02", "2006-01-02"} {
+			if parsed, err := time.ParseInLocation(layout, value, time.UTC); err == nil {
+				return parsed
+			}
+		}
+		c.err = &SyntaxError{0, "invalid date value " + strconv.Quote(value)}
+		return value
+	}
+	switch field {
+	case "assignee", "reporter", "creator":
 		if strings.EqualFold(value, "empty") || strings.EqualFold(value, "null") {
 			return nil
 		}
@@ -666,6 +1016,88 @@ func (c *compiler) fieldValue(field, value string) any {
 		return strings.ToUpper(value)
 	}
 	return value
+}
+
+func splitFunction(value string) (string, []string, bool) {
+	open := strings.IndexByte(value, '(')
+	if open < 1 || !strings.HasSuffix(value, ")") {
+		return "", nil, false
+	}
+	name := value[:open]
+	body := value[open+1 : len(value)-1]
+	if body == "" {
+		return name, nil, true
+	}
+	return name, strings.Split(body, ","), true
+}
+
+func resolveDateFunction(name string, args []string, now time.Time) (time.Time, error) {
+	if len(args) > 1 {
+		return time.Time{}, fmt.Errorf("%s() accepts at most one increment", name)
+	}
+	value := now.UTC()
+	switch strings.ToLower(name) {
+	case "now":
+		if len(args) != 0 {
+			return time.Time{}, fmt.Errorf("now() does not accept arguments")
+		}
+	case "startofday":
+		value = time.Date(value.Year(), value.Month(), value.Day(), 0, 0, 0, 0, time.UTC)
+	case "endofday":
+		value = time.Date(value.Year(), value.Month(), value.Day()+1, 0, 0, 0, -1, time.UTC)
+	case "startofweek", "endofweek":
+		days := (int(value.Weekday()) + 6) % 7
+		value = time.Date(value.Year(), value.Month(), value.Day()-days, 0, 0, 0, 0, time.UTC)
+		if strings.EqualFold(name, "endofweek") {
+			value = value.AddDate(0, 0, 7).Add(-time.Nanosecond)
+		}
+	case "startofmonth":
+		value = time.Date(value.Year(), value.Month(), 1, 0, 0, 0, 0, time.UTC)
+	case "endofmonth":
+		value = time.Date(value.Year(), value.Month()+1, 1, 0, 0, 0, -1, time.UTC)
+	case "startofyear":
+		value = time.Date(value.Year(), time.January, 1, 0, 0, 0, 0, time.UTC)
+	case "endofyear":
+		value = time.Date(value.Year()+1, time.January, 1, 0, 0, 0, -1, time.UTC)
+	default:
+		return time.Time{}, fmt.Errorf("unsupported date function %s()", name)
+	}
+	if len(args) == 1 {
+		var err error
+		value, err = applyDateIncrement(value, args[0])
+		if err != nil {
+			return time.Time{}, fmt.Errorf("%s(): %w", name, err)
+		}
+	}
+	return value, nil
+}
+
+func applyDateIncrement(value time.Time, raw string) (time.Time, error) {
+	raw = strings.TrimSpace(raw)
+	if len(raw) < 2 {
+		return time.Time{}, fmt.Errorf("increment must include a number and unit")
+	}
+	unit := raw[len(raw)-1:]
+	amount, err := strconv.Atoi(raw[:len(raw)-1])
+	if err != nil {
+		return time.Time{}, fmt.Errorf("invalid increment %q", raw)
+	}
+	switch unit {
+	case "y":
+		return value.AddDate(amount, 0, 0), nil
+	case "M":
+		return value.AddDate(0, amount, 0), nil
+	case "w":
+		return value.AddDate(0, 0, amount*7), nil
+	case "d":
+		return value.AddDate(0, 0, amount), nil
+	case "h":
+		return value.Add(time.Duration(amount) * time.Hour), nil
+	case "m":
+		return value.Add(time.Duration(amount) * time.Minute), nil
+	default:
+		return time.Time{}, fmt.Errorf("unsupported increment unit %q", unit)
+	}
 }
 
 // versionClause searches every version reference by ID or name. Negated
@@ -682,14 +1114,14 @@ func (c *compiler) versionClause(cl Clause) string {
 		return "jsonb_array_length(" + array + ") = 0"
 	case "notempty":
 		return nonempty
-	case "=", "!=", "in":
+	case "=", "!=", "in", "notin":
 		matches := []string{}
 		for _, value := range cl.Values {
 			ph := c.arg(value)
 			matches = append(matches, "(v->>'id' = "+ph+" OR lower(v->>'name') = lower("+ph+"))")
 		}
 		exists := "EXISTS (SELECT 1 FROM jsonb_array_elements(" + array + ") v WHERE " + strings.Join(matches, " OR ") + ")"
-		if cl.Op == "!=" {
+		if cl.Op == "!=" || cl.Op == "notin" {
 			return "(" + nonempty + " AND NOT " + exists + ")"
 		}
 		return exists

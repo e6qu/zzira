@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 456,
+  "assessedTotal": 461,
   "counts": {
     "delivered": 0,
-    "partial": 449,
+    "partial": 454,
     "missing": 7,
-    "unassessed": 751
+    "unassessed": 746
   },
   "countsByFamily": {
     "automation": {
@@ -24,9 +24,9 @@
     },
     "jira-platform": {
       "delivered": 0,
-      "partial": 88,
+      "partial": 93,
       "missing": 0,
-      "unassessed": 529
+      "unassessed": 524
     },
     "jira-service-management": {
       "delivered": 0,
@@ -3866,41 +3866,71 @@
       "operationId": "jira-v3:GET:/rest/api/3/search",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/projects_test.go",
+        "internal/api3/search_cursor_test.go",
+        "internal/jql/jql_test.go",
+        "internal/store/jql_history_search_test.go",
+        "docs/JQL.md"
+      ],
+      "notes": "Legacy GET search has pagination validation and permission-filtered lifecycle evidence; exact field/property/expansion and validation-mode semantics remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/search",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/projects_test.go",
+        "internal/api3/search_cursor_test.go",
+        "internal/jql/jql_test.go",
+        "internal/store/jql_history_search_test.go",
+        "docs/JQL.md"
+      ],
+      "notes": "Legacy POST search has pagination validation and permission-filtered lifecycle evidence; exact field/property/expansion and validation-mode semantics remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/search/approximate-count",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/projects_test.go",
+        "internal/api3/search_cursor_test.go",
+        "internal/jql/jql_test.go",
+        "internal/store/jql_history_search_test.go",
+        "docs/JQL.md"
+      ],
+      "notes": "Count uses the same permission-filtered JQL command path and has integration evidence; approximate large-index behavior remains."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/search/jql",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/projects_test.go",
+        "internal/api3/search_cursor_test.go",
+        "internal/jql/jql_test.go",
+        "internal/store/jql_history_search_test.go",
+        "docs/JQL.md"
+      ],
+      "notes": "Enhanced GET search has bounded-query, selected-field, expiring query/user/workspace-bound cursor and invalid-cursor evidence; reconciliation and snapshot/keyset semantics remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/search/jql",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/projects_test.go",
+        "internal/api3/search_cursor_test.go",
+        "internal/jql/jql_test.go",
+        "internal/store/jql_history_search_test.go",
+        "docs/JQL.md"
+      ],
+      "notes": "Enhanced POST search has bounded-query, selected-field, expiring query/user/workspace-bound cursor and invalid-cursor evidence; reconciliation and snapshot/keyset semantics remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/securitylevel/{id}",

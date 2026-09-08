@@ -14,8 +14,8 @@ boundaries, dependencies, and acceptance gates belong in
 - Delivery unit: PR 1 — Jira Platform and administration completion
 - Pull request: not opened yet
 - State: implementation in progress
-- Current checkpoint: saved-filter API, permission model, and browser management
-  journey implemented and tested; JQL/search completion next
+- Current checkpoint: saved-filter management and the first JQL/search expansion
+  implemented and tested; JQL helper resources next
 - Blockers: none
 
 ## Contract baseline
@@ -36,10 +36,16 @@ favorites, columns, ownership, default scope, audit, and subscription schema.
 The browser directory completes the owner and site-administrator management
 journey and is connected to REST-created filters by Playwright.
 
-The next checkpoint expands JQL grammar and evaluation shared by issue search,
-saved filters, subscriptions, service queues, automation, and later analytics.
-It must preserve deterministic ordering and enforce issue visibility before
-pagination or serialization.
+The first shared JQL checkpoint adds `NOT IN`, relative date functions,
+immutable `WAS`/`CHANGED` history predicates, seven-field deterministic
+ordering, and seven-day enhanced-search cursors bound to the query, workspace,
+and user. Legacy, enhanced, and approximate-count search paths now have direct
+integration evidence. Issue visibility remains enforced before pagination and
+serialization.
+
+The next checkpoint implements the pinned JQL reference, suggestion, parse,
+match, sanitize, personal-data migration, and app-function precomputation
+resources, then continues field/function and reconciliation semantics.
 
 ## Validation baseline
 
@@ -53,12 +59,14 @@ also run the PostgreSQL integration suite from an empty migrated database.
 
 ## Resume here
 
-1. Expand JQL grammar, functions, history predicates, and deterministic paging.
-2. Add filter-subscription scheduling and delivery after shared scheduled-work
+1. Implement and test the remaining pinned JQL helper resources.
+2. Complete function, multi-value field, expansion, property, reconciliation,
+   and snapshot/keyset search semantics.
+3. Add filter-subscription scheduling and delivery after shared scheduled-work
    primitives are ready.
-3. Continue into bulk work-item and project administration slices.
-4. Update compatibility and persona evidence with each tested behavior.
-5. Commit each independently buildable checkpoint and keep this handoff current.
+4. Continue into bulk work-item and project administration slices.
+5. Update compatibility evidence and commit each independently buildable
+   checkpoint.
 
 ## Evidence map
 
@@ -69,6 +77,7 @@ also run the PostgreSQL integration suite from an empty migrated database.
 - [UI and persona journeys](UI_PARITY.md)
 - [Administration behavior](ADMIN.md)
 - [Saved filters and sharing](FILTERS.md)
+- [JQL and issue search](JQL.md)
 
 ## Continuity rules
 
