@@ -878,8 +878,12 @@ func (h *Handler) OIDCLogoutComplete(w http.ResponseWriter, r *http.Request) {
 	provider, providerKey := h.identityProvider(r)
 	if providerKey == "shauth" {
 		if origin := provider.FormActionOrigin(); origin != "" {
-			http.Redirect(w, r, origin+"/oauth/logout/complete", http.StatusSeeOther)
-			return
+			target := origin + "/oauth/logout/complete"
+			if validOIDCEndpointURL(target) == nil {
+				w.Header().Set("Location", target)
+				w.WriteHeader(http.StatusSeeOther)
+				return
+			}
 		}
 	}
 	http.Redirect(w, r, "/signed-out", http.StatusSeeOther)

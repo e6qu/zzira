@@ -61,7 +61,14 @@ func init() {
 		"clockMinute": func(minute int16) string {
 			return fmt.Sprintf("%02d:%02d", minute/60, minute%60)
 		},
-		"workingDay":      func(days []int16, day int) bool { return slices.Contains(days, int16(day)) },
+		"workingDay": func(days []int16, day int) bool {
+			for _, configured := range days {
+				if int(configured) == day {
+					return true
+				}
+			}
+			return false
+		},
 		"join":            strings.Join,
 		"selectedVersion": func(csv, id string) bool { return slices.Contains(strings.Split(csv, ","), id) },
 		"humanSize": func(n int64) string {

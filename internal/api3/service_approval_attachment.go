@@ -92,7 +92,7 @@ func (h *Handler) attachServiceTemporaryFiles(w http.ResponseWriter, r *http.Req
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 32<<20)
-	if err := r.ParseMultipartForm(32 << 20); err != nil {
+	if err := r.ParseMultipartForm(32 << 20); err != nil { // #nosec G120 -- body capped by MaxBytesReader above
 		jiraError(w, http.StatusBadRequest, "multipart/form-data body required")
 		return
 	}

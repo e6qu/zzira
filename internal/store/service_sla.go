@@ -215,13 +215,13 @@ func (s *Store) EnsureResolutionSLA(ctx context.Context, workspaceID, requestIss
 
 func serviceCalendarDay(calendar *models.ServiceCalendar, value time.Time, location *time.Location) bool {
 	local := value.In(location)
-	weekday := int16(local.Weekday())
+	weekday := int(local.Weekday())
 	if weekday == 0 {
 		weekday = 7
 	}
 	working := false
 	for _, configured := range calendar.Weekdays {
-		if configured == weekday {
+		if int(configured) == weekday {
 			working = true
 			break
 		}

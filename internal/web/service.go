@@ -716,12 +716,27 @@ func (h *Handler) ServiceCalendarSettings(w http.ResponseWriter, r *http.Request
 	}
 	weekdays := make([]int16, 0, len(r.PostForm["weekday"]))
 	for _, value := range r.PostForm["weekday"] {
-		weekday, err := strconv.Atoi(value)
-		if err != nil {
+		var weekday int16
+		switch value {
+		case "1":
+			weekday = 1
+		case "2":
+			weekday = 2
+		case "3":
+			weekday = 3
+		case "4":
+			weekday = 4
+		case "5":
+			weekday = 5
+		case "6":
+			weekday = 6
+		case "7":
+			weekday = 7
+		default:
 			http.Error(w, "Working days are invalid.", http.StatusBadRequest)
 			return
 		}
-		weekdays = append(weekdays, int16(weekday))
+		weekdays = append(weekdays, weekday)
 	}
 	if err := h.Commands.UpdateServiceCalendar(r.Context(), user.ID, workspaceID, r.PathValue("desk"), r.PostFormValue("name"), r.PostFormValue("timeZone"), weekdays, startMinute, endMinute); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -1266,7 +1281,7 @@ func (h *Handler) ServiceRequestComment(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 32<<20)
-	if err := r.ParseMultipartForm(32 << 20); err != nil {
+	if err := r.ParseMultipartForm(32 << 20); err != nil { // #nosec G120 -- body capped by MaxBytesReader above
 		http.Error(w, "Could not read the comment form.", http.StatusBadRequest)
 		return
 	}

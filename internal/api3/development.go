@@ -78,9 +78,7 @@ func (h *Handler) developmentRoute(w http.ResponseWriter, r *http.Request) {
 			jiraError(w, http.StatusNotFound, "Repository was not found.")
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write(payload)
+		writeRawJSON(w, payload)
 	case len(parts) == 2 && parts[0] == "repository" && r.Method == http.MethodDelete:
 		sequence, err := developmentUpdateSequence(r)
 		if err != nil {
@@ -417,18 +415,18 @@ func (h *Handler) runDevelopmentTriggers(r *http.Request, workspaceID, actorID s
 		seen[issueKey] = true
 		issue, err := h.Store.IssueByIDOrKey(r.Context(), workspaceID, issueKey)
 		if err != nil {
-			log.Printf("devinfo: resolve linked issue=%s: %v", issueKey, err)
+			log.Printf("devinfo: resolve linked issue failed: %T", err)
 			continue
 		}
 		wf, err := h.Store.WorkflowForProjectAndIssueType(r.Context(), issue.ProjectID, issue.IssueType.ID)
 		if err != nil {
-			log.Printf("devinfo: resolve workflow issue=%s: %v", issue.Key, err)
+			log.Printf("devinfo: resolve workflow failed: %T", err)
 			continue
 		}
 		for _, transition := range wf.Available(issue.Status.ID) {
 			if transition.HasDevelopmentTrigger(workflow.DevelopmentBranchCreated) {
 				if _, _, err := h.Commands.TransitionIssueWithUpdateFromAPI(r.Context(), actorID, workspaceID, issue.Key, transition.ID, store.IssueUpdate{}); err != nil {
-					log.Printf("devinfo: branch-created transition issue=%s transition=%s: %v", issue.Key, transition.ID, err)
+					log.Printf("devinfo: branch-created transition failed: %T", err)
 				}
 				break
 			}

@@ -45,7 +45,6 @@ type OIDC struct {
 	issuer                string
 	config                oauth2.Config
 	verifier              *oidc.IDTokenVerifier
-	profileEndpoint       string
 	atlassian             bool
 	httpClient            *http.Client
 	endSessionEndpoint    string
@@ -260,16 +259,13 @@ func (o *OIDC) authenticateAtlassian(ctx context.Context, code string) (provider
 	if err != nil {
 		return providerIdentity{}, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, o.config.Endpoint.TokenURL, bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, atlassianIssuer+"/oauth/token", bytes.NewReader(payload))
 	if err != nil {
 		return providerIdentity{}, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	client := o.httpClient
-	if client == nil {
-		client = http.DefaultClient
-	}
+	client := atlassianRequestClient(o.httpClient)
 	response, err := client.Do(req)
 	if err != nil {
 		return providerIdentity{}, fmt.Errorf("token exchange: %w", err)
@@ -289,7 +285,7 @@ func (o *OIDC) authenticateAtlassian(ctx context.Context, code string) (provider
 	if err := json.Unmarshal(body, &token); err != nil || token.AccessToken == "" || !strings.EqualFold(token.TokenType, "Bearer") {
 		return providerIdentity{}, errors.New("token exchange response is invalid")
 	}
-	profileRequest, err := http.NewRequestWithContext(ctx, http.MethodGet, o.profileEndpoint, nil)
+	profileRequest, err := http.NewRequestWithContext(ctx, http.MethodGet, atlassianProfile, nil)
 	if err != nil {
 		return providerIdentity{}, err
 	}
@@ -323,6 +319,43 @@ func (o *OIDC) authenticateAtlassian(ctx context.Context, code string) (provider
 		return providerIdentity{}, errors.New("identity response omitted a valid email")
 	}
 	return providerIdentity{Issuer: o.issuer, Subject: profile.AccountID, Email: email, DisplayName: profile.Name, PreferredUsername: profile.Nickname}, nil
+}
+
+func atlassianRequestClient(base *http.Client) *http.Client {
+	client := http.Client{Timeout: 10 * time.Second}
+	if base != nil {
+		client = *base
+	}
+	previous := client.CheckRedirect
+	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if err := validAtlassianRedirectURL(req.URL); err != nil {
+			return err
+		}
+		if previous != nil {
+			return previous(req, via)
+		}
+		return nil
+	}
+	return &client
+}
+
+func validAtlassianRedirectURL(u *url.URL) error {
+	if u == nil || u.Host == "" || u.User != nil || u.Fragment != "" {
+		return errors.New("Atlassian redirect URL is invalid")
+	}
+	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
+	if u.Scheme == "https" && (host == "auth.atlassian.com" || host == "api.atlassian.com") {
+		return nil
+	}
+	if os.Getenv("ZZIRA_ALLOW_INSECURE_OIDC") == "true" && u.Scheme == "http" {
+		if host == "localhost" {
+			return nil
+		}
+		if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+			return nil
+		}
+	}
+	return errors.New("Atlassian redirect URL is outside the trusted service origins")
 }
 
 func oidcRandom() (string, error) {
@@ -494,7 +527,7 @@ func (h *Handler) OIDCCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	identity, err := provider.authenticate(r.Context(), code, nonce, verifier)
 	if err != nil {
-		log.Printf("%s sign-in: %v", providerKey, err)
+		log.Printf("identity provider sign-in failed: %T", err)
 		http.Error(w, "sign-in could not be completed", http.StatusUnauthorized)
 		return
 	}

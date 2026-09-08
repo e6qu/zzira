@@ -41,6 +41,7 @@ func TestParseDescriptorValidatesOutboundModules(t *testing.T) {
 
 	cases := []string{
 		`{"key":"operations.app","name":"Operations","baseUrl":"https://apps.example.test","version":"1","scopes":[],"modules":[],"lifecycle":{"installed":"https://other.example.test/callback"}}`,
+		`{"key":"operations.app","name":"Operations","baseUrl":"https://apps.example.test","version":"1","scopes":[],"modules":[],"lifecycle":{"installed":"/\\evil.example/callback"}}`,
 		`{"key":"operations.app","name":"Operations","baseUrl":"https://apps.example.test","version":"1","scopes":[],"modules":[],"webhooks":[{"key":"issues","url":"/hooks","events":["jira:issue_created"]}]}`,
 		`{"key":"operations.app","name":"Operations","baseUrl":"https://apps.example.test","version":"1","scopes":["manage:webhooks"],"modules":[],"webhooks":[{"key":"issues","url":"/hooks","events":["jira:issue_created"],"jql":"project ="}]}`,
 		`{"key":"operations.app","name":"Operations","baseUrl":"https://apps.example.test","version":"1","scopes":[],"modules":[],"scheduledTriggers":[{"key":"first","url":"/first","interval":"fiveMinute"},{"key":"second","url":"/second","interval":"fiveMinute"}]}`,

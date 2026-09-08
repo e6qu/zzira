@@ -40,7 +40,7 @@ func (s *Store) ServiceReportFiltered(ctx context.Context, workspaceID, serviceD
 		return nil, fmt.Errorf("service report status must be open or resolved")
 	}
 	from := now.UTC().Truncate(24*time.Hour).AddDate(0, 0, -(days - 1))
-	report := &models.ServiceReport{WindowDays: days, Daily: make([]models.ServiceReportDay, 0, days), RequestTypes: []models.ServiceReportSegment{}, Channels: []models.ServiceReportSegment{}}
+	report := &models.ServiceReport{WindowDays: days, Daily: make([]models.ServiceReportDay, 0), RequestTypes: []models.ServiceReportSegment{}, Channels: []models.ServiceReportSegment{}}
 	if err := s.Pool.QueryRow(ctx, `
 		SELECT count(*),
 		       count(*) FILTER (WHERE st.category <> 'done'),

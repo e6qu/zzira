@@ -13,7 +13,7 @@ boundaries, dependencies, and acceptance gates belong in
 - Base: `origin/main` after PR #65
 - Delivery unit: PR 0 — Integrated Cloud foundation
 - Pull request: #68
-- State: open; validate CI and address review feedback
+- State: open; PR security hardening is locally clean and awaiting CI confirmation
 - Last product checkpoint: Connect site administration pages
 - Blockers: none
 
@@ -68,12 +68,19 @@ The PR 0 CI harness now provisions package-scoped bootstrap administrators for
 integration tests that require administrative state. The complete suite passes
 from an empty PostgreSQL database without running the demo seed command.
 
+The PR boundary hardening removes the security-scan backlog found on the first
+GitHub run: app and attachment redirects are origin/path constrained, Atlassian
+OAuth requests use pinned Cloud endpoints and checked redirect chains, stored
+JSON is safely re-encoded, multipart bodies stay explicitly capped, and numeric
+inputs and report allocations no longer narrow or allocate from unchecked input.
+
 The last implementation checkpoint passed:
 
 - the complete PostgreSQL Go suite;
 - native server and load-test builds;
 - the WebAssembly build;
 - `go vet`;
+- gosec 2.29 with zero findings;
 - seven conformance tests;
 - generated inventory and coverage freshness checks; and
 - diff validation.

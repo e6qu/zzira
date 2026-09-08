@@ -2,6 +2,7 @@ package api3
 
 import (
 	"context"
+	"encoding/json"
 	"net/http/httptest"
 	"os"
 	"strings"
@@ -11,6 +12,14 @@ import (
 	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/store"
 )
+
+func TestWriteRawJSONEscapesHTMLSensitiveContent(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	writeRawJSON(recorder, json.RawMessage(`{"value":"<script>alert(1)</script>"}`))
+	if recorder.Code != 200 || strings.Contains(recorder.Body.String(), "<script>") || !strings.Contains(recorder.Body.String(), `\u003cscript\u003e`) {
+		t.Fatalf("response = %d %q", recorder.Code, recorder.Body.String())
+	}
+}
 
 func TestBuildAndDeploymentContractJourney(t *testing.T) {
 	dsn := os.Getenv("TEST_DATABASE_URL")
@@ -120,7 +129,7 @@ func TestBuildAndDeploymentContractJourney(t *testing.T) {
 	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM software_delivery_facts WHERE workspace_id=$1`, workspaceID).Scan(&factCount); err != nil || factCount != 3 {
 		t.Fatalf("stale update wrote fact: count = %d, %v", factCount, err)
 	}
-	if got := call("GET", "/rest/builds/0.1/pipelines/pipeline-1/builds/42", "", 200); !strings.Contains(got.Body.String(), `"displayName": "Build 42"`) {
+	if got := call("GET", "/rest/builds/0.1/pipelines/pipeline-1/builds/42", "", 200); !strings.Contains(got.Body.String(), `"displayName":"Build 42"`) {
 		t.Fatal(got.Body.String())
 	}
 	var cloudID string

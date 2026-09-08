@@ -136,7 +136,7 @@ func (h *Handler) AppModuleFrame(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Remote app module is invalid", http.StatusBadGateway)
 		return
 	}
-	http.Redirect(w, r, target, http.StatusFound)
+	redirectAppRemote(w, target, module.BaseURL)
 }
 
 // AppModuleThumbnail resolves a descriptor-owned thumbnail through the same
@@ -212,8 +212,10 @@ func (h *Handler) appModuleAsset(w http.ResponseWriter, r *http.Request, kind st
 }
 
 func (h *Handler) redirectAppModuleAsset(w http.ResponseWriter, r *http.Request, workspaceID string, module *models.AppModule, assetURL, kind string) {
-	if !strings.HasPrefix(assetURL, "/") {
-		assetURL = "/" + assetURL
+	assetURL, ok := normalizedAppAssetPath(assetURL)
+	if !ok {
+		http.Error(w, "Remote app asset is invalid", http.StatusBadGateway)
+		return
 	}
 	if h.ProviderSecrets == nil {
 		http.Error(w, "App credential encryption is unavailable", http.StatusServiceUnavailable)
@@ -230,7 +232,36 @@ func (h *Handler) redirectAppModuleAsset(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	http.Redirect(w, r, target, http.StatusFound)
+	redirectAppRemote(w, target, module.BaseURL)
+}
+
+func normalizedAppAssetPath(value string) (string, bool) {
+	if value == "" || strings.HasPrefix(value, "//") || strings.ContainsAny(value, "\\\r\n") {
+		return "", false
+	}
+	u, err := url.Parse(value)
+	if err != nil || u.Path == "" || u.IsAbs() || u.Host != "" || u.User != nil || u.Opaque != "" || u.Fragment != "" {
+		return "", false
+	}
+	if !strings.HasPrefix(value, "/") {
+		value = "/" + value
+	}
+	return value, true
+}
+
+// redirectAppRemote permits the cross-origin navigation required by Connect,
+// but only to the validated origin recorded for the installed app.
+func redirectAppRemote(w http.ResponseWriter, target, baseRaw string) {
+	targetURL, targetErr := url.Parse(target)
+	baseURL, baseErr := url.Parse(baseRaw)
+	if targetErr != nil || baseErr != nil || targetURL.Scheme != "https" || baseURL.Scheme != "https" ||
+		targetURL.Host == "" || !strings.EqualFold(targetURL.Host, baseURL.Host) || targetURL.User != nil || targetURL.Fragment != "" ||
+		strings.ContainsAny(target, "\\\r\n") {
+		http.Error(w, "Remote app destination is invalid", http.StatusBadGateway)
+		return
+	}
+	w.Header().Set("Location", targetURL.String())
+	w.WriteHeader(http.StatusFound)
 }
 
 func appModuleIconURL(module models.AppModule) string {

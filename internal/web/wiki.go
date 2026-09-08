@@ -710,7 +710,7 @@ func (h *Handler) WikiBlogAttachmentCreate(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, (100<<20)+1)
-	if err := r.ParseMultipartForm(4 << 20); err != nil {
+	if err := r.ParseMultipartForm(4 << 20); err != nil { // #nosec G120 -- body capped by MaxBytesReader above
 		http.Error(w, "Invalid attachment upload.", 400)
 		return
 	}
@@ -1450,7 +1450,7 @@ func (h *Handler) WikiAttachmentCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, (100<<20)+1)
-	if err := r.ParseMultipartForm(4 << 20); err != nil {
+	if err := r.ParseMultipartForm(4 << 20); err != nil { // #nosec G120 -- body capped by MaxBytesReader above
 		http.Error(w, "Invalid attachment upload.", 400)
 		return
 	}

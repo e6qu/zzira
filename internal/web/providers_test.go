@@ -3,6 +3,7 @@ package web
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -47,7 +48,8 @@ func TestAtlassianAuthorizationUsesDocumentedThreeLeggedOAuthParameters(t *testi
 
 func TestAtlassianAuthenticationExchangesJSONAndLoadsActiveProfile(t *testing.T) {
 	var tokenRequest map[string]string
-	providerServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		response := &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Request: r}
 		switch r.URL.Path {
 		case "/oauth/token":
 			if r.Method != http.MethodPost || r.Header.Get("Content-Type") != "application/json" {
@@ -56,23 +58,21 @@ func TestAtlassianAuthenticationExchangesJSONAndLoadsActiveProfile(t *testing.T)
 			if err := json.NewDecoder(r.Body).Decode(&tokenRequest); err != nil {
 				t.Error(err)
 			}
-			_ = json.NewEncoder(w).Encode(map[string]string{"access_token": "access", "token_type": "Bearer"})
+			response.Body = io.NopCloser(strings.NewReader(`{"access_token":"access","token_type":"Bearer"}`))
 		case "/me":
 			if r.Header.Get("Authorization") != "Bearer access" {
 				t.Errorf("profile authorization = %q", r.Header.Get("Authorization"))
 			}
-			_ = json.NewEncoder(w).Encode(map[string]string{
-				"account_type": "atlassian", "account_id": "account-1", "account_status": "active",
-				"email": "User@Example.com", "name": "Example User", "nickname": "example",
-			})
+			response.Body = io.NopCloser(strings.NewReader(`{"account_type":"atlassian","account_id":"account-1","account_status":"active","email":"User@Example.com","name":"Example User","nickname":"example"}`))
 		default:
-			http.NotFound(w, r)
+			response.StatusCode = http.StatusNotFound
+			response.Body = io.NopCloser(strings.NewReader("not found"))
 		}
-	}))
-	defer providerServer.Close()
+		return response, nil
+	})}
 	provider := &OIDC{
-		atlassian: true, issuer: atlassianIssuer, profileEndpoint: providerServer.URL + "/me",
-		config: oauth2.Config{ClientID: "client", ClientSecret: "secret", RedirectURL: "https://zzira.example/auth/atlassian/callback", Endpoint: oauth2.Endpoint{TokenURL: providerServer.URL + "/oauth/token"}},
+		atlassian: true, issuer: atlassianIssuer, httpClient: client,
+		config: oauth2.Config{ClientID: "client", ClientSecret: "secret", RedirectURL: "https://zzira.example/auth/atlassian/callback"},
 	}
 	identity, err := provider.authenticateAtlassian(t.Context(), "authorization-code")
 	if err != nil {
@@ -85,6 +85,10 @@ func TestAtlassianAuthenticationExchangesJSONAndLoadsActiveProfile(t *testing.T)
 		t.Fatalf("identity = %#v", identity)
 	}
 }
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return fn(r) }
 
 func TestLoginPageOffersEveryConfiguredProviderAndPassword(t *testing.T) {
 	registry := &ProviderRegistry{ordered: []*OIDC{

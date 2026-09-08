@@ -164,7 +164,7 @@ func configuredAtlassianProvider(externalURL string) (*OIDC, error) {
 	}
 	return &OIDC{
 		key: "atlassian", displayName: "Atlassian", issuer: atlassianIssuer, atlassian: true,
-		profileEndpoint: atlassianProfile, httpClient: &http.Client{Timeout: 10 * time.Second},
+		httpClient: &http.Client{Timeout: 10 * time.Second},
 		config: oauth2.Config{
 			ClientID: clientID, ClientSecret: clientSecret,
 			Endpoint:    oauth2.Endpoint{AuthURL: atlassianIssuer + "/authorize", TokenURL: atlassianIssuer + "/oauth/token"},

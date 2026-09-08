@@ -434,7 +434,7 @@ func (h *Handler) attachmentThumbnail(w http.ResponseWriter, r *http.Request, ws
 	if len(query) > 0 {
 		target += "?" + query.Encode()
 	}
-	http.Redirect(w, r, target, http.StatusFound)
+	redirectWikiLocal(w, r, target)
 }
 
 type ThumbnailHandler struct{ *Handler }
@@ -535,7 +535,7 @@ func (h *ThumbnailHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func parseWikiMultipart(w http.ResponseWriter, r *http.Request) ([]*models.WikiAttachment, []string, bool) {
 	r.Body = http.MaxBytesReader(w, r.Body, (100<<20)+1)
-	if err := r.ParseMultipartForm(4 << 20); err != nil {
+	if err := r.ParseMultipartForm(4 << 20); err != nil { // #nosec G120 -- body capped by MaxBytesReader above
 		failure(w, 400, "Invalid multipart attachment request.")
 		return nil, nil, false
 	}
@@ -670,7 +670,18 @@ func (h *V1Handler) v1DownloadAttachment(w http.ResponseWriter, r *http.Request,
 	if version := r.URL.Query().Get("version"); version != "" {
 		target += "?version=" + url.QueryEscape(version)
 	}
-	http.Redirect(w, r, target, http.StatusFound)
+	redirectWikiLocal(w, r, target)
+}
+
+func redirectWikiLocal(w http.ResponseWriter, r *http.Request, target string) {
+	u, err := url.Parse(target)
+	if err != nil || u.IsAbs() || u.Host != "" || u.User != nil || u.Opaque != "" ||
+		!strings.HasPrefix(u.Path, "/") || strings.HasPrefix(u.Path, "//") ||
+		strings.ContainsAny(u.Path, "\\\r\n") || strings.ContainsAny(target, "\\\r\n") {
+		failure(w, http.StatusInternalServerError, "Invalid attachment redirect destination.")
+		return
+	}
+	http.Redirect(w, r, u.String(), http.StatusFound) // #nosec G710 -- destination is constrained to a local absolute path.
 }
 
 type DownloadHandler struct{ *Handler }

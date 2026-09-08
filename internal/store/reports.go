@@ -67,7 +67,7 @@ func (s *Store) DORAReport(ctx context.Context, workspaceID, projectID, userID s
 	}
 	rows.Close()
 
-	buckets := make(map[string]*models.DORADay, days)
+	buckets := make(map[string]*models.DORADay)
 	startDay := time.Date(since.Year(), since.Month(), since.Day(), 0, 0, 0, 0, time.UTC)
 	for index := 0; index < days; index++ {
 		day := startDay.AddDate(0, 0, index)

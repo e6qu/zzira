@@ -2,10 +2,40 @@ package web
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/e6qu/zzira/internal/models"
 )
+
+func TestAppAssetAndRemoteRedirectBoundaries(t *testing.T) {
+	for input, want := range map[string]string{
+		"dashboard.svg":         "/dashboard.svg",
+		"/icons/status.svg?x=1": "/icons/status.svg?x=1",
+	} {
+		got, ok := normalizedAppAssetPath(input)
+		if !ok || got != want {
+			t.Errorf("normalizedAppAssetPath(%q) = %q, %v", input, got, ok)
+		}
+	}
+	for _, input := range []string{"//evil.example/icon.svg", `/\\evil.example/icon.svg`, "https://evil.example/icon.svg", "/icon.svg#fragment"} {
+		if got, ok := normalizedAppAssetPath(input); ok {
+			t.Errorf("normalizedAppAssetPath(%q) = %q, true", input, got)
+		}
+	}
+
+	accepted := httptest.NewRecorder()
+	redirectAppRemote(accepted, "https://apps.example.test/module?jwt=token", "https://apps.example.test/base")
+	if accepted.Code != http.StatusFound || accepted.Header().Get("Location") != "https://apps.example.test/module?jwt=token" {
+		t.Fatalf("accepted redirect = %d %q", accepted.Code, accepted.Header().Get("Location"))
+	}
+	rejected := httptest.NewRecorder()
+	redirectAppRemote(rejected, "https://evil.example/module", "https://apps.example.test/base")
+	if rejected.Code != http.StatusBadGateway || rejected.Header().Get("Location") != "" {
+		t.Fatalf("rejected redirect = %d %q", rejected.Code, rejected.Header().Get("Location"))
+	}
+}
 
 func TestAppModuleThumbnailPath(t *testing.T) {
 	module := models.AppModule{ID: "42", Body: `{"description":"Release health","thumbnailUrl":"dashboard.svg"}`}

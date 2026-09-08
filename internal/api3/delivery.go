@@ -446,7 +446,12 @@ func unknownAssociations(values map[string]bool) []softwareAssociation {
 }
 
 func writeRawJSON(w http.ResponseWriter, payload json.RawMessage) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(payload)
+	var body any
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.UseNumber()
+	if err := decoder.Decode(&body); err != nil {
+		jiraError(w, http.StatusInternalServerError, "Stored JSON is invalid.")
+		return
+	}
+	writeJSON(w, http.StatusOK, body)
 }
