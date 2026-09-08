@@ -66,6 +66,16 @@ timestamp + "\n" + requestId + "\n" + upper(method) + "\n" + requestTarget + "\n
 `requestTarget` is the escaped path followed by `?` and the original raw query
 when one is present, so filters and pagination are signed as well as the body.
 
+Existing Connect clients may authenticate product and app-storage requests with
+`Authorization: JWT <token>` instead of ZZIRA headers. ZZIRA accepts HS256 app
+tokens with mandatory `iss`, `iat`, `exp`, and `qsh` claims, derives the app key
+from `iss`, opens that installation's encrypted shared secret, and verifies the
+signature before trusting any claim. QSH validation follows Connect canonical
+method, product-context path, sorted query/form parameter, repeated-value and
+percent-encoding rules. Context JWTs are not accepted on product APIs. The
+verified request still receives the installation's normal product scopes and
+stable app principal.
+
 The runtime stores each valid request ID for 24 hours and rejects replay before
 executing a signed request. Lifecycle callbacks use
 `POST /apps/{appKey}/lifecycle/{enabled|disabled|upgraded|uninstalled}`. Upgrade
@@ -108,6 +118,6 @@ disabled on uninstall and restored with the same ID on an authorized
 reinstallation.
 
 The runtime is a ZZIRA execution contract for remotely hosted apps. Atlassian
-Connect JWT/QSH and full descriptor translation, Forge-hosted compute, remote
-iframes, workflow modules, custom fields and upgrade migrations remain separate
-future slices.
+Full Connect descriptor translation, Forge-hosted compute, remote iframes,
+workflow modules, custom fields and upgrade migrations remain separate future
+slices.

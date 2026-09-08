@@ -2183,11 +2183,28 @@ Validation after the outbound app runtime checkpoint:
   remains 427 of 1,207 because this runtime is outside the pinned public REST
   operation inventory.
 
+Validation after Connect JWT/QSH authentication:
+
+- Installed apps can call Jira v3, Agile, Service Management, Confluence v1/v2
+  and app storage with the standard `Authorization: JWT` scheme. The unverified
+  issuer selects only the installation credential; HS256 verification and
+  mandatory issuer, issued-at, expiry and QSH checks complete before claims or
+  the app principal are trusted.
+- Canonical request hashing covers method, Jira/Confluence context-path
+  removal, trailing paths, sorted and repeated query values, exact Connect
+  percent encoding, ignored legacy `jwt` parameters and URL-encoded POST form
+  values. Product routes reject context tokens, query changes, invalid
+  signatures and expired/future windows.
+- Unit tests use the published canonical-request example and cover signature,
+  expiry and tampering. PostgreSQL integration proves issuer-only app lookup,
+  installed-secret verification, stable principal attachment and the existing
+  scope gate. The complete app package integration suite and diff validation
+  pass; public REST inventory coverage remains 427 of 1,207.
+
 ## Current change
 
-1. Continue the app runtime with Connect descriptor ingestion, JWT/QSH request
-   compatibility, remote iframe modules, workflow/custom-field modules and
-   upgrade migrations.
+1. Continue the app runtime with Connect descriptor ingestion, remote iframe
+   modules, workflow/custom-field modules and upgrade migrations.
 2. Continue Confluence with advanced whiteboard objects, direct manipulation,
    exports and the remaining rich content/editor surface.
 3. Continue Service Management with public Assets object/schema/import API

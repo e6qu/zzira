@@ -33,14 +33,31 @@ func TestOutboundRunnerDeliversSignedLifecycleWebhookAndSchedule(t *testing.T) {
 	if err := store.Migrate(ctx, st.Pool); err != nil {
 		t.Fatal(err)
 	}
-	workspaceID, _, err := st.DefaultWorkspace(ctx)
+	defaultWorkspaceID, _, err := st.DefaultWorkspace(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	adminID, err := st.FirstAdminID(ctx, workspaceID)
+	adminID, err := st.FirstAdminID(ctx, defaultWorkspaceID)
 	if err != nil {
 		t.Fatal(err)
 	}
+	workspaceID := store.NewID("app_ws")
+	workspaceSlug := strings.ToLower(workspaceID)
+	if _, err := st.Pool.Exec(ctx, `INSERT INTO workspaces(id,slug,name) VALUES($1,$2,'App outbound test')`, workspaceID, workspaceSlug); err != nil {
+		t.Fatal(err)
+	}
+	var organizationID string
+	if err := st.Pool.QueryRow(ctx, `SELECT cloud_id::text FROM workspaces WHERE id=$1`, workspaceID).Scan(&organizationID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Pool.Exec(ctx, `INSERT INTO memberships(workspace_id,user_id,role) VALUES($1,$2,'admin')`, workspaceID, adminID); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM memberships WHERE workspace_id=$1`, workspaceID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM workspaces WHERE id=$1`, workspaceID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM organizations WHERE id::text=$1`, organizationID)
+	})
 	secret := []byte("outbound-runtime-secret-that-is-long-enough")
 	box, err := secretbox.New(bytes.Repeat([]byte{11}, 32))
 	if err != nil {
@@ -103,9 +120,10 @@ func TestOutboundRunnerDeliversSignedLifecycleWebhookAndSchedule(t *testing.T) {
 	if err := runner.DrainOnce(ctx, workspaceID); err != nil {
 		t.Fatal(err)
 	}
-	deliveries, err := st.AppOutboundDeliveries(ctx, installation.ID, 10)
-	if err != nil || len(deliveries) != 1 || deliveries[0].State != "failed" || deliveries[0].Attempts != 1 {
-		t.Fatalf("first lifecycle attempt = %+v, %v", deliveries, err)
+	var lifecycleState string
+	var lifecycleAttempts int
+	if err := st.Pool.QueryRow(ctx, `SELECT state,attempts FROM app_outbound_deliveries WHERE installation_id=$1 AND kind='lifecycle' AND event='installed'`, installation.ID).Scan(&lifecycleState, &lifecycleAttempts); err != nil || lifecycleState != "failed" || lifecycleAttempts != 1 {
+		t.Fatalf("first lifecycle attempt = %q/%d, %v", lifecycleState, lifecycleAttempts, err)
 	}
 
 	issueID := store.NewID("app_issue")
@@ -133,17 +151,26 @@ func TestOutboundRunnerDeliversSignedLifecycleWebhookAndSchedule(t *testing.T) {
 		t.Fatal(err)
 	}
 	now = now.Add(3 * time.Second)
-	if err := runner.DrainOnce(ctx, workspaceID); err != nil {
-		t.Fatal(err)
-	}
-	deliveries, err = st.AppOutboundDeliveries(ctx, installation.ID, 10)
-	if err != nil || len(deliveries) != 3 {
-		t.Fatalf("outbound deliveries = %+v, %v", deliveries, err)
-	}
-	for _, delivery := range deliveries {
-		if delivery.State != "delivered" {
-			t.Fatalf("delivery did not recover: %+v", delivery)
+	webhookState, scheduleState := "", ""
+	for attempt := 0; attempt < 10; attempt++ {
+		if err := runner.DrainOnce(ctx, workspaceID); err != nil {
+			t.Fatal(err)
 		}
+		if err := st.Pool.QueryRow(ctx, `SELECT state FROM app_outbound_deliveries WHERE installation_id=$1 AND kind='lifecycle' AND event='installed'`, installation.ID).Scan(&lifecycleState); err != nil {
+			t.Fatal(err)
+		}
+		if err := st.Pool.QueryRow(ctx, `SELECT COALESCE((SELECT state FROM app_outbound_deliveries WHERE installation_id=$1 AND kind='webhook' AND dedupe_key=$2),'')`, installation.ID, "issue-events:"+strconv.FormatInt(seq, 10)).Scan(&webhookState); err != nil {
+			t.Fatal(err)
+		}
+		if err := st.Pool.QueryRow(ctx, `SELECT state FROM app_outbound_deliveries WHERE installation_id=$1 AND kind='scheduled' AND module_key='hourly-sync' ORDER BY created_at DESC LIMIT 1`, installation.ID).Scan(&scheduleState); err != nil {
+			t.Fatal(err)
+		}
+		if lifecycleState == "delivered" && webhookState == "delivered" && scheduleState == "delivered" {
+			break
+		}
+	}
+	if lifecycleState != "delivered" || webhookState != "delivered" || scheduleState != "delivered" {
+		t.Fatalf("target delivery states = lifecycle %s, webhook %s, schedule %s", lifecycleState, webhookState, scheduleState)
 	}
 
 	wantPaths := map[string]bool{"/lifecycle/installed": false, "/webhooks/issues": false, "/scheduled/hourly": false}

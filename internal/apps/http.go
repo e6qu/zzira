@@ -82,6 +82,24 @@ func (h *Handler) authenticateKey(r *http.Request, appKey string) (*models.AppIn
 	if installation.Status == "uninstalled" {
 		return nil, nil, http.StatusUnauthorized, fmt.Errorf("app is uninstalled")
 	}
+	secret, err := h.Secrets.Open(installation.SecretCiphertext, workspaceID+"/"+installation.Key)
+	if err != nil {
+		return nil, nil, http.StatusUnauthorized, fmt.Errorf("app credentials are unavailable")
+	}
+	if token := connectToken(r); token != "" {
+		issuer, err := connectIssuer(token)
+		if err != nil || issuer != installation.Key {
+			return nil, nil, http.StatusUnauthorized, fmt.Errorf("Connect JWT issuer is invalid")
+		}
+		now := time.Now().UTC()
+		if h.Now != nil {
+			now = h.Now().UTC()
+		}
+		if err := verifyConnectJWT(token, secret, r, body, now); err != nil {
+			return nil, nil, http.StatusUnauthorized, err
+		}
+		return installation, body, 0, nil
+	}
 	timestamp, err := strconv.ParseInt(r.Header.Get("X-Zzira-App-Timestamp"), 10, 64)
 	requestID := r.Header.Get("X-Zzira-App-Request-Id")
 	provided, err2 := hex.DecodeString(r.Header.Get("X-Zzira-App-Signature"))
@@ -95,10 +113,6 @@ func (h *Handler) authenticateKey(r *http.Request, appKey string) (*models.AppIn
 	requestTime := time.Unix(timestamp, 0)
 	if requestTime.Before(now.Add(-5*time.Minute)) || requestTime.After(now.Add(5*time.Minute)) {
 		return nil, nil, http.StatusUnauthorized, fmt.Errorf("app request timestamp is outside the five-minute window")
-	}
-	secret, err := h.Secrets.Open(installation.SecretCiphertext, workspaceID+"/"+installation.Key)
-	if err != nil {
-		return nil, nil, http.StatusUnauthorized, fmt.Errorf("app credentials are unavailable")
 	}
 	expected, _ := hex.DecodeString(SignRequest(secret, timestamp, requestID, r.Method, signedRequestTarget(r), body))
 	if !hmac.Equal(provided, expected) {
@@ -137,6 +151,16 @@ func appAPIScope(r *http.Request) (string, bool) {
 func (h *Handler) APIPrincipal(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		appKey := strings.TrimSpace(r.Header.Get("X-Zzira-App-Key"))
+		if appKey == "" {
+			if token := connectToken(r); token != "" {
+				issuer, err := connectIssuer(token)
+				if err != nil {
+					appFailure(w, http.StatusUnauthorized, err)
+					return
+				}
+				appKey = issuer
+			}
+		}
 		if appKey == "" {
 			next.ServeHTTP(w, r)
 			return

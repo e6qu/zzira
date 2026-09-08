@@ -252,6 +252,24 @@ func TestAppPrincipalScopesAndContextualModules(t *testing.T) {
 	if response := call("GET", "/rest/api/3/myself?expand=groups", "", "principal-jira-read", 200); response.Body.String() != installation.PrincipalID {
 		t.Fatalf("Jira principal = %q", response.Body.String())
 	}
+	connectRequest := httptest.NewRequest("GET", "/rest/api/3/myself?expand=groups", nil)
+	connectJWT, err := SignConnectJWT(secret, appKey, connectRequest, nil, now, 3*time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	connectRequest.Header.Set("Authorization", "JWT "+connectJWT)
+	connectResponse := httptest.NewRecorder()
+	api.ServeHTTP(connectResponse, connectRequest)
+	if connectResponse.Code != http.StatusOK || connectResponse.Body.String() != installation.PrincipalID {
+		t.Fatalf("Connect Jira principal = %d %q", connectResponse.Code, connectResponse.Body.String())
+	}
+	connectTampered := httptest.NewRequest("GET", "/rest/api/3/myself?expand=permissions", nil)
+	connectTampered.Header.Set("Authorization", "JWT "+connectJWT)
+	connectTamperedResponse := httptest.NewRecorder()
+	api.ServeHTTP(connectTamperedResponse, connectTampered)
+	if connectTamperedResponse.Code != http.StatusUnauthorized {
+		t.Fatalf("Connect tampered query = %d, want 401", connectTamperedResponse.Code)
+	}
 	tampered := httptest.NewRequest("GET", "/rest/api/3/myself?expand=permissions", nil)
 	tampered.Header.Set("X-Zzira-App-Key", appKey)
 	tampered.Header.Set("X-Zzira-App-Timestamp", fmt.Sprint(now.Unix()))
