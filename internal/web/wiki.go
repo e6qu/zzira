@@ -160,6 +160,10 @@ func wikiWebError(err error) (int, string) {
 		return 400, "A content property with this key already exists."
 	case errors.As(err, &pgerr) && pgerr.Code == "23505" && pgerr.ConstraintName == "wiki_blog_post_properties_blog_post_id_key_key":
 		return 400, "A blog post property with this key already exists."
+	case errors.As(err, &pgerr) && pgerr.Code == "23505" && pgerr.ConstraintName == "wiki_database_columns_database_id_column_key_key":
+		return 400, "A database column with this key already exists."
+	case errors.As(err, &pgerr) && pgerr.Code == "23505" && pgerr.ConstraintName == "wiki_database_views_database_id_name_key":
+		return 400, "A saved database view with this name already exists."
 	case errors.As(err, &pgerr) && pgerr.Code == "23505":
 		return 400, "A space with this key or published content with this title already exists."
 	default:
@@ -977,7 +981,7 @@ func (h *Handler) WikiDatabaseCreate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, message, status)
 		return
 	}
-	redirectLocal(w, r, "/wiki/spaces/"+space.ID+"#database-"+database.ID)
+	redirectLocal(w, r, "/wiki/spaces/"+space.ID+"/databases/"+database.ID)
 }
 
 func (h *Handler) WikiDatabaseDelete(w http.ResponseWriter, r *http.Request) {

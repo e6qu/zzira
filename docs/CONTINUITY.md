@@ -2081,10 +2081,34 @@ Validation after app principals and contextual modules:
   coverage remains 427 of 1,207 operations because the app gateway and host
   modules are outside the pinned Atlassian REST contracts.
 
+Validation after editable Confluence databases:
+
+- Migration 102 adds typed database columns, JSON-backed records and reusable
+  saved views beneath the existing hierarchical database content type. Column
+  deletion removes its values and clears view references atomically.
+- The command layer validates stable column keys, distinct select options,
+  finite numbers, ISO dates, booleans, selected values, unknown keys and cell
+  bounds before a mutation reaches storage. Every schema, record and view
+  mutation uses the database content permission model and appends the updated
+  content to the immutable action stream in the same transaction.
+- The database page supports schema authoring, record creation/edit/delete,
+  reusable contains filters and typed ascending/descending sorts. Read-only
+  viewers receive the same permission-shaped records without mutation actions;
+  private databases remain visible only to their creator.
+- Focused PostgreSQL integration covers typed validation, private isolation,
+  record updates, view persistence and deleted-column cleanup. Focused command,
+  store, renderer and view-sort tests pass. The Chromium knowledge journey
+  creates a five-type schema, edits records, selects a saved view, scans WCAG
+  A/AA in light and dark themes and verifies 320 px reflow.
+- The full PostgreSQL Go suite, vet, WebAssembly build, seven conformance tests,
+  generated inventory/coverage checks, Chromium database journey and diff
+  validation pass. Exact API coverage remains 427 of 1,207 operations because
+  database record editing extends the product UI outside the pinned public
+  Confluence database-container operations.
+
 ## Current change
 
-1. Continue Confluence with database schemas/rows/views and whiteboard canvas
-   objects/editing.
+1. Continue Confluence with whiteboard canvas objects/editing.
 2. Continue Service Management with Assets-backed topology and impact analysis.
 3. Continue the app runtime with outbound lifecycle delivery, app webhooks and
    scheduled triggers.
