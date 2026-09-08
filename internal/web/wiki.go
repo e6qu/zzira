@@ -43,6 +43,7 @@ type wikiData struct {
 	PageLikeCount                         int
 	PageLiked                             bool
 	PageProperties                        []models.WikiContentProperty
+	AppByline                             []models.AppModule
 	SpaceProperties                       []models.WikiContentProperty
 	SpaceRoles                            []*models.WikiSpaceRole
 	SpaceRoleAssignments                  []models.WikiSpaceRoleAssignment
@@ -1237,6 +1238,11 @@ func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 			return
 		}
 		if page.Status == "current" {
+			data.AppByline, err = h.Store.AppModulesByLocation(r.Context(), ws, "confluence.content.byline")
+			if err != nil {
+				http.Error(w, "Could not load page apps.", 500)
+				return
+			}
 			data.PageProperties, err = h.Store.WikiPageProperties(r.Context(), ws, user.ID, page.ID, "")
 			if err != nil {
 				http.Error(w, "Could not load page properties.", 500)

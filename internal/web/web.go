@@ -556,6 +556,10 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	for _, linkType := range linkTypes {
 		linkTypeValues = append(linkTypeValues, *linkType)
 	}
+	appPanels, err := h.Store.AppModulesByLocation(r.Context(), wsID, "jira.issue.view")
+	if err != nil {
+		return nil, err
+	}
 	return &models.IssueView{
 		Issue:             *issue,
 		ProjectKey:        project.Key,
@@ -584,6 +588,7 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 		Forms:             derefForms(forms),
 		Development:       development,
 		Delivery:          delivery,
+		AppPanels:         appPanels,
 	}, nil
 }
 

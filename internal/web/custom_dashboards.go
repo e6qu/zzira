@@ -21,24 +21,25 @@ type dashboardSlice struct {
 	Dash, Offset string
 }
 type dashboardTile struct {
-	Gadget  models.DashboardGadget
-	Results store.GadgetResults
-	Slices  []dashboardSlice
-	Error   string
+	Gadget    models.DashboardGadget
+	AppModule *models.AppModule
+	Results   store.GadgetResults
+	Slices    []dashboardSlice
+	Error     string
 }
 type customDashboardsData struct {
-	Dashboards             []*models.Dashboard
-	Dashboard              *models.Dashboard
-	Details                store.DashboardDetails
-	Members                []*models.User
-	Filters                []*models.Filter
-	Catalog                []models.GadgetDefinition
-	Columns                [][]dashboardTile
-	ColumnOptions          []int
-	Editing, Adding, Owner bool
-	Gadget                 *models.DashboardGadget
-	Config                 models.GadgetConfig
-	Error, Query, Filter   string
+	Dashboards                        []*models.Dashboard
+	Dashboard                         *models.Dashboard
+	Details                           store.DashboardDetails
+	Members                           []*models.User
+	Filters                           []*models.Filter
+	Catalog                           []models.GadgetDefinition
+	Columns                           [][]dashboardTile
+	ColumnOptions                     []int
+	Editing, Adding, Owner, AppGadget bool
+	Gadget                            *models.DashboardGadget
+	Config                            models.GadgetConfig
+	Error, Query, Filter              string
 }
 
 func dashboardWebError(err error) (int, string) {
@@ -120,6 +121,14 @@ func (h *Handler) CustomDashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data := customDashboardsData{Dashboard: d, Details: store.DashboardDetails{Name: d.Name, Description: d.Description, SharePermissions: d.SharePermissions, EditPermissions: d.EditPermissions}, Owner: d.OwnerID == user.ID, Editing: r.URL.Query().Get("edit") == "1", Adding: r.URL.Query().Get("add") == "1", Catalog: models.GadgetCatalog()}
+	appGadgets, err := h.Store.AppModulesByLocation(r.Context(), ws, "jira.dashboard")
+	if err != nil {
+		http.Error(w, "Could not load app gadgets.", 500)
+		return
+	}
+	for _, module := range appGadgets {
+		data.Catalog = append(data.Catalog, models.GadgetDefinition{ModuleKey: "app:" + module.ID, Title: module.Title, Description: module.AppName + " app gadget"})
+	}
 	status := 200
 	if r.Method == http.MethodPost {
 		if !parseForm(w, r) {
@@ -215,21 +224,29 @@ func (h *Handler) CustomDashboard(w http.ResponseWriter, r *http.Request) {
 	colors := []string{"#1769e0", "#6658d3", "#168568", "#c26914", "#be4565", "#577081"}
 	for _, g := range gadgets {
 		tile := dashboardTile{Gadget: g}
-		tile.Results, err = h.Store.DashboardGadgetResults(r.Context(), ws, user.ID, id, g)
-		if err != nil {
-			tile.Error = "This gadget could not load its query. Check its configuration and saved filter."
+		if strings.HasPrefix(g.ModuleKey, "app:") {
+			tile.AppModule, err = h.Store.ActiveDashboardAppModule(r.Context(), ws, g.ModuleKey)
+			if err != nil {
+				tile.Error = "This app gadget is unavailable. Ask an administrator to resume or reinstall the app."
+			}
 		} else {
-			offset := 0.0
-			for i, c := range tile.Results.Counts {
-				percent := float64(c.Count) * 100 / float64(tile.Results.Total)
-				tile.Slices = append(tile.Slices, dashboardSlice{Name: c.Name, Count: c.Count, Color: colors[i%len(colors)], Percent: percent, Dash: fmt.Sprintf("%.4f %.4f", percent, 100-percent), Offset: fmt.Sprintf("%.4f", -offset)})
-				offset += percent
+			tile.Results, err = h.Store.DashboardGadgetResults(r.Context(), ws, user.ID, id, g)
+			if err != nil {
+				tile.Error = "This gadget could not load its query. Check its configuration and saved filter."
+			} else {
+				offset := 0.0
+				for i, c := range tile.Results.Counts {
+					percent := float64(c.Count) * 100 / float64(tile.Results.Total)
+					tile.Slices = append(tile.Slices, dashboardSlice{Name: c.Name, Count: c.Count, Color: colors[i%len(colors)], Percent: percent, Dash: fmt.Sprintf("%.4f %.4f", percent, 100-percent), Offset: fmt.Sprintf("%.4f", -offset)})
+					offset += percent
+				}
 			}
 		}
 		data.Columns[g.Position.Column] = append(data.Columns[g.Position.Column], tile)
 		if strconv.FormatInt(g.ID, 10) == editID && d.Writable {
 			copy := g
 			data.Gadget = &copy
+			data.AppGadget = strings.HasPrefix(g.ModuleKey, "app:")
 			if r.Method != http.MethodPost || r.PostFormValue("action") != "configure" {
 				data.Config = tile.Results.Config
 			}

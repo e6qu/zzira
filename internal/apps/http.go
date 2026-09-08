@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/e6qu/zzira/internal/authn"
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/secretbox"
 	"github.com/e6qu/zzira/internal/store"
@@ -31,12 +32,20 @@ type Handler struct {
 	Now           func() time.Time
 }
 
-func SignRequest(secret []byte, timestamp int64, requestID, method, escapedPath string, body []byte) string {
+func SignRequest(secret []byte, timestamp int64, requestID, method, requestTarget string, body []byte) string {
 	digest := sha256.Sum256(body)
-	canonical := strconv.FormatInt(timestamp, 10) + "\n" + requestID + "\n" + strings.ToUpper(method) + "\n" + escapedPath + "\n" + hex.EncodeToString(digest[:])
+	canonical := strconv.FormatInt(timestamp, 10) + "\n" + requestID + "\n" + strings.ToUpper(method) + "\n" + requestTarget + "\n" + hex.EncodeToString(digest[:])
 	mac := hmac.New(sha256.New, secret)
 	_, _ = mac.Write([]byte(canonical))
 	return hex.EncodeToString(mac.Sum(nil))
+}
+
+func signedRequestTarget(r *http.Request) string {
+	target := r.URL.EscapedPath()
+	if r.URL.RawQuery != "" {
+		target += "?" + r.URL.RawQuery
+	}
+	return target
 }
 
 func (h *Handler) workspaceID(r *http.Request) (string, error) {
@@ -47,11 +56,15 @@ func (h *Handler) workspaceID(r *http.Request) (string, error) {
 }
 
 func (h *Handler) authenticate(r *http.Request) (*models.AppInstallation, []byte, int, error) {
+	return h.authenticateKey(r, r.PathValue("appKey"))
+}
+
+func (h *Handler) authenticateKey(r *http.Request, appKey string) (*models.AppInstallation, []byte, int, error) {
 	if h.Secrets == nil {
 		return nil, nil, http.StatusServiceUnavailable, fmt.Errorf("app credential encryption is not configured")
 	}
-	body, err := io.ReadAll(io.LimitReader(r.Body, (1<<20)+1))
-	if err != nil || len(body) > 1<<20 {
+	body, err := io.ReadAll(io.LimitReader(r.Body, (34<<20)+1))
+	if err != nil || len(body) > 34<<20 {
 		return nil, nil, http.StatusRequestEntityTooLarge, fmt.Errorf("app request body is too large")
 	}
 	r.Body = io.NopCloser(bytes.NewReader(body))
@@ -59,7 +72,7 @@ func (h *Handler) authenticate(r *http.Request) (*models.AppInstallation, []byte
 	if err != nil {
 		return nil, nil, http.StatusServiceUnavailable, err
 	}
-	installation, err := h.Store.AppInstallation(r.Context(), workspaceID, r.PathValue("appKey"))
+	installation, err := h.Store.AppInstallation(r.Context(), workspaceID, appKey)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil, http.StatusUnauthorized, fmt.Errorf("unknown app")
 	}
@@ -87,7 +100,7 @@ func (h *Handler) authenticate(r *http.Request) (*models.AppInstallation, []byte
 	if err != nil {
 		return nil, nil, http.StatusUnauthorized, fmt.Errorf("app credentials are unavailable")
 	}
-	expected, _ := hex.DecodeString(SignRequest(secret, timestamp, requestID, r.Method, r.URL.EscapedPath(), body))
+	expected, _ := hex.DecodeString(SignRequest(secret, timestamp, requestID, r.Method, signedRequestTarget(r), body))
 	if !hmac.Equal(provided, expected) {
 		return nil, nil, http.StatusUnauthorized, fmt.Errorf("app signature is invalid")
 	}
@@ -99,6 +112,56 @@ func (h *Handler) authenticate(r *http.Request) (*models.AppInstallation, []byte
 		return nil, nil, http.StatusConflict, fmt.Errorf("app request was already processed")
 	}
 	return installation, body, 0, nil
+}
+
+func appAPIScope(r *http.Request) (string, bool) {
+	product := ""
+	switch {
+	case strings.HasPrefix(r.URL.Path, "/rest/api/"), strings.HasPrefix(r.URL.Path, "/rest/agile/"), strings.HasPrefix(r.URL.Path, "/rest/servicedeskapi/"):
+		product = "jira-work"
+	case strings.HasPrefix(r.URL.Path, "/wiki/api/"), strings.HasPrefix(r.URL.Path, "/wiki/rest/api/"):
+		product = "confluence-content"
+	default:
+		return "", false
+	}
+	verb := "write"
+	if r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodOptions {
+		verb = "read"
+	}
+	return verb + ":" + product, true
+}
+
+// APIPrincipal authenticates a workspace app for the Jira, Agile and
+// Confluence REST surfaces, then exposes its stable non-human account through
+// the same authorization path used by people and API tokens.
+func (h *Handler) APIPrincipal(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		appKey := strings.TrimSpace(r.Header.Get("X-Zzira-App-Key"))
+		if appKey == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		scope, supported := appAPIScope(r)
+		if !supported {
+			appFailure(w, http.StatusForbidden, fmt.Errorf("signed app authentication is only available on product APIs"))
+			return
+		}
+		installation, _, status, err := h.authenticateKey(r, appKey)
+		if err != nil {
+			appFailure(w, status, err)
+			return
+		}
+		if installation.Status != "active" {
+			appFailure(w, http.StatusForbidden, fmt.Errorf("app is suspended"))
+			return
+		}
+		if !store.AppHasScope(installation, scope) {
+			appFailure(w, http.StatusForbidden, fmt.Errorf("%s scope is required", scope))
+			return
+		}
+		ctx := authn.WithPrincipal(r.Context(), installation.PrincipalID)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
 }
 
 func appFailure(w http.ResponseWriter, status int, err error) {

@@ -287,7 +287,7 @@ func (s *Store) DirectoryUsers(ctx context.Context, directoryID string) ([]*mode
 		       u.nickname,u.job_title,u.department,u.organization_name,u.location,
 		       u.picture_url,u.avatar_url,u.email_verified,u.mfa_enabled
 		FROM directory_users du JOIN users u ON u.id=du.user_id
-		WHERE du.directory_id::text=$1 ORDER BY u.display_name,u.id`, directoryID)
+		WHERE du.directory_id::text=$1 AND u.id NOT LIKE 'app!_%' ESCAPE '!' ORDER BY u.display_name,u.id`, directoryID)
 	if err != nil {
 		return nil, err
 	}

@@ -2049,18 +2049,45 @@ Validation after the signed app-runtime foundation:
   safe upgrade, encrypted secrets, cleanup and audit. The Chromium admin
   journey installs an app, opens its host-rendered module, scans accessibility,
   suspends, resumes and uninstalls it.
-- The full PostgreSQL Go suite, vet, WebAssembly build, Chromium app and administration journeys,
-  seven conformance tests, generated inventory/coverage checks and diff
+- The full PostgreSQL Go suite, vet, WebAssembly build, Chromium app and
+  administration journeys, seven conformance tests, generated
+  inventory/coverage checks and diff
   validation pass. Exact API coverage remains 427 of 1,207 operations because
   this ZZIRA runtime is outside the pinned Atlassian REST contracts.
 
+Validation after app principals and contextual modules:
+
+- Migration 101 assigns every installation a stable non-human principal,
+  provisions its workspace access and preserves that identity through
+  uninstall/reinstall while disabling access between those lifecycle events.
+  App accounts stay out of human directory, assignee and sharing pickers.
+- Signed requests with `X-Zzira-App-Key` can use Jira REST v3, Agile, Jira
+  Service Management and both Confluence REST versions. The gateway enforces
+  product-specific read/write scopes, active state, body and raw-query
+  integrity, freshness and durable replay rejection before attaching the app
+  principal to the normal authorization path.
+- Jira issue panels render on work items, Confluence byline items render on
+  published pages, and app gadgets join the custom-dashboard catalog and retain
+  their placement across upgrades. Suspension hides contextual modules;
+  module removal and uninstall remove placed gadgets without leaving orphaned
+  configuration.
+- PostgreSQL integration covers principal provisioning, human-picker
+  exclusion, signed Jira/Confluence reads, ungranted-write denial, query
+  tampering, suspension, uninstall, stable reinstall, contextual module lookup,
+  gadget placement/cleanup and stable module IDs through upgrade.
+- The focused and full PostgreSQL Go suites, vet, WebAssembly build, Chromium
+  app, dashboard and administration journeys, seven conformance tests,
+  generated inventory/coverage checks and diff validation pass. Exact API
+  coverage remains 427 of 1,207 operations because the app gateway and host
+  modules are outside the pinned Atlassian REST contracts.
+
 ## Current change
 
-1. Continue the app runtime with app principals, issue panels, dashboard
-   gadgets and Confluence byline modules.
-2. Continue Confluence with database schemas/rows/views and whiteboard canvas
+1. Continue Confluence with database schemas/rows/views and whiteboard canvas
    objects/editing.
-3. Continue Service Management with Assets-backed topology and impact analysis.
+2. Continue Service Management with Assets-backed topology and impact analysis.
+3. Continue the app runtime with outbound lifecycle delivery, app webhooks and
+   scheduled triggers.
 
 ## Resume here
 

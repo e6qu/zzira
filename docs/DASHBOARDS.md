@@ -29,7 +29,7 @@ compatibility gaps.
 
 ## Native gadgets and presentation
 
-The native catalog contains:
+The built-in catalog contains:
 
 - `com.zzira:filter-results`
 - `com.zzira:issue-statistics`
@@ -41,6 +41,11 @@ Gadgets accept direct JQL or a saved filter through the reserved
 charts calculate their full permission-filtered total and group by status,
 priority, work type or assignee. Pie charts include an equivalent data table.
 Assigned-to-me adds `assignee = currentUser()` when each viewer loads it.
+Active `jira:dashboardGadget` modules from installed apps also join the browser
+catalog. Their escaped host-rendered body can be placed, titled, colored,
+positioned, copied and removed like a built-in gadget. Stable module IDs keep
+placements intact through upgrades; suspension shows an unavailable state,
+while module removal or uninstall removes the corresponding placements.
 
 The browser supports Jira-style one, two and three-column layouts (`A`, `AA`,
 `AB`, `BA`, `AAA`), gadget reordering, eight accent colors, favourites, manual
@@ -50,10 +55,12 @@ share clears a viewer's rendered gadgets on their next refresh.
 
 ## Compatibility boundary
 
-ZZIRA validates module keys against its native catalog. It does not download or
-execute arbitrary gadget URLs, Atlassian Connect gadgets, Forge modules or Jira
-system gadget module keys. Clients sending a URI, an unknown module key, or
-`ignoreUriAndModuleKeyValidation=true` receive an explicit validation error.
+ZZIRA validates REST-created module keys against its built-in catalog and
+browser-created app gadgets against active installed modules. It does not
+download or execute arbitrary gadget URLs, Atlassian Connect gadgets, Forge
+modules or Jira system gadget module keys. Clients sending a URI, an unknown
+module key, or `ignoreUriAndModuleKeyValidation=true` receive an explicit
+validation error.
 
 Dashboard writes add ID-only invalidation records to the workspace action log.
 They never serialize dashboard configuration or gadget results. Dashboard

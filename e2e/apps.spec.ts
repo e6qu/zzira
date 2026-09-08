@@ -17,13 +17,21 @@ test('admin installs and manages a scoped host-rendered app', async ({ page }) =
   const appKey = `journey.${suffix}`;
   const appName = `Journey app ${suffix}`;
   const moduleTitle = `Release companion ${suffix}`;
+  const issuePanelTitle = `Issue risk ${suffix}`;
+  const gadgetTitle = `App health ${suffix}`;
+  const bylineTitle = `Page review ${suffix}`;
   const descriptor = {
     key: appKey,
     name: appName,
     baseUrl: `https://apps.example.test/${suffix}`,
     version: '1.0.0',
-    scopes: ['read:jira-work', 'read:app-storage', 'write:app-storage'],
-    modules: [{ key: 'release-companion', type: 'jira:globalPage', location: 'jira.navigation', title: moduleTitle, body: 'Release readiness and incident context from the installed app.' }],
+    scopes: ['read:jira-work', 'read:confluence-content', 'read:app-storage', 'write:app-storage'],
+    modules: [
+      { key: 'release-companion', type: 'jira:globalPage', location: 'jira.navigation', title: moduleTitle, body: 'Release readiness and incident context from the installed app.' },
+      { key: 'issue-risk', type: 'jira:issuePanel', location: 'jira.issue.view', title: issuePanelTitle, body: 'No cross-service release risk detected.' },
+      { key: 'app-health', type: 'jira:dashboardGadget', location: 'jira.dashboard', title: gadgetTitle, body: 'All app checks are healthy.' },
+      { key: 'page-review', type: 'confluence:contentBylineItem', location: 'confluence.content.byline', title: bylineTitle, body: 'Reviewed by the installed app.' },
+    ],
   };
 
   await page.goto('/admin#admin-apps');
@@ -35,10 +43,32 @@ test('admin installs and manages a scoped host-rendered app', async ({ page }) =
   let app = page.locator('.admin-app', { hasText: appName });
   await expect(app).toContainText('active');
   await expect(app).toContainText('read:jira-work');
+  await expect(app).toContainText('app_principal_');
   await expect(page.locator('#workspace-navigation').getByRole('link', { name: moduleTitle })).toBeVisible();
   await page.locator('#workspace-navigation').getByRole('link', { name: moduleTitle }).click();
   await expect(page.getByRole('heading', { name: moduleTitle, level: 1 })).toBeVisible();
   await expect(page.getByText('Release readiness and incident context from the installed app.')).toBeVisible();
+  await accessible(page);
+
+  await page.goto('/browse/ZZ-1');
+  const issuePanel = page.locator('.app-context-module', { has: page.getByRole('heading', { name: issuePanelTitle, level: 2 }) });
+  await expect(issuePanel).toBeVisible();
+  await expect(issuePanel).toContainText('No cross-service release risk detected.');
+
+  await page.goto('/dashboards');
+  await page.getByLabel('Dashboard name', { exact: true }).fill(`App dashboard ${suffix}`);
+  await page.getByRole('button', { name: 'Create dashboard', exact: true }).click();
+  await page.getByRole('button', { name: `Add ${gadgetTitle}`, exact: true }).click();
+  await expect(page.locator('.app-dashboard-module')).toContainText('All app checks are healthy.');
+
+  await page.goto('/wiki');
+  await page.getByRole('link', { name: 'Browse pages', exact: true }).first().click();
+  const wikiPage = page.locator('a[href*="/wiki/spaces/"][href*="/pages/"]:not([href$="/new"])').first();
+  await expect(wikiPage).toBeVisible();
+  await wikiPage.click();
+  const byline = page.locator('.app-byline > span', { hasText: bylineTitle });
+  await expect(byline).toBeVisible();
+  await expect(byline).toContainText('Reviewed by the installed app.');
   await accessible(page);
 
   await page.goto('/admin#admin-apps');

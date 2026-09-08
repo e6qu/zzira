@@ -155,6 +155,14 @@ func LoginIdentityProvider(ctx context.Context, st *store.Store, userID, idToken
 
 var ErrUnauthorized = unauthorized{}
 
+type principalContextKey struct{}
+
+// WithPrincipal attaches an already-authenticated non-human account to a
+// request. The app runtime verifies its signed request before using this hook.
+func WithPrincipal(ctx context.Context, principalID string) context.Context {
+	return context.WithValue(ctx, principalContextKey{}, principalID)
+}
+
 type unauthorized struct{}
 
 func (unauthorized) Error() string { return "unauthorized" }
@@ -162,6 +170,9 @@ func (unauthorized) Error() string { return "unauthorized" }
 // Identify resolves the caller from (1) Basic auth email:api-token, or
 // (2) the session cookie. Returns userID or ErrUnauthorized.
 func Identify(ctx context.Context, st *store.Store, r *http.Request) (string, error) {
+	if principalID, _ := ctx.Value(principalContextKey{}).(string); principalID != "" {
+		return principalID, nil
+	}
 	if user, pass, ok := r.BasicAuth(); ok {
 		if i := strings.IndexByte(user, '@'); i > 0 { // Jira-style: email + API token
 			userID, err := st.UserByAPIToken(ctx, hashToken(pass))

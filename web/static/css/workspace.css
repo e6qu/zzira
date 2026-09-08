@@ -36,6 +36,12 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .skip-link:focus { transform: translateY(0); }
 .eyebrow { display: block; margin-bottom: 5px; color: var(--ds-text-subtle); font: 700 10px var(--utility-font); letter-spacing: .09em; text-transform: uppercase; }
 .muted { color: var(--ds-text-subtle); font-size: 12px; }
+.app-context-module { border-inline-start: 3px solid var(--ds-accent); }
+.app-context-module p { margin: 0; white-space: pre-wrap; }
+.app-byline { display:flex; flex-wrap:wrap; gap:6px; margin-top:9px; }
+.app-byline > span { padding:4px 7px; border:1px solid var(--ds-border); border-radius:99px; background:var(--ds-surface-sunken); font-size:11px; }
+.app-byline small { color:var(--ds-text-subtle); }
+.app-dashboard-module p { margin:0; white-space:pre-wrap; }
 
 /* Shell */
 .global-header { position: sticky; z-index: 40; top: 0; display: flex; align-items: center; gap: 12px; height: var(--topbar-height); padding: 0 16px; border: 0; border-bottom: 1px solid rgba(255,255,255,.09); color: var(--ds-nav-text); background: var(--ds-nav); box-shadow: 0 1px 0 rgba(16,24,40,.08); }

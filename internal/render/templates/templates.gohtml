@@ -241,7 +241,8 @@
         <div class="section-heading"><h2>Description</h2></div>
         <div class="description-text">{{adfHTML .Issue.Description}}</div>
       </section>
-
+{{range .AppPanels}}      <section class="issue-section app-context-module" aria-labelledby="app-panel-{{.ID}}"><div class="section-heading"><div><span class="eyebrow">{{.AppName}} app</span><h2 id="app-panel-{{.ID}}">{{.Title}}</h2></div></div><p>{{.Body}}</p></section>
+{{end}}
       <section class="issue-section linked-work" aria-labelledby="linked-work-title">
         <div class="section-heading"><h2 id="linked-work-title">Linked work <span class="section-count">{{len .Links}}</span></h2>
         {{if .CanTriage}}<details class="link-create"><summary class="quiet-action">Link work item</summary>

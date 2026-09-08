@@ -12,12 +12,12 @@ type AppDescriptor struct {
 }
 
 type AppInstallation struct {
-	ID, WorkspaceID, Key, Name, BaseURL, Version, Status, InstalledBy string
-	SecretCiphertext                                                  []byte
-	Descriptor                                                        json.RawMessage
-	Scopes                                                            []string
-	Modules                                                           []AppModule
-	InstalledAt, UpdatedAt                                            time.Time
+	ID, WorkspaceID, PrincipalID, Key, Name, BaseURL, Version, Status, InstalledBy string
+	SecretCiphertext                                                               []byte
+	Descriptor                                                                     json.RawMessage
+	Scopes                                                                         []string
+	Modules                                                                        []AppModule
+	InstalledAt, UpdatedAt                                                         time.Time
 }
 
 type AppModule struct {

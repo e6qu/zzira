@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/e6qu/zzira/internal/authn"
 	"github.com/e6qu/zzira/internal/secretbox"
 	"github.com/e6qu/zzira/internal/store"
 )
@@ -58,6 +59,8 @@ func TestSignedLifecycleAndScopedStorage(t *testing.T) {
 	}
 	t.Cleanup(func() {
 		_, _ = st.Pool.Exec(ctx, `DELETE FROM app_installations WHERE id=$1`, installation.ID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM memberships WHERE user_id=$1`, installation.PrincipalID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM users WHERE id=$1`, installation.PrincipalID)
 		_, _ = st.Pool.Exec(ctx, `DELETE FROM organization_audit_events WHERE target_type='app' AND target_id=$1`, appKey)
 	})
 
@@ -71,7 +74,7 @@ func TestSignedLifecycleAndScopedStorage(t *testing.T) {
 	call := func(method, path, body, requestID string, validSignature bool, want int) *httptest.ResponseRecorder {
 		t.Helper()
 		request := httptest.NewRequest(method, path, strings.NewReader(body))
-		signature := SignRequest(secret, now.Unix(), requestID, method, request.URL.EscapedPath(), []byte(body))
+		signature := SignRequest(secret, now.Unix(), requestID, method, request.URL.RequestURI(), []byte(body))
 		if !validSignature {
 			signature = strings.Repeat("0", 64)
 		}
@@ -106,7 +109,7 @@ func TestSignedLifecycleAndScopedStorage(t *testing.T) {
 	upgradedRaw := []byte(fmt.Sprintf(`{"key":%q,"name":"Runtime test","baseUrl":"https://apps.example.test/runtime","version":"2.0.0","scopes":["read:jira-work","read:app-storage","write:app-storage"],"modules":[{"key":"runtime-page","type":"jira:globalPage","location":"jira.navigation","title":"Runtime test v2","body":"Upgraded host-rendered content."}]}`, appKey))
 	call("POST", "/apps/"+appKey+"/lifecycle/upgraded", string(upgradedRaw), "request-upgrade-1", true, 204)
 	upgraded, err := st.AppInstallation(ctx, workspaceID, appKey)
-	if err != nil || upgraded.Version != "2.0.0" || len(upgraded.Modules) != 1 || upgraded.Modules[0].Title != "Runtime test v2" {
+	if err != nil || upgraded.Version != "2.0.0" || len(upgraded.Modules) != 1 || upgraded.Modules[0].Title != "Runtime test v2" || upgraded.Modules[0].ID != installation.Modules[0].ID {
 		t.Fatalf("upgraded installation = %+v, %v", upgraded, err)
 	}
 	call("POST", "/apps/"+appKey+"/lifecycle/uninstalled", "", "request-remove-01", true, 204)
@@ -136,5 +139,154 @@ func TestSignedLifecycleAndScopedStorage(t *testing.T) {
 	var auditCount int
 	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM organization_audit_events WHERE target_type='app' AND target_id=$1`, appKey).Scan(&auditCount); err != nil || auditCount != 6 {
 		t.Fatalf("app audit count = %d, %v", auditCount, err)
+	}
+}
+
+func TestAppPrincipalScopesAndContextualModules(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	st, err := store.Open(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := store.Migrate(ctx, st.Pool); err != nil {
+		t.Fatal(err)
+	}
+	workspaceID, workspaceSlug, err := st.DefaultWorkspace(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adminID, err := st.FirstAdminID(ctx, workspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	appKey := "context." + strings.ReplaceAll(strings.ToLower(store.NewID("test")), "_", "-")
+	secret := []byte("context-app-shared-secret-that-is-long-enough")
+	box, err := secretbox.New(bytes.Repeat([]byte{9}, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := []byte(fmt.Sprintf(`{"key":%q,"name":"Context app","baseUrl":"https://apps.example.test/context","version":"1.0.0","scopes":["read:jira-work","read:confluence-content"],"modules":[{"key":"issue-panel","type":"jira:issuePanel","location":"jira.issue.view","title":"Issue context","body":"Release risk from the app."},{"key":"gadget","type":"jira:dashboardGadget","location":"jira.dashboard","title":"App health","body":"All app checks are healthy."},{"key":"page-byline","type":"confluence:contentBylineItem","location":"confluence.content.byline","title":"Page review","body":"Reviewed by the app."}]}`, appKey))
+	descriptor, err := ParseDescriptor(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ciphertext, err := box.Seal(secret, workspaceID+"/"+appKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	installation, err := st.InstallApp(ctx, workspaceID, adminID, descriptor, raw, ciphertext)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM app_installations WHERE id=$1`, installation.ID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM memberships WHERE user_id=$1`, installation.PrincipalID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM users WHERE id=$1`, installation.PrincipalID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM organization_audit_events WHERE target_type='app' AND target_id=$1`, appKey)
+	})
+	if installation.PrincipalID == "" || !strings.HasPrefix(installation.PrincipalID, "app_") {
+		t.Fatalf("principal id = %q", installation.PrincipalID)
+	}
+	if member, err := st.IsMember(ctx, workspaceID, installation.PrincipalID); err != nil || !member {
+		t.Fatalf("app principal membership = %v, %v", member, err)
+	}
+	dashboardModuleID := ""
+	for location, want := range map[string]string{"jira.issue.view": "Issue context", "jira.dashboard": "App health", "confluence.content.byline": "Page review"} {
+		modules, err := st.AppModulesByLocation(ctx, workspaceID, location)
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, module := range modules {
+			if module.InstallationID == installation.ID && module.Title == want {
+				found = true
+				if location == "jira.dashboard" {
+					dashboardModuleID = module.ID
+				}
+			}
+		}
+		if !found {
+			t.Fatalf("module %q missing at %s: %+v", want, location, modules)
+		}
+	}
+	dashboard, err := st.SaveDashboard(ctx, workspaceID, adminID, "", store.DashboardDetails{Name: "App runtime test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _, _ = st.Pool.Exec(ctx, `DELETE FROM dashboards WHERE id=$1`, dashboard.ID) })
+	gadget, err := st.SaveDashboardGadget(ctx, workspaceID, adminID, dashboard.ID, 0, store.GadgetUpdate{ModuleKey: "app:" + dashboardModuleID})
+	if err != nil || gadget.Title != "App health" {
+		t.Fatalf("app dashboard gadget = %+v, %v", gadget, err)
+	}
+
+	now := time.Now().UTC().Truncate(time.Second)
+	handler := &Handler{Store: st, Secrets: box, WorkspaceSlug: workspaceSlug, Now: func() time.Time { return now }}
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		principalID, err := authn.Identify(r.Context(), st, r)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusUnauthorized)
+			return
+		}
+		_, _ = w.Write([]byte(principalID))
+	})
+	api := handler.APIPrincipal(inner)
+	call := func(method, path, body, requestID string, want int) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		req.Header.Set("X-Zzira-App-Key", appKey)
+		req.Header.Set("X-Zzira-App-Timestamp", fmt.Sprint(now.Unix()))
+		req.Header.Set("X-Zzira-App-Request-Id", requestID)
+		req.Header.Set("X-Zzira-App-Signature", SignRequest(secret, now.Unix(), requestID, method, req.URL.RequestURI(), []byte(body)))
+		response := httptest.NewRecorder()
+		api.ServeHTTP(response, req)
+		if response.Code != want {
+			t.Fatalf("%s %s = %d, want %d: %s", method, path, response.Code, want, response.Body.String())
+		}
+		return response
+	}
+	if response := call("GET", "/rest/api/3/myself?expand=groups", "", "principal-jira-read", 200); response.Body.String() != installation.PrincipalID {
+		t.Fatalf("Jira principal = %q", response.Body.String())
+	}
+	tampered := httptest.NewRequest("GET", "/rest/api/3/myself?expand=permissions", nil)
+	tampered.Header.Set("X-Zzira-App-Key", appKey)
+	tampered.Header.Set("X-Zzira-App-Timestamp", fmt.Sprint(now.Unix()))
+	tampered.Header.Set("X-Zzira-App-Request-Id", "principal-query-tamper")
+	tampered.Header.Set("X-Zzira-App-Signature", SignRequest(secret, now.Unix(), "principal-query-tamper", "GET", "/rest/api/3/myself?expand=groups", nil))
+	tamperedResponse := httptest.NewRecorder()
+	api.ServeHTTP(tamperedResponse, tampered)
+	if tamperedResponse.Code != http.StatusUnauthorized {
+		t.Fatalf("tampered query = %d, want 401", tamperedResponse.Code)
+	}
+	if response := call("GET", "/wiki/api/v2/spaces", "", "principal-wiki-read", 200); response.Body.String() != installation.PrincipalID {
+		t.Fatalf("Confluence principal = %q", response.Body.String())
+	}
+	call("POST", "/rest/api/3/issue", `{}`, "principal-jira-write", 403)
+	if err := st.UpdateAppState(ctx, workspaceID, adminID, appKey, "suspended", true); err != nil {
+		t.Fatal(err)
+	}
+	call("GET", "/rest/api/3/myself", "", "principal-suspended", 403)
+	if err := st.UpdateAppState(ctx, workspaceID, adminID, appKey, "active", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.UpdateAppState(ctx, workspaceID, adminID, appKey, "uninstalled", true); err != nil {
+		t.Fatal(err)
+	}
+	if gadgets, err := st.DashboardGadgets(ctx, workspaceID, adminID, dashboard.ID); err != nil || len(gadgets) != 0 {
+		t.Fatalf("gadgets after app uninstall = %+v, %v", gadgets, err)
+	}
+	if member, err := st.IsMember(ctx, workspaceID, installation.PrincipalID); err != nil || member {
+		t.Fatalf("uninstalled app principal membership = %v, %v", member, err)
+	}
+	reinstalled, err := st.InstallApp(ctx, workspaceID, adminID, descriptor, raw, ciphertext)
+	if err != nil || reinstalled.PrincipalID != installation.PrincipalID {
+		t.Fatalf("reinstalled principal = %+v, %v", reinstalled, err)
+	}
+	if user, err := st.UserByID(ctx, reinstalled.PrincipalID); err != nil || !user.Active {
+		t.Fatalf("reinstalled principal user = %+v, %v", user, err)
 	}
 }

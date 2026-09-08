@@ -353,13 +353,17 @@ func (h *Handler) myself(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) userBean(u *models.User) map[string]any {
+	accountType := "atlassian"
+	if strings.HasPrefix(u.ID, "app_") {
+		accountType = "app"
+	}
 	return map[string]any{
 		"accountId":    u.ID,
 		"emailAddress": u.Email,
 		"displayName":  u.DisplayName,
 		"active":       u.Active,
 		"timeZone":     u.TimeZone,
-		"accountType":  "atlassian",
+		"accountType":  accountType,
 		"avatarUrls": map[string]string{
 			"48x48": h.BaseURL + "/static/img/avatar-default.svg",
 			"24x24": h.BaseURL + "/static/img/avatar-default.svg",

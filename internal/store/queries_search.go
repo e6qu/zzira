@@ -83,7 +83,7 @@ func (s *Store) MembersByWorkspace(ctx context.Context, workspaceID string) ([]*
 	rows, err := s.Pool.Query(ctx, `
 		SELECT DISTINCT u.id, u.email, u.display_name, u.time_zone
 		FROM memberships m JOIN users u ON u.id = m.user_id
-		WHERE m.workspace_id=$1 AND u.active
+		WHERE m.workspace_id=$1 AND u.active AND u.id NOT LIKE 'app!_%' ESCAPE '!'
 		  AND EXISTS (
 		    SELECT 1 FROM sites si JOIN directories d ON d.organization_id=si.organization_id
 		    JOIN directory_users du ON du.directory_id=d.id AND du.user_id=u.id
@@ -130,7 +130,7 @@ func (s *Store) SearchMembers(ctx context.Context, workspaceID, query string) ([
 	rows, err := s.Pool.Query(ctx, `
 		SELECT DISTINCT u.id, u.email, u.display_name, u.time_zone
 		FROM memberships m JOIN users u ON u.id = m.user_id
-		WHERE m.workspace_id=$1 AND u.active
+		WHERE m.workspace_id=$1 AND u.active AND u.id NOT LIKE 'app!_%' ESCAPE '!'
 		  AND EXISTS (
 		    SELECT 1 FROM sites si JOIN directories d ON d.organization_id=si.organization_id
 		    JOIN directory_users du ON du.directory_id=d.id AND du.user_id=u.id
