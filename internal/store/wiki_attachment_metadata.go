@@ -62,7 +62,7 @@ func (s *Store) CreateWikiAttachmentProperty(ctx context.Context, ws, actor, att
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	var pageID, spaceID, propertyID string
-	err = tx.QueryRow(ctx, `SELECT p.id::text,s.id::text FROM wiki_attachments a JOIN wiki_pages p ON p.id=a.page_id JOIN wiki_spaces s ON s.id=p.space_id WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND `+wikiPageWritable+` AND a.id::text=$3 FOR SHARE OF a,p`, ws, actor, attachmentID).Scan(&pageID, &spaceID)
+	err = tx.QueryRow(ctx, `SELECT p.id::text,s.id::text FROM wiki_attachments a JOIN wiki_pages p ON p.id=a.page_id JOIN wiki_spaces s ON s.id=p.space_id WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiSpaceCanUpdateAttachment+` AND `+wikiPageVisible+` AND `+wikiPageRestrictionWritable+` AND a.id::text=$3 FOR SHARE OF a,p`, ws, actor, attachmentID).Scan(&pageID, &spaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +94,7 @@ func (s *Store) UpdateWikiAttachmentProperty(ctx context.Context, ws, actor, att
 	defer func() { _ = tx.Rollback(ctx) }()
 	var pageID, spaceID, oldKey string
 	var oldVersion int
-	err = tx.QueryRow(ctx, `SELECT p.id::text,s.id::text,cp.key,cp.version FROM wiki_attachment_properties cp JOIN wiki_attachments a ON a.id=cp.attachment_id JOIN wiki_pages p ON p.id=a.page_id JOIN wiki_spaces s ON s.id=p.space_id WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND `+wikiPageWritable+` AND a.id::text=$3 AND cp.id::text=$4 FOR UPDATE OF cp`, ws, actor, attachmentID, propertyID).Scan(&pageID, &spaceID, &oldKey, &oldVersion)
+	err = tx.QueryRow(ctx, `SELECT p.id::text,s.id::text,cp.key,cp.version FROM wiki_attachment_properties cp JOIN wiki_attachments a ON a.id=cp.attachment_id JOIN wiki_pages p ON p.id=a.page_id JOIN wiki_spaces s ON s.id=p.space_id WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiSpaceCanUpdateAttachment+` AND `+wikiPageVisible+` AND `+wikiPageRestrictionWritable+` AND a.id::text=$3 AND cp.id::text=$4 FOR UPDATE OF cp`, ws, actor, attachmentID, propertyID).Scan(&pageID, &spaceID, &oldKey, &oldVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -130,7 +130,7 @@ func (s *Store) DeleteWikiAttachmentProperty(ctx context.Context, ws, actor, att
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	var pageID, spaceID string
-	property, err := scanWikiAttachmentProperty(tx.QueryRow(ctx, wikiAttachmentPropertySelect+` JOIN wiki_attachments a ON a.id=cp.attachment_id JOIN wiki_pages p ON p.id=a.page_id JOIN wiki_spaces s ON s.id=p.space_id WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND `+wikiPageWritable+` AND a.id::text=$3 AND cp.id::text=$4 FOR UPDATE OF cp`, ws, actor, attachmentID, propertyID))
+	property, err := scanWikiAttachmentProperty(tx.QueryRow(ctx, wikiAttachmentPropertySelect+` JOIN wiki_attachments a ON a.id=cp.attachment_id JOIN wiki_pages p ON p.id=a.page_id JOIN wiki_spaces s ON s.id=p.space_id WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiSpaceCanUpdateAttachment+` AND `+wikiPageVisible+` AND `+wikiPageRestrictionWritable+` AND a.id::text=$3 AND cp.id::text=$4 FOR UPDATE OF cp`, ws, actor, attachmentID, propertyID))
 	if err != nil {
 		return err
 	}
@@ -209,7 +209,7 @@ func (s *Store) AddWikiAttachmentLabels(ctx context.Context, ws, actor, attachme
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	var pageID, spaceID string
-	err = tx.QueryRow(ctx, `SELECT p.id::text,s.id::text FROM wiki_attachments a JOIN wiki_pages p ON p.id=a.page_id JOIN wiki_spaces s ON s.id=p.space_id WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND `+wikiPageWritable+` AND a.id::text=$3 FOR SHARE OF a,p`, ws, actor, attachmentID).Scan(&pageID, &spaceID)
+	err = tx.QueryRow(ctx, `SELECT p.id::text,s.id::text FROM wiki_attachments a JOIN wiki_pages p ON p.id=a.page_id JOIN wiki_spaces s ON s.id=p.space_id WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiSpaceCanUpdateAttachment+` AND `+wikiPageVisible+` AND `+wikiPageRestrictionWritable+` AND a.id::text=$3 FOR SHARE OF a,p`, ws, actor, attachmentID).Scan(&pageID, &spaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -242,7 +242,7 @@ func (s *Store) RemoveWikiAttachmentLabel(ctx context.Context, ws, actor, attach
 	defer func() { _ = tx.Rollback(ctx) }()
 	var pageID, spaceID string
 	var label models.WikiLabel
-	err = tx.QueryRow(ctx, `SELECT p.id::text,s.id::text,l.id::text,l.name,l.prefix,to_char(l.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM wiki_attachment_labels al JOIN wiki_attachments a ON a.id=al.attachment_id JOIN wiki_pages p ON p.id=a.page_id JOIN wiki_spaces s ON s.id=p.space_id JOIN wiki_labels l ON l.id=al.label_id WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND `+wikiPageWritable+` AND a.id::text=$3 AND l.prefix=$4 AND l.name=$5 FOR UPDATE OF al`, ws, actor, attachmentID, input.Prefix, input.Name).Scan(&pageID, &spaceID, &label.ID, &label.Name, &label.Prefix, &label.CreatedAt)
+	err = tx.QueryRow(ctx, `SELECT p.id::text,s.id::text,l.id::text,l.name,l.prefix,to_char(l.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM wiki_attachment_labels al JOIN wiki_attachments a ON a.id=al.attachment_id JOIN wiki_pages p ON p.id=a.page_id JOIN wiki_spaces s ON s.id=p.space_id JOIN wiki_labels l ON l.id=al.label_id WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiSpaceCanUpdateAttachment+` AND `+wikiPageVisible+` AND `+wikiPageRestrictionWritable+` AND a.id::text=$3 AND l.prefix=$4 AND l.name=$5 FOR UPDATE OF al`, ws, actor, attachmentID, input.Prefix, input.Name).Scan(&pageID, &spaceID, &label.ID, &label.Name, &label.Prefix, &label.CreatedAt)
 	if err != nil {
 		return err
 	}

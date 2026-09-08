@@ -326,14 +326,13 @@ func (h *Handler) deleteAttachment(w http.ResponseWriter, r *http.Request, ws, a
 
 func (h *Handler) attachmentOperationValues(r *http.Request, ws, actor string, a *models.WikiAttachment) []any {
 	ops := []any{map[string]string{"operation": "read", "targetType": "attachment"}}
-	canUpdate := false
-	if a.BlogPostID != "" {
-		canUpdate, _ = h.Store.CanUpdateWikiBlogPost(r.Context(), ws, actor, a.BlogPostID)
-	} else {
-		canUpdate, _ = h.Store.CanUpdateWikiPage(r.Context(), ws, actor, a.PageID)
-	}
+	canUpdate, _ := h.Store.CanUpdateWikiAttachment(r.Context(), ws, actor, a.ID)
+	canDelete, _ := h.Store.CanDeleteWikiAttachment(r.Context(), ws, actor, a.ID)
 	if canUpdate {
-		ops = append(ops, map[string]string{"operation": "update", "targetType": "attachment"}, map[string]string{"operation": "delete", "targetType": "attachment"})
+		ops = append(ops, map[string]string{"operation": "update", "targetType": "attachment"})
+	}
+	if canDelete {
+		ops = append(ops, map[string]string{"operation": "delete", "targetType": "attachment"})
 	}
 	return ops
 }

@@ -251,12 +251,17 @@ func (h *Handler) pageOperations(w http.ResponseWriter, r *http.Request, ws, act
 		writeError(w, err)
 		return
 	}
-	allowed, err := h.Store.CanUpdateWikiPage(r.Context(), ws, actor, id)
+	canUpdate, err := h.Store.CanUpdateWikiPage(r.Context(), ws, actor, id)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	respond(w, 200, map[string]any{"operations": pageOperationsFor(allowed)})
+	canDelete, err := h.Store.CanDeleteWikiPage(r.Context(), ws, actor, id)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	respond(w, 200, map[string]any{"operations": pageOperationsFor(canUpdate, canDelete)})
 }
 
 func (h *Handler) pageCustomContent(w http.ResponseWriter, r *http.Request, ws, actor, id string) {

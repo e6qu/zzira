@@ -22,6 +22,15 @@ func (s *Store) CanUpdateWikiPage(ctx context.Context, ws, actor, pageID string)
 	return allowed, err
 }
 
+func (s *Store) CanDeleteWikiPage(ctx context.Context, ws, actor, pageID string) (bool, error) {
+	var allowed bool
+	err := s.Pool.QueryRow(ctx, `SELECT EXISTS(
+		SELECT 1 FROM wiki_pages p JOIN wiki_spaces s ON s.id=p.space_id
+		WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiSpaceCanDeletePage+` AND `+wikiPageRestrictionWritable+` AND p.id::text=$3
+	)`, ws, actor, pageID).Scan(&allowed)
+	return allowed, err
+}
+
 func (s *Store) CanRestrictWikiPage(ctx context.Context, ws, actor, pageID string) (bool, error) {
 	var allowed bool
 	err := s.Pool.QueryRow(ctx, `SELECT EXISTS(

@@ -10,10 +10,13 @@ import (
 	"github.com/e6qu/zzira/internal/models"
 )
 
-func pageOperationsFor(allowed bool) []any {
+func pageOperationsFor(canUpdate, canDelete bool) []any {
 	operations := []any{map[string]string{"operation": "read", "targetType": "page"}}
-	if allowed {
-		operations = append(operations, map[string]string{"operation": "update", "targetType": "page"}, map[string]string{"operation": "delete", "targetType": "page"})
+	if canUpdate {
+		operations = append(operations, map[string]string{"operation": "update", "targetType": "page"})
+	}
+	if canDelete {
+		operations = append(operations, map[string]string{"operation": "delete", "targetType": "page"})
 	}
 	return operations
 }
@@ -126,12 +129,17 @@ func (h *Handler) pageByID(w http.ResponseWriter, r *http.Request, ws, actor, id
 		bean["versions"] = wrap(values)
 	}
 	if flags["include-operations"] {
-		allowed, loadErr := h.Store.CanUpdateWikiPage(r.Context(), ws, actor, id)
+		canUpdate, loadErr := h.Store.CanUpdateWikiPage(r.Context(), ws, actor, id)
 		if loadErr != nil {
 			writeError(w, loadErr)
 			return
 		}
-		bean["operations"] = wrap(pageOperationsFor(allowed))
+		canDelete, loadErr := h.Store.CanDeleteWikiPage(r.Context(), ws, actor, id)
+		if loadErr != nil {
+			writeError(w, loadErr)
+			return
+		}
+		bean["operations"] = wrap(pageOperationsFor(canUpdate, canDelete))
 	}
 	if flags["include-direct-children"] {
 		relations, loadErr := h.Store.WikiPageDescendants(r.Context(), ws, actor, id, 1)

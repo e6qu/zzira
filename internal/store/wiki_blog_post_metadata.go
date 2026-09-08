@@ -21,11 +21,21 @@ func scanWikiBlogPostProperty(row pgx.Row) (*models.WikiContentProperty, error) 
 }
 
 func (s *Store) CanUpdateWikiBlogPost(ctx context.Context, ws, actor, id string) (bool, error) {
-	_, err := s.WikiBlogPost(ctx, ws, actor, id)
-	if err != nil {
-		return false, err
-	}
-	return true, nil
+	var allowed bool
+	err := s.Pool.QueryRow(ctx, `SELECT EXISTS(
+		SELECT 1 FROM wiki_blog_posts b JOIN wiki_spaces s ON s.id=b.space_id
+		WHERE s.workspace_id=$1 AND `+wikiBlogPostVisible+` AND `+wikiBlogPostWritable+` AND b.id::text=$3
+	)`, ws, actor, id).Scan(&allowed)
+	return allowed, err
+}
+
+func (s *Store) CanDeleteWikiBlogPost(ctx context.Context, ws, actor, id string) (bool, error) {
+	var allowed bool
+	err := s.Pool.QueryRow(ctx, `SELECT EXISTS(
+		SELECT 1 FROM wiki_blog_posts b JOIN wiki_spaces s ON s.id=b.space_id
+		WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiSpaceCanDeleteBlogPost+` AND `+wikiBlogPostVisible+` AND `+wikiBlogPostAuthorWritable+` AND b.id::text=$3
+	)`, ws, actor, id).Scan(&allowed)
+	return allowed, err
 }
 
 func (s *Store) WikiBlogPostProperties(ctx context.Context, ws, actor, blogPostID, key string) ([]models.WikiContentProperty, error) {

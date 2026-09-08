@@ -348,14 +348,22 @@ func (h *Handler) blogPostOperations(w http.ResponseWriter, r *http.Request, ws,
 	if !validPageID(w, id) || !supportedQuery(w, r) {
 		return
 	}
-	allowed, err := h.Store.CanUpdateWikiBlogPost(r.Context(), ws, actor, id)
+	canUpdate, err := h.Store.CanUpdateWikiBlogPost(r.Context(), ws, actor, id)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	canDelete, err := h.Store.CanDeleteWikiBlogPost(r.Context(), ws, actor, id)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
 	operations := []any{map[string]string{"operation": "read", "targetType": "blogpost"}}
-	if allowed {
-		operations = append(operations, map[string]string{"operation": "update", "targetType": "blogpost"}, map[string]string{"operation": "delete", "targetType": "blogpost"})
+	if canUpdate {
+		operations = append(operations, map[string]string{"operation": "update", "targetType": "blogpost"})
+	}
+	if canDelete {
+		operations = append(operations, map[string]string{"operation": "delete", "targetType": "blogpost"})
 	}
 	respond(w, 200, map[string]any{"operations": operations})
 }

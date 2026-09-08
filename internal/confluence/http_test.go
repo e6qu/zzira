@@ -201,7 +201,7 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	}
 	call(member, "GET", "/space-roles/"+customRole.ID, nil, 200)
 	call(actor, "PUT", "/space-roles/system-member", map[string]any{"name": "Changed", "description": "No", "spacePermissions": []string{"read/space"}}, 400)
-	call(actor, "PUT", "/space-roles/"+customRole.ID, map[string]any{"name": "Release governors", "description": "Govern release pages", "spacePermissions": []string{"read/space", "create/page", "update/page"}}, 200)
+	call(actor, "PUT", "/space-roles/"+customRole.ID, map[string]any{"name": "Release governors", "description": "Govern release pages", "spacePermissions": []string{"read/space", "create/page", "read/page", "update/page"}}, 200)
 	assignmentBody := []map[string]any{{"roleId": customRole.ID, "principal": map[string]string{"principalType": "ACCESS_CLASS", "principalId": "authenticated-users"}}}
 	call(member, "POST", "/spaces/"+public+"/role-assignments", assignmentBody, 403)
 	call(actor, "POST", "/spaces/"+public+"/role-assignments", assignmentBody, 204)
@@ -219,6 +219,14 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	if err := json.Unmarshal(restrictedPageResponse.Body.Bytes(), &restrictedPage); err != nil {
 		t.Fatal(err)
 	}
+	if operations := call(actor, "GET", "/pages/"+restrictedPage.ID+"/operations", nil, 200); !strings.Contains(operations.Body.String(), `"operation":"update"`) || strings.Contains(operations.Body.String(), `"operation":"delete"`) {
+		t.Fatal(operations.Body.String())
+	}
+	call(actor, "POST", "/blogposts", map[string]any{"spaceId": restrictedSpace, "title": "Denied blog", "status": "current", "body": models.WikiBody{Representation: "storage", Value: "<p>Denied</p>"}}, 404)
+	call(actor, "POST", "/folders", map[string]any{"spaceId": restrictedSpace, "title": "Denied folder"}, 404)
+	call(actor, "POST", "/footer-comments", map[string]any{"pageId": restrictedPage.ID, "body": models.WikiBody{Representation: "storage", Value: "<p>Denied comment</p>"}}, 404)
+	call(actor, "PUT", "/pages/"+restrictedPage.ID, map[string]any{"id": restrictedPage.ID, "spaceId": restrictedSpace, "title": "Restricted runbook updated", "status": "current", "body": models.WikiBody{Representation: "storage", Value: "<p>Administrators only.</p>"}, "version": map[string]any{"number": 2}}, 200)
+	call(actor, "DELETE", "/pages/"+restrictedPage.ID, nil, 404)
 	call(actor, "GET", "/spaces/"+restrictedSpace, nil, 200)
 	call(actor, "GET", "/pages/"+restrictedPage.ID, nil, 200)
 	call(member, "GET", "/spaces/"+restrictedSpace, nil, 404)
@@ -226,9 +234,17 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	if spaces := call(member, "GET", "/spaces", nil, 200); strings.Contains(spaces.Body.String(), "ROLELOCK") {
 		t.Fatal("role-restricted space leaked into the collection")
 	}
-	call(actor, "POST", "/spaces/"+restrictedSpace+"/role-assignments", []map[string]any{{"roleId": "system-admin", "principal": map[string]string{"principalType": "ACCESS_CLASS", "principalId": "all-product-admins"}}}, 204)
+	call(actor, "POST", "/spaces/"+restrictedSpace+"/role-assignments", []map[string]any{
+		{"roleId": "system-admin", "principal": map[string]string{"principalType": "ACCESS_CLASS", "principalId": "all-product-admins"}},
+		{"roleId": "system-viewer", "principal": map[string]string{"principalType": "USER", "principalId": member}},
+	}, 204)
 	call(admin, "GET", "/spaces/"+restrictedSpace, nil, 200)
-	call(member, "GET", "/spaces/"+restrictedSpace, nil, 404)
+	call(member, "GET", "/spaces/"+restrictedSpace, nil, 200)
+	call(member, "GET", "/pages/"+restrictedPage.ID, nil, 200)
+	if operations := call(member, "GET", "/pages/"+restrictedPage.ID+"/operations", nil, 200); strings.Contains(operations.Body.String(), `"operation":"update"`) || strings.Contains(operations.Body.String(), `"operation":"delete"`) {
+		t.Fatal(operations.Body.String())
+	}
+	call(member, "POST", "/pages", map[string]any{"spaceId": restrictedSpace, "title": "Viewer write", "status": "current", "body": models.WikiBody{Representation: "storage", Value: "<p>Denied</p>"}}, 404)
 	call(actor, "POST", "/spaces", map[string]any{"key": "UNSUPPORTED", "name": "Unsupported", "roleAssignments": []map[string]any{{"roleId": "1"}}}, 400)
 	if _, err := h.Commands.AddWikiSpaceLabels(ctx, ws, actor, public, []models.WikiLabel{{Prefix: "team", Name: "core-space"}}); err != nil {
 		t.Fatal(err)

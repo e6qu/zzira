@@ -207,11 +207,20 @@ func (h *Handler) inlineComment(w http.ResponseWriter, r *http.Request, ws, acto
 		comment.Body, comment.Version = version.Body, version.WikiVersion
 	}
 	bean := h.inlineCommentBean(comment, r.URL.Query().Get("body-format") != "")
-	admin, _ := h.Store.IsAdmin(r.Context(), ws, actor)
 	if value, ok := queryBool(w, r, "include-operations"); !ok {
 		return
 	} else if value {
-		bean["operations"] = map[string]any{"results": commentOperations(admin, actor, comment)}
+		canUpdate, operationErr := h.Store.CanUpdateWikiComment(r.Context(), ws, actor, id, "inline")
+		if operationErr != nil {
+			writeError(w, operationErr)
+			return
+		}
+		canDelete, operationErr := h.Store.CanDeleteWikiComment(r.Context(), ws, actor, id, "inline")
+		if operationErr != nil {
+			writeError(w, operationErr)
+			return
+		}
+		bean["operations"] = map[string]any{"results": commentOperations(canUpdate, canDelete)}
 	}
 	if value, ok := queryBool(w, r, "include-likes"); !ok {
 		return
@@ -345,17 +354,22 @@ func (h *Handler) inlineCommentOperations(w http.ResponseWriter, r *http.Request
 	if !supportedQuery(w, r) {
 		return
 	}
-	comment, err := h.Store.WikiInlineComment(r.Context(), ws, actor, id)
+	_, err := h.Store.WikiInlineComment(r.Context(), ws, actor, id)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	admin, err := h.Store.IsAdmin(r.Context(), ws, actor)
+	canUpdate, err := h.Store.CanUpdateWikiComment(r.Context(), ws, actor, id, "inline")
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	respond(w, 200, map[string]any{"operations": commentOperations(admin, actor, comment)})
+	canDelete, err := h.Store.CanDeleteWikiComment(r.Context(), ws, actor, id, "inline")
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	respond(w, 200, map[string]any{"operations": commentOperations(canUpdate, canDelete)})
 }
 
 func (h *Handler) inlineCommentLikeCount(w http.ResponseWriter, r *http.Request, ws, actor, id string) {

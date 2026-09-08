@@ -13,8 +13,12 @@ import (
 
 var ErrWikiBlogPostConflict = errors.New("the blog post changed; reload the latest version before saving")
 
-const wikiBlogPostVisible = `(b.published OR b.author_id=$2) AND (NOT b.private OR b.author_id=$2)`
-const wikiBlogPostWritable = `(b.author_id=$2 OR NOT b.private)`
+var wikiBlogPostVisible = `(` + wikiSpacePermissionAllowed("read/blogpost") + `) AND (b.published OR b.author_id=$2) AND (NOT b.private OR b.author_id=$2)`
+
+const wikiBlogPostAuthorWritable = `(b.author_id=$2 OR NOT b.private)`
+
+var wikiBlogPostWritable = `(` + wikiSpaceVisible + `) AND (` + wikiSpaceCanUpdateBlogPost + `) AND (` + wikiBlogPostAuthorWritable + `)`
+
 const wikiBlogPostSelect = `SELECT b.id::text,s.workspace_id,b.space_id::text,b.title,b.status,b.published,b.private,b.classification_level,b.body,b.author_id,to_char(b.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),v.version,v.message,v.minor_edit,v.author_id,to_char(v.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM wiki_blog_posts b JOIN wiki_spaces s ON s.id=b.space_id JOIN wiki_blog_post_versions v ON v.blog_post_id=b.id AND v.version=b.version`
 
 func scanWikiBlogPost(row pgx.Row) (*models.WikiBlogPost, error) {
@@ -56,12 +60,19 @@ func (s *Store) SaveWikiBlogPost(ctx context.Context, ws, actor string, input mo
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	spacePermission := wikiSpaceCanCreateBlogPost
+	if !isNew {
+		spacePermission = wikiSpaceCanUpdateBlogPost
+		if input.Status == "trashed" {
+			spacePermission = wikiSpaceCanDeleteBlogPost
+		}
+	}
 	var spaceID, defaultClassification string
-	if err := tx.QueryRow(ctx, `SELECT s.id::text,s.default_classification_level FROM wiki_spaces s WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND s.id::text=$3 FOR UPDATE`, ws, actor, input.SpaceID).Scan(&spaceID, &defaultClassification); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT s.id::text,s.default_classification_level FROM wiki_spaces s WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+spacePermission+` AND s.id::text=$3 FOR UPDATE`, ws, actor, input.SpaceID).Scan(&spaceID, &defaultClassification); err != nil {
 		return nil, err
 	}
 	if !isNew {
-		old, err := scanWikiBlogPost(tx.QueryRow(ctx, wikiBlogPostSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiBlogPostVisible+` AND `+wikiBlogPostWritable+` AND b.id::text=$3 FOR UPDATE OF b`, ws, actor, input.ID))
+		old, err := scanWikiBlogPost(tx.QueryRow(ctx, wikiBlogPostSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+spacePermission+` AND `+wikiBlogPostVisible+` AND `+wikiBlogPostAuthorWritable+` AND b.id::text=$3 FOR UPDATE OF b`, ws, actor, input.ID))
 		if err != nil {
 			return nil, err
 		}
@@ -120,7 +131,7 @@ func (s *Store) PurgeWikiBlogPost(ctx context.Context, ws, actor, id string) err
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	blog, err := scanWikiBlogPost(tx.QueryRow(ctx, wikiBlogPostSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiBlogPostVisible+` AND `+wikiBlogPostWritable+` AND b.id::text=$3 AND b.status='trashed' FOR UPDATE OF b`, ws, actor, id))
+	blog, err := scanWikiBlogPost(tx.QueryRow(ctx, wikiBlogPostSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiSpaceCanDeleteBlogPost+` AND `+wikiBlogPostVisible+` AND `+wikiBlogPostAuthorWritable+` AND b.id::text=$3 AND b.status='trashed' FOR UPDATE OF b`, ws, actor, id))
 	if err != nil {
 		return err
 	}

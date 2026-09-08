@@ -76,14 +76,14 @@ func (s *Store) CreateWikiInlineComment(ctx context.Context, ws, actor string, i
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	if input.ParentCommentID != "" {
-		parent, err := scanWikiFooterComment(tx.QueryRow(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiCommentVisible+` AND c.comment_type='inline' AND c.id::text=$3 FOR SHARE OF c`, ws, actor, input.ParentCommentID))
+		parent, err := scanWikiFooterComment(tx.QueryRow(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiSpaceCanCreateComment+` AND `+wikiCommentVisible+` AND c.comment_type='inline' AND c.id::text=$3 FOR SHARE OF c`, ws, actor, input.ParentCommentID))
 		if err != nil {
 			return nil, err
 		}
 		input.PageID, input.BlogPostID, input.InlineSelection = parent.PageID, parent.BlogPostID, parent.InlineSelection
 		input.InlineMatchCount, input.InlineMatchIndex = parent.InlineMatchCount, parent.InlineMatchIndex
 	} else if input.BlogPostID != "" {
-		blog, err := scanWikiBlogPost(tx.QueryRow(ctx, wikiBlogPostSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiBlogPostVisible+` AND b.status='current' AND b.id::text=$3 FOR SHARE OF b`, ws, actor, input.BlogPostID))
+		blog, err := scanWikiBlogPost(tx.QueryRow(ctx, wikiBlogPostSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiSpaceCanCreateComment+` AND `+wikiBlogPostVisible+` AND b.status='current' AND b.id::text=$3 FOR SHARE OF b`, ws, actor, input.BlogPostID))
 		if err != nil {
 			return nil, err
 		}
@@ -92,7 +92,7 @@ func (s *Store) CreateWikiInlineComment(ctx context.Context, ws, actor string, i
 			return nil, ErrWikiValidation
 		}
 	} else {
-		page, err := scanWikiPage(tx.QueryRow(ctx, wikiPageSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND p.status='current' AND p.id::text=$3 FOR SHARE OF p`, ws, actor, input.PageID))
+		page, err := scanWikiPage(tx.QueryRow(ctx, wikiPageSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiSpaceCanCreateComment+` AND `+wikiPageVisible+` AND p.status='current' AND p.id::text=$3 FOR SHARE OF p`, ws, actor, input.PageID))
 		if err != nil {
 			return nil, err
 		}
@@ -131,7 +131,7 @@ func (s *Store) UpdateWikiInlineComment(ctx context.Context, ws, actor string, i
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	old, err := scanWikiFooterComment(tx.QueryRow(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiCommentVisible+` AND c.comment_type='inline' AND c.id::text=$3 FOR UPDATE OF c`, ws, actor, input.ID))
+	old, err := scanWikiFooterComment(tx.QueryRow(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiSpaceCanUpdateComment+` AND `+wikiCommentVisible+` AND c.comment_type='inline' AND c.id::text=$3 FOR UPDATE OF c`, ws, actor, input.ID))
 	if err != nil {
 		return nil, err
 	}
@@ -179,7 +179,7 @@ func (s *Store) DeleteWikiInlineComment(ctx context.Context, ws, actor, id strin
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	comment, err := scanWikiFooterComment(tx.QueryRow(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiCommentVisible+` AND c.comment_type='inline' AND c.id::text=$3 FOR UPDATE OF c`, ws, actor, id))
+	comment, err := scanWikiFooterComment(tx.QueryRow(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiSpaceCanDeleteComment+` AND `+wikiCommentVisible+` AND c.comment_type='inline' AND c.id::text=$3 FOR UPDATE OF c`, ws, actor, id))
 	if err != nil {
 		return err
 	}

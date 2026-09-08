@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/jackc/pgx/v5"
@@ -18,66 +19,103 @@ var ErrWikiCommentConflict = errors.New("the comment changed; reload the latest 
 
 var ErrWikiPropertyConflict = errors.New("the property changed; reload the latest version before saving")
 
-// Wiki visibility is always evaluated against current membership and directory
-// access. Stored role assignments replace the legacy public/private rule; a
-// caller must match a role that can read the space. Spaces without stored
-// assignments retain their historical public/member or private/author access.
-const wikiSpaceVisible = `EXISTS (
+const wikiActiveMember = `EXISTS (
   SELECT 1 FROM memberships wm JOIN users wu ON wu.id=wm.user_id AND wu.active
   WHERE wm.workspace_id=s.workspace_id AND wm.user_id=$2 AND EXISTS (
     SELECT 1 FROM sites si JOIN directories d ON d.organization_id=si.organization_id
     JOIN directory_users du ON du.directory_id=d.id AND du.user_id=wm.user_id
     WHERE si.workspace_id=wm.workspace_id AND d.active AND du.active
   )
-) AND (
-  (
-    NOT EXISTS (SELECT 1 FROM wiki_space_role_assignments wra0 WHERE wra0.space_id=s.id)
-    AND (NOT s.private OR s.author_id=$2)
+)`
+
+const wikiSpaceRolePrincipalMatches = `(
+  (wra.principal_type='USER' AND wra.principal_id=$2)
+  OR (wra.principal_type='GROUP' AND EXISTS (
+    SELECT 1 FROM group_members gm WHERE gm.group_id::text=wra.principal_id AND gm.user_id=$2
+  ))
+  OR (wra.principal_type='ACCESS_CLASS' AND wra.principal_id IN ('authenticated-users','all-licensed-users'))
+  OR (
+    wra.principal_type='ACCESS_CLASS'
+    AND wra.principal_id IN ('all-product-admins','jsm-project-admins')
+    AND EXISTS (
+      SELECT 1 FROM memberships ram
+      WHERE ram.workspace_id=s.workspace_id AND ram.user_id=$2 AND ram.role='admin'
+    )
   )
+)`
+
+func wikiSpacePermissionAllowed(permission string) string {
+	literal := "'" + strings.ReplaceAll(permission, "'", "''") + "'"
+	systemRoleIDs := []string{}
+	for _, role := range systemWikiSpaceRoles {
+		for _, allowed := range role.SpacePermissions {
+			if allowed == permission || allowed == "administer/space" {
+				systemRoleIDs = append(systemRoleIDs, "'"+strings.ReplaceAll(role.ID, "'", "''")+"'")
+				break
+			}
+		}
+	}
+	systemRoles := "FALSE"
+	if len(systemRoleIDs) > 0 {
+		systemRoles = "wra.role_id IN (" + strings.Join(systemRoleIDs, ",") + ")"
+	}
+	return `(
+  NOT EXISTS (SELECT 1 FROM wiki_space_role_assignments wra0 WHERE wra0.space_id=s.id)
   OR EXISTS (
     SELECT 1
     FROM wiki_space_role_assignments wra
     LEFT JOIN wiki_space_roles wrr ON wrr.id::text=wra.role_id AND wrr.workspace_id=s.workspace_id
     WHERE wra.space_id=s.id
-      AND (
-        (wra.principal_type='USER' AND wra.principal_id=$2)
-        OR (wra.principal_type='GROUP' AND EXISTS (
-          SELECT 1 FROM group_members gm WHERE gm.group_id::text=wra.principal_id AND gm.user_id=$2
-        ))
-        OR (wra.principal_type='ACCESS_CLASS' AND wra.principal_id IN ('authenticated-users','all-licensed-users'))
-        OR (
-          wra.principal_type='ACCESS_CLASS'
-          AND wra.principal_id IN ('all-product-admins','jsm-project-admins')
-          AND EXISTS (
-            SELECT 1 FROM memberships ram
-            WHERE ram.workspace_id=s.workspace_id AND ram.user_id=$2 AND ram.role='admin'
-          )
-        )
-      )
-      AND (
-        wra.role_id IN ('system-admin','system-member','system-viewer')
-        OR 'read/space'=ANY(wrr.space_permissions)
-      )
+      AND ` + wikiSpaceRolePrincipalMatches + `
+      AND (` + systemRoles + ` OR ` + literal + `=ANY(wrr.space_permissions) OR 'administer/space'=ANY(wrr.space_permissions))
   )
 )`
-const wikiPageVisible = `(p.published OR p.author_id=$2) AND (
+}
+
+// Stored role assignments replace the legacy public/private rule. Spaces
+// without stored assignments retain their historical member/author behavior.
+var wikiSpaceVisible = `(` + wikiActiveMember + `) AND (` + wikiSpacePermissionAllowed("read/space") + `) AND (
+  NOT s.private OR s.author_id=$2 OR EXISTS (
+    SELECT 1 FROM wiki_space_role_assignments wra1 WHERE wra1.space_id=s.id
+  )
+)`
+
+var wikiSpaceCanCreatePage = wikiSpacePermissionAllowed("create/page")
+var wikiSpaceCanUpdatePage = wikiSpacePermissionAllowed("update/page")
+var wikiSpaceCanDeletePage = wikiSpacePermissionAllowed("delete/page")
+var wikiSpaceCanCreateBlogPost = wikiSpacePermissionAllowed("create/blogpost")
+var wikiSpaceCanUpdateBlogPost = wikiSpacePermissionAllowed("update/blogpost")
+var wikiSpaceCanDeleteBlogPost = wikiSpacePermissionAllowed("delete/blogpost")
+var wikiSpaceCanCreateAttachment = wikiSpacePermissionAllowed("create/attachment")
+var wikiSpaceCanUpdateAttachment = wikiSpacePermissionAllowed("update/attachment")
+var wikiSpaceCanDeleteAttachment = wikiSpacePermissionAllowed("delete/attachment")
+var wikiSpaceCanCreateComment = wikiSpacePermissionAllowed("create/comment")
+var wikiSpaceCanUpdateComment = wikiSpacePermissionAllowed("update/comment")
+var wikiSpaceCanDeleteComment = wikiSpacePermissionAllowed("delete/comment")
+
+var wikiPageVisible = `(` + wikiSpacePermissionAllowed("read/page") + `) AND (p.published OR p.author_id=$2) AND (
   p.author_id=$2
   OR EXISTS (SELECT 1 FROM memberships am WHERE am.workspace_id=s.workspace_id AND am.user_id=$2 AND am.role='admin')
   OR NOT EXISTS (SELECT 1 FROM wiki_page_restrictions wr WHERE wr.page_id=p.id AND wr.operation='read')
   OR EXISTS (SELECT 1 FROM wiki_page_restrictions wr WHERE wr.page_id=p.id AND wr.operation='read' AND wr.subject_type='user' AND wr.subject_id=$2)
   OR EXISTS (SELECT 1 FROM wiki_page_restrictions wr JOIN group_members gm ON wr.subject_type='group' AND gm.group_id::text=wr.subject_id WHERE wr.page_id=p.id AND wr.operation='read' AND gm.user_id=$2)
 )`
-const wikiPageWritable = `(
+
+const wikiPageRestrictionWritable = `(
   p.author_id=$2
   OR EXISTS (SELECT 1 FROM memberships am WHERE am.workspace_id=s.workspace_id AND am.user_id=$2 AND am.role='admin')
   OR NOT EXISTS (SELECT 1 FROM wiki_page_restrictions wr WHERE wr.page_id=p.id AND wr.operation='update')
   OR EXISTS (SELECT 1 FROM wiki_page_restrictions wr WHERE wr.page_id=p.id AND wr.operation='update' AND wr.subject_type='user' AND wr.subject_id=$2)
   OR EXISTS (SELECT 1 FROM wiki_page_restrictions wr JOIN group_members gm ON wr.subject_type='group' AND gm.group_id::text=wr.subject_id WHERE wr.page_id=p.id AND wr.operation='update' AND gm.user_id=$2)
 )`
+
+var wikiPageWritable = `(` + wikiSpaceVisible + `) AND (` + wikiSpaceCanUpdatePage + `) AND (` + wikiPageRestrictionWritable + `)`
+
 const wikiSpaceSelect = `SELECT s.id::text,s.workspace_id,s.key,s.name,s.description,s.author_id,s.private,s.default_classification_level,to_char(s.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM wiki_spaces s`
 const wikiPageSelect = `SELECT p.id::text,s.workspace_id,p.space_id::text,COALESCE(p.parent_id::text,''),p.title,p.status,p.published,p.classification_level,p.body,p.author_id,to_char(p.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),v.version,v.message,v.minor_edit,v.author_id,to_char(v.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM wiki_pages p JOIN wiki_spaces s ON s.id=p.space_id JOIN wiki_page_versions v ON v.page_id=p.id AND v.version=p.version`
 const wikiCommentSelect = `SELECT c.id::text,COALESCE(p.id::text,''),COALESCE(bp.id::text,''),COALESCE(p.space_id,bp.space_id)::text,COALESCE(c.attachment_id::text,''),COALESCE(c.parent_id::text,''),c.body,c.author_id,u.display_name,c.version,v.message,to_char(c.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),to_char(c.updated_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),v.author_id,to_char(v.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),c.comment_type,c.inline_selection,c.inline_match_count,c.inline_match_index,c.inline_marker_ref,c.resolution_status,COALESCE(c.resolution_modifier_id,''),COALESCE(to_char(c.resolution_modified_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),COALESCE(bp.author_id,''),COALESCE(bp.private,false),COALESCE(bp.published,false) FROM wiki_footer_comments c LEFT JOIN wiki_attachments ca ON ca.id=c.attachment_id LEFT JOIN wiki_pages p ON p.id=COALESCE(c.page_id,ca.page_id) LEFT JOIN wiki_blog_posts bp ON bp.id=COALESCE(c.blog_post_id,ca.blog_post_id) JOIN wiki_spaces s ON s.id=COALESCE(p.space_id,bp.space_id) JOIN users u ON u.id=c.author_id JOIN wiki_footer_comment_versions v ON v.comment_id=c.id AND v.version=c.version`
-const wikiCommentVisible = `((p.id IS NOT NULL AND p.status='current' AND ` + wikiPageVisible + `) OR (bp.id IS NOT NULL AND bp.status='current' AND (bp.published OR bp.author_id=$2) AND (NOT bp.private OR bp.author_id=$2)))`
+
+var wikiCommentVisible = `(` + wikiSpacePermissionAllowed("read/comment") + `) AND ((p.id IS NOT NULL AND p.status='current' AND ` + wikiPageVisible + `) OR (bp.id IS NOT NULL AND bp.status='current' AND ` + wikiSpacePermissionAllowed("read/blogpost") + ` AND (bp.published OR bp.author_id=$2) AND (NOT bp.private OR bp.author_id=$2)))`
 
 func scanWikiSpace(row pgx.Row) (*models.WikiSpace, error) {
 	s := &models.WikiSpace{}
@@ -229,13 +267,20 @@ func (s *Store) SaveWikiPage(ctx context.Context, ws, actor string, input models
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	spacePermission := wikiSpaceCanCreatePage
+	if !isNew {
+		spacePermission = wikiSpaceCanUpdatePage
+		if input.Status == "trashed" {
+			spacePermission = wikiSpaceCanDeletePage
+		}
+	}
 	var spaceID, defaultClassification string
-	err = tx.QueryRow(ctx, `SELECT s.id::text,s.default_classification_level FROM wiki_spaces s WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND s.id::text=$3 FOR UPDATE`, ws, actor, input.SpaceID).Scan(&spaceID, &defaultClassification)
+	err = tx.QueryRow(ctx, `SELECT s.id::text,s.default_classification_level FROM wiki_spaces s WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+spacePermission+` AND s.id::text=$3 FOR UPDATE`, ws, actor, input.SpaceID).Scan(&spaceID, &defaultClassification)
 	if err != nil {
 		return nil, err
 	}
 	if input.ID != "" {
-		old, err := scanWikiPage(tx.QueryRow(ctx, wikiPageSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND `+wikiPageWritable+` AND p.id::text=$3`, ws, actor, input.ID))
+		old, err := scanWikiPage(tx.QueryRow(ctx, wikiPageSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+spacePermission+` AND `+wikiPageVisible+` AND `+wikiPageRestrictionWritable+` AND p.id::text=$3`, ws, actor, input.ID))
 		if err != nil {
 			return nil, err
 		}
@@ -361,6 +406,22 @@ func (s *Store) WikiFooterComment(ctx context.Context, ws, user, id string) (*mo
 	return scanWikiFooterComment(s.Pool.QueryRow(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiCommentVisible+` AND c.comment_type='footer' AND c.id::text=$3`, ws, user, id))
 }
 
+func (s *Store) CanUpdateWikiComment(ctx context.Context, ws, user, id, commentType string) (bool, error) {
+	return s.canWikiComment(ctx, ws, user, id, commentType, wikiSpaceCanUpdateComment)
+}
+
+func (s *Store) CanDeleteWikiComment(ctx context.Context, ws, user, id, commentType string) (bool, error) {
+	return s.canWikiComment(ctx, ws, user, id, commentType, wikiSpaceCanDeleteComment)
+}
+
+func (s *Store) canWikiComment(ctx context.Context, ws, user, id, commentType, permission string) (bool, error) {
+	var allowed bool
+	err := s.Pool.QueryRow(ctx, `SELECT EXISTS(`+wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+permission+` AND `+wikiCommentVisible+` AND (c.author_id=$2 OR EXISTS (
+		SELECT 1 FROM memberships cam WHERE cam.workspace_id=s.workspace_id AND cam.user_id=$2 AND cam.role='admin'
+	)) AND c.comment_type=$4 AND c.id::text=$3)`, ws, user, id, commentType).Scan(&allowed)
+	return allowed, err
+}
+
 // WikiFooterComments returns every visible footer comment when pageID is
 // empty, and the top-level comments for a page otherwise.
 func (s *Store) WikiFooterComments(ctx context.Context, ws, user, pageID string) ([]*models.WikiFooterComment, error) {
@@ -463,7 +524,7 @@ func (s *Store) CreateWikiFooterComment(ctx context.Context, ws, actor string, i
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	if input.ParentCommentID != "" {
-		parent, err := scanWikiFooterComment(tx.QueryRow(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiCommentVisible+` AND c.comment_type='footer' AND c.id::text=$3 FOR SHARE OF c`, ws, actor, input.ParentCommentID))
+		parent, err := scanWikiFooterComment(tx.QueryRow(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiSpaceCanCreateComment+` AND `+wikiCommentVisible+` AND c.comment_type='footer' AND c.id::text=$3 FOR SHARE OF c`, ws, actor, input.ParentCommentID))
 		if err != nil {
 			return nil, err
 		}
@@ -477,19 +538,19 @@ func (s *Store) CreateWikiFooterComment(ctx context.Context, ws, actor string, i
 			input.PageID = parent.PageID
 		}
 	} else if input.AttachmentID != "" {
-		_, err := scanWikiAttachment(tx.QueryRow(ctx, wikiAttachmentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiAttachmentVisible+` AND a.status='current' AND a.id::text=$3 FOR SHARE OF a`, ws, actor, input.AttachmentID))
+		_, err := scanWikiAttachment(tx.QueryRow(ctx, wikiAttachmentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiSpaceCanCreateComment+` AND `+wikiAttachmentVisible+` AND a.status='current' AND a.id::text=$3 FOR SHARE OF a`, ws, actor, input.AttachmentID))
 		if err != nil {
 			return nil, err
 		}
 	} else if input.BlogPostID != "" {
 		var id string
-		err := tx.QueryRow(ctx, `SELECT b.id::text FROM wiki_blog_posts b JOIN wiki_spaces s ON s.id=b.space_id WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiBlogPostVisible+` AND b.status='current' AND b.id::text=$3 FOR SHARE OF b`, ws, actor, input.BlogPostID).Scan(&id)
+		err := tx.QueryRow(ctx, `SELECT b.id::text FROM wiki_blog_posts b JOIN wiki_spaces s ON s.id=b.space_id WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiSpaceCanCreateComment+` AND `+wikiBlogPostVisible+` AND b.status='current' AND b.id::text=$3 FOR SHARE OF b`, ws, actor, input.BlogPostID).Scan(&id)
 		if err != nil {
 			return nil, err
 		}
 	} else {
 		var id string
-		err := tx.QueryRow(ctx, `SELECT p.id::text FROM wiki_pages p JOIN wiki_spaces s ON s.id=p.space_id WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND p.status='current' AND p.id::text=$3 FOR SHARE OF p`, ws, actor, input.PageID).Scan(&id)
+		err := tx.QueryRow(ctx, `SELECT p.id::text FROM wiki_pages p JOIN wiki_spaces s ON s.id=p.space_id WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiSpaceCanCreateComment+` AND `+wikiPageVisible+` AND p.status='current' AND p.id::text=$3 FOR SHARE OF p`, ws, actor, input.PageID).Scan(&id)
 		if err != nil {
 			return nil, err
 		}
@@ -528,7 +589,7 @@ func (s *Store) UpdateWikiFooterComment(ctx context.Context, ws, actor string, i
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	old, err := scanWikiFooterComment(tx.QueryRow(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiCommentVisible+` AND c.comment_type='footer' AND c.id::text=$3 FOR UPDATE OF c`, ws, actor, input.ID))
+	old, err := scanWikiFooterComment(tx.QueryRow(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiSpaceCanUpdateComment+` AND `+wikiCommentVisible+` AND c.comment_type='footer' AND c.id::text=$3 FOR UPDATE OF c`, ws, actor, input.ID))
 	if err != nil {
 		return nil, err
 	}
@@ -563,7 +624,7 @@ func (s *Store) DeleteWikiFooterComment(ctx context.Context, ws, actor, id strin
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	comment, err := scanWikiFooterComment(tx.QueryRow(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiCommentVisible+` AND c.comment_type='footer' AND c.id::text=$3 FOR UPDATE OF c`, ws, actor, id))
+	comment, err := scanWikiFooterComment(tx.QueryRow(ctx, wikiCommentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiSpaceCanDeleteComment+` AND `+wikiCommentVisible+` AND c.comment_type='footer' AND c.id::text=$3 FOR UPDATE OF c`, ws, actor, id))
 	if err != nil {
 		return err
 	}

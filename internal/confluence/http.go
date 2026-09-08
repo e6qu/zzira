@@ -878,10 +878,13 @@ func (h *Handler) footerCommentVersion(w http.ResponseWriter, r *http.Request, w
 	respond(w, 200, bean)
 }
 
-func commentOperations(admin bool, actor string, comment *models.WikiFooterComment) []any {
+func commentOperations(canUpdate, canDelete bool) []any {
 	operations := []any{map[string]string{"operation": "read", "targetType": "comment"}}
-	if admin || actor == comment.AuthorID {
-		operations = append(operations, map[string]string{"operation": "update", "targetType": "comment"}, map[string]string{"operation": "delete", "targetType": "comment"})
+	if canUpdate {
+		operations = append(operations, map[string]string{"operation": "update", "targetType": "comment"})
+	}
+	if canDelete {
+		operations = append(operations, map[string]string{"operation": "delete", "targetType": "comment"})
 	}
 	return operations
 }
@@ -890,17 +893,22 @@ func (h *Handler) footerCommentOperations(w http.ResponseWriter, r *http.Request
 	if !supportedQuery(w, r) {
 		return
 	}
-	comment, err := h.Store.WikiFooterComment(r.Context(), ws, actor, id)
+	_, err := h.Store.WikiFooterComment(r.Context(), ws, actor, id)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	admin, err := h.Store.IsAdmin(r.Context(), ws, actor)
+	canUpdate, err := h.Store.CanUpdateWikiComment(r.Context(), ws, actor, id, "footer")
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	respond(w, 200, map[string]any{"operations": commentOperations(admin, actor, comment)})
+	canDelete, err := h.Store.CanDeleteWikiComment(r.Context(), ws, actor, id, "footer")
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	respond(w, 200, map[string]any{"operations": commentOperations(canUpdate, canDelete)})
 }
 
 func (h *Handler) footerCommentLikeCount(w http.ResponseWriter, r *http.Request, ws, actor, id string) {

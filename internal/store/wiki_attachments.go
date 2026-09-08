@@ -10,8 +10,11 @@ import (
 
 const wikiAttachmentSelect = `SELECT a.id::text,COALESCE(a.page_id::text,''),COALESCE(a.blog_post_id::text,''),COALESCE(p.space_id,b.space_id)::text,a.file_id,a.filename,a.media_type,a.comment,a.size,a.status,a.author_id,to_char(a.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),a.version,v.message,v.minor_edit,v.author_id,to_char(v.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),COALESCE(b.author_id,''),COALESCE(b.private,false),COALESCE(b.published,false) FROM wiki_attachments a LEFT JOIN wiki_pages p ON p.id=a.page_id LEFT JOIN wiki_blog_posts b ON b.id=a.blog_post_id JOIN wiki_spaces s ON s.id=COALESCE(p.space_id,b.space_id) JOIN wiki_attachment_versions v ON v.attachment_id=a.id AND v.version=a.version`
 
-const wikiAttachmentVisible = `((a.page_id IS NOT NULL AND ` + wikiPageVisible + `) OR (a.blog_post_id IS NOT NULL AND ` + wikiBlogPostVisible + `))`
-const wikiAttachmentWritable = `((a.page_id IS NOT NULL AND ` + wikiPageWritable + `) OR (a.blog_post_id IS NOT NULL AND ` + wikiBlogPostWritable + `))`
+var wikiAttachmentVisible = `(` + wikiSpacePermissionAllowed("read/attachment") + `) AND ((a.page_id IS NOT NULL AND ` + wikiPageVisible + `) OR (a.blog_post_id IS NOT NULL AND ` + wikiBlogPostVisible + `))`
+
+const wikiAttachmentParentWritable = `((a.page_id IS NOT NULL AND ` + wikiPageRestrictionWritable + `) OR (a.blog_post_id IS NOT NULL AND ` + wikiBlogPostAuthorWritable + `))`
+
+var wikiAttachmentWritable = `(` + wikiSpaceVisible + `) AND (` + wikiSpaceCanUpdateAttachment + `) AND (` + wikiAttachmentParentWritable + `)`
 
 func scanWikiAttachment(row pgx.Row) (*models.WikiAttachment, error) {
 	a := &models.WikiAttachment{}
@@ -33,6 +36,18 @@ func wikiAttachmentAction(ctx context.Context, tx pgx.Tx, ws, actor string, a *m
 
 func (s *Store) WikiAttachment(ctx context.Context, ws, user, id string) (*models.WikiAttachment, error) {
 	return scanWikiAttachment(s.Pool.QueryRow(ctx, wikiAttachmentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiAttachmentVisible+` AND a.id::text=$3`, ws, user, id))
+}
+
+func (s *Store) CanUpdateWikiAttachment(ctx context.Context, ws, user, id string) (bool, error) {
+	var allowed bool
+	err := s.Pool.QueryRow(ctx, `SELECT EXISTS(`+wikiAttachmentSelect+` WHERE s.workspace_id=$1 AND `+wikiAttachmentVisible+` AND `+wikiAttachmentWritable+` AND a.id::text=$3)`, ws, user, id).Scan(&allowed)
+	return allowed, err
+}
+
+func (s *Store) CanDeleteWikiAttachment(ctx context.Context, ws, user, id string) (bool, error) {
+	var allowed bool
+	err := s.Pool.QueryRow(ctx, `SELECT EXISTS(`+wikiAttachmentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiSpaceCanDeleteAttachment+` AND `+wikiAttachmentVisible+` AND `+wikiAttachmentParentWritable+` AND a.id::text=$3)`, ws, user, id).Scan(&allowed)
+	return allowed, err
 }
 
 func (s *Store) WikiAttachmentByFilename(ctx context.Context, ws, user, pageID, filename string) (*models.WikiAttachment, error) {
@@ -86,8 +101,12 @@ func (s *Store) SaveWikiAttachment(ctx context.Context, ws, actor, pageID, attac
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	attachmentPermission := wikiSpaceCanCreateAttachment
+	if attachmentID != "" {
+		attachmentPermission = wikiSpaceCanUpdateAttachment
+	}
 	var spaceID string
-	if err = tx.QueryRow(ctx, `SELECT p.space_id::text FROM wiki_pages p JOIN wiki_spaces s ON s.id=p.space_id WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND `+wikiPageWritable+` AND p.id::text=$3 AND p.status='current' FOR SHARE OF p`, ws, actor, pageID).Scan(&spaceID); err != nil {
+	if err = tx.QueryRow(ctx, `SELECT p.space_id::text FROM wiki_pages p JOIN wiki_spaces s ON s.id=p.space_id WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+attachmentPermission+` AND `+wikiPageVisible+` AND `+wikiPageRestrictionWritable+` AND p.id::text=$3 AND p.status='current' FOR SHARE OF p`, ws, actor, pageID).Scan(&spaceID); err != nil {
 		return nil, err
 	}
 	version := 1
@@ -124,8 +143,12 @@ func (s *Store) SaveWikiBlogAttachment(ctx context.Context, ws, actor, blogPostI
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	attachmentPermission := wikiSpaceCanCreateAttachment
+	if attachmentID != "" {
+		attachmentPermission = wikiSpaceCanUpdateAttachment
+	}
 	var spaceID string
-	if err = tx.QueryRow(ctx, `SELECT b.space_id::text FROM wiki_blog_posts b JOIN wiki_spaces s ON s.id=b.space_id WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiBlogPostVisible+` AND `+wikiBlogPostWritable+` AND b.id::text=$3 AND b.status='current' FOR SHARE OF b`, ws, actor, blogPostID).Scan(&spaceID); err != nil {
+	if err = tx.QueryRow(ctx, `SELECT b.space_id::text FROM wiki_blog_posts b JOIN wiki_spaces s ON s.id=b.space_id WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+attachmentPermission+` AND `+wikiBlogPostVisible+` AND `+wikiBlogPostAuthorWritable+` AND b.id::text=$3 AND b.status='current' FOR SHARE OF b`, ws, actor, blogPostID).Scan(&spaceID); err != nil {
 		return nil, err
 	}
 	version := 1
@@ -162,7 +185,7 @@ func (s *Store) UpdateWikiAttachmentProperties(ctx context.Context, ws, actor, p
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	old, err := scanWikiAttachment(tx.QueryRow(ctx, wikiAttachmentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND `+wikiPageWritable+` AND a.page_id::text=$3 AND a.id::text=$4 FOR UPDATE OF a`, ws, actor, pageID, id))
+	old, err := scanWikiAttachment(tx.QueryRow(ctx, wikiAttachmentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiSpaceCanUpdateAttachment+` AND `+wikiPageVisible+` AND `+wikiPageRestrictionWritable+` AND a.page_id::text=$3 AND a.id::text=$4 FOR UPDATE OF a`, ws, actor, pageID, id))
 	if err != nil {
 		return nil, err
 	}
@@ -255,7 +278,7 @@ func (s *Store) DeleteWikiAttachment(ctx context.Context, ws, actor, id string) 
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	a, err := scanWikiAttachment(tx.QueryRow(ctx, wikiAttachmentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiAttachmentVisible+` AND `+wikiAttachmentWritable+` AND a.id::text=$3 FOR UPDATE OF a`, ws, actor, id))
+	a, err := scanWikiAttachment(tx.QueryRow(ctx, wikiAttachmentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiSpaceCanDeleteAttachment+` AND `+wikiAttachmentVisible+` AND `+wikiAttachmentParentWritable+` AND a.id::text=$3 FOR UPDATE OF a`, ws, actor, id))
 	if err != nil {
 		return nil, err
 	}

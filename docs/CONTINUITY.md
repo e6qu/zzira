@@ -1899,10 +1899,32 @@ Validation after Confluence role-aware runtime reads:
   database, vet, WASM build, seven conformance tests, inventory check and diff
   validation pass.
 
+Validation after granular Confluence space-role authorization:
+
+- The central role evaluator now resolves each built-in or custom permission
+  for direct users, directory groups and access classes. `administer/space`
+  implies every content permission, while spaces without stored assignments
+  retain the established behavior.
+- Page, blog post, footer/inline comment, attachment, folder, Smart Link,
+  database and whiteboard reads and mutations enforce their corresponding
+  read/create/update/delete permission as well as existing private-content and
+  page-restriction rules. Classification and app-property writes use the same
+  update permission as their parent content.
+- Built-in administrator/member/viewer roles now describe the complete
+  permission bundles they enforce. Page, blog, attachment and hierarchical
+  content operation discovery independently reports update and delete access.
+- PostgreSQL integration proves a page editor can create and update pages while
+  being denied deletion, blogs, folders and comments; a viewer can read the
+  same page while every write operation remains hidden and rejected.
+- The focused PostgreSQL journey, full Go suite, vet, WASM build, seven
+  conformance tests, pinned inventory check and diff validation pass. Exact API
+  coverage remains 427 of 1,207 operations and Confluence coverage remains 213
+  of 348 because this checkpoint hardens existing operations.
+
 ## Current change
 
-1. Enforce granular Confluence role permissions on create, update and delete
-   paths, then resume remaining space-permission transition operations.
+1. Complete Confluence space-administration role transitions and direct
+   user/group assignment management in the space UI.
 2. Continue Service Management with dependency mapping, major-incident
    communications, change-conflict calendars and escalation policy.
 3. Expand the app runtime from registered custom-content discovery into signed

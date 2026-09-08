@@ -9,8 +9,18 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const wikiContentVisible = `(` + wikiSpaceVisible + `) AND (NOT c.private OR c.author_id=$2) AND (c.root_page_id IS NULL OR (p.status='current' AND ` + wikiPageVisible + `))`
-const wikiContentWritable = `(` + wikiSpaceVisible + `) AND (NOT c.private OR c.author_id=$2) AND (c.root_page_id IS NULL OR (p.status='current' AND ` + wikiPageVisible + ` AND ` + wikiPageWritable + `))`
+var wikiContentRestrictionVisible = `(NOT c.private OR c.author_id=$2) AND (c.root_page_id IS NULL OR (p.status='current' AND ` + wikiPageVisible + `))`
+
+var wikiContentRestrictionWritable = `(NOT c.private OR c.author_id=$2) AND (c.root_page_id IS NULL OR (p.status='current' AND ` + wikiPageVisible + ` AND ` + wikiPageRestrictionWritable + `))`
+
+func wikiContentVisibleFor(contentType string) string {
+	return `(` + wikiSpaceVisible + `) AND (` + wikiSpacePermissionAllowed("read/"+contentType) + `) AND (` + wikiContentRestrictionVisible + `)`
+}
+
+func wikiContentWritableFor(contentType string) string {
+	return `(` + wikiSpaceVisible + `) AND (` + wikiSpacePermissionAllowed("update/"+contentType) + `) AND (` + wikiContentRestrictionWritable + `)`
+}
+
 const wikiContentSelect = `SELECT c.id::text,c.type,c.status,c.title,
   COALESCE(c.parent_content_id::text,c.parent_page_id::text,''),
   CASE WHEN c.parent_content_id IS NOT NULL THEN parent.type WHEN c.parent_page_id IS NOT NULL THEN 'page' ELSE '' END,
@@ -36,7 +46,7 @@ func scanWikiContent(row pgx.Row) (*models.WikiContent, error) {
 }
 
 func (s *Store) WikiContent(ctx context.Context, ws, user, id, contentType string) (*models.WikiContent, error) {
-	return scanWikiContent(s.Pool.QueryRow(ctx, wikiContentSelect+` WHERE s.workspace_id=$1 AND `+wikiContentVisible+` AND c.id::text=$3 AND c.type=$4 AND c.status='current'`, ws, user, id, contentType))
+	return scanWikiContent(s.Pool.QueryRow(ctx, wikiContentSelect+` WHERE s.workspace_id=$1 AND `+wikiContentVisibleFor(contentType)+` AND c.id::text=$3 AND c.type=$4 AND c.status='current'`, ws, user, id, contentType))
 }
 
 func (s *Store) CanUpdateWikiContent(ctx context.Context, ws, user, id, contentType string) (bool, error) {
@@ -44,12 +54,21 @@ func (s *Store) CanUpdateWikiContent(ctx context.Context, ws, user, id, contentT
 		return false, err
 	}
 	var allowed bool
-	err := s.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM wiki_content c JOIN wiki_spaces s ON s.id=c.space_id LEFT JOIN wiki_pages p ON p.id=c.root_page_id WHERE s.workspace_id=$1 AND `+wikiContentWritable+` AND c.id::text=$3 AND c.type=$4 AND c.status='current')`, ws, user, id, contentType).Scan(&allowed)
+	err := s.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM wiki_content c JOIN wiki_spaces s ON s.id=c.space_id LEFT JOIN wiki_pages p ON p.id=c.root_page_id WHERE s.workspace_id=$1 AND `+wikiContentWritableFor(contentType)+` AND c.id::text=$3 AND c.type=$4 AND c.status='current')`, ws, user, id, contentType).Scan(&allowed)
+	return allowed, err
+}
+
+func (s *Store) CanDeleteWikiContent(ctx context.Context, ws, user, id, contentType string) (bool, error) {
+	if _, err := s.WikiContent(ctx, ws, user, id, contentType); err != nil {
+		return false, err
+	}
+	var allowed bool
+	err := s.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM wiki_content c JOIN wiki_spaces s ON s.id=c.space_id LEFT JOIN wiki_pages p ON p.id=c.root_page_id WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiSpacePermissionAllowed("delete/"+contentType)+` AND `+wikiContentRestrictionWritable+` AND c.id::text=$3 AND c.type=$4 AND c.status='current')`, ws, user, id, contentType).Scan(&allowed)
 	return allowed, err
 }
 
 func (s *Store) WikiContents(ctx context.Context, ws, user, spaceID, contentType string) ([]*models.WikiContent, error) {
-	rows, err := s.Pool.Query(ctx, wikiContentSelect+` WHERE s.workspace_id=$1 AND `+wikiContentVisible+` AND c.space_id::text=$3 AND c.type=$4 AND c.status='current' ORDER BY c.id`, ws, user, spaceID, contentType)
+	rows, err := s.Pool.Query(ctx, wikiContentSelect+` WHERE s.workspace_id=$1 AND `+wikiContentVisibleFor(contentType)+` AND c.space_id::text=$3 AND c.type=$4 AND c.status='current' ORDER BY c.id`, ws, user, spaceID, contentType)
 	if err != nil {
 		return nil, err
 	}
@@ -72,13 +91,14 @@ func (s *Store) CreateWikiContent(ctx context.Context, ws, actor string, input m
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	var spaceID string
-	if err = tx.QueryRow(ctx, `SELECT s.id::text FROM wiki_spaces s WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND s.id::text=$3 FOR SHARE OF s`, ws, actor, input.SpaceID).Scan(&spaceID); err != nil {
+	createPermission := wikiSpacePermissionAllowed("create/" + input.Type)
+	if err = tx.QueryRow(ctx, `SELECT s.id::text FROM wiki_spaces s WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+createPermission+` AND s.id::text=$3 FOR SHARE OF s`, ws, actor, input.SpaceID).Scan(&spaceID); err != nil {
 		return nil, err
 	}
 	var parentPage, parentContent, rootPage any
 	if input.ParentID != "" {
 		var pageID string
-		pageErr := tx.QueryRow(ctx, `SELECT p.id::text FROM wiki_pages p JOIN wiki_spaces s ON s.id=p.space_id WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND `+wikiPageWritable+` AND p.id::text=$3 AND p.space_id::text=$4 AND p.status='current' FOR SHARE OF p`, ws, actor, input.ParentID, spaceID).Scan(&pageID)
+		pageErr := tx.QueryRow(ctx, `SELECT p.id::text FROM wiki_pages p JOIN wiki_spaces s ON s.id=p.space_id WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+createPermission+` AND `+wikiPageVisible+` AND `+wikiPageRestrictionWritable+` AND p.id::text=$3 AND p.space_id::text=$4 AND p.status='current' FOR SHARE OF p`, ws, actor, input.ParentID, spaceID).Scan(&pageID)
 		if pageErr == nil {
 			parentPage, rootPage, input.ParentType = pageID, pageID, "page"
 		} else if pageErr != pgx.ErrNoRows {
@@ -86,7 +106,7 @@ func (s *Store) CreateWikiContent(ctx context.Context, ws, actor string, input m
 		} else {
 			var parentID, parentType, parentRoot string
 			var parentPrivate bool
-			contentErr := tx.QueryRow(ctx, `SELECT c.id::text,c.type,COALESCE(c.root_page_id::text,''),c.private FROM wiki_content c JOIN wiki_spaces s ON s.id=c.space_id LEFT JOIN wiki_pages p ON p.id=c.root_page_id WHERE s.workspace_id=$1 AND `+wikiContentWritable+` AND c.id::text=$3 AND c.space_id::text=$4 AND c.status='current' FOR SHARE OF c`, ws, actor, input.ParentID, spaceID).Scan(&parentID, &parentType, &parentRoot, &parentPrivate)
+			contentErr := tx.QueryRow(ctx, `SELECT c.id::text,c.type,COALESCE(c.root_page_id::text,''),c.private FROM wiki_content c JOIN wiki_spaces s ON s.id=c.space_id LEFT JOIN wiki_pages p ON p.id=c.root_page_id WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+createPermission+` AND `+wikiContentRestrictionWritable+` AND c.id::text=$3 AND c.space_id::text=$4 AND c.status='current' FOR SHARE OF c`, ws, actor, input.ParentID, spaceID).Scan(&parentID, &parentType, &parentRoot, &parentPrivate)
 			if contentErr != nil {
 				return nil, fmt.Errorf("%w: choose visible parent content from this space", ErrWikiValidation)
 			}
@@ -123,7 +143,7 @@ func (s *Store) DeleteWikiContent(ctx context.Context, ws, actor, id, contentTyp
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	content, err := scanWikiContent(tx.QueryRow(ctx, wikiContentSelect+` WHERE s.workspace_id=$1 AND `+wikiContentWritable+` AND c.id::text=$3 AND c.type=$4 AND c.status='current' FOR UPDATE OF c`, ws, actor, id, contentType))
+	content, err := scanWikiContent(tx.QueryRow(ctx, wikiContentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiSpacePermissionAllowed("delete/"+contentType)+` AND `+wikiContentRestrictionWritable+` AND c.id::text=$3 AND c.type=$4 AND c.status='current' FOR UPDATE OF c`, ws, actor, id, contentType))
 	if err != nil {
 		return err
 	}
@@ -205,7 +225,7 @@ func (s *Store) WikiContentDescendants(ctx context.Context, ws, user, id, conten
     SELECT child.id,1 FROM wiki_content child WHERE child.parent_content_id::text=$3 AND child.status='current'
     UNION ALL SELECT child.id,h.depth+1 FROM wiki_content child JOIN hierarchy h ON child.parent_content_id=h.id WHERE h.depth<$4 AND child.status='current'
   ) `+wikiContentSelect+` JOIN hierarchy h ON h.id=c.id
-  WHERE s.workspace_id=$1 AND `+wikiContentVisible+` AND c.status='current' ORDER BY h.depth,c.parent_content_id,c.id`, ws, user, id, maxDepth)
+  WHERE s.workspace_id=$1 AND `+wikiContentVisibleFor(contentType)+` AND c.status='current' ORDER BY h.depth,c.parent_content_id,c.id`, ws, user, id, maxDepth)
 	if err != nil {
 		return nil, err
 	}

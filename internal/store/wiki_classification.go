@@ -12,7 +12,7 @@ func (s *Store) SetWikiContentClassification(ctx context.Context, ws, actor, id,
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	content, err := scanWikiContent(tx.QueryRow(ctx, wikiContentSelect+` WHERE s.workspace_id=$1 AND `+wikiContentWritable+` AND c.id::text=$3 AND c.type=$4 AND c.status='current' FOR UPDATE OF c`, ws, actor, id, contentType))
+	content, err := scanWikiContent(tx.QueryRow(ctx, wikiContentSelect+` WHERE s.workspace_id=$1 AND `+wikiContentWritableFor(contentType)+` AND c.id::text=$3 AND c.type=$4 AND c.status='current' FOR UPDATE OF c`, ws, actor, id, contentType))
 	if err != nil {
 		return nil, err
 	}
