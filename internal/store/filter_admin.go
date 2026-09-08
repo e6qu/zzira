@@ -96,20 +96,23 @@ const filterAccess = `(
 	)
 )`
 
-const filterSelect = `
+var filterWritable = `COALESCE(` + strings.Replace(filterAccess,
+	"WHERE fp.filter_id=f.id AND (", "WHERE fp.filter_id=f.id AND fp.rights=2 AND (", 1) + `,FALSE)`
+
+var filterSelect = `
 SELECT f.id,f.name,COALESCE(f.jql,''),COALESCE(f.description,''),
        COALESCE(f.owner_id,''),COALESCE(u.display_name,''),
        EXISTS(SELECT 1 FROM filter_favourites ff WHERE ff.filter_id=f.id AND ff.user_id=$2),
        (SELECT count(*) FROM filter_favourites ff WHERE ff.filter_id=f.id),
        COALESCE(to_char(f.approximate_last_used AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
-       COALESCE(f.columns,'{}'::TEXT[])
+       COALESCE(f.columns,'{}'::TEXT[]),` + filterWritable + `
 FROM filters f LEFT JOIN users u ON u.id=f.owner_id
 WHERE f.workspace_id=$1`
 
 func scanFilter(row pgx.Row) (*models.Filter, error) {
 	f := &models.Filter{}
 	err := row.Scan(&f.ID, &f.Name, &f.JQL, &f.Description, &f.OwnerID, &f.OwnerName,
-		&f.Favourite, &f.FavouritedCount, &f.ApproximateLastUsed, &f.Columns)
+		&f.Favourite, &f.FavouritedCount, &f.ApproximateLastUsed, &f.Columns, &f.Writable)
 	return f, err
 }
 
@@ -225,6 +228,36 @@ func (s *Store) Filters(ctx context.Context, workspaceID, userID string, search 
 
 func (s *Store) ListFilters(ctx context.Context, workspaceID, userID string) ([]*models.Filter, error) {
 	return s.Filters(ctx, workspaceID, userID, FilterSearch{OrderBy: "favourite"})
+}
+
+// GroupsForWorkspace returns active directory groups that can be selected as a
+// saved-filter share target. Membership expansion remains in the access query.
+func (s *Store) GroupsForWorkspace(ctx context.Context, workspaceID string) ([]*models.Group, error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT g.id::TEXT,g.directory_id::TEXT,g.name,g.description,
+		       to_char(g.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+		       to_char(g.updated_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+		       (SELECT count(*) FROM group_members gm WHERE gm.group_id=g.id)
+		FROM groups g
+		JOIN directories d ON d.id=g.directory_id AND d.active
+		WHERE EXISTS (
+			SELECT 1 FROM sites s
+			WHERE s.organization_id=d.organization_id AND s.workspace_id=$1)
+		ORDER BY g.name,g.id`, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	groups := []*models.Group{}
+	for rows.Next() {
+		group := &models.Group{}
+		if err := rows.Scan(&group.ID, &group.DirectoryID, &group.Name, &group.Description,
+			&group.CreatedAt, &group.UpdatedAt, &group.MemberCount); err != nil {
+			return nil, err
+		}
+		groups = append(groups, group)
+	}
+	return groups, rows.Err()
 }
 
 func filterHasGroup(filter *models.Filter, id, name string) bool {
@@ -390,44 +423,10 @@ func (s *Store) UpdateManagedFilter(ctx context.Context, workspaceID, userID, id
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	var owner string
-	if err = tx.QueryRow(ctx, `SELECT owner_id FROM filters WHERE id=$1 AND workspace_id=$2 FOR UPDATE`, id, workspaceID).Scan(&owner); err != nil {
+	var writable bool
+	if err = tx.QueryRow(ctx, `SELECT owner_id,`+filterWritable+` FROM filters f WHERE f.workspace_id=$1 AND f.id=$3 FOR UPDATE`,
+		workspaceID, userID, id).Scan(&owner, &writable); err != nil {
 		return nil, err
-	}
-	writable := owner == userID
-	if !writable {
-		if err = tx.QueryRow(ctx, `
-			SELECT EXISTS(
-				SELECT 1 FROM filters f
-				JOIN filter_share_permissions fp ON fp.filter_id=f.id AND fp.rights=2
-				WHERE f.id=$3 AND f.workspace_id=$1 AND (
-					fp.permission_type IN ('global','authenticated')
-					OR (fp.permission_type='user' AND fp.account_id=$2)
-					OR (fp.permission_type='group' AND EXISTS(
-						SELECT 1 FROM group_members gm
-						JOIN groups g ON g.id=gm.group_id
-						JOIN directories d ON d.id=g.directory_id
-						JOIN sites si ON si.organization_id=d.organization_id
-						WHERE gm.group_id=fp.group_id AND gm.user_id=$2
-						  AND si.workspace_id=f.workspace_id AND d.active))
-					OR (fp.permission_type='project' AND EXISTS(
-						SELECT 1 FROM projects p WHERE p.id=fp.project_id AND p.workspace_id=$1))
-					OR (fp.permission_type='projectRole' AND (
-						fp.project_role_id='10001'
-						OR fp.project_role_id='10000' AND EXISTS(
-							SELECT 1 FROM memberships m WHERE m.workspace_id=$1 AND m.user_id=$2 AND m.role='admin')
-						OR EXISTS(SELECT 1 FROM role_bindings rb WHERE rb.scope_type='project'
-							AND rb.scope_id=fp.project_id AND rb.role_key=fp.project_role_id
-							AND (rb.principal_type='user' AND rb.principal_id=$2
-							  OR rb.principal_type='group' AND EXISTS(
-								SELECT 1 FROM group_members gm
-								JOIN groups g ON g.id=gm.group_id
-								JOIN directories d ON d.id=g.directory_id
-								WHERE gm.group_id::TEXT=rb.principal_id AND gm.user_id=$2 AND d.active))
-					)))
-				)
-			)`, workspaceID, userID, id).Scan(&writable); err != nil {
-			return nil, err
-		}
 	}
 	if !writable {
 		return nil, ErrFilterPermission

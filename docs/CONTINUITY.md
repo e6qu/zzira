@@ -10,12 +10,12 @@ boundaries, dependencies, and acceptance gates belong in
 ## Active delivery
 
 - Branch: `feat/jira-platform-admin-completion`
-- Base: `origin/main` after merged PR #68
+- Base: `origin/main` after merged PR #62 and PR #68
 - Delivery unit: PR 1 — Jira Platform and administration completion
 - Pull request: not opened yet
 - State: implementation in progress
-- Current checkpoint: saved-filter API and permission model implemented; browser
-  management journey next
+- Current checkpoint: saved-filter API, permission model, and browser management
+  journey implemented and tested; JQL/search completion next
 - Blockers: none
 
 ## Contract baseline
@@ -30,18 +30,16 @@ exercise it, authorization, audit, durable background work, and ledger updates.
 
 ## Current checkpoint
 
-The saved-filter implementation currently has basic create, read, update,
-delete, and per-user favorite behavior. The pinned Jira contract contains 19
-filter and sharing operations. This checkpoint will add:
+The 19 pinned Jira filter operations now have reviewed partial evidence. The
+shared model covers permission-filtered collections, view/edit shares,
+favorites, columns, ownership, default scope, audit, and subscription schema.
+The browser directory completes the owner and site-administrator management
+journey and is connected to REST-created filters by Playwright.
 
-- visible-filter permission evaluation and paginated filter search;
-- exact favorite and owned-filter collections;
-- private, authenticated, global, user, group, project, and project-role shares;
-- filter-specific navigator columns and ownership transfer;
-- default share scope and durable filter subscriptions;
-- validation, audit records, API tests, and the browser management journey; and
-- the JQL grammar and evaluation needed by filters, subscriptions, queues,
-  automation, and later analytics work.
+The next checkpoint expands JQL grammar and evaluation shared by issue search,
+saved filters, subscriptions, service queues, automation, and later analytics.
+It must preserve deterministic ordering and enforce issue visibility before
+pagination or serialization.
 
 ## Validation baseline
 
@@ -55,10 +53,11 @@ also run the PostgreSQL integration suite from an empty migrated database.
 
 ## Resume here
 
-1. Add the saved-filter user and administrator browser journeys.
-2. Expand JQL grammar, functions, history predicates, and deterministic paging.
-3. Update the compatibility and persona ledgers with browser evidence.
-4. Continue into bulk work-item and project administration slices.
+1. Expand JQL grammar, functions, history predicates, and deterministic paging.
+2. Add filter-subscription scheduling and delivery after shared scheduled-work
+   primitives are ready.
+3. Continue into bulk work-item and project administration slices.
+4. Update compatibility and persona evidence with each tested behavior.
 5. Commit each independently buildable checkpoint and keep this handoff current.
 
 ## Evidence map

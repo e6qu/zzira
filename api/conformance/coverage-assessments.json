@@ -5678,6 +5678,7 @@
       "status": "partial",
       "evidence": [
         "internal/api3/api3_filters_test.go",
+        "e2e/filters.spec.ts",
         "docs/FILTERS.md"
       ],
       "notes": "Atomic creation, default/private sharing, JQL validation, favorites and audited ownership are integration-tested; the final exact assessment waits for PR 1 JQL certification."
@@ -5687,6 +5688,7 @@
       "status": "partial",
       "evidence": [
         "internal/api3/api3_filters_test.go",
+        "e2e/filters.spec.ts",
         "docs/FILTERS.md"
       ],
       "notes": "Per-user private/authenticated defaults and Jira GLOBAL normalization are persisted and integration-tested; cross-product dashboard default coupling remains."
@@ -5696,6 +5698,7 @@
       "status": "partial",
       "evidence": [
         "internal/api3/api3_filters_test.go",
+        "e2e/filters.spec.ts",
         "docs/FILTERS.md"
       ],
       "notes": "Per-user private/authenticated defaults and Jira GLOBAL normalization are persisted and integration-tested; cross-product dashboard default coupling remains."
@@ -5705,6 +5708,7 @@
       "status": "partial",
       "evidence": [
         "internal/api3/api3_filters_test.go",
+        "e2e/filters.spec.ts",
         "docs/FILTERS.md"
       ],
       "notes": "Per-user favorites require filter visibility and return durable favorite counts through the Jira HTTP methods; final expansion certification remains."
@@ -5714,6 +5718,7 @@
       "status": "partial",
       "evidence": [
         "internal/api3/api3_filters_test.go",
+        "e2e/filters.spec.ts",
         "docs/FILTERS.md"
       ],
       "notes": "Owned filters and the includeFavourites union are visibility-filtered and integration-tested; final expansion certification remains."
@@ -5723,6 +5728,7 @@
       "status": "partial",
       "evidence": [
         "internal/api3/api3_filters_test.go",
+        "e2e/filters.spec.ts",
         "docs/FILTERS.md"
       ],
       "notes": "Visibility filtering, documented owner/share/name/ID options, ordering and offset pagination are integration-tested; the final exact assessment waits for PR 1 search cursor and expansion certification."
@@ -5732,6 +5738,7 @@
       "status": "partial",
       "evidence": [
         "internal/api3/api3_filters_test.go",
+        "e2e/filters.spec.ts",
         "docs/FILTERS.md"
       ],
       "notes": "Visibility-filtered lifecycle behavior and Jira-shaped FilterBean responses are integration-tested; exact expansion and JQL certification remain."
@@ -5741,6 +5748,7 @@
       "status": "partial",
       "evidence": [
         "internal/api3/api3_filters_test.go",
+        "e2e/filters.spec.ts",
         "docs/FILTERS.md"
       ],
       "notes": "Visibility-filtered lifecycle behavior and Jira-shaped FilterBean responses are integration-tested; exact expansion and JQL certification remain."
@@ -5750,6 +5758,7 @@
       "status": "partial",
       "evidence": [
         "internal/api3/api3_filters_test.go",
+        "e2e/filters.spec.ts",
         "docs/FILTERS.md"
       ],
       "notes": "Visibility-filtered lifecycle behavior and Jira-shaped FilterBean responses are integration-tested; exact expansion and JQL certification remain."
@@ -5759,6 +5768,7 @@
       "status": "partial",
       "evidence": [
         "internal/api3/api3_filters_test.go",
+        "e2e/filters.spec.ts",
         "docs/FILTERS.md"
       ],
       "notes": "Owner-managed filter columns, visibility-filtered reads, validation and reset behavior are integration-tested; exact custom-field navigability certification remains."
@@ -5768,6 +5778,7 @@
       "status": "partial",
       "evidence": [
         "internal/api3/api3_filters_test.go",
+        "e2e/filters.spec.ts",
         "docs/FILTERS.md"
       ],
       "notes": "Owner-managed filter columns, visibility-filtered reads, validation and reset behavior are integration-tested; exact custom-field navigability certification remains."
@@ -5777,6 +5788,7 @@
       "status": "partial",
       "evidence": [
         "internal/api3/api3_filters_test.go",
+        "e2e/filters.spec.ts",
         "docs/FILTERS.md"
       ],
       "notes": "Owner-managed filter columns, visibility-filtered reads, validation and reset behavior are integration-tested; exact custom-field navigability certification remains."
@@ -5786,6 +5798,7 @@
       "status": "partial",
       "evidence": [
         "internal/api3/api3_filters_test.go",
+        "e2e/filters.spec.ts",
         "docs/FILTERS.md"
       ],
       "notes": "Per-user favorites require filter visibility and return durable favorite counts through the Jira HTTP methods; final expansion certification remains."
@@ -5795,6 +5808,7 @@
       "status": "partial",
       "evidence": [
         "internal/api3/api3_filters_test.go",
+        "e2e/filters.spec.ts",
         "docs/FILTERS.md"
       ],
       "notes": "Per-user favorites require filter visibility and return durable favorite counts through the Jira HTTP methods; final expansion certification remains."
@@ -5804,6 +5818,7 @@
       "status": "partial",
       "evidence": [
         "internal/api3/api3_filters_test.go",
+        "e2e/filters.spec.ts",
         "docs/FILTERS.md"
       ],
       "notes": "Owner/admin transfer validates workspace membership and case-insensitive name conflicts with audit evidence; exact global-admin edge behavior remains."
@@ -5813,6 +5828,7 @@
       "status": "partial",
       "evidence": [
         "internal/api3/api3_filters_test.go",
+        "e2e/filters.spec.ts",
         "docs/FILTERS.md"
       ],
       "notes": "Stable view/edit share permissions and owner-scoped mutation across user, group, project, project-role and authenticated scopes are integration-tested; exact edge-error certification remains."
@@ -5822,6 +5838,7 @@
       "status": "partial",
       "evidence": [
         "internal/api3/api3_filters_test.go",
+        "e2e/filters.spec.ts",
         "docs/FILTERS.md"
       ],
       "notes": "Stable view/edit share permissions and owner-scoped mutation across user, group, project, project-role and authenticated scopes are integration-tested; exact edge-error certification remains."
@@ -5831,6 +5848,7 @@
       "status": "partial",
       "evidence": [
         "internal/api3/api3_filters_test.go",
+        "e2e/filters.spec.ts",
         "docs/FILTERS.md"
       ],
       "notes": "Stable view/edit share permissions and owner-scoped mutation across user, group, project, project-role and authenticated scopes are integration-tested; exact edge-error certification remains."
@@ -5840,6 +5858,7 @@
       "status": "partial",
       "evidence": [
         "internal/api3/api3_filters_test.go",
+        "e2e/filters.spec.ts",
         "docs/FILTERS.md"
       ],
       "notes": "Stable view/edit share permissions and owner-scoped mutation across user, group, project, project-role and authenticated scopes are integration-tested; exact edge-error certification remains."

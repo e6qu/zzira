@@ -38,10 +38,25 @@ Filter creation, updates, deletion, share changes, and owner transfer write
 organization audit events without storing the filter's JQL in the audit detail.
 Filter names are unique per owner within a workspace.
 
+## Browser journey
+
+The **Saved filters** workspace destination presents visible filters with their
+JQL, owner, favorite count, and separate view/edit access lanes. Owners can
+edit details and JQL, choose issue-navigator columns, add or remove workspace,
+person, directory-group, project, and project-role access, transfer ownership,
+and delete a filter. Site administrators can inspect private filters and
+recover ownership when an owner leaves. Each user can also choose whether new
+filters start private or visible to everyone signed in.
+
+`e2e/filters.spec.ts` proves the connected REST-to-browser journey: create a
+private filter through Jira REST, find and favorite it in the browser, update
+its details and columns, share it, transfer it as an administrator, and delete
+it after transferring it back.
+
 ## Current limits
 
-The contract operations are assessed as partial until the broader PR 1 JQL and
-search work completes. Filter subscriptions have durable schema groundwork but
+The contract operations remain partial until the broader PR 1 JQL and search
+work completes. Filter subscriptions have durable schema groundwork but
 their schedule editor, recipient expansion, delivery worker, and FilterBean
 subscription expansion belong to the shared scheduled-delivery work. Anonymous
 global-filter access remains outside the authenticated Jira REST handler.

@@ -1,0 +1,156 @@
+{{define "page_saved_filters"}}
+<!doctype html>
+<html lang="en">
+<head>{{template "head" .}}<title>Saved filters · ZZIRA</title></head>
+<body>
+{{template "header" .}}
+<div class="app-shell">
+{{template "workspace_nav" .}}
+<main class="saved-filters-page" id="main-content">
+  <nav class="issue-breadcrumbs" aria-label="Breadcrumb"><span>Work</span><span aria-hidden="true">/</span><span aria-current="page">Saved filters</span></nav>
+  <header class="filter-page-header">
+    <div>
+      <span class="eyebrow">Issue navigator</span>
+      <h1>Saved filters</h1>
+      <p>Keep useful searches close, choose who can see them, and control the columns people open with.</p>
+    </div>
+    <a class="btn btn-primary" href="{{with .Navigation}}{{with .Current}}{{.WorkURL}}{{else}}/projects{{end}}{{else}}/projects{{end}}">Create from a search</a>
+  </header>
+
+  {{if .Data.Notice}}<p class="filter-flash filter-flash-success" role="status">{{.Data.Notice}}</p>{{end}}
+  {{if .Data.Error}}<p class="filter-flash filter-flash-error" role="alert">{{.Data.Error}}</p>{{end}}
+
+  <section class="filter-default-scope surface-card" aria-labelledby="filter-default-title">
+    <div>
+      <span class="filter-scope-mark" aria-hidden="true">↗</span>
+      <div><h2 id="filter-default-title">New filter access</h2><p>Choose the starting access for filters you save from the issue navigator.</p></div>
+    </div>
+    <form method="post" action="/filters/default-scope">
+      <label for="filter-default-scope">Default sharing</label>
+      <select id="filter-default-scope" name="scope">
+        <option value="PRIVATE" {{if eq .Data.DefaultScope "PRIVATE"}}selected{{end}}>Private</option>
+        <option value="AUTHENTICATED" {{if eq .Data.DefaultScope "AUTHENTICATED"}}selected{{end}}>Everyone signed in</option>
+      </select>
+      <button class="btn" type="submit">Save default</button>
+    </form>
+  </section>
+
+  <div class="filter-directory-heading">
+    <div><h2>Your filter directory</h2><p>{{len .Data.Rows}} visible filter{{if ne (len .Data.Rows) 1}}s{{end}}{{if .Data.CanAdmin}} · includes private filters for administration{{end}}</p></div>
+    <div class="filter-access-legend" aria-label="Access legend"><span class="filter-access-dot view"></span>View <span class="filter-access-dot edit"></span>Edit</div>
+  </div>
+
+  <div class="saved-filter-list">
+  {{range .Data.Rows}}{{$row := .}}
+    <article class="saved-filter-card" id="filter-{{.Filter.ID}}">
+      <header>
+        <div class="filter-title-block">
+          <span class="filter-glyph" aria-hidden="true">⌕</span>
+          <div>
+            <h3>{{.Filter.Name}}</h3>
+            <p>{{if .Filter.Description}}{{.Filter.Description}}{{else}}No description{{end}}</p>
+          </div>
+        </div>
+        <div class="filter-primary-actions">
+          <form method="post" action="/filters/{{.Filter.ID}}">
+            <input type="hidden" name="action" value="favorite">
+            <input type="hidden" name="favorite" value="{{if .Filter.Favourite}}false{{else}}true{{end}}">
+            <button class="filter-favorite" type="submit" aria-label="{{if .Filter.Favourite}}Remove {{.Filter.Name}} from favorites{{else}}Add {{.Filter.Name}} to favorites{{end}}" aria-pressed="{{.Filter.Favourite}}"><span aria-hidden="true">{{if .Filter.Favourite}}★{{else}}☆{{end}}</span><span>{{.Filter.FavouritedCount}}</span></button>
+          </form>
+          {{if .OpenURL}}<a class="btn" href="{{.OpenURL}}">Open results</a>{{end}}
+        </div>
+      </header>
+
+      <div class="filter-query-strip"><span>JQL</span><code>{{if .Filter.JQL}}{{.Filter.JQL}}{{else}}All visible work{{end}}</code></div>
+      <div class="filter-owner-line"><span>Owner</span><strong>{{if .Filter.OwnerName}}{{.Filter.OwnerName}}{{else}}ZZIRA system{{end}}</strong>{{if .Owner}}<span class="lozenge lozenge-current">You</span>{{end}}</div>
+
+      <section class="filter-access-rail" aria-label="Access for {{.Filter.Name}}">
+        <div class="filter-access-lane view">
+          <strong>Can view</strong>
+          <div>{{range .ViewPermissions}}<span class="filter-access-chip">{{.Label}}</span>{{else}}<span class="filter-access-empty">Owner only</span>{{end}}</div>
+        </div>
+        <div class="filter-access-lane edit">
+          <strong>Can edit</strong>
+          <div>{{range .EditPermissions}}<span class="filter-access-chip">{{.Label}}</span>{{else}}<span class="filter-access-empty">Owner only</span>{{end}}</div>
+        </div>
+      </section>
+
+      <div class="filter-management">
+        {{if .CanEdit}}
+        <details>
+          <summary class="btn">Edit details</summary>
+          <form class="filter-edit-form" method="post" action="/filters/{{.Filter.ID}}">
+            <input type="hidden" name="action" value="update">
+            <label for="filter-name-{{.Filter.ID}}">Name</label>
+            <input id="filter-name-{{.Filter.ID}}" name="name" value="{{.Filter.Name}}" maxlength="255" required>
+            <label for="filter-description-{{.Filter.ID}}">Description</label>
+            <textarea id="filter-description-{{.Filter.ID}}" name="description" rows="2" maxlength="16384">{{.Filter.Description}}</textarea>
+            <label for="filter-jql-{{.Filter.ID}}">JQL query</label>
+            <textarea id="filter-jql-{{.Filter.ID}}" name="jql" rows="3" maxlength="20000">{{.Filter.JQL}}</textarea>
+            <button class="btn btn-primary" type="submit">Save filter</button>
+          </form>
+        </details>
+        {{end}}
+
+        {{if .Owner}}
+        <details>
+          <summary class="btn">Columns</summary>
+          <form class="filter-columns-form" method="post" action="/filters/{{.Filter.ID}}">
+            <input type="hidden" name="action" value="columns">
+            <fieldset><legend>Columns shown when this filter opens</legend>
+            {{range .Columns}}<label><input type="checkbox" name="column" value="{{.Value}}" {{if .Selected}}checked{{end}}> {{.Label}}</label>{{end}}
+            </fieldset>
+            <p>Clear every selection to return to the navigator defaults.</p>
+            <button class="btn" type="submit">Save columns</button>
+          </form>
+        </details>
+
+        <details>
+          <summary class="btn">Manage access</summary>
+          <div class="filter-share-panel">
+            <div class="filter-permission-list">
+              <h4>Current access</h4>
+              {{range .ViewPermissions}}<form method="post" action="/filters/{{$row.Filter.ID}}"><input type="hidden" name="action" value="remove-share"><input type="hidden" name="permissionId" value="{{.ID}}"><span><i class="filter-access-dot view"></i>{{.Label}} · View</span><button class="icon-danger" type="submit" aria-label="Remove view access for {{.Label}}">×</button></form>{{end}}
+              {{range .EditPermissions}}<form method="post" action="/filters/{{$row.Filter.ID}}"><input type="hidden" name="action" value="remove-share"><input type="hidden" name="permissionId" value="{{.ID}}"><span><i class="filter-access-dot edit"></i>{{.Label}} · Edit</span><button class="icon-danger" type="submit" aria-label="Remove edit access for {{.Label}}">×</button></form>{{end}}
+              {{if and (not .ViewPermissions) (not .EditPermissions)}}<p>Only you can open this filter.</p>{{end}}
+            </div>
+
+            <div class="filter-share-grid">
+              <form method="post" action="/filters/{{.Filter.ID}}"><h4>Workspace access</h4><input type="hidden" name="action" value="share"><input type="hidden" name="shareType" value="authenticated"><label>Access<select name="access"><option value="view">Can view</option><option value="edit">Can edit</option></select></label><button class="btn" type="submit">Share with everyone signed in</button></form>
+              <form method="post" action="/filters/{{.Filter.ID}}"><h4>Person</h4><input type="hidden" name="action" value="share"><input type="hidden" name="shareType" value="user"><label>Person<select name="accountId" required>{{range $.Data.Members}}<option value="{{.ID}}">{{.DisplayName}}</option>{{end}}</select></label><label>Access<select name="access"><option value="view">Can view</option><option value="edit">Can edit</option></select></label><button class="btn" type="submit">Add person</button></form>
+              <form method="post" action="/filters/{{.Filter.ID}}"><h4>Group</h4><input type="hidden" name="action" value="share"><input type="hidden" name="shareType" value="group"><label>Group<select name="groupId" required>{{range $.Data.Groups}}<option value="{{.ID}}">{{.Name}} · {{.MemberCount}} members</option>{{end}}</select></label><label>Access<select name="access"><option value="view">Can view</option><option value="edit">Can edit</option></select></label><button class="btn" type="submit" {{if not $.Data.Groups}}disabled{{end}}>Add group</button></form>
+              <form method="post" action="/filters/{{.Filter.ID}}"><h4>Project</h4><input type="hidden" name="action" value="share"><label>Project<select name="projectId" required>{{range $.Data.Projects}}<option value="{{.ID}}">{{.Name}} ({{.Key}})</option>{{end}}</select></label><label>Scope<select name="shareType"><option value="project">Everyone with project access</option><option value="projectRole">A project role</option></select></label><label>Project role<select name="projectRoleId"><option value="10001">Member</option><option value="10000">Administrator</option></select></label><label>Access<select name="access"><option value="view">Can view</option><option value="edit">Can edit</option></select></label><button class="btn" type="submit" {{if not $.Data.Projects}}disabled{{end}}>Add project access</button></form>
+            </div>
+          </div>
+        </details>
+        {{end}}
+
+        {{if .CanTransfer}}
+        <details>
+          <summary class="btn">Transfer ownership</summary>
+          <form class="filter-owner-form" method="post" action="/filters/{{.Filter.ID}}">
+            <input type="hidden" name="action" value="owner">
+            <label for="filter-owner-{{.Filter.ID}}">New owner</label>
+            <select id="filter-owner-{{.Filter.ID}}" name="accountId" required>{{range $.Data.Members}}<option value="{{.ID}}" {{if eq .ID $row.Filter.OwnerID}}selected{{end}}>{{.DisplayName}}</option>{{end}}</select>
+            <button class="btn" type="submit">Transfer filter</button>
+          </form>
+        </details>
+        {{end}}
+
+        {{if .Owner}}
+        <details class="filter-delete">
+          <summary class="btn">Delete</summary>
+          <form method="post" action="/filters/{{.Filter.ID}}"><input type="hidden" name="action" value="delete"><p>Dashboards that use this filter will need another query.</p><button class="btn btn-danger" type="submit">Delete filter</button></form>
+        </details>
+        {{end}}
+      </div>
+    </article>
+  {{else}}
+    <section class="surface-card empty-state"><strong>No saved filters yet</strong><small>Run a search in the issue navigator, then choose Save search.</small></section>
+  {{end}}
+  </div>
+</main>
+</div>
+</body>
+</html>
+{{end}}

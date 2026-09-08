@@ -23,6 +23,7 @@ type Filter struct {
 	ApproximateLastUsed string                  `json:"-"`
 	Columns             []string                `json:"-"`
 	SharePermissions    []FilterSharePermission `json:"-"`
+	Writable            bool                    `json:"-"`
 }
 
 // FilterSharePermission is the durable Jira filter sharing model. Rights 1

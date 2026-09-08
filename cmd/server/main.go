@@ -430,6 +430,11 @@ func main() {
 	mux.HandleFunc("POST /settings/automation/{uuid}", webHandler.AutomationUpdate)
 	mux.HandleFunc("GET /issues/new", webHandler.CreateDialog)
 	mux.HandleFunc("POST /issues", webHandler.CreateIssue)
+	mux.HandleFunc("GET /filters", webHandler.SavedFilters)
+	mux.HandleFunc("POST /filters/default-scope", webHandler.SavedFilterDefaultScope)
+	mux.HandleFunc("POST /filters/{id}", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.UpdateSavedFilter(w, r, r.PathValue("id"))
+	})
 	mux.HandleFunc("GET /issues/{key}", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.ProjectIssues(w, r, r.PathValue("key"))
 	})
