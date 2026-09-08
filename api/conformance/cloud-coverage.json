@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 427,
+  "assessedTotal": 433,
   "counts": {
     "delivered": 0,
-    "partial": 420,
+    "partial": 426,
     "missing": 7,
-    "unassessed": 780
+    "unassessed": 774
   },
   "countsByFamily": {
     "automation": {
@@ -18,15 +18,15 @@
     },
     "confluence": {
       "delivered": 0,
-      "partial": 213,
+      "partial": 216,
       "missing": 0,
-      "unassessed": 135
+      "unassessed": 132
     },
     "jira-platform": {
       "delivered": 0,
-      "partial": 62,
+      "partial": 65,
       "missing": 0,
-      "unassessed": 555
+      "unassessed": 552
     },
     "jira-service-management": {
       "delivered": 0,
@@ -5193,25 +5193,34 @@
       "operationId": "jira-v3:DELETE:/rest/atlassian-connect/1/app/module/dynamic",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/apps/http_test.go",
+        "docs/APPS.md"
+      ],
+      "notes": "Removal supports repeated moduleKey values and delete-all with durable reinstall semantics."
     },
     {
       "operationId": "jira-v3:GET:/rest/atlassian-connect/1/app/module/dynamic",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/apps/http_test.go",
+        "docs/APPS.md"
+      ],
+      "notes": "JWT-authenticated listing returns original grouped definitions for supported dynamic modules."
     },
     {
       "operationId": "jira-v3:POST:/rest/atlassian-connect/1/app/module/dynamic",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/apps/http_test.go",
+        "docs/APPS.md"
+      ],
+      "notes": "Atomic registration supports validated Jira issue web panels and keyed Jira webhooks; remaining module types are rejected explicitly."
     },
     {
       "operationId": "jira-v3:PUT:/rest/atlassian-connect/1/migration/field",
@@ -8769,25 +8778,34 @@
       "operationId": "confluence-v1:DELETE:/wiki/rest/atlassian-connect/1/app/module/dynamic",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/apps/http_test.go",
+        "docs/APPS.md"
+      ],
+      "notes": "Removal supports repeated moduleKey values and delete-all with durable reinstall semantics."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/atlassian-connect/1/app/module/dynamic",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/apps/http_test.go",
+        "docs/APPS.md"
+      ],
+      "notes": "JWT-authenticated listing returns original grouped definitions for supported dynamic modules."
     },
     {
       "operationId": "confluence-v1:POST:/wiki/rest/atlassian-connect/1/app/module/dynamic",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/apps/http_test.go",
+        "docs/APPS.md"
+      ],
+      "notes": "Atomic registration supports validated Jira issue web panels and keyed Jira webhooks; remaining module types are rejected explicitly."
     },
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/admin-key",

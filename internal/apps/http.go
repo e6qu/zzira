@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/e6qu/zzira/internal/authn"
+	"github.com/e6qu/zzira/internal/jql"
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/secretbox"
 	"github.com/e6qu/zzira/internal/store"
@@ -25,6 +26,7 @@ import (
 
 var storageKeyPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$`)
 var requestIDPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._:-]{7,127}$`)
+var dynamicWebhookKeyPattern = regexp.MustCompile(`^[a-zA-Z0-9-]{1,100}$`)
 
 type appInstallationContextKey struct{}
 
@@ -132,7 +134,7 @@ func (h *Handler) authenticateKey(r *http.Request, appKey string) (*models.AppIn
 }
 
 func appAPIScope(r *http.Request) (string, bool) {
-	if r.URL.Path == "/rest/atlassian-connect/1/app/module/dynamic" {
+	if r.URL.Path == "/rest/atlassian-connect/1/app/module/dynamic" || r.URL.Path == "/wiki/rest/atlassian-connect/1/app/module/dynamic" {
 		return "", true
 	}
 	product := ""
@@ -231,7 +233,7 @@ func (h *Handler) DynamicModules(w http.ResponseWriter, r *http.Request) {
 			appFailure(w, http.StatusBadRequest, err)
 			return
 		}
-		w.WriteHeader(http.StatusNoContent)
+		w.WriteHeader(http.StatusOK)
 	case http.MethodDelete:
 		keys := r.URL.Query()["moduleKey"]
 		for _, key := range keys {
@@ -259,14 +261,32 @@ func parseDynamicModules(body []byte, installation *models.AppInstallation) ([]m
 	modules := []models.AppDynamicModule{}
 	keys := map[string]bool{}
 	for moduleType, raw := range groups {
-		if moduleType != "webPanels" {
+		if moduleType != "webPanels" && moduleType != "webhooks" {
 			return nil, fmt.Errorf("dynamic module type %q is not supported yet", moduleType)
 		}
 		var entries []json.RawMessage
 		if err := json.Unmarshal(raw, &entries); err != nil || len(entries) == 0 {
-			return nil, fmt.Errorf("dynamic webPanels must be a non-empty array")
+			return nil, fmt.Errorf("dynamic %s must be a non-empty array", moduleType)
 		}
 		for _, entry := range entries {
+			if moduleType == "webhooks" {
+				var input connectWebhookWire
+				if err := json.Unmarshal(entry, &input); err != nil {
+					return nil, fmt.Errorf("invalid dynamic webhook: %w", err)
+				}
+				input.Key, input.Event, input.URL, input.Filter = strings.TrimSpace(input.Key), strings.TrimSpace(input.Event), strings.TrimSpace(input.URL), strings.TrimSpace(input.Filter)
+				if !dynamicWebhookKeyPattern.MatchString(input.Key) || keys[input.Key] || !allowedAppWebhookEvents[input.Event] || !validAppCallbackPath(input.URL) || len(input.Filter) > 10000 || input.ExcludeBody || len(input.PropertyKeys) > 0 || len(input.Conditions) > 0 {
+					return nil, fmt.Errorf("dynamic webhook needs a unique key, supported event, relative URL, optional valid JQL, and supported body settings")
+				}
+				if input.Filter != "" {
+					if _, err := jql.Parse(input.Filter); err != nil {
+						return nil, fmt.Errorf("dynamic webhook %q has invalid JQL: %w", input.Key, err)
+					}
+				}
+				keys[input.Key] = true
+				modules = append(modules, models.AppDynamicModule{Type: moduleType, Key: input.Key, Descriptor: entry, Webhook: models.AppWebhook{Key: input.Key, Path: input.URL, Events: []string{input.Event}, JQL: input.Filter, Dynamic: true}})
+				continue
+			}
 			var input connectRemoteModuleWire
 			if err := json.Unmarshal(entry, &input); err != nil {
 				return nil, fmt.Errorf("invalid dynamic web panel: %w", err)

@@ -24,7 +24,7 @@ func (s *Store) RegisterDynamicAppModules(ctx context.Context, installation *mod
 	}
 	for position, module := range modules {
 		var exists bool
-		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM app_modules WHERE installation_id=$1 AND module_key=$2)`, installation.ID, module.Key).Scan(&exists); err != nil {
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM app_modules WHERE installation_id=$1 AND module_key=$2 UNION ALL SELECT 1 FROM app_webhook_modules WHERE installation_id=$1 AND module_key=$2 UNION ALL SELECT 1 FROM app_dynamic_modules WHERE installation_id=$1 AND module_key=$2)`, installation.ID, module.Key).Scan(&exists); err != nil {
 			return err
 		}
 		if exists {
@@ -33,9 +33,19 @@ func (s *Store) RegisterDynamicAppModules(ctx context.Context, installation *mod
 		if _, err := tx.Exec(ctx, `INSERT INTO app_dynamic_modules(installation_id,module_type,module_key,descriptor) VALUES($1,$2,$3,$4)`, installation.ID, module.Type, module.Key, module.Descriptor); err != nil {
 			return err
 		}
-		value := module.Module
-		if _, err := tx.Exec(ctx, `INSERT INTO app_modules(installation_id,module_key,module_type,location,title,body,remote_url,position,dynamic) VALUES($1,$2,$3,$4,$5,$6,$7,$8,true)`, installation.ID, value.Key, value.Type, value.Location, value.Title, value.Body, value.RemoteURL, 10000+count+position); err != nil {
-			return err
+		switch module.Type {
+		case "webPanels":
+			value := module.Module
+			if _, err := tx.Exec(ctx, `INSERT INTO app_modules(installation_id,module_key,module_type,location,title,body,remote_url,position,dynamic) VALUES($1,$2,$3,$4,$5,$6,$7,$8,true)`, installation.ID, value.Key, value.Type, value.Location, value.Title, value.Body, value.RemoteURL, 10000+count+position); err != nil {
+				return err
+			}
+		case "webhooks":
+			value := module.Webhook
+			if _, err := tx.Exec(ctx, `INSERT INTO app_webhook_modules(installation_id,module_key,path,events,jql,last_seq,dynamic,exclude_body) SELECT $1,$2,$3,$4,$5,w.seq,true,$6 FROM workspaces w WHERE w.id=$7`, installation.ID, value.Key, value.Path, value.Events, value.JQL, value.ExcludeBody, installation.WorkspaceID); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("dynamic module type %q is unsupported", module.Type)
 		}
 	}
 	return tx.Commit(ctx)
@@ -71,11 +81,17 @@ func (s *Store) DeleteDynamicAppModules(ctx context.Context, installationID stri
 		if _, err := tx.Exec(ctx, `DELETE FROM app_dynamic_modules WHERE installation_id=$1`, installationID); err != nil {
 			return err
 		}
+		if _, err := tx.Exec(ctx, `DELETE FROM app_webhook_modules WHERE installation_id=$1 AND dynamic`, installationID); err != nil {
+			return err
+		}
 	} else {
 		if _, err := tx.Exec(ctx, `DELETE FROM app_modules WHERE installation_id=$1 AND dynamic AND module_key=ANY($2)`, installationID, keys); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(ctx, `DELETE FROM app_dynamic_modules WHERE installation_id=$1 AND module_key=ANY($2)`, installationID, keys); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `DELETE FROM app_webhook_modules WHERE installation_id=$1 AND dynamic AND module_key=ANY($2)`, installationID, keys); err != nil {
 			return err
 		}
 	}
@@ -121,11 +137,26 @@ func restoreDynamicAppModules(ctx context.Context, tx pgx.Tx, installationID str
 		if err := json.Unmarshal(module.raw, &input); err != nil {
 			return err
 		}
-		if module.moduleType != "webPanels" {
+		switch module.moduleType {
+		case "webPanels":
+			if _, err := tx.Exec(ctx, `INSERT INTO app_modules(installation_id,module_key,module_type,location,title,body,remote_url,position,dynamic) VALUES($1,$2,'jira:issuePanel','jira.issue.view',$3,'',$4,$5,true)`, installationID, module.key, input.Name.Value, input.URL, 10000+position); err != nil {
+				return err
+			}
+		case "webhooks":
+			var webhook struct {
+				Event       string `json:"event"`
+				URL         string `json:"url"`
+				Filter      string `json:"filter"`
+				ExcludeBody bool   `json:"excludeBody"`
+			}
+			if err := json.Unmarshal(module.raw, &webhook); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(ctx, `INSERT INTO app_webhook_modules(installation_id,module_key,path,events,jql,last_seq,dynamic,exclude_body) SELECT $1,$2,$3,$4,$5,w.seq,true,$6 FROM app_installations i JOIN workspaces w ON w.id=i.workspace_id WHERE i.id=$1`, installationID, module.key, webhook.URL, []string{webhook.Event}, webhook.Filter, webhook.ExcludeBody); err != nil {
+				return err
+			}
+		default:
 			return fmt.Errorf("stored dynamic module type %q is unsupported", module.moduleType)
-		}
-		if _, err := tx.Exec(ctx, `INSERT INTO app_modules(installation_id,module_key,module_type,location,title,body,remote_url,position,dynamic) VALUES($1,$2,'jira:issuePanel','jira.issue.view',$3,'',$4,$5,true)`, installationID, module.key, input.Name.Value, input.URL, 10000+position); err != nil {
-			return err
 		}
 	}
 	return nil

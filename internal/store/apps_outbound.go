@@ -35,16 +35,20 @@ func enqueueAppLifecycle(ctx context.Context, tx pgx.Tx, installationID, appKey,
 }
 
 func deleteAppOutboundConfig(ctx context.Context, tx pgx.Tx, installationID string) error {
-	for _, table := range []string{"app_lifecycle_callbacks", "app_webhook_modules", "app_scheduled_triggers"} {
-		if _, err := tx.Exec(ctx, `DELETE FROM `+table+` WHERE installation_id=$1`, installationID); err != nil {
-			return err
-		}
+	if _, err := tx.Exec(ctx, `DELETE FROM app_lifecycle_callbacks WHERE installation_id=$1`, installationID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM app_webhook_modules WHERE installation_id=$1 AND NOT dynamic`, installationID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM app_scheduled_triggers WHERE installation_id=$1`, installationID); err != nil {
+		return err
 	}
 	return nil
 }
 
 func (s *Store) ActiveAppWebhooks(ctx context.Context, workspaceID string) ([]models.AppWebhook, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT w.id::text,w.installation_id,i.app_key,w.module_key,w.path,w.events,w.jql,w.last_seq FROM app_webhook_modules w JOIN app_installations i ON i.id=w.installation_id WHERE i.workspace_id=$1 AND i.status='active' ORDER BY w.id`, workspaceID)
+	rows, err := s.Pool.Query(ctx, `SELECT w.id::text,w.installation_id,i.app_key,w.module_key,w.path,w.events,w.jql,w.last_seq,w.dynamic,w.exclude_body FROM app_webhook_modules w JOIN app_installations i ON i.id=w.installation_id WHERE i.workspace_id=$1 AND i.status='active' ORDER BY w.id`, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -52,7 +56,7 @@ func (s *Store) ActiveAppWebhooks(ctx context.Context, workspaceID string) ([]mo
 	values := []models.AppWebhook{}
 	for rows.Next() {
 		var value models.AppWebhook
-		if err := rows.Scan(&value.ID, &value.InstallationID, &value.AppKey, &value.Key, &value.Path, &value.Events, &value.JQL, &value.LastSeq); err != nil {
+		if err := rows.Scan(&value.ID, &value.InstallationID, &value.AppKey, &value.Key, &value.Path, &value.Events, &value.JQL, &value.LastSeq, &value.Dynamic, &value.ExcludeBody); err != nil {
 			return nil, err
 		}
 		values = append(values, value)

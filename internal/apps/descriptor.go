@@ -25,6 +25,11 @@ var allowedScopes = map[string]bool{
 	"manage:webhooks": true,
 }
 
+var allowedAppWebhookEvents = map[string]bool{
+	"jira:issue_created": true, "jira:issue_updated": true, "jira:issue_deleted": true,
+	"comment_created": true, "comment_deleted": true, "attachment_created": true,
+}
+
 var moduleRequirements = map[string]struct {
 	Location string
 	Scope    string
@@ -159,7 +164,6 @@ func validateDescriptorWire(wire descriptorWire) (models.AppDescriptor, error) {
 		return models.AppDescriptor{}, fmt.Errorf("declarative webhooks require scope manage:webhooks")
 	}
 	webhookKeys := map[string]bool{}
-	allowedEvents := map[string]bool{"jira:issue_created": true, "jira:issue_updated": true, "jira:issue_deleted": true, "comment_created": true, "comment_deleted": true, "attachment_created": true}
 	for _, webhook := range wire.Webhooks {
 		webhook.Key, webhook.URL, webhook.JQL = strings.TrimSpace(webhook.Key), strings.TrimSpace(webhook.URL), strings.TrimSpace(webhook.JQL)
 		if !moduleKeyPattern.MatchString(webhook.Key) || webhookKeys[webhook.Key] || !validAppCallbackPath(webhook.URL) || len(webhook.Events) == 0 || len(webhook.Events) > 20 || len(webhook.JQL) > 2000 {
@@ -173,7 +177,7 @@ func validateDescriptorWire(wire descriptorWire) (models.AppDescriptor, error) {
 		eventSeen := map[string]bool{}
 		for index, event := range webhook.Events {
 			event = strings.TrimSpace(event)
-			if !allowedEvents[event] || eventSeen[event] {
+			if !allowedAppWebhookEvents[event] || eventSeen[event] {
 				return models.AppDescriptor{}, fmt.Errorf("webhook %q contains an unsupported or duplicate event", webhook.Key)
 			}
 			webhook.Events[index] = event

@@ -36,9 +36,13 @@ type connectRemoteModuleWire struct {
 }
 
 type connectWebhookWire struct {
-	Event  string `json:"event"`
-	URL    string `json:"url"`
-	Filter string `json:"filter"`
+	Key          string          `json:"key"`
+	Event        string          `json:"event"`
+	URL          string          `json:"url"`
+	Filter       string          `json:"filter"`
+	ExcludeBody  bool            `json:"excludeBody"`
+	PropertyKeys []string        `json:"propertyKeys"`
+	Conditions   json.RawMessage `json:"conditions"`
 }
 
 func parseConnectDescriptor(raw []byte) (models.AppDescriptor, error) {

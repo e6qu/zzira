@@ -76,7 +76,8 @@ Jira issue-view `webPanels`, Confluence `contentBylineItems`, and `webhooks`.
 The parser rejects unsupported authentication modes, scopes, module families,
 and web-panel locations instead of silently ignoring them.
 
-Connect apps can manage tenant-specific remote issue panels through the
+Connect apps can manage tenant-specific remote issue panels and keyed Jira
+webhooks through the
 standard JWT-signed `GET`, `POST`, and `DELETE`
 `/rest/atlassian-connect/1/app/module/dynamic` resource. `POST` accepts the
 descriptor-shaped `webPanels` object and registers the request atomically;
@@ -84,9 +85,12 @@ duplicate static/dynamic keys or any invalid entry reject the whole request.
 `GET` returns the original grouped definitions. `DELETE` accepts repeated
 `moduleKey` query parameters and removes every dynamic module when none are
 provided. The runtime enforces the Connect limit of 100 modules per
-installation. Dynamic panels survive uninstall/reinstall, while an upgrade
-that promotes the same key to a static module removes the conflicting dynamic
-definition.
+installation. Dynamic webhooks require translated `READ`, one supported event,
+a relative URL, and optional valid JQL. Conditions, property projection and
+body exclusion are rejected until their delivery semantics are available.
+Dynamic definitions survive uninstall/reinstall, while an upgrade that
+promotes the same key to a static module removes the conflicting definition.
+The same resource is available beneath both Jira and Confluence base paths.
 
 Supported scopes are `read:jira-work`, `write:jira-work`,
 `read:confluence-content`, `write:confluence-content`, `read:app-storage`,
@@ -172,6 +176,7 @@ disabled on uninstall and restored with the same ID on an authorized
 reinstallation.
 
 The runtime is a ZZIRA execution contract for remotely hosted apps. Remaining
-Connect module families, the remaining dynamic module types, workflow modules,
+Connect module families, the remaining dynamic module types and webhook
+options, workflow modules,
 custom fields, descriptor-driven upgrade migrations, and Atlassian-hosted Forge
 compute remain separate future slices.

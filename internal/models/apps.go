@@ -31,6 +31,7 @@ type AppWebhook struct {
 	ID, InstallationID, AppKey, Key, Path, JQL string
 	Events                                     []string
 	LastSeq                                    int64
+	Dynamic, ExcludeBody                       bool
 }
 
 type AppScheduledTrigger struct {
@@ -58,6 +59,7 @@ type AppDynamicModule struct {
 	Type, Key  string
 	Descriptor json.RawMessage
 	Module     AppModule
+	Webhook    AppWebhook
 }
 
 type AppStorageValue struct {

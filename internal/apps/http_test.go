@@ -363,6 +363,7 @@ func TestConnectDynamicIssuePanels(t *testing.T) {
 	mux.HandleFunc("GET "+dynamicPath, handler.DynamicModules)
 	mux.HandleFunc("POST "+dynamicPath, handler.DynamicModules)
 	mux.HandleFunc("DELETE "+dynamicPath, handler.DynamicModules)
+	mux.HandleFunc("GET /wiki"+dynamicPath, handler.DynamicModules)
 	secured := handler.APIPrincipal(mux)
 	now := time.Now().UTC().Truncate(time.Second)
 	call := func(method, target, body string, want int) *httptest.ResponseRecorder {
@@ -382,11 +383,15 @@ func TestConnectDynamicIssuePanels(t *testing.T) {
 		return response
 	}
 
-	dynamic := `{"webPanels":[{"key":"dynamic-risk","url":"/risk?issue={issue.key}","location":"atl.jira.view.issue.right.context","name":{"value":"Dynamic risk"}}]}`
-	call(http.MethodPost, dynamicPath, dynamic, http.StatusNoContent)
+	dynamic := `{"webPanels":[{"key":"dynamic-risk","url":"/risk?issue={issue.key}","location":"atl.jira.view.issue.right.context","name":{"value":"Dynamic risk"}}],"webhooks":[{"key":"dynamic-hook","event":"jira:issue_created","url":"/hooks/dynamic","filter":"project = ZZ"}]}`
+	call(http.MethodPost, dynamicPath, dynamic, http.StatusOK)
 	listed := call(http.MethodGet, dynamicPath, "", http.StatusOK)
-	if !strings.Contains(listed.Body.String(), `"dynamic-risk"`) || !strings.Contains(listed.Body.String(), `"webPanels"`) {
+	if !strings.Contains(listed.Body.String(), `"dynamic-risk"`) || !strings.Contains(listed.Body.String(), `"webPanels"`) || !strings.Contains(listed.Body.String(), `"dynamic-hook"`) {
 		t.Fatalf("dynamic modules = %s", listed.Body.String())
+	}
+	wikiListed := call(http.MethodGet, "/wiki"+dynamicPath, "", http.StatusOK)
+	if !strings.Contains(wikiListed.Body.String(), `"dynamic-hook"`) {
+		t.Fatalf("Confluence dynamic module alias = %s", wikiListed.Body.String())
 	}
 	modules, err := st.AppModulesByLocation(ctx, workspaceID, "jira.issue.view")
 	if err != nil {
@@ -400,6 +405,17 @@ func TestConnectDynamicIssuePanels(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("dynamic issue panel not materialized: %+v", modules)
+	}
+	hooks, err := st.ActiveAppWebhooks(ctx, workspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found = false
+	for _, hook := range hooks {
+		found = found || hook.InstallationID == installation.ID && hook.Key == "dynamic-hook" && hook.Dynamic && hook.JQL == "project = ZZ"
+	}
+	if !found {
+		t.Fatalf("dynamic webhook not materialized: %+v", hooks)
 	}
 	call(http.MethodPost, dynamicPath, `{"webPanels":[{"key":"static-panel","url":"/duplicate","location":"atl.jira.view.issue.right.context","name":{"value":"Duplicate"}}]}`, http.StatusBadRequest)
 	if err := st.UpdateAppState(ctx, workspaceID, adminID, appKey, "uninstalled", true); err != nil {
@@ -432,10 +448,15 @@ func TestConnectDynamicIssuePanels(t *testing.T) {
 	if strings.Contains(listed.Body.String(), "dynamic-risk") {
 		t.Fatalf("static upgrade did not remove conflicting dynamic module: %s", listed.Body.String())
 	}
-	call(http.MethodPost, dynamicPath, `{"webPanels":[{"key":"dynamic-remove","url":"/remove","location":"atl.jira.view.issue.right.context","name":{"value":"Remove me"}}]}`, http.StatusNoContent)
+	call(http.MethodPost, dynamicPath, `{"webPanels":[{"key":"dynamic-remove","url":"/remove","location":"atl.jira.view.issue.right.context","name":{"value":"Remove me"}}]}`, http.StatusOK)
 	call(http.MethodDelete, dynamicPath+"?moduleKey=dynamic-remove", "", http.StatusNoContent)
 	listed = call(http.MethodGet, dynamicPath, "", http.StatusOK)
 	if strings.Contains(listed.Body.String(), "dynamic-remove") {
 		t.Fatalf("deleted dynamic module remains: %s", listed.Body.String())
+	}
+	call(http.MethodDelete, dynamicPath, "", http.StatusNoContent)
+	listed = call(http.MethodGet, dynamicPath, "", http.StatusOK)
+	if strings.Contains(listed.Body.String(), "dynamic-hook") {
+		t.Fatalf("delete-all retained a dynamic webhook: %s", listed.Body.String())
 	}
 }

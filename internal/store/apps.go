@@ -77,13 +77,13 @@ func (s *Store) loadAppChildren(ctx context.Context, value *models.AppInstallati
 		return err
 	}
 	callbackRows.Close()
-	webhookRows, err := s.Pool.Query(ctx, `SELECT id::text,module_key,path,events,jql,last_seq FROM app_webhook_modules WHERE installation_id=$1 ORDER BY module_key`, value.ID)
+	webhookRows, err := s.Pool.Query(ctx, `SELECT id::text,module_key,path,events,jql,last_seq,dynamic,exclude_body FROM app_webhook_modules WHERE installation_id=$1 ORDER BY module_key`, value.ID)
 	if err != nil {
 		return err
 	}
 	for webhookRows.Next() {
 		var webhook models.AppWebhook
-		if err := webhookRows.Scan(&webhook.ID, &webhook.Key, &webhook.Path, &webhook.Events, &webhook.JQL, &webhook.LastSeq); err != nil {
+		if err := webhookRows.Scan(&webhook.ID, &webhook.Key, &webhook.Path, &webhook.Events, &webhook.JQL, &webhook.LastSeq, &webhook.Dynamic, &webhook.ExcludeBody); err != nil {
 			webhookRows.Close()
 			return err
 		}
@@ -165,7 +165,7 @@ func writeAppChildren(ctx context.Context, tx pgx.Tx, installationID string, des
 		}
 	}
 	for _, webhook := range descriptor.Webhooks {
-		if _, err := tx.Exec(ctx, `INSERT INTO app_webhook_modules(installation_id,module_key,path,events,jql,last_seq) SELECT $1,$2,$3,$4,$5,w.seq FROM app_installations i JOIN workspaces w ON w.id=i.workspace_id WHERE i.id=$1`, installationID, webhook.Key, webhook.Path, webhook.Events, webhook.JQL); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO app_webhook_modules(installation_id,module_key,path,events,jql,last_seq,dynamic,exclude_body) SELECT $1,$2,$3,$4,$5,w.seq,false,$6 FROM app_installations i JOIN workspaces w ON w.id=i.workspace_id WHERE i.id=$1`, installationID, webhook.Key, webhook.Path, webhook.Events, webhook.JQL, webhook.ExcludeBody); err != nil {
 			return err
 		}
 	}
@@ -229,6 +229,9 @@ func (s *Store) InstallApp(ctx context.Context, workspaceID, actorID string, des
 			return nil, err
 		}
 	}
+	if _, err := tx.Exec(ctx, `DELETE FROM app_webhook_modules WHERE installation_id=$1`, installationID); err != nil {
+		return nil, err
+	}
 	if err := deleteAppOutboundConfig(ctx, tx, installationID); err != nil {
 		return nil, err
 	}
@@ -238,6 +241,9 @@ func (s *Store) InstallApp(ctx context.Context, workspaceID, actorID string, des
 	staticModuleKeys := make([]string, 0, len(descriptor.Modules))
 	for _, module := range descriptor.Modules {
 		staticModuleKeys = append(staticModuleKeys, module.Key)
+	}
+	for _, webhook := range descriptor.Webhooks {
+		staticModuleKeys = append(staticModuleKeys, webhook.Key)
 	}
 	if err := restoreDynamicAppModules(ctx, tx, installationID, staticModuleKeys); err != nil {
 		return nil, err
@@ -349,11 +355,18 @@ func (s *Store) UpgradeApp(ctx context.Context, workspaceID, appKey string, desc
 	for _, module := range descriptor.Modules {
 		moduleKeys = append(moduleKeys, module.Key)
 	}
-	if len(moduleKeys) > 0 {
-		if _, err := tx.Exec(ctx, `DELETE FROM app_modules WHERE installation_id=$1 AND dynamic AND module_key=ANY($2)`, installationID, moduleKeys); err != nil {
+	conflictKeys := append([]string{}, moduleKeys...)
+	for _, webhook := range descriptor.Webhooks {
+		conflictKeys = append(conflictKeys, webhook.Key)
+	}
+	if len(conflictKeys) > 0 {
+		if _, err := tx.Exec(ctx, `DELETE FROM app_modules WHERE installation_id=$1 AND dynamic AND module_key=ANY($2)`, installationID, conflictKeys); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(ctx, `DELETE FROM app_dynamic_modules WHERE installation_id=$1 AND module_key=ANY($2)`, installationID, moduleKeys); err != nil {
+		if _, err := tx.Exec(ctx, `DELETE FROM app_webhook_modules WHERE installation_id=$1 AND dynamic AND module_key=ANY($2)`, installationID, conflictKeys); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `DELETE FROM app_dynamic_modules WHERE installation_id=$1 AND module_key=ANY($2)`, installationID, conflictKeys); err != nil {
 			return err
 		}
 	}

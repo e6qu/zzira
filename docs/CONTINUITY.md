@@ -2225,27 +2225,34 @@ Validation after standard Connect descriptors and remote modules:
   uninstall. Complete repository validation is recorded in the checkpoint
   commit.
 
-Validation after Connect dynamic issue panels:
+Validation after Connect dynamic issue panels and webhooks:
 
 - Migration 107 distinguishes static and dynamic rendered modules and stores
   the original tenant-specific Connect definitions independently. Dynamic
   records survive uninstall/reinstall; descriptor upgrades remove a dynamic
   definition only when a new static module claims the same key.
 - JWT/QSH-authenticated Connect apps can call the standard dynamic-module GET,
-  POST and DELETE resource. Registration is atomic, rejects static/dynamic key
-  conflicts, validates supported issue-view web-panel locations and relative
-  URLs, requires translated READ access and enforces the 100-module limit.
+  POST and DELETE resource beneath Jira or Confluence base paths. Registration
+  returns the documented 200 response, is atomic, rejects static/dynamic key
+  conflicts, validates supported issue-view web panels and keyed Jira
+  webhooks, requires translated READ access and enforces the 100-module limit.
+  Dynamic webhooks accept one supported event, a relative URL and optional
+  valid JQL; unsupported body/property/condition options fail explicitly.
   Deletion supports repeated `moduleKey` values or all modules.
 - Registered panels join Jira issue views through the existing signed iframe
   gateway and appear as dynamic in administrator capability review. PostgreSQL
-  integration covers registration, original-shape retrieval, materialization,
-  duplicate rejection, uninstall/reinstall restoration, static upgrade
-  promotion and selective deletion.
+  integration covers registration, Jira and Confluence-path original-shape
+  retrieval, panel/webhook materialization, duplicate rejection,
+  uninstall/reinstall restoration, static upgrade promotion, selective
+  deletion and delete-all. Six newly assessed API operations bring exact
+  coverage to 433 of 1,207. The complete PostgreSQL Go suite, server and
+  WebAssembly builds, vet, seven conformance checks and diff validation pass.
 
 ## Current change
 
-1. Continue the app runtime with remaining Connect module families and dynamic
-   module types, workflow/custom-field modules and upgrade migrations.
+1. Continue the app runtime with remaining Connect module families, dynamic
+   module types and webhook options, workflow/custom-field modules and upgrade
+   migrations.
 2. Continue Confluence with advanced whiteboard objects, direct manipulation,
    exports and the remaining rich content/editor surface.
 3. Continue Service Management with public Assets object/schema/import API
