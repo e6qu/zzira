@@ -81,6 +81,21 @@ type connectProjectAdminPageWire struct {
 	Conditions []json.RawMessage `json:"conditions"`
 }
 
+type connectReportWire struct {
+	Key            string          `json:"key"`
+	URL            string          `json:"url"`
+	Name           connectNameWire `json:"name"`
+	Description    connectNameWire `json:"description"`
+	ReportCategory string          `json:"reportCategory"`
+	ThumbnailURL   string          `json:"thumbnailUrl"`
+}
+
+type connectReportMeta struct {
+	Description  string `json:"description"`
+	Category     string `json:"category"`
+	ThumbnailURL string `json:"thumbnailUrl,omitempty"`
+}
+
 type connectWebhookWire struct {
 	Key          string          `json:"key"`
 	Event        string          `json:"event"`
@@ -129,12 +144,24 @@ func parseConnectDescriptor(raw []byte) (models.AppDescriptor, error) {
 		wire.Scopes = append(wire.Scopes, scope)
 	}
 	sort.Strings(wire.Scopes)
-	supported := map[string]bool{"generalPages": true, "jiraProjectPages": true, "jiraProjectAdminTabPanels": true, "webPanels": true, "contentBylineItems": true, "webhooks": true, "jiraIssueFields": true, "webItems": true, "jiraIssueContents": true}
+	supported := map[string]bool{"generalPages": true, "jiraProjectPages": true, "jiraProjectAdminTabPanels": true, "jiraReports": true, "webPanels": true, "contentBylineItems": true, "webhooks": true, "jiraIssueFields": true, "webItems": true, "jiraIssueContents": true}
 	for moduleType, payload := range connect.Modules {
 		if !supported[moduleType] {
 			return models.AppDescriptor{}, fmt.Errorf("Connect module %q is not supported yet", moduleType)
 		}
 		switch moduleType {
+		case "jiraReports":
+			var modules []connectReportWire
+			if err := json.Unmarshal(payload, &modules); err != nil {
+				return models.AppDescriptor{}, fmt.Errorf("invalid Connect jiraReports: %w", err)
+			}
+			for _, module := range modules {
+				translated, err := translateConnectReport(module)
+				if err != nil {
+					return models.AppDescriptor{}, err
+				}
+				wire.Modules = append(wire.Modules, translated)
+			}
 		case "jiraProjectAdminTabPanels":
 			var modules []connectProjectAdminPageWire
 			if err := json.Unmarshal(payload, &modules); err != nil {
@@ -231,6 +258,23 @@ func parseConnectDescriptor(raw []byte) (models.AppDescriptor, error) {
 		wire.Scopes = append(wire.Scopes, scope)
 	}
 	return validateDescriptorWire(wire)
+}
+
+func translateConnectReport(module connectReportWire) (moduleWire, error) {
+	module.Key = strings.TrimSpace(module.Key)
+	module.URL = strings.TrimSpace(module.URL)
+	module.Name.Value = strings.TrimSpace(module.Name.Value)
+	module.Description.Value = strings.TrimSpace(module.Description.Value)
+	module.ReportCategory = strings.ToLower(strings.TrimSpace(module.ReportCategory))
+	module.ThumbnailURL = strings.TrimSpace(module.ThumbnailURL)
+	if module.ReportCategory == "" {
+		module.ReportCategory = "other"
+	}
+	if !moduleKeyPattern.MatchString(module.Key) || module.Name.Value == "" || module.Description.Value == "" || len(module.Name.Value) > 1500 || len(module.Description.Value) > 1500 || !validAppCallbackPath(module.URL) || !map[string]bool{"agile": true, "issue_analysis": true, "forecast_management": true, "other": true}[module.ReportCategory] || (module.ThumbnailURL != "" && !validAppCallbackPath(module.ThumbnailURL)) {
+		return moduleWire{}, fmt.Errorf("Connect report needs a valid key, name, description, relative URL, category, and optional relative thumbnailUrl")
+	}
+	meta, _ := json.Marshal(connectReportMeta{Description: module.Description.Value, Category: module.ReportCategory, ThumbnailURL: module.ThumbnailURL})
+	return moduleWire{Key: module.Key, Type: "jira:report", Location: "jira.report", Title: module.Name.Value, Body: string(meta), URL: module.URL}, nil
 }
 
 func translateConnectProjectAdminPage(module connectProjectAdminPageWire) (moduleWire, error) {

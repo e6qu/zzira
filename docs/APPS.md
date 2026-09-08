@@ -63,6 +63,9 @@ shape:
     "jiraProjectAdminTabPanels": [
       {"key": "project-controls", "url": "/project-controls", "location": "projectgroup3", "weight": 20, "params": {"source": "settings"}, "name": {"value": "Project controls"}}
     ],
+    "jiraReports": [
+      {"key": "delivery-risk", "url": "/delivery-risk?project={project.key}", "name": {"value": "Delivery risk"}, "description": {"value": "Release and incident risk"}, "reportCategory": "agile", "thumbnailUrl": "/delivery-risk.svg"}
+    ],
     "webPanels": [
       {"key": "risk", "url": "/risk?issue={issue.key}", "location": "atl.jira.view.issue.right.context", "name": {"value": "Release risk"}}
     ],
@@ -87,7 +90,8 @@ shape:
 
 Connect `READ` and write-capable scopes translate into the corresponding Jira
 and Confluence grants. Supported Connect module families are `generalPages`,
-`jiraProjectPages`, `jiraProjectAdminTabPanels`, Jira issue-view `webPanels`, Confluence
+`jiraProjectPages`, `jiraProjectAdminTabPanels`, `jiraReports`, Jira issue-view
+`webPanels`, Confluence
 `contentBylineItems`, scalar
 `jiraIssueFields`, quick-add `jiraIssueContents`, Jira/Confluence navigation
 `webItems`, and `webhooks`.
@@ -150,6 +154,14 @@ ordering, and append descriptor `params` to the signed remote URL. They appear
 only in project settings for administrators and receive the same verified
 `project.key` and `project.id` context as project pages. Conditions remain an
 explicit gap and fail descriptor installation instead of being ignored.
+
+Connect reports validate their key, name, description, relative URL, optional
+relative thumbnail and the `agile`, `issue_analysis`, `forecast_management` or
+`other` category. They join the selected project's report directory beside the
+built-in DORA report. Opening an app report uses the common sandboxed frame and
+expands, supplies and signs both `project.key` and `project.id`. Thumbnail
+rendering remains an explicit presentation gap; its descriptor value is
+preserved with the report metadata.
 
 Supported scopes are `read:jira-work`, `write:jira-work`,
 `read:confluence-content`, `write:confluence-content`, `read:app-storage`,
@@ -236,6 +248,6 @@ reinstallation.
 
 The runtime is a ZZIRA execution contract for remotely hosted apps. Remaining
 Connect module families, the remaining dynamic module types and webhook
-options, project-page icons and page/admin conditions, workflow modules,
+options, project-page icons and page/admin conditions, report thumbnails, workflow modules,
 select/read-only issue fields and option APIs, descriptor-driven upgrade
 migrations, and Atlassian-hosted Forge compute remain separate future slices.

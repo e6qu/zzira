@@ -2344,13 +2344,31 @@ Validation after Connect project administration tabs:
   generated inventory/coverage checks and diff validation pass. The pinned
   inventory remains 433 assessed operations out of 1,207.
 
+Validation after Connect Jira reports:
+
+- Standard descriptors accept `jiraReports` with required key, name,
+  description and relative URL, the four documented case-insensitive
+  categories, and an optional relative thumbnail URL. Invalid categories and
+  URLs fail explicitly.
+- A project report directory now contains the built-in DORA report and every
+  active app report with its category and description. App reports open in the
+  shared sandbox with expanded and signed `project.key` and `project.id`
+  context; the Reports navigation now lands on this directory.
+- Parser and render tests pass. The Chromium Connect journey verifies report
+  discovery, metadata, project context, signed remote rendering and
+  accessibility. The release journey was updated for the report directory.
+  The complete PostgreSQL Go suite, native server/load-test and WebAssembly
+  builds, vet, seven conformance tests, generated inventory/coverage checks and
+  diff validation pass. The release/DORA Chromium regression journey also
+  passes. The pinned inventory remains 433 assessed operations out of 1,207.
+
 ## Current change
 
 1. Continue the app runtime with remaining Connect module families, dynamic
    module types and webhook options, issue-content presence conditions/native
    rendering, project-page icons and page/admin conditions, additional web-item
-   locations and conditions, select/read-only field options, workflow modules
-   and upgrade migrations.
+   locations and conditions, report thumbnails, select/read-only field options,
+   workflow modules and upgrade migrations.
 2. Continue Confluence with advanced whiteboard objects, direct manipulation,
    exports and the remaining rich content/editor surface.
 3. Continue Service Management with public Assets object/schema/import API

@@ -75,6 +75,8 @@ test('plan a release, assign scope, publish notes, archive and delete', async ({
   await expect(page.locator('#release-delivery-list')).toContainText('Release candidate build');
   await expect(page.locator('#release-delivery-list')).toContainText('Production rollout');
   await page.getByRole('link', { name: 'Reports', exact: true }).click();
+  await expect(page).toHaveURL('/projects/ZZ/reports');
+  await page.getByRole('link', { name: 'Open DORA metrics' }).click();
   await expect(page).toHaveURL('/projects/ZZ/reports/dora');
   await expect(page.getByRole('heading', { name: 'DORA metrics', level: 1 })).toBeVisible();
   const doraSummary = page.getByRole('region', { name: 'DORA summary' });

@@ -127,6 +127,13 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
       await route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main><h1>Remote project controls</h1><p>Administrator project context received.</p></main></body></html>' });
       return;
     }
+    if (target.pathname.endsWith('/remote-report')) {
+      expect(target.searchParams.get('project.key')).toBe('ZZ');
+      expect(target.searchParams.get('project.id')).toBeTruthy();
+      expect(target.searchParams.get('selected')).toBe('ZZ');
+      await route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main><h1>Remote delivery risk</h1><p>Project report context received.</p></main></body></html>' });
+      return;
+    }
     if (target.pathname.endsWith('/remote-review')) {
       expect(target.searchParams.get('content.id')).toBeTruthy();
       expect(target.searchParams.get('content')).toBe(target.searchParams.get('content.id'));
@@ -155,6 +162,7 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
   const contentTitle = `Incident runbook ${suffix}`;
   const projectPageTitle = `Project intelligence ${suffix}`;
   const projectAdminTitle = `Project controls ${suffix}`;
+  const reportTitle = `Delivery risk ${suffix}`;
   const descriptor = {
     key: `connect.journey.${suffix}`,
     name: appName,
@@ -170,6 +178,7 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
       jiraIssueContents: [{ key: 'incident-runbook', name: { value: contentTitle }, tooltip: { value: 'Add incident runbook' }, icon: { url: '/runbook.svg' }, target: { type: 'web_panel', url: '/remote-content?issue={issue.key}' } }],
       jiraProjectPages: [{ key: 'project-intelligence', name: { value: projectPageTitle }, url: '/remote-project?selected={project.key}', iconUrl: '/project.svg', weight: 40 }],
       jiraProjectAdminTabPanels: [{ key: 'project-controls', name: { value: projectAdminTitle }, url: '/remote-project-admin', location: 'projectgroup3', weight: 20, params: { source: 'settings' } }],
+      jiraReports: [{ key: 'delivery-risk', name: { value: reportTitle }, description: { value: 'Release and incident risk from the app' }, url: '/remote-report?selected={project.key}', reportCategory: 'AGILE', thumbnailUrl: '/report.svg' }],
     },
   };
   await page.goto('/admin#admin-apps');
@@ -200,6 +209,12 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
   await page.locator('#workspace-navigation').getByRole('link', { name: projectAdminTitle }).click();
   await expect(page.getByRole('heading', { name: projectAdminTitle, level: 1 })).toBeVisible();
   await expect(page.frameLocator('iframe.app-module-frame').getByRole('heading', { name: 'Remote project controls' })).toBeVisible();
+  await accessible(page);
+  await page.goto('/projects/ZZ/reports');
+  await expect(page.getByRole('heading', { name: reportTitle, level: 2 })).toBeVisible();
+  await page.getByRole('link', { name: `Open ${reportTitle}` }).click();
+  await expect(page.getByRole('heading', { name: reportTitle, level: 1 })).toBeVisible();
+  await expect(page.frameLocator('iframe.app-module-frame').getByRole('heading', { name: 'Remote delivery risk' })).toBeVisible();
   await accessible(page);
 
   await page.goto('/browse/ZZ-1');
