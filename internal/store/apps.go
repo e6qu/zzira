@@ -13,7 +13,7 @@ import (
 
 func scanAppInstallation(row interface{ Scan(...any) error }) (*models.AppInstallation, error) {
 	value := &models.AppInstallation{}
-	err := row.Scan(&value.ID, &value.WorkspaceID, &value.PrincipalID, &value.Key, &value.Name, &value.BaseURL, &value.Version, &value.Status, &value.SecretCiphertext, &value.Descriptor, &value.InstalledBy, &value.InstalledAt, &value.UpdatedAt)
+	err := row.Scan(&value.ID, &value.WorkspaceID, &value.PrincipalID, &value.Key, &value.Name, &value.BaseURL, &value.Version, &value.Format, &value.Status, &value.SecretCiphertext, &value.Descriptor, &value.InstalledBy, &value.InstalledAt, &value.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -22,7 +22,7 @@ func scanAppInstallation(row interface{ Scan(...any) error }) (*models.AppInstal
 	return value, nil
 }
 
-const appInstallationSelect = `SELECT id,workspace_id,principal_id,app_key,name,base_url,version,status,secret_ciphertext,descriptor,COALESCE(installed_by,''),installed_at,updated_at FROM app_installations `
+const appInstallationSelect = `SELECT id,workspace_id,principal_id,app_key,name,base_url,version,descriptor_format,status,secret_ciphertext,descriptor,COALESCE(installed_by,''),installed_at,updated_at FROM app_installations `
 
 func (s *Store) loadAppChildren(ctx context.Context, value *models.AppInstallation) error {
 	value.Lifecycle = map[string]string{}
@@ -43,14 +43,14 @@ func (s *Store) loadAppChildren(ctx context.Context, value *models.AppInstallati
 		return err
 	}
 	rows.Close()
-	moduleRows, err := s.Pool.Query(ctx, `SELECT id,installation_id,module_key,module_type,location,title,body,position FROM app_modules WHERE installation_id=$1 ORDER BY position,id::bigint`, value.ID)
+	moduleRows, err := s.Pool.Query(ctx, `SELECT id,installation_id,module_key,module_type,location,title,body,remote_url,position FROM app_modules WHERE installation_id=$1 ORDER BY position,id::bigint`, value.ID)
 	if err != nil {
 		return err
 	}
 	for moduleRows.Next() {
 		var module models.AppModule
 		module.AppKey, module.AppName = value.Key, value.Name
-		if err := moduleRows.Scan(&module.ID, &module.InstallationID, &module.Key, &module.Type, &module.Location, &module.Title, &module.Body, &module.Position); err != nil {
+		if err := moduleRows.Scan(&module.ID, &module.InstallationID, &module.Key, &module.Type, &module.Location, &module.Title, &module.Body, &module.RemoteURL, &module.Position); err != nil {
 			return err
 		}
 		value.Modules = append(value.Modules, module)
@@ -155,7 +155,7 @@ func writeAppChildren(ctx context.Context, tx pgx.Tx, installationID string, des
 		}
 	}
 	for position, module := range descriptor.Modules {
-		if _, err := tx.Exec(ctx, `INSERT INTO app_modules(installation_id,module_key,module_type,location,title,body,position) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(installation_id,module_key) DO UPDATE SET module_type=EXCLUDED.module_type,location=EXCLUDED.location,title=EXCLUDED.title,body=EXCLUDED.body,position=EXCLUDED.position`, installationID, module.Key, module.Type, module.Location, module.Title, module.Body, position); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO app_modules(installation_id,module_key,module_type,location,title,body,remote_url,position) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(installation_id,module_key) DO UPDATE SET module_type=EXCLUDED.module_type,location=EXCLUDED.location,title=EXCLUDED.title,body=EXCLUDED.body,remote_url=EXCLUDED.remote_url,position=EXCLUDED.position`, installationID, module.Key, module.Type, module.Location, module.Title, module.Body, module.RemoteURL, position); err != nil {
 			return err
 		}
 	}
@@ -198,7 +198,7 @@ func (s *Store) InstallApp(ctx context.Context, workspaceID, actorID string, des
 		if _, err := tx.Exec(ctx, `INSERT INTO users(id,email,password_hash,display_name,active) VALUES($1,$2,'!app-principal!',$3,true)`, principalID, "app+"+installationID+"@apps.zzira.invalid", descriptor.Name); err != nil {
 			return nil, err
 		}
-		if _, err := tx.Exec(ctx, `INSERT INTO app_installations(id,workspace_id,principal_id,app_key,name,base_url,version,status,secret_ciphertext,descriptor,installed_by) VALUES($1,$2,$3,$4,$5,$6,$7,'active',$8,$9,$10)`, installationID, workspaceID, principalID, descriptor.Key, descriptor.Name, descriptor.BaseURL, descriptor.Version, secretCiphertext, json.RawMessage(rawDescriptor), actorID); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO app_installations(id,workspace_id,principal_id,app_key,name,base_url,version,descriptor_format,status,secret_ciphertext,descriptor,installed_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'active',$9,$10,$11)`, installationID, workspaceID, principalID, descriptor.Key, descriptor.Name, descriptor.BaseURL, descriptor.Version, descriptor.Format, secretCiphertext, json.RawMessage(rawDescriptor), actorID); err != nil {
 			return nil, err
 		}
 	case err != nil:
@@ -209,7 +209,7 @@ func (s *Store) InstallApp(ctx context.Context, workspaceID, actorID string, des
 		if _, err := tx.Exec(ctx, `UPDATE users SET display_name=$2,active=true WHERE id=$1`, principalID, descriptor.Name); err != nil {
 			return nil, err
 		}
-		if _, err := tx.Exec(ctx, `UPDATE app_installations SET name=$3,base_url=$4,version=$5,status='active',secret_ciphertext=$6,descriptor=$7,installed_by=$8,installed_at=now(),updated_at=now() WHERE workspace_id=$1 AND app_key=$2`, workspaceID, descriptor.Key, descriptor.Name, descriptor.BaseURL, descriptor.Version, secretCiphertext, json.RawMessage(rawDescriptor), actorID); err != nil {
+		if _, err := tx.Exec(ctx, `UPDATE app_installations SET name=$3,base_url=$4,version=$5,descriptor_format=$6,status='active',secret_ciphertext=$7,descriptor=$8,installed_by=$9,installed_at=now(),updated_at=now() WHERE workspace_id=$1 AND app_key=$2`, workspaceID, descriptor.Key, descriptor.Name, descriptor.BaseURL, descriptor.Version, descriptor.Format, secretCiphertext, json.RawMessage(rawDescriptor), actorID); err != nil {
 			return nil, err
 		}
 	}
@@ -326,7 +326,7 @@ func (s *Store) UpgradeApp(ctx context.Context, workspaceID, appKey string, desc
 	if status == "uninstalled" {
 		return fmt.Errorf("uninstalled apps cannot be upgraded")
 	}
-	if _, err := tx.Exec(ctx, `UPDATE app_installations SET name=$3,base_url=$4,version=$5,descriptor=$6,updated_at=now() WHERE workspace_id=$1 AND app_key=$2`, workspaceID, appKey, descriptor.Name, descriptor.BaseURL, descriptor.Version, json.RawMessage(rawDescriptor)); err != nil {
+	if _, err := tx.Exec(ctx, `UPDATE app_installations SET name=$3,base_url=$4,version=$5,descriptor_format=$6,descriptor=$7,updated_at=now() WHERE workspace_id=$1 AND app_key=$2`, workspaceID, appKey, descriptor.Name, descriptor.BaseURL, descriptor.Version, descriptor.Format, json.RawMessage(rawDescriptor)); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(ctx, `UPDATE users SET display_name=$2 WHERE id=(SELECT principal_id FROM app_installations WHERE id=$1)`, installationID, descriptor.Name); err != nil {
@@ -367,7 +367,7 @@ func (s *Store) UpgradeApp(ctx context.Context, workspaceID, appKey string, desc
 }
 
 func (s *Store) AppNavigationModules(ctx context.Context, workspaceID string) ([]models.AppModule, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT m.id,m.installation_id,i.app_key,i.name,m.module_key,m.module_type,m.location,m.title,m.body,m.position FROM app_modules m JOIN app_installations i ON i.id=m.installation_id WHERE i.workspace_id=$1 AND i.status='active' AND m.location IN ('jira.navigation','confluence.navigation') ORDER BY m.position,m.id::bigint`, workspaceID)
+	rows, err := s.Pool.Query(ctx, `SELECT m.id,m.installation_id,i.app_key,i.name,m.module_key,m.module_type,m.location,m.title,m.body,m.remote_url,m.position FROM app_modules m JOIN app_installations i ON i.id=m.installation_id WHERE i.workspace_id=$1 AND i.status='active' AND m.location IN ('jira.navigation','confluence.navigation') ORDER BY m.position,m.id::bigint`, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -375,7 +375,7 @@ func (s *Store) AppNavigationModules(ctx context.Context, workspaceID string) ([
 	values := []models.AppModule{}
 	for rows.Next() {
 		var value models.AppModule
-		if err := rows.Scan(&value.ID, &value.InstallationID, &value.AppKey, &value.AppName, &value.Key, &value.Type, &value.Location, &value.Title, &value.Body, &value.Position); err != nil {
+		if err := rows.Scan(&value.ID, &value.InstallationID, &value.AppKey, &value.AppName, &value.Key, &value.Type, &value.Location, &value.Title, &value.Body, &value.RemoteURL, &value.Position); err != nil {
 			return nil, err
 		}
 		values = append(values, value)
@@ -384,7 +384,7 @@ func (s *Store) AppNavigationModules(ctx context.Context, workspaceID string) ([
 }
 
 func (s *Store) AppModulesByLocation(ctx context.Context, workspaceID, location string) ([]models.AppModule, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT m.id,m.installation_id,i.app_key,i.name,m.module_key,m.module_type,m.location,m.title,m.body,m.position FROM app_modules m JOIN app_installations i ON i.id=m.installation_id WHERE i.workspace_id=$1 AND i.status='active' AND m.location=$2 ORDER BY m.position,m.id::bigint`, workspaceID, location)
+	rows, err := s.Pool.Query(ctx, `SELECT m.id,m.installation_id,i.app_key,i.name,m.module_key,m.module_type,m.location,m.title,m.body,m.remote_url,m.position FROM app_modules m JOIN app_installations i ON i.id=m.installation_id WHERE i.workspace_id=$1 AND i.status='active' AND m.location=$2 ORDER BY m.position,m.id::bigint`, workspaceID, location)
 	if err != nil {
 		return nil, err
 	}
@@ -392,7 +392,7 @@ func (s *Store) AppModulesByLocation(ctx context.Context, workspaceID, location 
 	values := []models.AppModule{}
 	for rows.Next() {
 		var value models.AppModule
-		if err := rows.Scan(&value.ID, &value.InstallationID, &value.AppKey, &value.AppName, &value.Key, &value.Type, &value.Location, &value.Title, &value.Body, &value.Position); err != nil {
+		if err := rows.Scan(&value.ID, &value.InstallationID, &value.AppKey, &value.AppName, &value.Key, &value.Type, &value.Location, &value.Title, &value.Body, &value.RemoteURL, &value.Position); err != nil {
 			return nil, err
 		}
 		values = append(values, value)
@@ -402,7 +402,7 @@ func (s *Store) AppModulesByLocation(ctx context.Context, workspaceID, location 
 
 func (s *Store) ActiveAppModule(ctx context.Context, workspaceID, moduleID string) (*models.AppModule, error) {
 	var value models.AppModule
-	err := s.Pool.QueryRow(ctx, `SELECT m.id,m.installation_id,i.app_key,i.name,m.module_key,m.module_type,m.location,m.title,m.body,m.position FROM app_modules m JOIN app_installations i ON i.id=m.installation_id WHERE i.workspace_id=$1 AND i.status='active' AND m.id=$2`, workspaceID, moduleID).Scan(&value.ID, &value.InstallationID, &value.AppKey, &value.AppName, &value.Key, &value.Type, &value.Location, &value.Title, &value.Body, &value.Position)
+	err := s.Pool.QueryRow(ctx, `SELECT m.id,m.installation_id,i.app_key,i.name,i.base_url,i.secret_ciphertext,m.module_key,m.module_type,m.location,m.title,m.body,m.remote_url,m.position FROM app_modules m JOIN app_installations i ON i.id=m.installation_id WHERE i.workspace_id=$1 AND i.status='active' AND m.id=$2`, workspaceID, moduleID).Scan(&value.ID, &value.InstallationID, &value.AppKey, &value.AppName, &value.BaseURL, &value.SecretCiphertext, &value.Key, &value.Type, &value.Location, &value.Title, &value.Body, &value.RemoteURL, &value.Position)
 	return &value, err
 }
 

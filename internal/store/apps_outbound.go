@@ -116,7 +116,7 @@ AND (d.state='pending' OR (d.state='failed' AND d.kind<>'scheduled') OR (d.state
 ORDER BY d.available_at,d.created_at,d.id FOR UPDATE OF d SKIP LOCKED LIMIT 1)
 UPDATE app_outbound_deliveries d SET state='delivering',attempts=d.attempts+1,claimed_at=$2 FROM candidate c,app_installations i
 WHERE d.id=c.id AND i.id=d.installation_id
-RETURNING d.id::text,d.installation_id,i.app_key,i.base_url,i.secret_ciphertext,d.kind,d.module_key,d.event,d.path,d.payload,d.state,d.attempts,d.available_at,d.created_at`, workspaceID, now).Scan(&value.ID, &value.InstallationID, &value.AppKey, &value.BaseURL, &value.SecretCiphertext, &value.Kind, &value.ModuleKey, &value.Event, &value.Path, &value.Payload, &value.State, &value.Attempts, &value.AvailableAt, &value.CreatedAt)
+RETURNING d.id::text,d.installation_id,i.app_key,i.base_url,i.descriptor_format,i.secret_ciphertext,d.kind,d.module_key,d.event,d.path,d.payload,d.state,d.attempts,d.available_at,d.created_at`, workspaceID, now).Scan(&value.ID, &value.InstallationID, &value.AppKey, &value.BaseURL, &value.Format, &value.SecretCiphertext, &value.Kind, &value.ModuleKey, &value.Event, &value.Path, &value.Payload, &value.State, &value.Attempts, &value.AvailableAt, &value.CreatedAt)
 	return value, err
 }
 

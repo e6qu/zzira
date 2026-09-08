@@ -260,7 +260,7 @@ func SecurityHeadersDynamic(next http.Handler, oidcFormActionOrigins func() stri
 		}
 		w.Header().Set("Content-Security-Policy",
 			"default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; "+
-				"style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; "+
+				"style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-src 'self' https:; "+
 				"worker-src 'self' blob:; object-src 'none'; base-uri 'self'; "+
 				"frame-ancestors 'none'; "+formAction)
 		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")

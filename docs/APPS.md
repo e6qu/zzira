@@ -1,7 +1,8 @@
 # ZZIRA app runtime
 
 ZZIRA apps are installed per workspace by a site administrator. The runtime
-accepts a small JSON descriptor, encrypts the app's shared secret with
+accepts the native JSON descriptor below or a supported standard
+`atlassian-connect.json` descriptor, encrypts the app's shared secret with
 `ZZIRA_IDENTITY_ENCRYPTION_KEY`, persists granted scopes and modules, and keeps
 installation, suspension, upgrade and uninstall events in both the app
 lifecycle ledger and organization audit log.
@@ -41,14 +42,53 @@ lifecycle ledger and organization audit log.
 }
 ```
 
+A standard Connect descriptor can be installed without rewriting its top-level
+shape:
+
+```json
+{
+  "key": "example.connect.operations",
+  "name": "Connect operations companion",
+  "baseUrl": "https://apps.example.com/connect",
+  "authentication": {"type": "jwt"},
+  "scopes": ["READ", "WRITE"],
+  "lifecycle": {"installed": "/installed", "uninstalled": "/uninstalled"},
+  "modules": {
+    "generalPages": [
+      {"key": "operations", "url": "/operations", "name": {"value": "Operations"}}
+    ],
+    "webPanels": [
+      {"key": "risk", "url": "/risk?issue={issue.key}", "location": "atl.jira.view.issue.right.context", "name": {"value": "Release risk"}}
+    ],
+    "contentBylineItems": [
+      {"key": "review", "url": "/review?content={content.id}", "name": {"value": "Page review"}}
+    ],
+    "webhooks": [
+      {"event": "jira:issue_updated", "url": "/webhooks/issues", "filter": "project = OPS"}
+    ]
+  }
+}
+```
+
+Connect `READ` and write-capable scopes translate into the corresponding Jira
+and Confluence grants. Supported Connect module families are `generalPages`,
+Jira issue-view `webPanels`, Confluence `contentBylineItems`, and `webhooks`.
+The parser rejects unsupported authentication modes, scopes, module families,
+and web-panel locations instead of silently ignoring them.
+
 Supported scopes are `read:jira-work`, `write:jira-work`,
 `read:confluence-content`, `write:confluence-content`, `read:app-storage`,
 `write:app-storage`, and `manage:webhooks`. Supported module contracts are Jira
 global pages, issue panels and dashboard gadgets, plus Confluence global pages
 and content byline items. Active global pages join product navigation, issue
 panels join visible work-item views, app gadgets can be added and positioned on
-custom dashboards, and byline items join published wiki pages. Module text is
-host-rendered and escaped.
+custom dashboards, and byline items join published wiki pages. Native module
+text is host-rendered and escaped. A module with a relative `url`, including a
+translated Connect module, opens beneath its descriptor `baseUrl` in a
+sandboxed HTTPS iframe. ZZIRA supplies `xdm_e`, `xdm_c`, `cp`, `lic`, and `cv`
+context parameters, expands supported issue/content placeholders, and signs
+the exact request with a short-lived HS256 Connect JWT whose issuer is the
+workspace client key.
 
 Every app request includes:
 
@@ -97,9 +137,11 @@ the workspace action stream transactionally. Scheduled triggers support
 one five-minute schedule in an app.
 
 The outbound worker sends JSON with `POST` to the descriptor base URL plus the
-relative callback path. It uses the same timestamp, request ID and HMAC headers
-described above, adds `X-Zzira-App-Key` and `X-Zzira-App-Event`, and signs the
-callback path and raw query. Lifecycle and webhook failures retry durably with
+relative callback path, preserving a path already present in `baseUrl`. It uses
+the same timestamp, request ID and HMAC headers described above, adds
+`X-Zzira-App-Key` and `X-Zzira-App-Event`, and signs the callback path and raw
+query. Connect descriptors additionally receive an `Authorization: JWT` token
+issued by the workspace client key. Lifecycle and webhook failures retry durably with
 bounded exponential backoff and stop after five attempts. A failed scheduled
 invocation is terminal; the next configured occurrence still runs. Database
 row claims and a recovery lease make delivery safe across restarts and multiple
@@ -117,7 +159,7 @@ security, page restriction and command-audit paths as other callers. It is
 disabled on uninstall and restored with the same ID on an authorized
 reinstallation.
 
-The runtime is a ZZIRA execution contract for remotely hosted apps. Atlassian
-Full Connect descriptor translation, Forge-hosted compute, remote iframes,
-workflow modules, custom fields and upgrade migrations remain separate future
-slices.
+The runtime is a ZZIRA execution contract for remotely hosted apps. Remaining
+Connect module families, dynamic modules, workflow modules, custom fields,
+descriptor-driven upgrade migrations, and Atlassian-hosted Forge compute remain
+separate future slices.

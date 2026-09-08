@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strconv"
 	"time"
 
@@ -171,30 +170,17 @@ func (r *OutboundRunner) deliver(ctx context.Context, workspaceID string, delive
 	if err != nil {
 		return 0, fmt.Errorf("open app credentials: %w", err)
 	}
-	base, err := url.Parse(delivery.BaseURL)
+	target, err := appRelativeURL(delivery.BaseURL, delivery.Path)
 	if err != nil {
-		return 0, fmt.Errorf("parse app base URL: %w", err)
+		return 0, err
 	}
-	reference, err := url.Parse(delivery.Path)
-	if err != nil {
-		return 0, fmt.Errorf("parse callback path: %w", err)
-	}
-	target := base.ResolveReference(reference)
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, target.String(), bytes.NewReader(delivery.Payload))
 	if err != nil {
 		return 0, fmt.Errorf("create request: %w", err)
 	}
-	timestamp := now.Unix()
-	requestTarget := request.URL.EscapedPath()
-	if request.URL.RawQuery != "" {
-		requestTarget += "?" + request.URL.RawQuery
+	if err := signOutboundRequest(request, delivery, workspaceID, secret, now); err != nil {
+		return 0, err
 	}
-	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("X-Zzira-App-Key", delivery.AppKey)
-	request.Header.Set("X-Zzira-App-Timestamp", strconv.FormatInt(timestamp, 10))
-	request.Header.Set("X-Zzira-App-Request-Id", delivery.ID)
-	request.Header.Set("X-Zzira-App-Signature", SignRequest(secret, timestamp, delivery.ID, request.Method, requestTarget, delivery.Payload))
-	request.Header.Set("X-Zzira-App-Event", delivery.Event)
 	response, err := r.Client.Do(request)
 	if err != nil {
 		return 0, fmt.Errorf("send request: %w", err)
@@ -208,6 +194,29 @@ func (r *OutboundRunner) deliver(ctx context.Context, workspaceID string, delive
 		return response.StatusCode, fmt.Errorf("http %d", response.StatusCode)
 	}
 	return response.StatusCode, nil
+}
+
+func signOutboundRequest(request *http.Request, delivery *models.AppOutboundDelivery, workspaceID string, secret []byte, now time.Time) error {
+	timestamp := now.Unix()
+	requestTarget := request.URL.EscapedPath()
+	if request.URL.RawQuery != "" {
+		requestTarget += "?" + request.URL.RawQuery
+	}
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-Zzira-App-Key", delivery.AppKey)
+	request.Header.Set("X-Zzira-App-Timestamp", strconv.FormatInt(timestamp, 10))
+	request.Header.Set("X-Zzira-App-Request-Id", delivery.ID)
+	request.Header.Set("X-Zzira-App-Signature", SignRequest(secret, timestamp, delivery.ID, request.Method, requestTarget, delivery.Payload))
+	request.Header.Set("X-Zzira-App-Event", delivery.Event)
+	if delivery.Format != "connect" {
+		return nil
+	}
+	token, err := SignConnectJWT(secret, workspaceID, request, delivery.Payload, now, 3*time.Minute)
+	if err != nil {
+		return fmt.Errorf("sign Connect callback: %w", err)
+	}
+	request.Header.Set("Authorization", "JWT "+token)
+	return nil
 }
 
 func stringIn(values []string, wanted string) bool {

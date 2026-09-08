@@ -2201,9 +2201,33 @@ Validation after Connect JWT/QSH authentication:
   scope gate. The complete app package integration suite and diff validation
   pass; public REST inventory coverage remains 427 of 1,207.
 
+Validation after standard Connect descriptors and remote modules:
+
+- Migration 106 records each installation's native or Connect descriptor
+  format and persists relative remote URLs alongside host-rendered module
+  bodies. Administration shows the format and remote path during capability
+  review.
+- The installer accepts standard Connect `authentication`, `scopes`,
+  `lifecycle`, and object-shaped `modules`. It translates `READ` and
+  write-capable scopes, Jira `generalPages`, supported issue-view `webPanels`,
+  Confluence `contentBylineItems`, and filtered Jira `webhooks`. Unsupported
+  authentication, scopes, module families and locations fail explicitly.
+- Active remote modules resolve beneath the descriptor base URL, preserve its
+  path, expand issue/content context, and receive host context plus a
+  short-lived workspace-issued HS256 JWT. Global pages and issue panels render
+  in sandboxed HTTPS frames; remote byline items open their signed module page.
+  Connect outbound callbacks also receive a workspace-issued JWT while
+  retaining the durable retry and delivery evidence contract.
+- Parser and signing unit tests cover translation, strict rejection, base-path
+  resolution, context and QSH verification. Focused PostgreSQL integration and
+  both app Chromium journeys pass, including administrator install, descriptor
+  review, signed remote navigation, iframe content, accessibility and
+  uninstall. Complete repository validation is recorded in the checkpoint
+  commit.
+
 ## Current change
 
-1. Continue the app runtime with Connect descriptor ingestion, remote iframe
+1. Continue the app runtime with remaining Connect module families, dynamic
    modules, workflow/custom-field modules and upgrade migrations.
 2. Continue Confluence with advanced whiteboard objects, direct manipulation,
    exports and the remaining rich content/editor surface.

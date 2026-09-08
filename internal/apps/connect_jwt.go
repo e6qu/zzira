@@ -41,7 +41,7 @@ func connectIssuer(token string) (string, error) {
 		return "", errors.New("Connect JWT claims are malformed")
 	}
 	var claims connectClaims
-	if json.Unmarshal(payload, &claims) != nil || !appKeyPattern.MatchString(claims.Issuer) {
+	if json.Unmarshal(payload, &claims) != nil || !connectAppKeyPattern.MatchString(claims.Issuer) {
 		return "", errors.New("Connect JWT issuer is invalid")
 	}
 	return claims.Issuer, nil
@@ -157,8 +157,8 @@ func connectPercentEncode(value string) string {
 	return strings.ReplaceAll(url.QueryEscape(value), "+", "%20")
 }
 
-// SignConnectJWT creates an app-to-product token for compatibility tests and
-// remote module URLs. The caller supplies the app key as issuer.
+// SignConnectJWT creates an HS256 Connect token. The caller supplies the app
+// key for app-to-product requests or the workspace client key for callbacks.
 func SignConnectJWT(secret []byte, issuer string, request *http.Request, body []byte, issuedAt time.Time, lifetime time.Duration) (string, error) {
 	queryHash, err := connectQueryHash(request, body)
 	if err != nil {

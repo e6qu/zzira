@@ -49,3 +49,54 @@ func TestParseDescriptorValidatesOutboundModules(t *testing.T) {
 		}
 	}
 }
+
+func TestParseConnectDescriptorTranslatesSupportedModules(t *testing.T) {
+	raw := []byte(`{
+  "key":"Connect.Operations","name":"Connect operations","baseUrl":"https://connect.example.test/jira",
+  "authentication":{"type":"jwt"},"scopes":["READ","write"],
+  "lifecycle":{"installed":"/installed","uninstalled":"/uninstalled"},
+  "modules":{
+    "generalPages":[{"key":"operations","url":"/operations","name":{"value":"Operations"}}],
+    "webPanels":[{"key":"issue-risk","url":"/risk?issue={issue.key}","location":"atl.jira.view.issue.right.context","name":{"value":"Issue risk"}}],
+    "contentBylineItems":[{"key":"review","url":"/review?content={content.id}","name":{"value":"Review"}}],
+    "webhooks":[{"event":"jira:issue_updated","url":"/hooks/issues","filter":"project = OPS"}]
+  }
+}`)
+	descriptor, err := ParseDescriptor(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if descriptor.Format != "connect" || descriptor.Version != "connect-v1" || len(descriptor.Modules) != 3 || len(descriptor.Webhooks) != 1 {
+		t.Fatalf("Connect descriptor = %+v", descriptor)
+	}
+	if descriptor.Key != "Connect.Operations" {
+		t.Fatalf("Connect key = %q", descriptor.Key)
+	}
+	remoteModules := 0
+	for _, module := range descriptor.Modules {
+		if module.RemoteURL != "" {
+			remoteModules++
+		}
+	}
+	if remoteModules != 3 || descriptor.Webhooks[0].Key != "connect-webhook-1" {
+		t.Fatalf("translated modules = %+v, hooks = %+v", descriptor.Modules, descriptor.Webhooks)
+	}
+	for _, scope := range []string{"read:jira-work", "write:jira-work", "read:confluence-content", "write:confluence-content", "manage:webhooks"} {
+		found := false
+		for _, actual := range descriptor.Scopes {
+			found = found || actual == scope
+		}
+		if !found {
+			t.Errorf("translated scope %q missing from %v", scope, descriptor.Scopes)
+		}
+	}
+	if _, err := ParseDescriptor([]byte(`{"key":"connect.bad","name":"Bad","baseUrl":"https://connect.example.test","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"jiraIssueFields":[]}}`)); err == nil {
+		t.Fatal("accepted an unsupported Connect module")
+	}
+	if _, err := ParseDescriptor([]byte(`{"key":"connect.bad","name":"Bad","baseUrl":"https://connect.example.test","authentication":{"type":"none"},"scopes":[],"modules":{}}`)); err == nil {
+		t.Fatal("accepted a Connect descriptor without JWT authentication")
+	}
+	if _, err := ParseDescriptor([]byte(`{"key":"Connect_Default_JWT","name":"Default JWT","baseUrl":"https://connect.example.test","authentication":{},"scopes":[],"modules":{}}`)); err != nil {
+		t.Fatalf("Connect descriptor with default JWT authentication: %v", err)
+	}
+}

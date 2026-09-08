@@ -605,6 +605,7 @@ func main() {
 		_, _ = w.Write([]byte("ok"))
 	})
 	mux.HandleFunc("GET /apps/modules/{module}", webHandler.AppModulePage)
+	mux.HandleFunc("GET /app-modules/{module}/frame", webHandler.AppModuleFrame)
 	mux.HandleFunc("POST /apps/{appKey}/lifecycle/{event}", appAPI.Lifecycle)
 	mux.HandleFunc("GET /apps/{appKey}/storage/{key}", appAPI.Storage)
 	mux.HandleFunc("PUT /apps/{appKey}/storage/{key}", appAPI.Storage)

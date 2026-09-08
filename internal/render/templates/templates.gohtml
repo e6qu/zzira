@@ -20,7 +20,7 @@
   }());
 </script>
 <link rel="stylesheet" href="/static/css/tokens.css?v=4">
-<link rel="stylesheet" href="/static/css/workspace.css?v=16">
+<link rel="stylesheet" href="/static/css/workspace.css?v=17">
 <link rel="preload" href="/static/zzira-worker.wasm?v=4" as="fetch" crossorigin>
 <link rel="preload" href="/static/sqlite/sqlite3.wasm" as="fetch" crossorigin>
 <script src="/static/htmx/htmx.min.js" defer></script>
@@ -241,7 +241,7 @@
         <div class="section-heading"><h2>Description</h2></div>
         <div class="description-text">{{adfHTML .Issue.Description}}</div>
       </section>
-{{range .AppPanels}}      <section class="issue-section app-context-module" aria-labelledby="app-panel-{{.ID}}"><div class="section-heading"><div><span class="eyebrow">{{.AppName}} app</span><h2 id="app-panel-{{.ID}}">{{.Title}}</h2></div></div><p>{{.Body}}</p></section>
+{{range .AppPanels}}      <section class="issue-section app-context-module" aria-labelledby="app-panel-{{.ID}}"><div class="section-heading"><div><span class="eyebrow">{{.AppName}} app</span><h2 id="app-panel-{{.ID}}">{{.Title}}</h2></div></div>{{if .RemoteURL}}<iframe class="app-context-frame" src="/app-modules/{{.ID}}/frame?issueKey={{$.Issue.Key}}" title="{{.Title}}" sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts"></iframe>{{else}}<p>{{.Body}}</p>{{end}}</section>
 {{end}}
       <section class="issue-section linked-work" aria-labelledby="linked-work-title">
         <div class="section-heading"><h2 id="linked-work-title">Linked work <span class="section-count">{{len .Links}}</span></h2>

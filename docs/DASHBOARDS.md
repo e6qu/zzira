@@ -56,11 +56,12 @@ share clears a viewer's rendered gadgets on their next refresh.
 ## Compatibility boundary
 
 ZZIRA validates REST-created module keys against its built-in catalog and
-browser-created app gadgets against active installed modules. It does not
-download or execute arbitrary gadget URLs, Atlassian Connect gadgets, Forge
-modules or Jira system gadget module keys. Clients sending a URI, an unknown
-module key, or `ignoreUriAndModuleKeyValidation=true` receive an explicit
-validation error.
+browser-created app gadgets against active installed modules. Installed native
+gadgets may use escaped host-rendered content or a declared HTTPS remote module
+with signed Connect context. ZZIRA does not execute unmanaged gadget URLs,
+Forge modules, or unknown Jira system gadget module keys. Clients sending a
+URI, an unknown module key, or `ignoreUriAndModuleKeyValidation=true` receive an
+explicit validation error.
 
 Dashboard writes add ID-only invalidation records to the workspace action log.
 They never serialize dashboard configuration or gadget results. Dashboard

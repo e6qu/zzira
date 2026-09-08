@@ -15,6 +15,7 @@ import (
 )
 
 var appKeyPattern = regexp.MustCompile(`^[a-z][a-z0-9.-]{1,63}$`)
+var connectAppKeyPattern = regexp.MustCompile(`^[a-zA-Z0-9._-]{1,64}$`)
 var moduleKeyPattern = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9._-]{0,63}$`)
 
 var allowedScopes = map[string]bool{
@@ -45,6 +46,7 @@ type descriptorWire struct {
 	Lifecycle         map[string]string      `json:"lifecycle"`
 	Webhooks          []webhookWire          `json:"webhooks"`
 	ScheduledTriggers []scheduledTriggerWire `json:"scheduledTriggers"`
+	Format            string                 `json:"-"`
 }
 
 type webhookWire struct {
@@ -66,11 +68,19 @@ type moduleWire struct {
 	Location string `json:"location"`
 	Title    string `json:"title"`
 	Body     string `json:"body"`
+	URL      string `json:"url"`
 }
 
 func ParseDescriptor(raw []byte) (models.AppDescriptor, error) {
 	if len(raw) == 0 || len(raw) > 256<<10 {
 		return models.AppDescriptor{}, fmt.Errorf("app descriptor must contain at most 256 KiB")
+	}
+	var shape struct {
+		Modules        json.RawMessage `json:"modules"`
+		Authentication json.RawMessage `json:"authentication"`
+	}
+	if err := json.Unmarshal(raw, &shape); err == nil && (len(shape.Authentication) > 0 || (len(bytes.TrimSpace(shape.Modules)) > 0 && bytes.TrimSpace(shape.Modules)[0] == '{')) {
+		return parseConnectDescriptor(raw)
 	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
@@ -81,8 +91,22 @@ func ParseDescriptor(raw []byte) (models.AppDescriptor, error) {
 	if err := ensureJSONEnd(decoder); err != nil {
 		return models.AppDescriptor{}, err
 	}
+	return validateDescriptorWire(wire)
+}
+
+func validateDescriptorWire(wire descriptorWire) (models.AppDescriptor, error) {
 	wire.Key, wire.Name, wire.BaseURL, wire.Version = strings.TrimSpace(wire.Key), strings.TrimSpace(wire.Name), strings.TrimSpace(wire.BaseURL), strings.TrimSpace(wire.Version)
-	if !appKeyPattern.MatchString(wire.Key) {
+	if wire.Format == "" {
+		wire.Format = "zzira"
+	}
+	validKey := appKeyPattern.MatchString(wire.Key)
+	if wire.Format == "connect" {
+		validKey = connectAppKeyPattern.MatchString(wire.Key)
+	}
+	if !validKey {
+		if wire.Format == "connect" {
+			return models.AppDescriptor{}, fmt.Errorf("Connect app key must contain 1 to 64 letters, numbers, dots, underscores, or hyphens")
+		}
 		return models.AppDescriptor{}, fmt.Errorf("app key must be 2 to 64 lowercase letters, numbers, dots, or hyphens")
 	}
 	if wire.Name == "" || len(wire.Name) > 255 || wire.Version == "" || len(wire.Version) > 64 {
@@ -100,14 +124,14 @@ func ParseDescriptor(raw []byte) (models.AppDescriptor, error) {
 		}
 		scopes[scope] = true
 	}
-	descriptor := models.AppDescriptor{Key: wire.Key, Name: wire.Name, BaseURL: baseURL.String(), Version: wire.Version}
+	descriptor := models.AppDescriptor{Key: wire.Key, Name: wire.Name, BaseURL: baseURL.String(), Version: wire.Version, Format: wire.Format}
 	for scope := range scopes {
 		descriptor.Scopes = append(descriptor.Scopes, scope)
 	}
 	sort.Strings(descriptor.Scopes)
 	moduleKeys := map[string]bool{}
 	for _, input := range wire.Modules {
-		input.Key, input.Type, input.Location, input.Title = strings.TrimSpace(input.Key), strings.TrimSpace(input.Type), strings.TrimSpace(input.Location), strings.TrimSpace(input.Title)
+		input.Key, input.Type, input.Location, input.Title, input.URL = strings.TrimSpace(input.Key), strings.TrimSpace(input.Type), strings.TrimSpace(input.Location), strings.TrimSpace(input.Title), strings.TrimSpace(input.URL)
 		requirement, ok := moduleRequirements[input.Type]
 		if !ok || requirement.Location != input.Location {
 			return models.AppDescriptor{}, fmt.Errorf("module %q has an unsupported type or location", input.Key)
@@ -115,11 +139,11 @@ func ParseDescriptor(raw []byte) (models.AppDescriptor, error) {
 		if !scopes[requirement.Scope] {
 			return models.AppDescriptor{}, fmt.Errorf("module %q requires scope %s", input.Key, requirement.Scope)
 		}
-		if !moduleKeyPattern.MatchString(input.Key) || moduleKeys[input.Key] || input.Title == "" || len(input.Title) > 255 || len(input.Body) > 20000 {
+		if !moduleKeyPattern.MatchString(input.Key) || moduleKeys[input.Key] || input.Title == "" || len(input.Title) > 255 || len(input.Body) > 20000 || (input.Body == "" && !validAppCallbackPath(input.URL)) || (input.Body != "" && input.URL != "") {
 			return models.AppDescriptor{}, fmt.Errorf("module keys must be unique and valid; title and body limits must be respected")
 		}
 		moduleKeys[input.Key] = true
-		descriptor.Modules = append(descriptor.Modules, models.AppModule{Key: input.Key, Type: input.Type, Location: input.Location, Title: input.Title, Body: input.Body})
+		descriptor.Modules = append(descriptor.Modules, models.AppModule{Key: input.Key, Type: input.Type, Location: input.Location, Title: input.Title, Body: input.Body, RemoteURL: input.URL})
 	}
 	descriptor.Lifecycle = map[string]string{}
 	for event, path := range wire.Lifecycle {

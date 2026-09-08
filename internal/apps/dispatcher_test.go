@@ -19,6 +19,28 @@ import (
 	"github.com/e6qu/zzira/internal/store"
 )
 
+func TestSignOutboundRequestAddsConnectJWT(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0).UTC()
+	secret := []byte("connect-callback-secret")
+	payload := json.RawMessage(`{"event":"installed"}`)
+	delivery := &models.AppOutboundDelivery{ID: "delivery-7", AppKey: "connect.callback", Format: "connect", Event: "installed", Payload: payload}
+	request := httptest.NewRequest(http.MethodPost, "https://app.example.test/base/installed?source=zzira", bytes.NewReader(payload))
+	if err := signOutboundRequest(request, delivery, "workspace-client-key", secret, now); err != nil {
+		t.Fatal(err)
+	}
+	token := connectToken(request)
+	issuer, err := connectIssuer(token)
+	if err != nil || issuer != "workspace-client-key" {
+		t.Fatalf("Connect callback issuer = %q, %v", issuer, err)
+	}
+	if err := verifyConnectJWT(token, secret, request, payload, now); err != nil {
+		t.Fatalf("Connect callback JWT = %v", err)
+	}
+	if request.Header.Get("X-Zzira-App-Signature") == "" || request.Header.Get("X-Zzira-App-Event") != "installed" {
+		t.Fatalf("native callback headers = %v", request.Header)
+	}
+}
+
 func TestOutboundRunnerDeliversSignedLifecycleWebhookAndSchedule(t *testing.T) {
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	if dsn == "" {
@@ -86,7 +108,7 @@ func TestOutboundRunnerDeliversSignedLifecycleWebhookAndSchedule(t *testing.T) {
 			return
 		}
 		received = append(received, receivedRequest{Path: request.URL.Path, Event: request.Header.Get("X-Zzira-App-Event"), Body: body})
-		if request.URL.Path == "/lifecycle/installed" && failInstalled {
+		if request.URL.Path == "/app/lifecycle/installed" && failInstalled {
 			failInstalled = false
 			response.WriteHeader(http.StatusServiceUnavailable)
 			return
@@ -173,12 +195,12 @@ func TestOutboundRunnerDeliversSignedLifecycleWebhookAndSchedule(t *testing.T) {
 		t.Fatalf("target delivery states = lifecycle %s, webhook %s, schedule %s", lifecycleState, webhookState, scheduleState)
 	}
 
-	wantPaths := map[string]bool{"/lifecycle/installed": false, "/webhooks/issues": false, "/scheduled/hourly": false}
+	wantPaths := map[string]bool{"/app/lifecycle/installed": false, "/app/webhooks/issues": false, "/app/scheduled/hourly": false}
 	for _, callback := range received {
 		if _, exists := wantPaths[callback.Path]; exists && callback.Event != "" {
 			wantPaths[callback.Path] = true
 		}
-		if callback.Path == "/webhooks/issues" && !bytes.Contains(callback.Body, []byte(`"jira:issue_created"`)) {
+		if callback.Path == "/app/webhooks/issues" && !bytes.Contains(callback.Body, []byte(`"jira:issue_created"`)) {
 			t.Fatalf("webhook payload = %s", callback.Body)
 		}
 	}
