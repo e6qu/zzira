@@ -28,6 +28,20 @@ func (s *Service) DeleteServiceOnCallShift(ctx context.Context, actorID, workspa
 	return s.Store.DeleteServiceOnCallShift(ctx, workspaceID, actorID, deskID, shiftID)
 }
 
+func (s *Service) CreateServiceEscalationStep(ctx context.Context, actorID, workspaceID, deskID, targetUserID string, delayMinutes int) error {
+	if strings.TrimSpace(targetUserID) == "" || delayMinutes < 1 || delayMinutes > 10080 {
+		return fmt.Errorf("escalation target and a delay between 1 and 10080 minutes are required")
+	}
+	return s.Store.CreateServiceEscalationStep(ctx, workspaceID, actorID, deskID, targetUserID, delayMinutes)
+}
+
+func (s *Service) DeleteServiceEscalationStep(ctx context.Context, actorID, workspaceID, deskID, stepID string) error {
+	if strings.TrimSpace(stepID) == "" {
+		return fmt.Errorf("escalation step is required")
+	}
+	return s.Store.DeleteServiceEscalationStep(ctx, workspaceID, actorID, deskID, stepID)
+}
+
 func (s *Service) UpdateServiceOperationsProfile(ctx context.Context, actorID, workspaceID, issueIDOrKey string, profile models.ServiceOperationsProfile) (*models.ServiceOperationsProfile, error) {
 	canManage, err := s.Store.CanManageServiceRequest(ctx, workspaceID, actorID, issueIDOrKey)
 	if err != nil || !canManage {

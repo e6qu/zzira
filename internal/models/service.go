@@ -168,11 +168,18 @@ type ServiceOperationsSettings struct {
 	ReviewDueDays              int
 	CABMembers                 []*User
 	OnCallShifts               []ServiceOnCallShift
+	EscalationSteps            []ServiceEscalationStep
 }
 
 type ServiceOnCallShift struct {
 	ID, ServiceDeskID, UserID, UserName, Label string
 	StartsAt, EndsAt                           time.Time
+}
+
+type ServiceEscalationStep struct {
+	ID, ServiceDeskID, TargetUserID, TargetUserName string
+	Position, DelayMinutes                          int
+	TriggeredAt                                     *time.Time
 }
 
 type ServiceOperationsProfile struct {
@@ -181,6 +188,8 @@ type ServiceOperationsProfile struct {
 	PlannedStart, PlannedEnd, ReviewDueAt                        *time.Time
 	OnCallUser                                                   *User
 	ReviewRequired, MajorIncident                                bool
+	MajorIncidentGeneration                                      int
+	MajorIncidentDeclaredAt                                      *time.Time
 	ReviewStatus, ReviewSummary                                  string
 	UpdatedAt                                                    time.Time
 }

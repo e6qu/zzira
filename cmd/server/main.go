@@ -182,6 +182,7 @@ func main() {
 	go (&automation.Runner{Service: automationSvc}).Run(ctx, workspaceID)
 	go (&store.APITaskRunner{Store: st}).Run(ctx, workspaceID)
 	go (&store.ServiceSLARunner{Store: st}).Run(ctx, workspaceID)
+	go (&store.ServiceIncidentEscalationRunner{Store: st}).Run(ctx, workspaceID)
 	go (&commands.ServiceTemporaryAttachmentRunner{Service: cmdSvc}).Run(ctx)
 	if smtpSender != nil {
 		go (&mailer.Runner{Store: st, Sender: smtpSender}).Run(ctx)
@@ -243,6 +244,7 @@ func main() {
 	mux.HandleFunc("POST /service/agent/{desk}/agents", webHandler.ServiceAgentSettings)
 	mux.HandleFunc("POST /service/agent/{desk}/operations", webHandler.ServiceOperationsSettings)
 	mux.HandleFunc("POST /service/agent/{desk}/on-call", webHandler.ServiceOnCallSettings)
+	mux.HandleFunc("POST /service/agent/{desk}/escalations", webHandler.ServiceEscalationSettings)
 	mux.HandleFunc("POST /service/agent/{desk}/queues", webHandler.ServiceQueueSettings)
 	mux.HandleFunc("POST /service/agent/{desk}/request-types/{requestType}/fields", webHandler.ServiceRequestTypeFieldSettings)
 	mux.HandleFunc("POST /service/agent/{desk}/customers", webHandler.ServiceCustomerSettings)

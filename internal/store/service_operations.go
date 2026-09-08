@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -36,7 +37,6 @@ func (s *Store) ServiceOperationsSettings(ctx context.Context, workspaceID, desk
 	if err != nil {
 		return nil, err
 	}
-	defer shiftRows.Close()
 	for shiftRows.Next() {
 		var sh models.ServiceOnCallShift
 		sh.ServiceDeskID = deskID
@@ -47,7 +47,25 @@ func (s *Store) ServiceOperationsSettings(ctx context.Context, workspaceID, desk
 		sh.EndsAt = sh.EndsAt.UTC()
 		v.OnCallShifts = append(v.OnCallShifts, sh)
 	}
-	return v, shiftRows.Err()
+	if err := shiftRows.Err(); err != nil {
+		shiftRows.Close()
+		return nil, err
+	}
+	shiftRows.Close()
+	stepRows, err := s.Pool.Query(ctx, `SELECT p.id,p.position,p.delay_minutes,p.target_user_id,u.display_name FROM service_escalation_steps p JOIN service_desks d ON d.id=p.service_desk_id JOIN users u ON u.id=p.target_user_id WHERE d.workspace_id=$1 AND d.id=$2 ORDER BY p.position,p.id::bigint`, workspaceID, deskID)
+	if err != nil {
+		return nil, err
+	}
+	defer stepRows.Close()
+	for stepRows.Next() {
+		var step models.ServiceEscalationStep
+		step.ServiceDeskID = deskID
+		if err := stepRows.Scan(&step.ID, &step.Position, &step.DelayMinutes, &step.TargetUserID, &step.TargetUserName); err != nil {
+			return nil, err
+		}
+		v.EscalationSteps = append(v.EscalationSteps, step)
+	}
+	return v, stepRows.Err()
 }
 
 func (s *Store) UpdateServiceOperationsSettings(ctx context.Context, workspaceID, actorID, deskID string, threshold, reviewDays int, cabIDs []string) error {
@@ -81,6 +99,63 @@ func (s *Store) UpdateServiceOperationsSettings(ctx context.Context, workspaceID
 	}
 	detail, _ := json.Marshal(map[string]any{"cabRiskThreshold": threshold, "reviewDueDays": reviewDays, "cabMembers": cabIDs})
 	if _, err = tx.Exec(ctx, `INSERT INTO organization_audit_events(organization_id,actor_id,action,target_type,target_id,detail) SELECT organization_id,$2,'service_operations_settings_updated','service_desk',$3,$4::jsonb FROM sites WHERE workspace_id=$1`, workspaceID, actorID, deskID, detail); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (s *Store) CreateServiceEscalationStep(ctx context.Context, workspaceID, actorID, deskID, targetUserID string, delayMinutes int) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := projectAdmin(ctx, tx, workspaceID, actorID); err != nil {
+		return err
+	}
+	var maximumDelay int
+	if err := tx.QueryRow(ctx, `SELECT COALESCE(max(p.delay_minutes),0) FROM service_desks d LEFT JOIN service_escalation_steps p ON p.service_desk_id=d.id WHERE d.workspace_id=$1 AND d.id=$2 GROUP BY d.id`, workspaceID, deskID).Scan(&maximumDelay); err != nil {
+		return err
+	}
+	if delayMinutes <= maximumDelay {
+		return fmt.Errorf("each escalation step must have a longer delay than the previous step")
+	}
+	var stepID string
+	err = tx.QueryRow(ctx, `INSERT INTO service_escalation_steps(service_desk_id,position,delay_minutes,target_user_id)
+		SELECT sd.id,COALESCE((SELECT max(position)+1 FROM service_escalation_steps WHERE service_desk_id=sd.id),0),$4,m.user_id
+		FROM service_desks sd JOIN memberships m ON m.workspace_id=sd.workspace_id AND m.user_id=$3 JOIN users u ON u.id=m.user_id AND u.active
+		WHERE sd.workspace_id=$1 AND sd.id=$2 AND EXISTS(SELECT 1 FROM sites si JOIN directories d ON d.organization_id=si.organization_id AND d.active JOIN directory_users du ON du.directory_id=d.id AND du.user_id=m.user_id AND du.active WHERE si.workspace_id=m.workspace_id)
+		RETURNING id`, workspaceID, deskID, targetUserID, delayMinutes).Scan(&stepID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("escalation target is not an active workspace member")
+	}
+	if err != nil {
+		return err
+	}
+	detail, _ := json.Marshal(map[string]any{"serviceDeskId": deskID, "targetUserId": targetUserID, "delayMinutes": delayMinutes})
+	if _, err := tx.Exec(ctx, `INSERT INTO organization_audit_events(organization_id,actor_id,action,target_type,target_id,detail) SELECT organization_id,$2,'service_escalation_step_created','service_escalation_step',$3,$4::jsonb FROM sites WHERE workspace_id=$1`, workspaceID, actorID, stepID, detail); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (s *Store) DeleteServiceEscalationStep(ctx context.Context, workspaceID, actorID, deskID, stepID string) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := projectAdmin(ctx, tx, workspaceID, actorID); err != nil {
+		return err
+	}
+	var targetUserID string
+	var delayMinutes int
+	err = tx.QueryRow(ctx, `DELETE FROM service_escalation_steps p USING service_desks d WHERE p.id=$3 AND p.service_desk_id=d.id AND d.workspace_id=$1 AND d.id=$2 RETURNING p.target_user_id,p.delay_minutes`, workspaceID, deskID, stepID).Scan(&targetUserID, &delayMinutes)
+	if err != nil {
+		return err
+	}
+	detail, _ := json.Marshal(map[string]any{"serviceDeskId": deskID, "targetUserId": targetUserID, "delayMinutes": delayMinutes})
+	if _, err := tx.Exec(ctx, `INSERT INTO organization_audit_events(organization_id,actor_id,action,target_type,target_id,detail) SELECT organization_id,$2,'service_escalation_step_deleted','service_escalation_step',$3,$4::jsonb FROM sites WHERE workspace_id=$1`, workspaceID, actorID, stepID, detail); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
@@ -154,7 +229,7 @@ func (s *Store) ServiceOperationsProfile(ctx context.Context, workspaceID, issue
 	var onCall *string
 	var onCallEmail, onCallName, onCallTimeZone string
 	var onCallActive bool
-	err := s.Pool.QueryRow(ctx, `SELECT o.kind,o.impact,o.likelihood,o.impact*o.likelihood,o.change_type,o.planned_start,o.planned_end,o.rollback_plan,o.on_call_user_id,COALESCE(u.email,''),COALESCE(u.display_name,'Former user'),COALESCE(u.time_zone,'UTC'),COALESCE(u.active,false),o.major_incident,o.review_required,o.review_due_at,o.review_status,o.review_summary,o.updated_at FROM service_request_operations o JOIN service_requests r ON r.issue_id=o.request_issue_id LEFT JOIN users u ON u.id=o.on_call_user_id WHERE r.workspace_id=$1 AND o.request_issue_id=$2`, workspaceID, issueID).Scan(&v.Kind, &v.Impact, &v.Likelihood, &v.RiskScore, &v.ChangeType, &v.PlannedStart, &v.PlannedEnd, &v.RollbackPlan, &onCall, &onCallEmail, &onCallName, &onCallTimeZone, &onCallActive, &v.MajorIncident, &v.ReviewRequired, &v.ReviewDueAt, &v.ReviewStatus, &v.ReviewSummary, &v.UpdatedAt)
+	err := s.Pool.QueryRow(ctx, `SELECT o.kind,o.impact,o.likelihood,o.impact*o.likelihood,o.change_type,o.planned_start,o.planned_end,o.rollback_plan,o.on_call_user_id,COALESCE(u.email,''),COALESCE(u.display_name,'Former user'),COALESCE(u.time_zone,'UTC'),COALESCE(u.active,false),o.major_incident,o.major_incident_declared_at,o.major_incident_generation,o.review_required,o.review_due_at,o.review_status,o.review_summary,o.updated_at FROM service_request_operations o JOIN service_requests r ON r.issue_id=o.request_issue_id LEFT JOIN users u ON u.id=o.on_call_user_id WHERE r.workspace_id=$1 AND o.request_issue_id=$2`, workspaceID, issueID).Scan(&v.Kind, &v.Impact, &v.Likelihood, &v.RiskScore, &v.ChangeType, &v.PlannedStart, &v.PlannedEnd, &v.RollbackPlan, &onCall, &onCallEmail, &onCallName, &onCallTimeZone, &onCallActive, &v.MajorIncident, &v.MajorIncidentDeclaredAt, &v.MajorIncidentGeneration, &v.ReviewRequired, &v.ReviewDueAt, &v.ReviewStatus, &v.ReviewSummary, &v.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -169,6 +244,10 @@ func (s *Store) ServiceOperationsProfile(ctx context.Context, workspaceID, issue
 	if v.ReviewDueAt != nil {
 		value := v.ReviewDueAt.UTC()
 		v.ReviewDueAt = &value
+	}
+	if v.MajorIncidentDeclaredAt != nil {
+		value := v.MajorIncidentDeclaredAt.UTC()
+		v.MajorIncidentDeclaredAt = &value
 	}
 	if onCall != nil {
 		v.OnCallUserID = *onCall
@@ -303,7 +382,7 @@ func (s *Store) UpdateServiceOperationsProfile(ctx context.Context, workspaceID,
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	tag, err := tx.Exec(ctx, `UPDATE service_request_operations o SET impact=$4,likelihood=$5,change_type=$6,planned_start=$7,planned_end=$8,rollback_plan=$9,on_call_user_id=NULLIF($10,''),major_incident=$11,review_required=$12,review_due_at=$13,review_status=$14,review_summary=$15,updated_by=$3,updated_at=now() FROM service_requests r WHERE r.issue_id=o.request_issue_id AND r.workspace_id=$1 AND o.request_issue_id=$2`, workspaceID, issueID, actorID, v.Impact, v.Likelihood, v.ChangeType, v.PlannedStart, v.PlannedEnd, v.RollbackPlan, v.OnCallUserID, v.MajorIncident, v.ReviewRequired, v.ReviewDueAt, v.ReviewStatus, v.ReviewSummary)
+	tag, err := tx.Exec(ctx, `UPDATE service_request_operations o SET impact=$4,likelihood=$5,change_type=$6,planned_start=$7,planned_end=$8,rollback_plan=$9,on_call_user_id=NULLIF($10,''),major_incident=$11,major_incident_declared_at=CASE WHEN $11 AND NOT o.major_incident THEN now() WHEN $11 THEN o.major_incident_declared_at ELSE NULL END,major_incident_generation=CASE WHEN $11 AND NOT o.major_incident THEN o.major_incident_generation+1 ELSE o.major_incident_generation END,review_required=$12,review_due_at=$13,review_status=$14,review_summary=$15,updated_by=$3,updated_at=now() FROM service_requests r WHERE r.issue_id=o.request_issue_id AND r.workspace_id=$1 AND o.request_issue_id=$2`, workspaceID, issueID, actorID, v.Impact, v.Likelihood, v.ChangeType, v.PlannedStart, v.PlannedEnd, v.RollbackPlan, v.OnCallUserID, v.MajorIncident, v.ReviewRequired, v.ReviewDueAt, v.ReviewStatus, v.ReviewSummary)
 	if err != nil {
 		return err
 	}

@@ -2006,13 +2006,35 @@ Validation after major-incident communications:
   and diff validation pass. Exact API coverage remains 427 of 1,207 operations
   because this checkpoint adds service behavior outside the pinned REST set.
 
+Validation after major-incident escalation policies:
+
+- Migration 099 gives each major-incident declaration a stable UTC start and
+  generation, adds ordered desk-level responder steps, and records each due
+  step once per request generation.
+- Service managers add or remove a delay and active responder from the agent
+  workspace. Both mutations are project-admin guarded and organization
+  audited. Agents see waiting and notified progress inside the major incident;
+  portal customers cannot read responder details.
+- A minute runner selects open declared incidents, skips inactive targets and
+  atomically creates a deduplicated in-app notification, sync action, delivery
+  record and audit event. Declassification stops delivery, while a later new
+  declaration uses a new generation.
+- Focused PostgreSQL coverage proves policy persistence/deletion, audit events,
+  due delivery, retry deduplication, UTC progress and customer denial. The
+  Chromium service journey configures a step and verifies waiting progress on
+  a declared incident.
+- The focused and full PostgreSQL Go suites, vet, WebAssembly build, Chromium
+  service journey, seven conformance tests, generated inventory/coverage checks
+  and diff validation pass. Exact API coverage remains 427 of 1,207 operations
+  because this checkpoint adds service behavior outside the pinned REST set.
+
 ## Current change
 
-1. Continue Service Management with escalation policy.
-2. Expand the app runtime from registered custom-content discovery into signed
+1. Expand the app runtime from registered custom-content discovery into signed
    installation, scopes and module rendering.
-3. Continue Confluence with database schemas/rows/views and whiteboard canvas
+2. Continue Confluence with database schemas/rows/views and whiteboard canvas
    objects/editing.
+3. Continue Service Management with Assets-backed topology and impact analysis.
 
 ## Resume here
 

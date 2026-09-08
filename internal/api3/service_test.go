@@ -310,6 +310,12 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if err != nil || !strings.Contains(strings.Join(issue.Labels, ","), "incident") {
 		t.Fatalf("incident issue = %+v, %v", issue, err)
 	}
+	if err := handler.Commands.CreateServiceEscalationStep(ctx, actorID, workspaceID, serviceDeskID, actorID, 5); err != nil {
+		t.Fatalf("create incident escalation step: %v", err)
+	}
+	if err := handler.Commands.CreateServiceEscalationStep(ctx, customerID, workspaceID, serviceDeskID, customerID, 10); err == nil {
+		t.Fatal("customer configured an incident escalation step")
+	}
 	incidentProfile := models.ServiceOperationsProfile{Impact: 4, Likelihood: 3, ChangeType: "normal", MajorIncident: true, ReviewRequired: true, ReviewStatus: "pending"}
 	if _, err := handler.Commands.UpdateServiceOperationsProfile(ctx, actorID, workspaceID, issue.ID, incidentProfile); err != nil {
 		t.Fatalf("declare major incident: %v", err)
@@ -342,6 +348,28 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM notifications WHERE workspace_id=$1 AND user_id=$2 AND entity_id=$3 AND kind='service_incident_update'`, workspaceID, customerID, issue.Key).Scan(&customerIncidentNotifications); err != nil || customerIncidentNotifications != 1 {
 		t.Fatalf("customer incident notifications = %d, %v", customerIncidentNotifications, err)
 	}
+	incidentEscalationNow := time.Now().UTC().Truncate(time.Second)
+	if _, err := st.Pool.Exec(ctx, `UPDATE service_request_operations SET major_incident_declared_at=$2 WHERE request_issue_id=$1`, issue.ID, incidentEscalationNow.Add(-6*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	incidentRunner := &store.ServiceIncidentEscalationRunner{Store: st, Now: func() time.Time { return incidentEscalationNow }}
+	if err := incidentRunner.DrainOnce(ctx, workspaceID); err != nil {
+		t.Fatal(err)
+	}
+	if err := incidentRunner.DrainOnce(ctx, workspaceID); err != nil {
+		t.Fatal(err)
+	}
+	var incidentEscalationNotifications int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM notifications WHERE workspace_id=$1 AND user_id=$2 AND entity_id=$3 AND kind='service_incident_escalation'`, workspaceID, actorID, issue.Key).Scan(&incidentEscalationNotifications); err != nil || incidentEscalationNotifications != 1 {
+		t.Fatalf("incident escalation notifications = %d, %v", incidentEscalationNotifications, err)
+	}
+	escalationStatus, err := st.ServiceIncidentEscalationStatus(ctx, workspaceID, actorID, issue.ID)
+	if err != nil || len(escalationStatus) != 1 || escalationStatus[0].TriggeredAt == nil || escalationStatus[0].TriggeredAt.Location() != time.UTC {
+		t.Fatalf("incident escalation status = %+v, %v", escalationStatus, err)
+	}
+	if _, err := st.ServiceIncidentEscalationStatus(ctx, workspaceID, customerID, issue.ID); err == nil {
+		t.Fatal("customer read internal incident escalation status")
+	}
 	incidentProfile.MajorIncident = false
 	if _, err := handler.Commands.UpdateServiceOperationsProfile(ctx, actorID, workspaceID, issue.ID, incidentProfile); err != nil {
 		t.Fatalf("declassify major incident: %v", err)
@@ -352,6 +380,23 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	}
 	if _, err := handler.Commands.CreateServiceIncidentUpdate(ctx, actorID, workspaceID, issue.ID, "public", "Published after declassification"); err == nil {
 		t.Fatal("published an update after major incident declassification")
+	}
+	incidentProfile.MajorIncident = true
+	if _, err := handler.Commands.UpdateServiceOperationsProfile(ctx, actorID, workspaceID, issue.ID, incidentProfile); err != nil {
+		t.Fatalf("redeclare major incident: %v", err)
+	}
+	redeclaredProfile, err := st.ServiceOperationsProfile(ctx, workspaceID, issue.ID)
+	if err != nil || redeclaredProfile.MajorIncidentGeneration != 2 || redeclaredProfile.MajorIncidentDeclaredAt == nil || redeclaredProfile.MajorIncidentDeclaredAt.Location() != time.UTC {
+		t.Fatalf("redeclared incident profile = %+v, %v", redeclaredProfile, err)
+	}
+	if _, err := st.Pool.Exec(ctx, `UPDATE service_request_operations SET major_incident_declared_at=$2 WHERE request_issue_id=$1`, issue.ID, incidentEscalationNow.Add(-6*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := incidentRunner.DrainOnce(ctx, workspaceID); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM notifications WHERE workspace_id=$1 AND user_id=$2 AND entity_id=$3 AND kind='service_incident_escalation'`, workspaceID, actorID, issue.Key).Scan(&incidentEscalationNotifications); err != nil || incidentEscalationNotifications != 2 {
+		t.Fatalf("redeclared incident escalation notifications = %d, %v", incidentEscalationNotifications, err)
 	}
 	var problemTypeID, changeTypeID string
 	if err := st.Pool.QueryRow(ctx, `SELECT id FROM service_request_types WHERE service_desk_id=$1 AND name='Investigate a problem'`, serviceDeskID).Scan(&problemTypeID); err != nil {

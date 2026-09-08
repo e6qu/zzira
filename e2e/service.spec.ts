@@ -34,10 +34,16 @@ test('admin creates a service project with Jira Service Management request types
   const projectResponse = await page.request.get(`/rest/api/3/project/${key}`, { headers: auth });
   expect(projectResponse.status()).toBe(200);
   expect(await projectResponse.json()).toMatchObject({ key, projectTypeKey: 'service_desk' });
-  const desksResponse = await page.request.get('/rest/servicedeskapi/servicedesk', { headers: auth });
-  expect(desksResponse.status()).toBe(200);
-  const desks = await desksResponse.json();
-  const desk = desks.values.find((candidate: any) => candidate.projectKey === key);
+  let desk: any;
+  let deskStart = 0;
+  while (!desk) {
+    const desksResponse = await page.request.get(`/rest/servicedeskapi/servicedesk?start=${deskStart}&limit=100`, { headers: auth });
+    expect(desksResponse.status()).toBe(200);
+    const desks = await desksResponse.json();
+    desk = desks.values.find((candidate: any) => candidate.projectKey === key);
+    if (desk || desks.isLastPage) break;
+    deskStart += desks.size;
+  }
   expect(desk).toBeTruthy();
   const requestTypesResponse = await page.request.get(`/rest/servicedeskapi/servicedesk/${desk.id}/requesttype`, { headers: auth });
   expect(requestTypesResponse.status()).toBe(200);
@@ -79,6 +85,11 @@ test('admin creates a service project with Jira Service Management request types
   await page.locator('#operations-settings').getByLabel('Ends').fill(localDateTime(new Date(now.getTime() + 86_400_000)));
   await page.locator('#operations-settings').getByRole('button', { name: 'Add on-call shift' }).click();
   await expect(page.locator('#operations-settings')).toContainText('Primary operations');
+  const escalationPolicy = page.locator('#escalation-policy');
+  await escalationPolicy.getByLabel('Escalate after minutes').fill('15');
+  await escalationPolicy.getByLabel('Escalation target').selectOption({ label: 'Demo User' });
+  await escalationPolicy.getByRole('button', { name: 'Add escalation step' }).click();
+  await expect(page.locator('#escalation-policy')).toContainText('After 15 minutes');
 
   await page.goto('/service');
   await expect(page.getByRole('heading', { name: 'How can we help?', level: 1 })).toBeVisible();
@@ -107,6 +118,8 @@ test('admin creates a service project with Jira Service Management request types
   await incidentOperations.getByLabel('Review findings').fill('Review customer impact, detection, and recovery evidence.');
   await incidentOperations.getByRole('button', { name: 'Save operations assessment' }).click();
   await expect(page.locator('#operations-control')).toContainText('High risk');
+  await expect(page.locator('.service-escalation-progress')).toContainText('Demo User');
+  await expect(page.locator('.service-escalation-progress')).toContainText('Waiting');
   const incidentUpdates = page.locator('#incident-updates');
   await expect(incidentUpdates.getByRole('heading', { name: 'Status updates' })).toBeVisible();
   await incidentUpdates.getByLabel('Update').fill('Checkout is unavailable. The response team is investigating.');

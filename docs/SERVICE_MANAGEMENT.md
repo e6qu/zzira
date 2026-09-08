@@ -97,12 +97,19 @@ publication records its audience in the organization audit log. Declassifying
 the incident preserves its timeline and closes it to new publications.
 
 Service managers configure each desk's CAB threshold, approver roster, incident
-review deadline, and bounded on-call shifts. An active shift assigns its owner
-when a new operations request arrives. A change at or above the threshold
-creates one durable Change advisory board approval for the configured members.
-Incident reviews start pending with a calculated due date; agents can advance
-the review and persist its findings. Policy, rotation, and assessment changes
-are permission checked and recorded in the organization audit log.
+review deadline, bounded on-call shifts, and ordered major-incident escalation
+steps. Each escalation step selects an active workspace responder and a delay
+from the current declaration. The minute scheduler atomically records and
+notifies every due responder once for each declaration, while agents see sent
+and waiting steps on the incident. Reclassifying a request as a new major
+incident starts a new delivery generation.
+
+An active shift assigns its owner when a new operations request arrives. A
+change at or above the threshold creates one durable Change advisory board
+approval for the configured members. Incident reviews start pending with a
+calculated due date; agents can advance the review and persist its findings.
+Policy, rotation, escalation, and assessment changes are permission checked and
+recorded in the organization audit log.
 
 The portal and REST API share Jira's canonical attachment records and blob
 store. Uploads first receive a one-use service-desk temporary ID, then become a
@@ -215,6 +222,6 @@ service report comparisons, SLA goal distributions, exports and scheduled
 delivery, complete Assets object/schema/import APIs, full
 status chronology, SLA rule reordering and advanced criteria,
 portal invitation email delivery, Atlassian knowledge ranking/analytics, and
-Assets-backed dependency topology and impact analysis, escalation policy,
-and review templates remain. Customer creation grants only the
+Assets-backed dependency topology and impact analysis and review templates
+remain. Customer creation grants only the
 site `atlassian/customer` role and never silently grants Jira product access.

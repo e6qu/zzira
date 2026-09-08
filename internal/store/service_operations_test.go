@@ -55,6 +55,19 @@ func TestServiceOperationsPolicyAndOnCallAudit(t *testing.T) {
 	if settings.CABRiskThreshold != 12 || settings.ReviewDueDays != 2 || len(settings.CABMembers) != 1 || settings.CABMembers[0].ID != actorID {
 		t.Fatalf("settings = %+v", settings)
 	}
+	if err := st.CreateServiceEscalationStep(ctx, workspaceID, actorID, deskID, actorID, 15); err != nil {
+		t.Fatalf("create escalation step: %v", err)
+	}
+	if err := st.CreateServiceEscalationStep(ctx, workspaceID, actorID, deskID, actorID, 10); err == nil {
+		t.Fatal("created an out-of-order escalation step")
+	}
+	settings, err = st.ServiceOperationsSettings(ctx, workspaceID, deskID)
+	if err != nil || len(settings.EscalationSteps) != 1 || settings.EscalationSteps[0].DelayMinutes != 15 || settings.EscalationSteps[0].TargetUserID != actorID {
+		t.Fatalf("escalation steps = %+v, %v", settings.EscalationSteps, err)
+	}
+	if err := st.DeleteServiceEscalationStep(ctx, workspaceID, actorID, deskID, settings.EscalationSteps[0].ID); err != nil {
+		t.Fatalf("delete escalation step: %v", err)
+	}
 
 	startsAt := time.Now().UTC().Add(-time.Hour).Truncate(time.Second)
 	endsAt := startsAt.Add(8 * time.Hour)
@@ -75,10 +88,10 @@ func TestServiceOperationsPolicyAndOnCallAudit(t *testing.T) {
 	}
 
 	var auditCount int
-	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM organization_audit_events WHERE (target_id=$1 OR detail->>'serviceDeskId'=$1) AND action IN ('service_operations_settings_updated','service_on_call_shift_created','service_on_call_shift_deleted')`, deskID).Scan(&auditCount); err != nil {
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM organization_audit_events WHERE (target_id=$1 OR detail->>'serviceDeskId'=$1) AND action IN ('service_operations_settings_updated','service_on_call_shift_created','service_on_call_shift_deleted','service_escalation_step_created','service_escalation_step_deleted')`, deskID).Scan(&auditCount); err != nil {
 		t.Fatal(err)
 	}
-	if auditCount != 3 {
-		t.Fatalf("operations audit count = %d, want 3", auditCount)
+	if auditCount != 5 {
+		t.Fatalf("operations audit count = %d, want 5", auditCount)
 	}
 }

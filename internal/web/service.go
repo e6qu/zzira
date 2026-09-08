@@ -88,6 +88,7 @@ type servicePageData struct {
 	DependencyEdges       []models.ServiceDependencyEdge
 	DependencyNodeCount   int
 	IncidentUpdates       []models.ServiceIncidentUpdate
+	EscalationSteps       []models.ServiceEscalationStep
 	FieldValues           map[string]string
 	Transitions           []serviceTransitionView
 	CanAdmin              bool
@@ -491,6 +492,30 @@ func (h *Handler) ServiceOnCallSettings(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	redirectLocal(w, r, "/service/agent/"+deskID+"#operations-settings")
+}
+
+func (h *Handler) ServiceEscalationSettings(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	deskID := r.PathValue("desk")
+	var err error
+	if r.PostFormValue("action") == "delete" {
+		err = h.Commands.DeleteServiceEscalationStep(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("stepId"))
+	} else {
+		delayMinutes, parseErr := strconv.Atoi(r.PostFormValue("delayMinutes"))
+		if parseErr != nil {
+			http.Error(w, "Escalation delay is invalid.", http.StatusBadRequest)
+			return
+		}
+		err = h.Commands.CreateServiceEscalationStep(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("accountId"), delayMinutes)
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	redirectLocal(w, r, "/service/agent/"+deskID+"#escalation-policy")
 }
 
 func (h *Handler) ServiceCustomerSettings(w http.ResponseWriter, r *http.Request) {
@@ -1074,11 +1099,19 @@ func (h *Handler) ServiceRequestPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	incidentUpdates := []models.ServiceIncidentUpdate{}
+	escalationSteps := []models.ServiceEscalationStep{}
 	if operations != nil && operations.Kind == "incident" {
 		incidentUpdates, err = h.Store.ServiceIncidentUpdates(r.Context(), workspaceID, user.ID, request.Issue.ID)
 		if err != nil {
 			http.Error(w, "Could not load incident updates.", http.StatusInternalServerError)
 			return
+		}
+		if canManage {
+			escalationSteps, err = h.Store.ServiceIncidentEscalationStatus(r.Context(), workspaceID, user.ID, request.Issue.ID)
+			if err != nil {
+				http.Error(w, "Could not load incident escalation status.", http.StatusInternalServerError)
+				return
+			}
 		}
 	}
 	members := []*models.User{}
@@ -1138,7 +1171,7 @@ func (h *Handler) ServiceRequestPage(w http.ResponseWriter, r *http.Request) {
 		}
 		requestFields = append(requestFields, serviceRequestFieldValueView{Name: field.Name, Value: fmt.Sprint(value)})
 	}
-	h.writeWorkspacePage(w, r, "page_service_request", user, workspaceID, servicePageData{Request: request, RequestFieldValues: requestFields, OperationsProfile: operations, ChangeConflicts: changeConflicts, IncidentUpdates: incidentUpdates, Comments: comments, Attachments: attachments, Links: linkViews, LinkTypes: linkTypes, Approvals: approvals, Feedback: feedback, Participants: participants, Members: members, SLAs: slas, Transitions: transitions, CanAgent: canManage, CanManageParticipants: canManage || request.Customer.ID == user.ID, CurrentUserID: user.ID, Subscribed: subscribed, CanLeaveFeedback: request.Customer.ID == user.ID && request.Issue.Status.Category == "done"}, "service", request.Issue.ProjectID)
+	h.writeWorkspacePage(w, r, "page_service_request", user, workspaceID, servicePageData{Request: request, RequestFieldValues: requestFields, OperationsProfile: operations, ChangeConflicts: changeConflicts, IncidentUpdates: incidentUpdates, EscalationSteps: escalationSteps, Comments: comments, Attachments: attachments, Links: linkViews, LinkTypes: linkTypes, Approvals: approvals, Feedback: feedback, Participants: participants, Members: members, SLAs: slas, Transitions: transitions, CanAgent: canManage, CanManageParticipants: canManage || request.Customer.ID == user.ID, CurrentUserID: user.ID, Subscribed: subscribed, CanLeaveFeedback: request.Customer.ID == user.ID && request.Issue.Status.Category == "done"}, "service", request.Issue.ProjectID)
 }
 
 func (h *Handler) ServiceRequestLink(w http.ResponseWriter, r *http.Request) {
