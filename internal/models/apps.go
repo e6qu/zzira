@@ -58,6 +58,7 @@ type AppModule struct {
 	ID, InstallationID, AppKey, AppName, BaseURL string
 	SecretCiphertext                             []byte
 	Key, Type, Location, Title, Body, RemoteURL  string
+	IconURL                                      string
 	Position                                     int
 	Dynamic                                      bool
 }

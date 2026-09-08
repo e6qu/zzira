@@ -161,7 +161,7 @@ func validateDescriptorWire(wire descriptorWire) (models.AppDescriptor, error) {
 			return models.AppDescriptor{}, fmt.Errorf("module %q requires scope %s", input.Key, requirement.Scope)
 		}
 		hasBody, hasURL := input.Body != "", input.URL != ""
-		if !moduleKeyPattern.MatchString(input.Key) || moduleKeys[input.Key] || input.Title == "" || len(input.Title) > 255 || len(input.Body) > 20000 || (!hasBody && !hasURL) || (hasURL && !validAppCallbackPath(input.URL)) || (hasBody && hasURL && input.Type != "jira:report" && input.Type != "jira:dashboardGadget") {
+		if !moduleKeyPattern.MatchString(input.Key) || moduleKeys[input.Key] || input.Title == "" || len(input.Title) > 255 || len(input.Body) > 20000 || (!hasBody && !hasURL) || (hasURL && !validAppCallbackPath(input.URL)) || (hasBody && hasURL && input.Type != "jira:report" && input.Type != "jira:dashboardGadget" && input.Type != "jira:projectPage") {
 			return models.AppDescriptor{}, fmt.Errorf("module keys must be unique and valid; title and body limits must be respected")
 		}
 		moduleKeys[input.Key] = true

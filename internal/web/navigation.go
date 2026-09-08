@@ -54,6 +54,9 @@ func (h *Handler) workspaceNavigation(r *http.Request, workspaceID, preferred st
 	if err != nil {
 		return nil, fmt.Errorf("list project app modules for navigation: %w", err)
 	}
+	for index := range projectAppModules {
+		projectAppModules[index].IconURL = appModuleIconPath(projectAppModules[index])
+	}
 	projectAdminAppModules, err := h.Store.AppModulesByLocation(r.Context(), workspaceID, "jira.project.settings")
 	if err != nil {
 		return nil, fmt.Errorf("list project admin app modules for navigation: %w", err)

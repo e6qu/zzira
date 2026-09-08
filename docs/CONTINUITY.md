@@ -2322,8 +2322,8 @@ Validation after Connect project pages:
   context changes both values.
 - Descriptor, module URL, render and browser tests cover parsing, ordering,
   placeholder expansion, navigation, signed remote content and accessibility.
-  Project-page conditions and rendering descriptor icon assets remain explicit
-  gaps. The complete PostgreSQL Go suite, native server/load-test and
+  Project-page conditions remain an explicit gap. The complete PostgreSQL Go
+  suite, native server/load-test and
   WebAssembly builds, vet, seven conformance tests, generated
   inventory/coverage checks and diff validation pass. The pinned inventory
   remains 433 assessed operations out of 1,207.
@@ -2400,11 +2400,27 @@ Validation after Connect report and dashboard thumbnails:
   generated inventory/coverage checks and diff validation pass. The pinned
   inventory remains 433 assessed operations out of 1,207.
 
+Validation after Connect project-page icons:
+
+- Project-page translation now preserves the validated `iconUrl` in module
+  metadata. The current-project navigation uses a compact descriptor icon when
+  present and retains the established host icon for native modules.
+- The generalized authenticated asset gateway restricts icon requests to
+  active project-page modules and redirects only to the installed relative URL
+  with a short-lived Connect JWT. Icons use decorative alternative text and no
+  referrer because the adjacent module title names the destination.
+- Focused parser, web, render and server tests pass. The Chromium Connect
+  journey verifies the signed project icon request, visible navigation icon,
+  remote project context and accessibility. The complete PostgreSQL Go suite,
+  native server/load-test and WebAssembly builds, vet, seven conformance tests,
+  generated inventory/coverage checks and diff validation pass. The pinned
+  inventory remains 433 assessed operations out of 1,207.
+
 ## Current change
 
 1. Continue the app runtime with remaining Connect module families, dynamic
    module types and webhook options, issue-content presence conditions/native
-   rendering, project-page icons and page/admin conditions, additional web-item
+   rendering, project/page-admin conditions, additional web-item
    locations and conditions, dashboard-item configuration/refresh/conditions,
    select/read-only field options, workflow modules and upgrade migrations.
 2. Continue Confluence with advanced whiteboard objects, direct manipulation,

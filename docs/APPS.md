@@ -149,8 +149,10 @@ relative `iconUrl`, and honor descriptor weight when ordering multiple app
 pages. Each active page appears in the current project's navigation and opens
 in a project-scoped, sandboxed signed iframe. The remote request expands and
 supplies both `project.key` and `project.id`; changing projects therefore opens
-the same module with the selected project context. Project-page conditions and
-rendering the descriptor-provided icon remain explicit gaps.
+the same module with the selected project context. The project navigation
+renders `iconUrl` through the authenticated signed-asset endpoint and retains
+the built-in fallback for native modules. Project-page conditions remain an
+explicit gap.
 
 Connect project administration tabs validate the four standard
 `projectgroup1` through `projectgroup4` locations, preserve group and weight
@@ -263,7 +265,7 @@ reinstallation.
 
 The runtime is a ZZIRA execution contract for remotely hosted apps. Remaining
 Connect module families, the remaining dynamic module types and webhook
-options, project-page icons and page/admin conditions, dashboard-item
+options, project/page-admin conditions, dashboard-item
 configuration/refresh/conditions, workflow modules, select/read-only issue
 fields and option APIs,
 descriptor-driven upgrade migrations, and Atlassian-hosted Forge compute remain

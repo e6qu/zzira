@@ -91,7 +91,7 @@ func TestParseConnectDescriptorTranslatesSupportedModules(t *testing.T) {
 		if module.RemoteURL != "" {
 			remoteModules++
 		}
-		if module.Key == "project-release" && module.Type == "jira:projectPage" && module.Location == "jira.project.page" && module.Position == 40 {
+		if module.Key == "project-release" && module.Type == "jira:projectPage" && module.Location == "jira.project.page" && module.Position == 40 && strings.Contains(module.Body, "project-release.svg") {
 			projectPage = true
 		}
 		if module.Key == "project-controls" && module.Type == "jira:projectAdminPage" && module.Location == "jira.project.settings" && module.Position == 3020 && strings.Contains(module.RemoteURL, "source=settings") {

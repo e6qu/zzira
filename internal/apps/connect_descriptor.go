@@ -71,6 +71,10 @@ type connectProjectPageWire struct {
 	Conditions []json.RawMessage `json:"conditions"`
 }
 
+type connectProjectPageMeta struct {
+	IconURL string `json:"iconUrl"`
+}
+
 type connectProjectAdminPageWire struct {
 	Key        string            `json:"key"`
 	URL        string            `json:"url"`
@@ -367,7 +371,8 @@ func translateConnectProjectPage(module connectProjectPageWire) (moduleWire, err
 	if weight == 0 {
 		weight = 100
 	}
-	return moduleWire{Key: module.Key, Type: "jira:projectPage", Location: "jira.project.page", Title: module.Name.Value, URL: module.URL, Position: weight}, nil
+	meta, _ := json.Marshal(connectProjectPageMeta{IconURL: module.IconURL})
+	return moduleWire{Key: module.Key, Type: "jira:projectPage", Location: "jira.project.page", Title: module.Name.Value, Body: string(meta), URL: module.URL, Position: weight}, nil
 }
 
 func translateConnectIssueContent(module connectIssueContentWire) (moduleWire, error) {

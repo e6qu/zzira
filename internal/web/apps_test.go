@@ -19,3 +19,13 @@ func TestAppModuleThumbnailPath(t *testing.T) {
 		t.Fatalf("plain module thumbnail path = %q", got)
 	}
 }
+
+func TestAppModuleIconPath(t *testing.T) {
+	module := models.AppModule{ID: "84", Body: `{"iconUrl":"/project.svg"}`}
+	if got := appModuleIconURL(module); got != "/project.svg" {
+		t.Fatalf("icon URL = %q", got)
+	}
+	if got := appModuleIconPath(module); got != "/app-modules/84/icon" {
+		t.Fatalf("icon path = %q", got)
+	}
+}

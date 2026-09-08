@@ -102,7 +102,7 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
     expect(target.searchParams.get('jwt')).toBeTruthy();
     expect(target.searchParams.get('xdm_e')).toBe('http://localhost:8080');
     expect(target.searchParams.get('xdm_c')).toMatch(/^zzira-/);
-    if (target.pathname.endsWith('/report.svg') || target.pathname.endsWith('/dashboard.svg')) {
+    if (target.pathname.endsWith('/report.svg') || target.pathname.endsWith('/dashboard.svg') || target.pathname.endsWith('/project.svg')) {
       await route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 60"><rect width="80" height="60" rx="8" fill="#1868db"/><path d="M18 42V30m15 12V18m15 24V25m15 17V12" stroke="white" stroke-width="5"/></svg>' });
       return;
     }
@@ -216,6 +216,7 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
   await page.locator('#workspace-navigation').getByRole('link', { name: shortcutTitle }).click();
   await expect(page.frameLocator('iframe.app-module-frame').getByRole('heading', { name: 'Remote team shortcut' })).toBeVisible();
   await page.goto('/projects/ZZ');
+  await expect(page.locator('.nav-project-app-module img.nav-app-icon')).toBeVisible();
   await page.locator('#workspace-navigation').getByRole('link', { name: projectPageTitle }).click();
   await expect(page.getByRole('heading', { name: projectPageTitle, level: 1 })).toBeVisible();
   await expect(page.frameLocator('iframe.app-module-frame').getByRole('heading', { name: 'Remote project intelligence' })).toBeVisible();

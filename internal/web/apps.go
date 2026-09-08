@@ -120,22 +120,42 @@ func (h *Handler) AppModuleFrame(w http.ResponseWriter, r *http.Request) {
 // authenticated, signed gateway as remote module frames. The route fixes the
 // source to validated installation metadata instead of accepting a caller URL.
 func (h *Handler) AppModuleThumbnail(w http.ResponseWriter, r *http.Request) {
+	h.appModuleAsset(w, r, "thumbnail")
+}
+
+// AppModuleIcon delivers the installed project-page icon through the signed
+// asset gateway.
+func (h *Handler) AppModuleIcon(w http.ResponseWriter, r *http.Request) {
+	h.appModuleAsset(w, r, "icon")
+}
+
+func (h *Handler) appModuleAsset(w http.ResponseWriter, r *http.Request, kind string) {
 	_, workspaceID, ok := h.pageContext(w, r)
 	if !ok {
 		return
 	}
 	module, err := h.Store.ActiveAppModule(r.Context(), workspaceID, r.PathValue("module"))
-	if err != nil || (module.Type != "jira:report" && module.Type != "jira:dashboardGadget") {
+	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
-	thumbnail := appModuleThumbnailURL(*module)
-	if thumbnail == "" {
+	assetURL := ""
+	switch kind {
+	case "thumbnail":
+		if module.Type == "jira:report" || module.Type == "jira:dashboardGadget" {
+			assetURL = appModuleThumbnailURL(*module)
+		}
+	case "icon":
+		if module.Type == "jira:projectPage" {
+			assetURL = appModuleIconURL(*module)
+		}
+	}
+	if assetURL == "" {
 		http.NotFound(w, r)
 		return
 	}
-	if !strings.HasPrefix(thumbnail, "/") {
-		thumbnail = "/" + thumbnail
+	if !strings.HasPrefix(assetURL, "/") {
+		assetURL = "/" + assetURL
 	}
 	if h.ProviderSecrets == nil {
 		http.Error(w, "App credential encryption is unavailable", http.StatusServiceUnavailable)
@@ -146,13 +166,30 @@ func (h *Handler) AppModuleThumbnail(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "App credentials are unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	target, err := appRuntime.ConnectModuleURL(module.BaseURL, thumbnail, h.BaseURL, workspaceID, secret, "zzira-"+module.ID+"-thumbnail", nil, time.Now().UTC())
+	target, err := appRuntime.ConnectModuleURL(module.BaseURL, assetURL, h.BaseURL, workspaceID, secret, "zzira-"+module.ID+"-"+kind, nil, time.Now().UTC())
 	if err != nil {
-		http.Error(w, "Remote app thumbnail is invalid", http.StatusBadGateway)
+		http.Error(w, "Remote app asset is invalid", http.StatusBadGateway)
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	http.Redirect(w, r, target, http.StatusFound)
+}
+
+func appModuleIconURL(module models.AppModule) string {
+	var metadata struct {
+		IconURL string `json:"iconUrl"`
+	}
+	if json.Unmarshal([]byte(module.Body), &metadata) != nil {
+		return ""
+	}
+	return strings.TrimSpace(metadata.IconURL)
+}
+
+func appModuleIconPath(module models.AppModule) string {
+	if appModuleIconURL(module) == "" {
+		return ""
+	}
+	return "/app-modules/" + module.ID + "/icon"
 }
 
 func appModuleThumbnailURL(module models.AppModule) string {

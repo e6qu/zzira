@@ -20,7 +20,7 @@
   }());
 </script>
 <link rel="stylesheet" href="/static/css/tokens.css?v=4">
-<link rel="stylesheet" href="/static/css/workspace.css?v=18">
+<link rel="stylesheet" href="/static/css/workspace.css?v=19">
 <link rel="preload" href="/static/zzira-worker.wasm?v=4" as="fetch" crossorigin>
 <link rel="preload" href="/static/sqlite/sqlite3.wasm" as="fetch" crossorigin>
 <script src="/static/htmx/htmx.min.js" defer></script>
@@ -108,7 +108,7 @@
     {{if .Board}}<a class="nav-backlog" href="{{.BacklogURL}}" {{if eq $.Active "backlog"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v4H5zM5 12h14v7H5z"/><path d="M8 15h5M8 17h8"/></svg><span>Backlog</span></a>
     <a class="nav-board" href="{{.BoardURL}}" {{if eq $.Active "board"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="5" height="14" rx="1"/><rect x="9.5" y="5" width="5" height="9" rx="1"/><rect x="15.5" y="5" width="5" height="11" rx="1"/></svg><span>Board</span></a>{{end}}
     <a class="nav-issues" href="{{.WorkURL}}" {{if eq $.Active "issues"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 6h13M7 12h13M7 18h13"/><circle cx="4" cy="6" r=".8"/><circle cx="4" cy="12" r=".8"/><circle cx="4" cy="18" r=".8"/></svg><span>All work</span></a>
-    {{with $.Navigation.ProjectAppModules}}{{range .}}<a class="nav-project-app-module" href="/projects/{{$.Navigation.Current.Project.Key}}/apps/{{.ID}}" {{if eq $.Active (printf "project-app-module:%s" .ID)}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h5M8 17h7"/></svg><span>{{.Title}}</span></a>{{end}}{{end}}
+    {{with $.Navigation.ProjectAppModules}}{{range .}}<a class="nav-project-app-module" href="/projects/{{$.Navigation.Current.Project.Key}}/apps/{{.ID}}" {{if eq $.Active (printf "project-app-module:%s" .ID)}}aria-current="page"{{end}}>{{if .IconURL}}<img class="nav-app-icon" src="{{.IconURL}}" alt="" referrerpolicy="no-referrer">{{else}}<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h5M8 17h7"/></svg>{{end}}<span>{{.Title}}</span></a>{{end}}{{end}}
     {{end}}{{end}}
     {{with .Navigation}}{{with .Current}}<a class="nav-releases" href="/projects/{{.Project.Key}}/releases" {{if eq $.Active "releases"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4v17M6 5h13l-3 4 3 4H6"/></svg><span>Releases</span></a>{{end}}{{end}}
     {{with .Navigation}}{{with .Current}}<a class="nav-reports" href="/projects/{{.Project.Key}}/reports" {{if eq $.Active "reports"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span>Reports</span></a>{{end}}{{end}}
