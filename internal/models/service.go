@@ -191,6 +191,16 @@ type ServiceChangeWindow struct {
 	RiskScore, ConflictCount                                          int
 }
 
+type ServiceDependencyNode struct {
+	IssueID, IssueKey, Summary, Kind string
+	Status                           Status
+}
+
+type ServiceDependencyEdge struct {
+	ID, Relationship string
+	From, To         ServiceDependencyNode
+}
+
 func (p ServiceOperationsProfile) RiskLevel() string {
 	switch {
 	case p.RiskScore >= 13:

@@ -394,6 +394,13 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if err != nil || len(operationsLinks) != 1 || operationsLinks[0].ID != operationsLink.ID {
 		t.Fatalf("linked operations work = %+v, %v", operationsLinks, err)
 	}
+	dependencyLinks, err := st.ServiceDependencyLinks(ctx, workspaceID, actorID, serviceDeskID)
+	if err != nil || len(dependencyLinks) != 1 || dependencyLinks[0].ID != operationsLink.ID {
+		t.Fatalf("service dependency links = %+v, %v", dependencyLinks, err)
+	}
+	if _, err := st.ServiceDependencyLinks(ctx, workspaceID, customerID, serviceDeskID); !errors.Is(err, store.ErrProjectPermission) {
+		t.Fatalf("customer dependency access error = %v, want project permission", err)
+	}
 	if _, err := st.CreateCustomField(ctx, customFieldID, "Business impact", models.CustomFieldNumber, "Affected orders per minute"); err != nil {
 		t.Fatal(err)
 	}

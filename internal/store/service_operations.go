@@ -263,6 +263,38 @@ func (s *Store) ServiceChangeConflicts(ctx context.Context, workspaceID, actorID
 	return conflicts, nil
 }
 
+// ServiceDependencyLinks returns links touching operations work in one desk.
+// Callers must still permission-filter linked Jira issues outside the desk.
+func (s *Store) ServiceDependencyLinks(ctx context.Context, workspaceID, actorID, deskID string) ([]*models.IssueLink, error) {
+	agent, err := s.IsServiceAgent(ctx, workspaceID, deskID, actorID)
+	if err != nil {
+		return nil, err
+	}
+	if !agent {
+		return nil, ErrProjectPermission
+	}
+	rows, err := s.Pool.Query(ctx, linkJoin+`
+		WHERE l.workspace_id=$1 AND EXISTS(
+			SELECT 1 FROM service_requests r
+			JOIN service_request_operations o ON o.request_issue_id=r.issue_id
+			WHERE r.service_desk_id=$2 AND r.workspace_id=$1
+			  AND r.issue_id IN (l.inward_id,l.outward_id))
+		ORDER BY l.created_at,l.id`, workspaceID, deskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	links := []*models.IssueLink{}
+	for rows.Next() {
+		link, err := scanLink(rows)
+		if err != nil {
+			return nil, err
+		}
+		links = append(links, link)
+	}
+	return links, rows.Err()
+}
+
 func (s *Store) UpdateServiceOperationsProfile(ctx context.Context, workspaceID, actorID, issueID string, v models.ServiceOperationsProfile) error {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {

@@ -370,6 +370,11 @@ test('admin creates a service project with Jira Service Management request types
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto(`/service/agent/${desk.id}`);
+  const dependencyMap = page.locator('#dependency-map');
+  await expect(dependencyMap).toContainText(requestSummary);
+  await expect(dependencyMap).toContainText(changeSummary);
+  await expect(dependencyMap).toContainText('blocks');
+  await accessible(page);
   await page.locator('#operations-settings').getByRole('button', { name: 'Remove shift Primary operations' }).click();
   await expect(page.locator('#operations-settings')).not.toContainText('Primary operations');
 });

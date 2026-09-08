@@ -1964,9 +1964,26 @@ Validation after the Service Management change calendar:
   and diff validation pass. Exact API coverage remains 427 of 1,207 operations
   because this checkpoint adds a user-facing view over existing service data.
 
+Validation after the Service Management dependency map:
+
+- The agent workspace renders directed issue relationships touching an
+  incident, problem, or change in the selected desk. Nodes link to their Jira
+  work items and show operation kind and current status.
+- The graph reads canonical issue links created from service requests. The
+  store enforces desk-agent access, and the web layer includes an edge only
+  when the agent can read both endpoints, preventing restricted Jira metadata
+  from entering the map.
+- PostgreSQL integration covers graph discovery and customer denial. The
+  Chromium service journey links an incident to a change, verifies both nodes
+  and direction in the map, and runs an accessibility scan on the result.
+- The focused and full PostgreSQL Go suites, vet, WebAssembly build, Chromium
+  service journey, seven conformance tests, generated inventory/coverage checks
+  and diff validation pass. Exact API coverage remains 427 of 1,207 operations
+  because the graph completes existing issue-link behavior.
+
 ## Current change
 
-1. Continue Service Management with dependency mapping, major-incident
+1. Continue Service Management with major-incident
    communications and escalation policy.
 2. Expand the app runtime from registered custom-content discovery into signed
    installation, scopes and module rendering.

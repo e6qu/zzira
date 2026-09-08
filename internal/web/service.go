@@ -85,6 +85,8 @@ type servicePageData struct {
 	OperationsProfile     *models.ServiceOperationsProfile
 	ChangeWindows         []models.ServiceChangeWindow
 	ChangeConflicts       []models.ServiceChangeWindow
+	DependencyEdges       []models.ServiceDependencyEdge
+	DependencyNodeCount   int
 	FieldValues           map[string]string
 	Transitions           []serviceTransitionView
 	CanAdmin              bool
@@ -146,6 +148,24 @@ func (h *Handler) ServiceAgent(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Could not load the change calendar.", http.StatusInternalServerError)
 			return
 		}
+		dependencyLinks, err := h.Store.ServiceDependencyLinks(r.Context(), workspaceID, user.ID, deskID)
+		if err != nil {
+			http.Error(w, "Could not load the dependency map.", http.StatusInternalServerError)
+			return
+		}
+		dependencyNodes := map[string]bool{}
+		for _, link := range dependencyLinks {
+			from, fromErr := h.issueForUser(r, user, workspaceID, link.OutwardID)
+			to, toErr := h.issueForUser(r, user, workspaceID, link.InwardID)
+			if fromErr != nil || toErr != nil {
+				continue
+			}
+			fromNode := serviceDependencyNode(from)
+			toNode := serviceDependencyNode(to)
+			data.DependencyEdges = append(data.DependencyEdges, models.ServiceDependencyEdge{ID: link.ID, Relationship: link.Outward, From: fromNode, To: toNode})
+			dependencyNodes[from.ID], dependencyNodes[to.ID] = true, true
+		}
+		data.DependencyNodeCount = len(dependencyNodes)
 		if admin {
 			data.Members, err = h.Store.MembersByWorkspace(r.Context(), workspaceID)
 			if err != nil {
@@ -293,6 +313,17 @@ func (h *Handler) ServiceAgent(w http.ResponseWriter, r *http.Request) {
 		preferredProject = data.Desk.ProjectID
 	}
 	h.writeWorkspacePage(w, r, "page_service_agent", user, workspaceID, data, "service-agent", preferredProject)
+}
+
+func serviceDependencyNode(issue *models.Issue) models.ServiceDependencyNode {
+	kind := issue.IssueType.Name
+	for _, label := range issue.Labels {
+		if label == "incident" || label == "problem" || label == "change" {
+			kind = label
+			break
+		}
+	}
+	return models.ServiceDependencyNode{IssueID: issue.ID, IssueKey: issue.Key, Summary: issue.Summary, Kind: kind, Status: issue.Status}
 }
 
 func (h *Handler) ServiceReports(w http.ResponseWriter, r *http.Request) {

@@ -83,6 +83,10 @@ Every agent can inspect the desk's active change calendar for the previous seven
 and next 90 days. It derives conflicts from overlapping persisted windows,
 excludes completed work, and links each change to its request. A planned change
 also shows its conflicting active requests beside the operations assessment.
+The agent workspace assembles an operations dependency map from the same issue
+links agents manage on request pages. It includes links touching desk incidents,
+problems, or changes, labels their direction, and omits either endpoint unless
+the current agent can read both Jira issues.
 
 Service managers configure each desk's CAB threshold, approver roster, incident
 review deadline, and bounded on-call shifts. An active shift assigns its owner
@@ -203,6 +207,6 @@ service report comparisons, SLA goal distributions, exports and scheduled
 delivery, complete Assets object/schema/import APIs, full
 status chronology, SLA rule reordering and advanced criteria,
 portal invitation email delivery, Atlassian knowledge ranking/analytics, and
-advanced dependency mapping, major-incident communications, escalation policy,
+Assets-backed dependency topology and impact analysis, major-incident communications, escalation policy,
 and review templates remain. Customer creation grants only the
 site `atlassian/customer` role and never silently grants Jira product access.
