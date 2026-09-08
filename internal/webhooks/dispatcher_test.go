@@ -122,4 +122,13 @@ func TestDeliverForcesWorkflowTargetPastSubscriptionFilters(t *testing.T) {
 	if err := st.Pool.QueryRow(ctx, `SELECT state FROM webhook_deliveries WHERE webhook_id=$1 AND seq=1`, webhook.ID).Scan(&state); err != nil || state != "delivered" {
 		t.Fatalf("delivery state = %q, %v", state, err)
 	}
+	if _, err := st.Pool.Exec(ctx, `INSERT INTO webhook_deliveries(webhook_id,seq,state) VALUES($1,2,'pending')`, webhook.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := dispatcher.deliver(ctx, workspaceID, webhook, 2); err != nil {
+		t.Fatalf("sequence gap should be terminal: %v", err)
+	}
+	if err := st.Pool.QueryRow(ctx, `SELECT state FROM webhook_deliveries WHERE webhook_id=$1 AND seq=2`, webhook.ID).Scan(&state); err != nil || state != "delivered" {
+		t.Fatalf("gap delivery state = %q, %v", state, err)
+	}
 }

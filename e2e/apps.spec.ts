@@ -25,13 +25,16 @@ test('admin installs and manages a scoped host-rendered app', async ({ page }) =
     name: appName,
     baseUrl: `https://apps.example.test/${suffix}`,
     version: '1.0.0',
-    scopes: ['read:jira-work', 'read:confluence-content', 'read:app-storage', 'write:app-storage'],
+    scopes: ['read:jira-work', 'read:confluence-content', 'read:app-storage', 'write:app-storage', 'manage:webhooks'],
     modules: [
       { key: 'release-companion', type: 'jira:globalPage', location: 'jira.navigation', title: moduleTitle, body: 'Release readiness and incident context from the installed app.' },
       { key: 'issue-risk', type: 'jira:issuePanel', location: 'jira.issue.view', title: issuePanelTitle, body: 'No cross-service release risk detected.' },
       { key: 'app-health', type: 'jira:dashboardGadget', location: 'jira.dashboard', title: gadgetTitle, body: 'All app checks are healthy.' },
       { key: 'page-review', type: 'confluence:contentBylineItem', location: 'confluence.content.byline', title: bylineTitle, body: 'Reviewed by the installed app.' },
     ],
+    lifecycle: { installed: '/lifecycle/installed', disabled: '/lifecycle/disabled', enabled: '/lifecycle/enabled', uninstalled: '/lifecycle/uninstalled' },
+    webhooks: [{ key: 'issue-events', url: '/webhooks/issues', events: ['jira:issue_created', 'jira:issue_updated'], jql: 'project = ZZ' }],
+    scheduledTriggers: [{ key: 'hourly-sync', url: '/scheduled/hourly', interval: 'hour' }],
   };
 
   await page.goto('/admin#admin-apps');
@@ -44,6 +47,10 @@ test('admin installs and manages a scoped host-rendered app', async ({ page }) =
   await expect(app).toContainText('active');
   await expect(app).toContainText('read:jira-work');
   await expect(app).toContainText('app_principal_');
+  await expect(app).toContainText('/lifecycle/installed');
+  await expect(app).toContainText('issue-events');
+  await expect(app).toContainText('hourly-sync');
+  await accessible(page);
   await expect(page.locator('#workspace-navigation').getByRole('link', { name: moduleTitle })).toBeVisible();
   await page.locator('#workspace-navigation').getByRole('link', { name: moduleTitle }).click();
   await expect(page.getByRole('heading', { name: moduleTitle, level: 1 })).toBeVisible();

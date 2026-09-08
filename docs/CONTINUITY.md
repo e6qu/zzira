@@ -2153,10 +2153,41 @@ Validation after the Service Management Assets and impact checkpoint:
   validation pass. The API count remains 427 of 1,207 because this checkpoint
   adds the user and manager product surface before public Assets API parity.
 
+Validation after the outbound app runtime checkpoint:
+
+- Migration 105 adds descriptor-declared lifecycle callbacks, app webhook
+  modules, scheduled triggers and a durable outbound delivery queue with
+  exclusive replica claims, recovery leases, attempt history and terminal
+  outcomes.
+- Descriptors validate relative callback paths, supported lifecycle and Jira
+  event names, optional JQL, the four scheduled intervals, the five-trigger
+  limit and the single five-minute-trigger limit. Webhooks require the explicit
+  `manage:webhooks` scope and start from an installation/upgrade watermark.
+- The server turns action records and due schedules into signed JSON `POST`
+  callbacks using the installation secret and the same body/query-integrity
+  contract as inbound app calls. Lifecycle and webhook failures retry with
+  bounded backoff through five attempts; failed scheduled invocations remain
+  terminal while their next occurrence advances normally. Reinstallation
+  drops callbacks from the prior credential generation.
+- Site administration shows lifecycle paths, webhook events and filters,
+  scheduled intervals and next runs, plus the five latest delivery states,
+  attempts and bounded errors. The app Chromium journey installs all three
+  outbound module types and passes WCAG A/AA scanning on the expanded view.
+- PostgreSQL integration verifies a failed lifecycle request and recovery,
+  issue-created webhook delivery, a due schedule, raw-query signing and every
+  outbound HMAC. Core webhook sequence gaps are now terminal skips instead of
+  permanent retry/log loops.
+- The complete PostgreSQL Go suite, focused post-fix app/webhook suites, vet,
+  WebAssembly build, seven conformance tests, generated inventory/coverage
+  checks, focused Chromium journey and diff validation pass. Exact API coverage
+  remains 427 of 1,207 because this runtime is outside the pinned public REST
+  operation inventory.
+
 ## Current change
 
-1. Continue the app runtime with outbound lifecycle delivery, app webhooks and
-   scheduled triggers.
+1. Continue the app runtime with Connect descriptor ingestion, JWT/QSH request
+   compatibility, remote iframe modules, workflow/custom-field modules and
+   upgrade migrations.
 2. Continue Confluence with advanced whiteboard objects, direct manipulation,
    exports and the remaining rich content/editor surface.
 3. Continue Service Management with public Assets object/schema/import API

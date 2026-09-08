@@ -9,6 +9,9 @@ type AppDescriptor struct {
 	Key, Name, BaseURL, Version string
 	Scopes                      []string
 	Modules                     []AppModule
+	Lifecycle                   map[string]string
+	Webhooks                    []AppWebhook
+	ScheduledTriggers           []AppScheduledTrigger
 }
 
 type AppInstallation struct {
@@ -17,7 +20,30 @@ type AppInstallation struct {
 	Descriptor                                                                     json.RawMessage
 	Scopes                                                                         []string
 	Modules                                                                        []AppModule
+	Lifecycle                                                                      map[string]string
+	Webhooks                                                                       []AppWebhook
+	ScheduledTriggers                                                              []AppScheduledTrigger
+	OutboundDeliveries                                                             []AppOutboundDelivery
 	InstalledAt, UpdatedAt                                                         time.Time
+}
+
+type AppWebhook struct {
+	ID, InstallationID, AppKey, Key, Path, JQL string
+	Events                                     []string
+	LastSeq                                    int64
+}
+
+type AppScheduledTrigger struct {
+	ID, Key, Path, Interval string
+	NextRunAt               time.Time
+}
+
+type AppOutboundDelivery struct {
+	ID, InstallationID, AppKey, BaseURL, Kind, ModuleKey, Event, Path, State, LastError string
+	SecretCiphertext                                                                    []byte
+	Payload                                                                             json.RawMessage
+	Attempts, ResponseCode                                                              int
+	AvailableAt, CreatedAt                                                              time.Time
 }
 
 type AppModule struct {

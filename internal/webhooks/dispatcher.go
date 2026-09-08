@@ -17,6 +17,7 @@ import (
 
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
+	"github.com/jackc/pgx/v5"
 )
 
 type Dispatcher struct {
@@ -105,6 +106,12 @@ func (d *Dispatcher) drainOnce(ctx context.Context, workspaceID string) {
 
 func (d *Dispatcher) deliver(ctx context.Context, workspaceID string, webhook *models.Webhook, seq int64) error {
 	action, err := d.Store.ActionBySeq(ctx, workspaceID, seq)
+	if errors.Is(err, pgx.ErrNoRows) {
+		// Workspace sequences are monotonic watermarks; maintenance and
+		// permission-shaped actions can leave a sequence without a public
+		// action row. The gap has no event to deliver and is terminal.
+		return d.mark(ctx, webhook.ID, seq, true, "")
+	}
 	if err != nil {
 		return d.markFailed(ctx, webhook.ID, seq, fmt.Errorf("load action: %w", err))
 	}

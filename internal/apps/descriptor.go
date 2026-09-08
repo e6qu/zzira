@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/e6qu/zzira/internal/jql"
 	"github.com/e6qu/zzira/internal/models"
 )
 
@@ -35,12 +36,28 @@ var moduleRequirements = map[string]struct {
 }
 
 type descriptorWire struct {
-	Key     string       `json:"key"`
-	Name    string       `json:"name"`
-	BaseURL string       `json:"baseUrl"`
-	Version string       `json:"version"`
-	Scopes  []string     `json:"scopes"`
-	Modules []moduleWire `json:"modules"`
+	Key               string                 `json:"key"`
+	Name              string                 `json:"name"`
+	BaseURL           string                 `json:"baseUrl"`
+	Version           string                 `json:"version"`
+	Scopes            []string               `json:"scopes"`
+	Modules           []moduleWire           `json:"modules"`
+	Lifecycle         map[string]string      `json:"lifecycle"`
+	Webhooks          []webhookWire          `json:"webhooks"`
+	ScheduledTriggers []scheduledTriggerWire `json:"scheduledTriggers"`
+}
+
+type webhookWire struct {
+	Key    string   `json:"key"`
+	URL    string   `json:"url"`
+	JQL    string   `json:"jql"`
+	Events []string `json:"events"`
+}
+
+type scheduledTriggerWire struct {
+	Key      string `json:"key"`
+	URL      string `json:"url"`
+	Interval string `json:"interval"`
 }
 
 type moduleWire struct {
@@ -104,7 +121,70 @@ func ParseDescriptor(raw []byte) (models.AppDescriptor, error) {
 		moduleKeys[input.Key] = true
 		descriptor.Modules = append(descriptor.Modules, models.AppModule{Key: input.Key, Type: input.Type, Location: input.Location, Title: input.Title, Body: input.Body})
 	}
+	descriptor.Lifecycle = map[string]string{}
+	for event, path := range wire.Lifecycle {
+		if !map[string]bool{"installed": true, "enabled": true, "disabled": true, "upgraded": true, "uninstalled": true}[event] || !validAppCallbackPath(path) {
+			return models.AppDescriptor{}, fmt.Errorf("lifecycle callbacks need a supported event and a relative URL path")
+		}
+		descriptor.Lifecycle[event] = path
+	}
+	if len(wire.Webhooks) > 20 {
+		return models.AppDescriptor{}, fmt.Errorf("an app may declare at most 20 webhooks")
+	}
+	if len(wire.Webhooks) > 0 && !scopes["manage:webhooks"] {
+		return models.AppDescriptor{}, fmt.Errorf("declarative webhooks require scope manage:webhooks")
+	}
+	webhookKeys := map[string]bool{}
+	allowedEvents := map[string]bool{"jira:issue_created": true, "jira:issue_updated": true, "jira:issue_deleted": true, "comment_created": true, "comment_deleted": true, "attachment_created": true}
+	for _, webhook := range wire.Webhooks {
+		webhook.Key, webhook.URL, webhook.JQL = strings.TrimSpace(webhook.Key), strings.TrimSpace(webhook.URL), strings.TrimSpace(webhook.JQL)
+		if !moduleKeyPattern.MatchString(webhook.Key) || webhookKeys[webhook.Key] || !validAppCallbackPath(webhook.URL) || len(webhook.Events) == 0 || len(webhook.Events) > 20 || len(webhook.JQL) > 2000 {
+			return models.AppDescriptor{}, fmt.Errorf("webhooks need a unique key, relative URL, and 1 to 20 events")
+		}
+		if webhook.JQL != "" {
+			if _, err := jql.Parse(webhook.JQL); err != nil {
+				return models.AppDescriptor{}, fmt.Errorf("webhook %q has invalid JQL: %w", webhook.Key, err)
+			}
+		}
+		eventSeen := map[string]bool{}
+		for index, event := range webhook.Events {
+			event = strings.TrimSpace(event)
+			if !allowedEvents[event] || eventSeen[event] {
+				return models.AppDescriptor{}, fmt.Errorf("webhook %q contains an unsupported or duplicate event", webhook.Key)
+			}
+			webhook.Events[index] = event
+			eventSeen[event] = true
+		}
+		webhookKeys[webhook.Key] = true
+		descriptor.Webhooks = append(descriptor.Webhooks, models.AppWebhook{Key: webhook.Key, Path: webhook.URL, Events: webhook.Events, JQL: webhook.JQL})
+	}
+	if len(wire.ScheduledTriggers) > 5 {
+		return models.AppDescriptor{}, fmt.Errorf("an app may declare at most five scheduled triggers")
+	}
+	scheduleKeys, fiveMinute := map[string]bool{}, 0
+	for _, trigger := range wire.ScheduledTriggers {
+		trigger.Key, trigger.URL, trigger.Interval = strings.TrimSpace(trigger.Key), strings.TrimSpace(trigger.URL), strings.TrimSpace(trigger.Interval)
+		if !moduleKeyPattern.MatchString(trigger.Key) || scheduleKeys[trigger.Key] || !validAppCallbackPath(trigger.URL) || !map[string]bool{"fiveMinute": true, "hour": true, "day": true, "week": true}[trigger.Interval] {
+			return models.AppDescriptor{}, fmt.Errorf("scheduled triggers need a unique key, relative URL, and supported interval")
+		}
+		if trigger.Interval == "fiveMinute" {
+			fiveMinute++
+		}
+		scheduleKeys[trigger.Key] = true
+		descriptor.ScheduledTriggers = append(descriptor.ScheduledTriggers, models.AppScheduledTrigger{Key: trigger.Key, Path: trigger.URL, Interval: trigger.Interval})
+	}
+	if fiveMinute > 1 {
+		return models.AppDescriptor{}, fmt.Errorf("an app may declare only one five-minute scheduled trigger")
+	}
 	return descriptor, nil
+}
+
+func validAppCallbackPath(value string) bool {
+	if len(value) == 0 || len(value) > 2048 || !strings.HasPrefix(value, "/") || strings.HasPrefix(value, "//") {
+		return false
+	}
+	parsed, err := url.Parse(value)
+	return err == nil && parsed.IsAbs() == false && parsed.Host == "" && parsed.User == nil && parsed.Fragment == ""
 }
 
 func ensureJSONEnd(decoder *json.Decoder) error {

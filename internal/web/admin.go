@@ -146,6 +146,12 @@ func (h *Handler) adminData(r *http.Request, workspaceID, message string) (admin
 	if err != nil {
 		return adminPageData{}, err
 	}
+	for _, app := range data.Apps {
+		app.OutboundDeliveries, err = h.Store.AppOutboundDeliveries(r.Context(), app.ID, 5)
+		if err != nil {
+			return adminPageData{}, err
+		}
+	}
 	if len(directories) == 0 {
 		return data, nil
 	}

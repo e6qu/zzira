@@ -25,6 +25,7 @@ func scanAppInstallation(row interface{ Scan(...any) error }) (*models.AppInstal
 const appInstallationSelect = `SELECT id,workspace_id,principal_id,app_key,name,base_url,version,status,secret_ciphertext,descriptor,COALESCE(installed_by,''),installed_at,updated_at FROM app_installations `
 
 func (s *Store) loadAppChildren(ctx context.Context, value *models.AppInstallation) error {
+	value.Lifecycle = map[string]string{}
 	rows, err := s.Pool.Query(ctx, `SELECT scope FROM app_scopes WHERE installation_id=$1 ORDER BY scope`, value.ID)
 	if err != nil {
 		return err
@@ -46,7 +47,6 @@ func (s *Store) loadAppChildren(ctx context.Context, value *models.AppInstallati
 	if err != nil {
 		return err
 	}
-	defer moduleRows.Close()
 	for moduleRows.Next() {
 		var module models.AppModule
 		module.AppKey, module.AppName = value.Key, value.Name
@@ -55,7 +55,59 @@ func (s *Store) loadAppChildren(ctx context.Context, value *models.AppInstallati
 		}
 		value.Modules = append(value.Modules, module)
 	}
-	return moduleRows.Err()
+	if err := moduleRows.Err(); err != nil {
+		moduleRows.Close()
+		return err
+	}
+	moduleRows.Close()
+	callbackRows, err := s.Pool.Query(ctx, `SELECT event,path FROM app_lifecycle_callbacks WHERE installation_id=$1 ORDER BY event`, value.ID)
+	if err != nil {
+		return err
+	}
+	for callbackRows.Next() {
+		var event, path string
+		if err := callbackRows.Scan(&event, &path); err != nil {
+			callbackRows.Close()
+			return err
+		}
+		value.Lifecycle[event] = path
+	}
+	if err := callbackRows.Err(); err != nil {
+		callbackRows.Close()
+		return err
+	}
+	callbackRows.Close()
+	webhookRows, err := s.Pool.Query(ctx, `SELECT id::text,module_key,path,events,jql,last_seq FROM app_webhook_modules WHERE installation_id=$1 ORDER BY module_key`, value.ID)
+	if err != nil {
+		return err
+	}
+	for webhookRows.Next() {
+		var webhook models.AppWebhook
+		if err := webhookRows.Scan(&webhook.ID, &webhook.Key, &webhook.Path, &webhook.Events, &webhook.JQL, &webhook.LastSeq); err != nil {
+			webhookRows.Close()
+			return err
+		}
+		value.Webhooks = append(value.Webhooks, webhook)
+	}
+	if err := webhookRows.Err(); err != nil {
+		webhookRows.Close()
+		return err
+	}
+	webhookRows.Close()
+	scheduleRows, err := s.Pool.Query(ctx, `SELECT id::text,module_key,path,interval_name,next_run_at FROM app_scheduled_triggers WHERE installation_id=$1 ORDER BY module_key`, value.ID)
+	if err != nil {
+		return err
+	}
+	defer scheduleRows.Close()
+	for scheduleRows.Next() {
+		var trigger models.AppScheduledTrigger
+		if err := scheduleRows.Scan(&trigger.ID, &trigger.Key, &trigger.Path, &trigger.Interval, &trigger.NextRunAt); err != nil {
+			return err
+		}
+		trigger.NextRunAt = trigger.NextRunAt.UTC()
+		value.ScheduledTriggers = append(value.ScheduledTriggers, trigger)
+	}
+	return scheduleRows.Err()
 }
 
 func (s *Store) AppInstallations(ctx context.Context, workspaceID string) ([]*models.AppInstallation, error) {
@@ -107,6 +159,22 @@ func writeAppChildren(ctx context.Context, tx pgx.Tx, installationID string, des
 			return err
 		}
 	}
+	for event, path := range descriptor.Lifecycle {
+		if _, err := tx.Exec(ctx, `INSERT INTO app_lifecycle_callbacks(installation_id,event,path) VALUES($1,$2,$3)`, installationID, event, path); err != nil {
+			return err
+		}
+	}
+	for _, webhook := range descriptor.Webhooks {
+		if _, err := tx.Exec(ctx, `INSERT INTO app_webhook_modules(installation_id,module_key,path,events,jql,last_seq) SELECT $1,$2,$3,$4,$5,w.seq FROM app_installations i JOIN workspaces w ON w.id=i.workspace_id WHERE i.id=$1`, installationID, webhook.Key, webhook.Path, webhook.Events, webhook.JQL); err != nil {
+			return err
+		}
+	}
+	intervals := map[string]int{"fiveMinute": 300, "hour": 3600, "day": 86400, "week": 604800}
+	for _, trigger := range descriptor.ScheduledTriggers {
+		if _, err := tx.Exec(ctx, `INSERT INTO app_scheduled_triggers(installation_id,module_key,path,interval_name,interval_seconds) VALUES($1,$2,$3,$4,$5)`, installationID, trigger.Key, trigger.Path, trigger.Interval, intervals[trigger.Interval]); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -154,7 +222,20 @@ func (s *Store) InstallApp(ctx context.Context, workspaceID, actorID string, des
 	if _, err := tx.Exec(ctx, `DELETE FROM app_modules WHERE installation_id=$1`, installationID); err != nil {
 		return nil, err
 	}
+	if currentStatus == "uninstalled" {
+		// A reinstallation establishes a new credential generation. Do not send
+		// an old generation's pending callbacks with its replacement secret.
+		if _, err := tx.Exec(ctx, `DELETE FROM app_outbound_deliveries WHERE installation_id=$1`, installationID); err != nil {
+			return nil, err
+		}
+	}
+	if err := deleteAppOutboundConfig(ctx, tx, installationID); err != nil {
+		return nil, err
+	}
 	if err := writeAppChildren(ctx, tx, installationID, descriptor); err != nil {
+		return nil, err
+	}
+	if err := enqueueAppLifecycle(ctx, tx, installationID, descriptor.Key, descriptor.Version, "installed"); err != nil {
 		return nil, err
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO app_lifecycle_events(installation_id,event,payload) VALUES($1,'installed',$2)`, installationID, json.RawMessage(rawDescriptor)); err != nil {
@@ -194,6 +275,10 @@ func (s *Store) UpdateAppState(ctx context.Context, workspaceID, actorID, appKey
 		return fmt.Errorf("uninstalled apps must be installed again")
 	}
 	if current != status {
+		event := map[string]string{"active": "enabled", "suspended": "disabled", "uninstalled": "uninstalled"}[status]
+		if err := enqueueAppLifecycle(ctx, tx, installationID, appKey, "", event); err != nil {
+			return err
+		}
 		if _, err := tx.Exec(ctx, `UPDATE app_installations SET status=$3,updated_at=now() WHERE workspace_id=$1 AND app_key=$2`, workspaceID, appKey, status); err != nil {
 			return err
 		}
@@ -250,6 +335,9 @@ func (s *Store) UpgradeApp(ctx context.Context, workspaceID, appKey string, desc
 	if _, err := tx.Exec(ctx, `DELETE FROM app_scopes WHERE installation_id=$1`, installationID); err != nil {
 		return err
 	}
+	if err := deleteAppOutboundConfig(ctx, tx, installationID); err != nil {
+		return err
+	}
 	if err := writeAppChildren(ctx, tx, installationID, descriptor); err != nil {
 		return err
 	}
@@ -264,6 +352,12 @@ func (s *Store) UpgradeApp(ctx context.Context, workspaceID, appKey string, desc
 		return err
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO app_lifecycle_events(installation_id,event,payload) VALUES($1,'upgraded',$2)`, installationID, json.RawMessage(rawDescriptor)); err != nil {
+		return err
+	}
+	if err := enqueueAppLifecycle(ctx, tx, installationID, appKey, descriptor.Version, "upgraded"); err != nil {
+		return err
+	}
+	if err := enqueueAppLifecycle(ctx, tx, installationID, appKey, descriptor.Version, "enabled"); err != nil {
 		return err
 	}
 	if err := auditApp(ctx, tx, workspaceID, "", "app.upgraded", appKey, map[string]string{"version": descriptor.Version}); err != nil {

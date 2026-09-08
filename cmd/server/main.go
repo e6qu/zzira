@@ -159,28 +159,36 @@ func main() {
 	bus := notifybus.New()
 	sse := &syncapi.SSEHandler{Store: st, Bus: bus, WorkspaceSlug: workspaceSlug}
 	sync := &syncapi.Handler{Store: st, WorkspaceSlug: workspaceSlug}
+	webhookSearch := func(ctx context.Context, wsID, jqlText string) (bool, error) {
+		// Webhooks are admin-configured, so their filters use a workspace
+		// administrator's complete issue view.
+		adminID, err := st.FirstAdminID(ctx, wsID)
+		if err != nil {
+			return false, err
+		}
+		q, err := jql.Parse(jqlText)
+		if err != nil {
+			return false, err
+		}
+		compiled := jql.CompileAt(q, adminID, jql.DefaultResolver(), 1)
+		if compiled.Err != nil {
+			return false, compiled.Err
+		}
+		issues, _, err := st.Search(ctx, wsID, adminID, compiled, 1, 0)
+		return err == nil && len(issues) > 0, nil
+	}
 	dispatcher := &webhooks.Dispatcher{
-		Store:  st,
-		Client: &http.Client{Timeout: 10 * time.Second},
-		Checker: &webhooks.JQLChecker{Search: func(ctx context.Context, wsID, jqlText string) (bool, error) {
-			// webhooks are admin-configured: evaluate JQL as a workspace admin
-			adminID, err := st.FirstAdminID(ctx, wsID)
-			if err != nil {
-				return false, err
-			}
-			q, err := jql.Parse(jqlText)
-			if err != nil {
-				return false, err
-			}
-			compiled := jql.CompileAt(q, adminID, jql.DefaultResolver(), 1)
-			if compiled.Err != nil {
-				return false, compiled.Err
-			}
-			issues, _, err := st.Search(ctx, wsID, adminID, compiled, 1, 0)
-			return err == nil && len(issues) > 0, nil
-		}},
+		Store:   st,
+		Client:  &http.Client{Timeout: 10 * time.Second},
+		Checker: &webhooks.JQLChecker{Search: webhookSearch},
 	}
 	go dispatcher.Run(ctx, workspaceID)
+	if providerSecrets != nil {
+		go (&apps.OutboundRunner{
+			Store: st, Secrets: providerSecrets,
+			Client: &http.Client{Timeout: 10 * time.Second}, Search: webhookSearch,
+		}).Run(ctx, workspaceID)
+	}
 	go (&automation.Runner{Service: automationSvc}).Run(ctx, workspaceID)
 	go (&store.APITaskRunner{Store: st}).Run(ctx, workspaceID)
 	go (&store.ServiceSLARunner{Store: st}).Run(ctx, workspaceID)

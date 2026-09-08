@@ -12,7 +12,7 @@ lifecycle ledger and organization audit log.
   "name": "Operations companion",
   "baseUrl": "https://apps.example.com/operations",
   "version": "1.0.0",
-  "scopes": ["read:jira-work", "read:app-storage", "write:app-storage"],
+  "scopes": ["read:jira-work", "read:app-storage", "write:app-storage", "manage:webhooks"],
   "modules": [
     {
       "key": "operations-page",
@@ -21,6 +21,22 @@ lifecycle ledger and organization audit log.
       "title": "Operations companion",
       "body": "Incident and release context supplied by the app."
     }
+  ],
+  "lifecycle": {
+    "installed": "/lifecycle/installed",
+    "disabled": "/lifecycle/disabled",
+    "uninstalled": "/lifecycle/uninstalled"
+  },
+  "webhooks": [
+    {
+      "key": "issue-events",
+      "url": "/webhooks/issues",
+      "events": ["jira:issue_created", "jira:issue_updated"],
+      "jql": "project = OPS"
+    }
+  ],
+  "scheduledTriggers": [
+    {"key": "hourly-sync", "url": "/scheduled/hourly", "interval": "hour"}
   ]
 }
 ```
@@ -61,6 +77,26 @@ Isolated JSON storage uses `GET`, `PUT`, and `DELETE`
 deletes require `write:app-storage`. Values carry a monotonically increasing
 version, and uninstall deletes the app's storage, scopes and rendered modules.
 
+Descriptors can declare relative outbound callback paths. Lifecycle supports
+`installed`, `enabled`, `disabled`, `upgraded`, and `uninstalled`. Webhooks
+support issue create/update/delete, comment create/delete and attachment create
+events; declaring them requires `manage:webhooks`. Each webhook begins at its
+installation or upgrade watermark, may carry a JQL filter, and advances through
+the workspace action stream transactionally. Scheduled triggers support
+`fiveMinute`, `hour`, `day`, and `week`, with no more than five schedules and
+one five-minute schedule in an app.
+
+The outbound worker sends JSON with `POST` to the descriptor base URL plus the
+relative callback path. It uses the same timestamp, request ID and HMAC headers
+described above, adds `X-Zzira-App-Key` and `X-Zzira-App-Event`, and signs the
+callback path and raw query. Lifecycle and webhook failures retry durably with
+bounded exponential backoff and stop after five attempts. A failed scheduled
+invocation is terminal; the next configured occurrence still runs. Database
+row claims and a recovery lease make delivery safe across restarts and multiple
+server replicas. Reinstallation clears callbacks left by the old credential
+generation. Site administrators can inspect callback declarations, the next
+scheduled time and the five most recent delivery states and errors.
+
 Each installation owns a stable `app_principal_*` account. A signed request to
 Jira REST v3, Agile REST, Jira Service Management REST, Confluence REST v1, or
 Confluence REST v2 runs as that account after the runtime verifies
@@ -71,7 +107,7 @@ security, page restriction and command-audit paths as other callers. It is
 disabled on uninstall and restored with the same ID on an authorized
 reinstallation.
 
-The runtime is a ZZIRA execution contract for locally hosted apps. Atlassian
-Connect JWT/QSH descriptors, Forge-hosted compute, remote iframes, outbound
-lifecycle delivery, app webhooks, scheduled triggers, workflow modules and
-custom fields remain separate future slices.
+The runtime is a ZZIRA execution contract for remotely hosted apps. Atlassian
+Connect JWT/QSH and full descriptor translation, Forge-hosted compute, remote
+iframes, workflow modules, custom fields and upgrade migrations remain separate
+future slices.
