@@ -236,7 +236,7 @@ func (h *Handler) redirectAppModuleAsset(w http.ResponseWriter, r *http.Request,
 }
 
 func normalizedAppAssetPath(value string) (string, bool) {
-	if value == "" || strings.HasPrefix(value, "//") || strings.ContainsAny(value, "\\\r\n") {
+	if value == "" || (len(value) > 1 && value[0] == '/' && (value[1] == '/' || value[1] == '\\')) || strings.ContainsAny(value, "\\\r\n") {
 		return "", false
 	}
 	u, err := url.Parse(value)

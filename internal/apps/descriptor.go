@@ -237,7 +237,8 @@ func validateDescriptorWire(wire descriptorWire) (models.AppDescriptor, error) {
 }
 
 func validAppCallbackPath(value string) bool {
-	if len(value) == 0 || len(value) > 2048 || !strings.HasPrefix(value, "/") || strings.HasPrefix(value, "//") || strings.ContainsAny(value, "\\\r\n") {
+	if len(value) == 0 || len(value) > 2048 || value[0] != '/' ||
+		(len(value) > 1 && (value[1] == '/' || value[1] == '\\')) || strings.ContainsAny(value, "\\\r\n") {
 		return false
 	}
 	parsed, err := url.Parse(value)

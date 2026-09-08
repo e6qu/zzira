@@ -13,7 +13,8 @@ boundaries, dependencies, and acceptance gates belong in
 - Base: `origin/main` after PR #65
 - Delivery unit: PR 0 — Integrated Cloud foundation
 - Pull request: #68
-- State: open; security checks pass and E2E isolation fixes await CI confirmation
+- State: open; full CI passed at `af7f077`, with the final explicit redirect
+  guard checkpoint awaiting confirmation
 - Last product checkpoint: Connect site administration pages
 - Blockers: none
 
@@ -89,6 +90,7 @@ The last implementation checkpoint passed:
 - gosec 2.29 with zero findings;
 - focused Playwright app, wiki, and create journeys against an empty seeded
   database; and
+- the complete GitHub CI matrix, including all 58 Playwright journeys;
 - seven conformance tests;
 - generated inventory and coverage freshness checks; and
 - diff validation.
