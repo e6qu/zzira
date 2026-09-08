@@ -29,3 +29,11 @@ func TestAppModuleIconPath(t *testing.T) {
 		t.Fatalf("icon path = %q", got)
 	}
 }
+
+func TestDecorateIssueContext(t *testing.T) {
+	module := models.AppModule{ID: "99", Body: `{"iconUrl":"context.svg","label":"3 linked deployments"}`}
+	decorateIssueContext(&module)
+	if module.IconURL != "/app-modules/99/icon" || module.ContextLabel != "3 linked deployments" {
+		t.Fatalf("decorated module = %+v", module)
+	}
+}

@@ -560,6 +560,13 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	if err != nil {
 		return nil, err
 	}
+	appContexts, err := h.Store.AppModulesByLocation(r.Context(), wsID, "jira.issue.context")
+	if err != nil {
+		return nil, err
+	}
+	for index := range appContexts {
+		decorateIssueContext(&appContexts[index])
+	}
 	appIssueContent, err := h.Store.AppIssueContentForIssue(r.Context(), wsID, issue.ID)
 	if err != nil {
 		return nil, err
@@ -593,6 +600,7 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 		Development:       development,
 		Delivery:          delivery,
 		AppPanels:         appPanels,
+		AppContexts:       appContexts,
 		AppIssueContent:   appIssueContent,
 	}, nil
 }

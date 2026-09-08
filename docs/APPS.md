@@ -84,6 +84,9 @@ shape:
     "jiraIssueContents": [
       {"key": "runbook", "name": {"value": "Incident runbook"}, "tooltip": {"value": "Add incident runbook"}, "icon": {"url": "/runbook.svg"}, "target": {"type": "web_panel", "url": "/runbook?issue={issue.key}"}}
     ],
+    "jiraIssueContexts": [
+      {"key": "delivery-context", "name": {"value": "Delivery context"}, "icon": {"url": "context.svg"}, "content": {"type": "label", "label": {"value": "3 linked deployments"}}, "target": {"type": "web_panel", "url": "/delivery-context?issue={issue.key}"}}
+    ],
     "webhooks": [
       {"event": "jira:issue_updated", "url": "/webhooks/issues", "filter": "project = OPS"}
     ]
@@ -97,7 +100,8 @@ and Confluence grants. Supported Connect module families are `generalPages`,
 `jiraDashboardItems`, Jira issue-view
 `webPanels`, Confluence
 `contentBylineItems`, scalar
-`jiraIssueFields`, quick-add `jiraIssueContents`, Jira/Confluence navigation
+`jiraIssueFields`, quick-add `jiraIssueContents`, collapsible
+`jiraIssueContexts`, Jira/Confluence navigation
 `webItems`, and `webhooks`.
 The parser rejects unsupported authentication modes, scopes, module families,
 and web-panel locations instead of silently ignoring them.
@@ -144,6 +148,16 @@ does not discard the user's choice. Content-presence conditions and native-app
 rendering flags remain unsupported and fail explicitly when they would change
 host behavior.
 
+Connect issue contexts validate their required key, name, label content,
+relative icon and relative `web_panel` target. Each module appears as a
+collapsible panel below the issue field groups, retains its open state for the
+current user, and renders its signed icon and remote content. The request
+expands and supplies `issue.key`, `issue.id`, `project.key` and `project.id`.
+Conditions, issue-property status badges and frontend change events remain
+explicit gaps; conditions fail installation instead of being ignored.
+Connect i18n display names and labels retain the documented 1,500-character
+validation bound; native ZZIRA module titles retain their 255-character bound.
+
 Connect project pages validate the required key, name, relative URL and
 relative `iconUrl`, and honor descriptor weight when ordering multiple app
 pages. Each active page appears in the current project's navigation and opens
@@ -183,10 +197,11 @@ by reports.
 Supported scopes are `read:jira-work`, `write:jira-work`,
 `read:confluence-content`, `write:confluence-content`, `read:app-storage`,
 `write:app-storage`, and `manage:webhooks`. Supported module contracts are Jira
-global and project pages, issue panels and dashboard gadgets, plus Confluence
-global pages and content byline items. Active global pages join product navigation, issue
-panels join visible work-item views, app gadgets can be added and positioned on
-custom dashboards, and byline items join published wiki pages. Native module
+global and project pages, issue panels, issue contexts and dashboard gadgets,
+plus Confluence global pages and content byline items. Active global pages join
+product navigation, issue panels and contexts join visible work-item views, app
+gadgets can be added and positioned on custom dashboards, and byline items join
+published wiki pages. Native module
 text is host-rendered and escaped. A module with a relative `url`, including a
 translated Connect module, opens beneath its descriptor `baseUrl` in a
 sandboxed HTTPS iframe. ZZIRA supplies `xdm_e`, `xdm_c`, `cp`, `lic`, and `cv`
@@ -265,7 +280,7 @@ reinstallation.
 
 The runtime is a ZZIRA execution contract for remotely hosted apps. Remaining
 Connect module families, the remaining dynamic module types and webhook
-options, project/page-admin conditions, dashboard-item
+options, project/page-admin and issue-context conditions/status, dashboard-item
 configuration/refresh/conditions, workflow modules, select/read-only issue
 fields and option APIs,
 descriptor-driven upgrade migrations, and Atlassian-hosted Forge compute remain

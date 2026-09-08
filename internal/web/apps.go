@@ -146,7 +146,7 @@ func (h *Handler) appModuleAsset(w http.ResponseWriter, r *http.Request, kind st
 			assetURL = appModuleThumbnailURL(*module)
 		}
 	case "icon":
-		if module.Type == "jira:projectPage" {
+		if module.Type == "jira:projectPage" || module.Type == "jira:issueContext" {
 			assetURL = appModuleIconURL(*module)
 		}
 	}
@@ -192,6 +192,23 @@ func appModuleIconPath(module models.AppModule) string {
 	return "/app-modules/" + module.ID + "/icon"
 }
 
+func decorateIssueContext(module *models.AppModule) {
+	if module == nil {
+		return
+	}
+	var metadata struct {
+		IconURL string `json:"iconUrl"`
+		Label   string `json:"label"`
+	}
+	if json.Unmarshal([]byte(module.Body), &metadata) != nil {
+		return
+	}
+	module.ContextLabel = strings.TrimSpace(metadata.Label)
+	if strings.TrimSpace(metadata.IconURL) != "" {
+		module.IconURL = "/app-modules/" + module.ID + "/icon"
+	}
+}
+
 func appModuleThumbnailURL(module models.AppModule) string {
 	var metadata struct {
 		ThumbnailURL string `json:"thumbnailUrl"`
@@ -215,6 +232,11 @@ func appModuleContextValues(r *http.Request) url.Values {
 		values.Set("issue.key", issueKey)
 	} else if issueKey := strings.TrimSpace(r.URL.Query().Get("issue.key")); issueKey != "" {
 		values.Set("issue.key", issueKey)
+	}
+	if issueID := strings.TrimSpace(r.URL.Query().Get("issueId")); issueID != "" {
+		values.Set("issue.id", issueID)
+	} else if issueID := strings.TrimSpace(r.URL.Query().Get("issue.id")); issueID != "" {
+		values.Set("issue.id", issueID)
 	}
 	if pageID := strings.TrimSpace(r.URL.Query().Get("pageId")); pageID != "" {
 		values.Set("content.id", pageID)

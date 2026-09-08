@@ -25,7 +25,7 @@
 <link rel="preload" href="/static/sqlite/sqlite3.wasm" as="fetch" crossorigin>
 <script src="/static/htmx/htmx.min.js" defer></script>
 <script src="/static/wasm/wasm_exec.js" defer></script>
-<script src="/static/app.js?v=29" defer></script>
+<script src="/static/app.js?v=30" defer></script>
 {{end}}
 
 {{define "avatar"}}
@@ -338,6 +338,7 @@
 {{if .SecurityLevels}}        <dt><label for="field-security">Security</label></dt><dd><form class="inline-field" method="post" action="/issues/{{.Issue.Key}}/fields" hx-post="/issues/{{.Issue.Key}}/fields" hx-target="#issue-root" hx-swap="outerHTML"><input type="hidden" name="field" value="security"><select id="field-security" name="value"><option value="">Public</option>{{$security := .Issue.SecurityLevelID}}{{range .SecurityLevels}}<option value="{{.ID}}" {{if eq .ID $security}}selected{{end}}>{{.Name}}</option>{{end}}</select><button class="field-save" type="submit">Save security</button></form></dd>{{end}}
       </dl>
 {{if .CustomFields}}      <details class="more-fields"><summary>More fields <span>{{len .CustomFields}}</span></summary><dl>{{range .CustomFields}}<dt><label for="detail-field-{{.ID}}">{{.Name}}</label></dt><dd><form class="inline-field" method="post" action="/issues/{{$.Issue.Key}}/fields" hx-post="/issues/{{$.Issue.Key}}/fields" hx-target="#issue-root" hx-swap="outerHTML"><input type="hidden" name="field" value="custom:{{.ID}}"><input id="detail-field-{{.ID}}" name="value" value="{{.Value}}" placeholder="None"><button class="field-save" type="submit">Save {{.Name}}</button></form></dd>{{end}}</dl></details>{{end}}
+{{- range .AppContexts}}      <details class="issue-context-panel" data-issue-context-key="{{$.CurrentUserID}}:{{.ID}}"><summary>{{if .IconURL}}<img src="{{.IconURL}}" alt="" referrerpolicy="no-referrer">{{end}}<span><strong>{{.Title}}</strong>{{if .ContextLabel}}<small>{{.ContextLabel}}</small>{{end}}</span></summary>{{if .RemoteURL}}<iframe class="app-context-frame" src="/app-modules/{{.ID}}/frame?issueKey={{$.Issue.Key}}&amp;issueId={{$.Issue.ID}}&amp;projectKey={{$.ProjectKey}}&amp;projectId={{$.Issue.ProjectID}}" title="{{.Title}}" sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts"></iframe>{{else}}<p>{{.Body}}</p>{{end}}</details>{{end}}
       <section class="watcher-summary" aria-labelledby="watchers-title"><h3 id="watchers-title">Watchers <span>{{len .Watchers}}</span></h3>{{if .Watchers}}<ul>{{range .Watchers}}<li>{{template "avatar" .}}<span>{{.DisplayName}}</span></li>{{end}}</ul>{{else}}<p>No one is watching yet.</p>{{end}}</section>
       <div class="details-meta"><span>Updated</span><time datetime="{{.Issue.UpdatedAt}}">{{.Issue.UpdatedAt}}</time></div>
     </aside>

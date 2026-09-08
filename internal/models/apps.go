@@ -59,6 +59,7 @@ type AppModule struct {
 	SecretCiphertext                             []byte
 	Key, Type, Location, Title, Body, RemoteURL  string
 	IconURL                                      string
+	ContextLabel                                 string
 	Position                                     int
 	Dynamic                                      bool
 }

@@ -171,6 +171,7 @@ type IssueView struct {
 	Development       []DevelopmentItem
 	Delivery          []DeliveryItem
 	AppPanels         []AppModule
+	AppContexts       []AppModule
 	AppIssueContent   []AppIssueContent
 }
 

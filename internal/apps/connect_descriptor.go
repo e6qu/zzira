@@ -62,6 +62,30 @@ type connectIssueContentWire struct {
 	ContentPresentConditions []json.RawMessage `json:"contentPresentConditions"`
 }
 
+type connectIssueContextWire struct {
+	Key  string          `json:"key"`
+	Name connectNameWire `json:"name"`
+	Icon struct {
+		URL string `json:"url"`
+	} `json:"icon"`
+	Content struct {
+		Type  string `json:"type"`
+		Label struct {
+			Value string `json:"value"`
+		} `json:"label"`
+	} `json:"content"`
+	Target struct {
+		Type string `json:"type"`
+		URL  string `json:"url"`
+	} `json:"target"`
+	Conditions []json.RawMessage `json:"conditions"`
+}
+
+type connectIssueContextMeta struct {
+	IconURL string `json:"iconUrl"`
+	Label   string `json:"label"`
+}
+
 type connectProjectPageWire struct {
 	Key        string            `json:"key"`
 	URL        string            `json:"url"`
@@ -164,12 +188,24 @@ func parseConnectDescriptor(raw []byte) (models.AppDescriptor, error) {
 		wire.Scopes = append(wire.Scopes, scope)
 	}
 	sort.Strings(wire.Scopes)
-	supported := map[string]bool{"generalPages": true, "jiraProjectPages": true, "jiraProjectAdminTabPanels": true, "jiraReports": true, "jiraDashboardItems": true, "webPanels": true, "contentBylineItems": true, "webhooks": true, "jiraIssueFields": true, "webItems": true, "jiraIssueContents": true}
+	supported := map[string]bool{"generalPages": true, "jiraProjectPages": true, "jiraProjectAdminTabPanels": true, "jiraReports": true, "jiraDashboardItems": true, "webPanels": true, "contentBylineItems": true, "webhooks": true, "jiraIssueFields": true, "webItems": true, "jiraIssueContents": true, "jiraIssueContexts": true}
 	for moduleType, payload := range connect.Modules {
 		if !supported[moduleType] {
 			return models.AppDescriptor{}, fmt.Errorf("Connect module %q is not supported yet", moduleType)
 		}
 		switch moduleType {
+		case "jiraIssueContexts":
+			var modules []connectIssueContextWire
+			if err := json.Unmarshal(payload, &modules); err != nil {
+				return models.AppDescriptor{}, fmt.Errorf("invalid Connect jiraIssueContexts: %w", err)
+			}
+			for _, module := range modules {
+				translated, err := translateConnectIssueContext(module)
+				if err != nil {
+					return models.AppDescriptor{}, err
+				}
+				wire.Modules = append(wire.Modules, translated)
+			}
 		case "jiraDashboardItems":
 			var modules []connectDashboardItemWire
 			if err := json.Unmarshal(payload, &modules); err != nil {
@@ -290,6 +326,28 @@ func parseConnectDescriptor(raw []byte) (models.AppDescriptor, error) {
 		wire.Scopes = append(wire.Scopes, scope)
 	}
 	return validateDescriptorWire(wire)
+}
+
+func translateConnectIssueContext(module connectIssueContextWire) (moduleWire, error) {
+	module.Key = strings.TrimSpace(module.Key)
+	module.Name.Value = strings.TrimSpace(module.Name.Value)
+	module.Icon.URL = strings.TrimSpace(module.Icon.URL)
+	module.Content.Type = strings.TrimSpace(module.Content.Type)
+	module.Content.Label.Value = strings.TrimSpace(module.Content.Label.Value)
+	module.Target.Type = strings.TrimSpace(module.Target.Type)
+	module.Target.URL = strings.TrimSpace(module.Target.URL)
+	icon := module.Icon.URL
+	if icon != "" && !strings.HasPrefix(icon, "/") {
+		icon = "/" + icon
+	}
+	if !moduleKeyPattern.MatchString(module.Key) || module.Name.Value == "" || len(module.Name.Value) > 1500 || module.Content.Type != "label" || module.Content.Label.Value == "" || len(module.Content.Label.Value) > 1500 || module.Target.Type != "web_panel" || !validAppCallbackPath(module.Target.URL) || !validAppCallbackPath(icon) {
+		return moduleWire{}, fmt.Errorf("Connect issue context needs a valid key, name, label content, relative icon, and web_panel target")
+	}
+	if len(module.Conditions) > 0 {
+		return moduleWire{}, fmt.Errorf("Connect issue context %q uses unsupported conditions", module.Key)
+	}
+	meta, _ := json.Marshal(connectIssueContextMeta{IconURL: module.Icon.URL, Label: module.Content.Label.Value})
+	return moduleWire{Key: module.Key, Type: "jira:issueContext", Location: "jira.issue.context", Title: module.Name.Value, Body: string(meta), URL: module.Target.URL}, nil
 }
 
 func translateConnectDashboardItem(module connectDashboardItemWire) (moduleWire, error) {

@@ -40,6 +40,7 @@ var moduleRequirements = map[string]struct {
 	"jira:report":                  {Location: "jira.report", Scope: "read:jira-work"},
 	"jira:issuePanel":              {Location: "jira.issue.view", Scope: "read:jira-work"},
 	"jira:issueContent":            {Location: "jira.issue.content", Scope: ""},
+	"jira:issueContext":            {Location: "jira.issue.context", Scope: "read:jira-work"},
 	"jira:dashboardGadget":         {Location: "jira.dashboard", Scope: "read:jira-work"},
 	"jira:webItem":                 {Location: "jira.navigation", Scope: ""},
 	"confluence:globalPage":        {Location: "confluence.navigation", Scope: "read:confluence-content"},
@@ -138,6 +139,10 @@ func validateDescriptorWire(wire descriptorWire) (models.AppDescriptor, error) {
 		scopes[scope] = true
 	}
 	descriptor := models.AppDescriptor{Key: wire.Key, Name: wire.Name, BaseURL: baseURL.String(), Version: wire.Version, Format: wire.Format}
+	moduleTitleLimit := 255
+	if wire.Format == "connect" {
+		moduleTitleLimit = 1500
+	}
 	for scope := range scopes {
 		descriptor.Scopes = append(descriptor.Scopes, scope)
 	}
@@ -161,7 +166,7 @@ func validateDescriptorWire(wire descriptorWire) (models.AppDescriptor, error) {
 			return models.AppDescriptor{}, fmt.Errorf("module %q requires scope %s", input.Key, requirement.Scope)
 		}
 		hasBody, hasURL := input.Body != "", input.URL != ""
-		if !moduleKeyPattern.MatchString(input.Key) || moduleKeys[input.Key] || input.Title == "" || len(input.Title) > 255 || len(input.Body) > 20000 || (!hasBody && !hasURL) || (hasURL && !validAppCallbackPath(input.URL)) || (hasBody && hasURL && input.Type != "jira:report" && input.Type != "jira:dashboardGadget" && input.Type != "jira:projectPage") {
+		if !moduleKeyPattern.MatchString(input.Key) || moduleKeys[input.Key] || input.Title == "" || len(input.Title) > moduleTitleLimit || len(input.Body) > 20000 || (!hasBody && !hasURL) || (hasURL && !validAppCallbackPath(input.URL)) || (hasBody && hasURL && input.Type != "jira:report" && input.Type != "jira:dashboardGadget" && input.Type != "jira:projectPage" && input.Type != "jira:issueContext") {
 			return models.AppDescriptor{}, fmt.Errorf("module keys must be unique and valid; title and body limits must be respected")
 		}
 		moduleKeys[input.Key] = true

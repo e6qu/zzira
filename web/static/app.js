@@ -37,6 +37,20 @@
   }
   document.addEventListener('DOMContentLoaded', initThemeToggle);
 
+  function initIssueContexts(root) {
+    root.querySelectorAll('[data-issue-context-key]').forEach((panel) => {
+      if (panel.dataset.ready) return;
+      panel.dataset.ready = '1';
+      const storageKey = 'zzira-issue-context:' + panel.dataset.issueContextKey;
+      panel.open = localStorage.getItem(storageKey) === 'open';
+      panel.addEventListener('toggle', () => {
+        localStorage.setItem(storageKey, panel.open ? 'open' : 'closed');
+      });
+    });
+  }
+  document.addEventListener('DOMContentLoaded', () => initIssueContexts(document));
+  document.body.addEventListener('htmx:afterSettle', (event) => initIssueContexts(event.target));
+
   function productKeyForPage() {
     if (location.pathname === '/login' || location.pathname === '/signed-out' || location.pathname.startsWith('/auth/') || location.pathname.startsWith('/admin')) return '';
     if (location.pathname === '/wiki' || location.pathname.startsWith('/wiki/')) return 'confluence';

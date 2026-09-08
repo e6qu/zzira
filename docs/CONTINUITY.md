@@ -2416,11 +2416,31 @@ Validation after Connect project-page icons:
   generated inventory/coverage checks and diff validation pass. The pinned
   inventory remains 433 assessed operations out of 1,207.
 
+Validation after Connect issue contexts:
+
+- Standard descriptors accept `jiraIssueContexts` with a valid key, name,
+  label content, relative icon and relative `web_panel` target. They translate
+  into dedicated `jira:issueContext` modules; invalid targets and unevaluated
+  conditions fail installation explicitly.
+- Active modules render as compact collapsible panels below the issue fields.
+  The label and signed icon remain visible while collapsed, and browser-local
+  state keyed by account and module restores each user's open preference.
+  Expanded remote frames receive signed `issue.key`, `issue.id`, `project.key`
+  and `project.id` context.
+- Focused parser, web, render and server tests pass. The Chromium Connect
+  journey verifies descriptor review, collapsed metadata, signed icon delivery,
+  expansion, remote context and accessibility. Issue-property status badges
+  and frontend change events remain separate gaps. The complete PostgreSQL Go
+  suite, native server/load-test and WebAssembly builds, vet, seven conformance
+  tests, generated inventory/coverage checks and diff validation pass. The
+  pinned inventory remains 433 assessed operations out of 1,207.
+
 ## Current change
 
 1. Continue the app runtime with remaining Connect module families, dynamic
    module types and webhook options, issue-content presence conditions/native
-   rendering, project/page-admin conditions, additional web-item
+   rendering, project/page-admin and issue-context conditions/status,
+   additional web-item
    locations and conditions, dashboard-item configuration/refresh/conditions,
    select/read-only field options, workflow modules and upgrade migrations.
 2. Continue Confluence with advanced whiteboard objects, direct manipulation,

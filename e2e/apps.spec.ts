@@ -102,7 +102,7 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
     expect(target.searchParams.get('jwt')).toBeTruthy();
     expect(target.searchParams.get('xdm_e')).toBe('http://localhost:8080');
     expect(target.searchParams.get('xdm_c')).toMatch(/^zzira-/);
-    if (target.pathname.endsWith('/report.svg') || target.pathname.endsWith('/dashboard.svg') || target.pathname.endsWith('/project.svg')) {
+    if (target.pathname.endsWith('/report.svg') || target.pathname.endsWith('/dashboard.svg') || target.pathname.endsWith('/project.svg') || target.pathname.endsWith('/context.svg')) {
       await route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 60"><rect width="80" height="60" rx="8" fill="#1868db"/><path d="M18 42V30m15 12V18m15 24V25m15 17V12" stroke="white" stroke-width="5"/></svg>' });
       return;
     }
@@ -115,6 +115,15 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
     if (target.pathname.endsWith('/remote-content')) {
       expect(target.searchParams.get('issue.key')).toBe('ZZ-1');
       await route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main><h1>Remote incident runbook</h1><p>Quick-add issue context received.</p></main></body></html>' });
+      return;
+    }
+    if (target.pathname.endsWith('/remote-context')) {
+      expect(target.searchParams.get('issue.key')).toBe('ZZ-1');
+      expect(target.searchParams.get('issue.id')).toBeTruthy();
+      expect(target.searchParams.get('project.key')).toBe('ZZ');
+      expect(target.searchParams.get('project.id')).toBeTruthy();
+      expect(target.searchParams.get('selected')).toBe('ZZ-1');
+      await route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main><h1>Remote delivery context</h1><p>Issue and project context received.</p></main></body></html>' });
       return;
     }
     if (target.pathname.endsWith('/remote-project')) {
@@ -177,6 +186,7 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
   const projectAdminTitle = `Project controls ${suffix}`;
   const reportTitle = `Delivery risk ${suffix}`;
   const dashboardItemTitle = `Release health ${suffix}`;
+  const issueContextTitle = `Delivery context ${suffix}`;
   const descriptor = {
     key: `connect.journey.${suffix}`,
     name: appName,
@@ -194,6 +204,7 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
       jiraProjectAdminTabPanels: [{ key: 'project-controls', name: { value: projectAdminTitle }, url: '/remote-project-admin', location: 'projectgroup3', weight: 20, params: { source: 'settings' } }],
       jiraReports: [{ key: 'delivery-risk', name: { value: reportTitle }, description: { value: 'Release and incident risk from the app' }, url: '/remote-report?selected={project.key}', reportCategory: 'AGILE', thumbnailUrl: '/report.svg' }],
       jiraDashboardItems: [{ key: 'release-health', name: { value: dashboardItemTitle }, description: { value: 'Release health from the Connect app' }, url: '/remote-dashboard?item={dashboardItem.id}', thumbnailUrl: 'dashboard.svg' }],
+      jiraIssueContexts: [{ key: 'delivery-context', name: { value: issueContextTitle }, icon: { width: 24, height: 24, url: 'context.svg' }, content: { type: 'label', label: { value: '3 linked deployments' } }, target: { type: 'web_panel', url: '/remote-context?selected={issue.key}' } }],
     },
   };
   await page.goto('/admin#admin-apps');
@@ -243,6 +254,11 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
   await accessible(page);
 
   await page.goto('/browse/ZZ-1');
+  const issueContext = page.locator('details.issue-context-panel', { hasText: issueContextTitle });
+  await expect(issueContext).toContainText('3 linked deployments');
+  await expect(issueContext.locator('img')).toBeVisible();
+  await issueContext.locator('summary').click();
+  await expect(issueContext.frameLocator('iframe').getByRole('heading', { name: 'Remote delivery context' })).toBeVisible();
   const issuePanel = page.locator('.app-context-module', { has: page.getByRole('heading', { name: panelTitle, level: 2 }) });
   await expect(issuePanel).toBeVisible();
   await expect(issuePanel.frameLocator('iframe').getByRole('heading', { name: 'Remote issue risk' })).toBeVisible();

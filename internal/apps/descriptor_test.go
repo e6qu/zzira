@@ -69,6 +69,7 @@ func TestParseConnectDescriptorTranslatesSupportedModules(t *testing.T) {
     "jiraProjectAdminTabPanels":[{"key":"project-controls","url":"/project-controls?project={project.key}","location":"projectgroup3","weight":20,"params":{"source":"settings"},"name":{"value":"Project controls"}}],
     "jiraReports":[{"key":"delivery-risk","url":"/delivery-risk?project={project.key}","name":{"value":"Delivery risk"},"description":{"value":"Release and incident risk"},"reportCategory":"AGILE","thumbnailUrl":"/delivery-risk.svg"}],
     "jiraDashboardItems":[{"key":"release-health","url":"/release-health?item={dashboardItem.id}","name":{"value":"Release health"},"description":{"value":"Current release health"},"thumbnailUrl":"release-health.svg"}],
+    "jiraIssueContexts":[{"key":"delivery-context","name":{"value":"Delivery context"},"icon":{"url":"context.svg"},"content":{"type":"label","label":{"value":"3 linked deployments"}},"target":{"type":"web_panel","url":"/delivery-context?issue={issue.key}"}}],
     "webhooks":[{"event":"jira:issue_updated","url":"/hooks/issues","filter":"project = OPS"}]
   }
 }`)
@@ -76,7 +77,7 @@ func TestParseConnectDescriptorTranslatesSupportedModules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if descriptor.Format != "connect" || descriptor.Version != "connect-v1" || len(descriptor.Modules) != 9 || len(descriptor.Webhooks) != 1 || len(descriptor.IssueFields) != 1 {
+	if descriptor.Format != "connect" || descriptor.Version != "connect-v1" || len(descriptor.Modules) != 10 || len(descriptor.Webhooks) != 1 || len(descriptor.IssueFields) != 1 {
 		t.Fatalf("Connect descriptor = %+v", descriptor)
 	}
 	if descriptor.Key != "Connect.Operations" {
@@ -87,6 +88,7 @@ func TestParseConnectDescriptorTranslatesSupportedModules(t *testing.T) {
 	projectAdminPage := false
 	report := false
 	dashboardItem := false
+	issueContext := false
 	for _, module := range descriptor.Modules {
 		if module.RemoteURL != "" {
 			remoteModules++
@@ -103,8 +105,11 @@ func TestParseConnectDescriptorTranslatesSupportedModules(t *testing.T) {
 		if module.Key == "release-health" && module.Type == "jira:dashboardGadget" && module.Location == "jira.dashboard" && strings.Contains(module.Body, "Current release health") {
 			dashboardItem = true
 		}
+		if module.Key == "delivery-context" && module.Type == "jira:issueContext" && module.Location == "jira.issue.context" && strings.Contains(module.Body, "3 linked deployments") {
+			issueContext = true
+		}
 	}
-	if remoteModules != 9 || !projectPage || !projectAdminPage || !report || !dashboardItem || descriptor.Webhooks[0].Key != "connect-webhook-1" {
+	if remoteModules != 10 || !projectPage || !projectAdminPage || !report || !dashboardItem || !issueContext || descriptor.Webhooks[0].Key != "connect-webhook-1" {
 		t.Fatalf("translated modules = %+v, hooks = %+v", descriptor.Modules, descriptor.Webhooks)
 	}
 	for _, scope := range []string{"read:jira-work", "write:jira-work", "read:confluence-content", "write:confluence-content", "manage:webhooks"} {
@@ -143,6 +148,9 @@ func TestParseConnectDescriptorTranslatesSupportedModules(t *testing.T) {
 	}
 	if _, err := ParseDescriptor([]byte(`{"key":"connect.bad-dashboard","name":"Bad dashboard","baseUrl":"https://connect.example.test","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"jiraDashboardItems":[{"key":"item","name":{"value":"Item"},"description":{"value":"Item"},"url":"/item","thumbnailUrl":"/item.svg","configurable":true}]}}`)); err == nil {
 		t.Fatal("accepted unsupported configurable dashboard item")
+	}
+	if _, err := ParseDescriptor([]byte(`{"key":"connect.bad-context","name":"Bad context","baseUrl":"https://connect.example.test","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"jiraIssueContexts":[{"key":"context","name":{"value":"Context"},"icon":{"url":"/context.svg"},"content":{"type":"label","label":{"value":"Context"}},"target":{"type":"web_panel","url":"/context"},"conditions":[{"condition":"user_is_logged_in"}]}]}}`)); err == nil {
+		t.Fatal("accepted unsupported issue context conditions")
 	}
 	if _, err := ParseDescriptor([]byte(`{"key":"connect.bad","name":"Bad","baseUrl":"https://connect.example.test","authentication":{"type":"none"},"scopes":[],"modules":{}}`)); err == nil {
 		t.Fatal("accepted a Connect descriptor without JWT authentication")
