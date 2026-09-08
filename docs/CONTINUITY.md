@@ -12,7 +12,8 @@ boundaries, dependencies, and acceptance gates belong in
 - Branch: `feat/cloud-surface-completion`
 - Base: `origin/main` after PR #65
 - Delivery unit: PR 0 — Integrated Cloud foundation
-- State: implementation checkpoint complete; prepare, open, and validate PR 0
+- Pull request: #68
+- State: open; validate CI and address review feedback
 - Last product checkpoint: Connect site administration pages
 - Blockers: none
 
