@@ -389,10 +389,19 @@ func TestConnectDynamicModulesAndIssueFields(t *testing.T) {
 	if err != nil || fieldByKey(otherWorkspaceFields, "static-score") != nil {
 		t.Fatalf("app field leaked across workspaces: %+v, %v", otherWorkspaceFields, err)
 	}
-	var projectID, issueID string
-	if err := st.Pool.QueryRow(ctx, `SELECT project_id,id FROM issues WHERE workspace_id=$1 ORDER BY id LIMIT 1`, workspaceID).Scan(&projectID, &issueID); err != nil {
+	var projectID string
+	if err := st.Pool.QueryRow(ctx, `SELECT id FROM projects WHERE workspace_id=$1 ORDER BY id LIMIT 1`, workspaceID).Scan(&projectID); err != nil {
 		t.Fatal(err)
 	}
+	issueID := store.NewID("app_issue")
+	issueKey := "APP-" + strings.ToUpper(issueID[len(issueID)-6:])
+	if _, err := st.Pool.Exec(ctx, `
+		INSERT INTO issues(id,workspace_id,project_id,key,summary,status_id,issuetype_id,reporter_id,updated_seq)
+		VALUES($1,$2,$3,$4,'Connect module test issue','st_todo','it_task',$5,0)`,
+		issueID, workspaceID, projectID, issueKey, adminID); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _, _ = st.Pool.Exec(ctx, `DELETE FROM issues WHERE id=$1`, issueID) })
 	projectFields, err := st.CustomFieldsForProject(ctx, projectID)
 	if err != nil || fieldByKey(projectFields, "static-score") == nil {
 		t.Fatalf("app field missing from issue metadata: %+v, %v", projectFields, err)
