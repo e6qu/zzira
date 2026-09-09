@@ -410,7 +410,7 @@ func (h *Handler) attachmentArchive(w http.ResponseWriter, r *http.Request, id, 
 			mediaType = "application/octet-stream"
 		}
 		if representation == "human" {
-			entries = append(entries, map[string]any{"index": index, "label": file.Name, "path": file.Name, "mediaType": mediaType, "size": humanAttachmentSize(int64(file.UncompressedSize64))})
+			entries = append(entries, map[string]any{"index": index, "label": file.Name, "path": file.Name, "mediaType": mediaType, "size": humanAttachmentSize(file.UncompressedSize64)})
 		} else {
 			entries = append(entries, map[string]any{"entryIndex": index, "name": file.Name, "mediaType": mediaType, "size": file.UncompressedSize64})
 		}
@@ -422,7 +422,7 @@ func (h *Handler) attachmentArchive(w http.ResponseWriter, r *http.Request, id, 
 	}
 }
 
-func humanAttachmentSize(size int64) string {
+func humanAttachmentSize(size uint64) string {
 	if size < 1000 {
 		return fmt.Sprintf("%d B", size)
 	}
