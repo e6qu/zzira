@@ -91,6 +91,9 @@ func (s *Store) UpdateIssue(ctx context.Context, actorID, workspaceID, issueID s
 	if err := normalizeVersionFields(ctx, tx, projectID, up.Fields); err != nil {
 		return nil, nil, err
 	}
+	if err := normalizeComponentFields(ctx, tx, projectID, up.Fields); err != nil {
+		return nil, nil, err
+	}
 	diff := map[string]models.ChangeItem{}
 
 	sets := []string{}
@@ -114,7 +117,7 @@ func (s *Store) UpdateIssue(ctx context.Context, actorID, workspaceID, issueID s
 		sets = append(sets, "labels = "+arg(*up.Labels))
 	}
 	if up.Fields != nil {
-		for _, field := range []string{"fixVersions", "versions"} {
+		for _, field := range []string{"fixVersions", "versions", "components"} {
 			if value, ok := up.Fields[field]; ok && string(value) != string(current.Fields[field]) {
 				diff[field] = versionChange(field, current.Fields[field], value)
 			}

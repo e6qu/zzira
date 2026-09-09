@@ -171,7 +171,7 @@
           <select id="create-{{.ID}}" name="{{.ID}}" {{if .Required}}required{{end}}><option value="">None</option>{{range .Options}}<option value="{{.ID}}" {{if eq $value .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select>
           {{else if eq .Type "securitylevel"}}
           <select id="create-{{.ID}}" name="{{.ID}}" {{if .Required}}required{{end}}><option value="">Open to everyone in the workspace</option>{{range .Options}}<option value="{{.ID}}" {{if eq $value .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select>
-          {{else if eq .Type "versions"}}
+          {{else if or (eq .Type "versions") (eq .Type "components")}}
           <select id="create-{{.ID}}" name="{{.ID}}" multiple size="3">{{range .Options}}<option value="{{.ID}}" {{if selectedVersion $value .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select>
 		  {{else if eq .Type "parent"}}
 		  <select id="create-{{.ID}}" name="{{.ID}}" {{if $.SelectedIssueTypeSubtask}}required{{end}}><option value="">{{if $.SelectedIssueTypeSubtask}}Choose a parent{{else}}No parent{{end}}</option>{{range .Options}}<option value="{{.ID}}" {{if eq $value .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select>

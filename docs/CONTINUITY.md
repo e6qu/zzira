@@ -22,7 +22,8 @@ boundaries, dependencies, and acceptance gates belong in
   durable expansion, and autocomplete, plus version/project/history/watch/vote
   built-ins and the complete issue-vote REST/browser journey, plus durable
   filter email schedules, recipient expansion, runs, and outbox delivery
-  implemented
+  implemented; Jira project components and their REST, issue-field, assignment,
+  JQL, audit, sync, and administrator journeys are implemented
 - Blockers: none
 
 ## Contract baseline
@@ -89,6 +90,12 @@ date increments use the function's own day/week/month/year period. Votes are a
 durable issue relation with idempotent self-service REST and browser actions,
 voter reads, action-log visibility, and JQL evaluation.
 
+The component slice adds stable project-scoped ownership and assignment state,
+all eight pinned REST resources, full and paged collections, canonical
+multi-value issue fields, counts, rename propagation, move-on-delete, action
+and organization audit, project-settings management, create metadata, and
+`componentsLeadByUser()`.
+
 ## Validation baseline
 
 Merged PR #68 passed the complete GitHub CI matrix, including all 58 Playwright
@@ -103,9 +110,14 @@ The filter-subscription checkpoint passes the focused store and REST contract
 tests, the Chromium saved-filter owner journey, the full uncached PostgreSQL Go
 suite, `go vet`, native and WebAssembly builds, and conformance freshness checks.
 
+The project-component checkpoint passes its PostgreSQL REST/JQL lifecycle
+contract, the responsive Chromium project-manager journey, the full uncached
+PostgreSQL Go suite, `go vet`, native and WebAssembly builds, and conformance
+freshness checks.
+
 ## Resume here
 
-1. Add session/component and JSM approval/SLA built-ins with their owning state.
+1. Add login-session and JSM approval/SLA built-ins with their owning state.
 2. Continue into bulk work-item and project administration slices.
 3. Update compatibility evidence and commit each independently buildable
    checkpoint.
@@ -119,6 +131,7 @@ suite, `go vet`, native and WebAssembly builds, and conformance freshness checks
 - [UI and persona journeys](UI_PARITY.md)
 - [Administration behavior](ADMIN.md)
 - [Saved filters and sharing](FILTERS.md)
+- [Project components](COMPONENTS.md)
 - [JQL and issue search](JQL.md)
 
 ## Continuity rules

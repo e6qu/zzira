@@ -165,7 +165,7 @@ func (s *Service) validateCustomFields(ctx context.Context, projectID string, va
 		valid[field.ID] = field
 	}
 	for id, raw := range values {
-		if id == "fixVersions" || id == "versions" {
+		if id == "fixVersions" || id == "versions" || id == "components" {
 			continue
 		} // Validated transactionally by the store.
 		field, ok := valid[id]

@@ -1091,7 +1091,7 @@ func (h *Handler) buildCreateDialogData(ctx context.Context, workspaceID, userID
 func createFieldsFromForm(fields []models.CreateFieldMeta, values map[string]string) (map[string]json.RawMessage, error) {
 	custom := map[string]json.RawMessage{}
 	for _, field := range fields {
-		if field.Type == "versions" && values[field.ID] != "" {
+		if (field.Type == "versions" || field.Type == "components") && values[field.ID] != "" {
 			refs := []map[string]string{}
 			for _, id := range strings.Split(values[field.ID], ",") {
 				refs = append(refs, map[string]string{"id": id})

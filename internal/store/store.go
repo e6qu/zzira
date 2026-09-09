@@ -838,6 +838,9 @@ func (s *Store) CreateIssueForReporter(ctx context.Context, actorID, reporterID,
 	if err := normalizeVersionFields(ctx, tx, projectID, fields); err != nil {
 		return nil, nil, err
 	}
+	if err := normalizeComponentFields(ctx, tx, projectID, fields); err != nil {
+		return nil, nil, err
+	}
 	fieldsJSON, err := json.Marshal(fields)
 	if err != nil {
 		return nil, nil, err

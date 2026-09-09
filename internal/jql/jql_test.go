@@ -277,6 +277,27 @@ func TestCompileLabelsAsMultiValueField(t *testing.T) {
 	}
 }
 
+func TestCompileComponentsAsCanonicalMultiValueField(t *testing.T) {
+	query, err := Parse(`components in componentsLeadByUser(currentUser()) AND component != Legacy`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled := Compile(query, "usr_me", DefaultResolver())
+	if compiled.Err != nil {
+		t.Fatal(compiled.Err)
+	}
+	if !strings.Contains(compiled.Where, "project_components component_lead") || !strings.Contains(compiled.Where, "jsonb_array_elements") {
+		t.Fatalf("component SQL = %s", compiled.Where)
+	}
+	if !reflect.DeepEqual(compiled.Args, []any{"usr_me", "Legacy"}) {
+		t.Fatalf("component args = %#v", compiled.Args)
+	}
+	invalid, _ := Parse(`component = componentsLeadByUser()`)
+	if compiled = Compile(invalid, "usr_me", DefaultResolver()); compiled.Err == nil {
+		t.Fatal("componentsLeadByUser accepted a non-list operator")
+	}
+}
+
 func TestCompileProjectUpper(t *testing.T) {
 	q, _ := Parse("project = zz")
 	c := Compile(q, "u", DefaultResolver())

@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 474,
+  "assessedTotal": 482,
   "counts": {
     "delivered": 0,
-    "partial": 467,
+    "partial": 475,
     "missing": 7,
-    "unassessed": 733
+    "unassessed": 725
   },
   "countsByFamily": {
     "automation": {
@@ -24,9 +24,9 @@
     },
     "jira-platform": {
       "delivered": 0,
-      "partial": 106,
+      "partial": 114,
       "missing": 0,
-      "unassessed": 511
+      "unassessed": 503
     },
     "jira-service-management": {
       "delivered": 0,
@@ -348,49 +348,79 @@
       "operationId": "jira-v3:GET:/rest/api/3/component",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/components_test.go",
+        "internal/store/components.go",
+        "e2e/projects.spec.ts",
+        "docs/COMPONENTS.md"
+      ],
+      "notes": "Authenticated workspace-scoped Jira component behavior is integration and browser tested, including canonical issue values and component-led assignment; exact Browse Projects, anonymous, Compass and edge-error parity remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/component",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/components_test.go",
+        "internal/store/components.go",
+        "e2e/projects.spec.ts",
+        "docs/COMPONENTS.md"
+      ],
+      "notes": "Authenticated workspace-scoped Jira component behavior is integration and browser tested, including canonical issue values and component-led assignment; exact Browse Projects, anonymous, Compass and edge-error parity remain."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/component/{id}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/components_test.go",
+        "internal/store/components.go",
+        "e2e/projects.spec.ts",
+        "docs/COMPONENTS.md"
+      ],
+      "notes": "Administrator deletion removes or atomically moves issue assignments and emits refreshed issue snapshots; exact project-permission and asynchronous edge behavior remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/component/{id}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/components_test.go",
+        "internal/store/components.go",
+        "e2e/projects.spec.ts",
+        "docs/COMPONENTS.md"
+      ],
+      "notes": "Authenticated workspace-scoped Jira component behavior is integration and browser tested, including canonical issue values and component-led assignment; exact Browse Projects, anonymous, Compass and edge-error parity remain."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/component/{id}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/components_test.go",
+        "internal/store/components.go",
+        "e2e/projects.spec.ts",
+        "docs/COMPONENTS.md"
+      ],
+      "notes": "Authenticated workspace-scoped Jira component behavior is integration and browser tested, including canonical issue values and component-led assignment; exact Browse Projects, anonymous, Compass and edge-error parity remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/component/{id}/relatedIssueCounts",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/components_test.go",
+        "internal/store/components.go",
+        "e2e/projects.spec.ts",
+        "docs/COMPONENTS.md"
+      ],
+      "notes": "Counts canonical component assignments across project issues; anonymous and issue-security count semantics remain to be certified."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/config/fieldschemes",
@@ -3328,17 +3358,27 @@
       "operationId": "jira-v3:GET:/rest/api/3/project/{projectIdOrKey}/component",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/components_test.go",
+        "internal/store/components.go",
+        "e2e/projects.spec.ts",
+        "docs/COMPONENTS.md"
+      ],
+      "notes": "Project-scoped filtering, name ordering, offset pagination, counts and links are integration-tested; Compass sources and exact Browse Projects behavior remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/project/{projectIdOrKey}/components",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/components_test.go",
+        "internal/store/components.go",
+        "e2e/projects.spec.ts",
+        "docs/COMPONENTS.md"
+      ],
+      "notes": "The legacy complete project component collection returns Jira-shaped values; anonymous and Compass component behavior remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/project/{projectIdOrKey}/delete",

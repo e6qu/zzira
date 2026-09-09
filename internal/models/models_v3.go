@@ -40,6 +40,20 @@ type FilterSubscription struct {
 	LastResultCount *int
 }
 
+type ProjectComponent struct {
+	ID                  string `json:"id"`
+	ProjectID           string `json:"projectId"`
+	ProjectKey          string `json:"project"`
+	Name                string `json:"name"`
+	Description         string `json:"description"`
+	LeadAccountID       string `json:"-"`
+	AssigneeType        string `json:"assigneeType"`
+	RealAssigneeID      string `json:"-"`
+	RealAssigneeType    string `json:"realAssigneeType"`
+	IsAssigneeTypeValid bool   `json:"isAssigneeTypeValid"`
+	IssueCount          int    `json:"issueCount,omitempty"`
+}
+
 // FilterSharePermission is the durable Jira filter sharing model. Rights 1
 // grants view access and rights 2 grants edit access.
 type FilterSharePermission struct {

@@ -535,6 +535,8 @@ func canonicalField(field string) string {
 		return "project"
 	case "worktype":
 		return "issuetype"
+	case "components":
+		return "component"
 	default:
 		return strings.ToLower(field)
 	}
@@ -931,6 +933,9 @@ func (c *compiler) clause(cl Clause) string {
 	if cl.Field == "sprint" {
 		return c.sprintClause(cl)
 	}
+	if cl.Field == "component" {
+		return c.componentClause(cl)
+	}
 	if cl.Field == "issuetype" && containsJQLFunction(cl.Values, "standardIssueTypes", "subtaskIssueTypes", "standardWorkTypes", "subtaskWorkTypes") {
 		return c.issueTypeListClause(cl)
 	}
@@ -1092,6 +1097,55 @@ func (c *compiler) labelsClause(cl Clause) string {
 	}
 	c.err = &SyntaxError{0, "unsupported operator " + cl.Op}
 	return ""
+}
+
+func (c *compiler) componentClause(cl Clause) string {
+	array := "CASE WHEN jsonb_typeof(i.fields->'components')='array' THEN i.fields->'components' ELSE '[]'::jsonb END"
+	legacy := "NULLIF(i.fields->>'component','')"
+	nonempty := "(jsonb_array_length(" + array + ")>0 OR " + legacy + " IS NOT NULL)"
+	matches := make([]string, 0, len(cl.Values))
+	for _, value := range cl.Values {
+		if name, args, ok := splitFunction(value); ok {
+			if !strings.EqualFold(name, "componentsLeadByUser") || (cl.Op != "in" && cl.Op != "notin") || len(args) > 1 {
+				c.err = &SyntaxError{0, "componentsLeadByUser() is supported only with component IN or NOT IN and accepts at most one user"}
+				return ""
+			}
+			user := c.user
+			if len(args) == 1 {
+				user = strings.TrimSpace(args[0])
+				if function, functionArgs, nested := splitFunction(user); nested {
+					if !strings.EqualFold(function, "currentUser") || len(functionArgs) != 0 {
+						c.err = &SyntaxError{0, "componentsLeadByUser() user must be an account ID or currentUser()"}
+						return ""
+					}
+					user = c.user
+				}
+				if user == "" {
+					c.err = &SyntaxError{0, "componentsLeadByUser() user cannot be empty"}
+					return ""
+				}
+			}
+			userPH := c.arg(user)
+			matches = append(matches, "EXISTS (SELECT 1 FROM project_components component_lead WHERE component_lead.project_id=i.project_id AND component_lead.lead_account_id="+userPH+" AND EXISTS (SELECT 1 FROM jsonb_array_elements("+array+") component_ref WHERE component_ref->>'id'=component_lead.id))")
+			continue
+		}
+		valuePH := c.arg(value)
+		matches = append(matches, "(EXISTS (SELECT 1 FROM jsonb_array_elements("+array+") component_ref WHERE component_ref->>'id'="+valuePH+" OR lower(component_ref->>'name')=lower("+valuePH+")) OR lower("+legacy+")=lower("+valuePH+"))")
+	}
+	match := "(" + strings.Join(matches, " OR ") + ")"
+	switch cl.Op {
+	case "=", "in":
+		return match
+	case "!=", "notin":
+		return "(" + nonempty + " AND NOT " + match + ")"
+	case "empty":
+		return "NOT " + nonempty
+	case "notempty":
+		return nonempty
+	default:
+		c.err = &SyntaxError{0, "unsupported operator " + cl.Op + " for component"}
+		return ""
+	}
 }
 
 // fieldValue resolves semantic values: status names, currentUser(), EMPTY/null.

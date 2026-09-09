@@ -32,7 +32,9 @@ work item the viewer cannot browse.
   and date-bounded `updatedBy()` issue selectors;
 - `projectsLeadByUser()`/`spacesLeadByUser()` and
   `projectsWhereUserHasRole()`/`spacesWhereUserHasRole()` project selectors;
-- multi-value semantics for labels, version memberships, and current or
+- project-scoped component ID/name matching and
+  `componentsLeadByUser([user])` against canonical component ownership;
+- multi-value semantics for labels, components, version memberships, and current or
   historical sprint memberships, including Jira's empty-field behavior for
   negated comparisons;
 - immutable `WAS`, `WAS IN`, `WAS NOT`, `WAS NOT IN`, and `CHANGED` evaluation
@@ -138,8 +140,8 @@ complete personal-data migration for list/history
 operands and unknown-user reporting; project-aware validation warnings; exact
 historical versioned representations and richer rendered values.
 
-The remaining built-in catalog includes login-session, component-lead,
-permission-scheme, customer/organization, approval, and SLA functions. Those
+The remaining built-in catalog includes login-session, permission-scheme,
+customer/organization, approval, and SLA functions. Those
 functions depend on their owning PR 1/JSM state models and are implemented with
 those models instead of returning approximate results.
 

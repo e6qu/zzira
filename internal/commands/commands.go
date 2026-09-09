@@ -117,6 +117,18 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 	if in.UseProjectDefaultAssignee && in.AssigneeID == "-1" {
 		in.AssigneeID = ""
 	}
+	if in.UseProjectDefaultAssignee && in.Fields != nil {
+		if raw, provided := in.Fields["components"]; provided {
+			componentAssignee, selected, err := s.Store.ComponentDefaultAssignee(ctx, in.WorkspaceID, project.ID, raw)
+			if err != nil {
+				return nil, nil, err
+			}
+			if selected {
+				in.AssigneeID = componentAssignee
+				in.UseProjectDefaultAssignee = false
+			}
+		}
+	}
 	if in.AssigneeID != "" {
 		if _, err := s.Store.MemberByID(ctx, in.WorkspaceID, in.AssigneeID); err != nil {
 			return nil, nil, fmt.Errorf("assignee is not an active workspace member")

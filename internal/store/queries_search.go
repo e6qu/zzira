@@ -129,7 +129,14 @@ func (s *Store) JQLFieldSuggestions(ctx context.Context, workspaceID, userID, fi
 	switch strings.ToLower(field) {
 	case "labels":
 		valueSQL, extraJoin, present = "label", "CROSS JOIN LATERAL unnest(i.labels) label", "label <> ''"
-	case "component", "sprint", "resolution":
+	case "component":
+		extraJoin = `CROSS JOIN LATERAL (
+		  SELECT COALESCE(component_ref->>'name',component_ref->>'id') AS value
+		  FROM jsonb_array_elements(CASE WHEN jsonb_typeof(i.fields->'components')='array' THEN i.fields->'components' ELSE '[]'::jsonb END) component_ref
+		  UNION SELECT i.fields->>'component' WHERE NULLIF(i.fields->>'component','') IS NOT NULL
+		) component_value`
+		valueSQL, present = "component_value.value", "component_value.value IS NOT NULL AND component_value.value <> ''"
+	case "sprint", "resolution":
 		key := strings.ToLower(field)
 		valueSQL = `i.fields->>'` + key + `'`
 		present = valueSQL + " IS NOT NULL AND " + valueSQL + " <> ''"

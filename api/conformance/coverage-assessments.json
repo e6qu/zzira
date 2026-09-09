@@ -6067,6 +6067,94 @@
         "e2e/triage.spec.ts"
       ],
       "notes": "Idempotent self-service voting shares the command path used by the browser issue journey and emits a permission-filtered action; exact Jira site voting policy remains."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/component",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/components_test.go",
+        "internal/store/components.go",
+        "e2e/projects.spec.ts",
+        "docs/COMPONENTS.md"
+      ],
+      "notes": "Authenticated workspace-scoped Jira component behavior is integration and browser tested, including canonical issue values and component-led assignment; exact Browse Projects, anonymous, Compass and edge-error parity remain."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/component",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/components_test.go",
+        "internal/store/components.go",
+        "e2e/projects.spec.ts",
+        "docs/COMPONENTS.md"
+      ],
+      "notes": "Authenticated workspace-scoped Jira component behavior is integration and browser tested, including canonical issue values and component-led assignment; exact Browse Projects, anonymous, Compass and edge-error parity remain."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/component/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/components_test.go",
+        "internal/store/components.go",
+        "e2e/projects.spec.ts",
+        "docs/COMPONENTS.md"
+      ],
+      "notes": "Administrator deletion removes or atomically moves issue assignments and emits refreshed issue snapshots; exact project-permission and asynchronous edge behavior remain."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/component/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/components_test.go",
+        "internal/store/components.go",
+        "e2e/projects.spec.ts",
+        "docs/COMPONENTS.md"
+      ],
+      "notes": "Authenticated workspace-scoped Jira component behavior is integration and browser tested, including canonical issue values and component-led assignment; exact Browse Projects, anonymous, Compass and edge-error parity remain."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/component/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/components_test.go",
+        "internal/store/components.go",
+        "e2e/projects.spec.ts",
+        "docs/COMPONENTS.md"
+      ],
+      "notes": "Authenticated workspace-scoped Jira component behavior is integration and browser tested, including canonical issue values and component-led assignment; exact Browse Projects, anonymous, Compass and edge-error parity remain."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/component/{id}/relatedIssueCounts",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/components_test.go",
+        "internal/store/components.go",
+        "e2e/projects.spec.ts",
+        "docs/COMPONENTS.md"
+      ],
+      "notes": "Counts canonical component assignments across project issues; anonymous and issue-security count semantics remain to be certified."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/project/{projectIdOrKey}/component",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/components_test.go",
+        "internal/store/components.go",
+        "e2e/projects.spec.ts",
+        "docs/COMPONENTS.md"
+      ],
+      "notes": "Project-scoped filtering, name ordering, offset pagination, counts and links are integration-tested; Compass sources and exact Browse Projects behavior remain."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/project/{projectIdOrKey}/components",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/components_test.go",
+        "internal/store/components.go",
+        "e2e/projects.spec.ts",
+        "docs/COMPONENTS.md"
+      ],
+      "notes": "The legacy complete project component collection returns Jira-shaped values; anonymous and Compass component behavior remain."
     }
   ]
 }

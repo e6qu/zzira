@@ -151,6 +151,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.searchFilters(w, r)
 	case path == "/filter" && r.Method == http.MethodPost:
 		h.createFilter(w, r)
+	case path == "/component" && r.Method == http.MethodGet:
+		h.componentCollection(w, r)
+	case path == "/component" && r.Method == http.MethodPost:
+		h.createComponent(w, r)
+	case strings.HasPrefix(path, "/component/"):
+		h.componentResource(w, r, strings.Split(strings.TrimPrefix(path, "/component/"), "/"))
 	case path == "/version":
 		h.versionRoute(w, r, nil)
 	case strings.HasPrefix(path, "/version/"):
@@ -162,6 +168,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.projectVersions(w, r, parts[0], parts[1] == "version")
+	case strings.HasPrefix(path, "/project/") && (strings.HasSuffix(path, "/component") || strings.HasSuffix(path, "/components")):
+		parts := strings.Split(strings.TrimPrefix(path, "/project/"), "/")
+		if len(parts) != 2 || r.Method != http.MethodGet {
+			jiraError(w, 404, "No resource found")
+			return
+		}
+		h.projectComponents(w, r, parts[0], parts[1] == "component")
 	case path == "/project" && r.Method == http.MethodGet:
 		h.listProjects(w, r)
 	case path == "/project" && r.Method == http.MethodPost:
@@ -560,7 +573,7 @@ func unsupportedCreateFields(body []byte) map[string]string {
 	}
 	supported := map[string]struct{}{
 		"project": {}, "summary": {}, "description": {}, "issuetype": {}, "priority": {},
-		"assignee": {}, "security": {}, "labels": {}, "fixVersions": {}, "versions": {}, "parent": {},
+		"assignee": {}, "security": {}, "labels": {}, "fixVersions": {}, "versions": {}, "components": {}, "parent": {},
 	}
 	for field := range raw.Fields {
 		if _, ok := supported[field]; ok || customFieldIDPattern.MatchString(field) || appCustomFieldKeyPattern.MatchString(field) {
@@ -573,7 +586,7 @@ func unsupportedCreateFields(body []byte) map[string]string {
 
 func createIssueFieldError(err error) map[string]string {
 	message := err.Error()
-	for _, field := range []string{"summary", "project", "priority", "assignee", "security", "labels", "description", "parent"} {
+	for _, field := range []string{"summary", "project", "priority", "assignee", "security", "labels", "description", "components", "parent"} {
 		if strings.Contains(message, field) {
 			return map[string]string{field: message}
 		}

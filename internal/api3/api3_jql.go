@@ -60,6 +60,7 @@ var jqlSystemFields = []jqlFieldReference{
 
 var jqlFunctions = []jqlFunctionReference{
 	{Value: "closedSprints()", DisplayName: "closedSprints()", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"SPRINT"}},
+	{Value: "componentsLeadByUser()", DisplayName: "componentsLeadByUser([user])", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"COMPONENT"}},
 	{Value: "currentUser()", DisplayName: "currentUser()", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"USER"}},
 	{Value: "futureSprints()", DisplayName: "futureSprints()", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"SPRINT"}},
 	{Value: "linkedIssues()", DisplayName: "linkedIssues(issueKey[, linkTypes...])", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"ISSUE"}},
