@@ -20,6 +20,7 @@ const (
 	apiTaskPublishWorkflowScheme = "workflow-scheme-publish"
 	apiTaskBulkEdit              = "bulk-issue-edit"
 	apiTaskBulkDelete            = "bulk-issue-delete"
+	apiTaskBulkMove              = "bulk-issue-move"
 	apiTaskBulkWatch             = "bulk-issue-watch"
 	apiTaskBulkUnwatch           = "bulk-issue-unwatch"
 )
@@ -48,10 +49,11 @@ type APITask struct {
 }
 
 func (task APITask) IsBulkIssueOperation() bool {
-	return task.Kind == apiTaskBulkEdit || task.Kind == apiTaskBulkDelete || task.Kind == apiTaskBulkWatch || task.Kind == apiTaskBulkUnwatch
+	return task.Kind == apiTaskBulkEdit || task.Kind == apiTaskBulkDelete || task.Kind == apiTaskBulkMove || task.Kind == apiTaskBulkWatch || task.Kind == apiTaskBulkUnwatch
 }
 
 func (task APITask) IsBulkDeleteOperation() bool { return task.Kind == apiTaskBulkDelete }
+func (task APITask) IsBulkMoveOperation() bool   { return task.Kind == apiTaskBulkMove }
 
 type updateWorkflowSchemeTaskPayload struct {
 	Scheme          workflow.Scheme         `json:"scheme"`
@@ -96,6 +98,20 @@ type BulkIssueDeleteTaskPayload struct {
 	SendBulkNotification bool                `json:"sendBulkNotification"`
 }
 
+type BulkIssueMoveTaskItem struct {
+	BulkIssueTaskItem
+	ProjectID           string            `json:"projectId"`
+	IssueTypeID         string            `json:"issueTypeId"`
+	ParentID            string            `json:"parentId,omitempty"`
+	InferStatusDefaults bool              `json:"inferStatusDefaults"`
+	StatusMappings      map[string]string `json:"statusMappings,omitempty"`
+}
+
+type BulkIssueMoveTaskPayload struct {
+	Issues               []BulkIssueMoveTaskItem `json:"issues"`
+	SendBulkNotification bool                    `json:"sendBulkNotification"`
+}
+
 func (s *Store) EnqueueBulkEditTask(ctx context.Context, workspaceID, actorID string, issues []BulkIssueTaskItem, operations []BulkIssueEditOperation) (APITask, error) {
 	task, err := queuedAPITask(workspaceID, actorID, "Bulk edit issues", apiTaskBulkEdit, BulkIssueEditTaskPayload{Issues: issues, Operations: operations})
 	if err != nil {
@@ -106,6 +122,14 @@ func (s *Store) EnqueueBulkEditTask(ctx context.Context, workspaceID, actorID st
 
 func (s *Store) EnqueueBulkDeleteTask(ctx context.Context, workspaceID, actorID string, issues []BulkIssueTaskItem, sendBulkNotification bool) (APITask, error) {
 	task, err := queuedAPITask(workspaceID, actorID, "Bulk delete issues", apiTaskBulkDelete, BulkIssueDeleteTaskPayload{Issues: issues, SendBulkNotification: sendBulkNotification})
+	if err != nil {
+		return APITask{}, err
+	}
+	return s.enqueueBulkIssueTask(ctx, task)
+}
+
+func (s *Store) EnqueueBulkMoveTask(ctx context.Context, workspaceID, actorID string, issues []BulkIssueMoveTaskItem, sendBulkNotification bool) (APITask, error) {
+	task, err := queuedAPITask(workspaceID, actorID, "Bulk move issues", apiTaskBulkMove, BulkIssueMoveTaskPayload{Issues: issues, SendBulkNotification: sendBulkNotification})
 	if err != nil {
 		return APITask{}, err
 	}
@@ -312,7 +336,7 @@ func (r *APITaskRunner) execute(ctx context.Context, task APITask) error {
 			return fmt.Errorf("decode bulk watch operation: %w", err)
 		}
 		return r.Store.executeBulkWatchTask(ctx, task, payload)
-	case apiTaskBulkEdit, apiTaskBulkDelete:
+	case apiTaskBulkEdit, apiTaskBulkDelete, apiTaskBulkMove:
 		if r.BulkIssueExecutor == nil {
 			return errors.New("bulk issue executor is not configured")
 		}

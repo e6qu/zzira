@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 
 	"github.com/jackc/pgx/v5"
@@ -21,6 +22,9 @@ import (
 func (s *Service) ExecuteBulkIssueTask(ctx context.Context, task store.APITask) error {
 	if task.IsBulkDeleteOperation() {
 		return s.executeBulkDeleteTask(ctx, task)
+	}
+	if task.IsBulkMoveOperation() {
+		return s.executeBulkMoveTask(ctx, task)
 	}
 	var payload store.BulkIssueEditTaskPayload
 	if err := json.Unmarshal(task.Payload, &payload); err != nil {
@@ -64,6 +68,113 @@ func (s *Service) ExecuteBulkIssueTask(ctx context.Context, task store.APITask) 
 		result["failedAccessibleIssues"] = failed
 	}
 	return s.Store.CompleteAPITask(ctx, task, fmt.Sprintf("Processed %d of %d issues.", len(processed), len(payload.Issues)), result)
+}
+
+func (s *Service) executeBulkMoveTask(ctx context.Context, task store.APITask) error {
+	var payload store.BulkIssueMoveTaskPayload
+	if err := json.Unmarshal(task.Payload, &payload); err != nil {
+		return fmt.Errorf("decode bulk move operation: %w", err)
+	}
+	processed := make([]int64, 0, len(payload.Issues))
+	failed := map[string][]string{}
+	invalid := 0
+	for index, item := range payload.Issues {
+		if prior, err := s.Store.BulkIssueTaskItemResult(ctx, task.ID, item.ID); err == nil {
+			var result struct {
+				JiraID int64 `json:"jiraId"`
+			}
+			if json.Unmarshal(prior, &result) == nil && result.JiraID != 0 {
+				processed = append(processed, result.JiraID)
+			}
+		} else if !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		} else {
+			issue, lookupErr := s.Store.IssueByIDOrKey(ctx, task.WorkspaceID, item.ID)
+			if errors.Is(lookupErr, pgx.ErrNoRows) {
+				invalid++
+			} else if lookupErr != nil {
+				return lookupErr
+			} else {
+				visible, visibilityErr := authz.CanSeeIssue(ctx, s.Store, task.WorkspaceID, issue.ProjectID, task.SubmittedBy, issue.SecurityLevelID)
+				if visibilityErr != nil {
+					return visibilityErr
+				}
+				if !visible {
+					invalid++
+				} else if children, childErr := s.Store.ChildIssues(ctx, task.WorkspaceID, issue.ID); childErr != nil {
+					return childErr
+				} else if len(children) > 0 && issue.ProjectID != item.ProjectID {
+					failed[strconv.FormatInt(item.JiraID, 10)] = []string{"moving a parent with implicit subtasks requires an explicit subtask mapping"}
+				} else {
+					statusID, statusErr := s.bulkMoveStatus(ctx, issue.Status.ID, item)
+					if statusErr != nil {
+						failed[strconv.FormatInt(item.JiraID, 10)] = []string{statusErr.Error()}
+					} else if _, _, moveErr := s.Store.MoveIssue(ctx, task.SubmittedBy, task.WorkspaceID, issue.ID, store.IssueMove{
+						ProjectID: item.ProjectID, IssueTypeID: item.IssueTypeID, ParentID: item.ParentID, StatusID: statusID, TaskID: task.ID,
+					}); moveErr != nil {
+						failed[strconv.FormatInt(item.JiraID, 10)] = []string{moveErr.Error()}
+					} else {
+						processed = append(processed, item.JiraID)
+					}
+				}
+			}
+		}
+		progress := 5 + ((index + 1) * 90 / max(1, len(payload.Issues)))
+		if err := s.Store.UpdateAPITaskProgress(ctx, task, progress, fmt.Sprintf("Processed %d of %d issues.", index+1, len(payload.Issues))); err != nil {
+			return err
+		}
+	}
+	result := map[string]any{"processedAccessibleIssues": processed, "invalidOrInaccessibleIssueCount": invalid, "totalIssueCount": len(payload.Issues)}
+	if len(failed) > 0 {
+		result["failedAccessibleIssues"] = failed
+	}
+	return s.Store.CompleteAPITask(ctx, task, fmt.Sprintf("Processed %d of %d issues.", len(processed), len(payload.Issues)), result)
+}
+
+func (s *Service) bulkMoveStatus(ctx context.Context, sourceStatusID string, item store.BulkIssueMoveTaskItem) (string, error) {
+	wf, err := s.Store.WorkflowForProjectAndIssueType(ctx, item.ProjectID, item.IssueTypeID)
+	if err != nil {
+		return "", err
+	}
+	allowed := map[string]bool{}
+	ordered := make([]string, 0)
+	add := func(id string) {
+		if id != "" && !allowed[id] {
+			allowed[id] = true
+			ordered = append(ordered, id)
+		}
+	}
+	for _, status := range wf.Statuses {
+		add(status.StatusReference)
+	}
+	for _, transition := range wf.Transitions {
+		for _, from := range transition.From {
+			add(from)
+		}
+		add(transition.To)
+	}
+	if allowed[sourceStatusID] {
+		return sourceStatusID, nil
+	}
+	if mapped := item.StatusMappings[sourceStatusID]; mapped != "" {
+		if !allowed[mapped] {
+			return "", fmt.Errorf("mapped destination status %q is not in the destination workflow", mapped)
+		}
+		return mapped, nil
+	}
+	if !item.InferStatusDefaults {
+		return "", fmt.Errorf("source status %q requires a destination status mapping", sourceStatusID)
+	}
+	if allowed["st_todo"] {
+		return "st_todo", nil
+	}
+	if len(ordered) == 0 {
+		return "", fmt.Errorf("destination workflow has no statuses")
+	}
+	if len(wf.Statuses) == 0 {
+		sort.Strings(ordered)
+	}
+	return ordered[0], nil
 }
 
 func (s *Service) executeBulkDeleteTask(ctx context.Context, task store.APITask) error {

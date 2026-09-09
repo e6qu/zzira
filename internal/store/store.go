@@ -818,7 +818,10 @@ func scanIssue(row pgx.Row) (*models.Issue, error) {
 
 func (s *Store) IssueByIDOrKey(ctx context.Context, workspaceID, idOrKey string) (*models.Issue, error) {
 	return scanIssue(s.Pool.QueryRow(ctx, issueJoin+`
-		WHERE i.workspace_id=$1 AND (i.id=$2 OR i.jira_id::text=$2 OR upper(i.key)=upper($2))`, workspaceID, idOrKey))
+		WHERE i.workspace_id=$1 AND (
+			i.id=$2 OR i.jira_id::text=$2 OR upper(i.key)=upper($2)
+			OR EXISTS(SELECT 1 FROM issue_key_aliases alias WHERE alias.workspace_id=i.workspace_id AND alias.issue_id=i.id AND upper(alias.key)=upper($2))
+		)`, workspaceID, idOrKey))
 }
 
 // CreateIssue runs the canonical write transaction: state change + action append +

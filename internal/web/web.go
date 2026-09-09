@@ -58,6 +58,8 @@ type createDialogData struct {
 
 type projectIssuesData struct {
 	Project      *models.Project
+	Projects     []*models.Project
+	IssueTypes   []models.IssueType
 	BoardID      string
 	Issues       []*models.Issue
 	Selected     *models.Issue
@@ -1214,6 +1216,16 @@ func (h *Handler) ProjectIssues(w http.ResponseWriter, r *http.Request, key stri
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	if data.CanBulk {
+		data.Projects, err = h.Store.ProjectsByWorkspace(r.Context(), wsID)
+		if err == nil {
+			data.IssueTypes, err = h.Store.IssueTypes(r.Context())
+		}
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+	}
 	for _, board := range boards {
 		if board.ProjectID == project.ID {
 			data.BoardID = board.ID
@@ -1335,6 +1347,73 @@ func (h *Handler) SubmitBulkIssueDelete(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	http.Redirect(w, r, "/issues/"+url.PathEscape(project.Key)+"/bulk/"+url.PathEscape(task.ID), http.StatusSeeOther)
+}
+
+func (h *Handler) SubmitBulkIssueMove(w http.ResponseWriter, r *http.Request, projectKey string) {
+	if !parseForm(w, r) {
+		return
+	}
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok {
+		return
+	}
+	sourceProject, err := h.Store.ProjectByKey(r.Context(), workspaceID, projectKey)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	destination, err := h.Store.ProjectByIDOrKey(r.Context(), workspaceID, r.FormValue("project"))
+	if err != nil {
+		http.Error(w, "invalid destination project", http.StatusBadRequest)
+		return
+	}
+	issueType, err := h.Store.IssueTypeByIDOrName(r.Context(), r.FormValue("issueType"))
+	if err != nil {
+		http.Error(w, "invalid destination work type", http.StatusBadRequest)
+		return
+	}
+	parentID := ""
+	if parentValue := strings.TrimSpace(r.FormValue("parent")); parentValue != "" {
+		parent, parentErr := h.issueForUser(r, user, workspaceID, parentValue)
+		if parentErr != nil || parent.ProjectID != destination.ID || parent.IssueType.Subtask {
+			http.Error(w, "invalid destination parent", http.StatusBadRequest)
+			return
+		}
+		parentID = parent.ID
+	}
+	if issueType.Subtask != (parentID != "") {
+		http.Error(w, "a destination parent is required only for sub-task work types", http.StatusBadRequest)
+		return
+	}
+	selected := r.Form["issue"]
+	if len(selected) < 1 || len(selected) > 1000 {
+		http.Error(w, "select between 1 and 1,000 work items", http.StatusBadRequest)
+		return
+	}
+	seen := map[string]bool{}
+	items := make([]store.BulkIssueMoveTaskItem, 0, len(selected))
+	for _, idOrKey := range selected {
+		issue, lookupErr := h.issueForUser(r, user, workspaceID, idOrKey)
+		if lookupErr != nil || issue.ProjectID != sourceProject.ID || seen[issue.ID] {
+			http.Error(w, "the selection contains an invalid or inaccessible work item", http.StatusBadRequest)
+			return
+		}
+		seen[issue.ID] = true
+		items = append(items, store.BulkIssueMoveTaskItem{
+			BulkIssueTaskItem: store.BulkIssueTaskItem{ID: issue.ID, JiraID: issue.JiraID},
+			ProjectID:         destination.ID, IssueTypeID: issueType.ID, ParentID: parentID, InferStatusDefaults: true,
+		})
+	}
+	task, err := h.Store.EnqueueBulkMoveTask(r.Context(), workspaceID, user.ID, items, r.FormValue("sendNotification") == "true")
+	if errors.Is(err, store.ErrBulkTaskLimit) {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/issues/"+url.PathEscape(sourceProject.Key)+"/bulk/"+url.PathEscape(task.ID), http.StatusSeeOther)
 }
 
 func (h *Handler) BulkIssueTask(w http.ResponseWriter, r *http.Request, projectKey, taskID string) {

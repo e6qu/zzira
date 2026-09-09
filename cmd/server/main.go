@@ -452,6 +452,9 @@ func main() {
 	mux.HandleFunc("POST /issues/{key}/bulk/delete", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.SubmitBulkIssueDelete(w, r, r.PathValue("key"))
 	})
+	mux.HandleFunc("POST /issues/{key}/bulk/move", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.SubmitBulkIssueMove(w, r, r.PathValue("key"))
+	})
 	mux.HandleFunc("GET /issues/{key}/bulk/{task}", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.BulkIssueTask(w, r, r.PathValue("key"), r.PathValue("task"))
 	})

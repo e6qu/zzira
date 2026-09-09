@@ -21,6 +21,8 @@ func (h *Handler) bulkIssueRoute(w http.ResponseWriter, r *http.Request, path st
 	switch {
 	case path == "issues/delete" && r.Method == http.MethodPost:
 		h.submitBulkDelete(w, r)
+	case path == "issues/move" && r.Method == http.MethodPost:
+		h.submitBulkMove(w, r)
 	case path == "issues/fields" && r.Method == http.MethodGet:
 		h.bulkEditableFields(w, r)
 	case path == "issues/fields" && r.Method == http.MethodPost:
@@ -32,6 +34,121 @@ func (h *Handler) bulkIssueRoute(w http.ResponseWriter, r *http.Request, path st
 	default:
 		jiraError(w, http.StatusNotFound, "The bulk operation does not exist.")
 	}
+}
+
+type bulkMoveTargetRequest struct {
+	InferClassificationDefaults bool              `json:"inferClassificationDefaults"`
+	InferFieldDefaults          bool              `json:"inferFieldDefaults"`
+	InferStatusDefaults         bool              `json:"inferStatusDefaults"`
+	InferSubtaskTypeDefault     bool              `json:"inferSubtaskTypeDefault"`
+	IssueIDsOrKeys              []string          `json:"issueIdsOrKeys"`
+	TargetClassification        []json.RawMessage `json:"targetClassification"`
+	TargetMandatoryFields       []json.RawMessage `json:"targetMandatoryFields"`
+	TargetStatus                []struct {
+		Statuses map[string][]string `json:"statuses"`
+	} `json:"targetStatus"`
+}
+
+func (h *Handler) submitBulkMove(w http.ResponseWriter, r *http.Request) {
+	workspaceID, actorID, authErr := h.authWorkspaceAdmin(r)
+	if authErr != nil {
+		writeJerr(w, authErr)
+		return
+	}
+	var request struct {
+		SendBulkNotification bool                             `json:"sendBulkNotification"`
+		TargetToSources      map[string]bulkMoveTargetRequest `json:"targetToSourcesMapping"`
+	}
+	if !decodeBulkOperationBody(w, r, &request) {
+		return
+	}
+	if len(request.TargetToSources) == 0 {
+		bulkOperationError(w, http.StatusBadRequest, "targetToSourcesMapping is required")
+		return
+	}
+	seen := map[string]bool{}
+	items := make([]store.BulkIssueMoveTaskItem, 0)
+	for target, mapping := range request.TargetToSources {
+		parts := strings.Split(target, ",")
+		if len(parts) < 2 || len(parts) > 3 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
+			bulkOperationError(w, http.StatusBadRequest, "target mapping keys must use project,issueType[,parent]")
+			return
+		}
+		project, err := h.Store.ProjectByIDOrKey(r.Context(), workspaceID, strings.TrimSpace(parts[0]))
+		if err != nil {
+			bulkOperationError(w, http.StatusBadRequest, "A destination project is invalid or inaccessible")
+			return
+		}
+		issueType, err := h.Store.IssueTypeByIDOrName(r.Context(), strings.TrimSpace(parts[1]))
+		if err != nil {
+			bulkOperationError(w, http.StatusBadRequest, "A destination issue type is invalid")
+			return
+		}
+		parentID := ""
+		if len(parts) == 3 && strings.TrimSpace(parts[2]) != "" {
+			parent, parentErr := h.resolveIssue(r, workspaceID, strings.TrimSpace(parts[2]))
+			if parentErr != nil || parent.ProjectID != project.ID || parent.IssueType.Subtask {
+				bulkOperationError(w, http.StatusBadRequest, "A destination parent is invalid or inaccessible")
+				return
+			}
+			parentID = parent.ID
+		}
+		if issueType.Subtask != (parentID != "") {
+			bulkOperationError(w, http.StatusBadRequest, "A destination parent is required only for sub-task issue types")
+			return
+		}
+		if len(mapping.TargetClassification) > 0 || len(mapping.TargetMandatoryFields) > 0 {
+			bulkOperationError(w, http.StatusBadRequest, "classification and mandatory-field move mappings are not supported yet")
+			return
+		}
+		statusMappings := map[string]string{}
+		for _, statusGroup := range mapping.TargetStatus {
+			for destination, sources := range statusGroup.Statuses {
+				if _, err := h.Store.StatusByIDForProject(r.Context(), destination, project.ID); err != nil {
+					bulkOperationError(w, http.StatusBadRequest, "A destination status is invalid for the target project")
+					return
+				}
+				for _, source := range sources {
+					if source == "" || statusMappings[source] != "" {
+						bulkOperationError(w, http.StatusBadRequest, "Source statuses must have one destination mapping")
+						return
+					}
+					statusMappings[source] = destination
+				}
+			}
+		}
+		if len(mapping.IssueIDsOrKeys) == 0 {
+			bulkOperationError(w, http.StatusBadRequest, "Each target mapping must contain issueIdsOrKeys")
+			return
+		}
+		for _, idOrKey := range mapping.IssueIDsOrKeys {
+			issue, issueErr := h.resolveIssue(r, workspaceID, strings.TrimSpace(idOrKey))
+			if issueErr != nil || seen[issue.ID] {
+				bulkOperationError(w, http.StatusBadRequest, "Some issueIdsOrKeys are invalid, inaccessible, or repeated")
+				return
+			}
+			seen[issue.ID] = true
+			items = append(items, store.BulkIssueMoveTaskItem{
+				BulkIssueTaskItem: store.BulkIssueTaskItem{ID: issue.ID, JiraID: issue.JiraID},
+				ProjectID:         project.ID, IssueTypeID: issueType.ID, ParentID: parentID,
+				InferStatusDefaults: mapping.InferStatusDefaults, StatusMappings: statusMappings,
+			})
+			if len(items) > 1000 {
+				bulkOperationError(w, http.StatusBadRequest, "No more than 1,000 issues can be moved")
+				return
+			}
+		}
+	}
+	task, err := h.Store.EnqueueBulkMoveTask(r.Context(), workspaceID, actorID, items, request.SendBulkNotification)
+	if errors.Is(err, store.ErrBulkTaskLimit) {
+		bulkOperationError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "Could not submit the bulk operation.")
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]string{"taskId": task.ID})
 }
 
 func (h *Handler) submitBulkDelete(w http.ResponseWriter, r *http.Request) {

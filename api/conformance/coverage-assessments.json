@@ -6171,6 +6171,19 @@
       "notes": "Queues deletion for up to 1,000 unique visible issues, caps active bulk work at five, rechecks execution-time visibility, reports per-item results, reconstructs recovered successes from atomic actions and durably retries attachment blob cleanup; configurable global Bulk change and delete permissions, bulk email delivery and exact edge errors remain."
     },
     {
+      "operationId": "jira-v3:POST:/rest/api/3/bulk/issues/move",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_bulk_issues.go",
+        "internal/commands/bulk_issues.go",
+        "internal/store/bulk_move.go",
+        "internal/api3/bulk_move_test.go",
+        "e2e/v2.spec.ts",
+        "docs/BULK_ISSUES.md"
+      ],
+      "notes": "Queues up to 1,000 project/type/explicit-parent moves, validates Jira target mappings, maps or infers destination workflow statuses, preserves former keys as aliases, clears incompatible project fields and security, rechecks execution-time visibility and records transactional replay markers; classifications, mandatory-field mappings, implicit parent-with-subtask moves, exact permissions and bulk email delivery remain."
+    },
+    {
       "operationId": "jira-v3:POST:/rest/api/3/bulk/issues/watch",
       "status": "partial",
       "evidence": [

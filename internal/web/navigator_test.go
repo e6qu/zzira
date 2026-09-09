@@ -109,8 +109,8 @@ func TestProjectNavigatorRendersAccessibleWorkbench(t *testing.T) {
 	}
 	data := projectIssuesData{
 		Project: &models.Project{Key: "LONG", Name: "Long project"}, Issues: []*models.Issue{issue}, Selected: issue,
-		CanBulk: true,
-		Mode:    "basic", Sort: "updated", Direction: "desc", Total: 1, ResultStart: 1, ResultEnd: 1, Page: 1, PageCount: 1,
+		Projects: []*models.Project{{ID: "prj_long", Key: "LONG", Name: "Long project"}}, IssueTypes: []models.IssueType{{ID: "it_task", Name: "Task"}}, CanBulk: true,
+		Mode: "basic", Sort: "updated", Direction: "desc", Total: 1, ResultStart: 1, ResultEnd: 1, Page: 1, PageCount: 1,
 		BasicURL: "/issues/LONG?mode=basic", AdvancedURL: "/issues/LONG?mode=advanced", SortURLs: map[string]string{
 			"key": "?sort=key", "summary": "?sort=summary", "status": "?sort=status", "priority": "?sort=priority", "assignee": "?sort=assignee", "updated": "?sort=updated",
 		},
@@ -124,6 +124,7 @@ func TestProjectNavigatorRendersAccessibleWorkbench(t *testing.T) {
 		`aria-label="Search mode"`, `aria-sort="descending"`, `aria-describedby="navigator-keyboard-help"`,
 		`data-preview-url="/browse/LONG-42/preview"`, `aria-live="polite"`,
 		`action="/issues/LONG/bulk/delete"`, `name="issue" value="iss_1"`, `data-bulk-select-all`,
+		`formaction="/issues/LONG/bulk/move"`, `value="prj_long"`, `value="it_task"`,
 	} {
 		if !strings.Contains(html, required) {
 			t.Errorf("rendered navigator missing %s", required)

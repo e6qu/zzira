@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 488,
+  "assessedTotal": 489,
   "counts": {
     "delivered": 0,
-    "partial": 481,
+    "partial": 482,
     "missing": 7,
-    "unassessed": 719
+    "unassessed": 718
   },
   "countsByFamily": {
     "automation": {
@@ -24,9 +24,9 @@
     },
     "jira-platform": {
       "delivered": 0,
-      "partial": 120,
+      "partial": 121,
       "missing": 0,
-      "unassessed": 497
+      "unassessed": 496
     },
     "jira-service-management": {
       "delivered": 0,
@@ -263,9 +263,16 @@
       "operationId": "jira-v3:POST:/rest/api/3/bulk/issues/move",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_bulk_issues.go",
+        "internal/commands/bulk_issues.go",
+        "internal/store/bulk_move.go",
+        "internal/api3/bulk_move_test.go",
+        "e2e/v2.spec.ts",
+        "docs/BULK_ISSUES.md"
+      ],
+      "notes": "Queues up to 1,000 project/type/explicit-parent moves, validates Jira target mappings, maps or infers destination workflow statuses, preserves former keys as aliases, clears incompatible project fields and security, rechecks execution-time visibility and records transactional replay markers; classifications, mandatory-field mappings, implicit parent-with-subtask moves, exact permissions and bulk email delivery remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/bulk/issues/transition",
