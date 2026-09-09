@@ -24,12 +24,12 @@ func TestJQLParseStructurePreservesHistoryFunctionsAndOrder(t *testing.T) {
 	}
 }
 
-func TestLoginDateFunctionsAreAdvertised(t *testing.T) {
+func TestOwnedJQLFunctionsAreAdvertised(t *testing.T) {
 	values := make([]string, 0, len(jqlFunctions))
 	for _, function := range jqlFunctions {
 		values = append(values, function.Value)
 	}
-	for _, expected := range []string{"currentLogin()", "lastLogin()"} {
+	for _, expected := range []string{"currentLogin()", "lastLogin()", "approved()", "approver()", "myApproval()", "myPendingApproval()", "myPending()", "pending()", "pendingApprovalBy()", "pendingBy()"} {
 		if !slices.Contains(values, expected) {
 			t.Fatalf("JQL function catalog omits %s", expected)
 		}

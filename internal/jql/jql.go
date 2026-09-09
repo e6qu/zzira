@@ -943,6 +943,9 @@ func (c *compiler) node(n Node) string {
 }
 
 func (c *compiler) clause(cl Clause) string {
+	if containsJQLFunction(cl.Values, "approved", "approver", "myApproval", "myPendingApproval", "myPending", "pending", "pendingApprovalBy", "pendingBy") {
+		return c.approvalClause(cl)
+	}
 	if cl.Field == "fixversion" || cl.Field == "affectedversion" {
 		return c.versionClause(cl)
 	}
@@ -1034,6 +1037,104 @@ func (c *compiler) clause(cl Clause) string {
 	}
 	c.err = &SyntaxError{0, "unsupported operator " + cl.Op}
 	return ""
+}
+
+func (c *compiler) approvalClause(cl Clause) string {
+	if cl.Field != "approval" && cl.Field != "approvals" {
+		c.err = &SyntaxError{0, "approval functions require an approval field"}
+		return ""
+	}
+	if len(cl.Values) != 1 {
+		c.err = &SyntaxError{0, "approval functions require one function value"}
+		return ""
+	}
+	name, args, ok := splitFunction(cl.Values[0])
+	if !ok {
+		c.err = &SyntaxError{0, "expected an approval function"}
+		return ""
+	}
+	name = strings.ToLower(name)
+	allowNotEqual := name == "pending" || name == "pendingapprovalby" || name == "pendingby"
+	if cl.Op != "=" && !(allowNotEqual && cl.Op == "!=") {
+		c.err = &SyntaxError{0, name + "() does not support operator " + cl.Op}
+		return ""
+	}
+	conditions := []string{"approval.request_issue_id=i.id"}
+	switch name {
+	case "approved":
+		if len(args) != 0 {
+			c.err = &SyntaxError{0, "approved() does not accept arguments"}
+			return ""
+		}
+		conditions = append(conditions, "approval.final_decision='approved'")
+	case "approver":
+		conditions = append(conditions, c.approvalUserMatch(args))
+	case "myapproval":
+		if len(args) != 0 {
+			c.err = &SyntaxError{0, "myApproval() does not accept arguments"}
+			return ""
+		}
+		conditions = append(conditions, c.approvalUserMatch([]string{"currentUser()"}))
+	case "mypendingapproval":
+		if len(args) != 0 {
+			c.err = &SyntaxError{0, "myPendingApproval() does not accept arguments"}
+			return ""
+		}
+		conditions = append(conditions, "approval.final_decision='pending'", "approval_actor.decision='pending'", c.approvalUserMatch([]string{"currentUser()"}))
+	case "mypending":
+		if len(args) != 0 {
+			c.err = &SyntaxError{0, "myPending() does not accept arguments"}
+			return ""
+		}
+		conditions = append(conditions, "approval.final_decision='pending'", c.approvalUserMatch([]string{"currentUser()"}))
+	case "pending":
+		if len(args) != 0 {
+			c.err = &SyntaxError{0, "pending() does not accept arguments"}
+			return ""
+		}
+		conditions = append(conditions, "approval.final_decision='pending'")
+	case "pendingapprovalby":
+		conditions = append(conditions, "approval.final_decision='pending'", "approval_actor.decision='pending'", c.approvalUserMatch(args))
+	case "pendingby":
+		conditions = append(conditions, "approval.final_decision='pending'", c.approvalUserMatch(args))
+	default:
+		c.err = &SyntaxError{0, "unsupported approval function " + name + "()"}
+		return ""
+	}
+	if c.err != nil {
+		return ""
+	}
+	match := "EXISTS (SELECT 1 FROM service_request_approvals approval JOIN service_request_approvers approval_actor ON approval_actor.approval_id=approval.id WHERE " + strings.Join(conditions, " AND ") + ")"
+	if cl.Op == "!=" {
+		anyApproval := "EXISTS (SELECT 1 FROM service_request_approvals approval_any WHERE approval_any.request_issue_id=i.id)"
+		return "(" + anyApproval + " AND NOT (" + match + "))"
+	}
+	return match
+}
+
+func (c *compiler) approvalUserMatch(values []string) string {
+	if len(values) == 0 || len(values) > 100 {
+		c.err = &SyntaxError{0, "approval user functions accept between 1 and 100 users"}
+		return ""
+	}
+	parts := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if function, args, ok := splitFunction(value); ok {
+			if !strings.EqualFold(function, "currentUser") || len(args) != 0 {
+				c.err = &SyntaxError{0, "approval users must be account IDs, usernames, email addresses, display names, or currentUser()"}
+				return ""
+			}
+			value = c.user
+		}
+		if value == "" {
+			c.err = &SyntaxError{0, "approval user cannot be empty"}
+			return ""
+		}
+		user := c.arg(value)
+		parts = append(parts, "EXISTS (SELECT 1 FROM users approval_user WHERE approval_user.id=approval_actor.user_id AND (approval_user.id="+user+" OR lower(approval_user.email)=lower("+user+") OR lower(split_part(approval_user.email,'@',1))=lower("+user+") OR lower(COALESCE(approval_user.username,''))=lower("+user+") OR lower(approval_user.display_name)=lower("+user+")))")
+	}
+	return "(" + strings.Join(parts, " OR ") + ")"
 }
 
 func (c *compiler) historyClause(cl HistoryClause) string {

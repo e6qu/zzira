@@ -7,6 +7,7 @@ import (
 	"errors"
 	"mime/multipart"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"slices"
 	"strconv"
@@ -86,6 +87,16 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	}
 	call := func(method, path, body string, want int) *httptest.ResponseRecorder {
 		return callAs(actorID, method, path, body, want)
+	}
+	searchTotalAs := func(accountID, query string, want int) {
+		t.Helper()
+		response := callAs(accountID, "GET", "/rest/api/3/search/jql?jql="+url.QueryEscape(query), "", 200)
+		var page struct {
+			Issues []json.RawMessage `json:"issues"`
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil || len(page.Issues) != want {
+			t.Fatalf("JQL %q: issues=%d want=%d err=%v body=%s", query, len(page.Issues), want, err, response.Body.String())
+		}
 	}
 	callMultipartAs := func(accountID, path, filename, content string, want int) *httptest.ResponseRecorder {
 		t.Helper()
@@ -627,11 +638,24 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if !strings.Contains(approvalList.Body.String(), `"canAnswerApproval":true`) || !strings.Contains(approvalList.Body.String(), "Production change approval") {
 		t.Fatal(approvalList.Body.String())
 	}
+	for _, query := range []string{
+		`approvals = myApproval()`, `approvals = myPendingApproval()`, `approvals = myPending()`,
+		`approvals = pending()`, `approvals = pendingApprovalBy(` + customerID + `)`,
+		`approvals = pendingBy(` + customerID + `)`, `approvals = approver(` + customerID + `)`,
+	} {
+		searchTotalAs(customerID, query, 1)
+	}
+	searchTotalAs(customerID, `approvals = approved()`, 0)
+	searchTotalAs(customerID, `approvals != pending()`, 0)
 	call("POST", "/rest/servicedeskapi/request/"+issueKey+"/approval/"+approval.ID, `{"decision":"approve"}`, 400)
 	approved := callAs(customerID, "POST", "/rest/servicedeskapi/request/"+issueKey+"/approval/"+approval.ID, `{"decision":"approve"}`, 200)
 	if !strings.Contains(approved.Body.String(), `"finalDecision":"approved"`) || !strings.Contains(approved.Body.String(), `"completedDate"`) {
 		t.Fatal(approved.Body.String())
 	}
+	searchTotalAs(customerID, `approvals = approved()`, 1)
+	searchTotalAs(customerID, `approvals = myPendingApproval()`, 0)
+	searchTotalAs(customerID, `approvals = pending()`, 0)
+	searchTotalAs(customerID, `approvals != pending()`, 1)
 	callAs(customerID, "GET", "/rest/servicedeskapi/request/"+issueKey+"/approval/"+approval.ID, "", 200)
 	multiApproval, err := handler.Commands.CreateServiceApproval(ctx, actorID, workspaceID, issue.ID, "Two-person change approval", []string{customerID, agentID})
 	if err != nil {
@@ -641,10 +665,18 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if !strings.Contains(pendingApproval.Body.String(), `"finalDecision":"pending"`) {
 		t.Fatal(pendingApproval.Body.String())
 	}
+	searchTotalAs(customerID, `approvals = myPendingApproval()`, 0)
+	searchTotalAs(customerID, `approvals = myPending()`, 1)
+	searchTotalAs(customerID, `approvals = pendingBy(`+customerID+`)`, 1)
+	searchTotalAs(customerID, `approvals = pendingApprovalBy(`+customerID+`)`, 0)
+	searchTotalAs(agentID, `approvals = myPendingApproval()`, 1)
 	declinedApproval := callAs(agentID, "POST", "/rest/servicedeskapi/request/"+issueKey+"/approval/"+multiApproval.ID, `{"decision":"decline"}`, 200)
 	if !strings.Contains(declinedApproval.Body.String(), `"finalDecision":"declined"`) {
 		t.Fatal(declinedApproval.Body.String())
 	}
+	searchTotalAs(customerID, `approvals = pending()`, 0)
+	searchTotalAs(customerID, `approvals = approved()`, 1)
+	searchTotalAs(customerID, `approvals = approver(`+customerID+`)`, 1)
 
 	temporaryResponse := callMultipartAs(customerID, "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/attachTemporaryFile", "customer-log.txt", "customer-visible-log", 201)
 	var temporaryBean struct {

@@ -72,6 +72,15 @@ approval as declined; otherwise it completes only after every approver accepts.
 Only a pending assigned approver can answer, and an approver can open the request
 even when they are neither its reporter nor a participant.
 
+The shared JQL engine exposes the complete Jira Cloud approval-function family
+over this same state. `approved()` and `pending()` select final step state;
+`approver()` and `myApproval()` include pending and completed steps;
+`myPendingApproval()` and `pendingApprovalBy()` require an unanswered approver;
+and `myPending()` and `pendingBy()` retain users who already answered while the
+step awaits someone else. Explicit users accept account IDs, usernames, email
+addresses, and display names. Jira-supported `!=` forms exclude requests with
+no approval field.
+
 ## Operations governance
 
 Incident, problem, and change request types create an internal operations

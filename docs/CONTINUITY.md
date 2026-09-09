@@ -24,7 +24,8 @@ boundaries, dependencies, and acceptance gates belong in
   filter email schedules, recipient expansion, runs, and outbox delivery
   implemented; Jira project components and their REST, issue-field, assignment,
   JQL, audit, sync, and administrator journeys are implemented; durable login
-  boundaries and `currentLogin()`/`lastLogin()` JQL are implemented
+  boundaries and `currentLogin()`/`lastLogin()` JQL are implemented; the full
+  JSM approval JQL function family is implemented
 - Blockers: none
 
 ## Contract baseline
@@ -104,6 +105,13 @@ the boundaries. Date clauses and history predicates resolve `currentLogin()`
 and `lastLogin()` through the same compiler used by every JQL surface, including
 typed custom date-time fields and their app aliases.
 
+The JSM approval-function slice compiles all eight Jira Cloud approval
+functions against the same durable request approval and per-user decision state
+used by the portal and REST API. It distinguishes completed, pending, answered,
+and unanswered steps; accepts current and explicit user identities; implements
+the supported non-equality forms without matching empty approval fields; and
+advertises the approval field and functions through autocomplete.
+
 ## Validation baseline
 
 Merged PR #68 passed the complete GitHub CI matrix, including all 58 Playwright
@@ -128,9 +136,15 @@ enhanced-search contract, JQL compiler tests, both Chromium identity-provider
 journeys, the full uncached PostgreSQL Go suite, `go vet`, native and
 WebAssembly builds, and conformance freshness checks.
 
+The JSM approval-function checkpoint passes the customer/agent PostgreSQL
+request contract across pending, answered, approved, declined, explicit-user,
+current-user, and non-equality queries; the Chromium service journey; the full
+uncached PostgreSQL Go suite; `go vet`; native and WebAssembly builds; and
+conformance freshness checks.
+
 ## Resume here
 
-1. Add JSM approval/SLA built-ins with their owning state.
+1. Add JSM SLA built-ins with their owning calendar and cycle state.
 2. Continue into bulk work-item and project administration slices.
 3. Update compatibility evidence and commit each independently buildable
    checkpoint.

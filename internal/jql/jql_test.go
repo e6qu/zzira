@@ -193,6 +193,57 @@ func TestLoginDateFunctionsUseDurableUserBoundaries(t *testing.T) {
 	}
 }
 
+func TestApprovalFunctionsCompileAgainstServiceApprovalState(t *testing.T) {
+	query, err := Parse(`approvals = myPendingApproval() OR approval = approver(usr_a, "Ada Example") AND approvals != pendingBy(currentUser())`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled := Compile(query, "usr_me", DefaultResolver())
+	if compiled.Err != nil {
+		t.Fatal(compiled.Err)
+	}
+	if strings.Count(compiled.Where, "FROM service_request_approvals approval JOIN") != 3 ||
+		!strings.Contains(compiled.Where, "approval.final_decision='pending'") ||
+		!strings.Contains(compiled.Where, "approval_actor.decision='pending'") ||
+		!strings.Contains(compiled.Where, "approval_user.username") {
+		t.Fatalf("approval SQL = %s", compiled.Where)
+	}
+	if !reflect.DeepEqual(compiled.Args, []any{"usr_me", "usr_a", "Ada Example", "usr_me"}) {
+		t.Fatalf("approval args = %#v", compiled.Args)
+	}
+
+	for _, valid := range []string{
+		`approvals = approved()`,
+		`approvals = myApproval()`,
+		`approvals = myPending()`,
+		`approvals = pending()`,
+		`approvals != pendingApprovalBy(usr_a)`,
+	} {
+		parsed, err := Parse(valid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result := Compile(parsed, "usr_me", DefaultResolver()); result.Err != nil {
+			t.Fatalf("%s: %v", valid, result.Err)
+		}
+	}
+	for _, invalid := range []string{
+		`summary = pending()`,
+		`approvals != approved()`,
+		`approvals = approver()`,
+		`approvals IN (pending())`,
+		`approvals = myApproval(usr_a)`,
+	} {
+		parsed, err := Parse(invalid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result := Compile(parsed, "usr_me", DefaultResolver()); result.Err == nil {
+			t.Fatalf("accepted invalid approval query %q: %s", invalid, result.Where)
+		}
+	}
+}
+
 func TestMultipleOrderFieldsAreBoundedAndDeterministic(t *testing.T) {
 	query, err := Parse(`project = ZZ ORDER BY priority DESC, updated ASC, key DESC`)
 	if err != nil {

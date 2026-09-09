@@ -34,6 +34,7 @@ type jqlFunctionReference struct {
 
 var jqlSystemFields = []jqlFieldReference{
 	{Value: "affectedVersion", DisplayName: "Affected version", Auto: "true", Orderable: "false", Searchable: "true", Operators: []string{"=", "!=", "in", "not in", "is", "is not"}, Types: []string{"VERSION"}},
+	{Value: "approvals", DisplayName: "Approvals", Auto: "false", Orderable: "false", Searchable: "true", Operators: []string{"=", "!="}, Types: []string{"APPROVAL"}},
 	{Value: "assignee", DisplayName: "Assignee", Auto: "true", Orderable: "true", Searchable: "true", Operators: []string{"=", "!=", "in", "not in", "is", "is not", "was", "was in", "was not", "was not in", "changed"}, Types: []string{"USER"}},
 	{Value: "component", DisplayName: "Component", Auto: "true", Orderable: "false", Searchable: "true", Operators: []string{"=", "!=", "in", "not in", "is", "is not"}, Types: []string{"COMPONENT"}},
 	{Value: "created", DisplayName: "Created", Auto: "false", Orderable: "true", Searchable: "true", Operators: []string{"=", "!=", ">", ">=", "<", "<=", "is", "is not"}, Types: []string{"DATE"}},
@@ -59,6 +60,8 @@ var jqlSystemFields = []jqlFieldReference{
 }
 
 var jqlFunctions = []jqlFunctionReference{
+	{Value: "approved()", DisplayName: "approved()", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"APPROVAL"}},
+	{Value: "approver()", DisplayName: "approver(users...)", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"APPROVAL"}},
 	{Value: "closedSprints()", DisplayName: "closedSprints()", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"SPRINT"}},
 	{Value: "componentsLeadByUser()", DisplayName: "componentsLeadByUser([user])", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"COMPONENT"}},
 	{Value: "currentLogin()", DisplayName: "currentLogin()", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"DATE"}},
@@ -68,6 +71,9 @@ var jqlFunctions = []jqlFunctionReference{
 	{Value: "linkedWorkItems()", DisplayName: "linkedWorkItems(workItemKey[, linkTypes...])", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"ISSUE"}},
 	{Value: "lastLogin()", DisplayName: "lastLogin()", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"DATE"}},
 	{Value: "membersOf()", DisplayName: "membersOf(group)", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"USER"}},
+	{Value: "myApproval()", DisplayName: "myApproval()", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"APPROVAL"}},
+	{Value: "myPending()", DisplayName: "myPending()", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"APPROVAL"}},
+	{Value: "myPendingApproval()", DisplayName: "myPendingApproval()", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"APPROVAL"}},
 	{Value: "now()", DisplayName: "now()", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"DATE"}},
 	{Value: "openSprints()", DisplayName: "openSprints()", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"SPRINT"}},
 	{Value: "standardIssueTypes()", DisplayName: "standardIssueTypes()", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"ISSUETYPE"}},
@@ -81,6 +87,9 @@ var jqlFunctions = []jqlFunctionReference{
 	{Value: "projectsLeadByUser()", DisplayName: "projectsLeadByUser([user])", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"PROJECT"}},
 	{Value: "spacesLeadByUser()", DisplayName: "spacesLeadByUser([user])", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"PROJECT"}},
 	{Value: "projectsWhereUserHasRole()", DisplayName: "projectsWhereUserHasRole(role)", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"PROJECT"}},
+	{Value: "pending()", DisplayName: "pending()", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"APPROVAL"}},
+	{Value: "pendingApprovalBy()", DisplayName: "pendingApprovalBy(users...)", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"APPROVAL"}},
+	{Value: "pendingBy()", DisplayName: "pendingBy(users...)", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"APPROVAL"}},
 	{Value: "spacesWhereUserHasRole()", DisplayName: "spacesWhereUserHasRole(role)", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"PROJECT"}},
 	{Value: "updatedBy()", DisplayName: "updatedBy(user[, from[, to]])", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"ISSUE"}},
 	{Value: "votedIssues()", DisplayName: "votedIssues()", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"ISSUE"}},
