@@ -55,6 +55,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	path := strings.TrimPrefix(r.URL.Path, "/rest/api/3")
 	switch {
+	case strings.HasPrefix(path, "/bulk/"):
+		h.bulkIssueRoute(w, r, strings.TrimPrefix(path, "/bulk/"))
 	case path == "/dashboard":
 		h.dashboardRoute(w, r, nil)
 	case strings.HasPrefix(path, "/dashboard/"):

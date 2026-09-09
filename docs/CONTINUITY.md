@@ -25,7 +25,8 @@ boundaries, dependencies, and acceptance gates belong in
   implemented; Jira project components and their REST, issue-field, assignment,
   JQL, audit, sync, and administrator journeys are implemented; durable login
   boundaries and `currentLogin()`/`lastLogin()` JQL are implemented; the full
-  JSM approval and SLA JQL function families are implemented
+  JSM approval and SLA JQL function families are implemented; durable bulk
+  watch/unwatch submission, execution and progress are implemented
 - Blockers: none
 
 ## Contract baseline
@@ -40,9 +41,10 @@ exercise it, authorization, audit, durable background work, and ledger updates.
 
 ## Current checkpoint
 
-The 19 pinned Jira filter operations now have reviewed partial evidence. The
-shared model covers permission-filtered collections, view/edit shares,
-favorites, columns, ownership, default scope, audit, and filter subscriptions.
+The current bulk checkpoint implements Jira's watch, unwatch and progress
+operations. Submission enforces visibility, a 1,000-item bound and five-active
+task cap; the durable worker rechecks visibility and atomically commits watcher
+state, synchronization actions and the terminal task result.
 The browser directory completes the owner and site-administrator management
 journey and is connected to REST-created filters by Playwright. Owners can add
 or remove daily and weekly email schedules with active-member recipients. A
@@ -158,9 +160,16 @@ and non-equality behavior. The responsive and accessible Chromium service
 manager journey, full uncached PostgreSQL Go suite, `go vet`, native and
 WebAssembly builds, and conformance freshness checks also pass.
 
+The bulk watch/unwatch checkpoint passes its PostgreSQL REST and durable-worker
+lifecycle, including execution-time access revocation, idempotent watcher state,
+atomic synchronization actions, Jira-shaped progress and the five-active-task
+cap. The full uncached Go suite from an empty migrated database, focused package
+tests, `go vet`, native and WebAssembly builds, and conformance inventory and
+freshness checks pass.
+
 ## Resume here
 
-1. Continue into bulk work-item and project administration slices.
+1. Continue bulk work items with edit/delete/move/transition and discovery.
 2. Add the remaining permission and customer/organization JQL functions with
    their owning policy state.
 3. Update compatibility evidence and commit each independently buildable
@@ -177,6 +186,7 @@ WebAssembly builds, and conformance freshness checks also pass.
 - [Saved filters and sharing](FILTERS.md)
 - [Project components](COMPONENTS.md)
 - [JQL and issue search](JQL.md)
+- [Bulk work-item operations](BULK_ISSUES.md)
 
 ## Continuity rules
 

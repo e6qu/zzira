@@ -6155,6 +6155,39 @@
         "docs/COMPONENTS.md"
       ],
       "notes": "The legacy complete project component collection returns Jira-shaped values; anonymous and Compass component behavior remain."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/bulk/issues/watch",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_bulk_issues.go",
+        "internal/store/api_tasks.go",
+        "internal/api3/bulk_issues_test.go",
+        "docs/BULK_ISSUES.md"
+      ],
+      "notes": "Queues durable atomic self-watch changes for up to 1,000 unique visible issues, caps active bulk work at five, rechecks execution-time visibility, emits ordinary sync actions and exposes terminal counts; configurable Jira global Bulk change permission, notification controls and exact edge errors remain."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/bulk/issues/unwatch",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_bulk_issues.go",
+        "internal/store/api_tasks.go",
+        "internal/api3/bulk_issues_test.go",
+        "docs/BULK_ISSUES.md"
+      ],
+      "notes": "Queues durable atomic self-unwatch changes for up to 1,000 unique visible issues, caps active bulk work at five, rechecks execution-time visibility, emits ordinary sync actions and exposes terminal counts; configurable Jira global Bulk change permission, notification controls and exact edge errors remain."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/bulk/queue/{taskId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_bulk_issues.go",
+        "internal/store/api_tasks.go",
+        "internal/api3/bulk_issues_test.go",
+        "docs/BULK_ISSUES.md"
+      ],
+      "notes": "Returns Jira bulk task identity, submitter, timestamps, status, progress and watch/unwatch terminal issue counts while rejecting unrelated or cross-workspace tasks; 14-day retention and result shapes for the remaining bulk task kinds remain."
     }
   ]
 }
