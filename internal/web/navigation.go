@@ -15,13 +15,15 @@ import (
 const projectPreferenceCookie = "zzira_project"
 
 type projectNavigationItem struct {
-	Project     *models.Project
-	Board       *models.Board
-	OverviewURL string
-	WorkURL     string
-	CreateURL   string
-	BoardURL    string
-	BacklogURL  string
+	Project        *models.Project
+	Board          *models.Board
+	OverviewURL    string
+	WorkURL        string
+	CreateURL      string
+	BoardURL       string
+	BacklogURL     string
+	BacklogEnabled bool
+	ReportsEnabled bool
 }
 
 type workspaceNavigation struct {
@@ -87,11 +89,27 @@ func (h *Handler) workspaceNavigation(r *http.Request, workspaceID, preferred st
 	}
 	for _, project := range projects {
 		item := projectNavigationItem{
-			Project:     project,
-			Board:       firstBoard[project.ID],
-			OverviewURL: "/projects/" + url.PathEscape(project.Key),
-			WorkURL:     "/issues/" + url.PathEscape(project.Key),
-			CreateURL:   "/issues/new?project=" + url.QueryEscape(project.Key),
+			Project:        project,
+			Board:          firstBoard[project.ID],
+			OverviewURL:    "/projects/" + url.PathEscape(project.Key),
+			WorkURL:        "/issues/" + url.PathEscape(project.Key),
+			CreateURL:      "/issues/new?project=" + url.QueryEscape(project.Key),
+			BacklogEnabled: true,
+			ReportsEnabled: true,
+		}
+		if project.ProjectTypeKey == "software" {
+			features, featureErr := h.Store.ProjectFeatures(r.Context(), workspaceID, project.ID)
+			if featureErr != nil {
+				return nil, fmt.Errorf("load features for project %s: %w", project.Key, featureErr)
+			}
+			for _, feature := range features {
+				switch feature.Key {
+				case "jsw.classic.backlog":
+					item.BacklogEnabled = feature.State == "ENABLED"
+				case "jsw.classic.reports":
+					item.ReportsEnabled = feature.State == "ENABLED"
+				}
+			}
 		}
 		if item.Board != nil {
 			item.BoardURL = "/board/" + url.PathEscape(item.Board.ID)

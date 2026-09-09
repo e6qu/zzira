@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strconv"
 
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/jackc/pgx/v5"
@@ -18,6 +19,21 @@ type ProjectUpdate struct {
 	URL           *string `json:"url"`
 	LeadAccountID *string `json:"leadAccountId"`
 	AssigneeType  *string `json:"assigneeType"`
+	CategoryID    *int64  `json:"categoryId"`
+}
+
+func validateProjectCategory(ctx context.Context, tx pgx.Tx, workspaceID, categoryID string) error {
+	if categoryID == "" {
+		return nil
+	}
+	var exists bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM project_categories WHERE workspace_id=$1 AND id=$2)`, workspaceID, categoryID).Scan(&exists); err != nil {
+		return err
+	}
+	if !exists {
+		return ErrProjectCategoryInvalid
+	}
+	return nil
 }
 
 // writeProjectAction keeps project metadata and its audit record atomic.
@@ -54,8 +70,11 @@ func (s *Store) CreateProject(ctx context.Context, actorID string, p models.Proj
 	if err := tx.QueryRow(ctx, `SELECT nextval('jira_project_id')::text`).Scan(&p.ID); err != nil {
 		return nil, err
 	}
+	if err := validateProjectCategory(ctx, tx, p.WorkspaceID, p.CategoryID); err != nil {
+		return nil, err
+	}
 	p.WorkflowID = "wf_default"
-	_, err = tx.Exec(ctx, `INSERT INTO projects (id,workspace_id,key,name,workflow_id,description,url,lead_account_id,assignee_type,project_type_key) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, p.ID, p.WorkspaceID, p.Key, p.Name, p.WorkflowID, p.Description, p.URL, nilIfEmpty(p.LeadAccountID), p.AssigneeType, p.ProjectTypeKey)
+	_, err = tx.Exec(ctx, `INSERT INTO projects (id,workspace_id,key,name,workflow_id,description,url,lead_account_id,assignee_type,project_type_key,category_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NULLIF($11,''))`, p.ID, p.WorkspaceID, p.Key, p.Name, p.WorkflowID, p.Description, p.URL, nilIfEmpty(p.LeadAccountID), p.AssigneeType, p.ProjectTypeKey, p.CategoryID)
 	if err != nil {
 		return nil, err
 	}
@@ -130,8 +149,25 @@ func (s *Store) UpdateProject(ctx context.Context, actorID, workspaceID, idOrKey
 	if err := projectAdmin(ctx, tx, workspaceID, actorID); err != nil {
 		return nil, err
 	}
+	if up.CategoryID != nil {
+		categoryID := strconv.FormatInt(*up.CategoryID, 10)
+		if *up.CategoryID == -1 {
+			categoryID = ""
+		}
+		if err := validateProjectCategory(ctx, tx, workspaceID, categoryID); err != nil {
+			return nil, err
+		}
+	}
 	p := &models.Project{}
-	err = tx.QueryRow(ctx, `UPDATE projects SET name=COALESCE($3,name),description=COALESCE($4,description),url=COALESCE($5,url),lead_account_id=CASE WHEN $6::text IS NULL THEN lead_account_id ELSE NULLIF($6,'') END,assignee_type=COALESCE($7,assignee_type) WHERE workspace_id=$1 AND (id=$2 OR upper(key)=upper($2)) RETURNING id,workspace_id,key,name,COALESCE(workflow_id,''),COALESCE(security_scheme_id,''),description,url,COALESCE(lead_account_id,''),assignee_type,project_type_key`, workspaceID, idOrKey, up.Name, up.Description, up.URL, up.LeadAccountID, up.AssigneeType).Scan(&p.ID, &p.WorkspaceID, &p.Key, &p.Name, &p.WorkflowID, &p.SecuritySchemeID, &p.Description, &p.URL, &p.LeadAccountID, &p.AssigneeType, &p.ProjectTypeKey)
+	var categoryID *string
+	if up.CategoryID != nil {
+		value := strconv.FormatInt(*up.CategoryID, 10)
+		if *up.CategoryID == -1 {
+			value = ""
+		}
+		categoryID = &value
+	}
+	err = tx.QueryRow(ctx, `UPDATE projects SET name=COALESCE($3,name),description=COALESCE($4,description),url=COALESCE($5,url),lead_account_id=CASE WHEN $6::text IS NULL THEN lead_account_id ELSE NULLIF($6,'') END,assignee_type=COALESCE($7,assignee_type),category_id=CASE WHEN $8::text IS NULL THEN category_id ELSE NULLIF($8,'') END WHERE workspace_id=$1 AND (id=$2 OR upper(key)=upper($2)) RETURNING id,workspace_id,key,name,COALESCE(workflow_id,''),COALESCE(security_scheme_id,''),description,url,COALESCE(lead_account_id,''),assignee_type,project_type_key,COALESCE(category_id,''),sender_email`, workspaceID, idOrKey, up.Name, up.Description, up.URL, up.LeadAccountID, up.AssigneeType, categoryID).Scan(&p.ID, &p.WorkspaceID, &p.Key, &p.Name, &p.WorkflowID, &p.SecuritySchemeID, &p.Description, &p.URL, &p.LeadAccountID, &p.AssigneeType, &p.ProjectTypeKey, &p.CategoryID, &p.SenderEmail)
 	if err != nil {
 		return nil, err
 	}

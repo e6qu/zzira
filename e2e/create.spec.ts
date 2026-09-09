@@ -126,34 +126,37 @@ test('create journey and createmeta share every supported field', async ({ page,
   await expect(page).toHaveURL(/\/browse\/ZZ-\d+$/);
   await expect(page.locator('.issue-summary')).toHaveText(retrySummary);
 
-	await page.locator('#global-create-issue').click();
-	const subtaskDialog = page.getByRole('dialog', { name: 'Create issue' });
-	await expect(subtaskDialog).toBeVisible();
-	const metadataRefresh = page.waitForResponse(response => {
-		const url = new URL(response.url());
-		return response.request().method() === 'GET' && url.pathname === '/issues/new' && url.searchParams.get('issuetype') === 'it_subtask';
-	});
-	await page.selectOption('#create-issuetype', 'it_subtask');
-	expect((await metadataRefresh).ok()).toBe(true);
-	await expect(page.locator('#create-issuetype')).toHaveValue('it_subtask');
-	await expect(page.locator('#create-parent')).toHaveAttribute('required', '');
-	await page.fill('#create-summary', `Hierarchy child ${unique}`);
-	await page.locator('.create-more summary').click();
-	const parentOption = page.locator('#create-parent option').filter({ hasText: createdKey });
-	await page.selectOption('#create-parent', await parentOption.getAttribute('value') as string);
-	const previousURL = page.url();
-	await Promise.all([
-		page.waitForURL(url => url.href !== previousURL && /\/browse\/ZZ-\d+$/.test(url.pathname)),
-		subtaskDialog.getByRole('button', { name: 'Create issue', exact: true }).click(),
-	]);
-	await expect(page.getByLabel('Parent')).toContainText(createdKey);
-	const childKey = page.url().split('/').pop()!;
-	const childIssue = await (await request.get(`/rest/api/3/issue/${childKey}`, auth)).json();
-	expect(childIssue.fields).toMatchObject({
-		parent: { key: createdKey, fields: { summary: `Metadata UI create ${unique}` } },
-		issuetype: { id: 'it_subtask', subtask: true },
-	});
-	await page.goto(`/browse/${createdKey}`);
-	await expect(page.getByRole('heading', { name: 'Sub-tasks' })).toBeVisible();
-	await expect(page.getByRole('link', { name: new RegExp(`${childKey} Hierarchy child`) })).toBeVisible();
+  await page.locator('#global-create-issue').click();
+  const subtaskDialog = page.getByRole('dialog', { name: 'Create issue' });
+  await expect(subtaskDialog).toBeVisible();
+  await expect(subtaskDialog).toHaveAttribute('data-ready', '1');
+  const [metadataResponse] = await Promise.all([
+    page.waitForResponse(response => {
+      const url = new URL(response.url());
+      return response.request().method() === 'GET' && url.pathname === '/issues/new' && url.searchParams.get('issuetype') === 'it_subtask';
+    }),
+    page.selectOption('#create-issuetype', 'it_subtask'),
+  ]);
+  expect(metadataResponse.ok()).toBe(true);
+  await expect(page.locator('#create-issuetype')).toHaveValue('it_subtask');
+  await expect(page.locator('#create-parent')).toHaveAttribute('required', '');
+  await page.fill('#create-summary', `Hierarchy child ${unique}`);
+  await page.locator('.create-more summary').click();
+  const parentOption = page.locator('#create-parent option').filter({ hasText: createdKey });
+  await page.selectOption('#create-parent', await parentOption.getAttribute('value') as string);
+  const previousURL = page.url();
+  await Promise.all([
+    page.waitForURL(url => url.href !== previousURL && /\/browse\/ZZ-\d+$/.test(url.pathname)),
+    subtaskDialog.getByRole('button', { name: 'Create issue', exact: true }).click(),
+  ]);
+  await expect(page.getByLabel('Parent')).toContainText(createdKey);
+  const childKey = page.url().split('/').pop()!;
+  const childIssue = await (await request.get(`/rest/api/3/issue/${childKey}`, auth)).json();
+  expect(childIssue.fields).toMatchObject({
+    parent: { key: createdKey, fields: { summary: `Metadata UI create ${unique}` } },
+    issuetype: { id: 'it_subtask', subtask: true },
+  });
+  await page.goto(`/browse/${createdKey}`);
+  await expect(page.getByRole('heading', { name: 'Sub-tasks' })).toBeVisible();
+  await expect(page.getByRole('link', { name: new RegExp(`${childKey} Hierarchy child`) })).toBeVisible();
 });

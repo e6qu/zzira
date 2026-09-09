@@ -17,7 +17,7 @@ use `/rest/zzira/1`.
 | GET /rest/api/3/serverInfo | ✅ | |
 | GET /rest/api/3/myself | ✅ | |
 | GET /rest/api/3/user · /user/search | ✅ | workspace members |
-| GET/POST /rest/api/3/project · GET /project/search · GET/PUT /project/{keyOrId} | 🟡 | Shared create/details commands and browser journey; software Scrum/Kanban templates; pagination/filtering/order; schemes, project roles and lifecycle remain |
+| GET/POST /rest/api/3/project · GET /project/search · GET/PUT /project/{keyOrId} | 🟡 | Shared create/details commands and browser journey; business, service-management and software Scrum/Kanban creation; category assignment/filtering and category beans; pagination/filtering/order; expansions, schemes, full templates, project roles and lifecycle remain |
 | POST /rest/api/3/issue | ✅ | Project key/id, ADF description, assignee, priority, labels, fix/affected versions, security and typed context-aware custom fields; unsupported fields are explicit errors |
 | GET/PUT/DELETE /rest/api/3/issue/{idOrKey} | ✅ | expand=renderedFields |
 | GET/PUT/DELETE /rest/api/3/issue/{idOrKey}/properties[/{key}] | 🟡 | Permission-shaped key listing and arbitrary JSON property lifecycle with Jira limits/status codes; anonymous project access and exact Edit issues permission remain |
@@ -70,6 +70,7 @@ use `/rest/zzira/1`.
 |---|---|---|
 | POST/GET /rest/api/3/field · GET /field/{id} | ✅ | text/number/datetime |
 | Announcement banner · Jira configuration · application properties · time tracking · issue navigator defaults | 🟡 | Thirteen Jira v3 operations share durable audited state with `/admin`, feature enforcement and browser/API journeys; Marketplace time providers, complete look-and-feel application and exact advanced validation remain; see [JIRA_SITE_CONFIGURATION.md](../../docs/JIRA_SITE_CONFIGURATION.md) |
+| Project categories, properties, features, email, types and validation | 🟡 | Twenty Jira v3 operations plus five integrated core project operations share workspace-scoped transactional state with site/project administration, immutable actions, exact numeric category semantics, JSON limits/status codes, feature-aware navigation, sender overrides, installed product types and collision-safe validation; project-admin roles, anonymous browse, custom-domain verification, app features and remaining project lifecycle remain; see [PROJECT_GOVERNANCE.md](../../docs/PROJECT_GOVERNANCE.md) |
 | /issue/createmeta + /editmeta include custom fields | ✅ | context-aware |
 | Custom fields in issue beans + JQL | ✅ | numeric and date-time comparisons, including login boundaries |
 | POST/GET /rest/api/3/webhook · DELETE /webhook/{id} · GET /webhook/refresh | ✅ | log-driven dispatcher, watermark, exactly-once claims |

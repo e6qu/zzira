@@ -65,6 +65,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.siteTimeTracking(w, r, path)
 	case path == "/settings/columns":
 		h.issueNavigatorColumns(w, r)
+	case isProjectGovernancePath(path):
+		h.projectGovernanceRoute(w, r, path)
 	case strings.HasPrefix(path, "/bulk/"):
 		h.bulkIssueRoute(w, r, strings.TrimPrefix(path, "/bulk/"))
 	case path == "/dashboard":

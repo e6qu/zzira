@@ -49,9 +49,18 @@ func (h *Handler) listProjects(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	categories, err := h.projectCategoryMap(r.Context(), wsID)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
 	out := make([]map[string]any, 0, len(projects))
 	for _, p := range projects {
-		out = append(out, h.projectBean(p))
+		bean := h.projectBean(p)
+		if category := categories[p.CategoryID]; category != nil {
+			bean["projectCategory"] = h.categoryBean(category)
+		}
+		out = append(out, bean)
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -63,6 +72,11 @@ func (h *Handler) searchProjects(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	projects, err := h.Store.ProjectsByWorkspace(r.Context(), wsID)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	categories, err := h.projectCategoryMap(r.Context(), wsID)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -81,7 +95,11 @@ func (h *Handler) searchProjects(w http.ResponseWriter, r *http.Request) {
 	end := min(start, total) + min(limit, total-min(start, total))
 	values := make([]map[string]any, 0, end-min(start, total))
 	for _, p := range projects[min(start, total):end] {
-		values = append(values, h.projectBean(p))
+		bean := h.projectBean(p)
+		if category := categories[p.CategoryID]; category != nil {
+			bean["projectCategory"] = h.categoryBean(category)
+		}
+		values = append(values, bean)
 	}
 	page := map[string]any{
 		"self":       h.projectPageURL(r, start, limit),
