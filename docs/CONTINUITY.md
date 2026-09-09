@@ -11,8 +11,8 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 - Branch: `feat/pr1-jira-platform-admin-2`
 - Base: `origin/main` after merged PR #70
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- Pull request: not opened yet
-- State: Jira site-configuration checkpoint validated; preparing commit and PR
+- Pull request: [#71](https://github.com/e6qu/zzira/pull/71)
+- State: Jira site-configuration checkpoint is open; monitoring CI and review
 - Blockers: none
 
 ## Merged baseline
@@ -32,8 +32,7 @@ scans, CodeQL, and all 62 Playwright journeys.
 
 ## Resume here
 
-1. Commit and open the validated Jira site-configuration checkpoint, then
-   monitor CI and resolve review threads inline.
+1. Monitor PR #71 CI and resolve review threads inline.
 2. Reconcile the remaining Jira Platform operation inventory, with project
    administration following site configuration.
 3. Keep each new vertical checkpoint committed, tested and documented on the
