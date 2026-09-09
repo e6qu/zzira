@@ -11,8 +11,8 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 - Branch: `feat/jira-platform-admin-completion`
 - Base: `origin/main` after merged PR #62 and PR #68
 - Delivery unit: PR 0 — Cloud compatibility baseline consolidation
-- Pull request: pending
-- State: ready to publish after roadmap rebaseline
+- Pull request: [#69](https://github.com/e6qu/zzira/pull/69)
+- State: published; awaiting review and CI before merge
 - Blockers: none
 
 ## PR 0 branch result
