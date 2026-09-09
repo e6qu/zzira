@@ -11,7 +11,7 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 - Branch: `feat/pr1-project-roles`
 - Base: `origin/main` after merged PR #73 (`34c9776`)
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- Pull request: next PR, not opened yet
+- Pull request: [#74](https://github.com/e6qu/zzira/pull/74)
 - State: project-role checkpoint implements the complete 15-operation Jira v3
   role/actor surface, reusable defaults, project assignments, delegated project
   administration, safe swaps, role-backed filter sharing, immutable actions,
@@ -37,8 +37,7 @@ PR #73's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Commit the project-role checkpoint, open its PR, monitor every CI job, and
-   resolve review threads inline.
+1. Monitor PR #74 through every CI job and resolve review threads inline.
 2. After it merges, continue permission, notification, issue-security, field,
    and screen scheme administration. Keep each vertical checkpoint committed,
    tested, and documented until the Jira Platform exit gates are satisfied.
