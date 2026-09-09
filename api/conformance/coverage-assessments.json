@@ -6157,6 +6157,57 @@
       "notes": "The legacy complete project component collection returns Jira-shaped values; anonymous and Compass component behavior remain."
     },
     {
+      "operationId": "jira-v3:POST:/rest/api/3/bulk/issues/delete",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_bulk_issues.go",
+        "internal/commands/bulk_issues.go",
+        "internal/api3/bulk_delete_test.go",
+        "internal/commands/delete_issue_test.go",
+        "internal/render/templates/templates.gohtml",
+        "e2e/v2.spec.ts",
+        "docs/BULK_ISSUES.md"
+      ],
+      "notes": "Queues deletion for up to 1,000 unique visible issues, caps active bulk work at five, rechecks execution-time visibility, reports per-item results, reconstructs recovered successes from atomic actions and durably retries attachment blob cleanup; configurable global Bulk change and delete permissions, bulk email delivery and exact edge errors remain."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/bulk/issues/transition",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_bulk_issues.go",
+        "internal/api3/bulk_move_test.go",
+        "internal/render/templates/templates.gohtml",
+        "e2e/v2.spec.ts",
+        "docs/BULK_ISSUES.md"
+      ],
+      "notes": "Groups up to 1,000 visible issues by workflow, intersects condition-filtered transitions, omits transitions requiring screen fields and cursor-pages workflow groups; exact custom numeric wire IDs, configurable Bulk change/transition permissions and transition-field metadata remain."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/bulk/issues/transition",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_bulk_issues.go",
+        "internal/commands/bulk_issues.go",
+        "internal/api3/bulk_move_test.go",
+        "e2e/v2.spec.ts",
+        "docs/BULK_ISSUES.md"
+      ],
+      "notes": "Queues validated transition groups for up to 1,000 unique visible issues, rechecks execution-time visibility, delegates conditions/validators/post-functions to the ordinary REST transition engine and records transactional replay markers with per-item results; screen-field inputs, exact permission granularity and bulk email delivery remain."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/bulk/issues/move",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_bulk_issues.go",
+        "internal/commands/bulk_issues.go",
+        "internal/store/bulk_move.go",
+        "internal/api3/bulk_move_test.go",
+        "e2e/v2.spec.ts",
+        "docs/BULK_ISSUES.md"
+      ],
+      "notes": "Queues up to 1,000 project/type/explicit-parent moves, validates Jira target mappings, maps or infers destination workflow statuses, preserves former keys as aliases, clears incompatible project fields and security, rechecks execution-time visibility and records transactional replay markers; classifications, mandatory-field mappings, implicit parent-with-subtask moves, exact permissions and bulk email delivery remain."
+    },
+    {
       "operationId": "jira-v3:POST:/rest/api/3/bulk/issues/watch",
       "status": "partial",
       "evidence": [
@@ -6211,6 +6262,84 @@
         "docs/BULK_ISSUES.md"
       ],
       "notes": "Queues up to 1,000 visible issues and 200 exactly matched selected fields, strictly parses ten persisted Jira field families, delegates each item to the ordinary issue command, reports successful/inaccessible/accessible-failed IDs and preserves action-idempotent replay; remaining Jira field families, configurable Bulk change/field permissions, bulk email delivery and exact rate-limit semantics remain."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/attachment/meta",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_v3.go",
+        "internal/api3/bulk_delete_test.go",
+        "e2e/v3.spec.ts",
+        "docs/ATTACHMENTS.md"
+      ],
+      "notes": "Reports whether attachment storage is configured and the enforced 32 MiB request limit; Jira administrator-controlled attachment and thumbnail settings remain."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/attachment/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_v3.go",
+        "internal/api3/bulk_delete_test.go",
+        "e2e/v3.spec.ts",
+        "docs/ATTACHMENTS.md"
+      ],
+      "notes": "Returns permission-filtered Jira-shaped metadata with author, content and image-thumbnail links; complete media metadata and derived rendition state remain."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/attachment/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_v3.go",
+        "internal/store/mutations_v3.go",
+        "internal/commands/delete_issue_test.go",
+        "e2e/v3.spec.ts",
+        "docs/ATTACHMENTS.md"
+      ],
+      "notes": "Deletes authorized metadata and action history atomically with a leased durable blob-cleanup intent; exact project permission-scheme behavior remains."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/attachment/content/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_v3.go",
+        "internal/api3/bulk_delete_test.go",
+        "e2e/v3.spec.ts",
+        "docs/ATTACHMENTS.md"
+      ],
+      "notes": "Streams permission-filtered bytes with content disposition, media type and HTTP range handling; Jira signed redirect behavior and virus-scan lifecycle remain."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/attachment/thumbnail/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_v3.go",
+        "internal/api3/bulk_delete_test.go",
+        "e2e/v3.spec.ts",
+        "docs/ATTACHMENTS.md"
+      ],
+      "notes": "Serves authorized image bytes and honors fallbackToDefault=false for non-images; derived and dimension-controlled renditions remain."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/attachment/{id}/expand/human",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_v3.go",
+        "internal/api3/bulk_delete_test.go",
+        "e2e/v3.spec.ts",
+        "docs/ATTACHMENTS.md"
+      ],
+      "notes": "Returns bounded ZIP entry paths, media types and human-readable sizes; non-ZIP archive formats and Jira exact archive error shapes remain."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/attachment/{id}/expand/raw",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_v3.go",
+        "internal/api3/bulk_delete_test.go",
+        "e2e/v3.spec.ts",
+        "docs/ATTACHMENTS.md"
+      ],
+      "notes": "Returns bounded ZIP entry indexes, paths, media types and byte sizes; non-ZIP archive formats and Jira exact archive error shapes remain."
     }
   ]
 }

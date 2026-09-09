@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -56,34 +57,47 @@ type createDialogData struct {
 }
 
 type projectIssuesData struct {
+	Project         *models.Project
+	Projects        []*models.Project
+	IssueTypes      []models.IssueType
+	BulkTransitions []models.WorkflowTransition
+	BoardID         string
+	Issues          []*models.Issue
+	Selected        *models.Issue
+	Statuses        []models.Status
+	Members         []*models.User
+	Filters         []*models.Filter
+	ActiveFilter    string
+	Chips           []navigatorChip
+	SaveJQL         string
+	Mode            string
+	JQL             string
+	Text            string
+	Status          string
+	Assignee        string
+	Sort            string
+	Direction       string
+	Total           int
+	ResultStart     int
+	ResultEnd       int
+	Page            int
+	PageCount       int
+	PreviousURL     string
+	NextURL         string
+	BasicURL        string
+	AdvancedURL     string
+	SortURLs        map[string]string
+	JQLError        string
+	CanBulk         bool
+}
+
+type bulkIssueTaskData struct {
 	Project      *models.Project
-	BoardID      string
-	Issues       []*models.Issue
-	Selected     *models.Issue
-	Statuses     []models.Status
-	Members      []*models.User
-	Filters      []*models.Filter
-	ActiveFilter string
-	Chips        []navigatorChip
-	SaveJQL      string
-	Mode         string
-	JQL          string
-	Text         string
-	Status       string
-	Assignee     string
-	Sort         string
-	Direction    string
+	Task         store.APITask
+	Processed    int
+	Failed       int
+	Inaccessible int
 	Total        int
-	ResultStart  int
-	ResultEnd    int
-	Page         int
-	PageCount    int
-	PreviousURL  string
-	NextURL      string
-	BasicURL     string
-	AdvancedURL  string
-	SortURLs     map[string]string
-	JQLError     string
 }
 
 type navigatorChip struct {
@@ -1198,6 +1212,21 @@ func (h *Handler) ProjectIssues(w http.ResponseWriter, r *http.Request, key stri
 		Mode: params.Mode, JQL: params.JQL, Text: params.Text, Status: params.Status, Assignee: params.Assignee,
 		Sort: params.Sort, Direction: params.Direction, Page: params.Page, SortURLs: map[string]string{},
 	}
+	data.CanBulk, err = h.Store.IsAdmin(r.Context(), wsID, user.ID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if data.CanBulk {
+		data.Projects, err = h.Store.ProjectsByWorkspace(r.Context(), wsID)
+		if err == nil {
+			data.IssueTypes, err = h.Store.IssueTypes(r.Context())
+		}
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+	}
 	for _, board := range boards {
 		if board.ProjectID == project.ID {
 			data.BoardID = board.ID
@@ -1275,7 +1304,265 @@ func (h *Handler) ProjectIssues(w http.ResponseWriter, r *http.Request, key stri
 		}
 		data.SortURLs[field] = navigatorURL(project.Key, sortParams, 1)
 	}
+	if data.CanBulk && len(data.Issues) > 0 {
+		data.BulkTransitions, err = h.commonBulkTransitions(r.Context(), wsID, user.ID, data.Issues)
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+	}
 	h.writeWorkspacePage(w, r, "page_project", user, wsID, data, "issues", project.ID)
+}
+
+func (h *Handler) commonBulkTransitions(ctx context.Context, workspaceID, userID string, issues []*models.Issue) ([]models.WorkflowTransition, error) {
+	common := map[string]models.WorkflowTransition{}
+	for index, issue := range issues {
+		wf, err := h.Store.WorkflowForProjectAndIssueType(ctx, issue.ProjectID, issue.IssueType.ID)
+		if err != nil {
+			return nil, err
+		}
+		evaluation := workflow.ContextForIssue(userID, issue)
+		evaluation.StatusHistory, err = h.Store.IssueStatusHistory(ctx, workspaceID, issue.ID)
+		if err != nil {
+			return nil, err
+		}
+		evaluation.Transitions, err = h.Store.IssueTransitionHistory(ctx, workspaceID, issue.ID)
+		if err != nil {
+			return nil, err
+		}
+		evaluation.ParentStatus, evaluation.ChildStatuses, err = h.Store.IssueHierarchyStatuses(ctx, workspaceID, issue.ID)
+		if err != nil {
+			return nil, err
+		}
+		available := map[string]models.WorkflowTransition{}
+		for _, transition := range wf.AvailableFor(issue.Status.ID, evaluation) {
+			if len(transition.ScreenFields()) == 0 {
+				available[transition.ID] = models.WorkflowTransition{ID: transition.ID, Name: transition.Name}
+			}
+		}
+		if index == 0 {
+			common = available
+		} else {
+			for id := range common {
+				if _, ok := available[id]; !ok {
+					delete(common, id)
+				}
+			}
+		}
+	}
+	result := make([]models.WorkflowTransition, 0, len(common))
+	for _, transition := range common {
+		result = append(result, transition)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Name < result[j].Name || result[i].Name == result[j].Name && result[i].ID < result[j].ID
+	})
+	return result, nil
+}
+
+// SubmitBulkIssueDelete starts the same durable bulk-delete task used by Jira's
+// REST endpoint from the issue navigator.
+func (h *Handler) SubmitBulkIssueDelete(w http.ResponseWriter, r *http.Request, projectKey string) {
+	if !parseForm(w, r) {
+		return
+	}
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok {
+		return
+	}
+	project, err := h.Store.ProjectByKey(r.Context(), workspaceID, projectKey)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	selected := r.Form["issue"]
+	if len(selected) < 1 || len(selected) > 1000 {
+		http.Error(w, "select between 1 and 1,000 work items", http.StatusBadRequest)
+		return
+	}
+	seen := make(map[string]bool, len(selected))
+	items := make([]store.BulkIssueTaskItem, 0, len(selected))
+	for _, idOrKey := range selected {
+		issue, lookupErr := h.issueForUser(r, user, workspaceID, idOrKey)
+		if lookupErr != nil || issue.ProjectID != project.ID || seen[issue.ID] {
+			http.Error(w, "the selection contains an invalid or inaccessible work item", http.StatusBadRequest)
+			return
+		}
+		seen[issue.ID] = true
+		items = append(items, store.BulkIssueTaskItem{ID: issue.ID, JiraID: issue.JiraID})
+	}
+	task, err := h.Store.EnqueueBulkDeleteTask(r.Context(), workspaceID, user.ID, items, r.FormValue("sendNotification") == "true")
+	if errors.Is(err, store.ErrBulkTaskLimit) {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/issues/"+url.PathEscape(project.Key)+"/bulk/"+url.PathEscape(task.ID), http.StatusSeeOther)
+}
+
+func (h *Handler) SubmitBulkIssueMove(w http.ResponseWriter, r *http.Request, projectKey string) {
+	if !parseForm(w, r) {
+		return
+	}
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok {
+		return
+	}
+	sourceProject, err := h.Store.ProjectByKey(r.Context(), workspaceID, projectKey)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	destination, err := h.Store.ProjectByIDOrKey(r.Context(), workspaceID, r.FormValue("project"))
+	if err != nil {
+		http.Error(w, "invalid destination project", http.StatusBadRequest)
+		return
+	}
+	issueType, err := h.Store.IssueTypeByIDOrName(r.Context(), r.FormValue("issueType"))
+	if err != nil {
+		http.Error(w, "invalid destination work type", http.StatusBadRequest)
+		return
+	}
+	parentID := ""
+	if parentValue := strings.TrimSpace(r.FormValue("parent")); parentValue != "" {
+		parent, parentErr := h.issueForUser(r, user, workspaceID, parentValue)
+		if parentErr != nil || parent.ProjectID != destination.ID || parent.IssueType.Subtask {
+			http.Error(w, "invalid destination parent", http.StatusBadRequest)
+			return
+		}
+		parentID = parent.ID
+	}
+	if issueType.Subtask != (parentID != "") {
+		http.Error(w, "a destination parent is required only for sub-task work types", http.StatusBadRequest)
+		return
+	}
+	selected := r.Form["issue"]
+	if len(selected) < 1 || len(selected) > 1000 {
+		http.Error(w, "select between 1 and 1,000 work items", http.StatusBadRequest)
+		return
+	}
+	seen := map[string]bool{}
+	items := make([]store.BulkIssueMoveTaskItem, 0, len(selected))
+	for _, idOrKey := range selected {
+		issue, lookupErr := h.issueForUser(r, user, workspaceID, idOrKey)
+		if lookupErr != nil || issue.ProjectID != sourceProject.ID || seen[issue.ID] {
+			http.Error(w, "the selection contains an invalid or inaccessible work item", http.StatusBadRequest)
+			return
+		}
+		seen[issue.ID] = true
+		items = append(items, store.BulkIssueMoveTaskItem{
+			BulkIssueTaskItem: store.BulkIssueTaskItem{ID: issue.ID, JiraID: issue.JiraID},
+			ProjectID:         destination.ID, IssueTypeID: issueType.ID, ParentID: parentID, InferStatusDefaults: true,
+		})
+	}
+	task, err := h.Store.EnqueueBulkMoveTask(r.Context(), workspaceID, user.ID, items, r.FormValue("sendNotification") == "true")
+	if errors.Is(err, store.ErrBulkTaskLimit) {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/issues/"+url.PathEscape(sourceProject.Key)+"/bulk/"+url.PathEscape(task.ID), http.StatusSeeOther)
+}
+
+func (h *Handler) SubmitBulkIssueTransition(w http.ResponseWriter, r *http.Request, projectKey string) {
+	if !parseForm(w, r) {
+		return
+	}
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok {
+		return
+	}
+	project, err := h.Store.ProjectByKey(r.Context(), workspaceID, projectKey)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	transitionID := strings.TrimSpace(r.FormValue("transition"))
+	selected := r.Form["issue"]
+	if transitionID == "" || len(selected) < 1 || len(selected) > 1000 {
+		http.Error(w, "select between 1 and 1,000 work items and a transition", http.StatusBadRequest)
+		return
+	}
+	seen := map[string]bool{}
+	issues := make([]*models.Issue, 0, len(selected))
+	for _, idOrKey := range selected {
+		issue, lookupErr := h.issueForUser(r, user, workspaceID, idOrKey)
+		if lookupErr != nil || issue.ProjectID != project.ID || seen[issue.ID] {
+			http.Error(w, "the selection contains an invalid or inaccessible work item", http.StatusBadRequest)
+			return
+		}
+		seen[issue.ID] = true
+		issues = append(issues, issue)
+	}
+	common, err := h.commonBulkTransitions(r.Context(), workspaceID, user.ID, issues)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	valid := false
+	for _, transition := range common {
+		if transition.ID == transitionID {
+			valid = true
+			break
+		}
+	}
+	if !valid {
+		http.Error(w, "transition is not common to the selected work items", http.StatusBadRequest)
+		return
+	}
+	items := make([]store.BulkIssueTransitionTaskItem, 0, len(issues))
+	for _, issue := range issues {
+		items = append(items, store.BulkIssueTransitionTaskItem{BulkIssueTaskItem: store.BulkIssueTaskItem{ID: issue.ID, JiraID: issue.JiraID}, TransitionID: transitionID})
+	}
+	task, err := h.Store.EnqueueBulkTransitionTask(r.Context(), workspaceID, user.ID, items, r.FormValue("sendNotification") == "true")
+	if errors.Is(err, store.ErrBulkTaskLimit) {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/issues/"+url.PathEscape(project.Key)+"/bulk/"+url.PathEscape(task.ID), http.StatusSeeOther)
+}
+
+func (h *Handler) BulkIssueTask(w http.ResponseWriter, r *http.Request, projectKey, taskID string) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok {
+		return
+	}
+	project, err := h.Store.ProjectByKey(r.Context(), workspaceID, projectKey)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	task, err := h.Store.APITaskByID(r.Context(), workspaceID, taskID)
+	if err != nil || !task.IsBulkIssueOperation() {
+		http.NotFound(w, r)
+		return
+	}
+	data := bulkIssueTaskData{Project: project, Task: task}
+	if len(task.Result) > 0 && string(task.Result) != "null" {
+		var result struct {
+			Processed    []int64             `json:"processedAccessibleIssues"`
+			Failed       map[string][]string `json:"failedAccessibleIssues"`
+			Inaccessible int                 `json:"invalidOrInaccessibleIssueCount"`
+			Total        int                 `json:"totalIssueCount"`
+		}
+		if err := json.Unmarshal(task.Result, &result); err == nil {
+			data.Processed = len(result.Processed)
+			data.Failed = len(result.Failed)
+			data.Inaccessible = result.Inaccessible
+			data.Total = result.Total
+		}
+	}
+	h.writeWorkspacePage(w, r, "page_bulk_issue_task", user, workspaceID, data, "issues", project.ID)
 }
 
 // SaveNavigatorFilter persists the current, already-valid search and stars it

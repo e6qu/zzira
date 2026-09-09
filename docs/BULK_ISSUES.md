@@ -5,6 +5,10 @@ URL. The current delivered slice includes:
 
 | Route | Behavior |
 |---|---|
+| `POST /rest/api/3/bulk/issues/delete` | Queue deletion for up to 1,000 selected work items with execution-time access checks and per-item results |
+| `POST /rest/api/3/bulk/issues/move` | Queue project, issue-type and explicit parent moves with workflow status inference, key aliases and per-item results |
+| `GET /rest/api/3/bulk/issues/transition` | Group common, screenless transitions by workflow for up to 1,000 selected work items, with cursor paging |
+| `POST /rest/api/3/bulk/issues/transition` | Queue one or more validated transition groups and report per-item execution outcomes |
 | `GET /rest/api/3/bulk/issues/fields` | Discover the fields shared by the selected work items, with field search and 50-item cursor pages |
 | `POST /rest/api/3/bulk/issues/fields` | Queue validated edits for the selected work items and report per-item success, access loss or field failure |
 | `POST /rest/api/3/bulk/issues/watch` | Queue self-subscription for the selected work items |
@@ -18,6 +22,38 @@ visibility before changing each work item. A watch or unwatch batch commits its
 watcher state, ordinary synchronization actions and terminal task result in one
 transaction, so cancellation or failure cannot expose a partially completed
 batch. Repeated requests remain idempotent.
+
+Bulk deletion uses the ordinary permission-checked issue command. Each issue's
+metadata deletion, immutable action and attachment cleanup intents commit in one
+transaction. Blob cleanup then runs immediately and through a leased retry
+worker, so an object-store outage cannot orphan an attachment permanently or
+roll back an already committed issue deletion. A recovered bulk task rebuilds
+its prior successes from the atomic delete actions instead of emitting duplicate
+history. Administrators can select the current navigator page, choose watcher
+notification intent, submit the operation, and follow its durable progress in
+the browser.
+
+Bulk move accepts Jira's `targetToSourcesMapping` shape and resolves destination
+projects, issue types, explicit sub-task parents and status maps before queueing.
+Execution rechecks source visibility, selects a destination-workflow status,
+changes project keys atomically, and keeps every former key as an issue alias.
+Project-bound version/component values and incompatible security levels are
+cleared when crossing projects. A transactional task-item marker makes worker
+replay idempotent. The navigator exposes project, type and parent controls and
+uses the common progress page. Classification mappings, mandatory-field value
+mappings, and implicit parent-with-subtasks moves are rejected explicitly; the
+task reports an execution-time error if a parent acquires subtasks after
+submission.
+
+Transition discovery evaluates each selected issue's current workflow,
+status-history and hierarchy conditions as the requesting administrator. It
+intersects transitions within each workflow group and omits transitions whose
+screen requires additional fields, matching the bulk endpoint's executable
+subset. Submission validates every issue/transition pair again; the worker then
+uses the ordinary REST transition command so conditions, validators,
+post-functions, permission loss and action history keep the single-issue
+semantics. Transactional item markers make a recovered worker replay-safe. The
+navigator offers transitions common to all selected visible rows.
 
 Field discovery intersects the canonical create/edit metadata for every selected
 project. It returns only field types the current command path can persist,
@@ -38,5 +74,5 @@ permission. Configurable global permission grants and Jira's notification
 controls remain part of the administration completion work. The
 `sendBulkNotification` switch is accepted but bulk email delivery is not yet
 available. Cascading/color/date/select/group/multi-user/URL/time-tracking and
-issue-type bulk field families remain alongside delete, move, transition and
-transition discovery. Queue retention also needs Jira's 14-day expiry behavior.
+issue-type bulk field families remain. Queue retention also needs Jira's 14-day
+expiry behavior.

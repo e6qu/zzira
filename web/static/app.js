@@ -287,6 +287,25 @@
     const preview = document.getElementById('navigator-preview');
     let selectedIndex = rows.length ? 0 : -1;
 
+    const bulkForm = document.querySelector('[data-bulk-delete-form]');
+    const selectAll = document.querySelector('[data-bulk-select-all]');
+    const bulkIssues = Array.from(document.querySelectorAll('[data-bulk-issue]'));
+    if (selectAll) {
+      selectAll.addEventListener('change', () => {
+        bulkIssues.forEach((input) => { input.checked = selectAll.checked; });
+      });
+      bulkIssues.forEach((input) => input.addEventListener('change', () => {
+        selectAll.checked = bulkIssues.length > 0 && bulkIssues.every((candidate) => candidate.checked);
+        selectAll.indeterminate = bulkIssues.some((candidate) => candidate.checked) && !selectAll.checked;
+      }));
+    }
+    if (bulkForm) bulkForm.addEventListener('submit', (event) => {
+      if (bulkIssues.some((input) => input.checked)) return;
+      event.preventDefault();
+      announce('select at least one work item to delete', 4000);
+      bulkIssues[0]?.focus();
+    });
+
     function selectRow(index, loadPreview) {
       if (!rows.length) return;
       selectedIndex = Math.max(0, Math.min(index, rows.length - 1));

@@ -14,7 +14,7 @@ Status: ✅ browser-tested complete journey · 🟡 usable tested subset · ⛔ 
 | Persona and goal | State | Current evidence and gap |
 |---|---:|---|
 | User signs in and orients | Partial | ✅ Password plus simultaneous Shauth, Google, Microsoft and Atlassian provider choice, profile-based identity review/connect/disconnect, durable admin availability controls, issuer-scoped session revocation, responsive shell, theme and session controls; product switcher remains |
-| Contributor finds work | ✅ | Project-scoped basic/JQL search, filters, columns, sorting, pagination, keyboard navigation and contextual preview, plus a saved-filter directory with favorites and visible view/edit access |
+| Contributor finds work | ✅ | Project-scoped basic/JQL search, filters, columns, sorting, pagination, keyboard navigation and contextual preview, plus a saved-filter directory with favorites and visible view/edit access; bulk selection and actions retain 24 px targets and reflow at 320 px |
 | Contributor creates and triages work | ✅ | Shared create metadata, validation recovery, one-level sub-task creation and reassignment, parent/child navigation, inline fields, security, labels, watchers, links, activity, attachments, worklogs and issue-form lifecycle |
 | Contributor plans and runs a sprint | ✅ | Backlog grouping/ranking, sprint create/edit/start/complete, board movement, quick/assignee filters, WIP feedback, swimlanes and issue preview |
 | Contributor works offline | Partial | ✅ Issue reads/edits, authorization-before-replay, reconnect drain and server reconciliation; suspension while offline purges the private replica, queued mutations and authenticated page cache before sign-out. Other product entities and richer mutations remain online-only |

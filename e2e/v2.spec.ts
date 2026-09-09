@@ -80,6 +80,85 @@ test('V2: navigator filters, sorts, previews, and remembers visible columns', as
   await expect(page.locator('[data-navigator-row]')).toHaveCount(2);
 });
 
+test('V2: administrator bulk-deletes navigator selections and follows task progress', async ({ page, request }) => {
+  const marker = `bulk-delete-${Date.now()}`;
+  const created = await request.post('/rest/api/3/issue', {
+    headers: { Authorization: apiAuthHeader() },
+    data: { fields: { project: { key: 'ZZ' }, summary: marker, issuetype: { name: 'Task' } } },
+  });
+  expect(created.status()).toBe(201);
+  const key = (await created.json()).key;
+  await login(page);
+  await page.goto(`/issues/ZZ?mode=basic&text=${encodeURIComponent(marker)}`);
+  await expect(page.locator('[data-navigator-row]')).toHaveCount(1);
+  await page.locator('[data-bulk-issue]').check();
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: 'Delete selected' }).click();
+  await expect(page).toHaveURL(/\/issues\/ZZ\/bulk\/task_/);
+  await expect(page.getByRole('heading', { name: 'Bulk delete issues' })).toBeVisible();
+  await expect(page.locator('.page-header .lozenge')).toHaveText('COMPLETE', { timeout: 20_000 });
+  await expect(page.locator('dt', { hasText: /^Processed$/ }).locator('..')).toContainText('1');
+
+  await page.getByRole('link', { name: 'Return to work items' }).click();
+  await page.goto(`/issues/ZZ?mode=basic&text=${encodeURIComponent(marker)}`);
+  await expect(page.locator('[data-navigator-row]')).toHaveCount(0);
+  const lookup = await request.get(`/rest/api/3/issue/${key}`, { headers: { Authorization: apiAuthHeader() } });
+  expect(lookup.status()).toBe(404);
+});
+
+test('V2: administrator submits a bulk move from the navigator', async ({ page, request }) => {
+  const marker = `bulk-move-${Date.now()}`;
+  const created = await request.post('/rest/api/3/issue', {
+    headers: { Authorization: apiAuthHeader() },
+    data: { fields: { project: { key: 'ZZ' }, summary: marker, issuetype: { name: 'Task' } } },
+  });
+  expect(created.status()).toBe(201);
+  const key = (await created.json()).key;
+
+  await login(page);
+  await page.goto(`/issues/ZZ?mode=basic&text=${encodeURIComponent(marker)}`);
+  await page.locator('[data-bulk-issue]').check();
+  await page.getByText('Move selected', { exact: true }).click();
+  await page.locator('.bulk-move-picker select[name="issueType"]').selectOption({ label: 'Task' });
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: 'Start move' }).click();
+  await expect(page).toHaveURL(/\/issues\/ZZ\/bulk\/task_/);
+  await expect(page.locator('.page-header .lozenge')).toHaveText('COMPLETE', { timeout: 20_000 });
+  await page.goto(`/browse/${key}`);
+  await expect(page.locator('.issue-title-block .eyebrow')).toContainText('Task');
+});
+
+test('V2: administrator discovers and runs a common bulk transition', async ({ page, request }) => {
+  const marker = `bulk-transition-${Date.now()}`;
+  const created = await request.post('/rest/api/3/issue', {
+    headers: { Authorization: apiAuthHeader() },
+    data: { fields: { project: { key: 'ZZ' }, summary: marker, issuetype: { name: 'Task' } } },
+  });
+  expect(created.status()).toBe(201);
+  const key = (await created.json()).key;
+  const before = await request.get(`/rest/api/3/issue/${key}`, { headers: { Authorization: apiAuthHeader() } });
+  expect(before.status()).toBe(200);
+  const beforeStatusID = (await before.json()).fields.status.id;
+
+  await login(page);
+  await page.goto(`/issues/ZZ?mode=basic&text=${encodeURIComponent(marker)}`);
+  await page.locator('[data-bulk-issue]').check();
+  await page.getByText('Transition selected', { exact: true }).click();
+  const transitionPicker = page.locator('.bulk-move-picker select[name="transition"]');
+  expect((await transitionPicker.locator('option').first().textContent())!.trim()).not.toBe('');
+  await transitionPicker.selectOption({ index: 0 });
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: 'Start transition' }).click();
+  await expect(page).toHaveURL(/\/issues\/ZZ\/bulk\/task_/);
+  await expect(page.locator('.page-header .lozenge')).toHaveText('COMPLETE', { timeout: 20_000 });
+  await page.goto(`/browse/${key}`);
+  const after = await request.get(`/rest/api/3/issue/${key}`, { headers: { Authorization: apiAuthHeader() } });
+  expect(after.status()).toBe(200);
+  const afterStatus = (await after.json()).fields.status;
+  expect(afterStatus.id).not.toBe(beforeStatusID);
+  await expect(page.locator('.issue-details .details-heading .lozenge')).toHaveText(afterStatus.name);
+});
+
 test('V2: custom field created via API is fillable in the UI and filterable', async ({ page, request }) => {
   const cfName = `E2E Points ${Date.now()}`;
   const created = await request.post('/rest/api/3/field', {

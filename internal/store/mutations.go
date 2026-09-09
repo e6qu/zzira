@@ -50,6 +50,7 @@ type IssueUpdate struct {
 	Labels              *[]string       // empty = clear, nil = unchanged
 	Fields              map[string]json.RawMessage
 	TriggeredWebhookIDs []string
+	TaskID              string
 }
 
 func diffItem(field, from, fromString, to, toString string) models.ChangeItem {
@@ -230,6 +231,12 @@ func (s *Store) UpdateIssue(ctx context.Context, actorID, workspaceID, issueID s
 	if err := appendAction(ctx, tx, action); err != nil {
 		return nil, nil, err
 	}
+	if up.TaskID != "" {
+		result, _ := json.Marshal(map[string]any{"jiraId": updated.JiraID, "key": updated.Key})
+		if _, err := tx.Exec(ctx, `INSERT INTO bulk_issue_task_items(task_id,issue_id,result) VALUES($1,$2,$3) ON CONFLICT DO NOTHING`, up.TaskID, issueID, result); err != nil {
+			return nil, nil, err
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, nil, err
 	}
@@ -266,6 +273,13 @@ func (s *Store) DeleteIssue(ctx context.Context, actorID, workspaceID, issueID, 
 	if err := rows.Err(); err != nil {
 		return nil, nil, err
 	}
+	for _, ref := range blobRefs {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO attachment_blob_deletions(blob_ref,workspace_id,issue_id)
+			VALUES($1,$2,$3) ON CONFLICT (blob_ref) DO NOTHING`, ref, workspaceID, issueID); err != nil {
+			return nil, nil, err
+		}
+	}
 	seq, err := nextSeq(ctx, tx, workspaceID)
 	if err != nil {
 		return nil, nil, err
@@ -296,6 +310,20 @@ func (s *Store) DeleteIssue(ctx context.Context, actorID, workspaceID, issueID, 
 		return nil, nil, err
 	}
 	return action, blobRefs, nil
+}
+
+// IssueDeletedByBulkTask lets a recovered bulk worker reconstruct a successful
+// per-item result after the issue row has already been removed. The delete
+// action and issue deletion commit together, so this is an exact idempotency
+// marker rather than a best-effort inference.
+func (s *Store) IssueDeletedByBulkTask(ctx context.Context, workspaceID, actorID, issueID, taskID string) (bool, error) {
+	var deleted bool
+	err := s.Pool.QueryRow(ctx, `SELECT EXISTS(
+		SELECT 1 FROM actions
+		WHERE workspace_id=$1 AND actor_id=$2 AND entity_type=$3 AND entity_id=$4
+		  AND op=$5 AND payload->>'reason'=$6
+	)`, workspaceID, actorID, models.EntityIssue, issueID, models.OpDelete, "bulk delete task "+taskID).Scan(&deleted)
+	return deleted, err
 }
 
 // ---- Comments (V1) ----
