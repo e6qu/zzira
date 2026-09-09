@@ -222,7 +222,7 @@ func (r *FilterSubscriptionRunner) enqueueDue(ctx context.Context, workspaceID s
 	if err != nil {
 		return err
 	}
-	if _, err = tx.Exec(ctx, `INSERT INTO filter_subscription_runs(subscription_id,scheduled_for) VALUES($1,$2) ON CONFLICT DO NOTHING`, id, scheduled); err != nil {
+	if _, err = tx.Exec(ctx, `INSERT INTO filter_subscription_runs(subscription_id,scheduled_for,available_at) VALUES($1,$2,$3) ON CONFLICT DO NOTHING`, id, scheduled, r.now()); err != nil {
 		return err
 	}
 	if _, err = tx.Exec(ctx, `UPDATE filter_subscriptions SET next_run_at=$2 WHERE id=$1`, id, next); err != nil {

@@ -29,6 +29,47 @@ test('site admin manages a directory group and its audited membership', async ({
   await expect(page.getByRole('row', { name: /Jira Service Management/ })).toBeVisible();
   await expect(page.getByRole('row', { name: /Confluence/ })).toBeVisible();
 
+  await expect(page.getByRole('heading', { name: 'Jira configuration', level: 2 })).toBeVisible();
+  const announcement = `Release maintenance ${Date.now()}`;
+  await page.getByLabel('Message', { exact: true }).fill(announcement);
+  await page.getByLabel('Visibility').selectOption('private');
+  await page.getByLabel('Show banner').check();
+  await page.getByLabel('People can dismiss it').check();
+  await page.getByRole('button', { name: 'Save announcement' }).click();
+  await expect(page).toHaveURL(/saved=Announcement\+banner\+saved/);
+  const banner = page.getByRole('complementary', { name: 'Site announcement' });
+  await expect(banner).toContainText(announcement);
+  const bannerAPI = await page.context().request.get('/rest/api/3/announcementBanner');
+  expect(bannerAPI.status()).toBe(200);
+  expect(await bannerAPI.json()).toMatchObject({ message: announcement, isEnabled: true, isDismissible: true, visibility: 'private' });
+  await banner.getByRole('button', { name: 'Dismiss announcement' }).click();
+  await expect(banner).toBeHidden();
+
+  await page.getByLabel('Hours per day').fill('7.5');
+  await page.getByLabel('Days per week').fill('4.5');
+  await page.getByLabel('Display format', { exact: true }).selectOption('hours');
+  await page.getByLabel('Default unit').selectOption('hour');
+  await page.getByRole('button', { name: 'Save time tracking' }).click();
+  await expect(page).toHaveURL(/saved=Time\+tracking\+settings\+saved/);
+  const timeAPI = await page.context().request.get('/rest/api/3/configuration/timetracking/options');
+  expect(await timeAPI.json()).toEqual({ defaultUnit: 'hour', timeFormat: 'hours', workingDaysPerWeek: 4.5, workingHoursPerDay: 7.5 });
+
+  const navigator = page.locator('form[action="/admin/jira-configuration/columns"]');
+  await navigator.locator('label').filter({ hasText: 'Priority' }).getByRole('checkbox').uncheck();
+  await navigator.getByRole('button', { name: 'Save default columns' }).click();
+  await expect(page).toHaveURL(/saved=Issue\+navigator\+columns\+saved/);
+  const columnsAPI = await page.context().request.get('/rest/api/3/settings/columns');
+  const columns = await columnsAPI.json();
+  expect(columns.map((column: { value: string }) => column.value)).not.toContain('priority');
+
+  await page.getByText('Advanced application properties', { exact: true }).click();
+  const titleProperty = page.locator('form').filter({ hasText: 'jira.title' });
+  await titleProperty.getByRole('textbox').fill('ZZIRA Cloud');
+  await titleProperty.getByRole('button', { name: 'Save' }).click();
+  await expect(page).toHaveURL(/saved=Application\+property\+saved/);
+  const propertyAPI = await page.context().request.get('/rest/api/3/application-properties?key=jira.title');
+  expect(await propertyAPI.json()).toMatchObject({ id: 'jira.title', value: 'ZZIRA Cloud' });
+
   const domainName = `journey-${Date.now()}.example.invalid`;
   await page.getByLabel('Domain name').fill(domainName);
   await page.getByRole('button', { name: 'Add domain' }).click();
@@ -54,7 +95,7 @@ test('site admin manages a directory group and its audited membership', async ({
 
   const groupName = `delivery-managers-${Date.now()}`;
   await page.getByLabel('Group name').fill(groupName);
-  await page.getByLabel('Description').fill('Coordinates plans, releases, and delivery evidence.');
+  await page.getByLabel('Description', { exact: true }).fill('Coordinates plans, releases, and delivery evidence.');
   await page.getByRole('button', { name: 'Create group' }).click();
   await expect(page).toHaveURL(/\/admin\?saved=Group\+created$/);
   const group = page.locator('.admin-group').filter({ has: page.getByRole('heading', { name: groupName }) });
@@ -141,7 +182,7 @@ test('site admin manages a directory group and its audited membership', async ({
   await expect(page.locator('.admin-group').filter({ has: page.getByRole('heading', { name: groupName }) })).toHaveCount(0);
   await expect(page.locator('.admin-audit')).toContainText('group.deleted');
   await page.getByLabel('Search audit log').fill(groupName);
-  await page.getByLabel('Action').selectOption('group.deleted');
+  await page.getByLabel('Action', { exact: true }).selectOption('group.deleted');
   await page.getByRole('button', { name: 'Filter events' }).click();
   await expect(page).toHaveURL(/auditAction=group.deleted/);
   await expect(page.locator('.admin-audit')).toContainText('group.deleted');
@@ -156,4 +197,19 @@ test('site admin manages a directory group and its audited membership', async ({
   await policy.getByRole('button', { name: 'Delete policy' }).click();
   await expect(page).toHaveURL(/\/admin\?saved=Policy\+deleted$/);
   await expect(page.locator('.admin-policy').filter({ hasText: policyName })).toHaveCount(0);
+
+  await page.getByLabel('Show banner').uncheck();
+  await page.getByRole('button', { name: 'Save announcement' }).click();
+  await expect(page).toHaveURL(/saved=Announcement\+banner\+saved/);
+  await page.getByLabel('Hours per day').fill('8');
+  await page.getByLabel('Days per week').fill('5');
+  await page.getByLabel('Display format', { exact: true }).selectOption('pretty');
+  await page.getByLabel('Default unit').selectOption('minute');
+  await page.getByRole('button', { name: 'Save time tracking' }).click();
+  await page.locator('form[action="/admin/jira-configuration/columns"]').locator('label').filter({ hasText: 'Priority' }).getByRole('checkbox').check();
+  await page.getByRole('button', { name: 'Save default columns' }).click();
+  await page.getByText('Advanced application properties', { exact: true }).click();
+  const resetTitleProperty = page.locator('form').filter({ hasText: 'jira.title' });
+  await resetTitleProperty.getByRole('textbox').fill('Jira');
+  await resetTitleProperty.getByRole('button', { name: 'Save' }).click();
 });

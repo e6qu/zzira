@@ -5,9 +5,11 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	appRuntime "github.com/e6qu/zzira/internal/apps"
+	"github.com/e6qu/zzira/internal/commands"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/e6qu/zzira/internal/authn"
@@ -44,6 +46,14 @@ type adminPageData struct {
 	InvitationNotificationsConfigured bool
 	ProviderRegistrationConfigured    bool
 	AppRegistrationConfigured         bool
+	JiraConfiguration                 *models.JiraSiteConfiguration
+	ApplicationProperties             []models.ApplicationProperty
+	NavigatorColumns                  []adminNavigatorColumn
+}
+
+type adminNavigatorColumn struct {
+	Value, Label string
+	Selected     bool
 }
 
 type adminAuditAction struct {
@@ -52,6 +62,12 @@ type adminAuditAction struct {
 }
 
 var adminAuditActions = []adminAuditAction{
+	{Value: "jira.announcement.updated", Name: "Jira announcement updated"},
+	{Value: "jira.application.property.updated", Name: "Jira application property updated"},
+	{Value: "jira.configuration.updated", Name: "Jira configuration updated"},
+	{Value: "jira.navigator.columns.updated", Name: "Jira navigator columns updated"},
+	{Value: "jira.timetracking.options.updated", Name: "Jira time tracking options updated"},
+	{Value: "jira.timetracking.provider.updated", Name: "Jira time tracking provider updated"},
 	{Value: "domain.created", Name: "Domain added"},
 	{Value: "domain.deleted", Name: "Domain removed"},
 	{Value: "domain.verified", Name: "Domain verified"},
@@ -152,6 +168,33 @@ func (h *Handler) adminData(r *http.Request, workspaceID, message string) (admin
 			return adminPageData{}, err
 		}
 	}
+	data.JiraConfiguration, err = h.Store.JiraSiteConfiguration(r.Context(), workspaceID)
+	if err != nil {
+		return adminPageData{}, err
+	}
+	data.ApplicationProperties = commands.JiraApplicationProperties(data.JiraConfiguration.ApplicationProperties)
+	selectedColumns := map[string]bool{}
+	for _, column := range data.JiraConfiguration.NavigatorColumns {
+		selectedColumns[column] = true
+	}
+	columnLabels := []adminNavigatorColumn{
+		{Value: "issuekey", Label: "Key"}, {Value: "summary", Label: "Summary"}, {Value: "description", Label: "Description"},
+		{Value: "issuetype", Label: "Work type"}, {Value: "priority", Label: "Priority"}, {Value: "status", Label: "Status"},
+		{Value: "assignee", Label: "Assignee"}, {Value: "reporter", Label: "Reporter"}, {Value: "created", Label: "Created"},
+		{Value: "updated", Label: "Updated"}, {Value: "fixVersions", Label: "Fix versions"}, {Value: "versions", Label: "Affects versions"},
+		{Value: "components", Label: "Components"}, {Value: "labels", Label: "Labels"},
+	}
+	customFields, fieldErr := h.Store.CustomFieldsForWorkspace(r.Context(), workspaceID)
+	if fieldErr != nil {
+		return adminPageData{}, fieldErr
+	}
+	for _, field := range customFields {
+		columnLabels = append(columnLabels, adminNavigatorColumn{Value: field.ID, Label: field.Name})
+	}
+	for i := range columnLabels {
+		columnLabels[i].Selected = selectedColumns[columnLabels[i].Value]
+	}
+	data.NavigatorColumns = columnLabels
 	if len(directories) == 0 {
 		return data, nil
 	}
@@ -192,6 +235,87 @@ func (h *Handler) adminData(r *http.Request, workspaceID, message string) (admin
 		return adminPageData{}, err
 	}
 	return data, nil
+}
+
+func adminSiteConfigurationError(w http.ResponseWriter, err error) {
+	status := http.StatusInternalServerError
+	if errors.Is(err, commands.ErrSiteConfigurationValidation) {
+		status = http.StatusBadRequest
+	}
+	http.Error(w, err.Error(), status)
+}
+
+func (h *Handler) UpdateAdminJiraConfiguration(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok {
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	section := r.PathValue("section")
+	var err error
+	message := "Jira configuration saved"
+	switch section {
+	case "announcement":
+		err = h.Commands.UpdateAnnouncementBanner(r.Context(), workspaceID, user.ID, models.AnnouncementBanner{
+			Message: r.PostFormValue("message"), Visibility: r.PostFormValue("visibility"),
+			IsEnabled: r.PostForm.Has("isEnabled"), IsDismissible: r.PostForm.Has("isDismissible"),
+		})
+		message = "Announcement banner saved"
+	case "features":
+		cfg := models.JiraSiteConfiguration{
+			AttachmentsEnabled: r.PostForm.Has("attachmentsEnabled"), IssueLinkingEnabled: r.PostForm.Has("issueLinkingEnabled"),
+			SubTasksEnabled: r.PostForm.Has("subTasksEnabled"), TimeTrackingEnabled: r.PostForm.Has("timeTrackingEnabled"),
+			UnassignedIssuesAllowed: r.PostForm.Has("unassignedIssuesAllowed"), VotingEnabled: r.PostForm.Has("votingEnabled"),
+			WatchingEnabled: r.PostForm.Has("watchingEnabled"),
+		}
+		err = h.Commands.UpdateGlobalJiraConfiguration(r.Context(), workspaceID, user.ID, cfg)
+		message = "Jira features saved"
+	case "timetracking":
+		workingHours, hoursErr := strconv.ParseFloat(r.PostFormValue("workingHoursPerDay"), 64)
+		workingDays, daysErr := strconv.ParseFloat(r.PostFormValue("workingDaysPerWeek"), 64)
+		if hoursErr != nil || daysErr != nil {
+			http.Error(w, "working hours and days must be numbers", http.StatusBadRequest)
+			return
+		}
+		err = h.Commands.UpdateTimeTrackingOptions(r.Context(), workspaceID, user.ID, models.TimeTrackingConfiguration{
+			WorkingHoursPerDay: workingHours, WorkingDaysPerWeek: workingDays,
+			TimeFormat: r.PostFormValue("timeFormat"), DefaultUnit: r.PostFormValue("defaultUnit"),
+		})
+		message = "Time tracking settings saved"
+	case "columns":
+		err = h.Commands.UpdateNavigatorColumns(r.Context(), workspaceID, user.ID, r.PostForm["columns"])
+		message = "Issue navigator columns saved"
+	default:
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		adminSiteConfigurationError(w, err)
+		return
+	}
+	http.Redirect(w, r, "/admin?saved="+url.QueryEscape(message)+"#admin-jira-configuration", http.StatusSeeOther)
+}
+
+func (h *Handler) UpdateAdminJiraApplicationProperty(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok {
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	key := r.PathValue("property")
+	if _, found := commands.JiraApplicationPropertyDefinition(key); !found {
+		http.NotFound(w, r)
+		return
+	}
+	if err := h.Commands.UpdateApplicationProperty(r.Context(), workspaceID, user.ID, key, r.PostFormValue("value")); err != nil {
+		adminSiteConfigurationError(w, err)
+		return
+	}
+	http.Redirect(w, r, "/admin?saved="+url.QueryEscape("Application property saved")+"#admin-advanced-settings", http.StatusSeeOther)
 }
 
 func (h *Handler) CreateAdminApp(w http.ResponseWriter, r *http.Request) {

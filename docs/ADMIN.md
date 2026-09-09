@@ -43,6 +43,13 @@ transaction. Administrators cannot suspend or remove their own account.
 Ordinary users do not see the administration navigation item and receive 403 on
 direct access.
 
+The Jira configuration section publishes dismissible public or signed-in
+announcement banners, toggles work-item features, configures time tracking,
+chooses ordered issue-navigator columns (including custom fields), and edits the
+documented application-property catalog. The same state is exposed through the
+Jira Cloud v3 contracts, and core issue commands enforce disabled features. See
+[JIRA_SITE_CONFIGURATION.md](JIRA_SITE_CONFIGURATION.md).
+
 With `ZZIRA_IDENTITY_ENCRYPTION_KEY` configured, the same page registers custom
 OpenID Connect providers through validated discovery, rotates their client
 secrets, enables or disables sign-in, and deletes registrations. Secrets use an

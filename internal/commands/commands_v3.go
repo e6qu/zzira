@@ -18,6 +18,13 @@ func (s *Service) AddWorklog(ctx context.Context, actorID, workspaceID, issueIDO
 	if err != nil {
 		return nil, nil, err
 	}
+	configuration, err := s.jiraSiteConfiguration(ctx, workspaceID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !configuration.TimeTrackingEnabled {
+		return nil, nil, fmt.Errorf("time tracking is disabled for this site")
+	}
 	if seconds <= 0 {
 		return nil, nil, fmt.Errorf("timeSpentSeconds must be positive")
 	}
@@ -44,6 +51,13 @@ func (s *Service) AddAttachment(ctx context.Context, actorID, workspaceID, issue
 	issue, err := s.visibleIssue(ctx, actorID, workspaceID, issueIDOrKey)
 	if err != nil {
 		return nil, nil, err
+	}
+	configuration, err := s.jiraSiteConfiguration(ctx, workspaceID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !configuration.AttachmentsEnabled {
+		return nil, nil, fmt.Errorf("attachments are disabled for this site")
 	}
 	if s.Blobs == nil {
 		return nil, nil, fmt.Errorf("attachment storage not configured")

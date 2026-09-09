@@ -14,6 +14,13 @@ func (s *Service) SetWatching(ctx context.Context, actorID, workspaceID, issueID
 	if err != nil {
 		return nil, err
 	}
+	configuration, err := s.jiraSiteConfiguration(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	if watching && !configuration.WatchingEnabled {
+		return nil, fmt.Errorf("watching is disabled for this site")
+	}
 	if watching {
 		return s.Store.AddWatcher(ctx, actorID, workspaceID, issue.ID, actorID)
 	}
@@ -27,6 +34,13 @@ func (s *Service) SetVoting(ctx context.Context, actorID, workspaceID, issueIDOr
 	if err != nil {
 		return nil, err
 	}
+	configuration, err := s.jiraSiteConfiguration(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	if voting && !configuration.VotingEnabled {
+		return nil, fmt.Errorf("voting is disabled for this site")
+	}
 	if voting {
 		return s.Store.AddVote(ctx, actorID, workspaceID, issue.ID, actorID)
 	}
@@ -39,6 +53,13 @@ func (s *Service) LinkIssue(ctx context.Context, actorID, workspaceID, issueIDOr
 	issue, err := s.visibleIssue(ctx, actorID, workspaceID, issueIDOrKey)
 	if err != nil {
 		return nil, nil, err
+	}
+	configuration, err := s.jiraSiteConfiguration(ctx, workspaceID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !configuration.IssueLinkingEnabled {
+		return nil, nil, fmt.Errorf("work item linking is disabled for this site")
 	}
 	other, err := s.visibleIssue(ctx, actorID, workspaceID, otherIDOrKey)
 	if err != nil {

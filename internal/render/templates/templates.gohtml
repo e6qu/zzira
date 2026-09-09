@@ -68,6 +68,7 @@
     <span aria-hidden="true">☀</span>
   </button>
 </header>
+{{with .Announcement}}<aside class="announcement-banner" data-announcement-hash="{{.HashID}}" aria-label="Site announcement"><p>{{.Message}}</p>{{if .IsDismissible}}<button type="button" class="icon-button" data-dismiss-announcement aria-label="Dismiss announcement">×</button>{{end}}</aside>{{end}}
 {{end}}
 
 {{define "workspace_nav"}}
@@ -227,11 +228,13 @@
 {{end}}
 {{end}}
 {{if .CanEdit}}
-{{if .CanTriage}}
+{{if and .CanTriage (or .WatchingEnabled .IsWatching)}}
       <form method="post" action="/issues/{{.Issue.Key}}/watch" hx-post="/issues/{{.Issue.Key}}/watch" hx-target="#issue-root" hx-swap="outerHTML">
         <input type="hidden" name="watching" value="{{if .IsWatching}}false{{else}}true{{end}}">
         <button type="submit" class="btn watch-button" aria-pressed="{{.IsWatching}}" aria-keyshortcuts="W"><span aria-hidden="true">◉</span>{{if .IsWatching}}Watching{{else}}Watch{{end}} <span class="action-count">{{len .Watchers}}</span></button>
       </form>
+{{end}}
+{{if and .CanTriage (or .VotingEnabled .HasVoted)}}
       <form method="post" action="/issues/{{.Issue.Key}}/vote" hx-post="/issues/{{.Issue.Key}}/vote" hx-target="#issue-root" hx-swap="outerHTML">
         <input type="hidden" name="voting" value="{{if .HasVoted}}false{{else}}true{{end}}">
         <button type="submit" class="btn watch-button" aria-pressed="{{.HasVoted}}"><span aria-hidden="true">▲</span>{{if .HasVoted}}Voted{{else}}Vote{{end}} <span class="action-count">{{len .Voters}}</span></button>
@@ -252,7 +255,7 @@
 {{end}}
       <section class="issue-section linked-work" aria-labelledby="linked-work-title">
         <div class="section-heading"><h2 id="linked-work-title">Linked work <span class="section-count">{{len .Links}}</span></h2>
-        {{if .CanTriage}}<details class="link-create"><summary class="quiet-action">Link work item</summary>
+        {{if and .CanTriage .IssueLinkingEnabled}}<details class="link-create"><summary class="quiet-action">Link work item</summary>
           <form method="post" action="/issues/{{.Issue.Key}}/links" hx-post="/issues/{{.Issue.Key}}/links" hx-target="#issue-root" hx-swap="outerHTML">
             <label for="link-type">Relationship</label><select id="link-type" name="type" required>{{range .LinkTypes}}<option value="{{.ID}}">{{.Outward}}</option>{{end}}</select>
             <label for="link-issue">Work item key</label><input id="link-issue" name="issue" placeholder="{{.ProjectKey}}-123" autocomplete="off" required>
@@ -287,7 +290,7 @@
           {{range .Attachments}}<li class="attachment"><span class="attachment-icon" aria-hidden="true">&#128206;</span><span class="attachment-copy"><a href="/rest/api/3/attachment/content/{{.ID}}">{{.Filename}}</a><small>{{humanSize .Size}}{{if .AuthorName}} · added by {{.AuthorName}}{{end}}</small></span>
           {{if and $.CanTriage (eq .AuthorID $.CurrentUserID)}}<form method="post" action="/issues/{{$.Issue.Key}}/attachments/{{.ID}}/delete" hx-delete="/issues/{{$.Issue.Key}}/attachments/{{.ID}}" hx-target="#issue-root" hx-swap="outerHTML" hx-confirm="Delete attachment {{.Filename}}?"><button type="submit" class="icon-danger" aria-label="Delete attachment {{.Filename}}">×</button></form>{{end}}</li>{{end}}
         </ul>{{else}}<p class="muted">No attachments added.</p>{{end}}
-        {{if .CanTriage}}<form class="upload-form" method="post" action="/issues/{{.Issue.Key}}/attachments" enctype="multipart/form-data"><label for="attachment-file">Add attachment</label><input id="attachment-file" type="file" name="file" required><button type="submit" class="btn">Attach file</button></form>{{end}}
+        {{if and .CanTriage .AttachmentsEnabled}}<form class="upload-form" method="post" action="/issues/{{.Issue.Key}}/attachments" enctype="multipart/form-data"><label for="attachment-file">Add attachment</label><input id="attachment-file" type="file" name="file" required><button type="submit" class="btn">Attach file</button></form>{{end}}
       </section>
 
       <div class="activity-heading"><div><span class="eyebrow">One chronological record</span><h2 id="activity-title">Activity</h2></div>
@@ -316,7 +319,7 @@
           <input type="hidden" name="adf">
           <div class="form-actions"><small class="muted">Use the toolbar to format your update.</small><button type="submit" class="btn btn-primary">Add comment</button></div>
         </form>
-        {{if .CanTriage}}<form class="worklog-form" method="post" action="/issues/{{.Issue.Key}}/worklogs" hx-post="/issues/{{.Issue.Key}}/worklogs" hx-target="#issue-root" hx-swap="outerHTML">
+        {{if and .CanTriage .TimeTrackingEnabled}}<form class="worklog-form" method="post" action="/issues/{{.Issue.Key}}/worklogs" hx-post="/issues/{{.Issue.Key}}/worklogs" hx-target="#issue-root" hx-swap="outerHTML">
           <fieldset><legend>Or log work</legend><label for="worklog-seconds">Time in seconds</label>
           <input id="worklog-seconds" name="seconds" type="number" min="1" placeholder="3600" required class="worklog-seconds">
           <label for="worklog-comment">Work description <span class="muted">optional</span></label><input id="worklog-comment" name="comment" placeholder="What did you work on?" class="worklog-comment"><button type="submit" class="btn">Log time</button></fieldset>

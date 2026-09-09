@@ -69,6 +69,7 @@ use `/rest/zzira/1`.
 | Endpoint | Status | Notes |
 |---|---|---|
 | POST/GET /rest/api/3/field · GET /field/{id} | ✅ | text/number/datetime |
+| Announcement banner · Jira configuration · application properties · time tracking · issue navigator defaults | 🟡 | Thirteen Jira v3 operations share durable audited state with `/admin`, feature enforcement and browser/API journeys; Marketplace time providers, complete look-and-feel application and exact advanced validation remain; see [JIRA_SITE_CONFIGURATION.md](../../docs/JIRA_SITE_CONFIGURATION.md) |
 | /issue/createmeta + /editmeta include custom fields | ✅ | context-aware |
 | Custom fields in issue beans + JQL | ✅ | numeric and date-time comparisons, including login boundaries |
 | POST/GET /rest/api/3/webhook · DELETE /webhook/{id} · GET /webhook/refresh | ✅ | log-driven dispatcher, watermark, exactly-once claims |

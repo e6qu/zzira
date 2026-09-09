@@ -55,6 +55,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	path := strings.TrimPrefix(r.URL.Path, "/rest/api/3")
 	switch {
+	case path == "/announcementBanner":
+		h.siteAnnouncementBanner(w, r)
+	case path == "/application-properties" || path == "/application-properties/advanced-settings" || strings.HasPrefix(path, "/application-properties/"):
+		h.siteApplicationProperties(w, r, path)
+	case path == "/configuration":
+		h.globalJiraConfiguration(w, r)
+	case path == "/configuration/timetracking" || path == "/configuration/timetracking/list" || path == "/configuration/timetracking/options":
+		h.siteTimeTracking(w, r, path)
+	case path == "/settings/columns":
+		h.issueNavigatorColumns(w, r)
 	case strings.HasPrefix(path, "/bulk/"):
 		h.bulkIssueRoute(w, r, strings.TrimPrefix(path, "/bulk/"))
 	case path == "/dashboard":

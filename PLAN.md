@@ -131,7 +131,9 @@ Complete Jira's shared work-management and configuration layer:
 - finish permission, notification, issue-security, workflow, and field-scheme
   administration with impact previews and audited migrations;
 - finish user preferences, notifications, votes, watches, properties,
-  attachments, email, retention, and remaining platform REST families; and
+  attachments, email, retention, and remaining platform REST families; site
+  configuration now covers announcements, feature controls, time tracking,
+  navigator defaults, application properties, audit, and API/UI coherence; and
 - prove contributor, project-admin, site-admin, and support-admin journeys.
 
 **Exit gate:** all 617 Jira Platform operations are assessed; every in-scope

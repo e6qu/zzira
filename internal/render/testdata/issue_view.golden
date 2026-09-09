@@ -21,6 +21,8 @@
         <input type="hidden" name="watching" value="false">
         <button type="submit" class="btn watch-button" aria-pressed="true" aria-keyshortcuts="W"><span aria-hidden="true">◉</span>Watching <span class="action-count">1</span></button>
       </form>
+
+
       <form method="post" action="/issues/ZZ-1/vote" hx-post="/issues/ZZ-1/vote" hx-target="#issue-root" hx-swap="outerHTML">
         <input type="hidden" name="voting" value="false">
         <button type="submit" class="btn watch-button" aria-pressed="true"><span aria-hidden="true">▲</span>Voted <span class="action-count">1</span></button>

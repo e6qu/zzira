@@ -145,39 +145,44 @@ type SyncResponse struct {
 // ---- View models (render-only) ----
 
 type IssueView struct {
-	Issue             Issue
-	ProjectKey        string
-	ProjectName       string
-	BoardID           string
-	CanEdit           bool
-	CanTriage         bool
-	CurrentUserID     string
-	Comments          []Comment
-	Transitions       []WorkflowTransition
-	History           []ChangelogEntry
-	Attachments       []Attachment
-	Worklogs          []Worklog
-	Activity          []IssueActivityItem
-	Members           []User
-	Priorities        []Priority
-	SecurityLevels    []WorkflowTransition
-	SecurityLevelName string
-	CustomFields      []CustomFieldView
-	Watchers          []User
-	IsWatching        bool
-	Voters            []User
-	HasVoted          bool
-	Links             []IssueLinkView
-	LinkTypes         []LinkType
-	Children          []Issue
-	ParentOptions     []CreateFieldOption
-	Forms             []IssueForm
-	Development       []DevelopmentItem
-	Delivery          []DeliveryItem
-	AppPanels         []AppModule
-	AppActivityTabs   []AppModule
-	AppContexts       []AppModule
-	AppIssueContent   []AppIssueContent
+	Issue               Issue
+	ProjectKey          string
+	ProjectName         string
+	BoardID             string
+	CanEdit             bool
+	CanTriage           bool
+	AttachmentsEnabled  bool
+	IssueLinkingEnabled bool
+	TimeTrackingEnabled bool
+	VotingEnabled       bool
+	WatchingEnabled     bool
+	CurrentUserID       string
+	Comments            []Comment
+	Transitions         []WorkflowTransition
+	History             []ChangelogEntry
+	Attachments         []Attachment
+	Worklogs            []Worklog
+	Activity            []IssueActivityItem
+	Members             []User
+	Priorities          []Priority
+	SecurityLevels      []WorkflowTransition
+	SecurityLevelName   string
+	CustomFields        []CustomFieldView
+	Watchers            []User
+	IsWatching          bool
+	Voters              []User
+	HasVoted            bool
+	Links               []IssueLinkView
+	LinkTypes           []LinkType
+	Children            []Issue
+	ParentOptions       []CreateFieldOption
+	Forms               []IssueForm
+	Development         []DevelopmentItem
+	Delivery            []DeliveryItem
+	AppPanels           []AppModule
+	AppActivityTabs     []AppModule
+	AppContexts         []AppModule
+	AppIssueContent     []AppIssueContent
 }
 
 // IssueActivityItem is one entry in the issue's chronological activity ledger.

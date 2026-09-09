@@ -148,5 +148,16 @@ func (h *Handler) writeWorkspacePageStatus(w http.ResponseWriter, r *http.Reques
 	if preferredProject != "" {
 		rememberCurrentProject(w, navigation)
 	}
-	writePageStatus(w, name, pageData{User: user, Data: data, Active: active, Navigation: navigation}, status)
+	var announcement *models.AnnouncementBanner
+	configuration, err := h.Store.JiraSiteConfiguration(r.Context(), workspaceID)
+	if err != nil {
+		log.Printf("render %s site configuration: %v", name, err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if configuration.Announcement.IsEnabled {
+		banner := configuration.Announcement
+		announcement = &banner
+	}
+	writePageStatus(w, name, pageData{User: user, Data: data, Active: active, Navigation: navigation, Announcement: announcement}, status)
 }
