@@ -88,7 +88,11 @@ func validateSearchOptions(options *searchOptions) *jerr {
 	default:
 		return &jerr{status: 400, message: "validateQuery must be strict, warn, none, true, or false."}
 	}
-	allowedExpand := map[string]bool{"names": true, "schema": true, "renderedFields": true}
+	allowedExpand := map[string]bool{
+		"names": true, "schema": true, "renderedFields": true,
+		"transitions": true, "operations": true, "editmeta": true,
+		"changelog": true, "versionedRepresentations": true,
+	}
 	seenExpand := map[string]bool{}
 	for _, value := range options.Expand {
 		if !allowedExpand[value] {
@@ -97,7 +101,7 @@ func validateSearchOptions(options *searchOptions) *jerr {
 		seenExpand[value] = true
 	}
 	options.Expand = options.Expand[:0]
-	for _, value := range []string{"renderedFields", "names", "schema"} {
+	for _, value := range []string{"renderedFields", "names", "schema", "transitions", "operations", "editmeta", "changelog", "versionedRepresentations"} {
 		if seenExpand[value] {
 			options.Expand = append(options.Expand, value)
 		}
@@ -260,18 +264,63 @@ func hasSearchExpand(options searchOptions, name string) bool {
 	return false
 }
 
-func (h *Handler) searchIssueBeans(ctx context.Context, issues []*models.Issue, options searchOptions, defaultAll bool, definitions []searchFieldDefinition) ([]map[string]any, error) {
+func (h *Handler) searchIssueBeans(ctx context.Context, workspaceID, userID string, issues []*models.Issue, options searchOptions, defaultAll bool, definitions []searchFieldDefinition) ([]map[string]any, error) {
 	requested := normalizeSearchFields(options.Fields, definitions, options.FieldsByKeys)
 	beans := make([]map[string]any, 0, len(issues))
+	editMetadata := map[string]map[string]any{}
 	for _, issue := range issues {
 		bean := remapSearchIssueFields(h.issueBean(issue), definitions, options.FieldsByKeys)
 		bean = projectSearchIssue(bean, requested, defaultAll)
 		if len(options.Expand) > 0 && len(bean) > 1 {
 			bean["expand"] = strings.Join(options.Expand, ",")
 		}
+		fields, _ := bean["fields"].(map[string]any)
 		if hasSearchExpand(options, "renderedFields") {
-			fields, _ := bean["fields"].(map[string]any)
 			bean["renderedFields"] = renderedSearchFields(fields)
+		}
+		if hasSearchExpand(options, "transitions") {
+			transitions, err := h.issueTransitionBeans(ctx, workspaceID, userID, issue)
+			if err != nil {
+				return nil, err
+			}
+			bean["transitions"] = transitions
+		}
+		if hasSearchExpand(options, "operations") {
+			base := strings.TrimRight(h.BaseURL, "/") + "/browse/" + issue.Key
+			bean["operations"] = map[string]any{"linkGroups": []any{map[string]any{
+				"id": "opsbar-operations", "links": []any{
+					map[string]any{"id": "edit-issue", "label": "Edit", "title": "Edit issue", "href": base + "?edit=true", "weight": 10},
+					map[string]any{"id": "delete-issue", "label": "Delete", "title": "Delete issue", "href": base + "?delete=true", "weight": 20},
+				},
+			}}}
+		}
+		if hasSearchExpand(options, "editmeta") {
+			cacheKey := issue.ProjectID + ":" + issue.IssueType.ID
+			metadata := editMetadata[cacheKey]
+			if metadata == nil {
+				var err error
+				metadata, err = h.issueEditMetadata(ctx, workspaceID, userID, issue)
+				if err != nil {
+					return nil, err
+				}
+				editMetadata[cacheKey] = metadata
+			}
+			bean["editmeta"] = metadata
+		}
+		if hasSearchExpand(options, "changelog") {
+			page, err := h.issueChangelogPage(ctx, workspaceID, issue.ID, true)
+			if err != nil {
+				return nil, err
+			}
+			bean["changelog"] = page
+		}
+		if hasSearchExpand(options, "versionedRepresentations") {
+			versions := map[string]any{}
+			for field, value := range fields {
+				versions[field] = map[string]any{"1": value}
+			}
+			bean["versionedRepresentations"] = versions
+			delete(bean, "fields")
 		}
 		if len(options.Properties) > 0 {
 			stored, err := h.Store.IssueProperties(ctx, issue.ID)

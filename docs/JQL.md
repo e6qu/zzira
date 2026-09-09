@@ -44,8 +44,12 @@ cursor reused with another query, workspace, or user.
 Legacy and enhanced search accept repeated or comma-delimited field selectors,
 `*all`/`*navigable`, exclusions, and custom-field IDs or installed-app keys.
 `fieldsByKeys` controls installed-app output keys. The `names`, `schema`, and
-`renderedFields` expansions follow the selected field set, and each issue can
-include as many as five requested JSON properties. Request bodies reject
+`renderedFields` expansions follow the selected field set. Transition expansion
+uses the executable workflow-rule evaluator; edit metadata, immutable changelog,
+and issue-operation expansions reuse their issue-resource builders. Versioned
+representations expose the selected current values under version `1` and replace
+the normal `fields` object. Each issue can include as many as five requested
+JSON properties. Request bodies reject
 unknown fields and trailing JSON; unsupported expansion names, invalid boolean
 options, archived-project requests before archive support exists, and numeric
 reconciliation requests before numeric issue IDs exist return explicit errors.
@@ -87,8 +91,8 @@ The search and JQL service resources remain assessed as partial. The remaining
 PR 1 work adds app-function invocation in the compiler, more built-in functions
 and multi-value fields, complete personal-data migration for list/history
 operands and unknown-user reporting; project-aware validation warnings; exact
-transition, operation, edit metadata, changelog and versioned-representation
-expansions; strong-consistency reconciliation; and
+historical versioned representations and richer rendered values;
+strong-consistency reconciliation; and
 snapshot/keyset semantics for pages whose matching work items change between
 requests.
 

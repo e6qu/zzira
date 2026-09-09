@@ -474,7 +474,7 @@ func (h *Handler) runSearch(w http.ResponseWriter, r *http.Request, jqlText stri
 		return
 	}
 	definitions := searchFieldDefinitions(customFields)
-	beans, err := h.searchIssueBeans(r.Context(), issues, options, true, definitions)
+	beans, err := h.searchIssueBeans(r.Context(), wsID, userID, issues, options, true, definitions)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "Could not load issue properties.")
 		return
@@ -731,7 +731,7 @@ func (h *Handler) searchJQL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	definitions := searchFieldDefinitions(customFields)
-	beans, err := h.searchIssueBeans(r.Context(), issues, options, false, definitions)
+	beans, err := h.searchIssueBeans(r.Context(), wsID, userID, issues, options, false, definitions)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "Could not load issue properties.")
 		return

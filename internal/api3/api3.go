@@ -4,6 +4,7 @@
 package api3
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -958,56 +959,54 @@ func (h *Handler) listTransitions(w http.ResponseWriter, r *http.Request, idOrKe
 		writeJerr(w, e)
 		return
 	}
-	wf, err := h.Store.WorkflowForProjectAndIssueType(r.Context(), issue.ProjectID, issue.IssueType.ID)
+	beans, err := h.issueTransitionBeans(r.Context(), wsID, userID, issue)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
-	}
-	beans := []map[string]any{}
-	evaluation := workflow.ContextForIssue(userID, issue)
-	evaluation.IsAPI = true
-	evaluation.StatusHistory, err = h.Store.IssueStatusHistory(r.Context(), wsID, issue.ID)
-	if err != nil {
-		jiraError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	evaluation.Transitions, err = h.Store.IssueTransitionHistory(r.Context(), wsID, issue.ID)
-	if err != nil {
-		jiraError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	evaluation.ParentStatus, evaluation.ChildStatuses, err = h.Store.IssueHierarchyStatuses(r.Context(), wsID, issue.ID)
-	if err != nil {
-		jiraError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	for _, t := range wf.AvailableFor(issue.Status.ID, evaluation) {
-		status, err := h.Store.StatusByIDForProject(r.Context(), t.To, issue.ProjectID)
-		if err != nil {
-			jiraError(w, http.StatusInternalServerError, "internal error")
-			return
-		}
-		fields := map[string]any{}
-		required := t.RequiredFields()
-		for _, field := range t.ScreenFields() {
-			fields[field] = transitionFieldMetadata(field, required[field])
-		}
-		beans = append(beans, map[string]any{
-			"id":            t.ID,
-			"name":          t.Name,
-			"to":            h.statusBean(status),
-			"hasScreen":     t.Screen != nil,
-			"isGlobal":      false,
-			"isInitial":     false,
-			"isConditional": t.Conditions != nil,
-			"isAvailable":   true,
-			"fields":        fields,
-		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"expand":      "transitions",
 		"transitions": beans,
 	})
+}
+
+func (h *Handler) issueTransitionBeans(ctx context.Context, workspaceID, userID string, issue *models.Issue) ([]map[string]any, error) {
+	wf, err := h.Store.WorkflowForProjectAndIssueType(ctx, issue.ProjectID, issue.IssueType.ID)
+	if err != nil {
+		return nil, err
+	}
+	evaluation := workflow.ContextForIssue(userID, issue)
+	evaluation.IsAPI = true
+	evaluation.StatusHistory, err = h.Store.IssueStatusHistory(ctx, workspaceID, issue.ID)
+	if err != nil {
+		return nil, err
+	}
+	evaluation.Transitions, err = h.Store.IssueTransitionHistory(ctx, workspaceID, issue.ID)
+	if err != nil {
+		return nil, err
+	}
+	evaluation.ParentStatus, evaluation.ChildStatuses, err = h.Store.IssueHierarchyStatuses(ctx, workspaceID, issue.ID)
+	if err != nil {
+		return nil, err
+	}
+	beans := []map[string]any{}
+	for _, transition := range wf.AvailableFor(issue.Status.ID, evaluation) {
+		status, err := h.Store.StatusByIDForProject(ctx, transition.To, issue.ProjectID)
+		if err != nil {
+			return nil, err
+		}
+		fields := map[string]any{}
+		required := transition.RequiredFields()
+		for _, field := range transition.ScreenFields() {
+			fields[field] = transitionFieldMetadata(field, required[field])
+		}
+		beans = append(beans, map[string]any{
+			"id": transition.ID, "name": transition.Name, "to": h.statusBean(status),
+			"hasScreen": transition.Screen != nil, "isGlobal": false, "isInitial": false,
+			"isConditional": transition.Conditions != nil, "isAvailable": true, "fields": fields,
+		})
+	}
+	return beans, nil
 }
 
 func (h *Handler) performTransition(w http.ResponseWriter, r *http.Request, idOrKey string) {
@@ -1132,45 +1131,59 @@ func (h *Handler) changelog(w http.ResponseWriter, r *http.Request, idOrKey stri
 		writeJerr(w, e)
 		return
 	}
-	entries, err := h.Store.IssueChangelog(r.Context(), wsID, issue.ID)
+	values, err := h.issueChangelogBeans(r.Context(), wsID, issue.ID, false)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	values := make([]map[string]any, 0, len(entries))
-	for _, en := range entries {
-		items := make([]map[string]any, 0, len(en.Items))
-		for _, it := range en.Items {
-			items = append(items, map[string]any{
-				"field":      it.Field,
-				"fieldtype":  it.FieldType,
-				"from":       it.From,
-				"fromString": it.FromString,
-				"to":         it.To,
-				"toString":   it.ToString,
-			})
-		}
-		values = append(values, map[string]any{
-			"id":      fmt.Sprintf("%d", en.Seq),
-			"author":  h.userBean(en.Author),
-			"created": en.Created,
-			"items":   items,
-		})
-	}
-	isLast := true
 	writeJSON(w, http.StatusOK, map[string]any{
 		"startAt":    0,
 		"maxResults": 1000,
 		"total":      len(values),
-		"isLast":     isLast,
+		"isLast":     true,
 		"values":     values,
 	})
+}
+
+func (h *Handler) issueChangelogBeans(ctx context.Context, workspaceID, issueID string, newestFirst bool) ([]map[string]any, error) {
+	entries, err := h.Store.IssueChangelog(ctx, workspaceID, issueID)
+	if err != nil {
+		return nil, err
+	}
+	values := make([]map[string]any, 0, len(entries))
+	for index := range entries {
+		entry := entries[index]
+		if newestFirst {
+			entry = entries[len(entries)-1-index]
+		}
+		items := make([]map[string]any, 0, len(entry.Items))
+		for _, item := range entry.Items {
+			items = append(items, map[string]any{
+				"field": item.Field, "fieldtype": item.FieldType,
+				"from": item.From, "fromString": item.FromString,
+				"to": item.To, "toString": item.ToString,
+			})
+		}
+		values = append(values, map[string]any{
+			"id": fmt.Sprintf("%d", entry.Seq), "author": h.userBean(entry.Author),
+			"created": entry.Created, "items": items,
+		})
+	}
+	return values, nil
+}
+
+func (h *Handler) issueChangelogPage(ctx context.Context, workspaceID, issueID string, newestFirst bool) (map[string]any, error) {
+	histories, err := h.issueChangelogBeans(ctx, workspaceID, issueID, newestFirst)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"startAt": 0, "maxResults": 1000, "total": len(histories), "histories": histories}, nil
 }
 
 // ---- editmeta ----
 
 func (h *Handler) editMeta(w http.ResponseWriter, r *http.Request, idOrKey string) {
-	wsID, _, e := h.authWorkspace(r)
+	wsID, userID, e := h.authWorkspace(r)
 	if e != nil {
 		writeJerr(w, e)
 		return
@@ -1180,39 +1193,44 @@ func (h *Handler) editMeta(w http.ResponseWriter, r *http.Request, idOrKey strin
 		writeJerr(w, e)
 		return
 	}
-	field := func(name, typ string, required bool) map[string]any {
-		return map[string]any{
-			"required":   required,
-			"schema":     map[string]any{"type": typ},
-			"name":       name,
-			"key":        strings.ToLower(name),
-			"operations": []string{"set"},
-		}
-	}
-	versions, err := h.Store.ProjectVersions(r.Context(), issue.ProjectID)
+	metadata, err := h.issueEditMetadata(r.Context(), wsID, userID, issue)
 	if err != nil {
 		versionError(w, err)
 		return
 	}
-	allowed := []map[string]any{}
-	for _, version := range versions {
-		if !version.Archived {
-			allowed = append(allowed, h.versionBean(version))
+	writeJSON(w, http.StatusOK, metadata)
+}
+
+func (h *Handler) issueEditMetadata(ctx context.Context, workspaceID, userID string, issue *models.Issue) (map[string]any, error) {
+	metadata, err := h.Store.IssueCreateMetadata(ctx, workspaceID, userID)
+	if err != nil {
+		return nil, err
+	}
+	fields := map[string]any{}
+	for _, project := range metadata.Projects {
+		if project.Project.ID != issue.ProjectID {
+			continue
 		}
+		for _, source := range project.Fields {
+			if source.ID == "project" || source.ID == "issuetype" {
+				continue
+			}
+			field := source
+			if field.ID == "parent" {
+				field.Required = issue.IssueType.Subtask
+			}
+			bean := h.legacyCreateFieldBean(field)
+			if field.Type == "array" || field.Type == "versions" {
+				bean["operations"] = []string{"set", "add", "remove"}
+			}
+			fields[field.ID] = bean
+		}
+		break
 	}
-	versionField := func(id, name string) map[string]any {
-		return map[string]any{"required": false, "schema": map[string]any{"type": "array", "items": "version", "system": id}, "name": name, "key": id, "operations": []string{"set", "add", "remove"}, "allowedValues": allowed}
+	if len(fields) == 0 {
+		return nil, fmt.Errorf("edit metadata project is unavailable")
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"fields": map[string]any{
-			"fixVersions": versionField("fixVersions", "Fix versions"),
-			"versions":    versionField("versions", "Affects versions"),
-			"summary":     field("Summary", "string", true),
-			"description": map[string]any{"required": false, "schema": map[string]any{"type": "doc", "system": "description"}, "name": "Description", "key": "description", "operations": []string{"set"}},
-			"assignee":    field("Assignee", "user", false),
-			"priority":    field("Priority", "priority", false),
-		},
-	})
+	return map[string]any{"fields": fields}, nil
 }
 
 // ---- shared helpers ----

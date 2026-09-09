@@ -50,7 +50,7 @@ func TestSearchOptionValidation(t *testing.T) {
 		t.Fatalf("normalized options = %#v", options)
 	}
 	for _, bad := range []searchOptions{
-		{Expand: []string{"changelog"}},
+		{Expand: []string{"widgets"}},
 		{Properties: []string{"1", "2", "3", "4", "5", "6"}},
 		{Validate: "maybe"},
 	} {

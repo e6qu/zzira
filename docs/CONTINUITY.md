@@ -15,7 +15,7 @@ boundaries, dependencies, and acceptance gates belong in
 - Pull request: not opened yet
 - State: implementation in progress
 - Current checkpoint: saved-filter management, JQL grammar/helpers/app
-  precomputations, and search field/property projection implemented and tested
+  precomputations, and complete search projection/expansion plumbing implemented
 - Blockers: none
 
 ## Contract baseline
@@ -52,9 +52,10 @@ Compiler invocation of registered app functions remains separate work.
 
 Legacy and enhanced search now share strict option validation, selected-field
 projection, installed-app field-key aliases, names/schema/rendered expansion,
-and permission-safe requested issue properties. Approximate count now enforces
-its bounded-query contract. Remaining expansions and strong-consistency cursor
-behavior are the next search work.
+permission-safe requested issue properties, executable transitions, issue
+operations, edit metadata, immutable changelogs, and current versioned
+representations. Approximate count enforces its bounded-query contract.
+Strong-consistency reconciliation and cursor behavior are the next search work.
 
 ## Validation baseline
 
@@ -68,8 +69,8 @@ also run the PostgreSQL integration suite from an empty migrated database.
 
 ## Resume here
 
-1. Complete function and multi-value field semantics, remaining search
-   expansions, reconciliation, and snapshot/keyset paging.
+1. Complete function and multi-value field semantics, search reconciliation,
+   and snapshot/keyset paging.
 2. Add filter-subscription scheduling and delivery after shared scheduled-work
    primitives are ready.
 3. Continue into bulk work-item and project administration slices.

@@ -165,6 +165,7 @@ func TestProjectAPILifecycle(t *testing.T) {
 	if _, err := st.SetIssueProperty(ctx, saved.ID, "release.flag", json.RawMessage(`{"ready":true}`)); err != nil {
 		t.Fatal(err)
 	}
+	call(actor, "PUT", "/rest/api/3/issue/"+saved.Key, `{"fields":{"summary":"Rich content revised"}}`, 204)
 	call(actor, "POST", "/rest/api/3/issue", `{"fields":{"project":{"key":"TEAM"},"summary":"Invalid content","issuetype":{"name":"Task"},"description":{"type":"paragraph"}}}`, 400)
 	autoComplete := call(actor, "GET", "/rest/api/3/jql/autocompletedata", "", 200)
 	if !strings.Contains(autoComplete.Body.String(), `"value":"status"`) || !strings.Contains(autoComplete.Body.String(), `"value":"currentUser()"`) {
@@ -236,9 +237,30 @@ func TestProjectAPILifecycle(t *testing.T) {
 	if enhancedExpandedResult.Names["description"] != "Description" || enhancedExpandedResult.Schema["description"]["type"] != "doc" || enhancedExpandedIssue["properties"].(map[string]any)["release.flag"].(map[string]any)["ready"] != true || enhancedExpandedIssue["renderedFields"].(map[string]any)["description"] == "" {
 		t.Fatalf("expanded enhanced search = %#v", enhancedExpandedResult)
 	}
+	lifecycleExpanded := call(actor, "GET", "/rest/api/3/search?jql=key%3D"+saved.Key+"&fields=summary&expand=transitions,operations,editmeta,changelog", "", 200)
+	var lifecycleResult struct{ Issues []map[string]any }
+	if err := json.Unmarshal(lifecycleExpanded.Body.Bytes(), &lifecycleResult); err != nil {
+		t.Fatal(err)
+	}
+	lifecycleIssue := lifecycleResult.Issues[0]
+	changelog := lifecycleIssue["changelog"].(map[string]any)
+	operations := lifecycleIssue["operations"].(map[string]any)
+	editmeta := lifecycleIssue["editmeta"].(map[string]any)
+	if len(lifecycleIssue["transitions"].([]any)) == 0 || changelog["total"].(float64) == 0 || len(operations["linkGroups"].([]any)) == 0 || editmeta["fields"].(map[string]any)["summary"] == nil {
+		t.Fatalf("lifecycle expansions = %#v", lifecycleIssue)
+	}
+	versioned := call(actor, "POST", "/rest/api/3/search/jql", `{"jql":"key=`+saved.Key+`","fields":["summary"],"expand":"versionedRepresentations"}`, 200)
+	var versionedResult struct{ Issues []map[string]any }
+	if err := json.Unmarshal(versioned.Body.Bytes(), &versionedResult); err != nil {
+		t.Fatal(err)
+	}
+	versionedIssue := versionedResult.Issues[0]
+	if versionedIssue["fields"] != nil || versionedIssue["versionedRepresentations"].(map[string]any)["summary"].(map[string]any)["1"] != "Rich content revised" {
+		t.Fatalf("versioned representations = %#v", versionedIssue)
+	}
 	call(actor, "GET", "/rest/api/3/search?properties=1,2,3,4,5,6", "", 400)
 	call(actor, "GET", "/rest/api/3/search?fieldsByKeys=maybe", "", 400)
-	call(actor, "GET", "/rest/api/3/search?expand=changelog", "", 400)
+	call(actor, "GET", "/rest/api/3/search?expand=widgets", "", 400)
 	call(actor, "POST", "/rest/api/3/search", `{"jql":"project=TEAM","unknown":true}`, 400)
 	call(actor, "POST", "/rest/api/3/search/approximate-count", `{"jql":"project=TEAM","unknown":true}`, 400)
 	call(actor, "POST", "/rest/api/3/search/approximate-count", `{"jql":""}`, 400)

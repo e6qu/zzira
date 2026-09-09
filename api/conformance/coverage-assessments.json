@@ -5874,7 +5874,7 @@
         "docs/JQL.md",
         "internal/api3/search_projection_test.go"
       ],
-      "notes": "Legacy GET search has pagination, strict option validation, selected fields/app keys, names/schema/rendered expansion, requested properties and permission-filtered lifecycle evidence; remaining issue expansions and validation-mode semantics remain."
+      "notes": "Legacy GET search has pagination, strict option validation, selected fields/app keys, every documented expansion name, requested properties and permission-filtered lifecycle evidence; validation warnings, richer rendering and historical version representations remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/search",
@@ -5887,7 +5887,7 @@
         "docs/JQL.md",
         "internal/api3/search_projection_test.go"
       ],
-      "notes": "Legacy POST search has strict bounded JSON decoding, pagination, selected fields/app keys, names/schema/rendered expansion, requested properties and permission-filtered lifecycle evidence; remaining issue expansions and validation-mode semantics remain."
+      "notes": "Legacy POST search has strict bounded JSON decoding, pagination, selected fields/app keys, every documented expansion name, requested properties and permission-filtered lifecycle evidence; validation warnings, richer rendering and historical version representations remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/search/approximate-count",
@@ -5913,7 +5913,7 @@
         "docs/JQL.md",
         "internal/api3/search_projection_test.go"
       ],
-      "notes": "Enhanced GET search has bounded-query, selected field/app-key, names/schema/rendered expansion, requested properties, expiring query/user/workspace-bound cursor and invalid-option evidence; remaining issue expansions, reconciliation and snapshot/keyset semantics remain."
+      "notes": "Enhanced GET search has bounded-query, selected fields/app keys, every documented expansion name, requested properties, expiring query/user/workspace-bound cursor and invalid-option evidence; reconciliation, richer rendering/history and snapshot/keyset semantics remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/search/jql",
@@ -5926,7 +5926,7 @@
         "docs/JQL.md",
         "internal/api3/search_projection_test.go"
       ],
-      "notes": "Enhanced POST search has strict decoding, bounded-query, selected field/app-key, names/schema/rendered expansion, requested properties, expiring query/user/workspace-bound cursor and invalid-option evidence; remaining issue expansions, reconciliation and snapshot/keyset semantics remain."
+      "notes": "Enhanced POST search has strict decoding, bounded-query, selected fields/app keys, every documented expansion name, requested properties, expiring query/user/workspace-bound cursor and invalid-option evidence; reconciliation, richer rendering/history and snapshot/keyset semantics remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/jql/autocompletedata",
