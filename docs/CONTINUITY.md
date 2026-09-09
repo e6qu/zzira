@@ -25,9 +25,9 @@ boundaries, dependencies, and acceptance gates belong in
   implemented; Jira project components and their REST, issue-field, assignment,
   JQL, audit, sync, and administrator journeys are implemented; durable login
   boundaries and `currentLogin()`/`lastLogin()` JQL are implemented; the full
-  JSM approval and SLA JQL function families are implemented; durable bulk
-  field discovery and durable watch/unwatch submission, execution and progress
-  are implemented
+  JSM approval and SLA JQL function families are implemented; bulk field
+  discovery, durable field edits, and durable watch/unwatch submission,
+  execution and progress are implemented
 - Blockers: none
 
 ## Contract baseline
@@ -43,11 +43,12 @@ exercise it, authorization, audit, durable background work, and ledger updates.
 ## Current checkpoint
 
 The current bulk checkpoints implement Jira's shared editable-field discovery,
-watch, unwatch and progress operations. Field discovery intersects the canonical
-project metadata with search and bidirectional 50-field cursor pages. Submission
-enforces visibility, a 1,000-item bound and five-active task cap; the durable
-worker rechecks visibility and atomically commits watcher state, synchronization
-actions and the terminal task result.
+field edit, watch, unwatch and progress operations. Field discovery intersects
+the canonical project metadata with search and bidirectional 50-field cursor
+pages. Edit validates selected actions against that metadata and executes each
+item through the shared update command with durable progress and Jira per-item
+results. Submission enforces visibility, a 1,000-item bound and five-active task
+cap; workers recheck visibility before mutation.
 The browser directory completes the owner and site-administrator management
 journey and is connected to REST-created filters by Playwright. Owners can add
 or remove daily and weekly email schedules with active-member recipients. A
@@ -175,9 +176,18 @@ PostgreSQL contracts, cross-project canonical metadata intersection, Jira-shaped
 options, field search, invalid selection/cursor handling and forward/backward
 50-field cursor traversal.
 
+The bulk-edit checkpoint passes strict top-level and nested payload contracts,
+field-family/action matching, successful system/custom/multi-value edits,
+accessible validation failures, task progress and action-idempotent replay. Pure
+command tests cover scalar, ADF, assignee, security, label, version, component
+and custom-field normalization. The full uncached suite from an empty migrated
+database, `go vet`, native and WebAssembly builds, and conformance inventory and
+freshness checks pass.
+
 ## Resume here
 
-1. Continue bulk work items with edit/delete/move/transition and discovery.
+1. Continue bulk work items with delete/move/transition and discovery, then add
+   the remaining field families and bulk notification delivery.
 2. Add the remaining permission and customer/organization JQL functions with
    their owning policy state.
 3. Update compatibility evidence and commit each independently buildable

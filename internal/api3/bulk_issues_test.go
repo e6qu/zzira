@@ -29,6 +29,7 @@ func TestBulkWatchOperationsUseDurableTaskQueue(t *testing.T) {
 	}
 	workspaceID, adminID, memberID := store.NewID("ws"), store.NewID("usr"), store.NewID("usr")
 	securitySchemeID := store.NewID("sec")
+	customFieldIDs := []string{}
 	exec := func(query string, args ...any) {
 		t.Helper()
 		if _, err := st.Pool.Exec(ctx, query, args...); err != nil {
@@ -44,7 +45,7 @@ func TestBulkWatchOperationsUseDurableTaskQueue(t *testing.T) {
 	t.Cleanup(func() {
 		exec(`DELETE FROM api_tasks WHERE workspace_id=$1`, workspaceID)
 		exec(`DELETE FROM issues WHERE workspace_id=$1`, workspaceID)
-		exec(`DELETE FROM custom_fields WHERE id LIKE $1`, "customfield_bulk_"+workspaceID+"_%")
+		exec(`DELETE FROM custom_fields WHERE id=ANY($1)`, customFieldIDs)
 		exec(`DELETE FROM boards WHERE project_id IN (SELECT id FROM projects WHERE workspace_id=$1)`, workspaceID)
 		exec(`DELETE FROM projects WHERE workspace_id=$1`, workspaceID)
 		exec(`DELETE FROM security_schemes WHERE id=$1`, securitySchemeID)
@@ -83,12 +84,21 @@ func TestBulkWatchOperationsUseDurableTaskQueue(t *testing.T) {
 		}
 		issueKeys = append(issueKeys, issue.Key)
 	}
+	bulkTextFieldID := ""
 	var projectID string
 	if err := st.Pool.QueryRow(ctx, `SELECT id FROM projects WHERE workspace_id=$1 AND key='BULK'`, workspaceID).Scan(&projectID); err != nil {
 		t.Fatal(err)
 	}
 	for i := range 55 {
-		fieldID := fmt.Sprintf("customfield_bulk_%s_%02d", workspaceID, i)
+		fieldNumber, err := st.NextCustomFieldNumber(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fieldID := fmt.Sprintf("customfield_%d", fieldNumber)
+		customFieldIDs = append(customFieldIDs, fieldID)
+		if i == 0 {
+			bulkTextFieldID = fieldID
+		}
 		exec(`INSERT INTO custom_fields(id,name,type,description) VALUES($1,$2,'text','Bulk-edit text')`, fieldID, fmt.Sprintf("Bulk custom %02d", i))
 		exec(`INSERT INTO field_contexts(field_id,project_id) VALUES($1,$2)`, fieldID, projectID)
 	}
@@ -126,6 +136,55 @@ func TestBulkWatchOperationsUseDurableTaskQueue(t *testing.T) {
 	call(adminID, "GET", fieldPath+"&startingAfter=invalid", "", 400)
 	call(adminID, "GET", "/rest/api/3/bulk/issues/fields?issueIdsOrKeys=DOES-NOT-EXIST", "", 400)
 	payload := `{"selectedIssueIdsOrKeys":["` + strings.Join(issueKeys, `","`) + `"]}`
+	call(adminID, "POST", "/rest/api/3/bulk/issues/fields", `{"selectedIssueIdsOrKeys":["`+strings.Join(issueKeys, `","`)+`"],"selectedActions":["summary"],"editedFieldsInput":{"labelsFields":[{"fieldId":"labels","bulkEditMultiSelectFieldOption":"ADD","labels":[{"name":"bulk-edited"}]}]}}`, 400)
+	editPayload := fmt.Sprintf(`{"selectedIssueIdsOrKeys":["%s"],"selectedActions":["summary","labels","%s"],"editedFieldsInput":{"singleLineTextFields":[{"fieldId":"summary","text":"Bulk changed"},{"fieldId":"%s","text":"shared value"}],"labelsFields":[{"fieldId":"labels","bulkEditMultiSelectFieldOption":"ADD","labels":[{"name":"bulk-edited"}]}]},"sendBulkNotification":false}`, strings.Join(issueKeys, `","`), bulkTextFieldID, bulkTextFieldID)
+	edited := call(adminID, "POST", "/rest/api/3/bulk/issues/fields", editPayload, 201)
+	var editSubmission struct {
+		TaskID string `json:"taskId"`
+	}
+	if err := json.Unmarshal(edited.Body.Bytes(), &editSubmission); err != nil || editSubmission.TaskID == "" {
+		t.Fatalf("bulk edit submission: %v %s", err, edited.Body.String())
+	}
+	runner := &store.APITaskRunner{Store: st, BulkIssueExecutor: handler.Commands}
+	if err := runner.DrainOnce(ctx, workspaceID); err != nil {
+		t.Fatal(err)
+	}
+	editProgress := call(adminID, "GET", "/rest/api/3/bulk/queue/"+editSubmission.TaskID, "", 200)
+	if !strings.Contains(editProgress.Body.String(), `"status":"COMPLETE"`) || !strings.Contains(editProgress.Body.String(), `"processedAccessibleIssues"`) || !strings.Contains(editProgress.Body.String(), `"totalIssueCount":2`) || strings.Contains(editProgress.Body.String(), `"failedAccessibleIssues"`) {
+		t.Fatal(editProgress.Body.String())
+	}
+	for _, key := range issueKeys {
+		updated := call(adminID, "GET", "/rest/api/3/issue/"+key, "", 200)
+		if !strings.Contains(updated.Body.String(), `"summary":"Bulk changed"`) || !strings.Contains(updated.Body.String(), `"bulk-edited"`) || !strings.Contains(updated.Body.String(), `"`+bulkTextFieldID+`":"shared value"`) {
+			t.Fatal(updated.Body.String())
+		}
+	}
+	var actionsAfterEdit int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM actions WHERE workspace_id=$1 AND entity_type='issue'`, workspaceID).Scan(&actionsAfterEdit); err != nil {
+		t.Fatal(err)
+	}
+	repeatedEdit := call(adminID, "POST", "/rest/api/3/bulk/issues/fields", editPayload, 201)
+	if err := json.Unmarshal(repeatedEdit.Body.Bytes(), &editSubmission); err != nil {
+		t.Fatal(err)
+	}
+	if err := runner.DrainOnce(ctx, workspaceID); err != nil {
+		t.Fatal(err)
+	}
+	var actionsAfterRepeat int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM actions WHERE workspace_id=$1 AND entity_type='issue'`, workspaceID).Scan(&actionsAfterRepeat); err != nil || actionsAfterRepeat != actionsAfterEdit {
+		t.Fatalf("repeated bulk edit actions=%d want %d err=%v", actionsAfterRepeat, actionsAfterEdit, err)
+	}
+	failedEdit := call(adminID, "POST", "/rest/api/3/bulk/issues/fields", `{"selectedIssueIdsOrKeys":["`+strings.Join(issueKeys, `","`)+`"],"selectedActions":["priority"],"editedFieldsInput":{"priority":{"priorityId":"missing-priority"}}}`, 201)
+	if err := json.Unmarshal(failedEdit.Body.Bytes(), &editSubmission); err != nil {
+		t.Fatal(err)
+	}
+	if err := runner.DrainOnce(ctx, workspaceID); err != nil {
+		t.Fatal(err)
+	}
+	failedProgress := call(adminID, "GET", "/rest/api/3/bulk/queue/"+editSubmission.TaskID, "", 200)
+	if !strings.Contains(failedProgress.Body.String(), `"failedAccessibleIssues"`) || !strings.Contains(failedProgress.Body.String(), `"invalidOrInaccessibleIssueCount":0`) {
+		t.Fatal(failedProgress.Body.String())
+	}
 	call(memberID, "POST", "/rest/api/3/bulk/issues/watch", payload, 403)
 	call(adminID, "POST", "/rest/api/3/bulk/issues/watch", `{"selectedIssueIdsOrKeys":["`+issueKeys[0]+`","`+issueKeys[0]+`"]}`, 400)
 	submitted := call(adminID, "POST", "/rest/api/3/bulk/issues/watch", payload, 201)
@@ -139,7 +198,6 @@ func TestBulkWatchOperationsUseDurableTaskQueue(t *testing.T) {
 	if !strings.Contains(queued.Body.String(), `"status":"ENQUEUED"`) || !strings.Contains(queued.Body.String(), `"submittedBy":{"accountId":"`+adminID+`"}`) {
 		t.Fatal(queued.Body.String())
 	}
-	runner := &store.APITaskRunner{Store: st}
 	if err := runner.DrainOnce(ctx, workspaceID); err != nil {
 		t.Fatal(err)
 	}

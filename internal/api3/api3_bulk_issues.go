@@ -21,6 +21,8 @@ func (h *Handler) bulkIssueRoute(w http.ResponseWriter, r *http.Request, path st
 	switch {
 	case path == "issues/fields" && r.Method == http.MethodGet:
 		h.bulkEditableFields(w, r)
+	case path == "issues/fields" && r.Method == http.MethodPost:
+		h.submitBulkEdit(w, r)
 	case (path == "issues/watch" || path == "issues/unwatch") && r.Method == http.MethodPost:
 		h.submitBulkWatch(w, r, path == "issues/watch")
 	case strings.HasPrefix(path, "queue/") && r.Method == http.MethodGet:

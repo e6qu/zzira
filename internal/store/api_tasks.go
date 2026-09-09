@@ -18,6 +18,7 @@ const (
 	apiTaskUpdateWorkflowScheme  = "workflow-scheme-update"
 	apiTaskSwitchWorkflowScheme  = "workflow-scheme-switch"
 	apiTaskPublishWorkflowScheme = "workflow-scheme-publish"
+	apiTaskBulkEdit              = "bulk-issue-edit"
 	apiTaskBulkWatch             = "bulk-issue-watch"
 	apiTaskBulkUnwatch           = "bulk-issue-unwatch"
 )
@@ -25,7 +26,7 @@ const (
 var (
 	ErrAPITaskNotCancellable = errors.New("api task is not cancellable")
 	ErrBulkTaskLimit         = errors.New("five bulk operations are already queued or running")
-	errAPITaskCancelled      = errors.New("api task was cancelled")
+	ErrAPITaskCancelled      = errors.New("api task was cancelled")
 )
 
 type APITask struct {
@@ -46,7 +47,7 @@ type APITask struct {
 }
 
 func (task APITask) IsBulkIssueOperation() bool {
-	return task.Kind == apiTaskBulkWatch || task.Kind == apiTaskBulkUnwatch
+	return task.Kind == apiTaskBulkEdit || task.Kind == apiTaskBulkWatch || task.Kind == apiTaskBulkUnwatch
 }
 
 type updateWorkflowSchemeTaskPayload struct {
@@ -76,6 +77,25 @@ type bulkWatchTaskPayload struct {
 	Watch  bool                `json:"watch"`
 }
 
+type BulkIssueEditOperation struct {
+	FieldID string          `json:"fieldId"`
+	Action  string          `json:"action"`
+	Value   json.RawMessage `json:"value"`
+}
+
+type BulkIssueEditTaskPayload struct {
+	Issues     []BulkIssueTaskItem      `json:"issues"`
+	Operations []BulkIssueEditOperation `json:"operations"`
+}
+
+func (s *Store) EnqueueBulkEditTask(ctx context.Context, workspaceID, actorID string, issues []BulkIssueTaskItem, operations []BulkIssueEditOperation) (APITask, error) {
+	task, err := queuedAPITask(workspaceID, actorID, "Bulk edit issues", apiTaskBulkEdit, BulkIssueEditTaskPayload{Issues: issues, Operations: operations})
+	if err != nil {
+		return APITask{}, err
+	}
+	return s.enqueueBulkIssueTask(ctx, task)
+}
+
 func (s *Store) EnqueueBulkWatchTask(ctx context.Context, workspaceID, actorID string, issues []BulkIssueTaskItem, watch bool) (APITask, error) {
 	description, kind := "Bulk watch issues", apiTaskBulkWatch
 	if !watch {
@@ -85,16 +105,20 @@ func (s *Store) EnqueueBulkWatchTask(ctx context.Context, workspaceID, actorID s
 	if err != nil {
 		return APITask{}, err
 	}
+	return s.enqueueBulkIssueTask(ctx, task)
+}
+
+func (s *Store) enqueueBulkIssueTask(ctx context.Context, task APITask) (APITask, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return APITask{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, "bulk-issue:"+workspaceID); err != nil {
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, "bulk-issue:"+task.WorkspaceID); err != nil {
 		return APITask{}, err
 	}
 	var active int
-	if err := tx.QueryRow(ctx, `SELECT count(*) FROM api_tasks WHERE workspace_id=$1 AND kind LIKE 'bulk-issue-%' AND status IN ('ENQUEUED','RUNNING')`, workspaceID).Scan(&active); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT count(*) FROM api_tasks WHERE workspace_id=$1 AND kind LIKE 'bulk-issue-%' AND status IN ('ENQUEUED','RUNNING')`, task.WorkspaceID).Scan(&active); err != nil {
 		return APITask{}, err
 	}
 	if active >= 5 {
@@ -175,9 +199,14 @@ func (s *Store) CancelAPITask(ctx context.Context, workspaceID, taskID string) (
 // APITaskRunner drains durable Jira asynchronous tasks. Claims use SKIP LOCKED
 // so multiple server replicas can run workers without executing a task twice.
 type APITaskRunner struct {
-	Store        *Store
-	Logf         func(string, ...any)
-	PollInterval time.Duration
+	Store             *Store
+	BulkIssueExecutor BulkIssueTaskExecutor
+	Logf              func(string, ...any)
+	PollInterval      time.Duration
+}
+
+type BulkIssueTaskExecutor interface {
+	ExecuteBulkIssueTask(context.Context, APITask) error
 }
 
 func (r *APITaskRunner) Run(ctx context.Context, workspaceID string) {
@@ -215,7 +244,7 @@ func (r *APITaskRunner) DrainOnce(ctx context.Context, workspaceID string) error
 		return err
 	}
 	if err := r.execute(ctx, task); err != nil {
-		if errors.Is(err, errAPITaskCancelled) {
+		if errors.Is(err, ErrAPITaskCancelled) {
 			return nil
 		}
 		return r.fail(ctx, task, err)
@@ -267,9 +296,39 @@ func (r *APITaskRunner) execute(ctx context.Context, task APITask) error {
 			return fmt.Errorf("decode bulk watch operation: %w", err)
 		}
 		return r.Store.executeBulkWatchTask(ctx, task, payload)
+	case apiTaskBulkEdit:
+		if r.BulkIssueExecutor == nil {
+			return errors.New("bulk issue executor is not configured")
+		}
+		return r.BulkIssueExecutor.ExecuteBulkIssueTask(ctx, task)
 	default:
 		return fmt.Errorf("unsupported task kind %q", task.Kind)
 	}
+}
+
+func (s *Store) UpdateAPITaskProgress(ctx context.Context, task APITask, progress int, message string) error {
+	tag, err := s.Pool.Exec(ctx, `
+		UPDATE api_tasks SET progress=$3,message=$4,last_update_at=now()
+		WHERE id=$1 AND workspace_id=$2 AND status='RUNNING'`, task.ID, task.WorkspaceID, progress, message)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() != 1 {
+		return ErrAPITaskCancelled
+	}
+	return nil
+}
+
+func (s *Store) CompleteAPITask(ctx context.Context, task APITask, message string, result any) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := completeAPITask(ctx, tx, task.WorkspaceID, task.ID, message, result); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func (s *Store) executeBulkWatchTask(ctx context.Context, task APITask, payload bulkWatchTaskPayload) error {
@@ -360,7 +419,7 @@ func completeAPITask(ctx context.Context, tx pgx.Tx, workspaceID, taskID, messag
 		return err
 	}
 	if tag.RowsAffected() != 1 {
-		return errAPITaskCancelled
+		return ErrAPITaskCancelled
 	}
 	return nil
 }

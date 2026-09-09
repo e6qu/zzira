@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -130,7 +131,13 @@ func (s *Store) UpdateIssue(ctx context.Context, actorID, workspaceID, issueID s
 		if err != nil {
 			return nil, nil, err
 		}
-		sets = append(sets, "fields = "+arg(fieldsJSON)+"::jsonb")
+		currentFieldsJSON, err := json.Marshal(current.Fields)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !bytes.Equal(fieldsJSON, currentFieldsJSON) {
+			sets = append(sets, "fields = "+arg(fieldsJSON)+"::jsonb")
+		}
 	}
 	if up.StatusID != nil && *up.StatusID != current.Status.ID {
 		var newName, newCategory string
@@ -489,7 +496,7 @@ func mergeFields(current map[string]json.RawMessage, updates map[string]json.Raw
 		out[k] = v
 	}
 	for k, v := range updates {
-		if !isCustomFieldKey(k) && k != "fixVersions" && k != "versions" {
+		if !isCustomFieldKey(k) && k != "fixVersions" && k != "versions" && k != "components" {
 			return nil, fmt.Errorf("field key %q is not a custom field", k)
 		}
 		if len(v) == 0 || string(v) == "null" {

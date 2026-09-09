@@ -135,8 +135,8 @@ stable enhanced search and Jira issue IDs, expanded built-in and app-provided
 JQL, project components and default assignment, issue votes, durable login-date
 functions, and the Jira Service Management approval and calendar-aware SLA
 function families needed by shared search surfaces, plus Jira bulk field
-discovery and durable watch/unwatch submission and progress. Each is retained
-as an independently validated checkpoint on the active PR 1 branch.
+discovery, durable field edits, and watch/unwatch submission and progress. Each
+is retained as an independently validated checkpoint on the active PR 1 branch.
 
 It contains:
 

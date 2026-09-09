@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 486,
+  "assessedTotal": 487,
   "counts": {
     "delivered": 0,
-    "partial": 479,
+    "partial": 480,
     "missing": 7,
-    "unassessed": 721
+    "unassessed": 720
   },
   "countsByFamily": {
     "automation": {
@@ -24,9 +24,9 @@
     },
     "jira-platform": {
       "delivered": 0,
-      "partial": 118,
+      "partial": 119,
       "missing": 0,
-      "unassessed": 499
+      "unassessed": 498
     },
     "jira-service-management": {
       "delivered": 0,
@@ -241,9 +241,15 @@
       "operationId": "jira-v3:POST:/rest/api/3/bulk/issues/fields",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_bulk_edit.go",
+        "internal/commands/bulk_issues.go",
+        "internal/api3/bulk_issues_test.go",
+        "internal/commands/bulk_issues_test.go",
+        "docs/BULK_ISSUES.md"
+      ],
+      "notes": "Queues up to 1,000 visible issues and 200 exactly matched selected fields, strictly parses ten persisted Jira field families, delegates each item to the ordinary issue command, reports successful/inaccessible/accessible-failed IDs and preserves action-idempotent replay; remaining Jira field families, configurable Bulk change/field permissions, bulk email delivery and exact rate-limit semantics remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/bulk/issues/move",

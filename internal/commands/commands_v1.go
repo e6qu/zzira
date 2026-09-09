@@ -120,6 +120,12 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 		}
 		in.Labels = &labels
 	}
+	currentAssigneeID := ""
+	if issue.Assignee != nil {
+		currentAssigneeID = issue.Assignee.ID
+	}
+	assigneeChanged := in.AssigneeID != nil && *in.AssigneeID != currentAssigneeID
+	securityChanged := in.SecurityLevelID != nil && *in.SecurityLevelID != issue.SecurityLevelID
 	issue, action, err := s.Store.UpdateIssue(ctx, in.ActorID, in.WorkspaceID, issue.ID, store.IssueUpdate{
 		Summary:           in.Summary,
 		Description:       in.Description,
@@ -135,7 +141,7 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 	if err != nil {
 		return nil, nil, err
 	}
-	if in.SecurityLevelID != nil {
+	if securityChanged {
 		excluded, err := authz.ExcludedMembersForLevel(ctx, s.Store, in.WorkspaceID, issue.ProjectID, *in.SecurityLevelID)
 		if err != nil {
 			return nil, nil, err
@@ -146,8 +152,10 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 			}
 		}
 	}
-	if err := s.notifyAssignee(ctx, in, issue); err != nil {
-		return nil, nil, err
+	if assigneeChanged {
+		if err := s.notifyAssignee(ctx, in, issue); err != nil {
+			return nil, nil, err
+		}
 	}
 	if in.StatusID != nil {
 		if err := s.syncServiceSLAsAfterIssueChange(ctx, in.ActorID, in.WorkspaceID, issue, time.Now().UTC()); err != nil {

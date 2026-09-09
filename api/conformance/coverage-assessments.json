@@ -6199,6 +6199,18 @@
         "docs/BULK_ISSUES.md"
       ],
       "notes": "Returns editable field types shared by all selected visible issues from the canonical project metadata, including Jira-shaped options, field search and bidirectional opaque 50-field cursor pages; configurable global and field permissions, cursor snapshot binding and the remaining Jira bulk field catalog remain."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/bulk/issues/fields",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_bulk_edit.go",
+        "internal/commands/bulk_issues.go",
+        "internal/api3/bulk_issues_test.go",
+        "internal/commands/bulk_issues_test.go",
+        "docs/BULK_ISSUES.md"
+      ],
+      "notes": "Queues up to 1,000 visible issues and 200 exactly matched selected fields, strictly parses ten persisted Jira field families, delegates each item to the ordinary issue command, reports successful/inaccessible/accessible-failed IDs and preserves action-idempotent replay; remaining Jira field families, configurable Bulk change/field permissions, bulk email delivery and exact rate-limit semantics remain."
     }
   ]
 }
