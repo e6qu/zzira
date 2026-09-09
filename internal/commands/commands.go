@@ -96,6 +96,13 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 	if err != nil {
 		return nil, nil, fmt.Errorf("issue type %q not found", in.IssueTypeID)
 	}
+	configuration, err := s.jiraSiteConfiguration(ctx, in.WorkspaceID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if issueType.Subtask && !configuration.SubTasksEnabled {
+		return nil, nil, fmt.Errorf("subtasks are disabled for this site")
+	}
 	parentID := ""
 	if issueType.Subtask {
 		if strings.TrimSpace(in.ParentIDOrKey) == "" {
@@ -145,6 +152,9 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 			return nil, nil, fmt.Errorf("project lead is not an active workspace member")
 		}
 		in.AssigneeID = project.LeadAccountID
+	}
+	if in.AssigneeID == "" && !configuration.UnassignedIssuesAllowed {
+		return nil, nil, fmt.Errorf("unassigned work items are disabled for this site")
 	}
 	if in.SecurityLevelID != "" {
 		scheme, err := s.Store.SecuritySchemeForProject(ctx, project.ID)

@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 498,
+  "assessedTotal": 511,
   "counts": {
     "delivered": 0,
-    "partial": 491,
+    "partial": 504,
     "missing": 7,
-    "unassessed": 709
+    "unassessed": 696
   },
   "countsByFamily": {
     "automation": {
@@ -24,9 +24,9 @@
     },
     "jira-platform": {
       "delivered": 0,
-      "partial": 130,
+      "partial": 143,
       "missing": 0,
-      "unassessed": 487
+      "unassessed": 474
     },
     "jira-service-management": {
       "delivered": 0,
@@ -52,17 +52,25 @@
       "operationId": "jira-v3:GET:/rest/api/3/announcementBanner",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/site_configuration_test.go",
+        "e2e/admin.spec.ts",
+        "docs/JIRA_SITE_CONFIGURATION.md"
+      ],
+      "notes": "Returns the durable Jira-shaped banner to administrators with an opaque content hash; exact Atlassian hash generation remains intentionally opaque."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/announcementBanner",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/site_configuration_test.go",
+        "e2e/admin.spec.ts",
+        "docs/JIRA_SITE_CONFIGURATION.md"
+      ],
+      "notes": "Validates and atomically publishes public/private enabled and dismissible banner state with audit/action evidence and a browser dismissal journey; exact Atlassian message sanitization limits remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/app/field/context/configuration/list",
@@ -108,25 +116,37 @@
       "operationId": "jira-v3:GET:/rest/api/3/application-properties",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/site_configuration_test.go",
+        "e2e/admin.spec.ts",
+        "docs/JIRA_SITE_CONFIGURATION.md"
+      ],
+      "notes": "Returns the documented editable catalog, single-key object shape and key filtering from durable site values; exact permissionLevel and every Atlassian edge-filter behavior remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/application-properties/advanced-settings",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/site_configuration_test.go",
+        "e2e/admin.spec.ts",
+        "docs/JIRA_SITE_CONFIGURATION.md"
+      ],
+      "notes": "Returns the documented advanced editable property catalog to administrators; complete runtime application of look-and-feel values remains."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/application-properties/{id}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/site_configuration_test.go",
+        "e2e/admin.spec.ts",
+        "docs/JIRA_SITE_CONFIGURATION.md"
+      ],
+      "notes": "Validates known IDs and allowed values, persists atomically and returns the updated Jira-shaped property; paired date-format validation and full runtime look-and-feel application remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/applicationrole",
@@ -635,49 +655,73 @@
       "operationId": "jira-v3:GET:/rest/api/3/configuration",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/site_configuration_test.go",
+        "e2e/admin.spec.ts",
+        "docs/JIRA_SITE_CONFIGURATION.md"
+      ],
+      "notes": "Returns member-readable Jira feature flags and conditionally includes timeTrackingConfiguration from the canonical site state; exact behavior for every downstream feature edge remains."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/configuration/timetracking",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/site_configuration_test.go",
+        "e2e/admin.spec.ts",
+        "docs/JIRA_SITE_CONFIGURATION.md"
+      ],
+      "notes": "Returns the selected built-in provider or 204 while time tracking is disabled; Marketplace provider modules remain."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/configuration/timetracking",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/site_configuration_test.go",
+        "e2e/admin.spec.ts",
+        "docs/JIRA_SITE_CONFIGURATION.md"
+      ],
+      "notes": "Selects and enables the installed Jira provider with the documented 204 response and audit/action evidence; Marketplace provider modules remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/configuration/timetracking/list",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/site_configuration_test.go",
+        "e2e/admin.spec.ts",
+        "docs/JIRA_SITE_CONFIGURATION.md"
+      ],
+      "notes": "Returns the Jira-provided time-tracking provider to administrators; app-provided providers remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/configuration/timetracking/options",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/site_configuration_test.go",
+        "e2e/admin.spec.ts",
+        "docs/JIRA_SITE_CONFIGURATION.md"
+      ],
+      "notes": "Returns durable decimal work hours/days, time format and default unit with administrator authorization."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/configuration/timetracking/options",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/site_configuration_test.go",
+        "e2e/admin.spec.ts",
+        "docs/JIRA_SITE_CONFIGURATION.md"
+      ],
+      "notes": "Validates and atomically persists all documented options, returns the updated object and is browser/API tested; exact Atlassian numeric precision limits remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/customFieldOption/{id}",
@@ -4148,17 +4192,25 @@
       "operationId": "jira-v3:GET:/rest/api/3/settings/columns",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/site_configuration_test.go",
+        "e2e/admin.spec.ts",
+        "docs/JIRA_SITE_CONFIGURATION.md"
+      ],
+      "notes": "Returns ordered label/value objects for durable built-in and workspace custom-field defaults; the complete Jira navigable system-field catalog remains."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/settings/columns",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/site_configuration_test.go",
+        "e2e/admin.spec.ts",
+        "docs/JIRA_SITE_CONFIGURATION.md"
+      ],
+      "notes": "Accepts repeated Jira form-data columns, validates active navigable fields, preserves order, supports clearing and returns empty 200; the complete Jira navigable system-field catalog remains."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/status",

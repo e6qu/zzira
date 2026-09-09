@@ -296,6 +296,8 @@ func main() {
 	mux.HandleFunc("POST /admin/domains/{domainId}", webHandler.UpdateAdminDomain)
 	mux.HandleFunc("POST /admin/policies", webHandler.CreateAdminPolicy)
 	mux.HandleFunc("POST /admin/policies/{policyId}", webHandler.UpdateAdminPolicy)
+	mux.HandleFunc("POST /admin/jira-configuration/{section}", webHandler.UpdateAdminJiraConfiguration)
+	mux.HandleFunc("POST /admin/jira-application-properties/{property}", webHandler.UpdateAdminJiraApplicationProperty)
 	mux.HandleFunc("GET /wiki", webHandler.WikiHome)
 	mux.HandleFunc("GET /wiki/pages/{page}", webHandler.WikiPageRedirect)
 	mux.HandleFunc("POST /wiki/spaces", webHandler.WikiHome)

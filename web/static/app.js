@@ -37,6 +37,22 @@
   }
   document.addEventListener('DOMContentLoaded', initThemeToggle);
 
+  function initAnnouncement() {
+    const banner = document.querySelector('[data-announcement-hash]');
+    if (!banner) return;
+    const hash = banner.getAttribute('data-announcement-hash');
+    if (localStorage.getItem('zzira-announcement-dismissed') === hash) {
+      banner.hidden = true;
+      return;
+    }
+    const dismiss = banner.querySelector('[data-dismiss-announcement]');
+    if (dismiss) dismiss.addEventListener('click', () => {
+      localStorage.setItem('zzira-announcement-dismissed', hash);
+      banner.hidden = true;
+    });
+  }
+  document.addEventListener('DOMContentLoaded', initAnnouncement);
+
   function initIssueContexts(root) {
     root.querySelectorAll('[data-issue-context-key]').forEach((panel) => {
       if (panel.dataset.ready) return;

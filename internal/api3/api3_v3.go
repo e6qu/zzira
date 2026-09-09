@@ -109,11 +109,17 @@ func (h *Handler) issueWorklogRoute(w http.ResponseWriter, r *http.Request, idOr
 // ---- attachments ----
 
 func (h *Handler) attachmentSettings(w http.ResponseWriter, r *http.Request) {
-	if _, _, e := h.authWorkspace(r); e != nil {
+	workspaceID, _, e := h.authWorkspace(r)
+	if e != nil {
 		writeJerr(w, e)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"enabled": h.Blobs != nil, "uploadLimit": 32 << 20})
+	configuration, err := h.Store.JiraSiteConfiguration(r.Context(), workspaceID)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "Could not load attachment settings.")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"enabled": h.Blobs != nil && configuration.AttachmentsEnabled, "uploadLimit": 32 << 20})
 }
 
 func (h *Handler) attachmentBean(a *models.Attachment) map[string]any {

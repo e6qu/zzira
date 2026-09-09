@@ -8,30 +8,33 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
 ## Active delivery
 
-- Branch: `feat/pr1-jira-platform-completion`
-- Base: `origin/main` after merged PR #69
+- Branch: `feat/pr1-jira-platform-admin-2`
+- Base: `origin/main` after merged PR #70
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- Pull request: [#70](https://github.com/e6qu/zzira/pull/70)
-- State: PR 1 is open; all local CI-equivalent gates pass
+- Pull request: [#71](https://github.com/e6qu/zzira/pull/71)
+- State: Jira site-configuration checkpoint is open; monitoring CI and review
 - Blockers: none
 
 ## Merged baseline
 
-PR [#69](https://github.com/e6qu/zzira/pull/69) merged the PR 0 baseline. Its 22
+PR [#70](https://github.com/e6qu/zzira/pull/70) merged the first PR 1 delivery. It
+adds durable bulk delete/move/transition work, Jira attachment lifecycle and
+browser/CI hardening on top of PR [#69](https://github.com/e6qu/zzira/pull/69),
+which merged the PR 0 baseline. PR 0's 22
 implementation checkpoints cover saved filters and subscriptions,
 expanded JQL and app functions, stable search identity and paging, Jira votes,
 watches, project components, login-date functions, JSM approval/SLA functions,
 and durable bulk watch/unwatch, editable-field discovery, and field edits.
 
-PR 0's final GitHub matrix passed the full Go and PostgreSQL suite, native and
+PR #70's final GitHub matrix passed the full Go and PostgreSQL suite, native and
 WebAssembly builds, conformance checks, container build, dependency and security
-scans, CodeQL, and all 59 Playwright journeys.
+scans, CodeQL, and all 62 Playwright journeys.
 
 ## Resume here
 
-1. Monitor PR #70 checks and respond to inline review comments in their threads.
-2. Reconcile the remaining Jira Platform operation inventory in subsequent PR 1
-   checkpoints, with project and site administration next.
+1. Monitor PR #71 CI and resolve review threads inline.
+2. Reconcile the remaining Jira Platform operation inventory, with project
+   administration following site configuration.
 3. Keep each new vertical checkpoint committed, tested and documented on the
    same PR until its Jira Platform exit gates are satisfied.
 
@@ -45,6 +48,7 @@ scans, CodeQL, and all 59 Playwright journeys.
 - [JQL and search](JQL.md)
 - [Bulk work-item operations](BULK_ISSUES.md)
 - [Jira attachment compatibility](ATTACHMENTS.md)
+- [Jira site configuration](JIRA_SITE_CONFIGURATION.md)
 
 ## Continuity rules
 

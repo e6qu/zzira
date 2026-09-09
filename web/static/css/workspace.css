@@ -72,6 +72,10 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .user-menu button { padding: 9px 10px; border-radius: 6px; }
 .theme-toggle { width: 34px; height: 34px; border: 0; border-radius: 8px; color: var(--ds-nav-text); background: transparent; }
 .theme-toggle:hover { background: rgba(255,255,255,.1); }
+.announcement-banner { position:relative; z-index:39; display:flex; align-items:flex-start; justify-content:center; gap:16px; min-height:42px; padding:11px 52px; border-bottom:1px solid #7f5f01; color:#172b4d; background:#fff0b3; }
+.announcement-banner p { max-width:1100px; margin:0; white-space:pre-wrap; overflow-wrap:anywhere; }
+.announcement-banner .icon-button { position:absolute; top:4px; right:12px; color:#172b4d; font-size:22px; }
+.announcement-banner .icon-button:hover { background:rgba(23,43,77,.09); }
 .app-shell { display: grid; grid-template-columns: var(--sidebar-width) minmax(0,1fr); min-height: calc(100vh - var(--topbar-height)); transition: grid-template-columns .18s ease; }
 .workspace-nav { position: sticky; top: var(--topbar-height); display: flex; flex-direction: column; align-self: start; width: auto; height: calc(100vh - var(--topbar-height)); padding: 18px 12px 14px; border-right: 1px solid var(--ds-border); background: var(--ds-surface); overflow: visible; }
 .workspace-identity { display: flex; align-items: center; gap: 10px; min-height: 50px; margin: 0 4px 16px; color: var(--ds-text); text-decoration: none; }

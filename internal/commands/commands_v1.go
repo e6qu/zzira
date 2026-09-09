@@ -57,6 +57,10 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 	if err != nil {
 		return nil, nil, err
 	}
+	configuration, err := s.jiraSiteConfiguration(ctx, in.WorkspaceID)
+	if err != nil {
+		return nil, nil, err
+	}
 	if in.Summary != nil {
 		sum := *in.Summary
 		if len(sum) == 0 || len(sum) > 255 {
@@ -68,8 +72,14 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 			return nil, nil, fmt.Errorf("assignee is not an active workspace member")
 		}
 	}
+	if in.AssigneeID != nil && *in.AssigneeID == "" && !configuration.UnassignedIssuesAllowed {
+		return nil, nil, fmt.Errorf("unassigned work items are disabled for this site")
+	}
 	var parentID *string
 	if in.ParentIDOrKey != nil {
+		if !configuration.SubTasksEnabled {
+			return nil, nil, fmt.Errorf("subtasks are disabled for this site")
+		}
 		resolved := ""
 		if issue.IssueType.Subtask {
 			if strings.TrimSpace(*in.ParentIDOrKey) == "" {

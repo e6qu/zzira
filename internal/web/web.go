@@ -41,10 +41,11 @@ type Handler struct {
 }
 
 type pageData struct {
-	User       *models.User
-	Data       any
-	Active     string
-	Navigation *workspaceNavigation
+	User         *models.User
+	Data         any
+	Active       string
+	Navigation   *workspaceNavigation
+	Announcement *models.AnnouncementBanner
 }
 
 type createDialogData struct {
@@ -619,40 +620,49 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	if err != nil {
 		return nil, err
 	}
+	configuration, err := h.Store.JiraSiteConfiguration(r.Context(), wsID)
+	if err != nil {
+		return nil, err
+	}
 	return &models.IssueView{
-		Issue:             *issue,
-		ProjectKey:        project.Key,
-		ProjectName:       project.Name,
-		BoardID:           boardID,
-		CanEdit:           true,
-		CanTriage:         true,
-		CurrentUserID:     user.ID,
-		Comments:          derefComments(comments),
-		Transitions:       transitions,
-		History:           history,
-		Attachments:       derefAttachments(attachments),
-		Worklogs:          derefWorklogs(worklogs),
-		Activity:          activity,
-		Members:           editView.Members,
-		Priorities:        priorityValues,
-		SecurityLevels:    editView.SecurityLevels,
-		SecurityLevelName: h.Store.SecurityLevelName(r.Context(), issue.ProjectID, issue.SecurityLevelID),
-		CustomFields:      editView.CustomFields,
-		Watchers:          watchers,
-		IsWatching:        isWatching,
-		Voters:            voters,
-		HasVoted:          hasVoted,
-		Links:             linkViews,
-		LinkTypes:         linkTypeValues,
-		Children:          derefIssues(children),
-		ParentOptions:     parentOptions,
-		Forms:             derefForms(forms),
-		Development:       development,
-		Delivery:          delivery,
-		AppPanels:         appPanels,
-		AppActivityTabs:   appActivityTabs,
-		AppContexts:       appContexts,
-		AppIssueContent:   appIssueContent,
+		Issue:               *issue,
+		ProjectKey:          project.Key,
+		ProjectName:         project.Name,
+		BoardID:             boardID,
+		CanEdit:             true,
+		CanTriage:           true,
+		AttachmentsEnabled:  configuration.AttachmentsEnabled,
+		IssueLinkingEnabled: configuration.IssueLinkingEnabled,
+		TimeTrackingEnabled: configuration.TimeTrackingEnabled,
+		VotingEnabled:       configuration.VotingEnabled,
+		WatchingEnabled:     configuration.WatchingEnabled,
+		CurrentUserID:       user.ID,
+		Comments:            derefComments(comments),
+		Transitions:         transitions,
+		History:             history,
+		Attachments:         derefAttachments(attachments),
+		Worklogs:            derefWorklogs(worklogs),
+		Activity:            activity,
+		Members:             editView.Members,
+		Priorities:          priorityValues,
+		SecurityLevels:      editView.SecurityLevels,
+		SecurityLevelName:   h.Store.SecurityLevelName(r.Context(), issue.ProjectID, issue.SecurityLevelID),
+		CustomFields:        editView.CustomFields,
+		Watchers:            watchers,
+		IsWatching:          isWatching,
+		Voters:              voters,
+		HasVoted:            hasVoted,
+		Links:               linkViews,
+		LinkTypes:           linkTypeValues,
+		Children:            derefIssues(children),
+		ParentOptions:       parentOptions,
+		Forms:               derefForms(forms),
+		Development:         development,
+		Delivery:            delivery,
+		AppPanels:           appPanels,
+		AppActivityTabs:     appActivityTabs,
+		AppContexts:         appContexts,
+		AppIssueContent:     appIssueContent,
 	}, nil
 }
 
