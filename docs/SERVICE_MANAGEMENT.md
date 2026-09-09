@@ -72,6 +72,15 @@ approval as declined; otherwise it completes only after every approver accepts.
 Only a pending assigned approver can answer, and an approver can open the request
 even when they are neither its reporter nor a participant.
 
+The shared JQL engine exposes the complete Jira Cloud approval-function family
+over this same state. `approved()` and `pending()` select final step state;
+`approver()` and `myApproval()` include pending and completed steps;
+`myPendingApproval()` and `pendingApprovalBy()` require an unanswered approver;
+and `myPending()` and `pendingBy()` retain users who already answered while the
+step awaits someone else. Explicit users accept account IDs, usernames, email
+addresses, and display names. Jira-supported `!=` forms exclude requests with
+no approval field.
+
 ## Operations governance
 
 Incident, problem, and change request types create an internal operations
@@ -182,13 +191,17 @@ chart and its exact table expose the daily series.
 
 The request page shows on-track, paused, breached and completed goal state.
 Elapsed and breach time skip non-working days and persisted holidays and honor
-time-zone transitions. The two Jira SLA REST operations are agent-only and
+time-zone transitions. Managers can define a validated JQL pause condition for
+each metric. Matching requests open a durable pause interval on creation or
+transition, configuration changes immediately reconcile every active cycle,
+and resuming retains the interval for historical calculations. The two Jira SLA REST operations are agent-only and
 return Jira-compatible date, duration, completed-cycle and ongoing-cycle
 shapes. A durable minute worker emits one approaching-goal and one breached
 notification per clock and recipient, with transactionally synchronized
 notification actions. The SLA attention queue shows requests inside the final
-quarter of a goal and sorts breached requests first. Status-driven pauses and
-multiple calendars remain.
+quarter of a goal and sorts breached requests first. Jira's seven SLA JQL
+functions query the same calendar, cycle, goal snapshot, and pause state used by
+these REST and worker journeys.
 
 ## REST coverage
 
@@ -230,7 +243,8 @@ the service request without exposing those links to portal customers. Managers c
 conditions per SLA metric; the first matching condition wins and every cycle
 snapshots the chosen goal name and duration so completed history remains stable.
 Active cycles follow edits to their selected goal, and the default remains the
-fallback. Failed metadata association is
+fallback. Managers also configure per-metric pause JQL in this workspace.
+Recursive SLA-dependent pause conditions are rejected. Failed metadata association is
 compensated by a logged issue deletion, so no orphaned ticket remains.
 
 ## Remaining fidelity

@@ -51,6 +51,7 @@ func TestIssueBeanGolden(t *testing.T) {
 	h := goldenHandler()
 	issue := &models.Issue{
 		ID:          "iss_abc123",
+		JiraID:      10001,
 		WorkspaceID: "ws_default",
 		ProjectID:   "prj_default",
 		Key:         "ZZ-1",
@@ -81,17 +82,17 @@ func TestIssueBeanGolden(t *testing.T) {
 
 func TestIssueBeanIncludesJiraParentShape(t *testing.T) {
 	bean := goldenHandler().issueBean(&models.Issue{
-		ID: "iss_child", ProjectID: "prj_default", Key: "ZZ-2", Summary: "Child",
+		ID: "iss_child", JiraID: 10002, ProjectID: "prj_default", Key: "ZZ-2", Summary: "Child",
 		Description: json.RawMessage(`{"type":"doc","version":1}`),
 		Status:      models.Status{ID: "st_todo", Name: "To Do", Category: "new"},
 		IssueType:   models.IssueType{ID: "it_subtask", Name: "Sub-task", Subtask: true},
-		Parent:      &models.IssueParent{ID: "iss_parent", Key: "ZZ-1", Summary: "Parent"},
+		Parent:      &models.IssueParent{ID: "iss_parent", JiraID: 10001, Key: "ZZ-1", Summary: "Parent"},
 	})
 	fields := bean["fields"].(map[string]any)
 	parent := fields["parent"].(map[string]any)
 	parentFields := parent["fields"].(map[string]any)
 	issueType := fields["issuetype"].(map[string]any)
-	if parent["id"] != "iss_parent" || parent["key"] != "ZZ-1" || parentFields["summary"] != "Parent" || issueType["subtask"] != true {
+	if parent["id"] != "10001" || parent["key"] != "ZZ-1" || parentFields["summary"] != "Parent" || issueType["subtask"] != true {
 		t.Fatalf("parent issue bean = %#v, type = %#v", parent, issueType)
 	}
 }

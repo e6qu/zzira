@@ -27,7 +27,7 @@ async function createIssue(request: any, summary: string, labels: string[] = [])
   return (await response.json()).key as string;
 }
 
-test('issue triage journey: inline fields, labels API, watchers, links, activity, and management actions', async ({ page, request }) => {
+test('issue triage journey: inline fields, labels API, watchers, votes, links, activity, and management actions', async ({ page, request }) => {
   page.on('dialog', (dialog) => dialog.accept());
   const marker = Date.now();
   const key = await createIssue(request, `Triage ${marker}`, ['api-label']);
@@ -59,7 +59,7 @@ test('issue triage journey: inline fields, labels API, watchers, links, activity
     return (await updatedBean.json()).fields.labels;
   }).toEqual(['frontend', 'parity']);
 
-  const watchButton = page.locator('.watch-button');
+  const watchButton = page.locator(`form[action="/issues/${key}/watch"] .watch-button`);
   await page.locator('.issue-summary').click();
   await page.keyboard.press('w');
   await expect(watchButton).toHaveAttribute('aria-pressed', 'true');
@@ -67,6 +67,17 @@ test('issue triage journey: inline fields, labels API, watchers, links, activity
   const watcherBody = await watchers.json();
   expect(watcherBody.isWatching).toBe(true);
   expect(watcherBody.watchCount).toBe(1);
+
+  const voteButton = page.locator(`form[action="/issues/${key}/vote"] .watch-button`);
+  await voteButton.click();
+  await expect(voteButton).toHaveAttribute('aria-pressed', 'true');
+  await expect(voteButton).toContainText('Voted 1');
+  const votes = await request.get(`/rest/api/3/issue/${key}/votes`, { headers: auth });
+  expect(votes.status()).toBe(200);
+  const voteBody = await votes.json();
+  expect(voteBody.hasVoted).toBe(true);
+  expect(voteBody.votes).toBe(1);
+  expect(voteBody.voters[0].emailAddress).toBe(DEMO.email);
 
   await page.getByText('Link work item', { exact: true }).click();
   await page.fill('#link-issue', linkedKey);
@@ -112,4 +123,6 @@ test('issue triage journey: inline fields, labels API, watchers, links, activity
 
   const unwatch = await request.delete(`/rest/api/3/issue/${key}/watchers`, { headers: auth });
   expect(unwatch.status()).toBe(204);
+  const unvote = await request.delete(`/rest/api/3/issue/${key}/votes`, { headers: auth });
+  expect(unvote.status()).toBe(204);
 });

@@ -57,7 +57,7 @@ func TestAPITaskRunnerCancellationAndStaleClaimRecovery(t *testing.T) {
 	if task, err := st.CancelAPITask(ctx, workspaceID, claimed.ID); err != nil || task.Status != "CANCELLED" || task.FinishedAt == nil {
 		t.Fatalf("cancel running task = %+v, %v", task, err)
 	}
-	if err := runner.execute(ctx, claimed); !errors.Is(err, errAPITaskCancelled) {
+	if err := runner.execute(ctx, claimed); !errors.Is(err, ErrAPITaskCancelled) {
 		t.Fatalf("cancelled execution error = %v", err)
 	}
 	var assignedScheme string

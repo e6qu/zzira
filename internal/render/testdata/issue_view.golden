@@ -21,6 +21,10 @@
         <input type="hidden" name="watching" value="false">
         <button type="submit" class="btn watch-button" aria-pressed="true" aria-keyshortcuts="W"><span aria-hidden="true">◉</span>Watching <span class="action-count">1</span></button>
       </form>
+      <form method="post" action="/issues/ZZ-1/vote" hx-post="/issues/ZZ-1/vote" hx-target="#issue-root" hx-swap="outerHTML">
+        <input type="hidden" name="voting" value="false">
+        <button type="submit" class="btn watch-button" aria-pressed="true"><span aria-hidden="true">▲</span>Voted <span class="action-count">1</span></button>
+      </form>
 
       <button type="button" class="btn" id="edit-issue-button" onclick="window.zzira.openEdit('ZZ-1', this)">Edit</button>
       <details class="more-menu"><summary class="btn" aria-label="More issue actions">•••</summary><div><button type="button" class="menu-danger" hx-delete="/issues/ZZ-1" hx-confirm="Delete ZZ-1?" hx-redirect="/issues/ZZ">Delete issue</button></div></details>
@@ -139,6 +143,9 @@
       </dl>
 
       <section class="watcher-summary" aria-labelledby="watchers-title"><h3 id="watchers-title">Watchers <span>1</span></h3><ul><li>
+<span class="avatar" aria-hidden="true"><span>DU</span></span>
+<span>Demo User</span></li></ul></section>
+      <section class="watcher-summary" aria-labelledby="voters-title"><h3 id="voters-title">Voters <span>1</span></h3><ul><li>
 <span class="avatar" aria-hidden="true"><span>DU</span></span>
 <span>Demo User</span></li></ul></section>
       <div class="details-meta"><span>Updated</span><time datetime="2026-08-28T09:00:00Z">2026-08-28T09:00:00Z</time></div>

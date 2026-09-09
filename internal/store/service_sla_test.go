@@ -36,3 +36,22 @@ func TestServiceCalendarBusinessTime(t *testing.T) {
 		t.Fatalf("holiday breach time = %v, want %v", got, tuesdayMorning)
 	}
 }
+
+func TestServiceSLACycleSubtractsDurablePauseIntervals(t *testing.T) {
+	calendar := &models.ServiceCalendar{
+		TimeZone: "UTC", Weekdays: []int16{1, 2, 3, 4, 5},
+		StartMinute: 9 * 60, EndMinute: 17 * 60, Holidays: map[string]string{},
+	}
+	start := time.Date(2026, time.September, 7, 16, 0, 0, 0, time.UTC)
+	pauseStart := time.Date(2026, time.September, 7, 16, 30, 0, 0, time.UTC)
+	pauseStop := time.Date(2026, time.September, 8, 9, 30, 0, 0, time.UTC)
+	end := time.Date(2026, time.September, 8, 11, 0, 0, 0, time.UTC)
+	cycle := calculateServiceSLACycleWithPauses(calendar, time.UTC, "cycle", start, nil, (2 * time.Hour).Milliseconds(), end, []models.ServiceSLAPause{{StartTime: pauseStart, StopTime: &pauseStop}})
+	if cycle.Paused || !cycle.Breached || cycle.ElapsedMillis != (2*time.Hour).Milliseconds() || !cycle.BreachTime.Equal(end) {
+		t.Fatalf("cycle with closed pause = %+v", cycle)
+	}
+	active := calculateServiceSLACycleWithPauses(calendar, time.UTC, "cycle", start, nil, (2 * time.Hour).Milliseconds(), pauseStop, []models.ServiceSLAPause{{StartTime: pauseStart}})
+	if !active.Paused || active.Breached || active.ElapsedMillis != (30*time.Minute).Milliseconds() || !active.BreachTime.Equal(end) {
+		t.Fatalf("cycle with active pause = %+v", active)
+	}
+}

@@ -18,6 +18,7 @@ var appKeyPattern = regexp.MustCompile(`^[a-z][a-z0-9.-]{1,63}$`)
 var connectAppKeyPattern = regexp.MustCompile(`^[a-zA-Z0-9._-]{1,64}$`)
 var moduleKeyPattern = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9._-]{0,63}$`)
 var connectModuleKeyPattern = regexp.MustCompile(`^[a-zA-Z0-9-]{1,100}$`)
+var jqlFunctionNamePattern = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]{0,254}$`)
 
 var allowedScopes = map[string]bool{
 	"read:jira-work": true, "write:jira-work": true,
@@ -63,7 +64,17 @@ type descriptorWire struct {
 	Webhooks          []webhookWire          `json:"webhooks"`
 	ScheduledTriggers []scheduledTriggerWire `json:"scheduledTriggers"`
 	IssueFields       []models.AppIssueField `json:"-"`
+	JQLFunctions      []jqlFunctionWire      `json:"jqlFunctions"`
 	Format            string                 `json:"-"`
+}
+
+type jqlFunctionWire struct {
+	Key       string                          `json:"key"`
+	Name      string                          `json:"name"`
+	URL       string                          `json:"url"`
+	Arguments []models.AppJQLFunctionArgument `json:"arguments"`
+	Types     []string                        `json:"types"`
+	Operators []string                        `json:"operators"`
 }
 
 type webhookWire struct {
@@ -180,6 +191,23 @@ func validateDescriptorWire(wire descriptorWire) (models.AppDescriptor, error) {
 		moduleKeys[input.Key] = true
 		descriptor.Modules = append(descriptor.Modules, models.AppModule{Key: input.Key, Type: input.Type, Location: input.Location, Title: input.Title, Body: input.Body, RemoteURL: input.URL, Position: input.Position})
 	}
+	functionNames := map[string]bool{}
+	if len(wire.JQLFunctions) > 0 && !scopes["read:jira-work"] {
+		return models.AppDescriptor{}, fmt.Errorf("JQL functions require scope read:jira-work")
+	}
+	for _, input := range wire.JQLFunctions {
+		function, err := validateJQLFunction(input, wire.Format, moduleKeys)
+		if err != nil {
+			return models.AppDescriptor{}, err
+		}
+		name := strings.ToLower(function.Name)
+		if functionNames[name] || builtInJQLFunction(name) {
+			return models.AppDescriptor{}, fmt.Errorf("JQL function name %q is duplicate or reserved", function.Name)
+		}
+		functionNames[name] = true
+		moduleKeys[function.Key] = true
+		descriptor.JQLFunctions = append(descriptor.JQLFunctions, function)
+	}
 	descriptor.Lifecycle = map[string]string{}
 	for event, path := range wire.Lifecycle {
 		if !map[string]bool{"installed": true, "enabled": true, "disabled": true, "upgraded": true, "uninstalled": true}[event] || !validAppCallbackPath(path) {
@@ -234,6 +262,76 @@ func validateDescriptorWire(wire descriptorWire) (models.AppDescriptor, error) {
 		return models.AppDescriptor{}, fmt.Errorf("an app may declare only one five-minute scheduled trigger")
 	}
 	return descriptor, nil
+}
+
+func validateJQLFunction(input jqlFunctionWire, format string, moduleKeys map[string]bool) (models.AppJQLFunction, error) {
+	input.Key, input.Name, input.URL = strings.TrimSpace(input.Key), strings.TrimSpace(input.Name), strings.TrimSpace(input.URL)
+	validKey := moduleKeyPattern.MatchString(input.Key)
+	if format == "connect" {
+		validKey = connectModuleKeyPattern.MatchString(input.Key)
+	}
+	if !validKey || moduleKeys[input.Key] || !jqlFunctionNamePattern.MatchString(input.Name) || !validAppCallbackPath(input.URL) {
+		return models.AppJQLFunction{}, fmt.Errorf("JQL functions need a unique key, valid function name, and relative URL")
+	}
+	if len(input.Types) == 0 || len(input.Operators) == 0 {
+		return models.AppJQLFunction{}, fmt.Errorf("JQL function %q needs non-empty types and operators", input.Key)
+	}
+	seenArguments := map[string]bool{}
+	for index := range input.Arguments {
+		argument := &input.Arguments[index]
+		argument.Name = strings.TrimSpace(argument.Name)
+		key := strings.ToLower(argument.Name)
+		if !jqlFunctionNamePattern.MatchString(argument.Name) || seenArguments[key] {
+			return models.AppJQLFunction{}, fmt.Errorf("JQL function %q has invalid or duplicate arguments", input.Key)
+		}
+		seenArguments[key] = true
+	}
+	allowedTypes := map[string]bool{
+		"issue": true, "project": true, "project_category": true, "project_type": true, "hierarchy_level": true,
+		"version": true, "component": true, "user": true, "group": true, "team": true, "project_role": true,
+		"priority": true, "resolution": true, "issue_type": true, "status": true, "status_category": true,
+		"cascading_option": true, "option": true, "saved_filter": true, "issue_security_level": true,
+		"issue_restriction": true, "label": true, "attachment": true, "issue_list": true, "issue_link_type": true,
+		"date": true, "text": true, "number": true, "duration": true, "url": true,
+	}
+	allowedOperators := map[string]bool{"=": true, "!=": true, ">": true, ">=": true, "<": true, "<=": true, "in": true, "not_in": true, "~": true, "~=": true, "is": true, "is_not": true}
+	types, typeSeen := make([]string, 0, len(input.Types)), map[string]bool{}
+	for _, value := range input.Types {
+		value = strings.ToLower(strings.TrimSpace(value))
+		if !allowedTypes[value] || typeSeen[value] {
+			return models.AppJQLFunction{}, fmt.Errorf("JQL function %q has an unsupported or duplicate type", input.Key)
+		}
+		typeSeen[value] = true
+		types = append(types, value)
+	}
+	operators, operatorSeen := make([]string, 0, len(input.Operators)), map[string]bool{}
+	for _, value := range input.Operators {
+		value = strings.ToLower(strings.TrimSpace(value))
+		if value == "not in" {
+			value = "not_in"
+		} else if value == "is not" {
+			value = "is_not"
+		}
+		if !allowedOperators[value] || operatorSeen[value] {
+			return models.AppJQLFunction{}, fmt.Errorf("JQL function %q has an unsupported or duplicate operator", input.Key)
+		}
+		operatorSeen[value] = true
+		operators = append(operators, value)
+	}
+	return models.AppJQLFunction{Key: input.Key, Name: input.Name, Path: input.URL, Arguments: input.Arguments, Types: types, Operators: operators}, nil
+}
+
+func builtInJQLFunction(name string) bool {
+	switch name {
+	case "closedsprints", "currentuser", "earliestunreleasedversion", "endofday", "endofmonth", "endofweek", "endofyear",
+		"futuresprints", "latestreleasedversion", "linkedissues", "linkedworkitems", "membersof", "now", "opensprints",
+		"projectsleadbyuser", "projectswhereuserhasrole", "releasedversions", "spacesleadbyuser", "spaceswhereuserhasrole",
+		"standardissuetypes", "standardworktypes", "startofday", "startofmonth", "startofweek", "startofyear",
+		"subtaskissuetypes", "subtaskworktypes", "unreleasedversions", "updatedby", "votedissues", "votedworkitems",
+		"watchedissues", "watchedworkitems":
+		return true
+	}
+	return false
 }
 
 func validAppCallbackPath(value string) bool {

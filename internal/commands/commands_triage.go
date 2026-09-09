@@ -20,6 +20,19 @@ func (s *Service) SetWatching(ctx context.Context, actorID, workspaceID, issueID
 	return s.Store.RemoveWatcher(ctx, actorID, workspaceID, issue.ID, actorID)
 }
 
+// SetVoting records or removes the actor's vote after the ordinary issue
+// visibility check. Jira votes are always self-service.
+func (s *Service) SetVoting(ctx context.Context, actorID, workspaceID, issueIDOrKey string, voting bool) (*models.Action, error) {
+	issue, err := s.visibleIssue(ctx, actorID, workspaceID, issueIDOrKey)
+	if err != nil {
+		return nil, err
+	}
+	if voting {
+		return s.Store.AddVote(ctx, actorID, workspaceID, issue.ID, actorID)
+	}
+	return s.Store.RemoveVote(ctx, actorID, workspaceID, issue.ID, actorID)
+}
+
 // LinkIssue creates an outward relationship from issueIDOrKey to otherIDOrKey.
 // For example, selecting "blocks" renders "blocks ZZ-2" on the current issue.
 func (s *Service) LinkIssue(ctx context.Context, actorID, workspaceID, issueIDOrKey, typeID, otherIDOrKey string) (*models.IssueLink, *models.Action, error) {

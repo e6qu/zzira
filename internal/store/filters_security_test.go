@@ -64,6 +64,9 @@ func TestFiltersAreWorkspaceScopedOwnedAndPerUserFavourites(t *testing.T) {
 	if _, err := st.CreateFilter(ctx, filterID, workspaceID, "Owned filter", `project = ZZ`, "", ownerID); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := st.AddFilterPermission(ctx, workspaceID, ownerID, filterID, FilterPermissionInput{Type: "user", AccountID: otherUserID}); err != nil {
+		t.Fatal(err)
+	}
 	if err := st.SetFilterFavourite(ctx, workspaceID, otherUserID, filterID, true); err != nil {
 		t.Fatal(err)
 	}
@@ -81,8 +84,8 @@ func TestFiltersAreWorkspaceScopedOwnedAndPerUserFavourites(t *testing.T) {
 	if !otherView.Favourite {
 		t.Fatal("user's favourite was not persisted")
 	}
-	if _, err := st.UpdateFilter(ctx, workspaceID, otherUserID, filterID, "Hijacked", `project = ZZ`, ""); !errors.Is(err, pgx.ErrNoRows) {
-		t.Fatalf("non-owner update err=%v, want not found", err)
+	if _, err := st.UpdateFilter(ctx, workspaceID, otherUserID, filterID, "Hijacked", `project = ZZ`, ""); !errors.Is(err, ErrFilterPermission) {
+		t.Fatalf("non-owner update err=%v, want permission denial", err)
 	}
 	if err := st.DeleteFilter(ctx, workspaceID, otherUserID, filterID); !errors.Is(err, pgx.ErrNoRows) {
 		t.Fatalf("non-owner delete err=%v, want not found", err)

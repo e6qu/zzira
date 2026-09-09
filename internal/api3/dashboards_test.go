@@ -134,7 +134,7 @@ func TestDashboardLifecyclePrivacyAndGadgets(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		issue := call(actor, "POST", "/rest/api/3/issue", map[string]any{"fields": map[string]any{"project": map[string]string{"key": "DG"}, "summary": fmt.Sprintf("Chart work %d", i), "issuetype": map[string]string{"name": "Task"}, "assignee": map[string]string{"accountId": member}}}, 201)
 		if i == 2 {
-			exec(`UPDATE issues SET security_level_id='private-test' WHERE id=$1`, issue["id"])
+			exec(`UPDATE issues SET security_level_id='private-test' WHERE jira_id::text=$1`, issue["id"])
 		}
 	}
 	for _, viewer := range []string{actor, member} {

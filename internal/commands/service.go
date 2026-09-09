@@ -102,6 +102,10 @@ func (s *Service) CreateServiceRequest(ctx context.Context, in CreateServiceRequ
 		_, cleanupErr := s.DeleteIssue(ctx, in.ActorID, in.WorkspaceID, issue.ID, "service SLA goal selection failed")
 		return nil, errors.Join(err, cleanupErr)
 	}
+	if err := s.Store.ReconcileServiceSLAPauses(ctx, in.WorkspaceID, in.ActorID, issue.ID, time.Now().UTC()); err != nil {
+		_, cleanupErr := s.DeleteIssue(ctx, in.ActorID, in.WorkspaceID, issue.ID, "service SLA pause selection failed")
+		return nil, errors.Join(err, cleanupErr)
+	}
 	if len(in.ParticipantIDs) > 0 {
 		if err := s.Store.UpdateServiceRequestParticipants(ctx, in.WorkspaceID, issue.ID, in.ParticipantIDs, false); err != nil {
 			_, cleanupErr := s.DeleteIssue(ctx, in.ActorID, in.WorkspaceID, issue.ID, "service request participant creation failed")
@@ -201,21 +205,9 @@ func (s *Service) TransitionServiceRequest(ctx context.Context, actorID, workspa
 	if err != nil {
 		return nil, fmt.Errorf("request does not exist")
 	}
-	updated, _, err := s.TransitionIssue(ctx, actorID, workspaceID, request.Issue.ID, transitionID)
+	_, _, err = s.TransitionIssue(ctx, actorID, workspaceID, request.Issue.ID, transitionID)
 	if err != nil {
 		return nil, err
-	}
-	if updated.Status.Category == "done" {
-		if err := s.Store.CompleteServiceSLA(ctx, workspaceID, request.Issue.ID, "resolution", time.Now().UTC()); err != nil {
-			return nil, err
-		}
-	} else {
-		if err := s.Store.EnsureResolutionSLA(ctx, workspaceID, request.Issue.ID, time.Now().UTC()); err != nil {
-			return nil, err
-		}
-		if err := s.Store.ApplyServiceSLAGoals(ctx, workspaceID, actorID, request.ServiceDesk.ID, request.Issue.ID); err != nil {
-			return nil, err
-		}
 	}
 	request, err = s.Store.ServiceRequest(ctx, workspaceID, actorID, request.Issue.ID, canManage)
 	if err != nil {
@@ -225,6 +217,26 @@ func (s *Service) TransitionServiceRequest(ctx context.Context, actorID, workspa
 		return nil, err
 	}
 	return request, nil
+}
+
+func (s *Service) syncServiceSLAsAfterIssueChange(ctx context.Context, actorID, workspaceID string, issue *models.Issue, at time.Time) error {
+	serviceDeskID, err := s.Store.ServiceRequestDeskID(ctx, workspaceID, issue.ID)
+	if err != nil || serviceDeskID == "" {
+		return err
+	}
+	if issue.Status.Category == "done" {
+		if err := s.Store.CompleteServiceSLA(ctx, workspaceID, issue.ID, "resolution", at); err != nil {
+			return err
+		}
+	} else {
+		if err := s.Store.EnsureResolutionSLA(ctx, workspaceID, issue.ID, at); err != nil {
+			return err
+		}
+		if err := s.Store.ApplyServiceSLAGoals(ctx, workspaceID, actorID, serviceDeskID, issue.ID); err != nil {
+			return err
+		}
+	}
+	return s.Store.ReconcileServiceSLAPauses(ctx, workspaceID, actorID, issue.ID, at)
 }
 
 func (s *Service) SetServiceDeskAgent(ctx context.Context, actorID, workspaceID, serviceDeskID, userID string, enabled bool) error {
@@ -238,7 +250,7 @@ func (s *Service) SetServiceDeskAgent(ctx context.Context, actorID, workspaceID,
 	return s.Store.SetServiceDeskAgent(ctx, workspaceID, actorID, serviceDeskID, userID, enabled)
 }
 
-func (s *Service) UpdateServiceSLAMetric(ctx context.Context, actorID, workspaceID, serviceDeskID, metricID string, goalMillis int64) error {
+func (s *Service) UpdateServiceSLAMetric(ctx context.Context, actorID, workspaceID, serviceDeskID, metricID, pauseJQL string, goalMillis int64) error {
 	admin, err := s.Store.IsAdmin(ctx, workspaceID, actorID)
 	if err != nil {
 		return err
@@ -246,7 +258,49 @@ func (s *Service) UpdateServiceSLAMetric(ctx context.Context, actorID, workspace
 	if !admin {
 		return fmt.Errorf("only an administrator may configure service SLAs")
 	}
-	return s.Store.UpdateServiceSLAMetric(ctx, workspaceID, actorID, serviceDeskID, metricID, goalMillis)
+	pauseJQL = strings.TrimSpace(pauseJQL)
+	if len(pauseJQL) > 2000 {
+		return fmt.Errorf("SLA pause JQL accepts at most 2000 characters")
+	}
+	if pauseJQL != "" {
+		lower := strings.ToLower(pauseJQL)
+		for _, function := range []string{"breached(", "completed(", "everbreached(", "paused(", "remaining(", "running(", "withincalendarhours("} {
+			if strings.Contains(lower, function) {
+				return fmt.Errorf("SLA pause JQL cannot depend on SLA functions")
+			}
+		}
+		parsed, err := jql.Parse(pauseJQL)
+		if err != nil {
+			return err
+		}
+		if parsed.OrderBy != nil || len(parsed.Orders) > 0 {
+			return fmt.Errorf("SLA pause JQL cannot contain ORDER BY")
+		}
+		if err := s.Store.ExpandAppJQL(ctx, workspaceID, parsed); err != nil {
+			return err
+		}
+		fields, err := s.Store.CustomFieldsForWorkspace(ctx, workspaceID)
+		if err != nil {
+			return err
+		}
+		if compiled := jql.Compile(parsed, actorID, jql.WithCustomFields(jql.DefaultResolver(), fields)); compiled.Err != nil {
+			return compiled.Err
+		}
+	}
+	if err := s.Store.UpdateServiceSLAMetric(ctx, workspaceID, actorID, serviceDeskID, metricID, pauseJQL, goalMillis); err != nil {
+		return err
+	}
+	requestIDs, err := s.Store.OpenServiceSLAMetricRequestIDs(ctx, workspaceID, serviceDeskID, metricID)
+	if err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	for _, requestID := range requestIDs {
+		if err := s.Store.ReconcileServiceSLAPauses(ctx, workspaceID, actorID, requestID, now); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Service) validateServiceSLAGoal(ctx context.Context, workspaceID, name, query string, goalMillis int64) (string, string, error) {
@@ -266,6 +320,9 @@ func (s *Service) validateServiceSLAGoal(ctx context.Context, workspaceID, name,
 	}
 	if parsed.OrderBy != nil {
 		return "", "", fmt.Errorf("conditional SLA goal JQL cannot contain ORDER BY")
+	}
+	if err := s.Store.ExpandAppJQL(ctx, workspaceID, parsed); err != nil {
+		return "", "", err
 	}
 	resolver := jql.DefaultResolver()
 	fields, err := s.Store.CustomFieldsForWorkspace(ctx, workspaceID)
@@ -354,6 +411,9 @@ func (s *Service) validateServiceQueue(ctx context.Context, workspaceID, name, q
 	}
 	parsed, err := jql.Parse(query)
 	if err != nil {
+		return "", "", err
+	}
+	if err := s.Store.ExpandAppJQL(ctx, workspaceID, parsed); err != nil {
 		return "", "", err
 	}
 	resolver := jql.DefaultResolver()

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/e6qu/zzira/internal/jql"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -21,7 +22,18 @@ import (
 )
 
 type Store struct {
-	Pool *pgxpool.Pool
+	Pool           *pgxpool.Pool
+	AppJQLExpander func(context.Context, string, *jql.Query) error
+}
+
+// ExpandAppJQL applies the installed-app function runtime when configured by
+// the server. Keeping the hook on Store gives every product surface that owns
+// JQL the same expansion behavior without coupling persistence to app HTTP.
+func (s *Store) ExpandAppJQL(ctx context.Context, workspaceID string, query *jql.Query) error {
+	if s == nil || s.AppJQLExpander == nil {
+		return nil
+	}
+	return s.AppJQLExpander(ctx, workspaceID, query)
 }
 
 var ErrInactiveUser = errors.New("user account is inactive")
@@ -190,21 +202,43 @@ func (s *Store) OIDCRole(ctx context.Context, userID string) (string, error) {
 }
 
 func (s *Store) CreateSession(ctx context.Context, tokenHash, userID string, ttl time.Duration) error {
-	_, err := s.Pool.Exec(ctx,
-		`INSERT INTO sessions (token_hash, user_id, expires_at) VALUES ($1,$2,now() + $3::interval)`,
-		tokenHash, userID, fmt.Sprintf("%d seconds", int(ttl.Seconds())))
-	return err
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	startedAt := time.Now().UTC()
+	if _, err = tx.Exec(ctx,
+		`INSERT INTO sessions (token_hash,user_id,expires_at) VALUES ($1,$2,$3::timestamptz+$4::interval)`,
+		tokenHash, userID, startedAt, fmt.Sprintf("%d seconds", int(ttl.Seconds()))); err != nil {
+		return err
+	}
+	if err = recordLoginStart(ctx, tx, userID, startedAt); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // CreateOIDCSession records an opaque browser session, its ID token (so
 // RP-initiated logout can send the provider an id_token_hint), and the
 // provider's sid so a later back-channel logout naming that sid can find it.
 func (s *Store) CreateOIDCSession(ctx context.Context, tokenHash, userID, idToken, issuer, subject, sid string, ttl time.Duration) error {
-	_, err := s.Pool.Exec(ctx,
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	startedAt := time.Now().UTC()
+	if _, err = tx.Exec(ctx,
 		`INSERT INTO sessions (token_hash, user_id, oidc_id_token, oidc_issuer, oidc_subject, oidc_session_id, expires_at)
-		 VALUES ($1,$2,$3,$4,$5,NULLIF($6,''),now() + $7::interval)`,
-		tokenHash, userID, idToken, issuer, subject, sid, fmt.Sprintf("%d seconds", int(ttl.Seconds())))
-	return err
+		 VALUES ($1,$2,$3,$4,$5,NULLIF($6,''),$7::timestamptz+$8::interval)`,
+		tokenHash, userID, idToken, issuer, subject, sid, startedAt, fmt.Sprintf("%d seconds", int(ttl.Seconds()))); err != nil {
+		return err
+	}
+	if err = recordLoginStart(ctx, tx, userID, startedAt); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // CreateIdentityProviderSession records a provider-backed browser session and
@@ -216,10 +250,14 @@ func (s *Store) CreateIdentityProviderSession(ctx context.Context, tokenHash, us
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	startedAt := time.Now().UTC()
 	if _, err := tx.Exec(ctx,
 		`INSERT INTO sessions (token_hash, user_id, oidc_id_token, oidc_issuer, oidc_subject, oidc_session_id, expires_at)
-		 VALUES ($1,$2,NULLIF($3,''),$4,$5,NULLIF($6,''),now() + $7::interval)`,
-		tokenHash, userID, idToken, issuer, subject, sid, fmt.Sprintf("%d seconds", int(ttl.Seconds()))); err != nil {
+		 VALUES ($1,$2,NULLIF($3,''),$4,$5,NULLIF($6,''),$7::timestamptz+$8::interval)`,
+		tokenHash, userID, idToken, issuer, subject, sid, startedAt, fmt.Sprintf("%d seconds", int(ttl.Seconds()))); err != nil {
+		return err
+	}
+	if err := recordLoginStart(ctx, tx, userID, startedAt); err != nil {
 		return err
 	}
 	detail, err := json.Marshal(map[string]any{"provider": providerKey, "issuer": issuer})
@@ -234,6 +272,21 @@ func (s *Store) CreateIdentityProviderSession(ctx context.Context, tokenHash, us
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+func recordLoginStart(ctx context.Context, tx pgx.Tx, userID string, startedAt time.Time) error {
+	_, err := tx.Exec(ctx, `
+		INSERT INTO user_login_state(user_id,current_started_at,previous_started_at,updated_at)
+		VALUES($1,$2,NULL,$2)
+		ON CONFLICT(user_id) DO UPDATE SET
+		  previous_started_at=CASE
+		    WHEN EXCLUDED.current_started_at>=user_login_state.current_started_at THEN user_login_state.current_started_at
+		    WHEN user_login_state.previous_started_at IS NULL OR EXCLUDED.current_started_at>user_login_state.previous_started_at THEN EXCLUDED.current_started_at
+		    ELSE user_login_state.previous_started_at
+		  END,
+		  current_started_at=GREATEST(user_login_state.current_started_at,EXCLUDED.current_started_at),
+		  updated_at=GREATEST(user_login_state.updated_at,EXCLUDED.updated_at)`, userID, startedAt)
+	return err
 }
 
 func (s *Store) SessionUser(ctx context.Context, tokenHash string) (string, error) {
@@ -690,11 +743,11 @@ func (s *Store) ProjectByKey(ctx context.Context, workspaceID, key string) (*mod
 // ---- Issues ----
 
 const issueJoin = `
-SELECT i.id, i.workspace_id, i.project_id, i.key, i.summary, i.description,
+SELECT i.id, i.jira_id, i.workspace_id, i.project_id, i.key, i.summary, i.description,
        st.id, st.name, st.category,
 	       it.id, it.name, it.icon,
 	       it.subtask,
-	       parent.id, parent.key, parent.summary,
+	       parent.id, parent.jira_id, parent.key, parent.summary,
        pr.id, pr.name,
        a.id, a.display_name,
 	       r.id, r.display_name,
@@ -716,13 +769,14 @@ func scanIssue(row pgx.Row) (*models.Issue, error) {
 	var assigneeID, assigneeName *string
 	var reporterID, reporterName *string
 	var parentID, parentKey, parentSummary *string
+	var parentJiraID *int64
 	var updatedAt time.Time
 	var securityLevelID *string
 	var fieldsJSON []byte
-	err := row.Scan(&i.ID, &i.WorkspaceID, &i.ProjectID, &i.Key, &i.Summary, &i.Description,
+	err := row.Scan(&i.ID, &i.JiraID, &i.WorkspaceID, &i.ProjectID, &i.Key, &i.Summary, &i.Description,
 		&i.Status.ID, &i.Status.Name, &i.Status.Category,
 		&i.IssueType.ID, &i.IssueType.Name, &i.IssueType.Icon, &i.IssueType.Subtask,
-		&parentID, &parentKey, &parentSummary,
+		&parentID, &parentJiraID, &parentKey, &parentSummary,
 		&priorityID, &priorityName,
 		&assigneeID, &assigneeName,
 		&reporterID, &reporterName,
@@ -757,14 +811,14 @@ func scanIssue(row pgx.Row) (*models.Issue, error) {
 		i.Reporter = &models.User{ID: *reporterID, DisplayName: *reporterName, Active: true, AccountType: "atlassian"}
 	}
 	if parentID != nil {
-		i.Parent = &models.IssueParent{ID: *parentID, Key: *parentKey, Summary: *parentSummary}
+		i.Parent = &models.IssueParent{ID: *parentID, JiraID: *parentJiraID, Key: *parentKey, Summary: *parentSummary}
 	}
 	return i, nil
 }
 
 func (s *Store) IssueByIDOrKey(ctx context.Context, workspaceID, idOrKey string) (*models.Issue, error) {
 	return scanIssue(s.Pool.QueryRow(ctx, issueJoin+`
-		WHERE i.workspace_id=$1 AND (i.id=$2 OR upper(i.key)=upper($2))`, workspaceID, idOrKey))
+		WHERE i.workspace_id=$1 AND (i.id=$2 OR i.jira_id::text=$2 OR upper(i.key)=upper($2))`, workspaceID, idOrKey))
 }
 
 // CreateIssue runs the canonical write transaction: state change + action append +
@@ -823,6 +877,9 @@ func (s *Store) CreateIssueForReporter(ctx context.Context, actorID, reporterID,
 	}
 
 	if err := normalizeVersionFields(ctx, tx, projectID, fields); err != nil {
+		return nil, nil, err
+	}
+	if err := normalizeComponentFields(ctx, tx, projectID, fields); err != nil {
 		return nil, nil, err
 	}
 	fieldsJSON, err := json.Marshal(fields)
@@ -918,6 +975,7 @@ func (s *Store) ActionPageSince(ctx context.Context, workspaceID, userID string,
 		WHEN 'attachment' THEN COALESCE(a.payload->'attachment'->>'issueId', a.payload->>'issueId')
 		WHEN 'worklog' THEN COALESCE(a.payload->'worklog'->>'issueId', a.payload->>'issueId')
 		WHEN 'watcher' THEN a.payload->>'issueId'
+		WHEN 'vote' THEN a.payload->>'issueId'
 		WHEN 'sprint_issue' THEN a.payload->>'issueId'
 		WHEN 'issue_link' THEN COALESCE(a.payload->'link'->>'inwardIssueId', a.payload->>'inwardIssueId')
 		ELSE NULL
@@ -1027,7 +1085,7 @@ func (s *Store) ActionPageSince(ctx context.Context, workspaceID, userID string,
 		    END = $3
 			  )
 			  AND (
-			    a.entity_type NOT IN ('issue','comment','attachment','worklog','watcher','sprint_issue','issue_link')
+			    a.entity_type NOT IN ('issue','comment','attachment','worklog','watcher','vote','sprint_issue','issue_link')
 			    OR (
 			      `+canSeeIssue(issueRef)+`
 			      AND (a.entity_type <> 'issue_link' OR `+canSeeIssue(linkOtherIssueRef)+`)

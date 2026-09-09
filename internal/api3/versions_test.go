@@ -115,6 +115,20 @@ func TestVersionLifecycleMembershipAndVisibility(t *testing.T) {
 	if versions("fixVersions")[0].(map[string]any)["id"] != first {
 		t.Fatal("name resolution lost")
 	}
+	for _, search := range []struct {
+		user string
+		jql  string
+	}{
+		{member, `fixVersion IN unreleasedVersions(VR)`},
+		{member, `affectedVersion = earliestUnreleasedVersion(VR)`},
+		{member, `issue IN updatedBy(currentUser())`},
+		{actor, `project IN projectsLeadByUser()`},
+	} {
+		result := call(search.user, "GET", "/rest/api/3/search?jql="+url.QueryEscape(search.jql), nil, 200)
+		if result["total"] != float64(1) {
+			t.Fatalf("JQL %q total = %v", search.jql, result["total"])
+		}
+	}
 	call(member, "PUT", issueURL, map[string]any{"fields": map[string]any{"summary": "Should roll back", "fixVersions": []map[string]string{{"id": other}}}}, 400)
 	if call(member, "GET", issueURL, nil, 200)["fields"].(map[string]any)["summary"] != "Ship it" {
 		t.Fatal("invalid membership partially changed issue")
@@ -133,7 +147,11 @@ func TestVersionLifecycleMembershipAndVisibility(t *testing.T) {
 		}
 	}
 	hidden := call(actor, "POST", "/rest/api/3/issue", map[string]any{"fields": map[string]any{"project": map[string]string{"key": "VR"}, "summary": "Private work", "issuetype": map[string]string{"name": "Task"}, "fixVersions": []map[string]string{{"id": first}}}}, 201)
-	exec(`UPDATE issues SET security_level_id='private-test' WHERE id=$1`, hidden["id"])
+	hiddenIssue, err := st.IssueByIDOrKey(ctx, ws, hidden["id"].(string))
+	if err != nil {
+		t.Fatal(err)
+	}
+	exec(`UPDATE issues SET security_level_id='private-test' WHERE id=$1`, hiddenIssue.ID)
 	counts := call(member, "GET", endpoint+"/relatedIssueCounts", nil, 200)
 	if counts["issuesFixedCount"] != float64(1) || counts["issuesAffectedCount"] != float64(1) {
 		t.Fatal(counts)
@@ -159,7 +177,7 @@ func TestVersionLifecycleMembershipAndVisibility(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, action := range actions {
-		if action.EntityID == hidden["id"] {
+		if action.EntityID == hiddenIssue.ID {
 			t.Fatal("private issue leaked through version refresh action")
 		}
 	}

@@ -4,11 +4,13 @@
 package api3
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/e6qu/zzira/internal/adf"
@@ -53,6 +55,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	path := strings.TrimPrefix(r.URL.Path, "/rest/api/3")
 	switch {
+	case strings.HasPrefix(path, "/bulk/"):
+		h.bulkIssueRoute(w, r, strings.TrimPrefix(path, "/bulk/"))
 	case path == "/dashboard":
 		h.dashboardRoute(w, r, nil)
 	case strings.HasPrefix(path, "/dashboard/"):
@@ -139,8 +143,22 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.roleRoute(w, r)
 	case path == "/webhook" || path == "/webhook/refresh" || strings.HasPrefix(path, "/webhook/"):
 		h.webhookRoute(w, r)
+	case path == "/filter/defaultShareScope":
+		h.filterDefaultShareScope(w, r)
+	case path == "/filter/favourite" && r.Method == http.MethodGet:
+		h.filterCollection(w, r, "favourite")
+	case path == "/filter/my" && r.Method == http.MethodGet:
+		h.filterCollection(w, r, "my")
+	case path == "/filter/search" && r.Method == http.MethodGet:
+		h.searchFilters(w, r)
 	case path == "/filter" && r.Method == http.MethodPost:
 		h.createFilter(w, r)
+	case path == "/component" && r.Method == http.MethodGet:
+		h.componentCollection(w, r)
+	case path == "/component" && r.Method == http.MethodPost:
+		h.createComponent(w, r)
+	case strings.HasPrefix(path, "/component/"):
+		h.componentResource(w, r, strings.Split(strings.TrimPrefix(path, "/component/"), "/"))
 	case path == "/version":
 		h.versionRoute(w, r, nil)
 	case strings.HasPrefix(path, "/version/"):
@@ -152,6 +170,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.projectVersions(w, r, parts[0], parts[1] == "version")
+	case strings.HasPrefix(path, "/project/") && (strings.HasSuffix(path, "/component") || strings.HasSuffix(path, "/components")):
+		parts := strings.Split(strings.TrimPrefix(path, "/project/"), "/")
+		if len(parts) != 2 || r.Method != http.MethodGet {
+			jiraError(w, 404, "No resource found")
+			return
+		}
+		h.projectComponents(w, r, parts[0], parts[1] == "component")
 	case path == "/project" && r.Method == http.MethodGet:
 		h.listProjects(w, r)
 	case path == "/project" && r.Method == http.MethodPost:
@@ -172,6 +197,22 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.searchJQL(w, r)
 	case path == "/search/approximate-count" && r.Method == http.MethodPost:
 		h.searchCount(w, r)
+	case path == "/jql/autocompletedata" && (r.Method == http.MethodGet || r.Method == http.MethodPost):
+		h.jqlAutoCompleteData(w, r)
+	case path == "/jql/autocompletedata/suggestions" && r.Method == http.MethodGet:
+		h.jqlSuggestions(w, r)
+	case path == "/jql/parse" && r.Method == http.MethodPost:
+		h.jqlParse(w, r)
+	case path == "/jql/match" && r.Method == http.MethodPost:
+		h.jqlMatch(w, r)
+	case path == "/jql/pdcleaner" && r.Method == http.MethodPost:
+		h.jqlPersonalDataMigration(w, r)
+	case path == "/jql/sanitize" && r.Method == http.MethodPost:
+		h.jqlSanitize(w, r)
+	case path == "/jql/function/computation" && (r.Method == http.MethodGet || r.Method == http.MethodPost):
+		h.jqlFunctionPrecomputations(w, r)
+	case path == "/jql/function/computation/search" && r.Method == http.MethodPost:
+		h.jqlFunctionPrecomputationsByID(w, r)
 	case path == "/filter" && r.Method == http.MethodGet:
 		h.listFilters(w, r)
 	case strings.HasPrefix(path, "/filter/"):
@@ -238,6 +279,8 @@ func (h *Handler) issueRoute(w http.ResponseWriter, r *http.Request, parts []str
 		h.uploadAttachments(w, r, idOrKey)
 	case len(parts) == 2 && parts[1] == "watchers":
 		h.issueWatchers(w, r, idOrKey)
+	case len(parts) == 2 && parts[1] == "votes":
+		h.issueVotes(w, r, idOrKey)
 	case len(parts) == 2 && parts[1] == "changelog" && r.Method == http.MethodGet:
 		h.changelog(w, r, idOrKey)
 	case len(parts) == 2 && parts[1] == "editmeta" && r.Method == http.MethodGet:
@@ -517,9 +560,9 @@ func (h *Handler) createIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{
-		"id":   issue.ID,
+		"id":   jiraIssueID(issue),
 		"key":  issue.Key,
-		"self": h.BaseURL + "/rest/api/3/issue/" + issue.ID,
+		"self": h.BaseURL + "/rest/api/3/issue/" + jiraIssueID(issue),
 	})
 }
 
@@ -532,7 +575,7 @@ func unsupportedCreateFields(body []byte) map[string]string {
 	}
 	supported := map[string]struct{}{
 		"project": {}, "summary": {}, "description": {}, "issuetype": {}, "priority": {},
-		"assignee": {}, "security": {}, "labels": {}, "fixVersions": {}, "versions": {}, "parent": {},
+		"assignee": {}, "security": {}, "labels": {}, "fixVersions": {}, "versions": {}, "components": {}, "parent": {},
 	}
 	for field := range raw.Fields {
 		if _, ok := supported[field]; ok || customFieldIDPattern.MatchString(field) || appCustomFieldKeyPattern.MatchString(field) {
@@ -545,7 +588,7 @@ func unsupportedCreateFields(body []byte) map[string]string {
 
 func createIssueFieldError(err error) map[string]string {
 	message := err.Error()
-	for _, field := range []string{"summary", "project", "priority", "assignee", "security", "labels", "description", "parent"} {
+	for _, field := range []string{"summary", "project", "priority", "assignee", "security", "labels", "description", "components", "parent"} {
 		if strings.Contains(message, field) {
 			return map[string]string{field: message}
 		}
@@ -745,9 +788,10 @@ func (h *Handler) issueBean(i *models.Issue) map[string]any {
 		},
 	}
 	if i.Parent != nil {
+		parentID := strconv.FormatInt(i.Parent.JiraID, 10)
 		fields["parent"] = map[string]any{
-			"id": i.Parent.ID, "key": i.Parent.Key,
-			"self":   h.BaseURL + "/rest/api/3/issue/" + i.Parent.ID,
+			"id": parentID, "key": i.Parent.Key,
+			"self":   h.BaseURL + "/rest/api/3/issue/" + parentID,
 			"fields": map[string]any{"summary": i.Parent.Summary},
 		}
 	}
@@ -773,11 +817,15 @@ func (h *Handler) issueBean(i *models.Issue) map[string]any {
 	}
 	return map[string]any{
 		"expand": "renderedFields,names,schema,operations,editmeta,changelog,versionedRepresentations",
-		"id":     i.ID,
-		"self":   h.BaseURL + "/rest/api/3/issue/" + i.ID,
+		"id":     jiraIssueID(i),
+		"self":   h.BaseURL + "/rest/api/3/issue/" + jiraIssueID(i),
 		"key":    i.Key,
 		"fields": fields,
 	}
+}
+
+func jiraIssueID(issue *models.Issue) string {
+	return strconv.FormatInt(issue.JiraID, 10)
 }
 
 func statusCategoryBean(category string) map[string]any {
@@ -934,56 +982,54 @@ func (h *Handler) listTransitions(w http.ResponseWriter, r *http.Request, idOrKe
 		writeJerr(w, e)
 		return
 	}
-	wf, err := h.Store.WorkflowForProjectAndIssueType(r.Context(), issue.ProjectID, issue.IssueType.ID)
+	beans, err := h.issueTransitionBeans(r.Context(), wsID, userID, issue)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
-	}
-	beans := []map[string]any{}
-	evaluation := workflow.ContextForIssue(userID, issue)
-	evaluation.IsAPI = true
-	evaluation.StatusHistory, err = h.Store.IssueStatusHistory(r.Context(), wsID, issue.ID)
-	if err != nil {
-		jiraError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	evaluation.Transitions, err = h.Store.IssueTransitionHistory(r.Context(), wsID, issue.ID)
-	if err != nil {
-		jiraError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	evaluation.ParentStatus, evaluation.ChildStatuses, err = h.Store.IssueHierarchyStatuses(r.Context(), wsID, issue.ID)
-	if err != nil {
-		jiraError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	for _, t := range wf.AvailableFor(issue.Status.ID, evaluation) {
-		status, err := h.Store.StatusByIDForProject(r.Context(), t.To, issue.ProjectID)
-		if err != nil {
-			jiraError(w, http.StatusInternalServerError, "internal error")
-			return
-		}
-		fields := map[string]any{}
-		required := t.RequiredFields()
-		for _, field := range t.ScreenFields() {
-			fields[field] = transitionFieldMetadata(field, required[field])
-		}
-		beans = append(beans, map[string]any{
-			"id":            t.ID,
-			"name":          t.Name,
-			"to":            h.statusBean(status),
-			"hasScreen":     t.Screen != nil,
-			"isGlobal":      false,
-			"isInitial":     false,
-			"isConditional": t.Conditions != nil,
-			"isAvailable":   true,
-			"fields":        fields,
-		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"expand":      "transitions",
 		"transitions": beans,
 	})
+}
+
+func (h *Handler) issueTransitionBeans(ctx context.Context, workspaceID, userID string, issue *models.Issue) ([]map[string]any, error) {
+	wf, err := h.Store.WorkflowForProjectAndIssueType(ctx, issue.ProjectID, issue.IssueType.ID)
+	if err != nil {
+		return nil, err
+	}
+	evaluation := workflow.ContextForIssue(userID, issue)
+	evaluation.IsAPI = true
+	evaluation.StatusHistory, err = h.Store.IssueStatusHistory(ctx, workspaceID, issue.ID)
+	if err != nil {
+		return nil, err
+	}
+	evaluation.Transitions, err = h.Store.IssueTransitionHistory(ctx, workspaceID, issue.ID)
+	if err != nil {
+		return nil, err
+	}
+	evaluation.ParentStatus, evaluation.ChildStatuses, err = h.Store.IssueHierarchyStatuses(ctx, workspaceID, issue.ID)
+	if err != nil {
+		return nil, err
+	}
+	beans := []map[string]any{}
+	for _, transition := range wf.AvailableFor(issue.Status.ID, evaluation) {
+		status, err := h.Store.StatusByIDForProject(ctx, transition.To, issue.ProjectID)
+		if err != nil {
+			return nil, err
+		}
+		fields := map[string]any{}
+		required := transition.RequiredFields()
+		for _, field := range transition.ScreenFields() {
+			fields[field] = transitionFieldMetadata(field, required[field])
+		}
+		beans = append(beans, map[string]any{
+			"id": transition.ID, "name": transition.Name, "to": h.statusBean(status),
+			"hasScreen": transition.Screen != nil, "isGlobal": false, "isInitial": false,
+			"isConditional": transition.Conditions != nil, "isAvailable": true, "fields": fields,
+		})
+	}
+	return beans, nil
 }
 
 func (h *Handler) performTransition(w http.ResponseWriter, r *http.Request, idOrKey string) {
@@ -1108,45 +1154,59 @@ func (h *Handler) changelog(w http.ResponseWriter, r *http.Request, idOrKey stri
 		writeJerr(w, e)
 		return
 	}
-	entries, err := h.Store.IssueChangelog(r.Context(), wsID, issue.ID)
+	values, err := h.issueChangelogBeans(r.Context(), wsID, issue.ID, false)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	values := make([]map[string]any, 0, len(entries))
-	for _, en := range entries {
-		items := make([]map[string]any, 0, len(en.Items))
-		for _, it := range en.Items {
-			items = append(items, map[string]any{
-				"field":      it.Field,
-				"fieldtype":  it.FieldType,
-				"from":       it.From,
-				"fromString": it.FromString,
-				"to":         it.To,
-				"toString":   it.ToString,
-			})
-		}
-		values = append(values, map[string]any{
-			"id":      fmt.Sprintf("%d", en.Seq),
-			"author":  h.userBean(en.Author),
-			"created": en.Created,
-			"items":   items,
-		})
-	}
-	isLast := true
 	writeJSON(w, http.StatusOK, map[string]any{
 		"startAt":    0,
 		"maxResults": 1000,
 		"total":      len(values),
-		"isLast":     isLast,
+		"isLast":     true,
 		"values":     values,
 	})
+}
+
+func (h *Handler) issueChangelogBeans(ctx context.Context, workspaceID, issueID string, newestFirst bool) ([]map[string]any, error) {
+	entries, err := h.Store.IssueChangelog(ctx, workspaceID, issueID)
+	if err != nil {
+		return nil, err
+	}
+	values := make([]map[string]any, 0, len(entries))
+	for index := range entries {
+		entry := entries[index]
+		if newestFirst {
+			entry = entries[len(entries)-1-index]
+		}
+		items := make([]map[string]any, 0, len(entry.Items))
+		for _, item := range entry.Items {
+			items = append(items, map[string]any{
+				"field": item.Field, "fieldtype": item.FieldType,
+				"from": item.From, "fromString": item.FromString,
+				"to": item.To, "toString": item.ToString,
+			})
+		}
+		values = append(values, map[string]any{
+			"id": fmt.Sprintf("%d", entry.Seq), "author": h.userBean(entry.Author),
+			"created": entry.Created, "items": items,
+		})
+	}
+	return values, nil
+}
+
+func (h *Handler) issueChangelogPage(ctx context.Context, workspaceID, issueID string, newestFirst bool) (map[string]any, error) {
+	histories, err := h.issueChangelogBeans(ctx, workspaceID, issueID, newestFirst)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"startAt": 0, "maxResults": 1000, "total": len(histories), "histories": histories}, nil
 }
 
 // ---- editmeta ----
 
 func (h *Handler) editMeta(w http.ResponseWriter, r *http.Request, idOrKey string) {
-	wsID, _, e := h.authWorkspace(r)
+	wsID, userID, e := h.authWorkspace(r)
 	if e != nil {
 		writeJerr(w, e)
 		return
@@ -1156,39 +1216,44 @@ func (h *Handler) editMeta(w http.ResponseWriter, r *http.Request, idOrKey strin
 		writeJerr(w, e)
 		return
 	}
-	field := func(name, typ string, required bool) map[string]any {
-		return map[string]any{
-			"required":   required,
-			"schema":     map[string]any{"type": typ},
-			"name":       name,
-			"key":        strings.ToLower(name),
-			"operations": []string{"set"},
-		}
-	}
-	versions, err := h.Store.ProjectVersions(r.Context(), issue.ProjectID)
+	metadata, err := h.issueEditMetadata(r.Context(), wsID, userID, issue)
 	if err != nil {
 		versionError(w, err)
 		return
 	}
-	allowed := []map[string]any{}
-	for _, version := range versions {
-		if !version.Archived {
-			allowed = append(allowed, h.versionBean(version))
+	writeJSON(w, http.StatusOK, metadata)
+}
+
+func (h *Handler) issueEditMetadata(ctx context.Context, workspaceID, userID string, issue *models.Issue) (map[string]any, error) {
+	metadata, err := h.Store.IssueCreateMetadata(ctx, workspaceID, userID)
+	if err != nil {
+		return nil, err
+	}
+	fields := map[string]any{}
+	for _, project := range metadata.Projects {
+		if project.Project.ID != issue.ProjectID {
+			continue
 		}
+		for _, source := range project.Fields {
+			if source.ID == "project" || source.ID == "issuetype" {
+				continue
+			}
+			field := source
+			if field.ID == "parent" {
+				field.Required = issue.IssueType.Subtask
+			}
+			bean := h.legacyCreateFieldBean(field)
+			if field.Type == "array" || field.Type == "versions" {
+				bean["operations"] = []string{"set", "add", "remove"}
+			}
+			fields[field.ID] = bean
+		}
+		break
 	}
-	versionField := func(id, name string) map[string]any {
-		return map[string]any{"required": false, "schema": map[string]any{"type": "array", "items": "version", "system": id}, "name": name, "key": id, "operations": []string{"set", "add", "remove"}, "allowedValues": allowed}
+	if len(fields) == 0 {
+		return nil, fmt.Errorf("edit metadata project is unavailable")
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"fields": map[string]any{
-			"fixVersions": versionField("fixVersions", "Fix versions"),
-			"versions":    versionField("versions", "Affects versions"),
-			"summary":     field("Summary", "string", true),
-			"description": map[string]any{"required": false, "schema": map[string]any{"type": "doc", "system": "description"}, "name": "Description", "key": "description", "operations": []string{"set"}},
-			"assignee":    field("Assignee", "user", false),
-			"priority":    field("Priority", "priority", false),
-		},
-	})
+	return map[string]any{"fields": fields}, nil
 }
 
 // ---- shared helpers ----

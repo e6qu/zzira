@@ -58,6 +58,7 @@ type IssueType struct {
 
 type IssueParent struct {
 	ID      string `json:"id"`
+	JiraID  int64  `json:"-"`
 	Key     string `json:"key"`
 	Summary string `json:"summary"`
 }
@@ -85,6 +86,7 @@ type Project struct {
 // Issue is the materialized issue. Description is an ADF document stored verbatim.
 type Issue struct {
 	ID          string          `json:"id"`
+	JiraID      int64           `json:"-"`
 	WorkspaceID string          `json:"-"`
 	ProjectID   string          `json:"-"`
 	Key         string          `json:"key"`
@@ -163,6 +165,8 @@ type IssueView struct {
 	CustomFields      []CustomFieldView
 	Watchers          []User
 	IsWatching        bool
+	Voters            []User
+	HasVoted          bool
 	Links             []IssueLinkView
 	LinkTypes         []LinkType
 	Children          []Issue

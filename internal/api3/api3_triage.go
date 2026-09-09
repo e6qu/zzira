@@ -76,3 +76,53 @@ func (h *Handler) issueWatchers(w http.ResponseWriter, r *http.Request, idOrKey 
 		jiraError(w, http.StatusMethodNotAllowed, "method not allowed")
 	}
 }
+
+// issueVotes implements Jira's self-service issue vote resource.
+func (h *Handler) issueVotes(w http.ResponseWriter, r *http.Request, idOrKey string) {
+	wsID, userID, e := h.authWorkspace(r)
+	if e != nil {
+		writeJerr(w, e)
+		return
+	}
+	issue, e := h.resolveIssue(r, wsID, idOrKey)
+	if e != nil {
+		writeJerr(w, e)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		voterIDs, err := h.Store.VotersByIssue(r.Context(), issue.ID)
+		if err != nil {
+			jiraError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		voters := make([]map[string]any, 0, len(voterIDs))
+		hasVoted := false
+		for _, voterID := range voterIDs {
+			if voterID == userID {
+				hasVoted = true
+			}
+			if user, err := h.Store.MemberByID(r.Context(), wsID, voterID); err == nil {
+				voters = append(voters, h.userBean(user))
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"self": h.BaseURL + "/rest/api/3/issue/" + issue.Key + "/votes", "votes": len(voterIDs),
+			"hasVoted": hasVoted, "voters": voters,
+		})
+	case http.MethodPost:
+		if _, err := h.Commands.SetVoting(r.Context(), userID, wsID, issue.ID, true); err != nil {
+			jiraError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	case http.MethodDelete:
+		if _, err := h.Commands.SetVoting(r.Context(), userID, wsID, issue.ID, false); err != nil {
+			jiraError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		jiraError(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
+}

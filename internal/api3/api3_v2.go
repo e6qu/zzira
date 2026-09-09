@@ -2,16 +2,20 @@ package api3
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
-	"log"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/e6qu/zzira/internal/jql"
 	"github.com/e6qu/zzira/internal/models"
+	"github.com/e6qu/zzira/internal/store"
 )
 
 // ---- projects ----
@@ -326,6 +330,10 @@ func createFieldSchema(field models.CreateFieldMeta) map[string]any {
 		schema["type"] = "array"
 		schema["items"] = "version"
 	}
+	if field.Type == "components" {
+		schema["type"] = "array"
+		schema["items"] = "component"
+	}
 	if field.Type == "array" {
 		schema["items"] = "string"
 	}
@@ -394,6 +402,9 @@ func (h *Handler) compileJQL(ctx context.Context, workspaceID, raw, currentUser 
 	if err != nil {
 		return jql.Compiled{}, &jerr{http.StatusBadRequest, "Error in the JQL Query: " + err.Error(), nil}
 	}
+	if err := h.Store.ExpandAppJQL(ctx, workspaceID, q); err != nil {
+		return jql.Compiled{}, &jerr{http.StatusBadRequest, "Error in the JQL Query: " + err.Error(), nil}
+	}
 	resolver := jql.DefaultResolver()
 	if customFields, err := h.Store.CustomFieldsForWorkspace(ctx, workspaceID); err == nil {
 		resolver = jql.WithCustomFields(resolver, customFields)
@@ -442,13 +453,17 @@ func querySearchPage(r *http.Request) (int, int, *jerr) {
 	return startAt, maxResults, nil
 }
 
-func (h *Handler) runSearch(w http.ResponseWriter, r *http.Request, jqlText string, startAt, maxResults int) {
+func (h *Handler) runSearch(w http.ResponseWriter, r *http.Request, jqlText string, startAt, maxResults int, options searchOptions) {
 	wsID, userID, e := h.authWorkspace(r)
 	if e != nil {
 		writeJerr(w, e)
 		return
 	}
 	if e := validateSearchPage(startAt, maxResults); e != nil {
+		writeJerr(w, e)
+		return
+	}
+	if e := validateSearchOptions(&options); e != nil {
 		writeJerr(w, e)
 		return
 	}
@@ -462,25 +477,100 @@ func (h *Handler) runSearch(w http.ResponseWriter, r *http.Request, jqlText stri
 		jiraError(w, http.StatusBadRequest, "Error in the JQL Query: "+err.Error())
 		return
 	}
-	beans := make([]map[string]any, 0, len(issues))
-	for _, i := range issues {
-		beans = append(beans, h.issueBean(i))
+	customFields, err := h.Store.CustomFieldsForWorkspace(r.Context(), wsID)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "Could not load search field metadata.")
+		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"expand":     "schema,names",
+	definitions := searchFieldDefinitions(customFields)
+	beans, err := h.searchIssueBeans(r.Context(), wsID, userID, issues, options, true, definitions)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "Could not load issue properties.")
+		return
+	}
+	response := map[string]any{
+		"expand":     strings.Join(options.Expand, ","),
 		"startAt":    startAt,
 		"maxResults": maxResults,
 		"total":      total,
 		"issues":     beans,
-	})
+	}
+	requested := normalizeSearchFields(options.Fields, definitions, options.FieldsByKeys)
+	names, schemas := searchFieldMetadata(requested, true, options.FieldsByKeys, definitions)
+	if hasSearchExpand(options, "names") {
+		response["names"] = names
+	}
+	if hasSearchExpand(options, "schema") {
+		response["schema"] = schemas
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 type searchRequest struct {
-	JQL           string   `json:"jql"`
-	StartAt       *int     `json:"startAt"`
-	MaxResults    *int     `json:"maxResults"`
-	Fields        []string `json:"fields"`
-	NextPageToken string   `json:"nextPageToken"`
+	JQL          string   `json:"jql"`
+	StartAt      *int     `json:"startAt"`
+	MaxResults   *int     `json:"maxResults"`
+	Fields       []string `json:"fields"`
+	Expand       []string `json:"expand"`
+	Properties   []string `json:"properties"`
+	FieldsByKeys bool     `json:"fieldsByKeys"`
+	FailFast     bool     `json:"failFast"`
+	Validate     string   `json:"validateQuery"`
+}
+
+type enhancedSearchRequest struct {
+	JQL                     string   `json:"jql"`
+	MaxResults              *int     `json:"maxResults"`
+	Fields                  []string `json:"fields"`
+	NextPageToken           string   `json:"nextPageToken"`
+	Expand                  string   `json:"expand"`
+	Properties              []string `json:"properties"`
+	FieldsByKeys            bool     `json:"fieldsByKeys"`
+	FailFast                bool     `json:"failFast"`
+	ReconcileIssues         []int64  `json:"reconcileIssues"`
+	IncludeArchivedProjects bool     `json:"includeArchivedProjects"`
+}
+
+type enhancedSearchCursor struct {
+	Version    int    `json:"v"`
+	SnapshotID string `json:"s"`
+	Position   int64  `json:"p"`
+	QueryHash  string `json:"q"`
+	Workspace  string `json:"w"`
+	User       string `json:"u"`
+	ExpiresAt  int64  `json:"e"`
+}
+
+func enhancedSearchQueryHash(query string, reconcileIssues []int64) string {
+	ids := append([]int64{}, reconcileIssues...)
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	material, _ := json.Marshal(struct {
+		JQL       string  `json:"jql"`
+		Reconcile []int64 `json:"reconcileIssues"`
+	}{JQL: strings.TrimSpace(query), Reconcile: ids})
+	sum := sha256.Sum256(material)
+	return base64.RawURLEncoding.EncodeToString(sum[:16])
+}
+
+func encodeEnhancedSearchCursor(cursor enhancedSearchCursor) string {
+	payload, _ := json.Marshal(cursor)
+	return base64.RawURLEncoding.EncodeToString(payload)
+}
+
+func decodeEnhancedSearchCursor(token, query, workspaceID, userID string, reconcileIssues []int64, now time.Time) (enhancedSearchCursor, error) {
+	raw, err := base64.RawURLEncoding.DecodeString(token)
+	if err != nil {
+		return enhancedSearchCursor{}, err
+	}
+	var cursor enhancedSearchCursor
+	if err = json.Unmarshal(raw, &cursor); err != nil {
+		return enhancedSearchCursor{}, err
+	}
+	if cursor.Version != 2 || cursor.SnapshotID == "" || cursor.Position < 0 || cursor.ExpiresAt < now.Unix() ||
+		cursor.QueryHash != enhancedSearchQueryHash(query, reconcileIssues) || cursor.Workspace != workspaceID || cursor.User != userID {
+		return enhancedSearchCursor{}, errors.New("cursor does not match this search")
+	}
+	return cursor, nil
 }
 
 func (h *Handler) search(w http.ResponseWriter, r *http.Request) {
@@ -490,32 +580,53 @@ func (h *Handler) search(w http.ResponseWriter, r *http.Request) {
 		writeJerr(w, e)
 		return
 	}
+	options := searchOptions{
+		Fields: r.URL.Query()["fields"], Expand: r.URL.Query()["expand"], Properties: r.URL.Query()["properties"],
+		Validate: r.URL.Query().Get("validateQuery"),
+	}
+	for name, target := range map[string]*bool{"fieldsByKeys": &options.FieldsByKeys, "failFast": &options.FailFast} {
+		if raw := r.URL.Query().Get(name); raw != "" {
+			value, err := strconv.ParseBool(raw)
+			if err != nil {
+				jiraError(w, http.StatusBadRequest, name+" must be true or false.")
+				return
+			}
+			*target = value
+		}
+	}
 	if r.Method == http.MethodPost {
-		var req searchRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		var request searchRequest
+		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 2<<20))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&request); err != nil {
 			jiraFieldError(w, http.StatusBadRequest, map[string]string{"jql": "Invalid request payload."})
 			return
 		}
-		jqlText = req.JQL
+		if err := decoder.Decode(new(any)); err != io.EOF {
+			jiraError(w, http.StatusBadRequest, "Expected one JSON object.")
+			return
+		}
+		jqlText = request.JQL
 		startAt = 0
 		maxResults = defaultSearchPageSize
-		if req.StartAt != nil {
-			startAt = *req.StartAt
+		if request.StartAt != nil {
+			startAt = *request.StartAt
 		}
-		if req.MaxResults != nil {
-			maxResults = *req.MaxResults
+		if request.MaxResults != nil {
+			maxResults = *request.MaxResults
 		}
+		options = searchOptions{Fields: request.Fields, Expand: request.Expand, Properties: request.Properties, FieldsByKeys: request.FieldsByKeys, FailFast: request.FailFast, Validate: request.Validate}
 	}
-	h.runSearch(w, r, jqlText, startAt, maxResults)
+	h.runSearch(w, r, jqlText, startAt, maxResults, options)
 }
 
 func (h *Handler) searchJQL(w http.ResponseWriter, r *http.Request) {
-	var req searchRequest
+	var req enhancedSearchRequest
 	if r.Method == http.MethodGet {
 		q := r.URL.Query()
 		for key := range q {
 			switch key {
-			case "jql", "fields", "maxResults", "nextPageToken":
+			case "jql", "fields", "maxResults", "nextPageToken", "expand", "properties", "fieldsByKeys", "failFast", "reconcileIssues", "includeArchivedProjects":
 			default:
 				jiraError(w, 400, "Unsupported enhanced search parameter: "+key)
 				return
@@ -523,9 +634,9 @@ func (h *Handler) searchJQL(w http.ResponseWriter, r *http.Request) {
 		}
 		req.JQL = q.Get("jql")
 		req.NextPageToken = q.Get("nextPageToken")
-		for _, raw := range q["fields"] {
-			req.Fields = append(req.Fields, strings.Split(raw, ",")...)
-		}
+		req.Fields = q["fields"]
+		req.Properties = q["properties"]
+		req.Expand = q.Get("expand")
 		if q.Has("maxResults") {
 			n, err := strconv.Atoi(q.Get("maxResults"))
 			if err != nil {
@@ -533,6 +644,24 @@ func (h *Handler) searchJQL(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			req.MaxResults = &n
+		}
+		for name, target := range map[string]*bool{"fieldsByKeys": &req.FieldsByKeys, "failFast": &req.FailFast, "includeArchivedProjects": &req.IncludeArchivedProjects} {
+			if raw := q.Get(name); raw != "" {
+				value, err := strconv.ParseBool(raw)
+				if err != nil {
+					jiraError(w, http.StatusBadRequest, name+" must be true or false.")
+					return
+				}
+				*target = value
+			}
+		}
+		for _, raw := range splitSearchValues(q["reconcileIssues"]) {
+			value, err := strconv.ParseInt(raw, 10, 64)
+			if err != nil {
+				jiraError(w, http.StatusBadRequest, "reconcileIssues must contain numeric issue IDs.")
+				return
+			}
+			req.ReconcileIssues = append(req.ReconcileIssues, value)
 		}
 	} else {
 		r.Body = http.MaxBytesReader(w, r.Body, 2<<20)
@@ -547,8 +676,17 @@ func (h *Handler) searchJQL(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if req.StartAt != nil {
-		jiraError(w, 400, "Use nextPageToken instead of startAt.")
+	if len(req.ReconcileIssues) > 50 {
+		jiraError(w, http.StatusBadRequest, "A maximum of 50 issue IDs can be reconciled.")
+		return
+	}
+	if req.IncludeArchivedProjects {
+		jiraError(w, http.StatusBadRequest, "Archived project search is not available until project archiving is configured.")
+		return
+	}
+	options := searchOptions{Fields: req.Fields, Expand: []string{req.Expand}, Properties: req.Properties, FieldsByKeys: req.FieldsByKeys, FailFast: req.FailFast}
+	if e := validateSearchOptions(&options); e != nil {
+		writeJerr(w, e)
 		return
 	}
 	maxResults := defaultSearchPageSize
@@ -559,23 +697,23 @@ func (h *Handler) searchJQL(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, 400, "maxResults must be between 1 and 5000.")
 		return
 	}
-	startAt := 0
-	if req.NextPageToken != "" {
-		raw, err := base64.URLEncoding.DecodeString(req.NextPageToken)
-		if err != nil {
-			jiraError(w, http.StatusBadRequest, "Invalid nextPageToken.")
-			return
-		}
-		startAt, err = strconv.Atoi(string(raw))
-		if err != nil || startAt < 0 {
-			jiraError(w, http.StatusBadRequest, "Invalid nextPageToken.")
-			return
-		}
-	}
 	wsID, userID, e := h.authWorkspace(r)
 	if e != nil {
 		writeJerr(w, e)
 		return
+	}
+	now := time.Now()
+	cursor := enhancedSearchCursor{
+		Version: 2, QueryHash: enhancedSearchQueryHash(req.JQL, req.ReconcileIssues),
+		Workspace: wsID, User: userID, ExpiresAt: now.Add(7 * 24 * time.Hour).Unix(),
+	}
+	if req.NextPageToken != "" {
+		var err error
+		cursor, err = decodeEnhancedSearchCursor(req.NextPageToken, req.JQL, wsID, userID, req.ReconcileIssues, now)
+		if err != nil {
+			jiraError(w, http.StatusBadRequest, "Invalid nextPageToken.")
+			return
+		}
 	}
 	parsed, err := jql.Parse(req.JQL)
 	if err != nil {
@@ -591,30 +729,71 @@ func (h *Handler) searchJQL(w http.ResponseWriter, r *http.Request) {
 		writeJerr(w, e)
 		return
 	}
-	issues, _, err := h.Store.Search(r.Context(), wsID, userID, c, maxResults+1, startAt)
+	if cursor.SnapshotID == "" {
+		cursor.SnapshotID, err = h.Store.CreateSearchSnapshot(r.Context(), wsID, userID, cursor.QueryHash, c, time.Unix(cursor.ExpiresAt, 0))
+		if err != nil {
+			jiraError(w, http.StatusInternalServerError, "Could not create search snapshot.")
+			return
+		}
+	}
+	page, err := h.Store.SearchSnapshotPage(r.Context(), cursor.SnapshotID, wsID, userID, cursor.QueryHash, cursor.Position, maxResults)
 	if err != nil {
-		jiraError(w, http.StatusBadRequest, "Error in the JQL Query: "+err.Error())
+		if errors.Is(err, store.ErrSearchSnapshot) {
+			jiraError(w, http.StatusBadRequest, "Invalid nextPageToken.")
+		} else {
+			jiraError(w, http.StatusInternalServerError, "Could not read search snapshot.")
+		}
 		return
 	}
-	hasMore := len(issues) > maxResults
-	if hasMore {
-		issues = issues[:maxResults]
+	issues, hasMore := page.Issues, page.HasMore
+	customFields, err := h.Store.CustomFieldsForWorkspace(r.Context(), wsID)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "Could not load search field metadata.")
+		return
 	}
-	beans := make([]map[string]any, 0, len(issues))
-	for _, i := range issues {
-		beans = append(beans, enhancedIssueFields(h.issueBean(i), req.Fields))
+	definitions := searchFieldDefinitions(customFields)
+	beans, err := h.searchIssueBeans(r.Context(), wsID, userID, issues, options, false, definitions)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "Could not load issue properties.")
+		return
 	}
 	resp := map[string]any{"issues": beans, "isLast": !hasMore}
+	requested := normalizeSearchFields(options.Fields, definitions, options.FieldsByKeys)
+	names, schemas := searchFieldMetadata(requested, false, options.FieldsByKeys, definitions)
+	if hasSearchExpand(options, "names") {
+		resp["names"] = names
+	}
+	if hasSearchExpand(options, "schema") {
+		resp["schema"] = schemas
+	}
 	if hasMore {
-		resp["nextPageToken"] = base64.URLEncoding.EncodeToString([]byte(strconv.Itoa(startAt + maxResults)))
+		cursor.Position = page.NextPosition
+		resp["nextPageToken"] = encodeEnhancedSearchCursor(cursor)
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
 
 func (h *Handler) searchCount(w http.ResponseWriter, r *http.Request) {
-	var req searchRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	var req struct {
+		JQL string `json:"jql"`
+	}
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 2<<20))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
 		jiraFieldError(w, http.StatusBadRequest, map[string]string{"jql": "Invalid request payload."})
+		return
+	}
+	if err := decoder.Decode(new(any)); err != io.EOF {
+		jiraError(w, http.StatusBadRequest, "Expected one JSON object.")
+		return
+	}
+	parsed, err := jql.Parse(req.JQL)
+	if err != nil {
+		jiraError(w, http.StatusBadRequest, "Error in the JQL Query: "+err.Error())
+		return
+	}
+	if root, ok := parsed.Root.(jql.Text); ok && root.Value == "" {
+		jiraError(w, http.StatusBadRequest, "Approximate count requires a bounded JQL query.")
 		return
 	}
 	wsID, userID, e := h.authWorkspace(r)
@@ -633,59 +812,6 @@ func (h *Handler) searchCount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"count": total})
-}
-
-// ---- saved filters (read-only in V2) ----
-
-func (h *Handler) filterBean(f *models.Filter) map[string]any {
-	owner := map[string]any{}
-	if f.OwnerID != "" {
-		owner = map[string]any{"accountId": f.OwnerID, "displayName": f.OwnerName, "active": true, "accountType": "atlassian"}
-	}
-	return map[string]any{
-		"id":               f.ID,
-		"name":             f.Name,
-		"self":             h.BaseURL + "/rest/api/3/filter/" + f.ID,
-		"jql":              f.JQL,
-		"description":      f.Description,
-		"owner":            owner,
-		"favourite":        f.Favourite,
-		"favouriteCount":   1,
-		"sharePermissions": []map[string]any{{"type": "global"}},
-	}
-}
-
-func (h *Handler) listFilters(w http.ResponseWriter, r *http.Request) {
-	wsID, userID, e := h.authWorkspace(r)
-	if e != nil {
-		writeJerr(w, e)
-		return
-	}
-	filters, err := h.Store.ListFilters(r.Context(), wsID, userID)
-	if err != nil {
-		log.Printf("listFilters: %v", err)
-		jiraError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	out := make([]map[string]any, 0, len(filters))
-	for _, f := range filters {
-		out = append(out, h.filterBean(f))
-	}
-	writeJSON(w, http.StatusOK, out)
-}
-
-func (h *Handler) getFilter(w http.ResponseWriter, r *http.Request, id string) {
-	wsID, userID, e := h.authWorkspace(r)
-	if e != nil {
-		writeJerr(w, e)
-		return
-	}
-	f, err := h.Store.FilterByID(r.Context(), wsID, userID, id)
-	if err != nil {
-		jiraError(w, http.StatusNotFound, "Filter does not exist.")
-		return
-	}
-	writeJSON(w, http.StatusOK, h.filterBean(f))
 }
 
 // ---- bootstrap (custom delta-sync endpoint) ----

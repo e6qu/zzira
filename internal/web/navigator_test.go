@@ -2,6 +2,7 @@ package web
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/url"
 	"strings"
@@ -13,7 +14,7 @@ import (
 
 func TestCompileNavigatorSearchAlwaysScopesProject(t *testing.T) {
 	params := navigatorParams{Mode: "advanced", JQL: `project = OTHER OR status = Done`, Sort: "updated", Direction: "desc"}
-	compiled, err := compileNavigatorSearch("zz", "usr_me", params)
+	compiled, err := compileNavigatorSearch(context.Background(), nil, "", "zz", "usr_me", params)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -22,6 +23,17 @@ func TestCompileNavigatorSearchAlwaysScopesProject(t *testing.T) {
 	}
 	if len(compiled.Args) != 3 || compiled.Args[0] != "ZZ" || compiled.Args[1] != "OTHER" || compiled.Args[2] != "Done" {
 		t.Fatalf("compiled args = %#v", compiled.Args)
+	}
+}
+
+func TestNavigatorExplicitSortOverridesAdvancedJQLOrder(t *testing.T) {
+	params := navigatorParams{Mode: "advanced", JQL: `status != Done ORDER BY updated DESC, priority ASC`, Sort: "summary", Direction: "asc", SortSet: true}
+	compiled, err := compileNavigatorSearch(context.Background(), nil, "", "ZZ", "usr_me", params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if compiled.OrderSQL != "i.summary ASC, i.id ASC" {
+		t.Fatalf("order = %q", compiled.OrderSQL)
 	}
 }
 
@@ -47,11 +59,11 @@ func TestCompileNavigatorBasicFiltersAndSort(t *testing.T) {
 		Mode: "basic", Text: "release gate", Status: "In Progress", Assignee: "currentUser()",
 		Sort: "assignee", Direction: "asc",
 	}
-	compiled, err := compileNavigatorSearch("ZZ", "usr_me", params)
+	compiled, err := compileNavigatorSearch(context.Background(), nil, "", "ZZ", "usr_me", params)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if compiled.OrderSQL != "a.display_name ASC" {
+	if compiled.OrderSQL != "a.display_name ASC, i.id ASC" {
 		t.Fatalf("order = %q", compiled.OrderSQL)
 	}
 	want := []any{"ZZ", "%release gate%", "%release gate%", "In Progress", "usr_me"}

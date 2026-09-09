@@ -9,6 +9,7 @@ const (
 	EntitySprint         = "sprint"
 	EntitySprintIssue    = "sprint_issue"
 	EntityWatcher        = "watcher"
+	EntityVote           = "vote"
 	EntityNotification   = "notification"
 	EntityServiceRequest = "service_request"
 )
@@ -18,6 +19,7 @@ type Board struct {
 	ProjectID        string             `json:"projectId"`
 	ProjectKey       string             `json:"-"`
 	ProjectName      string             `json:"-"`
+	WorkspaceID      string             `json:"-"`
 	Name             string             `json:"name"`
 	Type             string             `json:"type"`
 	ColumnStatusIDs  []string           `json:"columnStatusIds"`
@@ -73,6 +75,11 @@ type NotificationPayload struct {
 }
 
 type WatcherPayload struct {
+	IssueID   string `json:"issueId"`
+	AccountID string `json:"accountId"`
+}
+
+type VotePayload struct {
 	IssueID   string `json:"issueId"`
 	AccountID string `json:"accountId"`
 }

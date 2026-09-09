@@ -27,11 +27,17 @@ use `/rest/zzira/1`.
 | GET/POST /rest/api/3/issue/{idOrKey}/transitions | ✅ | Project workflow, nested actor conditions, required-field validators, development triggers, and atomic assignee, field-update, field-copy and registered-webhook post-functions enforced |
 | /jira/forms/cloud/{cloudId}/issue/{idOrKey}/form lifecycle | 🟡 | Issue form index/attach/get/save/delete, visibility, submit/reopen, and executable attached/submitted workflow validators; project templates, exports, attachments, external data and copy remain |
 | GET/POST/DELETE /rest/api/3/issue/{idOrKey}/watchers | 🟡 | complete self-subscription and watcher reads; managing other users is intentionally not exposed without a broader permission model |
+| POST /rest/api/3/bulk/issues/watch · /unwatch · GET /bulk/queue/{taskId} | 🟡 | Durable administrator-gated self watch/unwatch for up to 1,000 visible items, a five-active-operation cap, execution-time visibility checks, atomic synchronization actions and Jira-shaped task progress; configurable global Bulk change permission, 14-day retention and remaining bulk operations remain |
+| GET /rest/api/3/bulk/issues/fields | 🟡 | Common editable fields derive from canonical project metadata with Jira-shaped options, field search and bidirectional opaque 50-field cursor pages; configurable field permissions and the complete Jira bulk field type catalog remain |
+| POST /rest/api/3/bulk/issues/fields | 🟡 | Durable edits validate at most 200 selected actions against common metadata, recheck access, use ordinary issue commands and expose Jira per-item successes/failures; ten persisted field families are supported, while the remaining field families and bulk email delivery remain |
+| GET/POST/DELETE /rest/api/3/issue/{idOrKey}/votes | 🟡 | Durable idempotent self-service voting, voter reads, browser journey and JQL selectors; site voting policy and exact permission edge cases remain |
 | /comment CRUD | ✅ | ADF bodies, author-only delete |
 | GET /rest/api/3/issue/{idOrKey}/changelog | ✅ | derived from the action log |
 | /worklog CRUD | ✅ | author-only delete |
 | POST /issue/{idOrKey}/attachments · /attachment/{id} · /attachment/content/{id} | ✅ | X-Atlassian-Token semantics |
-| GET /rest/api/3/search · POST /search · GET/POST /search/jql · POST /search/approximate-count | 🟡 | JQL subset; enhanced search supports bounded queries, IDs-only defaults, field projections, isLast/tokens and 1–5000 result limits; expansions and stable cursor semantics remain |
+| GET /rest/api/3/search · POST /search · GET/POST /search/jql · POST /search/approximate-count | 🟡 | Permission-filtered JQL with history/date operators, relation-backed group/link/sprint/type/version/watch/vote/update/project list functions and safely expanded installed-app functions; legacy/enhanced search support immutable numeric Jira issue IDs, multi-value labels/versions/sprints, field selection/exclusion, app-key aliases, documented expansion names, requested properties, executable transitions, immutable changelogs, current versioned representations, strict bodies, bounded count queries, strongly consistent reconciliation, IDs-only enhanced defaults, deterministic ordering and durable query/reconciliation/user/workspace-bound seven-day result snapshots; richer rendering/history remains |
+| Seven JQL reference, suggestion, parse, match, sanitize and migration operations | 🟡 | Supported fields/functions are discoverable, issue-derived suggestions apply visibility, parse returns structured per-query results, and match is bounded to requested numeric Jira IDs; exact personal-data migration and remaining functions/validation warnings remain |
+| GET/POST `/rest/api/3/jql/function/computation` · POST `/jql/function/computation/search` | 🟡 | Signed apps can page/filter and retrieve only their installation-owned durable records, then atomically replace a value or error with optional missing-ID skips; Connect/native declarations, autocomplete, signed cache-miss evaluation, seven-day expiry, safe fragment compilation and bounded nesting are integrated; complete Forge identity semantics remain |
 | GET /rest/api/3/mypermissions · POST /permissions/check | ✅ | evaluated from workspace role |
 | /issueLinkType · POST /issueLink · DELETE /issueLink/{id} | ✅ | links sync to replicas |
 | GET /rest/api/3/label | ✅ | distinct labels + query |
@@ -60,9 +66,10 @@ use `/rest/zzira/1`.
 |---|---|---|
 | POST/GET /rest/api/3/field · GET /field/{id} | ✅ | text/number/datetime |
 | /issue/createmeta + /editmeta include custom fields | ✅ | context-aware |
-| Custom fields in issue beans + JQL | ✅ | incl. numeric compare |
+| Custom fields in issue beans + JQL | ✅ | numeric and date-time comparisons, including login boundaries |
 | POST/GET /rest/api/3/webhook · DELETE /webhook/{id} · GET /webhook/refresh | ✅ | log-driven dispatcher, watermark, exactly-once claims |
-| /filter CRUD + /filter/{id}/favourite | ✅ | |
+| 19 Jira filter, sharing, column and default-scope operations | 🟡 | Visibility-filtered create/read/update/delete, owned/favorite collections, paginated search, per-user favorites, view/edit shares for users/groups/projects/roles, owner transfer, navigator columns and durable daily/weekly email subscriptions with FilterBean expansion; full JQL and broader cron/time-zone controls remain; see [FILTERS.md](../../docs/FILTERS.md) |
+| Eight Jira project-component operations | 🟡 | Stable project-scoped components, create/update/delete, full and paged collections, issue counts, canonical multi-value issue fields, component-led assignment, move-on-delete, audit, project-settings journey and `componentsLeadByUser()`; exact project-permission, anonymous and Compass behavior remain; see [COMPONENTS.md](../../docs/COMPONENTS.md) |
 | GET /rest/api/3/workflow/search · modern workflow create/update/search/preview/capabilities · POST /workflow · GET/PUT /workflow/project/{key} | ✅ | **enforced**: project workflows, designer layouts, and executable transition rules round-trip through admin APIs and runtime |
 | GET /rest/api/3/task/{taskId} · POST /task/{taskId}/cancel | ✅ | durable ENQUEUED/RUNNING/terminal progress, creator/admin visibility, safe cancellation, failure results and stale-claim recovery |
 | GET /rest/api/3/role | 🟡 | registry list |
@@ -91,6 +98,7 @@ use `/rest/zzira/1`.
 |---|---|
 | API contract smoke (serverInfo + metadata-driven create) | ✅ |
 | UI login → full-field create → validation recovery → create another → issue view | ✅ |
+| Issue triage fields, watchers, votes, links, activity, attachments and management actions | ✅ |
 | WASM worker boots + syncs | ✅ |
 | Offline reload renders from local SQLite | ✅ |
 | Two-browser convergence via the action log | ✅ |

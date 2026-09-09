@@ -149,6 +149,10 @@ func main() {
 		WorkspaceSlug: workspaceSlug, BaseURL: baseURL, InvitationNotificationsConfigured: smtpSender != nil,
 	}
 	api := &api3.Handler{Store: st, Commands: cmdSvc, Blobs: blobs, BaseURL: baseURL, WorkspaceSlug: workspaceSlug}
+	if providerSecrets != nil {
+		appJQL := &apps.JQLFunctionEvaluator{Store: st, Secrets: providerSecrets, Client: &http.Client{Timeout: 10 * time.Second}}
+		st.AppJQLExpander = appJQL.Expand
+	}
 	agileAPI := &agile.Handler{Store: st, Commands: cmdSvc, IssueBean: api.IssueBean, BaseURL: envOr("BASE_URL", "http://localhost:"+port), WorkspaceSlug: workspaceSlug}
 	automationAPI := &automation.Handler{Service: automationSvc, WorkspaceSlug: workspaceSlug}
 	appAPI := &apps.Handler{Store: st, Secrets: providerSecrets, WorkspaceSlug: workspaceSlug}
@@ -168,6 +172,9 @@ func main() {
 		}
 		q, err := jql.Parse(jqlText)
 		if err != nil {
+			return false, err
+		}
+		if err := st.ExpandAppJQL(ctx, wsID, q); err != nil {
 			return false, err
 		}
 		compiled := jql.CompileAt(q, adminID, jql.DefaultResolver(), 1)
@@ -190,7 +197,8 @@ func main() {
 		}).Run(ctx, workspaceID)
 	}
 	go (&automation.Runner{Service: automationSvc}).Run(ctx, workspaceID)
-	go (&store.APITaskRunner{Store: st}).Run(ctx, workspaceID)
+	go (&store.FilterSubscriptionRunner{Store: st, BaseURL: baseURL}).Run(ctx, workspaceID)
+	go (&store.APITaskRunner{Store: st, BulkIssueExecutor: cmdSvc}).Run(ctx, workspaceID)
 	go (&store.ServiceSLARunner{Store: st}).Run(ctx, workspaceID)
 	go (&store.ServiceIncidentEscalationRunner{Store: st}).Run(ctx, workspaceID)
 	go (&commands.ServiceTemporaryAttachmentRunner{Service: cmdSvc}).Run(ctx)
@@ -370,6 +378,8 @@ func main() {
 	mux.HandleFunc("POST /projects/new", webHandler.NewProject)
 	mux.HandleFunc("GET /projects/{key}/settings", webHandler.ProjectSettings)
 	mux.HandleFunc("POST /projects/{key}/settings", webHandler.ProjectSettings)
+	mux.HandleFunc("POST /projects/{key}/components", webHandler.ProjectComponentSettings)
+	mux.HandleFunc("POST /projects/{key}/components/{id}", webHandler.ProjectComponentSettings)
 	mux.HandleFunc("GET /projects/{key}/settings/apps/{module}", webHandler.ProjectAdminAppModulePage)
 	mux.HandleFunc("GET /projects/{key}/apps/{module}", webHandler.ProjectAppModulePage)
 	mux.HandleFunc("GET /projects/{key}", func(w http.ResponseWriter, r *http.Request) {
@@ -430,6 +440,11 @@ func main() {
 	mux.HandleFunc("POST /settings/automation/{uuid}", webHandler.AutomationUpdate)
 	mux.HandleFunc("GET /issues/new", webHandler.CreateDialog)
 	mux.HandleFunc("POST /issues", webHandler.CreateIssue)
+	mux.HandleFunc("GET /filters", webHandler.SavedFilters)
+	mux.HandleFunc("POST /filters/default-scope", webHandler.SavedFilterDefaultScope)
+	mux.HandleFunc("POST /filters/{id}", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.UpdateSavedFilter(w, r, r.PathValue("id"))
+	})
 	mux.HandleFunc("GET /issues/{key}", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.ProjectIssues(w, r, r.PathValue("key"))
 	})
@@ -480,6 +495,9 @@ func main() {
 	})
 	mux.HandleFunc("POST /issues/{key}/watch", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.SetWatching(w, r, r.PathValue("key"))
+	})
+	mux.HandleFunc("POST /issues/{key}/vote", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.SetVoting(w, r, r.PathValue("key"))
 	})
 	mux.HandleFunc("POST /issues/{key}/links", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.LinkIssue(w, r, r.PathValue("key"))

@@ -128,6 +128,15 @@ func (s *Store) IssueCreateMetadata(ctx context.Context, workspaceID, userID str
 		fields = append(fields,
 			models.CreateFieldMeta{ID: "fixVersions", Name: "Fix versions", Type: "versions", Section: "details", Options: versionOptions},
 			models.CreateFieldMeta{ID: "versions", Name: "Affects versions", Type: "versions", Section: "details", Options: versionOptions})
+		components, err := s.Components(ctx, workspaceID, project.ID, "", "name")
+		if err != nil {
+			return nil, err
+		}
+		componentOptions := make([]models.CreateFieldOption, 0, len(components))
+		for _, component := range components {
+			componentOptions = append(componentOptions, models.CreateFieldOption{ID: component.ID, Name: component.Name})
+		}
+		fields = append(fields, models.CreateFieldMeta{ID: "components", Name: "Components", Type: "components", Section: "details", Options: componentOptions})
 
 		scheme, err := s.SecuritySchemeForProject(ctx, project.ID)
 		if err != nil {

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"mime/multipart"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"slices"
 	"strconv"
@@ -86,6 +87,16 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	}
 	call := func(method, path, body string, want int) *httptest.ResponseRecorder {
 		return callAs(actorID, method, path, body, want)
+	}
+	searchTotalAs := func(accountID, query string, want int) {
+		t.Helper()
+		response := callAs(accountID, "GET", "/rest/api/3/search/jql?jql="+url.QueryEscape(query), "", 200)
+		var page struct {
+			Issues []json.RawMessage `json:"issues"`
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil || len(page.Issues) != want {
+			t.Fatalf("JQL %q: issues=%d want=%d err=%v body=%s", query, len(page.Issues), want, err, response.Body.String())
+		}
 	}
 	callMultipartAs := func(accountID, path, filename, content string, want int) *httptest.ResponseRecorder {
 		t.Helper()
@@ -627,11 +638,24 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if !strings.Contains(approvalList.Body.String(), `"canAnswerApproval":true`) || !strings.Contains(approvalList.Body.String(), "Production change approval") {
 		t.Fatal(approvalList.Body.String())
 	}
+	for _, query := range []string{
+		`approvals = myApproval()`, `approvals = myPendingApproval()`, `approvals = myPending()`,
+		`approvals = pending()`, `approvals = pendingApprovalBy(` + customerID + `)`,
+		`approvals = pendingBy(` + customerID + `)`, `approvals = approver(` + customerID + `)`,
+	} {
+		searchTotalAs(customerID, query, 1)
+	}
+	searchTotalAs(customerID, `approvals = approved()`, 0)
+	searchTotalAs(customerID, `approvals != pending()`, 0)
 	call("POST", "/rest/servicedeskapi/request/"+issueKey+"/approval/"+approval.ID, `{"decision":"approve"}`, 400)
 	approved := callAs(customerID, "POST", "/rest/servicedeskapi/request/"+issueKey+"/approval/"+approval.ID, `{"decision":"approve"}`, 200)
 	if !strings.Contains(approved.Body.String(), `"finalDecision":"approved"`) || !strings.Contains(approved.Body.String(), `"completedDate"`) {
 		t.Fatal(approved.Body.String())
 	}
+	searchTotalAs(customerID, `approvals = approved()`, 1)
+	searchTotalAs(customerID, `approvals = myPendingApproval()`, 0)
+	searchTotalAs(customerID, `approvals = pending()`, 0)
+	searchTotalAs(customerID, `approvals != pending()`, 1)
 	callAs(customerID, "GET", "/rest/servicedeskapi/request/"+issueKey+"/approval/"+approval.ID, "", 200)
 	multiApproval, err := handler.Commands.CreateServiceApproval(ctx, actorID, workspaceID, issue.ID, "Two-person change approval", []string{customerID, agentID})
 	if err != nil {
@@ -641,10 +665,18 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if !strings.Contains(pendingApproval.Body.String(), `"finalDecision":"pending"`) {
 		t.Fatal(pendingApproval.Body.String())
 	}
+	searchTotalAs(customerID, `approvals = myPendingApproval()`, 0)
+	searchTotalAs(customerID, `approvals = myPending()`, 1)
+	searchTotalAs(customerID, `approvals = pendingBy(`+customerID+`)`, 1)
+	searchTotalAs(customerID, `approvals = pendingApprovalBy(`+customerID+`)`, 0)
+	searchTotalAs(agentID, `approvals = myPendingApproval()`, 1)
 	declinedApproval := callAs(agentID, "POST", "/rest/servicedeskapi/request/"+issueKey+"/approval/"+multiApproval.ID, `{"decision":"decline"}`, 200)
 	if !strings.Contains(declinedApproval.Body.String(), `"finalDecision":"declined"`) {
 		t.Fatal(declinedApproval.Body.String())
 	}
+	searchTotalAs(customerID, `approvals = pending()`, 0)
+	searchTotalAs(customerID, `approvals = approved()`, 1)
+	searchTotalAs(customerID, `approvals = approver(`+customerID+`)`, 1)
 
 	temporaryResponse := callMultipartAs(customerID, "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/attachTemporaryFile", "customer-log.txt", "customer-visible-log", 201)
 	var temporaryBean struct {
@@ -828,7 +860,23 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if err := handler.Commands.DeleteServiceCalendarHoliday(ctx, actorID, workspaceID, serviceDeskID, "2030-01-01"); err != nil {
 		t.Fatal(err)
 	}
-	if err := handler.Commands.UpdateServiceSLAMetric(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], (2 * time.Hour).Milliseconds()); err != nil {
+	if _, err := st.Pool.Exec(ctx, `UPDATE service_calendars SET time_zone='America/New_York',weekdays=ARRAY[1,2,3,4,5]::SMALLINT[],start_minute=540,end_minute=1020 WHERE id=$1`, calendar.ID); err != nil {
+		t.Fatal(err)
+	}
+	var dstBusinessMillis int64
+	if err := st.Pool.QueryRow(ctx, `SELECT jira_service_business_millis($1,$2,$3)`, calendar.ID, time.Date(2026, time.March, 6, 21, 0, 0, 0, time.UTC), time.Date(2026, time.March, 9, 14, 0, 0, 0, time.UTC)).Scan(&dstBusinessMillis); err != nil || dstBusinessMillis != (2*time.Hour).Milliseconds() {
+		t.Fatalf("DST business millis = %d, %v", dstBusinessMillis, err)
+	}
+	if _, err := st.Pool.Exec(ctx, `UPDATE service_calendars SET time_zone='UTC',weekdays=ARRAY[1,2,3,4,5,6,7]::SMALLINT[],start_minute=0,end_minute=1440 WHERE id=$1`, calendar.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := handler.Commands.UpdateServiceSLAMetric(ctx, customerID, workspaceID, serviceDeskID, metricByKind["first_response"], `status = "To Do"`, (2 * time.Hour).Milliseconds()); err == nil {
+		t.Fatal("customer configured an SLA pause rule")
+	}
+	if err := handler.Commands.UpdateServiceSLAMetric(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], `"Time to first response" = paused()`, (2 * time.Hour).Milliseconds()); err == nil {
+		t.Fatal("recursive SLA pause rule was accepted")
+	}
+	if err := handler.Commands.UpdateServiceSLAMetric(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], `status = "To Do"`, (2 * time.Hour).Milliseconds()); err != nil {
 		t.Fatal(err)
 	}
 	configuredSLA := call("GET", "/rest/servicedeskapi/request/"+issueKey+"/sla/"+metricByKind["first_response"], "", 200)
@@ -838,11 +886,62 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	}
 	ongoingCycle, _ := configuredSLABean["ongoingCycle"].(map[string]any)
 	goalDuration, _ := ongoingCycle["goalDuration"].(map[string]any)
-	if goalDuration["millis"] != float64((2 * time.Hour).Milliseconds()) {
+	if goalDuration["millis"] != float64((2*time.Hour).Milliseconds()) || ongoingCycle["paused"] != true {
 		t.Fatal(configuredSLA.Body.String())
 	}
+	autocomplete := call("GET", "/rest/api/3/jql/autocompletedata", "", 200)
+	if !strings.Contains(autocomplete.Body.String(), `"displayName":"Time to first response"`) || !strings.Contains(autocomplete.Body.String(), `"value":"breached()"`) || !strings.Contains(autocomplete.Body.String(), `"value":"withinCalendarHours()"`) {
+		t.Fatal(autocomplete.Body.String())
+	}
+	var firstResponseCycleID string
+	if err := st.Pool.QueryRow(ctx, `SELECT id FROM service_sla_cycles WHERE request_issue_id=$1 AND metric_id=$2 AND stopped_at IS NULL`, issue.ID, metricByKind["first_response"]).Scan(&firstResponseCycleID); err != nil {
+		t.Fatal(err)
+	}
+	slaNow := time.Now().UTC()
+	if _, err := st.Pool.Exec(ctx, `UPDATE service_sla_cycles SET started_at=$2 WHERE id=$1`, firstResponseCycleID, slaNow.Add(-90*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	issueSLAQuery := `key = ` + issueKey + ` AND "Time to first response" `
+	searchTotalAs(customerID, issueSLAQuery+`= paused()`, 1)
+	if err := handler.Commands.UpdateServiceSLAMetric(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], "", (2 * time.Hour).Milliseconds()); err != nil {
+		t.Fatal(err)
+	}
+	searchTotalAs(customerID, issueSLAQuery+`= running()`, 1)
+	searchTotalAs(customerID, issueSLAQuery+`= completed()`, 0)
+	searchTotalAs(customerID, issueSLAQuery+`= breached()`, 0)
+	searchTotalAs(customerID, issueSLAQuery+`= everBreached()`, 0)
+	searchTotalAs(customerID, issueSLAQuery+`= withinCalendarHours()`, 1)
+	searchTotalAs(customerID, issueSLAQuery+`< remaining("31m")`, 1)
+	if err := st.SetServiceSLACyclePaused(ctx, workspaceID, firstResponseCycleID, true, "Waiting for customer", slaNow.Add(-30*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	searchTotalAs(customerID, issueSLAQuery+`= paused()`, 1)
+	searchTotalAs(customerID, issueSLAQuery+`!= paused()`, 0)
+	searchTotalAs(customerID, issueSLAQuery+`= running()`, 0)
+	pausedSLAs, err := st.ServiceSLAs(ctx, workspaceID, issue.ID, slaNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sla := range pausedSLAs {
+		if sla.Kind == "first_response" && (sla.OngoingCycle == nil || !sla.OngoingCycle.Paused || sla.OngoingCycle.ElapsedMillis < time.Hour.Milliseconds()-time.Second.Milliseconds() || sla.OngoingCycle.ElapsedMillis > time.Hour.Milliseconds()) {
+			t.Fatalf("paused first-response SLA = %+v", sla.OngoingCycle)
+		}
+	}
+	if err := st.SetServiceSLACyclePaused(ctx, workspaceID, firstResponseCycleID, false, "", slaNow); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Pool.Exec(ctx, `UPDATE service_sla_cycles SET started_at=$2 WHERE id=$1`, firstResponseCycleID, slaNow.Add(-3*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	searchTotalAs(customerID, issueSLAQuery+`= paused()`, 0)
+	searchTotalAs(customerID, issueSLAQuery+`!= paused()`, 1)
+	searchTotalAs(customerID, issueSLAQuery+`= breached()`, 1)
+	searchTotalAs(customerID, issueSLAQuery+`= everBreached()`, 1)
+	if _, err := st.Pool.Exec(ctx, `DELETE FROM service_sla_cycle_pauses WHERE cycle_id=$1`, firstResponseCycleID); err != nil {
+		t.Fatal(err)
+	}
 	var serviceConfigAudits int
-	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM organization_audit_events WHERE actor_id=$1 AND action IN ('service.calendar.updated','service.sla.updated')`, actorID).Scan(&serviceConfigAudits); err != nil || serviceConfigAudits != 2 {
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM organization_audit_events WHERE actor_id=$1 AND action IN ('service.calendar.updated','service.sla.updated')`, actorID).Scan(&serviceConfigAudits); err != nil || serviceConfigAudits != 3 {
 		t.Fatalf("service configuration audits = %d, %v", serviceConfigAudits, err)
 	}
 	var holidayAudits int
@@ -1004,6 +1103,8 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if !strings.Contains(firstResponseSLA.Body.String(), `"completedCycles":[{`) || strings.Contains(firstResponseSLA.Body.String(), `"ongoingCycle"`) {
 		t.Fatal(firstResponseSLA.Body.String())
 	}
+	searchTotalAs(customerID, issueSLAQuery+`= completed()`, 1)
+	searchTotalAs(customerID, issueSLAQuery+`= running()`, 0)
 	var unassignedQueueID, mineQueueID string
 	if err := st.Pool.QueryRow(ctx, `SELECT id FROM service_queues WHERE service_desk_id=$1 AND kind='unassigned'`, serviceDeskID).Scan(&unassignedQueueID); err != nil {
 		t.Fatal(err)

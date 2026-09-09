@@ -612,6 +612,9 @@ func (s *Store) ServiceQueueRequests(ctx context.Context, workspaceID, viewerID,
 		if err != nil {
 			return nil, nil, err
 		}
+		if err := s.ExpandAppJQL(ctx, workspaceID, parsed); err != nil {
+			return nil, nil, err
+		}
 		resolver := jql.DefaultResolver()
 		if customFields, err := s.CustomFieldsForWorkspace(ctx, workspaceID); err == nil {
 			resolver = jql.WithCustomFields(resolver, customFields)

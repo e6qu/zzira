@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 437,
+  "assessedTotal": 487,
   "counts": {
     "delivered": 0,
-    "partial": 430,
+    "partial": 480,
     "missing": 7,
-    "unassessed": 770
+    "unassessed": 720
   },
   "countsByFamily": {
     "automation": {
@@ -24,9 +24,9 @@
     },
     "jira-platform": {
       "delivered": 0,
-      "partial": 69,
+      "partial": 119,
       "missing": 0,
-      "unassessed": 548
+      "unassessed": 498
     },
     "jira-service-management": {
       "delivered": 0,
@@ -228,17 +228,28 @@
       "operationId": "jira-v3:GET:/rest/api/3/bulk/issues/fields",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_bulk_issues.go",
+        "internal/api3/bulk_issues_test.go",
+        "internal/store/create_meta.go",
+        "docs/BULK_ISSUES.md"
+      ],
+      "notes": "Returns editable field types shared by all selected visible issues from the canonical project metadata, including Jira-shaped options, field search and bidirectional opaque 50-field cursor pages; configurable global and field permissions, cursor snapshot binding and the remaining Jira bulk field catalog remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/bulk/issues/fields",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_bulk_edit.go",
+        "internal/commands/bulk_issues.go",
+        "internal/api3/bulk_issues_test.go",
+        "internal/commands/bulk_issues_test.go",
+        "docs/BULK_ISSUES.md"
+      ],
+      "notes": "Queues up to 1,000 visible issues and 200 exactly matched selected fields, strictly parses ten persisted Jira field families, delegates each item to the ordinary issue command, reports successful/inaccessible/accessible-failed IDs and preserves action-idempotent replay; remaining Jira field families, configurable Bulk change/field permissions, bulk email delivery and exact rate-limit semantics remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/bulk/issues/move",
@@ -268,25 +279,40 @@
       "operationId": "jira-v3:POST:/rest/api/3/bulk/issues/unwatch",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_bulk_issues.go",
+        "internal/store/api_tasks.go",
+        "internal/api3/bulk_issues_test.go",
+        "docs/BULK_ISSUES.md"
+      ],
+      "notes": "Queues durable atomic self-unwatch changes for up to 1,000 unique visible issues, caps active bulk work at five, rechecks execution-time visibility, emits ordinary sync actions and exposes terminal counts; configurable Jira global Bulk change permission, notification controls and exact edge errors remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/bulk/issues/watch",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_bulk_issues.go",
+        "internal/store/api_tasks.go",
+        "internal/api3/bulk_issues_test.go",
+        "docs/BULK_ISSUES.md"
+      ],
+      "notes": "Queues durable atomic self-watch changes for up to 1,000 unique visible issues, caps active bulk work at five, rechecks execution-time visibility, emits ordinary sync actions and exposes terminal counts; configurable Jira global Bulk change permission, notification controls and exact edge errors remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/bulk/queue/{taskId}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_bulk_issues.go",
+        "internal/store/api_tasks.go",
+        "internal/api3/bulk_issues_test.go",
+        "docs/BULK_ISSUES.md"
+      ],
+      "notes": "Returns Jira bulk task identity, submitter, timestamps, status, progress and watch/unwatch terminal issue counts while rejecting unrelated or cross-workspace tasks; 14-day retention and result shapes for the remaining bulk task kinds remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/changelog/bulkfetch",
@@ -348,49 +374,79 @@
       "operationId": "jira-v3:GET:/rest/api/3/component",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/components_test.go",
+        "internal/store/components.go",
+        "e2e/projects.spec.ts",
+        "docs/COMPONENTS.md"
+      ],
+      "notes": "Authenticated workspace-scoped Jira component behavior is integration and browser tested, including canonical issue values and component-led assignment; exact Browse Projects, anonymous, Compass and edge-error parity remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/component",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/components_test.go",
+        "internal/store/components.go",
+        "e2e/projects.spec.ts",
+        "docs/COMPONENTS.md"
+      ],
+      "notes": "Authenticated workspace-scoped Jira component behavior is integration and browser tested, including canonical issue values and component-led assignment; exact Browse Projects, anonymous, Compass and edge-error parity remain."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/component/{id}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/components_test.go",
+        "internal/store/components.go",
+        "e2e/projects.spec.ts",
+        "docs/COMPONENTS.md"
+      ],
+      "notes": "Administrator deletion removes or atomically moves issue assignments and emits refreshed issue snapshots; exact project-permission and asynchronous edge behavior remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/component/{id}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/components_test.go",
+        "internal/store/components.go",
+        "e2e/projects.spec.ts",
+        "docs/COMPONENTS.md"
+      ],
+      "notes": "Authenticated workspace-scoped Jira component behavior is integration and browser tested, including canonical issue values and component-led assignment; exact Browse Projects, anonymous, Compass and edge-error parity remain."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/component/{id}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/components_test.go",
+        "internal/store/components.go",
+        "e2e/projects.spec.ts",
+        "docs/COMPONENTS.md"
+      ],
+      "notes": "Authenticated workspace-scoped Jira component behavior is integration and browser tested, including canonical issue values and component-led assignment; exact Browse Projects, anonymous, Compass and edge-error parity remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/component/{id}/relatedIssueCounts",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/components_test.go",
+        "internal/store/components.go",
+        "e2e/projects.spec.ts",
+        "docs/COMPONENTS.md"
+      ],
+      "notes": "Counts canonical component assignments across project issues; anonymous and issue-security count semantics remain to be certified."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/config/fieldschemes",
@@ -1204,153 +1260,229 @@
       "operationId": "jira-v3:POST:/rest/api/3/filter",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_filters_test.go",
+        "e2e/filters.spec.ts",
+        "docs/FILTERS.md"
+      ],
+      "notes": "Atomic creation, default/private sharing, JQL validation, favorites and audited ownership are integration-tested; the final exact assessment waits for PR 1 JQL certification."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/filter/defaultShareScope",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_filters_test.go",
+        "e2e/filters.spec.ts",
+        "docs/FILTERS.md"
+      ],
+      "notes": "Per-user private/authenticated defaults and Jira GLOBAL normalization are persisted and integration-tested; cross-product dashboard default coupling remains."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/filter/defaultShareScope",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_filters_test.go",
+        "e2e/filters.spec.ts",
+        "docs/FILTERS.md"
+      ],
+      "notes": "Per-user private/authenticated defaults and Jira GLOBAL normalization are persisted and integration-tested; cross-product dashboard default coupling remains."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/filter/favourite",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_filters_test.go",
+        "e2e/filters.spec.ts",
+        "docs/FILTERS.md"
+      ],
+      "notes": "Per-user favorites require filter visibility and return durable favorite counts through the Jira HTTP methods; final expansion certification remains."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/filter/my",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_filters_test.go",
+        "e2e/filters.spec.ts",
+        "docs/FILTERS.md"
+      ],
+      "notes": "Owned filters and the includeFavourites union are visibility-filtered and integration-tested; final expansion certification remains."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/filter/search",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_filters_test.go",
+        "e2e/filters.spec.ts",
+        "docs/FILTERS.md"
+      ],
+      "notes": "Visibility filtering, documented owner/share/name/ID options, ordering and offset pagination are integration-tested; the final exact assessment waits for PR 1 search cursor and expansion certification."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/filter/{id}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_filters_test.go",
+        "e2e/filters.spec.ts",
+        "docs/FILTERS.md"
+      ],
+      "notes": "Visibility-filtered lifecycle behavior and Jira-shaped FilterBean responses are integration-tested; exact expansion and JQL certification remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/filter/{id}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_filters_test.go",
+        "e2e/filters.spec.ts",
+        "docs/FILTERS.md"
+      ],
+      "notes": "Visibility-filtered lifecycle behavior, Jira-shaped FilterBean responses and current-user subscription expansion are integration-tested; exact expansion and JQL certification remain."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/filter/{id}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_filters_test.go",
+        "e2e/filters.spec.ts",
+        "docs/FILTERS.md"
+      ],
+      "notes": "Visibility-filtered lifecycle behavior and Jira-shaped FilterBean responses are integration-tested; exact expansion and JQL certification remain."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/filter/{id}/columns",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_filters_test.go",
+        "e2e/filters.spec.ts",
+        "docs/FILTERS.md"
+      ],
+      "notes": "Owner-managed filter columns, visibility-filtered reads, validation and reset behavior are integration-tested; exact custom-field navigability certification remains."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/filter/{id}/columns",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_filters_test.go",
+        "e2e/filters.spec.ts",
+        "docs/FILTERS.md"
+      ],
+      "notes": "Owner-managed filter columns, visibility-filtered reads, validation and reset behavior are integration-tested; exact custom-field navigability certification remains."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/filter/{id}/columns",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_filters_test.go",
+        "e2e/filters.spec.ts",
+        "docs/FILTERS.md"
+      ],
+      "notes": "Owner-managed filter columns, visibility-filtered reads, validation and reset behavior are integration-tested; exact custom-field navigability certification remains."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/filter/{id}/favourite",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_filters_test.go",
+        "e2e/filters.spec.ts",
+        "docs/FILTERS.md"
+      ],
+      "notes": "Per-user favorites require filter visibility and return durable favorite counts through the Jira HTTP methods; final expansion certification remains."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/filter/{id}/favourite",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_filters_test.go",
+        "e2e/filters.spec.ts",
+        "docs/FILTERS.md"
+      ],
+      "notes": "Per-user favorites require filter visibility and return durable favorite counts through the Jira HTTP methods; final expansion certification remains."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/filter/{id}/owner",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_filters_test.go",
+        "e2e/filters.spec.ts",
+        "docs/FILTERS.md"
+      ],
+      "notes": "Owner/admin transfer validates workspace membership and case-insensitive name conflicts with audit evidence; exact global-admin edge behavior remains."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/filter/{id}/permission",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_filters_test.go",
+        "e2e/filters.spec.ts",
+        "docs/FILTERS.md"
+      ],
+      "notes": "Stable view/edit share permissions and owner-scoped mutation across user, group, project, project-role and authenticated scopes are integration-tested; exact edge-error certification remains."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/filter/{id}/permission",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_filters_test.go",
+        "e2e/filters.spec.ts",
+        "docs/FILTERS.md"
+      ],
+      "notes": "Stable view/edit share permissions and owner-scoped mutation across user, group, project, project-role and authenticated scopes are integration-tested; exact edge-error certification remains."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/filter/{id}/permission/{permissionId}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_filters_test.go",
+        "e2e/filters.spec.ts",
+        "docs/FILTERS.md"
+      ],
+      "notes": "Stable view/edit share permissions and owner-scoped mutation across user, group, project, project-role and authenticated scopes are integration-tested; exact edge-error certification remains."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/filter/{id}/permission/{permissionId}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_filters_test.go",
+        "e2e/filters.spec.ts",
+        "docs/FILTERS.md"
+      ],
+      "notes": "Stable view/edit share permissions and owner-scoped mutation across user, group, project, project-role and authenticated scopes are integration-tested; exact edge-error certification remains."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/forge/panel/action/bulk/async",
@@ -1806,25 +1938,39 @@
       "operationId": "jira-v3:DELETE:/rest/api/3/issue/{issueIdOrKey}/votes",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_triage_test.go",
+        "internal/commands/commands_triage_test.go",
+        "internal/store/agile.go"
+      ],
+      "notes": "Idempotent self-service vote removal is permission-scoped to a visible issue and integration-tested; exact Jira site voting policy remains."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issue/{issueIdOrKey}/votes",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_triage_test.go",
+        "internal/api3/api3_triage.go",
+        "migrations/117_issue_votes.sql",
+        "e2e/triage.spec.ts"
+      ],
+      "notes": "The durable vote count, current-user state and voter account beans are visibility-scoped and integration-tested; exact Jira site voting policy remains."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/issue/{issueIdOrKey}/votes",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_triage_test.go",
+        "internal/commands/commands_triage_test.go",
+        "internal/render/testdata/issue_view.golden",
+        "e2e/triage.spec.ts"
+      ],
+      "notes": "Idempotent self-service voting shares the command path used by the browser issue journey and emits a permission-filtered action; exact Jira site voting policy remains."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/issue/{issueIdOrKey}/watchers",
@@ -2414,81 +2560,129 @@
       "operationId": "jira-v3:GET:/rest/api/3/jql/autocompletedata",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/projects_test.go",
+        "internal/api3/api3_jql_test.go",
+        "internal/api3/api3_jql_precomputations_test.go",
+        "docs/JQL.md"
+      ],
+      "notes": "Supported system/custom fields, operators, built-ins and active installed-app functions are workspace-scoped and integration-tested; collapsed duplicate-name and complete Jira catalogs remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/jql/autocompletedata",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/projects_test.go",
+        "internal/api3/api3_jql_test.go",
+        "internal/api3/api3_jql_precomputations_test.go",
+        "docs/JQL.md"
+      ],
+      "notes": "Supported system/custom fields, operators, built-ins and active installed-app functions are workspace-scoped and integration-tested; exact project-ID filtering and collapsed fields remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/jql/autocompletedata/suggestions",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/projects_test.go",
+        "internal/api3/api3_jql_test.go",
+        "docs/JQL.md"
+      ],
+      "notes": "Project and permission-filtered issue-derived suggestions, filtering, quoting, safe highlighting and bounds are tested; remaining Jira field providers remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/jql/function/computation",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_jql_precomputations_test.go",
+        "internal/apps/jql_functions_test.go",
+        "internal/apps/jql_functions.go",
+        "internal/store/app_jql_functions.go",
+        "internal/store/jql_function_precomputations.go",
+        "docs/JQL.md"
+      ],
+      "notes": "Signed app-only ownership, durable invocation identity, function filtering, ordering, offset paging, tenant isolation, Jira-shaped records, installed Connect/native declarations, autocomplete, signed cache-miss evaluation, seven-day expiry and safe compiler expansion are integration-tested; complete Forge identity semantics remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/jql/function/computation",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_jql_precomputations_test.go",
+        "internal/apps/jql_functions_test.go",
+        "internal/apps/jql_functions.go",
+        "internal/store/jql_function_precomputations.go",
+        "docs/JQL.md"
+      ],
+      "notes": "Installation-owned value/error replacement, strict batches, atomic missing-ID failure, explicit skip responses and compiler-triggered signed recalculation with opted-in error caching are integration-tested; complete Forge identity semantics remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/jql/function/computation/search",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_jql_precomputations_test.go",
+        "internal/apps/jql_functions_test.go",
+        "internal/store/jql_function_precomputations.go",
+        "docs/JQL.md"
+      ],
+      "notes": "Bounded ID retrieval, ordering, missing IDs and cross-app/tenant non-disclosure are integration-tested; complete Forge identity semantics remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/jql/match",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/projects_test.go",
+        "internal/api3/api3_jql_test.go",
+        "docs/JQL.md"
+      ],
+      "notes": "Per-query compilation and matching bounded to requested visible numeric Jira IDs are integration-tested; exact service limits remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/jql/parse",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/projects_test.go",
+        "internal/api3/api3_jql_test.go",
+        "docs/JQL.md"
+      ],
+      "notes": "Per-query Jira-shaped structures, syntax/compile errors, history/functions/multi-order and validation modes are tested; complete Jira AST validation warnings remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/jql/pdcleaner",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/projects_test.go",
+        "internal/api3/api3_jql_test.go",
+        "docs/JQL.md"
+      ],
+      "notes": "Bounded batch conversion of known equality-clause user identities is tested; list/history operands and unknown-user reporting remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/jql/sanitize",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/projects_test.go",
+        "internal/api3/api3_jql_test.go",
+        "docs/JQL.md"
+      ],
+      "notes": "Per-viewer compile validation and per-query success/error results are integration-tested; visibility-driven name-to-ID rewriting remains."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/label",
@@ -3190,17 +3384,27 @@
       "operationId": "jira-v3:GET:/rest/api/3/project/{projectIdOrKey}/component",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/components_test.go",
+        "internal/store/components.go",
+        "e2e/projects.spec.ts",
+        "docs/COMPONENTS.md"
+      ],
+      "notes": "Project-scoped filtering, name ordering, offset pagination, counts and links are integration-tested; Compass sources and exact Browse Projects behavior remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/project/{projectIdOrKey}/components",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/components_test.go",
+        "internal/store/components.go",
+        "e2e/projects.spec.ts",
+        "docs/COMPONENTS.md"
+      ],
+      "notes": "The legacy complete project component collection returns Jira-shaped values; anonymous and Compass component behavior remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/project/{projectIdOrKey}/delete",
@@ -3790,41 +3994,76 @@
       "operationId": "jira-v3:GET:/rest/api/3/search",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/projects_test.go",
+        "internal/api3/search_cursor_test.go",
+        "internal/jql/jql_test.go",
+        "internal/store/jql_history_search_test.go",
+        "docs/JQL.md",
+        "internal/api3/search_projection_test.go"
+      ],
+      "notes": "Legacy GET search has pagination, strict option validation, selected fields/app keys, every documented expansion name, requested properties and permission-filtered lifecycle evidence; validation warnings, richer rendering and historical version representations remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/search",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/projects_test.go",
+        "internal/api3/search_cursor_test.go",
+        "internal/jql/jql_test.go",
+        "internal/store/jql_history_search_test.go",
+        "docs/JQL.md",
+        "internal/api3/search_projection_test.go"
+      ],
+      "notes": "Legacy POST search has strict bounded JSON decoding, pagination, selected fields/app keys, every documented expansion name, requested properties and permission-filtered lifecycle evidence; validation warnings, richer rendering and historical version representations remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/search/approximate-count",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/projects_test.go",
+        "internal/api3/search_cursor_test.go",
+        "internal/jql/jql_test.go",
+        "internal/store/jql_history_search_test.go",
+        "docs/JQL.md",
+        "internal/api3/search_projection_test.go"
+      ],
+      "notes": "Count rejects unbounded queries, uses the shared permission-filtered JQL command path and has integration evidence; approximate large-index behavior remains."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/search/jql",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/projects_test.go",
+        "internal/api3/search_cursor_test.go",
+        "internal/jql/jql_test.go",
+        "internal/store/jql_history_search_test.go",
+        "docs/JQL.md",
+        "internal/api3/search_projection_test.go"
+      ],
+      "notes": "Enhanced GET search has bounded-query, immutable numeric Jira IDs, selected fields/app keys, every documented expansion name, requested properties, strongly consistent reconciliation, durable expiring query/reconciliation/user/workspace-bound result snapshots and invalid-option evidence; richer rendering/history remains."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/search/jql",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/projects_test.go",
+        "internal/api3/search_cursor_test.go",
+        "internal/jql/jql_test.go",
+        "internal/store/jql_history_search_test.go",
+        "docs/JQL.md",
+        "internal/api3/search_projection_test.go"
+      ],
+      "notes": "Enhanced POST search has strict decoding, bounded-query, immutable numeric Jira IDs, selected fields/app keys, every documented expansion name, requested properties, strongly consistent reconciliation, durable expiring query/reconciliation/user/workspace-bound result snapshots and invalid-option evidence; richer rendering/history remains."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/securitylevel/{id}",

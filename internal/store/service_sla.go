@@ -39,7 +39,7 @@ func (s *Store) ServiceCalendar(ctx context.Context, workspaceID, serviceDeskID 
 
 func (s *Store) ServiceSLAMetrics(ctx context.Context, workspaceID, serviceDeskID string) ([]models.ServiceSLAMetric, error) {
 	rows, err := s.Pool.Query(ctx, `
-		SELECT m.id,m.service_desk_id,m.calendar_id,m.name,m.kind,m.goal_millis,m.position
+		SELECT m.id,m.service_desk_id,m.calendar_id,m.name,m.kind,m.pause_jql,m.goal_millis,m.position
 		FROM service_sla_metrics m JOIN service_desks sd ON sd.id=m.service_desk_id
 		WHERE sd.workspace_id=$1 AND sd.id=$2 ORDER BY m.position,m.id::bigint`, workspaceID, serviceDeskID)
 	if err != nil {
@@ -49,7 +49,7 @@ func (s *Store) ServiceSLAMetrics(ctx context.Context, workspaceID, serviceDeskI
 	metrics := make([]models.ServiceSLAMetric, 0)
 	for rows.Next() {
 		var metric models.ServiceSLAMetric
-		if err := rows.Scan(&metric.ID, &metric.ServiceDeskID, &metric.CalendarID, &metric.Name, &metric.Kind, &metric.GoalMillis, &metric.Position); err != nil {
+		if err := rows.Scan(&metric.ID, &metric.ServiceDeskID, &metric.CalendarID, &metric.Name, &metric.Kind, &metric.PauseJQL, &metric.GoalMillis, &metric.Position); err != nil {
 			return nil, err
 		}
 		metrics = append(metrics, metric)
@@ -57,7 +57,27 @@ func (s *Store) ServiceSLAMetrics(ctx context.Context, workspaceID, serviceDeskI
 	return metrics, rows.Err()
 }
 
-func (s *Store) UpdateServiceSLAMetric(ctx context.Context, workspaceID, actorID, serviceDeskID, metricID string, goalMillis int64) error {
+func (s *Store) ServiceSLAMetricsForWorkspace(ctx context.Context, workspaceID string) ([]models.ServiceSLAMetric, error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT m.id,m.service_desk_id,m.calendar_id,m.name,m.kind,m.pause_jql,m.goal_millis,m.position
+		FROM service_sla_metrics m JOIN service_desks sd ON sd.id=m.service_desk_id
+		WHERE sd.workspace_id=$1 ORDER BY lower(m.name),m.position,m.id::bigint`, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	metrics := make([]models.ServiceSLAMetric, 0)
+	for rows.Next() {
+		var metric models.ServiceSLAMetric
+		if err := rows.Scan(&metric.ID, &metric.ServiceDeskID, &metric.CalendarID, &metric.Name, &metric.Kind, &metric.PauseJQL, &metric.GoalMillis, &metric.Position); err != nil {
+			return nil, err
+		}
+		metrics = append(metrics, metric)
+	}
+	return metrics, rows.Err()
+}
+
+func (s *Store) UpdateServiceSLAMetric(ctx context.Context, workspaceID, actorID, serviceDeskID, metricID, pauseJQL string, goalMillis int64) error {
 	if goalMillis < time.Minute.Milliseconds() || goalMillis > (365*24*time.Hour).Milliseconds() {
 		return fmt.Errorf("SLA goal must be between one minute and 365 days")
 	}
@@ -67,9 +87,9 @@ func (s *Store) UpdateServiceSLAMetric(ctx context.Context, workspaceID, actorID
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	result, err := tx.Exec(ctx, `
-		UPDATE service_sla_metrics m SET goal_millis=$4
+		UPDATE service_sla_metrics m SET goal_millis=$4,pause_jql=$5
 		FROM service_desks sd WHERE sd.id=m.service_desk_id
-		  AND sd.workspace_id=$1 AND sd.id=$2 AND m.id=$3`, workspaceID, serviceDeskID, metricID, goalMillis)
+		  AND sd.workspace_id=$1 AND sd.id=$2 AND m.id=$3`, workspaceID, serviceDeskID, metricID, goalMillis, pauseJQL)
 	if err != nil {
 		return err
 	}
@@ -87,8 +107,8 @@ func (s *Store) UpdateServiceSLAMetric(ctx context.Context, workspaceID, actorID
 	}
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO organization_audit_events(organization_id,actor_id,action,target_type,target_id,detail)
-		SELECT si.organization_id,$2,'service.sla.updated','service_sla',$4,jsonb_build_object('serviceDeskId',$3::text,'goalMillis',$5::bigint)
-		FROM sites si WHERE si.workspace_id=$1`, workspaceID, actorID, serviceDeskID, metricID, goalMillis); err != nil {
+		SELECT si.organization_id,$2,'service.sla.updated','service_sla',$4,jsonb_build_object('serviceDeskId',$3::text,'goalMillis',$5::bigint,'pauseJql',$6::text)
+		FROM sites si WHERE si.workspace_id=$1`, workspaceID, actorID, serviceDeskID, metricID, goalMillis, pauseJQL); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
@@ -201,6 +221,12 @@ func (s *Store) CompleteServiceSLA(ctx context.Context, workspaceID, requestIssu
 	return err
 }
 
+func (s *Store) ServiceRequestDeskID(ctx context.Context, workspaceID, requestIssueID string) (string, error) {
+	var serviceDeskID string
+	err := s.Pool.QueryRow(ctx, `SELECT COALESCE((SELECT service_desk_id FROM service_requests WHERE workspace_id=$1 AND issue_id=$2),'')`, workspaceID, requestIssueID).Scan(&serviceDeskID)
+	return serviceDeskID, err
+}
+
 func (s *Store) EnsureResolutionSLA(ctx context.Context, workspaceID, requestIssueID string, at time.Time) error {
 	_, err := s.Pool.Exec(ctx, `
 		INSERT INTO service_sla_cycles(request_issue_id,metric_id,cycle_number,started_at,goal_id,goal_name,goal_millis)
@@ -305,21 +331,153 @@ func serviceWithinCalendar(calendar *models.ServiceCalendar, at time.Time, locat
 }
 
 func calculateServiceSLACycle(calendar *models.ServiceCalendar, location *time.Location, id string, started time.Time, stopped *time.Time, goalMillis int64, now time.Time) models.ServiceSLACycle {
+	return calculateServiceSLACycleWithPauses(calendar, location, id, started, stopped, goalMillis, now, nil)
+}
+
+func calculateServiceSLACycleWithPauses(calendar *models.ServiceCalendar, location *time.Location, id string, started time.Time, stopped *time.Time, goalMillis int64, now time.Time, pauses []models.ServiceSLAPause) models.ServiceSLACycle {
 	end := now
 	if stopped != nil {
 		end = *stopped
 	}
 	elapsed := serviceBusinessDuration(calendar, started, end, location)
+	paused := false
+	for _, pause := range pauses {
+		pauseEnd := end
+		if pause.StopTime != nil && pause.StopTime.Before(pauseEnd) {
+			pauseEnd = *pause.StopTime
+		}
+		pauseStart := pause.StartTime
+		if pauseStart.Before(started) {
+			pauseStart = started
+		}
+		if pauseEnd.After(pauseStart) {
+			elapsed -= serviceBusinessDuration(calendar, pauseStart, pauseEnd, location)
+		}
+		if stopped == nil && pause.StopTime == nil {
+			paused = true
+		}
+	}
+	if elapsed < 0 {
+		elapsed = 0
+	}
 	goal := time.Duration(goalMillis) * time.Millisecond
 	remaining := goal - elapsed
 	breach := serviceBreachTime(calendar, started, goal, location)
+	for _, pause := range pauses {
+		pauseEnd := end
+		if pause.StopTime != nil && pause.StopTime.Before(pauseEnd) {
+			pauseEnd = *pause.StopTime
+		}
+		if pause.StartTime.Before(breach) && pauseEnd.After(pause.StartTime) {
+			delay := serviceBusinessDuration(calendar, pause.StartTime, pauseEnd, location)
+			breach = serviceBreachTime(calendar, breach, delay, location)
+		}
+	}
 	within := serviceWithinCalendar(calendar, end, location)
 	return models.ServiceSLACycle{
 		ID: id, StartTime: started, StopTime: stopped, BreachTime: breach,
 		GoalMillis: goalMillis, ElapsedMillis: elapsed.Milliseconds(), RemainingMillis: remaining.Milliseconds(),
 		GoalLabel: serviceDurationLabel(goalMillis), ElapsedLabel: serviceDurationLabel(elapsed.Milliseconds()), RemainingLabel: serviceDurationLabel(remaining.Milliseconds()),
-		Breached: !end.Before(breach), Paused: stopped == nil && !within, WithinCalendarHours: within,
+		Breached: elapsed >= goal, Paused: paused, WithinCalendarHours: within,
 	}
+}
+
+func (s *Store) ServiceSLACyclePauses(ctx context.Context, cycleID string) ([]models.ServiceSLAPause, error) {
+	rows, err := s.Pool.Query(ctx, `SELECT id,reason,started_at,stopped_at FROM service_sla_cycle_pauses WHERE cycle_id=$1 ORDER BY started_at,id::bigint`, cycleID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	pauses := make([]models.ServiceSLAPause, 0)
+	for rows.Next() {
+		var pause models.ServiceSLAPause
+		if err := rows.Scan(&pause.ID, &pause.Reason, &pause.StartTime, &pause.StopTime); err != nil {
+			return nil, err
+		}
+		pauses = append(pauses, pause)
+	}
+	return pauses, rows.Err()
+}
+
+func (s *Store) SetServiceSLACyclePaused(ctx context.Context, workspaceID, cycleID string, paused bool, reason string, at time.Time) error {
+	if paused {
+		_, err := s.Pool.Exec(ctx, `
+			INSERT INTO service_sla_cycle_pauses(cycle_id,started_at,reason)
+			SELECT c.id,$3,$4 FROM service_sla_cycles c
+			JOIN service_requests sr ON sr.issue_id=c.request_issue_id
+			WHERE sr.workspace_id=$1 AND c.id=$2 AND c.stopped_at IS NULL
+			ON CONFLICT DO NOTHING`, workspaceID, cycleID, at, strings.TrimSpace(reason))
+		return err
+	}
+	_, err := s.Pool.Exec(ctx, `
+		UPDATE service_sla_cycle_pauses pause SET stopped_at=$3
+		FROM service_sla_cycles cycle JOIN service_requests sr ON sr.issue_id=cycle.request_issue_id
+		WHERE pause.cycle_id=cycle.id AND sr.workspace_id=$1 AND cycle.id=$2
+		  AND pause.stopped_at IS NULL AND $3>=pause.started_at`, workspaceID, cycleID, at)
+	return err
+}
+
+func (s *Store) ReconcileServiceSLAPauses(ctx context.Context, workspaceID, actorID, issueID string, at time.Time) error {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT cycle.id,metric.name,metric.pause_jql
+		FROM service_sla_cycles cycle
+		JOIN service_sla_metrics metric ON metric.id=cycle.metric_id
+		JOIN service_requests request ON request.issue_id=cycle.request_issue_id
+		WHERE request.workspace_id=$1 AND request.issue_id=$2 AND cycle.stopped_at IS NULL
+		ORDER BY metric.position,cycle.id::bigint`, workspaceID, issueID)
+	if err != nil {
+		return err
+	}
+	type candidate struct{ cycleID, name, query string }
+	candidates := make([]candidate, 0)
+	for rows.Next() {
+		var value candidate
+		if err := rows.Scan(&value.cycleID, &value.name, &value.query); err != nil {
+			rows.Close()
+			return err
+		}
+		candidates = append(candidates, value)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	for _, value := range candidates {
+		paused := false
+		if value.query != "" {
+			paused, err = s.serviceSLAGoalMatches(ctx, workspaceID, actorID, issueID, value.query)
+			if err != nil {
+				return err
+			}
+		}
+		if err := s.SetServiceSLACyclePaused(ctx, workspaceID, value.cycleID, paused, "Matched pause condition for "+value.name, at); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) OpenServiceSLAMetricRequestIDs(ctx context.Context, workspaceID, serviceDeskID, metricID string) ([]string, error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT cycle.request_issue_id FROM service_sla_cycles cycle
+		JOIN service_sla_metrics metric ON metric.id=cycle.metric_id
+		JOIN service_desks desk ON desk.id=metric.service_desk_id
+		WHERE desk.workspace_id=$1 AND desk.id=$2 AND metric.id=$3 AND cycle.stopped_at IS NULL
+		ORDER BY cycle.request_issue_id`, workspaceID, serviceDeskID, metricID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	ids := make([]string, 0)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
 }
 
 func (s *Store) ServiceSLAs(ctx context.Context, workspaceID, requestIssueID string, now time.Time) ([]models.ServiceSLA, error) {
@@ -366,7 +524,11 @@ func (s *Store) ServiceSLAs(ctx context.Context, workspaceID, requestIssueID str
 		if !ok {
 			continue
 		}
-		cycle := calculateServiceSLACycle(calendar, location, id, started, stopped, goalMillis, now)
+		pauses, err := s.ServiceSLACyclePauses(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		cycle := calculateServiceSLACycleWithPauses(calendar, location, id, started, stopped, goalMillis, now, pauses)
 		cycle.GoalID, cycle.GoalName = goalID, goalName
 		if stopped == nil {
 			values[index].OngoingCycle = &cycle

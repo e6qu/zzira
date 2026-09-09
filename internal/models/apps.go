@@ -13,6 +13,7 @@ type AppDescriptor struct {
 	Webhooks                            []AppWebhook
 	ScheduledTriggers                   []AppScheduledTrigger
 	IssueFields                         []AppIssueField
+	JQLFunctions                        []AppJQLFunction
 }
 
 type AppIssueField struct {
@@ -30,8 +31,24 @@ type AppInstallation struct {
 	Webhooks                                                                               []AppWebhook
 	ScheduledTriggers                                                                      []AppScheduledTrigger
 	IssueFields                                                                            []AppIssueField
+	JQLFunctions                                                                           []AppJQLFunction
 	OutboundDeliveries                                                                     []AppOutboundDelivery
 	InstalledAt, UpdatedAt                                                                 time.Time
+}
+
+type AppJQLFunctionArgument struct {
+	Name     string `json:"name"`
+	Required bool   `json:"required"`
+}
+
+// AppJQLFunction is an installed Connect-compatible custom JQL function.
+// Connection details are populated only when the product evaluates it.
+type AppJQLFunction struct {
+	ID, InstallationID, AppKey, BaseURL, Format string
+	SecretCiphertext                            []byte
+	Key, Name, Path                             string
+	Arguments                                   []AppJQLFunctionArgument
+	Types, Operators                            []string
 }
 
 type AppWebhook struct {
@@ -85,4 +102,18 @@ type AppStorageValue struct {
 	Value     json.RawMessage `json:"value"`
 	Version   int64           `json:"version"`
 	UpdatedAt time.Time       `json:"updatedAt"`
+}
+
+// JQLFunctionPrecomputation is the durable replacement fragment for one
+// invocation of an app-provided JQL function.
+type JQLFunctionPrecomputation struct {
+	ID, FunctionKey, FunctionName, Field, Operator string
+	Arguments                                      []string
+	Value, Error                                   *string
+	CreatedAt, UpdatedAt, UsedAt                   time.Time
+}
+
+type JQLFunctionPrecomputationUpdate struct {
+	ID           string
+	Value, Error *string
 }

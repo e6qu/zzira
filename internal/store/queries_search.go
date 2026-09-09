@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 
@@ -25,11 +26,11 @@ JOIN projects pr ON pr.id = i.project_id
 `
 
 const searchSelect = `
-SELECT i.id, i.workspace_id, i.project_id, i.key, i.summary, i.description,
+SELECT i.id, i.jira_id, i.workspace_id, i.project_id, i.key, i.summary, i.description,
        st.id, st.name, st.category,
 	       it.id, it.name, it.icon,
 	       it.subtask,
-	       parent.id, parent.key, parent.summary,
+	       parent.id, parent.jira_id, parent.key, parent.summary,
        pr2.id, pr2.name,
        a.id, a.display_name,
 	       r.id, r.display_name,
@@ -76,6 +77,96 @@ func (s *Store) Search(ctx context.Context, workspaceID, userID string, c jql.Co
 		out = append(out, i)
 	}
 	return out, total, rows.Err()
+}
+
+// MatchIssueIDs evaluates one compiled query only against the caller-supplied
+// issue IDs. This keeps Jira's bulk match resource bounded independently of the
+// workspace's total issue count and applies the same issue-security predicate
+// used by normal search.
+func (s *Store) MatchIssueIDs(ctx context.Context, workspaceID, userID string, c jql.Compiled, issueIDs []int64) ([]int64, error) {
+	if c.Err != nil {
+		return nil, c.Err
+	}
+	if len(issueIDs) == 0 {
+		return []int64{}, nil
+	}
+	where := "i.workspace_id = $1"
+	args := []any{workspaceID}
+	if c.Where != "" {
+		where += " AND (" + c.Where + ")"
+		args = append(args, c.Args...)
+	}
+	userPH := "$" + fmt.Sprintf("%d", len(args)+1)
+	args = append(args, userID)
+	where += " AND " + VisibleIssuePredicate("i", userPH)
+	idsPH := "$" + fmt.Sprintf("%d", len(args)+1)
+	args = append(args, issueIDs)
+	where += " AND i.jira_id=ANY(" + idsPH + "::BIGINT[])"
+	rows, err := s.Pool.Query(ctx, `SELECT i.jira_id `+searchJoin+` WHERE `+where, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	matched := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		matched = append(matched, id)
+	}
+	return matched, rows.Err()
+}
+
+// JQLFieldSuggestions returns distinct values observed on issues the viewer can
+// browse. The field switch chooses fixed SQL fragments; user input is always a
+// bound value.
+func (s *Store) JQLFieldSuggestions(ctx context.Context, workspaceID, userID, field, needle string, limit int) ([]string, error) {
+	if limit < 1 || limit > 100 {
+		limit = 50
+	}
+	var valueSQL, extraJoin, present string
+	switch strings.ToLower(field) {
+	case "labels":
+		valueSQL, extraJoin, present = "label", "CROSS JOIN LATERAL unnest(i.labels) label", "label <> ''"
+	case "component":
+		extraJoin = `CROSS JOIN LATERAL (
+		  SELECT COALESCE(component_ref->>'name',component_ref->>'id') AS value
+		  FROM jsonb_array_elements(CASE WHEN jsonb_typeof(i.fields->'components')='array' THEN i.fields->'components' ELSE '[]'::jsonb END) component_ref
+		  UNION SELECT i.fields->>'component' WHERE NULLIF(i.fields->>'component','') IS NOT NULL
+		) component_value`
+		valueSQL, present = "component_value.value", "component_value.value IS NOT NULL AND component_value.value <> ''"
+	case "sprint", "resolution":
+		key := strings.ToLower(field)
+		valueSQL = `i.fields->>'` + key + `'`
+		present = valueSQL + " IS NOT NULL AND " + valueSQL + " <> ''"
+	case "fixversion", "affectedversion":
+		key := "fixVersions"
+		if strings.EqualFold(field, "affectedversion") {
+			key = "versions"
+		}
+		extraJoin = `CROSS JOIN LATERAL jsonb_array_elements(COALESCE(i.fields->'` + key + `','[]'::jsonb)) version`
+		valueSQL, present = `COALESCE(version->>'name',version->>'id')`, `COALESCE(version->>'name',version->>'id','') <> ''`
+	default:
+		return nil, fmt.Errorf("field does not provide stored suggestions")
+	}
+	rows, err := s.Pool.Query(ctx, `SELECT DISTINCT `+valueSQL+` AS value `+searchJoin+` `+extraJoin+`
+		WHERE i.workspace_id=$1 AND `+VisibleIssuePredicate("i", "$2")+` AND `+present+`
+		  AND ($3='' OR `+valueSQL+` ILIKE '%'||$3||'%')
+		ORDER BY value LIMIT `+fmt.Sprintf("%d", limit), workspaceID, userID, needle)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	values := []string{}
+	for rows.Next() {
+		var value string
+		if err := rows.Scan(&value); err != nil {
+			return nil, err
+		}
+		values = append(values, value)
+	}
+	return values, rows.Err()
 }
 
 // MembersByWorkspace lists workspace members (assignee pickers, user search).
@@ -301,43 +392,6 @@ func derefIssues(in []*models.Issue) []models.Issue {
 		out = append(out, *i)
 	}
 	return out
-}
-
-// ---- saved filters (read-only in V2) ----
-
-func (s *Store) ListFilters(ctx context.Context, workspaceID, userID string) ([]*models.Filter, error) {
-	rows, err := s.Pool.Query(ctx, `
-		SELECT f.id, f.name, COALESCE(f.jql,''), COALESCE(f.description,''), COALESCE(f.owner_id,''), COALESCE(u.display_name,''),
-		       EXISTS(SELECT 1 FROM filter_favourites ff WHERE ff.filter_id=f.id AND ff.user_id=$2) AS favourite
-		FROM filters f LEFT JOIN users u ON u.id = f.owner_id
-		WHERE f.workspace_id=$1 ORDER BY favourite DESC, f.name`, workspaceID, userID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []*models.Filter
-	for rows.Next() {
-		f := &models.Filter{}
-		if err := rows.Scan(&f.ID, &f.Name, &f.JQL, &f.Description, &f.OwnerID, &f.OwnerName, &f.Favourite); err != nil {
-			return nil, err
-		}
-		out = append(out, f)
-	}
-	return out, rows.Err()
-}
-
-func (s *Store) FilterByID(ctx context.Context, workspaceID, userID, id string) (*models.Filter, error) {
-	f := &models.Filter{}
-	err := s.Pool.QueryRow(ctx, `
-		SELECT f.id, f.name, COALESCE(f.jql,''), COALESCE(f.description,''), COALESCE(f.owner_id,''), COALESCE(u.display_name,''),
-		       EXISTS(SELECT 1 FROM filter_favourites ff WHERE ff.filter_id=f.id AND ff.user_id=$3)
-		FROM filters f LEFT JOIN users u ON u.id = f.owner_id
-		WHERE f.id=$1 AND f.workspace_id=$2`, id, workspaceID, userID).
-		Scan(&f.ID, &f.Name, &f.JQL, &f.Description, &f.OwnerID, &f.OwnerName, &f.Favourite)
-	if err != nil {
-		return nil, err
-	}
-	return f, nil
 }
 
 // SecuritySchemes lists all stored schemes.

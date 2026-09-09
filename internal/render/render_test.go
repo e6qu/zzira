@@ -37,6 +37,8 @@ func fixtureIssue() models.IssueView {
 		LinkTypes:     []models.LinkType{{ID: "lt_blocks", Name: "Blocks", Inward: "is blocked by", Outward: "blocks"}},
 		Watchers:      []models.User{{ID: "usr_1", DisplayName: "Demo User"}},
 		IsWatching:    true,
+		Voters:        []models.User{{ID: "usr_1", DisplayName: "Demo User"}},
+		HasVoted:      true,
 		Attachments:   []models.Attachment{{ID: "att_1", Filename: "design.png", MimeType: "image/png", Size: 2048, AuthorID: "usr_1", AuthorName: "Demo User", Created: "2026-08-28T10:00:00Z"}},
 		Comments:      []models.Comment{{ID: "cmt_1", AuthorID: "usr_1", AuthorName: "Demo User", Body: json.RawMessage(`{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":"Ready for review."}]}]}`), Created: "2026-08-28T11:00:00Z"}},
 		Worklogs:      []models.Worklog{{ID: "wl_1", AuthorID: "usr_1", AuthorName: "Demo User", TimeSpentSeconds: 3600, Created: "2026-08-28T12:00:00Z"}},

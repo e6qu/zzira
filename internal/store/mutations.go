@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -91,6 +92,9 @@ func (s *Store) UpdateIssue(ctx context.Context, actorID, workspaceID, issueID s
 	if err := normalizeVersionFields(ctx, tx, projectID, up.Fields); err != nil {
 		return nil, nil, err
 	}
+	if err := normalizeComponentFields(ctx, tx, projectID, up.Fields); err != nil {
+		return nil, nil, err
+	}
 	diff := map[string]models.ChangeItem{}
 
 	sets := []string{}
@@ -114,7 +118,7 @@ func (s *Store) UpdateIssue(ctx context.Context, actorID, workspaceID, issueID s
 		sets = append(sets, "labels = "+arg(*up.Labels))
 	}
 	if up.Fields != nil {
-		for _, field := range []string{"fixVersions", "versions"} {
+		for _, field := range []string{"fixVersions", "versions", "components"} {
 			if value, ok := up.Fields[field]; ok && string(value) != string(current.Fields[field]) {
 				diff[field] = versionChange(field, current.Fields[field], value)
 			}
@@ -127,7 +131,13 @@ func (s *Store) UpdateIssue(ctx context.Context, actorID, workspaceID, issueID s
 		if err != nil {
 			return nil, nil, err
 		}
-		sets = append(sets, "fields = "+arg(fieldsJSON)+"::jsonb")
+		currentFieldsJSON, err := json.Marshal(current.Fields)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !bytes.Equal(fieldsJSON, currentFieldsJSON) {
+			sets = append(sets, "fields = "+arg(fieldsJSON)+"::jsonb")
+		}
 	}
 	if up.StatusID != nil && *up.StatusID != current.Status.ID {
 		var newName, newCategory string
@@ -486,7 +496,7 @@ func mergeFields(current map[string]json.RawMessage, updates map[string]json.Raw
 		out[k] = v
 	}
 	for k, v := range updates {
-		if !isCustomFieldKey(k) && k != "fixVersions" && k != "versions" {
+		if !isCustomFieldKey(k) && k != "fixVersions" && k != "versions" && k != "components" {
 			return nil, fmt.Errorf("field key %q is not a custom field", k)
 		}
 		if len(v) == 0 || string(v) == "null" {
@@ -793,79 +803,6 @@ func (s *Store) MarkWebhookDelivery(ctx context.Context, webhookID string, seq i
 		      secs => LEAST(POWER(2, LEAST(attempts, 9))::int, 300)
 		    )
 		WHERE webhook_id=$1 AND seq=$2`, webhookID, seq, lastErr)
-	return err
-}
-
-// ---- filters CRUD (V5) ----
-
-func (s *Store) CreateFilter(ctx context.Context, id, workspaceID, name, jql, description, ownerID string) (*models.Filter, error) {
-	_, err := s.Pool.Exec(ctx,
-		`INSERT INTO filters (id, workspace_id, name, jql, description, owner_id, favourite) VALUES ($1,$2,$3,$4,$5,$6,FALSE)`,
-		id, workspaceID, name, jql, description, nilIfEmpty(ownerID))
-	if err != nil {
-		return nil, err
-	}
-	return s.FilterByID(ctx, workspaceID, ownerID, id)
-}
-
-// CreateFavouriteFilter atomically creates a filter and stars it for its
-// owner. The browser save-search journey must not leave a half-created filter
-// if the per-user favourite row cannot be written.
-func (s *Store) CreateFavouriteFilter(ctx context.Context, id, workspaceID, name, jql, description, ownerID string) (*models.Filter, error) {
-	tx, err := s.Pool.Begin(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	if _, err := tx.Exec(ctx,
-		`INSERT INTO filters (id, workspace_id, name, jql, description, owner_id, favourite) VALUES ($1,$2,$3,$4,$5,$6,FALSE)`,
-		id, workspaceID, name, jql, description, nilIfEmpty(ownerID)); err != nil {
-		return nil, err
-	}
-	if _, err := tx.Exec(ctx, `INSERT INTO filter_favourites (filter_id, user_id) VALUES ($1,$2)`, id, ownerID); err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, err
-	}
-	return s.FilterByID(ctx, workspaceID, ownerID, id)
-}
-
-func (s *Store) UpdateFilter(ctx context.Context, workspaceID, userID, id, name, jql, description string) (*models.Filter, error) {
-	result, err := s.Pool.Exec(ctx,
-		`UPDATE filters SET name=$4, jql=$5, description=$6 WHERE id=$1 AND workspace_id=$2 AND owner_id=$3`, id, workspaceID, userID, name, jql, description)
-	if err != nil {
-		return nil, err
-	}
-	if result.RowsAffected() == 0 {
-		return nil, pgx.ErrNoRows
-	}
-	return s.FilterByID(ctx, workspaceID, userID, id)
-}
-
-func (s *Store) DeleteFilter(ctx context.Context, workspaceID, userID, id string) error {
-	result, err := s.Pool.Exec(ctx, `DELETE FROM filters WHERE id=$1 AND workspace_id=$2 AND owner_id=$3`, id, workspaceID, userID)
-	if err != nil {
-		return err
-	}
-	if result.RowsAffected() == 0 {
-		return pgx.ErrNoRows
-	}
-	return err
-}
-
-func (s *Store) SetFilterFavourite(ctx context.Context, workspaceID, userID, id string, favourite bool) error {
-	if favourite {
-		_, err := s.Pool.Exec(ctx, `
-			INSERT INTO filter_favourites (filter_id, user_id)
-			SELECT id, $3 FROM filters WHERE id=$1 AND workspace_id=$2
-			ON CONFLICT DO NOTHING`, id, workspaceID, userID)
-		return err
-	}
-	_, err := s.Pool.Exec(ctx, `
-		DELETE FROM filter_favourites ff
-		USING filters f
-		WHERE ff.filter_id=f.id AND f.id=$1 AND f.workspace_id=$2 AND ff.user_id=$3`, id, workspaceID, userID)
 	return err
 }
 

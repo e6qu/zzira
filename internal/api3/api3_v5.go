@@ -11,14 +11,13 @@ import (
 	"github.com/e6qu/zzira/internal/jql"
 
 	"github.com/e6qu/zzira/internal/models"
-	"github.com/e6qu/zzira/internal/store"
 )
 
 var customFieldIDPattern = regexp.MustCompile(`^customfield_[0-9]+$`)
 var appCustomFieldKeyPattern = regexp.MustCompile(`^[a-zA-Z0-9._-]{1,64}__[a-zA-Z][a-zA-Z0-9._-]{0,63}$`)
 var customFieldInMessagePattern = regexp.MustCompile(`customfield_[0-9]+`)
 
-// customFieldsFromBody extracts custom fields and version references from the raw
+// customFieldsFromBody extracts custom fields and structured system-field references from the raw
 // request body; create and update share this extraction path.
 func customFieldsFromBody(body []byte) map[string]json.RawMessage {
 	var req struct {
@@ -29,7 +28,7 @@ func customFieldsFromBody(body []byte) map[string]json.RawMessage {
 	}
 	var out map[string]json.RawMessage
 	for k, v := range req.Fields {
-		if !customFieldIDPattern.MatchString(k) && !appCustomFieldKeyPattern.MatchString(k) && k != "fixVersions" && k != "versions" {
+		if !customFieldIDPattern.MatchString(k) && !appCustomFieldKeyPattern.MatchString(k) && k != "fixVersions" && k != "versions" && k != "components" {
 			continue
 		}
 		if out == nil {
@@ -143,6 +142,7 @@ func (h *Handler) listFields(w http.ResponseWriter, r *http.Request) {
 	out := []map[string]any{
 		{"id": "fixVersions", "name": "Fix versions", "custom": false, "schema": map[string]any{"type": "array", "items": "version", "system": "fixVersions"}},
 		{"id": "versions", "name": "Affects versions", "custom": false, "schema": map[string]any{"type": "array", "items": "version", "system": "versions"}},
+		{"id": "components", "name": "Components", "custom": false, "schema": map[string]any{"type": "array", "items": "component", "system": "components"}},
 		{"id": "summary", "name": "Summary", "custom": false, "schema": map[string]any{"type": "string"}},
 		{"id": "description", "name": "Description", "custom": false, "schema": map[string]any{"type": "doc"}},
 	}
@@ -295,110 +295,4 @@ func (h *Handler) listWebhooks(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"values": values})
-}
-
-// ---- filters CRUD ----
-
-func (h *Handler) createFilter(w http.ResponseWriter, r *http.Request) {
-	wsID, userID, e := h.authWorkspace(r)
-	if e != nil {
-		writeJerr(w, e)
-		return
-	}
-	var req struct {
-		Name        string `json:"name"`
-		JQL         string `json:"jql"`
-		Description string `json:"description"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
-		jiraFieldError(w, http.StatusBadRequest, map[string]string{"name": "A filter name is required."})
-		return
-	}
-	if _, err := jql.Parse(req.JQL); err != nil {
-		jiraError(w, http.StatusBadRequest, "Error in the JQL Query: "+err.Error())
-		return
-	}
-	f, err := h.Store.CreateFilter(r.Context(), store.NewID("flt"), wsID, req.Name, req.JQL, req.Description, userID)
-	if err != nil {
-		jiraError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	writeJSON(w, http.StatusCreated, h.filterBean(f))
-}
-
-func (h *Handler) putFilter(w http.ResponseWriter, r *http.Request, id string) {
-	wsID, userID, e := h.authWorkspace(r)
-	if e != nil {
-		writeJerr(w, e)
-		return
-	}
-	var req struct {
-		Name        string `json:"name"`
-		JQL         string `json:"jql"`
-		Description string `json:"description"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
-		jiraFieldError(w, http.StatusBadRequest, map[string]string{"name": "A filter name is required."})
-		return
-	}
-	f, err := h.Store.UpdateFilter(r.Context(), wsID, userID, id, req.Name, req.JQL, req.Description)
-	if err != nil {
-		jiraError(w, http.StatusNotFound, "Filter does not exist.")
-		return
-	}
-	writeJSON(w, http.StatusOK, h.filterBean(f))
-}
-
-func (h *Handler) deleteFilter(w http.ResponseWriter, r *http.Request, id string) {
-	wsID, userID, e := h.authWorkspace(r)
-	if e != nil {
-		writeJerr(w, e)
-		return
-	}
-	if err := h.Store.DeleteFilter(r.Context(), wsID, userID, id); err != nil {
-		jiraError(w, http.StatusNotFound, "Filter does not exist.")
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (h *Handler) filterCRUD(w http.ResponseWriter, r *http.Request, rest string) {
-	parts := strings.Split(rest, "/")
-	id := parts[0]
-	switch {
-	case len(parts) == 1 && r.Method == http.MethodGet:
-		h.getFilter(w, r, id)
-	case len(parts) == 1 && r.Method == http.MethodPut:
-		h.putFilter(w, r, id)
-	case len(parts) == 1 && r.Method == http.MethodDelete:
-		h.deleteFilter(w, r, id)
-	case len(parts) == 2 && parts[1] == "favourite" && r.Method == http.MethodPost:
-		h.setFilterFavourite(w, r, id, true)
-	case len(parts) == 2 && parts[1] == "favourite" && r.Method == http.MethodDelete:
-		h.setFilterFavourite(w, r, id, false)
-	default:
-		jiraError(w, http.StatusNotFound, "No resource found")
-	}
-}
-
-func (h *Handler) setFilterFavourite(w http.ResponseWriter, r *http.Request, id string, favourite bool) {
-	wsID, userID, e := h.authWorkspace(r)
-	if e != nil {
-		writeJerr(w, e)
-		return
-	}
-	if _, err := h.Store.FilterByID(r.Context(), wsID, userID, id); err != nil {
-		jiraError(w, http.StatusNotFound, "Filter does not exist.")
-		return
-	}
-	if err := h.Store.SetFilterFavourite(r.Context(), wsID, userID, id, favourite); err != nil {
-		jiraError(w, http.StatusNotFound, "Filter does not exist.")
-		return
-	}
-	f, err := h.Store.FilterByID(r.Context(), wsID, userID, id)
-	if err != nil {
-		jiraError(w, http.StatusNotFound, "Filter does not exist.")
-		return
-	}
-	writeJSON(w, http.StatusOK, h.filterBean(f))
 }

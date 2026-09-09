@@ -20,7 +20,7 @@
   }());
 </script>
 <link rel="stylesheet" href="/static/css/tokens.css?v=4">
-<link rel="stylesheet" href="/static/css/workspace.css?v=19">
+<link rel="stylesheet" href="/static/css/workspace.css?v=20">
 <link rel="preload" href="/static/zzira-worker.wasm?v=4" as="fetch" crossorigin>
 <link rel="preload" href="/static/sqlite/sqlite3.wasm" as="fetch" crossorigin>
 <script src="/static/htmx/htmx.min.js" defer></script>
@@ -98,6 +98,7 @@
     <a class="nav-wiki" href="/wiki" {{if eq .Active "wiki"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7l1 2 1-2h7v16h-7l-1-2-1 2H4zM12 6v12"/></svg><span>Wiki</span></a>
     <a class="nav-dashboards" href="/dashboards" {{if eq .Active "dashboards"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7v7H4zM14 4h6v7h-6zM4 14h7v6H4zM14 14h6v6h-6z"/></svg><span>Dashboards</span></a>
     <a class="nav-dashboard" href="/dashboard" {{if eq .Active "dashboard"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h6v7H4zM14 4h6v16h-6zM4 4h6v5H4z"/></svg><span>Your work</span></a>
+    <a class="nav-filters" href="/filters" {{if eq .Active "filters"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6 7v6l-4 2v-8z"/><path d="M7 8h10"/></svg><span>Saved filters</span></a>
     <a class="nav-projects" href="/projects" {{if eq .Active "projects"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5h7l2 2h8v10h-17z"/></svg><span>Projects</span></a>
     <a class="nav-people" href="/people" {{if eq .Active "people"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3.5 19c.5-4 2.2-6 5.5-6s5 2 5.5 6M15 6.5a3 3 0 0 1 0 5.8M16 14c2.7.4 4.1 2 4.5 5"/></svg><span>People</span></a>
     <a class="nav-notifications" href="/notifications" {{if eq .Active "notifications"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 8h18c0-1-3-1-3-8M9.5 20h5"/></svg><span>Notifications</span><span class="nav-notification-count" data-notification-count hidden></span></a>
@@ -170,7 +171,7 @@
           <select id="create-{{.ID}}" name="{{.ID}}" {{if .Required}}required{{end}}><option value="">None</option>{{range .Options}}<option value="{{.ID}}" {{if eq $value .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select>
           {{else if eq .Type "securitylevel"}}
           <select id="create-{{.ID}}" name="{{.ID}}" {{if .Required}}required{{end}}><option value="">Open to everyone in the workspace</option>{{range .Options}}<option value="{{.ID}}" {{if eq $value .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select>
-          {{else if eq .Type "versions"}}
+          {{else if or (eq .Type "versions") (eq .Type "components")}}
           <select id="create-{{.ID}}" name="{{.ID}}" multiple size="3">{{range .Options}}<option value="{{.ID}}" {{if selectedVersion $value .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select>
 		  {{else if eq .Type "parent"}}
 		  <select id="create-{{.ID}}" name="{{.ID}}" {{if $.SelectedIssueTypeSubtask}}required{{end}}><option value="">{{if $.SelectedIssueTypeSubtask}}Choose a parent{{else}}No parent{{end}}</option>{{range .Options}}<option value="{{.ID}}" {{if eq $value .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select>
@@ -230,6 +231,10 @@
       <form method="post" action="/issues/{{.Issue.Key}}/watch" hx-post="/issues/{{.Issue.Key}}/watch" hx-target="#issue-root" hx-swap="outerHTML">
         <input type="hidden" name="watching" value="{{if .IsWatching}}false{{else}}true{{end}}">
         <button type="submit" class="btn watch-button" aria-pressed="{{.IsWatching}}" aria-keyshortcuts="W"><span aria-hidden="true">◉</span>{{if .IsWatching}}Watching{{else}}Watch{{end}} <span class="action-count">{{len .Watchers}}</span></button>
+      </form>
+      <form method="post" action="/issues/{{.Issue.Key}}/vote" hx-post="/issues/{{.Issue.Key}}/vote" hx-target="#issue-root" hx-swap="outerHTML">
+        <input type="hidden" name="voting" value="{{if .HasVoted}}false{{else}}true{{end}}">
+        <button type="submit" class="btn watch-button" aria-pressed="{{.HasVoted}}"><span aria-hidden="true">▲</span>{{if .HasVoted}}Voted{{else}}Vote{{end}} <span class="action-count">{{len .Voters}}</span></button>
       </form>
 {{end}}
       <button type="button" class="btn" id="edit-issue-button" onclick="window.zzira.openEdit('{{.Issue.Key}}', this)">Edit</button>
@@ -344,6 +349,7 @@
 {{if .CustomFields}}      <details class="more-fields"><summary>More fields <span>{{len .CustomFields}}</span></summary><dl>{{range .CustomFields}}<dt><label for="detail-field-{{.ID}}">{{.Name}}</label></dt><dd><form class="inline-field" method="post" action="/issues/{{$.Issue.Key}}/fields" hx-post="/issues/{{$.Issue.Key}}/fields" hx-target="#issue-root" hx-swap="outerHTML"><input type="hidden" name="field" value="custom:{{.ID}}"><input id="detail-field-{{.ID}}" name="value" value="{{.Value}}" placeholder="None"><button class="field-save" type="submit">Save {{.Name}}</button></form></dd>{{end}}</dl></details>{{end}}
 {{- range .AppContexts}}      <details class="issue-context-panel" data-issue-context-key="{{$.CurrentUserID}}:{{.ID}}"><summary>{{if .IconURL}}<img src="{{.IconURL}}" alt="" referrerpolicy="no-referrer">{{end}}<span class="issue-context-copy"><strong>{{.Title}}</strong>{{if .ContextLabel}}<small>{{.ContextLabel}}</small>{{end}}</span>{{if eq .ContextStatusType "badge"}}<span class="issue-context-status-badge" aria-label="{{.ContextStatusAccessibleLabel}}"><span aria-hidden="true">{{.ContextStatusLabel}}</span></span>{{else if eq .ContextStatusType "lozenge"}}<span class="lozenge issue-context-status-lozenge {{.ContextStatusClass}}">{{.ContextStatusLabel}}</span>{{else if eq .ContextStatusType "icon"}}<img class="issue-context-status-icon" src="{{.ContextStatusIconURL}}" alt="" referrerpolicy="no-referrer">{{end}}</summary>{{if .RemoteURL}}<iframe class="app-context-frame" src="/app-modules/{{.ID}}/frame?issueKey={{$.Issue.Key}}&amp;issueId={{$.Issue.ID}}&amp;projectKey={{$.ProjectKey}}&amp;projectId={{$.Issue.ProjectID}}" title="{{.Title}}" sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts"></iframe>{{else}}<p>{{.Body}}</p>{{end}}</details>{{end}}
       <section class="watcher-summary" aria-labelledby="watchers-title"><h3 id="watchers-title">Watchers <span>{{len .Watchers}}</span></h3>{{if .Watchers}}<ul>{{range .Watchers}}<li>{{template "avatar" .}}<span>{{.DisplayName}}</span></li>{{end}}</ul>{{else}}<p>No one is watching yet.</p>{{end}}</section>
+      <section class="watcher-summary" aria-labelledby="voters-title"><h3 id="voters-title">Voters <span>{{len .Voters}}</span></h3>{{if .Voters}}<ul>{{range .Voters}}<li>{{template "avatar" .}}<span>{{.DisplayName}}</span></li>{{end}}</ul>{{else}}<p>No votes yet.</p>{{end}}</section>
       <div class="details-meta"><span>Updated</span><time datetime="{{.Issue.UpdatedAt}}">{{.Issue.UpdatedAt}}</time></div>
     </aside>
   </div>
