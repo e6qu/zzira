@@ -11,8 +11,8 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 - Branch: `feat/pr1-jira-platform-completion`
 - Base: `origin/main` after merged PR #69
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- Pull request: not opened
-- State: all 62 fresh-database browser journeys pass; final non-browser CI validation is next
+- Pull request: [#70](https://github.com/e6qu/zzira/pull/70)
+- State: PR 1 is open; all local CI-equivalent gates pass
 - Blockers: none
 
 ## Merged baseline
@@ -29,12 +29,11 @@ scans, CodeQL, and all 59 Playwright journeys.
 
 ## Resume here
 
-1. Run the full Go/PostgreSQL suite, native and WebAssembly builds, vet,
-   conformance and repository security checks.
-2. Push and open PR 1 with its completed checkpoints, validation evidence and
-   remaining Jira Platform exit gates.
-3. Reconcile the remaining Jira Platform operation inventory in subsequent PR 1
+1. Monitor PR #70 checks and respond to inline review comments in their threads.
+2. Reconcile the remaining Jira Platform operation inventory in subsequent PR 1
    checkpoints, with project and site administration next.
+3. Keep each new vertical checkpoint committed, tested and documented on the
+   same PR until its Jira Platform exit gates are satisfied.
 
 ## Evidence map
 
