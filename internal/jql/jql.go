@@ -537,6 +537,10 @@ func canonicalField(field string) string {
 		return "issuetype"
 	case "components":
 		return "component"
+	case "duedate":
+		return "due"
+	case "resolved":
+		return "resolutiondate"
 	default:
 		return strings.ToLower(field)
 	}
@@ -757,6 +761,7 @@ type FieldResolver struct {
 	Columns      map[string]string // jql field → SQL expression
 	TextColumns  []string          // columns searched by bare text and ~
 	DefaultOrder map[string]string
+	DateFields   map[string]bool
 }
 
 // WithCustomFields extends a resolver with customfield_NNNNN columns and app
@@ -766,15 +771,28 @@ func WithCustomFields(base FieldResolver, fields []*models.CustomField) FieldRes
 	if res.Columns == nil {
 		res.Columns = map[string]string{}
 	}
+	if res.DateFields == nil {
+		res.DateFields = map[string]bool{}
+	}
 	for _, f := range fields {
 		col := `i.fields->>'` + f.ID + `'`
 		if f.Type == models.CustomFieldNumber {
 			col = `NULLIF(i.fields->>'` + f.ID + `','')::numeric`
+		} else if f.Type == models.CustomFieldDatetime {
+			col = `NULLIF(i.fields->>'` + f.ID + `','')::timestamptz`
 		}
 		res.Columns[f.ID] = col
 		res.Columns[strings.ToLower(f.Name)] = col
+		if f.Type == models.CustomFieldDatetime {
+			res.DateFields[f.ID] = true
+			res.DateFields[strings.ToLower(f.Name)] = true
+		}
 		if f.AppKey != "" {
-			res.Columns[strings.ToLower(f.AppKey+"__"+f.AppModuleKey)] = col
+			alias := strings.ToLower(f.AppKey + "__" + f.AppModuleKey)
+			res.Columns[alias] = col
+			if f.Type == models.CustomFieldDatetime {
+				res.DateFields[alias] = true
+			}
 		}
 		res.TextColumns = append(res.TextColumns, `i.fields->>'`+f.ID+`'`)
 	}
@@ -815,6 +833,7 @@ func DefaultResolver() FieldResolver {
 			"reporter": "r.display_name", "project": "pr.key", "parent": "parent.key", "resolution": `i.fields->>'resolution'`,
 			"due": `NULLIF(i.fields->>'duedate','')::timestamptz`, "resolutiondate": `NULLIF(i.fields->>'resolutiondate','')::timestamptz`,
 		},
+		DateFields: map[string]bool{"updated": true, "created": true, "due": true, "resolutiondate": true},
 	}
 }
 
@@ -954,6 +973,31 @@ func (c *compiler) clause(cl Clause) string {
 		c.err = &SyntaxError{0, "field does not exist or is not searchable: " + cl.Field}
 		return ""
 	}
+	if containsJQLFunction(cl.Values, "currentLogin", "lastLogin", "now", "startOfDay", "endOfDay", "startOfWeek", "endOfWeek", "startOfMonth", "endOfMonth", "startOfYear", "endOfYear") {
+		if !c.res.DateFields[cl.Field] {
+			c.err = &SyntaxError{0, "date functions require a date field"}
+			return ""
+		}
+		if len(cl.Values) != 1 || (cl.Op != "=" && cl.Op != "!=" && cl.Op != ">" && cl.Op != ">=" && cl.Op != "<" && cl.Op != "<=") {
+			c.err = &SyntaxError{0, "date functions support only single-value date comparisons"}
+			return ""
+		}
+		name, _, _ := splitFunction(cl.Values[0])
+		value := ""
+		if strings.EqualFold(name, "currentLogin") || strings.EqualFold(name, "lastLogin") {
+			value = c.loginDateSQL(cl.Values[0])
+		} else {
+			value = c.arg(c.fieldValue(cl.Field, cl.Values[0]))
+		}
+		if c.err != nil {
+			return ""
+		}
+		op := cl.Op
+		if op == "!=" {
+			op = "<>"
+		}
+		return col + " " + op + " " + value
+	}
 	switch cl.Op {
 	case "=":
 		value := c.fieldValue(cl.Field, cl.Values[0])
@@ -1021,10 +1065,10 @@ func (c *compiler) historyClause(cl HistoryClause) string {
 			if predicate.Kind == "after" {
 				op = ">"
 			}
-			base = append(base, "ah.created_at"+op+c.arg(c.fieldValue("updated", predicate.Values[0])))
+			base = append(base, "ah.created_at"+op+c.datePredicateSQL(predicate.Values[0]))
 		case "during":
-			base = append(base, "ah.created_at BETWEEN "+c.arg(c.fieldValue("updated", predicate.Values[0]))+
-				" AND "+c.arg(c.fieldValue("updated", predicate.Values[1])))
+			base = append(base, "ah.created_at BETWEEN "+c.datePredicateSQL(predicate.Values[0])+
+				" AND "+c.datePredicateSQL(predicate.Values[1]))
 		}
 	}
 	if cl.Op == "changed" {
@@ -1167,7 +1211,7 @@ func (c *compiler) fieldValue(field, value string) any {
 		c.err = &SyntaxError{0, "unsupported function " + name + "() for " + field}
 		return value
 	}
-	if field == "updated" || field == "created" || field == "due" || field == "resolutiondate" {
+	if c.res.DateFields[field] {
 		if len(value) >= 2 {
 			if relative, err := applyDateIncrement(c.now, value); err == nil {
 				return relative
@@ -1198,6 +1242,34 @@ func (c *compiler) fieldValue(field, value string) any {
 		return strings.ToUpper(value)
 	}
 	return value
+}
+
+func (c *compiler) datePredicateSQL(value string) string {
+	if name, _, ok := splitFunction(value); ok && (strings.EqualFold(name, "currentLogin") || strings.EqualFold(name, "lastLogin")) {
+		return c.loginDateSQL(value)
+	}
+	return c.arg(c.fieldValue("updated", value))
+}
+
+func (c *compiler) loginDateSQL(value string) string {
+	name, args, ok := splitFunction(value)
+	if !ok || (!strings.EqualFold(name, "currentLogin") && !strings.EqualFold(name, "lastLogin")) {
+		c.err = &SyntaxError{0, "expected currentLogin() or lastLogin()"}
+		return ""
+	}
+	if len(args) != 0 {
+		c.err = &SyntaxError{0, name + "() does not accept arguments"}
+		return ""
+	}
+	if c.user == "" {
+		c.err = &SyntaxError{0, name + "() requires an authenticated user"}
+		return ""
+	}
+	column := "current_started_at"
+	if strings.EqualFold(name, "lastLogin") {
+		column = "previous_started_at"
+	}
+	return "(SELECT login_state." + column + " FROM user_login_state login_state WHERE login_state.user_id=" + c.arg(c.user) + ")"
 }
 
 func containsJQLFunction(values []string, names ...string) bool {

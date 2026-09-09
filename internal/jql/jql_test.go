@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/e6qu/zzira/internal/models"
 )
 
 func TestParseBasic(t *testing.T) {
@@ -141,6 +143,53 @@ func TestHistoryClausesCompileAgainstImmutableActions(t *testing.T) {
 		!strings.Contains(compiled.Where, "ah.payload->'diff' ? 'assignee'") ||
 		!strings.Contains(compiled.Where, "ah.created_at BETWEEN") {
 		t.Fatalf("history SQL = %s", compiled.Where)
+	}
+}
+
+func TestLoginDateFunctionsUseDurableUserBoundaries(t *testing.T) {
+	query, err := Parse(`created > currentLogin() AND resolved <= lastLogin() AND status CHANGED AFTER currentLogin()`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled := Compile(query, "usr_me", DefaultResolver())
+	if compiled.Err != nil {
+		t.Fatal(compiled.Err)
+	}
+	if strings.Count(compiled.Where, "FROM user_login_state login_state") != 3 ||
+		!strings.Contains(compiled.Where, "current_started_at") ||
+		!strings.Contains(compiled.Where, "previous_started_at") {
+		t.Fatalf("login date SQL = %s", compiled.Where)
+	}
+	if !reflect.DeepEqual(compiled.Args, []any{"usr_me", "usr_me", "usr_me"}) {
+		t.Fatalf("login date args = %#v", compiled.Args)
+	}
+
+	resolver := WithCustomFields(DefaultResolver(), []*models.CustomField{{
+		ID: "customfield_22000", Name: "Review date", Type: models.CustomFieldDatetime,
+		AppKey: "calendar.app", AppModuleKey: "review-date",
+	}})
+	custom, err := Parse(`customfield_22000 >= currentLogin() AND calendar.app__review-date < lastLogin()`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result := Compile(custom, "usr_me", resolver); result.Err != nil || !strings.Contains(result.Where, "::timestamptz") {
+		t.Fatalf("custom date compile = %s, %v", result.Where, result.Err)
+	}
+
+	for _, raw := range []string{
+		`summary = currentLogin()`,
+		`created IN (currentLogin())`,
+		`created > currentLogin(-1d)`,
+		`summary = now()`,
+		`updated IN (startOfDay())`,
+	} {
+		invalid, err := Parse(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result := Compile(invalid, "usr_me", DefaultResolver()); result.Err == nil {
+			t.Fatalf("accepted invalid login function query %q: %s", raw, result.Where)
+		}
 	}
 }
 

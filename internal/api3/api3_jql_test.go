@@ -1,6 +1,7 @@
 package api3
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/e6qu/zzira/internal/jql"
@@ -20,6 +21,18 @@ func TestJQLParseStructurePreservesHistoryFunctionsAndOrder(t *testing.T) {
 	orders := structure["orderBy"].(map[string]any)["fields"].([]map[string]any)
 	if len(orders) != 2 || orders[0]["direction"] != "desc" || orders[1]["direction"] != "asc" {
 		t.Fatalf("orders = %#v", orders)
+	}
+}
+
+func TestLoginDateFunctionsAreAdvertised(t *testing.T) {
+	values := make([]string, 0, len(jqlFunctions))
+	for _, function := range jqlFunctions {
+		values = append(values, function.Value)
+	}
+	for _, expected := range []string{"currentLogin()", "lastLogin()"} {
+		if !slices.Contains(values, expected) {
+			t.Fatalf("JQL function catalog omits %s", expected)
+		}
 	}
 }
 

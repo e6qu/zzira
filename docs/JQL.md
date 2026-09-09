@@ -18,9 +18,10 @@ work item the viewer cannot browse.
   version, parent, environment, component, sprint, resolution, and date fields,
   plus typed custom fields and installed-app scalar field aliases;
 - `currentUser()`, `now()`, start/end of day, week, month, and year functions,
-  Jira date literals, relative values such as `-5d`, explicit increments such
-  as `startOfMonth(-1M)`, and natural-period increments such as
-  `startOfMonth(-1)`;
+  plus durable `currentLogin()` and `lastLogin()` boundaries for system and
+  custom date-time fields and history predicates; Jira date literals, relative
+  values such as `-5d`, explicit increments such as `startOfMonth(-1M)`, and
+  natural-period increments such as `startOfMonth(-1)`;
 - relation-backed `membersOf()`, `linkedIssues()`/`linkedWorkItems()` with
   multiple link types, `openSprints()`, `closedSprints()`, `futureSprints()`,
   `standardIssueTypes()`/`standardWorkTypes()`, and
@@ -51,6 +52,14 @@ The history compiler evaluates `actions`, ZZIRA's immutable ordered change log.
 It compares both stored IDs and display values, so a status query can use either
 the status ID or its name. Relative dates are resolved once per compilation in
 UTC so all clauses in one execution share the same clock value.
+
+Successful password, generic OIDC, Google, Microsoft, and Atlassian sign-ins
+atomically advance a durable current/previous login pair. Logout and provider
+back-channel revocation remove authentication sessions without erasing these
+JQL boundaries. Existing sessions receive a deterministic current boundary
+during upgrade; the next successful sign-in establishes an exact previous
+boundary. Accounts that have never established the requested boundary produce
+no match for comparisons against it.
 
 ## Search resources
 
@@ -140,7 +149,7 @@ complete personal-data migration for list/history
 operands and unknown-user reporting; project-aware validation warnings; exact
 historical versioned representations and richer rendered values.
 
-The remaining built-in catalog includes login-session, permission-scheme,
+The remaining built-in catalog includes permission-scheme,
 customer/organization, approval, and SLA functions. Those
 functions depend on their owning PR 1/JSM state models and are implemented with
 those models instead of returning approximate results.

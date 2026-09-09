@@ -202,21 +202,43 @@ func (s *Store) OIDCRole(ctx context.Context, userID string) (string, error) {
 }
 
 func (s *Store) CreateSession(ctx context.Context, tokenHash, userID string, ttl time.Duration) error {
-	_, err := s.Pool.Exec(ctx,
-		`INSERT INTO sessions (token_hash, user_id, expires_at) VALUES ($1,$2,now() + $3::interval)`,
-		tokenHash, userID, fmt.Sprintf("%d seconds", int(ttl.Seconds())))
-	return err
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	startedAt := time.Now().UTC()
+	if _, err = tx.Exec(ctx,
+		`INSERT INTO sessions (token_hash,user_id,expires_at) VALUES ($1,$2,$3::timestamptz+$4::interval)`,
+		tokenHash, userID, startedAt, fmt.Sprintf("%d seconds", int(ttl.Seconds()))); err != nil {
+		return err
+	}
+	if err = recordLoginStart(ctx, tx, userID, startedAt); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // CreateOIDCSession records an opaque browser session, its ID token (so
 // RP-initiated logout can send the provider an id_token_hint), and the
 // provider's sid so a later back-channel logout naming that sid can find it.
 func (s *Store) CreateOIDCSession(ctx context.Context, tokenHash, userID, idToken, issuer, subject, sid string, ttl time.Duration) error {
-	_, err := s.Pool.Exec(ctx,
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	startedAt := time.Now().UTC()
+	if _, err = tx.Exec(ctx,
 		`INSERT INTO sessions (token_hash, user_id, oidc_id_token, oidc_issuer, oidc_subject, oidc_session_id, expires_at)
-		 VALUES ($1,$2,$3,$4,$5,NULLIF($6,''),now() + $7::interval)`,
-		tokenHash, userID, idToken, issuer, subject, sid, fmt.Sprintf("%d seconds", int(ttl.Seconds())))
-	return err
+		 VALUES ($1,$2,$3,$4,$5,NULLIF($6,''),$7::timestamptz+$8::interval)`,
+		tokenHash, userID, idToken, issuer, subject, sid, startedAt, fmt.Sprintf("%d seconds", int(ttl.Seconds()))); err != nil {
+		return err
+	}
+	if err = recordLoginStart(ctx, tx, userID, startedAt); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // CreateIdentityProviderSession records a provider-backed browser session and
@@ -228,10 +250,14 @@ func (s *Store) CreateIdentityProviderSession(ctx context.Context, tokenHash, us
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	startedAt := time.Now().UTC()
 	if _, err := tx.Exec(ctx,
 		`INSERT INTO sessions (token_hash, user_id, oidc_id_token, oidc_issuer, oidc_subject, oidc_session_id, expires_at)
-		 VALUES ($1,$2,NULLIF($3,''),$4,$5,NULLIF($6,''),now() + $7::interval)`,
-		tokenHash, userID, idToken, issuer, subject, sid, fmt.Sprintf("%d seconds", int(ttl.Seconds()))); err != nil {
+		 VALUES ($1,$2,NULLIF($3,''),$4,$5,NULLIF($6,''),$7::timestamptz+$8::interval)`,
+		tokenHash, userID, idToken, issuer, subject, sid, startedAt, fmt.Sprintf("%d seconds", int(ttl.Seconds()))); err != nil {
+		return err
+	}
+	if err := recordLoginStart(ctx, tx, userID, startedAt); err != nil {
 		return err
 	}
 	detail, err := json.Marshal(map[string]any{"provider": providerKey, "issuer": issuer})
@@ -246,6 +272,21 @@ func (s *Store) CreateIdentityProviderSession(ctx context.Context, tokenHash, us
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+func recordLoginStart(ctx context.Context, tx pgx.Tx, userID string, startedAt time.Time) error {
+	_, err := tx.Exec(ctx, `
+		INSERT INTO user_login_state(user_id,current_started_at,previous_started_at,updated_at)
+		VALUES($1,$2,NULL,$2)
+		ON CONFLICT(user_id) DO UPDATE SET
+		  previous_started_at=CASE
+		    WHEN EXCLUDED.current_started_at>=user_login_state.current_started_at THEN user_login_state.current_started_at
+		    WHEN user_login_state.previous_started_at IS NULL OR EXCLUDED.current_started_at>user_login_state.previous_started_at THEN EXCLUDED.current_started_at
+		    ELSE user_login_state.previous_started_at
+		  END,
+		  current_started_at=GREATEST(user_login_state.current_started_at,EXCLUDED.current_started_at),
+		  updated_at=GREATEST(user_login_state.updated_at,EXCLUDED.updated_at)`, userID, startedAt)
+	return err
 }
 
 func (s *Store) SessionUser(ctx context.Context, tokenHash string) (string, error) {

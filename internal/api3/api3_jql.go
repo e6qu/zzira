@@ -61,10 +61,12 @@ var jqlSystemFields = []jqlFieldReference{
 var jqlFunctions = []jqlFunctionReference{
 	{Value: "closedSprints()", DisplayName: "closedSprints()", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"SPRINT"}},
 	{Value: "componentsLeadByUser()", DisplayName: "componentsLeadByUser([user])", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"COMPONENT"}},
+	{Value: "currentLogin()", DisplayName: "currentLogin()", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"DATE"}},
 	{Value: "currentUser()", DisplayName: "currentUser()", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"USER"}},
 	{Value: "futureSprints()", DisplayName: "futureSprints()", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"SPRINT"}},
 	{Value: "linkedIssues()", DisplayName: "linkedIssues(issueKey[, linkTypes...])", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"ISSUE"}},
 	{Value: "linkedWorkItems()", DisplayName: "linkedWorkItems(workItemKey[, linkTypes...])", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"ISSUE"}},
+	{Value: "lastLogin()", DisplayName: "lastLogin()", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"DATE"}},
 	{Value: "membersOf()", DisplayName: "membersOf(group)", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"USER"}},
 	{Value: "now()", DisplayName: "now()", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"DATE"}},
 	{Value: "openSprints()", DisplayName: "openSprints()", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"SPRINT"}},
@@ -143,6 +145,9 @@ func (h *Handler) jqlAutoCompleteData(w http.ResponseWriter, r *http.Request) {
 		if string(field.Type) == "number" {
 			types = []string{"NUMBER"}
 			operators = []string{"=", "!=", ">", ">=", "<", "<=", "in", "not in", "is", "is not"}
+		} else if string(field.Type) == "datetime" {
+			types = []string{"DATE"}
+			operators = []string{"=", "!=", ">", ">=", "<", "<=", "is", "is not"}
 		}
 		fields = append(fields, jqlFieldReference{Value: field.ID, CFID: strings.TrimPrefix(field.ID, "customfield_"), DisplayName: field.Name + " - cf[" + strings.TrimPrefix(field.ID, "customfield_") + "]", Auto: "false", Orderable: "false", Searchable: "true", Operators: operators, Types: types})
 	}

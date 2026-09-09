@@ -23,7 +23,8 @@ boundaries, dependencies, and acceptance gates belong in
   built-ins and the complete issue-vote REST/browser journey, plus durable
   filter email schedules, recipient expansion, runs, and outbox delivery
   implemented; Jira project components and their REST, issue-field, assignment,
-  JQL, audit, sync, and administrator journeys are implemented
+  JQL, audit, sync, and administrator journeys are implemented; durable login
+  boundaries and `currentLogin()`/`lastLogin()` JQL are implemented
 - Blockers: none
 
 ## Contract baseline
@@ -96,6 +97,13 @@ multi-value issue fields, counts, rename propagation, move-on-delete, action
 and organization audit, project-settings management, create metadata, and
 `componentsLeadByUser()`.
 
+The login-function slice atomically keeps each account's current and previous
+successful sign-in boundaries across password, generic OIDC, Google, Microsoft,
+and Atlassian sessions. Session deletion and provider revocation do not erase
+the boundaries. Date clauses and history predicates resolve `currentLogin()`
+and `lastLogin()` through the same compiler used by every JQL surface, including
+typed custom date-time fields and their app aliases.
+
 ## Validation baseline
 
 Merged PR #68 passed the complete GitHub CI matrix, including all 58 Playwright
@@ -115,9 +123,14 @@ contract, the responsive Chromium project-manager journey, the full uncached
 PostgreSQL Go suite, `go vet`, native and WebAssembly builds, and conformance
 freshness checks.
 
+The login-boundary checkpoint passes its password/OIDC/provider rotation and
+enhanced-search contract, JQL compiler tests, both Chromium identity-provider
+journeys, the full uncached PostgreSQL Go suite, `go vet`, native and
+WebAssembly builds, and conformance freshness checks.
+
 ## Resume here
 
-1. Add login-session and JSM approval/SLA built-ins with their owning state.
+1. Add JSM approval/SLA built-ins with their owning state.
 2. Continue into bulk work-item and project administration slices.
 3. Update compatibility evidence and commit each independently buildable
    checkpoint.

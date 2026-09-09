@@ -63,7 +63,7 @@ use `/rest/zzira/1`.
 |---|---|---|
 | POST/GET /rest/api/3/field · GET /field/{id} | ✅ | text/number/datetime |
 | /issue/createmeta + /editmeta include custom fields | ✅ | context-aware |
-| Custom fields in issue beans + JQL | ✅ | incl. numeric compare |
+| Custom fields in issue beans + JQL | ✅ | numeric and date-time comparisons, including login boundaries |
 | POST/GET /rest/api/3/webhook · DELETE /webhook/{id} · GET /webhook/refresh | ✅ | log-driven dispatcher, watermark, exactly-once claims |
 | 19 Jira filter, sharing, column and default-scope operations | 🟡 | Visibility-filtered create/read/update/delete, owned/favorite collections, paginated search, per-user favorites, view/edit shares for users/groups/projects/roles, owner transfer, navigator columns and durable daily/weekly email subscriptions with FilterBean expansion; full JQL and broader cron/time-zone controls remain; see [FILTERS.md](../../docs/FILTERS.md) |
 | Eight Jira project-component operations | 🟡 | Stable project-scoped components, create/update/delete, full and paged collections, issue counts, canonical multi-value issue fields, component-led assignment, move-on-delete, audit, project-settings journey and `componentsLeadByUser()`; exact project-permission, anonymous and Compass behavior remain; see [COMPONENTS.md](../../docs/COMPONENTS.md) |
