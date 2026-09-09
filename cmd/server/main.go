@@ -197,6 +197,7 @@ func main() {
 		}).Run(ctx, workspaceID)
 	}
 	go (&automation.Runner{Service: automationSvc}).Run(ctx, workspaceID)
+	go (&store.FilterSubscriptionRunner{Store: st, BaseURL: baseURL}).Run(ctx, workspaceID)
 	go (&store.APITaskRunner{Store: st}).Run(ctx, workspaceID)
 	go (&store.ServiceSLARunner{Store: st}).Run(ctx, workspaceID)
 	go (&store.ServiceIncidentEscalationRunner{Store: st}).Run(ctx, workspaceID)

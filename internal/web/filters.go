@@ -231,6 +231,17 @@ func (h *Handler) UpdateSavedFilter(w http.ResponseWriter, r *http.Request, id s
 			err = h.Store.SetFilterColumns(r.Context(), workspaceID, user.ID, id, columns)
 			notice = "Filter columns updated."
 		}
+	case "subscribe":
+		_, err = h.Store.SaveFilterSubscription(r.Context(), workspaceID, user.ID, id, r.FormValue("schedule"), r.Form["recipient"])
+		notice = "Filter email scheduled."
+	case "unsubscribe":
+		subscriptionID, parseErr := strconv.ParseInt(r.FormValue("subscriptionId"), 10, 64)
+		if parseErr != nil {
+			err = store.ErrFilterValidation
+		} else {
+			err = h.Store.DeleteFilterSubscription(r.Context(), workspaceID, user.ID, id, subscriptionID)
+		}
+		notice = "Filter email schedule removed."
 	case "share":
 		rights := 1
 		if r.FormValue("access") == "edit" {

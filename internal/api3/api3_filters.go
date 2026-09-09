@@ -114,6 +114,24 @@ func (h *Handler) filterBean(filter *models.Filter) map[string]any {
 		}
 	}
 	self := h.BaseURL + "/rest/api/3/filter/" + url.PathEscape(filter.ID)
+	subscriptions := make([]map[string]any, 0, len(filter.Subscriptions))
+	for _, subscription := range filter.Subscriptions {
+		item := map[string]any{
+			"id": subscription.ID, "cronExpression": subscription.CronExpression,
+			"enabled": subscription.Enabled, "nextRunAt": subscription.NextRunAt,
+			"recipients": subscription.Recipients,
+		}
+		if subscription.LastRunAt != "" {
+			item["lastRunAt"] = subscription.LastRunAt
+		}
+		if subscription.LastResultCount != nil {
+			item["lastResultCount"] = *subscription.LastResultCount
+		}
+		if subscription.LastError != "" {
+			item["lastError"] = subscription.LastError
+		}
+		subscriptions = append(subscriptions, item)
+	}
 	bean := map[string]any{
 		"id": filter.ID, "name": filter.Name, "self": self,
 		"jql": filter.JQL, "description": filter.Description, "owner": owner,
@@ -122,8 +140,8 @@ func (h *Handler) filterBean(filter *models.Filter) map[string]any {
 		"viewUrl":   h.BaseURL + "/issues/?filter=" + url.QueryEscape(filter.ID),
 		"searchUrl": h.BaseURL + "/rest/api/3/search?jql=" + url.QueryEscape(filter.JQL),
 		"subscriptions": map[string]any{
-			"size": 0, "items": []any{}, "start-index": 0,
-			"end-index": 0, "max-results": 0,
+			"size": len(subscriptions), "items": subscriptions, "start-index": 0,
+			"end-index": len(subscriptions), "max-results": len(subscriptions),
 		},
 	}
 	if filter.ApproximateLastUsed != "" {

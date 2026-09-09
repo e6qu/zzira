@@ -5751,7 +5751,7 @@
         "e2e/filters.spec.ts",
         "docs/FILTERS.md"
       ],
-      "notes": "Visibility-filtered lifecycle behavior and Jira-shaped FilterBean responses are integration-tested; exact expansion and JQL certification remain."
+      "notes": "Visibility-filtered lifecycle behavior, Jira-shaped FilterBean responses and current-user subscription expansion are integration-tested; exact expansion and JQL certification remain."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/filter/{id}",

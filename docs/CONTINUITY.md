@@ -20,7 +20,9 @@ boundaries, dependencies, and acceptance gates belong in
   enhanced-search result snapshots, plus relation-backed Jira list functions
   and multi-value fields, installed-app JQL declarations, signed evaluation,
   durable expansion, and autocomplete, plus version/project/history/watch/vote
-  built-ins and the complete issue-vote REST/browser journey implemented
+  built-ins and the complete issue-vote REST/browser journey, plus durable
+  filter email schedules, recipient expansion, runs, and outbox delivery
+  implemented
 - Blockers: none
 
 ## Contract baseline
@@ -37,9 +39,13 @@ exercise it, authorization, audit, durable background work, and ledger updates.
 
 The 19 pinned Jira filter operations now have reviewed partial evidence. The
 shared model covers permission-filtered collections, view/edit shares,
-favorites, columns, ownership, default scope, audit, and subscription schema.
+favorites, columns, ownership, default scope, audit, and filter subscriptions.
 The browser directory completes the owner and site-administrator management
-journey and is connected to REST-created filters by Playwright.
+journey and is connected to REST-created filters by Playwright. Owners can add
+or remove daily and weekly email schedules with active-member recipients. A
+durable, retryable runner evaluates the saved JQL as the owner, caps rendered
+results, records outcomes, and deduplicates each recipient in the shared mail
+outbox.
 
 The first shared JQL checkpoint adds `NOT IN`, relative date functions,
 immutable `WAS`/`CHANGED` history predicates, seven-field deterministic
@@ -93,13 +99,15 @@ ledger freshness checks.
 Each PR 1 checkpoint must run its focused tests before commit. Database changes
 also run the PostgreSQL integration suite from an empty migrated database.
 
+The filter-subscription checkpoint passes the focused store and REST contract
+tests, the Chromium saved-filter owner journey, the full uncached PostgreSQL Go
+suite, `go vet`, native and WebAssembly builds, and conformance freshness checks.
+
 ## Resume here
 
 1. Add session/component and JSM approval/SLA built-ins with their owning state.
-2. Add filter-subscription scheduling and delivery after shared scheduled-work
-   primitives are ready.
-3. Continue into bulk work-item and project administration slices.
-4. Update compatibility evidence and commit each independently buildable
+2. Continue into bulk work-item and project administration slices.
+3. Update compatibility evidence and commit each independently buildable
    checkpoint.
 
 ## Evidence map

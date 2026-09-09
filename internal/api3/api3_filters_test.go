@@ -3,6 +3,7 @@ package api3
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -112,6 +113,21 @@ func TestFilterAdministrationContractJourney(t *testing.T) {
 	}, http.StatusOK))
 	filterID := created["id"].(string)
 	call(memberID, http.MethodGet, "/rest/api/3/filter/"+filterID, nil, http.StatusBadRequest)
+	subscription, err := st.SaveFilterSubscription(ctx, workspaceID, ownerID, filterID, "0 8 * * *", []string{ownerID, memberID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	withSubscription := object(call(ownerID, http.MethodGet, "/rest/api/3/filter/"+filterID, nil, http.StatusOK))
+	subscriptions := object(withSubscription["subscriptions"])
+	if subscriptions["size"] != float64(1) || len(subscriptions["items"].([]any)) != 1 {
+		t.Fatalf("filter subscriptions = %#v", subscriptions)
+	}
+	if err := st.DeleteFilterSubscription(ctx, workspaceID, memberID, filterID, subscription.ID); !errors.Is(err, store.ErrFilterPermission) {
+		t.Fatalf("non-owner deleted subscription: %v", err)
+	}
+	if err := st.DeleteFilterSubscription(ctx, workspaceID, ownerID, filterID, subscription.ID); err != nil {
+		t.Fatal(err)
+	}
 
 	created = object(call(ownerID, http.MethodPut, "/rest/api/3/filter/"+filterID+"/favourite", nil, http.StatusOK))
 	if created["favourite"] != true || created["favouritedCount"] != float64(1) {

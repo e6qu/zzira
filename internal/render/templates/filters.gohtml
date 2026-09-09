@@ -94,6 +94,21 @@
 
         {{if .Owner}}
         <details>
+          <summary class="btn">Email results</summary>
+          <div class="filter-subscription-panel">
+            {{range .Filter.Subscriptions}}<form method="post" action="/filters/{{$row.Filter.ID}}"><input type="hidden" name="action" value="unsubscribe"><input type="hidden" name="subscriptionId" value="{{.ID}}"><span><strong>{{if eq .CronExpression "0 8 * * *"}}Daily{{else}}Weekly{{end}} at 08:00 UTC</strong>{{if .NextRunAt}}<small>Next {{.NextRunAt}}</small>{{end}}{{if .LastResultCount}}<small>Last run matched {{.LastResultCount}} work items</small>{{end}}{{if .LastError}}<small class="filter-subscription-error">{{.LastError}}</small>{{end}}</span><button class="btn" type="submit">Remove schedule</button></form>{{end}}
+            <form class="filter-edit-form" method="post" action="/filters/{{.Filter.ID}}">
+              <input type="hidden" name="action" value="subscribe">
+              <label for="filter-schedule-{{.Filter.ID}}">Delivery</label>
+              <select id="filter-schedule-{{.Filter.ID}}" name="schedule"><option value="0 8 * * *">Every day at 08:00 UTC</option><option value="0 8 * * 1">Every Monday at 08:00 UTC</option></select>
+              <fieldset><legend>Recipients</legend>{{range $.Data.Members}}<label><input type="checkbox" name="recipient" value="{{.ID}}" {{if eq .ID $row.Filter.OwnerID}}checked{{end}}> {{.DisplayName}}</label>{{end}}</fieldset>
+              <p>Leaving every recipient clear sends the result to the filter owner.</p>
+              <button class="btn" type="submit">Schedule email</button>
+            </form>
+          </div>
+        </details>
+
+        <details>
           <summary class="btn">Columns</summary>
           <form class="filter-columns-form" method="post" action="/filters/{{.Filter.ID}}">
             <input type="hidden" name="action" value="columns">

@@ -168,6 +168,9 @@ func (s *Store) FilterByID(ctx context.Context, workspaceID, userID, id string) 
 	if err = s.loadFilterPermissions(ctx, []*models.Filter{filter}); err != nil {
 		return nil, err
 	}
+	if err = s.loadFilterSubscriptions(ctx, []*models.Filter{filter}, userID); err != nil {
+		return nil, err
+	}
 	return filter, nil
 }
 
@@ -195,6 +198,9 @@ func (s *Store) Filters(ctx context.Context, workspaceID, userID string, search 
 		return nil, err
 	}
 	if err = s.loadFilterPermissions(ctx, filters); err != nil {
+		return nil, err
+	}
+	if err = s.loadFilterSubscriptions(ctx, filters, userID); err != nil {
 		return nil, err
 	}
 	filtered := filters[:0]

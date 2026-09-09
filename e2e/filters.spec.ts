@@ -63,6 +63,16 @@ test('saved filter owner manages access, columns, favorites, and ownership', asy
   await card.getByText('Columns', { exact: true }).click();
   await expect(card.getByLabel('Summary', { exact: true })).toBeChecked();
 
+  await card.getByText('Email results', { exact: true }).click();
+  await card.locator(`#filter-schedule-${filterID}`).selectOption('0 8 * * *');
+  await card.getByRole('button', { name: 'Schedule email' }).click();
+  await expect(page.getByRole('status')).toContainText('Filter email scheduled.');
+  card = page.locator(`#filter-${filterID}`);
+  await card.getByText('Email results', { exact: true }).click();
+  await expect(card).toContainText('Daily at 08:00 UTC');
+  await card.getByRole('button', { name: 'Remove schedule' }).click();
+  await expect(page.getByRole('status')).toContainText('Filter email schedule removed.');
+
   await card.getByText('Manage access', { exact: true }).click();
   await card.getByRole('button', { name: 'Share with everyone signed in' }).click();
   await expect(page.getByRole('status')).toContainText('Filter access added.');
