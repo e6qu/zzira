@@ -22,7 +22,7 @@ func TestProjectSearchSelection(t *testing.T) {
 		bad         bool
 	}{
 		{"query=al&orderBy=-name", "CC,BB", false}, {"keys=AA&keys=CC", "AA,CC", false},
-		{"id=2", "BB", false}, {"typeKey=business", "", false}, {"orderBy=owner", "", true}, {"categoryId=1", "", true},
+		{"id=2", "BB", false}, {"typeKey=business", "", false}, {"orderBy=owner", "", true}, {"categoryId=1", "", false},
 	} {
 		got, err := filterProjects(httptest.NewRequest("GET", "/rest/api/3/project/search?"+tt.query, nil), projects)
 		if (err != nil) != tt.bad {

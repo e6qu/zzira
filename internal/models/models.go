@@ -79,8 +79,32 @@ type Project struct {
 	LeadAccountID  string `json:"leadAccountId,omitempty"`
 	AssigneeType   string `json:"assigneeType"`
 	ProjectTypeKey string `json:"projectTypeKey"`
+	CategoryID     string `json:"categoryId,omitempty"`
+	SenderEmail    string `json:"-"`
 
 	SecuritySchemeID string `json:"-"`
+}
+
+type ProjectCategory struct {
+	ID          string `json:"id"`
+	WorkspaceID string `json:"-"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+type ProjectProperty struct {
+	ProjectID string          `json:"-"`
+	Key       string          `json:"key"`
+	Value     json.RawMessage `json:"value"`
+}
+
+type ProjectFeature struct {
+	Key           string   `json:"feature"`
+	Name          string   `json:"localisedName"`
+	Description   string   `json:"localisedDescription"`
+	State         string   `json:"state"`
+	Prerequisites []string `json:"prerequisites"`
+	ToggleLocked  bool     `json:"toggleLocked"`
 }
 
 // Issue is the materialized issue. Description is an ADF document stored verbatim.

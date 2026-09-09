@@ -89,6 +89,14 @@ func (h *Handler) updateProject(w http.ResponseWriter, r *http.Request, key stri
 
 func (h *Handler) writeProject(w http.ResponseWriter, r *http.Request, p *models.Project) {
 	bean := h.projectBean(p)
+	if p.CategoryID != "" {
+		category, err := h.Store.ProjectCategory(r.Context(), p.WorkspaceID, p.CategoryID)
+		if err != nil {
+			projectError(w, err)
+			return
+		}
+		bean["projectCategory"] = h.categoryBean(category)
+	}
 	if p.LeadAccountID != "" {
 		lead, err := h.Store.UserByID(r.Context(), p.LeadAccountID)
 		if err != nil {
@@ -104,7 +112,7 @@ func filterProjects(r *http.Request, projects []*models.Project) ([]*models.Proj
 	q := r.URL.Query()
 	for key := range q {
 		switch key {
-		case "query", "keys", "id", "typeKey", "startAt", "maxResults", "orderBy":
+		case "query", "keys", "id", "typeKey", "categoryId", "startAt", "maxResults", "orderBy":
 		default:
 			return nil, &jerr{400, "Unsupported project search parameter: " + key, nil}
 		}
@@ -120,9 +128,13 @@ func filterProjects(r *http.Request, projects []*models.Project) ([]*models.Proj
 	keys, ids := commaQuerySet(r, "keys"), commaQuerySet(r, "id")
 	query := strings.ToLower(q.Get("query"))
 	types := commaQuerySet(r, "typeKey")
+	categoryID := q.Get("categoryId")
 	out := make([]*models.Project, 0, len(projects))
 	for _, p := range projects {
-		if len(types) > 0 && !querySetContains(types, "software") {
+		if len(types) > 0 && !querySetContains(types, p.ProjectTypeKey) {
+			continue
+		}
+		if categoryID != "" && p.CategoryID != categoryID {
 			continue
 		}
 		if len(keys) > 0 && !querySetContains(keys, p.Key) {

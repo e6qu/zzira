@@ -49,6 +49,7 @@ type adminPageData struct {
 	JiraConfiguration                 *models.JiraSiteConfiguration
 	ApplicationProperties             []models.ApplicationProperty
 	NavigatorColumns                  []adminNavigatorColumn
+	ProjectCategories                 []*models.ProjectCategory
 }
 
 type adminNavigatorColumn struct {
@@ -195,6 +196,10 @@ func (h *Handler) adminData(r *http.Request, workspaceID, message string) (admin
 		columnLabels[i].Selected = selectedColumns[columnLabels[i].Value]
 	}
 	data.NavigatorColumns = columnLabels
+	data.ProjectCategories, err = h.Store.ProjectCategories(r.Context(), workspaceID)
+	if err != nil {
+		return adminPageData{}, err
+	}
 	if len(directories) == 0 {
 		return data, nil
 	}
@@ -235,6 +240,64 @@ func (h *Handler) adminData(r *http.Request, workspaceID, message string) (admin
 		return adminPageData{}, err
 	}
 	return data, nil
+}
+
+func (h *Handler) CreateAdminProjectCategory(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	name := strings.TrimSpace(r.PostFormValue("name"))
+	if name == "" || len(name) > 255 {
+		http.Error(w, "project category name must contain 1 to 255 characters", http.StatusBadRequest)
+		return
+	}
+	if _, err := h.Store.CreateProjectCategory(r.Context(), workspaceID, user.ID, name, r.PostFormValue("description")); err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, store.ErrProjectCategoryConflict) {
+			status = http.StatusConflict
+		}
+		http.Error(w, err.Error(), status)
+		return
+	}
+	redirectLocal(w, r, "/admin?saved="+url.QueryEscape("Project category created")+"#admin-project-categories")
+}
+
+func (h *Handler) UpdateAdminProjectCategory(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	id := r.PathValue("categoryId")
+	if r.PostFormValue("action") == "delete" {
+		if err := h.Store.DeleteProjectCategory(r.Context(), workspaceID, user.ID, id); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				http.NotFound(w, r)
+			} else {
+				http.Error(w, err.Error(), 500)
+			}
+			return
+		}
+		redirectLocal(w, r, "/admin?saved="+url.QueryEscape("Project category deleted")+"#admin-project-categories")
+		return
+	}
+	name := strings.TrimSpace(r.PostFormValue("name"))
+	if name == "" || len(name) > 255 {
+		http.Error(w, "project category name must contain 1 to 255 characters", 400)
+		return
+	}
+	description := r.PostFormValue("description")
+	if _, err := h.Store.UpdateProjectCategory(r.Context(), workspaceID, user.ID, id, &name, &description); err != nil {
+		status := 500
+		if errors.Is(err, store.ErrProjectCategoryConflict) {
+			status = 409
+		} else if errors.Is(err, pgx.ErrNoRows) {
+			status = 404
+		}
+		http.Error(w, err.Error(), status)
+		return
+	}
+	redirectLocal(w, r, "/admin?saved="+url.QueryEscape("Project category saved")+"#admin-project-categories")
 }
 
 func adminSiteConfigurationError(w http.ResponseWriter, err error) {

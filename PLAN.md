@@ -127,7 +127,9 @@ Complete Jira's shared work-management and configuration layer:
   every Jira field boundary;
 - finish hierarchy, work types, fields, contexts, screens, schemes, components,
   versions, roles, templates, team-managed/company-managed configuration,
-  archive/restore, import/export, and project lifecycle;
+  archive/restore, import/export, and project lifecycle; project categories,
+  JSON properties, software feature state, sender email, installed project
+  types, key/name validation, and their API/admin journeys are delivered;
 - finish permission, notification, issue-security, workflow, and field-scheme
   administration with impact previews and audited migrations;
 - finish user preferences, notifications, votes, watches, properties,

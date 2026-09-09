@@ -6470,6 +6470,261 @@
         "docs/JIRA_SITE_CONFIGURATION.md"
       ],
       "notes": "Accepts repeated Jira form-data columns, validates active navigable fields, preserves order, supports clearing and returns empty 200; the complete Jira navigable system-field catalog remains."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/project",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_governance_test.go",
+        "internal/api3/projects_test.go",
+        "e2e/projects.spec.ts",
+        "docs/PROJECT_GOVERNANCE.md"
+      ],
+      "notes": "Returns workspace-visible project beans including stored categories; legacy recent/properties expansions remain."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/project",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_governance_test.go",
+        "internal/api3/projects_test.go",
+        "e2e/projects.spec.ts",
+        "docs/PROJECT_GOVERNANCE.md"
+      ],
+      "notes": "Creates numeric-ID business, software, or service-management projects with validated category assignment and atomic project/board actions; the full Jira scheme and template inputs remain."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/project/search",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_governance_test.go",
+        "internal/api3/projects_test.go",
+        "e2e/projects.spec.ts",
+        "docs/PROJECT_GOVERNANCE.md"
+      ],
+      "notes": "Pages and orders workspace projects with key, ID, query, type, and category filters; action/status/property queries and expansions remain."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/project/{projectIdOrKey}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_governance_test.go",
+        "internal/api3/projects_test.go",
+        "e2e/projects.spec.ts",
+        "docs/PROJECT_GOVERNANCE.md"
+      ],
+      "notes": "Resolves numeric ID or case-insensitive key and returns details, lead, type, and category; remaining expansions and permission granularity remain."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/project/{projectIdOrKey}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_governance_test.go",
+        "internal/api3/projects_test.go",
+        "e2e/projects.spec.ts",
+        "docs/PROJECT_GOVERNANCE.md"
+      ],
+      "notes": "Atomically validates and updates supported details, lead/default assignment, and numeric category assignment including -1 removal; keys, avatars, schemes, and exact project-admin permission remain."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/projectCategory",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_governance_test.go",
+        "e2e/projects.spec.ts",
+        "docs/PROJECT_GOVERNANCE.md"
+      ],
+      "notes": "Returns ordered workspace project categories with numeric IDs and Jira self links."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/projectCategory",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_governance_test.go",
+        "e2e/projects.spec.ts",
+        "docs/PROJECT_GOVERNANCE.md"
+      ],
+      "notes": "Site-admin create enforces non-empty unique names and returns Jira category shape/status; exact OAuth scopes remain."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/projectCategory/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_governance_test.go",
+        "e2e/projects.spec.ts",
+        "docs/PROJECT_GOVERNANCE.md"
+      ],
+      "notes": "Returns a workspace-scoped numeric category or Jira-shaped not-found response."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/projectCategory/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_governance_test.go",
+        "e2e/projects.spec.ts",
+        "docs/PROJECT_GOVERNANCE.md"
+      ],
+      "notes": "Site-admin update persists name/description atomically with immutable action evidence and conflict/not-found statuses."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/projectCategory/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_governance_test.go",
+        "e2e/projects.spec.ts",
+        "docs/PROJECT_GOVERNANCE.md"
+      ],
+      "notes": "Site-admin delete clears assigned projects and emits their sync actions atomically before returning 204."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/project/{projectIdOrKey}/properties",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_governance_test.go",
+        "e2e/projects.spec.ts",
+        "docs/PROJECT_GOVERNANCE.md"
+      ],
+      "notes": "Returns sorted project-property keys and Jira self links; anonymous Browse Projects access remains."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/project/{projectIdOrKey}/properties/{propertyKey}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_governance_test.go",
+        "e2e/projects.spec.ts",
+        "docs/PROJECT_GOVERNANCE.md"
+      ],
+      "notes": "Returns arbitrary stored JSON in the Jira entity-property shape; anonymous Browse Projects access remains."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/project/{projectIdOrKey}/properties/{propertyKey}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_governance_test.go",
+        "e2e/projects.spec.ts",
+        "docs/PROJECT_GOVERNANCE.md"
+      ],
+      "notes": "Enforces Jira key/value limits, create/update status codes, workspace isolation and transactional action evidence; project-admin roles remain."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/project/{projectIdOrKey}/properties/{propertyKey}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_governance_test.go",
+        "e2e/projects.spec.ts",
+        "docs/PROJECT_GOVERNANCE.md"
+      ],
+      "notes": "Deletes a workspace-scoped property with Jira 204/not-found behavior and immutable action evidence; project-admin roles remain."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/project/{projectIdOrKey}/features",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_governance_test.go",
+        "e2e/projects.spec.ts",
+        "docs/PROJECT_GOVERNANCE.md"
+      ],
+      "notes": "Returns Jira-shaped state for ZZIRA built-in software features and rejects non-software projects; app features/images and the complete installed catalog remain."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/project/{projectIdOrKey}/features/{featureKey}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_governance_test.go",
+        "e2e/projects.spec.ts",
+        "docs/PROJECT_GOVERNANCE.md"
+      ],
+      "notes": "Persists ENABLED/DISABLED state, returns the complete project feature container and updates Backlog/Reports navigation; project-admin roles and remaining runtime feature modules remain."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/project/{projectId}/email",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_governance_test.go",
+        "e2e/projects.spec.ts",
+        "docs/PROJECT_GOVERNANCE.md"
+      ],
+      "notes": "Returns a project sender override or effective host-derived default for a numeric project ID; verified custom-domain warnings remain."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/project/{projectId}/email",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_governance_test.go",
+        "e2e/projects.spec.ts",
+        "docs/PROJECT_GOVERNANCE.md"
+      ],
+      "notes": "Validates, sets, or clears a sender override with administrator authorization, atomic project action and 204 response; project-admin roles and domain verification remain."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/project/type",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_governance_test.go",
+        "e2e/projects.spec.ts",
+        "docs/PROJECT_GOVERNANCE.md"
+      ],
+      "notes": "Anonymously returns Jira-shaped business, software, and service-management types installed in ZZIRA; Atlassian entitlement discovery is outside the self-hosted boundary."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/project/type/accessible",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_governance_test.go",
+        "e2e/projects.spec.ts",
+        "docs/PROJECT_GOVERNANCE.md"
+      ],
+      "notes": "Returns the installed types to authenticated workspace members; fine-grained product entitlement remains."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/project/type/{projectTypeKey}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_governance_test.go",
+        "e2e/projects.spec.ts",
+        "docs/PROJECT_GOVERNANCE.md"
+      ],
+      "notes": "Anonymously resolves an installed Jira project type and returns 404 for unknown keys."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/project/type/{projectTypeKey}/accessible",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_governance_test.go",
+        "e2e/projects.spec.ts",
+        "docs/PROJECT_GOVERNANCE.md"
+      ],
+      "notes": "Resolves an installed project type for a workspace member; fine-grained product entitlement remains."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/projectvalidate/key",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_governance_test.go",
+        "e2e/projects.spec.ts",
+        "docs/PROJECT_GOVERNANCE.md"
+      ],
+      "notes": "Returns Jira ErrorCollection results for syntax and workspace collisions; access is authenticated rather than anonymous."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/projectvalidate/validProjectKey",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_governance_test.go",
+        "e2e/projects.spec.ts",
+        "docs/PROJECT_GOVERNANCE.md"
+      ],
+      "notes": "Returns a collision-free normalized project key with Jira length constraints; selection is deterministic rather than Atlassian-random."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/projectvalidate/validProjectName",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_governance_test.go",
+        "e2e/projects.spec.ts",
+        "docs/PROJECT_GOVERNANCE.md"
+      ],
+      "notes": "Returns the requested available name or a collision-free numbered variant; access is authenticated rather than anonymous."
     }
   ]
 }

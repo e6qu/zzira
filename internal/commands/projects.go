@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -27,6 +28,7 @@ type CreateProjectInput struct {
 	AssigneeType       string `json:"assigneeType"`
 	ProjectTypeKey     string `json:"projectTypeKey"`
 	ProjectTemplateKey string `json:"projectTemplateKey"`
+	CategoryID         int64  `json:"categoryId"`
 }
 
 var projectKeyPattern = regexp.MustCompile(`^[A-Z][A-Z0-9_]{1,9}$`)
@@ -87,8 +89,13 @@ func (s *Service) CreateProject(ctx context.Context, actorID, workspaceID string
 		if in.ProjectTemplateKey != "com.atlassian.servicedesk:simplified-it-service-management" {
 			fields["projectTemplateKey"] = "Choose the IT service management template."
 		}
+	case "business":
+		boardType = "kanban"
+		if in.ProjectTemplateKey != "" && in.ProjectTemplateKey != "com.atlassian.jira-core-project-templates:jira-core-simplified-project-management" {
+			fields["projectTemplateKey"] = "Choose the business project management template."
+		}
 	default:
-		fields["projectTypeKey"] = "Choose a software or service management project."
+		fields["projectTypeKey"] = "Choose a business, software, or service management project."
 	}
 	if in.LeadAccountID == "" {
 		fields["leadAccountId"] = "Choose a project lead."
@@ -99,7 +106,14 @@ func (s *Service) CreateProject(ctx context.Context, actorID, workspaceID string
 	if len(fields) > 0 {
 		return nil, &ProjectValidationError{fields}
 	}
-	p, err := s.Store.CreateProject(ctx, actorID, models.Project{WorkspaceID: workspaceID, Key: in.Key, Name: in.Name, Description: in.Description, URL: in.URL, LeadAccountID: in.LeadAccountID, AssigneeType: in.AssigneeType, ProjectTypeKey: in.ProjectTypeKey}, boardType)
+	categoryID := ""
+	if in.CategoryID > 0 {
+		categoryID = strconv.FormatInt(in.CategoryID, 10)
+	}
+	p, err := s.Store.CreateProject(ctx, actorID, models.Project{WorkspaceID: workspaceID, Key: in.Key, Name: in.Name, Description: in.Description, URL: in.URL, LeadAccountID: in.LeadAccountID, AssigneeType: in.AssigneeType, ProjectTypeKey: in.ProjectTypeKey, CategoryID: categoryID}, boardType)
+	if errors.Is(err, store.ErrProjectCategoryInvalid) {
+		return nil, &ProjectValidationError{map[string]string{"categoryId": err.Error()}}
+	}
 	var pgerr *pgconn.PgError
 	if errors.As(err, &pgerr) && pgerr.Code == "23505" {
 		return nil, &ProjectValidationError{map[string]string{"key": "A project with this key already exists."}}
@@ -125,6 +139,9 @@ func (s *Service) UpdateProject(ctx context.Context, actorID, workspaceID, idOrK
 		return nil, &ProjectValidationError{fields}
 	}
 	project, err := s.Store.UpdateProject(ctx, actorID, workspaceID, idOrKey, up)
+	if errors.Is(err, store.ErrProjectCategoryInvalid) {
+		return nil, &ProjectValidationError{map[string]string{"categoryId": err.Error()}}
+	}
 	if errors.Is(err, store.ErrProjectLeadRequired) {
 		return nil, &ProjectValidationError{map[string]string{"leadAccountId": err.Error()}}
 	}

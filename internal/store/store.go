@@ -732,8 +732,8 @@ func (s *Store) AddMember(ctx context.Context, workspaceID, userID, role string)
 func (s *Store) ProjectByKey(ctx context.Context, workspaceID, key string) (*models.Project, error) {
 	p := &models.Project{WorkspaceID: workspaceID, Key: key}
 	err := s.Pool.QueryRow(ctx,
-		`SELECT id, name, COALESCE(workflow_id,''), COALESCE(security_scheme_id,''), description, url, COALESCE(lead_account_id,''), assignee_type, project_type_key FROM projects WHERE workspace_id=$1 AND upper(key)=upper($2)`,
-		workspaceID, key).Scan(&p.ID, &p.Name, &p.WorkflowID, &p.SecuritySchemeID, &p.Description, &p.URL, &p.LeadAccountID, &p.AssigneeType, &p.ProjectTypeKey)
+		`SELECT id, name, COALESCE(workflow_id,''), COALESCE(security_scheme_id,''), description, url, COALESCE(lead_account_id,''), assignee_type, project_type_key, COALESCE(category_id,''), sender_email FROM projects WHERE workspace_id=$1 AND upper(key)=upper($2)`,
+		workspaceID, key).Scan(&p.ID, &p.Name, &p.WorkflowID, &p.SecuritySchemeID, &p.Description, &p.URL, &p.LeadAccountID, &p.AssigneeType, &p.ProjectTypeKey, &p.CategoryID, &p.SenderEmail)
 	if err != nil {
 		return nil, err
 	}
