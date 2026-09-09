@@ -730,14 +730,7 @@ func (s *Store) AddMember(ctx context.Context, workspaceID, userID, role string)
 // ---- Projects ----
 
 func (s *Store) ProjectByKey(ctx context.Context, workspaceID, key string) (*models.Project, error) {
-	p := &models.Project{WorkspaceID: workspaceID, Key: key}
-	err := s.Pool.QueryRow(ctx,
-		`SELECT id, name, COALESCE(workflow_id,''), COALESCE(security_scheme_id,''), description, url, COALESCE(lead_account_id,''), assignee_type, project_type_key, COALESCE(category_id,''), sender_email FROM projects WHERE workspace_id=$1 AND upper(key)=upper($2)`,
-		workspaceID, key).Scan(&p.ID, &p.Name, &p.WorkflowID, &p.SecuritySchemeID, &p.Description, &p.URL, &p.LeadAccountID, &p.AssigneeType, &p.ProjectTypeKey, &p.CategoryID, &p.SenderEmail)
-	if err != nil {
-		return nil, err
-	}
-	return p, nil
+	return scanProject(s.Pool.QueryRow(ctx, `SELECT `+projectSelectColumns+` FROM projects WHERE workspace_id=$1 AND lifecycle_state='ACTIVE' AND upper(key)=upper($2)`, workspaceID, key))
 }
 
 // ---- Issues ----
@@ -821,7 +814,7 @@ func (s *Store) IssueByIDOrKey(ctx context.Context, workspaceID, idOrKey string)
 		WHERE i.workspace_id=$1 AND (
 			i.id=$2 OR i.jira_id::text=$2 OR upper(i.key)=upper($2)
 			OR EXISTS(SELECT 1 FROM issue_key_aliases alias WHERE alias.workspace_id=i.workspace_id AND alias.issue_id=i.id AND upper(alias.key)=upper($2))
-		)`, workspaceID, idOrKey))
+		) AND EXISTS(SELECT 1 FROM projects visible_project WHERE visible_project.id=i.project_id AND visible_project.lifecycle_state='ACTIVE')`, workspaceID, idOrKey))
 }
 
 // CreateIssue runs the canonical write transaction: state change + action append +
@@ -843,14 +836,14 @@ func (s *Store) CreateIssueForReporter(ctx context.Context, actorID, reporterID,
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	var wsID, projectKey string
-	err = tx.QueryRow(ctx, `SELECT workspace_id, key FROM projects WHERE id=$1`, projectID).Scan(&wsID, &projectKey)
+	err = tx.QueryRow(ctx, `SELECT workspace_id,key FROM projects WHERE id=$1 AND lifecycle_state='ACTIVE'`, projectID).Scan(&wsID, &projectKey)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	var issueNum int64
 	err = tx.QueryRow(ctx,
-		`UPDATE projects SET issue_seq = issue_seq + 1 WHERE id=$1 RETURNING issue_seq`,
+		`UPDATE projects SET issue_seq=issue_seq+1 WHERE id=$1 AND lifecycle_state='ACTIVE' RETURNING issue_seq`,
 		projectID).Scan(&issueNum)
 	if err != nil {
 		return nil, nil, err

@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/e6qu/zzira/internal/authn"
 	"github.com/e6qu/zzira/internal/models"
@@ -18,16 +19,22 @@ import (
 )
 
 type projectDirectoryCard struct {
-	Project      *models.Project
-	IssueCount   int
-	WorkflowName string
-	Boards       []*models.Board
-	PrimaryBoard *models.Board
+	Project            *models.Project
+	IssueCount         int
+	WorkflowName       string
+	Boards             []*models.Board
+	PrimaryBoard       *models.Board
+	BoardCount         int
+	LifecycleActorName string
+	DeleteAfter        string
 }
 
 type projectsPageData struct {
 	Projects  []projectDirectoryCard
 	CanCreate bool
+	ViewState string
+	Notice    string
+	Error     string
 }
 
 type projectOverviewData struct {
@@ -159,7 +166,35 @@ func (h *Handler) ProjectsPage(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	projects, err := h.Store.ProjectsByWorkspace(r.Context(), wsID)
+	viewState := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("status")))
+	if viewState == "" {
+		viewState = "active"
+	}
+	isAdmin, err := h.Store.IsAdmin(r.Context(), wsID, user.ID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	var projects []*models.Project
+	switch viewState {
+	case "active":
+		projects, err = h.Store.ProjectsByWorkspace(r.Context(), wsID)
+	case "archived":
+		if !isAdmin {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		projects, err = h.Store.ProjectsByLifecycle(r.Context(), wsID, store.ProjectLifecycleArchived)
+	case "trash":
+		if !isAdmin {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		projects, err = h.Store.ProjectsByLifecycle(r.Context(), wsID, store.ProjectLifecycleTrashed)
+	default:
+		http.Error(w, "unknown project view", http.StatusBadRequest)
+		return
+	}
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -178,14 +213,14 @@ func (h *Handler) ProjectsPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	data := projectsPageData{Projects: make([]projectDirectoryCard, 0, len(projects))}
-	data.CanCreate, err = h.Store.IsAdmin(r.Context(), wsID, user.ID)
-	if err != nil {
-		http.Error(w, "internal error", 500)
-		return
-	}
+	data := projectsPageData{Projects: make([]projectDirectoryCard, 0, len(projects)), CanCreate: isAdmin, ViewState: viewState, Notice: r.URL.Query().Get("notice"), Error: r.URL.Query().Get("error")}
 	for _, project := range projects {
-		issueCount, err := h.Store.IssueCountByProject(r.Context(), wsID, project.ID, user.ID)
+		var issueCount, boardCount int
+		if viewState == "active" {
+			issueCount, err = h.Store.IssueCountByProject(r.Context(), wsID, project.ID, user.ID)
+		} else {
+			issueCount, boardCount, err = h.Store.ProjectStoredCounts(r.Context(), wsID, project.ID)
+		}
 		if err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
@@ -194,10 +229,22 @@ func (h *Handler) ProjectsPage(w http.ResponseWriter, r *http.Request) {
 		if workflowName == "" {
 			workflowName = workflow.Default().Name
 		}
-		card := projectDirectoryCard{Project: project, IssueCount: issueCount, WorkflowName: workflowName}
+		card := projectDirectoryCard{Project: project, IssueCount: issueCount, WorkflowName: workflowName, BoardCount: boardCount}
+		if project.LifecycleActor != "" {
+			actor, actorErr := h.Store.MemberByID(r.Context(), wsID, project.LifecycleActor)
+			if actorErr == nil {
+				card.LifecycleActorName = actor.DisplayName
+			}
+		}
+		if project.TrashedAt != "" {
+			if trashedAt, parseErr := time.Parse(time.RFC3339, project.TrashedAt); parseErr == nil {
+				card.DeleteAfter = trashedAt.Add(60 * 24 * time.Hour).Format("2 Jan 2006")
+			}
+		}
 		for _, board := range boards {
 			if board.ProjectID == project.ID {
 				card.Boards = append(card.Boards, board)
+				card.BoardCount++
 				if card.PrimaryBoard == nil {
 					card.PrimaryBoard = board
 				}
@@ -216,6 +263,10 @@ func (h *Handler) ProjectOverview(w http.ResponseWriter, r *http.Request, idOrKe
 	project, err := h.Store.ProjectByIDOrKey(r.Context(), wsID, idOrKey)
 	if err != nil {
 		http.NotFound(w, r)
+		return
+	}
+	if err = h.Store.RecordProjectView(r.Context(), wsID, user.ID, project.ID); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 	issues, err := h.Store.IssuesByProject(r.Context(), wsID, project.ID, user.ID)

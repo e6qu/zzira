@@ -29,13 +29,7 @@ func (s *Store) IssueTypes(ctx context.Context) ([]models.IssueType, error) {
 // ProjectByIDOrKey resolves a project without allowing it to escape the
 // caller's workspace.
 func (s *Store) ProjectByIDOrKey(ctx context.Context, workspaceID, idOrKey string) (*models.Project, error) {
-	project := &models.Project{}
-	err := s.Pool.QueryRow(ctx, `
-		SELECT id, workspace_id, key, name, COALESCE(workflow_id,''), COALESCE(security_scheme_id,''), description, url, COALESCE(lead_account_id,''), assignee_type, project_type_key, COALESCE(category_id,''), sender_email
-		FROM projects
-		WHERE workspace_id=$1 AND (id=$2 OR upper(key)=upper($2))`, workspaceID, idOrKey).
-		Scan(&project.ID, &project.WorkspaceID, &project.Key, &project.Name, &project.WorkflowID, &project.SecuritySchemeID, &project.Description, &project.URL, &project.LeadAccountID, &project.AssigneeType, &project.ProjectTypeKey, &project.CategoryID, &project.SenderEmail)
-	return project, err
+	return scanProject(s.Pool.QueryRow(ctx, `SELECT `+projectSelectColumns+` FROM projects WHERE workspace_id=$1 AND lifecycle_state='ACTIVE' AND (id=$2 OR upper(key)=upper($2))`, workspaceID, idOrKey))
 }
 
 // IssueCreateMetadata builds the sole schema used by create UI and API

@@ -361,6 +361,12 @@ func (r *APITaskRunner) execute(ctx context.Context, task APITask) error {
 			return errors.New("bulk issue executor is not configured")
 		}
 		return r.BulkIssueExecutor.ExecuteBulkIssueTask(ctx, task)
+	case apiTaskDeleteProject:
+		var payload deleteProjectTaskPayload
+		if err := json.Unmarshal(task.Payload, &payload); err != nil {
+			return fmt.Errorf("decode project delete operation: %w", err)
+		}
+		return r.Store.PermanentDeleteProject(ctx, task.WorkspaceID, task.SubmittedBy, payload.ProjectID, &task)
 	default:
 		return fmt.Errorf("unsupported task kind %q", task.Kind)
 	}

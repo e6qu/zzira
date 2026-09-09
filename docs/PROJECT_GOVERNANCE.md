@@ -65,7 +65,7 @@ Jira Cloud-compatible REST resources.
   replacement string, but clients that assume Atlassian's random choice may
   observe a different available key.
 - Core project APIs remain partial while expansions, recent projects, scheme
-  assignment, archive/restore/delete, import/export, and the full template
+  assignment, import/export, and the full template
   catalog are unfinished.
 
 ## Evidence

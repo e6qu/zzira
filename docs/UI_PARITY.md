@@ -103,7 +103,11 @@ Status: ✅ browser-tested complete journey · 🟡 usable tested subset · ⛔ 
    explicit replacement choices that migrate incompatible statuses as part of
    the project assignment transaction.
 4. Install and govern apps, scopes, callbacks, storage and scheduled work.
-5. Export data, set retention, inspect audit events and perform recovery actions.
+5. Archive projects, restore retained work, recover projects from the 60-day
+   trash window, and explicitly confirm permanent deletion. This journey is
+   implemented through project settings and the Active, Archived, and Trash
+   directories, with REST visibility verified after every transition.
+6. Export data, set retention, inspect audit events and perform recovery actions.
 
 ## Interaction system
 

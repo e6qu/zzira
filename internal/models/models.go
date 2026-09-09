@@ -81,6 +81,10 @@ type Project struct {
 	ProjectTypeKey string `json:"projectTypeKey"`
 	CategoryID     string `json:"categoryId,omitempty"`
 	SenderEmail    string `json:"-"`
+	LifecycleState string `json:"-"`
+	ArchivedAt     string `json:"-"`
+	TrashedAt      string `json:"-"`
+	LifecycleActor string `json:"-"`
 
 	SecuritySchemeID string `json:"-"`
 }

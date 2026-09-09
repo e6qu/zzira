@@ -19,7 +19,7 @@ func scanServiceDesk(row interface{ Scan(...any) error }) (*models.ServiceDesk, 
 	return desk, err
 }
 
-const serviceDeskSelect = `SELECT sd.id,sd.workspace_id,p.id,p.key,p.name,p.project_type_key,sd.portal_name,sd.customer_access_open FROM service_desks sd JOIN projects p ON p.id=sd.project_id `
+const serviceDeskSelect = `SELECT sd.id,sd.workspace_id,p.id,p.key,p.name,p.project_type_key,sd.portal_name,sd.customer_access_open FROM service_desks sd JOIN projects p ON p.id=sd.project_id AND p.lifecycle_state='ACTIVE' `
 
 func (s *Store) ServiceDesks(ctx context.Context, workspaceID string) ([]models.ServiceDesk, error) {
 	rows, err := s.Pool.Query(ctx, serviceDeskSelect+`WHERE sd.workspace_id=$1 ORDER BY sd.id::bigint`, workspaceID)

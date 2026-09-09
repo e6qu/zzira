@@ -116,7 +116,7 @@ func (s *Store) RankBetween(ctx context.Context, workspaceID, projectID, statusI
 const boardJoin = `
 SELECT b.id, b.project_id, p.key, p.name, p.workspace_id, b.name, b.type, b.column_status_ids, b.filter_jql,
        b.quick_filters, b.swimlane_strategy, b.card_fields, b.column_limits
-FROM boards b JOIN projects p ON p.id = b.project_id
+FROM boards b JOIN projects p ON p.id=b.project_id AND p.lifecycle_state='ACTIVE'
 `
 
 func scanBoard(row pgx.Row) (*models.Board, error) {
