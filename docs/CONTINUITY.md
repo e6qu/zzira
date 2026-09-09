@@ -11,8 +11,9 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 - Branch: `feat/pr1-project-administration-3`
 - Base: `origin/main` after merged PR #71 (`c9d834d`)
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- Pull request: not opened yet
-- State: project-governance checkpoint in development and locally verified
+- Pull request: [#72](https://github.com/e6qu/zzira/pull/72)
+- State: project-governance checkpoint is open; local Go, conformance, build,
+  vet, and all 62 Playwright journeys pass
 - Blockers: none
 
 ## Merged baseline
@@ -33,9 +34,9 @@ scans, CodeQL, and all 62 Playwright journeys.
 
 ## Resume here
 
-1. Finish and commit the project-governance checkpoint: categories, properties,
-   features, sender email, project types, validation, and browser administration.
-2. Continue project lifecycle, roles, templates, and scheme administration.
+1. Monitor PR #72 CI and resolve review threads inline.
+2. Continue project lifecycle, roles, templates, and scheme administration after
+   the checkpoint merges.
 3. Keep each new vertical checkpoint committed, tested and documented on the
    same PR until its Jira Platform exit gates are satisfied.
 
