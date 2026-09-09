@@ -47,6 +47,8 @@ func TestJQLFunctionPrecomputationAppJourney(t *testing.T) {
 	exec(`INSERT INTO memberships(workspace_id,user_id,role) VALUES($1,$2,'member')`, otherWorkspaceID, otherPrincipal)
 	exec(`INSERT INTO app_installations(id,workspace_id,principal_id,app_key,name,base_url,version,status,secret_ciphertext,descriptor)
 		VALUES($1,$2,$3,'com.example.primary','Primary app','https://app.example.test','1','active',$4,'{}')`, installationID, workspaceID, appPrincipal, []byte("secret"))
+	exec(`INSERT INTO app_jql_function_modules(installation_id,module_key,function_name,path,arguments,types,operators)
+		VALUES($1,'risk','riskIssues','/jql/risk','[{"name":"level","required":true}]','{issue}','{in}')`, installationID)
 	exec(`INSERT INTO app_installations(id,workspace_id,principal_id,app_key,name,base_url,version,status,secret_ciphertext,descriptor)
 		VALUES($1,$2,$3,'com.example.other','Other app','https://other.example.test','1','active',$4,'{}')`, otherInstallationID, otherWorkspaceID, otherPrincipal, []byte("secret"))
 	t.Cleanup(func() {
@@ -55,7 +57,7 @@ func TestJQLFunctionPrecomputationAppJourney(t *testing.T) {
 		exec(`DELETE FROM users WHERE id=ANY($1)`, []string{appPrincipal, otherPrincipal, human})
 	})
 
-	firstUsed := time.Date(2026, 9, 1, 10, 0, 0, 0, time.UTC)
+	firstUsed := time.Now().UTC().Truncate(time.Second)
 	first, err := st.EnsureJQLFunctionPrecomputation(ctx, installationID, "com.example.primary__risk", "riskIssues", "issue", "in", []string{"high"}, firstUsed)
 	if err != nil {
 		t.Fatal(err)
@@ -102,6 +104,16 @@ func TestJQLFunctionPrecomputationAppJourney(t *testing.T) {
 	}
 
 	call(human, http.MethodGet, "/rest/api/3/jql/function/computation", nil, http.StatusForbidden)
+	autocomplete := call(human, http.MethodGet, "/rest/api/3/jql/autocompletedata", nil, http.StatusOK)
+	visible := autocomplete["visibleFunctionNames"].([]any)
+	foundAppFunction := false
+	for _, raw := range visible {
+		function := raw.(map[string]any)
+		foundAppFunction = foundAppFunction || function["value"] == "riskIssues()" && function["displayName"] == "riskIssues(level)"
+	}
+	if !foundAppFunction {
+		t.Fatalf("app function missing from autocomplete: %#v", visible)
+	}
 	page := call(appPrincipal, http.MethodGet, "/rest/api/3/jql/function/computation?maxResults=1&orderBy=-used", nil, http.StatusOK)
 	if page["total"] != float64(2) || page["isLast"] != false || page["nextPage"] == "" {
 		t.Fatalf("precomputation page = %#v", page)

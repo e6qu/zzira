@@ -209,7 +209,7 @@ func parseConnectDescriptor(raw []byte) (models.AppDescriptor, error) {
 		wire.Scopes = append(wire.Scopes, scope)
 	}
 	sort.Strings(wire.Scopes)
-	supported := map[string]bool{"adminPages": true, "generalPages": true, "jiraProjectPages": true, "jiraProjectAdminTabPanels": true, "jiraReports": true, "jiraDashboardItems": true, "jiraIssueTabPanels": true, "webPanels": true, "contentBylineItems": true, "webhooks": true, "jiraIssueFields": true, "webItems": true, "jiraIssueContents": true, "jiraIssueContexts": true, "jiraIssueGlances": true}
+	supported := map[string]bool{"adminPages": true, "generalPages": true, "jiraProjectPages": true, "jiraProjectAdminTabPanels": true, "jiraReports": true, "jiraDashboardItems": true, "jiraIssueTabPanels": true, "webPanels": true, "contentBylineItems": true, "webhooks": true, "jiraIssueFields": true, "jiraJqlFunctions": true, "webItems": true, "jiraIssueContents": true, "jiraIssueContexts": true, "jiraIssueGlances": true}
 	for moduleType, payload := range connect.Modules {
 		if !supported[moduleType] {
 			return models.AppDescriptor{}, fmt.Errorf("Connect module %q is not supported yet", moduleType)
@@ -335,6 +335,12 @@ func parseConnectDescriptor(raw []byte) (models.AppDescriptor, error) {
 				}
 				wire.IssueFields = append(wire.IssueFields, translated)
 			}
+		case "jiraJqlFunctions":
+			var functions []jqlFunctionWire
+			if err := json.Unmarshal(payload, &functions); err != nil {
+				return models.AppDescriptor{}, fmt.Errorf("invalid Connect jiraJqlFunctions: %w", err)
+			}
+			wire.JQLFunctions = append(wire.JQLFunctions, functions...)
 		case "webItems":
 			var modules []connectWebItemWire
 			if err := json.Unmarshal(payload, &modules); err != nil {

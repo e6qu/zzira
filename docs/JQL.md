@@ -103,11 +103,29 @@ fragment or its user-facing error. Updates are atomic when missing IDs are not
 skipped; the opt-in skip mode applies found updates and returns missing IDs.
 ID search treats foreign-tenant and foreign-app records as missing.
 
+Installed Connect and native ZZIRA descriptors can also declare custom JQL
+functions. The functions appear in workspace autocomplete. A clause such as
+`issue in riskIssues("high")` creates or refreshes its installation-owned
+precomputation and calls the app's signed relative endpoint on a cache miss.
+The request includes the canonical field, field type, operator, function name,
+arguments, and precomputation ID. Successful JQL fragments and opted-in app
+errors are cached without user scoping and expire after seven days without use.
+
+Returned fragments replace the complete function clause. They are parsed and
+compiled through the ordinary JQL engine, and the final search still applies
+workspace, user, and issue-security predicates. Fragments cannot add `ORDER
+BY`; nested app functions are bounded to four levels. Invalid fragments,
+unsupported field types/operators, invalid argument counts, duplicate function
+names, and unavailable app endpoints produce query errors without treating app
+text as SQL. The same expansion hook is used by REST search and match, the
+browser navigator, boards and quick filters, dashboard gadgets, service queues
+and SLA goals, automation execution, and webhook filtering.
+
 ## Current limits
 
 The search and JQL service resources remain assessed as partial. The remaining
-PR 1 work adds app-function invocation in the compiler, the remaining built-in
-functions and multi-value fields, complete personal-data migration for list/history
+PR 1 work adds the remaining built-in functions and multi-value fields,
+complete personal-data migration for list/history
 operands and unknown-user reporting; project-aware validation warnings; exact
 historical versioned representations and richer rendered values.
 

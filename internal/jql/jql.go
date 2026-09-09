@@ -61,12 +61,81 @@ type HistoryClause struct {
 
 type Text struct{ Value string }
 
+// FunctionInvocation identifies a function used as the complete right-hand
+// side of a clause. Custom Jira functions replace that whole clause with the
+// JQL fragment returned by their app.
+type FunctionInvocation struct {
+	Field, Operator, Name string
+	Arguments             []string
+}
+
 func (Or) isNode()            {}
 func (And) isNode()           {}
 func (Not) isNode()           {}
 func (Clause) isNode()        {}
 func (HistoryClause) isNode() {}
 func (Text) isNode()          {}
+
+// TransformClauseFunctions walks a parsed query and replaces recognized
+// function clauses. The callback returns handled=false for built-in functions.
+// History predicates are intentionally excluded because Jira app functions
+// are value functions used in ordinary terminal clauses.
+func TransformClauseFunctions(query *Query, transform func(FunctionInvocation) (Node, bool, error)) error {
+	root, err := transformClauseFunctionNode(query.Root, transform)
+	if err != nil {
+		return err
+	}
+	query.Root = root
+	return nil
+}
+
+func transformClauseFunctionNode(node Node, transform func(FunctionInvocation) (Node, bool, error)) (Node, error) {
+	switch value := node.(type) {
+	case Or:
+		for index, term := range value.Terms {
+			replacement, err := transformClauseFunctionNode(term, transform)
+			if err != nil {
+				return nil, err
+			}
+			value.Terms[index] = replacement
+		}
+		return value, nil
+	case And:
+		for index, term := range value.Terms {
+			replacement, err := transformClauseFunctionNode(term, transform)
+			if err != nil {
+				return nil, err
+			}
+			value.Terms[index] = replacement
+		}
+		return value, nil
+	case Not:
+		replacement, err := transformClauseFunctionNode(value.Inner, transform)
+		if err != nil {
+			return nil, err
+		}
+		value.Inner = replacement
+		return value, nil
+	case Clause:
+		if len(value.Values) != 1 {
+			return value, nil
+		}
+		name, arguments, ok := splitFunction(value.Values[0])
+		if !ok {
+			return value, nil
+		}
+		replacement, handled, err := transform(FunctionInvocation{Field: value.Field, Operator: value.Op, Name: name, Arguments: arguments})
+		if err != nil {
+			return nil, err
+		}
+		if handled {
+			return replacement, nil
+		}
+		return value, nil
+	default:
+		return value, nil
+	}
+}
 
 // ---- Errors ----
 
@@ -105,7 +174,7 @@ func lex(src string) ([]token, error) {
 		case strings.ContainsRune("=!~<>", rune(c)):
 			if i+1 < len(src) {
 				two := string(c) + string(src[i+1])
-				if two == "!=" || two == "!~" || two == ">=" || two == "<=" {
+				if two == "!=" || two == "!~" || two == "~=" || two == ">=" || two == "<=" {
 					out = append(out, token{"word", two, i})
 					i += 2
 					continue
@@ -151,7 +220,7 @@ func lex(src string) ([]token, error) {
 // ---- Parser ----
 
 var operators = map[string]string{
-	"=": "=", "!=": "!=", "~": "~", "!~": "!~", ">": ">", ">=": ">=", "<": "<", "<=": "<=",
+	"=": "=", "!=": "!=", "~": "~", "~=": "~=", "!~": "!~", ">": ">", ">=": ">=", "<": "<", "<=": "<=",
 }
 
 type parser struct {
@@ -434,14 +503,24 @@ func (p *parser) parseClause() (Node, error) {
 			neg = true
 			p.next()
 		}
-		w := p.word()
-		if !strings.EqualFold(w, "empty") && !strings.EqualFold(w, "null") {
-			return nil, &SyntaxError{p.peek().pos, "expected EMPTY after IS"}
+		if p.atWord("empty") || p.atWord("null") {
+			p.next()
+			if neg {
+				return Clause{Field: field, Op: "notempty"}, nil
+			}
+			return Clause{Field: field, Op: "empty"}, nil
+		}
+		value, err := p.parseValue()
+		if err != nil {
+			return nil, &SyntaxError{p.peek().pos, "expected EMPTY or a function after IS"}
+		}
+		if _, _, function := splitFunction(value); !function {
+			return nil, &SyntaxError{p.peek().pos, "expected EMPTY or a function after IS"}
 		}
 		if neg {
-			return Clause{Field: field, Op: "notempty"}, nil
+			return Clause{Field: field, Op: "isnot", Values: []string{value}}, nil
 		}
-		return Clause{Field: field, Op: "empty"}, nil
+		return Clause{Field: field, Op: "is", Values: []string{value}}, nil
 	}
 	return nil, &SyntaxError{opTok.pos, "unsupported operator " + opTok.text}
 }

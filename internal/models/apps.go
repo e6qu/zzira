@@ -13,6 +13,7 @@ type AppDescriptor struct {
 	Webhooks                            []AppWebhook
 	ScheduledTriggers                   []AppScheduledTrigger
 	IssueFields                         []AppIssueField
+	JQLFunctions                        []AppJQLFunction
 }
 
 type AppIssueField struct {
@@ -30,8 +31,24 @@ type AppInstallation struct {
 	Webhooks                                                                               []AppWebhook
 	ScheduledTriggers                                                                      []AppScheduledTrigger
 	IssueFields                                                                            []AppIssueField
+	JQLFunctions                                                                           []AppJQLFunction
 	OutboundDeliveries                                                                     []AppOutboundDelivery
 	InstalledAt, UpdatedAt                                                                 time.Time
+}
+
+type AppJQLFunctionArgument struct {
+	Name     string `json:"name"`
+	Required bool   `json:"required"`
+}
+
+// AppJQLFunction is an installed Connect-compatible custom JQL function.
+// Connection details are populated only when the product evaluates it.
+type AppJQLFunction struct {
+	ID, InstallationID, AppKey, BaseURL, Format string
+	SecretCiphertext                            []byte
+	Key, Name, Path                             string
+	Arguments                                   []AppJQLFunctionArgument
+	Types, Operators                            []string
 }
 
 type AppWebhook struct {

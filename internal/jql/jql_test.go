@@ -242,3 +242,50 @@ func TestSetOrderPreservesQuotedAndNestedText(t *testing.T) {
 		t.Fatalf("SetOrder append = %q, %v", got, err)
 	}
 }
+
+func TestTransformClauseFunctionsReplacesOnlyWholeFunctionClauses(t *testing.T) {
+	query, err := Parse(`project = ZZ AND issue in riskIssues("high", platform) AND labels in (urgent, teamLabels())`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	called := 0
+	err = TransformClauseFunctions(query, func(invocation FunctionInvocation) (Node, bool, error) {
+		if invocation.Name != "riskIssues" {
+			return nil, false, nil
+		}
+		called++
+		if invocation.Field != "issue" || invocation.Operator != "in" || !reflect.DeepEqual(invocation.Arguments, []string{"high", "platform"}) {
+			t.Fatalf("invocation = %+v", invocation)
+		}
+		replacement, parseErr := Parse(`priority = Highest OR status = Blocked`)
+		return replacement.Root, true, parseErr
+	})
+	if err != nil || called != 1 {
+		t.Fatalf("transform calls=%d err=%v", called, err)
+	}
+	root, ok := query.Root.(And)
+	if !ok || len(root.Terms) != 3 {
+		t.Fatalf("transformed root = %#v", query.Root)
+	}
+	labels, ok := root.Terms[2].(Clause)
+	if !ok || !reflect.DeepEqual(labels.Values, []string{"urgent", "teamLabels()"}) {
+		t.Fatalf("mixed-list clause changed = %#v", root.Terms[2])
+	}
+}
+
+func TestParseCustomFunctionOnlyOperators(t *testing.T) {
+	for input, operator := range map[string]string{
+		`summary ~= containsText(test)`: "~=",
+		`resolution IS resolvedBy(app)`: "is",
+		`resolution IS NOT ownedBy(me)`: "isnot",
+	} {
+		query, err := Parse(input)
+		if err != nil {
+			t.Fatalf("parse %q: %v", input, err)
+		}
+		clause, ok := query.Root.(Clause)
+		if !ok || clause.Op != operator || len(clause.Values) != 1 {
+			t.Fatalf("parse %q = %#v", input, query.Root)
+		}
+	}
+}

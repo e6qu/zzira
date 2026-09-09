@@ -125,6 +125,9 @@ func (r *Runner) execute(ctx context.Context, run *claimedRun) (int, int, error)
 	if err != nil {
 		return 0, 0, fmt.Errorf("parse JQL: %w", err)
 	}
+	if err := r.Service.Store.ExpandAppJQL(ctx, run.WorkspaceID, query); err != nil {
+		return 0, 0, fmt.Errorf("expand app JQL: %w", err)
+	}
 	compiled := jql.CompileAt(query, run.ActorID, jql.DefaultResolver(), 2)
 	if compiled.Err != nil {
 		return 0, 0, fmt.Errorf("compile JQL: %w", compiled.Err)

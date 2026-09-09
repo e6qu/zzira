@@ -23,6 +23,9 @@ lifecycle ledger and organization audit log.
       "body": "Incident and release context supplied by the app."
     }
   ],
+  "jqlFunctions": [
+    {"key": "risk-issues", "name": "riskIssues", "url": "/jql/risk", "arguments": [{"name": "level", "required": true}], "types": ["issue"], "operators": ["in", "not in"]}
+  ],
   "lifecycle": {
     "installed": "/lifecycle/installed",
     "disabled": "/lifecycle/disabled",
@@ -81,6 +84,9 @@ shape:
     "jiraIssueFields": [
       {"key": "risk-score", "name": {"value": "Risk score"}, "description": {"value": "Calculated release risk"}, "type": "number"}
     ],
+    "jiraJqlFunctions": [
+      {"key": "risk-issues", "name": "riskIssues", "url": "/jql/risk", "arguments": [{"name": "level", "required": true}], "types": ["issue"], "operators": ["in", "not_in"]}
+    ],
     "jiraIssueContents": [
       {"key": "runbook", "name": {"value": "Incident runbook"}, "tooltip": {"value": "Add incident runbook"}, "icon": {"url": "/runbook.svg"}, "target": {"type": "web_panel", "url": "/runbook?issue={issue.key}"}}
     ],
@@ -103,7 +109,7 @@ and Confluence grants. Supported Connect module families are `adminPages`, `gene
 `jiraDashboardItems`, `jiraIssueTabPanels`, Jira issue-view
 `webPanels`, Confluence
 `contentBylineItems`, scalar
-`jiraIssueFields`, quick-add `jiraIssueContents`, collapsible
+`jiraIssueFields`, `jiraJqlFunctions`, quick-add `jiraIssueContents`, collapsible
 `jiraIssueContexts`, legacy `jiraIssueGlances`, Jira/Confluence navigation
 `webItems`, and `webhooks`.
 The parser rejects unsupported authentication modes, scopes, module families,
@@ -129,6 +135,16 @@ Navigation web items support Jira `system.top.navigation.bar` and Confluence
 `system.header/left` or `system.header/right`. They need no data scope to
 render, open through the signed remote-page gateway, and reject unevaluated
 conditions or unsupported locations explicitly.
+
+Connect `jiraJqlFunctions` declarations persist their key, function name,
+relative evaluation URL, ordered required/optional arguments, Jira field
+types, and supported operators. Installed functions appear in Jira JQL
+autocomplete. On first use and after seven idle days, ZZIRA posts the canonical
+clause and stable precomputation ID to the app with the normal Connect JWT and
+signed callback headers. Valid returned JQL replaces the whole function clause
+and is cached for later searches; app-managed precomputation REST updates use
+the same record. Every fragment is parsed through the JQL compiler, nested
+expansion is bounded, and final results retain the searching user's visibility.
 
 Connect issue fields support `string`, `text`, `rich_text`, `number`, `date`,
 and `datetime` descriptor types on the canonical text, number, and date-time

@@ -2494,9 +2494,10 @@
       "evidence": [
         "internal/api3/projects_test.go",
         "internal/api3/api3_jql_test.go",
+        "internal/api3/api3_jql_precomputations_test.go",
         "docs/JQL.md"
       ],
-      "notes": "Supported system/custom fields, operators and functions are workspace-scoped and integration-tested; collapsed duplicate-name and complete Jira catalogs remain."
+      "notes": "Supported system/custom fields, operators, built-ins and active installed-app functions are workspace-scoped and integration-tested; collapsed duplicate-name and complete Jira catalogs remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/jql/autocompletedata",
@@ -2506,9 +2507,10 @@
       "evidence": [
         "internal/api3/projects_test.go",
         "internal/api3/api3_jql_test.go",
+        "internal/api3/api3_jql_precomputations_test.go",
         "docs/JQL.md"
       ],
-      "notes": "Supported system/custom fields, operators and functions are workspace-scoped and integration-tested; exact project-ID filtering and collapsed fields remain."
+      "notes": "Supported system/custom fields, operators, built-ins and active installed-app functions are workspace-scoped and integration-tested; exact project-ID filtering and collapsed fields remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/jql/autocompletedata/suggestions",
@@ -2529,10 +2531,13 @@
       "status": "partial",
       "evidence": [
         "internal/api3/api3_jql_precomputations_test.go",
+        "internal/apps/jql_functions_test.go",
+        "internal/apps/jql_functions.go",
+        "internal/store/app_jql_functions.go",
         "internal/store/jql_function_precomputations.go",
         "docs/JQL.md"
       ],
-      "notes": "Signed app-only ownership, durable invocation identity, function filtering, ordering, offset paging, tenant isolation and Jira-shaped records are integration-tested; compiler invocation and complete Forge identity semantics remain."
+      "notes": "Signed app-only ownership, durable invocation identity, function filtering, ordering, offset paging, tenant isolation, Jira-shaped records, installed Connect/native declarations, autocomplete, signed cache-miss evaluation, seven-day expiry and safe compiler expansion are integration-tested; complete Forge identity semantics remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/jql/function/computation",
@@ -2541,10 +2546,12 @@
       "status": "partial",
       "evidence": [
         "internal/api3/api3_jql_precomputations_test.go",
+        "internal/apps/jql_functions_test.go",
+        "internal/apps/jql_functions.go",
         "internal/store/jql_function_precomputations.go",
         "docs/JQL.md"
       ],
-      "notes": "Installation-owned value/error replacement, strict batches, atomic missing-ID failure and explicit skip responses are integration-tested; recalculation dispatch from the compiler remains."
+      "notes": "Installation-owned value/error replacement, strict batches, atomic missing-ID failure, explicit skip responses and compiler-triggered signed recalculation with opted-in error caching are integration-tested; complete Forge identity semantics remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/jql/function/computation/search",
@@ -2553,6 +2560,7 @@
       "status": "partial",
       "evidence": [
         "internal/api3/api3_jql_precomputations_test.go",
+        "internal/apps/jql_functions_test.go",
         "internal/store/jql_function_precomputations.go",
         "docs/JQL.md"
       ],

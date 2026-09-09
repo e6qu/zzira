@@ -38,6 +38,9 @@ func (s *Store) EnsureJQLFunctionPrecomputation(ctx context.Context, installatio
 	if arguments == nil {
 		arguments = []string{}
 	}
+	if _, err := s.Pool.Exec(ctx, `DELETE FROM jql_function_precomputations WHERE installation_id=$1 AND used_at<$2`, installationID, usedAt.Add(-7*24*time.Hour)); err != nil {
+		return nil, err
+	}
 	value, err := scanJQLFunctionPrecomputation(s.Pool.QueryRow(ctx, `
 		INSERT INTO jql_function_precomputations(workspace_id,installation_id,function_key,function_name,field,operator,arguments,used_at)
 		SELECT workspace_id,id,$2,$3,$4,$5,$6,$7 FROM app_installations WHERE id=$1 AND status='active'
@@ -71,10 +74,10 @@ func (s *Store) JQLFunctionPrecomputations(ctx context.Context, installationID s
 		return nil, 0, err
 	}
 	var total int64
-	if err = s.Pool.QueryRow(ctx, `SELECT count(*) FROM jql_function_precomputations WHERE installation_id=$1 AND (cardinality($2::text[])=0 OR function_key=ANY($2))`, installationID, functionKeys).Scan(&total); err != nil {
+	if err = s.Pool.QueryRow(ctx, `SELECT count(*) FROM jql_function_precomputations WHERE installation_id=$1 AND used_at>=now()-interval '7 days' AND (cardinality($2::text[])=0 OR function_key=ANY($2))`, installationID, functionKeys).Scan(&total); err != nil {
 		return nil, 0, err
 	}
-	rows, err := s.Pool.Query(ctx, jqlFunctionPrecomputationSelect+`WHERE installation_id=$1 AND (cardinality($2::text[])=0 OR function_key=ANY($2)) ORDER BY `+order+` OFFSET $3 LIMIT $4`, installationID, functionKeys, startAt, maxResults)
+	rows, err := s.Pool.Query(ctx, jqlFunctionPrecomputationSelect+`WHERE installation_id=$1 AND used_at>=now()-interval '7 days' AND (cardinality($2::text[])=0 OR function_key=ANY($2)) ORDER BY `+order+` OFFSET $3 LIMIT $4`, installationID, functionKeys, startAt, maxResults)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -95,7 +98,7 @@ func (s *Store) JQLFunctionPrecomputationsByID(ctx context.Context, installation
 	if err != nil {
 		return nil, nil, err
 	}
-	rows, err := s.Pool.Query(ctx, jqlFunctionPrecomputationSelect+`WHERE installation_id=$1 AND id::text=ANY($2) ORDER BY `+order, installationID, ids)
+	rows, err := s.Pool.Query(ctx, jqlFunctionPrecomputationSelect+`WHERE installation_id=$1 AND used_at>=now()-interval '7 days' AND id::text=ANY($2) ORDER BY `+order, installationID, ids)
 	if err != nil {
 		return nil, nil, err
 	}

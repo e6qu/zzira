@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/e6qu/zzira/internal/jql"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -21,7 +22,18 @@ import (
 )
 
 type Store struct {
-	Pool *pgxpool.Pool
+	Pool           *pgxpool.Pool
+	AppJQLExpander func(context.Context, string, *jql.Query) error
+}
+
+// ExpandAppJQL applies the installed-app function runtime when configured by
+// the server. Keeping the hook on Store gives every product surface that owns
+// JQL the same expansion behavior without coupling persistence to app HTTP.
+func (s *Store) ExpandAppJQL(ctx context.Context, workspaceID string, query *jql.Query) error {
+	if s == nil || s.AppJQLExpander == nil {
+		return nil
+	}
+	return s.AppJQLExpander(ctx, workspaceID, query)
 }
 
 var ErrInactiveUser = errors.New("user account is inactive")

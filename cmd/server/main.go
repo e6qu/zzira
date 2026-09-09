@@ -149,6 +149,10 @@ func main() {
 		WorkspaceSlug: workspaceSlug, BaseURL: baseURL, InvitationNotificationsConfigured: smtpSender != nil,
 	}
 	api := &api3.Handler{Store: st, Commands: cmdSvc, Blobs: blobs, BaseURL: baseURL, WorkspaceSlug: workspaceSlug}
+	if providerSecrets != nil {
+		appJQL := &apps.JQLFunctionEvaluator{Store: st, Secrets: providerSecrets, Client: &http.Client{Timeout: 10 * time.Second}}
+		st.AppJQLExpander = appJQL.Expand
+	}
 	agileAPI := &agile.Handler{Store: st, Commands: cmdSvc, IssueBean: api.IssueBean, BaseURL: envOr("BASE_URL", "http://localhost:"+port), WorkspaceSlug: workspaceSlug}
 	automationAPI := &automation.Handler{Service: automationSvc, WorkspaceSlug: workspaceSlug}
 	appAPI := &apps.Handler{Store: st, Secrets: providerSecrets, WorkspaceSlug: workspaceSlug}
@@ -168,6 +172,9 @@ func main() {
 		}
 		q, err := jql.Parse(jqlText)
 		if err != nil {
+			return false, err
+		}
+		if err := st.ExpandAppJQL(ctx, wsID, q); err != nil {
 			return false, err
 		}
 		compiled := jql.CompileAt(q, adminID, jql.DefaultResolver(), 1)

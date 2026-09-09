@@ -398,6 +398,9 @@ func (h *Handler) compileJQL(ctx context.Context, workspaceID, raw, currentUser 
 	if err != nil {
 		return jql.Compiled{}, &jerr{http.StatusBadRequest, "Error in the JQL Query: " + err.Error(), nil}
 	}
+	if err := h.Store.ExpandAppJQL(ctx, workspaceID, q); err != nil {
+		return jql.Compiled{}, &jerr{http.StatusBadRequest, "Error in the JQL Query: " + err.Error(), nil}
+	}
 	resolver := jql.DefaultResolver()
 	if customFields, err := h.Store.CustomFieldsForWorkspace(ctx, workspaceID); err == nil {
 		resolver = jql.WithCustomFields(resolver, customFields)

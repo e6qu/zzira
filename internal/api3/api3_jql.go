@@ -114,6 +114,7 @@ func (h *Handler) jqlAutoCompleteData(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	fields := append([]jqlFieldReference{}, jqlSystemFields...)
+	functions := append([]jqlFunctionReference{}, jqlFunctions...)
 	customFields, err := h.Store.CustomFieldsForWorkspace(r.Context(), workspaceID)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "Could not load JQL fields.")
@@ -128,10 +129,38 @@ func (h *Handler) jqlAutoCompleteData(w http.ResponseWriter, r *http.Request) {
 		}
 		fields = append(fields, jqlFieldReference{Value: field.ID, CFID: strings.TrimPrefix(field.ID, "customfield_"), DisplayName: field.Name + " - cf[" + strings.TrimPrefix(field.ID, "customfield_") + "]", Auto: "false", Orderable: "false", Searchable: "true", Operators: operators, Types: types})
 	}
+	appFunctions, err := h.Store.ActiveAppJQLFunctions(r.Context(), workspaceID)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "Could not load JQL functions.")
+		return
+	}
+	for _, function := range appFunctions {
+		arguments := make([]string, 0, len(function.Arguments))
+		for _, argument := range function.Arguments {
+			name := argument.Name
+			if !argument.Required {
+				name = "[" + name + "]"
+			}
+			arguments = append(arguments, name)
+		}
+		types := make([]string, 0, len(function.Types))
+		for _, value := range function.Types {
+			types = append(types, strings.ToUpper(value))
+		}
+		isList := "false"
+		for _, operator := range function.Operators {
+			if operator == "in" || operator == "not_in" {
+				isList = "true"
+			}
+		}
+		display := function.Name + "(" + strings.Join(arguments, ", ") + ")"
+		functions = append(functions, jqlFunctionReference{Value: function.Name + "()", DisplayName: display, IsList: isList, SupportsListAndSingleValueOperators: "true", Types: types})
+	}
 	sort.Slice(fields, func(i, k int) bool {
 		return strings.ToLower(fields[i].DisplayName) < strings.ToLower(fields[k].DisplayName)
 	})
-	writeJSON(w, http.StatusOK, map[string]any{"jqlReservedWords": jqlReservedWords, "visibleFieldNames": fields, "visibleFunctionNames": jqlFunctions})
+	sort.Slice(functions, func(i, k int) bool { return strings.ToLower(functions[i].Value) < strings.ToLower(functions[k].Value) })
+	writeJSON(w, http.StatusOK, map[string]any{"jqlReservedWords": jqlReservedWords, "visibleFieldNames": fields, "visibleFunctionNames": functions})
 }
 
 type jqlSuggestion struct {

@@ -22,7 +22,7 @@ func TestNormalizeBoardConfiguration(t *testing.T) {
 		CardFields:       []string{"labels", "priority"},
 		ColumnLimits:     map[string]int{"todo": 4, "done": 0},
 	}
-	normalized, err := normalizeBoardConfiguration(input, []string{"todo", "done"})
+	normalized, err := normalizeBoardConfiguration(input, []string{"todo", "done"}, nil)
 	if err != nil {
 		t.Fatalf("normalize: %v", err)
 	}
@@ -55,7 +55,7 @@ func TestNormalizeBoardConfigurationRejectsInvalidInput(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := normalizeBoardConfiguration(test.input, []string{"todo"})
+			_, err := normalizeBoardConfiguration(test.input, []string{"todo"}, nil)
 			if !errors.Is(err, ErrBoardValidation) {
 				t.Fatalf("error = %v, want ErrBoardValidation", err)
 			}

@@ -114,7 +114,7 @@ func (s *Store) RankBetween(ctx context.Context, workspaceID, projectID, statusI
 // ---- boards ----
 
 const boardJoin = `
-SELECT b.id, b.project_id, p.key, p.name, b.name, b.type, b.column_status_ids, b.filter_jql,
+SELECT b.id, b.project_id, p.key, p.name, p.workspace_id, b.name, b.type, b.column_status_ids, b.filter_jql,
        b.quick_filters, b.swimlane_strategy, b.card_fields, b.column_limits
 FROM boards b JOIN projects p ON p.id = b.project_id
 `
@@ -122,7 +122,7 @@ FROM boards b JOIN projects p ON p.id = b.project_id
 func scanBoard(row pgx.Row) (*models.Board, error) {
 	b := &models.Board{}
 	var quickFilters, columnLimits []byte
-	err := row.Scan(&b.ID, &b.ProjectID, &b.ProjectKey, &b.ProjectName, &b.Name, &b.Type, &b.ColumnStatusIDs, &b.FilterJQL,
+	err := row.Scan(&b.ID, &b.ProjectID, &b.ProjectKey, &b.ProjectName, &b.WorkspaceID, &b.Name, &b.Type, &b.ColumnStatusIDs, &b.FilterJQL,
 		&quickFilters, &b.SwimlaneStrategy, &b.CardFields, &columnLimits)
 	if err != nil {
 		return b, err
@@ -227,6 +227,9 @@ func (s *Store) BoardIssuesFiltered(ctx context.Context, boardID, userID string,
 	if err != nil {
 		return nil, err
 	}
+	if err := s.ExpandAppJQL(ctx, board.WorkspaceID, query); err != nil {
+		return nil, err
+	}
 	compiled := jql.CompileAt(query, userID, jql.DefaultResolver(), 3)
 	if compiled.Err != nil {
 		return nil, compiled.Err
@@ -268,7 +271,7 @@ func validBoardFilterID(id string) bool {
 	return true
 }
 
-func normalizeBoardConfiguration(input BoardConfigurationUpdate, statusIDs []string) (BoardConfigurationUpdate, error) {
+func normalizeBoardConfiguration(input BoardConfigurationUpdate, statusIDs []string, validate func(*jql.Query) error) (BoardConfigurationUpdate, error) {
 	if input.SwimlaneStrategy != "none" && input.SwimlaneStrategy != "assignee" {
 		return input, fmt.Errorf("%w: swimlanes must be none or assignee", ErrBoardValidation)
 	}
@@ -302,8 +305,14 @@ func normalizeBoardConfiguration(input BoardConfigurationUpdate, statusIDs []str
 		if err != nil {
 			return input, fmt.Errorf("%w: %s: %v", ErrBoardValidation, filter.Name, err)
 		}
-		if compiled := jql.Compile(query, "validation-user", jql.DefaultResolver()); compiled.Err != nil {
-			return input, fmt.Errorf("%w: %s: %v", ErrBoardValidation, filter.Name, compiled.Err)
+		var validationErr error
+		if validate != nil {
+			validationErr = validate(query)
+		} else {
+			validationErr = jql.Compile(query, "validation-user", jql.DefaultResolver()).Err
+		}
+		if validationErr != nil {
+			return input, fmt.Errorf("%w: %s: %v", ErrBoardValidation, filter.Name, validationErr)
 		}
 		filter.Position = index
 	}
@@ -356,7 +365,16 @@ func (s *Store) UpdateBoardConfiguration(ctx context.Context, actorID, workspace
 	if err != nil {
 		return nil, nil, err
 	}
-	input, err = normalizeBoardConfiguration(input, board.ColumnStatusIDs)
+	fields, err := s.CustomFieldsForWorkspace(ctx, workspaceID)
+	if err != nil {
+		return nil, nil, err
+	}
+	input, err = normalizeBoardConfiguration(input, board.ColumnStatusIDs, func(query *jql.Query) error {
+		if err := s.ExpandAppJQL(ctx, workspaceID, query); err != nil {
+			return err
+		}
+		return jql.Compile(query, "validation-user", jql.WithCustomFields(jql.DefaultResolver(), fields)).Err
+	})
 	if err != nil {
 		return nil, nil, err
 	}

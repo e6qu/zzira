@@ -111,6 +111,29 @@ func (s *Store) loadAppChildren(ctx context.Context, value *models.AppInstallati
 		return err
 	}
 	fieldRows.Close()
+	functionRows, err := s.Pool.Query(ctx, `SELECT id::text,installation_id,module_key,function_name,path,arguments,types,operators FROM app_jql_function_modules WHERE installation_id=$1 ORDER BY lower(function_name),id`, value.ID)
+	if err != nil {
+		return err
+	}
+	for functionRows.Next() {
+		var function models.AppJQLFunction
+		var arguments []byte
+		function.AppKey, function.BaseURL, function.Format = value.Key, value.BaseURL, value.Format
+		if err := functionRows.Scan(&function.ID, &function.InstallationID, &function.Key, &function.Name, &function.Path, &arguments, &function.Types, &function.Operators); err != nil {
+			functionRows.Close()
+			return err
+		}
+		if err := json.Unmarshal(arguments, &function.Arguments); err != nil {
+			functionRows.Close()
+			return err
+		}
+		value.JQLFunctions = append(value.JQLFunctions, function)
+	}
+	if err := functionRows.Err(); err != nil {
+		functionRows.Close()
+		return err
+	}
+	functionRows.Close()
 	scheduleRows, err := s.Pool.Query(ctx, `SELECT id::text,module_key,path,interval_name,next_run_at FROM app_scheduled_triggers WHERE installation_id=$1 ORDER BY module_key`, value.ID)
 	if err != nil {
 		return err
@@ -182,6 +205,15 @@ func writeAppChildren(ctx context.Context, tx pgx.Tx, installationID string, des
 	}
 	for _, field := range descriptor.IssueFields {
 		if err := writeAppIssueField(ctx, tx, installationID, field, false); err != nil {
+			return err
+		}
+	}
+	for _, function := range descriptor.JQLFunctions {
+		arguments, err := json.Marshal(function.Arguments)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO app_jql_function_modules(installation_id,module_key,function_name,path,arguments,types,operators) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(installation_id,module_key) DO UPDATE SET function_name=EXCLUDED.function_name,path=EXCLUDED.path,arguments=EXCLUDED.arguments,types=EXCLUDED.types,operators=EXCLUDED.operators`, installationID, function.Key, function.Name, function.Path, arguments, function.Types, function.Operators); err != nil {
 			return err
 		}
 	}
@@ -260,6 +292,12 @@ func (s *Store) InstallApp(ctx context.Context, workspaceID, actorID string, des
 	if _, err := tx.Exec(ctx, `DELETE FROM app_modules WHERE installation_id=$1`, installationID); err != nil {
 		return nil, err
 	}
+	if _, err := tx.Exec(ctx, `DELETE FROM app_jql_function_modules WHERE installation_id=$1`, installationID); err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM jql_function_precomputations WHERE installation_id=$1`, installationID); err != nil {
+		return nil, err
+	}
 	if _, err := tx.Exec(ctx, `UPDATE custom_fields SET active=false WHERE app_installation_id=$1`, installationID); err != nil {
 		return nil, err
 	}
@@ -288,6 +326,9 @@ func (s *Store) InstallApp(ctx context.Context, workspaceID, actorID string, des
 	}
 	for _, field := range descriptor.IssueFields {
 		staticModuleKeys = append(staticModuleKeys, field.Key)
+	}
+	for _, function := range descriptor.JQLFunctions {
+		staticModuleKeys = append(staticModuleKeys, function.Key)
 	}
 	if err := restoreDynamicAppModules(ctx, tx, installationID, staticModuleKeys); err != nil {
 		return nil, err
@@ -349,6 +390,9 @@ func (s *Store) UpdateAppState(ctx context.Context, workspaceID, actorID, appKey
 			if _, err := tx.Exec(ctx, `DELETE FROM app_modules WHERE installation_id=$1`, installationID); err != nil {
 				return err
 			}
+			if _, err := tx.Exec(ctx, `DELETE FROM app_jql_function_modules WHERE installation_id=$1`, installationID); err != nil {
+				return err
+			}
 			if _, err := tx.Exec(ctx, `DELETE FROM app_scopes WHERE installation_id=$1`, installationID); err != nil {
 				return err
 			}
@@ -395,6 +439,15 @@ func (s *Store) UpgradeApp(ctx context.Context, workspaceID, appKey string, desc
 	if err := deleteAppOutboundConfig(ctx, tx, installationID); err != nil {
 		return err
 	}
+	// Descriptor changes can alter a function's argument, type, or operator
+	// contract without changing its key. Rebuild declarations and cached
+	// fragments together so an old result is never evaluated under a new contract.
+	if _, err := tx.Exec(ctx, `DELETE FROM app_jql_function_modules WHERE installation_id=$1`, installationID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM jql_function_precomputations WHERE installation_id=$1`, installationID); err != nil {
+		return err
+	}
 	moduleKeys := make([]string, 0, len(descriptor.Modules))
 	for _, module := range descriptor.Modules {
 		moduleKeys = append(moduleKeys, module.Key)
@@ -405,6 +458,9 @@ func (s *Store) UpgradeApp(ctx context.Context, workspaceID, appKey string, desc
 	}
 	for _, field := range descriptor.IssueFields {
 		conflictKeys = append(conflictKeys, field.Key)
+	}
+	for _, function := range descriptor.JQLFunctions {
+		conflictKeys = append(conflictKeys, function.Key)
 	}
 	if len(conflictKeys) > 0 {
 		if _, err := tx.Exec(ctx, `DELETE FROM app_modules WHERE installation_id=$1 AND dynamic AND module_key=ANY($2)`, installationID, conflictKeys); err != nil {

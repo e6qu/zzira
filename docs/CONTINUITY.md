@@ -18,7 +18,8 @@ boundaries, dependencies, and acceptance gates belong in
   precomputations, complete search projection/expansion plumbing, immutable
   numeric Jira issue IDs, strong-consistency reconciliation, and durable
   enhanced-search result snapshots, plus relation-backed Jira list functions
-  and multi-value fields implemented
+  and multi-value fields, installed-app JQL declarations, signed evaluation,
+  durable expansion, and autocomplete implemented
 - Blockers: none
 
 ## Contract baseline
@@ -51,7 +52,13 @@ migration operations share the same parser, compiler, field registry, and
 permission-filtered issue search. The three app-function precomputation
 operations now use durable installation-owned records, app-principal
 authorization, paging and filtering, ID search, and atomic value/error updates.
-Compiler invocation of registered app functions remains separate work.
+Connect and native descriptors now persist typed app-function declarations.
+Search compilation records each invocation, calls the signed app endpoint on a
+cache miss, reuses seven-day precomputations, exposes functions in autocomplete,
+and parses returned fragments through bounded recursive JQL expansion before
+the normal visibility-scoped search. REST, navigator, board/quick-filter,
+dashboard, service queue/SLA, automation, and webhook JQL paths share that
+runtime hook.
 
 Legacy and enhanced search now share strict option validation, selected-field
 projection, installed-app field-key aliases, names/schema/rendered expansion,
@@ -80,8 +87,7 @@ also run the PostgreSQL integration suite from an empty migrated database.
 
 ## Resume here
 
-1. Add installed-app precomputation invocation and the remaining built-in
-   function and multi-value field semantics.
+1. Add the remaining built-in function and multi-value field semantics.
 2. Add filter-subscription scheduling and delivery after shared scheduled-work
    primitives are ready.
 3. Continue into bulk work-item and project administration slices.

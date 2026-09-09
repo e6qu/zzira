@@ -267,6 +267,9 @@ func (s *Service) validateServiceSLAGoal(ctx context.Context, workspaceID, name,
 	if parsed.OrderBy != nil {
 		return "", "", fmt.Errorf("conditional SLA goal JQL cannot contain ORDER BY")
 	}
+	if err := s.Store.ExpandAppJQL(ctx, workspaceID, parsed); err != nil {
+		return "", "", err
+	}
 	resolver := jql.DefaultResolver()
 	fields, err := s.Store.CustomFieldsForWorkspace(ctx, workspaceID)
 	if err != nil {
@@ -354,6 +357,9 @@ func (s *Service) validateServiceQueue(ctx context.Context, workspaceID, name, q
 	}
 	parsed, err := jql.Parse(query)
 	if err != nil {
+		return "", "", err
+	}
+	if err := s.Store.ExpandAppJQL(ctx, workspaceID, parsed); err != nil {
 		return "", "", err
 	}
 	resolver := jql.DefaultResolver()

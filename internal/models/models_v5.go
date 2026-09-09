@@ -18,6 +18,7 @@ type Board struct {
 	ProjectID        string             `json:"projectId"`
 	ProjectKey       string             `json:"-"`
 	ProjectName      string             `json:"-"`
+	WorkspaceID      string             `json:"-"`
 	Name             string             `json:"name"`
 	Type             string             `json:"type"`
 	ColumnStatusIDs  []string           `json:"columnStatusIds"`

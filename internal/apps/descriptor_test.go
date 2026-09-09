@@ -185,6 +185,40 @@ func TestParseConnectDescriptorTranslatesSupportedModules(t *testing.T) {
 	}
 }
 
+func TestParseConnectDescriptorValidatesJQLFunctions(t *testing.T) {
+	raw := []byte(`{
+  "key":"connect.search","name":"Search functions","baseUrl":"https://connect.example.test/base",
+  "authentication":{"type":"jwt"},"scopes":["READ"],
+  "modules":{"jiraJqlFunctions":[{
+    "key":"risk-issues","name":"riskIssues","url":"/jql/risk",
+    "arguments":[{"name":"level","required":true},{"name":"team","required":false}],
+    "types":["issue"],"operators":["in","not_in"]
+  }]}
+}`)
+	descriptor, err := ParseDescriptor(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(descriptor.JQLFunctions) != 1 {
+		t.Fatalf("JQL functions = %+v", descriptor.JQLFunctions)
+	}
+	function := descriptor.JQLFunctions[0]
+	if function.Key != "risk-issues" || function.Name != "riskIssues" || function.Path != "/jql/risk" || len(function.Arguments) != 2 || len(function.Types) != 1 || len(function.Operators) != 2 {
+		t.Fatalf("JQL function = %+v", function)
+	}
+	cases := []string{
+		`{"key":"connect.search","name":"Search","baseUrl":"https://connect.example.test","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"jiraJqlFunctions":[{"key":"risk","name":"currentUser","url":"/jql","arguments":[],"types":["user"],"operators":["="]}]}}`,
+		`{"key":"connect.search","name":"Search","baseUrl":"https://connect.example.test","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"jiraJqlFunctions":[{"key":"risk","name":"riskIssues","url":"https://outside.test/jql","arguments":[],"types":["issue"],"operators":["in"]}]}}`,
+		`{"key":"connect.search","name":"Search","baseUrl":"https://connect.example.test","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"jiraJqlFunctions":[{"key":"risk","name":"riskIssues","url":"/jql","arguments":[{"name":"same","required":false},{"name":"same","required":true}],"types":["issue"],"operators":["in"]}]}}`,
+		`{"key":"connect.search","name":"Search","baseUrl":"https://connect.example.test","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"jiraJqlFunctions":[{"key":"risk","name":"riskIssues","url":"/jql","arguments":[],"types":["issue"],"operators":["contains"]}]}}`,
+	}
+	for _, input := range cases {
+		if _, err := ParseDescriptor([]byte(input)); err == nil {
+			t.Fatalf("accepted invalid JQL function descriptor: %s", input)
+		}
+	}
+}
+
 func TestTranslateConnectIssueTabPanelDefaultsWeight(t *testing.T) {
 	module, err := translateConnectIssueTabPanel(connectIssueTabPanelWire{
 		Key: strings.Repeat("a", 100), URL: "/deployments?issue={issue.key}", Name: connectNameWire{Value: "Deployments"},

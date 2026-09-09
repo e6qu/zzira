@@ -152,7 +152,7 @@ func parseNavigatorParams(values url.Values) navigatorParams {
 	return params
 }
 
-func compileNavigatorSearch(projectKey, userID string, p navigatorParams) (jql.Compiled, error) {
+func compileNavigatorSearch(ctx context.Context, st *store.Store, workspaceID, projectKey, userID string, p navigatorParams) (jql.Compiled, error) {
 	var query *jql.Query
 	if p.Mode == "advanced" {
 		parsed, err := jql.Parse(p.JQL)
@@ -196,6 +196,11 @@ func compileNavigatorSearch(projectKey, userID string, p navigatorParams) (jql.C
 	if p.Mode == "basic" || p.SortSet {
 		query.OrderBy = &jql.Order{Field: p.Sort, Desc: p.Direction == "desc"}
 		query.Orders = nil
+	}
+	if st != nil {
+		if err := st.ExpandAppJQL(ctx, workspaceID, query); err != nil {
+			return jql.Compiled{}, err
+		}
 	}
 	compiled := jql.CompileAt(query, userID, jql.DefaultResolver(), 2)
 	if compiled.Err != nil {
@@ -1188,7 +1193,7 @@ func (h *Handler) ProjectIssues(w http.ResponseWriter, r *http.Request, key stri
 	} else {
 		data.SaveJQL = params.JQL
 	}
-	compiled, err := compileNavigatorSearch(project.Key, user.ID, params)
+	compiled, err := compileNavigatorSearch(r.Context(), h.Store, wsID, project.Key, user.ID, params)
 	if filterError != "" {
 		data.JQLError = filterError
 	} else if err != nil {
@@ -1283,7 +1288,7 @@ func (h *Handler) SaveNavigatorFilter(w http.ResponseWriter, r *http.Request, pr
 		http.Error(w, "filter name is required", http.StatusBadRequest)
 		return
 	}
-	if _, err := compileNavigatorSearch(project.Key, user.ID, navigatorParams{Mode: "advanced", JQL: filterJQL, Sort: "updated", Direction: "desc"}); err != nil {
+	if _, err := compileNavigatorSearch(r.Context(), h.Store, wsID, project.Key, user.ID, navigatorParams{Mode: "advanced", JQL: filterJQL, Sort: "updated", Direction: "desc"}); err != nil {
 		http.Error(w, "invalid JQL: "+err.Error(), http.StatusBadRequest)
 		return
 	}
