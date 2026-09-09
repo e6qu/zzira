@@ -311,8 +311,11 @@ while the current PR has failing CI, unresolved review threads, unrecorded
 contract gaps, or uncommitted work.
 
 The completed PR 1 checkpoints cover durable bulk edit/delete/move/transition,
-site configuration, project governance, and project lifecycle. Continue with
-project roles, permission/notification/security/field/screen schemes, templates,
-hierarchy, remaining field and ADF families, import/export, and the unassessed
-Jira Platform operations. Keep each checkpoint vertical and independently
-reviewable even while it contributes to the same large PR delivery unit.
+site configuration, project governance, project lifecycle, and the complete
+15-operation project-role surface with global defaults, project assignments,
+delegated access administration, safe swaps, filter-sharing integration and
+browser journeys. Continue with permission/notification/security/field/screen
+schemes, templates, hierarchy, remaining field and ADF families, import/export,
+and the unassessed Jira Platform operations. Keep each checkpoint vertical and
+independently reviewable even while it contributes to the same large PR
+delivery unit.

@@ -124,15 +124,3 @@ func (h *Handler) workflowRoute(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, http.StatusNotFound, "No resource found")
 	}
 }
-
-// roleRoute serves GET /rest/api/3/role — the workspace role registry.
-func (h *Handler) roleRoute(w http.ResponseWriter, r *http.Request) {
-	if _, _, e := h.authWorkspace(r); e != nil {
-		writeJerr(w, e)
-		return
-	}
-	writeJSON(w, http.StatusOK, []map[string]any{
-		{"id": 10000, "name": "Administrator", "description": "Workspace administrators", "self": h.BaseURL + "/rest/api/3/role/10000"},
-		{"id": 10001, "name": "Member", "description": "Workspace members", "self": h.BaseURL + "/rest/api/3/role/10001"},
-	})
-}

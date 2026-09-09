@@ -37,7 +37,7 @@ Private filters are visible only to their owner. A user must be able to view a
 filter before favoriting it or reading its columns and permissions. Group
 shares follow current directory membership. Project shares follow the
 workspace's project visibility model; project-role shares additionally evaluate
-the built-in Administrator and Member roles or an exact project role binding.
+any registered project role through its exact project assignment.
 
 Filter creation, updates, deletion, share changes, and owner transfer write
 organization audit events without storing the filter's JQL in the audit detail.

@@ -41,6 +41,7 @@ type savedFiltersPageData struct {
 	Members      []*models.User
 	Groups       []*models.Group
 	Projects     []*models.Project
+	ProjectRoles []*models.ProjectRole
 	DefaultScope string
 	Notice       string
 	Error        string
@@ -100,6 +101,12 @@ func (h *Handler) SavedFilters(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	projectRoles, err := h.Store.ProjectRoles(r.Context(), workspaceID)
+	if err != nil {
+		log.Printf("saved filters project roles: %v", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 	scope, err := h.Store.FilterDefaultShareScope(r.Context(), workspaceID, user.ID)
 	if err != nil {
 		log.Printf("saved filters default share scope: %v", err)
@@ -112,7 +119,7 @@ func (h *Handler) SavedFilters(w http.ResponseWriter, r *http.Request) {
 	}
 	data := savedFiltersPageData{
 		Rows:    savedFilterRows(filters, user.ID, admin, projectKey),
-		Members: members, Groups: groups, Projects: projects, DefaultScope: scope,
+		Members: members, Groups: groups, Projects: projects, ProjectRoles: projectRoles, DefaultScope: scope,
 		Notice: strings.TrimSpace(r.URL.Query().Get("notice")),
 		Error:  strings.TrimSpace(r.URL.Query().Get("error")), CanAdmin: admin,
 	}

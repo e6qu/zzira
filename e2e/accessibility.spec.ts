@@ -83,7 +83,8 @@ test('WCAG A/AA: every primary page passes axe in light and dark themes', async 
   expect(schemeHref).toMatch(/^\/settings\/workflow-schemes\//);
   const pages = [
     '/', '/dashboard', '/notifications', '/projects', '/projects/ZZ', '/people', '/profile',
-    '/settings/workflows', '/settings/workflows/wf_default', '/settings/workflow-schemes', '/settings/statuses', '/projects/new', '/projects/ZZ/settings', '/wiki',
+    '/settings/workflows', '/settings/workflows/wf_default', '/settings/workflow-schemes', '/settings/statuses', '/settings/project-roles',
+    '/projects/new', '/projects/ZZ/settings', '/projects/ZZ/settings/roles', '/wiki',
     '/issues/ZZ', '/board/brd_default/backlog', '/board/brd_default', '/board/brd_default/settings', issueHref, schemeHref!,
   ];
 
