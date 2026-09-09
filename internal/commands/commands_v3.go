@@ -110,7 +110,13 @@ func (s *Service) DeleteAttachment(ctx context.Context, actorID, workspaceID, at
 	}
 	if s.Blobs != nil {
 		if err := s.Blobs.Delete(ctx, blobRef); err != nil {
-			return action, fmt.Errorf("attachment metadata deleted but blob %q cleanup failed: %w", blobRef, err)
+			if deferErr := s.Store.DeferAttachmentBlobDeletion(ctx, blobRef, err.Error(), 1); deferErr != nil {
+				return action, fmt.Errorf("attachment metadata deleted but blob %q cleanup deferral failed after %v: %w", blobRef, err, deferErr)
+			}
+			return action, nil
+		}
+		if err := s.Store.CompleteAttachmentBlobDeletion(ctx, blobRef); err != nil {
+			return action, fmt.Errorf("attachment blob %q deleted but cleanup completion failed: %w", blobRef, err)
 		}
 	}
 	return action, nil

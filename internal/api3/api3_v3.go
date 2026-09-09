@@ -1,12 +1,18 @@
 package api3
 
 import (
+	"archive/zip"
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"mime"
 	"net/http"
+	"path/filepath"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/e6qu/zzira/internal/adf"
 	"github.com/e6qu/zzira/internal/authz"
@@ -102,8 +108,16 @@ func (h *Handler) issueWorklogRoute(w http.ResponseWriter, r *http.Request, idOr
 
 // ---- attachments ----
 
+func (h *Handler) attachmentSettings(w http.ResponseWriter, r *http.Request) {
+	if _, _, e := h.authWorkspace(r); e != nil {
+		writeJerr(w, e)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"enabled": h.Blobs != nil, "uploadLimit": 32 << 20})
+}
+
 func (h *Handler) attachmentBean(a *models.Attachment) map[string]any {
-	return map[string]any{
+	bean := map[string]any{
 		"id":       a.ID,
 		"self":     h.BaseURL + "/rest/api/3/attachment/" + a.ID,
 		"filename": a.Filename,
@@ -113,6 +127,10 @@ func (h *Handler) attachmentBean(a *models.Attachment) map[string]any {
 		"author":   map[string]any{"accountId": a.AuthorID, "displayName": a.AuthorName, "active": true, "accountType": "atlassian"},
 		"content":  h.BaseURL + "/rest/api/3/attachment/content/" + a.ID,
 	}
+	if strings.HasPrefix(a.MimeType, "image/") {
+		bean["thumbnail"] = h.BaseURL + "/rest/api/3/attachment/thumbnail/" + a.ID
+	}
+	return bean
 }
 
 // uploadAttachments implements POST /issue/{id}/attachments with Jira's CSRF
@@ -271,6 +289,19 @@ func (h *Handler) attachmentContent(w http.ResponseWriter, r *http.Request, id s
 			log.Printf("attachment content close: %v", err)
 		}
 	}()
+	if r.Header.Get("Range") != "" {
+		contents, readErr := io.ReadAll(io.LimitReader(rc, (32<<20)+1))
+		if readErr != nil || len(contents) > 32<<20 {
+			jiraError(w, http.StatusInternalServerError, "Attachment content could not be read.")
+			return
+		}
+		w.Header().Set("Content-Type", mimeType)
+		if disposition := mime.FormatMediaType("attachment", map[string]string{"filename": filename}); disposition != "" {
+			w.Header().Set("Content-Disposition", disposition)
+		}
+		http.ServeContent(w, r, filename, time.Time{}, bytes.NewReader(contents))
+		return
+	}
 	w.Header().Set("Content-Type", mimeType)
 	if disposition := mime.FormatMediaType("attachment", map[string]string{"filename": filename}); disposition != "" {
 		w.Header().Set("Content-Disposition", disposition)
@@ -281,6 +312,124 @@ func (h *Handler) attachmentContent(w http.ResponseWriter, r *http.Request, id s
 	if _, err := io.Copy(w, rc); err != nil {
 		log.Printf("attachment content stream: %v", err)
 	}
+}
+
+func (h *Handler) attachmentThumbnail(w http.ResponseWriter, r *http.Request, id string) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", "GET")
+		jiraError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	wsID, userID, e := h.authWorkspace(r)
+	if e != nil {
+		writeJerr(w, e)
+		return
+	}
+	att, e := h.attachmentForUser(r, wsID, userID, id)
+	if e != nil {
+		writeJerr(w, e)
+		return
+	}
+	if !strings.HasPrefix(att.MimeType, "image/") && r.URL.Query().Get("fallbackToDefault") == "false" {
+		jiraError(w, http.StatusNotFound, "Attachment does not have a thumbnail.")
+		return
+	}
+	blobRef, _, mimeType, err := h.Store.AttachmentBlobRef(r.Context(), wsID, id)
+	if err != nil {
+		jiraError(w, http.StatusNotFound, "Attachment does not exist.")
+		return
+	}
+	rc, size, err := h.Blobs.Get(r.Context(), blobRef)
+	if err != nil {
+		jiraError(w, http.StatusNotFound, "Attachment does not exist.")
+		return
+	}
+	defer func() {
+		if closeErr := rc.Close(); closeErr != nil {
+			log.Printf("attachment thumbnail close: %v", closeErr)
+		}
+	}()
+	w.Header().Set("Content-Type", mimeType)
+	w.Header().Set("Content-Disposition", "inline")
+	if size > 0 {
+		w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
+	}
+	if _, err := io.Copy(w, rc); err != nil {
+		log.Printf("attachment thumbnail stream: %v", err)
+	}
+}
+
+func (h *Handler) attachmentArchive(w http.ResponseWriter, r *http.Request, id, representation string) {
+	if representation != "human" && representation != "raw" {
+		jiraError(w, http.StatusNotFound, "No resource found")
+		return
+	}
+	wsID, userID, e := h.authWorkspace(r)
+	if e != nil {
+		writeJerr(w, e)
+		return
+	}
+	att, e := h.attachmentForUser(r, wsID, userID, id)
+	if e != nil {
+		writeJerr(w, e)
+		return
+	}
+	blobRef, _, _, err := h.Store.AttachmentBlobRef(r.Context(), wsID, id)
+	if err != nil {
+		jiraError(w, http.StatusNotFound, "Attachment does not exist.")
+		return
+	}
+	rc, _, err := h.Blobs.Get(r.Context(), blobRef)
+	if err != nil {
+		jiraError(w, http.StatusNotFound, "Attachment does not exist.")
+		return
+	}
+	contents, readErr := io.ReadAll(io.LimitReader(rc, (32<<20)+1))
+	closeErr := rc.Close()
+	if readErr != nil || closeErr != nil || len(contents) > 32<<20 {
+		jiraError(w, http.StatusInternalServerError, "Attachment archive could not be read.")
+		return
+	}
+	archive, err := zip.NewReader(bytes.NewReader(contents), int64(len(contents)))
+	if err != nil {
+		if strings.EqualFold(filepath.Ext(att.Filename), ".zip") || att.MimeType == "application/zip" {
+			jiraError(w, http.StatusConflict, "Attachment archive is corrupt or unsupported.")
+			return
+		}
+		if representation == "human" {
+			writeJSON(w, http.StatusOK, map[string]any{"id": att.ID, "name": att.Filename, "mediaType": att.MimeType, "entries": []any{}, "totalEntryCount": 0})
+		} else {
+			writeJSON(w, http.StatusOK, map[string]any{"entries": []any{}, "totalEntryCount": 0})
+		}
+		return
+	}
+	entries := make([]map[string]any, 0, len(archive.File))
+	for index, file := range archive.File {
+		mediaType := mime.TypeByExtension(filepath.Ext(file.Name))
+		if mediaType == "" {
+			mediaType = "application/octet-stream"
+		}
+		if representation == "human" {
+			entries = append(entries, map[string]any{"index": index, "label": file.Name, "path": file.Name, "mediaType": mediaType, "size": humanAttachmentSize(int64(file.UncompressedSize64))})
+		} else {
+			entries = append(entries, map[string]any{"entryIndex": index, "name": file.Name, "mediaType": mediaType, "size": file.UncompressedSize64})
+		}
+	}
+	if representation == "human" {
+		writeJSON(w, http.StatusOK, map[string]any{"id": att.ID, "name": att.Filename, "mediaType": att.MimeType, "entries": entries, "totalEntryCount": len(entries)})
+	} else {
+		writeJSON(w, http.StatusOK, map[string]any{"entries": entries, "totalEntryCount": len(entries)})
+	}
+}
+
+func humanAttachmentSize(size int64) string {
+	if size < 1000 {
+		return fmt.Sprintf("%d B", size)
+	}
+	if size < 1_000_000 {
+		return fmt.Sprintf("%.1f kB", float64(size)/1000)
+	}
+	return fmt.Sprintf("%.2f MB", float64(size)/1_000_000)
 }
 
 // attachmentForUser keeps attachment metadata and bytes behind the same

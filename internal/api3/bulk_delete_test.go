@@ -1,6 +1,8 @@
 package api3
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -99,6 +101,53 @@ func TestBulkDeleteUsesDurableTaskAndAttachmentCleanup(t *testing.T) {
 	blobRef, _, _, err := st.AttachmentBlobRef(ctx, workspaceID, attachment.ID)
 	if err != nil {
 		t.Fatal(err)
+	}
+	settings := call(adminID, "GET", "/rest/api/3/attachment/meta", "", 200)
+	if !strings.Contains(settings.Body.String(), `"enabled":true`) || !strings.Contains(settings.Body.String(), `"uploadLimit":33554432`) {
+		t.Fatal(settings.Body.String())
+	}
+	metadata := call(adminID, "GET", "/rest/api/3/attachment/"+attachment.ID, "", 200)
+	if !strings.Contains(metadata.Body.String(), `"filename":"delete.txt"`) {
+		t.Fatal(metadata.Body.String())
+	}
+	rangeRequest := httptest.NewRequest("GET", "/rest/api/3/attachment/content/"+attachment.ID, nil)
+	rangeRequest.SetBasicAuth(adminID+"@example.test", adminID)
+	rangeRequest.Header.Set("Range", "bytes=0-5")
+	rangeResponse := httptest.NewRecorder()
+	handler.ServeHTTP(rangeResponse, rangeRequest)
+	if rangeResponse.Code != 206 || rangeResponse.Body.String() != "delete" {
+		t.Fatalf("range status=%d body=%q", rangeResponse.Code, rangeResponse.Body.String())
+	}
+	call(adminID, "GET", "/rest/api/3/attachment/thumbnail/"+attachment.ID+"?fallbackToDefault=false", "", 404)
+	var archive bytes.Buffer
+	writer := zip.NewWriter(&archive)
+	entry, err := writer.Create("evidence/report.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := entry.Write([]byte("archive evidence")); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	archiveAttachment, _, err := service.AddAttachment(ctx, adminID, workspaceID, first.ID, "evidence.zip", "application/zip", bytes.NewReader(archive.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	archiveBlob, _, _, err := st.AttachmentBlobRef(ctx, workspaceID, archiveAttachment.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if expanded := call(adminID, "GET", "/rest/api/3/attachment/"+archiveAttachment.ID+"/expand/human", "", 200); !strings.Contains(expanded.Body.String(), `"path":"evidence/report.txt"`) || !strings.Contains(expanded.Body.String(), `"totalEntryCount":1`) {
+		t.Fatal(expanded.Body.String())
+	}
+	if expanded := call(adminID, "GET", "/rest/api/3/attachment/"+archiveAttachment.ID+"/expand/raw", "", 200); !strings.Contains(expanded.Body.String(), `"name":"evidence/report.txt"`) || !strings.Contains(expanded.Body.String(), `"size":16`) {
+		t.Fatal(expanded.Body.String())
+	}
+	call(adminID, "DELETE", "/rest/api/3/attachment/"+archiveAttachment.ID, "", 204)
+	if _, _, err := blobs.Get(ctx, archiveBlob); !errors.Is(err, attachments.ErrNotFound) {
+		t.Fatalf("deleted archive blob still exists: %v", err)
 	}
 	call(memberID, "POST", "/rest/api/3/bulk/issues/delete", `{"selectedIssueIdsOrKeys":["`+issues[0].Key+`"]}`, 403)
 	call(adminID, "POST", "/rest/api/3/bulk/issues/delete", `{"selectedIssueIdsOrKeys":["`+issues[0].Key+`","`+issues[0].Key+`"]}`, 400)

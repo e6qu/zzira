@@ -219,10 +219,21 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.filterCRUD(w, r, strings.TrimPrefix(path, "/filter/"))
 	case path == "/bootstrap" && r.Method == http.MethodGet:
 		h.bootstrap(w, r)
+	case path == "/attachment/meta" && r.Method == http.MethodGet:
+		h.attachmentSettings(w, r)
 	case strings.HasPrefix(path, "/attachment/content/"):
 		h.attachmentContent(w, r, strings.TrimPrefix(path, "/attachment/content/"))
+	case strings.HasPrefix(path, "/attachment/thumbnail/"):
+		h.attachmentThumbnail(w, r, strings.TrimPrefix(path, "/attachment/thumbnail/"))
 	case strings.HasPrefix(path, "/attachment/"):
-		h.attachmentMeta(w, r, strings.TrimPrefix(path, "/attachment/"))
+		parts := strings.Split(strings.TrimPrefix(path, "/attachment/"), "/")
+		if len(parts) == 3 && parts[1] == "expand" && r.Method == http.MethodGet {
+			h.attachmentArchive(w, r, parts[0], parts[2])
+		} else if len(parts) == 1 {
+			h.attachmentMeta(w, r, parts[0])
+		} else {
+			jiraError(w, http.StatusNotFound, "No resource found")
+		}
 	case strings.HasPrefix(path, "/issue/"):
 		parts := strings.Split(strings.TrimPrefix(path, "/issue/"), "/")
 		h.issueRoute(w, r, parts)

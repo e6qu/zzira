@@ -226,6 +226,11 @@ func (s *Store) DeleteAttachment(ctx context.Context, actorID, workspaceID, atta
 		WorkspaceID: workspaceID, Seq: seq, EntityType: models.EntityAttachment, EntityID: attachmentID,
 		Op: models.OpDelete, SchemaV: models.SchemaVersion, Payload: payload, ActorID: actorID,
 	}
+	if _, err = tx.Exec(ctx, `
+		INSERT INTO attachment_blob_deletions(blob_ref,workspace_id,issue_id)
+		VALUES($1,$2,$3) ON CONFLICT (blob_ref) DO NOTHING`, blobRef, workspaceID, issueID); err != nil {
+		return "", "", nil, err
+	}
 	if _, err = tx.Exec(ctx, `DELETE FROM attachments WHERE id=$1 AND workspace_id=$2`, attachmentID, workspaceID); err != nil {
 		return "", "", nil, err
 	}
