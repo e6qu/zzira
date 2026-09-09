@@ -125,6 +125,12 @@ func TestJiraSiteConfigurationContractJourney(t *testing.T) {
 	if len(columns) != 3 || columns[2].(map[string]any)["value"] != "status" {
 		t.Fatalf("columns = %#v", columns)
 	}
+	call(adminID, http.MethodPut, "/rest/api/3/settings/columns", strings.Repeat("columns=summary&", 70000), "application/x-www-form-urlencoded", http.StatusBadRequest)
+	call(adminID, http.MethodPut, "/rest/api/3/settings/columns", "", "application/x-www-form-urlencoded", http.StatusOK)
+	columns = call(adminID, http.MethodGet, "/rest/api/3/settings/columns", "", "", http.StatusOK).([]any)
+	if len(columns) != 0 {
+		t.Fatalf("cleared columns = %#v", columns)
+	}
 
 	if err := service.UpdateGlobalJiraConfiguration(ctx, workspaceID, adminID, models.JiraSiteConfiguration{AttachmentsEnabled: true, IssueLinkingEnabled: true, SubTasksEnabled: true, UnassignedIssuesAllowed: true, VotingEnabled: true, WatchingEnabled: true}); err != nil {
 		t.Fatal(err)
@@ -149,7 +155,7 @@ func TestJiraSiteConfigurationContractJourney(t *testing.T) {
 	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM actions WHERE workspace_id=$1 AND entity_type='jira_configuration'`, workspaceID).Scan(&actions); err != nil {
 		t.Fatal(err)
 	}
-	if audits != 6 || actions != audits {
+	if audits != 7 || actions != audits {
 		t.Fatalf("audit/action counts = %d/%d", audits, actions)
 	}
 }

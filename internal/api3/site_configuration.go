@@ -267,15 +267,22 @@ func (h *Handler) issueNavigatorColumns(w http.ResponseWriter, r *http.Request) 
 		}
 		writeJSON(w, http.StatusOK, items)
 	case http.MethodPut:
-		if err := r.ParseMultipartForm(1 << 20); err != nil && !errors.Is(err, http.ErrNotMultipart) {
-			jiraError(w, http.StatusBadRequest, "Could not parse issue navigator columns.")
-			return
-		}
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 		if err := r.ParseForm(); err != nil {
 			jiraError(w, http.StatusBadRequest, "Could not parse issue navigator columns.")
 			return
 		}
-		if err := h.Commands.UpdateNavigatorColumns(r.Context(), workspaceID, actorID, r.Form["columns"]); err != nil {
+		if strings.HasPrefix(strings.ToLower(r.Header.Get("Content-Type")), "multipart/form-data") {
+			if err := r.ParseMultipartForm(1 << 20); err != nil {
+				jiraError(w, http.StatusBadRequest, "Could not parse issue navigator columns.")
+				return
+			}
+		}
+		columns := r.Form["columns"]
+		if columns == nil {
+			columns = []string{}
+		}
+		if err := h.Commands.UpdateNavigatorColumns(r.Context(), workspaceID, actorID, columns); err != nil {
 			siteConfigurationError(w, err)
 			return
 		}
