@@ -8,34 +8,32 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
 ## Active delivery
 
-- Branch: `feat/jira-platform-admin-completion`
-- Base: `origin/main` after merged PR #62 and PR #68
-- Delivery unit: PR 0 — Cloud compatibility baseline consolidation
-- Pull request: [#69](https://github.com/e6qu/zzira/pull/69)
-- State: published; awaiting review and CI before merge
+- Branch: `feat/pr1-jira-platform-completion`
+- Base: `origin/main` after merged PR #69
+- Delivery unit: PR 1 — Jira Platform and project/site administration
+- Pull request: not opened
+- State: ready for the first implementation checkpoint
 - Blockers: none
 
-## PR 0 branch result
+## Merged baseline
 
-The branch contains 22 implementation commits covering saved filters and subscriptions,
+PR [#69](https://github.com/e6qu/zzira/pull/69) merged the PR 0 baseline. Its 22
+implementation checkpoints cover saved filters and subscriptions,
 expanded JQL and app functions, stable search identity and paging, Jira votes,
 watches, project components, login-date functions, JSM approval/SLA functions,
 and durable bulk watch/unwatch, editable-field discovery, and field edits.
 
-The last implementation checkpoint passed the full uncached Go suite from an
-empty migrated PostgreSQL database, focused bulk lifecycle tests, `go vet`,
-native and WebAssembly builds, and conformance inventory/freshness checks. The
-working tree was clean after commit `5411276`.
+PR 0's final GitHub matrix passed the full Go and PostgreSQL suite, native and
+WebAssembly builds, conformance checks, container build, dependency and security
+scans, CodeQL, and all 59 Playwright journeys.
 
-## Resume after PR 0
+## Resume here
 
-1. Create PR 1 from current `origin/main` for Jira Platform and project/site
-   administration completion.
-2. Implement durable bulk deletion with attachment cleanup, execution-time
+1. Implement durable bulk deletion with attachment cleanup, execution-time
    permission rechecks, bounded processing, per-item results, idempotent action
    records, and REST/UI lifecycle evidence.
-3. Continue on the shared task model with bulk move and bulk transition.
-4. Update compatibility evidence and commit every independently buildable
+2. Continue on the shared task model with bulk move and bulk transition.
+3. Update compatibility evidence and commit every independently buildable
    checkpoint.
 
 ## Evidence map
