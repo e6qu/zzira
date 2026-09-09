@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 489,
+  "assessedTotal": 491,
   "counts": {
     "delivered": 0,
-    "partial": 482,
+    "partial": 484,
     "missing": 7,
-    "unassessed": 718
+    "unassessed": 716
   },
   "countsByFamily": {
     "automation": {
@@ -24,9 +24,9 @@
     },
     "jira-platform": {
       "delivered": 0,
-      "partial": 121,
+      "partial": 123,
       "missing": 0,
-      "unassessed": 496
+      "unassessed": 494
     },
     "jira-service-management": {
       "delivered": 0,
@@ -278,17 +278,29 @@
       "operationId": "jira-v3:GET:/rest/api/3/bulk/issues/transition",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_bulk_issues.go",
+        "internal/api3/bulk_move_test.go",
+        "internal/render/templates/templates.gohtml",
+        "e2e/v2.spec.ts",
+        "docs/BULK_ISSUES.md"
+      ],
+      "notes": "Groups up to 1,000 visible issues by workflow, intersects condition-filtered transitions, omits transitions requiring screen fields and cursor-pages workflow groups; exact custom numeric wire IDs, configurable Bulk change/transition permissions and transition-field metadata remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/bulk/issues/transition",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_bulk_issues.go",
+        "internal/commands/bulk_issues.go",
+        "internal/api3/bulk_move_test.go",
+        "e2e/v2.spec.ts",
+        "docs/BULK_ISSUES.md"
+      ],
+      "notes": "Queues validated transition groups for up to 1,000 unique visible issues, rechecks execution-time visibility, delegates conditions/validators/post-functions to the ordinary REST transition engine and records transactional replay markers with per-item results; screen-field inputs, exact permission granularity and bulk email delivery remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/bulk/issues/unwatch",

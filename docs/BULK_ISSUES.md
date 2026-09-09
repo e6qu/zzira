@@ -7,6 +7,8 @@ URL. The current delivered slice includes:
 |---|---|
 | `POST /rest/api/3/bulk/issues/delete` | Queue deletion for up to 1,000 selected work items with execution-time access checks and per-item results |
 | `POST /rest/api/3/bulk/issues/move` | Queue project, issue-type and explicit parent moves with workflow status inference, key aliases and per-item results |
+| `GET /rest/api/3/bulk/issues/transition` | Group common, screenless transitions by workflow for up to 1,000 selected work items, with cursor paging |
+| `POST /rest/api/3/bulk/issues/transition` | Queue one or more validated transition groups and report per-item execution outcomes |
 | `GET /rest/api/3/bulk/issues/fields` | Discover the fields shared by the selected work items, with field search and 50-item cursor pages |
 | `POST /rest/api/3/bulk/issues/fields` | Queue validated edits for the selected work items and report per-item success, access loss or field failure |
 | `POST /rest/api/3/bulk/issues/watch` | Queue self-subscription for the selected work items |
@@ -43,6 +45,16 @@ mappings, and implicit parent-with-subtasks moves are rejected explicitly; the
 task reports an execution-time error if a parent acquires subtasks after
 submission.
 
+Transition discovery evaluates each selected issue's current workflow,
+status-history and hierarchy conditions as the requesting administrator. It
+intersects transitions within each workflow group and omits transitions whose
+screen requires additional fields, matching the bulk endpoint's executable
+subset. Submission validates every issue/transition pair again; the worker then
+uses the ordinary REST transition command so conditions, validators,
+post-functions, permission loss and action history keep the single-issue
+semantics. Transactional item markers make a recovered worker replay-safe. The
+navigator offers transitions common to all selected visible rows.
+
 Field discovery intersects the canonical create/edit metadata for every selected
 project. It returns only field types the current command path can persist,
 combines context-specific options, and provides the same option IDs used by the
@@ -62,5 +74,5 @@ permission. Configurable global permission grants and Jira's notification
 controls remain part of the administration completion work. The
 `sendBulkNotification` switch is accepted but bulk email delivery is not yet
 available. Cascading/color/date/select/group/multi-user/URL/time-tracking and
-issue-type bulk field families remain alongside transition and
-transition discovery. Queue retention also needs Jira's 14-day expiry behavior.
+issue-type bulk field families remain. Queue retention also needs Jira's 14-day
+expiry behavior.

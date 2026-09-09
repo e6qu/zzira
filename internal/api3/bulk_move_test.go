@@ -105,4 +105,37 @@ func TestBulkMoveChangesKeyPreservesAliasAndReplaysOnce(t *testing.T) {
 	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM bulk_issue_task_items WHERE task_id=$1`, submission.TaskID).Scan(&itemCount); err != nil || itemCount != 1 {
 		t.Fatalf("task item count=%d err=%v", itemCount, err)
 	}
+	available := call("GET", "/rest/api/3/bulk/issues/transition?issueIdsOrKeys="+newKey, "", 200)
+	if !strings.Contains(available.Body.String(), `"transitionId":21`) || !strings.Contains(available.Body.String(), `"transitionName":"In Progress"`) {
+		t.Fatal(available.Body.String())
+	}
+	transitioned := call("POST", "/rest/api/3/bulk/issues/transition", `{"bulkTransitionInputs":[{"selectedIssueIdsOrKeys":["`+issue.Key+`"],"transitionId":"21"}],"sendBulkNotification":false}`, 201)
+	var transitionSubmission struct {
+		TaskID string `json:"taskId"`
+	}
+	if err := json.Unmarshal(transitioned.Body.Bytes(), &transitionSubmission); err != nil || transitionSubmission.TaskID == "" {
+		t.Fatalf("transition submission=%+v err=%v", transitionSubmission, err)
+	}
+	if err := (&store.APITaskRunner{Store: st, BulkIssueExecutor: service}).DrainOnce(ctx, workspaceID); err != nil {
+		t.Fatal(err)
+	}
+	afterTransition, err := st.IssueByIDOrKey(ctx, workspaceID, issue.Key)
+	if err != nil || afterTransition.Status.ID != "st_inprogress" {
+		t.Fatalf("transitioned=%+v err=%v", afterTransition, err)
+	}
+	exec(`UPDATE api_tasks SET status='RUNNING',progress=5,finished_at=NULL WHERE id=$1`, transitionSubmission.TaskID)
+	transitionTask, err := st.APITaskByID(ctx, workspaceID, transitionSubmission.TaskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.ExecuteBulkIssueTask(ctx, transitionTask); err != nil {
+		t.Fatal(err)
+	}
+	afterReplay, err := st.IssueByIDOrKey(ctx, workspaceID, issue.Key)
+	if err != nil || afterReplay.Status.ID != "st_inprogress" {
+		t.Fatalf("transition replay=%+v err=%v", afterReplay, err)
+	}
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM bulk_issue_task_items WHERE task_id=$1`, transitionSubmission.TaskID).Scan(&itemCount); err != nil || itemCount != 1 {
+		t.Fatalf("transition task item count=%d err=%v", itemCount, err)
+	}
 }

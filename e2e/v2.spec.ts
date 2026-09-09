@@ -129,6 +129,28 @@ test('V2: administrator submits a bulk move from the navigator', async ({ page, 
   await expect(page.locator('.issue-title-block .eyebrow')).toContainText('Task');
 });
 
+test('V2: administrator discovers and runs a common bulk transition', async ({ page, request }) => {
+  const marker = `bulk-transition-${Date.now()}`;
+  const created = await request.post('/rest/api/3/issue', {
+    headers: { Authorization: apiAuthHeader() },
+    data: { fields: { project: { key: 'ZZ' }, summary: marker, issuetype: { name: 'Task' } } },
+  });
+  expect(created.status()).toBe(201);
+  const key = (await created.json()).key;
+
+  await login(page);
+  await page.goto(`/issues/ZZ?mode=basic&text=${encodeURIComponent(marker)}`);
+  await page.locator('[data-bulk-issue]').check();
+  await page.getByText('Transition selected', { exact: true }).click();
+  await page.locator('.bulk-move-picker select[name="transition"]').selectOption({ label: 'In Progress' });
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: 'Start transition' }).click();
+  await expect(page).toHaveURL(/\/issues\/ZZ\/bulk\/task_/);
+  await expect(page.locator('.page-header .lozenge')).toHaveText('COMPLETE', { timeout: 20_000 });
+  await page.goto(`/browse/${key}`);
+  await expect(page.locator('.issue-details .details-heading .lozenge')).toHaveText('In Progress');
+});
+
 test('V2: custom field created via API is fillable in the UI and filterable', async ({ page, request }) => {
   const cfName = `E2E Points ${Date.now()}`;
   const created = await request.post('/rest/api/3/field', {

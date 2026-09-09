@@ -50,6 +50,7 @@ type IssueUpdate struct {
 	Labels              *[]string       // empty = clear, nil = unchanged
 	Fields              map[string]json.RawMessage
 	TriggeredWebhookIDs []string
+	TaskID              string
 }
 
 func diffItem(field, from, fromString, to, toString string) models.ChangeItem {
@@ -229,6 +230,12 @@ func (s *Store) UpdateIssue(ctx context.Context, actorID, workspaceID, issueID s
 	}
 	if err := appendAction(ctx, tx, action); err != nil {
 		return nil, nil, err
+	}
+	if up.TaskID != "" {
+		result, _ := json.Marshal(map[string]any{"jiraId": updated.JiraID, "key": updated.Key})
+		if _, err := tx.Exec(ctx, `INSERT INTO bulk_issue_task_items(task_id,issue_id,result) VALUES($1,$2,$3) ON CONFLICT DO NOTHING`, up.TaskID, issueID, result); err != nil {
+			return nil, nil, err
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, nil, err

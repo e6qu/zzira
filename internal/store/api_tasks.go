@@ -21,6 +21,7 @@ const (
 	apiTaskBulkEdit              = "bulk-issue-edit"
 	apiTaskBulkDelete            = "bulk-issue-delete"
 	apiTaskBulkMove              = "bulk-issue-move"
+	apiTaskBulkTransition        = "bulk-issue-transition"
 	apiTaskBulkWatch             = "bulk-issue-watch"
 	apiTaskBulkUnwatch           = "bulk-issue-unwatch"
 )
@@ -49,11 +50,12 @@ type APITask struct {
 }
 
 func (task APITask) IsBulkIssueOperation() bool {
-	return task.Kind == apiTaskBulkEdit || task.Kind == apiTaskBulkDelete || task.Kind == apiTaskBulkMove || task.Kind == apiTaskBulkWatch || task.Kind == apiTaskBulkUnwatch
+	return task.Kind == apiTaskBulkEdit || task.Kind == apiTaskBulkDelete || task.Kind == apiTaskBulkMove || task.Kind == apiTaskBulkTransition || task.Kind == apiTaskBulkWatch || task.Kind == apiTaskBulkUnwatch
 }
 
-func (task APITask) IsBulkDeleteOperation() bool { return task.Kind == apiTaskBulkDelete }
-func (task APITask) IsBulkMoveOperation() bool   { return task.Kind == apiTaskBulkMove }
+func (task APITask) IsBulkDeleteOperation() bool     { return task.Kind == apiTaskBulkDelete }
+func (task APITask) IsBulkMoveOperation() bool       { return task.Kind == apiTaskBulkMove }
+func (task APITask) IsBulkTransitionOperation() bool { return task.Kind == apiTaskBulkTransition }
 
 type updateWorkflowSchemeTaskPayload struct {
 	Scheme          workflow.Scheme         `json:"scheme"`
@@ -112,6 +114,16 @@ type BulkIssueMoveTaskPayload struct {
 	SendBulkNotification bool                    `json:"sendBulkNotification"`
 }
 
+type BulkIssueTransitionTaskItem struct {
+	BulkIssueTaskItem
+	TransitionID string `json:"transitionId"`
+}
+
+type BulkIssueTransitionTaskPayload struct {
+	Issues               []BulkIssueTransitionTaskItem `json:"issues"`
+	SendBulkNotification bool                          `json:"sendBulkNotification"`
+}
+
 func (s *Store) EnqueueBulkEditTask(ctx context.Context, workspaceID, actorID string, issues []BulkIssueTaskItem, operations []BulkIssueEditOperation) (APITask, error) {
 	task, err := queuedAPITask(workspaceID, actorID, "Bulk edit issues", apiTaskBulkEdit, BulkIssueEditTaskPayload{Issues: issues, Operations: operations})
 	if err != nil {
@@ -130,6 +142,14 @@ func (s *Store) EnqueueBulkDeleteTask(ctx context.Context, workspaceID, actorID 
 
 func (s *Store) EnqueueBulkMoveTask(ctx context.Context, workspaceID, actorID string, issues []BulkIssueMoveTaskItem, sendBulkNotification bool) (APITask, error) {
 	task, err := queuedAPITask(workspaceID, actorID, "Bulk move issues", apiTaskBulkMove, BulkIssueMoveTaskPayload{Issues: issues, SendBulkNotification: sendBulkNotification})
+	if err != nil {
+		return APITask{}, err
+	}
+	return s.enqueueBulkIssueTask(ctx, task)
+}
+
+func (s *Store) EnqueueBulkTransitionTask(ctx context.Context, workspaceID, actorID string, issues []BulkIssueTransitionTaskItem, sendBulkNotification bool) (APITask, error) {
+	task, err := queuedAPITask(workspaceID, actorID, "Bulk transition issues", apiTaskBulkTransition, BulkIssueTransitionTaskPayload{Issues: issues, SendBulkNotification: sendBulkNotification})
 	if err != nil {
 		return APITask{}, err
 	}
@@ -336,7 +356,7 @@ func (r *APITaskRunner) execute(ctx context.Context, task APITask) error {
 			return fmt.Errorf("decode bulk watch operation: %w", err)
 		}
 		return r.Store.executeBulkWatchTask(ctx, task, payload)
-	case apiTaskBulkEdit, apiTaskBulkDelete, apiTaskBulkMove:
+	case apiTaskBulkEdit, apiTaskBulkDelete, apiTaskBulkMove, apiTaskBulkTransition:
 		if r.BulkIssueExecutor == nil {
 			return errors.New("bulk issue executor is not configured")
 		}

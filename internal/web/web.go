@@ -57,37 +57,38 @@ type createDialogData struct {
 }
 
 type projectIssuesData struct {
-	Project      *models.Project
-	Projects     []*models.Project
-	IssueTypes   []models.IssueType
-	BoardID      string
-	Issues       []*models.Issue
-	Selected     *models.Issue
-	Statuses     []models.Status
-	Members      []*models.User
-	Filters      []*models.Filter
-	ActiveFilter string
-	Chips        []navigatorChip
-	SaveJQL      string
-	Mode         string
-	JQL          string
-	Text         string
-	Status       string
-	Assignee     string
-	Sort         string
-	Direction    string
-	Total        int
-	ResultStart  int
-	ResultEnd    int
-	Page         int
-	PageCount    int
-	PreviousURL  string
-	NextURL      string
-	BasicURL     string
-	AdvancedURL  string
-	SortURLs     map[string]string
-	JQLError     string
-	CanBulk      bool
+	Project         *models.Project
+	Projects        []*models.Project
+	IssueTypes      []models.IssueType
+	BulkTransitions []models.WorkflowTransition
+	BoardID         string
+	Issues          []*models.Issue
+	Selected        *models.Issue
+	Statuses        []models.Status
+	Members         []*models.User
+	Filters         []*models.Filter
+	ActiveFilter    string
+	Chips           []navigatorChip
+	SaveJQL         string
+	Mode            string
+	JQL             string
+	Text            string
+	Status          string
+	Assignee        string
+	Sort            string
+	Direction       string
+	Total           int
+	ResultStart     int
+	ResultEnd       int
+	Page            int
+	PageCount       int
+	PreviousURL     string
+	NextURL         string
+	BasicURL        string
+	AdvancedURL     string
+	SortURLs        map[string]string
+	JQLError        string
+	CanBulk         bool
 }
 
 type bulkIssueTaskData struct {
@@ -1303,7 +1304,60 @@ func (h *Handler) ProjectIssues(w http.ResponseWriter, r *http.Request, key stri
 		}
 		data.SortURLs[field] = navigatorURL(project.Key, sortParams, 1)
 	}
+	if data.CanBulk && len(data.Issues) > 0 {
+		data.BulkTransitions, err = h.commonBulkTransitions(r.Context(), wsID, user.ID, data.Issues)
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+	}
 	h.writeWorkspacePage(w, r, "page_project", user, wsID, data, "issues", project.ID)
+}
+
+func (h *Handler) commonBulkTransitions(ctx context.Context, workspaceID, userID string, issues []*models.Issue) ([]models.WorkflowTransition, error) {
+	common := map[string]models.WorkflowTransition{}
+	for index, issue := range issues {
+		wf, err := h.Store.WorkflowForProjectAndIssueType(ctx, issue.ProjectID, issue.IssueType.ID)
+		if err != nil {
+			return nil, err
+		}
+		evaluation := workflow.ContextForIssue(userID, issue)
+		evaluation.StatusHistory, err = h.Store.IssueStatusHistory(ctx, workspaceID, issue.ID)
+		if err != nil {
+			return nil, err
+		}
+		evaluation.Transitions, err = h.Store.IssueTransitionHistory(ctx, workspaceID, issue.ID)
+		if err != nil {
+			return nil, err
+		}
+		evaluation.ParentStatus, evaluation.ChildStatuses, err = h.Store.IssueHierarchyStatuses(ctx, workspaceID, issue.ID)
+		if err != nil {
+			return nil, err
+		}
+		available := map[string]models.WorkflowTransition{}
+		for _, transition := range wf.AvailableFor(issue.Status.ID, evaluation) {
+			if len(transition.ScreenFields()) == 0 {
+				available[transition.ID] = models.WorkflowTransition{ID: transition.ID, Name: transition.Name}
+			}
+		}
+		if index == 0 {
+			common = available
+		} else {
+			for id := range common {
+				if _, ok := available[id]; !ok {
+					delete(common, id)
+				}
+			}
+		}
+	}
+	result := make([]models.WorkflowTransition, 0, len(common))
+	for _, transition := range common {
+		result = append(result, transition)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Name < result[j].Name || result[i].Name == result[j].Name && result[i].ID < result[j].ID
+	})
+	return result, nil
 }
 
 // SubmitBulkIssueDelete starts the same durable bulk-delete task used by Jira's
@@ -1414,6 +1468,68 @@ func (h *Handler) SubmitBulkIssueMove(w http.ResponseWriter, r *http.Request, pr
 		return
 	}
 	http.Redirect(w, r, "/issues/"+url.PathEscape(sourceProject.Key)+"/bulk/"+url.PathEscape(task.ID), http.StatusSeeOther)
+}
+
+func (h *Handler) SubmitBulkIssueTransition(w http.ResponseWriter, r *http.Request, projectKey string) {
+	if !parseForm(w, r) {
+		return
+	}
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok {
+		return
+	}
+	project, err := h.Store.ProjectByKey(r.Context(), workspaceID, projectKey)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	transitionID := strings.TrimSpace(r.FormValue("transition"))
+	selected := r.Form["issue"]
+	if transitionID == "" || len(selected) < 1 || len(selected) > 1000 {
+		http.Error(w, "select between 1 and 1,000 work items and a transition", http.StatusBadRequest)
+		return
+	}
+	seen := map[string]bool{}
+	issues := make([]*models.Issue, 0, len(selected))
+	for _, idOrKey := range selected {
+		issue, lookupErr := h.issueForUser(r, user, workspaceID, idOrKey)
+		if lookupErr != nil || issue.ProjectID != project.ID || seen[issue.ID] {
+			http.Error(w, "the selection contains an invalid or inaccessible work item", http.StatusBadRequest)
+			return
+		}
+		seen[issue.ID] = true
+		issues = append(issues, issue)
+	}
+	common, err := h.commonBulkTransitions(r.Context(), workspaceID, user.ID, issues)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	valid := false
+	for _, transition := range common {
+		if transition.ID == transitionID {
+			valid = true
+			break
+		}
+	}
+	if !valid {
+		http.Error(w, "transition is not common to the selected work items", http.StatusBadRequest)
+		return
+	}
+	items := make([]store.BulkIssueTransitionTaskItem, 0, len(issues))
+	for _, issue := range issues {
+		items = append(items, store.BulkIssueTransitionTaskItem{BulkIssueTaskItem: store.BulkIssueTaskItem{ID: issue.ID, JiraID: issue.JiraID}, TransitionID: transitionID})
+	}
+	task, err := h.Store.EnqueueBulkTransitionTask(r.Context(), workspaceID, user.ID, items, r.FormValue("sendNotification") == "true")
+	if errors.Is(err, store.ErrBulkTaskLimit) {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/issues/"+url.PathEscape(project.Key)+"/bulk/"+url.PathEscape(task.ID), http.StatusSeeOther)
 }
 
 func (h *Handler) BulkIssueTask(w http.ResponseWriter, r *http.Request, projectKey, taskID string) {

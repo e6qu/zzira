@@ -26,6 +26,9 @@ func (s *Service) ExecuteBulkIssueTask(ctx context.Context, task store.APITask) 
 	if task.IsBulkMoveOperation() {
 		return s.executeBulkMoveTask(ctx, task)
 	}
+	if task.IsBulkTransitionOperation() {
+		return s.executeBulkTransitionTask(ctx, task)
+	}
 	var payload store.BulkIssueEditTaskPayload
 	if err := json.Unmarshal(task.Payload, &payload); err != nil {
 		return fmt.Errorf("decode bulk edit operation: %w", err)
@@ -64,6 +67,56 @@ func (s *Service) ExecuteBulkIssueTask(ctx context.Context, task store.APITask) 
 		"invalidOrInaccessibleIssueCount": invalid,
 		"totalIssueCount":                 len(payload.Issues),
 	}
+	if len(failed) > 0 {
+		result["failedAccessibleIssues"] = failed
+	}
+	return s.Store.CompleteAPITask(ctx, task, fmt.Sprintf("Processed %d of %d issues.", len(processed), len(payload.Issues)), result)
+}
+
+func (s *Service) executeBulkTransitionTask(ctx context.Context, task store.APITask) error {
+	var payload store.BulkIssueTransitionTaskPayload
+	if err := json.Unmarshal(task.Payload, &payload); err != nil {
+		return fmt.Errorf("decode bulk transition operation: %w", err)
+	}
+	processed := make([]int64, 0, len(payload.Issues))
+	failed := map[string][]string{}
+	invalid := 0
+	for index, item := range payload.Issues {
+		if prior, err := s.Store.BulkIssueTaskItemResult(ctx, task.ID, item.ID); err == nil {
+			var result struct {
+				JiraID int64 `json:"jiraId"`
+			}
+			if json.Unmarshal(prior, &result) == nil && result.JiraID != 0 {
+				processed = append(processed, result.JiraID)
+			}
+		} else if !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		} else {
+			issue, lookupErr := s.Store.IssueByIDOrKey(ctx, task.WorkspaceID, item.ID)
+			if errors.Is(lookupErr, pgx.ErrNoRows) {
+				invalid++
+			} else if lookupErr != nil {
+				return lookupErr
+			} else {
+				visible, visibilityErr := authz.CanSeeIssue(ctx, s.Store, task.WorkspaceID, issue.ProjectID, task.SubmittedBy, issue.SecurityLevelID)
+				if visibilityErr != nil {
+					return visibilityErr
+				}
+				if !visible {
+					invalid++
+				} else if _, _, transitionErr := s.TransitionIssueWithUpdateFromAPI(ctx, task.SubmittedBy, task.WorkspaceID, issue.ID, item.TransitionID, store.IssueUpdate{TaskID: task.ID}); transitionErr != nil {
+					failed[strconv.FormatInt(item.JiraID, 10)] = []string{transitionErr.Error()}
+				} else {
+					processed = append(processed, item.JiraID)
+				}
+			}
+		}
+		progress := 5 + ((index + 1) * 90 / max(1, len(payload.Issues)))
+		if err := s.Store.UpdateAPITaskProgress(ctx, task, progress, fmt.Sprintf("Processed %d of %d issues.", index+1, len(payload.Issues))); err != nil {
+			return err
+		}
+	}
+	result := map[string]any{"processedAccessibleIssues": processed, "invalidOrInaccessibleIssueCount": invalid, "totalIssueCount": len(payload.Issues)}
 	if len(failed) > 0 {
 		result["failedAccessibleIssues"] = failed
 	}
