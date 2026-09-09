@@ -95,4 +95,34 @@ test('create a project, use its board, and update settings through UI and API', 
   await expect(page.getByLabel('Name', { exact: true })).toHaveValue('Duplicate project');
   await page.setViewportSize({ width: 320, height: 740 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto(`/projects/${key}/settings`);
+  await page.getByRole('button', { name: 'Archive project', exact: true }).click();
+  await expect(page).toHaveURL(/\/projects\?status=archived&notice=/);
+  await expect(page.getByRole('status')).toContainText('Project archived.');
+  await expect(page.locator('.project-card').filter({ hasText: key })).toContainText('ARCHIVED');
+  expect((await page.request.get(`/rest/api/3/project/${key}`)).status()).toBe(404);
+  await page.locator('.project-card').filter({ hasText: key }).getByRole('button', { name: 'Restore project' }).click();
+  await expect(page.getByRole('status')).toContainText('Project restored.');
+  expect((await page.request.get(`/rest/api/3/project/${key}`)).status()).toBe(200);
+
+  await page.goto(`/projects/${key}/settings`);
+  await page.getByText('Move project to trash', { exact: true }).click();
+  await page.getByRole('button', { name: 'Confirm move to trash' }).click();
+  await expect(page).toHaveURL(/\/projects\?status=trash&notice=/);
+  const trashedCard = page.locator('.project-card').filter({ hasText: key });
+  await expect(trashedCard).toContainText('Scheduled for deletion after');
+  await trashedCard.getByRole('button', { name: 'Restore project' }).click();
+  await expect(page.getByRole('status')).toContainText('Project restored.');
+
+  await page.goto(`/projects/${key}/settings`);
+  await page.getByText('Move project to trash', { exact: true }).click();
+  await page.getByRole('button', { name: 'Confirm move to trash' }).click();
+  const deleteCard = page.locator('.project-card').filter({ hasText: key });
+  await deleteCard.getByText('Delete permanently', { exact: true }).click();
+  await deleteCard.getByRole('button', { name: 'Confirm permanent deletion' }).click();
+  await expect(page.getByRole('status')).toContainText('Project permanently deleted.');
+  await expect(page.locator('.project-card').filter({ hasText: key })).toHaveCount(0);
+  expect((await page.request.get(`/rest/api/3/project/${key}`)).status()).toBe(404);
 });

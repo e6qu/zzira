@@ -16,6 +16,7 @@ import (
 	"github.com/e6qu/zzira/internal/jql"
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
+	"github.com/jackc/pgx/v5"
 )
 
 // ---- projects ----
@@ -116,23 +117,25 @@ func (h *Handler) searchProjects(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) getProject(w http.ResponseWriter, r *http.Request, keyOrID string) {
-	wsID, _, e := h.authWorkspace(r)
+	wsID, userID, e := h.authWorkspace(r)
 	if e != nil {
 		writeJerr(w, e)
 		return
 	}
-	projects, err := h.Store.ProjectsByWorkspace(r.Context(), wsID)
+	project, err := h.Store.ProjectByIDOrKey(r.Context(), wsID, keyOrID)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			jiraError(w, http.StatusNotFound, "No project could be found with key or id "+keyOrID+".")
+			return
+		}
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	for _, p := range projects {
-		if p.Key == keyOrID || p.ID == keyOrID {
-			h.writeProject(w, r, p)
-			return
-		}
+	if err = h.Store.RecordProjectView(r.Context(), wsID, userID, project.ID); err != nil {
+		jiraError(w, http.StatusInternalServerError, "internal error")
+		return
 	}
-	jiraError(w, http.StatusNotFound, "No project could be found with key or id "+keyOrID+".")
+	h.writeProject(w, r, project)
 }
 
 // ---- users ----

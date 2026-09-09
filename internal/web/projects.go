@@ -42,6 +42,53 @@ func (h *Handler) ProjectSettings(w http.ResponseWriter, r *http.Request) {
 	h.projectSettings(w, r, r.PathValue("key"))
 }
 
+func (h *Handler) ProjectLifecycleSettings(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok {
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	project, err := h.Store.ProjectByIDOrKeyAnyState(r.Context(), workspaceID, r.PathValue("key"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	action := r.PostFormValue("action")
+	target := "/projects"
+	notice := "Project updated."
+	switch action {
+	case "archive":
+		_, err = h.Store.ArchiveProject(r.Context(), workspaceID, user.ID, project.ID)
+		target, notice = "/projects?status=archived", "Project archived."
+	case "trash":
+		_, err = h.Store.TrashProject(r.Context(), workspaceID, user.ID, project.ID)
+		target, notice = "/projects?status=trash", "Project moved to trash."
+	case "restore":
+		_, err = h.Store.RestoreProject(r.Context(), workspaceID, user.ID, project.ID)
+		notice = "Project restored."
+	case "delete":
+		if project.LifecycleState != store.ProjectLifecycleTrashed {
+			err = store.ErrProjectLifecycleConflict
+		} else {
+			err = h.Store.PermanentDeleteProject(r.Context(), workspaceID, user.ID, project.ID, nil)
+		}
+		target, notice = "/projects?status=trash", "Project permanently deleted."
+	default:
+		err = store.ErrProjectLifecycleConflict
+	}
+	separator := "?"
+	if strings.Contains(target, "?") {
+		separator = "&"
+	}
+	if err != nil {
+		redirectLocal(w, r, target+separator+"error="+url.QueryEscape(err.Error()))
+		return
+	}
+	redirectLocal(w, r, target+separator+"notice="+url.QueryEscape(notice))
+}
+
 func (h *Handler) projectSettings(w http.ResponseWriter, r *http.Request, key string) {
 	user, wsID, ok := h.requireAdminPage(w, r)
 	if !ok {

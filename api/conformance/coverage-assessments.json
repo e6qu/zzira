@@ -6725,6 +6725,56 @@
         "docs/PROJECT_GOVERNANCE.md"
       ],
       "notes": "Returns the requested available name or a collision-free numbered variant; access is authenticated rather than anonymous."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/project/recent",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_lifecycle_test.go",
+        "e2e/projects.spec.ts",
+        "docs/PROJECT_LIFECYCLE.md"
+      ],
+      "notes": "Returns the caller\u2019s 20 most recently viewed active projects with selected properties and supported project expansions; anonymous project browsing and complete Jira permission schemes remain."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/project/{projectIdOrKey}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_lifecycle_test.go",
+        "e2e/projects.spec.ts",
+        "docs/PROJECT_LIFECYCLE.md"
+      ],
+      "notes": "Implements enableUndo trash-by-default and immediate permanent deletion, blocks archived deletion, cascades retained project data, and durably queues attachment blob cleanup; project-admin delegation remains."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/project/{projectIdOrKey}/archive",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_lifecycle_test.go",
+        "e2e/projects.spec.ts",
+        "docs/PROJECT_LIFECYCLE.md"
+      ],
+      "notes": "Administrators archive active projects transactionally, hide dependent work and product surfaces, and emit replica removal actions; project-admin delegation remains."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/project/{projectIdOrKey}/delete",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_lifecycle_test.go",
+        "e2e/projects.spec.ts",
+        "docs/PROJECT_LIFECYCLE.md"
+      ],
+      "notes": "Queues a durable Jira task, returns 303 and Location, and transactionally completes project deletion with cascade and attachment cleanup evidence; deletion starts on the local worker cadence."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/project/{projectIdOrKey}/restore",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_lifecycle_test.go",
+        "e2e/projects.spec.ts",
+        "docs/PROJECT_LIFECYCLE.md"
+      ],
+      "notes": "Restores archived or trashed projects and republishes project, issue, board, sprint, and sprint-membership state; project-admin delegation remains."
     }
   ]
 }

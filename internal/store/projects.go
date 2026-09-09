@@ -167,7 +167,7 @@ func (s *Store) UpdateProject(ctx context.Context, actorID, workspaceID, idOrKey
 		}
 		categoryID = &value
 	}
-	err = tx.QueryRow(ctx, `UPDATE projects SET name=COALESCE($3,name),description=COALESCE($4,description),url=COALESCE($5,url),lead_account_id=CASE WHEN $6::text IS NULL THEN lead_account_id ELSE NULLIF($6,'') END,assignee_type=COALESCE($7,assignee_type),category_id=CASE WHEN $8::text IS NULL THEN category_id ELSE NULLIF($8,'') END WHERE workspace_id=$1 AND (id=$2 OR upper(key)=upper($2)) RETURNING id,workspace_id,key,name,COALESCE(workflow_id,''),COALESCE(security_scheme_id,''),description,url,COALESCE(lead_account_id,''),assignee_type,project_type_key,COALESCE(category_id,''),sender_email`, workspaceID, idOrKey, up.Name, up.Description, up.URL, up.LeadAccountID, up.AssigneeType, categoryID).Scan(&p.ID, &p.WorkspaceID, &p.Key, &p.Name, &p.WorkflowID, &p.SecuritySchemeID, &p.Description, &p.URL, &p.LeadAccountID, &p.AssigneeType, &p.ProjectTypeKey, &p.CategoryID, &p.SenderEmail)
+	p, err = scanProject(tx.QueryRow(ctx, `UPDATE projects SET name=COALESCE($3,name),description=COALESCE($4,description),url=COALESCE($5,url),lead_account_id=CASE WHEN $6::text IS NULL THEN lead_account_id ELSE NULLIF($6,'') END,assignee_type=COALESCE($7,assignee_type),category_id=CASE WHEN $8::text IS NULL THEN category_id ELSE NULLIF($8,'') END WHERE workspace_id=$1 AND lifecycle_state='ACTIVE' AND (id=$2 OR upper(key)=upper($2)) RETURNING `+projectSelectColumns, workspaceID, idOrKey, up.Name, up.Description, up.URL, up.LeadAccountID, up.AssigneeType, categoryID))
 	if err != nil {
 		return nil, err
 	}

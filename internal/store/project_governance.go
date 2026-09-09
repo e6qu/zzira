@@ -138,16 +138,16 @@ func (s *Store) DeleteProjectCategory(ctx context.Context, workspaceID, actorID,
 	if err != nil {
 		return err
 	}
-	rows, err := tx.Query(ctx, `UPDATE projects SET category_id=NULL WHERE workspace_id=$1 AND category_id=$2 RETURNING id,workspace_id,key,name,COALESCE(workflow_id,''),COALESCE(security_scheme_id,''),description,url,COALESCE(lead_account_id,''),assignee_type,project_type_key,COALESCE(category_id,''),sender_email`, workspaceID, id)
+	rows, err := tx.Query(ctx, `UPDATE projects SET category_id=NULL WHERE workspace_id=$1 AND category_id=$2 RETURNING `+projectSelectColumns, workspaceID, id)
 	if err != nil {
 		return err
 	}
 	var projects []*models.Project
 	for rows.Next() {
-		p := &models.Project{}
-		if err = rows.Scan(&p.ID, &p.WorkspaceID, &p.Key, &p.Name, &p.WorkflowID, &p.SecuritySchemeID, &p.Description, &p.URL, &p.LeadAccountID, &p.AssigneeType, &p.ProjectTypeKey, &p.CategoryID, &p.SenderEmail); err != nil {
+		p, scanErr := scanProject(rows)
+		if scanErr != nil {
 			rows.Close()
-			return err
+			return scanErr
 		}
 		projects = append(projects, p)
 	}
@@ -337,7 +337,7 @@ func (s *Store) SetProjectEmail(ctx context.Context, workspaceID, actorID, proje
 		return err
 	}
 	p := &models.Project{}
-	err = tx.QueryRow(ctx, `UPDATE projects SET sender_email=$3 WHERE workspace_id=$1 AND (id=$2 OR upper(key)=upper($2)) RETURNING id,workspace_id,key,name,COALESCE(workflow_id,''),COALESCE(security_scheme_id,''),description,url,COALESCE(lead_account_id,''),assignee_type,project_type_key,COALESCE(category_id,''),sender_email`, workspaceID, projectIDOrKey, email).Scan(&p.ID, &p.WorkspaceID, &p.Key, &p.Name, &p.WorkflowID, &p.SecuritySchemeID, &p.Description, &p.URL, &p.LeadAccountID, &p.AssigneeType, &p.ProjectTypeKey, &p.CategoryID, &p.SenderEmail)
+	p, err = scanProject(tx.QueryRow(ctx, `UPDATE projects SET sender_email=$3 WHERE workspace_id=$1 AND lifecycle_state='ACTIVE' AND (id=$2 OR upper(key)=upper($2)) RETURNING `+projectSelectColumns, workspaceID, projectIDOrKey, email))
 	if err != nil {
 		return err
 	}

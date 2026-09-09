@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 536,
+  "assessedTotal": 541,
   "counts": {
     "delivered": 0,
-    "partial": 529,
+    "partial": 534,
     "missing": 7,
-    "unassessed": 671
+    "unassessed": 666
   },
   "countsByFamily": {
     "automation": {
@@ -24,9 +24,9 @@
     },
     "jira-platform": {
       "delivered": 0,
-      "partial": 168,
+      "partial": 173,
       "missing": 0,
-      "unassessed": 449
+      "unassessed": 444
     },
     "jira-service-management": {
       "delivered": 0,
@@ -3357,9 +3357,13 @@
       "operationId": "jira-v3:GET:/rest/api/3/project/recent",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_lifecycle_test.go",
+        "e2e/projects.spec.ts",
+        "docs/PROJECT_LIFECYCLE.md"
+      ],
+      "notes": "Returns the caller\u2019s 20 most recently viewed active projects with selected properties and supported project expansions; anonymous project browsing and complete Jira permission schemes remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/project/search",
@@ -3426,9 +3430,13 @@
       "operationId": "jira-v3:DELETE:/rest/api/3/project/{projectIdOrKey}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_lifecycle_test.go",
+        "e2e/projects.spec.ts",
+        "docs/PROJECT_LIFECYCLE.md"
+      ],
+      "notes": "Implements enableUndo trash-by-default and immediate permanent deletion, blocks archived deletion, cascades retained project data, and durably queues attachment blob cleanup; project-admin delegation remains."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/project/{projectIdOrKey}",
@@ -3460,9 +3468,13 @@
       "operationId": "jira-v3:POST:/rest/api/3/project/{projectIdOrKey}/archive",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_lifecycle_test.go",
+        "e2e/projects.spec.ts",
+        "docs/PROJECT_LIFECYCLE.md"
+      ],
+      "notes": "Administrators archive active projects transactionally, hide dependent work and product surfaces, and emit replica removal actions; project-admin delegation remains."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/project/{projectIdOrKey}/avatar",
@@ -3558,9 +3570,13 @@
       "operationId": "jira-v3:POST:/rest/api/3/project/{projectIdOrKey}/delete",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_lifecycle_test.go",
+        "e2e/projects.spec.ts",
+        "docs/PROJECT_LIFECYCLE.md"
+      ],
+      "notes": "Queues a durable Jira task, returns 303 and Location, and transactionally completes project deletion with cascade and attachment cleanup evidence; deletion starts on the local worker cadence."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/project/{projectIdOrKey}/features",
@@ -3638,9 +3654,13 @@
       "operationId": "jira-v3:POST:/rest/api/3/project/{projectIdOrKey}/restore",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_lifecycle_test.go",
+        "e2e/projects.spec.ts",
+        "docs/PROJECT_LIFECYCLE.md"
+      ],
+      "notes": "Restores archived or trashed projects and republishes project, issue, board, sprint, and sprint-membership state; project-admin delegation remains."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/project/{projectIdOrKey}/role",

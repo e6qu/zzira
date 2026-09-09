@@ -43,25 +43,13 @@ func (s *Store) PriorityByIDOrName(ctx context.Context, idOrName string) (*model
 
 // DefaultProject returns the seeded demo project (V0 has exactly one).
 func (s *Store) DefaultProject(ctx context.Context) (*models.Project, error) {
-	p := &models.Project{}
-	err := s.Pool.QueryRow(ctx, `SELECT id, workspace_id, key, name, COALESCE(workflow_id,''), COALESCE(security_scheme_id,''), description, url, COALESCE(lead_account_id,''), assignee_type, project_type_key FROM projects LIMIT 1`).
-		Scan(&p.ID, &p.WorkspaceID, &p.Key, &p.Name, &p.WorkflowID, &p.SecuritySchemeID, &p.Description, &p.URL, &p.LeadAccountID, &p.AssigneeType, &p.ProjectTypeKey)
-	if err != nil {
-		return nil, err
-	}
-	return p, nil
+	return scanProject(s.Pool.QueryRow(ctx, `SELECT `+projectSelectColumns+` FROM projects WHERE lifecycle_state='ACTIVE' ORDER BY id LIMIT 1`))
 }
 
 // DefaultProjectInWorkspace returns the workspace's first project. Web flows
 // must use this scoped lookup rather than the administrative global helper.
 func (s *Store) DefaultProjectInWorkspace(ctx context.Context, workspaceID string) (*models.Project, error) {
-	p := &models.Project{}
-	err := s.Pool.QueryRow(ctx, `SELECT id, workspace_id, key, name, COALESCE(workflow_id,''), COALESCE(security_scheme_id,''), description, url, COALESCE(lead_account_id,''), assignee_type, project_type_key FROM projects WHERE workspace_id=$1 ORDER BY key LIMIT 1`, workspaceID).
-		Scan(&p.ID, &p.WorkspaceID, &p.Key, &p.Name, &p.WorkflowID, &p.SecuritySchemeID, &p.Description, &p.URL, &p.LeadAccountID, &p.AssigneeType, &p.ProjectTypeKey)
-	if err != nil {
-		return nil, err
-	}
-	return p, nil
+	return scanProject(s.Pool.QueryRow(ctx, `SELECT `+projectSelectColumns+` FROM projects WHERE workspace_id=$1 AND lifecycle_state='ACTIVE' ORDER BY key LIMIT 1`, workspaceID))
 }
 
 // StatusByID returns one status (transitions beans, diff display names).

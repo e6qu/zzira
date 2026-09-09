@@ -246,15 +246,15 @@ func (s *Store) SearchMembers(ctx context.Context, workspaceID, query string) ([
 // ProjectsByWorkspace lists all projects in a workspace (V2: all visible to members).
 func (s *Store) ProjectsByWorkspace(ctx context.Context, workspaceID string) ([]*models.Project, error) {
 	rows, err := s.Pool.Query(ctx,
-		`SELECT id, workspace_id, key, name, COALESCE(workflow_id,''), COALESCE(security_scheme_id,''), description, url, COALESCE(lead_account_id,''), assignee_type, project_type_key, COALESCE(category_id,''), sender_email FROM projects WHERE workspace_id=$1 ORDER BY key`, workspaceID)
+		`SELECT `+projectSelectColumns+` FROM projects WHERE workspace_id=$1 AND lifecycle_state='ACTIVE' ORDER BY key`, workspaceID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var out []*models.Project
 	for rows.Next() {
-		p := &models.Project{}
-		if err := rows.Scan(&p.ID, &p.WorkspaceID, &p.Key, &p.Name, &p.WorkflowID, &p.SecuritySchemeID, &p.Description, &p.URL, &p.LeadAccountID, &p.AssigneeType, &p.ProjectTypeKey, &p.CategoryID, &p.SenderEmail); err != nil {
+		p, err := scanProject(rows)
+		if err != nil {
 			return nil, err
 		}
 		out = append(out, p)
@@ -421,7 +421,7 @@ func (s *Store) SecuritySchemes(ctx context.Context) ([]models.SecurityScheme, e
 // `userPlaceholder` (e.g. "$2"). Admins bypass issue security. Callers must
 // append userID to their args at that position.
 func VisibleIssuePredicate(alias string, userPlaceholder string) string {
-	return "(" +
+	return "EXISTS (SELECT 1 FROM projects visible_project WHERE visible_project.id=" + alias + ".project_id AND visible_project.lifecycle_state='ACTIVE') AND (" +
 		alias + ".security_level_id IS NULL" +
 		" OR EXISTS (SELECT 1 FROM memberships m WHERE m.workspace_id = " + alias + ".workspace_id AND m.user_id = " + userPlaceholder + " AND m.role = 'admin')" +
 		" OR EXISTS (" +

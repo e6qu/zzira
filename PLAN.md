@@ -126,10 +126,12 @@ Complete Jira's shared work-management and configuration layer:
 - finish ADF validation, storage, rendering, conversion, mentions, and media at
   every Jira field boundary;
 - finish hierarchy, work types, fields, contexts, screens, schemes, components,
-  versions, roles, templates, team-managed/company-managed configuration,
-  archive/restore, import/export, and project lifecycle; project categories,
+  versions, roles, templates, team-managed/company-managed configuration, and
+  import/export; project lifecycle now includes recent views, archive, restore,
+  trash, synchronous and asynchronous permanent deletion, 60-day cleanup,
+  replica removal/restoration, and attachment cleanup, while project categories,
   JSON properties, software feature state, sender email, installed project
-  types, key/name validation, and their API/admin journeys are delivered;
+  types, key/name validation, and their API/admin journeys are also delivered;
 - finish permission, notification, issue-security, workflow, and field-scheme
   administration with impact previews and audited migrations;
 - finish user preferences, notifications, votes, watches, properties,
@@ -308,7 +310,9 @@ Update `docs/CONTINUITY.md` after each checkpoint. Do not advance to the next PR
 while the current PR has failing CI, unresolved review threads, unrecorded
 contract gaps, or uncommitted work.
 
-The first PR 1 checkpoint is durable Jira bulk deletion with attachment cleanup,
-permission rechecks, bounded execution, per-item results, action/audit records,
-and REST/UI lifecycle evidence. Bulk move and transition follow on the same
-shared task model.
+The completed PR 1 checkpoints cover durable bulk edit/delete/move/transition,
+site configuration, project governance, and project lifecycle. Continue with
+project roles, permission/notification/security/field/screen schemes, templates,
+hierarchy, remaining field and ADF families, import/export, and the unassessed
+Jira Platform operations. Keep each checkpoint vertical and independently
+reviewable even while it contributes to the same large PR delivery unit.
