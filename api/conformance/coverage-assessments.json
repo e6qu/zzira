@@ -6188,6 +6188,17 @@
         "docs/BULK_ISSUES.md"
       ],
       "notes": "Returns Jira bulk task identity, submitter, timestamps, status, progress and watch/unwatch terminal issue counts while rejecting unrelated or cross-workspace tasks; 14-day retention and result shapes for the remaining bulk task kinds remain."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/bulk/issues/fields",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_bulk_issues.go",
+        "internal/api3/bulk_issues_test.go",
+        "internal/store/create_meta.go",
+        "docs/BULK_ISSUES.md"
+      ],
+      "notes": "Returns editable field types shared by all selected visible issues from the canonical project metadata, including Jira-shaped options, field search and bidirectional opaque 50-field cursor pages; configurable global and field permissions, cursor snapshot binding and the remaining Jira bulk field catalog remain."
     }
   ]
 }

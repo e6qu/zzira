@@ -26,7 +26,8 @@ boundaries, dependencies, and acceptance gates belong in
   JQL, audit, sync, and administrator journeys are implemented; durable login
   boundaries and `currentLogin()`/`lastLogin()` JQL are implemented; the full
   JSM approval and SLA JQL function families are implemented; durable bulk
-  watch/unwatch submission, execution and progress are implemented
+  field discovery and durable watch/unwatch submission, execution and progress
+  are implemented
 - Blockers: none
 
 ## Contract baseline
@@ -41,10 +42,12 @@ exercise it, authorization, audit, durable background work, and ledger updates.
 
 ## Current checkpoint
 
-The current bulk checkpoint implements Jira's watch, unwatch and progress
-operations. Submission enforces visibility, a 1,000-item bound and five-active
-task cap; the durable worker rechecks visibility and atomically commits watcher
-state, synchronization actions and the terminal task result.
+The current bulk checkpoints implement Jira's shared editable-field discovery,
+watch, unwatch and progress operations. Field discovery intersects the canonical
+project metadata with search and bidirectional 50-field cursor pages. Submission
+enforces visibility, a 1,000-item bound and five-active task cap; the durable
+worker rechecks visibility and atomically commits watcher state, synchronization
+actions and the terminal task result.
 The browser directory completes the owner and site-administrator management
 journey and is connected to REST-created filters by Playwright. Owners can add
 or remove daily and weekly email schedules with active-member recipients. A
@@ -166,6 +169,11 @@ atomic synchronization actions, Jira-shaped progress and the five-active-task
 cap. The full uncached Go suite from an empty migrated database, focused package
 tests, `go vet`, native and WebAssembly builds, and conformance inventory and
 freshness checks pass.
+
+The bulk editable-field checkpoint passes administrator and denied-member
+PostgreSQL contracts, cross-project canonical metadata intersection, Jira-shaped
+options, field search, invalid selection/cursor handling and forward/backward
+50-field cursor traversal.
 
 ## Resume here
 

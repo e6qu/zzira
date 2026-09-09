@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 485,
+  "assessedTotal": 486,
   "counts": {
     "delivered": 0,
-    "partial": 478,
+    "partial": 479,
     "missing": 7,
-    "unassessed": 722
+    "unassessed": 721
   },
   "countsByFamily": {
     "automation": {
@@ -24,9 +24,9 @@
     },
     "jira-platform": {
       "delivered": 0,
-      "partial": 117,
+      "partial": 118,
       "missing": 0,
-      "unassessed": 500
+      "unassessed": 499
     },
     "jira-service-management": {
       "delivered": 0,
@@ -228,9 +228,14 @@
       "operationId": "jira-v3:GET:/rest/api/3/bulk/issues/fields",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_bulk_issues.go",
+        "internal/api3/bulk_issues_test.go",
+        "internal/store/create_meta.go",
+        "docs/BULK_ISSUES.md"
+      ],
+      "notes": "Returns editable field types shared by all selected visible issues from the canonical project metadata, including Jira-shaped options, field search and bidirectional opaque 50-field cursor pages; configurable global and field permissions, cursor snapshot binding and the remaining Jira bulk field catalog remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/bulk/issues/fields",

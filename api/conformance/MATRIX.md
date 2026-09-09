@@ -28,6 +28,7 @@ use `/rest/zzira/1`.
 | /jira/forms/cloud/{cloudId}/issue/{idOrKey}/form lifecycle | 🟡 | Issue form index/attach/get/save/delete, visibility, submit/reopen, and executable attached/submitted workflow validators; project templates, exports, attachments, external data and copy remain |
 | GET/POST/DELETE /rest/api/3/issue/{idOrKey}/watchers | 🟡 | complete self-subscription and watcher reads; managing other users is intentionally not exposed without a broader permission model |
 | POST /rest/api/3/bulk/issues/watch · /unwatch · GET /bulk/queue/{taskId} | 🟡 | Durable administrator-gated self watch/unwatch for up to 1,000 visible items, a five-active-operation cap, execution-time visibility checks, atomic synchronization actions and Jira-shaped task progress; configurable global Bulk change permission, 14-day retention and remaining bulk operations remain |
+| GET /rest/api/3/bulk/issues/fields | 🟡 | Common editable fields derive from canonical project metadata with Jira-shaped options, field search and bidirectional opaque 50-field cursor pages; configurable field permissions and the complete Jira bulk field type catalog remain |
 | GET/POST/DELETE /rest/api/3/issue/{idOrKey}/votes | 🟡 | Durable idempotent self-service voting, voter reads, browser journey and JQL selectors; site voting policy and exact permission edge cases remain |
 | /comment CRUD | ✅ | ADF bodies, author-only delete |
 | GET /rest/api/3/issue/{idOrKey}/changelog | ✅ | derived from the action log |

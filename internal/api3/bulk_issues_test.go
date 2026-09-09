@@ -3,6 +3,7 @@ package api3
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http/httptest"
 	"os"
 	"strings"
@@ -43,6 +44,7 @@ func TestBulkWatchOperationsUseDurableTaskQueue(t *testing.T) {
 	t.Cleanup(func() {
 		exec(`DELETE FROM api_tasks WHERE workspace_id=$1`, workspaceID)
 		exec(`DELETE FROM issues WHERE workspace_id=$1`, workspaceID)
+		exec(`DELETE FROM custom_fields WHERE id LIKE $1`, "customfield_bulk_"+workspaceID+"_%")
 		exec(`DELETE FROM boards WHERE project_id IN (SELECT id FROM projects WHERE workspace_id=$1)`, workspaceID)
 		exec(`DELETE FROM projects WHERE workspace_id=$1`, workspaceID)
 		exec(`DELETE FROM security_schemes WHERE id=$1`, securitySchemeID)
@@ -81,6 +83,48 @@ func TestBulkWatchOperationsUseDurableTaskQueue(t *testing.T) {
 		}
 		issueKeys = append(issueKeys, issue.Key)
 	}
+	var projectID string
+	if err := st.Pool.QueryRow(ctx, `SELECT id FROM projects WHERE workspace_id=$1 AND key='BULK'`, workspaceID).Scan(&projectID); err != nil {
+		t.Fatal(err)
+	}
+	for i := range 55 {
+		fieldID := fmt.Sprintf("customfield_bulk_%s_%02d", workspaceID, i)
+		exec(`INSERT INTO custom_fields(id,name,type,description) VALUES($1,$2,'text','Bulk-edit text')`, fieldID, fmt.Sprintf("Bulk custom %02d", i))
+		exec(`INSERT INTO field_contexts(field_id,project_id) VALUES($1,$2)`, fieldID, projectID)
+	}
+	fieldPath := "/rest/api/3/bulk/issues/fields?issueIdsOrKeys=" + strings.Join(issueKeys, "%2C")
+	call(memberID, "GET", fieldPath, "", 403)
+	firstFields := call(adminID, "GET", fieldPath, "", 200)
+	var firstPage struct {
+		Fields        []map[string]any `json:"fields"`
+		StartingAfter string           `json:"startingAfter"`
+		EndingBefore  string           `json:"endingBefore"`
+	}
+	if err := json.Unmarshal(firstFields.Body.Bytes(), &firstPage); err != nil || len(firstPage.Fields) != 50 || firstPage.StartingAfter == "" || firstPage.EndingBefore != "" {
+		t.Fatalf("first bulk field page: %v %s", err, firstFields.Body.String())
+	}
+	secondFields := call(adminID, "GET", fieldPath+"&startingAfter="+firstPage.StartingAfter, "", 200)
+	var secondPage struct {
+		Fields        []map[string]any `json:"fields"`
+		StartingAfter string           `json:"startingAfter"`
+		EndingBefore  string           `json:"endingBefore"`
+	}
+	if err := json.Unmarshal(secondFields.Body.Bytes(), &secondPage); err != nil || len(secondPage.Fields) == 0 || len(secondPage.Fields) > 50 || secondPage.EndingBefore == "" {
+		t.Fatalf("second bulk field page: %v %s", err, secondFields.Body.String())
+	}
+	backFields := call(adminID, "GET", fieldPath+"&endingBefore="+secondPage.EndingBefore, "", 200)
+	var backPage struct {
+		Fields []map[string]any `json:"fields"`
+	}
+	if err := json.Unmarshal(backFields.Body.Bytes(), &backPage); err != nil || len(backPage.Fields) != 50 || backPage.Fields[0]["id"] != firstPage.Fields[0]["id"] {
+		t.Fatalf("backward bulk field page: %v %s", err, backFields.Body.String())
+	}
+	priorityFields := call(adminID, "GET", fieldPath+"&searchText=priority", "", 200)
+	if !strings.Contains(priorityFields.Body.String(), `"id":"priority"`) || !strings.Contains(priorityFields.Body.String(), `"priority":"Medium"`) {
+		t.Fatal(priorityFields.Body.String())
+	}
+	call(adminID, "GET", fieldPath+"&startingAfter=invalid", "", 400)
+	call(adminID, "GET", "/rest/api/3/bulk/issues/fields?issueIdsOrKeys=DOES-NOT-EXIST", "", 400)
 	payload := `{"selectedIssueIdsOrKeys":["` + strings.Join(issueKeys, `","`) + `"]}`
 	call(memberID, "POST", "/rest/api/3/bulk/issues/watch", payload, 403)
 	call(adminID, "POST", "/rest/api/3/bulk/issues/watch", `{"selectedIssueIdsOrKeys":["`+issueKeys[0]+`","`+issueKeys[0]+`"]}`, 400)

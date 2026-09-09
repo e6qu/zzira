@@ -5,6 +5,7 @@ URL. Bulk watch and unwatch are the first complete durable execution slice:
 
 | Route | Behavior |
 |---|---|
+| `GET /rest/api/3/bulk/issues/fields` | Discover the fields shared by the selected work items, with field search and 50-item cursor pages |
 | `POST /rest/api/3/bulk/issues/watch` | Queue self-subscription for the selected work items |
 | `POST /rest/api/3/bulk/issues/unwatch` | Queue self-unsubscription for the selected work items |
 | `GET /rest/api/3/bulk/queue/{taskId}` | Read submission identity, timestamps, state, progress and terminal counts |
@@ -17,9 +18,13 @@ watcher state, ordinary synchronization actions and terminal task result in one
 transaction, so cancellation or failure cannot expose a partially completed
 batch. Repeated requests remain idempotent.
 
+Field discovery intersects the canonical create/edit metadata for every selected
+project. It returns only field types the current command path can persist,
+combines context-specific options, and provides the same option IDs used by the
+ordinary Jira-compatible metadata APIs.
+
 Workspace administrators currently stand in for Jira's global **Bulk change**
 permission. Configurable global permission grants and Jira's notification
 controls remain part of the administration completion work. The remaining Jira
-bulk operations are delete, edit, move, transition, field discovery and
-transition discovery. Queue retention also needs Jira's 14-day expiry behavior.
-
+bulk operations are delete, edit, move, transition and transition discovery.
+Queue retention also needs Jira's 14-day expiry behavior.
