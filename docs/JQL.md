@@ -20,6 +20,12 @@ work item the viewer cannot browse.
 - `currentUser()`, `now()`, start/end of day, week, month, and year functions,
   Jira date literals, relative values such as `-5d`, and function increments
   such as `startOfMonth(-1M)`;
+- relation-backed `membersOf()`, `linkedIssues()`, `openSprints()`,
+  `closedSprints()`, `futureSprints()`, `standardIssueTypes()`, and
+  `subtaskIssueTypes()` list functions;
+- multi-value semantics for labels, version memberships, and current or
+  historical sprint memberships, including Jira's empty-field behavior for
+  negated comparisons;
 - immutable `WAS`, `WAS IN`, `WAS NOT`, `WAS NOT IN`, and `CHANGED` evaluation
   for retained field diffs, including `FROM`, `TO`, `BY`, `BEFORE`, `AFTER`,
   and `DURING` predicates;
@@ -100,8 +106,8 @@ ID search treats foreign-tenant and foreign-app records as missing.
 ## Current limits
 
 The search and JQL service resources remain assessed as partial. The remaining
-PR 1 work adds app-function invocation in the compiler, more built-in functions
-and multi-value fields, complete personal-data migration for list/history
+PR 1 work adds app-function invocation in the compiler, the remaining built-in
+functions and multi-value fields, complete personal-data migration for list/history
 operands and unknown-user reporting; project-aware validation warnings; exact
 historical versioned representations and richer rendered values.
 

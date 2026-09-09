@@ -448,7 +448,18 @@ func (p *parser) parseClause() (Node, error) {
 
 func (p *parser) parseInClause(field string, negated bool) (Node, error) {
 	if p.peek().kind != "lparen" {
-		return nil, &SyntaxError{p.peek().pos, "expected ( after IN"}
+		value, err := p.parseValue()
+		if err != nil {
+			return nil, err
+		}
+		if _, _, function := splitFunction(value); !function {
+			return nil, &SyntaxError{p.peek().pos, "expected a list or list function after IN"}
+		}
+		op := "in"
+		if negated {
+			op = "notin"
+		}
+		return Clause{Field: field, Op: op, Values: []string{value}}, nil
 	}
 	p.next()
 	var vals []string
@@ -679,7 +690,7 @@ func DefaultResolver() FieldResolver {
 		Columns: map[string]string{
 			"key":            "i.key",
 			"issue":          "i.key",
-			"id":             "i.id",
+			"id":             "i.jira_id",
 			"summary":        "i.summary",
 			"description":    "i.description::text",
 			"status":         "st.name",
@@ -822,6 +833,18 @@ func (c *compiler) clause(cl Clause) string {
 	}
 	if cl.Field == "labels" {
 		return c.labelsClause(cl)
+	}
+	if cl.Field == "sprint" {
+		return c.sprintClause(cl)
+	}
+	if (cl.Field == "issuetype") && containsJQLFunction(cl.Values, "standardIssueTypes", "subtaskIssueTypes") {
+		return c.issueTypeListClause(cl)
+	}
+	if (cl.Field == "assignee" || cl.Field == "reporter" || cl.Field == "creator") && containsJQLFunction(cl.Values, "membersOf") {
+		return c.userListClause(cl)
+	}
+	if (cl.Field == "issue" || cl.Field == "key" || cl.Field == "id") && containsJQLFunction(cl.Values, "linkedIssues") {
+		return c.linkedIssuesClause(cl)
 	}
 	col, ok := c.res.Columns[cl.Field]
 	if !ok {
@@ -1007,6 +1030,13 @@ func (c *compiler) fieldValue(field, value string) any {
 		return value
 	}
 	switch field {
+	case "id":
+		id, err := strconv.ParseInt(value, 10, 64)
+		if err != nil || id < 1 {
+			c.err = &SyntaxError{0, "issue ID must be a positive integer"}
+			return value
+		}
+		return id
 	case "assignee", "reporter", "creator":
 		if strings.EqualFold(value, "empty") || strings.EqualFold(value, "null") {
 			return nil
@@ -1016,6 +1046,131 @@ func (c *compiler) fieldValue(field, value string) any {
 		return strings.ToUpper(value)
 	}
 	return value
+}
+
+func containsJQLFunction(values []string, names ...string) bool {
+	wanted := map[string]bool{}
+	for _, name := range names {
+		wanted[strings.ToLower(name)] = true
+	}
+	for _, value := range values {
+		name, _, ok := splitFunction(value)
+		if ok && wanted[strings.ToLower(name)] {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *compiler) listResult(cl Clause, match, nonempty string) string {
+	switch cl.Op {
+	case "=", "in":
+		return match
+	case "!=", "notin":
+		return "(" + nonempty + " AND NOT (" + match + "))"
+	case "empty":
+		return "NOT (" + nonempty + ")"
+	case "notempty":
+		return nonempty
+	default:
+		c.err = &SyntaxError{0, "unsupported list operator " + cl.Op + " for " + cl.Field}
+		return ""
+	}
+}
+
+func (c *compiler) sprintClause(cl Clause) string {
+	nonempty := "EXISTS (SELECT 1 FROM sprint_issues sprint_any WHERE sprint_any.issue_id=i.id)"
+	if cl.Op == "empty" || cl.Op == "notempty" {
+		return c.listResult(cl, "FALSE", nonempty)
+	}
+	matches := []string{}
+	for _, value := range cl.Values {
+		if name, args, ok := splitFunction(value); ok {
+			state := map[string]string{"opensprints": "active", "closedsprints": "closed", "futuresprints": "future"}[strings.ToLower(name)]
+			if state == "" {
+				c.err = &SyntaxError{0, "unsupported function " + name + "() for sprint"}
+				return ""
+			}
+			if len(args) != 0 {
+				c.err = &SyntaxError{0, name + "() does not accept arguments"}
+				return ""
+			}
+			matches = append(matches, "EXISTS (SELECT 1 FROM sprint_issues sprint_match JOIN sprints sprint_value ON sprint_value.id=sprint_match.sprint_id WHERE sprint_match.issue_id=i.id AND sprint_value.state="+c.arg(state)+")")
+			continue
+		}
+		ph := c.arg(value)
+		matches = append(matches, "EXISTS (SELECT 1 FROM sprint_issues sprint_match JOIN sprints sprint_value ON sprint_value.id=sprint_match.sprint_id WHERE sprint_match.issue_id=i.id AND (sprint_value.id="+ph+" OR lower(sprint_value.name)=lower("+ph+")))")
+	}
+	return c.listResult(cl, "("+strings.Join(matches, " OR ")+")", nonempty)
+}
+
+func (c *compiler) issueTypeListClause(cl Clause) string {
+	matches := []string{}
+	for _, value := range cl.Values {
+		if name, args, ok := splitFunction(value); ok {
+			if len(args) != 0 {
+				c.err = &SyntaxError{0, name + "() does not accept arguments"}
+				return ""
+			}
+			switch strings.ToLower(name) {
+			case "standardissuetypes":
+				matches = append(matches, "NOT it.subtask")
+			case "subtaskissuetypes":
+				matches = append(matches, "it.subtask")
+			default:
+				c.err = &SyntaxError{0, "unsupported function " + name + "() for issuetype"}
+				return ""
+			}
+			continue
+		}
+		ph := c.arg(value)
+		matches = append(matches, "(it.id="+ph+" OR lower(it.name)=lower("+ph+"))")
+	}
+	return c.listResult(cl, "("+strings.Join(matches, " OR ")+")", "TRUE")
+}
+
+func (c *compiler) userListClause(cl Clause) string {
+	col := c.res.Columns[cl.Field]
+	matches := []string{}
+	for _, value := range cl.Values {
+		if name, args, ok := splitFunction(value); ok {
+			if !strings.EqualFold(name, "membersOf") || len(args) != 1 || strings.TrimSpace(args[0]) == "" {
+				c.err = &SyntaxError{0, "membersOf() requires one group name or ID"}
+				return ""
+			}
+			group := c.arg(args[0])
+			matches = append(matches, "EXISTS (SELECT 1 FROM sites member_site JOIN directories member_directory ON member_directory.organization_id=member_site.organization_id AND member_directory.active JOIN groups member_group ON member_group.directory_id=member_directory.id JOIN group_members member_entry ON member_entry.group_id=member_group.id WHERE member_site.workspace_id=i.workspace_id AND member_entry.user_id="+col+" AND (member_group.id::text="+group+" OR lower(member_group.name)=lower("+group+")))")
+			continue
+		}
+		matches = append(matches, col+"="+c.arg(c.fieldValue(cl.Field, value)))
+	}
+	return c.listResult(cl, "("+strings.Join(matches, " OR ")+")", col+" IS NOT NULL")
+}
+
+func (c *compiler) linkedIssuesClause(cl Clause) string {
+	if len(cl.Values) != 1 {
+		c.err = &SyntaxError{0, "linkedIssues() must be the only list value"}
+		return ""
+	}
+	name, args, ok := splitFunction(cl.Values[0])
+	if !ok || !strings.EqualFold(name, "linkedIssues") || len(args) < 1 || len(args) > 2 || strings.TrimSpace(args[0]) == "" {
+		c.err = &SyntaxError{0, "linkedIssues() requires an issue key and optional link type"}
+		return ""
+	}
+	key := c.arg(strings.ToUpper(args[0]))
+	conditions := []string{
+		"linked.workspace_id=i.workspace_id",
+		"(linked.inward_id=i.id OR linked.outward_id=i.id)",
+		"upper(linked_source.key)=" + key,
+	}
+	joinType := ""
+	if len(args) == 2 {
+		linkType := c.arg(args[1])
+		joinType = " JOIN issue_link_types linked_type ON linked_type.id=linked.link_type_id"
+		conditions = append(conditions, "(lower(linked_type.name)=lower("+linkType+") OR lower(linked_type.inward)=lower("+linkType+") OR lower(linked_type.outward)=lower("+linkType+"))")
+	}
+	match := "EXISTS (SELECT 1 FROM issue_links linked" + joinType + " JOIN issues linked_source ON linked_source.id=CASE WHEN linked.inward_id=i.id THEN linked.outward_id ELSE linked.inward_id END WHERE " + strings.Join(conditions, " AND ") + ")"
+	return c.listResult(cl, match, "TRUE")
 }
 
 func splitFunction(value string) (string, []string, bool) {

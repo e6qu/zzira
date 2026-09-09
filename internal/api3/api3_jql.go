@@ -59,8 +59,15 @@ var jqlSystemFields = []jqlFieldReference{
 }
 
 var jqlFunctions = []jqlFunctionReference{
+	{Value: "closedSprints()", DisplayName: "closedSprints()", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"SPRINT"}},
 	{Value: "currentUser()", DisplayName: "currentUser()", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"USER"}},
+	{Value: "futureSprints()", DisplayName: "futureSprints()", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"SPRINT"}},
+	{Value: "linkedIssues()", DisplayName: "linkedIssues(issueKey[, linkType])", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"ISSUE"}},
+	{Value: "membersOf()", DisplayName: "membersOf(group)", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"USER"}},
 	{Value: "now()", DisplayName: "now()", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"DATE"}},
+	{Value: "openSprints()", DisplayName: "openSprints()", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"SPRINT"}},
+	{Value: "standardIssueTypes()", DisplayName: "standardIssueTypes()", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"ISSUETYPE"}},
+	{Value: "subtaskIssueTypes()", DisplayName: "subtaskIssueTypes()", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"ISSUETYPE"}},
 	{Value: "startOfDay()", DisplayName: "startOfDay([increment])", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"DATE"}},
 	{Value: "endOfDay()", DisplayName: "endOfDay([increment])", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"DATE"}},
 	{Value: "startOfWeek()", DisplayName: "startOfWeek([increment])", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"DATE"}},

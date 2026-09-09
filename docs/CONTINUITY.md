@@ -17,7 +17,8 @@ boundaries, dependencies, and acceptance gates belong in
 - Current checkpoint: saved-filter management, JQL grammar/helpers/app
   precomputations, complete search projection/expansion plumbing, immutable
   numeric Jira issue IDs, strong-consistency reconciliation, and durable
-  enhanced-search result snapshots implemented
+  enhanced-search result snapshots, plus relation-backed Jira list functions
+  and multi-value fields implemented
 - Blockers: none
 
 ## Contract baseline
@@ -62,6 +63,10 @@ numeric Jira IDs while sync/actions retain stable `iss_*` identities. Enhanced
 search accepts reconciliation IDs; its primary-database query is already
 strongly consistent. Continuation tokens page through durable result positions,
 remain fixed when matching issues change, and recheck visibility on every page.
+Numeric issue-ID JQL now targets the public Jira identity. Group membership,
+linked issue, sprint-state, and standard/subtask type functions compile against
+their canonical relations; sprint, label, and version negation excludes empty
+values consistently with Jira.
 
 ## Validation baseline
 
@@ -75,7 +80,8 @@ also run the PostgreSQL integration suite from an empty migrated database.
 
 ## Resume here
 
-1. Complete function and multi-value field semantics.
+1. Add installed-app precomputation invocation and the remaining built-in
+   function and multi-value field semantics.
 2. Add filter-subscription scheduling and delivery after shared scheduled-work
    primitives are ready.
 3. Continue into bulk work-item and project administration slices.

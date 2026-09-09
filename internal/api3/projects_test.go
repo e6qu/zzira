@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -69,7 +70,7 @@ func TestProjectAPILifecycle(t *testing.T) {
 		exec(`INSERT INTO api_tokens(id,user_id,token_hash) VALUES ($1,$1,$2)`, id, store.HashToken(id))
 	}
 	t.Cleanup(func() {
-		for _, sql := range []string{`DELETE FROM issues WHERE workspace_id=$1`, `DELETE FROM boards WHERE project_id IN (SELECT id FROM projects WHERE workspace_id=$1)`, `DELETE FROM projects WHERE workspace_id=$1`, `DELETE FROM actions WHERE workspace_id=$1`, `DELETE FROM memberships WHERE workspace_id=$1`, `DELETE FROM workspaces WHERE id=$1`} {
+		for _, sql := range []string{`DELETE FROM groups WHERE directory_id IN (SELECT d.id FROM directories d JOIN sites s ON s.organization_id=d.organization_id WHERE s.workspace_id=$1)`, `DELETE FROM sprint_issues WHERE sprint_id IN (SELECT s.id FROM sprints s JOIN boards b ON b.id=s.board_id JOIN projects p ON p.id=b.project_id WHERE p.workspace_id=$1)`, `DELETE FROM sprints WHERE board_id IN (SELECT b.id FROM boards b JOIN projects p ON p.id=b.project_id WHERE p.workspace_id=$1)`, `DELETE FROM issues WHERE workspace_id=$1`, `DELETE FROM boards WHERE project_id IN (SELECT id FROM projects WHERE workspace_id=$1)`, `DELETE FROM projects WHERE workspace_id=$1`, `DELETE FROM actions WHERE workspace_id=$1`, `DELETE FROM memberships WHERE workspace_id=$1`, `DELETE FROM workspaces WHERE id=$1`} {
 			exec(sql, ws)
 		}
 		for _, id := range []string{actor, member} {
@@ -180,6 +181,53 @@ func TestProjectAPILifecycle(t *testing.T) {
 	}
 	if _, err := st.SetIssueProperty(ctx, saved.ID, "release.flag", json.RawMessage(`{"ready":true}`)); err != nil {
 		t.Fatal(err)
+	}
+	teamBoards, err := st.BoardsByWorkspace(ctx, ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var teamBoardID string
+	for _, board := range teamBoards {
+		if board.ProjectID == saved.ProjectID {
+			teamBoardID = board.ID
+		}
+	}
+	if teamBoardID == "" {
+		t.Fatal("TEAM board was not provisioned")
+	}
+	sprintID := store.NewID("spr")
+	exec(`INSERT INTO sprints(id,board_id,name,state) VALUES($1,$2,'Current sprint','active')`, sprintID, teamBoardID)
+	exec(`INSERT INTO sprint_issues(sprint_id,issue_id) VALUES($1,$2)`, sprintID, saved.ID)
+	if _, _, err := st.CreateIssueLink(ctx, actor, ws, "lt_relates", saved.ID, assigned.ID); err != nil {
+		t.Fatal(err)
+	}
+	var directoryID, groupID string
+	if err := st.Pool.QueryRow(ctx, `SELECT d.id::text FROM sites s JOIN directories d ON d.organization_id=s.organization_id AND d.active WHERE s.workspace_id=$1 ORDER BY d.created_at LIMIT 1`, ws).Scan(&directoryID); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Pool.QueryRow(ctx, `INSERT INTO groups(directory_id,name) VALUES($1,'Release managers') RETURNING id::text`, directoryID).Scan(&groupID); err != nil {
+		t.Fatal(err)
+	}
+	exec(`INSERT INTO group_members(group_id,user_id) VALUES($1,$2)`, groupID, actor)
+	searchCount := func(query string) int {
+		t.Helper()
+		response := call(actor, "GET", "/rest/api/3/search/jql?jql="+url.QueryEscape(query), "", 200)
+		var result struct{ Issues []json.RawMessage }
+		if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+			t.Fatal(err)
+		}
+		return len(result.Issues)
+	}
+	for query, want := range map[string]int{
+		"id = " + strconv.FormatInt(saved.JiraID, 10): 1,
+		"sprint IN openSprints()":                     1,
+		`assignee IN membersOf("Release managers")`:   1,
+		"issue IN linkedIssues(" + saved.Key + ")":    1,
+		"issuetype IN standardIssueTypes()":           2,
+	} {
+		if got := searchCount(query); got != want {
+			t.Fatalf("%s returned %d issues, want %d", query, got, want)
+		}
 	}
 	call(actor, "PUT", "/rest/api/3/issue/"+saved.Key, `{"fields":{"summary":"Rich content revised"}}`, 204)
 	call(actor, "POST", "/rest/api/3/issue", `{"fields":{"project":{"key":"TEAM"},"summary":"Invalid content","issuetype":{"name":"Task"},"description":{"type":"paragraph"}}}`, 400)

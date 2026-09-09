@@ -5966,7 +5966,7 @@
         "internal/api3/api3_jql_test.go",
         "docs/JQL.md"
       ],
-      "notes": "Per-query compilation and matching bounded to requested visible IDs are integration-tested; numeric Jira ID compatibility and exact service limits remain."
+      "notes": "Per-query compilation and matching bounded to requested visible numeric Jira IDs are integration-tested; exact service limits remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/jql/parse",

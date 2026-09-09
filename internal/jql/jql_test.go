@@ -161,13 +161,46 @@ func TestMultipleOrderFieldsAreBoundedAndDeterministic(t *testing.T) {
 	}
 }
 
-func TestUnsupportedFunctionIsACompileError(t *testing.T) {
-	query, err := Parse(`assignee = membersOf(engineering)`)
+func TestRelationBackedListFunctionsCompile(t *testing.T) {
+	query, err := Parse(`assignee IN (membersOf(engineering), usr_direct) AND sprint IN (openSprints(), "Sprint 2") AND issuetype IN (standardIssueTypes()) AND issue IN linkedIssues(OPS-1, blocks)`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if compiled := Compile(query, "usr_me", DefaultResolver()); compiled.Err == nil {
-		t.Fatal("unsupported function compiled as a literal")
+	compiled := Compile(query, "usr_me", DefaultResolver())
+	if compiled.Err != nil {
+		t.Fatal(compiled.Err)
+	}
+	for _, fragment := range []string{"FROM sites member_site", "FROM sprint_issues sprint_match", "NOT it.subtask", "FROM issue_links linked"} {
+		if !strings.Contains(compiled.Where, fragment) {
+			t.Fatalf("list-function SQL missing %q: %s", fragment, compiled.Where)
+		}
+	}
+	if !reflect.DeepEqual(compiled.Args, []any{"engineering", "usr_direct", "active", "Sprint 2", "OPS-1", "blocks"}) {
+		t.Fatalf("list-function args = %#v", compiled.Args)
+	}
+	for _, raw := range []string{`sprint IN openSprints(today)`, `assignee IN membersOf()`, `issue IN linkedIssues()`, `issuetype IN standardIssueTypes(extra)`} {
+		parsed, parseErr := Parse(raw)
+		if parseErr != nil {
+			t.Fatal(parseErr)
+		}
+		if invalid := Compile(parsed, "usr_me", DefaultResolver()); invalid.Err == nil {
+			t.Fatalf("invalid function compiled: %s", raw)
+		}
+	}
+}
+
+func TestJiraIssueIDCompilesAsNumeric(t *testing.T) {
+	query, err := Parse(`id IN (10001, 10002)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled := Compile(query, "usr_me", DefaultResolver())
+	if compiled.Err != nil || !strings.Contains(compiled.Where, "i.jira_id IN") || !reflect.DeepEqual(compiled.Args, []any{int64(10001), int64(10002)}) {
+		t.Fatalf("numeric issue ID SQL=%s args=%#v err=%v", compiled.Where, compiled.Args, compiled.Err)
+	}
+	bad, _ := Parse(`id = iss_internal`)
+	if compiled = Compile(bad, "usr_me", DefaultResolver()); compiled.Err == nil {
+		t.Fatal("internal issue ID was accepted as a Jira ID")
 	}
 }
 
