@@ -306,15 +306,26 @@ func TestProjectAPILifecycle(t *testing.T) {
 		t.Fatal(search.Body.String())
 	}
 	call(actor, "GET", "/rest/api/3/search/jql?jql=project%3DNEXT&maxResults=1&nextPageToken="+enhanced.NextPageToken, "", 400)
+	lateIssue := call(actor, "POST", "/rest/api/3/issue", `{"fields":{"project":{"key":"TEAM"},"summary":"Created after search snapshot","issuetype":{"name":"Task"}}}`, 201)
+	var late struct{ ID string }
+	if err := json.Unmarshal(lateIssue.Body.Bytes(), &late); err != nil {
+		t.Fatal(err)
+	}
 	last := call(actor, "POST", "/rest/api/3/search/jql", `{"jql":"project=TEAM","maxResults":1,"nextPageToken":"`+enhanced.NextPageToken+`"}`, 200)
 	enhanced.NextPageToken = ""
 	enhanced.Issues = nil
 	if err := json.Unmarshal(last.Body.Bytes(), &enhanced); err != nil {
 		t.Fatal(err)
 	}
-	if !enhanced.IsLast || len(enhanced.Issues[0]) != 1 || enhanced.Issues[0]["id"] == nil || enhanced.NextPageToken != "" {
+	if !enhanced.IsLast || len(enhanced.Issues[0]) != 1 || enhanced.Issues[0]["id"] == nil || enhanced.Issues[0]["id"] == late.ID || enhanced.NextPageToken != "" {
 		t.Fatal(last.Body.String())
 	}
+	reconcilePage := call(actor, "POST", "/rest/api/3/search/jql", `{"jql":"project=TEAM","maxResults":1,"reconcileIssues":[`+strconv.FormatInt(saved.JiraID, 10)+`]}`, 200)
+	var reconcileCursor struct{ NextPageToken string }
+	if err := json.Unmarshal(reconcilePage.Body.Bytes(), &reconcileCursor); err != nil || reconcileCursor.NextPageToken == "" {
+		t.Fatal(reconcilePage.Body.String())
+	}
+	call(actor, "POST", "/rest/api/3/search/jql", `{"jql":"project=TEAM","maxResults":1,"nextPageToken":"`+reconcileCursor.NextPageToken+`"}`, 400)
 	call(actor, "GET", "/rest/api/3/search/jql?jql=project%3DTEAM&nextPageToken=LTE%3D", "", 400)
 	call(actor, "GET", "/rest/api/3/search/jql?jql=ORDER%20BY%20key", "", 400)
 }

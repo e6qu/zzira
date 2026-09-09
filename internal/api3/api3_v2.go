@@ -8,12 +8,14 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/e6qu/zzira/internal/jql"
 	"github.com/e6qu/zzira/internal/models"
+	"github.com/e6qu/zzira/internal/store"
 )
 
 // ---- projects ----
@@ -523,41 +525,45 @@ type enhancedSearchRequest struct {
 }
 
 type enhancedSearchCursor struct {
-	Version   int    `json:"v"`
-	Offset    int    `json:"o"`
-	QueryHash string `json:"q"`
-	Workspace string `json:"w"`
-	User      string `json:"u"`
-	ExpiresAt int64  `json:"e"`
+	Version    int    `json:"v"`
+	SnapshotID string `json:"s"`
+	Position   int64  `json:"p"`
+	QueryHash  string `json:"q"`
+	Workspace  string `json:"w"`
+	User       string `json:"u"`
+	ExpiresAt  int64  `json:"e"`
 }
 
-func enhancedSearchQueryHash(query string) string {
-	sum := sha256.Sum256([]byte(strings.TrimSpace(query)))
+func enhancedSearchQueryHash(query string, reconcileIssues []int64) string {
+	ids := append([]int64{}, reconcileIssues...)
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	material, _ := json.Marshal(struct {
+		JQL       string  `json:"jql"`
+		Reconcile []int64 `json:"reconcileIssues"`
+	}{JQL: strings.TrimSpace(query), Reconcile: ids})
+	sum := sha256.Sum256(material)
 	return base64.RawURLEncoding.EncodeToString(sum[:16])
 }
 
-func encodeEnhancedSearchCursor(offset int, query, workspaceID, userID string, now time.Time) string {
-	payload, _ := json.Marshal(enhancedSearchCursor{
-		Version: 1, Offset: offset, QueryHash: enhancedSearchQueryHash(query),
-		Workspace: workspaceID, User: userID, ExpiresAt: now.Add(7 * 24 * time.Hour).Unix(),
-	})
+func encodeEnhancedSearchCursor(cursor enhancedSearchCursor) string {
+	payload, _ := json.Marshal(cursor)
 	return base64.RawURLEncoding.EncodeToString(payload)
 }
 
-func decodeEnhancedSearchCursor(token, query, workspaceID, userID string, now time.Time) (int, error) {
+func decodeEnhancedSearchCursor(token, query, workspaceID, userID string, reconcileIssues []int64, now time.Time) (enhancedSearchCursor, error) {
 	raw, err := base64.RawURLEncoding.DecodeString(token)
 	if err != nil {
-		return 0, err
+		return enhancedSearchCursor{}, err
 	}
 	var cursor enhancedSearchCursor
 	if err = json.Unmarshal(raw, &cursor); err != nil {
-		return 0, err
+		return enhancedSearchCursor{}, err
 	}
-	if cursor.Version != 1 || cursor.Offset < 0 || cursor.ExpiresAt < now.Unix() ||
-		cursor.QueryHash != enhancedSearchQueryHash(query) || cursor.Workspace != workspaceID || cursor.User != userID {
-		return 0, errors.New("cursor does not match this search")
+	if cursor.Version != 2 || cursor.SnapshotID == "" || cursor.Position < 0 || cursor.ExpiresAt < now.Unix() ||
+		cursor.QueryHash != enhancedSearchQueryHash(query, reconcileIssues) || cursor.Workspace != workspaceID || cursor.User != userID {
+		return enhancedSearchCursor{}, errors.New("cursor does not match this search")
 	}
-	return cursor.Offset, nil
+	return cursor, nil
 }
 
 func (h *Handler) search(w http.ResponseWriter, r *http.Request) {
@@ -689,10 +695,14 @@ func (h *Handler) searchJQL(w http.ResponseWriter, r *http.Request) {
 		writeJerr(w, e)
 		return
 	}
-	startAt := 0
+	now := time.Now()
+	cursor := enhancedSearchCursor{
+		Version: 2, QueryHash: enhancedSearchQueryHash(req.JQL, req.ReconcileIssues),
+		Workspace: wsID, User: userID, ExpiresAt: now.Add(7 * 24 * time.Hour).Unix(),
+	}
 	if req.NextPageToken != "" {
 		var err error
-		startAt, err = decodeEnhancedSearchCursor(req.NextPageToken, req.JQL, wsID, userID, time.Now())
+		cursor, err = decodeEnhancedSearchCursor(req.NextPageToken, req.JQL, wsID, userID, req.ReconcileIssues, now)
 		if err != nil {
 			jiraError(w, http.StatusBadRequest, "Invalid nextPageToken.")
 			return
@@ -712,15 +722,23 @@ func (h *Handler) searchJQL(w http.ResponseWriter, r *http.Request) {
 		writeJerr(w, e)
 		return
 	}
-	issues, _, err := h.Store.Search(r.Context(), wsID, userID, c, maxResults+1, startAt)
+	if cursor.SnapshotID == "" {
+		cursor.SnapshotID, err = h.Store.CreateSearchSnapshot(r.Context(), wsID, userID, cursor.QueryHash, c, time.Unix(cursor.ExpiresAt, 0))
+		if err != nil {
+			jiraError(w, http.StatusInternalServerError, "Could not create search snapshot.")
+			return
+		}
+	}
+	page, err := h.Store.SearchSnapshotPage(r.Context(), cursor.SnapshotID, wsID, userID, cursor.QueryHash, cursor.Position, maxResults)
 	if err != nil {
-		jiraError(w, http.StatusBadRequest, "Error in the JQL Query: "+err.Error())
+		if errors.Is(err, store.ErrSearchSnapshot) {
+			jiraError(w, http.StatusBadRequest, "Invalid nextPageToken.")
+		} else {
+			jiraError(w, http.StatusInternalServerError, "Could not read search snapshot.")
+		}
 		return
 	}
-	hasMore := len(issues) > maxResults
-	if hasMore {
-		issues = issues[:maxResults]
-	}
+	issues, hasMore := page.Issues, page.HasMore
 	customFields, err := h.Store.CustomFieldsForWorkspace(r.Context(), wsID)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "Could not load search field metadata.")
@@ -742,7 +760,8 @@ func (h *Handler) searchJQL(w http.ResponseWriter, r *http.Request) {
 		resp["schema"] = schemas
 	}
 	if hasMore {
-		resp["nextPageToken"] = encodeEnhancedSearchCursor(startAt+maxResults, req.JQL, wsID, userID, time.Now())
+		cursor.Position = page.NextPosition
+		resp["nextPageToken"] = encodeEnhancedSearchCursor(cursor)
 	}
 	writeJSON(w, http.StatusOK, resp)
 }

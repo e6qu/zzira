@@ -7,10 +7,14 @@ import (
 
 func TestEnhancedSearchCursorBindsQueryWorkspaceUserAndExpiry(t *testing.T) {
 	now := time.Date(2026, time.September, 9, 12, 0, 0, 0, time.UTC)
-	token := encodeEnhancedSearchCursor(75, " project = ZZ ", "ws_one", "usr_one", now)
-	offset, err := decodeEnhancedSearchCursor(token, "project = ZZ", "ws_one", "usr_one", now.Add(6*24*time.Hour))
-	if err != nil || offset != 75 {
-		t.Fatalf("round trip offset=%d err=%v", offset, err)
+	token := encodeEnhancedSearchCursor(enhancedSearchCursor{
+		Version: 2, SnapshotID: "search_one", Position: 75,
+		QueryHash: enhancedSearchQueryHash(" project = ZZ ", []int64{10002, 10001}),
+		Workspace: "ws_one", User: "usr_one", ExpiresAt: now.Add(7 * 24 * time.Hour).Unix(),
+	})
+	cursor, err := decodeEnhancedSearchCursor(token, "project = ZZ", "ws_one", "usr_one", []int64{10001, 10002}, now.Add(6*24*time.Hour))
+	if err != nil || cursor.Position != 75 || cursor.SnapshotID != "search_one" {
+		t.Fatalf("round trip cursor=%+v err=%v", cursor, err)
 	}
 	for _, mismatch := range []struct {
 		query, workspace, user string
@@ -21,11 +25,14 @@ func TestEnhancedSearchCursorBindsQueryWorkspaceUserAndExpiry(t *testing.T) {
 		{"project = ZZ", "ws_one", "usr_two", now},
 		{"project = ZZ", "ws_one", "usr_one", now.Add(8 * 24 * time.Hour)},
 	} {
-		if _, err := decodeEnhancedSearchCursor(token, mismatch.query, mismatch.workspace, mismatch.user, mismatch.now); err == nil {
+		if _, err := decodeEnhancedSearchCursor(token, mismatch.query, mismatch.workspace, mismatch.user, []int64{10001, 10002}, mismatch.now); err == nil {
 			t.Fatalf("cursor accepted mismatch %+v", mismatch)
 		}
 	}
-	if _, err := decodeEnhancedSearchCursor("LTE", "project = ZZ", "ws_one", "usr_one", now); err == nil {
+	if _, err := decodeEnhancedSearchCursor(token, "project = ZZ", "ws_one", "usr_one", []int64{10003}, now); err == nil {
+		t.Fatal("cursor accepted a different reconciliation set")
+	}
+	if _, err := decodeEnhancedSearchCursor("LTE", "project = ZZ", "ws_one", "usr_one", nil, now); err == nil {
 		t.Fatal("legacy raw offset token was accepted")
 	}
 }

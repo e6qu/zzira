@@ -27,8 +27,8 @@ work item the viewer cannot browse.
   deterministic paging;
 - immutable numeric Jira issue IDs at the REST boundary while retaining separate
   local-first sync identities; and
-- legacy offset search plus enhanced search with seven-day opaque cursors bound
-  to the JQL, workspace, and user.
+- legacy offset search plus enhanced search with durable seven-day result-order
+  snapshots bound to the JQL, reconciliation set, workspace, and user.
 
 The history compiler evaluates `actions`, ZZIRA's immutable ordered change log.
 It compares both stored IDs and display values, so a status query can use either
@@ -41,7 +41,10 @@ Both methods of `/rest/api/3/search` and `/rest/api/3/search/jql`, plus
 `POST /rest/api/3/search/approximate-count`, use the same compiler and
 permission-filtered store query. Enhanced search defaults to issue IDs, honors
 selected fields, rejects unbounded queries and offset pagination, and rejects a
-cursor reused with another query, workspace, or user.
+cursor reused with another query, reconciliation set, workspace, or user. Each
+continuation reads stored result positions, so inserts, edits, and reordering
+after the first page cannot duplicate, skip, or inject matching issues. Current
+visibility is checked again on every page.
 
 Legacy and enhanced search accept repeated or comma-delimited field selectors,
 `*all`/`*navigable`, exclusions, and custom-field IDs or installed-app keys.
@@ -100,9 +103,7 @@ The search and JQL service resources remain assessed as partial. The remaining
 PR 1 work adds app-function invocation in the compiler, more built-in functions
 and multi-value fields, complete personal-data migration for list/history
 operands and unknown-user reporting; project-aware validation warnings; exact
-historical versioned representations and richer rendered values; and
-snapshot/keyset semantics for pages whose matching work items change between
-requests.
+historical versioned representations and richer rendered values.
 
 Some Jira history fields cannot be queried until their mutations persist a
 structured diff. Unsupported functions fail during compilation instead of

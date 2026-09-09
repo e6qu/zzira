@@ -5913,7 +5913,7 @@
         "docs/JQL.md",
         "internal/api3/search_projection_test.go"
       ],
-      "notes": "Enhanced GET search has bounded-query, selected fields/app keys, every documented expansion name, requested properties, expiring query/user/workspace-bound cursor and invalid-option evidence; reconciliation, richer rendering/history and snapshot/keyset semantics remain."
+      "notes": "Enhanced GET search has bounded-query, immutable numeric Jira IDs, selected fields/app keys, every documented expansion name, requested properties, strongly consistent reconciliation, durable expiring query/reconciliation/user/workspace-bound result snapshots and invalid-option evidence; richer rendering/history remains."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/search/jql",
@@ -5926,7 +5926,7 @@
         "docs/JQL.md",
         "internal/api3/search_projection_test.go"
       ],
-      "notes": "Enhanced POST search has strict decoding, bounded-query, selected fields/app keys, every documented expansion name, requested properties, expiring query/user/workspace-bound cursor and invalid-option evidence; reconciliation, richer rendering/history and snapshot/keyset semantics remain."
+      "notes": "Enhanced POST search has strict decoding, bounded-query, immutable numeric Jira IDs, selected fields/app keys, every documented expansion name, requested properties, strongly consistent reconciliation, durable expiring query/reconciliation/user/workspace-bound result snapshots and invalid-option evidence; richer rendering/history remains."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/jql/autocompletedata",
