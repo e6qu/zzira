@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test';
 import axe from 'axe-core';
 
+const externalBaseURL = process.env.ZZIRA_EXTERNAL_URL || 'http://localhost:8080';
+
 async function accessible(page: import('@playwright/test').Page) {
   await page.addScriptTag({ content: axe.source });
   const violations = await page.evaluate(async () => (await (window as any).axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'] } })).violations);
@@ -127,7 +129,7 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
   await page.route('https://connect.example.test/**', async route => {
     const target = new URL(route.request().url());
     expect(target.searchParams.get('jwt')).toBeTruthy();
-    expect(target.searchParams.get('xdm_e')).toBe('http://localhost:8080');
+    expect(target.searchParams.get('xdm_e')).toBe(externalBaseURL);
     expect(target.searchParams.get('xdm_c')).toMatch(/^zzira-/);
     if (target.pathname.endsWith('/report.svg') || target.pathname.endsWith('/dashboard.svg') || target.pathname.endsWith('/project.svg') || target.pathname.endsWith('/context.svg') || target.pathname.endsWith('/status.svg')) {
       await route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 60"><rect width="80" height="60" rx="8" fill="#1868db"/><path d="M18 42V30m15 12V18m15 24V25m15 17V12" stroke="white" stroke-width="5"/></svg>' });
