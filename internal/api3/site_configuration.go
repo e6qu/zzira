@@ -273,7 +273,7 @@ func (h *Handler) issueNavigatorColumns(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 		if strings.HasPrefix(strings.ToLower(r.Header.Get("Content-Type")), "multipart/form-data") {
-			if err := r.ParseMultipartForm(1 << 20); err != nil {
+			if err := r.ParseMultipartForm(1 << 20); err != nil { // #nosec G120 -- MaxBytesReader caps the complete body above.
 				jiraError(w, http.StatusBadRequest, "Could not parse issue navigator columns.")
 				return
 			}

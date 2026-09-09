@@ -1,8 +1,10 @@
 package api3
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -126,6 +128,19 @@ func TestJiraSiteConfigurationContractJourney(t *testing.T) {
 		t.Fatalf("columns = %#v", columns)
 	}
 	call(adminID, http.MethodPut, "/rest/api/3/settings/columns", strings.Repeat("columns=summary&", 70000), "application/x-www-form-urlencoded", http.StatusBadRequest)
+	var oversizedMultipart bytes.Buffer
+	writer := multipart.NewWriter(&oversizedMultipart)
+	field, err := writer.CreateFormField("columns")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = field.Write([]byte(strings.Repeat("x", (1<<20)+1))); err != nil {
+		t.Fatal(err)
+	}
+	if err = writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	call(adminID, http.MethodPut, "/rest/api/3/settings/columns", oversizedMultipart.String(), writer.FormDataContentType(), http.StatusBadRequest)
 	call(adminID, http.MethodPut, "/rest/api/3/settings/columns", "", "application/x-www-form-urlencoded", http.StatusOK)
 	columns = call(adminID, http.MethodGet, "/rest/api/3/settings/columns", "", "", http.StatusOK).([]any)
 	if len(columns) != 0 {
