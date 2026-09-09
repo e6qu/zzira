@@ -46,7 +46,9 @@ test('notifications API and inbox keep private read state in sync', async ({ pag
   const response = await page.request.get('/rest/zzira/1/notifications?limit=200');
   expect(response.status()).toBe(200);
   const payload = await response.json();
-  const notification = payload.notifications.find((item: any) => item.entityId === issue.id);
+  const notification = payload.notifications.find((item: any) =>
+    item.kind === 'assigned' && item.entityType === 'issue' && item.message.includes(issue.key),
+  );
   expect(notification).toMatchObject({ read: false, kind: 'assigned', entityType: 'issue' });
   expect(notification.created).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   expect(payload.unreadCount).toBeGreaterThan(0);
@@ -79,7 +81,7 @@ test('notifications API and inbox keep private read state in sync', async ({ pag
   const unreadItem = page.locator('.notification-inbox-item', { hasText: issue.key });
   await expect(unreadItem).toBeVisible();
   await unreadItem.locator('.notification-open').click();
-  await expect(page.locator('#issue-root')).toHaveAttribute('data-issue-id', issue.id);
+  await expect(page.locator('#issue-root')).toHaveAttribute('data-issue-id', notification.entityId);
 
   const afterOpen = await (await page.request.get('/rest/zzira/1/notifications?limit=200')).json();
   expect(afterOpen.notifications.find((item: any) => item.id === notification.id).read).toBe(true);

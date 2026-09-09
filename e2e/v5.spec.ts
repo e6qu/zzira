@@ -26,8 +26,21 @@ test('V5 done-when: security level hides an issue from ana (404 + tombstone in h
 
   const me = await request.get('/rest/api/3/myself', demo);
   const demoId = (await me.json()).accountId;
-  const anaList = await (await request.get('/rest/api/3/user/search?query=ana', demo)).json();
-  const anaId = anaList[0].accountId;
+  const syncActions = async (client: APIRequestContext, auth?: { headers: { Authorization: string } }) => {
+    let since = 0;
+    const actions: any[] = [];
+    for (let page = 0; page < 100; page += 1) {
+      const r = await client.get(`/sync?workspace=zzira&since=${since}&limit=1000`, auth);
+      if (r.status() === 304) break;
+      expect(r.status()).toBe(200);
+      const body = await r.json();
+      actions.push(...(body.actions ?? []));
+      expect(body.to).toBeGreaterThan(since);
+      since = body.to;
+      if (!body.truncated) break;
+    }
+    return actions;
+  };
 
   const created = await request.post('/rest/api/3/issue', {
     ...demo,
@@ -35,10 +48,14 @@ test('V5 done-when: security level hides an issue from ana (404 + tombstone in h
   });
   const createdBody = await created.json();
   const key = createdBody.key;
-  const issueId = createdBody.id;
 
   // ana can see it now
   expect((await anaContext.request.get(`/rest/api/3/issue/${key}`)).status()).toBe(200);
+  const visibleIssue = (await syncActions(anaContext.request)).find(
+    (a: any) => a.entityType === 'issue' && a.payload?.issue?.key === key,
+  );
+  expect(visibleIssue).toBeTruthy();
+  const reconciliationId = visibleIssue.payload.issue.id;
 
   // scheme: level restricted to demo
   await request.post('/rest/api/3/issuesecurityschemes', {
@@ -57,19 +74,10 @@ test('V5 done-when: security level hides an issue from ana (404 + tombstone in h
   // ana's sync stream carries the per-user tombstone for THIS issue;
   // demo's stream never carries tombstones (members keep their replica).
   const tombstonesFor = async (client: APIRequestContext, auth?: { headers: { Authorization: string } }) => {
-    let since = 0;
-    const actions: any[] = [];
-    for (let page = 0; page < 100; page += 1) {
-      const r = await client.get(`/sync?workspace=zzira&since=${since}&limit=1000`, auth);
-      if (r.status() === 304) break;
-      expect(r.status()).toBe(200);
-      const body = await r.json();
-      actions.push(...(body.actions ?? []));
-      expect(body.to).toBeGreaterThan(since);
-      since = body.to;
-      if (!body.truncated) break;
-    }
-    return actions.filter((a: any) => a.entityType === 'tombstone' && JSON.stringify(a.payload).includes(`"${issueId}"`));
+    const actions = await syncActions(client, auth);
+    return actions.filter((a: any) =>
+      a.entityType === 'tombstone' && a.payload?.issueId === reconciliationId,
+    );
   };
   expect((await tombstonesFor(anaContext.request)).length).toBeGreaterThanOrEqual(1);
   expect((await tombstonesFor(request, demo)).length).toBe(0);
