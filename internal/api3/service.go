@@ -258,7 +258,7 @@ func (h *Handler) getServiceQueue(w http.ResponseWriter, r *http.Request, worksp
 		} else {
 			fields["assignee"] = nil
 		}
-		beans = append(beans, map[string]any{"id": request.Issue.ID, "key": request.Issue.Key, "self": h.BaseURL + "/rest/api/3/issue/" + request.Issue.ID, "fields": fields})
+		beans = append(beans, map[string]any{"id": jiraIssueID(request.Issue), "key": request.Issue.Key, "self": h.BaseURL + "/rest/api/3/issue/" + jiraIssueID(request.Issue), "fields": fields})
 	}
 	h.writeServicePage(w, r, beans)
 }
@@ -745,7 +745,7 @@ func (h *Handler) serviceRequestBean(r *http.Request, workspaceID, viewerID stri
 	}
 	status := h.serviceStatusBean(request.Issue.Status, request.Issue.UpdatedAt)
 	return map[string]any{
-		"issueId": request.Issue.ID, "issueKey": request.Issue.Key, "summary": request.Issue.Summary,
+		"issueId": jiraIssueID(request.Issue), "issueKey": request.Issue.Key, "summary": request.Issue.Summary,
 		"serviceDeskId": request.ServiceDesk.ID, "requestTypeId": request.RequestType.ID,
 		"serviceDesk": serviceDeskBean(h.BaseURL, request.ServiceDesk),
 		"requestType": serviceRequestTypeBean(h.BaseURL, request.RequestType),

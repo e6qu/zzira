@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -145,13 +146,28 @@ func TestProjectAPILifecycle(t *testing.T) {
 		t.Fatalf("project audit count=%d: %v", count, err)
 	}
 	issue := call(actor, "POST", "/rest/api/3/issue", `{"fields":{"project":{"key":"TEAM"},"summary":"Assigned by default","issuetype":{"name":"Task"}}}`, 201)
-	var createdIssue struct{ Key string }
+	var createdIssue struct {
+		ID  string
+		Key string
+	}
 	if err := json.Unmarshal(issue.Body.Bytes(), &createdIssue); err != nil {
 		t.Fatal(err)
 	}
+	createdJiraID, err := strconv.ParseInt(createdIssue.ID, 10, 64)
+	if err != nil || createdJiraID < 1 {
+		t.Fatalf("create issue did not return a numeric Jira id: %s", issue.Body.String())
+	}
 	assigned, err := st.IssueByIDOrKey(ctx, ws, createdIssue.Key)
-	if err != nil || assigned.Assignee == nil || assigned.Assignee.ID != actor {
+	if err != nil || assigned.JiraID != createdJiraID || assigned.Assignee == nil || assigned.Assignee.ID != actor {
 		t.Fatalf("default assignee: %v %v", assigned, err)
+	}
+	byJiraID, err := st.IssueByIDOrKey(ctx, ws, createdIssue.ID)
+	if err != nil || byJiraID.ID != assigned.ID {
+		t.Fatalf("numeric Jira id lookup: %v %v", byJiraID, err)
+	}
+	readByJiraID := call(actor, "GET", "/rest/api/3/issue/"+createdIssue.ID, "", 200)
+	if !strings.Contains(readByJiraID.Body.String(), `"id":"`+createdIssue.ID+`"`) || strings.Contains(readByJiraID.Body.String(), assigned.ID) {
+		t.Fatalf("numeric Jira id was not preserved at the REST boundary: %s", readByJiraID.Body.String())
 	}
 	document := `{"type":"doc","version":1,"content":[{"type":"heading","attrs":{"level":2},"content":[{"type":"text","text":"Release","marks":[{"type":"strong"}]}]},{"type":"bulletList","content":[{"type":"listItem","content":[{"type":"paragraph","content":[{"type":"text","text":"Ready"}]}]}]}]}`
 	rich := call(actor, "POST", "/rest/api/3/issue", `{"fields":{"project":{"key":"TEAM"},"summary":"Rich content","issuetype":{"name":"Task"},"assignee":null,"labels":["release-ready"],"description":`+document+`}}`, 201)
@@ -184,10 +200,11 @@ func TestProjectAPILifecycle(t *testing.T) {
 	if !strings.Contains(parsed.Body.String(), `"structure"`) || !strings.Contains(parsed.Body.String(), `"errors":["JQL syntax error`) {
 		t.Fatal(parsed.Body.String())
 	}
-	matched := call(actor, "POST", "/rest/api/3/jql/match", `{"issueIds":["`+saved.ID+`"],"jqls":["project=TEAM","project=NEXT","status ="]}`, 200)
-	if !strings.Contains(matched.Body.String(), `"matchedIssues":["`+saved.ID+`"]`) || !strings.Contains(matched.Body.String(), `"matchedIssues":[]`) || !strings.Contains(matched.Body.String(), `"errors":["Error in the JQL Query`) {
+	matched := call(actor, "POST", "/rest/api/3/jql/match", `{"issueIds":[`+strconv.FormatInt(saved.JiraID, 10)+`],"jqls":["project=TEAM","project=NEXT","status ="]}`, 200)
+	if !strings.Contains(matched.Body.String(), `"matchedIssues":[`+strconv.FormatInt(saved.JiraID, 10)+`]`) || !strings.Contains(matched.Body.String(), `"matchedIssues":[]`) || !strings.Contains(matched.Body.String(), `"errors":["Error in the JQL Query`) {
 		t.Fatal(matched.Body.String())
 	}
+	call(actor, "POST", "/rest/api/3/jql/match", `{"issueIds":["`+saved.ID+`"],"jqls":["project=TEAM"]}`, 400)
 	cleaned := call(actor, "POST", "/rest/api/3/jql/pdcleaner", `{"queryStrings":["assignee = currentUser()"]}`, 200)
 	if !strings.Contains(cleaned.Body.String(), `"queryStrings":["assignee = currentUser()"]`) {
 		t.Fatal(cleaned.Body.String())
@@ -267,6 +284,10 @@ func TestProjectAPILifecycle(t *testing.T) {
 	counted := call(actor, "POST", "/rest/api/3/search/approximate-count", `{"jql":"project=TEAM"}`, 200)
 	if !strings.Contains(counted.Body.String(), `"count":2`) {
 		t.Fatal(counted.Body.String())
+	}
+	reconciled := call(actor, "POST", "/rest/api/3/search/jql", `{"jql":"key=`+saved.Key+`","reconcileIssues":[`+strconv.FormatInt(saved.JiraID, 10)+`]}`, 200)
+	if !strings.Contains(reconciled.Body.String(), `"id":"`+strconv.FormatInt(saved.JiraID, 10)+`"`) || strings.Contains(reconciled.Body.String(), saved.ID) {
+		t.Fatalf("reconciled search leaked the internal issue id: %s", reconciled.Body.String())
 	}
 	search := call(actor, "GET", "/rest/api/3/search/jql?jql=project%3DTEAM&maxResults=1&fields=summary", "", 200)
 	var enhanced struct {

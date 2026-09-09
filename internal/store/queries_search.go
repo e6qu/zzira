@@ -26,11 +26,11 @@ JOIN projects pr ON pr.id = i.project_id
 `
 
 const searchSelect = `
-SELECT i.id, i.workspace_id, i.project_id, i.key, i.summary, i.description,
+SELECT i.id, i.jira_id, i.workspace_id, i.project_id, i.key, i.summary, i.description,
        st.id, st.name, st.category,
 	       it.id, it.name, it.icon,
 	       it.subtask,
-	       parent.id, parent.key, parent.summary,
+	       parent.id, parent.jira_id, parent.key, parent.summary,
        pr2.id, pr2.name,
        a.id, a.display_name,
 	       r.id, r.display_name,
@@ -83,12 +83,12 @@ func (s *Store) Search(ctx context.Context, workspaceID, userID string, c jql.Co
 // issue IDs. This keeps Jira's bulk match resource bounded independently of the
 // workspace's total issue count and applies the same issue-security predicate
 // used by normal search.
-func (s *Store) MatchIssueIDs(ctx context.Context, workspaceID, userID string, c jql.Compiled, issueIDs []string) ([]string, error) {
+func (s *Store) MatchIssueIDs(ctx context.Context, workspaceID, userID string, c jql.Compiled, issueIDs []int64) ([]int64, error) {
 	if c.Err != nil {
 		return nil, c.Err
 	}
 	if len(issueIDs) == 0 {
-		return []string{}, nil
+		return []int64{}, nil
 	}
 	where := "i.workspace_id = $1"
 	args := []any{workspaceID}
@@ -101,15 +101,15 @@ func (s *Store) MatchIssueIDs(ctx context.Context, workspaceID, userID string, c
 	where += " AND " + VisibleIssuePredicate("i", userPH)
 	idsPH := "$" + fmt.Sprintf("%d", len(args)+1)
 	args = append(args, issueIDs)
-	where += " AND i.id=ANY(" + idsPH + "::TEXT[])"
-	rows, err := s.Pool.Query(ctx, `SELECT i.id `+searchJoin+` WHERE `+where, args...)
+	where += " AND i.jira_id=ANY(" + idsPH + "::BIGINT[])"
+	rows, err := s.Pool.Query(ctx, `SELECT i.jira_id `+searchJoin+` WHERE `+where, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	matched := []string{}
+	matched := []int64{}
 	for rows.Next() {
-		var id string
+		var id int64
 		if err := rows.Scan(&id); err != nil {
 			return nil, err
 		}

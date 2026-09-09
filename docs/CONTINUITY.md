@@ -15,7 +15,8 @@ boundaries, dependencies, and acceptance gates belong in
 - Pull request: not opened yet
 - State: implementation in progress
 - Current checkpoint: saved-filter management, JQL grammar/helpers/app
-  precomputations, and complete search projection/expansion plumbing implemented
+  precomputations, complete search projection/expansion plumbing, immutable
+  numeric Jira issue IDs, and strong-consistency reconciliation implemented
 - Blockers: none
 
 ## Contract baseline
@@ -55,7 +56,10 @@ projection, installed-app field-key aliases, names/schema/rendered expansion,
 permission-safe requested issue properties, executable transitions, issue
 operations, edit metadata, immutable changelogs, and current versioned
 representations. Approximate count enforces its bounded-query contract.
-Strong-consistency reconciliation and cursor behavior are the next search work.
+REST issue resources, search, JQL bulk matching, and JSM now expose immutable
+numeric Jira IDs while sync/actions retain stable `iss_*` identities. Enhanced
+search accepts reconciliation IDs; its primary-database query is already
+strongly consistent. Snapshot/keyset cursor behavior is the next search work.
 
 ## Validation baseline
 
@@ -69,8 +73,7 @@ also run the PostgreSQL integration suite from an empty migrated database.
 
 ## Resume here
 
-1. Complete function and multi-value field semantics, search reconciliation,
-   and snapshot/keyset paging.
+1. Complete function and multi-value field semantics and snapshot/keyset paging.
 2. Add filter-subscription scheduling and delivery after shared scheduled-work
    primitives are ready.
 3. Continue into bulk work-item and project administration slices.

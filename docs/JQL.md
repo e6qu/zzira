@@ -24,7 +24,9 @@ work item the viewer cannot browse.
   for retained field diffs, including `FROM`, `TO`, `BY`, `BEFORE`, `AFTER`,
   and `DURING` predicates;
 - as many as seven `ORDER BY` fields with an issue-ID tie-breaker for
-  deterministic paging; and
+  deterministic paging;
+- immutable numeric Jira issue IDs at the REST boundary while retaining separate
+  local-first sync identities; and
 - legacy offset search plus enhanced search with seven-day opaque cursors bound
   to the JQL, workspace, and user.
 
@@ -51,9 +53,16 @@ representations expose the selected current values under version `1` and replace
 the normal `fields` object. Each issue can include as many as five requested
 JSON properties. Request bodies reject
 unknown fields and trailing JSON; unsupported expansion names, invalid boolean
-options, archived-project requests before archive support exists, and numeric
-reconciliation requests before numeric issue IDs exist return explicit errors.
+options, archived-project requests before archive support exists, and
+reconciliation lists larger than Jira's 50-ID limit return explicit errors.
 Approximate count requires a bounded query like enhanced search.
+
+Enhanced search accepts Jira numeric IDs through `reconcileIssues`. ZZIRA reads
+the transactional PostgreSQL issue state instead of an eventually consistent
+search replica, so requested IDs already participate in the query with strong
+consistency and require no index-side repair. Numeric IDs also work anywhere an
+issue ID or key is accepted and in the bulk JQL match resource; internal
+`iss_*` identities remain stable for sync, actions, and database relations.
 
 ## Reference and query services
 
@@ -91,8 +100,7 @@ The search and JQL service resources remain assessed as partial. The remaining
 PR 1 work adds app-function invocation in the compiler, more built-in functions
 and multi-value fields, complete personal-data migration for list/history
 operands and unknown-user reporting; project-aware validation warnings; exact
-historical versioned representations and richer rendered values;
-strong-consistency reconciliation; and
+historical versioned representations and richer rendered values; and
 snapshot/keyset semantics for pages whose matching work items change between
 requests.
 

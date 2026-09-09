@@ -2,7 +2,6 @@ package api3
 
 import (
 	"encoding/json"
-	"fmt"
 	"html"
 	"io"
 	"net/http"
@@ -393,7 +392,7 @@ func (h *Handler) jqlMatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var request struct {
-		IssueIDs []any    `json:"issueIds"`
+		IssueIDs []int64  `json:"issueIds"`
 		JQLs     []string `json:"jqls"`
 	}
 	if !decodeJQLBody(w, r, &request) {
@@ -403,12 +402,11 @@ func (h *Handler) jqlMatch(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, 400, "issueIds accepts at most 1000 values and jqls must contain 1 to 20 queries.")
 		return
 	}
-	requested := map[string]any{}
-	requestedOrder := make([]string, 0, len(request.IssueIDs))
+	requested := map[int64]bool{}
+	requestedOrder := make([]int64, 0, len(request.IssueIDs))
 	for _, id := range request.IssueIDs {
-		key := fmt.Sprint(id)
-		requested[key] = id
-		requestedOrder = append(requestedOrder, key)
+		requested[id] = true
+		requestedOrder = append(requestedOrder, id)
 	}
 	matches := make([]map[string]any, 0, len(request.JQLs))
 	for _, raw := range request.JQLs {
@@ -422,14 +420,14 @@ func (h *Handler) jqlMatch(w http.ResponseWriter, r *http.Request) {
 			matches = append(matches, map[string]any{"matchedIssues": []any{}, "errors": []string{err.Error()}})
 			continue
 		}
-		matchedSet := map[string]bool{}
+		matchedSet := map[int64]bool{}
 		for _, id := range matchedIDs {
 			matchedSet[id] = true
 		}
-		matched := []any{}
+		matched := []int64{}
 		for _, id := range requestedOrder {
-			if original, ok := requested[id]; ok && matchedSet[id] {
-				matched = append(matched, original)
+			if requested[id] && matchedSet[id] {
+				matched = append(matched, id)
 			}
 		}
 		matches = append(matches, map[string]any{"matchedIssues": matched, "errors": []string{}})

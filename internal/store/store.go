@@ -690,11 +690,11 @@ func (s *Store) ProjectByKey(ctx context.Context, workspaceID, key string) (*mod
 // ---- Issues ----
 
 const issueJoin = `
-SELECT i.id, i.workspace_id, i.project_id, i.key, i.summary, i.description,
+SELECT i.id, i.jira_id, i.workspace_id, i.project_id, i.key, i.summary, i.description,
        st.id, st.name, st.category,
 	       it.id, it.name, it.icon,
 	       it.subtask,
-	       parent.id, parent.key, parent.summary,
+	       parent.id, parent.jira_id, parent.key, parent.summary,
        pr.id, pr.name,
        a.id, a.display_name,
 	       r.id, r.display_name,
@@ -716,13 +716,14 @@ func scanIssue(row pgx.Row) (*models.Issue, error) {
 	var assigneeID, assigneeName *string
 	var reporterID, reporterName *string
 	var parentID, parentKey, parentSummary *string
+	var parentJiraID *int64
 	var updatedAt time.Time
 	var securityLevelID *string
 	var fieldsJSON []byte
-	err := row.Scan(&i.ID, &i.WorkspaceID, &i.ProjectID, &i.Key, &i.Summary, &i.Description,
+	err := row.Scan(&i.ID, &i.JiraID, &i.WorkspaceID, &i.ProjectID, &i.Key, &i.Summary, &i.Description,
 		&i.Status.ID, &i.Status.Name, &i.Status.Category,
 		&i.IssueType.ID, &i.IssueType.Name, &i.IssueType.Icon, &i.IssueType.Subtask,
-		&parentID, &parentKey, &parentSummary,
+		&parentID, &parentJiraID, &parentKey, &parentSummary,
 		&priorityID, &priorityName,
 		&assigneeID, &assigneeName,
 		&reporterID, &reporterName,
@@ -757,14 +758,14 @@ func scanIssue(row pgx.Row) (*models.Issue, error) {
 		i.Reporter = &models.User{ID: *reporterID, DisplayName: *reporterName, Active: true, AccountType: "atlassian"}
 	}
 	if parentID != nil {
-		i.Parent = &models.IssueParent{ID: *parentID, Key: *parentKey, Summary: *parentSummary}
+		i.Parent = &models.IssueParent{ID: *parentID, JiraID: *parentJiraID, Key: *parentKey, Summary: *parentSummary}
 	}
 	return i, nil
 }
 
 func (s *Store) IssueByIDOrKey(ctx context.Context, workspaceID, idOrKey string) (*models.Issue, error) {
 	return scanIssue(s.Pool.QueryRow(ctx, issueJoin+`
-		WHERE i.workspace_id=$1 AND (i.id=$2 OR upper(i.key)=upper($2))`, workspaceID, idOrKey))
+		WHERE i.workspace_id=$1 AND (i.id=$2 OR i.jira_id::text=$2 OR upper(i.key)=upper($2))`, workspaceID, idOrKey))
 }
 
 // CreateIssue runs the canonical write transaction: state change + action append +

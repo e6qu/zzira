@@ -667,10 +667,6 @@ func (h *Handler) searchJQL(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, http.StatusBadRequest, "A maximum of 50 issue IDs can be reconciled.")
 		return
 	}
-	if len(req.ReconcileIssues) > 0 {
-		jiraError(w, http.StatusBadRequest, "reconcileIssues requires Jira numeric issue IDs, which are not available in this deployment.")
-		return
-	}
 	if req.IncludeArchivedProjects {
 		jiraError(w, http.StatusBadRequest, "Archived project search is not available until project archiving is configured.")
 		return

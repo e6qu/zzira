@@ -10,6 +10,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/e6qu/zzira/internal/adf"
@@ -542,9 +543,9 @@ func (h *Handler) createIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{
-		"id":   issue.ID,
+		"id":   jiraIssueID(issue),
 		"key":  issue.Key,
-		"self": h.BaseURL + "/rest/api/3/issue/" + issue.ID,
+		"self": h.BaseURL + "/rest/api/3/issue/" + jiraIssueID(issue),
 	})
 }
 
@@ -770,9 +771,10 @@ func (h *Handler) issueBean(i *models.Issue) map[string]any {
 		},
 	}
 	if i.Parent != nil {
+		parentID := strconv.FormatInt(i.Parent.JiraID, 10)
 		fields["parent"] = map[string]any{
-			"id": i.Parent.ID, "key": i.Parent.Key,
-			"self":   h.BaseURL + "/rest/api/3/issue/" + i.Parent.ID,
+			"id": parentID, "key": i.Parent.Key,
+			"self":   h.BaseURL + "/rest/api/3/issue/" + parentID,
 			"fields": map[string]any{"summary": i.Parent.Summary},
 		}
 	}
@@ -798,11 +800,15 @@ func (h *Handler) issueBean(i *models.Issue) map[string]any {
 	}
 	return map[string]any{
 		"expand": "renderedFields,names,schema,operations,editmeta,changelog,versionedRepresentations",
-		"id":     i.ID,
-		"self":   h.BaseURL + "/rest/api/3/issue/" + i.ID,
+		"id":     jiraIssueID(i),
+		"self":   h.BaseURL + "/rest/api/3/issue/" + jiraIssueID(i),
 		"key":    i.Key,
 		"fields": fields,
 	}
+}
+
+func jiraIssueID(issue *models.Issue) string {
+	return strconv.FormatInt(issue.JiraID, 10)
 }
 
 func statusCategoryBean(category string) map[string]any {
