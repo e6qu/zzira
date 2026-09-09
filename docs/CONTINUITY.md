@@ -11,7 +11,7 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 - Branch: `feat/pr1-project-lifecycle-4`
 - Base: `origin/main` after merged PR #72 (`c14e08a`)
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- Pull request: pending
+- Pull request: [#73](https://github.com/e6qu/zzira/pull/73)
 - State: project-lifecycle checkpoint implements recent projects, archive,
   restore, trash, synchronous/asynchronous deletion, automatic 60-day cleanup,
   replica coherence, attachment cleanup, and browser administration; the full
@@ -38,8 +38,7 @@ scans, CodeQL, and all 62 Playwright journeys.
 
 ## Resume here
 
-1. Commit, push, and open the project-lifecycle pull request; monitor every CI
-   job and resolve review threads inline.
+1. Monitor PR #73 through every CI job and resolve review threads inline.
 2. Continue roles, templates, and scheme administration after this checkpoint
    merges. Keep each new vertical checkpoint committed, tested, and documented
    on the same PR until its Jira Platform exit gates are satisfied.
