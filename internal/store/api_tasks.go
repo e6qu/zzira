@@ -19,6 +19,7 @@ const (
 	apiTaskSwitchWorkflowScheme  = "workflow-scheme-switch"
 	apiTaskPublishWorkflowScheme = "workflow-scheme-publish"
 	apiTaskBulkEdit              = "bulk-issue-edit"
+	apiTaskBulkDelete            = "bulk-issue-delete"
 	apiTaskBulkWatch             = "bulk-issue-watch"
 	apiTaskBulkUnwatch           = "bulk-issue-unwatch"
 )
@@ -47,8 +48,10 @@ type APITask struct {
 }
 
 func (task APITask) IsBulkIssueOperation() bool {
-	return task.Kind == apiTaskBulkEdit || task.Kind == apiTaskBulkWatch || task.Kind == apiTaskBulkUnwatch
+	return task.Kind == apiTaskBulkEdit || task.Kind == apiTaskBulkDelete || task.Kind == apiTaskBulkWatch || task.Kind == apiTaskBulkUnwatch
 }
+
+func (task APITask) IsBulkDeleteOperation() bool { return task.Kind == apiTaskBulkDelete }
 
 type updateWorkflowSchemeTaskPayload struct {
 	Scheme          workflow.Scheme         `json:"scheme"`
@@ -88,8 +91,21 @@ type BulkIssueEditTaskPayload struct {
 	Operations []BulkIssueEditOperation `json:"operations"`
 }
 
+type BulkIssueDeleteTaskPayload struct {
+	Issues               []BulkIssueTaskItem `json:"issues"`
+	SendBulkNotification bool                `json:"sendBulkNotification"`
+}
+
 func (s *Store) EnqueueBulkEditTask(ctx context.Context, workspaceID, actorID string, issues []BulkIssueTaskItem, operations []BulkIssueEditOperation) (APITask, error) {
 	task, err := queuedAPITask(workspaceID, actorID, "Bulk edit issues", apiTaskBulkEdit, BulkIssueEditTaskPayload{Issues: issues, Operations: operations})
+	if err != nil {
+		return APITask{}, err
+	}
+	return s.enqueueBulkIssueTask(ctx, task)
+}
+
+func (s *Store) EnqueueBulkDeleteTask(ctx context.Context, workspaceID, actorID string, issues []BulkIssueTaskItem, sendBulkNotification bool) (APITask, error) {
+	task, err := queuedAPITask(workspaceID, actorID, "Bulk delete issues", apiTaskBulkDelete, BulkIssueDeleteTaskPayload{Issues: issues, SendBulkNotification: sendBulkNotification})
 	if err != nil {
 		return APITask{}, err
 	}
@@ -296,7 +312,7 @@ func (r *APITaskRunner) execute(ctx context.Context, task APITask) error {
 			return fmt.Errorf("decode bulk watch operation: %w", err)
 		}
 		return r.Store.executeBulkWatchTask(ctx, task, payload)
-	case apiTaskBulkEdit:
+	case apiTaskBulkEdit, apiTaskBulkDelete:
 		if r.BulkIssueExecutor == nil {
 			return errors.New("bulk issue executor is not configured")
 		}

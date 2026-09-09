@@ -126,6 +126,8 @@ body.nav-collapsed .project-switcher-panel a { padding-inline: 9px; }
 .page-header p { margin-bottom: 0; color: var(--ds-text-subtle); }
 .page-header-actions { display:flex; align-items:center; gap:8px; }
 .page-header-actions form { margin:0; }
+.bulk-notification { display:inline-flex; align-items:center; gap:6px; color:var(--ds-text-subtle); font-size:12px; white-space:nowrap; }
+[data-bulk-delete-form] progress { width:min(520px,100%); height:12px; accent-color:var(--ds-primary); }
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; padding: 7px 12px; border: 1px solid var(--ds-border); border-radius: var(--ds-radius); color: var(--ds-text); background: var(--ds-surface); box-shadow: 0 1px 1px rgba(16,24,40,.04); font-size: 13px; font-weight: 650; line-height: 1.2; text-decoration: none; transition: transform .14s,box-shadow .14s; }
 .btn:hover { border-color: var(--ds-border-strong); color: var(--ds-text); background: var(--ds-surface-sunken); }.btn:active { transform: translateY(1px); }
 .btn-primary,.btn-transition { border-color: var(--ds-primary); color: #fff; background: var(--ds-primary); box-shadow: 0 1px 2px rgba(23,105,224,.25); }

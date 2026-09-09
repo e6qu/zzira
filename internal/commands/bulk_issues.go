@@ -19,6 +19,9 @@ import (
 // transaction; Jira's result distinguishes successful, inaccessible and
 // accessible-but-failed items, and cancellation can stop between items.
 func (s *Service) ExecuteBulkIssueTask(ctx context.Context, task store.APITask) error {
+	if task.IsBulkDeleteOperation() {
+		return s.executeBulkDeleteTask(ctx, task)
+	}
 	var payload store.BulkIssueEditTaskPayload
 	if err := json.Unmarshal(task.Payload, &payload); err != nil {
 		return fmt.Errorf("decode bulk edit operation: %w", err)
@@ -45,6 +48,62 @@ func (s *Service) ExecuteBulkIssueTask(ctx context.Context, task store.APITask) 
 				failed[strconv.FormatInt(item.JiraID, 10)] = []string{updateErr.Error()}
 			} else {
 				processed = append(processed, item.JiraID)
+			}
+		}
+		progress := 5 + ((index + 1) * 90 / max(1, len(payload.Issues)))
+		if err := s.Store.UpdateAPITaskProgress(ctx, task, progress, fmt.Sprintf("Processed %d of %d issues.", index+1, len(payload.Issues))); err != nil {
+			return err
+		}
+	}
+	result := map[string]any{
+		"processedAccessibleIssues":       processed,
+		"invalidOrInaccessibleIssueCount": invalid,
+		"totalIssueCount":                 len(payload.Issues),
+	}
+	if len(failed) > 0 {
+		result["failedAccessibleIssues"] = failed
+	}
+	return s.Store.CompleteAPITask(ctx, task, fmt.Sprintf("Processed %d of %d issues.", len(processed), len(payload.Issues)), result)
+}
+
+func (s *Service) executeBulkDeleteTask(ctx context.Context, task store.APITask) error {
+	var payload store.BulkIssueDeleteTaskPayload
+	if err := json.Unmarshal(task.Payload, &payload); err != nil {
+		return fmt.Errorf("decode bulk delete operation: %w", err)
+	}
+	processed := make([]int64, 0, len(payload.Issues))
+	failed := map[string][]string{}
+	invalid := 0
+	reason := "bulk delete task " + task.ID
+	for index, item := range payload.Issues {
+		issue, err := s.Store.IssueByIDOrKey(ctx, task.WorkspaceID, item.ID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			alreadyDeleted, lookupErr := s.Store.IssueDeletedByBulkTask(ctx, task.WorkspaceID, task.SubmittedBy, item.ID, task.ID)
+			if lookupErr != nil {
+				return lookupErr
+			}
+			if alreadyDeleted {
+				processed = append(processed, item.JiraID)
+			} else {
+				invalid++
+			}
+		} else if err != nil {
+			return err
+		} else {
+			visible, visibilityErr := authz.CanSeeIssue(ctx, s.Store, task.WorkspaceID, issue.ProjectID, task.SubmittedBy, issue.SecurityLevelID)
+			if visibilityErr != nil {
+				return visibilityErr
+			}
+			if !visible {
+				invalid++
+			} else if action, deleteErr := s.DeleteIssue(ctx, task.SubmittedBy, task.WorkspaceID, issue.ID, reason); action != nil {
+				// Metadata deletion and the durable blob-cleanup intents already
+				// committed. A cleanup error remains retryable by the outbox runner.
+				processed = append(processed, item.JiraID)
+			} else if deleteErr != nil {
+				failed[strconv.FormatInt(item.JiraID, 10)] = []string{deleteErr.Error()}
+			} else {
+				failed[strconv.FormatInt(item.JiraID, 10)] = []string{"issue could not be deleted"}
 			}
 		}
 		progress := 5 + ((index + 1) * 90 / max(1, len(payload.Issues)))

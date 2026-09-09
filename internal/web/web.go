@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -84,6 +85,16 @@ type projectIssuesData struct {
 	AdvancedURL  string
 	SortURLs     map[string]string
 	JQLError     string
+	CanBulk      bool
+}
+
+type bulkIssueTaskData struct {
+	Project      *models.Project
+	Task         store.APITask
+	Processed    int
+	Failed       int
+	Inaccessible int
+	Total        int
 }
 
 type navigatorChip struct {
@@ -1198,6 +1209,11 @@ func (h *Handler) ProjectIssues(w http.ResponseWriter, r *http.Request, key stri
 		Mode: params.Mode, JQL: params.JQL, Text: params.Text, Status: params.Status, Assignee: params.Assignee,
 		Sort: params.Sort, Direction: params.Direction, Page: params.Page, SortURLs: map[string]string{},
 	}
+	data.CanBulk, err = h.Store.IsAdmin(r.Context(), wsID, user.ID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 	for _, board := range boards {
 		if board.ProjectID == project.ID {
 			data.BoardID = board.ID
@@ -1276,6 +1292,82 @@ func (h *Handler) ProjectIssues(w http.ResponseWriter, r *http.Request, key stri
 		data.SortURLs[field] = navigatorURL(project.Key, sortParams, 1)
 	}
 	h.writeWorkspacePage(w, r, "page_project", user, wsID, data, "issues", project.ID)
+}
+
+// SubmitBulkIssueDelete starts the same durable bulk-delete task used by Jira's
+// REST endpoint from the issue navigator.
+func (h *Handler) SubmitBulkIssueDelete(w http.ResponseWriter, r *http.Request, projectKey string) {
+	if !parseForm(w, r) {
+		return
+	}
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok {
+		return
+	}
+	project, err := h.Store.ProjectByKey(r.Context(), workspaceID, projectKey)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	selected := r.Form["issue"]
+	if len(selected) < 1 || len(selected) > 1000 {
+		http.Error(w, "select between 1 and 1,000 work items", http.StatusBadRequest)
+		return
+	}
+	seen := make(map[string]bool, len(selected))
+	items := make([]store.BulkIssueTaskItem, 0, len(selected))
+	for _, idOrKey := range selected {
+		issue, lookupErr := h.issueForUser(r, user, workspaceID, idOrKey)
+		if lookupErr != nil || issue.ProjectID != project.ID || seen[issue.ID] {
+			http.Error(w, "the selection contains an invalid or inaccessible work item", http.StatusBadRequest)
+			return
+		}
+		seen[issue.ID] = true
+		items = append(items, store.BulkIssueTaskItem{ID: issue.ID, JiraID: issue.JiraID})
+	}
+	task, err := h.Store.EnqueueBulkDeleteTask(r.Context(), workspaceID, user.ID, items, r.FormValue("sendNotification") == "true")
+	if errors.Is(err, store.ErrBulkTaskLimit) {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/issues/"+url.PathEscape(project.Key)+"/bulk/"+url.PathEscape(task.ID), http.StatusSeeOther)
+}
+
+func (h *Handler) BulkIssueTask(w http.ResponseWriter, r *http.Request, projectKey, taskID string) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok {
+		return
+	}
+	project, err := h.Store.ProjectByKey(r.Context(), workspaceID, projectKey)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	task, err := h.Store.APITaskByID(r.Context(), workspaceID, taskID)
+	if err != nil || !task.IsBulkIssueOperation() {
+		http.NotFound(w, r)
+		return
+	}
+	data := bulkIssueTaskData{Project: project, Task: task}
+	if len(task.Result) > 0 && string(task.Result) != "null" {
+		var result struct {
+			Processed    []int64             `json:"processedAccessibleIssues"`
+			Failed       map[string][]string `json:"failedAccessibleIssues"`
+			Inaccessible int                 `json:"invalidOrInaccessibleIssueCount"`
+			Total        int                 `json:"totalIssueCount"`
+		}
+		if err := json.Unmarshal(task.Result, &result); err == nil {
+			data.Processed = len(result.Processed)
+			data.Failed = len(result.Failed)
+			data.Inaccessible = result.Inaccessible
+			data.Total = result.Total
+		}
+	}
+	h.writeWorkspacePage(w, r, "page_bulk_issue_task", user, workspaceID, data, "issues", project.ID)
 }
 
 // SaveNavigatorFilter persists the current, already-valid search and stars it

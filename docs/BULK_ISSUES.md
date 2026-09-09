@@ -5,6 +5,7 @@ URL. The current delivered slice includes:
 
 | Route | Behavior |
 |---|---|
+| `POST /rest/api/3/bulk/issues/delete` | Queue deletion for up to 1,000 selected work items with execution-time access checks and per-item results |
 | `GET /rest/api/3/bulk/issues/fields` | Discover the fields shared by the selected work items, with field search and 50-item cursor pages |
 | `POST /rest/api/3/bulk/issues/fields` | Queue validated edits for the selected work items and report per-item success, access loss or field failure |
 | `POST /rest/api/3/bulk/issues/watch` | Queue self-subscription for the selected work items |
@@ -18,6 +19,16 @@ visibility before changing each work item. A watch or unwatch batch commits its
 watcher state, ordinary synchronization actions and terminal task result in one
 transaction, so cancellation or failure cannot expose a partially completed
 batch. Repeated requests remain idempotent.
+
+Bulk deletion uses the ordinary permission-checked issue command. Each issue's
+metadata deletion, immutable action and attachment cleanup intents commit in one
+transaction. Blob cleanup then runs immediately and through a leased retry
+worker, so an object-store outage cannot orphan an attachment permanently or
+roll back an already committed issue deletion. A recovered bulk task rebuilds
+its prior successes from the atomic delete actions instead of emitting duplicate
+history. Administrators can select the current navigator page, choose watcher
+notification intent, submit the operation, and follow its durable progress in
+the browser.
 
 Field discovery intersects the canonical create/edit metadata for every selected
 project. It returns only field types the current command path can persist,
@@ -38,5 +49,5 @@ permission. Configurable global permission grants and Jira's notification
 controls remain part of the administration completion work. The
 `sendBulkNotification` switch is accepted but bulk email delivery is not yet
 available. Cascading/color/date/select/group/multi-user/URL/time-tracking and
-issue-type bulk field families remain alongside delete, move, transition and
+issue-type bulk field families remain alongside move, transition and
 transition discovery. Queue retention also needs Jira's 14-day expiry behavior.

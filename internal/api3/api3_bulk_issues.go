@@ -19,6 +19,8 @@ import (
 
 func (h *Handler) bulkIssueRoute(w http.ResponseWriter, r *http.Request, path string) {
 	switch {
+	case path == "issues/delete" && r.Method == http.MethodPost:
+		h.submitBulkDelete(w, r)
 	case path == "issues/fields" && r.Method == http.MethodGet:
 		h.bulkEditableFields(w, r)
 	case path == "issues/fields" && r.Method == http.MethodPost:
@@ -30,6 +32,52 @@ func (h *Handler) bulkIssueRoute(w http.ResponseWriter, r *http.Request, path st
 	default:
 		jiraError(w, http.StatusNotFound, "The bulk operation does not exist.")
 	}
+}
+
+func (h *Handler) submitBulkDelete(w http.ResponseWriter, r *http.Request) {
+	workspaceID, actorID, authErr := h.authWorkspaceAdmin(r)
+	if authErr != nil {
+		writeJerr(w, authErr)
+		return
+	}
+	var request struct {
+		SelectedIssueIDsOrKeys []string `json:"selectedIssueIdsOrKeys"`
+		SendBulkNotification   bool     `json:"sendBulkNotification"`
+	}
+	if !decodeBulkOperationBody(w, r, &request) {
+		return
+	}
+	if len(request.SelectedIssueIDsOrKeys) < 1 || len(request.SelectedIssueIDsOrKeys) > 1000 {
+		bulkOperationError(w, http.StatusBadRequest, "selectedIssueIdsOrKeys must contain between 1 and 1000 issues")
+		return
+	}
+	seen := make(map[string]bool, len(request.SelectedIssueIDsOrKeys))
+	issues := make([]store.BulkIssueTaskItem, 0, len(request.SelectedIssueIDsOrKeys))
+	for _, idOrKey := range request.SelectedIssueIDsOrKeys {
+		idOrKey = strings.TrimSpace(idOrKey)
+		normalized := strings.ToLower(idOrKey)
+		if idOrKey == "" || seen[normalized] {
+			bulkOperationError(w, http.StatusBadRequest, "selectedIssueIdsOrKeys must contain unique non-empty issue IDs or keys")
+			return
+		}
+		seen[normalized] = true
+		issue, issueErr := h.resolveIssue(r, workspaceID, idOrKey)
+		if issueErr != nil {
+			bulkOperationError(w, http.StatusBadRequest, "Some of the issues in selectedIssueIdsOrKeys are invalid or inaccessible")
+			return
+		}
+		issues = append(issues, store.BulkIssueTaskItem{ID: issue.ID, JiraID: issue.JiraID})
+	}
+	task, err := h.Store.EnqueueBulkDeleteTask(r.Context(), workspaceID, actorID, issues, request.SendBulkNotification)
+	if errors.Is(err, store.ErrBulkTaskLimit) {
+		bulkOperationError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "Could not submit the bulk operation.")
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]string{"taskId": task.ID})
 }
 
 type bulkEditableField struct {

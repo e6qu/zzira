@@ -62,7 +62,13 @@ func (s *Service) DeleteIssue(ctx context.Context, actorID, workspaceID, issueID
 	var cleanupErr error
 	for _, ref := range blobRefs {
 		if err := s.Blobs.Delete(ctx, ref); err != nil {
-			cleanupErr = errors.Join(cleanupErr, fmt.Errorf("delete attachment blob %q: %w", ref, err))
+			if deferErr := s.Store.DeferAttachmentBlobDeletion(ctx, ref, err.Error(), 1); deferErr != nil {
+				cleanupErr = errors.Join(cleanupErr, fmt.Errorf("defer attachment blob %q after %v: %w", ref, err, deferErr))
+			}
+			continue
+		}
+		if err := s.Store.CompleteAttachmentBlobDeletion(ctx, ref); err != nil {
+			cleanupErr = errors.Join(cleanupErr, fmt.Errorf("complete attachment blob cleanup %q: %w", ref, err))
 		}
 	}
 	return action, cleanupErr

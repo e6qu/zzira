@@ -12,7 +12,7 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 - Base: `origin/main` after merged PR #69
 - Delivery unit: PR 1 — Jira Platform and project/site administration
 - Pull request: not opened
-- State: ready for the first implementation checkpoint
+- State: bulk deletion checkpoint validated; bulk move is next
 - Blockers: none
 
 ## Merged baseline
@@ -29,10 +29,9 @@ scans, CodeQL, and all 59 Playwright journeys.
 
 ## Resume here
 
-1. Implement durable bulk deletion with attachment cleanup, execution-time
-   permission rechecks, bounded processing, per-item results, idempotent action
-   records, and REST/UI lifecycle evidence.
-2. Continue on the shared task model with bulk move and bulk transition.
+1. Implement bulk move on the shared task model with project/type/field
+   validation, execution-time permission checks and per-item results.
+2. Implement bulk transition and transition discovery.
 3. Update compatibility evidence and commit every independently buildable
    checkpoint.
 

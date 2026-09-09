@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 487,
+  "assessedTotal": 488,
   "counts": {
     "delivered": 0,
-    "partial": 480,
+    "partial": 481,
     "missing": 7,
-    "unassessed": 720
+    "unassessed": 719
   },
   "countsByFamily": {
     "automation": {
@@ -24,9 +24,9 @@
     },
     "jira-platform": {
       "delivered": 0,
-      "partial": 119,
+      "partial": 120,
       "missing": 0,
-      "unassessed": 498
+      "unassessed": 497
     },
     "jira-service-management": {
       "delivered": 0,
@@ -220,9 +220,17 @@
       "operationId": "jira-v3:POST:/rest/api/3/bulk/issues/delete",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_bulk_issues.go",
+        "internal/commands/bulk_issues.go",
+        "internal/api3/bulk_delete_test.go",
+        "internal/commands/delete_issue_test.go",
+        "internal/render/templates/templates.gohtml",
+        "e2e/v2.spec.ts",
+        "docs/BULK_ISSUES.md"
+      ],
+      "notes": "Queues deletion for up to 1,000 unique visible issues, caps active bulk work at five, rechecks execution-time visibility, reports per-item results, reconstructs recovered successes from atomic actions and durably retries attachment blob cleanup; configurable global Bulk change and delete permissions, bulk email delivery and exact edge errors remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/bulk/issues/fields",

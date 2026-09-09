@@ -201,6 +201,7 @@ func main() {
 	go (&store.APITaskRunner{Store: st, BulkIssueExecutor: cmdSvc}).Run(ctx, workspaceID)
 	go (&store.ServiceSLARunner{Store: st}).Run(ctx, workspaceID)
 	go (&store.ServiceIncidentEscalationRunner{Store: st}).Run(ctx, workspaceID)
+	go (&commands.AttachmentBlobDeletionRunner{Service: cmdSvc}).Run(ctx)
 	go (&commands.ServiceTemporaryAttachmentRunner{Service: cmdSvc}).Run(ctx)
 	if smtpSender != nil {
 		go (&mailer.Runner{Store: st, Sender: smtpSender}).Run(ctx)
@@ -447,6 +448,12 @@ func main() {
 	})
 	mux.HandleFunc("GET /issues/{key}", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.ProjectIssues(w, r, r.PathValue("key"))
+	})
+	mux.HandleFunc("POST /issues/{key}/bulk/delete", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.SubmitBulkIssueDelete(w, r, r.PathValue("key"))
+	})
+	mux.HandleFunc("GET /issues/{key}/bulk/{task}", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.BulkIssueTask(w, r, r.PathValue("key"), r.PathValue("task"))
 	})
 	mux.HandleFunc("POST /issues/{key}/filters", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.SaveNavigatorFilter(w, r, r.PathValue("key"))
