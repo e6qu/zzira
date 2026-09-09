@@ -954,6 +954,89 @@ func (s *Store) WatchersByIssue(ctx context.Context, issueID string) ([]string, 
 	return out, rows.Err()
 }
 
+// ---- votes ----
+
+func (s *Store) AddVote(ctx context.Context, actorID, workspaceID, issueID, userID string) (*models.Action, error) {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	result, err := tx.Exec(ctx, `INSERT INTO issue_votes (issue_id,user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, issueID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if result.RowsAffected() == 0 {
+		return nil, nil
+	}
+	seq, err := nextSeq(ctx, tx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	payload, err := json.Marshal(models.VotePayload{IssueID: issueID, AccountID: userID})
+	if err != nil {
+		return nil, err
+	}
+	action := &models.Action{WorkspaceID: workspaceID, Seq: seq, EntityType: models.EntityVote, EntityID: issueID,
+		Op: models.OpUpsert, SchemaV: models.SchemaVersion, Payload: payload, ActorID: actorID}
+	if err := appendAction(ctx, tx, action); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return action, nil
+}
+
+func (s *Store) RemoveVote(ctx context.Context, actorID, workspaceID, issueID, userID string) (*models.Action, error) {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	result, err := tx.Exec(ctx, `DELETE FROM issue_votes WHERE issue_id=$1 AND user_id=$2`, issueID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if result.RowsAffected() == 0 {
+		return nil, nil
+	}
+	seq, err := nextSeq(ctx, tx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	payload, err := json.Marshal(models.VotePayload{IssueID: issueID, AccountID: userID})
+	if err != nil {
+		return nil, err
+	}
+	action := &models.Action{WorkspaceID: workspaceID, Seq: seq, EntityType: models.EntityVote, EntityID: issueID,
+		Op: models.OpDelete, SchemaV: models.SchemaVersion, Payload: payload, ActorID: actorID}
+	if err := appendAction(ctx, tx, action); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return action, nil
+}
+
+func (s *Store) VotersByIssue(ctx context.Context, issueID string) ([]string, error) {
+	rows, err := s.Pool.Query(ctx, `SELECT user_id FROM issue_votes WHERE issue_id=$1 ORDER BY created_at,user_id`, issueID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
 // ---- notifications ----
 
 // CreateNotification records a per-user notification and emits its action.

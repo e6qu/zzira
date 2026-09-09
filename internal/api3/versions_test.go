@@ -115,6 +115,20 @@ func TestVersionLifecycleMembershipAndVisibility(t *testing.T) {
 	if versions("fixVersions")[0].(map[string]any)["id"] != first {
 		t.Fatal("name resolution lost")
 	}
+	for _, search := range []struct {
+		user string
+		jql  string
+	}{
+		{member, `fixVersion IN unreleasedVersions(VR)`},
+		{member, `affectedVersion = earliestUnreleasedVersion(VR)`},
+		{member, `issue IN updatedBy(currentUser())`},
+		{actor, `project IN projectsLeadByUser()`},
+	} {
+		result := call(search.user, "GET", "/rest/api/3/search?jql="+url.QueryEscape(search.jql), nil, 200)
+		if result["total"] != float64(1) {
+			t.Fatalf("JQL %q total = %v", search.jql, result["total"])
+		}
+	}
 	call(member, "PUT", issueURL, map[string]any{"fields": map[string]any{"summary": "Should roll back", "fixVersions": []map[string]string{{"id": other}}}}, 400)
 	if call(member, "GET", issueURL, nil, 200)["fields"].(map[string]any)["summary"] != "Ship it" {
 		t.Fatal("invalid membership partially changed issue")

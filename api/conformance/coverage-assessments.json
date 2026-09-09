@@ -6035,6 +6035,38 @@
         "docs/JQL.md"
       ],
       "notes": "Bounded ID retrieval, ordering, missing IDs and cross-app/tenant non-disclosure are integration-tested; complete Forge identity semantics remain."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/issue/{issueIdOrKey}/votes",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_triage_test.go",
+        "internal/commands/commands_triage_test.go",
+        "internal/store/agile.go"
+      ],
+      "notes": "Idempotent self-service vote removal is permission-scoped to a visible issue and integration-tested; exact Jira site voting policy remains."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/issue/{issueIdOrKey}/votes",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_triage_test.go",
+        "internal/api3/api3_triage.go",
+        "migrations/117_issue_votes.sql",
+        "e2e/triage.spec.ts"
+      ],
+      "notes": "The durable vote count, current-user state and voter account beans are visibility-scoped and integration-tested; exact Jira site voting policy remains."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/issue/{issueIdOrKey}/votes",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_triage_test.go",
+        "internal/commands/commands_triage_test.go",
+        "internal/render/testdata/issue_view.golden",
+        "e2e/triage.spec.ts"
+      ],
+      "notes": "Idempotent self-service voting shares the command path used by the browser issue journey and emits a permission-filtered action; exact Jira site voting policy remains."
     }
   ]
 }

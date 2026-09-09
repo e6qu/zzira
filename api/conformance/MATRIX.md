@@ -27,11 +27,12 @@ use `/rest/zzira/1`.
 | GET/POST /rest/api/3/issue/{idOrKey}/transitions | ✅ | Project workflow, nested actor conditions, required-field validators, development triggers, and atomic assignee, field-update, field-copy and registered-webhook post-functions enforced |
 | /jira/forms/cloud/{cloudId}/issue/{idOrKey}/form lifecycle | 🟡 | Issue form index/attach/get/save/delete, visibility, submit/reopen, and executable attached/submitted workflow validators; project templates, exports, attachments, external data and copy remain |
 | GET/POST/DELETE /rest/api/3/issue/{idOrKey}/watchers | 🟡 | complete self-subscription and watcher reads; managing other users is intentionally not exposed without a broader permission model |
+| GET/POST/DELETE /rest/api/3/issue/{idOrKey}/votes | 🟡 | Durable idempotent self-service voting, voter reads, browser journey and JQL selectors; site voting policy and exact permission edge cases remain |
 | /comment CRUD | ✅ | ADF bodies, author-only delete |
 | GET /rest/api/3/issue/{idOrKey}/changelog | ✅ | derived from the action log |
 | /worklog CRUD | ✅ | author-only delete |
 | POST /issue/{idOrKey}/attachments · /attachment/{id} · /attachment/content/{id} | ✅ | X-Atlassian-Token semantics |
-| GET /rest/api/3/search · POST /search · GET/POST /search/jql · POST /search/approximate-count | 🟡 | Permission-filtered JQL with history/date operators, relation-backed group/link/sprint/type list functions, and safely expanded installed-app functions; legacy/enhanced search support immutable numeric Jira issue IDs, multi-value labels/versions/sprints, field selection/exclusion, app-key aliases, documented expansion names, requested properties, executable transitions, immutable changelogs, current versioned representations, strict bodies, bounded count queries, strongly consistent reconciliation, IDs-only enhanced defaults, deterministic ordering and durable query/reconciliation/user/workspace-bound seven-day result snapshots; richer rendering/history remains |
+| GET /rest/api/3/search · POST /search · GET/POST /search/jql · POST /search/approximate-count | 🟡 | Permission-filtered JQL with history/date operators, relation-backed group/link/sprint/type/version/watch/vote/update/project list functions and safely expanded installed-app functions; legacy/enhanced search support immutable numeric Jira issue IDs, multi-value labels/versions/sprints, field selection/exclusion, app-key aliases, documented expansion names, requested properties, executable transitions, immutable changelogs, current versioned representations, strict bodies, bounded count queries, strongly consistent reconciliation, IDs-only enhanced defaults, deterministic ordering and durable query/reconciliation/user/workspace-bound seven-day result snapshots; richer rendering/history remains |
 | Seven JQL reference, suggestion, parse, match, sanitize and migration operations | 🟡 | Supported fields/functions are discoverable, issue-derived suggestions apply visibility, parse returns structured per-query results, and match is bounded to requested numeric Jira IDs; exact personal-data migration and remaining functions/validation warnings remain |
 | GET/POST `/rest/api/3/jql/function/computation` · POST `/jql/function/computation/search` | 🟡 | Signed apps can page/filter and retrieve only their installation-owned durable records, then atomically replace a value or error with optional missing-ID skips; Connect/native declarations, autocomplete, signed cache-miss evaluation, seven-day expiry, safe fragment compilation and bounded nesting are integrated; complete Forge identity semantics remain |
 | GET /rest/api/3/mypermissions · POST /permissions/check | ✅ | evaluated from workspace role |
@@ -93,6 +94,7 @@ use `/rest/zzira/1`.
 |---|---|
 | API contract smoke (serverInfo + metadata-driven create) | ✅ |
 | UI login → full-field create → validation recovery → create another → issue view | ✅ |
+| Issue triage fields, watchers, votes, links, activity, attachments and management actions | ✅ |
 | WASM worker boots + syncs | ✅ |
 | Offline reload renders from local SQLite | ✅ |
 | Two-browser convergence via the action log | ✅ |

@@ -931,6 +931,7 @@ func (s *Store) ActionPageSince(ctx context.Context, workspaceID, userID string,
 		WHEN 'attachment' THEN COALESCE(a.payload->'attachment'->>'issueId', a.payload->>'issueId')
 		WHEN 'worklog' THEN COALESCE(a.payload->'worklog'->>'issueId', a.payload->>'issueId')
 		WHEN 'watcher' THEN a.payload->>'issueId'
+		WHEN 'vote' THEN a.payload->>'issueId'
 		WHEN 'sprint_issue' THEN a.payload->>'issueId'
 		WHEN 'issue_link' THEN COALESCE(a.payload->'link'->>'inwardIssueId', a.payload->>'inwardIssueId')
 		ELSE NULL
@@ -1040,7 +1041,7 @@ func (s *Store) ActionPageSince(ctx context.Context, workspaceID, userID string,
 		    END = $3
 			  )
 			  AND (
-			    a.entity_type NOT IN ('issue','comment','attachment','worklog','watcher','sprint_issue','issue_link')
+			    a.entity_type NOT IN ('issue','comment','attachment','worklog','watcher','vote','sprint_issue','issue_link')
 			    OR (
 			      `+canSeeIssue(issueRef)+`
 			      AND (a.entity_type <> 'issue_link' OR `+canSeeIssue(linkOtherIssueRef)+`)

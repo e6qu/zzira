@@ -465,6 +465,21 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 			watchers = append(watchers, *watcher)
 		}
 	}
+	voterIDs, err := h.Store.VotersByIssue(r.Context(), issue.ID)
+	if err != nil {
+		return nil, err
+	}
+	voters := make([]models.User, 0, len(voterIDs))
+	hasVoted := false
+	for _, voterID := range voterIDs {
+		if voterID == user.ID {
+			hasVoted = true
+		}
+		voter, err := h.Store.MemberByID(r.Context(), wsID, voterID)
+		if err == nil {
+			voters = append(voters, *voter)
+		}
+	}
 	links, err := h.Store.LinksByIssue(r.Context(), issue.ID)
 	if err != nil {
 		return nil, err
@@ -611,6 +626,8 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 		CustomFields:      editView.CustomFields,
 		Watchers:          watchers,
 		IsWatching:        isWatching,
+		Voters:            voters,
+		HasVoted:          hasVoted,
 		Links:             linkViews,
 		LinkTypes:         linkTypeValues,
 		Children:          derefIssues(children),
@@ -1574,6 +1591,18 @@ func (h *Handler) SetWatching(w http.ResponseWriter, r *http.Request, key string
 		return
 	}
 	if _, err := h.Commands.SetWatching(r.Context(), user.ID, wsID, key, r.PostFormValue("watching") == "true"); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	h.serveIssue(w, r, user, wsID, key)
+}
+
+func (h *Handler) SetVoting(w http.ResponseWriter, r *http.Request, key string) {
+	user, wsID, ok := h.issueMutationContext(w, r, key)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	if _, err := h.Commands.SetVoting(r.Context(), user.ID, wsID, key, r.PostFormValue("voting") == "true"); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}

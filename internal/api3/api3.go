@@ -264,6 +264,8 @@ func (h *Handler) issueRoute(w http.ResponseWriter, r *http.Request, parts []str
 		h.uploadAttachments(w, r, idOrKey)
 	case len(parts) == 2 && parts[1] == "watchers":
 		h.issueWatchers(w, r, idOrKey)
+	case len(parts) == 2 && parts[1] == "votes":
+		h.issueVotes(w, r, idOrKey)
 	case len(parts) == 2 && parts[1] == "changelog" && r.Method == http.MethodGet:
 		h.changelog(w, r, idOrKey)
 	case len(parts) == 2 && parts[1] == "editmeta" && r.Method == http.MethodGet:

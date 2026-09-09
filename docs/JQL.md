@@ -18,11 +18,20 @@ work item the viewer cannot browse.
   version, parent, environment, component, sprint, resolution, and date fields,
   plus typed custom fields and installed-app scalar field aliases;
 - `currentUser()`, `now()`, start/end of day, week, month, and year functions,
-  Jira date literals, relative values such as `-5d`, and function increments
-  such as `startOfMonth(-1M)`;
-- relation-backed `membersOf()`, `linkedIssues()`, `openSprints()`,
-  `closedSprints()`, `futureSprints()`, `standardIssueTypes()`, and
-  `subtaskIssueTypes()` list functions;
+  Jira date literals, relative values such as `-5d`, explicit increments such
+  as `startOfMonth(-1M)`, and natural-period increments such as
+  `startOfMonth(-1)`;
+- relation-backed `membersOf()`, `linkedIssues()`/`linkedWorkItems()` with
+  multiple link types, `openSprints()`, `closedSprints()`, `futureSprints()`,
+  `standardIssueTypes()`/`standardWorkTypes()`, and
+  `subtaskIssueTypes()`/`subtaskWorkTypes()` list functions;
+- release selectors `releasedVersions()`, `unreleasedVersions()`,
+  `latestReleasedVersion()`, and `earliestUnreleasedVersion()` against the
+  canonical project version registry;
+- `watchedIssues()`/`watchedWorkItems()`, `votedIssues()`/`votedWorkItems()`,
+  and date-bounded `updatedBy()` issue selectors;
+- `projectsLeadByUser()`/`spacesLeadByUser()` and
+  `projectsWhereUserHasRole()`/`spacesWhereUserHasRole()` project selectors;
 - multi-value semantics for labels, version memberships, and current or
   historical sprint memberships, including Jira's empty-field behavior for
   negated comparisons;
@@ -128,6 +137,11 @@ PR 1 work adds the remaining built-in functions and multi-value fields,
 complete personal-data migration for list/history
 operands and unknown-user reporting; project-aware validation warnings; exact
 historical versioned representations and richer rendered values.
+
+The remaining built-in catalog includes login-session, component-lead,
+permission-scheme, customer/organization, approval, and SLA functions. Those
+functions depend on their owning PR 1/JSM state models and are implemented with
+those models instead of returning approximate results.
 
 Some Jira history fields cannot be queried until their mutations persist a
 structured diff. Unsupported functions fail during compilation instead of

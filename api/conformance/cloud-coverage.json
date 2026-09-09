@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 471,
+  "assessedTotal": 474,
   "counts": {
     "delivered": 0,
-    "partial": 464,
+    "partial": 467,
     "missing": 7,
-    "unassessed": 736
+    "unassessed": 733
   },
   "countsByFamily": {
     "automation": {
@@ -24,9 +24,9 @@
     },
     "jira-platform": {
       "delivered": 0,
-      "partial": 103,
+      "partial": 106,
       "missing": 0,
-      "unassessed": 514
+      "unassessed": 511
     },
     "jira-service-management": {
       "delivered": 0,
@@ -1882,25 +1882,39 @@
       "operationId": "jira-v3:DELETE:/rest/api/3/issue/{issueIdOrKey}/votes",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_triage_test.go",
+        "internal/commands/commands_triage_test.go",
+        "internal/store/agile.go"
+      ],
+      "notes": "Idempotent self-service vote removal is permission-scoped to a visible issue and integration-tested; exact Jira site voting policy remains."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issue/{issueIdOrKey}/votes",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_triage_test.go",
+        "internal/api3/api3_triage.go",
+        "migrations/117_issue_votes.sql",
+        "e2e/triage.spec.ts"
+      ],
+      "notes": "The durable vote count, current-user state and voter account beans are visibility-scoped and integration-tested; exact Jira site voting policy remains."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/issue/{issueIdOrKey}/votes",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_triage_test.go",
+        "internal/commands/commands_triage_test.go",
+        "internal/render/testdata/issue_view.golden",
+        "e2e/triage.spec.ts"
+      ],
+      "notes": "Idempotent self-service voting shares the command path used by the browser issue journey and emits a permission-filtered action; exact Jira site voting policy remains."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/issue/{issueIdOrKey}/watchers",

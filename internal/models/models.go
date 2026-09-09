@@ -165,6 +165,8 @@ type IssueView struct {
 	CustomFields      []CustomFieldView
 	Watchers          []User
 	IsWatching        bool
+	Voters            []User
+	HasVoted          bool
 	Links             []IssueLinkView
 	LinkTypes         []LinkType
 	Children          []Issue

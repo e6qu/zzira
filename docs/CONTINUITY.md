@@ -19,7 +19,8 @@ boundaries, dependencies, and acceptance gates belong in
   numeric Jira issue IDs, strong-consistency reconciliation, and durable
   enhanced-search result snapshots, plus relation-backed Jira list functions
   and multi-value fields, installed-app JQL declarations, signed evaluation,
-  durable expansion, and autocomplete implemented
+  durable expansion, and autocomplete, plus version/project/history/watch/vote
+  built-ins and the complete issue-vote REST/browser journey implemented
 - Blockers: none
 
 ## Contract baseline
@@ -75,6 +76,13 @@ linked issue, sprint-state, and standard/subtask type functions compile against
 their canonical relations; sprint, label, and version negation excludes empty
 values consistently with Jira.
 
+This built-in slice adds current Jira Cloud work-item aliases, multi-link
+selectors, release-state and boundary-version functions, watched/voted issue
+selectors, date-bounded `updatedBy()`, and project lead/role selectors. Natural
+date increments use the function's own day/week/month/year period. Votes are a
+durable issue relation with idempotent self-service REST and browser actions,
+voter reads, action-log visibility, and JQL evaluation.
+
 ## Validation baseline
 
 Merged PR #68 passed the complete GitHub CI matrix, including all 58 Playwright
@@ -87,7 +95,7 @@ also run the PostgreSQL integration suite from an empty migrated database.
 
 ## Resume here
 
-1. Add the remaining built-in function and multi-value field semantics.
+1. Add session/component and JSM approval/SLA built-ins with their owning state.
 2. Add filter-subscription scheduling and delivery after shared scheduled-work
    primitives are ready.
 3. Continue into bulk work-item and project administration slices.

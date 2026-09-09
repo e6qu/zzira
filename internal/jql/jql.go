@@ -277,7 +277,7 @@ func Parse(src string) (*Query, error) {
 			if err != nil {
 				return nil, err
 			}
-			order := Order{Field: strings.ToLower(field)}
+			order := Order{Field: canonicalField(field)}
 			if op.atWord("desc") {
 				order.Desc = true
 				op.next()
@@ -475,7 +475,7 @@ func (p *parser) isClauseStart() bool {
 }
 
 func (p *parser) parseClause() (Node, error) {
-	field := strings.ToLower(p.word())
+	field := canonicalField(p.word())
 	opTok := p.next()
 	op := operators[opTok.text]
 	switch {
@@ -523,6 +523,21 @@ func (p *parser) parseClause() (Node, error) {
 		return Clause{Field: field, Op: "is", Values: []string{value}}, nil
 	}
 	return nil, &SyntaxError{opTok.pos, "unsupported operator " + opTok.text}
+}
+
+// canonicalField keeps established Jira JQL names working while accepting the
+// work-item terminology exposed by current Jira Cloud documentation.
+func canonicalField(field string) string {
+	switch strings.ToLower(field) {
+	case "workitem", "workitemkey":
+		return "key"
+	case "space":
+		return "project"
+	case "worktype":
+		return "issuetype"
+	default:
+		return strings.ToLower(field)
+	}
 }
 
 func (p *parser) parseInClause(field string, negated bool) (Node, error) {
@@ -916,14 +931,18 @@ func (c *compiler) clause(cl Clause) string {
 	if cl.Field == "sprint" {
 		return c.sprintClause(cl)
 	}
-	if (cl.Field == "issuetype") && containsJQLFunction(cl.Values, "standardIssueTypes", "subtaskIssueTypes") {
+	if cl.Field == "issuetype" && containsJQLFunction(cl.Values, "standardIssueTypes", "subtaskIssueTypes", "standardWorkTypes", "subtaskWorkTypes") {
 		return c.issueTypeListClause(cl)
 	}
 	if (cl.Field == "assignee" || cl.Field == "reporter" || cl.Field == "creator") && containsJQLFunction(cl.Values, "membersOf") {
 		return c.userListClause(cl)
 	}
-	if (cl.Field == "issue" || cl.Field == "key" || cl.Field == "id") && containsJQLFunction(cl.Values, "linkedIssues") {
-		return c.linkedIssuesClause(cl)
+	if cl.Field == "project" && containsJQLFunction(cl.Values, "projectsLeadByUser", "spacesLeadByUser", "projectsWhereUserHasRole", "spacesWhereUserHasRole") {
+		return c.projectFunctionClause(cl)
+	}
+	if (cl.Field == "issue" || cl.Field == "key" || cl.Field == "id") && containsJQLFunction(cl.Values,
+		"linkedIssues", "linkedWorkItems", "watchedIssues", "watchedWorkItems", "votedIssues", "votedWorkItems", "updatedBy") {
+		return c.issueFunctionClause(cl)
 	}
 	col, ok := c.res.Columns[cl.Field]
 	if !ok {
@@ -1192,9 +1211,9 @@ func (c *compiler) issueTypeListClause(cl Clause) string {
 				return ""
 			}
 			switch strings.ToLower(name) {
-			case "standardissuetypes":
+			case "standardissuetypes", "standardworktypes":
 				matches = append(matches, "NOT it.subtask")
-			case "subtaskissuetypes":
+			case "subtaskissuetypes", "subtaskworktypes":
 				matches = append(matches, "it.subtask")
 			default:
 				c.err = &SyntaxError{0, "unsupported function " + name + "() for issuetype"}
@@ -1226,14 +1245,47 @@ func (c *compiler) userListClause(cl Clause) string {
 	return c.listResult(cl, "("+strings.Join(matches, " OR ")+")", col+" IS NOT NULL")
 }
 
-func (c *compiler) linkedIssuesClause(cl Clause) string {
+func (c *compiler) issueFunctionClause(cl Clause) string {
 	if len(cl.Values) != 1 {
-		c.err = &SyntaxError{0, "linkedIssues() must be the only list value"}
+		c.err = &SyntaxError{0, "issue-list functions must be the only list value"}
 		return ""
 	}
 	name, args, ok := splitFunction(cl.Values[0])
-	if !ok || !strings.EqualFold(name, "linkedIssues") || len(args) < 1 || len(args) > 2 || strings.TrimSpace(args[0]) == "" {
-		c.err = &SyntaxError{0, "linkedIssues() requires an issue key and optional link type"}
+	if !ok {
+		c.err = &SyntaxError{0, "invalid issue-list function"}
+		return ""
+	}
+	var match string
+	switch strings.ToLower(name) {
+	case "linkedissues", "linkedworkitems":
+		match = c.linkedIssuesMatch(name, args)
+	case "watchedissues", "watchedworkitems":
+		if len(args) != 0 {
+			c.err = &SyntaxError{0, name + "() does not accept arguments"}
+			return ""
+		}
+		match = "EXISTS (SELECT 1 FROM watchers watched WHERE watched.issue_id=i.id AND watched.user_id=" + c.arg(c.user) + ")"
+	case "votedissues", "votedworkitems":
+		if len(args) != 0 {
+			c.err = &SyntaxError{0, name + "() does not accept arguments"}
+			return ""
+		}
+		match = "EXISTS (SELECT 1 FROM issue_votes voted WHERE voted.issue_id=i.id AND voted.user_id=" + c.arg(c.user) + ")"
+	case "updatedby":
+		match = c.updatedByMatch(args)
+	default:
+		c.err = &SyntaxError{0, "unsupported function " + name + "() for " + cl.Field}
+		return ""
+	}
+	if c.err != nil {
+		return ""
+	}
+	return c.listResult(cl, match, "TRUE")
+}
+
+func (c *compiler) linkedIssuesMatch(name string, args []string) string {
+	if len(args) < 1 || strings.TrimSpace(args[0]) == "" {
+		c.err = &SyntaxError{0, name + "() requires an issue key and optional link types"}
 		return ""
 	}
 	key := c.arg(strings.ToUpper(args[0]))
@@ -1243,12 +1295,99 @@ func (c *compiler) linkedIssuesClause(cl Clause) string {
 		"upper(linked_source.key)=" + key,
 	}
 	joinType := ""
-	if len(args) == 2 {
-		linkType := c.arg(args[1])
+	if len(args) > 1 {
+		linkTypes := make([]string, 0, len(args)-1)
+		for _, value := range args[1:] {
+			if strings.TrimSpace(value) == "" {
+				c.err = &SyntaxError{0, name + "() link types cannot be empty"}
+				return ""
+			}
+			linkType := c.arg(value)
+			linkTypes = append(linkTypes, "lower(linked_type.name)=lower("+linkType+") OR lower(linked_type.inward)=lower("+linkType+") OR lower(linked_type.outward)=lower("+linkType+")")
+		}
 		joinType = " JOIN issue_link_types linked_type ON linked_type.id=linked.link_type_id"
-		conditions = append(conditions, "(lower(linked_type.name)=lower("+linkType+") OR lower(linked_type.inward)=lower("+linkType+") OR lower(linked_type.outward)=lower("+linkType+"))")
+		conditions = append(conditions, "("+strings.Join(linkTypes, " OR ")+")")
 	}
-	match := "EXISTS (SELECT 1 FROM issue_links linked" + joinType + " JOIN issues linked_source ON linked_source.id=CASE WHEN linked.inward_id=i.id THEN linked.outward_id ELSE linked.inward_id END WHERE " + strings.Join(conditions, " AND ") + ")"
+	return "EXISTS (SELECT 1 FROM issue_links linked" + joinType + " JOIN issues linked_source ON linked_source.id=CASE WHEN linked.inward_id=i.id THEN linked.outward_id ELSE linked.inward_id END WHERE " + strings.Join(conditions, " AND ") + ")"
+}
+
+func (c *compiler) updatedByMatch(args []string) string {
+	if len(args) < 1 || len(args) > 3 || strings.TrimSpace(args[0]) == "" {
+		c.err = &SyntaxError{0, "updatedBy() requires a user and optional from/to dates"}
+		return ""
+	}
+	user := args[0]
+	if name, functionArgs, ok := splitFunction(user); ok {
+		if !strings.EqualFold(name, "currentUser") || len(functionArgs) != 0 {
+			c.err = &SyntaxError{0, "updatedBy() user must be an account ID or currentUser()"}
+			return ""
+		}
+		user = c.user
+	}
+	conditions := []string{
+		"updated_action.workspace_id=i.workspace_id",
+		"updated_action.entity_type='issue'",
+		"updated_action.entity_id=i.id",
+		"updated_action.actor_id=" + c.arg(user),
+	}
+	for index, op := range []string{">=", "<="} {
+		if len(args) <= index+1 || strings.TrimSpace(args[index+1]) == "" {
+			continue
+		}
+		value := c.fieldValue("updated", args[index+1])
+		if c.err != nil {
+			return ""
+		}
+		conditions = append(conditions, "updated_action.created_at"+op+c.arg(value))
+	}
+	return "EXISTS (SELECT 1 FROM actions updated_action WHERE " + strings.Join(conditions, " AND ") + ")"
+}
+
+func (c *compiler) projectFunctionClause(cl Clause) string {
+	if len(cl.Values) != 1 {
+		c.err = &SyntaxError{0, "project-list functions must be the only list value"}
+		return ""
+	}
+	name, args, ok := splitFunction(cl.Values[0])
+	if !ok {
+		c.err = &SyntaxError{0, "invalid project-list function"}
+		return ""
+	}
+	var match string
+	switch strings.ToLower(name) {
+	case "projectsleadbyuser", "spacesleadbyuser":
+		if len(args) > 1 {
+			c.err = &SyntaxError{0, name + "() accepts at most one user"}
+			return ""
+		}
+		user := c.user
+		if len(args) == 1 {
+			user = args[0]
+		}
+		if name, functionArgs, ok := splitFunction(user); ok {
+			if !strings.EqualFold(name, "currentUser") || len(functionArgs) != 0 {
+				c.err = &SyntaxError{0, name + "() is not a supported user argument"}
+				return ""
+			}
+			user = c.user
+		}
+		if strings.TrimSpace(user) == "" {
+			c.err = &SyntaxError{0, name + "() user cannot be empty"}
+			return ""
+		}
+		match = "pr.lead_account_id=" + c.arg(user)
+	case "projectswhereuserhasrole", "spaceswhereuserhasrole":
+		if len(args) != 1 || strings.TrimSpace(args[0]) == "" {
+			c.err = &SyntaxError{0, name + "() requires one project role name or ID"}
+			return ""
+		}
+		role := c.arg(args[0])
+		user := c.arg(c.user)
+		match = "EXISTS (SELECT 1 FROM role_bindings project_role WHERE project_role.scope_type='project' AND project_role.scope_id=pr.id AND lower(project_role.role_key)=lower(" + role + ") AND ((project_role.principal_type='user' AND project_role.principal_id=" + user + ") OR (project_role.principal_type='group' AND EXISTS (SELECT 1 FROM group_members project_role_member WHERE project_role_member.group_id::text=project_role.principal_id AND project_role_member.user_id=" + user + "))))"
+	default:
+		c.err = &SyntaxError{0, "unsupported function " + name + "() for project"}
+		return ""
+	}
 	return c.listResult(cl, match, "TRUE")
 }
 
@@ -1280,7 +1419,7 @@ func resolveDateFunction(name string, args []string, now time.Time) (time.Time, 
 	case "endofday":
 		value = time.Date(value.Year(), value.Month(), value.Day()+1, 0, 0, 0, -1, time.UTC)
 	case "startofweek", "endofweek":
-		days := (int(value.Weekday()) + 6) % 7
+		days := int(value.Weekday())
 		value = time.Date(value.Year(), value.Month(), value.Day()-days, 0, 0, 0, 0, time.UTC)
 		if strings.EqualFold(name, "endofweek") {
 			value = value.AddDate(0, 0, 7).Add(-time.Nanosecond)
@@ -1298,7 +1437,11 @@ func resolveDateFunction(name string, args []string, now time.Time) (time.Time, 
 	}
 	if len(args) == 1 {
 		var err error
-		value, err = applyDateIncrement(value, args[0])
+		defaultUnit := map[string]string{
+			"startofday": "d", "endofday": "d", "startofweek": "w", "endofweek": "w",
+			"startofmonth": "M", "endofmonth": "M", "startofyear": "y", "endofyear": "y",
+		}[strings.ToLower(name)]
+		value, err = applyDateIncrementWithDefault(value, args[0], defaultUnit)
 		if err != nil {
 			return time.Time{}, fmt.Errorf("%s(): %w", name, err)
 		}
@@ -1307,7 +1450,17 @@ func resolveDateFunction(name string, args []string, now time.Time) (time.Time, 
 }
 
 func applyDateIncrement(value time.Time, raw string) (time.Time, error) {
+	return applyDateIncrementWithDefault(value, raw, "")
+}
+
+func applyDateIncrementWithDefault(value time.Time, raw, defaultUnit string) (time.Time, error) {
 	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return time.Time{}, fmt.Errorf("increment must include a number")
+	}
+	if _, err := strconv.Atoi(raw); err == nil && defaultUnit != "" {
+		raw += defaultUnit
+	}
 	if len(raw) < 2 {
 		return time.Time{}, fmt.Errorf("increment must include a number and unit")
 	}
@@ -1351,6 +1504,14 @@ func (c *compiler) versionClause(cl Clause) string {
 	case "=", "!=", "in", "notin":
 		matches := []string{}
 		for _, value := range cl.Values {
+			if name, args, ok := splitFunction(value); ok {
+				match := c.versionFunctionMatch("v", name, args)
+				if c.err != nil {
+					return ""
+				}
+				matches = append(matches, match)
+				continue
+			}
 			ph := c.arg(value)
 			matches = append(matches, "(v->>'id' = "+ph+" OR lower(v->>'name') = lower("+ph+"))")
 		}
@@ -1361,6 +1522,47 @@ func (c *compiler) versionClause(cl Clause) string {
 		return exists
 	default:
 		c.err = &SyntaxError{0, "unsupported version operator " + cl.Op}
+		return ""
+	}
+}
+
+func (c *compiler) versionFunctionMatch(element, name string, args []string) string {
+	switch strings.ToLower(name) {
+	case "releasedversions", "unreleasedversions":
+		if len(args) > 1 {
+			c.err = &SyntaxError{0, name + "() accepts at most one project"}
+			return ""
+		}
+		released := strings.EqualFold(name, "releasedVersions")
+		conditions := []string{
+			"version_value.id=" + element + "->>'id'",
+			"version_value.project_id=i.project_id",
+			"version_value.released=" + strconv.FormatBool(released),
+		}
+		join := ""
+		if len(args) == 1 {
+			if strings.TrimSpace(args[0]) == "" {
+				c.err = &SyntaxError{0, name + "() project cannot be empty"}
+				return ""
+			}
+			project := c.arg(args[0])
+			join = " JOIN projects version_project ON version_project.id=version_value.project_id"
+			conditions = append(conditions, "(version_project.id="+project+" OR upper(version_project.key)=upper("+project+"))")
+		}
+		return "EXISTS (SELECT 1 FROM project_versions version_value" + join + " WHERE " + strings.Join(conditions, " AND ") + ")"
+	case "latestreleasedversion", "earliestunreleasedversion":
+		if len(args) != 1 || strings.TrimSpace(args[0]) == "" {
+			c.err = &SyntaxError{0, name + "() requires one project key or ID"}
+			return ""
+		}
+		project := c.arg(args[0])
+		released, direction := true, "DESC"
+		if strings.EqualFold(name, "earliestUnreleasedVersion") {
+			released, direction = false, "ASC"
+		}
+		return element + "->>'id'=(SELECT version_value.id FROM project_versions version_value JOIN projects version_project ON version_project.id=version_value.project_id WHERE version_value.project_id=i.project_id AND version_value.released=" + strconv.FormatBool(released) + " AND (version_project.id=" + project + " OR upper(version_project.key)=upper(" + project + ")) ORDER BY version_value.release_date " + direction + " NULLS LAST,version_value.position " + direction + ",version_value.id " + direction + " LIMIT 1)"
+	default:
+		c.err = &SyntaxError{0, "unsupported function " + name + "() for version"}
 		return ""
 	}
 }

@@ -189,6 +189,62 @@ func TestRelationBackedListFunctionsCompile(t *testing.T) {
 	}
 }
 
+func TestCloudFunctionAliasesAndRelationFunctionsCompile(t *testing.T) {
+	query, err := Parse(`workItem IN linkedWorkItems(OPS-1, blocks, clones) AND workType IN standardWorkTypes() AND space IN projectsLeadByUser(currentUser())`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled := Compile(query, "usr_me", DefaultResolver())
+	if compiled.Err != nil {
+		t.Fatal(compiled.Err)
+	}
+	for _, fragment := range []string{"FROM issue_links linked", "NOT it.subtask", "pr.lead_account_id"} {
+		if !strings.Contains(compiled.Where, fragment) {
+			t.Fatalf("Cloud alias SQL missing %q: %s", fragment, compiled.Where)
+		}
+	}
+	if !reflect.DeepEqual(compiled.Args, []any{"OPS-1", "blocks", "clones", "usr_me"}) {
+		t.Fatalf("Cloud alias args = %#v", compiled.Args)
+	}
+}
+
+func TestVersionWatchVoteAndHistoryFunctionsCompile(t *testing.T) {
+	query, err := Parse(`fixVersion IN releasedVersions(OPS) AND affectedVersion = earliestUnreleasedVersion(OPS) AND issue IN watchedIssues() AND key IN votedWorkItems() AND issue IN updatedBy(currentUser(), startOfMonth(-1), endOfMonth())`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled := Compile(query, "usr_me", DefaultResolver())
+	if compiled.Err != nil {
+		t.Fatal(compiled.Err)
+	}
+	for _, fragment := range []string{"FROM project_versions version_value", "version_value.released=true", "version_value.released=false", "FROM watchers watched", "FROM issue_votes voted", "FROM actions updated_action"} {
+		if !strings.Contains(compiled.Where, fragment) {
+			t.Fatalf("function SQL missing %q: %s", fragment, compiled.Where)
+		}
+	}
+	if len(compiled.Args) != 7 || compiled.Args[2] != "usr_me" || compiled.Args[3] != "usr_me" || compiled.Args[4] != "usr_me" {
+		t.Fatalf("function args = %#v", compiled.Args)
+	}
+	for _, value := range compiled.Args[5:] {
+		if _, ok := value.(time.Time); !ok {
+			t.Fatalf("updatedBy date resolved to %T", value)
+		}
+	}
+}
+
+func TestDateFunctionNaturalIncrementsAndCloudWeek(t *testing.T) {
+	now := time.Date(2026, time.September, 9, 12, 0, 0, 0, time.UTC)
+	start, err := resolveDateFunction("startOfWeek", []string{"1"}, now)
+	if err != nil || !start.Equal(time.Date(2026, time.September, 13, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("startOfWeek(1) = %s, %v", start, err)
+	}
+	end, err := resolveDateFunction("endOfWeek", nil, now)
+	wantEnd := time.Date(2026, time.September, 13, 0, 0, 0, 0, time.UTC).Add(-time.Nanosecond)
+	if err != nil || !end.Equal(wantEnd) {
+		t.Fatalf("endOfWeek() = %s, want %s (%v)", end, wantEnd, err)
+	}
+}
+
 func TestJiraIssueIDCompilesAsNumeric(t *testing.T) {
 	query, err := Parse(`id IN (10001, 10002)`)
 	if err != nil {

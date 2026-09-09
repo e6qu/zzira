@@ -493,6 +493,9 @@ func main() {
 	mux.HandleFunc("POST /issues/{key}/watch", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.SetWatching(w, r, r.PathValue("key"))
 	})
+	mux.HandleFunc("POST /issues/{key}/vote", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.SetVoting(w, r, r.PathValue("key"))
+	})
 	mux.HandleFunc("POST /issues/{key}/links", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.LinkIssue(w, r, r.PathValue("key"))
 	})

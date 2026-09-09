@@ -323,7 +323,12 @@ func validateJQLFunction(input jqlFunctionWire, format string, moduleKeys map[st
 
 func builtInJQLFunction(name string) bool {
 	switch name {
-	case "closedsprints", "currentuser", "endofday", "endofmonth", "endofweek", "endofyear", "futuresprints", "linkedissues", "membersof", "now", "opensprints", "standardissuetypes", "startofday", "startofmonth", "startofweek", "startofyear", "subtaskissuetypes":
+	case "closedsprints", "currentuser", "earliestunreleasedversion", "endofday", "endofmonth", "endofweek", "endofyear",
+		"futuresprints", "latestreleasedversion", "linkedissues", "linkedworkitems", "membersof", "now", "opensprints",
+		"projectsleadbyuser", "projectswhereuserhasrole", "releasedversions", "spacesleadbyuser", "spaceswhereuserhasrole",
+		"standardissuetypes", "standardworktypes", "startofday", "startofmonth", "startofweek", "startofyear",
+		"subtaskissuetypes", "subtaskworktypes", "unreleasedversions", "updatedby", "votedissues", "votedworkitems",
+		"watchedissues", "watchedworkitems":
 		return true
 	}
 	return false
