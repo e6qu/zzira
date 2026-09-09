@@ -25,7 +25,7 @@ boundaries, dependencies, and acceptance gates belong in
   implemented; Jira project components and their REST, issue-field, assignment,
   JQL, audit, sync, and administrator journeys are implemented; durable login
   boundaries and `currentLogin()`/`lastLogin()` JQL are implemented; the full
-  JSM approval JQL function family is implemented
+  JSM approval and SLA JQL function families are implemented
 - Blockers: none
 
 ## Contract baseline
@@ -112,6 +112,14 @@ and unanswered steps; accepts current and explicit user identities; implements
 the supported non-equality forms without matching empty approval fields; and
 advertises the approval field and functions through autocomplete.
 
+The JSM SLA-function slice compiles all seven Jira Cloud SLA functions against
+named workspace SLA fields. PostgreSQL business-time functions use each
+metric's calendar, time zone, working window, and holidays. Durable pause
+intervals distinguish a condition-paused clock from one merely outside calendar
+hours; manager-authored pause JQL is validated, reconciled immediately, and
+re-evaluated on request creation and transitions. REST cycle values, escalation
+workers, and JQL share the same goals, cycle history, and pause state.
+
 ## Validation baseline
 
 Merged PR #68 passed the complete GitHub CI matrix, including all 58 Playwright
@@ -142,10 +150,19 @@ current-user, and non-equality queries; the Chromium service journey; the full
 uncached PostgreSQL Go suite; `go vet`; native and WebAssembly builds; and
 conformance freshness checks.
 
+The JSM SLA-function checkpoint passes an empty-schema migration run and the
+PostgreSQL request contract for autocomplete, manager pause-rule authorization
+and validation, immediate pause/resume reconciliation, calendar-aware
+remaining time, current and historical breach state, completion, running state,
+and non-equality behavior. The responsive and accessible Chromium service
+manager journey, full uncached PostgreSQL Go suite, `go vet`, native and
+WebAssembly builds, and conformance freshness checks also pass.
+
 ## Resume here
 
-1. Add JSM SLA built-ins with their owning calendar and cycle state.
-2. Continue into bulk work-item and project administration slices.
+1. Continue into bulk work-item and project administration slices.
+2. Add the remaining permission and customer/organization JQL functions with
+   their owning policy state.
 3. Update compatibility evidence and commit each independently buildable
    checkpoint.
 

@@ -860,7 +860,23 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if err := handler.Commands.DeleteServiceCalendarHoliday(ctx, actorID, workspaceID, serviceDeskID, "2030-01-01"); err != nil {
 		t.Fatal(err)
 	}
-	if err := handler.Commands.UpdateServiceSLAMetric(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], (2 * time.Hour).Milliseconds()); err != nil {
+	if _, err := st.Pool.Exec(ctx, `UPDATE service_calendars SET time_zone='America/New_York',weekdays=ARRAY[1,2,3,4,5]::SMALLINT[],start_minute=540,end_minute=1020 WHERE id=$1`, calendar.ID); err != nil {
+		t.Fatal(err)
+	}
+	var dstBusinessMillis int64
+	if err := st.Pool.QueryRow(ctx, `SELECT jira_service_business_millis($1,$2,$3)`, calendar.ID, time.Date(2026, time.March, 6, 21, 0, 0, 0, time.UTC), time.Date(2026, time.March, 9, 14, 0, 0, 0, time.UTC)).Scan(&dstBusinessMillis); err != nil || dstBusinessMillis != (2*time.Hour).Milliseconds() {
+		t.Fatalf("DST business millis = %d, %v", dstBusinessMillis, err)
+	}
+	if _, err := st.Pool.Exec(ctx, `UPDATE service_calendars SET time_zone='UTC',weekdays=ARRAY[1,2,3,4,5,6,7]::SMALLINT[],start_minute=0,end_minute=1440 WHERE id=$1`, calendar.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := handler.Commands.UpdateServiceSLAMetric(ctx, customerID, workspaceID, serviceDeskID, metricByKind["first_response"], `status = "To Do"`, (2 * time.Hour).Milliseconds()); err == nil {
+		t.Fatal("customer configured an SLA pause rule")
+	}
+	if err := handler.Commands.UpdateServiceSLAMetric(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], `"Time to first response" = paused()`, (2 * time.Hour).Milliseconds()); err == nil {
+		t.Fatal("recursive SLA pause rule was accepted")
+	}
+	if err := handler.Commands.UpdateServiceSLAMetric(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], `status = "To Do"`, (2 * time.Hour).Milliseconds()); err != nil {
 		t.Fatal(err)
 	}
 	configuredSLA := call("GET", "/rest/servicedeskapi/request/"+issueKey+"/sla/"+metricByKind["first_response"], "", 200)
@@ -870,11 +886,62 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	}
 	ongoingCycle, _ := configuredSLABean["ongoingCycle"].(map[string]any)
 	goalDuration, _ := ongoingCycle["goalDuration"].(map[string]any)
-	if goalDuration["millis"] != float64((2 * time.Hour).Milliseconds()) {
+	if goalDuration["millis"] != float64((2*time.Hour).Milliseconds()) || ongoingCycle["paused"] != true {
 		t.Fatal(configuredSLA.Body.String())
 	}
+	autocomplete := call("GET", "/rest/api/3/jql/autocompletedata", "", 200)
+	if !strings.Contains(autocomplete.Body.String(), `"displayName":"Time to first response"`) || !strings.Contains(autocomplete.Body.String(), `"value":"breached()"`) || !strings.Contains(autocomplete.Body.String(), `"value":"withinCalendarHours()"`) {
+		t.Fatal(autocomplete.Body.String())
+	}
+	var firstResponseCycleID string
+	if err := st.Pool.QueryRow(ctx, `SELECT id FROM service_sla_cycles WHERE request_issue_id=$1 AND metric_id=$2 AND stopped_at IS NULL`, issue.ID, metricByKind["first_response"]).Scan(&firstResponseCycleID); err != nil {
+		t.Fatal(err)
+	}
+	slaNow := time.Now().UTC()
+	if _, err := st.Pool.Exec(ctx, `UPDATE service_sla_cycles SET started_at=$2 WHERE id=$1`, firstResponseCycleID, slaNow.Add(-90*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	issueSLAQuery := `key = ` + issueKey + ` AND "Time to first response" `
+	searchTotalAs(customerID, issueSLAQuery+`= paused()`, 1)
+	if err := handler.Commands.UpdateServiceSLAMetric(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], "", (2 * time.Hour).Milliseconds()); err != nil {
+		t.Fatal(err)
+	}
+	searchTotalAs(customerID, issueSLAQuery+`= running()`, 1)
+	searchTotalAs(customerID, issueSLAQuery+`= completed()`, 0)
+	searchTotalAs(customerID, issueSLAQuery+`= breached()`, 0)
+	searchTotalAs(customerID, issueSLAQuery+`= everBreached()`, 0)
+	searchTotalAs(customerID, issueSLAQuery+`= withinCalendarHours()`, 1)
+	searchTotalAs(customerID, issueSLAQuery+`< remaining("31m")`, 1)
+	if err := st.SetServiceSLACyclePaused(ctx, workspaceID, firstResponseCycleID, true, "Waiting for customer", slaNow.Add(-30*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	searchTotalAs(customerID, issueSLAQuery+`= paused()`, 1)
+	searchTotalAs(customerID, issueSLAQuery+`!= paused()`, 0)
+	searchTotalAs(customerID, issueSLAQuery+`= running()`, 0)
+	pausedSLAs, err := st.ServiceSLAs(ctx, workspaceID, issue.ID, slaNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sla := range pausedSLAs {
+		if sla.Kind == "first_response" && (sla.OngoingCycle == nil || !sla.OngoingCycle.Paused || sla.OngoingCycle.ElapsedMillis < time.Hour.Milliseconds()-time.Second.Milliseconds() || sla.OngoingCycle.ElapsedMillis > time.Hour.Milliseconds()) {
+			t.Fatalf("paused first-response SLA = %+v", sla.OngoingCycle)
+		}
+	}
+	if err := st.SetServiceSLACyclePaused(ctx, workspaceID, firstResponseCycleID, false, "", slaNow); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Pool.Exec(ctx, `UPDATE service_sla_cycles SET started_at=$2 WHERE id=$1`, firstResponseCycleID, slaNow.Add(-3*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	searchTotalAs(customerID, issueSLAQuery+`= paused()`, 0)
+	searchTotalAs(customerID, issueSLAQuery+`!= paused()`, 1)
+	searchTotalAs(customerID, issueSLAQuery+`= breached()`, 1)
+	searchTotalAs(customerID, issueSLAQuery+`= everBreached()`, 1)
+	if _, err := st.Pool.Exec(ctx, `DELETE FROM service_sla_cycle_pauses WHERE cycle_id=$1`, firstResponseCycleID); err != nil {
+		t.Fatal(err)
+	}
 	var serviceConfigAudits int
-	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM organization_audit_events WHERE actor_id=$1 AND action IN ('service.calendar.updated','service.sla.updated')`, actorID).Scan(&serviceConfigAudits); err != nil || serviceConfigAudits != 2 {
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM organization_audit_events WHERE actor_id=$1 AND action IN ('service.calendar.updated','service.sla.updated')`, actorID).Scan(&serviceConfigAudits); err != nil || serviceConfigAudits != 3 {
 		t.Fatalf("service configuration audits = %d, %v", serviceConfigAudits, err)
 	}
 	var holidayAudits int
@@ -1036,6 +1103,8 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if !strings.Contains(firstResponseSLA.Body.String(), `"completedCycles":[{`) || strings.Contains(firstResponseSLA.Body.String(), `"ongoingCycle"`) {
 		t.Fatal(firstResponseSLA.Body.String())
 	}
+	searchTotalAs(customerID, issueSLAQuery+`= completed()`, 1)
+	searchTotalAs(customerID, issueSLAQuery+`= running()`, 0)
 	var unassignedQueueID, mineQueueID string
 	if err := st.Pool.QueryRow(ctx, `SELECT id FROM service_queues WHERE service_desk_id=$1 AND kind='unassigned'`, serviceDeskID).Scan(&unassignedQueueID); err != nil {
 		t.Fatal(err)

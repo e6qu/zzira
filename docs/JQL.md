@@ -39,6 +39,10 @@ work item the viewer cannot browse.
   `myApproval()`, `myPendingApproval()`, `myPending()`, `pending()`,
   `pendingApprovalBy()`, and `pendingBy()` against durable request approval and
   per-approver decision state;
+- Jira Service Management SLA predicates `breached()`, `completed()`,
+  `everBreached()`, `paused()`, `remaining()`, `running()`, and
+  `withinCalendarHours()` against named SLA fields, their latest or historical
+  cycles as required, durable pause intervals, and business calendars;
 - multi-value semantics for labels, components, version memberships, and current or
   historical sprint memberships, including Jira's empty-field behavior for
   negated comparisons;
@@ -153,8 +157,8 @@ complete personal-data migration for list/history
 operands and unknown-user reporting; project-aware validation warnings; exact
 historical versioned representations and richer rendered values.
 
-The remaining built-in catalog includes permission-scheme,
-customer/organization, and SLA functions. Those
+The remaining built-in catalog includes permission-scheme and
+customer/organization functions. Those
 functions depend on their owning PR 1/JSM state models and are implemented with
 those models instead of returning approximate results.
 

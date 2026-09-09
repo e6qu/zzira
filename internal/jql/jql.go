@@ -15,6 +15,7 @@ package jql
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -436,6 +437,9 @@ func (p *parser) parseUnit() (Node, error) {
 		return inner, nil
 	}
 	if t.kind == "quoted" {
+		if p.isClauseStart() {
+			return p.parseClause()
+		}
 		p.next()
 		return Text{Value: t.text}, nil
 	}
@@ -943,6 +947,9 @@ func (c *compiler) node(n Node) string {
 }
 
 func (c *compiler) clause(cl Clause) string {
+	if containsJQLFunction(cl.Values, "breached", "completed", "everBreached", "paused", "remaining", "running", "withinCalendarHours") {
+		return c.slaClause(cl)
+	}
 	if containsJQLFunction(cl.Values, "approved", "approver", "myApproval", "myPendingApproval", "myPending", "pending", "pendingApprovalBy", "pendingBy") {
 		return c.approvalClause(cl)
 	}
@@ -1037,6 +1044,116 @@ func (c *compiler) clause(cl Clause) string {
 	}
 	c.err = &SyntaxError{0, "unsupported operator " + cl.Op}
 	return ""
+}
+
+func (c *compiler) slaClause(cl Clause) string {
+	if _, systemField := c.res.Columns[cl.Field]; systemField || cl.Field == "approval" || cl.Field == "approvals" {
+		c.err = &SyntaxError{0, "SLA functions require an SLA field"}
+		return ""
+	}
+	if cl.Field != "time to first response" && cl.Field != "time to resolution" {
+		c.err = &SyntaxError{0, "field does not exist or is not searchable: " + cl.Field}
+		return ""
+	}
+	if len(cl.Values) != 1 {
+		c.err = &SyntaxError{0, "SLA functions require one function value"}
+		return ""
+	}
+	name, args, ok := splitFunction(cl.Values[0])
+	if !ok {
+		c.err = &SyntaxError{0, "expected an SLA function"}
+		return ""
+	}
+	name = strings.ToLower(name)
+	metric := c.arg(cl.Field)
+	metricMatch := "(lower(sla_metric.name)=lower(" + metric + ") OR sla_metric.id=" + metric + ")"
+	latest := "sla_cycle.cycle_number=(SELECT max(sla_latest.cycle_number) FROM service_sla_cycles sla_latest WHERE sla_latest.request_issue_id=i.id AND sla_latest.metric_id=sla_metric.id)"
+	base := "sla_cycle.request_issue_id=i.id AND " + metricMatch
+	boolean := name != "remaining"
+	if boolean && len(args) != 0 {
+		c.err = &SyntaxError{0, name + "() does not accept arguments"}
+		return ""
+	}
+	if boolean && cl.Op != "=" && cl.Op != "!=" {
+		c.err = &SyntaxError{0, name + "() supports only = and !="}
+		return ""
+	}
+	condition := ""
+	switch name {
+	case "breached":
+		condition = latest + " AND jira_service_sla_elapsed_millis(sla_cycle.id,CURRENT_TIMESTAMP)>=COALESCE(sla_cycle.goal_millis,sla_metric.goal_millis)"
+	case "completed":
+		condition = latest + " AND sla_cycle.stopped_at IS NOT NULL"
+	case "everbreached":
+		condition = "jira_service_sla_elapsed_millis(sla_cycle.id,COALESCE(sla_cycle.stopped_at,CURRENT_TIMESTAMP))>=COALESCE(sla_cycle.goal_millis,sla_metric.goal_millis)"
+	case "paused":
+		condition = latest + " AND sla_cycle.stopped_at IS NULL AND EXISTS (SELECT 1 FROM service_sla_cycle_pauses sla_pause WHERE sla_pause.cycle_id=sla_cycle.id AND sla_pause.stopped_at IS NULL)"
+	case "running":
+		condition = latest + " AND sla_cycle.stopped_at IS NULL AND NOT EXISTS (SELECT 1 FROM service_sla_cycle_pauses sla_pause WHERE sla_pause.cycle_id=sla_cycle.id AND sla_pause.stopped_at IS NULL)"
+	case "withincalendarhours":
+		condition = latest + " AND sla_cycle.stopped_at IS NULL AND jira_service_within_calendar(sla_metric.calendar_id,CURRENT_TIMESTAMP)"
+	case "remaining":
+		if len(args) > 1 {
+			c.err = &SyntaxError{0, "remaining() accepts at most one duration"}
+			return ""
+		}
+		if cl.Op != "=" && cl.Op != "!=" && cl.Op != ">" && cl.Op != ">=" && cl.Op != "<" && cl.Op != "<=" {
+			c.err = &SyntaxError{0, "remaining() requires a comparison operator"}
+			return ""
+		}
+		threshold := int64(0)
+		if len(args) == 1 {
+			var err error
+			threshold, err = parseSLADurationMillis(args[0])
+			if err != nil {
+				c.err = &SyntaxError{0, "remaining(): " + err.Error()}
+				return ""
+			}
+		}
+		op := cl.Op
+		if op == "!=" {
+			op = "<>"
+		}
+		condition = latest + " AND (COALESCE(sla_cycle.goal_millis,sla_metric.goal_millis)-jira_service_sla_elapsed_millis(sla_cycle.id,CURRENT_TIMESTAMP)) " + op + " " + c.arg(threshold)
+	default:
+		c.err = &SyntaxError{0, "unsupported SLA function " + name + "()"}
+		return ""
+	}
+	match := "EXISTS (SELECT 1 FROM service_sla_cycles sla_cycle JOIN service_sla_metrics sla_metric ON sla_metric.id=sla_cycle.metric_id WHERE " + base + " AND " + condition + ")"
+	if boolean && cl.Op == "!=" {
+		anyMetric := "EXISTS (SELECT 1 FROM service_sla_cycles sla_any JOIN service_sla_metrics sla_any_metric ON sla_any_metric.id=sla_any.metric_id WHERE sla_any.request_issue_id=i.id AND (lower(sla_any_metric.name)=lower(" + metric + ") OR sla_any_metric.id=" + metric + "))"
+		return "(" + anyMetric + " AND NOT (" + match + "))"
+	}
+	return match
+}
+
+func parseSLADurationMillis(raw string) (int64, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, fmt.Errorf("duration cannot be empty")
+	}
+	unit := raw[len(raw)-1:]
+	amount, err := strconv.ParseInt(strings.TrimSpace(raw[:len(raw)-1]), 10, 64)
+	if err != nil || amount < 0 {
+		return 0, fmt.Errorf("invalid duration %q", raw)
+	}
+	multiplier := int64(0)
+	switch unit {
+	case "w":
+		multiplier = (7 * 24 * time.Hour).Milliseconds()
+	case "d":
+		multiplier = (24 * time.Hour).Milliseconds()
+	case "h":
+		multiplier = time.Hour.Milliseconds()
+	case "m":
+		multiplier = time.Minute.Milliseconds()
+	default:
+		return 0, fmt.Errorf("duration must use w, d, h, or m")
+	}
+	if amount > math.MaxInt64/multiplier {
+		return 0, fmt.Errorf("duration is too large")
+	}
+	return amount * multiplier, nil
 }
 
 func (c *compiler) approvalClause(cl Clause) string {

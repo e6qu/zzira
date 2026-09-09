@@ -244,6 +244,56 @@ func TestApprovalFunctionsCompileAgainstServiceApprovalState(t *testing.T) {
 	}
 }
 
+func TestSLAFunctionsCompileAgainstCalendarCycles(t *testing.T) {
+	query, err := Parse(`"Time to resolution" = breached() OR "Time to first response" < remaining("2h") AND "Time to resolution" != paused()`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled := Compile(query, "usr_me", DefaultResolver())
+	if compiled.Err != nil {
+		t.Fatal(compiled.Err)
+	}
+	for _, fragment := range []string{"jira_service_sla_elapsed_millis", "service_sla_cycle_pauses", "sla_cycle.cycle_number", "NOT (EXISTS"} {
+		if !strings.Contains(compiled.Where, fragment) {
+			t.Fatalf("SLA SQL missing %q: %s", fragment, compiled.Where)
+		}
+	}
+	if !reflect.DeepEqual(compiled.Args, []any{"time to resolution", "time to first response", int64((2 * time.Hour).Milliseconds()), "time to resolution"}) {
+		t.Fatalf("SLA args = %#v", compiled.Args)
+	}
+	for _, valid := range []string{
+		`"Time to resolution" = completed()`,
+		`"Time to resolution" != everBreached()`,
+		`"Time to resolution" = running()`,
+		`"Time to resolution" = withinCalendarHours()`,
+		`"Time to resolution" >= remaining()`,
+	} {
+		parsed, err := Parse(valid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result := Compile(parsed, "usr_me", DefaultResolver()); result.Err != nil {
+			t.Fatalf("%s: %v", valid, result.Err)
+		}
+	}
+	for _, invalid := range []string{
+		`"Time to resolution" > breached()`,
+		`"Time to resolution" = remaining("soon")`,
+		`"Time to resolution" = running(extra)`,
+		`"Time to resolution" IN (completed())`,
+		`summary = breached()`,
+		`"Unknown SLA" = breached()`,
+	} {
+		parsed, err := Parse(invalid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result := Compile(parsed, "usr_me", DefaultResolver()); result.Err == nil {
+			t.Fatalf("accepted invalid SLA query %q: %s", invalid, result.Where)
+		}
+	}
+}
+
 func TestMultipleOrderFieldsAreBoundedAndDeterministic(t *testing.T) {
 	query, err := Parse(`project = ZZ ORDER BY priority DESC, updated ASC, key DESC`)
 	if err != nil {

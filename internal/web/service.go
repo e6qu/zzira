@@ -758,7 +758,7 @@ func (h *Handler) ServiceSLASettings(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "SLA goal must be a positive number of minutes.", http.StatusBadRequest)
 		return
 	}
-	if err := h.Commands.UpdateServiceSLAMetric(r.Context(), user.ID, workspaceID, r.PathValue("desk"), r.PathValue("metric"), goalMinutes*time.Minute.Milliseconds()); err != nil {
+	if err := h.Commands.UpdateServiceSLAMetric(r.Context(), user.ID, workspaceID, r.PathValue("desk"), r.PathValue("metric"), r.PostFormValue("pauseJql"), goalMinutes*time.Minute.Milliseconds()); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}

@@ -113,9 +113,9 @@ type ServiceCalendar struct {
 }
 
 type ServiceSLAMetric struct {
-	ID, ServiceDeskID, CalendarID, Name, Kind string
-	GoalMillis                                int64
-	Position                                  int
+	ID, ServiceDeskID, CalendarID, Name, Kind, PauseJQL string
+	GoalMillis                                          int64
+	Position                                            int
 }
 
 type ServiceSLAGoal struct {
@@ -131,6 +131,12 @@ type ServiceSLACycle struct {
 	StopTime                                   *time.Time
 	GoalMillis, ElapsedMillis, RemainingMillis int64
 	Breached, Paused, WithinCalendarHours      bool
+}
+
+type ServiceSLAPause struct {
+	ID, Reason string
+	StartTime  time.Time
+	StopTime   *time.Time
 }
 
 type ServiceSLA struct {

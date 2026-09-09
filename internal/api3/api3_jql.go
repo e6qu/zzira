@@ -62,10 +62,13 @@ var jqlSystemFields = []jqlFieldReference{
 var jqlFunctions = []jqlFunctionReference{
 	{Value: "approved()", DisplayName: "approved()", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"APPROVAL"}},
 	{Value: "approver()", DisplayName: "approver(users...)", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"APPROVAL"}},
+	{Value: "breached()", DisplayName: "breached()", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"SLA"}},
 	{Value: "closedSprints()", DisplayName: "closedSprints()", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"SPRINT"}},
+	{Value: "completed()", DisplayName: "completed()", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"SLA"}},
 	{Value: "componentsLeadByUser()", DisplayName: "componentsLeadByUser([user])", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"COMPONENT"}},
 	{Value: "currentLogin()", DisplayName: "currentLogin()", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"DATE"}},
 	{Value: "currentUser()", DisplayName: "currentUser()", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"USER"}},
+	{Value: "everBreached()", DisplayName: "everBreached()", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"SLA"}},
 	{Value: "futureSprints()", DisplayName: "futureSprints()", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"SPRINT"}},
 	{Value: "linkedIssues()", DisplayName: "linkedIssues(issueKey[, linkTypes...])", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"ISSUE"}},
 	{Value: "linkedWorkItems()", DisplayName: "linkedWorkItems(workItemKey[, linkTypes...])", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"ISSUE"}},
@@ -90,12 +93,16 @@ var jqlFunctions = []jqlFunctionReference{
 	{Value: "pending()", DisplayName: "pending()", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"APPROVAL"}},
 	{Value: "pendingApprovalBy()", DisplayName: "pendingApprovalBy(users...)", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"APPROVAL"}},
 	{Value: "pendingBy()", DisplayName: "pendingBy(users...)", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"APPROVAL"}},
+	{Value: "paused()", DisplayName: "paused()", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"SLA"}},
+	{Value: "remaining()", DisplayName: "remaining([duration])", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"SLA"}},
+	{Value: "running()", DisplayName: "running()", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"SLA"}},
 	{Value: "spacesWhereUserHasRole()", DisplayName: "spacesWhereUserHasRole(role)", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"PROJECT"}},
 	{Value: "updatedBy()", DisplayName: "updatedBy(user[, from[, to]])", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"ISSUE"}},
 	{Value: "votedIssues()", DisplayName: "votedIssues()", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"ISSUE"}},
 	{Value: "votedWorkItems()", DisplayName: "votedWorkItems()", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"ISSUE"}},
 	{Value: "watchedIssues()", DisplayName: "watchedIssues()", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"ISSUE"}},
 	{Value: "watchedWorkItems()", DisplayName: "watchedWorkItems()", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"ISSUE"}},
+	{Value: "withinCalendarHours()", DisplayName: "withinCalendarHours()", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"SLA"}},
 	{Value: "startOfDay()", DisplayName: "startOfDay([increment])", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"DATE"}},
 	{Value: "endOfDay()", DisplayName: "endOfDay([increment])", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"DATE"}},
 	{Value: "startOfWeek()", DisplayName: "startOfWeek([increment])", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"DATE"}},
@@ -159,6 +166,20 @@ func (h *Handler) jqlAutoCompleteData(w http.ResponseWriter, r *http.Request) {
 			operators = []string{"=", "!=", ">", ">=", "<", "<=", "is", "is not"}
 		}
 		fields = append(fields, jqlFieldReference{Value: field.ID, CFID: strings.TrimPrefix(field.ID, "customfield_"), DisplayName: field.Name + " - cf[" + strings.TrimPrefix(field.ID, "customfield_") + "]", Auto: "false", Orderable: "false", Searchable: "true", Operators: operators, Types: types})
+	}
+	slaMetrics, err := h.Store.ServiceSLAMetricsForWorkspace(r.Context(), workspaceID)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "Could not load JQL SLA fields.")
+		return
+	}
+	seenSLAs := make(map[string]bool)
+	for _, metric := range slaMetrics {
+		key := strings.ToLower(metric.Name)
+		if seenSLAs[key] {
+			continue
+		}
+		seenSLAs[key] = true
+		fields = append(fields, jqlFieldReference{Value: metric.Name, CFID: metric.ID, DisplayName: metric.Name, Auto: "false", Orderable: "false", Searchable: "true", Operators: []string{"=", "!=", ">", ">=", "<", "<="}, Types: []string{"SLA"}})
 	}
 	appFunctions, err := h.Store.ActiveAppJQLFunctions(r.Context(), workspaceID)
 	if err != nil {

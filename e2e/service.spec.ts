@@ -16,6 +16,7 @@ async function accessible(page: import('@playwright/test').Page) {
 }
 
 test('admin creates a service project with Jira Service Management request types', async ({ page }) => {
+  test.setTimeout(180_000);
   await page.goto('/login');
   await page.fill('#login-email', 'demo@zzira.dev');
   await page.fill('#login-password', 'demo1234');
@@ -332,8 +333,12 @@ test('admin creates a service project with Jira Service Management request types
   await expect(page.locator('#sla-settings .service-calendar-holidays')).not.toContainText('Regional support shutdown');
   const firstResponseGoal = page.locator('#sla-settings .service-sla-goals form').first();
   await firstResponseGoal.getByRole('spinbutton').fill('180');
-  await firstResponseGoal.getByRole('button', { name: 'Save default goal' }).click();
+  await firstResponseGoal.getByLabel('Pause while JQL matches').fill('status = "To Do"');
+  await firstResponseGoal.getByRole('button', { name: 'Save SLA' }).click();
   await expect(page.locator('#sla-settings .service-sla-goals form').first().getByRole('spinbutton')).toHaveValue('180');
+  await expect(page.locator('#sla-settings .service-sla-goals form').first().getByLabel('Pause while JQL matches')).toHaveValue('status = "To Do"');
+  await page.locator('#sla-settings .service-sla-goals form').first().getByLabel('Pause while JQL matches').fill('');
+  await page.locator('#sla-settings .service-sla-goals form').first().getByRole('button', { name: 'Save SLA' }).click();
   const conditionalGoalName = `Incident response ${String(Date.now()).slice(-6)}`;
   const firstResponseConditions = page.locator('#sla-settings .service-conditional-goals section').filter({ has: page.getByRole('heading', { name: 'Time to first response conditions', level: 3 }) });
   const conditionalGoalCreate = firstResponseConditions.locator('.service-conditional-goal-create');

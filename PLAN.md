@@ -1,6 +1,6 @@
 # ZZIRA — Jira Cloud compatibility roadmap
 
-Updated: 2026-09-08
+Updated: 2026-09-09
 
 ZZIRA is a self-hosted work, service, knowledge, administration, analytics, and
 app platform. The compatibility program targets the reproducible public surface
@@ -91,9 +91,8 @@ explicit errors when an external capability is unavailable.
 
 ## PR 0 — Integrated Cloud foundation
 
-PR 0 is the current `feat/cloud-surface-completion` branch relative to
-`origin/main`. It establishes the shared substrate on which the remaining PRs
-build and preserves its existing dependency-ordered commits.
+PR 0 is the merged foundation on `main`. It establishes the shared substrate
+on which the remaining PRs build.
 
 It contains:
 
@@ -130,6 +129,13 @@ for the product-completion PRs below.
 
 This PR completes the Jira core and administrative model needed by the other
 products.
+
+Current delivery includes saved-filter administration and subscriptions,
+stable enhanced search and Jira issue IDs, expanded built-in and app-provided
+JQL, project components and default assignment, issue votes, durable login-date
+functions, and the Jira Service Management approval and calendar-aware SLA
+function families needed by shared search surfaces. Each is retained as an
+independently validated checkpoint on the active PR 1 branch.
 
 It contains:
 

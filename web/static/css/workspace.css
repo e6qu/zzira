@@ -651,3 +651,10 @@ body.nav-collapsed .project-switcher-panel a { padding-inline: 9px; }
   .filter-access-lane { grid-template-columns:1fr; padding-inline:14px; }.filter-columns-form fieldset,.filter-share-grid { grid-template-columns:1fr; }
   .filter-page-header .btn,.filter-edit-form .btn,.filter-owner-form .btn,.filter-columns-form>.btn,.filter-share-grid .btn { width:100%; text-align:center; }
 }
+
+.service-sla-goals form { display:grid; grid-template-columns:minmax(150px,1fr) minmax(170px,1fr) minmax(220px,1.35fr) auto; align-items:end; }
+.service-sla-goals form>textarea { width:100%; min-width:0; min-height:64px; margin:0; resize:vertical; }
+@media(max-width:900px) {
+  .service-sla-goals form { grid-template-columns:1fr; }
+  .service-sla-goals form>div { width:100%; flex-wrap:wrap; }
+}

@@ -29,7 +29,7 @@ func TestOwnedJQLFunctionsAreAdvertised(t *testing.T) {
 	for _, function := range jqlFunctions {
 		values = append(values, function.Value)
 	}
-	for _, expected := range []string{"currentLogin()", "lastLogin()", "approved()", "approver()", "myApproval()", "myPendingApproval()", "myPending()", "pending()", "pendingApprovalBy()", "pendingBy()"} {
+	for _, expected := range []string{"currentLogin()", "lastLogin()", "approved()", "approver()", "myApproval()", "myPendingApproval()", "myPending()", "pending()", "pendingApprovalBy()", "pendingBy()", "breached()", "completed()", "everBreached()", "paused()", "remaining()", "running()", "withinCalendarHours()"} {
 		if !slices.Contains(values, expected) {
 			t.Fatalf("JQL function catalog omits %s", expected)
 		}
