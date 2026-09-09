@@ -12,7 +12,7 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 - Base: `origin/main` after merged PR #69
 - Delivery unit: PR 1 — Jira Platform and project/site administration
 - Pull request: not opened
-- State: Jira attachment contract completion is validated and ready to commit
+- State: attachment lifecycle is committed; PR 1 pre-open CI repair is under validation
 - Blockers: none
 
 ## Merged baseline
@@ -29,12 +29,12 @@ scans, CodeQL, and all 59 Playwright journeys.
 
 ## Resume here
 
-1. Commit attachment settings, ranges, thumbnails, archive expansion and durable
-   direct-deletion cleanup.
-2. Reconcile the Jira Platform operation inventory, then close the highest-impact
-   project and site administration gaps with contract and browser evidence.
-3. Update compatibility evidence and commit every independently buildable
-   checkpoint until the PR 1 exit gates pass.
+1. Commit the navigator accessibility and workflow-independent bulk-transition
+   browser fixes discovered by the full Playwright run.
+2. Run the full Go/PostgreSQL, build, vet, conformance and security checks, then
+   push and open PR 1 with its completed checkpoints and remaining exit gates.
+3. Reconcile the remaining Jira Platform operation inventory in subsequent PR 1
+   checkpoints, with project and site administration next.
 
 ## Evidence map
 

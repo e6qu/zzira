@@ -88,7 +88,6 @@ test('V2: administrator bulk-deletes navigator selections and follows task progr
   });
   expect(created.status()).toBe(201);
   const key = (await created.json()).key;
-
   await login(page);
   await page.goto(`/issues/ZZ?mode=basic&text=${encodeURIComponent(marker)}`);
   await expect(page.locator('[data-navigator-row]')).toHaveCount(1);
@@ -137,18 +136,27 @@ test('V2: administrator discovers and runs a common bulk transition', async ({ p
   });
   expect(created.status()).toBe(201);
   const key = (await created.json()).key;
+  const before = await request.get(`/rest/api/3/issue/${key}`, { headers: { Authorization: apiAuthHeader() } });
+  expect(before.status()).toBe(200);
+  const beforeStatusID = (await before.json()).fields.status.id;
 
   await login(page);
   await page.goto(`/issues/ZZ?mode=basic&text=${encodeURIComponent(marker)}`);
   await page.locator('[data-bulk-issue]').check();
   await page.getByText('Transition selected', { exact: true }).click();
-  await page.locator('.bulk-move-picker select[name="transition"]').selectOption({ label: 'In Progress' });
+  const transitionPicker = page.locator('.bulk-move-picker select[name="transition"]');
+  expect((await transitionPicker.locator('option').first().textContent())!.trim()).not.toBe('');
+  await transitionPicker.selectOption({ index: 0 });
   page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Start transition' }).click();
   await expect(page).toHaveURL(/\/issues\/ZZ\/bulk\/task_/);
   await expect(page.locator('.page-header .lozenge')).toHaveText('COMPLETE', { timeout: 20_000 });
   await page.goto(`/browse/${key}`);
-  await expect(page.locator('.issue-details .details-heading .lozenge')).toHaveText('In Progress');
+  const after = await request.get(`/rest/api/3/issue/${key}`, { headers: { Authorization: apiAuthHeader() } });
+  expect(after.status()).toBe(200);
+  const afterStatus = (await after.json()).fields.status;
+  expect(afterStatus.id).not.toBe(beforeStatusID);
+  await expect(page.locator('.issue-details .details-heading .lozenge')).toHaveText(afterStatus.name);
 });
 
 test('V2: custom field created via API is fillable in the UI and filterable', async ({ page, request }) => {
