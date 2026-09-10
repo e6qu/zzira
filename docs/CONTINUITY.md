@@ -11,7 +11,7 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 - Branch: `feat/pr1-screens`
 - Base: `origin/main` after merged PR #77 (`440cadc`)
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- Pull request: pending
+- Pull request: [#78](https://github.com/e6qu/zzira/pull/78)
 - State: screen checkpoint implements all 17 pinned screen, screen-tab, and
   tab-field operations, sequence-backed identifiers, a validated field catalog
   covering built-in and custom fields, dense tab and field ordering with every
@@ -48,8 +48,7 @@ PR #77's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Open the screens pull request, monitor it through every CI job, and resolve
-   review threads inline.
+1. Monitor PR #78 through every CI job and resolve review threads inline.
 2. After merge, add screen schemes and issue type screen schemes so a screen
    reaches create, edit, and view forms, then field configurations and field
    configuration schemes.
