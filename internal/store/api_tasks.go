@@ -24,6 +24,8 @@ const (
 	apiTaskBulkTransition        = "bulk-issue-transition"
 	apiTaskBulkWatch             = "bulk-issue-watch"
 	apiTaskBulkUnwatch           = "bulk-issue-unwatch"
+	apiTaskAssignSecurityScheme  = "issue-security-scheme-assign"
+	apiTaskRemoveSecurityLevel   = "issue-security-level-remove"
 )
 
 var (
@@ -361,6 +363,10 @@ func (r *APITaskRunner) execute(ctx context.Context, task APITask) error {
 			return errors.New("bulk issue executor is not configured")
 		}
 		return r.BulkIssueExecutor.ExecuteBulkIssueTask(ctx, task)
+	case apiTaskAssignSecurityScheme:
+		return r.Store.executeAssignIssueSecuritySchemeTask(ctx, task)
+	case apiTaskRemoveSecurityLevel:
+		return r.Store.executeRemoveIssueSecurityLevelTask(ctx, task)
 	case apiTaskDeleteProject:
 		var payload deleteProjectTaskPayload
 		if err := json.Unmarshal(task.Payload, &payload); err != nil {

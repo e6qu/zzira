@@ -27,26 +27,7 @@ func CanSeeIssue(ctx context.Context, st *store.Store, workspaceID, projectID, u
 	if admin {
 		return true, nil
 	}
-	scheme, err := st.SecuritySchemeForProject(ctx, projectID)
-	if err != nil {
-		return false, err
-	}
-	if scheme == nil {
-		return true, nil
-	}
-	for _, lvl := range scheme.Levels {
-		if lvl.ID != securityLevelID {
-			continue
-		}
-		for _, m := range lvl.Members {
-			if m == userID {
-				return true, nil
-			}
-		}
-		return false, nil
-	}
-	// level no longer exists in the scheme: treat as visible
-	return true, nil
+	return st.CanUseIssueSecurityLevel(ctx, workspaceID, projectID, issueID, userID, securityLevelID)
 }
 
 // excludedMembers lists workspace members who can NOT see the level.
@@ -58,17 +39,14 @@ func excludedMembers(ctx context.Context, st *store.Store, workspaceID, projectI
 	if scheme == nil {
 		return nil, nil // no scheme: nobody excluded
 	}
-	var allowed map[string]bool
+	known := false
 	for _, lvl := range scheme.Levels {
 		if lvl.ID == securityLevelID {
-			allowed = map[string]bool{}
-			for _, m := range lvl.Members {
-				allowed[m] = true
-			}
+			known = true
 			break
 		}
 	}
-	if allowed == nil {
+	if !known {
 		return nil, nil // level unknown: nobody excluded
 	}
 	members, err := st.MembersByWorkspace(ctx, workspaceID)
@@ -77,14 +55,15 @@ func excludedMembers(ctx context.Context, st *store.Store, workspaceID, projectI
 	}
 	var out []string
 	for _, m := range members {
-		if allowed[m.ID] {
-			continue
-		}
 		admin, err := IsWorkspaceAdmin(ctx, st, workspaceID, m.ID)
 		if err != nil {
 			return nil, err
 		}
-		if !admin {
+		allowed, visibilityErr := st.CanUseIssueSecurityLevel(ctx, workspaceID, projectID, "", m.ID, securityLevelID)
+		if visibilityErr != nil {
+			return nil, visibilityErr
+		}
+		if !admin && !allowed {
 			out = append(out, m.ID)
 		}
 	}

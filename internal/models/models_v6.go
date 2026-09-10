@@ -18,15 +18,32 @@ type TombstonePayload struct {
 
 // SecurityLevel restricts an issue to a set of accounts.
 type SecurityLevel struct {
-	ID      string   `json:"id"`
-	Name    string   `json:"name"`
-	Members []string `json:"members"`
+	ID          string                `json:"id"`
+	Name        string                `json:"name"`
+	Description string                `json:"description,omitempty"`
+	IsDefault   bool                  `json:"isDefault,omitempty"`
+	Members     []string              `json:"members,omitempty"`
+	Grants      []SecurityLevelMember `json:"-"`
 }
 
 type SecurityScheme struct {
-	ID     string          `json:"id"`
-	Name   string          `json:"name"`
-	Levels []SecurityLevel `json:"levels"`
+	ID             string          `json:"id"`
+	WorkspaceID    string          `json:"-"`
+	Name           string          `json:"name"`
+	Description    string          `json:"description,omitempty"`
+	DefaultLevelID string          `json:"defaultLevelId,omitempty"`
+	ProjectIDs     []string        `json:"projectIds,omitempty"`
+	Levels         []SecurityLevel `json:"levels"`
+}
+
+type SecurityLevelMember struct {
+	ID              int64  `json:"id"`
+	SchemeID        string `json:"issueSecuritySchemeId"`
+	LevelID         string `json:"issueSecurityLevelId"`
+	HolderType      string `json:"type"`
+	HolderParameter string `json:"parameter,omitempty"`
+	HolderValue     string `json:"value,omitempty"`
+	Managed         bool   `json:"managed,omitempty"`
 }
 
 type CustomField struct {

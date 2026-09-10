@@ -1658,21 +1658,58 @@ func (s *Store) CreateSecurityScheme(ctx context.Context, scheme models.Security
 	if err != nil {
 		return err
 	}
-	_, err = s.Pool.Exec(ctx, `
-		INSERT INTO security_schemes (id, name, levels) VALUES ($1,$2,$3)
-		ON CONFLICT (id) DO UPDATE SET name=$2, levels=$3`, scheme.ID, scheme.Name, levels)
-	return err
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	_, err = tx.Exec(ctx, `INSERT INTO security_schemes (id,workspace_id,name,description,default_level_id,levels)
+		VALUES ($1,NULLIF($2,''),$3,$4,NULLIF($5,''),$6)
+		ON CONFLICT (id) DO UPDATE SET name=$3,description=$4,default_level_id=NULLIF($5,''),levels=$6,updated_at=now()`, scheme.ID, scheme.WorkspaceID, scheme.Name, scheme.Description, scheme.DefaultLevelID, levels)
+	if err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, `DELETE FROM issue_security_level_members WHERE scheme_id=$1`, scheme.ID); err != nil {
+		return err
+	}
+	for _, level := range scheme.Levels {
+		for _, accountID := range level.Members {
+			if _, err = tx.Exec(ctx, `INSERT INTO issue_security_level_members(workspace_id,scheme_id,level_id,holder_type,holder_parameter,holder_value) VALUES(NULLIF($1,''),$2,$3,'user',$4,$4) ON CONFLICT DO NOTHING`, scheme.WorkspaceID, scheme.ID, level.ID, accountID); err != nil {
+				return err
+			}
+		}
+	}
+	return tx.Commit(ctx)
 }
 
 // AssignSecurityScheme points a project at a security scheme.
 func (s *Store) AssignSecurityScheme(ctx context.Context, projectID, schemeID string) error {
-	var exists bool
-	if err := s.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM security_schemes WHERE id=$1)`, schemeID).Scan(&exists); err != nil {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
 		return err
 	}
-	if !exists {
+	defer func() { _ = tx.Rollback(ctx) }()
+	var workspaceID string
+	if err = tx.QueryRow(ctx, `SELECT workspace_id FROM projects WHERE id=$1`, projectID).Scan(&workspaceID); err != nil {
+		return err
+	}
+	var schemeWorkspace string
+	if err = tx.QueryRow(ctx, `SELECT COALESCE(workspace_id,'') FROM security_schemes WHERE id=$1 FOR UPDATE`, schemeID).Scan(&schemeWorkspace); errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("security scheme %q does not exist", schemeID)
+	} else if err != nil {
+		return err
+	}
+	if schemeWorkspace != "" && schemeWorkspace != workspaceID {
 		return fmt.Errorf("security scheme %q does not exist", schemeID)
 	}
-	_, err := s.Pool.Exec(ctx, `UPDATE projects SET security_scheme_id=$2 WHERE id=$1`, projectID, schemeID)
-	return err
+	if _, err = tx.Exec(ctx, `UPDATE security_schemes SET workspace_id=$2 WHERE id=$1 AND workspace_id IS NULL`, schemeID, workspaceID); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, `UPDATE issue_security_level_members SET workspace_id=$2 WHERE scheme_id=$1 AND workspace_id IS NULL`, schemeID, workspaceID); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, `UPDATE projects SET security_scheme_id=$2 WHERE id=$1`, projectID, schemeID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }

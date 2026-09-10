@@ -137,7 +137,9 @@ Complete Jira's shared work-management and configuration layer:
   permission-scheme, assignment, discovery, and evaluation operations now use
   durable grants for project, issue, search, sync, and delegated project-admin
   access, while all nine notification-scheme operations now configure durable,
-  permission-filtered inbox and email delivery for core issue events;
+  permission-filtered inbox and email delivery for core issue events, and all
+  20 issue-security-scheme operations now govern work-item visibility from one
+  shared function;
 - finish user preferences, notifications, votes, watches, properties,
   attachments, email, retention, and remaining platform REST families; site
   configuration now covers announcements, feature controls, time tracking,
@@ -317,10 +319,12 @@ contract gaps, or uncommitted work.
 The completed PR 1 checkpoints cover durable bulk edit/delete/move/transition,
 site configuration, project governance, project lifecycle, the complete
 15-operation project-role surface, the 16-operation permission-scheme and
-permission-evaluation surface, and all nine notification-scheme operations with
-core issue-event inbox/email delivery. Continue with issue-security, field and
-screen schemes, custom events and notification preferences, templates,
-hierarchy, remaining field and ADF families, import/export, action-specific
-permission enforcement, and the unassessed Jira Platform operations. Keep each
-checkpoint vertical and independently reviewable even while it contributes to
-the same large PR delivery unit.
+permission-evaluation surface, all nine notification-scheme operations with
+core issue-event inbox/email delivery, and the 20-operation issue-security
+surface with one shared visibility function behind search, sync, notifications
+and creation. Continue with field and screen schemes, custom events and
+notification preferences, templates, hierarchy, remaining field and ADF
+families, import/export, action-specific permission enforcement, and the
+unassessed Jira Platform operations. Keep each checkpoint vertical and
+independently reviewable even while it contributes to the same large PR
+delivery unit.

@@ -989,20 +989,7 @@ func (s *Store) ActionPageSince(ctx context.Context, workspaceID, userID string,
 				FROM deleted_issue_visibility d
 				WHERE d.workspace_id=$1 AND d.issue_id = ` + ref + `
 			) scoped_issue
-			WHERE scoped_issue.security_level_id IS NULL
-			   OR EXISTS (
-				 SELECT 1 FROM memberships m
-				 WHERE m.workspace_id=$1 AND m.user_id=$3 AND m.role='admin'
-			   )
-			   OR EXISTS (
-				 SELECT 1
-				 FROM projects p
-				 JOIN security_schemes ss ON ss.id=p.security_scheme_id
-				 , jsonb_array_elements(ss.levels) lvl
-				 WHERE p.id=scoped_issue.project_id
-				   AND lvl->>'id'=scoped_issue.security_level_id
-				   AND (lvl->'members') @> jsonb_build_array($3)
-			   )
+			WHERE jira_issue_security_visible($1,scoped_issue.project_id,` + ref + `,$3,scoped_issue.security_level_id)
 		)`
 	}
 	rows, err := s.Pool.Query(ctx, `
