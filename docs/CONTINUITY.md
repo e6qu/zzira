@@ -1,6 +1,6 @@
 # Development continuity
 
-Updated: 2026-09-09
+Updated: 2026-09-10
 
 This file is the short-lived handoff for the active branch. Stable scope,
 dependencies, and acceptance gates are in [PLAN.md](../PLAN.md). Product and
@@ -8,21 +8,23 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
 ## Active delivery
 
-- Branch: `feat/pr1-project-roles`
-- Base: `origin/main` after merged PR #73 (`34c9776`)
+- Branch: `feat/pr1-permission-schemes`
+- Base: `origin/main` after merged PR #74 (`8e66a66`)
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- Pull request: [#74](https://github.com/e6qu/zzira/pull/74)
-- State: project-role checkpoint implements the complete 15-operation Jira v3
-  role/actor surface, reusable defaults, project assignments, delegated project
-  administration, safe swaps, role-backed filter sharing, immutable actions,
-  and responsive site/project browser journeys; clean migrations, the complete
-  Go/PostgreSQL suite, vet, native/WebAssembly builds, conformance checks, all
-  63 Playwright journeys, and axe coverage for both new pages pass
+- Pull request: [#75](https://github.com/e6qu/zzira/pull/75)
+- State: permission-scheme checkpoint implements all 16 pinned scheme,
+  assignment, discovery, and evaluation operations; durable grants and defaults;
+  delegated project administration; project, issue, search, sync, and navigation
+  authorization; immutable actions; and responsive site/project journeys.
+  Clean migrations, the full uncached Go/PostgreSQL suite, vet, native and
+  WebAssembly builds, conformance checks, all 64 Playwright journeys, and axe
+  coverage for both new pages pass.
 - Blockers: none
 
 ## Merged baseline
 
-PR [#73](https://github.com/e6qu/zzira/pull/73) merged project lifecycle on top
+PR [#74](https://github.com/e6qu/zzira/pull/74) merged Jira project roles on top
+of PR [#73](https://github.com/e6qu/zzira/pull/73), which merged project lifecycle on top
 of PR [#72](https://github.com/e6qu/zzira/pull/72), which merged Jira project
 governance. PR #71 merged Jira site configuration. PR #70 merged the first PR 1 delivery and
 adds durable bulk delete/move/transition work, Jira attachment lifecycle and
@@ -33,14 +35,14 @@ expanded JQL and app functions, stable search identity and paging, Jira votes,
 watches, project components, login-date functions, JSM approval/SLA functions,
 and durable bulk watch/unwatch, editable-field discovery, and field edits.
 
-PR #73's final GitHub matrix passed its required suites before merge.
+PR #74's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Monitor PR #74 through every CI job and resolve review threads inline.
-2. After it merges, continue permission, notification, issue-security, field,
-   and screen scheme administration. Keep each vertical checkpoint committed,
-   tested, and documented until the Jira Platform exit gates are satisfied.
+1. Monitor PR #75 through every CI job and resolve review threads inline.
+2. After it merges, continue notification, issue-security, field, and screen
+   scheme administration. Keep each vertical checkpoint committed, tested, and
+   documented until the Jira Platform exit gates are satisfied.
 
 ## Evidence map
 
@@ -56,6 +58,7 @@ PR #73's final GitHub matrix passed its required suites before merge.
 - [Jira project governance](PROJECT_GOVERNANCE.md)
 - [Jira project lifecycle](PROJECT_LIFECYCLE.md)
 - [Jira project roles and people](PROJECT_ROLES.md)
+- [Jira permission schemes](PERMISSION_SCHEMES.md)
 
 ## Continuity rules
 

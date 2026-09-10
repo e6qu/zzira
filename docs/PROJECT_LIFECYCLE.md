@@ -1,6 +1,6 @@
 # Jira project lifecycle
 
-Updated: 2026-09-09
+Updated: 2026-09-10
 
 This checkpoint gives project administrators one durable lifecycle across the
 Jira v3 API, browser administration, search, boards, service management, local
@@ -60,10 +60,10 @@ transactional.
 
 - ZZIRA requires authentication for recent-project reads; Jira can expose this
   operation anonymously when public project permissions allow it.
-- Lifecycle administration is site-admin scoped until permission schemes grant
-  the corresponding project-level operations.
+- Lifecycle administration remains site-admin scoped; the shared permission
+  evaluator is available, but lifecycle mutations have not yet adopted a
+  project-level permission key.
 - Recent-project expansions cover the useful Jira project bean fields listed
-  above; complete permission-scheme-derived permissions and every optional
-  project representation remain part of PR 1.
+  above; every optional project representation remains part of PR 1.
 - Automatic trash deletion uses ZZIRA's hourly worker cadence rather than
   Atlassian's internal scheduling interval.

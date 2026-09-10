@@ -1,6 +1,6 @@
 # ZZIRA — Jira Cloud compatibility delivery plan
 
-Updated: 2026-09-09
+Updated: 2026-09-10
 
 ZZIRA is a self-hosted Jira Cloud, Jira Software, Jira Service Management,
 Confluence, administration, automation, analytics, and app platform. Delivery is
@@ -133,7 +133,10 @@ Complete Jira's shared work-management and configuration layer:
   JSON properties, software feature state, sender email, installed project
   types, key/name validation, and their API/admin journeys are also delivered;
 - finish permission, notification, issue-security, workflow, and field-scheme
-  administration with impact previews and audited migrations;
+  administration with impact previews and audited migrations; the 16 Jira
+  permission-scheme, assignment, discovery, and evaluation operations now use
+  durable grants for project, issue, search, sync, and delegated project-admin
+  access;
 - finish user preferences, notifications, votes, watches, properties,
   attachments, email, retention, and remaining platform REST families; site
   configuration now covers announcements, feature controls, time tracking,
@@ -311,11 +314,11 @@ while the current PR has failing CI, unresolved review threads, unrecorded
 contract gaps, or uncommitted work.
 
 The completed PR 1 checkpoints cover durable bulk edit/delete/move/transition,
-site configuration, project governance, project lifecycle, and the complete
-15-operation project-role surface with global defaults, project assignments,
-delegated access administration, safe swaps, filter-sharing integration and
-browser journeys. Continue with permission/notification/security/field/screen
-schemes, templates, hierarchy, remaining field and ADF families, import/export,
-and the unassessed Jira Platform operations. Keep each checkpoint vertical and
+site configuration, project governance, project lifecycle, the complete
+15-operation project-role surface, and the 16-operation permission-scheme and
+permission-evaluation surface. Continue with notification, issue-security,
+field, and screen schemes, templates, hierarchy, remaining field and ADF
+families, import/export, action-specific permission enforcement, and the
+unassessed Jira Platform operations. Keep each checkpoint vertical and
 independently reviewable even while it contributes to the same large PR
 delivery unit.

@@ -32,6 +32,14 @@ func TestSyncKeepsRestrictedHistoryHiddenAfterIssueDelete(t *testing.T) {
 	if _, err := st.Pool.Exec(ctx, `INSERT INTO projects (id,workspace_id,key,name) VALUES ($1,$2,'SEC','Security test')`, projectID, workspaceID); err != nil {
 		t.Fatal(err)
 	}
+	for _, userID := range []string{memberID, excludedID} {
+		if _, err := st.Pool.Exec(ctx, `INSERT INTO users(id,email,password_hash,display_name) VALUES($1,$1 || '@example.test','test','Security test actor')`, userID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := st.Pool.Exec(ctx, `INSERT INTO memberships(workspace_id,user_id,role) VALUES($1,$2,'member')`, workspaceID, userID); err != nil {
+			t.Fatal(err)
+		}
+	}
 	defer func() {
 		for _, cleanup := range []struct {
 			sql  string
@@ -39,9 +47,12 @@ func TestSyncKeepsRestrictedHistoryHiddenAfterIssueDelete(t *testing.T) {
 		}{
 			{`DELETE FROM actions WHERE workspace_id=$1`, []any{workspaceID}},
 			{`DELETE FROM deleted_issue_visibility WHERE workspace_id=$1`, []any{workspaceID}},
+			{`DELETE FROM memberships WHERE workspace_id=$1`, []any{workspaceID}},
 			{`DELETE FROM projects WHERE id=$1`, []any{projectID}},
 			{`DELETE FROM security_schemes WHERE id=$1`, []any{schemeID}},
 			{`DELETE FROM workspaces WHERE id=$1`, []any{workspaceID}},
+			{`DELETE FROM users WHERE id=$1`, []any{memberID}},
+			{`DELETE FROM users WHERE id=$1`, []any{excludedID}},
 		} {
 			if _, err := st.Pool.Exec(ctx, cleanup.sql, cleanup.args...); err != nil {
 				t.Errorf("cleanup %q: %v", cleanup.sql, err)

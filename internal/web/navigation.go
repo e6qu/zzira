@@ -42,7 +42,12 @@ type workspaceNavigation struct {
 // may be either a project ID or key; a valid remembered key is used on pages
 // that do not otherwise carry project context.
 func (h *Handler) workspaceNavigation(r *http.Request, workspaceID, preferred string) (*workspaceNavigation, error) {
-	projects, err := h.Store.ProjectsByWorkspace(r.Context(), workspaceID)
+	currentUser := h.currentUser(r)
+	projects := []*models.Project{}
+	var err error
+	if currentUser != nil {
+		projects, err = h.Store.ProjectsWithPermissions(r.Context(), workspaceID, currentUser.ID, []string{"BROWSE_PROJECTS"})
+	}
 	if err != nil {
 		return nil, fmt.Errorf("list projects for navigation: %w", err)
 	}
@@ -78,7 +83,6 @@ func (h *Handler) workspaceNavigation(r *http.Request, workspaceID, preferred st
 	}
 
 	navigation := &workspaceNavigation{Projects: make([]projectNavigationItem, 0, len(projects)), AppModules: appModules, ProjectAppModules: projectAppModules, ProjectAdminAppModules: projectAdminAppModules, AdminAppModules: adminAppModules}
-	currentUser := h.currentUser(r)
 	if currentUser != nil {
 		navigation.CanAdmin, err = h.Store.IsAdmin(r.Context(), workspaceID, currentUser.ID)
 		if err != nil {

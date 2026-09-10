@@ -178,7 +178,7 @@ func (h *Handler) ProjectsPage(w http.ResponseWriter, r *http.Request) {
 	var projects []*models.Project
 	switch viewState {
 	case "active":
-		projects, err = h.Store.ProjectsByWorkspace(r.Context(), wsID)
+		projects, err = h.Store.ProjectsWithPermissions(r.Context(), wsID, user.ID, []string{"BROWSE_PROJECTS"})
 	case "archived":
 		if !isAdmin {
 			http.Error(w, "forbidden", http.StatusForbidden)
@@ -262,6 +262,15 @@ func (h *Handler) ProjectOverview(w http.ResponseWriter, r *http.Request, idOrKe
 	}
 	project, err := h.Store.ProjectByIDOrKey(r.Context(), wsID, idOrKey)
 	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	allowed, err := h.Store.HasProjectPermission(r.Context(), wsID, user.ID, project.ID, "", "BROWSE_PROJECTS")
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if !allowed {
 		http.NotFound(w, r)
 		return
 	}

@@ -449,7 +449,7 @@ func (h *Handler) attachmentForUser(r *http.Request, workspaceID, userID, attach
 	if e != nil {
 		return nil, &jerr{status: http.StatusNotFound, message: "Attachment does not exist."}
 	}
-	visible, err := authz.CanSeeIssue(r.Context(), h.Store, workspaceID, issue.ProjectID, userID, issue.SecurityLevelID)
+	visible, err := authz.CanSeeIssue(r.Context(), h.Store, workspaceID, issue.ProjectID, userID, issue.ID, issue.SecurityLevelID)
 	if err != nil {
 		return nil, &jerr{status: http.StatusInternalServerError, message: "internal error"}
 	}

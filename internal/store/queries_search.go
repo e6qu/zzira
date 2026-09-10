@@ -421,7 +421,8 @@ func (s *Store) SecuritySchemes(ctx context.Context) ([]models.SecurityScheme, e
 // `userPlaceholder` (e.g. "$2"). Admins bypass issue security. Callers must
 // append userID to their args at that position.
 func VisibleIssuePredicate(alias string, userPlaceholder string) string {
-	return "EXISTS (SELECT 1 FROM projects visible_project WHERE visible_project.id=" + alias + ".project_id AND visible_project.lifecycle_state='ACTIVE') AND (" +
+	return "EXISTS (SELECT 1 FROM projects visible_project WHERE visible_project.id=" + alias + ".project_id AND visible_project.lifecycle_state='ACTIVE')" +
+		" AND jira_has_project_permission(" + alias + ".workspace_id," + alias + ".project_id," + userPlaceholder + "," + alias + ".id,'BROWSE_PROJECTS') AND (" +
 		alias + ".security_level_id IS NULL" +
 		" OR EXISTS (SELECT 1 FROM memberships m WHERE m.workspace_id = " + alias + ".workspace_id AND m.user_id = " + userPlaceholder + " AND m.role = 'admin')" +
 		" OR EXISTS (" +

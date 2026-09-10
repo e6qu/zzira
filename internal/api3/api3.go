@@ -65,6 +65,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.siteTimeTracking(w, r, path)
 	case path == "/settings/columns":
 		h.issueNavigatorColumns(w, r)
+	case isPermissionSchemePath(path):
+		h.permissionSchemeRoute(w, r, path)
 	case isProjectRolePath(path):
 		h.projectRoleRoute(w, r, path)
 	case isProjectLifecyclePath(path, r.Method):
@@ -121,8 +123,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.resolutionsEndpoint(w, r)
 	case path == "/mypermissions" && r.Method == http.MethodGet:
 		h.myPermissions(w, r)
+	case path == "/permissions" && r.Method == http.MethodGet:
+		h.allPermissions(w, r)
 	case path == "/permissions/check" && r.Method == http.MethodPost:
-		h.permissionsCheck(w, r)
+		h.bulkPermissions(w, r)
+	case path == "/permissions/project" && r.Method == http.MethodPost:
+		h.permittedProjects(w, r)
 	case path == "/workflow/search" && r.Method == http.MethodGet:
 		h.workflowRoute(w, r)
 	case path == "/workflow" && r.Method == http.MethodPost:
@@ -203,6 +209,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.getProject(w, r, strings.TrimPrefix(path, "/project/"))
 	case strings.HasPrefix(path, "/project/") && r.Method == http.MethodPut:
 		h.updateProject(w, r, strings.TrimPrefix(path, "/project/"))
+	case path == "/user/permission/search" && r.Method == http.MethodGet:
+		h.usersWithPermissions(w, r)
 	case path == "/user/search" && r.Method == http.MethodGet:
 		h.searchUsers(w, r)
 	case path == "/user" && r.Method == http.MethodGet:
@@ -371,7 +379,7 @@ func (h *Handler) resolveIssue(r *http.Request, wsID, idOrKey string) (*models.I
 	if err != nil {
 		return nil, &jerr{http.StatusUnauthorized, "You are not authenticated. Authentication required to perform this operation.", nil}
 	}
-	visible, err := authz.CanSeeIssue(r.Context(), h.Store, wsID, issue.ProjectID, userID, issue.SecurityLevelID)
+	visible, err := authz.CanSeeIssue(r.Context(), h.Store, wsID, issue.ProjectID, userID, issue.ID, issue.SecurityLevelID)
 	if err != nil {
 		return nil, &jerr{http.StatusInternalServerError, "internal error", nil}
 	}

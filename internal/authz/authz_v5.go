@@ -12,7 +12,11 @@ func IsWorkspaceAdmin(ctx context.Context, st *store.Store, workspaceID, userID 
 }
 
 // CanSeeIssue evaluates the issue's security level against the caller.
-func CanSeeIssue(ctx context.Context, st *store.Store, workspaceID, projectID, userID, securityLevelID string) (bool, error) {
+func CanSeeIssue(ctx context.Context, st *store.Store, workspaceID, projectID, userID, issueID, securityLevelID string) (bool, error) {
+	browse, err := st.HasProjectPermission(ctx, workspaceID, userID, projectID, issueID, "BROWSE_PROJECTS")
+	if err != nil || !browse {
+		return browse, err
+	}
 	if securityLevelID == "" {
 		return true, nil
 	}

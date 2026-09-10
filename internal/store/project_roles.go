@@ -175,6 +175,9 @@ func (s *Store) DeleteProjectRole(ctx context.Context, workspaceID, actorID stri
 		UNION ALL
 		SELECT 1 FROM filter_share_permissions fp JOIN projects p ON p.id=fp.project_id
 		 WHERE p.workspace_id=$1 AND fp.permission_type='projectRole' AND fp.project_role_id=$2
+		UNION ALL
+		SELECT 1 FROM permission_scheme_grants pg
+		 WHERE pg.workspace_id=$1 AND pg.holder_type='projectRole' AND pg.holder_value=$2
 	)`, workspaceID, strconv.FormatInt(roleID, 10), roleID).Scan(&inUse); err != nil {
 		return err
 	}
@@ -217,6 +220,18 @@ func (s *Store) DeleteProjectRole(ctx context.Context, workspaceID, actorID stri
 		}
 		if _, err = tx.Exec(ctx, `UPDATE filter_share_permissions fp SET project_role_id=$3 FROM projects p
 			WHERE fp.project_id=p.id AND p.workspace_id=$1 AND fp.permission_type='projectRole' AND fp.project_role_id=$2`, workspaceID, oldKey, newKey); err != nil {
+			return err
+		}
+		if _, err = tx.Exec(ctx, `DELETE FROM permission_scheme_grants old
+			WHERE old.workspace_id=$1 AND old.holder_type='projectRole' AND old.holder_value=$2
+			AND EXISTS(SELECT 1 FROM permission_scheme_grants replacement
+			 WHERE replacement.workspace_id=old.workspace_id AND replacement.scheme_id=old.scheme_id
+			 AND replacement.permission_key=old.permission_key AND replacement.holder_type='projectRole'
+			 AND replacement.holder_value=$3)`, workspaceID, oldKey, newKey); err != nil {
+			return err
+		}
+		if _, err = tx.Exec(ctx, `UPDATE permission_scheme_grants SET holder_parameter=$3,holder_value=$3
+			WHERE workspace_id=$1 AND holder_type='projectRole' AND holder_value=$2`, workspaceID, oldKey, newKey); err != nil {
 			return err
 		}
 		if (role.Admin && !replacement.Admin) || (role.Default && !replacement.Default) {
@@ -395,25 +410,7 @@ func (s *Store) DeleteDefaultProjectRoleActors(ctx context.Context, workspaceID,
 }
 
 func projectRoleAdmin(ctx context.Context, tx pgx.Tx, workspaceID, actorID, projectID string) error {
-	var allowed bool
-	err := tx.QueryRow(ctx, `WITH context AS (
-		SELECT p.id AS project_id,si.id::text AS site_id,si.organization_id::text AS organization_id
-		FROM projects p JOIN sites si ON si.workspace_id=p.workspace_id
-		WHERE p.workspace_id=$1 AND p.id=$3 AND p.lifecycle_state='ACTIVE'
-	), principals AS (
-		SELECT rb.scope_type,rb.scope_id,rb.role_key,rb.principal_type,rb.principal_id
-		FROM role_bindings rb
-		WHERE (rb.principal_type='user' AND rb.principal_id=$2)
-		   OR (rb.principal_type='group' AND EXISTS (
-		     SELECT 1 FROM group_members gm JOIN groups g ON g.id=gm.group_id
-		     JOIN directories d ON d.id=g.directory_id
-		     WHERE gm.group_id::text=rb.principal_id AND gm.user_id=$2 AND d.active))
-	)
-	SELECT EXISTS(SELECT 1 FROM context c JOIN principals p ON
-		(p.scope_type='organization' AND p.scope_id=c.organization_id AND p.role_key='atlassian/org-admin') OR
-		(p.scope_type='site' AND p.scope_id=c.site_id AND p.role_key='atlassian/site-admin') OR
-		(p.scope_type='project' AND p.scope_id=c.project_id AND EXISTS (
-			SELECT 1 FROM project_roles pr WHERE pr.workspace_id=$1 AND pr.id::text=p.role_key AND pr.is_admin)))`, workspaceID, actorID, projectID).Scan(&allowed)
+	allowed, _, err := hasProjectPermissionTx(ctx, tx, workspaceID, actorID, projectID, "", "ADMINISTER_PROJECTS")
 	if err != nil {
 		return err
 	}

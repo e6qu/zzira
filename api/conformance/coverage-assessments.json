@@ -6794,7 +6794,7 @@
         "e2e/project_roles.spec.ts",
         "docs/PROJECT_ROLES.md"
       ],
-      "notes": "Removes a requested user or group actor atomically with Jira validation and project-administrator authorization; anonymous access and permission-scheme-derived administration remain."
+      "notes": "Removes a requested user or group actor atomically with Jira validation and permission-scheme-derived project-administrator authorization; anonymous access and app/service actor types remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/project/{projectIdOrKey}/role/{id}",
@@ -6925,6 +6925,166 @@
         "docs/PROJECT_ROLES.md"
       ],
       "notes": "Adds one family of default users or groups and copies it only to subsequently created projects, matching Jira lifecycle semantics; additional actor types remain."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/mypermissions",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/permission_schemes_test.go",
+        "e2e/permission_schemes.spec.ts",
+        "docs/PERMISSION_SCHEMES.md"
+      ],
+      "notes": "Evaluates selected built-in global and project permissions with project, issue, and comment context; authentication is required and anonymous Jira behavior and all context edge cases remain."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/permissions",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/permission_schemes_test.go",
+        "e2e/permission_schemes.spec.ts",
+        "docs/PERMISSION_SCHEMES.md"
+      ],
+      "notes": "Returns the built-in global and project permission catalog; app-defined permission registration and every Jira metadata edge remain."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/permissions/check",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/permission_schemes_test.go",
+        "e2e/permission_schemes.spec.ts",
+        "docs/PERMISSION_SCHEMES.md"
+      ],
+      "notes": "Evaluates bounded global and project permission batches, including administrator-authorized checks for another account; every Jira limit and error edge remains."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/permissions/project",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/permission_schemes_test.go",
+        "e2e/permission_schemes.spec.ts",
+        "docs/PERMISSION_SCHEMES.md"
+      ],
+      "notes": "Returns active projects where the caller has every requested permission using assigned schemes; anonymous access and every Jira paging edge remain."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/permissionscheme",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/permission_schemes_test.go",
+        "e2e/permission_schemes.spec.ts",
+        "docs/PERMISSION_SCHEMES.md"
+      ],
+      "notes": "Lists durable workspace schemes with optional grants expansion; Jira anonymous behavior and every expansion bean remain."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/permissionscheme",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/permission_schemes_test.go",
+        "e2e/permission_schemes.spec.ts",
+        "docs/PERMISSION_SCHEMES.md"
+      ],
+      "notes": "Creates an audited scheme with validated Jira holder types and optional grants; complete Jira validation/error parity remains."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/permissionscheme/{schemeId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/permission_schemes_test.go",
+        "e2e/permission_schemes.spec.ts",
+        "docs/PERMISSION_SCHEMES.md"
+      ],
+      "notes": "Deletes audited unused non-default schemes and rejects unsafe deletion; every Jira conflict response edge remains."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/permissionscheme/{schemeId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/permission_schemes_test.go",
+        "e2e/permission_schemes.spec.ts",
+        "docs/PERMISSION_SCHEMES.md"
+      ],
+      "notes": "Reads a workspace scheme with optional grants expansion; Jira anonymous behavior and every expansion bean remain."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/permissionscheme/{schemeId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/permission_schemes_test.go",
+        "e2e/permission_schemes.spec.ts",
+        "docs/PERMISSION_SCHEMES.md"
+      ],
+      "notes": "Atomically updates scheme metadata and optionally replaces grants with audited validation; exact Jira partial-body behavior remains."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/permissionscheme/{schemeId}/permission",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/permission_schemes_test.go",
+        "e2e/permission_schemes.spec.ts",
+        "docs/PERMISSION_SCHEMES.md"
+      ],
+      "notes": "Returns ordered grants with canonical holder parameters and values; Jira anonymous behavior and complete expansion beans remain."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/permissionscheme/{schemeId}/permission",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/permission_schemes_test.go",
+        "e2e/permission_schemes.spec.ts",
+        "docs/PERMISSION_SCHEMES.md"
+      ],
+      "notes": "Adds one validated, unique, audited grant across supported Jira holder types; app-defined permissions and every validation edge remain."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/permissionscheme/{schemeId}/permission/{permissionId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/permission_schemes_test.go",
+        "e2e/permission_schemes.spec.ts",
+        "docs/PERMISSION_SCHEMES.md"
+      ],
+      "notes": "Deletes one workspace-scoped grant with immutable action evidence; every Jira error-body edge remains."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/permissionscheme/{schemeId}/permission/{permissionId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/permission_schemes_test.go",
+        "e2e/permission_schemes.spec.ts",
+        "docs/PERMISSION_SCHEMES.md"
+      ],
+      "notes": "Reads one workspace-scoped canonical grant; Jira anonymous behavior and complete expansion beans remain."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/project/{projectKeyOrId}/permissionscheme",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/permission_schemes_test.go",
+        "e2e/permission_schemes.spec.ts",
+        "docs/PERMISSION_SCHEMES.md"
+      ],
+      "notes": "Returns the assigned scheme to site or permission-derived project administrators; every Jira expansion and anonymous edge remains."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/project/{projectKeyOrId}/permissionscheme",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/permission_schemes_test.go",
+        "e2e/permission_schemes.spec.ts",
+        "docs/PERMISSION_SCHEMES.md"
+      ],
+      "notes": "Atomically assigns an existing scheme and records immutable evidence; impact previews and every Jira error edge remain."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/user/permission/search",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/permission_schemes_test.go",
+        "e2e/permission_schemes.spec.ts",
+        "docs/PERMISSION_SCHEMES.md"
+      ],
+      "notes": "Pages active workspace users who satisfy requested global/project permissions and query text; anonymous access, exact Jira ranking, and every pagination edge remain."
     }
   ]
 }
