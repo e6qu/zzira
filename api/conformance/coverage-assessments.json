@@ -7085,6 +7085,96 @@
         "docs/PERMISSION_SCHEMES.md"
       ],
       "notes": "Pages active workspace users who satisfy requested global/project permissions and query text; anonymous access, exact Jira ranking, and every pagination edge remain."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/notificationscheme",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/notification_schemes_test.go",
+        "e2e/notification_schemes.spec.ts",
+        "docs/NOTIFICATION_SCHEMES.md"
+      ],
+      "notes": "Pages and filters durable workspace schemes with event expansion and project IDs; exact nested expansion beans and every pagination/self-link edge remain."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/notificationscheme",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/notification_schemes_test.go",
+        "e2e/notification_schemes.spec.ts",
+        "docs/NOTIFICATION_SCHEMES.md"
+      ],
+      "notes": "Creates an audited scheme with validated built-in events and Jira recipient types; custom events and every Jira validation/error edge remain."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/notificationscheme/project",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/notification_schemes_test.go",
+        "e2e/notification_schemes.spec.ts",
+        "docs/NOTIFICATION_SCHEMES.md"
+      ],
+      "notes": "Pages and filters durable project-to-scheme mappings; exact next-page links and every invalid array edge remain."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/notificationscheme/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/notification_schemes_test.go",
+        "e2e/notification_schemes.spec.ts",
+        "docs/NOTIFICATION_SCHEMES.md"
+      ],
+      "notes": "Reads a workspace scheme with optional event expansion; complete user, group, role and field expansion beans remain."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/notificationscheme/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/notification_schemes_test.go",
+        "e2e/notification_schemes.spec.ts",
+        "docs/NOTIFICATION_SCHEMES.md"
+      ],
+      "notes": "Atomically updates unique scheme metadata with immutable action evidence; exact Jira error wording remains."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/notificationscheme/{id}/notification",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/notification_schemes_test.go",
+        "e2e/notification_schemes.spec.ts",
+        "docs/NOTIFICATION_SCHEMES.md"
+      ],
+      "notes": "Atomically adds validated event recipients across all 12 Jira recipient types; custom event IDs and every validation edge remain."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/notificationscheme/{notificationSchemeId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/notification_schemes_test.go",
+        "e2e/notification_schemes.spec.ts",
+        "docs/NOTIFICATION_SCHEMES.md"
+      ],
+      "notes": "Deletes audited unused non-default schemes and rejects unsafe deletion; every Jira conflict response edge remains."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/notificationscheme/{notificationSchemeId}/notification/{notificationId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/notification_schemes_test.go",
+        "e2e/notification_schemes.spec.ts",
+        "docs/NOTIFICATION_SCHEMES.md"
+      ],
+      "notes": "Deletes one workspace-scoped event recipient with immutable action evidence; every Jira error-body edge remains."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/project/{projectKeyOrId}/notificationscheme",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/notification_schemes_test.go",
+        "e2e/notification_schemes.spec.ts",
+        "docs/NOTIFICATION_SCHEMES.md"
+      ],
+      "notes": "Returns the assigned scheme to permission-derived project or site administrators; complete nested expansions and every Jira error edge remain."
     }
   ]
 }

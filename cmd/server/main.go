@@ -391,6 +391,7 @@ func main() {
 	mux.HandleFunc("GET /projects/{key}/settings/roles", webHandler.ProjectRoleAssignmentsPage)
 	mux.HandleFunc("POST /projects/{key}/settings/roles/{id}", webHandler.ProjectRoleAssignmentMutation)
 	mux.HandleFunc("GET /projects/{key}/settings/permissions", webHandler.ProjectPermissionsPage)
+	mux.HandleFunc("GET /projects/{key}/settings/notifications", webHandler.ProjectNotificationsPage)
 	mux.HandleFunc("GET /projects/{key}/settings/apps/{module}", webHandler.ProjectAdminAppModulePage)
 	mux.HandleFunc("GET /projects/{key}/apps/{module}", webHandler.ProjectAppModulePage)
 	mux.HandleFunc("GET /projects/{key}", func(w http.ResponseWriter, r *http.Request) {
@@ -409,6 +410,9 @@ func main() {
 	mux.HandleFunc("GET /settings/permission-schemes", webHandler.PermissionSchemesPage)
 	mux.HandleFunc("POST /settings/permission-schemes", webHandler.PermissionSchemesPage)
 	mux.HandleFunc("POST /settings/permission-schemes/{id}", webHandler.PermissionSchemeMutation)
+	mux.HandleFunc("GET /settings/notification-schemes", webHandler.NotificationSchemesPage)
+	mux.HandleFunc("POST /settings/notification-schemes", webHandler.NotificationSchemesPage)
+	mux.HandleFunc("POST /settings/notification-schemes/{id}", webHandler.NotificationSchemeMutation)
 	mux.HandleFunc("GET /settings/statuses", webHandler.StatusesPage)
 	mux.HandleFunc("GET /settings/workflow-schemes", webHandler.WorkflowSchemesPage)
 	mux.HandleFunc("POST /settings/workflow-schemes", webHandler.CreateWorkflowScheme)

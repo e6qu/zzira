@@ -83,6 +83,7 @@ use `/rest/zzira/1`.
 | Organizations orgs · directories · users · groups · memberships · workspaces · roles · events · domains · policies | 🟡 | All 47 operations reviewed: group and directory-user administration, product roles/activity, invitations/email, directory lifecycle, audit query/poll/detail/actions, DNS claims, and policy/resource CRUD/validation are useful tested subsets; runtime policy enforcement, central rate limits, and remaining edge semantics remain |
 | Issue security: scheme admin APIs, assignment, enforcement | ✅ | tombstones + per-user sync filtering + visibility on search/board/navigator/bootstrap |
 | Permission schemes, grants and project assignment | 🟡 | All 11 Jira v3 operations share durable schemes, validated Jira holder types, a default scheme, safe assignment/deletion, immutable actions, project/issue/search/sync authorization and responsive site/project journeys; exact boundary in [PERMISSION_SCHEMES.md](../../docs/PERMISSION_SCHEMES.md) |
+| Notification schemes, mappings and issue-event delivery | 🟡 | All nine Jira v3 operations share durable schemes, all 12 recipient types, default/project assignment, immutable actions, permission and issue-security-filtered inbox delivery, the leased email outbox and responsive site/project/recipient journeys; exact boundary in [NOTIFICATION_SCHEMES.md](../../docs/NOTIFICATION_SCHEMES.md) |
 | Screens/schemes APIs | ⛔ | editmeta serves the form contract |
 | Notifications (custom) GET/PUT /rest/zzira/1/notifications · POST /notifications/read-all | ✅ | Private per-user entities with synchronized read state, unread count, and idempotent mutations |
 
@@ -111,6 +112,7 @@ use `/rest/zzira/1`.
 | Two-browser convergence via the action log | ✅ |
 | Board controls/settings, issue preview, Agile configuration and quick-filter APIs | ✅ |
 | Notifications inbox, private API mutations, unread filtering, and open-to-work flow | ✅ |
+| Notification scheme creation, event recipient, project assignment, modal work-item creation, recipient inbox delivery and cleanup | ✅ |
 | WCAG 2.2 A/AA axe sweep, target sizes, keyboard movement and 320px reflow | ✅ |
 | Service help center, request, queue, SLA, approval, file, notification, feedback, customer and organization management journey | ✅ |
 | Wiki author/member page access, authoring, stale edits, history, threaded footer/inline comments, assigned page tasks, child pages and trash/restore | ✅ |

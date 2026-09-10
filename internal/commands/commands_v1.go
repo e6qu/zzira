@@ -162,10 +162,12 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 			}
 		}
 	}
+	eventID, notificationKind, notificationVerb := int64(2), "issue_updated", "updated"
 	if assigneeChanged {
-		if err := s.notifyAssignee(ctx, in, issue); err != nil {
-			return nil, nil, err
-		}
+		eventID, notificationKind, notificationVerb = 3, "assigned", "assigned"
+	}
+	if err := s.deliverIssueEvent(ctx, in.WorkspaceID, in.ActorID, issue, action, eventID, notificationKind, notificationVerb); err != nil {
+		return issue, action, err
 	}
 	if in.StatusID != nil {
 		if err := s.syncServiceSLAsAfterIssueChange(ctx, in.ActorID, in.WorkspaceID, issue, time.Now().UTC()); err != nil {
@@ -261,30 +263,6 @@ func normalizeLabels(values []string) ([]string, error) {
 	}
 	slices.Sort(labels)
 	return labels, nil
-}
-
-// notifyAssignee emits a per-user notification action when an issue is
-// assigned to someone other than the actor.
-func (s *Service) notifyAssignee(ctx context.Context, in UpdateIssueInput, issue *models.Issue) error {
-	if issue.Assignee == nil || issue.Assignee.ID == in.ActorID {
-		return nil
-	}
-	actor, err := s.Store.UserByID(ctx, in.ActorID)
-	if err != nil {
-		return fmt.Errorf("actor lookup: %w", err)
-	}
-	_, err = s.Store.CreateNotification(ctx, in.WorkspaceID, &models.Notification{
-		ID:          store.NewID("ntf"),
-		WorkspaceID: in.WorkspaceID,
-		TargetUser:  issue.Assignee.ID,
-		ActorID:     in.ActorID,
-		ActorName:   actor.DisplayName,
-		Kind:        "assigned",
-		EntityType:  models.EntityIssue,
-		EntityID:    issue.ID,
-		Message:     "assigned you " + issue.Key,
-	})
-	return err
 }
 
 // TransitionIssue validates and applies a workflow transition using the
@@ -472,6 +450,18 @@ func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, worksp
 	updated, action, err := s.Store.UpdateIssue(ctx, actorID, workspaceID, issue.ID, update)
 	if err != nil {
 		return nil, nil, err
+	}
+	eventID, notificationKind, notificationVerb := int64(16), "issue_transitioned", "transitioned"
+	if strings.EqualFold(updated.Status.Category, "done") && !strings.EqualFold(issue.Status.Category, "done") {
+		eventID, notificationKind, notificationVerb = 4, "issue_resolved", "resolved"
+		if strings.Contains(strings.ToLower(updated.Status.Name), "closed") {
+			eventID, notificationKind, notificationVerb = 5, "issue_closed", "closed"
+		}
+	} else if !strings.EqualFold(updated.Status.Category, "done") && strings.EqualFold(issue.Status.Category, "done") {
+		eventID, notificationKind, notificationVerb = 8, "issue_reopened", "reopened"
+	}
+	if err = s.deliverIssueEvent(ctx, workspaceID, actorID, updated, action, eventID, notificationKind, notificationVerb); err != nil {
+		return updated, action, err
 	}
 	if err := s.syncServiceSLAsAfterIssueChange(ctx, actorID, workspaceID, updated, time.Now().UTC()); err != nil {
 		return nil, nil, err
@@ -701,7 +691,14 @@ func (s *Service) AddComment(ctx context.Context, in AddCommentInput) (*models.C
 	if len(body) == 0 {
 		body = adf.Doc(adf.Paragraph())
 	}
-	return s.Store.CreateComment(ctx, in.ActorID, in.WorkspaceID, issue.ID, body)
+	comment, action, err := s.Store.CreateComment(ctx, in.ActorID, in.WorkspaceID, issue.ID, body)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err = s.deliverIssueEvent(ctx, in.WorkspaceID, in.ActorID, issue, action, 6, "issue_commented", "commented on"); err != nil {
+		return comment, action, err
+	}
+	return comment, action, nil
 }
 
 func (s *Service) DeleteComment(ctx context.Context, actorID, workspaceID, commentID string) (*models.Action, error) {

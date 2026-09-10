@@ -65,6 +65,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.siteTimeTracking(w, r, path)
 	case path == "/settings/columns":
 		h.issueNavigatorColumns(w, r)
+	case isNotificationSchemePath(path):
+		h.notificationSchemeRoute(w, r, path)
 	case isPermissionSchemePath(path):
 		h.permissionSchemeRoute(w, r, path)
 	case isProjectRolePath(path):

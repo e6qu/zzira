@@ -210,7 +210,17 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 	if err != nil {
 		return nil, nil, err
 	}
+	if err = s.deliverIssueEvent(ctx, in.WorkspaceID, in.ActorID, issue, action, 1, "issue_created", "created"); err != nil {
+		return issue, action, err
+	}
 	return issue, action, nil
+}
+
+func (s *Service) deliverIssueEvent(ctx context.Context, workspaceID, actorID string, issue *models.Issue, action *models.Action, eventID int64, kind, verb string) error {
+	if issue == nil || action == nil {
+		return nil
+	}
+	return s.Store.DeliverIssueNotification(ctx, workspaceID, actorID, issue.ID, action.Seq, eventID, kind, verb+" "+issue.Key)
 }
 
 // plainTextToADF wraps plain text into the minimal ADF document. Replaced by the

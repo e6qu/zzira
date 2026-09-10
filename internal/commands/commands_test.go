@@ -78,7 +78,8 @@ func TestCreateIssueToSyncPipeline(t *testing.T) {
 		t.Fatalf("payload issue key = %q, want %q", payload.Issue.Key, issue.Key)
 	}
 
-	// Station 3: the sync range contains exactly the new action.
+	// Station 3: the sync range contains exactly the new action. The default
+	// notification preference suppresses the reporter's own create event.
 	head, err := st.Head(ctx, "ws_default")
 	if err != nil {
 		t.Fatal(err)
