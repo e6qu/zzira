@@ -11,7 +11,7 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 - Branch: `feat/pr1-notification-schemes`
 - Base: `origin/main` after merged PR #75 (`f6cbec8`)
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- Pull request: pending
+- Pull request: [#76](https://github.com/e6qu/zzira/pull/76)
 - State: notification-scheme checkpoint implements all nine pinned scheme and
   mapping operations, all 12 recipient types, default/project assignments,
   immutable configuration actions, idempotent permission and issue-security
@@ -39,9 +39,7 @@ PR #75's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Finish the complete local verification matrix, commit and open the
-   notification-scheme pull request, then monitor every CI job and resolve
-   review threads inline.
+1. Monitor PR #76 through every CI job and resolve review threads inline.
 2. After merge, continue issue-security, field, and screen scheme
    administration, followed by custom notification events and preferences.
 
