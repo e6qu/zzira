@@ -147,6 +147,29 @@ type PermissionGrant struct {
 	HolderValue     string `json:"-"`
 }
 
+type NotificationScheme struct {
+	ID           int64                     `json:"id"`
+	WorkspaceID  string                    `json:"-"`
+	Name         string                    `json:"name"`
+	Description  string                    `json:"description"`
+	Default      bool                      `json:"default"`
+	ProjectCount int                       `json:"projectCount"`
+	Events       []NotificationSchemeEvent `json:"notificationSchemeEvents,omitempty"`
+}
+
+type NotificationSchemeEvent struct {
+	EventID       int64                     `json:"eventId"`
+	Notifications []NotificationSchemeEntry `json:"notifications"`
+}
+
+type NotificationSchemeEntry struct {
+	ID               int64  `json:"id"`
+	EventID          int64  `json:"eventId"`
+	NotificationType string `json:"notificationType"`
+	Parameter        string `json:"parameter,omitempty"`
+	Recipient        string `json:"recipient,omitempty"`
+}
+
 // Issue is the materialized issue. Description is an ADF document stored verbatim.
 type Issue struct {
 	ID          string          `json:"id"`

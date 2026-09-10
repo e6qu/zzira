@@ -8,17 +8,17 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
 ## Active delivery
 
-- Branch: `feat/pr1-permission-schemes`
-- Base: `origin/main` after merged PR #74 (`8e66a66`)
+- Branch: `feat/pr1-notification-schemes`
+- Base: `origin/main` after merged PR #75 (`f6cbec8`)
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- Pull request: [#75](https://github.com/e6qu/zzira/pull/75)
-- State: permission-scheme checkpoint implements all 16 pinned scheme,
-  assignment, discovery, and evaluation operations; durable grants and defaults;
-  delegated project administration; project, issue, search, sync, and navigation
-  authorization; immutable actions; and responsive site/project journeys.
-  Clean migrations, the full uncached Go/PostgreSQL suite, vet, native and
-  WebAssembly builds, conformance checks, all 64 Playwright journeys, and axe
-  coverage for both new pages pass.
+- Pull request: pending
+- State: notification-scheme checkpoint implements all nine pinned scheme and
+  mapping operations, all 12 recipient types, default/project assignments,
+  immutable configuration actions, idempotent permission and issue-security
+  filtered inbox delivery, and durable leased email delivery for core issue
+  events. Clean migrations, the full uncached Go/PostgreSQL suite, vet, native
+  and WebAssembly builds, conformance checks, all 65 Playwright journeys, 320 px
+  reflow, and the light/dark axe sweep pass.
 - Blockers: none
 
 ## Merged baseline
@@ -35,14 +35,15 @@ expanded JQL and app functions, stable search identity and paging, Jira votes,
 watches, project components, login-date functions, JSM approval/SLA functions,
 and durable bulk watch/unwatch, editable-field discovery, and field edits.
 
-PR #74's final GitHub matrix passed its required suites before merge.
+PR #75's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Monitor PR #75 through every CI job and resolve review threads inline.
-2. After it merges, continue notification, issue-security, field, and screen
-   scheme administration. Keep each vertical checkpoint committed, tested, and
-   documented until the Jira Platform exit gates are satisfied.
+1. Finish the complete local verification matrix, commit and open the
+   notification-scheme pull request, then monitor every CI job and resolve
+   review threads inline.
+2. After merge, continue issue-security, field, and screen scheme
+   administration, followed by custom notification events and preferences.
 
 ## Evidence map
 
@@ -59,6 +60,7 @@ PR #74's final GitHub matrix passed its required suites before merge.
 - [Jira project lifecycle](PROJECT_LIFECYCLE.md)
 - [Jira project roles and people](PROJECT_ROLES.md)
 - [Jira permission schemes](PERMISSION_SCHEMES.md)
+- [Jira notification schemes](NOTIFICATION_SCHEMES.md)
 
 ## Continuity rules
 
