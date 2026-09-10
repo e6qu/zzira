@@ -173,7 +173,7 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 		if !valid {
 			return nil, nil, fmt.Errorf("security level is not available for this project")
 		}
-		visible, err := authz.CanSeeIssue(ctx, s.Store, in.WorkspaceID, project.ID, in.ActorID, in.SecurityLevelID)
+		visible, err := authz.CanSeeIssue(ctx, s.Store, in.WorkspaceID, project.ID, in.ActorID, "", in.SecurityLevelID)
 		if err != nil {
 			return nil, nil, err
 		}

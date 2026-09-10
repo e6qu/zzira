@@ -42,7 +42,7 @@ func (s *Service) visibleIssue(ctx context.Context, actorID, workspaceID, issueI
 	if err != nil {
 		return nil, fmt.Errorf("issue %q not found", issueIDOrKey)
 	}
-	visible, err := authz.CanSeeIssue(ctx, s.Store, workspaceID, issue.ProjectID, actorID, issue.SecurityLevelID)
+	visible, err := authz.CanSeeIssue(ctx, s.Store, workspaceID, issue.ProjectID, actorID, issue.ID, issue.SecurityLevelID)
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +112,7 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 		if !valid {
 			return nil, nil, fmt.Errorf("security level is not available for this project")
 		}
-		visible, err := authz.CanSeeIssue(ctx, s.Store, in.WorkspaceID, issue.ProjectID, in.ActorID, *in.SecurityLevelID)
+		visible, err := authz.CanSeeIssue(ctx, s.Store, in.WorkspaceID, issue.ProjectID, in.ActorID, issue.ID, *in.SecurityLevelID)
 		if err != nil {
 			return nil, nil, err
 		}

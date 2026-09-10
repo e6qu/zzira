@@ -165,7 +165,7 @@ func (h *Handler) Release(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "Choose a work item from this project.", 400)
 				return
 			}
-			visible, e := authz.CanSeeIssue(r.Context(), h.Store, ws, project.ID, user.ID, issue.SecurityLevelID)
+			visible, e := authz.CanSeeIssue(r.Context(), h.Store, ws, project.ID, user.ID, issue.ID, issue.SecurityLevelID)
 			if e != nil || !visible {
 				http.NotFound(w, r)
 				return

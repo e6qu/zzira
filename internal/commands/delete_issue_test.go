@@ -35,6 +35,7 @@ func TestDeleteIssueCleansAttachmentBlob(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
+	ensureCommandTestActor(t, ctx, st, "usr_test")
 	blobStore, err := attachments.NewFS(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -77,6 +78,7 @@ func TestDeleteIssueRetriesAttachmentBlobCleanup(t *testing.T) {
 	if err := store.Migrate(ctx, st.Pool); err != nil {
 		t.Fatal(err)
 	}
+	ensureCommandTestActor(t, ctx, st, "usr_test")
 	fs, err := attachments.NewFS(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -146,6 +148,7 @@ func TestDeleteAttachmentRetriesBlobCleanup(t *testing.T) {
 	if err := store.Migrate(ctx, st.Pool); err != nil {
 		t.Fatal(err)
 	}
+	ensureCommandTestActor(t, ctx, st, "usr_test")
 	fs, err := attachments.NewFS(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

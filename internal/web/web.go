@@ -393,7 +393,7 @@ func (h *Handler) issueForUser(r *http.Request, user *models.User, wsID, idOrKey
 	if err != nil {
 		return nil, err
 	}
-	visible, err := authz.CanSeeIssue(r.Context(), h.Store, wsID, issue.ProjectID, user.ID, issue.SecurityLevelID)
+	visible, err := authz.CanSeeIssue(r.Context(), h.Store, wsID, issue.ProjectID, user.ID, issue.ID, issue.SecurityLevelID)
 	if err != nil || !visible {
 		return nil, fmt.Errorf("issue %q not found", idOrKey)
 	}

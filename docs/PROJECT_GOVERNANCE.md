@@ -1,6 +1,6 @@
 # Jira project governance
 
-Updated: 2026-09-09
+Updated: 2026-09-10
 
 This checkpoint adds one workspace-scoped source of truth for Jira project
 categories, project properties, software feature states, notification sender
@@ -49,10 +49,10 @@ Jira Cloud-compatible REST resources.
 
 ## Known limits
 
-- ZZIRA currently grants these project-configuration writes to site
-  administrators. Project roles and delegated role-actor administration are
-  available; permission-scheme grants for the remaining project settings stay
-  in PR 1.
+- Project-role administration now follows the assigned scheme's
+  `ADMINISTER_PROJECTS` permission. Category, property, feature, and sender
+  writes remain site-admin scoped until each family adopts the shared
+  permission evaluator.
 - Anonymous Browse Projects is not available, so project-property reads require
   an authenticated workspace member.
 - The built-in software feature catalog is fixed. App-contributed project

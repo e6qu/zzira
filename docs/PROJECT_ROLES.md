@@ -1,6 +1,6 @@
 # Jira project roles and people
 
-Updated: 2026-09-09
+Updated: 2026-09-10
 
 ZZIRA stores a workspace-wide Jira project-role catalog and project-specific
 user and group assignments. Site administrators maintain reusable roles and
@@ -51,7 +51,8 @@ before deleting the old role.
 
 Global role definition/default mutations require Jira site administration.
 Project actor operations accept Jira site or organization administrators and
-users or active groups assigned to the project's administration role. Project
+users who receive `ADMINISTER_PROJECTS` from the assigned permission scheme,
+including direct, group, and project-role holders. Project
 REST endpoints conceal inaccessible projects with `404`; the browser returns a
 direct `403`. Every mutation writes an immutable `actions` record in the same
 transaction as its state change.
@@ -67,8 +68,8 @@ transaction as its state change.
 - `migrations/129_project_roles.sql` is exercised from a clean PostgreSQL
   schema as part of the migration and integration gates.
 
-The compatibility assessment remains partial until Jira permission schemes
-decide the Administer projects and Browse projects permissions, anonymous
-project-role access is modeled, and app, guest, AI-agent, and other service-role
-actor types are implemented. Default Members assignment is ZZIRA's current
-workspace-access policy rather than a configurable Jira permission-scheme rule.
+Permission-scheme grants now decide Administer projects and Browse projects.
+The compatibility assessment remains partial until anonymous project-role
+access is modeled and app, guest, AI-agent, and other service-role actor types
+are implemented. Default Members assignment remains ZZIRA's initial workspace
+access policy, represented by the editable default permission scheme.

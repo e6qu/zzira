@@ -43,7 +43,7 @@ func (s *Service) ExecuteBulkIssueTask(ctx context.Context, task store.APITask) 
 		} else if err != nil {
 			return err
 		} else {
-			visible, visibilityErr := authz.CanSeeIssue(ctx, s.Store, task.WorkspaceID, issue.ProjectID, task.SubmittedBy, issue.SecurityLevelID)
+			visible, visibilityErr := authz.CanSeeIssue(ctx, s.Store, task.WorkspaceID, issue.ProjectID, task.SubmittedBy, issue.ID, issue.SecurityLevelID)
 			if visibilityErr != nil {
 				return visibilityErr
 			}
@@ -98,7 +98,7 @@ func (s *Service) executeBulkTransitionTask(ctx context.Context, task store.APIT
 			} else if lookupErr != nil {
 				return lookupErr
 			} else {
-				visible, visibilityErr := authz.CanSeeIssue(ctx, s.Store, task.WorkspaceID, issue.ProjectID, task.SubmittedBy, issue.SecurityLevelID)
+				visible, visibilityErr := authz.CanSeeIssue(ctx, s.Store, task.WorkspaceID, issue.ProjectID, task.SubmittedBy, issue.ID, issue.SecurityLevelID)
 				if visibilityErr != nil {
 					return visibilityErr
 				}
@@ -148,7 +148,7 @@ func (s *Service) executeBulkMoveTask(ctx context.Context, task store.APITask) e
 			} else if lookupErr != nil {
 				return lookupErr
 			} else {
-				visible, visibilityErr := authz.CanSeeIssue(ctx, s.Store, task.WorkspaceID, issue.ProjectID, task.SubmittedBy, issue.SecurityLevelID)
+				visible, visibilityErr := authz.CanSeeIssue(ctx, s.Store, task.WorkspaceID, issue.ProjectID, task.SubmittedBy, issue.ID, issue.SecurityLevelID)
 				if visibilityErr != nil {
 					return visibilityErr
 				}
@@ -254,7 +254,7 @@ func (s *Service) executeBulkDeleteTask(ctx context.Context, task store.APITask)
 		} else if err != nil {
 			return err
 		} else {
-			visible, visibilityErr := authz.CanSeeIssue(ctx, s.Store, task.WorkspaceID, issue.ProjectID, task.SubmittedBy, issue.SecurityLevelID)
+			visible, visibilityErr := authz.CanSeeIssue(ctx, s.Store, task.WorkspaceID, issue.ProjectID, task.SubmittedBy, issue.ID, issue.SecurityLevelID)
 			if visibilityErr != nil {
 				return visibilityErr
 			}

@@ -129,6 +129,24 @@ type ProjectRoleActor struct {
 	Active        bool   `json:"-"`
 }
 
+type PermissionScheme struct {
+	ID           int64             `json:"id"`
+	WorkspaceID  string            `json:"-"`
+	Name         string            `json:"name"`
+	Description  string            `json:"description"`
+	Default      bool              `json:"default"`
+	ProjectCount int               `json:"projectCount"`
+	Grants       []PermissionGrant `json:"permissions,omitempty"`
+}
+
+type PermissionGrant struct {
+	ID              int64  `json:"id"`
+	Permission      string `json:"permission"`
+	HolderType      string `json:"-"`
+	HolderParameter string `json:"-"`
+	HolderValue     string `json:"-"`
+}
+
 // Issue is the materialized issue. Description is an ADF document stored verbatim.
 type Issue struct {
 	ID          string          `json:"id"`

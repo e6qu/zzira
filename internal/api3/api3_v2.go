@@ -40,12 +40,12 @@ func (h *Handler) projectBean(p *models.Project) map[string]any {
 }
 
 func (h *Handler) listProjects(w http.ResponseWriter, r *http.Request) {
-	wsID, _, e := h.authWorkspace(r)
+	wsID, userID, e := h.authWorkspace(r)
 	if e != nil {
 		writeJerr(w, e)
 		return
 	}
-	projects, err := h.Store.ProjectsByWorkspace(r.Context(), wsID)
+	projects, err := h.Store.ProjectsWithPermissions(r.Context(), wsID, userID, []string{"BROWSE_PROJECTS"})
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -67,12 +67,12 @@ func (h *Handler) listProjects(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) searchProjects(w http.ResponseWriter, r *http.Request) {
-	wsID, _, e := h.authWorkspace(r)
+	wsID, userID, e := h.authWorkspace(r)
 	if e != nil {
 		writeJerr(w, e)
 		return
 	}
-	projects, err := h.Store.ProjectsByWorkspace(r.Context(), wsID)
+	projects, err := h.Store.ProjectsWithPermissions(r.Context(), wsID, userID, []string{"BROWSE_PROJECTS"})
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -129,6 +129,15 @@ func (h *Handler) getProject(w http.ResponseWriter, r *http.Request, keyOrID str
 			return
 		}
 		jiraError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	allowed, err := h.Store.HasProjectPermission(r.Context(), wsID, userID, project.ID, "", "BROWSE_PROJECTS")
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if !allowed {
+		jiraError(w, http.StatusNotFound, "No project could be found with key or id "+keyOrID+".")
 		return
 	}
 	if err = h.Store.RecordProjectView(r.Context(), wsID, userID, project.ID); err != nil {

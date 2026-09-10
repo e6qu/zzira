@@ -16,6 +16,18 @@ import (
 	"github.com/e6qu/zzira/internal/workflow"
 )
 
+func ensureCommandTestActor(t *testing.T, ctx context.Context, st *store.Store, userID string) {
+	t.Helper()
+	if _, err := st.Pool.Exec(ctx, `INSERT INTO users(id,email,password_hash,display_name)
+		VALUES($1,$1 || '@example.test','test','Command test actor') ON CONFLICT(id) DO NOTHING`, userID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Pool.Exec(ctx, `INSERT INTO memberships(workspace_id,user_id,role)
+		VALUES('ws_default',$1,'member') ON CONFLICT(workspace_id,user_id) DO UPDATE SET role=EXCLUDED.role`, userID); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestCreateIssueToSyncPipeline is the V0 integration gate: it runs against a
 // real Postgres and walks the entire spine — command → state + action in one
 // txn → permission-filtered /sync range. Skipped unless TEST_DATABASE_URL is set
@@ -34,6 +46,7 @@ func TestCreateIssueToSyncPipeline(t *testing.T) {
 	if err := store.Migrate(ctx, st.Pool); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
+	ensureCommandTestActor(t, ctx, st, "usr_test")
 
 	svc := &Service{Store: st}
 	issue, action, err := svc.CreateIssue(ctx, CreateIssueInput{
@@ -136,6 +149,8 @@ func TestUpdateTransitionCommentChangelogPipeline(t *testing.T) {
 	if err := store.Migrate(ctx, st.Pool); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
+	ensureCommandTestActor(t, ctx, st, "usr_test")
+	ensureCommandTestActor(t, ctx, st, "usr_other")
 	svc := &Service{Store: st}
 
 	issue, _, err := svc.CreateIssue(ctx, CreateIssueInput{
@@ -375,6 +390,7 @@ func TestJQLSearchPipeline(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
+	ensureCommandTestActor(t, ctx, st, "usr_test")
 	svc := &Service{Store: st}
 
 	marker := fmt.Sprintf("jqlmarker%d", time.Now().UnixNano())

@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/e6qu/zzira/internal/authz"
 	"github.com/e6qu/zzira/internal/models"
 )
 
@@ -212,74 +211,4 @@ func (h *Handler) resolutionsEndpoint(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, []map[string]any{
 		{"id": "res_done", "name": "Done", "description": "Work has been completed."},
 	})
-}
-
-// ---- permissions introspection ----
-
-func (h *Handler) myPermissions(w http.ResponseWriter, r *http.Request) {
-	wsID, userID, e := h.authWorkspace(r)
-	if e != nil {
-		writeJerr(w, e)
-		return
-	}
-	admin, err := authz.IsWorkspaceAdmin(r.Context(), h.Store, wsID, userID)
-	if err != nil {
-		jiraError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	perm := func(have bool) map[string]any {
-		return map[string]any{"havePermission": have, "description": ""}
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"permissions": map[string]any{
-			"ADMINISTER":         perm(admin),
-			"BROWSE_PROJECTS":    perm(true),
-			"CREATE_ISSUES":      perm(true),
-			"EDIT_ISSUES":        perm(true),
-			"TRANSITION_ISSUES":  perm(true),
-			"ADD_COMMENTS":       perm(true),
-			"CREATE_ATTACHMENTS": perm(true),
-			"DELETE_OWN_CONTENT": perm(true),
-		},
-	})
-}
-
-func (h *Handler) permissionsCheck(w http.ResponseWriter, r *http.Request) {
-	wsID, userID, e := h.authWorkspace(r)
-	if e != nil {
-		writeJerr(w, e)
-		return
-	}
-	admin, err := authz.IsWorkspaceAdmin(r.Context(), h.Store, wsID, userID)
-	if err != nil {
-		jiraError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	var req struct {
-		Permissions []string `json:"permissions"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.Permissions) == 0 {
-		jiraFieldError(w, http.StatusBadRequest, map[string]string{"permissions": "At least one permission is required."})
-		return
-	}
-	granted := map[string]any{}
-	for _, name := range req.Permissions {
-		permitted := permissionKnown(name)
-		if name == "ADMINISTER" {
-			permitted = admin
-		}
-		granted[name] = map[string]any{"permitted": permitted}
-	}
-	writeJSON(w, http.StatusOK, granted)
-}
-
-// permissionKnown: V5 grants every workspace member the known permissions;
-// unknown keys are reported as not permitted rather than silently true.
-func permissionKnown(name string) bool {
-	switch name {
-	case "BROWSE_PROJECTS", "CREATE_ISSUES", "EDIT_ISSUES", "TRANSITION_ISSUES",
-		"ADD_COMMENTS", "CREATE_ATTACHMENTS", "DELETE_OWN_CONTENT":
-		return true
-	}
-	return false
 }
