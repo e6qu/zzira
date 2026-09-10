@@ -2,7 +2,10 @@
 // wasm client. It must stay free of server-only imports (database, net/http).
 package models
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"sort"
+)
 
 const (
 	SchemaVersion = 2
@@ -346,6 +349,46 @@ type CreateProjectMeta struct {
 	Project    Project           `json:"project"`
 	IssueTypes []IssueType       `json:"issueTypes"`
 	Fields     []CreateFieldMeta `json:"fields"`
+	// ScreenFields holds the ordered field IDs the project's screen scheme
+	// exposes per work type, keyed by issue type ID. An absent or empty entry
+	// means no screen governs that form and every project field applies.
+	ScreenFields map[string][]string `json:"-"`
+}
+
+// FieldsForIssueType narrows and orders the project's fields to what the work
+// type's form screen shows. Context fields and summary always survive: the
+// command path cannot create work without a project, a work type, and a
+// summary, so a screen may not hide them.
+func (m CreateProjectMeta) FieldsForIssueType(issueTypeID string) []CreateFieldMeta {
+	screen := m.ScreenFields[issueTypeID]
+	if len(screen) == 0 {
+		return m.Fields
+	}
+	rank := make(map[string]int, len(screen))
+	for index, id := range screen {
+		rank[id] = index
+	}
+	context, selected := []CreateFieldMeta{}, []CreateFieldMeta{}
+	summary, summaryOnScreen := CreateFieldMeta{}, false
+	for _, field := range m.Fields {
+		if field.Section == "context" {
+			context = append(context, field)
+			continue
+		}
+		if field.ID == "summary" {
+			summary = field
+			_, summaryOnScreen = rank[field.ID]
+		}
+		if _, shown := rank[field.ID]; shown {
+			selected = append(selected, field)
+		}
+	}
+	sort.SliceStable(selected, func(i, j int) bool { return rank[selected[i].ID] < rank[selected[j].ID] })
+	out := context
+	if summary.ID != "" && !summaryOnScreen {
+		out = append(out, summary)
+	}
+	return append(out, selected...)
 }
 
 type IssueCreateMetadata struct {

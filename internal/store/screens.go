@@ -483,6 +483,13 @@ func (s *Store) DeleteScreen(ctx context.Context, workspaceID, actorID, screenID
 	if screen.IsDefault {
 		return fmt.Errorf("%w: the default screen cannot be deleted", ErrScreenConflict)
 	}
+	var schemes int
+	if err = tx.QueryRow(ctx, `SELECT count(*) FROM screen_scheme_items WHERE screen_id=$1`, screen.ID).Scan(&schemes); err != nil {
+		return err
+	}
+	if schemes > 0 {
+		return fmt.Errorf("%w: remove this screen from every screen scheme first", ErrScreenConflict)
+	}
 	if _, err = tx.Exec(ctx, `DELETE FROM screens WHERE workspace_id=$1 AND id=$2`, workspaceID, screen.ID); err != nil {
 		return err
 	}

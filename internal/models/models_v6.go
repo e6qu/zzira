@@ -141,3 +141,28 @@ type ScreenField struct {
 	Position int    `json:"-"`
 	Custom   bool   `json:"-"`
 }
+
+// ScreenScheme maps a work item form operation to a screen. Jira requires the
+// default operation; create, edit, and view fall back to it.
+type ScreenScheme struct {
+	ID          string            `json:"id"`
+	Name        string            `json:"name"`
+	Description string            `json:"description,omitempty"`
+	IsDefault   bool              `json:"-"`
+	Screens     map[string]string `json:"screens"`
+}
+
+// IssueTypeScreenScheme maps each work type to a screen scheme and is the
+// object a project is assigned.
+type IssueTypeScreenScheme struct {
+	ID          string                      `json:"id"`
+	Name        string                      `json:"name"`
+	Description string                      `json:"description,omitempty"`
+	IsDefault   bool                        `json:"-"`
+	Mappings    []IssueTypeScreenSchemeItem `json:"-"`
+}
+
+type IssueTypeScreenSchemeItem struct {
+	IssueTypeID    string `json:"issueTypeId"`
+	ScreenSchemeID string `json:"screenSchemeId"`
+}

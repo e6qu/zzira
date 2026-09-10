@@ -215,8 +215,9 @@ func (h *Handler) createMeta(w http.ResponseWriter, r *http.Request) {
 			}
 			bean := h.createMetaIssueTypeBean(issueType)
 			if includeFields {
-				fields := make(map[string]any, len(project.Fields))
-				for _, source := range project.Fields {
+				typeFields := project.FieldsForIssueType(issueType.ID)
+				fields := make(map[string]any, len(typeFields))
+				for _, source := range typeFields {
 					field := source
 					if field.ID == "parent" {
 						field.Required = issueType.Subtask
@@ -285,10 +286,11 @@ func (h *Handler) createMetaFields(w http.ResponseWriter, r *http.Request, proje
 		writeJerr(w, e)
 		return
 	}
-	safeStart := min(start, len(project.Fields))
-	end := min(safeStart+limit, len(project.Fields))
+	typeFields := project.FieldsForIssueType(selectedType.ID)
+	safeStart := min(start, len(typeFields))
+	end := min(safeStart+limit, len(typeFields))
 	values := make([]map[string]any, 0, end-safeStart)
-	for _, source := range project.Fields[safeStart:end] {
+	for _, source := range typeFields[safeStart:end] {
 		field := source
 		if field.ID == "parent" {
 			field.Required = selectedType.Subtask
@@ -296,7 +298,7 @@ func (h *Handler) createMetaFields(w http.ResponseWriter, r *http.Request, proje
 		values = append(values, h.createFieldBean(field))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"startAt": start, "maxResults": limit, "total": len(project.Fields), "fields": values,
+		"startAt": start, "maxResults": limit, "total": len(typeFields), "fields": values,
 	})
 }
 

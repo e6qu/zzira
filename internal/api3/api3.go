@@ -71,6 +71,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.securitySchemeRoute(w, r, path)
 	case isScreenPath(path):
 		h.screenRoute(w, r, path)
+	case isScreenSchemePath(path):
+		h.screenSchemeRoute(w, r, path)
 	case isPermissionSchemePath(path):
 		h.permissionSchemeRoute(w, r, path)
 	case isProjectRolePath(path):
@@ -1268,12 +1270,21 @@ func (h *Handler) issueEditMetadata(ctx context.Context, workspaceID, userID str
 	if err != nil {
 		return nil, err
 	}
+	// The edit form follows the project's edit screen, which falls back to the
+	// screen scheme's default screen when no edit screen is mapped.
+	editFields, err := h.Store.ResolveScreenFields(ctx, workspaceID, issue.ProjectID, issue.IssueType.ID, "edit")
+	if err != nil {
+		return nil, err
+	}
 	fields := map[string]any{}
 	for _, project := range metadata.Projects {
 		if project.Project.ID != issue.ProjectID {
 			continue
 		}
-		for _, source := range project.Fields {
+		if len(editFields) > 0 {
+			project.ScreenFields = map[string][]string{issue.IssueType.ID: editFields}
+		}
+		for _, source := range project.FieldsForIssueType(issue.IssueType.ID) {
 			if source.ID == "project" || source.ID == "issuetype" {
 				continue
 			}
