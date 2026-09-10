@@ -11,7 +11,7 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 - Branch: `feat/pr1-screen-schemes`
 - Base: `origin/main` after merged PR #78 (`4db4731`)
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- Pull request: pending
+- Pull request: [#79](https://github.com/e6qu/zzira/pull/79)
 - State: screen-scheme checkpoint implements all 15 pinned screen-scheme and
   work-type-screen-scheme operations and closes the binding the previous
   checkpoint deferred. One resolution function walks project → work type screen
@@ -52,8 +52,7 @@ PR #78's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Open the screen-scheme pull request, monitor it through every CI job, and
-   resolve review threads inline.
+1. Monitor PR #79 through every CI job and resolve review threads inline.
 2. After merge, continue with field configurations and field configuration
    schemes, then custom field contexts and options.
 
