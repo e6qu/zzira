@@ -115,3 +115,29 @@ type RecentActivity struct {
 	IssueKey  string
 	Created   string
 }
+
+// Screen groups the fields an administrator exposes on a work item form. Tabs
+// order the groups; ScreenField rows order the fields inside one tab.
+type Screen struct {
+	ID          string      `json:"id"`
+	WorkspaceID string      `json:"-"`
+	Name        string      `json:"name"`
+	Description string      `json:"description,omitempty"`
+	IsDefault   bool        `json:"-"`
+	Tabs        []ScreenTab `json:"tabs,omitempty"`
+}
+
+type ScreenTab struct {
+	ID       string        `json:"id"`
+	ScreenID string        `json:"-"`
+	Name     string        `json:"name"`
+	Position int           `json:"-"`
+	Fields   []ScreenField `json:"fields,omitempty"`
+}
+
+type ScreenField struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Position int    `json:"-"`
+	Custom   bool   `json:"-"`
+}

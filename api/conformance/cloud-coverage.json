@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 601,
+  "assessedTotal": 618,
   "counts": {
     "delivered": 0,
-    "partial": 594,
+    "partial": 611,
     "missing": 7,
-    "unassessed": 606
+    "unassessed": 589
   },
   "countsByFamily": {
     "automation": {
@@ -24,9 +24,9 @@
     },
     "jira-platform": {
       "delivered": 0,
-      "partial": 233,
+      "partial": 250,
       "missing": 0,
-      "unassessed": 384
+      "unassessed": 367
     },
     "jira-service-management": {
       "delivered": 0,
@@ -1151,9 +1151,12 @@
       "operationId": "jira-v3:GET:/rest/api/3/field/{fieldId}/screens",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/screens_test.go",
+        "docs/SCREENS.md"
+      ],
+      "notes": "Paging the screens that show one field is tested; expand remains."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/field/{fieldKey}/option",
@@ -4290,129 +4293,191 @@
       "operationId": "jira-v3:GET:/rest/api/3/screens",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/screens_test.go",
+        "e2e/screens.spec.ts",
+        "docs/SCREENS.md"
+      ],
+      "notes": "Paging with id and queryString filters is tested; Jira's expand and scope filters remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/screens",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/screens_test.go",
+        "e2e/screens.spec.ts",
+        "docs/SCREENS.md"
+      ],
+      "notes": "Creation with a seeded first tab and case-insensitive name uniqueness is tested through REST and the browser."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/screens/addToDefault/{fieldId}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/screens_test.go",
+        "docs/SCREENS.md"
+      ],
+      "notes": "Adding a field to the default screen's first tab is tested; a field already present is rejected rather than ignored."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/screens/tabs",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/screens_test.go",
+        "docs/SCREENS.md"
+      ],
+      "notes": "Bulk tab reads for selected or all screens are tested; Jira's projectKey scoping remains."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/screens/{screenId}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/screens_test.go",
+        "e2e/screens.spec.ts",
+        "docs/SCREENS.md"
+      ],
+      "notes": "Deletion cascades tabs and fields and refuses the workspace default screen; screen-scheme usage checks arrive with screen schemes."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/screens/{screenId}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/screens_test.go",
+        "e2e/screens.spec.ts",
+        "docs/SCREENS.md"
+      ],
+      "notes": "Name and description updates are tested through REST and the browser."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/screens/{screenId}/availableFields",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/screens_test.go",
+        "e2e/screens.spec.ts",
+        "docs/SCREENS.md"
+      ],
+      "notes": "Fields already on the screen are excluded from the catalog; Jira's per-project field scoping remains."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/screens/{screenId}/tabs",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/screens_test.go",
+        "e2e/screens.spec.ts",
+        "docs/SCREENS.md"
+      ],
+      "notes": "Tabs are returned in display order through REST and the browser; projectKey scoping remains."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/screens/{screenId}/tabs",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/screens_test.go",
+        "e2e/screens.spec.ts",
+        "docs/SCREENS.md"
+      ],
+      "notes": "Tab creation with per-screen case-insensitive name uniqueness is tested through REST and the browser."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/screens/{screenId}/tabs/{tabId}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/screens_test.go",
+        "e2e/screens.spec.ts",
+        "docs/SCREENS.md"
+      ],
+      "notes": "Tab deletion renumbers the remaining tabs and refuses to remove a screen's last tab."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/screens/{screenId}/tabs/{tabId}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/screens_test.go",
+        "e2e/screens.spec.ts",
+        "docs/SCREENS.md"
+      ],
+      "notes": "Renaming a tab and its uniqueness conflict are tested."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/screens/{screenId}/tabs/{tabId}/fields",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/screens_test.go",
+        "e2e/screens.spec.ts",
+        "docs/SCREENS.md"
+      ],
+      "notes": "Fields are returned in display order with catalog names through REST and the browser."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/screens/{screenId}/tabs/{tabId}/fields",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/screens_test.go",
+        "e2e/screens.spec.ts",
+        "docs/SCREENS.md"
+      ],
+      "notes": "Adding a catalog field is tested, including the one-tab-per-screen rule and unknown-field rejection."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/screens/{screenId}/tabs/{tabId}/fields/{id}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/screens_test.go",
+        "e2e/screens.spec.ts",
+        "docs/SCREENS.md"
+      ],
+      "notes": "Removing a field renumbers the tab and 404s a field that is not present."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/screens/{screenId}/tabs/{tabId}/fields/{id}/move",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/screens_test.go",
+        "e2e/screens.spec.ts",
+        "docs/SCREENS.md"
+      ],
+      "notes": "First, Earlier, Later, Last and an explicit after target are tested; a request with neither is rejected."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/screens/{screenId}/tabs/{tabId}/move/{pos}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/screens_test.go",
+        "e2e/screens.spec.ts",
+        "docs/SCREENS.md"
+      ],
+      "notes": "Explicit reordering and out-of-range rejection are tested through REST and the browser."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/screenscheme",
