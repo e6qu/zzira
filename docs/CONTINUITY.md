@@ -11,7 +11,7 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 - Branch: `feat/pr1-permission-schemes`
 - Base: `origin/main` after merged PR #74 (`8e66a66`)
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- Pull request: pending
+- Pull request: [#75](https://github.com/e6qu/zzira/pull/75)
 - State: permission-scheme checkpoint implements all 16 pinned scheme,
   assignment, discovery, and evaluation operations; durable grants and defaults;
   delegated project administration; project, issue, search, sync, and navigation
@@ -39,8 +39,7 @@ PR #74's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Commit and open the permission-scheme PR, then resolve its CI and review
-   threads inline.
+1. Monitor PR #75 through every CI job and resolve review threads inline.
 2. After it merges, continue notification, issue-security, field, and screen
    scheme administration. Keep each vertical checkpoint committed, tested, and
    documented until the Jira Platform exit gates are satisfied.
