@@ -388,6 +388,8 @@ func main() {
 	mux.HandleFunc("POST /projects/{key}/lifecycle", webHandler.ProjectLifecycleSettings)
 	mux.HandleFunc("POST /projects/{key}/components", webHandler.ProjectComponentSettings)
 	mux.HandleFunc("POST /projects/{key}/components/{id}", webHandler.ProjectComponentSettings)
+	mux.HandleFunc("GET /projects/{key}/settings/roles", webHandler.ProjectRoleAssignmentsPage)
+	mux.HandleFunc("POST /projects/{key}/settings/roles/{id}", webHandler.ProjectRoleAssignmentMutation)
 	mux.HandleFunc("GET /projects/{key}/settings/apps/{module}", webHandler.ProjectAdminAppModulePage)
 	mux.HandleFunc("GET /projects/{key}/apps/{module}", webHandler.ProjectAppModulePage)
 	mux.HandleFunc("GET /projects/{key}", func(w http.ResponseWriter, r *http.Request) {
@@ -400,6 +402,9 @@ func main() {
 		webHandler.ProfilePage(w, r, r.PathValue("id"))
 	})
 	mux.HandleFunc("GET /settings/workflows", webHandler.WorkflowsPage)
+	mux.HandleFunc("GET /settings/project-roles", webHandler.ProjectRolesAdminPage)
+	mux.HandleFunc("POST /settings/project-roles", webHandler.ProjectRolesAdminPage)
+	mux.HandleFunc("POST /settings/project-roles/{id}", webHandler.ProjectRoleAdminMutation)
 	mux.HandleFunc("GET /settings/statuses", webHandler.StatusesPage)
 	mux.HandleFunc("GET /settings/workflow-schemes", webHandler.WorkflowSchemesPage)
 	mux.HandleFunc("POST /settings/workflow-schemes", webHandler.CreateWorkflowScheme)

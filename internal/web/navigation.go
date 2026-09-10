@@ -27,14 +27,15 @@ type projectNavigationItem struct {
 }
 
 type workspaceNavigation struct {
-	Projects               []projectNavigationItem
-	AppModules             []models.AppModule
-	ProjectAppModules      []models.AppModule
-	ProjectAdminAppModules []models.AppModule
-	AdminAppModules        []models.AppModule
-	Current                *projectNavigationItem
-	CanAdmin               bool
-	CanServiceAgent        bool
+	Projects                []projectNavigationItem
+	AppModules              []models.AppModule
+	ProjectAppModules       []models.AppModule
+	ProjectAdminAppModules  []models.AppModule
+	AdminAppModules         []models.AppModule
+	Current                 *projectNavigationItem
+	CanAdmin                bool
+	CanManageCurrentProject bool
+	CanServiceAgent         bool
 }
 
 // workspaceNavigation builds the project-aware application shell. preferred
@@ -77,12 +78,13 @@ func (h *Handler) workspaceNavigation(r *http.Request, workspaceID, preferred st
 	}
 
 	navigation := &workspaceNavigation{Projects: make([]projectNavigationItem, 0, len(projects)), AppModules: appModules, ProjectAppModules: projectAppModules, ProjectAdminAppModules: projectAdminAppModules, AdminAppModules: adminAppModules}
-	if user := h.currentUser(r); user != nil {
-		navigation.CanAdmin, err = h.Store.IsAdmin(r.Context(), workspaceID, user.ID)
+	currentUser := h.currentUser(r)
+	if currentUser != nil {
+		navigation.CanAdmin, err = h.Store.IsAdmin(r.Context(), workspaceID, currentUser.ID)
 		if err != nil {
 			return nil, err
 		}
-		navigation.CanServiceAgent, err = h.Store.IsAnyServiceAgent(r.Context(), workspaceID, user.ID)
+		navigation.CanServiceAgent, err = h.Store.IsAnyServiceAgent(r.Context(), workspaceID, currentUser.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -125,6 +127,12 @@ func (h *Handler) workspaceNavigation(r *http.Request, workspaceID, preferred st
 		}
 	}
 	navigation.Current = selectCurrentProject(navigation.Projects, selection)
+	if currentUser != nil && navigation.Current != nil {
+		navigation.CanManageCurrentProject, err = h.Store.CanAdministerProject(r.Context(), workspaceID, currentUser.ID, navigation.Current.Project.ID)
+		if err != nil {
+			return nil, fmt.Errorf("resolve project administration: %w", err)
+		}
+	}
 	return navigation, nil
 }
 

@@ -49,9 +49,10 @@ Jira Cloud-compatible REST resources.
 
 ## Known limits
 
-- ZZIRA currently grants project-configuration writes to workspace
-  administrators. Jira's separate Administer Projects permission and project
-  roles arrive with the remaining permission-scheme work in PR 1.
+- ZZIRA currently grants these project-configuration writes to site
+  administrators. Project roles and delegated role-actor administration are
+  available; permission-scheme grants for the remaining project settings stay
+  in PR 1.
 - Anonymous Browse Projects is not available, so project-property reads require
   an authenticated workspace member.
 - The built-in software feature catalog is fixed. App-contributed project

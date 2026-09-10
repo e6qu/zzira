@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-var ErrProjectPermission = errors.New("workspace administrator permission is required")
+var ErrProjectPermission = errors.New("Jira administrator or project administrator permission is required")
 var ErrProjectLeadRequired = errors.New("a project lead is required for default assignment")
 
 type ProjectUpdate struct {
@@ -50,9 +50,20 @@ func writeProjectAction(ctx context.Context, tx pgx.Tx, actorID string, p *model
 }
 
 func projectAdmin(ctx context.Context, tx pgx.Tx, workspaceID, actorID string) error {
-	var role string
-	err := tx.QueryRow(ctx, `SELECT role FROM memberships WHERE workspace_id=$1 AND user_id=$2 FOR SHARE`, workspaceID, actorID).Scan(&role)
-	if errors.Is(err, pgx.ErrNoRows) || (err == nil && role != "admin") {
+	var allowed bool
+	err := tx.QueryRow(ctx, `SELECT EXISTS(
+		SELECT 1 FROM role_bindings rb
+		JOIN sites si ON (rb.scope_type='site' AND rb.scope_id=si.id::text)
+			OR (rb.scope_type='organization' AND rb.scope_id=si.organization_id::text)
+		WHERE si.workspace_id=$1 AND rb.role_key IN ('atlassian/org-admin','atlassian/site-admin')
+		AND ((rb.principal_type='user' AND rb.principal_id=$2) OR
+			(rb.principal_type='group' AND EXISTS (
+				SELECT 1 FROM group_members gm
+				JOIN groups g ON g.id=gm.group_id
+				JOIN directories d ON d.id=g.directory_id
+				WHERE gm.group_id::text=rb.principal_id AND gm.user_id=$2 AND d.active)))
+	)`, workspaceID, actorID).Scan(&allowed)
+	if err == nil && !allowed {
 		return ErrProjectPermission
 	}
 	return err

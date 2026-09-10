@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 541,
+  "assessedTotal": 556,
   "counts": {
     "delivered": 0,
-    "partial": 534,
+    "partial": 549,
     "missing": 7,
-    "unassessed": 666
+    "unassessed": 651
   },
   "countsByFamily": {
     "automation": {
@@ -24,9 +24,9 @@
     },
     "jira-platform": {
       "delivered": 0,
-      "partial": 173,
+      "partial": 188,
       "missing": 0,
-      "unassessed": 444
+      "unassessed": 429
     },
     "jira-service-management": {
       "delivered": 0,
@@ -3436,7 +3436,7 @@
         "e2e/projects.spec.ts",
         "docs/PROJECT_LIFECYCLE.md"
       ],
-      "notes": "Implements enableUndo trash-by-default and immediate permanent deletion, blocks archived deletion, cascades retained project data, and durably queues attachment blob cleanup; project-admin delegation remains."
+      "notes": "Implements enableUndo trash-by-default and immediate permanent deletion, blocks archived deletion, cascades retained project data, and durably queues attachment blob cleanup; permission-scheme-derived lifecycle delegation remains."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/project/{projectIdOrKey}",
@@ -3474,7 +3474,7 @@
         "e2e/projects.spec.ts",
         "docs/PROJECT_LIFECYCLE.md"
       ],
-      "notes": "Administrators archive active projects transactionally, hide dependent work and product surfaces, and emit replica removal actions; project-admin delegation remains."
+      "notes": "Administrators archive active projects transactionally, hide dependent work and product surfaces, and emit replica removal actions; permission-scheme-derived lifecycle delegation remains."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/project/{projectIdOrKey}/avatar",
@@ -3600,7 +3600,7 @@
         "e2e/projects.spec.ts",
         "docs/PROJECT_GOVERNANCE.md"
       ],
-      "notes": "Persists ENABLED/DISABLED state, returns the complete project feature container and updates Backlog/Reports navigation; project-admin roles and remaining runtime feature modules remain."
+      "notes": "Persists ENABLED/DISABLED state, returns the complete project feature container and updates Backlog/Reports navigation; permission-scheme-derived project administration and remaining runtime feature modules remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/project/{projectIdOrKey}/properties",
@@ -3624,7 +3624,7 @@
         "e2e/projects.spec.ts",
         "docs/PROJECT_GOVERNANCE.md"
       ],
-      "notes": "Deletes a workspace-scoped property with Jira 204/not-found behavior and immutable action evidence; project-admin roles remain."
+      "notes": "Deletes a workspace-scoped property with Jira 204/not-found behavior and immutable action evidence; permission-scheme-derived project administration remains."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/project/{projectIdOrKey}/properties/{propertyKey}",
@@ -3648,7 +3648,7 @@
         "e2e/projects.spec.ts",
         "docs/PROJECT_GOVERNANCE.md"
       ],
-      "notes": "Enforces Jira key/value limits, create/update status codes, workspace isolation and transactional action evidence; project-admin roles remain."
+      "notes": "Enforces Jira key/value limits, create/update status codes, workspace isolation and transactional action evidence; permission-scheme-derived project administration remains."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/project/{projectIdOrKey}/restore",
@@ -3660,55 +3660,79 @@
         "e2e/projects.spec.ts",
         "docs/PROJECT_LIFECYCLE.md"
       ],
-      "notes": "Restores archived or trashed projects and republishes project, issue, board, sprint, and sprint-membership state; project-admin delegation remains."
+      "notes": "Restores archived or trashed projects and republishes project, issue, board, sprint, and sprint-membership state; permission-scheme-derived lifecycle delegation remains."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/project/{projectIdOrKey}/role",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_roles_test.go",
+        "e2e/project_roles.spec.ts",
+        "docs/PROJECT_ROLES.md"
+      ],
+      "notes": "Returns the workspace-wide role-name to project-role URL map for an active project to Jira, organization, or delegated project administrators; anonymous permission-scheme evaluation remains."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/project/{projectIdOrKey}/role/{id}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_roles_test.go",
+        "e2e/project_roles.spec.ts",
+        "docs/PROJECT_ROLES.md"
+      ],
+      "notes": "Removes a requested user or group actor atomically with Jira validation and project-administrator authorization; anonymous access and permission-scheme-derived administration remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/project/{projectIdOrKey}/role/{id}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_roles_test.go",
+        "e2e/project_roles.spec.ts",
+        "docs/PROJECT_ROLES.md"
+      ],
+      "notes": "Returns sorted Jira role and actor beans with direct users, groups, and inactive-user exclusion; app, guest, AI-agent, and other service actors remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/project/{projectIdOrKey}/role/{id}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_roles_test.go",
+        "e2e/project_roles.spec.ts",
+        "docs/PROJECT_ROLES.md"
+      ],
+      "notes": "Adds active workspace users or directory groups by account ID, group ID, or group name without duplicates; app/service actors and anonymous permission evaluation remain."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/project/{projectIdOrKey}/role/{id}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_roles_test.go",
+        "e2e/project_roles.spec.ts",
+        "docs/PROJECT_ROLES.md"
+      ],
+      "notes": "Atomically replaces direct user and group actors from Jira categorisedActors input, including an empty set; additional Jira actor types remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/project/{projectIdOrKey}/roledetails",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_roles_test.go",
+        "e2e/project_roles.spec.ts",
+        "docs/PROJECT_ROLES.md"
+      ],
+      "notes": "Returns shared role details with currentMember filtering and validated Connect/service exclusion flags; those actor types are absent, and anonymous permission-scheme access remains."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/project/{projectIdOrKey}/statuses",
@@ -3756,7 +3780,7 @@
         "e2e/projects.spec.ts",
         "docs/PROJECT_GOVERNANCE.md"
       ],
-      "notes": "Validates, sets, or clears a sender override with administrator authorization, atomic project action and 204 response; project-admin roles and domain verification remain."
+      "notes": "Validates, sets, or clears a sender override with administrator authorization, atomic project action and 204 response; permission-scheme-derived project administration and domain verification remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/project/{projectId}/hierarchy",
@@ -3994,73 +4018,109 @@
       "operationId": "jira-v3:GET:/rest/api/3/role",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_roles_test.go",
+        "e2e/project_roles.spec.ts",
+        "docs/PROJECT_ROLES.md"
+      ],
+      "notes": "Lists the workspace role catalog with sorted default user/group actors for Jira administrators; app, guest, AI-agent, and service actor types remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/role",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_roles_test.go",
+        "e2e/project_roles.spec.ts",
+        "docs/PROJECT_ROLES.md"
+      ],
+      "notes": "Creates a globally shared, case-insensitively unique role without default actors and records the change atomically; Jira managed-role variants remain."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/role/{id}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_roles_test.go",
+        "e2e/project_roles.spec.ts",
+        "docs/PROJECT_ROLES.md"
+      ],
+      "notes": "Deletes unused roles or atomically swaps project actors, defaults, filter shares, and default/admin traits to a valid replacement; permission-scheme, notification-scheme, and issue-security consumers will join the swap when those registries are delivered."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/role/{id}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_roles_test.go",
+        "e2e/project_roles.spec.ts",
+        "docs/PROJECT_ROLES.md"
+      ],
+      "notes": "Returns one shared role and its sorted default user/group actors with Jira role beans; additional Jira actor and scope variants remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/role/{id}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_roles_test.go",
+        "e2e/project_roles.spec.ts",
+        "docs/PROJECT_ROLES.md"
+      ],
+      "notes": "Implements Jira partial update semantics, including name precedence when both fields are supplied, uniqueness checks, and atomic action evidence."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/role/{id}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_roles_test.go",
+        "e2e/project_roles.spec.ts",
+        "docs/PROJECT_ROLES.md"
+      ],
+      "notes": "Requires and updates both role name and description with Jira validation, uniqueness, authorization, and atomic action evidence."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/role/{id}/actors",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_roles_test.go",
+        "e2e/project_roles.spec.ts",
+        "docs/PROJECT_ROLES.md"
+      ],
+      "notes": "Removes default users or groups by account ID, group ID, or group name without changing existing projects; additional Jira actor types remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/role/{id}/actors",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_roles_test.go",
+        "e2e/project_roles.spec.ts",
+        "docs/PROJECT_ROLES.md"
+      ],
+      "notes": "Returns sorted default user/group actors in the Jira ProjectRole response for Jira administrators; additional actor types remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/role/{id}/actors",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_roles_test.go",
+        "e2e/project_roles.spec.ts",
+        "docs/PROJECT_ROLES.md"
+      ],
+      "notes": "Adds one family of default users or groups and copies it only to subsequently created projects, matching Jira lifecycle semantics; additional actor types remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/screens",

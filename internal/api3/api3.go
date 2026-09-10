@@ -65,6 +65,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.siteTimeTracking(w, r, path)
 	case path == "/settings/columns":
 		h.issueNavigatorColumns(w, r)
+	case isProjectRolePath(path):
+		h.projectRoleRoute(w, r, path)
 	case isProjectLifecyclePath(path, r.Method):
 		h.projectLifecycleRoute(w, r, path)
 	case isProjectGovernancePath(path):
@@ -153,8 +155,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.securitySchemeRoute(w, r)
 	case strings.HasPrefix(path, "/issuesecurityschemes/"):
 		h.securitySchemeRoute(w, r)
-	case path == "/role" && r.Method == http.MethodGet:
-		h.roleRoute(w, r)
+	case path == "/role" || strings.HasPrefix(path, "/role/"):
+		h.globalProjectRoleRoute(w, r, path)
 	case path == "/webhook" || path == "/webhook/refresh" || strings.HasPrefix(path, "/webhook/"):
 		h.webhookRoute(w, r)
 	case path == "/filter/defaultShareScope":

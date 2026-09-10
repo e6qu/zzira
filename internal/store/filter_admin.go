@@ -72,26 +72,20 @@ const filterAccess = `(
 			OR (fp.permission_type='projectRole' AND EXISTS (
 				SELECT 1 FROM projects p
 				WHERE p.id=fp.project_id AND p.workspace_id=f.workspace_id
-				  AND (
-					(fp.project_role_id='10001' AND EXISTS (
-						SELECT 1 FROM memberships m
-						WHERE m.workspace_id=f.workspace_id AND m.user_id=$2))
-					OR (fp.project_role_id='10000' AND EXISTS (
-						SELECT 1 FROM memberships m
-						WHERE m.workspace_id=f.workspace_id AND m.user_id=$2 AND m.role='admin'))
-					OR EXISTS (
-						SELECT 1 FROM role_bindings rb
-						WHERE rb.scope_type='project' AND rb.scope_id=p.id
-						  AND rb.role_key=fp.project_role_id
-						  AND (
-							rb.principal_type='user' AND rb.principal_id=$2
-							OR rb.principal_type='group' AND EXISTS (
-								SELECT 1 FROM group_members gm
-								JOIN groups g ON g.id=gm.group_id
-								JOIN directories d ON d.id=g.directory_id
-								WHERE gm.group_id::TEXT=rb.principal_id AND gm.user_id=$2 AND d.active)
-						  ))
-				  )))
+				  AND EXISTS (
+					SELECT 1 FROM role_bindings rb
+					WHERE rb.scope_type='project' AND rb.scope_id=p.id
+					  AND rb.role_key=fp.project_role_id
+					  AND (
+						rb.principal_type='user' AND rb.principal_id=$2
+						OR (rb.principal_type='group' AND EXISTS (
+							SELECT 1 FROM group_members gm
+							JOIN groups g ON g.id=gm.group_id
+							JOIN directories d ON d.id=g.directory_id
+							WHERE gm.group_id::TEXT=rb.principal_id AND gm.user_id=$2 AND d.active))
+					  )
+				  )
+			))
 		)
 	)
 )`
@@ -133,12 +127,12 @@ func (s *Store) loadFilterPermissions(ctx context.Context, filters []*models.Fil
 		       COALESCE(fp.group_id::TEXT,''),COALESCE(g.name,''),
 		       COALESCE(fp.project_id,''),COALESCE(p.key,''),COALESCE(p.name,''),
 		       COALESCE(fp.project_role_id,''),
-		       CASE fp.project_role_id WHEN '10000' THEN 'Administrator'
-		            WHEN '10001' THEN 'Member' ELSE COALESCE(fp.project_role_id,'') END
+		       COALESCE(pr.name,fp.project_role_id,'')
 		FROM filter_share_permissions fp
 		LEFT JOIN users u ON u.id=fp.account_id
 		LEFT JOIN groups g ON g.id=fp.group_id
 		LEFT JOIN projects p ON p.id=fp.project_id
+		LEFT JOIN project_roles pr ON pr.workspace_id=p.workspace_id AND pr.id::text=fp.project_role_id
 		WHERE fp.filter_id=ANY($1::TEXT[]) ORDER BY fp.filter_id,fp.id`, ids)
 	if err != nil {
 		return err
@@ -577,16 +571,14 @@ func addFilterPermission(ctx context.Context, tx pgx.Tx, workspaceID, filterID s
 			if parseErr != nil || role < 1 {
 				return nil, fmt.Errorf("%w: projectRoleId must be a positive integer", ErrFilterValidation)
 			}
-			if role != 10000 && role != 10001 {
-				var exists bool
-				if err := tx.QueryRow(ctx, `SELECT EXISTS(
-					SELECT 1 FROM role_bindings WHERE scope_type='project' AND scope_id=$1 AND role_key=$2)`,
-					id, input.ProjectRoleID).Scan(&exists); err != nil {
-					return nil, err
-				}
-				if !exists {
-					return nil, fmt.Errorf("%w: project role was not found", ErrFilterValidation)
-				}
+			var exists bool
+			if err := tx.QueryRow(ctx, `SELECT EXISTS(
+				SELECT 1 FROM project_roles WHERE workspace_id=$1 AND id=$2)`,
+				workspaceID, role).Scan(&exists); err != nil {
+				return nil, err
+			}
+			if !exists {
+				return nil, fmt.Errorf("%w: project role was not found", ErrFilterValidation)
 			}
 			roleID = input.ProjectRoleID
 		}

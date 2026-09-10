@@ -111,6 +111,24 @@ type ProjectFeature struct {
 	ToggleLocked  bool     `json:"toggleLocked"`
 }
 
+type ProjectRole struct {
+	ID          int64              `json:"id"`
+	WorkspaceID string             `json:"-"`
+	Name        string             `json:"name"`
+	Description string             `json:"description"`
+	Admin       bool               `json:"admin"`
+	Default     bool               `json:"default"`
+	Actors      []ProjectRoleActor `json:"actors,omitempty"`
+}
+
+type ProjectRoleActor struct {
+	ID            int64  `json:"id"`
+	PrincipalType string `json:"-"`
+	PrincipalID   string `json:"-"`
+	DisplayName   string `json:"displayName"`
+	Active        bool   `json:"-"`
+}
+
 // Issue is the materialized issue. Description is an ADF document stored verbatim.
 type Issue struct {
 	ID          string          `json:"id"`

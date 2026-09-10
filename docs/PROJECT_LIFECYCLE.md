@@ -60,8 +60,8 @@ transactional.
 
 - ZZIRA requires authentication for recent-project reads; Jira can expose this
   operation anonymously when public project permissions allow it.
-- Lifecycle administration is site-admin scoped until project roles and full
-  permission-scheme administration are complete.
+- Lifecycle administration is site-admin scoped until permission schemes grant
+  the corresponding project-level operations.
 - Recent-project expansions cover the useful Jira project bean fields listed
   above; complete permission-scheme-derived permissions and every optional
   project representation remain part of PR 1.
