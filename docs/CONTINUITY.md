@@ -11,7 +11,7 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 - Branch: `feat/pr1-issue-security-schemes`
 - Base: `origin/main` after merged PR #76 (`b5ef8bb`)
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- Pull request: pending
+- Pull request: [#77](https://github.com/e6qu/zzira/pull/77)
 - State: issue-security checkpoint implements all 20 pinned scheme, level,
   member, and project-association operations, the nine Jira holder types,
   sequence-backed identifiers, durable association and level-removal API tasks,
@@ -44,8 +44,7 @@ PR #76's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Open the issue-security pull request, monitor it through every CI job, and
-   resolve review threads inline.
+1. Monitor PR #77 through every CI job and resolve review threads inline.
 2. After merge, continue field and screen scheme administration, followed by
    custom notification events and preferences.
 
