@@ -8,22 +8,27 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
 ## Active delivery
 
-- Branch: `feat/pr1-notification-schemes`
-- Base: `origin/main` after merged PR #75 (`f6cbec8`)
+- Branch: `feat/pr1-issue-security-schemes`
+- Base: `origin/main` after merged PR #76 (`b5ef8bb`)
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- Pull request: [#76](https://github.com/e6qu/zzira/pull/76)
-- State: notification-scheme checkpoint implements all nine pinned scheme and
-  mapping operations, all 12 recipient types, default/project assignments,
-  immutable configuration actions, idempotent permission and issue-security
-  filtered inbox delivery, and durable leased email delivery for core issue
-  events. Clean migrations, the full uncached Go/PostgreSQL suite, vet, native
-  and WebAssembly builds, conformance checks, all 65 Playwright journeys, 320 px
-  reflow, and the light/dark axe sweep pass.
+- Pull request: [#77](https://github.com/e6qu/zzira/pull/77)
+- State: issue-security checkpoint implements all 20 pinned scheme, level,
+  member, and project-association operations, the nine Jira holder types,
+  sequence-backed identifiers, durable association and level-removal API tasks,
+  immutable configuration actions, and one PostgreSQL visibility function that
+  now backs JQL/search, the synchronized action page, notification delivery,
+  create metadata, and REST issue reads. Clean migrations, the full uncached
+  Go/PostgreSQL suite, vet, native and WebAssembly builds, conformance checks,
+  every Playwright journey, 320 px reflow, and the light/dark axe sweep pass.
 - Blockers: none
 
 ## Merged baseline
 
-PR [#74](https://github.com/e6qu/zzira/pull/74) merged Jira project roles on top
+PR [#76](https://github.com/e6qu/zzira/pull/76) merged Jira notification schemes
+and issue-event delivery on top of PR
+[#75](https://github.com/e6qu/zzira/pull/75), which merged Jira permission
+schemes and authorization on top of
+PR [#74](https://github.com/e6qu/zzira/pull/74), which merged Jira project roles on top
 of PR [#73](https://github.com/e6qu/zzira/pull/73), which merged project lifecycle on top
 of PR [#72](https://github.com/e6qu/zzira/pull/72), which merged Jira project
 governance. PR #71 merged Jira site configuration. PR #70 merged the first PR 1 delivery and
@@ -35,13 +40,13 @@ expanded JQL and app functions, stable search identity and paging, Jira votes,
 watches, project components, login-date functions, JSM approval/SLA functions,
 and durable bulk watch/unwatch, editable-field discovery, and field edits.
 
-PR #75's final GitHub matrix passed its required suites before merge.
+PR #76's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Monitor PR #76 through every CI job and resolve review threads inline.
-2. After merge, continue issue-security, field, and screen scheme
-   administration, followed by custom notification events and preferences.
+1. Monitor PR #77 through every CI job and resolve review threads inline.
+2. After merge, continue field and screen scheme administration, followed by
+   custom notification events and preferences.
 
 ## Evidence map
 
@@ -59,6 +64,7 @@ PR #75's final GitHub matrix passed its required suites before merge.
 - [Jira project roles and people](PROJECT_ROLES.md)
 - [Jira permission schemes](PERMISSION_SCHEMES.md)
 - [Jira notification schemes](NOTIFICATION_SCHEMES.md)
+- [Jira issue security schemes](ISSUE_SECURITY_SCHEMES.md)
 
 ## Continuity rules
 

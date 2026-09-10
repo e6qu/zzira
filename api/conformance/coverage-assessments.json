@@ -7175,6 +7175,197 @@
         "docs/NOTIFICATION_SCHEMES.md"
       ],
       "notes": "Returns the assigned scheme to permission-derived project or site administrators; complete nested expansions and every Jira error edge remain."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/issuesecurityschemes",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_security_schemes_test.go",
+        "docs/ISSUE_SECURITY_SCHEMES.md"
+      ],
+      "notes": "Listing every workspace scheme with expanded levels is tested; Jira's nested expansion beans remain."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/issuesecurityschemes",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_security_schemes_test.go",
+        "e2e/issue_security_schemes.spec.ts",
+        "docs/ISSUE_SECURITY_SCHEMES.md"
+      ],
+      "notes": "Creation with levels, holders and a default level is tested through REST and the browser; zzira's pre-v3 caller-supplied id extension is retained and scheme copy remains."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/issuesecurityschemes/level",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_security_schemes_test.go",
+        "docs/ISSUE_SECURITY_SCHEMES.md"
+      ],
+      "notes": "Paging with id, schemeId and onlyDefault filters is tested; expand and level ordering remain."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/issuesecurityschemes/level/default",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_security_schemes_test.go",
+        "docs/ISSUE_SECURITY_SCHEMES.md"
+      ],
+      "notes": "Setting and clearing default levels across schemes is tested; per-scheme error accumulation wording remains."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/issuesecurityschemes/level/member",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_security_schemes_test.go",
+        "docs/ISSUE_SECURITY_SCHEMES.md"
+      ],
+      "notes": "Paging members with id, schemeId and levelId filters is tested; the nested holder expansion beans remain."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/issuesecurityschemes/project",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_security_schemes_test.go",
+        "e2e/issue_security_schemes.spec.ts",
+        "docs/ISSUE_SECURITY_SCHEMES.md"
+      ],
+      "notes": "Paging project-to-scheme mappings with project and scheme filters is tested; expand remains."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/issuesecurityschemes/project",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_security_schemes_test.go",
+        "e2e/issue_security_schemes.spec.ts",
+        "docs/ISSUE_SECURITY_SCHEMES.md"
+      ],
+      "notes": "The durable association task, its 303 task location, mapping completeness and single-flight conflict are tested; Jira's exact per-mapping error wording remains."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/issuesecurityschemes/search",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_security_schemes_test.go",
+        "docs/ISSUE_SECURITY_SCHEMES.md"
+      ],
+      "notes": "Paging with id and projectId filters plus default level and project IDs is tested; expand remains."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/issuesecurityschemes/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_security_schemes_test.go",
+        "e2e/issue_security_schemes.spec.ts",
+        "docs/ISSUE_SECURITY_SCHEMES.md"
+      ],
+      "notes": "Reading an expanded scheme is tested; the nested level holder expansion beans remain."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/issuesecurityschemes/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_security_schemes_test.go",
+        "e2e/issue_security_schemes.spec.ts",
+        "docs/ISSUE_SECURITY_SCHEMES.md"
+      ],
+      "notes": "Name and description updates with case-insensitive uniqueness are tested through REST and the browser."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/issuesecurityschemes/{issueSecuritySchemeId}/members",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_security_schemes_test.go",
+        "docs/ISSUE_SECURITY_SCHEMES.md"
+      ],
+      "notes": "Paging one scheme's members filtered by issueSecurityLevelId is tested; expand remains."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/issuesecurityschemes/{schemeId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_security_schemes_test.go",
+        "e2e/issue_security_schemes.spec.ts",
+        "docs/ISSUE_SECURITY_SCHEMES.md"
+      ],
+      "notes": "Deleting an unassigned scheme and rejecting deletion while projects are assigned are tested."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/issuesecurityschemes/{schemeId}/level",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_security_schemes_test.go",
+        "e2e/issue_security_schemes.spec.ts",
+        "docs/ISSUE_SECURITY_SCHEMES.md"
+      ],
+      "notes": "Atomic level addition with holders and default handling is tested through REST and the browser."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/issuesecurityschemes/{schemeId}/level/{levelId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_security_schemes_test.go",
+        "docs/ISSUE_SECURITY_SCHEMES.md"
+      ],
+      "notes": "The durable removal task, its replaceWith remap of affected work items and single-flight conflict are tested."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/issuesecurityschemes/{schemeId}/level/{levelId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_security_schemes_test.go",
+        "e2e/issue_security_schemes.spec.ts",
+        "docs/ISSUE_SECURITY_SCHEMES.md"
+      ],
+      "notes": "Level name and description updates are tested through REST and the browser."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/issuesecurityschemes/{schemeId}/level/{levelId}/member",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_security_schemes_test.go",
+        "e2e/issue_security_schemes.spec.ts",
+        "docs/ISSUE_SECURITY_SCHEMES.md"
+      ],
+      "notes": "Atomic holder addition across the nine Jira holder types is tested; per-holder managed administration remains."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/issuesecurityschemes/{schemeId}/level/{levelId}/member/{memberId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_security_schemes_test.go",
+        "docs/ISSUE_SECURITY_SCHEMES.md"
+      ],
+      "notes": "Removing one unmanaged holder is tested; managed holders are rejected."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/project/{projectKeyOrId}/issuesecuritylevelscheme",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_security_schemes_test.go",
+        "e2e/issue_security_schemes.spec.ts",
+        "docs/ISSUE_SECURITY_SCHEMES.md"
+      ],
+      "notes": "The project's expanded scheme behind ADMINISTER_PROJECTS is tested through REST and the browser."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/project/{projectKeyOrId}/securitylevel",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_security_schemes_test.go",
+        "e2e/issue_security_schemes.spec.ts",
+        "docs/ISSUE_SECURITY_SCHEMES.md"
+      ],
+      "notes": "Returning only the levels the calling user may apply is tested; the create dialog uses the same visibility function."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/securitylevel/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_security_schemes_test.go",
+        "docs/ISSUE_SECURITY_SCHEMES.md"
+      ],
+      "notes": "Reading one level by id is tested; Jira's expanded level bean remains."
     }
   ]
 }

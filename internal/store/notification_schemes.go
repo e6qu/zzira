@@ -486,8 +486,8 @@ func (s *Store) DeliverIssueNotification(ctx context.Context, workspaceID, actor
 		return err
 	}
 	var projectID, issueKey, summary, assigneeID, reporterID, projectLeadID, securityLevelID string
-	var fields, securityLevels []byte
-	err = tx.QueryRow(ctx, `SELECT i.project_id,i.key,i.summary,COALESCE(i.assignee_id,''),COALESCE(i.reporter_id,''),COALESCE(p.lead_account_id,''),i.fields,COALESCE(i.security_level_id,''),COALESCE(ss.levels,'[]'::jsonb) FROM issues i JOIN projects p ON p.id=i.project_id LEFT JOIN security_schemes ss ON ss.id=p.security_scheme_id WHERE i.workspace_id=$1 AND i.id=$2`, workspaceID, issueID).Scan(&projectID, &issueKey, &summary, &assigneeID, &reporterID, &projectLeadID, &fields, &securityLevelID, &securityLevels)
+	var fields []byte
+	err = tx.QueryRow(ctx, `SELECT i.project_id,i.key,i.summary,COALESCE(i.assignee_id,''),COALESCE(i.reporter_id,''),COALESCE(p.lead_account_id,''),i.fields,COALESCE(i.security_level_id,'') FROM issues i JOIN projects p ON p.id=i.project_id WHERE i.workspace_id=$1 AND i.id=$2`, workspaceID, issueID).Scan(&projectID, &issueKey, &summary, &assigneeID, &reporterID, &projectLeadID, &fields, &securityLevelID)
 	if err != nil {
 		return err
 	}
@@ -519,8 +519,6 @@ func (s *Store) DeliverIssueNotification(ctx context.Context, workspaceID, actor
 	externalEmails := map[string]bool{}
 	var issueFields map[string]any
 	_ = json.Unmarshal(fields, &issueFields)
-	var levels []models.SecurityLevel
-	_ = json.Unmarshal(securityLevels, &levels)
 	addGroup := func(group string) error {
 		groupRows, queryErr := tx.Query(ctx, `SELECT gm.user_id FROM group_members gm JOIN groups g ON g.id=gm.group_id JOIN directories d ON d.id=g.directory_id JOIN sites si ON si.organization_id=d.organization_id WHERE si.workspace_id=$1 AND d.active AND (g.id::text=$2 OR lower(g.name)=lower($2))`, workspaceID, group)
 		if queryErr != nil {
@@ -632,28 +630,12 @@ func (s *Store) DeliverIssueNotification(ctx context.Context, workspaceID, actor
 			continue
 		}
 		if securityLevelID != "" {
-			admin, adminErr := globalPermissionForUser(ctx, tx, workspaceID, userID, "ADMINISTER")
-			if adminErr != nil {
-				return adminErr
+			var visible bool
+			if err = tx.QueryRow(ctx, `SELECT jira_issue_security_visible($1,$2,$3,$4,$5)`, workspaceID, projectID, issueID, userID, securityLevelID).Scan(&visible); err != nil {
+				return err
 			}
-			if !admin {
-				levelFound, member := false, false
-				for _, level := range levels {
-					if level.ID != securityLevelID {
-						continue
-					}
-					levelFound = true
-					for _, accountID := range level.Members {
-						if accountID == userID {
-							member = true
-							break
-						}
-					}
-					break
-				}
-				if levelFound && !member {
-					continue
-				}
+			if !visible {
+				continue
 			}
 		}
 		var email string

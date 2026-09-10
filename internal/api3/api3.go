@@ -67,6 +67,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.issueNavigatorColumns(w, r)
 	case isNotificationSchemePath(path):
 		h.notificationSchemeRoute(w, r, path)
+	case isIssueSecurityPath(path):
+		h.securitySchemeRoute(w, r, path)
 	case isPermissionSchemePath(path):
 		h.permissionSchemeRoute(w, r, path)
 	case isProjectRolePath(path):
@@ -159,10 +161,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.workflowRoute(w, r)
 	case strings.HasPrefix(path, "/workflow/"):
 		h.workflowUsageRoute(w, r, path)
-	case path == "/issuesecurityschemes" && (r.Method == http.MethodGet || r.Method == http.MethodPost):
-		h.securitySchemeRoute(w, r)
-	case strings.HasPrefix(path, "/issuesecurityschemes/"):
-		h.securitySchemeRoute(w, r)
 	case path == "/role" || strings.HasPrefix(path, "/role/"):
 		h.globalProjectRoleRoute(w, r, path)
 	case path == "/webhook" || path == "/webhook/refresh" || strings.HasPrefix(path, "/webhook/"):

@@ -139,7 +139,11 @@ func (s *Store) IssueCreateMetadata(ctx context.Context, workspaceID, userID str
 		if scheme != nil {
 			options := make([]models.CreateFieldOption, 0, len(scheme.Levels))
 			for _, level := range scheme.Levels {
-				if admin || containsString(level.Members, userID) {
+				allowed, visibilityErr := s.CanUseIssueSecurityLevel(ctx, workspaceID, project.ID, "", userID, level.ID)
+				if visibilityErr != nil {
+					return nil, visibilityErr
+				}
+				if admin || allowed {
 					options = append(options, models.CreateFieldOption{ID: level.ID, Name: level.Name})
 				}
 			}
