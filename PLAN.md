@@ -139,7 +139,8 @@ Complete Jira's shared work-management and configuration layer:
   access, while all nine notification-scheme operations now configure durable,
   permission-filtered inbox and email delivery for core issue events, and all
   20 issue-security-scheme operations now govern work-item visibility from one
-  shared function;
+  shared function, and the 17 screen, tab, and tab-field operations now store
+  reusable work item field layouts;
 - finish user preferences, notifications, votes, watches, properties,
   attachments, email, retention, and remaining platform REST families; site
   configuration now covers announcements, feature controls, time tracking,
@@ -322,7 +323,9 @@ site configuration, project governance, project lifecycle, the complete
 permission-evaluation surface, all nine notification-scheme operations with
 core issue-event inbox/email delivery, and the 20-operation issue-security
 surface with one shared visibility function behind search, sync, notifications
-and creation. Continue with field and screen schemes, custom events and
+and creation, and the 17-operation screen definition layer. Continue with screen
+schemes and issue type screen schemes to bind screens to work item forms,
+then field configurations and field configuration schemes, custom events and
 notification preferences, templates, hierarchy, remaining field and ADF
 families, import/export, action-specific permission enforcement, and the
 unassessed Jira Platform operations. Keep each checkpoint vertical and

@@ -8,23 +8,27 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
 ## Active delivery
 
-- Branch: `feat/pr1-issue-security-schemes`
-- Base: `origin/main` after merged PR #76 (`b5ef8bb`)
+- Branch: `feat/pr1-screens`
+- Base: `origin/main` after merged PR #77 (`440cadc`)
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- Pull request: [#77](https://github.com/e6qu/zzira/pull/77)
-- State: issue-security checkpoint implements all 20 pinned scheme, level,
-  member, and project-association operations, the nine Jira holder types,
-  sequence-backed identifiers, durable association and level-removal API tasks,
-  immutable configuration actions, and one PostgreSQL visibility function that
-  now backs JQL/search, the synchronized action page, notification delivery,
-  create metadata, and REST issue reads. Clean migrations, the full uncached
-  Go/PostgreSQL suite, vet, native and WebAssembly builds, conformance checks,
-  every Playwright journey, 320 px reflow, and the light/dark axe sweep pass.
+- Pull request: [#78](https://github.com/e6qu/zzira/pull/78)
+- State: screen checkpoint implements all 17 pinned screen, screen-tab, and
+  tab-field operations, sequence-backed identifiers, a validated field catalog
+  covering built-in and custom fields, dense tab and field ordering with every
+  Jira move form, structural guards that keep one tab per screen and protect the
+  workspace default screen, immutable configuration actions, and a responsive
+  admin journey. Screens are a definition layer: screen schemes and issue type
+  screen schemes bind them to work item forms in the next checkpoint. Clean
+  migrations, the full uncached Go/PostgreSQL suite, vet, native and WebAssembly
+  builds, conformance checks, every Playwright journey, 320 px reflow, and the
+  light/dark axe sweep pass.
 - Blockers: none
 
 ## Merged baseline
 
-PR [#76](https://github.com/e6qu/zzira/pull/76) merged Jira notification schemes
+PR [#77](https://github.com/e6qu/zzira/pull/77) merged Jira issue security
+schemes and enforcement on top of
+PR [#76](https://github.com/e6qu/zzira/pull/76), which merged Jira notification schemes
 and issue-event delivery on top of PR
 [#75](https://github.com/e6qu/zzira/pull/75), which merged Jira permission
 schemes and authorization on top of
@@ -40,13 +44,14 @@ expanded JQL and app functions, stable search identity and paging, Jira votes,
 watches, project components, login-date functions, JSM approval/SLA functions,
 and durable bulk watch/unwatch, editable-field discovery, and field edits.
 
-PR #76's final GitHub matrix passed its required suites before merge.
+PR #77's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Monitor PR #77 through every CI job and resolve review threads inline.
-2. After merge, continue field and screen scheme administration, followed by
-   custom notification events and preferences.
+1. Monitor PR #78 through every CI job and resolve review threads inline.
+2. After merge, add screen schemes and issue type screen schemes so a screen
+   reaches create, edit, and view forms, then field configurations and field
+   configuration schemes.
 
 ## Evidence map
 
@@ -65,6 +70,7 @@ PR #76's final GitHub matrix passed its required suites before merge.
 - [Jira permission schemes](PERMISSION_SCHEMES.md)
 - [Jira notification schemes](NOTIFICATION_SCHEMES.md)
 - [Jira issue security schemes](ISSUE_SECURITY_SCHEMES.md)
+- [Jira screens](SCREENS.md)
 
 ## Continuity rules
 

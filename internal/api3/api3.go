@@ -69,6 +69,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.notificationSchemeRoute(w, r, path)
 	case isIssueSecurityPath(path):
 		h.securitySchemeRoute(w, r, path)
+	case isScreenPath(path):
+		h.screenRoute(w, r, path)
 	case isPermissionSchemePath(path):
 		h.permissionSchemeRoute(w, r, path)
 	case isProjectRolePath(path):
@@ -93,6 +95,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.listFields(w, r)
 	case path == "/field" && r.Method == http.MethodPost:
 		h.createField(w, r)
+	case strings.HasPrefix(path, "/field/") && strings.HasSuffix(path, "/screens"):
+		h.screensForField(w, r, strings.TrimSuffix(strings.TrimPrefix(path, "/field/"), "/screens"))
 	case strings.HasPrefix(path, "/field/"):
 		h.fieldRoute(w, r, strings.Split(strings.TrimPrefix(path, "/field/"), "/"))
 	case path == "/issueLinkType" && r.Method == http.MethodGet:
