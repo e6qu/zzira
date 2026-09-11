@@ -353,6 +353,9 @@ type CreateProjectMeta struct {
 	// exposes per work type, keyed by issue type ID. An absent or empty entry
 	// means no screen governs that form and every project field applies.
 	ScreenFields map[string][]string `json:"-"`
+	// FieldBehaviour holds the project's field configuration rules per work
+	// type. A field without a rule is optional and visible.
+	FieldBehaviour map[string]map[string]FieldBehaviour `json:"-"`
 }
 
 // FieldsForIssueType narrows and orders the project's fields to what the work
@@ -388,7 +391,42 @@ func (m CreateProjectMeta) FieldsForIssueType(issueTypeID string) []CreateFieldM
 	if summary.ID != "" && !summaryOnScreen {
 		out = append(out, summary)
 	}
-	return append(out, selected...)
+	return m.applyFieldBehaviour(issueTypeID, append(out, selected...))
+}
+
+// applyFieldBehaviour stamps the project's field configuration onto a resolved
+// field list: hidden fields drop out, required fields are marked, and an
+// administrator's description replaces the built-in help text. Context fields
+// and summary are exempt, because work cannot be created without them.
+func (m CreateProjectMeta) applyFieldBehaviour(issueTypeID string, fields []CreateFieldMeta) []CreateFieldMeta {
+	rules := m.FieldBehaviour[issueTypeID]
+	if len(rules) == 0 {
+		return fields
+	}
+	out := make([]CreateFieldMeta, 0, len(fields))
+	for _, field := range fields {
+		rule, governed := rules[field.ID]
+		exempt := field.Section == "context" || field.ID == "summary"
+		if governed && rule.IsHidden && !exempt {
+			continue
+		}
+		if governed {
+			if rule.IsRequired {
+				field.Required = true
+			}
+			if rule.Description != "" {
+				field.Description = rule.Description
+			}
+		}
+		out = append(out, field)
+	}
+	return out
+}
+
+// FieldRules exposes the project's field configuration for one work type so the
+// command path can enforce the same rules the forms advertise.
+func (m CreateProjectMeta) FieldRules(issueTypeID string) map[string]FieldBehaviour {
+	return m.FieldBehaviour[issueTypeID]
 }
 
 type IssueCreateMetadata struct {

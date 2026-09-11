@@ -48,6 +48,10 @@ func (s *Store) IssueCreateMetadata(ctx context.Context, workspaceID, userID str
 	if err != nil {
 		return nil, err
 	}
+	fieldBehaviour, err := s.ResolveFieldBehaviourByProject(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
 	priorities, err := s.Priorities(ctx)
 	if err != nil {
 		return nil, err
@@ -174,7 +178,7 @@ func (s *Store) IssueCreateMetadata(ctx context.Context, workspaceID, userID str
 		// type's create form actually shows.
 		meta.Projects = append(meta.Projects, models.CreateProjectMeta{
 			Project: *project, IssueTypes: issueTypes, Fields: fields,
-			ScreenFields: createScreenFields[project.ID]})
+			ScreenFields: createScreenFields[project.ID], FieldBehaviour: fieldBehaviour[project.ID]})
 	}
 	return meta, nil
 }
