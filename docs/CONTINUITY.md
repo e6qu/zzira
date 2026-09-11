@@ -8,27 +8,27 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
 ## Active delivery
 
-- Branch: `feat/pr1-confluence-v1-content`
-- Base: `origin/main` after merged PR #99 (`436a77d`).
+- Branch: `feat/pr1-confluence-page-moves`
+- Base: `origin/main` after merged PR #97 (`261a38f`).
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- State: content state checkpoint audited all eight pinned operations against a
-  running server and found none working. A content state is the label a page
-  carries beyond its text. Confluence has two kinds and they are kept apart
-  here: the states a space suggests, and the custom ones a writer makes and
-  keeps to themselves. No pinned operation writes a space state, so the
-  suggested set is the product's default defined in code rather than a table
-  nothing can edit; custom states are rows, because the write that uses them is
-  pinned. Setting or removing a state publishes a version without changing the
-  body. Two bugs the first probe found: validation errors answered 500 because
-  the new error was not mapped, and a newly created state was read on a
-  different connection from the transaction that made it, so every custom state
-  answered 404.
+- State: page move checkpoint audited all seven pinned operations against a
+  running server and found none working. The find was that pages had no order
+  to move within: children were returned in id order, so a move would have
+  answered 200 and changed nothing — the failure hardest to notice. Pages carry
+  a position now, seeded from the id order readers were already seeing, and
+  every listing follows it; the test asserts the order a reader gets after each
+  move rather than the status code, and it caught exactly that bug on the first
+  probe. The three operations Confluence runs in the background do so here too,
+  on the durable task queue Jira's bulk operations already use, which is why the
+  long task reads belong in this checkpoint rather than a later one.
   Clean migrations, the full uncached Go/PostgreSQL suite, vet, native and
   WebAssembly builds, conformance checks, every Playwright journey, 320 px
   reflow, and the light/dark axe sweep pass.
-- Also open: PR [#98](https://github.com/e6qu/zzira/pull/98) (page moves,
-  stacked on this one) and PR [#100](https://github.com/e6qu/zzira/pull/100)
-  (groups, already rebased onto `main`). Merge this, then #98, then #100.
+- Also open: PR [#100](https://github.com/e6qu/zzira/pull/100) (groups), which
+  is independent of this one. A scratch merge of both was built and verified
+  together before either merged: they share `internal/confluence/v1.go` and it
+  merges cleanly, so the only conflict between them is the conformance ledger
+  and the docs counters.
 - Blockers: none
 
 ## Merged baseline
@@ -90,8 +90,8 @@ PR #90's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Monitor the content state pull request through every CI job and resolve
-   review threads inline. **A stacked branch gets no CI here**: `.github/workflows/ci.yml`
+1. Monitor the page move pull request through every CI job and resolve review
+   threads inline. **A stacked branch gets no CI here**: `.github/workflows/ci.yml`
    triggers only on `pull_request` against `main`, and `gh pr checks` reports
    "no checks reported" rather than a failure, so a stacked PR can look fine and
    be unverified. Base every PR on `main` unless it genuinely needs a helper an
@@ -140,6 +140,7 @@ PR #90's final GitHub matrix passed its required suites before merge.
 - [Confluence custom content](CUSTOM_CONTENT.md)
 - [Confluence users](WIKI_USERS.md)
 - [Confluence content states](CONTENT_STATES.md)
+- [Confluence page moves and copies](PAGE_MOVES.md)
 
 ## Continuity rules
 

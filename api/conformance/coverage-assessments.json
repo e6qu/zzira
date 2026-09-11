@@ -148,6 +148,15 @@
       ]
     },
     {
+      "operationId": "confluence-v1:DELETE:/wiki/rest/api/content/{id}/pageTree",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/page_moves_test.go",
+        "docs/PAGE_MOVES.md"
+      ],
+      "notes": "Trashing a tree is tested end to end, including that the descendants go with it and that a page which is not current is refused."
+    },
+    {
       "operationId": "confluence-v1:DELETE:/wiki/rest/api/content/{id}/restriction",
       "status": "partial",
       "notes": "Removes all page restrictions when the caller can edit the visible page.",
@@ -493,6 +502,24 @@
       ]
     },
     {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/longtask",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/page_moves_test.go",
+        "docs/PAGE_MOVES.md"
+      ],
+      "notes": "The background page operations are listed, with the status and message each reports."
+    },
+    {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/longtask/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/page_moves_test.go",
+        "docs/PAGE_MOVES.md"
+      ],
+      "notes": "One task is read back, for both a successful and a failed operation, including the 404 for an unknown id."
+    },
+    {
       "operationId": "confluence-v1:GET:/wiki/rest/api/search/user",
       "status": "partial",
       "evidence": [
@@ -699,6 +726,15 @@
       "notes": "JWT-authenticated listing returns original grouped definitions for supported dynamic modules."
     },
     {
+      "operationId": "confluence-v1:POST:/wiki/rest/api/content/archive",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/page_moves_test.go",
+        "docs/PAGE_MOVES.md"
+      ],
+      "notes": "Archiving is tested end to end; an archived page leaves the space's current content. Restoring one remains."
+    },
+    {
       "operationId": "confluence-v1:POST:/wiki/rest/api/content/{id}/child/attachment",
       "status": "partial",
       "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; advanced expansions and media processing remain.",
@@ -729,6 +765,15 @@
       ]
     },
     {
+      "operationId": "confluence-v1:POST:/wiki/rest/api/content/{id}/copy",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/page_moves_test.go",
+        "docs/PAGE_MOVES.md"
+      ],
+      "notes": "Copying one page is tested, including the chosen attachments, properties and labels, the rename when a title is already used, and the refused unknown space and destination type. Copying permissions and custom contents remains."
+    },
+    {
       "operationId": "confluence-v1:POST:/wiki/rest/api/content/{id}/label",
       "status": "partial",
       "notes": "Adds one or up to 100 validated label objects to a visible current page and returns the legacy LabelArray shape.",
@@ -743,6 +788,15 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ]
+    },
+    {
+      "operationId": "confluence-v1:POST:/wiki/rest/api/content/{id}/pagehierarchy/copy",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/page_moves_test.go",
+        "docs/PAGE_MOVES.md"
+      ],
+      "notes": "The queued hierarchy copy is tested end to end: it answers 202, lands under its destination with the title prefix applied, and a copy into itself fails with the task reporting why."
     },
     {
       "operationId": "confluence-v1:POST:/wiki/rest/api/content/{id}/restriction",
@@ -932,6 +986,15 @@
         "docs/CONTENT_STATES.md"
       ],
       "notes": "Setting a state is tested by id and by describing a new custom one, including that it publishes a version without changing the body, that re-using a name keeps one state, and the refused id-and-description, empty request, bad colour, long name, missing status and unknown id."
+    },
+    {
+      "operationId": "confluence-v1:PUT:/wiki/rest/api/content/{pageId}/move/{position}/{targetId}",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/page_moves_test.go",
+        "docs/PAGE_MOVES.md"
+      ],
+      "notes": "All four positions are tested by the order a reader then sees, not by the status code; an unknown position, a move relative to itself and a move beneath its own descendant are refused. Moving between spaces remains."
     },
     {
       "operationId": "confluence-v1:PUT:/wiki/rest/api/user/{userId}/property/{key}",

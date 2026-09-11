@@ -38,6 +38,20 @@ func (h *V1Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	parts := strings.Split(strings.Trim(strings.TrimPrefix(r.URL.Path, "/wiki/rest/api/"), "/"), "/")
 	switch {
+	case len(parts) == 1 && parts[0] == "longtask" && r.Method == "GET":
+		h.v1LongTasks(w, r, ws, actor, "")
+	case len(parts) == 2 && parts[0] == "longtask" && r.Method == "GET":
+		h.v1LongTasks(w, r, ws, actor, parts[1])
+	case len(parts) == 2 && parts[0] == "content" && parts[1] == "archive" && r.Method == "POST":
+		h.v1ArchivePages(w, r, ws, actor)
+	case len(parts) == 3 && parts[0] == "content" && parts[2] == "copy" && r.Method == "POST":
+		h.v1CopyPage(w, r, ws, actor, parts[1])
+	case len(parts) == 4 && parts[0] == "content" && parts[2] == "pagehierarchy" && parts[3] == "copy" && r.Method == "POST":
+		h.v1CopyPageHierarchy(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "content" && parts[2] == "pageTree" && r.Method == "DELETE":
+		h.v1TrashPageTree(w, r, ws, actor, parts[1])
+	case len(parts) == 5 && parts[0] == "content" && parts[2] == "move" && r.Method == "PUT":
+		h.v1MovePage(w, r, ws, actor, parts[1], parts[3], parts[4])
 	case len(parts) == 1 && parts[0] == "content-states" && r.Method == "GET":
 		h.v1CustomContentStates(w, r, ws, actor)
 	case len(parts) == 3 && parts[0] == "content" && parts[2] == "state":

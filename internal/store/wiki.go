@@ -211,7 +211,7 @@ func (s *Store) WikiPageAtVersion(ctx context.Context, ws, user, id string, vers
 	return page, err
 }
 func (s *Store) WikiPages(ctx context.Context, ws, user, space, status, title string) ([]*models.WikiPage, error) {
-	rows, err := s.Pool.Query(ctx, wikiPageSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND ($3='' OR s.id::text=$3) AND p.status=$4 AND ($5='' OR p.title=$5) ORDER BY p.id`, ws, user, space, status, title)
+	rows, err := s.Pool.Query(ctx, wikiPageSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND ($3='' OR s.id::text=$3) AND p.status=$4 AND ($5='' OR p.title=$5) ORDER BY p.position,p.id`, ws, user, space, status, title)
 	if err != nil {
 		return nil, err
 	}

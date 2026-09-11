@@ -65,6 +65,8 @@ func writeError(w http.ResponseWriter, err error) {
 		failure(w, 409, err.Error())
 	case errors.Is(err, store.ErrWikiUserValidation):
 		failure(w, 400, err.Error())
+	case errors.Is(err, store.ErrWikiMoveValidation):
+		failure(w, 400, err.Error())
 	case errors.Is(err, store.ErrWikiContentStateValidation):
 		failure(w, 400, err.Error())
 	case errors.Is(err, store.ErrWikiValidation):
