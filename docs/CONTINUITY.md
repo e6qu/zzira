@@ -11,7 +11,7 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 - Branch: `feat/pr1-dashboard-audit`
 - Base: `origin/main` after merged PR #90 (`33925ce`)
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- Pull request: pending
+- Pull request: [#91](https://github.com/e6qu/zzira/pull/91)
 - State: dashboard checkpoint audited all 17 pinned operations against a running
   server and found sixteen working, which is a much better result than boards or
   sprints and worth recording as such. Only Jira's bulk edit was missing; it now
@@ -71,8 +71,7 @@ PR #90's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Open the dashboard pull request, monitor it through every CI job, and resolve
-   review threads inline.
+1. Monitor PR #91 through every CI job and resolve review threads inline.
 2. Issue worklogs (10) and Issue fields (11) are the next families with tests but
    no operation-level evidence. Probe every operation against a running server
    before assessing; the four audits so far ran 11 of 15, 8 of 33, 5 of 13 and
