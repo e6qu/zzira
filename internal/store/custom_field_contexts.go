@@ -470,7 +470,7 @@ func (s *Store) SetCustomFieldContextDefault(ctx context.Context, workspaceID, a
 // CustomFieldDefaultsByProject resolves every custom field's applicable context
 // and its default value for each project and work type, in one query, for
 // IssueCreateMetadata.
-func (s *Store) CustomFieldDefaultsByProject(ctx context.Context, workspaceID string) (map[string]map[string]map[string]string, error) {
+func (s *Store) CustomFieldContextsByProject(ctx context.Context, workspaceID string) (map[string]map[string]map[string]models.CustomFieldContextInfo, error) {
 	// Every project and work type gets an entry, even when no custom field
 	// applies: an empty set means "this form shows no custom fields", which is
 	// not the same as "no context governs this form".
@@ -488,7 +488,7 @@ func (s *Store) CustomFieldDefaultsByProject(ctx context.Context, workspaceID st
 		return nil, err
 	}
 	defer rows.Close()
-	resolved := map[string]map[string]map[string]string{}
+	resolved := map[string]map[string]map[string]models.CustomFieldContextInfo{}
 	for rows.Next() {
 		var projectID, issueTypeID, value string
 		var fieldID *string
@@ -496,21 +496,93 @@ func (s *Store) CustomFieldDefaultsByProject(ctx context.Context, workspaceID st
 			return nil, err
 		}
 		if resolved[projectID] == nil {
-			resolved[projectID] = map[string]map[string]string{}
+			resolved[projectID] = map[string]map[string]models.CustomFieldContextInfo{}
 		}
 		if resolved[projectID][issueTypeID] == nil {
-			resolved[projectID][issueTypeID] = map[string]string{}
+			resolved[projectID][issueTypeID] = map[string]models.CustomFieldContextInfo{}
 		}
 		if fieldID != nil {
-			resolved[projectID][issueTypeID][*fieldID] = value
+			resolved[projectID][issueTypeID][*fieldID] = models.CustomFieldContextInfo{Default: value}
 		}
 	}
-	return resolved, rows.Err()
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	return resolved, s.attachContextOptions(ctx, workspaceID, resolved)
+}
+
+// attachContextOptions fills in each select field's choices from the context
+// that governs it, in the order an administrator arranged them.
+func (s *Store) attachContextOptions(ctx context.Context, workspaceID string, resolved map[string]map[string]map[string]models.CustomFieldContextInfo) error {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT p.id, work_type.id, f.id, o.id::text, o.value
+		FROM projects p
+		CROSS JOIN issue_types work_type
+		JOIN custom_fields f ON f.active AND f.type=$2 AND (f.workspace_id IS NULL OR f.workspace_id=$1)
+		JOIN custom_field_options o
+			ON o.context_id = jira_custom_field_context(f.id,p.id,work_type.id) AND NOT o.disabled
+		WHERE p.workspace_id=$1
+		ORDER BY p.id, work_type.id, f.id, o.position, o.id`, workspaceID, models.CustomFieldSelect)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var projectID, issueTypeID, fieldID, optionID, value string
+		if err = rows.Scan(&projectID, &issueTypeID, &fieldID, &optionID, &value); err != nil {
+			return err
+		}
+		types := resolved[projectID]
+		if types == nil {
+			continue
+		}
+		fields := types[issueTypeID]
+		if fields == nil {
+			continue
+		}
+		info, governed := fields[fieldID]
+		if !governed {
+			continue
+		}
+		info.Options = append(info.Options, models.CreateFieldOption{ID: optionID, Name: value})
+		fields[fieldID] = info
+	}
+	return rows.Err()
 }
 
 // CustomFieldWriteScope reports which of the workspace's custom fields exist and
 // which of them a context reaches for one project and work type, so a write path
 // can tell "unknown field" from "out of context" in one round trip.
+// CustomFieldOptionScope lists the option IDs each select field offers for one
+// project and work type, so a write path can reject a value the applicable
+// context does not contain.
+func (s *Store) CustomFieldOptionScope(ctx context.Context, workspaceID, projectID, issueTypeID string) (map[string]map[string]bool, error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT f.id, o.id::text, o.disabled
+		FROM custom_fields f
+		JOIN custom_field_options o ON o.context_id = jira_custom_field_context(f.id,$2,NULLIF($3,''))
+		WHERE f.active AND f.type=$4 AND (f.workspace_id IS NULL OR f.workspace_id=$1)`,
+		workspaceID, projectID, issueTypeID, models.CustomFieldSelect)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	scope := map[string]map[string]bool{}
+	for rows.Next() {
+		var fieldID, optionID string
+		var disabled bool
+		if err = rows.Scan(&fieldID, &optionID, &disabled); err != nil {
+			return nil, err
+		}
+		if scope[fieldID] == nil {
+			scope[fieldID] = map[string]bool{}
+		}
+		// A disabled option keeps existing values valid but cannot be chosen.
+		scope[fieldID][optionID] = !disabled
+	}
+	return scope, rows.Err()
+}
+
 func (s *Store) CustomFieldWriteScope(ctx context.Context, workspaceID, projectID, issueTypeID string) (known, applicable map[string]bool, err error) {
 	rows, err := s.Pool.Query(ctx, `
 		SELECT f.id, jira_custom_field_context(f.id,$2,NULLIF($3,'')) IS NOT NULL

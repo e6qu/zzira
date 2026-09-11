@@ -8,24 +8,27 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
 ## Active delivery
 
-- Branch: `feat/pr1-context-write-enforcement`
-- Base: `origin/main` after merged PR #85 (`dcd8daf`)
+- Branch: `feat/pr1-select-custom-fields`
+- Base: `origin/main` after merged PR #86 (`dcd8daf` then release 0.15.1)
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- Pull request: [#86](https://github.com/e6qu/zzira/pull/86)
-- State: hardening checkpoint, no new pinned operations, and the last place the
-  form-configuration layers disagreed. A custom field context decided which
-  fields a form offered while the command path still accepted a REST write
-  setting one outside its context; create, edit, and transition now reject it,
-  matching what field configurations already did for a hidden field. One store
-  query separates an unknown field from an out-of-context one, so the error says
-  which. Clean migrations, the full uncached Go/PostgreSQL suite, vet, native and
-  WebAssembly builds, conformance checks, every Playwright journey, 320 px
-  reflow, and the light/dark axe sweep pass.
+- Pull request: pending
+- State: select-field checkpoint adds an option-bearing custom field type and
+  implements all seven pinned custom field option operations. Options belong to
+  the context that governs the field, so the same field can offer different
+  choices per project or work type; they reach createmeta and the create dialog
+  in administrator order and gate every write. A disabled option leaves the form
+  while existing work items keep it, and deleting one still in use requires a
+  replacement that migrates those work items in the same transaction. Clean
+  migrations, the full uncached Go/PostgreSQL suite, vet, native and WebAssembly
+  builds, conformance checks, every Playwright journey, 320 px reflow, and the
+  light/dark axe sweep pass.
 - Blockers: none
 
 ## Merged baseline
 
-PR [#85](https://github.com/e6qu/zzira/pull/85) merged bulk edit narrowing on
+PR [#86](https://github.com/e6qu/zzira/pull/86) merged context enforcement on
+writes on top of
+PR [#85](https://github.com/e6qu/zzira/pull/85), which merged bulk edit narrowing on
 top of
 PR [#84](https://github.com/e6qu/zzira/pull/84), which merged Jira custom field
 contexts on top of
@@ -57,16 +60,16 @@ expanded JQL and app functions, stable search identity and paging, Jira votes,
 watches, project components, login-date functions, JSM approval/SLA functions,
 and durable bulk watch/unwatch, editable-field discovery, and field edits.
 
-PR #85's final GitHub matrix passed its required suites before merge.
+PR #86's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Monitor PR #86 through every CI job and resolve review threads inline.
-2. After merge, the form-configuration model has no remaining bypass. The next
-   decision is whether to add an option-bearing custom field type, which the
-   seven custom field option operations need before they can mean anything, and
-   which is new product surface rather than a wrapper: a field type through
-   create, edit, search, JQL, rendering, and bulk.
+1. Open the select-field pull request, monitor it through every CI job, and
+   resolve review threads inline.
+2. After merge, the field families that remain are multi-select and cascading
+   custom fields, which hold an array of options rather than one, and the
+   `/config/fieldschemes` association surface. Neither is a wrapper around what
+   exists.
 
 ## Evidence map
 
@@ -89,6 +92,7 @@ PR #85's final GitHub matrix passed its required suites before merge.
 - [Jira screen schemes](SCREEN_SCHEMES.md)
 - [Jira field configurations](FIELD_CONFIGURATIONS.md)
 - [Jira custom field contexts](CUSTOM_FIELD_CONTEXTS.md)
+- [Jira select custom fields](CUSTOM_FIELD_OPTIONS.md)
 
 ## Continuity rules
 

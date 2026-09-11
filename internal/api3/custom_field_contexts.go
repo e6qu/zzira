@@ -61,6 +61,14 @@ func (h *Handler) fieldContextRoute(w http.ResponseWriter, r *http.Request, fiel
 		h.changeFieldContextScope(w, r, fieldID, parts[0], "project", false)
 	case len(parts) == 3 && parts[1] == "project" && parts[2] == "remove":
 		h.changeFieldContextScope(w, r, fieldID, parts[0], "project", true)
+	case len(parts) == 2 && parts[1] == "option":
+		h.customFieldOptionCollection(w, r, fieldID, parts[0])
+	case len(parts) == 3 && parts[1] == "option" && parts[2] == "move":
+		h.moveCustomFieldOptions(w, r, fieldID, parts[0])
+	case len(parts) == 3 && parts[1] == "option":
+		h.deleteCustomFieldOption(w, r, fieldID, parts[0], parts[2], false)
+	case len(parts) == 4 && parts[1] == "option" && parts[3] == "issue":
+		h.deleteCustomFieldOption(w, r, fieldID, parts[0], parts[2], true)
 	default:
 		jiraError(w, http.StatusNotFound, "No resource found")
 	}

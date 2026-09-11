@@ -241,6 +241,13 @@ func (s *Service) validateCustomFields(ctx context.Context, projectID string, va
 			if err := json.Unmarshal(raw, &value); err != nil || !validCreateDatetime(value) {
 				return fmt.Errorf("custom field %q must be an RFC 3339 or local date-time", id)
 			}
+		case models.CustomFieldSelect:
+			// The value is an option ID; that it belongs to the applicable
+			// context is checked where the work type is known.
+			var value string
+			if err := json.Unmarshal(raw, &value); err != nil {
+				return fmt.Errorf("custom field %q must be an option id", id)
+			}
 		default:
 			return fmt.Errorf("custom field %q has unsupported type %q", id, field.Type)
 		}

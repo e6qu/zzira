@@ -172,7 +172,7 @@ func (h *Handler) createField(w http.ResponseWriter, r *http.Request) {
 		fieldType = models.CustomFieldText
 	}
 	switch fieldType {
-	case models.CustomFieldText, models.CustomFieldNumber, models.CustomFieldDatetime:
+	case models.CustomFieldText, models.CustomFieldNumber, models.CustomFieldDatetime, models.CustomFieldSelect:
 	default:
 		jiraFieldError(w, http.StatusBadRequest, map[string]string{"type": "type must be text, number, or datetime"})
 		return

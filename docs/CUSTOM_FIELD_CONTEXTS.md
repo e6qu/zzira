@@ -79,12 +79,8 @@ global context by trigger.
 - `migrations/136_custom_field_contexts.sql` is exercised from a clean
   PostgreSQL schema. The page is in the light and dark axe sweep.
 
-The seven `Issue custom field options` operations are **not** implemented and
-are not assessed. They administer the options of a select-style field, and ZZIRA
-custom fields are text, number, or datetime only; there is no option-bearing
-field type for them to govern. Implementing them would mean inventing a field
-type first, which is its own piece of work rather than a shell around an empty
-concept.
+A select custom field's options also belong to its context; see
+[CUSTOM_FIELD_OPTIONS.md](CUSTOM_FIELD_OPTIONS.md).
 
 `expand` and `orderBy` on these
 endpoints, Jira's context-scoped field values on issues, and exact Jira error

@@ -6,6 +6,7 @@ const (
 	CustomFieldText     = "text"
 	CustomFieldNumber   = "number"
 	CustomFieldDatetime = "datetime"
+	CustomFieldSelect   = "select"
 )
 
 // Tombstone actions are per-user: only excluded users receive them, telling
@@ -219,4 +220,14 @@ type CustomFieldContext struct {
 	ProjectIDs    []string `json:"-"`
 	IssueTypeIDs  []string `json:"-"`
 	DefaultValue  string   `json:"-"`
+}
+
+// CustomFieldOption is one choice a select custom field offers within the
+// context that owns it.
+type CustomFieldOption struct {
+	ID        string `json:"id"`
+	ContextID string `json:"-"`
+	Value     string `json:"value"`
+	Disabled  bool   `json:"disabled"`
+	Position  int    `json:"-"`
 }
