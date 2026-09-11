@@ -184,8 +184,18 @@ func TestScreenContract(t *testing.T) {
 	call(adminID, http.MethodDelete, fieldsPath+"/priority", "", http.StatusNotFound)
 	assertFieldOrder("description", "summary")
 
-	// "labels" is already seeded on the default screen; "components" is not.
-	call(adminID, http.MethodPost, "/rest/api/3/screens/addToDefault/labels", "", http.StatusConflict)
+	// The default screen carries every system field, so addToDefault is a
+	// conflict until a field is taken off it.
+	defaultTabs := call(adminID, http.MethodGet, "/rest/api/3/screens/"+defaultScreenID+"/tabs", "", http.StatusOK)
+	var defaultTabList []struct {
+		ID int64 `json:"id"`
+	}
+	if err = json.Unmarshal(defaultTabs.Body.Bytes(), &defaultTabList); err != nil || len(defaultTabList) != 1 {
+		t.Fatalf("tabs=%+v err=%v body=%s", defaultTabList, err, defaultTabs.Body.String())
+	}
+	defaultTab := fmt.Sprint(defaultTabList[0].ID)
+	call(adminID, http.MethodPost, "/rest/api/3/screens/addToDefault/components", "", http.StatusConflict)
+	call(adminID, http.MethodDelete, "/rest/api/3/screens/"+defaultScreenID+"/tabs/"+defaultTab+"/fields/components", "", http.StatusNoContent)
 	call(adminID, http.MethodPost, "/rest/api/3/screens/addToDefault/components", "", http.StatusOK)
 	defaultFields := call(adminID, http.MethodGet, "/rest/api/3/field/components/screens", "", http.StatusOK)
 	if !strings.Contains(defaultFields.Body.String(), `"id":`+defaultScreenID) {

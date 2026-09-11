@@ -1100,6 +1100,8 @@ func (h *Handler) buildCreateDialogData(ctx context.Context, workspaceID, userID
 			break
 		}
 	}
+	// The project's create screen decides which fields this work type shows.
+	selected.Fields = selected.FieldsForIssueType(values["issuetype"])
 	if !selectedSubtask {
 		visibleFields := make([]models.CreateFieldMeta, 0, len(selected.Fields))
 		for _, field := range selected.Fields {

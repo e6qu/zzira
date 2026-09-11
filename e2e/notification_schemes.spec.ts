@@ -45,9 +45,13 @@ test('site administrators configure delivery and recipients receive a work item 
   await expect(page.getByRole('heading', { name: schemeName, level: 2 })).toBeVisible();
   await expect(page.locator('.nav-project-notifications')).toHaveAttribute('aria-current', 'page');
 
+  // The header button opens the dialog already scoped to the current project, so
+  // re-selecting it would trigger a metadata re-render that discards the summary.
   await page.locator('#global-create-issue').click();
   const dialog = page.getByRole('dialog', { name: 'Create issue' });
-  await dialog.getByLabel('Project').selectOption({ label: 'ZZIRA Demo (ZZ)' });
+  await expect(dialog).toBeVisible();
+  await expect(page.locator('#create-summary')).toBeFocused();
+  await expect(dialog.getByLabel('Project')).toHaveValue('ZZ');
   await dialog.getByLabel('Summary', { exact: false }).fill(`Notification journey ${Date.now()}`);
   await dialog.getByRole('button', { name: 'Create issue', exact: true }).click();
   await expect(page).toHaveURL(/\/browse\/ZZ-\d+$/);

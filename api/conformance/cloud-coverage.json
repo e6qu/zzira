@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 618,
+  "assessedTotal": 633,
   "counts": {
     "delivered": 0,
-    "partial": 611,
+    "partial": 626,
     "missing": 7,
-    "unassessed": 589
+    "unassessed": 574
   },
   "countsByFamily": {
     "automation": {
@@ -24,9 +24,9 @@
     },
     "jira-platform": {
       "delivered": 0,
-      "partial": 250,
+      "partial": 265,
       "missing": 0,
-      "unassessed": 367
+      "unassessed": 352
     },
     "jira-service-management": {
       "delivered": 0,
@@ -2642,89 +2642,128 @@
       "operationId": "jira-v3:GET:/rest/api/3/issuetypescreenscheme",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/screen_schemes_test.go",
+        "e2e/screen_schemes.spec.ts",
+        "docs/SCREEN_SCHEMES.md"
+      ],
+      "notes": "Paging work type screen schemes with an id filter is tested; expand and orderBy remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/issuetypescreenscheme",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/screen_schemes_test.go",
+        "e2e/screen_schemes.spec.ts",
+        "docs/SCREEN_SCHEMES.md"
+      ],
+      "notes": "Creation with work type mappings is tested, including the required default mapping and unknown work type rejection."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issuetypescreenscheme/mapping",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/screen_schemes_test.go",
+        "docs/SCREEN_SCHEMES.md"
+      ],
+      "notes": "Paging mappings filtered by scheme is tested; expand remains."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issuetypescreenscheme/project",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/screen_schemes_test.go",
+        "docs/SCREEN_SCHEMES.md"
+      ],
+      "notes": "Paging project assignments with a projectId filter is tested; expand remains."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/issuetypescreenscheme/project",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/screen_schemes_test.go",
+        "e2e/screen_schemes.spec.ts",
+        "docs/SCREEN_SCHEMES.md"
+      ],
+      "notes": "Assigning a project is tested through REST and the browser, and the assignment changes which fields createmeta and editmeta return."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/issuetypescreenscheme/{issueTypeScreenSchemeId}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/screen_schemes_test.go",
+        "e2e/screen_schemes.spec.ts",
+        "docs/SCREEN_SCHEMES.md"
+      ],
+      "notes": "Deletion refuses a scheme assigned to a project and the workspace default scheme."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/issuetypescreenscheme/{issueTypeScreenSchemeId}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/screen_schemes_test.go",
+        "docs/SCREEN_SCHEMES.md"
+      ],
+      "notes": "Name and description updates with case-insensitive uniqueness are tested."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/issuetypescreenscheme/{issueTypeScreenSchemeId}/mapping",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/screen_schemes_test.go",
+        "e2e/screen_schemes.spec.ts",
+        "docs/SCREEN_SCHEMES.md"
+      ],
+      "notes": "Adding and repointing work type mappings is tested through REST and the browser."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/issuetypescreenscheme/{issueTypeScreenSchemeId}/mapping/default",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/screen_schemes_test.go",
+        "docs/SCREEN_SCHEMES.md"
+      ],
+      "notes": "Repointing the fallback mapping is tested; it can never be removed."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/issuetypescreenscheme/{issueTypeScreenSchemeId}/mapping/remove",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/screen_schemes_test.go",
+        "e2e/screen_schemes.spec.ts",
+        "docs/SCREEN_SCHEMES.md"
+      ],
+      "notes": "Removing work type mappings is tested, including the default-mapping and unknown-mapping rejections."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issuetypescreenscheme/{issueTypeScreenSchemeId}/project",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/screen_schemes_test.go",
+        "docs/SCREEN_SCHEMES.md"
+      ],
+      "notes": "Paging the projects using one scheme is tested; expand remains."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/jql/autocompletedata",
@@ -4483,33 +4522,49 @@
       "operationId": "jira-v3:GET:/rest/api/3/screenscheme",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/screen_schemes_test.go",
+        "e2e/screen_schemes.spec.ts",
+        "docs/SCREEN_SCHEMES.md"
+      ],
+      "notes": "Paging schemes with their operation mappings and an id filter is tested; expand, orderBy and queryString remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/screenscheme",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/screen_schemes_test.go",
+        "e2e/screen_schemes.spec.ts",
+        "docs/SCREEN_SCHEMES.md"
+      ],
+      "notes": "Creation is tested through REST and the browser, including the required default screen and rejection of unknown operations."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/screenscheme/{screenSchemeId}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/screen_schemes_test.go",
+        "e2e/screen_schemes.spec.ts",
+        "docs/SCREEN_SCHEMES.md"
+      ],
+      "notes": "Deletion refuses a scheme used by a work type mapping and the workspace default scheme."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/screenscheme/{screenSchemeId}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/screen_schemes_test.go",
+        "e2e/screen_schemes.spec.ts",
+        "docs/SCREEN_SCHEMES.md"
+      ],
+      "notes": "Name, description and per-operation screen updates are tested; the default screen may be repointed but not removed."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/search",

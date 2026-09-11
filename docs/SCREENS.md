@@ -64,10 +64,11 @@ grants, and issue security holders.
   provisions the default screen for existing and future workspaces. The page is
   in the light and dark axe sweep.
 
-Screens are a definition layer in this checkpoint: they are not yet bound to
-work item forms. Jira reaches issues through screen schemes and issue type
-screen schemes, and those 15 operations are the next checkpoint; until they
-land, `IssueCreateMetadata`, `editmeta`, and workflow transition screens keep
-their current field sets, and deleting a screen cannot yet conflict with a
-screen scheme. Field configurations, per-project field scoping, the `expand`
-and `projectKey` query parameters, and exact Jira error wording also remain.
+Screens now drive the create and edit forms through screen schemes and work
+type screen schemes; see [SCREEN_SCHEMES.md](SCREEN_SCHEMES.md) for the
+resolution chain and its boundary. A screen a screen scheme uses cannot be
+deleted, and the default screen carries every system field the forms render.
+Workflow transition screens still carry their own field list rather than
+referencing a screen. Field configurations, per-project field scoping, the
+`expand` and `projectKey` query parameters, and exact Jira error wording also
+remain.
