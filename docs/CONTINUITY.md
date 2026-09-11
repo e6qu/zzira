@@ -8,23 +8,26 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
 ## Active delivery
 
-- Branch: `feat/pr1-bulk-edit-field-scope`
-- Base: `origin/main` after merged PR #84 (`47eaf70`)
+- Branch: `feat/pr1-context-write-enforcement`
+- Base: `origin/main` after merged PR #85 (`dcd8daf`)
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- Pull request: [#85](https://github.com/e6qu/zzira/pull/85)
-- State: hardening checkpoint, no new pinned operations. Bulk edit offered the
-  selected projects' field superset, so it bypassed screens, field
-  configurations and custom field contexts at once. It now intersects across the
-  distinct project and work type pairs in the selection, resolving each through
-  the same functions the single-item forms use, and the same set gates the
-  write. Clean migrations, the full uncached Go/PostgreSQL suite, vet, native
-  and WebAssembly builds, conformance checks, every Playwright journey, 320 px
+- Pull request: pending
+- State: hardening checkpoint, no new pinned operations, and the last place the
+  form-configuration layers disagreed. A custom field context decided which
+  fields a form offered while the command path still accepted a REST write
+  setting one outside its context; create, edit, and transition now reject it,
+  matching what field configurations already did for a hidden field. One store
+  query separates an unknown field from an out-of-context one, so the error says
+  which. Clean migrations, the full uncached Go/PostgreSQL suite, vet, native and
+  WebAssembly builds, conformance checks, every Playwright journey, 320 px
   reflow, and the light/dark axe sweep pass.
 - Blockers: none
 
 ## Merged baseline
 
-PR [#84](https://github.com/e6qu/zzira/pull/84) merged Jira custom field
+PR [#85](https://github.com/e6qu/zzira/pull/85) merged bulk edit narrowing on
+top of
+PR [#84](https://github.com/e6qu/zzira/pull/84), which merged Jira custom field
 contexts on top of
 PR [#82](https://github.com/e6qu/zzira/pull/82), which merged priority resolution on
 edit and the sticky-header scroll offset on top of
@@ -54,15 +57,17 @@ expanded JQL and app functions, stable search identity and paging, Jira votes,
 watches, project components, login-date functions, JSM approval/SLA functions,
 and durable bulk watch/unwatch, editable-field discovery, and field edits.
 
-PR #84's final GitHub matrix passed its required suites before merge.
+PR #85's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Monitor PR #85 through every CI job and resolve review threads inline.
-2. After merge, decide whether to add an option-bearing custom field type, which
-   the seven custom field option operations need before they can mean anything.
-   The single-item command path still accepts a custom field set outside its
-   context, unlike a field configuration's hidden rule.
+1. Open the context-enforcement pull request, monitor it through every CI job,
+   and resolve review threads inline.
+2. After merge, the form-configuration model has no remaining bypass. The next
+   decision is whether to add an option-bearing custom field type, which the
+   seven custom field option operations need before they can mean anything, and
+   which is new product surface rather than a wrapper: a field type through
+   create, edit, search, JQL, rendering, and bulk.
 
 ## Evidence map
 

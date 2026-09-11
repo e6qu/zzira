@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/e6qu/zzira/internal/attachments"
@@ -104,6 +105,9 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 		return nil, nil, fmt.Errorf("subtasks are disabled for this site")
 	}
 	if err = s.enforceFieldConfiguration(ctx, in, project.ID, issueType.ID); err != nil {
+		return nil, nil, err
+	}
+	if err = s.enforceCustomFieldContexts(ctx, in.WorkspaceID, project.ID, issueType.ID, in.Fields); err != nil {
 		return nil, nil, err
 	}
 	parentID := ""
@@ -379,6 +383,33 @@ func (s *Service) enforceFieldConfigurationWrite(ctx context.Context, workspaceI
 		}
 		if rule.IsRequired && !intent.hasValue {
 			return fmt.Errorf("%s is required by the field configuration for this work type", field)
+		}
+	}
+	return nil
+}
+
+// enforceCustomFieldContexts rejects a write that sets a custom field the
+// project and work type's context does not reach. Without it a context would
+// govern which fields a form offers while REST clients wrote past it, which is
+// the gap field configurations already close for hidden fields.
+func (s *Service) enforceCustomFieldContexts(ctx context.Context, workspaceID, projectID, issueTypeID string, fields map[string]json.RawMessage) error {
+	touched := []string{}
+	for field, raw := range fields {
+		if suppliedFieldValue(raw) {
+			touched = append(touched, field)
+		}
+	}
+	if len(touched) == 0 {
+		return nil
+	}
+	known, applicable, err := s.Store.CustomFieldWriteScope(ctx, workspaceID, projectID, issueTypeID)
+	if err != nil {
+		return err
+	}
+	sort.Strings(touched)
+	for _, field := range touched {
+		if known[field] && !applicable[field] {
+			return fmt.Errorf("%s is not available for this project and work type", field)
 		}
 	}
 	return nil

@@ -507,3 +507,31 @@ func (s *Store) CustomFieldDefaultsByProject(ctx context.Context, workspaceID st
 	}
 	return resolved, rows.Err()
 }
+
+// CustomFieldWriteScope reports which of the workspace's custom fields exist and
+// which of them a context reaches for one project and work type, so a write path
+// can tell "unknown field" from "out of context" in one round trip.
+func (s *Store) CustomFieldWriteScope(ctx context.Context, workspaceID, projectID, issueTypeID string) (known, applicable map[string]bool, err error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT f.id, jira_custom_field_context(f.id,$2,NULLIF($3,'')) IS NOT NULL
+		FROM custom_fields f
+		WHERE f.active AND (f.workspace_id IS NULL OR f.workspace_id=$1)`,
+		workspaceID, projectID, issueTypeID)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+	known, applicable = map[string]bool{}, map[string]bool{}
+	for rows.Next() {
+		var fieldID string
+		var applies bool
+		if err = rows.Scan(&fieldID, &applies); err != nil {
+			return nil, nil, err
+		}
+		known[fieldID] = true
+		if applies {
+			applicable[fieldID] = true
+		}
+	}
+	return known, applicable, rows.Err()
+}

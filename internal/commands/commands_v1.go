@@ -160,6 +160,9 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 	if err = s.enforceFieldConfigurationWrite(ctx, in.WorkspaceID, issue, update); err != nil {
 		return nil, nil, err
 	}
+	if err = s.enforceCustomFieldContexts(ctx, in.WorkspaceID, issue.ProjectID, issue.IssueType.ID, in.Fields); err != nil {
+		return nil, nil, err
+	}
 	issue, action, err := s.Store.UpdateIssue(ctx, in.ActorID, in.WorkspaceID, issue.ID, update)
 	if err != nil {
 		return nil, nil, err
@@ -309,6 +312,9 @@ func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, worksp
 		return nil, nil, err
 	}
 	if err := s.enforceFieldConfigurationWrite(ctx, workspaceID, issue, update); err != nil {
+		return nil, nil, err
+	}
+	if err := s.enforceCustomFieldContexts(ctx, workspaceID, issue.ProjectID, issue.IssueType.ID, update.Fields); err != nil {
 		return nil, nil, err
 	}
 	if update.Labels != nil {

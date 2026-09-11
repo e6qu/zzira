@@ -173,6 +173,33 @@ func TestCustomFieldContextContract(t *testing.T) {
 	}
 	call(adminID, http.MethodPut, contextPath+"/defaultValue", `{"defaultValues":[{"contextId":"`+globalContext+`","value":null}]}`, http.StatusNoContent)
 
+	// A context governs writes, not only what the forms offer: the field is out
+	// of context for project B now, so setting it there is rejected on create
+	// and on edit, while the project its context reaches still accepts it.
+	call(adminID, http.MethodPost, "/rest/api/3/issue",
+		`{"fields":{"project":{"key":"`+keyB+`"},"summary":"Out of context","issuetype":{"name":"Task"},"`+fieldID+`":"nope"}}`,
+		http.StatusBadRequest)
+	accepted := call(adminID, http.MethodPost, "/rest/api/3/issue",
+		`{"fields":{"project":{"key":"`+keyA+`"},"summary":"In context","issuetype":{"name":"Task"},"`+fieldID+`":"fine"}}`,
+		http.StatusCreated)
+	var created struct {
+		Key string `json:"key"`
+	}
+	if err = json.Unmarshal(accepted.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	outside := call(adminID, http.MethodPost, "/rest/api/3/issue",
+		`{"fields":{"project":{"key":"`+keyB+`"},"summary":"Plain work","issuetype":{"name":"Task"}}}`,
+		http.StatusCreated)
+	var plain struct {
+		Key string `json:"key"`
+	}
+	if err = json.Unmarshal(outside.Body.Bytes(), &plain); err != nil {
+		t.Fatal(err)
+	}
+	call(adminID, http.MethodPut, "/rest/api/3/issue/"+plain.Key, `{"fields":{"`+fieldID+`":"nope"}}`, http.StatusBadRequest)
+	call(adminID, http.MethodPut, "/rest/api/3/issue/"+created.Key, `{"fields":{"`+fieldID+`":"still fine"}}`, http.StatusNoContent)
+
 	mapping := call(adminID, http.MethodPost, contextPath+"/mapping", `{"mappings":[{"projectId":"`+projectA+`","issueTypeId":"it_task"},{"projectId":"`+projectB+`","issueTypeId":"it_task"}]}`, http.StatusOK)
 	if strings.Count(mapping.Body.String(), `"contextId"`) != 1 {
 		t.Fatalf("only project A should resolve a context: %s", mapping.Body.String())
