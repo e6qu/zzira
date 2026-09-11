@@ -11,7 +11,7 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 - Branch: `feat/pr1-field-configurations`
 - Base: `origin/main` after merged PR #79 (`e1b7fba`)
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- Pull request: pending
+- Pull request: [#80](https://github.com/e6qu/zzira/pull/80)
 - State: field-configuration checkpoint implements all 15 pinned field
   configuration and field configuration scheme operations. One resolution
   function walks project → scheme → work type mapping → configuration and
@@ -53,8 +53,7 @@ PR #79's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Open the field-configuration pull request, monitor it through every CI job,
-   and resolve review threads inline.
+1. Monitor PR #80 through every CI job and resolve review threads inline.
 2. After merge, continue with custom field contexts and options, then the
    `/config/fieldschemes` field association surface.
 
