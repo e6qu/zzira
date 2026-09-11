@@ -306,3 +306,80 @@ func suppliedFieldValue(raw json.RawMessage) bool {
 	}
 	return true
 }
+
+// fieldWriteIntent describes what one update does to a field: whether it is
+// touched at all, and whether it leaves a value behind afterwards.
+type fieldWriteIntent struct{ touched, hasValue bool }
+
+func stringWriteIntent(value *string, cleared ...string) fieldWriteIntent {
+	if value == nil {
+		return fieldWriteIntent{}
+	}
+	trimmed := strings.TrimSpace(*value)
+	has := trimmed != ""
+	for _, empty := range cleared {
+		if trimmed == empty {
+			has = false
+		}
+	}
+	return fieldWriteIntent{touched: true, hasValue: has}
+}
+
+// issueWriteIntents maps an update onto the field IDs a field configuration
+// speaks about, so edits and transitions are judged by the same rules the
+// create form advertises.
+func issueWriteIntents(update store.IssueUpdate) map[string]fieldWriteIntent {
+	intents := map[string]fieldWriteIntent{
+		"summary":  stringWriteIntent(update.Summary),
+		"priority": stringWriteIntent(update.PriorityID),
+		"assignee": stringWriteIntent(update.AssigneeID, "-1"),
+		"parent":   stringWriteIntent(update.ParentID),
+		"security": stringWriteIntent(update.SecurityLevelID),
+	}
+	if update.Description != nil {
+		intents["description"] = fieldWriteIntent{touched: true, hasValue: suppliedFieldValue(update.Description)}
+	}
+	if update.Labels != nil {
+		intents["labels"] = fieldWriteIntent{touched: true, hasValue: hasNonEmptyValue(*update.Labels)}
+	}
+	for field, raw := range update.Fields {
+		intents[field] = fieldWriteIntent{touched: true, hasValue: suppliedFieldValue(raw)}
+	}
+	for field, operations := range update.VersionOperations {
+		intents[field] = fieldWriteIntent{touched: true, hasValue: len(operations) > 0}
+	}
+	return intents
+}
+
+// enforceFieldConfigurationWrite applies the project's field configuration to an
+// edit or transition. A required field may not be cleared and a hidden field may
+// not be given a value; an update that leaves a field alone is never rejected,
+// so the rules do not block edits to unrelated fields.
+func (s *Service) enforceFieldConfigurationWrite(ctx context.Context, workspaceID string, issue *models.Issue, update store.IssueUpdate) error {
+	rules, err := s.Store.ResolveFieldBehaviour(ctx, workspaceID, issue.ProjectID, issue.IssueType.ID)
+	if err != nil {
+		return err
+	}
+	if len(rules) == 0 {
+		return nil
+	}
+	intents := issueWriteIntents(update)
+	for field, rule := range rules {
+		// Summary is required by the command path itself, which already
+		// rejects an empty one, and the context fields cannot be edited.
+		if field == "summary" {
+			continue
+		}
+		intent := intents[field]
+		if !intent.touched {
+			continue
+		}
+		if rule.IsHidden && intent.hasValue {
+			return fmt.Errorf("%s is hidden by the field configuration for this work type", field)
+		}
+		if rule.IsRequired && !intent.hasValue {
+			return fmt.Errorf("%s is required by the field configuration for this work type", field)
+		}
+	}
+	return nil
+}
