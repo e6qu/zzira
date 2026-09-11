@@ -202,6 +202,13 @@ func TestFieldConfigurationContract(t *testing.T) {
 	// An edit that leaves the governed fields alone is untouched by the rules.
 	call(adminID, http.MethodPut, issuePath, `{"fields":{"summary":"Edited summary"}}`, http.StatusNoContent)
 	call(adminID, http.MethodPut, issuePath, `{"fields":{"priority":{"id":"pr_medium"}}}`, http.StatusNoContent)
+	// Jira's other wire form must set the priority rather than clear it.
+	call(adminID, http.MethodPut, issuePath, `{"fields":{"priority":{"name":"Medium"}}}`, http.StatusNoContent)
+	call(adminID, http.MethodPut, issuePath, `{"fields":{"priority":{"name":"Nonexistent"}}}`, http.StatusBadRequest)
+	stored := call(adminID, http.MethodGet, issuePath, "", http.StatusOK)
+	if !strings.Contains(stored.Body.String(), `"id":"pr_medium"`) {
+		t.Fatalf("priority was not stored: %s", stored.Body.String())
+	}
 
 	// A transition carrying field updates is judged by the same rules.
 	transitions := call(adminID, http.MethodGet, issuePath+"/transitions", "", http.StatusOK)
