@@ -11,7 +11,7 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 - Branch: `feat/pr1-field-rule-enforcement`
 - Base: `origin/main` after merged PR #80 (`afc1625`)
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- Pull request: pending
+- Pull request: [#81](https://github.com/e6qu/zzira/pull/81)
 - State: hardening checkpoint, no new pinned operations. Field configuration
   rules now bind every person-initiated write, not only create: an edit or a
   transition carrying field updates may not clear a required field or give a
@@ -52,8 +52,7 @@ PR #80's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Open the field-rule enforcement pull request, monitor it through every CI
-   job, and resolve review threads inline.
+1. Monitor PR #81 through every CI job and resolve review threads inline.
 2. After merge, continue with custom field contexts and options, then the
    `/config/fieldschemes` field association surface. Bulk edit still bypasses
    both screens and field configurations; narrowing it needs the field
