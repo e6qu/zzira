@@ -18,8 +18,10 @@ import (
 
 func versionError(w http.ResponseWriter, err error) {
 	switch {
-	case errors.Is(err, store.ErrVersionValidation):
+	case errors.Is(err, store.ErrVersionValidation), errors.Is(err, store.ErrRelatedWorkValidation):
 		jiraError(w, 400, err.Error())
+	case errors.Is(err, store.ErrRelatedWorkNotFound):
+		jiraError(w, 404, "The version or related work does not exist.")
 	case errors.Is(err, store.ErrProjectPermission):
 		jiraError(w, 403, err.Error())
 	case errors.Is(err, pgx.ErrNoRows):
@@ -245,7 +247,91 @@ func (h *Handler) versionRoute(w http.ResponseWriter, r *http.Request, parts []s
 		writeJSON(w, 200, result)
 		return
 	}
+	if len(parts) == 2 && parts[1] == "move" && r.Method == http.MethodPost {
+		var request struct {
+			After    string `json:"after"`
+			Position string `json:"position"`
+		}
+		if !decodeVersionRequest(w, r, &request) {
+			return
+		}
+		// Jira sends "after" as a version self link; accept the trailing ID.
+		after := request.After
+		if index := strings.LastIndex(after, "/"); index >= 0 {
+			after = after[index+1:]
+		}
+		if err := h.Store.MoveVersion(r.Context(), ws, user, v.ID, after, request.Position); err != nil {
+			versionError(w, err)
+			return
+		}
+		writeJSON(w, 200, h.versionBean(v))
+		return
+	}
+	if len(parts) == 2 && parts[1] == "relatedwork" {
+		h.versionRelatedWork(w, r, ws, user, v.ID)
+		return
+	}
+	if len(parts) == 3 && parts[1] == "relatedwork" && r.Method == http.MethodDelete {
+		if err := h.Store.DeleteVersionRelatedWork(r.Context(), ws, user, v.ID, parts[2]); err != nil {
+			versionError(w, err)
+			return
+		}
+		w.WriteHeader(204)
+		return
+	}
 	jiraError(w, 404, "No version resource found.")
+}
+
+func (h *Handler) relatedWorkBean(work models.VersionRelatedWork) map[string]any {
+	return map[string]any{
+		"relatedWorkId": work.ID, "category": work.Category,
+		"title": work.Title, "url": work.URL,
+	}
+}
+
+func (h *Handler) versionRelatedWork(w http.ResponseWriter, r *http.Request, workspaceID, userID, versionID string) {
+	switch r.Method {
+	case http.MethodGet:
+		items, err := h.Store.VersionRelatedWork(r.Context(), workspaceID, versionID)
+		if err != nil {
+			versionError(w, err)
+			return
+		}
+		values := make([]map[string]any, 0, len(items))
+		for _, work := range items {
+			values = append(values, h.relatedWorkBean(work))
+		}
+		writeJSON(w, 200, values)
+	case http.MethodPost, http.MethodPut:
+		var request struct {
+			RelatedWorkID string `json:"relatedWorkId"`
+			Category      string `json:"category"`
+			Title         string `json:"title"`
+			URL           string `json:"url"`
+		}
+		if !decodeVersionRequest(w, r, &request) {
+			return
+		}
+		work := models.VersionRelatedWork{
+			ID: request.RelatedWorkID, Category: request.Category,
+			Title: request.Title, URL: request.URL,
+		}
+		var err error
+		status := 201
+		if r.Method == http.MethodPut {
+			status = 200
+			work, err = h.Store.UpdateVersionRelatedWork(r.Context(), workspaceID, userID, versionID, work)
+		} else {
+			work, err = h.Store.CreateVersionRelatedWork(r.Context(), workspaceID, userID, versionID, work)
+		}
+		if err != nil {
+			versionError(w, err)
+			return
+		}
+		writeJSON(w, status, h.relatedWorkBean(work))
+	default:
+		jiraError(w, 405, "Method not allowed.")
+	}
 }
 func (h *Handler) projectVersions(w http.ResponseWriter, r *http.Request, key string, paginated bool) {
 	ws, user, e := h.authWorkspace(r)

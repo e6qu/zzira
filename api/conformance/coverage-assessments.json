@@ -8024,6 +8024,145 @@
         "docs/CUSTOM_FIELD_OPTIONS.md"
       ],
       "notes": "The replacement form migrates the work items holding the option in the same transaction, and refuses the option itself as its own replacement."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/project/{projectIdOrKey}/versions",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/versions_test.go",
+        "e2e/releases.spec.ts",
+        "docs/PROJECT_VERSIONS.md"
+      ],
+      "notes": "Listing a project's versions in display order is tested through REST and the browser; Jira's expand remains."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/project/{projectIdOrKey}/version",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/versions_test.go",
+        "docs/PROJECT_VERSIONS.md"
+      ],
+      "notes": "The paginated list with ordering and status filters is tested; expand beyond issue counts remains."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/version",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/versions_test.go",
+        "e2e/releases.spec.ts",
+        "docs/PROJECT_VERSIONS.md"
+      ],
+      "notes": "Creation by project id or key with date validation is tested, including the refusal to create an already-released version."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/version/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/versions_test.go",
+        "docs/PROJECT_VERSIONS.md"
+      ],
+      "notes": "Reading a version with optional issue-count expansion is tested; the operations and driver fields remain."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/version/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/versions_test.go",
+        "e2e/releases.spec.ts",
+        "docs/PROJECT_VERSIONS.md"
+      ],
+      "notes": "Name, description, date, release and archive updates are tested through REST and the browser, with invalid dates rejected."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/version/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/versions_test.go",
+        "e2e/releases.spec.ts",
+        "docs/PROJECT_VERSIONS.md"
+      ],
+      "notes": "Deletion is tested through REST and the browser."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/version/{id}/move",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/versions_test.go",
+        "docs/PROJECT_VERSIONS.md"
+      ],
+      "notes": "First, Earlier, Later, Last and an explicit after target are tested; a target outside the project is rejected."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/version/{id}/mergeto/{moveIssuesTo}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/versions_test.go",
+        "docs/PROJECT_VERSIONS.md"
+      ],
+      "notes": "Merging moves the work items to the target version and removes the source."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/version/{id}/removeAndSwap",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/versions_test.go",
+        "docs/PROJECT_VERSIONS.md"
+      ],
+      "notes": "Removal with fix and affects replacement is tested."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/version/{id}/relatedIssueCounts",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/versions_test.go",
+        "docs/PROJECT_VERSIONS.md"
+      ],
+      "notes": "Fix and affects counts are tested and respect the caller's issue visibility; custom field usage is reported empty."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/version/{id}/unresolvedIssueCount",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/versions_test.go",
+        "docs/PROJECT_VERSIONS.md"
+      ],
+      "notes": "Total and unresolved counts are tested and respect the caller's issue visibility."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/version/{id}/relatedwork",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/versions_test.go",
+        "docs/PROJECT_VERSIONS.md"
+      ],
+      "notes": "Listing a release's external links is tested."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/version/{id}/relatedwork",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/versions_test.go",
+        "docs/PROJECT_VERSIONS.md"
+      ],
+      "notes": "Adding a link is tested, with a required category and absolute http or https URL enforced."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/version/{id}/relatedwork",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/versions_test.go",
+        "docs/PROJECT_VERSIONS.md"
+      ],
+      "notes": "Updating a link is tested, and an unknown related work id is a 404."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/version/{versionId}/relatedwork/{relatedWorkId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/versions_test.go",
+        "docs/PROJECT_VERSIONS.md"
+      ],
+      "notes": "Removing a link is tested, and removing it twice is a 404."
     }
   ]
 }
