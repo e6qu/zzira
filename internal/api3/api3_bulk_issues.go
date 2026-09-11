@@ -471,15 +471,26 @@ func (h *Handler) resolveBulkIssues(r *http.Request, workspaceID string, values 
 	return issues, nil
 }
 
+// commonBulkEditableFields offers only what every selected work item's own form
+// allows. A selection spans projects and work types, and each pair resolves its
+// own screen, field configuration and custom field contexts, so the offer is the
+// intersection across those pairs rather than the projects' field superset.
 func commonBulkEditableFields(metadata *models.IssueCreateMetadata, issues []*models.Issue, baseURL string) []bulkEditableField {
 	projects := make(map[string]bool)
+	selection := map[string]map[string]bool{}
 	for _, issue := range issues {
 		projects[issue.ProjectID] = true
+		if selection[issue.ProjectID] == nil {
+			selection[issue.ProjectID] = map[string]bool{}
+		}
+		selection[issue.ProjectID][issue.IssueType.ID] = true
 	}
 	projectKeys := make([]string, 0, len(projects))
+	combinations := 0
 	for _, project := range metadata.Projects {
 		if projects[project.Project.ID] {
 			projectKeys = append(projectKeys, project.Project.Key)
+			combinations += len(selection[project.Project.ID])
 		}
 	}
 	sort.Strings(projectKeys)
@@ -493,34 +504,46 @@ func commonBulkEditableFields(metadata *models.IssueCreateMetadata, issues []*mo
 		if !projects[project.Project.ID] {
 			continue
 		}
-		for _, source := range project.Fields {
-			fieldType := bulkEditableFieldType(source)
-			if fieldType == "" {
-				continue
-			}
-			entry := candidates[source.ID]
-			if entry == nil {
-				entry = &candidate{field: bulkEditableField{
-					ID: source.ID, Name: source.Name, Type: fieldType,
-					Description: source.Description, IsRequired: source.Required,
-				}, options: map[string]map[string]any{}}
-				if fieldType == "assignee" {
-					entry.field.SearchURL = baseURL + "/rest/api/3/user/assignable/multiProjectSearch?projectKeys=" + url.QueryEscape(strings.Join(projectKeys, ",")) + "&query="
+		issueTypeIDs := make([]string, 0, len(selection[project.Project.ID]))
+		for issueTypeID := range selection[project.Project.ID] {
+			issueTypeIDs = append(issueTypeIDs, issueTypeID)
+		}
+		sort.Strings(issueTypeIDs)
+		for _, issueTypeID := range issueTypeIDs {
+			for _, source := range project.FieldsForIssueType(issueTypeID) {
+				fieldType := bulkEditableFieldType(source)
+				if fieldType == "" {
+					continue
 				}
-				if fieldType == "components" || fieldType == "labels" || fieldType == "versions" {
-					entry.field.MultiSelectFieldOptions = []string{"ADD", "REMOVE", "REPLACE", "REMOVE_ALL"}
+				entry := candidates[source.ID]
+				if entry == nil {
+					entry = &candidate{field: bulkEditableField{
+						ID: source.ID, Name: source.Name, Type: fieldType,
+						Description: source.Description, IsRequired: source.Required,
+					}, options: map[string]map[string]any{}}
+					if fieldType == "assignee" {
+						entry.field.SearchURL = baseURL + "/rest/api/3/user/assignable/multiProjectSearch?projectKeys=" + url.QueryEscape(strings.Join(projectKeys, ",")) + "&query="
+					}
+					if fieldType == "components" || fieldType == "labels" || fieldType == "versions" {
+						entry.field.MultiSelectFieldOptions = []string{"ADD", "REMOVE", "REPLACE", "REMOVE_ALL"}
+					}
+					candidates[source.ID] = entry
 				}
-				candidates[source.ID] = entry
-			}
-			entry.seen++
-			for _, option := range source.Options {
-				entry.options[option.ID+"\x00"+option.Name] = bulkFieldOption(fieldType, option)
+				entry.seen++
+				// A field required anywhere in the selection stays required: the
+				// write would be rejected for those items otherwise.
+				if source.Required {
+					entry.field.IsRequired = true
+				}
+				for _, option := range source.Options {
+					entry.options[option.ID+"\x00"+option.Name] = bulkFieldOption(fieldType, option)
+				}
 			}
 		}
 	}
 	fields := make([]bulkEditableField, 0, len(candidates))
 	for _, entry := range candidates {
-		if entry.seen != len(projects) {
+		if entry.seen != combinations {
 			continue
 		}
 		keys := make([]string, 0, len(entry.options))

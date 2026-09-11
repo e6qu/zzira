@@ -92,10 +92,9 @@ screen by trigger, so it stays usable on the forms the default scheme drives.
   schema. Both pages are in the light and dark axe sweep.
 
 The `view` operation is stored and resolvable but no read-only view form
-consumes it yet; the issue view renders its own layout. Bulk edit still offers
-the project's full field superset rather than a per-work-type screen, because a
-bulk selection spans work types — narrowing it needs the intersection Jira
-computes, which remains. Workflow transition screens still carry their own field
+consumes it yet; the issue view renders its own layout. Bulk edit now offers the
+intersection of the screens every selected work item resolves, rather than the
+project's field superset. Workflow transition screens still carry their own field
 list rather than referencing a screen. Jira's `expand`, `orderBy`, and
 `queryString` parameters on these endpoints, screen scheme copy, and exact Jira
 error wording also remain.

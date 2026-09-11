@@ -224,6 +224,19 @@ func TestFieldConfigurationContract(t *testing.T) {
 	call(adminID, http.MethodPost, issuePath+"/transitions",
 		`{"transition":{"id":"`+transitionID+`"},"fields":{"labels":["sneaky"]}}`, http.StatusBadRequest)
 
+	// Bulk edit offers only what every selected work item's own form allows, so
+	// a field hidden for this work type is not offered and cannot be written.
+	bulkFields := call(adminID, http.MethodGet, "/rest/api/3/bulk/issues/fields?issueIdsOrKeys="+secondIssue.Key, "", http.StatusOK)
+	if strings.Contains(bulkFields.Body.String(), `"id":"labels"`) {
+		t.Fatalf("a hidden field must not be offered for bulk edit: %s", bulkFields.Body.String())
+	}
+	if !strings.Contains(bulkFields.Body.String(), `"id":"priority"`) {
+		t.Fatal(bulkFields.Body.String())
+	}
+	call(adminID, http.MethodPost, "/rest/api/3/bulk/issues/fields",
+		`{"selectedIssueIdsOrKeys":["`+secondIssue.Key+`"],"selectedActions":["labels"],"editedFieldsInput":{"labels":{"labels":[{"name":"sneaky"}]}}}`,
+		http.StatusBadRequest)
+
 	projects := call(adminID, http.MethodGet, "/rest/api/3/fieldconfigurationscheme/project?projectId="+projectID, "", http.StatusOK)
 	if !strings.Contains(projects.Body.String(), schemeID) {
 		t.Fatal(projects.Body.String())
