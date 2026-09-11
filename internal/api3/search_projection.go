@@ -43,6 +43,7 @@ func searchFieldDefinitions(customFields []*models.CustomField) []searchFieldDef
 		{ID: "assignee", Key: "assignee", Name: "Assignee", Schema: map[string]any{"type": "user", "system": "assignee"}},
 		{ID: "reporter", Key: "reporter", Name: "Reporter", Schema: map[string]any{"type": "user", "system": "reporter"}},
 		{ID: "security", Key: "security", Name: "Security Level", Schema: map[string]any{"type": "securitylevel", "system": "security"}},
+		{ID: "components", Key: "components", Name: "Components", Schema: map[string]any{"type": "array", "items": "component", "system": "components"}},
 	}
 	for _, field := range customFields {
 		key := field.ID

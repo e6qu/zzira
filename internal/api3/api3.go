@@ -103,6 +103,22 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.worklogFeedRoute(w, r, path)
 	case strings.HasPrefix(path, "/customFieldOption/"):
 		h.customFieldOptionResource(w, r, strings.TrimPrefix(path, "/customFieldOption/"))
+	case path == "/field/search":
+		h.fieldSearchRoute(w, r, false)
+	case path == "/field/search/trashed":
+		h.fieldSearchRoute(w, r, true)
+	case path == "/projects/fields":
+		h.projectsFieldsRoute(w, r)
+	// `/contexts` is a different operation from `/context`, so it is matched
+	// before the context router, which would otherwise swallow it.
+	case strings.HasPrefix(path, "/field/") && strings.HasSuffix(path, "/contexts"):
+		h.fieldContextsForField(w, r, strings.TrimSuffix(strings.TrimPrefix(path, "/field/"), "/contexts"))
+	case strings.HasPrefix(path, "/field/") && strings.HasSuffix(path, "/association/project"):
+		h.fieldProjectAssociations(w, r, strings.TrimSuffix(strings.TrimPrefix(path, "/field/"), "/association/project"))
+	case strings.HasPrefix(path, "/field/") && strings.HasSuffix(path, "/trash") && r.Method == http.MethodPost:
+		h.fieldTrashRoute(w, r, strings.TrimSuffix(strings.TrimPrefix(path, "/field/"), "/trash"), true)
+	case strings.HasPrefix(path, "/field/") && strings.HasSuffix(path, "/restore") && r.Method == http.MethodPost:
+		h.fieldTrashRoute(w, r, strings.TrimSuffix(strings.TrimPrefix(path, "/field/"), "/restore"), false)
 	case strings.HasPrefix(path, "/field/") && strings.Contains(path, "/context"):
 		rest := strings.TrimPrefix(path, "/field/")
 		field, remainder, _ := strings.Cut(rest, "/context")

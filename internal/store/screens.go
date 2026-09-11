@@ -61,7 +61,7 @@ func screenFieldCatalogTx(ctx context.Context, tx pgx.Tx, workspaceID string) (m
 	for _, field := range systemScreenFields {
 		catalog[field.ID] = field
 	}
-	rows, err := tx.Query(ctx, `SELECT id,name FROM custom_fields WHERE workspace_id=$1`, workspaceID)
+	rows, err := tx.Query(ctx, `SELECT id,name FROM custom_fields WHERE workspace_id=$1 AND trashed_at IS NULL`, workspaceID)
 	if err != nil {
 		return nil, err
 	}

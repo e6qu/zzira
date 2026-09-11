@@ -605,13 +605,13 @@ func (s *Store) CreateWorkspaceCustomField(ctx context.Context, workspaceID, id,
 	return &models.CustomField{ID: id, Name: name, Type: fieldType, Description: description, WorkspaceID: workspaceID, Active: true}, nil
 }
 
-const customFieldSelect = `SELECT cf.id,cf.name,cf.type,COALESCE(cf.description,''),COALESCE(cf.workspace_id,''),COALESCE(cf.app_installation_id,''),COALESCE(ai.app_key,''),cf.app_module_key,cf.dynamic,cf.active FROM custom_fields cf LEFT JOIN app_installations ai ON ai.id=cf.app_installation_id `
+const customFieldSelect = `SELECT cf.id,cf.name,cf.type,COALESCE(cf.description,''),COALESCE(cf.workspace_id,''),COALESCE(cf.app_installation_id,''),COALESCE(ai.app_key,''),cf.app_module_key,cf.dynamic,cf.active,cf.searcher_key,cf.trashed_at IS NOT NULL FROM custom_fields cf LEFT JOIN app_installations ai ON ai.id=cf.app_installation_id `
 
 func scanCustomFields(rows pgx.Rows) ([]*models.CustomField, error) {
 	var out []*models.CustomField
 	for rows.Next() {
 		f := &models.CustomField{}
-		if err := rows.Scan(&f.ID, &f.Name, &f.Type, &f.Description, &f.WorkspaceID, &f.AppInstallationID, &f.AppKey, &f.AppModuleKey, &f.Dynamic, &f.Active); err != nil {
+		if err := rows.Scan(&f.ID, &f.Name, &f.Type, &f.Description, &f.WorkspaceID, &f.AppInstallationID, &f.AppKey, &f.AppModuleKey, &f.Dynamic, &f.Active, &f.SearcherKey, &f.Trashed); err != nil {
 			return nil, err
 		}
 		out = append(out, f)
@@ -620,7 +620,7 @@ func scanCustomFields(rows pgx.Rows) ([]*models.CustomField, error) {
 }
 
 func (s *Store) CustomFields(ctx context.Context) ([]*models.CustomField, error) {
-	rows, err := s.Pool.Query(ctx, customFieldSelect+`WHERE cf.active AND (cf.app_installation_id IS NULL OR ai.status='active') ORDER BY cf.id`)
+	rows, err := s.Pool.Query(ctx, customFieldSelect+`WHERE cf.active AND cf.trashed_at IS NULL AND (cf.app_installation_id IS NULL OR ai.status='active') ORDER BY cf.id`)
 	if err != nil {
 		return nil, err
 	}
@@ -629,7 +629,7 @@ func (s *Store) CustomFields(ctx context.Context) ([]*models.CustomField, error)
 }
 
 func (s *Store) CustomFieldsForWorkspace(ctx context.Context, workspaceID string) ([]*models.CustomField, error) {
-	rows, err := s.Pool.Query(ctx, customFieldSelect+`WHERE cf.active AND (cf.workspace_id IS NULL OR cf.workspace_id=$1) AND (cf.app_installation_id IS NULL OR ai.status='active') ORDER BY cf.id`, workspaceID)
+	rows, err := s.Pool.Query(ctx, customFieldSelect+`WHERE cf.active AND cf.trashed_at IS NULL AND (cf.workspace_id IS NULL OR cf.workspace_id=$1) AND (cf.app_installation_id IS NULL OR ai.status='active') ORDER BY cf.id`, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -641,7 +641,7 @@ func (s *Store) CustomFieldsForWorkspace(ctx context.Context, workspaceID string
 func (s *Store) CustomFieldsForProject(ctx context.Context, projectID string) ([]*models.CustomField, error) {
 	rows, err := s.Pool.Query(ctx, customFieldSelect+`
 		JOIN projects p ON p.id=$1
-		WHERE cf.active
+		WHERE cf.active AND cf.trashed_at IS NULL
 		  AND (cf.workspace_id IS NULL OR cf.workspace_id=p.workspace_id)
 		  AND (cf.app_installation_id IS NULL OR ai.status='active')
 		  AND jira_custom_field_context(cf.id,$1,NULL) IS NOT NULL

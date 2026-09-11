@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 761,
+  "assessedTotal": 772,
   "counts": {
     "delivered": 0,
-    "partial": 750,
+    "partial": 761,
     "missing": 11,
-    "unassessed": 446
+    "unassessed": 435
   },
   "countsByFamily": {
     "automation": {
@@ -24,9 +24,9 @@
     },
     "jira-platform": {
       "delivered": 0,
-      "partial": 347,
+      "partial": 358,
       "missing": 0,
-      "unassessed": 270
+      "unassessed": 259
     },
     "jira-service-management": {
       "delivered": 0,
@@ -984,17 +984,23 @@
       "operationId": "jira-v3:GET:/rest/api/3/field",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/fields_test.go",
+        "docs/ISSUE_FIELDS.md"
+      ],
+      "notes": "Field discovery is tested; it reports the same system field set the search resolves through, plus the workspace's custom fields."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/field",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/fields_test.go",
+        "docs/ISSUE_FIELDS.md"
+      ],
+      "notes": "Creating a custom field is tested, including Jira's canonical type keys and the refusal of a type this product does not serve."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/field/association",
@@ -1016,33 +1022,45 @@
       "operationId": "jira-v3:GET:/rest/api/3/field/search",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/fields_test.go",
+        "docs/ISSUE_FIELDS.md"
+      ],
+      "notes": "The paginated search is tested with the query, type and id filters, the usage counts, and the administration permission; lastUsed and translations remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/field/search/trashed",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/fields_test.go",
+        "docs/ISSUE_FIELDS.md"
+      ],
+      "notes": "The trashed search is tested, including that a trashed field leaves the live search and a deleted one leaves the trash."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/field/{fieldId}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/fields_test.go",
+        "docs/ISSUE_FIELDS.md"
+      ],
+      "notes": "Renaming and re-describing a field is tested, including the refused empty name and the 404 for an unknown field; the searcher key is stored but does not yet change how a field is searched."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/field/{fieldId}/association/project",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/fields_test.go",
+        "docs/ISSUE_FIELDS.md"
+      ],
+      "notes": "The projects a field's contexts reach are tested, including the 404 for an unknown field."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/field/{fieldId}/context",
@@ -1279,9 +1297,12 @@
       "operationId": "jira-v3:GET:/rest/api/3/field/{fieldId}/contexts",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/fields_test.go",
+        "docs/ISSUE_FIELDS.md"
+      ],
+      "notes": "The contexts read is tested with its scope; it was previously swallowed by the context router and answered 405."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/field/{fieldId}/screens",
@@ -1362,25 +1383,34 @@
       "operationId": "jira-v3:DELETE:/rest/api/3/field/{id}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/fields_test.go",
+        "docs/ISSUE_FIELDS.md"
+      ],
+      "notes": "Deleting is tested, including the refusal until the field is trashed and the finished task Jira's 303 reports."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/field/{id}/restore",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/fields_test.go",
+        "docs/ISSUE_FIELDS.md"
+      ],
+      "notes": "Restoring is tested, including that the values recorded on work items survive the round trip."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/field/{id}/trash",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/fields_test.go",
+        "docs/ISSUE_FIELDS.md"
+      ],
+      "notes": "Trashing is tested, including that a trashed field leaves discovery and createmeta and that trashing twice is refused."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/fieldconfiguration",
@@ -4332,9 +4362,12 @@
       "operationId": "jira-v3:GET:/rest/api/3/projects/fields",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/fields_test.go",
+        "docs/ISSUE_FIELDS.md"
+      ],
+      "notes": "The project field read is tested; it resolves through the same context and field-configuration rules the create form uses."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/projectvalidate/key",
