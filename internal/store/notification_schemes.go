@@ -204,7 +204,7 @@ func validateNotificationEntry(ctx context.Context, tx pgx.Tx, workspaceID strin
 		input.Parameter, recipient = address.Address, strings.ToLower(address.Address)
 	case "UserCustomField", "GroupCustomField":
 		var exists bool
-		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM custom_fields WHERE id=$1 AND (workspace_id IS NULL OR workspace_id=$2) AND active)`, input.Parameter, workspaceID).Scan(&exists); err != nil || !exists {
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM custom_fields WHERE id=$1 AND (workspace_id IS NULL OR workspace_id=$2) AND active AND trashed_at IS NULL)`, input.Parameter, workspaceID).Scan(&exists); err != nil || !exists {
 			return input, "", fmt.Errorf("%w: custom field does not exist", ErrNotificationSchemeValidation)
 		}
 	default:

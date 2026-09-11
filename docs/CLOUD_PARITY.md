@@ -34,7 +34,7 @@ with `python3 api/conformance/inventory.py`; CI runs the same program with
 
 The generated [operation coverage](../api/conformance/cloud-coverage.json)
 applies reviewed exact-operation assessments to that denominator. It currently
-assesses 761 operations: 750 partial and 11 missing. The remaining 446 operations
+assesses 772 operations: 761 partial and 11 missing. The remaining 435 operations
 are explicitly unassessed at this stricter level. The grouped
 [API matrix](../api/conformance/MATRIX.md) records older tested slices; it is not
 divided by 1,207 because one row may represent several operations and does not

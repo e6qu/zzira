@@ -73,12 +73,10 @@ func (h *Handler) fieldRoute(w http.ResponseWriter, r *http.Request, parts []str
 	switch {
 	case len(parts) == 1 && r.Method == http.MethodGet:
 		h.getCustomField(w, r, parts[0])
+	case len(parts) == 1 && r.Method == http.MethodPut:
+		h.updateField(w, r, parts[0])
 	case len(parts) == 1 && r.Method == http.MethodDelete:
-		if _, _, e := h.authWorkspace(r); e != nil {
-			writeJerr(w, e)
-			return
-		}
-		jiraError(w, http.StatusMethodNotAllowed, "Deleting fields is not supported.")
+		h.deleteField(w, r, parts[0])
 	default:
 		jiraError(w, http.StatusNotFound, "No resource found")
 	}
@@ -139,12 +137,16 @@ func (h *Handler) listFields(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	out := []map[string]any{
-		{"id": "fixVersions", "name": "Fix versions", "custom": false, "schema": map[string]any{"type": "array", "items": "version", "system": "fixVersions"}},
-		{"id": "versions", "name": "Affects versions", "custom": false, "schema": map[string]any{"type": "array", "items": "version", "system": "versions"}},
-		{"id": "components", "name": "Components", "custom": false, "schema": map[string]any{"type": "array", "items": "component", "system": "components"}},
-		{"id": "summary", "name": "Summary", "custom": false, "schema": map[string]any{"type": "string"}},
-		{"id": "description", "name": "Description", "custom": false, "schema": map[string]any{"type": "doc"}},
+	// The system fields come from the one definition the search also resolves
+	// through, so field discovery cannot advertise a field the search does not
+	// know or omit one it does.
+	out := []map[string]any{}
+	for _, definition := range searchFieldDefinitions(nil) {
+		out = append(out, map[string]any{
+			"id": definition.ID, "key": definition.Key, "name": definition.Name,
+			"custom": false, "orderable": true, "navigable": true, "searchable": true,
+			"clauseNames": []string{definition.ID}, "schema": definition.Schema,
+		})
 	}
 	for _, f := range fields {
 		out = append(out, h.customFieldBean(f))
@@ -162,6 +164,7 @@ func (h *Handler) createField(w http.ResponseWriter, r *http.Request) {
 		Name        string `json:"name"`
 		Type        string `json:"type"`
 		Description string `json:"description"`
+		SearcherKey string `json:"searcherKey"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
 		jiraFieldError(w, http.StatusBadRequest, map[string]string{"name": "A field name is required."})
@@ -171,12 +174,13 @@ func (h *Handler) createField(w http.ResponseWriter, r *http.Request) {
 	if fieldType == "" {
 		fieldType = models.CustomFieldText
 	}
-	switch fieldType {
-	case models.CustomFieldText, models.CustomFieldNumber, models.CustomFieldDatetime, models.CustomFieldSelect:
-	default:
-		jiraFieldError(w, http.StatusBadRequest, map[string]string{"type": "type must be text, number, or datetime"})
+	resolved, ok := resolveFieldType(fieldType)
+	if !ok {
+		jiraFieldError(w, http.StatusBadRequest, map[string]string{
+			"type": "type must be text, number, datetime or select, or the Jira key for one of them"})
 		return
 	}
+	fieldType = resolved
 	seq, err := h.Store.NextCustomFieldNumber(r.Context())
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")

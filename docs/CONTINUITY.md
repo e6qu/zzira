@@ -8,26 +8,32 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
 ## Active delivery
 
-- Branch: `feat/pr1-worklog-audit`
-- Base: `origin/main` after merged PR #91 (`3dca6d8`)
+- Branch: `feat/pr1-field-audit`
+- Base: `origin/main` after merged PR #92 (`d5b8509`)
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- State: worklog checkpoint audited all 14 pinned operations against a running
-  server and found four working — the list, the create, the single read and the
-  single delete. The other ten are new here: the update, the bulk delete, the
-  move between work items, the updated and deleted feeds, the bulk fetch by id,
-  and the four entity-property operations. Two schema facts the feeds needed did
-  not exist: worklogs had no `updated_at`, and a deleted worklog left nothing
-  behind for the deleted feed to report, so a delete now writes a tombstone.
-  Both feeds compare in milliseconds because they report in milliseconds, so a
-  client that passes the reported `until` back makes progress instead of being
-  handed the same entries forever. Clean migrations, the full uncached
-  Go/PostgreSQL suite, vet, native and WebAssembly builds, conformance checks,
-  every Playwright journey, 320 px reflow, and the light/dark axe sweep pass.
+- State: field checkpoint audited all 11 pinned issue-field operations against a
+  running server and found two working, `GET /field` and `POST /field`. The
+  other nine are new here: the live and trashed paginated searches, the rename,
+  the project associations and contexts reads, the project field read, and the
+  trash lifecycle. Jira does not delete a custom field on request — it trashes
+  it, and only a trashed field can be deleted — so `trashed_at` is the state and
+  every read that serves live work excludes it, leaving recorded values intact
+  for a restore. `GET /field` reported five hand-written system fields and now
+  reports the set the search resolves through. `POST /field` rejected Jira's
+  canonical type keys, which is what a real client sends. And
+  `GET /field/{id}/contexts` answered 405 because the context router matched any
+  path containing `/context`.
+  Clean migrations, the full uncached Go/PostgreSQL suite, vet, native and
+  WebAssembly builds, conformance checks, every Playwright journey, 320 px
+  reflow, and the light/dark axe sweep pass.
 - Blockers: none
 
 ## Merged baseline
 
-PR [#91](https://github.com/e6qu/zzira/pull/91) merged the completed dashboard
+PR [#92](https://github.com/e6qu/zzira/pull/92) merged the completed worklog
+surface, whose feeds needed a stamp on the worklog and a tombstone on the
+delete, on top of
+PR [#91](https://github.com/e6qu/zzira/pull/91), which merged the completed dashboard
 surface on top of
 PR [#90](https://github.com/e6qu/zzira/pull/90), which merged the completed sprint
 surface on top of
@@ -75,16 +81,17 @@ PR #90's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Monitor the worklog pull request through every CI job and resolve review
+1. Monitor the field pull request through every CI job and resolve review
    threads inline.
-2. Issue fields (11) is the next family with tests but no operation-level
-   evidence, and a probe already found only two working: `GET /field` and
-   `POST /field`. Two of the nine answer 405 rather than 404, and one of those,
-   `GET /field/{fieldId}/contexts`, is swallowed by the field-context router
-   added in PR #84 — fix that route rather than adding a second one. Probe every
-   operation against a running server before assessing; the five audits so far
-   ran 11 of 15, 8 of 33, 5 of 13, 16 of 17 and 4 of 14, so the result is not
-   predictable from how well tested a surface looks.
+2. The field families adjacent to this one are still unassessed and were probed
+   as missing: `PUT`/`DELETE /field/association` (2), the legacy
+   `/field/{fieldKey}/option` surface (8) and `/config/fieldschemes` (3). The
+   option surface is Jira's older per-field option API and overlaps the
+   context-scoped options already delivered, so check whether it can reach the
+   same store before adding a second one.
+3. Probe every operation against a running server before assessing; the six
+   audits so far ran 11 of 15, 8 of 33, 5 of 13, 16 of 17, 4 of 14 and 2 of 11,
+   so the result is not predictable from how well tested a surface looks.
 
 ## Evidence map
 
@@ -112,6 +119,7 @@ PR #90's final GitHub matrix passed its required suites before merge.
 - [Jira Software boards and sprints](AGILE_BOARDS.md)
 - [Jira dashboards](DASHBOARDS_API.md)
 - [Jira worklogs](WORKLOGS.md)
+- [Jira issue fields](ISSUE_FIELDS.md)
 
 ## Continuity rules
 

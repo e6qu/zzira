@@ -58,6 +58,8 @@ type CustomField struct {
 	AppModuleKey      string `json:"-"`
 	Dynamic           bool   `json:"-"`
 	Active            bool   `json:"-"`
+	SearcherKey       string `json:"-"`
+	Trashed           bool   `json:"-"`
 }
 
 type Webhook struct {

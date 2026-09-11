@@ -481,7 +481,7 @@ func (s *Store) CustomFieldContextsByProject(ctx context.Context, workspaceID st
 		FROM projects p
 		CROSS JOIN issue_types work_type
 		LEFT JOIN custom_fields f
-			ON (f.workspace_id IS NULL OR f.workspace_id=$1) AND f.active
+			ON (f.workspace_id IS NULL OR f.workspace_id=$1) AND f.active AND f.trashed_at IS NULL
 			AND jira_custom_field_context(f.id,p.id,work_type.id) IS NOT NULL
 		WHERE p.workspace_id=$1`, workspaceID)
 	if err != nil {
@@ -518,7 +518,7 @@ func (s *Store) attachContextOptions(ctx context.Context, workspaceID string, re
 		SELECT p.id, work_type.id, f.id, o.id::text, o.value
 		FROM projects p
 		CROSS JOIN issue_types work_type
-		JOIN custom_fields f ON f.active AND f.type=$2 AND (f.workspace_id IS NULL OR f.workspace_id=$1)
+		JOIN custom_fields f ON f.active AND f.trashed_at IS NULL AND f.type=$2 AND (f.workspace_id IS NULL OR f.workspace_id=$1)
 		JOIN custom_field_options o
 			ON o.context_id = jira_custom_field_context(f.id,p.id,work_type.id) AND NOT o.disabled
 		WHERE p.workspace_id=$1
@@ -561,7 +561,7 @@ func (s *Store) CustomFieldOptionScope(ctx context.Context, workspaceID, project
 		SELECT f.id, o.id::text, o.disabled
 		FROM custom_fields f
 		JOIN custom_field_options o ON o.context_id = jira_custom_field_context(f.id,$2,NULLIF($3,''))
-		WHERE f.active AND f.type=$4 AND (f.workspace_id IS NULL OR f.workspace_id=$1)`,
+		WHERE f.active AND f.trashed_at IS NULL AND f.type=$4 AND (f.workspace_id IS NULL OR f.workspace_id=$1)`,
 		workspaceID, projectID, issueTypeID, models.CustomFieldSelect)
 	if err != nil {
 		return nil, err
@@ -587,7 +587,7 @@ func (s *Store) CustomFieldWriteScope(ctx context.Context, workspaceID, projectI
 	rows, err := s.Pool.Query(ctx, `
 		SELECT f.id, jira_custom_field_context(f.id,$2,NULLIF($3,'')) IS NOT NULL
 		FROM custom_fields f
-		WHERE f.active AND (f.workspace_id IS NULL OR f.workspace_id=$1)`,
+		WHERE f.active AND f.trashed_at IS NULL AND (f.workspace_id IS NULL OR f.workspace_id=$1)`,
 		workspaceID, projectID, issueTypeID)
 	if err != nil {
 		return nil, nil, err
