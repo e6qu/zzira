@@ -142,7 +142,8 @@ Complete Jira's shared work-management and configuration layer:
   shared function, and the 17 screen, tab, and tab-field operations plus the 15
   screen-scheme and work-type-screen-scheme operations now decide which fields
   every work item form shows, and the 15 field-configuration operations decide
-  how each of those fields behaves;
+  how each of those fields behaves, while the 14 custom-field-context
+  operations decide where a custom field applies at all;
 - finish user preferences, notifications, votes, watches, properties,
   attachments, email, retention, and remaining platform REST families; site
   configuration now covers announcements, feature controls, time tracking,
@@ -328,8 +329,9 @@ surface with one shared visibility function behind search, sync, notifications
 and creation, and the 32-operation screen stack whose one resolution function
 now decides the fields on every create and edit form, and the 15-operation
 field configuration surface whose required and hidden rules the command path
-enforces. Continue with custom field contexts and options, then custom events
-and notification preferences, templates, hierarchy, remaining field and ADF
+enforces, and the 14-operation custom field context surface. Continue with an
+option-bearing custom field type and its seven option operations, then custom
+events and notification preferences, templates, hierarchy, remaining field and ADF
 families, import/export, action-specific permission enforcement, and the
 unassessed Jira Platform operations. Keep each checkpoint vertical and
 independently reviewable even while it contributes to the same large PR

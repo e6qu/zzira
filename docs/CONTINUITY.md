@@ -8,23 +8,30 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
 ## Active delivery
 
-- Branch: `fix/priority-edit-and-axe-reflow`
-- Base: `origin/main` after merged PR #81 (`ee73199`)
+- Branch: `feat/pr1-custom-field-contexts`
+- Base: `origin/main` after merged PR #82 (`18d21ae`)
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- Pull request: [#82](https://github.com/e6qu/zzira/pull/82)
-- State: defect checkpoint, no new pinned operations. `PUT /rest/api/3/issue/{key}`
-  now accepts a priority by id or name and resolves it, instead of storing an
-  unvalidated value and silently clearing the priority when a client sent a
-  name. The service asset impact panel gains the `scroll-margin-top` its
-  topology sibling already had, which is the sticky-header offset behind the
-  intermittent `target-size` axe failures. Clean migrations, the full uncached
-  Go/PostgreSQL suite, vet, native and WebAssembly builds, conformance checks,
-  every Playwright journey, 320 px reflow, and the light/dark axe sweep pass.
+- Pull request: pending
+- State: custom-field-context checkpoint implements all 14 pinned context
+  operations. One SQL function decides which context governs a field for a
+  project and work type, preferring a context that names either over one that
+  covers everything, and overlapping contexts are refused so the answer is never
+  ambiguous. That function now backs createmeta, the create dialog, service
+  request forms and per-project field lookup, replacing the primitive
+  field_contexts table those queries each interpreted separately. Per-context
+  defaults reach the field metadata and pre-fill the create dialog. The seven
+  custom field option operations are deliberately not implemented: ZZIRA has no
+  option-bearing field type for them to govern. Clean migrations, the full
+  uncached Go/PostgreSQL suite, vet, native and WebAssembly builds, conformance
+  checks, every Playwright journey, 320 px reflow, and the light/dark axe sweep
+  pass.
 - Blockers: none
 
 ## Merged baseline
 
-PR [#81](https://github.com/e6qu/zzira/pull/81) merged field-rule enforcement on
+PR [#82](https://github.com/e6qu/zzira/pull/82) merged priority resolution on
+edit and the sticky-header scroll offset on top of
+PR [#81](https://github.com/e6qu/zzira/pull/81), which merged field-rule enforcement on
 edit and transition on top of
 PR [#80](https://github.com/e6qu/zzira/pull/80), which merged Jira field configurations
 on top of
@@ -50,15 +57,17 @@ expanded JQL and app functions, stable search identity and paging, Jira votes,
 watches, project components, login-date functions, JSM approval/SLA functions,
 and durable bulk watch/unwatch, editable-field discovery, and field edits.
 
-PR #81's final GitHub matrix passed its required suites before merge.
+PR #82's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Monitor PR #82 through every CI job and resolve review threads inline.
-2. After merge, continue with custom field contexts and options, then the
-   `/config/fieldschemes` field association surface. Bulk edit still bypasses
-   both screens and field configurations; narrowing it needs the field
-   intersection Jira computes across a mixed work-type selection.
+1. Open the custom-field-context pull request, monitor it through every CI job,
+   and resolve review threads inline.
+2. After merge, decide whether to add an option-bearing custom field type, which
+   the seven custom field option operations need before they can mean anything.
+   Bulk edit still bypasses screens, field configurations and now contexts;
+   narrowing it needs the field intersection Jira computes across a mixed
+   work-type selection.
 
 ## Evidence map
 
@@ -80,6 +89,7 @@ PR #81's final GitHub matrix passed its required suites before merge.
 - [Jira screens](SCREENS.md)
 - [Jira screen schemes](SCREEN_SCHEMES.md)
 - [Jira field configurations](FIELD_CONFIGURATIONS.md)
+- [Jira custom field contexts](CUSTOM_FIELD_CONTEXTS.md)
 
 ## Continuity rules
 

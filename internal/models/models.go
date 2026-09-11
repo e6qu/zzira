@@ -343,6 +343,9 @@ type CreateFieldMeta struct {
 	Custom      bool                `json:"custom,omitempty"`
 	Section     string              `json:"-"`
 	Options     []CreateFieldOption `json:"allowedValues,omitempty"`
+	// Default is the raw JSON the field's applicable context supplies, empty
+	// when the context sets none.
+	Default string `json:"-"`
 }
 
 type CreateProjectMeta struct {
@@ -356,6 +359,10 @@ type CreateProjectMeta struct {
 	// FieldBehaviour holds the project's field configuration rules per work
 	// type. A field without a rule is optional and visible.
 	FieldBehaviour map[string]map[string]FieldBehaviour `json:"-"`
+	// CustomFieldDefaults maps work type to the custom fields whose context
+	// applies there, and the raw default that context supplies. A work type
+	// present here governs which custom fields the form may show.
+	CustomFieldDefaults map[string]map[string]string `json:"-"`
 }
 
 // FieldsForIssueType narrows and orders the project's fields to what the work
@@ -365,7 +372,7 @@ type CreateProjectMeta struct {
 func (m CreateProjectMeta) FieldsForIssueType(issueTypeID string) []CreateFieldMeta {
 	screen := m.ScreenFields[issueTypeID]
 	if len(screen) == 0 {
-		return m.Fields
+		return m.applyFieldBehaviour(issueTypeID, m.applyCustomFieldContexts(issueTypeID, m.Fields))
 	}
 	rank := make(map[string]int, len(screen))
 	for index, id := range screen {
@@ -391,7 +398,31 @@ func (m CreateProjectMeta) FieldsForIssueType(issueTypeID string) []CreateFieldM
 	if summary.ID != "" && !summaryOnScreen {
 		out = append(out, summary)
 	}
-	return m.applyFieldBehaviour(issueTypeID, append(out, selected...))
+	return m.applyFieldBehaviour(issueTypeID, m.applyCustomFieldContexts(issueTypeID, append(out, selected...)))
+}
+
+// applyCustomFieldContexts drops custom fields whose context does not reach this
+// project and work type, and stamps the default the governing context supplies.
+// System fields have no context and always survive.
+func (m CreateProjectMeta) applyCustomFieldContexts(issueTypeID string, fields []CreateFieldMeta) []CreateFieldMeta {
+	applicable, governed := m.CustomFieldDefaults[issueTypeID]
+	if !governed {
+		return fields
+	}
+	out := make([]CreateFieldMeta, 0, len(fields))
+	for _, field := range fields {
+		if !field.Custom {
+			out = append(out, field)
+			continue
+		}
+		value, applies := applicable[field.ID]
+		if !applies {
+			continue
+		}
+		field.Default = value
+		out = append(out, field)
+	}
+	return out
 }
 
 // applyFieldBehaviour stamps the project's field configuration onto a resolved

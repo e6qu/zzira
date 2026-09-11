@@ -1102,6 +1102,19 @@ func (h *Handler) buildCreateDialogData(ctx context.Context, workspaceID, userID
 	}
 	// The project's create screen decides which fields this work type shows.
 	selected.Fields = selected.FieldsForIssueType(values["issuetype"])
+	// A custom field context can supply a default, which pre-fills the form
+	// unless the request already carries a value for that field.
+	for _, field := range selected.Fields {
+		if field.Default == "" || values[field.ID] != "" {
+			continue
+		}
+		var text string
+		if err := json.Unmarshal([]byte(field.Default), &text); err == nil {
+			values[field.ID] = text
+			continue
+		}
+		values[field.ID] = strings.Trim(field.Default, `"`)
+	}
 	if !selectedSubtask {
 		visibleFields := make([]models.CreateFieldMeta, 0, len(selected.Fields))
 		for _, field := range selected.Fields {
