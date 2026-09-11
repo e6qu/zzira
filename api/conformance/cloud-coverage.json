@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 772,
+  "assessedTotal": 789,
   "counts": {
     "delivered": 0,
-    "partial": 761,
+    "partial": 778,
     "missing": 11,
-    "unassessed": 435
+    "unassessed": 418
   },
   "countsByFamily": {
     "automation": {
@@ -24,9 +24,9 @@
     },
     "jira-platform": {
       "delivered": 0,
-      "partial": 358,
+      "partial": 375,
       "missing": 0,
-      "unassessed": 259
+      "unassessed": 242
     },
     "jira-service-management": {
       "delivered": 0,
@@ -535,121 +535,166 @@
       "operationId": "jira-v3:GET:/rest/api/3/config/fieldschemes",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/field_schemes_test.go",
+        "docs/FIELD_ASSOCIATION_SCHEMES.md"
+      ],
+      "notes": "Listing schemes is tested with the name query; the projectId filter and matchedFilters remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/config/fieldschemes",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/field_schemes_test.go",
+        "docs/FIELD_ASSOCIATION_SCHEMES.md"
+      ],
+      "notes": "Creating a scheme is tested; it starts from the workspace's default rules, as Jira's minimal critical set does."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/config/fieldschemes/fields",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/field_schemes_test.go",
+        "docs/FIELD_ASSOCIATION_SCHEMES.md"
+      ],
+      "notes": "Removing fields is tested, including that it reaches every mapping the scheme has rather than only its fallback."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/config/fieldschemes/fields",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/field_schemes_test.go",
+        "docs/FIELD_ASSOCIATION_SCHEMES.md"
+      ],
+      "notes": "Associating fields is tested, including a work type restriction that takes the field off the other work types' forms and a per-item failure for an unknown field."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/config/fieldschemes/fields/parameters",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/field_schemes_test.go",
+        "docs/FIELD_ASSOCIATION_SCHEMES.md"
+      ],
+      "notes": "Removing an override is tested; the work type returns to the scheme's fallback rules rather than losing the field."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/config/fieldschemes/fields/parameters",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/field_schemes_test.go",
+        "docs/FIELD_ASSOCIATION_SCHEMES.md"
+      ],
+      "notes": "Setting per-work-type overrides is tested."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/config/fieldschemes/projects",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/field_schemes_test.go",
+        "docs/FIELD_ASSOCIATION_SCHEMES.md"
+      ],
+      "notes": "Reporting which scheme each project uses is tested, including the projectId filter."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/config/fieldschemes/projects",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/field_schemes_test.go",
+        "docs/FIELD_ASSOCIATION_SCHEMES.md"
+      ],
+      "notes": "Assigning projects to a scheme is tested, and the assignment is shown to govern createmeta."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/config/fieldschemes/{id}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/field_schemes_test.go",
+        "docs/FIELD_ASSOCIATION_SCHEMES.md"
+      ],
+      "notes": "Deleting a scheme is tested, including the 404 afterwards."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/config/fieldschemes/{id}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/field_schemes_test.go",
+        "docs/FIELD_ASSOCIATION_SCHEMES.md"
+      ],
+      "notes": "Reading one scheme is tested, including the 404 for an unknown id."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/config/fieldschemes/{id}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/field_schemes_test.go",
+        "docs/FIELD_ASSOCIATION_SCHEMES.md"
+      ],
+      "notes": "Renaming a scheme is tested."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/config/fieldschemes/{id}/clone",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/field_schemes_test.go",
+        "docs/FIELD_ASSOCIATION_SCHEMES.md"
+      ],
+      "notes": "Cloning is tested, including that editing the copy leaves the original's associations alone."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/config/fieldschemes/{id}/fields",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/field_schemes_test.go",
+        "docs/FIELD_ASSOCIATION_SCHEMES.md"
+      ],
+      "notes": "The scheme's fields are tested with their parameters, work type restrictions and overrides; allowedOperations is read and write only."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/config/fieldschemes/{id}/fields/{fieldId}/parameters",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/field_schemes_test.go",
+        "docs/FIELD_ASSOCIATION_SCHEMES.md"
+      ],
+      "notes": "One field's rules and overrides are tested, including the 404 for a field the scheme does not associate; rendererType is not modeled."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/config/fieldschemes/{id}/projects",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/field_schemes_test.go",
+        "docs/FIELD_ASSOCIATION_SCHEMES.md"
+      ],
+      "notes": "A scheme's projects are tested."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/configuration",
@@ -1006,17 +1051,23 @@
       "operationId": "jira-v3:DELETE:/rest/api/3/field/association",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/field_schemes_test.go",
+        "docs/FIELD_ASSOCIATION_SCHEMES.md"
+      ],
+      "notes": "Unassociating is tested, including that the field leaves the project's create form."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/field/association",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/field_schemes_test.go",
+        "docs/FIELD_ASSOCIATION_SCHEMES.md"
+      ],
+      "notes": "Associating fields with projects is tested, including that it widens a custom field's context so the field reaches the form; only PROJECT_ID contexts are accepted."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/field/search",

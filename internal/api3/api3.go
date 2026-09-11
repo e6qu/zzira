@@ -103,6 +103,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.worklogFeedRoute(w, r, path)
 	case strings.HasPrefix(path, "/customFieldOption/"):
 		h.customFieldOptionResource(w, r, strings.TrimPrefix(path, "/customFieldOption/"))
+	case path == "/field/association":
+		h.fieldAssociationRoute(w, r)
+	case path == "/config/fieldschemes" || strings.HasPrefix(path, "/config/fieldschemes/"):
+		h.fieldSchemeRoute(w, r, path)
 	case path == "/field/search":
 		h.fieldSearchRoute(w, r, false)
 	case path == "/field/search/trashed":

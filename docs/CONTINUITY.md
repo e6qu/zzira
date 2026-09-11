@@ -8,29 +8,30 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
 ## Active delivery
 
-- Branch: `feat/pr1-field-audit`
-- Base: `origin/main` after merged PR #92 (`d5b8509`)
+- Branch: `feat/pr1-field-schemes-audit`
+- Base: `origin/main` after merged PR #93 (`4129ffc`)
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- State: field checkpoint audited all 11 pinned issue-field operations against a
-  running server and found two working, `GET /field` and `POST /field`. The
-  other nine are new here: the live and trashed paginated searches, the rename,
-  the project associations and contexts reads, the project field read, and the
-  trash lifecycle. Jira does not delete a custom field on request — it trashes
-  it, and only a trashed field can be deleted — so `trashed_at` is the state and
-  every read that serves live work excludes it, leaving recorded values intact
-  for a restore. `GET /field` reported five hand-written system fields and now
-  reports the set the search resolves through. `POST /field` rejected Jira's
-  canonical type keys, which is what a real client sends. And
-  `GET /field/{id}/contexts` answered 405 because the context router matched any
-  path containing `/context`.
-  Clean migrations, the full uncached Go/PostgreSQL suite, vet, native and
-  WebAssembly builds, conformance checks, every Playwright journey, 320 px
-  reflow, and the light/dark axe sweep pass.
+- State: field association scheme checkpoint audited all 17 pinned operations
+  against a running server and found none working. They are served from this
+  product's field configuration scheme rather than a parallel model, so both
+  APIs answer one question — which fields a project's form shows — the same way.
+  The hard part is that a new scheme points every work type at the workspace
+  default, so a naive write would change every project: a write now clones a
+  shared configuration and remaps just that work type to the copy. A work type
+  given its own rules stops following later edits to the fallback, which is how
+  Jira behaves too and is documented. The test proves the scheme governs
+  `createmeta`, not merely that the endpoints answer. No migration was needed:
+  the tables this serves from already existed.
+  The full uncached Go/PostgreSQL suite, vet, native and WebAssembly builds,
+  conformance checks, every Playwright journey, 320 px reflow, and the
+  light/dark axe sweep pass.
 - Blockers: none
 
 ## Merged baseline
 
-PR [#92](https://github.com/e6qu/zzira/pull/92) merged the completed worklog
+PR [#93](https://github.com/e6qu/zzira/pull/93) merged the completed issue field
+surface, including its trash lifecycle, on top of
+PR [#92](https://github.com/e6qu/zzira/pull/92), which merged the completed worklog
 surface, whose feeds needed a stamp on the worklog and a tombstone on the
 delete, on top of
 PR [#91](https://github.com/e6qu/zzira/pull/91), which merged the completed dashboard
@@ -81,17 +82,21 @@ PR #90's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Monitor the field pull request through every CI job and resolve review
-   threads inline.
-2. The field families adjacent to this one are still unassessed and were probed
-   as missing: `PUT`/`DELETE /field/association` (2), the legacy
-   `/field/{fieldKey}/option` surface (8) and `/config/fieldschemes` (3). The
-   option surface is Jira's older per-field option API and overlaps the
-   context-scoped options already delivered, so check whether it can reach the
-   same store before adding a second one.
-3. Probe every operation against a running server before assessing; the six
-   audits so far ran 11 of 15, 8 of 33, 5 of 13, 16 of 17, 4 of 14 and 2 of 11,
-   so the result is not predictable from how well tested a surface looks.
+1. Monitor the field association scheme pull request through every CI job and
+   resolve review threads inline.
+2. The remaining field family is the legacy `/field/{fieldKey}/option` surface
+   (8 operations), probed as missing. Jira is explicit that it works **only for
+   select-list fields provided by a Connect app**, not for fields created in
+   Jira or through the context-scoped option API already delivered — so it needs
+   an app to be able to declare a select field first, which
+   `translateConnectIssueField` does not yet allow (it maps string, text,
+   rich_text, number, date and datetime only). Treat "let an app declare a
+   `single_select` issue field, then manage its options" as one checkpoint, and
+   keep those options separate from the context-scoped ones, as Jira does.
+3. Probe every operation against a running server before assessing; the seven
+   audits so far ran 11 of 15, 8 of 33, 5 of 13, 16 of 17, 4 of 14, 2 of 11 and
+   0 of 17, so the result is not predictable from how well tested a surface
+   looks.
 
 ## Evidence map
 
@@ -120,6 +125,7 @@ PR #90's final GitHub matrix passed its required suites before merge.
 - [Jira dashboards](DASHBOARDS_API.md)
 - [Jira worklogs](WORKLOGS.md)
 - [Jira issue fields](ISSUE_FIELDS.md)
+- [Jira field association schemes](FIELD_ASSOCIATION_SCHEMES.md)
 
 ## Continuity rules
 
