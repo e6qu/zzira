@@ -44,8 +44,12 @@ The rules are enforced, not merely advertised:
   replaces the built-in help text with the administrator's, so the create dialog
   and `createmeta` agree.
 - `editmeta` applies the same configuration for the work item's own type.
-- **The command path rejects a create that omits a required field or supplies a
-  hidden one**, so the rule holds for REST clients that never read the metadata.
+- **The command path rejects a write that breaks a rule**, so it holds for REST
+  clients that never read the metadata. On create, a required field may not be
+  omitted and a hidden field may not be supplied. On edit and on a transition
+  carrying field updates, a required field may not be cleared and a hidden field
+  may not be given a value; an update that leaves a governed field alone is never
+  rejected, so the rules never block edits to unrelated fields.
 
 A field cannot be both required and hidden, and **summary can be neither
 optional nor hidden**: the command path requires it independently, so a
@@ -83,8 +87,15 @@ configuration so it can be assigned before anything else is mapped.
   schema. The page is in the light and dark axe sweep.
 
 Jira's `renderer` on a field configuration item is not stored; ZZIRA renders each
-field type one way. Required and hidden are enforced on create but not yet on
-edit or transition, where a hidden field can still be written through the edit
-API. Bulk edit still offers the project's full field superset, as it does for
-screens. The `/config/fieldschemes` field association surface, `expand` and
+field type one way. Workflow rules that set fields during a transition are
+automation rather than a person's edit, so they bypass the configuration, as
+post-functions do in Jira. Bulk edit still offers the project's full field
+superset, as it does for screens, so a bulk write is not yet judged by these
+rules. The `/config/fieldschemes` field association surface, `expand` and
 `orderBy` on these endpoints, and exact Jira error wording also remain.
+
+One pre-existing limitation is worth knowing while these rules are enforced:
+`PUT /rest/api/3/issue/{key}` reads a priority only by `id`, so a client that
+sends `{"priority":{"name":"Medium"}}` supplies an empty id. That silently
+cleared the priority before this checkpoint; where a configuration marks
+priority required it is now reported as clearing a required field instead.

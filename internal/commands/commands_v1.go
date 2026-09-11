@@ -136,7 +136,7 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 	}
 	assigneeChanged := in.AssigneeID != nil && *in.AssigneeID != currentAssigneeID
 	securityChanged := in.SecurityLevelID != nil && *in.SecurityLevelID != issue.SecurityLevelID
-	issue, action, err := s.Store.UpdateIssue(ctx, in.ActorID, in.WorkspaceID, issue.ID, store.IssueUpdate{
+	update := store.IssueUpdate{
 		Summary:           in.Summary,
 		Description:       in.Description,
 		PriorityID:        in.PriorityID,
@@ -147,7 +147,11 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 		Labels:            in.Labels,
 		Fields:            in.Fields,
 		VersionOperations: in.VersionOperations,
-	})
+	}
+	if err = s.enforceFieldConfigurationWrite(ctx, in.WorkspaceID, issue, update); err != nil {
+		return nil, nil, err
+	}
+	issue, action, err := s.Store.UpdateIssue(ctx, in.ActorID, in.WorkspaceID, issue.ID, update)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -293,6 +297,9 @@ func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, worksp
 		return nil, nil, fmt.Errorf("description must be at most 1 MiB")
 	}
 	if err := s.validateCustomFields(ctx, issue.ProjectID, update.Fields); err != nil {
+		return nil, nil, err
+	}
+	if err := s.enforceFieldConfigurationWrite(ctx, workspaceID, issue, update); err != nil {
 		return nil, nil, err
 	}
 	if update.Labels != nil {

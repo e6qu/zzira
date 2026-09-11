@@ -8,26 +8,25 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
 ## Active delivery
 
-- Branch: `feat/pr1-field-configurations`
-- Base: `origin/main` after merged PR #79 (`e1b7fba`)
+- Branch: `feat/pr1-field-rule-enforcement`
+- Base: `origin/main` after merged PR #80 (`afc1625`)
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- Pull request: [#80](https://github.com/e6qu/zzira/pull/80)
-- State: field-configuration checkpoint implements all 15 pinned field
-  configuration and field configuration scheme operations. One resolution
-  function walks project → scheme → work type mapping → configuration and
-  decides required, hidden, and help text per field; createmeta, editmeta, and
-  the create dialog all advertise it, and the command path rejects a create that
-  omits a required field or supplies a hidden one, so a rule is enforced rather
-  than decorative. An absent rule means optional and visible, summary can be
-  neither relaxed nor hidden, and the default configuration reproduces exactly
-  what the command path already required. Clean migrations, the full uncached
-  Go/PostgreSQL suite, vet, native and WebAssembly builds, conformance checks,
-  every Playwright journey, 320 px reflow, and the light/dark axe sweep pass.
+- Pull request: [#81](https://github.com/e6qu/zzira/pull/81)
+- State: hardening checkpoint, no new pinned operations. Field configuration
+  rules now bind every person-initiated write, not only create: an edit or a
+  transition carrying field updates may not clear a required field or give a
+  hidden one a value, while an update that leaves a governed field alone is
+  never rejected. Workflow rules that set fields stay exempt, as post-functions
+  do in Jira. Clean migrations, the full uncached Go/PostgreSQL suite, vet,
+  native and WebAssembly builds, conformance checks, every Playwright journey,
+  320 px reflow, and the light/dark axe sweep pass.
 - Blockers: none
 
 ## Merged baseline
 
-PR [#79](https://github.com/e6qu/zzira/pull/79) merged the binding of screens to
+PR [#80](https://github.com/e6qu/zzira/pull/80) merged Jira field configurations
+on top of
+PR [#79](https://github.com/e6qu/zzira/pull/79), which merged the binding of screens to
 work item forms on top of
 PR [#78](https://github.com/e6qu/zzira/pull/78), which merged Jira screens, tabs and
 tab fields on top of
@@ -49,13 +48,15 @@ expanded JQL and app functions, stable search identity and paging, Jira votes,
 watches, project components, login-date functions, JSM approval/SLA functions,
 and durable bulk watch/unwatch, editable-field discovery, and field edits.
 
-PR #79's final GitHub matrix passed its required suites before merge.
+PR #80's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Monitor PR #80 through every CI job and resolve review threads inline.
+1. Monitor PR #81 through every CI job and resolve review threads inline.
 2. After merge, continue with custom field contexts and options, then the
-   `/config/fieldschemes` field association surface.
+   `/config/fieldschemes` field association surface. Bulk edit still bypasses
+   both screens and field configurations; narrowing it needs the field
+   intersection Jira computes across a mixed work-type selection.
 
 ## Evidence map
 
