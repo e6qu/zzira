@@ -15,6 +15,8 @@ type fieldContextView struct {
 	Context  *models.CustomFieldContext
 	Projects []*models.Project
 	Types    []string
+	Options  []models.CustomFieldOption
+	IsSelect bool
 }
 
 type customFieldCard struct {
@@ -76,6 +78,14 @@ func (h *Handler) loadCustomFieldsPage(r *http.Request, workspaceID string) (cus
 			}
 			for _, issueTypeID := range found.IssueTypeIDs {
 				view.Types = append(view.Types, typeNames[issueTypeID])
+			}
+			if field.Type == models.CustomFieldSelect {
+				view.IsSelect = true
+				options, optionErr := h.Store.CustomFieldOptions(r.Context(), workspaceID, field.ID, found.ID)
+				if optionErr != nil {
+					return data, optionErr
+				}
+				view.Options = options
 			}
 			card.Contexts = append(card.Contexts, view)
 		}
@@ -152,6 +162,24 @@ func (h *Handler) CustomFieldContextMutation(w http.ResponseWriter, r *http.Requ
 		}
 		err = h.Store.SetCustomFieldContextDefault(r.Context(), workspaceID, user.ID, fieldID, contextID, value)
 		notice = "Default value saved."
+	case "add-option":
+		_, err = h.Store.CreateCustomFieldOptions(r.Context(), workspaceID, user.ID, fieldID, contextID,
+			[]string{r.PostFormValue("value")})
+		notice = "Option added."
+	case "disable-option":
+		err = h.Store.UpdateCustomFieldOptions(r.Context(), workspaceID, user.ID, fieldID, contextID,
+			[]models.CustomFieldOption{{
+				ID: r.PostFormValue("optionId"), Value: r.PostFormValue("value"),
+				Disabled: r.PostFormValue("disabled") == "true"}})
+		notice = "Option updated."
+	case "move-option":
+		err = h.Store.ReorderCustomFieldOptions(r.Context(), workspaceID, user.ID, fieldID, contextID,
+			[]string{r.PostFormValue("optionId")}, "", "First")
+		notice = "Option moved."
+	case "delete-option":
+		err = h.Store.DeleteCustomFieldOption(r.Context(), workspaceID, user.ID, fieldID, contextID,
+			r.PostFormValue("optionId"), r.PostFormValue("replaceWith"))
+		notice = "Option removed."
 	default:
 		err = store.ErrFieldContextValidation
 	}

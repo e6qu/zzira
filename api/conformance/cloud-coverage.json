@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 662,
+  "assessedTotal": 669,
   "counts": {
     "delivered": 0,
-    "partial": 655,
+    "partial": 662,
     "missing": 7,
-    "unassessed": 545
+    "unassessed": 538
   },
   "countsByFamily": {
     "automation": {
@@ -24,9 +24,9 @@
     },
     "jira-platform": {
       "delivered": 0,
-      "partial": 294,
+      "partial": 301,
       "missing": 0,
-      "unassessed": 323
+      "unassessed": 316
     },
     "jira-service-management": {
       "delivered": 0,
@@ -727,9 +727,12 @@
       "operationId": "jira-v3:GET:/rest/api/3/customFieldOption/{id}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/custom_field_contexts_test.go",
+        "docs/CUSTOM_FIELD_OPTIONS.md"
+      ],
+      "notes": "Reading one option by its own ID is tested, scoped to the workspace's fields; Jira's expanded option bean remains."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/dashboard",
@@ -1120,49 +1123,72 @@
       "operationId": "jira-v3:GET:/rest/api/3/field/{fieldId}/context/{contextId}/option",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/custom_field_contexts_test.go",
+        "e2e/custom_field_options.spec.ts",
+        "docs/CUSTOM_FIELD_OPTIONS.md"
+      ],
+      "notes": "Paging a context's options in display order is tested; Jira's optionId and onlyOptions filters remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/field/{fieldId}/context/{contextId}/option",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/custom_field_contexts_test.go",
+        "e2e/custom_field_options.spec.ts",
+        "docs/CUSTOM_FIELD_OPTIONS.md"
+      ],
+      "notes": "Appending options is tested, including the select-only guard, blank values and case-insensitive duplicates; cascading child options remain."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/field/{fieldId}/context/{contextId}/option",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/custom_field_contexts_test.go",
+        "e2e/custom_field_options.spec.ts",
+        "docs/CUSTOM_FIELD_OPTIONS.md"
+      ],
+      "notes": "Renaming and disabling options is tested; a disabled option leaves the form while existing work items keep it."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/field/{fieldId}/context/{contextId}/option/move",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/custom_field_contexts_test.go",
+        "e2e/custom_field_options.spec.ts",
+        "docs/CUSTOM_FIELD_OPTIONS.md"
+      ],
+      "notes": "First, Last and an explicit after target are tested, with unknown options rejected."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/field/{fieldId}/context/{contextId}/option/{optionId}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/custom_field_contexts_test.go",
+        "e2e/custom_field_options.spec.ts",
+        "docs/CUSTOM_FIELD_OPTIONS.md"
+      ],
+      "notes": "Removing an unused option is tested; one still held by work items is refused."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/field/{fieldId}/context/{contextId}/option/{optionId}/issue",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/custom_field_contexts_test.go",
+        "docs/CUSTOM_FIELD_OPTIONS.md"
+      ],
+      "notes": "The replacement form migrates the work items holding the option in the same transaction, and refuses the option itself as its own replacement."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/field/{fieldId}/context/{contextId}/project",

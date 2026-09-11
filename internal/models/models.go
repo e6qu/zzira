@@ -359,10 +359,17 @@ type CreateProjectMeta struct {
 	// FieldBehaviour holds the project's field configuration rules per work
 	// type. A field without a rule is optional and visible.
 	FieldBehaviour map[string]map[string]FieldBehaviour `json:"-"`
-	// CustomFieldDefaults maps work type to the custom fields whose context
-	// applies there, and the raw default that context supplies. A work type
-	// present here governs which custom fields the form may show.
-	CustomFieldDefaults map[string]map[string]string `json:"-"`
+	// CustomFieldContexts maps work type to the custom fields whose context
+	// applies there, and what that context supplies. A work type present here
+	// governs which custom fields the form may show.
+	CustomFieldContexts map[string]map[string]CustomFieldContextInfo `json:"-"`
+}
+
+// CustomFieldContextInfo is what the governing context contributes to one
+// custom field's metadata.
+type CustomFieldContextInfo struct {
+	Default string
+	Options []CreateFieldOption
 }
 
 // FieldsForIssueType narrows and orders the project's fields to what the work
@@ -405,7 +412,7 @@ func (m CreateProjectMeta) FieldsForIssueType(issueTypeID string) []CreateFieldM
 // project and work type, and stamps the default the governing context supplies.
 // System fields have no context and always survive.
 func (m CreateProjectMeta) applyCustomFieldContexts(issueTypeID string, fields []CreateFieldMeta) []CreateFieldMeta {
-	applicable, governed := m.CustomFieldDefaults[issueTypeID]
+	applicable, governed := m.CustomFieldContexts[issueTypeID]
 	if !governed {
 		return fields
 	}
@@ -415,11 +422,15 @@ func (m CreateProjectMeta) applyCustomFieldContexts(issueTypeID string, fields [
 			out = append(out, field)
 			continue
 		}
-		value, applies := applicable[field.ID]
+		info, applies := applicable[field.ID]
 		if !applies {
 			continue
 		}
-		field.Default = value
+		field.Default = info.Default
+		// A select field offers exactly the options its governing context holds.
+		if field.Type == "option" {
+			field.Options = info.Options
+		}
 		out = append(out, field)
 	}
 	return out

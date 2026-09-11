@@ -219,4 +219,105 @@ func TestCustomFieldContextContract(t *testing.T) {
 	if err = st.Pool.QueryRow(ctx, `SELECT count(*) FROM actions WHERE workspace_id=$1 AND entity_type LIKE 'custom_field_context%'`, workspaceID).Scan(&actions); err != nil || actions < 6 {
 		t.Fatalf("actions=%d err=%v", actions, err)
 	}
+
+	// ---- a select field's options belong to the governing context ----
+
+	selectID := decodeID(call(adminID, http.MethodPost, "/rest/api/3/field", `{"name":"Release ring `+fmt.Sprint(stamp)+`","type":"select"}`, http.StatusCreated))
+	selectContexts := call(adminID, http.MethodGet, "/rest/api/3/field/"+selectID+"/context", "", http.StatusOK)
+	var selectPage struct {
+		Values []struct {
+			ID int64 `json:"id"`
+		} `json:"values"`
+	}
+	if err = json.Unmarshal(selectContexts.Body.Bytes(), &selectPage); err != nil || len(selectPage.Values) != 1 {
+		t.Fatalf("contexts=%+v err=%v body=%s", selectPage, err, selectContexts.Body.String())
+	}
+	selectContext := fmt.Sprint(selectPage.Values[0].ID)
+	optionPath := "/rest/api/3/field/" + selectID + "/context/" + selectContext + "/option"
+
+	// Only a select field has options.
+	call(adminID, http.MethodPost, "/rest/api/3/field/"+fieldID+"/context/"+globalContext+"/option", `{"options":[{"value":"Nope"}]}`, http.StatusBadRequest)
+	call(adminID, http.MethodPost, optionPath, `{"options":[{"value":"  "}]}`, http.StatusBadRequest)
+
+	made := call(adminID, http.MethodPost, optionPath, `{"options":[{"value":"Canary"},{"value":"Broad"},{"value":"Retired"}]}`, http.StatusOK)
+	var optionWire struct {
+		Options []struct {
+			ID    int64  `json:"id"`
+			Value string `json:"value"`
+		} `json:"options"`
+	}
+	if err = json.Unmarshal(made.Body.Bytes(), &optionWire); err != nil || len(optionWire.Options) != 3 {
+		t.Fatalf("options=%+v err=%v body=%s", optionWire, err, made.Body.String())
+	}
+	canary, broad, retired := fmt.Sprint(optionWire.Options[0].ID), fmt.Sprint(optionWire.Options[1].ID), fmt.Sprint(optionWire.Options[2].ID)
+	call(adminID, http.MethodPost, optionPath, `{"options":[{"value":"canary"}]}`, http.StatusConflict)
+
+	optionOrder := func() []string {
+		t.Helper()
+		response := call(adminID, http.MethodGet, optionPath, "", http.StatusOK)
+		var listed struct {
+			Values []struct {
+				Value string `json:"value"`
+			} `json:"values"`
+		}
+		if err = json.Unmarshal(response.Body.Bytes(), &listed); err != nil {
+			t.Fatal(err)
+		}
+		order := []string{}
+		for _, option := range listed.Values {
+			order = append(order, option.Value)
+		}
+		return order
+	}
+	if strings.Join(optionOrder(), ",") != "Canary,Broad,Retired" {
+		t.Fatalf("order=%v", optionOrder())
+	}
+	call(adminID, http.MethodPut, optionPath+"/move", `{"customFieldOptionIds":["`+retired+`"],"position":"First"}`, http.StatusNoContent)
+	if strings.Join(optionOrder(), ",") != "Retired,Canary,Broad" {
+		t.Fatalf("order=%v", optionOrder())
+	}
+	call(adminID, http.MethodPut, optionPath+"/move", `{"customFieldOptionIds":["`+retired+`"],"after":"`+broad+`"}`, http.StatusNoContent)
+	if strings.Join(optionOrder(), ",") != "Canary,Broad,Retired" {
+		t.Fatalf("order=%v", optionOrder())
+	}
+	call(adminID, http.MethodPut, optionPath+"/move", `{"customFieldOptionIds":["9999"],"position":"First"}`, http.StatusNotFound)
+
+	one := call(adminID, http.MethodGet, "/rest/api/3/customFieldOption/"+canary, "", http.StatusOK)
+	if !strings.Contains(one.Body.String(), `"value":"Canary"`) {
+		t.Fatal(one.Body.String())
+	}
+	call(adminID, http.MethodGet, "/rest/api/3/customFieldOption/9999", "", http.StatusNotFound)
+
+	// The options reach createmeta as the field's allowed values.
+	optionMeta := call(adminID, http.MethodGet, "/rest/api/3/issue/createmeta/"+keyA+"/issuetypes/it_task?maxResults=60", "", http.StatusOK)
+	if !strings.Contains(optionMeta.Body.String(), `"Canary"`) {
+		t.Fatal(optionMeta.Body.String())
+	}
+
+	// A work item may only take an option the governing context offers.
+	call(adminID, http.MethodPost, "/rest/api/3/issue",
+		`{"fields":{"project":{"key":"`+keyA+`"},"summary":"Bad ring","issuetype":{"name":"Task"},"`+selectID+`":"9999"}}`, http.StatusBadRequest)
+	ringed := call(adminID, http.MethodPost, "/rest/api/3/issue",
+		`{"fields":{"project":{"key":"`+keyA+`"},"summary":"Canary ring","issuetype":{"name":"Task"},"`+selectID+`":"`+canary+`"}}`, http.StatusCreated)
+	var ringedIssue struct {
+		Key string `json:"key"`
+	}
+	if err = json.Unmarshal(ringed.Body.Bytes(), &ringedIssue); err != nil {
+		t.Fatal(err)
+	}
+
+	// A disabled option keeps existing values but can no longer be chosen.
+	call(adminID, http.MethodPut, optionPath, `{"options":[{"id":"`+broad+`","value":"Broad","disabled":true}]}`, http.StatusNoContent)
+	call(adminID, http.MethodPost, "/rest/api/3/issue",
+		`{"fields":{"project":{"key":"`+keyA+`"},"summary":"Disabled ring","issuetype":{"name":"Task"},"`+selectID+`":"`+broad+`"}}`, http.StatusBadRequest)
+
+	// An option in use cannot vanish silently; with a replacement it migrates.
+	call(adminID, http.MethodDelete, optionPath+"/"+canary, "", http.StatusConflict)
+	call(adminID, http.MethodDelete, optionPath+"/"+canary+"/issue?replaceWith="+canary, "", http.StatusBadRequest)
+	call(adminID, http.MethodDelete, optionPath+"/"+canary+"/issue?replaceWith="+retired, "", http.StatusNoContent)
+	moved := call(adminID, http.MethodGet, "/rest/api/3/issue/"+ringedIssue.Key, "", http.StatusOK)
+	if !strings.Contains(moved.Body.String(), retired) {
+		t.Fatalf("the work item should hold the replacement option: %s", moved.Body.String())
+	}
+	call(adminID, http.MethodDelete, optionPath+"/"+broad, "", http.StatusNoContent)
 }

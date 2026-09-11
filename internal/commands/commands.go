@@ -412,5 +412,22 @@ func (s *Service) enforceCustomFieldContexts(ctx context.Context, workspaceID, p
 			return fmt.Errorf("%s is not available for this project and work type", field)
 		}
 	}
+	options, err := s.Store.CustomFieldOptionScope(ctx, workspaceID, projectID, issueTypeID)
+	if err != nil {
+		return err
+	}
+	for _, field := range touched {
+		choices, isSelect := options[field]
+		if !isSelect {
+			continue
+		}
+		var value string
+		if err := json.Unmarshal(fields[field], &value); err != nil {
+			return fmt.Errorf("%s must be an option id", field)
+		}
+		if !choices[value] {
+			return fmt.Errorf("%s does not offer option %q here", field, value)
+		}
+	}
 	return nil
 }

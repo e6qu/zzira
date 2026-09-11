@@ -52,7 +52,7 @@ func (s *Store) IssueCreateMetadata(ctx context.Context, workspaceID, userID str
 	if err != nil {
 		return nil, err
 	}
-	customFieldDefaults, err := s.CustomFieldDefaultsByProject(ctx, workspaceID)
+	customFieldContexts, err := s.CustomFieldContextsByProject(ctx, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -183,7 +183,7 @@ func (s *Store) IssueCreateMetadata(ctx context.Context, workspaceID, userID str
 		meta.Projects = append(meta.Projects, models.CreateProjectMeta{
 			Project: *project, IssueTypes: issueTypes, Fields: fields,
 			ScreenFields: createScreenFields[project.ID], FieldBehaviour: fieldBehaviour[project.ID],
-			CustomFieldDefaults: customFieldDefaults[project.ID]})
+			CustomFieldContexts: customFieldContexts[project.ID]})
 	}
 	return meta, nil
 }
@@ -196,6 +196,8 @@ func createFieldType(fieldType string) (string, error) {
 		return "number", nil
 	case models.CustomFieldDatetime:
 		return "datetime", nil
+	case models.CustomFieldSelect:
+		return "option", nil
 	default:
 		return "", fmt.Errorf("unsupported type %q", fieldType)
 	}

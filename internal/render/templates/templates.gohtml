@@ -177,6 +177,8 @@
           <select id="create-{{.ID}}" name="{{.ID}}" multiple size="3">{{range .Options}}<option value="{{.ID}}" {{if selectedVersion $value .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select>
 		  {{else if eq .Type "parent"}}
 		  <select id="create-{{.ID}}" name="{{.ID}}" {{if $.SelectedIssueTypeSubtask}}required{{end}}><option value="">{{if $.SelectedIssueTypeSubtask}}Choose a parent{{else}}No parent{{end}}</option>{{range .Options}}<option value="{{.ID}}" {{if eq $value .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select>
+          {{else if eq .Type "option"}}
+          <select id="create-{{.ID}}" name="{{.ID}}" {{if .Required}}required{{end}} {{if .Description}}aria-describedby="create-help-{{.ID}}"{{end}}><option value="">None</option>{{range .Options}}<option value="{{.ID}}" {{if eq $value .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select>
           {{else if eq .Type "array"}}
           <input id="create-{{.ID}}" name="{{.ID}}" value="{{$value}}" maxlength="2048" autocomplete="off" placeholder="frontend, needs-review" {{if .Required}}required{{end}} {{if .Description}}aria-describedby="create-help-{{.ID}}"{{end}}>
           {{else if eq .Type "number"}}

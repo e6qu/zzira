@@ -1168,7 +1168,10 @@ func encodeWebCustomField(fieldType, value string) (json.RawMessage, error) {
 			return nil, fmt.Errorf("must be a finite number")
 		}
 		return encoded, nil
-	case "string", models.CustomFieldText, models.CustomFieldDatetime:
+	case "string", models.CustomFieldText, models.CustomFieldDatetime,
+		// A select field posts the chosen option's ID, which the command path
+		// checks against the options the governing context offers.
+		"option", models.CustomFieldSelect:
 		encoded, err := json.Marshal(value)
 		return encoded, err
 	default:
