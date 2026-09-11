@@ -11,7 +11,7 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 - Branch: `feat/pr1-project-versions`
 - Base: `origin/main` after merged PR #87 (`202954d`)
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- Pull request: pending
+- Pull request: [#88](https://github.com/e6qu/zzira/pull/88)
 - State: project-version checkpoint completes and records a surface that was
   largely built but never assessed. Eleven of the 15 pinned operations already
   worked; this adds the missing five — explicit version ordering and the four
@@ -64,8 +64,7 @@ PR #87's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Open the project-version pull request, monitor it through every CI job, and
-   resolve review threads inline.
+1. Monitor PR #88 through every CI job and resolve review threads inline.
 2. Several other families are built but unassessed in the same way versions
    were: Dashboards, Issue worklogs, Issue fields, and Jira Software's Board and
    Sprint groups all have tests and browser journeys but no operation-level
