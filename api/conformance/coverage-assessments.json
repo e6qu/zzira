@@ -4982,6 +4982,24 @@
       "notes": "The replacement form migrates the work items holding the option in the same transaction, and refuses the option itself as its own replacement."
     },
     {
+      "operationId": "jira-v3:DELETE:/rest/api/3/field/{fieldKey}/option/{optionId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/app_field_options_test.go",
+        "docs/APP_FIELD_OPTIONS.md"
+      ],
+      "notes": "Deleting an option is tested, including the 409 for one work items still use."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/field/{fieldKey}/option/{optionId}/issue",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/app_field_options_test.go",
+        "docs/APP_FIELD_OPTIONS.md"
+      ],
+      "notes": "The deselect is tested end to end: it queues an ordinary bulk edit, answers 303 with the task, and the work item ends on its replacement; a self, unknown or unselectable replacement is refused. overrideScreenSecurity and overrideEditableFlag remain."
+    },
+    {
       "operationId": "jira-v3:DELETE:/rest/api/3/field/{id}",
       "status": "partial",
       "evidence": [
@@ -5857,6 +5875,42 @@
         "docs/SCREENS.md"
       ],
       "notes": "Paging the screens that show one field is tested; expand remains."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/field/{fieldKey}/option",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/app_field_options_test.go",
+        "docs/APP_FIELD_OPTIONS.md"
+      ],
+      "notes": "Listing an app select list's options is tested, including the refusal for a field created here."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/field/{fieldKey}/option/suggestions/edit",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/app_field_options_test.go",
+        "docs/APP_FIELD_OPTIONS.md"
+      ],
+      "notes": "The options a user may choose are tested; an unselectable option leaves this list but not the search."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/field/{fieldKey}/option/suggestions/search",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/app_field_options_test.go",
+        "docs/APP_FIELD_OPTIONS.md"
+      ],
+      "notes": "The options a user may see are tested, including the per-option project scope."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/field/{fieldKey}/option/{optionId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/app_field_options_test.go",
+        "docs/APP_FIELD_OPTIONS.md"
+      ],
+      "notes": "Reading one option is tested, including the 404 for an unknown id."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/fieldconfiguration",
@@ -7277,6 +7331,15 @@
       "notes": "Removing projects is tested; emptying the list returns the context to every project and is refused when that would overlap another."
     },
     {
+      "operationId": "jira-v3:POST:/rest/api/3/field/{fieldKey}/option",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/app_field_options_test.go",
+        "docs/APP_FIELD_OPTIONS.md"
+      ],
+      "notes": "Adding an option is tested with app properties and a project scope, including the duplicate and empty value and the administration permission."
+    },
+    {
       "operationId": "jira-v3:POST:/rest/api/3/field/{id}/restore",
       "status": "partial",
       "evidence": [
@@ -8141,6 +8204,15 @@
         "docs/CUSTOM_FIELD_CONTEXTS.md"
       ],
       "notes": "Adding projects narrows the context, which removes the field from other projects' createmeta."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/field/{fieldKey}/option/{optionId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/app_field_options_test.go",
+        "docs/APP_FIELD_OPTIONS.md"
+      ],
+      "notes": "Replacing an option's value and config is tested, including marking it notSelectable."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/fieldconfiguration/{id}",

@@ -38,6 +38,26 @@ func (h *Handler) fieldContextRoute(w http.ResponseWriter, r *http.Request, fiel
 	if trimmed := strings.Trim(rest, "/"); trimmed != "" {
 		parts = strings.Split(trimmed, "/")
 	}
+	// An app's select list is managed through the issue field option surface,
+	// and Jira is explicit that the two do not overlap. Answering here would
+	// let a client edit an app's options through the administrator's resource.
+	if len(parts) >= 2 && parts[1] == "option" {
+		workspaceID, _, authErr := h.authWorkspaceAdmin(r)
+		if authErr != nil {
+			writeJerr(w, authErr)
+			return
+		}
+		appProvided, err := h.Store.AppFieldIsAppProvided(r.Context(), workspaceID, fieldID)
+		if err != nil {
+			fieldContextError(w, err)
+			return
+		}
+		if appProvided {
+			jiraError(w, http.StatusBadRequest,
+				"This field is provided by an app; manage its options through /rest/api/3/field/{fieldKey}/option.")
+			return
+		}
+	}
 	switch {
 	case len(parts) == 0:
 		h.fieldContextCollection(w, r, fieldID)

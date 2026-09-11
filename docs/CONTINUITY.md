@@ -8,28 +8,29 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
 ## Active delivery
 
-- Branch: `feat/pr1-field-schemes-audit`
-- Base: `origin/main` after merged PR #93 (`4129ffc`)
+- Branch: `feat/pr1-app-field-options-audit`
+- Base: `origin/main` after merged PR #94 (`04b361d`)
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- State: field association scheme checkpoint audited all 17 pinned operations
-  against a running server and found none working. They are served from this
-  product's field configuration scheme rather than a parallel model, so both
-  APIs answer one question — which fields a project's form shows — the same way.
-  The hard part is that a new scheme points every work type at the workspace
-  default, so a naive write would change every project: a write now clones a
-  shared configuration and remaps just that work type to the copy. A work type
-  given its own rules stops following later edits to the fallback, which is how
-  Jira behaves too and is documented. The test proves the scheme governs
-  `createmeta`, not merely that the endpoints answer. No migration was needed:
-  the tables this serves from already existed.
-  The full uncached Go/PostgreSQL suite, vet, native and WebAssembly builds,
-  conformance checks, every Playwright journey, 320 px reflow, and the
-  light/dark axe sweep pass.
+- State: app field option checkpoint audited all eight pinned operations against
+  a running server and found none working — and could not have: the descriptor
+  parser refused a `single_select` Connect field, so there was no app select
+  list for the surface to serve. It accepts one now (`multi_select` stays
+  refused rather than being downgraded to a single choice). The two option
+  resources are kept apart in both directions, as Jira specifies, while sharing
+  one option table because nothing downstream cares who supplied the field. The
+  deselect is a real background task: the affected work items are queued as an
+  ordinary bulk edit. A replacement that cannot be selected is refused up front,
+  because letting it through reported a completed deselect that changed nothing.
+  Clean migrations, the full uncached Go/PostgreSQL suite, vet, native and
+  WebAssembly builds, conformance checks, every Playwright journey, 320 px
+  reflow, and the light/dark axe sweep pass.
 - Blockers: none
 
 ## Merged baseline
 
-PR [#93](https://github.com/e6qu/zzira/pull/93) merged the completed issue field
+PR [#94](https://github.com/e6qu/zzira/pull/94) merged the field association
+scheme surface, served from this product's field configuration scheme, on top of
+PR [#93](https://github.com/e6qu/zzira/pull/93), which merged the completed issue field
 surface, including its trash lifecycle, on top of
 PR [#92](https://github.com/e6qu/zzira/pull/92), which merged the completed worklog
 surface, whose feeds needed a stamp on the worklog and a tombstone on the
@@ -82,21 +83,17 @@ PR #90's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Monitor the field association scheme pull request through every CI job and
-   resolve review threads inline.
-2. The remaining field family is the legacy `/field/{fieldKey}/option` surface
-   (8 operations), probed as missing. Jira is explicit that it works **only for
-   select-list fields provided by a Connect app**, not for fields created in
-   Jira or through the context-scoped option API already delivered — so it needs
-   an app to be able to declare a select field first, which
-   `translateConnectIssueField` does not yet allow (it maps string, text,
-   rich_text, number, date and datetime only). Treat "let an app declare a
-   `single_select` issue field, then manage its options" as one checkpoint, and
-   keep those options separate from the context-scoped ones, as Jira does.
-3. Probe every operation against a running server before assessing; the seven
-   audits so far ran 11 of 15, 8 of 33, 5 of 13, 16 of 17, 4 of 14, 2 of 11 and
-   0 of 17, so the result is not predictable from how well tested a surface
-   looks.
+1. Monitor the app field option pull request through every CI job and resolve
+   review threads inline.
+2. The whole Jira field surface is now assessed. Pick the next family from the
+   410 still unassessed operations in
+   [operation coverage](../api/conformance/cloud-coverage.json); the Confluence
+   v1 and v2 groups (348 between them) are the largest untouched block.
+3. Probe every operation against a running server before assessing; the eight
+   audits so far ran 11 of 15, 8 of 33, 5 of 13, 16 of 17, 4 of 14, 2 of 11,
+   0 of 17 and 0 of 8, so the result is not predictable from how well tested a
+   surface looks. Twice now an operation was missing because something upstream
+   made it impossible, not because the handler was absent.
 
 ## Evidence map
 
@@ -126,6 +123,7 @@ PR #90's final GitHub matrix passed its required suites before merge.
 - [Jira worklogs](WORKLOGS.md)
 - [Jira issue fields](ISSUE_FIELDS.md)
 - [Jira field association schemes](FIELD_ASSOCIATION_SCHEMES.md)
+- [App-provided select lists](APP_FIELD_OPTIONS.md)
 
 ## Continuity rules
 
