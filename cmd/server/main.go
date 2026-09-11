@@ -616,6 +616,7 @@ func main() {
 	mux.HandleFunc("POST /rest/zzira/1/notifications/read-all", api.MarkAllNotificationsReadHandler)
 	mux.HandleFunc("POST /rest/zzira/1/product-activity", webHandler.RecordProductActivity)
 	mux.Handle("/rest/agile/1.0/", agileAPI)
+	mux.Handle("/rest/software/1.0/", agileAPI)
 	mux.Handle("/rest/api/3/", api)
 	mux.Handle("/rest/servicedeskapi/", api)
 	mux.Handle("/jira/forms/cloud/", api)
