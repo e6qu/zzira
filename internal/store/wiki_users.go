@@ -268,3 +268,177 @@ func SplitAccountIDs(values []string) []string {
 	}
 	return out
 }
+
+// Confluence's groups are the directory groups the organization already has,
+// read and written through the wiki surface. A group belongs to a directory
+// rather than to a workspace, so creating one puts it in the directory this
+// workspace's people come from.
+
+// WikiGroupPage is a page of groups with the total a caller asked for.
+type WikiGroupPage struct {
+	Groups []WikiGroup
+	Total  int
+}
+
+// WikiGroups lists the groups, optionally narrowed to a name match.
+func (s *Store) WikiGroups(ctx context.Context, ws, actor, query string) ([]WikiGroup, error) {
+	if err := s.requireMember(ctx, ws, actor); err != nil {
+		return nil, err
+	}
+	rows, err := s.Pool.Query(ctx, `SELECT g.id::text,g.name FROM groups g
+		WHERE ($1='' OR g.name ILIKE '%' || $1 || '%') ORDER BY g.name, g.id`, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	groups := []WikiGroup{}
+	for rows.Next() {
+		var group WikiGroup
+		if err = rows.Scan(&group.ID, &group.Name); err != nil {
+			return nil, err
+		}
+		groups = append(groups, group)
+	}
+	return groups, rows.Err()
+}
+
+func (s *Store) WikiGroupByID(ctx context.Context, ws, actor, groupID string) (WikiGroup, error) {
+	if err := s.requireMember(ctx, ws, actor); err != nil {
+		return WikiGroup{}, err
+	}
+	var group WikiGroup
+	err := s.Pool.QueryRow(ctx, `SELECT id::text,name FROM groups WHERE id::text=$1`, groupID).
+		Scan(&group.ID, &group.Name)
+	return group, err
+}
+
+// CreateWikiGroup adds a group to the directory this workspace's people are in.
+func (s *Store) CreateWikiGroup(ctx context.Context, ws, actor, name string) (WikiGroup, error) {
+	name = strings.TrimSpace(name)
+	if name == "" || len(name) > 255 {
+		return WikiGroup{}, fmt.Errorf("%w: a group name of 1 to 255 characters is required", ErrWikiUserValidation)
+	}
+	if err := s.requireSiteAdmin(ctx, ws, actor); err != nil {
+		return WikiGroup{}, err
+	}
+	directoryID, err := s.workspaceDirectory(ctx, ws)
+	if err != nil {
+		return WikiGroup{}, err
+	}
+	var group WikiGroup
+	err = s.Pool.QueryRow(ctx, `INSERT INTO groups(directory_id,name) VALUES($1::uuid,$2)
+		RETURNING id::text,name`, directoryID, name).Scan(&group.ID, &group.Name)
+	if isUniqueViolation(err) {
+		return WikiGroup{}, fmt.Errorf("%w: a group with this name already exists", ErrWikiUserValidation)
+	}
+	return group, err
+}
+
+// workspaceDirectory finds the directory this workspace's people belong to,
+// creating the organization's default one when there is none yet.
+func (s *Store) workspaceDirectory(ctx context.Context, ws string) (string, error) {
+	var directoryID string
+	err := s.Pool.QueryRow(ctx, `SELECT d.id::text FROM directories d
+		WHERE d.active ORDER BY d.created_at, d.id LIMIT 1`).Scan(&directoryID)
+	if err == nil {
+		return directoryID, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return "", err
+	}
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var organizationID string
+	if err = tx.QueryRow(ctx, `SELECT id::text FROM organizations ORDER BY created_at, id LIMIT 1`).Scan(&organizationID); err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return "", err
+		}
+		if err = tx.QueryRow(ctx, `INSERT INTO organizations(name) SELECT name FROM workspaces WHERE id=$1
+			RETURNING id::text`, ws).Scan(&organizationID); err != nil {
+			return "", err
+		}
+	}
+	if err = tx.QueryRow(ctx, `INSERT INTO directories(organization_id,name) VALUES($1::uuid,'Default directory')
+		RETURNING id::text`, organizationID).Scan(&directoryID); err != nil {
+		return "", err
+	}
+	return directoryID, tx.Commit(ctx)
+}
+
+// DeleteWikiGroup removes a group and, with it, its memberships.
+func (s *Store) DeleteWikiGroup(ctx context.Context, ws, actor, groupID string) error {
+	if err := s.requireSiteAdmin(ctx, ws, actor); err != nil {
+		return err
+	}
+	tag, err := s.Pool.Exec(ctx, `DELETE FROM groups WHERE id::text=$1`, groupID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+// WikiGroupMembers lists the people in a group.
+func (s *Store) WikiGroupMembers(ctx context.Context, ws, actor, groupID string) ([]WikiUser, error) {
+	if _, err := s.WikiGroupByID(ctx, ws, actor, groupID); err != nil {
+		return nil, err
+	}
+	rows, err := s.Pool.Query(ctx, wikiUserSelect+`
+		JOIN group_members gm ON gm.user_id=u.id
+		WHERE m.workspace_id=$1 AND gm.group_id::text=$2 ORDER BY u.display_name, u.id`, ws, groupID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	users := []WikiUser{}
+	for rows.Next() {
+		user, scanErr := scanWikiUser(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		users = append(users, user)
+	}
+	return users, rows.Err()
+}
+
+// SetWikiGroupMembership adds or removes one person.
+func (s *Store) SetWikiGroupMembership(ctx context.Context, ws, actor, groupID, accountID string, member bool) error {
+	if err := s.requireSiteAdmin(ctx, ws, actor); err != nil {
+		return err
+	}
+	if _, err := s.WikiGroupByID(ctx, ws, actor, groupID); err != nil {
+		return err
+	}
+	if _, err := s.WikiUserByAccountID(ctx, ws, actor, accountID); err != nil {
+		return err
+	}
+	if member {
+		_, err := s.Pool.Exec(ctx, `INSERT INTO group_members(group_id,user_id) VALUES($1::uuid,$2)
+			ON CONFLICT DO NOTHING`, groupID, accountID)
+		return err
+	}
+	tag, err := s.Pool.Exec(ctx, `DELETE FROM group_members WHERE group_id::text=$1 AND user_id=$2`, groupID, accountID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+func (s *Store) requireSiteAdmin(ctx context.Context, ws, actor string) error {
+	admin, err := s.IsAdmin(ctx, ws, actor)
+	if err != nil {
+		return err
+	}
+	if !admin {
+		return ErrProjectPermission
+	}
+	return nil
+}

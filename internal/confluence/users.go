@@ -3,10 +3,20 @@ package confluence
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/e6qu/zzira/internal/store"
 )
+
+// strconvAtoiBounded parses a bounded integer query value.
+func strconvAtoiBounded(raw string, minimum, maximum int) (int, error) {
+	value, err := strconv.Atoi(raw)
+	if err != nil || value < minimum || value > maximum {
+		return 0, strconv.ErrRange
+	}
+	return value, nil
+}
 
 func (h *Handler) wikiUserBean(user store.WikiUser, withEmail bool) map[string]any {
 	bean := map[string]any{
@@ -310,4 +320,190 @@ func (h *Handler) bulkUsersV2(w http.ResponseWriter, r *http.Request, ws, actor 
 		results = append(results, h.wikiUserBean(user, false))
 	}
 	respond(w, 200, map[string]any{"results": results, "_links": map[string]string{"base": h.BaseURL + "/wiki"}})
+}
+
+func (h *Handler) wikiGroupBean(group store.WikiGroup) map[string]any {
+	return map[string]any{
+		"type": "group", "id": group.ID, "name": group.Name,
+		"_links": map[string]string{"self": h.BaseURL + "/wiki/rest/api/group/by-id?id=" + group.ID},
+	}
+}
+
+// wikiPage renders Confluence's v1 paged collection, with the total only when
+// the caller asked for it — counting is work a caller should opt into.
+func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, values []any, withTotal bool) {
+	start, limit := 0, 200
+	if raw := r.URL.Query().Get("start"); raw != "" {
+		parsed, err := strconvAtoiBounded(raw, 0, 1<<20)
+		if err != nil {
+			failure(w, 400, "start must be zero or greater.")
+			return
+		}
+		start = parsed
+	}
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		parsed, err := strconvAtoiBounded(raw, 1, 200)
+		if err != nil {
+			failure(w, 400, "limit must be between 1 and 200.")
+			return
+		}
+		limit = parsed
+	}
+	page := []any{}
+	for i := start; i < len(values) && len(page) < limit; i++ {
+		page = append(page, values[i])
+	}
+	bean := map[string]any{
+		"results": page, "start": start, "limit": limit, "size": len(page),
+		"_links": map[string]string{"base": h.BaseURL + "/wiki"},
+	}
+	if withTotal {
+		bean["totalSize"] = len(values)
+	}
+	respond(w, 200, bean)
+}
+
+func (h *V1Handler) v1Groups(w http.ResponseWriter, r *http.Request, ws, actor string) {
+	switch r.Method {
+	case http.MethodGet:
+		if !supportedQuery(w, r, "start", "limit", "accessType") {
+			return
+		}
+		groups, err := h.Store.WikiGroups(r.Context(), ws, actor, "")
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		values := make([]any, 0, len(groups))
+		for _, group := range groups {
+			values = append(values, h.wikiGroupBean(group))
+		}
+		h.wikiPage(w, r, values, false)
+	case http.MethodPost:
+		if !supportedQuery(w, r) {
+			return
+		}
+		var input struct {
+			Name string `json:"name"`
+		}
+		if !decode(w, r, &input) {
+			return
+		}
+		group, err := h.Store.CreateWikiGroup(r.Context(), ws, actor, input.Name)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		respond(w, 201, h.wikiGroupBean(group))
+	default:
+		failure(w, 405, "Method not allowed.")
+	}
+}
+
+func (h *V1Handler) v1GroupByID(w http.ResponseWriter, r *http.Request, ws, actor string) {
+	if !supportedQuery(w, r, "id") {
+		return
+	}
+	groupID := strings.TrimSpace(r.URL.Query().Get("id"))
+	if groupID == "" {
+		failure(w, 400, "id is required.")
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		group, err := h.Store.WikiGroupByID(r.Context(), ws, actor, groupID)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		respond(w, 200, h.wikiGroupBean(group))
+	case http.MethodDelete:
+		if err := h.Store.DeleteWikiGroup(r.Context(), ws, actor, groupID); err != nil {
+			writeError(w, err)
+			return
+		}
+		w.WriteHeader(204)
+	default:
+		failure(w, 405, "Method not allowed.")
+	}
+}
+
+func (h *V1Handler) v1GroupPicker(w http.ResponseWriter, r *http.Request, ws, actor string) {
+	if !supportedQuery(w, r, "query", "start", "limit", "shouldReturnTotalSize") {
+		return
+	}
+	query := strings.TrimSpace(r.URL.Query().Get("query"))
+	if query == "" {
+		failure(w, 400, "query is required.")
+		return
+	}
+	groups, err := h.Store.WikiGroups(r.Context(), ws, actor, query)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	values := make([]any, 0, len(groups))
+	for _, group := range groups {
+		values = append(values, h.wikiGroupBean(group))
+	}
+	h.wikiPage(w, r, values, r.URL.Query().Get("shouldReturnTotalSize") == "true")
+}
+
+func (h *V1Handler) v1GroupMembers(w http.ResponseWriter, r *http.Request, ws, actor, groupID string) {
+	if !supportedQuery(w, r, "start", "limit", "shouldReturnTotalSize", "expand") {
+		return
+	}
+	users, err := h.Store.WikiGroupMembers(r.Context(), ws, actor, groupID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	values := make([]any, 0, len(users))
+	for _, user := range users {
+		values = append(values, h.wikiUserBean(user, false))
+	}
+	h.wikiPage(w, r, values, r.URL.Query().Get("shouldReturnTotalSize") == "true")
+}
+
+func (h *V1Handler) v1GroupMembership(w http.ResponseWriter, r *http.Request, ws, actor string) {
+	if !supportedQuery(w, r, "groupId", "accountId") {
+		return
+	}
+	groupID := strings.TrimSpace(r.URL.Query().Get("groupId"))
+	if groupID == "" {
+		failure(w, 400, "groupId is required.")
+		return
+	}
+	switch r.Method {
+	case http.MethodPost:
+		var input struct {
+			AccountID string `json:"accountId"`
+		}
+		if !decode(w, r, &input) {
+			return
+		}
+		accountID := strings.TrimSpace(input.AccountID)
+		if accountID == "" {
+			failure(w, 400, "accountId is required.")
+			return
+		}
+		if err := h.Store.SetWikiGroupMembership(r.Context(), ws, actor, groupID, accountID, true); err != nil {
+			writeError(w, err)
+			return
+		}
+		w.WriteHeader(201)
+	case http.MethodDelete:
+		accountID := strings.TrimSpace(r.URL.Query().Get("accountId"))
+		if accountID == "" {
+			failure(w, 400, "accountId is required.")
+			return
+		}
+		if err := h.Store.SetWikiGroupMembership(r.Context(), ws, actor, groupID, accountID, false); err != nil {
+			writeError(w, err)
+			return
+		}
+		w.WriteHeader(204)
+	default:
+		failure(w, 405, "Method not allowed.")
+	}
 }

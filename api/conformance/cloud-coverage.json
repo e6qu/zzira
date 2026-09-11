@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 844,
+  "assessedTotal": 852,
   "counts": {
     "delivered": 0,
-    "partial": 833,
+    "partial": 841,
     "missing": 11,
-    "unassessed": 363
+    "unassessed": 355
   },
   "countsByFamily": {
     "automation": {
@@ -18,9 +18,9 @@
     },
     "confluence": {
       "delivered": 0,
-      "partial": 263,
+      "partial": 271,
       "missing": 0,
-      "unassessed": 85
+      "unassessed": 77
     },
     "jira-platform": {
       "delivered": 0,
@@ -9467,65 +9467,89 @@
       "operationId": "confluence-v1:GET:/wiki/rest/api/group",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/groups_test.go",
+        "docs/WIKI_GROUPS.md"
+      ],
+      "notes": "Listing groups is tested, including that someone outside the workspace is refused and that no total is reported unless asked. The accessType filter remains."
     },
     {
       "operationId": "confluence-v1:POST:/wiki/rest/api/group",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/groups_test.go",
+        "docs/WIKI_GROUPS.md"
+      ],
+      "notes": "Creating a group is tested, including that it is administration and the refused duplicate and empty name."
     },
     {
       "operationId": "confluence-v1:DELETE:/wiki/rest/api/group/by-id",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/groups_test.go",
+        "docs/WIKI_GROUPS.md"
+      ],
+      "notes": "Deleting is tested, including that it is administration, the 404 afterwards, and that memberships do not outlive the group."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/group/by-id",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/groups_test.go",
+        "docs/WIKI_GROUPS.md"
+      ],
+      "notes": "Reading one group is tested, including the required id and the 404 for an unknown one."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/group/picker",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/groups_test.go",
+        "docs/WIKI_GROUPS.md"
+      ],
+      "notes": "The partial-name search is tested for a match and a miss, with the total reported only when asked."
     },
     {
       "operationId": "confluence-v1:DELETE:/wiki/rest/api/group/userByGroupId",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/groups_test.go",
+        "docs/WIKI_GROUPS.md"
+      ],
+      "notes": "Removing a person is tested, including that it is administration and that removing twice is a 404 because there is nothing to remove."
     },
     {
       "operationId": "confluence-v1:POST:/wiki/rest/api/group/userByGroupId",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/groups_test.go",
+        "docs/WIKI_GROUPS.md"
+      ],
+      "notes": "Adding a person is tested, including that it is administration, that adding twice succeeds because the request describes a state, and the 404 for someone outside the workspace."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/group/{groupId}/membersByGroupId",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/groups_test.go",
+        "docs/WIKI_GROUPS.md"
+      ],
+      "notes": "The people in a group are tested, and agree with what /user/memberof reports after one write. expand remains."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/label",

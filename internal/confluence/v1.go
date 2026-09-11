@@ -106,6 +106,16 @@ func (h *V1Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.v1SpaceWatchers(w, r, ws, actor, parts[1])
 	case len(parts) == 4 && parts[0] == "user" && parts[1] == "watch":
 		h.v1UserWatch(w, r, ws, actor, parts[2], parts[3])
+	case len(parts) == 1 && parts[0] == "group":
+		h.v1Groups(w, r, ws, actor)
+	case len(parts) == 2 && parts[0] == "group" && parts[1] == "by-id":
+		h.v1GroupByID(w, r, ws, actor)
+	case len(parts) == 2 && parts[0] == "group" && parts[1] == "picker" && r.Method == "GET":
+		h.v1GroupPicker(w, r, ws, actor)
+	case len(parts) == 2 && parts[0] == "group" && parts[1] == "userByGroupId":
+		h.v1GroupMembership(w, r, ws, actor)
+	case len(parts) == 3 && parts[0] == "group" && parts[2] == "membersByGroupId" && r.Method == "GET":
+		h.v1GroupMembers(w, r, ws, actor, parts[1])
 	case len(parts) == 1 && parts[0] == "user" && r.Method == "GET":
 		h.v1User(w, r, ws, actor)
 	case len(parts) == 2 && parts[0] == "user" && parts[1] == "current" && r.Method == "GET":
