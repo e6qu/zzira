@@ -8,24 +8,27 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
 ## Active delivery
 
-- Branch: `feat/pr1-confluence-custom-content`
-- Base: `feat/pr1-app-field-options-audit` (PR #95), itself on `origin/main`
-  after merged PR #94 (`04b361d`)
+- Branch: `feat/pr1-confluence-users`
+- Base: `origin/main` after merged PR #96 (`dda2368`). Deliberately not stacked:
+  this family touches no code the open branches change, so it gets its own CI.
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- State: Confluence custom content checkpoint audited all 19 pinned operations
-  against a running server and found two working. The find was that custom
-  content existed only as `wiki_page_custom_content` and
-  `wiki_blog_custom_content`: two tables expressing the same thing twice, with
-  no way to put custom content in a space or under other custom content, and no
-  write at all. It now lives in `wiki_content` with everything else in a space,
-  so the hierarchy, permissions, versions and properties are the ones that
-  already govern a space. The two reads that existed answer as before, and their
-  test now creates through the API instead of seeding a row, so the write and
-  the read are shown to agree. The stale-write conflict used to say a page had
-  changed when none had; content has its own message now.
+- State: Confluence user checkpoint audited all 14 pinned operations against a
+  running server and found none working. The distinction worth keeping is that
+  an email address is administration: a member may see who someone is, which is
+  why Confluence has separate `/user/email` endpoints rather than an email field
+  on the user read. Both halves are enforced and tested — the user reads carry
+  no email at all, and a member asking the email endpoints is refused. The user
+  search takes CQL, and a query naming a field this does not filter on is
+  refused rather than silently matching everyone. A person's own properties are
+  theirs to write; someone else's needs administration, because a property reads
+  back as if that person had set it.
   Clean migrations, the full uncached Go/PostgreSQL suite, vet, native and
   WebAssembly builds, conformance checks, every Playwright journey, 320 px
   reflow, and the light/dark axe sweep pass.
+- Also open, both green and both based on each other: PR
+  [#97](https://github.com/e6qu/zzira/pull/97) (content states) and PR
+  [#98](https://github.com/e6qu/zzira/pull/98) (page moves, stacked on #97).
+  Merge #97, then #98, then this one; this branch is independent of both.
 - Blockers: none
 
 ## Merged baseline
@@ -87,15 +90,18 @@ PR #90's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Land PR #95 (app field options), then this branch, through every CI job,
-   resolving review threads inline.
-2. The largest unassessed Confluence groups left are `confluence-v1 content`
-   (18 of 42 unassessed), `confluence-v1 user` (12 of 21), `confluence-v1 space`
-   (15 of 19), `confluence-v1 group` (8) and `confluence-v2 space-permissions`
-   (6, plus `space-role-mode`). The v1 content group is the largest single
-   block; check first how much of it the v2 surface already answers, because a
-   v1 operation that maps onto delivered v2 behavior is a translation rather
-   than a new model.
+1. Monitor the user pull request through every CI job and resolve review
+   threads inline. **A stacked branch gets no CI here**: `.github/workflows/ci.yml`
+   triggers only on `pull_request` against `main`, and `gh pr checks` reports
+   "no checks reported" rather than a failure, so a stacked PR can look fine and
+   be unverified. Base every PR on `main` unless it genuinely needs a helper an
+   open branch adds.
+2. The largest unassessed Confluence groups left are `confluence-v1 space`
+   (15), `confluence-v1 group` (8, and the two `group/userByGroupId` writes that
+   belong with it), `confluence-v1 settings` (8), `confluence-v1 template` (6),
+   `confluence-v1 audit` (6) and `confluence-v1 relation` (5). Groups are the
+   natural next unit, because the user work just landed reads them and the
+   tables (`groups`, `group_members`) already exist.
 3. Probe every operation against a running server before assessing; the eight
    audits so far ran 11 of 15, 8 of 33, 5 of 13, 16 of 17, 4 of 14, 2 of 11,
    0 of 17 and 0 of 8, so the result is not predictable from how well tested a
@@ -132,6 +138,7 @@ PR #90's final GitHub matrix passed its required suites before merge.
 - [Jira field association schemes](FIELD_ASSOCIATION_SCHEMES.md)
 - [App-provided select lists](APP_FIELD_OPTIONS.md)
 - [Confluence custom content](CUSTOM_CONTENT.md)
+- [Confluence users](WIKI_USERS.md)
 
 ## Continuity rules
 
