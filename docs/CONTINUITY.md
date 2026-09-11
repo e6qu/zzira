@@ -11,7 +11,7 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 - Branch: `feat/pr1-agile-sprint-audit`
 - Base: `origin/main` after merged PR #89 (`0625bd5`)
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- Pull request: pending
+- Pull request: [#90](https://github.com/e6qu/zzira/pull/90)
 - State: sprint checkpoint audited all 13 pinned operations against a running
   server and found five working. It implements the other eight — Jira's partial
   update, deletion that returns work to the backlog, the four sprint property
@@ -69,8 +69,7 @@ PR #89's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Open the sprint pull request, monitor it through every CI job, and resolve
-   review threads inline.
+1. Monitor PR #90 through every CI job and resolve review threads inline.
 2. Dashboards (17), Issue worklogs (10) and Issue fields (11) are the next
    families with tests but no operation-level evidence. Probe every operation
    against a running server before assessing: versions was 11 of 15, boards 8 of
