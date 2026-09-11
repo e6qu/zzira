@@ -20,13 +20,8 @@ func (s *Store) ServiceRequestTypeFields(ctx context.Context, workspaceID, servi
 		JOIN service_desks sd ON sd.id=rt.service_desk_id
 		LEFT JOIN custom_fields cf ON cf.id=f.field_id
 		WHERE sd.workspace_id=$1 AND sd.id=$2 AND rt.id=$3
-		  AND (f.field_id IN ('summary','description') OR (cf.id IS NOT NULL AND (
-		    NOT EXISTS (SELECT 1 FROM field_contexts fc0 WHERE fc0.field_id=cf.id)
-		    OR EXISTS (
-		      SELECT 1 FROM field_contexts fc
-		      WHERE fc.field_id=cf.id AND (fc.project_id IS NULL OR fc.project_id=sd.project_id)
-		    )
-		  )))
+		  AND (f.field_id IN ('summary','description') OR (cf.id IS NOT NULL
+		    AND jira_custom_field_context(cf.id,sd.project_id,NULL) IS NOT NULL))
 		ORDER BY f.position,f.field_id`, workspaceID, serviceDeskID, requestTypeID)
 	if err != nil {
 		return nil, err

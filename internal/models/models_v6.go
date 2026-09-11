@@ -206,3 +206,17 @@ type FieldBehaviour struct {
 	IsHidden    bool
 	Description string
 }
+
+// CustomFieldContext scopes a custom field to projects and work types and
+// carries the default value applied where it governs.
+type CustomFieldContext struct {
+	ID            string   `json:"id"`
+	FieldID       string   `json:"-"`
+	Name          string   `json:"name"`
+	Description   string   `json:"description,omitempty"`
+	AllProjects   bool     `json:"isGlobalContext"`
+	AllIssueTypes bool     `json:"isAnyIssueType"`
+	ProjectIDs    []string `json:"-"`
+	IssueTypeIDs  []string `json:"-"`
+	DefaultValue  string   `json:"-"`
+}

@@ -329,16 +329,23 @@ func (h *Handler) createMetaIssueTypeBean(issueType models.IssueType) map[string
 }
 
 func (h *Handler) createFieldBean(field models.CreateFieldMeta) map[string]any {
-	return map[string]any{
+	bean := map[string]any{
 		"fieldId": field.ID, "key": field.ID, "name": field.Name, "required": field.Required,
 		"schema": createFieldSchema(field), "allowedValues": createAllowedValues(field.Options),
 	}
+	if field.Default != "" {
+		bean["hasDefaultValue"] = true
+		bean["defaultValue"] = json.RawMessage(field.Default)
+	}
+	return bean
 }
 
 func (h *Handler) legacyCreateFieldBean(field models.CreateFieldMeta) map[string]any {
 	bean := h.createFieldBean(field)
 	delete(bean, "fieldId")
-	bean["hasDefaultValue"] = false
+	if _, present := bean["hasDefaultValue"]; !present {
+		bean["hasDefaultValue"] = false
+	}
 	bean["operations"] = []string{"set"}
 	return bean
 }

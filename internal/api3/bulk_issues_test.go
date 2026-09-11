@@ -100,7 +100,9 @@ func TestBulkWatchOperationsUseDurableTaskQueue(t *testing.T) {
 			bulkTextFieldID = fieldID
 		}
 		exec(`INSERT INTO custom_fields(id,name,type,description) VALUES($1,$2,'text','Bulk-edit text')`, fieldID, fmt.Sprintf("Bulk custom %02d", i))
-		exec(`INSERT INTO field_contexts(field_id,project_id) VALUES($1,$2)`, fieldID, projectID)
+		exec(`UPDATE custom_field_contexts SET all_projects=FALSE WHERE field_id=$1`, fieldID)
+		exec(`INSERT INTO custom_field_context_projects(context_id,project_id)
+			SELECT id,$2 FROM custom_field_contexts WHERE field_id=$1`, fieldID, projectID)
 	}
 	fieldPath := "/rest/api/3/bulk/issues/fields?issueIdsOrKeys=" + strings.Join(issueKeys, "%2C")
 	call(memberID, "GET", fieldPath, "", 403)

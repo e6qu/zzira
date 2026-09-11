@@ -99,6 +99,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.listFields(w, r)
 	case path == "/field" && r.Method == http.MethodPost:
 		h.createField(w, r)
+	case strings.HasPrefix(path, "/field/") && strings.Contains(path, "/context"):
+		rest := strings.TrimPrefix(path, "/field/")
+		field, remainder, _ := strings.Cut(rest, "/context")
+		h.fieldContextRoute(w, r, field, remainder)
 	case strings.HasPrefix(path, "/field/") && strings.HasSuffix(path, "/screens"):
 		h.screensForField(w, r, strings.TrimSuffix(strings.TrimPrefix(path, "/field/"), "/screens"))
 	case strings.HasPrefix(path, "/field/"):

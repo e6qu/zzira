@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 648,
+  "assessedTotal": 662,
   "counts": {
     "delivered": 0,
-    "partial": 641,
+    "partial": 655,
     "missing": 7,
-    "unassessed": 559
+    "unassessed": 545
   },
   "countsByFamily": {
     "automation": {
@@ -24,9 +24,9 @@
     },
     "jira-platform": {
       "delivered": 0,
-      "partial": 280,
+      "partial": 294,
       "missing": 0,
-      "unassessed": 337
+      "unassessed": 323
     },
     "jira-service-management": {
       "delivered": 0,
@@ -983,97 +983,138 @@
       "operationId": "jira-v3:GET:/rest/api/3/field/{fieldId}/context",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/custom_field_contexts_test.go",
+        "e2e/custom_field_contexts.spec.ts",
+        "docs/CUSTOM_FIELD_CONTEXTS.md"
+      ],
+      "notes": "Paging a field's contexts with a contextId filter is tested; Jira's isAnyIssueType and isGlobalContext query filters remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/field/{fieldId}/context",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/custom_field_contexts_test.go",
+        "e2e/custom_field_contexts.spec.ts",
+        "docs/CUSTOM_FIELD_CONTEXTS.md"
+      ],
+      "notes": "Creation scoped to projects and work types is tested, including the overlap refusal and unknown project or work type."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/field/{fieldId}/context/defaultValue",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/custom_field_contexts_test.go",
+        "e2e/custom_field_contexts.spec.ts",
+        "docs/CUSTOM_FIELD_CONTEXTS.md"
+      ],
+      "notes": "Reading stored defaults per context is tested."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/field/{fieldId}/context/defaultValue",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/custom_field_contexts_test.go",
+        "e2e/custom_field_contexts.spec.ts",
+        "docs/CUSTOM_FIELD_CONTEXTS.md"
+      ],
+      "notes": "Setting and clearing a context default is tested; the value reaches field metadata and pre-fills the create dialog."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/field/{fieldId}/context/defaultValues",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/custom_field_contexts_test.go",
+        "docs/CUSTOM_FIELD_CONTEXTS.md"
+      ],
+      "notes": "Jira's second path for the same defaults is served."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/field/{fieldId}/context/issuetypemapping",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/custom_field_contexts_test.go",
+        "docs/CUSTOM_FIELD_CONTEXTS.md"
+      ],
+      "notes": "Paging each context's work type coverage is tested."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/field/{fieldId}/context/mapping",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/custom_field_contexts_test.go",
+        "e2e/custom_field_contexts.spec.ts",
+        "docs/CUSTOM_FIELD_CONTEXTS.md"
+      ],
+      "notes": "Resolving the governing context for project and work type pairs is tested, and pairs no context reaches are omitted."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/field/{fieldId}/context/projectmapping",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/custom_field_contexts_test.go",
+        "docs/CUSTOM_FIELD_CONTEXTS.md"
+      ],
+      "notes": "Paging each context's project coverage is tested."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/field/{fieldId}/context/{contextId}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/custom_field_contexts_test.go",
+        "docs/CUSTOM_FIELD_CONTEXTS.md"
+      ],
+      "notes": "Deletion is tested, including the guard that a custom field keeps at least one context."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/field/{fieldId}/context/{contextId}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/custom_field_contexts_test.go",
+        "docs/CUSTOM_FIELD_CONTEXTS.md"
+      ],
+      "notes": "Name and description updates with per-field case-insensitive uniqueness are tested."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/field/{fieldId}/context/{contextId}/issuetype",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/custom_field_contexts_test.go",
+        "docs/CUSTOM_FIELD_CONTEXTS.md"
+      ],
+      "notes": "Adding work types narrows the context, and other work types stop offering the field."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/field/{fieldId}/context/{contextId}/issuetype/remove",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/custom_field_contexts_test.go",
+        "docs/CUSTOM_FIELD_CONTEXTS.md"
+      ],
+      "notes": "Removing work types is tested; emptying the list returns the context to every work type."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/field/{fieldId}/context/{contextId}/option",
@@ -1127,17 +1168,24 @@
       "operationId": "jira-v3:PUT:/rest/api/3/field/{fieldId}/context/{contextId}/project",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/custom_field_contexts_test.go",
+        "e2e/custom_field_contexts.spec.ts",
+        "docs/CUSTOM_FIELD_CONTEXTS.md"
+      ],
+      "notes": "Adding projects narrows the context, which removes the field from other projects' createmeta."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/field/{fieldId}/context/{contextId}/project/remove",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/custom_field_contexts_test.go",
+        "docs/CUSTOM_FIELD_CONTEXTS.md"
+      ],
+      "notes": "Removing projects is tested; emptying the list returns the context to every project and is refused when that would overlap another."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/field/{fieldId}/contexts",

@@ -641,11 +641,10 @@ func (s *Store) CustomFieldsForWorkspace(ctx context.Context, workspaceID string
 func (s *Store) CustomFieldsForProject(ctx context.Context, projectID string) ([]*models.CustomField, error) {
 	rows, err := s.Pool.Query(ctx, customFieldSelect+`
 		JOIN projects p ON p.id=$1
-		LEFT JOIN field_contexts fc ON fc.field_id = cf.id
 		WHERE cf.active
 		  AND (cf.workspace_id IS NULL OR cf.workspace_id=p.workspace_id)
 		  AND (cf.app_installation_id IS NULL OR ai.status='active')
-		  AND (fc.project_id IS NULL OR fc.project_id=$1)
+		  AND jira_custom_field_context(cf.id,$1,NULL) IS NOT NULL
 		ORDER BY cf.id`, projectID)
 	if err != nil {
 		return nil, err
