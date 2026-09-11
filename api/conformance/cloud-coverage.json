@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 684,
+  "assessedTotal": 717,
   "counts": {
     "delivered": 0,
-    "partial": 677,
-    "missing": 7,
-    "unassessed": 523
+    "partial": 706,
+    "missing": 11,
+    "unassessed": 490
   },
   "countsByFamily": {
     "automation": {
@@ -36,9 +36,9 @@
     },
     "jira-software": {
       "delivered": 0,
-      "partial": 15,
-      "missing": 0,
-      "unassessed": 90
+      "partial": 44,
+      "missing": 4,
+      "unassessed": 57
     },
     "organization-admin": {
       "delivered": 0,
@@ -6357,209 +6357,280 @@
       "operationId": "jira-software:GET:/rest/agile/1.0/board",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/agile/board_test.go",
+        "e2e/backlog.spec.ts",
+        "docs/AGILE_BOARDS.md"
+      ],
+      "notes": "Listing the workspace's boards is tested; Jira's type, name and project filters remain."
     },
     {
       "operationId": "jira-software:POST:/rest/agile/1.0/board",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
+      "status": "missing",
       "evidence": [],
-      "notes": ""
+      "notes": "A board is created with its project, so there is no standalone board creation to expose yet."
     },
     {
       "operationId": "jira-software:GET:/rest/agile/1.0/board/filter/{filterId}",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
+      "status": "missing",
       "evidence": [],
-      "notes": ""
+      "notes": "Boards are project-scoped with a JQL string and are not built on a saved filter, so answering would misreport a board that cannot exist."
     },
     {
       "operationId": "jira-software:DELETE:/rest/agile/1.0/board/{boardId}",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
+      "status": "missing",
       "evidence": [],
-      "notes": ""
+      "notes": "A board is removed with its project, so there is no standalone board deletion to expose yet."
     },
     {
       "operationId": "jira-software:GET:/rest/agile/1.0/board/{boardId}",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/agile/board_test.go",
+        "e2e/backlog.spec.ts",
+        "docs/AGILE_BOARDS.md"
+      ],
+      "notes": "Reading one board with its project location is tested; expand remains."
     },
     {
       "operationId": "jira-software:GET:/rest/agile/1.0/board/{boardId}/backlog",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/agile/board_test.go",
+        "e2e/backlog.spec.ts",
+        "docs/AGILE_BOARDS.md"
+      ],
+      "notes": "Paging the backlog is tested; JQL and field filters remain."
     },
     {
       "operationId": "jira-software:GET:/rest/agile/1.0/board/{boardId}/configuration",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/agile/board_test.go",
+        "docs/AGILE_BOARDS.md"
+      ],
+      "notes": "Columns, their statuses and the constraint type are reported; estimation configuration remains."
     },
     {
       "operationId": "jira-software:GET:/rest/agile/1.0/board/{boardId}/epic",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/agile/board_test.go",
+        "docs/AGILE_BOARDS.md"
+      ],
+      "notes": "Reported empty because ZZIRA has no epic work type; the hierarchy is one parent level with sub-tasks."
     },
     {
       "operationId": "jira-software:GET:/rest/agile/1.0/board/{boardId}/epic/none/issue",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/agile/board_test.go",
+        "docs/AGILE_BOARDS.md"
+      ],
+      "notes": "Every board issue has no epic in this hierarchy, which the endpoint reports accurately."
     },
     {
       "operationId": "jira-software:GET:/rest/agile/1.0/board/{boardId}/epic/{epicId}/issue",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/agile/board_test.go",
+        "docs/AGILE_BOARDS.md"
+      ],
+      "notes": "A specific epic is a 404 because no work type is an epic."
     },
     {
       "operationId": "jira-software:GET:/rest/agile/1.0/board/{boardId}/features",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/agile/board_test.go",
+        "docs/AGILE_BOARDS.md"
+      ],
+      "notes": "Sprint, backlog and swimlane features report the board's own configuration."
     },
     {
       "operationId": "jira-software:PUT:/rest/agile/1.0/board/{boardId}/features",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/agile/board_test.go",
+        "docs/AGILE_BOARDS.md"
+      ],
+      "notes": "Reports that features follow the board configuration and cannot be toggled here, rather than accepting a change it would not make."
     },
     {
       "operationId": "jira-software:GET:/rest/agile/1.0/board/{boardId}/issue",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/agile/board_test.go",
+        "e2e/backlog.spec.ts",
+        "docs/AGILE_BOARDS.md"
+      ],
+      "notes": "Paging the board's work in column order is tested; JQL and field filters remain."
     },
     {
       "operationId": "jira-software:POST:/rest/agile/1.0/board/{boardId}/issue",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
+      "status": "missing",
       "evidence": [],
-      "notes": ""
+      "notes": "Work reaches a board through the sprint and backlog endpoints; this entry point is not implemented."
     },
     {
       "operationId": "jira-software:GET:/rest/agile/1.0/board/{boardId}/project",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/agile/board_test.go",
+        "docs/AGILE_BOARDS.md"
+      ],
+      "notes": "The board's project is reported; paging beyond one project is not reachable since a board has one."
     },
     {
       "operationId": "jira-software:GET:/rest/agile/1.0/board/{boardId}/project/full",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/agile/board_test.go",
+        "docs/AGILE_BOARDS.md"
+      ],
+      "notes": "The full project form adds the type and style."
     },
     {
       "operationId": "jira-software:GET:/rest/agile/1.0/board/{boardId}/properties",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/agile/board_test.go",
+        "docs/AGILE_BOARDS.md"
+      ],
+      "notes": "Listing a board's property keys is tested."
     },
     {
       "operationId": "jira-software:DELETE:/rest/agile/1.0/board/{boardId}/properties/{propertyKey}",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/agile/board_test.go",
+        "docs/AGILE_BOARDS.md"
+      ],
+      "notes": "Removing a property is tested, and removing it twice is a 404."
     },
     {
       "operationId": "jira-software:GET:/rest/agile/1.0/board/{boardId}/properties/{propertyKey}",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/agile/board_test.go",
+        "docs/AGILE_BOARDS.md"
+      ],
+      "notes": "Reading one property is tested, with a 404 for an unknown key."
     },
     {
       "operationId": "jira-software:PUT:/rest/agile/1.0/board/{boardId}/properties/{propertyKey}",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/agile/board_test.go",
+        "docs/AGILE_BOARDS.md"
+      ],
+      "notes": "Storing a property is tested; a new key answers 201 and a replacement 200."
     },
     {
       "operationId": "jira-software:GET:/rest/agile/1.0/board/{boardId}/quickfilter",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/agile/board_test.go",
+        "docs/AGILE_BOARDS.md"
+      ],
+      "notes": "Listing the board's quick filters is tested."
     },
     {
       "operationId": "jira-software:GET:/rest/agile/1.0/board/{boardId}/quickfilter/{quickFilterId}",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/agile/board_test.go",
+        "docs/AGILE_BOARDS.md"
+      ],
+      "notes": "Reading one quick filter is tested."
     },
     {
       "operationId": "jira-software:GET:/rest/agile/1.0/board/{boardId}/reports",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/agile/board_test.go",
+        "docs/AGILE_BOARDS.md"
+      ],
+      "notes": "The reports a board type offers are listed."
     },
     {
       "operationId": "jira-software:GET:/rest/agile/1.0/board/{boardId}/sprint",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/agile/board_test.go",
+        "e2e/backlog.spec.ts",
+        "docs/AGILE_BOARDS.md"
+      ],
+      "notes": "Listing the board's sprints is tested; state filtering remains."
     },
     {
       "operationId": "jira-software:GET:/rest/agile/1.0/board/{boardId}/sprint/{sprintId}/issue",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/agile/board_test.go",
+        "docs/AGILE_BOARDS.md"
+      ],
+      "notes": "Paging one sprint's work is tested, and a sprint on another board is a 404."
     },
     {
       "operationId": "jira-software:GET:/rest/agile/1.0/board/{boardId}/version",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/agile/board_test.go",
+        "docs/AGILE_BOARDS.md"
+      ],
+      "notes": "The project's versions are listed with Jira's released filter."
     },
     {
       "operationId": "jira-software:GET:/rest/agile/1.0/epic/none/issue",
@@ -7176,57 +7247,78 @@
       "operationId": "jira-software:GET:/rest/software/1.0/board/{boardId}/backlog",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/agile/board_test.go",
+        "docs/AGILE_BOARDS.md"
+      ],
+      "notes": "Serves the same backlog read as the agile path from one implementation."
     },
     {
       "operationId": "jira-software:GET:/rest/software/1.0/board/{boardId}/backlog/approximate-count",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/agile/board_test.go",
+        "docs/AGILE_BOARDS.md"
+      ],
+      "notes": "Reports the backlog size the board UI reads before paging."
     },
     {
       "operationId": "jira-software:GET:/rest/software/1.0/board/{boardId}/epic/none/issue",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/agile/board_test.go",
+        "docs/AGILE_BOARDS.md"
+      ],
+      "notes": "Serves the same epic-none read as the agile path."
     },
     {
       "operationId": "jira-software:GET:/rest/software/1.0/board/{boardId}/epic/{epicId}/issue",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/agile/board_test.go",
+        "docs/AGILE_BOARDS.md"
+      ],
+      "notes": "A specific epic is a 404 because no work type is an epic, matching the agile path."
     },
     {
       "operationId": "jira-software:GET:/rest/software/1.0/board/{boardId}/issue",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/agile/board_test.go",
+        "docs/AGILE_BOARDS.md"
+      ],
+      "notes": "Serves the same board issue read as the agile path."
     },
     {
       "operationId": "jira-software:GET:/rest/software/1.0/board/{boardId}/issue/approximate-count",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/agile/board_test.go",
+        "docs/AGILE_BOARDS.md"
+      ],
+      "notes": "Reports the board issue count the board UI reads before paging."
     },
     {
       "operationId": "jira-software:GET:/rest/software/1.0/board/{boardId}/sprint/{sprintId}/issue",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/agile/board_test.go",
+        "docs/AGILE_BOARDS.md"
+      ],
+      "notes": "Serves the same sprint issue read as the agile path."
     },
     {
       "operationId": "jira-software:GET:/rest/software/1.0/epic/none/issue",

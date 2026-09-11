@@ -40,6 +40,12 @@ func (h *Handler) visibleIssue(r *http.Request, workspaceID, userID, idOrKey str
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Jira serves the same board reads under /rest/software/1.0 with an
+	// approximate-count variant, so both base paths reach one implementation.
+	if strings.HasPrefix(r.URL.Path, "/rest/software/1.0/") {
+		h.softwareRoute(w, r, strings.TrimPrefix(r.URL.Path, "/rest/software/1.0"))
+		return
+	}
 	path := strings.TrimPrefix(r.URL.Path, "/rest/agile/1.0")
 	switch {
 	case path == "/board" && r.Method == http.MethodGet:
@@ -143,6 +149,31 @@ func (h *Handler) boardRoute(w http.ResponseWriter, r *http.Request, parts []str
 		h.boardQuickFilters(w, r, board)
 	case len(parts) == 3 && parts[1] == "quickfilter" && r.Method == http.MethodGet:
 		h.boardQuickFilter(w, board, parts[2])
+	case len(parts) == 2 && parts[1] == "project" && r.Method == http.MethodGet:
+		h.boardProjects(w, r, board, false)
+	case len(parts) == 3 && parts[1] == "project" && parts[2] == "full" && r.Method == http.MethodGet:
+		h.boardProjects(w, r, board, true)
+	case len(parts) == 2 && parts[1] == "version" && r.Method == http.MethodGet:
+		h.boardVersions(w, r, board)
+	case len(parts) == 2 && parts[1] == "epic" && r.Method == http.MethodGet:
+		h.boardEpics(w, r)
+	case len(parts) == 4 && parts[1] == "epic" && parts[2] == "none" && parts[3] == "issue" && r.Method == http.MethodGet:
+		// No work type is an epic here, so every board issue is epic-less.
+		h.boardIssues(w, r, board, userID)
+	case len(parts) == 4 && parts[1] == "epic" && parts[3] == "issue" && r.Method == http.MethodGet:
+		jiraError(w, http.StatusNotFound, "The epic does not exist.")
+	case len(parts) == 4 && parts[1] == "sprint" && parts[3] == "issue" && r.Method == http.MethodGet:
+		h.boardSprintIssues(w, r, board, parts[2], userID)
+	case len(parts) == 2 && parts[1] == "features" && r.Method == http.MethodGet:
+		h.boardFeatures(w, r, board)
+	case len(parts) == 2 && parts[1] == "features" && r.Method == http.MethodPut:
+		jiraError(w, http.StatusBadRequest, "Board features follow the board configuration and cannot be toggled here.")
+	case len(parts) == 2 && parts[1] == "reports" && r.Method == http.MethodGet:
+		h.boardReports(w, r, board)
+	case len(parts) == 2 && parts[1] == "properties":
+		h.boardProperties(w, r, board)
+	case len(parts) == 3 && parts[1] == "properties":
+		h.boardProperty(w, r, board, parts[2])
 	default:
 		jiraError(w, http.StatusNotFound, "No resource found")
 	}
