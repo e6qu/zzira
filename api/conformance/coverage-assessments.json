@@ -7678,6 +7678,152 @@
         "docs/SCREEN_SCHEMES.md"
       ],
       "notes": "Paging the projects using one scheme is tested; expand remains."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/fieldconfiguration",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/field_configurations_test.go",
+        "e2e/field_configurations.spec.ts",
+        "docs/FIELD_CONFIGURATIONS.md"
+      ],
+      "notes": "Paging configurations with an id filter is tested; Jira's isDefault and query filters remain."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/fieldconfiguration",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/field_configurations_test.go",
+        "e2e/field_configurations.spec.ts",
+        "docs/FIELD_CONFIGURATIONS.md"
+      ],
+      "notes": "Creation with the summary-required baseline and case-insensitive name uniqueness is tested through REST and the browser."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/fieldconfiguration/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/field_configurations_test.go",
+        "e2e/field_configurations.spec.ts",
+        "docs/FIELD_CONFIGURATIONS.md"
+      ],
+      "notes": "Name and description updates are tested through REST and the browser."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/fieldconfiguration/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/field_configurations_test.go",
+        "e2e/field_configurations.spec.ts",
+        "docs/FIELD_CONFIGURATIONS.md"
+      ],
+      "notes": "Deletion refuses a configuration used by a work type mapping and the workspace default."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/fieldconfiguration/{id}/fields",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/field_configurations_test.go",
+        "e2e/field_configurations.spec.ts",
+        "docs/FIELD_CONFIGURATIONS.md"
+      ],
+      "notes": "Paging explicit field rules including the help text is tested; Jira's renderer is not stored."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/fieldconfiguration/{id}/fields",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/field_configurations_test.go",
+        "e2e/field_configurations.spec.ts",
+        "docs/FIELD_CONFIGURATIONS.md"
+      ],
+      "notes": "Partial rule updates are tested, including unknown fields, the required-and-hidden guard and the summary guard."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/fieldconfigurationscheme",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/field_configurations_test.go",
+        "e2e/field_configurations.spec.ts",
+        "docs/FIELD_CONFIGURATIONS.md"
+      ],
+      "notes": "Paging schemes with an id filter is tested; expand and orderBy remain."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/fieldconfigurationscheme",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/field_configurations_test.go",
+        "e2e/field_configurations.spec.ts",
+        "docs/FIELD_CONFIGURATIONS.md"
+      ],
+      "notes": "Creation seeds a default mapping to the default configuration so the scheme is immediately assignable."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/fieldconfigurationscheme/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/field_configurations_test.go",
+        "docs/FIELD_CONFIGURATIONS.md"
+      ],
+      "notes": "Name and description updates with case-insensitive uniqueness are tested."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/fieldconfigurationscheme/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/field_configurations_test.go",
+        "e2e/field_configurations.spec.ts",
+        "docs/FIELD_CONFIGURATIONS.md"
+      ],
+      "notes": "Deletion refuses a scheme assigned to a project and the workspace default scheme."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/fieldconfigurationscheme/mapping",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/field_configurations_test.go",
+        "docs/FIELD_CONFIGURATIONS.md"
+      ],
+      "notes": "Paging mappings filtered by scheme is tested; expand remains."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/fieldconfigurationscheme/{id}/mapping",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/field_configurations_test.go",
+        "e2e/field_configurations.spec.ts",
+        "docs/FIELD_CONFIGURATIONS.md"
+      ],
+      "notes": "Adding and repointing work type mappings is tested, including unknown work types."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/fieldconfigurationscheme/{id}/mapping/delete",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/field_configurations_test.go",
+        "docs/FIELD_CONFIGURATIONS.md"
+      ],
+      "notes": "Removing mappings is tested, including the default-mapping and unknown-mapping rejections and the fallback that follows."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/fieldconfigurationscheme/project",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/field_configurations_test.go",
+        "docs/FIELD_CONFIGURATIONS.md"
+      ],
+      "notes": "Paging project assignments with a projectId filter is tested; expand remains."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/fieldconfigurationscheme/project",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/field_configurations_test.go",
+        "e2e/field_configurations.spec.ts",
+        "docs/FIELD_CONFIGURATIONS.md"
+      ],
+      "notes": "Assigning a project is tested through REST and the browser, and the assignment changes what createmeta, editmeta and the command path accept."
     }
   ]
 }

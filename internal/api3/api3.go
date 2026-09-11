@@ -73,6 +73,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.screenRoute(w, r, path)
 	case isScreenSchemePath(path):
 		h.screenSchemeRoute(w, r, path)
+	case isFieldConfigurationPath(path):
+		h.fieldConfigurationRoute(w, r, path)
 	case isPermissionSchemePath(path):
 		h.permissionSchemeRoute(w, r, path)
 	case isProjectRolePath(path):
@@ -1284,6 +1286,11 @@ func (h *Handler) issueEditMetadata(ctx context.Context, workspaceID, userID str
 		if len(editFields) > 0 {
 			project.ScreenFields = map[string][]string{issue.IssueType.ID: editFields}
 		}
+		behaviour, behaviourErr := h.Store.ResolveFieldBehaviour(ctx, workspaceID, issue.ProjectID, issue.IssueType.ID)
+		if behaviourErr != nil {
+			return nil, behaviourErr
+		}
+		project.FieldBehaviour = map[string]map[string]models.FieldBehaviour{issue.IssueType.ID: behaviour}
 		for _, source := range project.FieldsForIssueType(issue.IssueType.ID) {
 			if source.ID == "project" || source.ID == "issuetype" {
 				continue

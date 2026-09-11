@@ -103,6 +103,9 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 	if issueType.Subtask && !configuration.SubTasksEnabled {
 		return nil, nil, fmt.Errorf("subtasks are disabled for this site")
 	}
+	if err = s.enforceFieldConfiguration(ctx, in, project.ID, issueType.ID); err != nil {
+		return nil, nil, err
+	}
 	parentID := ""
 	if issueType.Subtask {
 		if strings.TrimSpace(in.ParentIDOrKey) == "" {
@@ -243,4 +246,63 @@ func plainTextToADF(text string) json.RawMessage {
 	}}
 	b, _ := json.Marshal(doc)
 	return b
+}
+
+// enforceFieldConfiguration applies the project's field configuration to a
+// create request, so the command path rejects exactly what the form advertises
+// rather than leaving required and hidden as cosmetic labels.
+func (s *Service) enforceFieldConfiguration(ctx context.Context, in CreateIssueInput, projectID, issueTypeID string) error {
+	rules, err := s.Store.ResolveFieldBehaviour(ctx, in.WorkspaceID, projectID, issueTypeID)
+	if err != nil {
+		return err
+	}
+	if len(rules) == 0 {
+		return nil
+	}
+	supplied := map[string]bool{
+		"summary":     strings.TrimSpace(in.Summary) != "",
+		"description": strings.TrimSpace(in.Description) != "" || len(in.DescriptionADF) > 0,
+		"assignee":    in.AssigneeID != "" && in.AssigneeID != "-1",
+		"priority":    in.PriorityID != "",
+		"parent":      strings.TrimSpace(in.ParentIDOrKey) != "",
+		"security":    in.SecurityLevelID != "",
+		// The browser create form posts an empty labels input, and
+		// strings.Split("", ",") yields one empty entry, so count real values.
+		"labels": hasNonEmptyValue(in.Labels),
+	}
+	for field, raw := range in.Fields {
+		supplied[field] = supplied[field] || suppliedFieldValue(raw)
+	}
+	for field, rule := range rules {
+		// Summary and the context fields are required by the command path
+		// itself, so a configuration can neither relax nor hide them.
+		if field == "summary" {
+			continue
+		}
+		if rule.IsRequired && !supplied[field] {
+			return fmt.Errorf("%s is required by the field configuration for this work type", field)
+		}
+		if rule.IsHidden && supplied[field] {
+			return fmt.Errorf("%s is hidden by the field configuration for this work type", field)
+		}
+	}
+	return nil
+}
+
+func hasNonEmptyValue(values []string) bool {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func suppliedFieldValue(raw json.RawMessage) bool {
+	value := strings.TrimSpace(string(raw))
+	switch value {
+	case "", "null", `""`, "[]", "{}":
+		return false
+	}
+	return true
 }

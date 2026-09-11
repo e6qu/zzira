@@ -166,3 +166,43 @@ type IssueTypeScreenSchemeItem struct {
 	IssueTypeID    string `json:"issueTypeId"`
 	ScreenSchemeID string `json:"screenSchemeId"`
 }
+
+// FieldConfiguration decides how each field behaves on a work item form:
+// required, hidden, or carrying an administrator's description override.
+type FieldConfiguration struct {
+	ID          string                   `json:"id"`
+	Name        string                   `json:"name"`
+	Description string                   `json:"description,omitempty"`
+	IsDefault   bool                     `json:"-"`
+	Items       []FieldConfigurationItem `json:"-"`
+}
+
+type FieldConfigurationItem struct {
+	FieldID     string `json:"id"`
+	Name        string `json:"-"`
+	IsRequired  bool   `json:"isRequired"`
+	IsHidden    bool   `json:"isHidden"`
+	Description string `json:"description,omitempty"`
+}
+
+// FieldConfigurationScheme maps each work type to a field configuration and is
+// the object a project is assigned.
+type FieldConfigurationScheme struct {
+	ID          string                         `json:"id"`
+	Name        string                         `json:"name"`
+	Description string                         `json:"description,omitempty"`
+	IsDefault   bool                           `json:"-"`
+	Mappings    []FieldConfigurationSchemeItem `json:"-"`
+}
+
+type FieldConfigurationSchemeItem struct {
+	IssueTypeID          string `json:"issueTypeId"`
+	FieldConfigurationID string `json:"fieldConfigurationId"`
+}
+
+// FieldBehaviour is the resolved per-field outcome for one form.
+type FieldBehaviour struct {
+	IsRequired  bool
+	IsHidden    bool
+	Description string
+}
