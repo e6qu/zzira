@@ -651,7 +651,8 @@ type putIssueRequest struct {
 		Summary     *string         `json:"summary"`
 		Description json.RawMessage `json:"description"`
 		Priority    *struct {
-			ID string `json:"id"`
+			ID   string `json:"id"`
+			Name string `json:"name"`
 		} `json:"priority"`
 		Assignee *json.RawMessage `json:"assignee"`
 		Security *struct {
@@ -686,7 +687,12 @@ func (h *Handler) putIssue(w http.ResponseWriter, r *http.Request, idOrKey strin
 		up.Description = req.Fields.Description
 	}
 	if req.Fields.Priority != nil {
+		// Jira accepts either wire form. Reading only the id silently cleared
+		// the priority when a client sent a name.
 		p := req.Fields.Priority.ID
+		if p == "" {
+			p = req.Fields.Priority.Name
+		}
 		up.PriorityID = &p
 	}
 	if req.Fields.Assignee != nil {

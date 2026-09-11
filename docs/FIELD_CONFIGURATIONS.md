@@ -94,8 +94,5 @@ superset, as it does for screens, so a bulk write is not yet judged by these
 rules. The `/config/fieldschemes` field association surface, `expand` and
 `orderBy` on these endpoints, and exact Jira error wording also remain.
 
-One pre-existing limitation is worth knowing while these rules are enforced:
-`PUT /rest/api/3/issue/{key}` reads a priority only by `id`, so a client that
-sends `{"priority":{"name":"Medium"}}` supplies an empty id. That silently
-cleared the priority before this checkpoint; where a configuration marks
-priority required it is now reported as clearing a required field instead.
+`PUT /rest/api/3/issue/{key}` accepts a priority by `id` or by `name`, the same
+two wire forms creation accepts, and rejects an unknown one.

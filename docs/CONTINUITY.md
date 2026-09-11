@@ -8,23 +8,25 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
 ## Active delivery
 
-- Branch: `feat/pr1-field-rule-enforcement`
-- Base: `origin/main` after merged PR #80 (`afc1625`)
+- Branch: `fix/priority-edit-and-axe-reflow`
+- Base: `origin/main` after merged PR #81 (`ee73199`)
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- Pull request: [#81](https://github.com/e6qu/zzira/pull/81)
-- State: hardening checkpoint, no new pinned operations. Field configuration
-  rules now bind every person-initiated write, not only create: an edit or a
-  transition carrying field updates may not clear a required field or give a
-  hidden one a value, while an update that leaves a governed field alone is
-  never rejected. Workflow rules that set fields stay exempt, as post-functions
-  do in Jira. Clean migrations, the full uncached Go/PostgreSQL suite, vet,
-  native and WebAssembly builds, conformance checks, every Playwright journey,
-  320 px reflow, and the light/dark axe sweep pass.
+- Pull request: pending
+- State: defect checkpoint, no new pinned operations. `PUT /rest/api/3/issue/{key}`
+  now accepts a priority by id or name and resolves it, instead of storing an
+  unvalidated value and silently clearing the priority when a client sent a
+  name. The service asset impact panel gains the `scroll-margin-top` its
+  topology sibling already had, which is the sticky-header offset behind the
+  intermittent `target-size` axe failures. Clean migrations, the full uncached
+  Go/PostgreSQL suite, vet, native and WebAssembly builds, conformance checks,
+  every Playwright journey, 320 px reflow, and the light/dark axe sweep pass.
 - Blockers: none
 
 ## Merged baseline
 
-PR [#80](https://github.com/e6qu/zzira/pull/80) merged Jira field configurations
+PR [#81](https://github.com/e6qu/zzira/pull/81) merged field-rule enforcement on
+edit and transition on top of
+PR [#80](https://github.com/e6qu/zzira/pull/80), which merged Jira field configurations
 on top of
 PR [#79](https://github.com/e6qu/zzira/pull/79), which merged the binding of screens to
 work item forms on top of
@@ -48,11 +50,12 @@ expanded JQL and app functions, stable search identity and paging, Jira votes,
 watches, project components, login-date functions, JSM approval/SLA functions,
 and durable bulk watch/unwatch, editable-field discovery, and field edits.
 
-PR #80's final GitHub matrix passed its required suites before merge.
+PR #81's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Monitor PR #81 through every CI job and resolve review threads inline.
+1. Open the defect pull request, monitor it through every CI job, and resolve
+   review threads inline.
 2. After merge, continue with custom field contexts and options, then the
    `/config/fieldschemes` field association surface. Bulk edit still bypasses
    both screens and field configurations; narrowing it needs the field
