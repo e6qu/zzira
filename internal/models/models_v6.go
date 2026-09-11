@@ -231,3 +231,12 @@ type CustomFieldOption struct {
 	Disabled  bool   `json:"disabled"`
 	Position  int    `json:"-"`
 }
+
+// VersionRelatedWork is one external link attached to a release.
+type VersionRelatedWork struct {
+	ID        string `json:"relatedWorkId"`
+	VersionID string `json:"-"`
+	Category  string `json:"category"`
+	Title     string `json:"title,omitempty"`
+	URL       string `json:"url,omitempty"`
+}

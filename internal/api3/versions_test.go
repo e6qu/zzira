@@ -77,6 +77,25 @@ func TestVersionLifecycleMembershipAndVisibility(t *testing.T) {
 		}
 		return out
 	}
+	callList := func(user, method, path string, body any, want int) []any {
+		t.Helper()
+		raw, err := json.Marshal(body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := httptest.NewRequest(method, path, strings.NewReader(string(raw)))
+		r.SetBasicAuth(user+"@example.test", user)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, r)
+		if rec.Code != want {
+			t.Fatalf("%s %s: %d want %d: %s", method, path, rec.Code, want, rec.Body.String())
+		}
+		out := []any{}
+		if err = json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+			t.Fatalf("%s %s: %v: %s", method, path, err, rec.Body.String())
+		}
+		return out
+	}
 	for _, key := range []string{"VR", "OT"} {
 		call(actor, "POST", "/rest/api/3/project", map[string]any{"key": key, "name": key, "projectTypeKey": "software", "leadAccountId": actor}, 201)
 	}
@@ -167,6 +186,55 @@ func TestVersionLifecycleMembershipAndVisibility(t *testing.T) {
 	expanded := call(member, "GET", endpoint+"?expand=issuesstatus", nil, 200)
 	if expanded["issuesStatusForFixVersion"].(map[string]any)["toDo"] != float64(1) {
 		t.Fatal(expanded)
+	}
+	// ---- ordering and related work ----
+
+	secondID := second
+	order := func() []string {
+		t.Helper()
+		listed := callList(actor, "GET", "/rest/api/3/project/VR/versions", nil, 200)
+		names := []string{}
+		for _, entry := range listed {
+			names = append(names, fmt.Sprint(entry.(map[string]any)["name"]))
+		}
+		return names
+	}
+	if strings.Join(order(), ",") != "1.0,2.0" {
+		t.Fatalf("order=%v", order())
+	}
+	call(actor, "POST", "/rest/api/3/version/"+secondID+"/move", map[string]any{"position": "First"}, 200)
+	if strings.Join(order(), ",") != "2.0,1.0" {
+		t.Fatalf("order=%v", order())
+	}
+	call(actor, "POST", "/rest/api/3/version/"+secondID+"/move", map[string]any{"position": "Later"}, 200)
+	if strings.Join(order(), ",") != "1.0,2.0" {
+		t.Fatalf("order=%v", order())
+	}
+	call(actor, "POST", "/rest/api/3/version/"+secondID+"/move", map[string]any{"after": "https://zzira.test/rest/api/3/version/" + first}, 200)
+	if strings.Join(order(), ",") != "1.0,2.0" {
+		t.Fatalf("order=%v", order())
+	}
+	call(actor, "POST", "/rest/api/3/version/"+secondID+"/move", map[string]any{}, 400)
+	call(actor, "POST", "/rest/api/3/version/"+secondID+"/move", map[string]any{"after": "9999"}, 400)
+
+	relatedPath := endpoint + "/relatedwork"
+	call(actor, "POST", relatedPath, map[string]any{"category": "  "}, 400)
+	call(actor, "POST", relatedPath, map[string]any{"category": "Design", "url": "not-a-url"}, 400)
+	work := call(actor, "POST", relatedPath, map[string]any{"category": "Design", "title": "Release brief", "url": "https://design.example/brief"}, 201)
+	workID := fmt.Sprint(work["relatedWorkId"])
+	if len(callList(actor, "GET", relatedPath, nil, 200)) != 1 {
+		t.Fatal("related work should be listed")
+	}
+	call(actor, "PUT", relatedPath, map[string]any{"relatedWorkId": workID, "category": "Design", "title": "Updated brief", "url": "https://design.example/brief"}, 200)
+	updated := callList(actor, "GET", relatedPath, nil, 200)
+	if fmt.Sprint(updated[0].(map[string]any)["title"]) != "Updated brief" {
+		t.Fatalf("related work=%v", updated)
+	}
+	call(actor, "PUT", relatedPath, map[string]any{"relatedWorkId": "9999", "category": "Design"}, 404)
+	call(actor, "DELETE", relatedPath+"/"+workID, nil, 204)
+	call(actor, "DELETE", relatedPath+"/"+workID, nil, 404)
+	if len(callList(actor, "GET", relatedPath, nil, 200)) != 0 {
+		t.Fatal("related work should be gone")
 	}
 	call(actor, "PUT", endpoint, map[string]any{"name": "1.0 final", "released": true, "releaseDate": "2026-09-05"}, 200)
 	if versions("fixVersions")[0].(map[string]any)["name"] != "1.0 final" || versions("fixVersions")[0].(map[string]any)["released"] != true {

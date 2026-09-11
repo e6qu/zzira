@@ -8,25 +8,25 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
 ## Active delivery
 
-- Branch: `feat/pr1-select-custom-fields`
-- Base: `origin/main` after merged PR #86 (`dcd8daf` then release 0.15.1)
+- Branch: `feat/pr1-project-versions`
+- Base: `origin/main` after merged PR #87 (`202954d`)
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- Pull request: [#87](https://github.com/e6qu/zzira/pull/87)
-- State: select-field checkpoint adds an option-bearing custom field type and
-  implements all seven pinned custom field option operations. Options belong to
-  the context that governs the field, so the same field can offer different
-  choices per project or work type; they reach createmeta and the create dialog
-  in administrator order and gate every write. A disabled option leaves the form
-  while existing work items keep it, and deleting one still in use requires a
-  replacement that migrates those work items in the same transaction. Clean
-  migrations, the full uncached Go/PostgreSQL suite, vet, native and WebAssembly
-  builds, conformance checks, every Playwright journey, 320 px reflow, and the
-  light/dark axe sweep pass.
+- Pull request: [#88](https://github.com/e6qu/zzira/pull/88)
+- State: project-version checkpoint completes and records a surface that was
+  largely built but never assessed. Eleven of the 15 pinned operations already
+  worked; this adds the missing five — explicit version ordering and the four
+  release related-work operations — and assesses all 15 against verified
+  behaviour rather than assuming the rest were fine. Clean migrations, the full
+  uncached Go/PostgreSQL suite, vet, native and WebAssembly builds, conformance
+  checks, every Playwright journey, 320 px reflow, and the light/dark axe sweep
+  pass.
 - Blockers: none
 
 ## Merged baseline
 
-PR [#86](https://github.com/e6qu/zzira/pull/86) merged context enforcement on
+PR [#87](https://github.com/e6qu/zzira/pull/87) merged select custom fields and
+their options on top of
+PR [#86](https://github.com/e6qu/zzira/pull/86), which merged context enforcement on
 writes on top of
 PR [#85](https://github.com/e6qu/zzira/pull/85), which merged bulk edit narrowing on
 top of
@@ -60,15 +60,16 @@ expanded JQL and app functions, stable search identity and paging, Jira votes,
 watches, project components, login-date functions, JSM approval/SLA functions,
 and durable bulk watch/unwatch, editable-field discovery, and field edits.
 
-PR #86's final GitHub matrix passed its required suites before merge.
+PR #87's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Monitor PR #87 through every CI job and resolve review threads inline.
-2. After merge, the field families that remain are multi-select and cascading
-   custom fields, which hold an array of options rather than one, and the
-   `/config/fieldschemes` association surface. Neither is a wrapper around what
-   exists.
+1. Monitor PR #88 through every CI job and resolve review threads inline.
+2. Several other families are built but unassessed in the same way versions
+   were: Dashboards, Issue worklogs, Issue fields, and Jira Software's Board and
+   Sprint groups all have tests and browser journeys but no operation-level
+   evidence. Auditing one means checking every pinned operation against the
+   running server first, since eleven of fifteen worked here and four did not.
 
 ## Evidence map
 
@@ -92,6 +93,7 @@ PR #86's final GitHub matrix passed its required suites before merge.
 - [Jira field configurations](FIELD_CONFIGURATIONS.md)
 - [Jira custom field contexts](CUSTOM_FIELD_CONTEXTS.md)
 - [Jira select custom fields](CUSTOM_FIELD_OPTIONS.md)
+- [Jira project versions](PROJECT_VERSIONS.md)
 
 ## Continuity rules
 
