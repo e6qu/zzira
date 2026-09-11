@@ -11,7 +11,7 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 - Branch: `feat/pr1-context-write-enforcement`
 - Base: `origin/main` after merged PR #85 (`dcd8daf`)
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- Pull request: pending
+- Pull request: [#86](https://github.com/e6qu/zzira/pull/86)
 - State: hardening checkpoint, no new pinned operations, and the last place the
   form-configuration layers disagreed. A custom field context decided which
   fields a form offered while the command path still accepted a REST write
@@ -61,8 +61,7 @@ PR #85's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Open the context-enforcement pull request, monitor it through every CI job,
-   and resolve review threads inline.
+1. Monitor PR #86 through every CI job and resolve review threads inline.
 2. After merge, the form-configuration model has no remaining bypass. The next
    decision is whether to add an option-bearing custom field type, which the
    seven custom field option operations need before they can mean anything, and
