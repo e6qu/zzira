@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.1](https://github.com/e6qu/zzira/compare/v0.15.0...v0.15.1) (2026-09-11)
+
+
+### Bug Fixes
+
+* resolve the priority on edit and stop the sticky-header axe flake ([#82](https://github.com/e6qu/zzira/issues/82)) ([18d21ae](https://github.com/e6qu/zzira/commit/18d21ae54d25dff4aa7a62cdf07e0ac236e2f62f))
+
 ## [0.15.0](https://github.com/e6qu/zzira/compare/v0.14.0...v0.15.0) (2026-09-08)
 
 
