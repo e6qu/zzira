@@ -11,7 +11,7 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 - Branch: `feat/pr1-agile-board-audit`
 - Base: `origin/main` after merged PR #88 (`33639e0`)
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- Pull request: pending
+- Pull request: [#89](https://github.com/e6qu/zzira/pull/89)
 - State: board checkpoint audited all 33 pinned operations against a running
   server and found eight working. It implements 21 more — board project and
   version scope, epic reads, features, reports, sprint issues, board properties,
@@ -67,8 +67,7 @@ PR #88's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Open the board pull request, monitor it through every CI job, and resolve
-   review threads inline.
+1. Monitor PR #89 through every CI job and resolve review threads inline.
 2. The audit method holds: of 33 board operations only eight worked, so read the
    routes, then probe every operation against a running server before assessing
    anything. Sprint (13), Dashboards (17), Issue worklogs (10) and Issue fields
