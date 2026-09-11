@@ -256,4 +256,55 @@ func TestDashboardLifecyclePrivacyAndGadgets(t *testing.T) {
 	call(actor, "DELETE", path, nil, 204)
 	call(actor, "GET", path, nil, 404)
 	call(member, "DELETE", cp, nil, 204)
+
+	// ---- bulk edit ----
+
+	// Jira answers 200 with a per-dashboard error map rather than failing the
+	// whole request, so a caller learns exactly which ones it could not change.
+	first := call(actor, "POST", "/rest/api/3/dashboard", details("Bulk one", empty, empty), 200)
+	second := call(actor, "POST", "/rest/api/3/dashboard", details("Bulk two", empty, empty), 200)
+	firstID, secondID := fmt.Sprint(first["id"]), fmt.Sprint(second["id"])
+	bulk := "/rest/api/3/dashboard/bulk/edit"
+
+	call(actor, "PUT", bulk, map[string]any{"entityIds": []string{}, "action": "delete"}, 400)
+	call(actor, "PUT", bulk, map[string]any{"entityIds": []string{firstID}, "action": "nope"}, 400)
+	call(actor, "PUT", bulk, map[string]any{"entityIds": []string{firstID}, "action": "changeOwner"}, 400)
+	call(actor, "PUT", bulk, map[string]any{"entityIds": []string{firstID}, "action": "changePermission"}, 400)
+
+	shared := call(actor, "PUT", bulk, map[string]any{
+		"entityIds": []string{firstID, secondID, "9999"}, "action": "changePermission",
+		"permissionDetails": map[string]any{"sharePermissions": []any{map[string]any{"type": "loggedin"}}, "editPermissions": empty},
+	}, 200)
+	entityErrors, _ := shared["entityErrors"].(map[string]any)
+	if len(entityErrors) != 1 {
+		t.Fatalf("only the unknown dashboard should fail: %v", shared)
+	}
+	if _, unknown := entityErrors["9999"]; !unknown {
+		t.Fatalf("entityErrors=%v", entityErrors)
+	}
+	if reread := call(actor, "GET", "/rest/api/3/dashboard/"+firstID, nil, 200); len(reread["sharePermissions"].([]any)) != 1 {
+		t.Fatalf("permissions were not applied: %v", reread)
+	}
+
+	// Only the owner may hand a dashboard on, and only to a workspace member.
+	call(member, "PUT", bulk, map[string]any{
+		"entityIds": []string{firstID}, "action": "changeOwner",
+		"changeOwnerDetails": map[string]any{"newOwner": member},
+	}, 200)
+	handed := call(actor, "PUT", bulk, map[string]any{
+		"entityIds": []string{firstID}, "action": "changeOwner",
+		"changeOwnerDetails": map[string]any{"newOwner": member},
+	}, 200)
+	if errs, _ := handed["entityErrors"].(map[string]any); len(errs) != 0 {
+		t.Fatalf("the owner should be able to hand the dashboard on: %v", handed)
+	}
+	if reread := call(member, "GET", "/rest/api/3/dashboard/"+firstID, nil, 200); fmt.Sprint(reread["owner"].(map[string]any)["accountId"]) != member {
+		t.Fatalf("owner was not transferred: %v", reread)
+	}
+
+	removed := call(actor, "PUT", bulk, map[string]any{"entityIds": []string{secondID}, "action": "delete"}, 200)
+	if errs, _ := removed["entityErrors"].(map[string]any); len(errs) != 0 {
+		t.Fatalf("delete should succeed: %v", removed)
+	}
+	call(actor, "GET", "/rest/api/3/dashboard/"+secondID, nil, 404)
 }

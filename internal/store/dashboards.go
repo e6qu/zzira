@@ -20,6 +20,9 @@ type DashboardDetails struct {
 	Description      string                  `json:"description"`
 	SharePermissions []models.DashboardShare `json:"sharePermissions"`
 	EditPermissions  []models.DashboardShare `json:"editPermissions"`
+	// NewOwnerID transfers ownership when set, which Jira's bulk edit does.
+	// Only the current owner may hand a dashboard on.
+	NewOwnerID string `json:"-"`
 }
 
 const dashboardAccess = `(d.owner_id=$2 OR d.share_permissions @> '[{"type":"loggedin"}]'::jsonb OR d.edit_permissions @> '[{"type":"loggedin"}]'::jsonb OR EXISTS(SELECT 1 FROM jsonb_array_elements(d.share_permissions || d.edit_permissions) perm WHERE perm->'user'->>'accountId'=$2))`
@@ -160,6 +163,26 @@ func (s *Store) SaveDashboard(ctx context.Context, ws, user, id string, in Dashb
 	} else {
 		if _, err = tx.Exec(ctx, `UPDATE dashboards SET name=$2,description=$3,share_permissions=$4,edit_permissions=$5 WHERE id=$1`, id, in.Name, in.Description, view, edit); err != nil {
 			return nil, err
+		}
+		if in.NewOwnerID != "" {
+			var owner string
+			if err = tx.QueryRow(ctx, `SELECT owner_id FROM dashboards WHERE id=$1`, id).Scan(&owner); err != nil {
+				return nil, err
+			}
+			if owner != user {
+				return nil, fmt.Errorf("%w: only the owner can hand a dashboard on", ErrDashboardPermission)
+			}
+			var active bool
+			if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM memberships
+				WHERE workspace_id=$1 AND user_id=$2)`, ws, in.NewOwnerID).Scan(&active); err != nil {
+				return nil, err
+			}
+			if !active {
+				return nil, fmt.Errorf("%w: the new owner is not a member of this workspace", ErrDashboardValidation)
+			}
+			if _, err = tx.Exec(ctx, `UPDATE dashboards SET owner_id=$2 WHERE id=$1`, id, in.NewOwnerID); err != nil {
+				return nil, err
+			}
 		}
 	}
 	if err = dashboardAction(ctx, tx, ws, user, id, models.OpUpsert); err != nil {
