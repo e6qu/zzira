@@ -121,6 +121,9 @@ type WikiContent struct {
 	ClassificationLevel string                `json:"classificationLevel,omitempty"`
 	TemplateKey         string                `json:"templateKey,omitempty"`
 	Locale              string                `json:"locale,omitempty"`
+	CustomType          string                `json:"-"`
+	Body                string                `json:"-"`
+	BodyRepresentation  string                `json:"-"`
 	Version             WikiVersion           `json:"version"`
 	Properties          []WikiContentProperty `json:"-"`
 }

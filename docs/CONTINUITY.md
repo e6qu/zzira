@@ -8,28 +8,33 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
 ## Active delivery
 
-- Branch: `feat/pr1-field-schemes-audit`
-- Base: `origin/main` after merged PR #93 (`4129ffc`)
+- Branch: `feat/pr1-confluence-custom-content`
+- Base: `feat/pr1-app-field-options-audit` (PR #95), itself on `origin/main`
+  after merged PR #94 (`04b361d`)
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- State: field association scheme checkpoint audited all 17 pinned operations
-  against a running server and found none working. They are served from this
-  product's field configuration scheme rather than a parallel model, so both
-  APIs answer one question — which fields a project's form shows — the same way.
-  The hard part is that a new scheme points every work type at the workspace
-  default, so a naive write would change every project: a write now clones a
-  shared configuration and remaps just that work type to the copy. A work type
-  given its own rules stops following later edits to the fallback, which is how
-  Jira behaves too and is documented. The test proves the scheme governs
-  `createmeta`, not merely that the endpoints answer. No migration was needed:
-  the tables this serves from already existed.
-  The full uncached Go/PostgreSQL suite, vet, native and WebAssembly builds,
-  conformance checks, every Playwright journey, 320 px reflow, and the
-  light/dark axe sweep pass.
+- State: Confluence custom content checkpoint audited all 19 pinned operations
+  against a running server and found two working. The find was that custom
+  content existed only as `wiki_page_custom_content` and
+  `wiki_blog_custom_content`: two tables expressing the same thing twice, with
+  no way to put custom content in a space or under other custom content, and no
+  write at all. It now lives in `wiki_content` with everything else in a space,
+  so the hierarchy, permissions, versions and properties are the ones that
+  already govern a space. The two reads that existed answer as before, and their
+  test now creates through the API instead of seeding a row, so the write and
+  the read are shown to agree. The stale-write conflict used to say a page had
+  changed when none had; content has its own message now.
+  Clean migrations, the full uncached Go/PostgreSQL suite, vet, native and
+  WebAssembly builds, conformance checks, every Playwright journey, 320 px
+  reflow, and the light/dark axe sweep pass.
 - Blockers: none
 
 ## Merged baseline
 
-PR [#93](https://github.com/e6qu/zzira/pull/93) merged the completed issue field
+PR [#95](https://github.com/e6qu/zzira/pull/95) merged app-provided select lists
+and their options on top of
+PR [#94](https://github.com/e6qu/zzira/pull/94), which merged the field association
+scheme surface, served from this product's field configuration scheme, on top of
+PR [#93](https://github.com/e6qu/zzira/pull/93), which merged the completed issue field
 surface, including its trash lifecycle, on top of
 PR [#92](https://github.com/e6qu/zzira/pull/92), which merged the completed worklog
 surface, whose feeds needed a stamp on the worklog and a tombstone on the
@@ -82,21 +87,20 @@ PR #90's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Monitor the field association scheme pull request through every CI job and
-   resolve review threads inline.
-2. The remaining field family is the legacy `/field/{fieldKey}/option` surface
-   (8 operations), probed as missing. Jira is explicit that it works **only for
-   select-list fields provided by a Connect app**, not for fields created in
-   Jira or through the context-scoped option API already delivered — so it needs
-   an app to be able to declare a select field first, which
-   `translateConnectIssueField` does not yet allow (it maps string, text,
-   rich_text, number, date and datetime only). Treat "let an app declare a
-   `single_select` issue field, then manage its options" as one checkpoint, and
-   keep those options separate from the context-scoped ones, as Jira does.
-3. Probe every operation against a running server before assessing; the seven
-   audits so far ran 11 of 15, 8 of 33, 5 of 13, 16 of 17, 4 of 14, 2 of 11 and
-   0 of 17, so the result is not predictable from how well tested a surface
-   looks.
+1. Land PR #95 (app field options), then this branch, through every CI job,
+   resolving review threads inline.
+2. The largest unassessed Confluence groups left are `confluence-v1 content`
+   (18 of 42 unassessed), `confluence-v1 user` (12 of 21), `confluence-v1 space`
+   (15 of 19), `confluence-v1 group` (8) and `confluence-v2 space-permissions`
+   (6, plus `space-role-mode`). The v1 content group is the largest single
+   block; check first how much of it the v2 surface already answers, because a
+   v1 operation that maps onto delivered v2 behavior is a translation rather
+   than a new model.
+3. Probe every operation against a running server before assessing; the eight
+   audits so far ran 11 of 15, 8 of 33, 5 of 13, 16 of 17, 4 of 14, 2 of 11,
+   0 of 17 and 0 of 8, so the result is not predictable from how well tested a
+   surface looks. Twice now an operation was missing because something upstream
+   made it impossible, not because the handler was absent.
 
 ## Evidence map
 
@@ -126,6 +130,8 @@ PR #90's final GitHub matrix passed its required suites before merge.
 - [Jira worklogs](WORKLOGS.md)
 - [Jira issue fields](ISSUE_FIELDS.md)
 - [Jira field association schemes](FIELD_ASSOCIATION_SCHEMES.md)
+- [App-provided select lists](APP_FIELD_OPTIONS.md)
+- [Confluence custom content](CUSTOM_CONTENT.md)
 
 ## Continuity rules
 

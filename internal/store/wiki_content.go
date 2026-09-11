@@ -22,24 +22,28 @@ func wikiContentWritableFor(contentType string) string {
 }
 
 const wikiContentSelect = `SELECT c.id::text,c.type,c.status,c.title,
-  COALESCE(c.parent_content_id::text,c.parent_page_id::text,''),
-  CASE WHEN c.parent_content_id IS NOT NULL THEN parent.type WHEN c.parent_page_id IS NOT NULL THEN 'page' ELSE '' END,
+  COALESCE(c.parent_content_id::text,c.parent_page_id::text,c.parent_blog_post_id::text,''),
+  CASE WHEN c.parent_content_id IS NOT NULL THEN parent.type WHEN c.parent_page_id IS NOT NULL THEN 'page'
+       WHEN c.parent_blog_post_id IS NOT NULL THEN 'blogpost' ELSE '' END,
   (SELECT count(*)::int FROM wiki_content sibling WHERE sibling.space_id=c.space_id AND sibling.status='current'
     AND sibling.parent_page_id IS NOT DISTINCT FROM c.parent_page_id
     AND sibling.parent_content_id IS NOT DISTINCT FROM c.parent_content_id AND sibling.id<c.id),
   c.author_id,c.owner_id,to_char(c.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),
-	c.space_id::text,c.embed_url,c.private,c.classification_level,c.template_key,c.locale,v.version,v.message,v.author_id,
+	c.space_id::text,c.embed_url,c.private,c.classification_level,c.template_key,c.locale,
+  COALESCE(c.custom_type,''),c.body,COALESCE(ct.body_representation,''),v.version,v.message,v.author_id,
   to_char(v.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"')
   FROM wiki_content c JOIN wiki_spaces s ON s.id=c.space_id
   JOIN wiki_content_versions v ON v.content_id=c.id AND v.version=c.version
   LEFT JOIN wiki_content parent ON parent.id=c.parent_content_id
-  LEFT JOIN wiki_pages p ON p.id=c.root_page_id`
+  LEFT JOIN wiki_pages p ON p.id=c.root_page_id
+  LEFT JOIN wiki_custom_content_types ct ON ct.type=c.custom_type`
 
 func scanWikiContent(row pgx.Row) (*models.WikiContent, error) {
 	content := &models.WikiContent{}
 	err := row.Scan(&content.ID, &content.Type, &content.Status, &content.Title,
 		&content.ParentID, &content.ParentType, &content.Position, &content.AuthorID,
 		&content.OwnerID, &content.CreatedAt, &content.SpaceID, &content.EmbedURL, &content.Private, &content.ClassificationLevel, &content.TemplateKey, &content.Locale,
+		&content.CustomType, &content.Body, &content.BodyRepresentation,
 		&content.Version.Number, &content.Version.Message, &content.Version.AuthorID,
 		&content.Version.CreatedAt)
 	return content, err

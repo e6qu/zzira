@@ -399,7 +399,12 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	}
 	call(actor, "GET", "/pages/"+governed.ID+"/custom-content", nil, 400)
 	call(actor, "GET", "/pages/"+governed.ID+"/custom-content?type=com.example:unknown", nil, 404)
-	exec(`INSERT INTO wiki_page_custom_content(page_id,type,title,body,author_id) VALUES($1::bigint,'com.zzira:diagram','Security topology','<p>Restricted service graph</p>',$2)`, governed.ID, actor)
+	// Custom content is created through its own endpoint, and the page read
+	// below sees what that write produced rather than a hand-seeded row.
+	call(actor, "POST", "/custom-content", map[string]any{
+		"type": "com.zzira:diagram", "pageId": governed.ID, "title": "Security topology",
+		"body": map[string]any{"storage": map[string]any{"value": "<p>Restricted service graph</p>", "representation": "storage"}},
+	}, 200)
 	if custom := call(member, "GET", "/pages/"+governed.ID+"/custom-content?type=com.zzira:diagram&body-format=storage", nil, 200); !strings.Contains(custom.Body.String(), "Security topology") || !strings.Contains(custom.Body.String(), `"pageId":"`+governed.ID+`"`) {
 		t.Fatal(custom.Body.String())
 	}
@@ -615,7 +620,10 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	call(actor, "POST", "/blogposts/"+blog.ID+"/classification-level/reset", map[string]string{"status": "current"}, 204)
 	call(actor, "GET", "/blogposts/"+blog.ID+"/custom-content", nil, 400)
 	call(actor, "GET", "/blogposts/"+blog.ID+"/custom-content?type=com.example:unknown", nil, 404)
-	exec(`INSERT INTO wiki_blog_custom_content(blog_post_id,type,title,body,author_id) VALUES($1::bigint,'com.zzira:diagram','Release topology','<p>Service graph</p>',$2)`, blog.ID, actor)
+	call(actor, "POST", "/custom-content", map[string]any{
+		"type": "com.zzira:diagram", "blogPostId": blog.ID, "title": "Release topology",
+		"body": map[string]any{"storage": map[string]any{"value": "<p>Service graph</p>", "representation": "storage"}},
+	}, 200)
 	if custom := call(member, "GET", "/blogposts/"+blog.ID+"/custom-content?type=com.zzira:diagram&body-format=storage", nil, 200); !strings.Contains(custom.Body.String(), "Release topology") || !strings.Contains(custom.Body.String(), "Service graph") {
 		t.Fatal(custom.Body.String())
 	}

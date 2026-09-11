@@ -55,6 +55,8 @@ func writeError(w http.ResponseWriter, err error) {
 		failure(w, 403, err.Error())
 	case errors.Is(err, store.ErrWikiConflict):
 		failure(w, 409, err.Error())
+	case errors.Is(err, store.ErrWikiContentConflict):
+		failure(w, 409, err.Error())
 	case errors.Is(err, store.ErrWikiBlogPostConflict):
 		failure(w, 409, err.Error())
 	case errors.Is(err, store.ErrWikiCommentConflict):
@@ -462,6 +464,49 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.attachmentVersion(w, r, ws, actor, parts[1], parts[3])
 	case len(parts) == 3 && parts[0] == "pages" && parts[2] == "attachments" && r.Method == "GET":
 		h.attachments(w, r, ws, actor, parts[1])
+	case len(parts) == 1 && parts[0] == "custom-content" && r.Method == "GET":
+		h.customContents(w, r, ws, actor, "")
+	case len(parts) == 1 && parts[0] == "custom-content" && r.Method == "POST":
+		h.createCustomContent(w, r, ws, actor)
+	case len(parts) == 3 && parts[0] == "spaces" && parts[2] == "custom-content" && r.Method == "GET":
+		h.customContents(w, r, ws, actor, parts[1])
+	case len(parts) == 2 && parts[0] == "custom-content" && r.Method == "GET":
+		h.customContent(w, r, ws, actor, parts[1])
+	case len(parts) == 2 && parts[0] == "custom-content" && r.Method == "PUT":
+		h.updateCustomContent(w, r, ws, actor, parts[1])
+	case len(parts) == 2 && parts[0] == "custom-content" && r.Method == "DELETE":
+		if !validPageID(w, parts[1]) || !supportedQuery(w, r, "purge") {
+			return
+		}
+		if err := h.Commands.DeleteWikiContent(r.Context(), ws, actor, parts[1], "custom"); err != nil {
+			writeError(w, err)
+			return
+		}
+		w.WriteHeader(204)
+	case len(parts) == 3 && parts[0] == "custom-content" && parts[2] == "versions" && r.Method == "GET":
+		h.customContentVersions(w, r, ws, actor, parts[1])
+	case len(parts) == 4 && parts[0] == "custom-content" && parts[2] == "versions" && r.Method == "GET":
+		h.customContentVersion(w, r, ws, actor, parts[1], parts[3])
+	case len(parts) == 3 && parts[0] == "custom-content" && parts[2] == "labels" && r.Method == "GET":
+		h.customContentLabels(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "custom-content" && parts[2] == "operations" && r.Method == "GET":
+		h.contentOperations(w, r, ws, actor, parts[1], "custom")
+	case len(parts) == 3 && parts[0] == "custom-content" && parts[2] == "children" && r.Method == "GET":
+		h.contentDescendants(w, r, ws, actor, parts[1], "custom", true)
+	case len(parts) == 3 && parts[0] == "custom-content" && parts[2] == "attachments" && r.Method == "GET":
+		h.customContentAttachments(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "custom-content" && parts[2] == "footer-comments" && r.Method == "GET":
+		h.customContentFooterComments(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "custom-content" && parts[2] == "properties" && r.Method == "GET":
+		h.contentProperties(w, r, ws, actor, parts[1], "custom")
+	case len(parts) == 3 && parts[0] == "custom-content" && parts[2] == "properties" && r.Method == "POST":
+		h.createContentProperty(w, r, ws, actor, parts[1], "custom")
+	case len(parts) == 4 && parts[0] == "custom-content" && parts[2] == "properties" && r.Method == "GET":
+		h.contentProperty(w, r, ws, actor, parts[1], parts[3], "custom")
+	case len(parts) == 4 && parts[0] == "custom-content" && parts[2] == "properties" && r.Method == "PUT":
+		h.updateContentProperty(w, r, ws, actor, parts[1], parts[3], "custom")
+	case len(parts) == 4 && parts[0] == "custom-content" && parts[2] == "properties" && r.Method == "DELETE":
+		h.deleteContentProperty(w, r, ws, actor, parts[1], parts[3], "custom")
 	case len(parts) == 1 && parts[0] == "folders" && r.Method == "POST":
 		h.createFolder(w, r, ws, actor)
 	case len(parts) == 2 && parts[0] == "folders" && r.Method == "GET":

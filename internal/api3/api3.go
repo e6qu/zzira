@@ -127,6 +127,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		rest := strings.TrimPrefix(path, "/field/")
 		field, remainder, _ := strings.Cut(rest, "/context")
 		h.fieldContextRoute(w, r, field, remainder)
+	// An app's select list has its own option surface, separate from the
+	// context options an administrator manages.
+	case strings.HasPrefix(path, "/field/") && strings.Contains(path, "/option"):
+		rest := strings.TrimPrefix(path, "/field/")
+		fieldKey, remainder, _ := strings.Cut(rest, "/option")
+		parts := []string{}
+		if trimmed := strings.Trim(remainder, "/"); trimmed != "" {
+			parts = strings.Split(trimmed, "/")
+		}
+		h.appFieldOptionRoute(w, r, fieldKey, parts)
 	case strings.HasPrefix(path, "/field/") && strings.HasSuffix(path, "/screens"):
 		h.screensForField(w, r, strings.TrimSuffix(strings.TrimPrefix(path, "/field/"), "/screens"))
 	case strings.HasPrefix(path, "/field/"):
