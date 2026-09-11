@@ -99,6 +99,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.listFields(w, r)
 	case path == "/field" && r.Method == http.MethodPost:
 		h.createField(w, r)
+	case path == "/worklog/updated" || path == "/worklog/deleted" || path == "/worklog/list":
+		h.worklogFeedRoute(w, r, path)
 	case strings.HasPrefix(path, "/customFieldOption/"):
 		h.customFieldOptionResource(w, r, strings.TrimPrefix(path, "/customFieldOption/"))
 	case strings.HasPrefix(path, "/field/") && strings.Contains(path, "/context"):
