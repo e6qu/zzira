@@ -11,7 +11,7 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 - Branch: `feat/pr1-custom-field-contexts`
 - Base: `origin/main` after merged PR #82 (`18d21ae`)
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- Pull request: pending
+- Pull request: [#84](https://github.com/e6qu/zzira/pull/84)
 - State: custom-field-context checkpoint implements all 14 pinned context
   operations. One SQL function decides which context governs a field for a
   project and work type, preferring a context that names either over one that
@@ -61,8 +61,7 @@ PR #82's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Open the custom-field-context pull request, monitor it through every CI job,
-   and resolve review threads inline.
+1. Monitor PR #84 through every CI job and resolve review threads inline.
 2. After merge, decide whether to add an option-bearing custom field type, which
    the seven custom field option operations need before they can mean anything.
    Bulk edit still bypasses screens, field configurations and now contexts;
