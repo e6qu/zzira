@@ -182,6 +182,74 @@ func TestBoardContract(t *testing.T) {
 	}
 	call(http.MethodGet, "/rest/software/1.0/board/brd_missing/issue", http.StatusNotFound)
 	call(http.MethodGet, "/rest/software/1.0/nope", http.StatusNotFound)
+
+	// ---- sprints ----
+
+	sprintPath := "/rest/agile/1.0/sprint/" + sprint.ID
+	// Jira's POST is the partial update and PUT the replacement.
+	send := func(method, path, body string, want int) {
+		t.Helper()
+		request := httptest.NewRequest(method, path, strings.NewReader(body))
+		request.SetBasicAuth(actor+"@example.test", actor)
+		response := httptest.NewRecorder()
+		h.ServeHTTP(response, request)
+		if response.Code != want {
+			t.Fatalf("%s %s: got %d want %d: %s", method, path, response.Code, want, response.Body.String())
+		}
+	}
+	send(http.MethodPost, sprintPath, `{"goal":"Ship the audit"}`, http.StatusOK)
+	if reread := call(http.MethodGet, sprintPath, http.StatusOK); reread["goal"] != "Ship the audit" {
+		t.Fatal(reread)
+	}
+
+	send(http.MethodPut, sprintPath+"/properties/prefs", `{"colour":"blue"}`, http.StatusCreated)
+	send(http.MethodPut, sprintPath+"/properties/prefs", `{"colour":"green"}`, http.StatusOK)
+	if keys := call(http.MethodGet, sprintPath+"/properties", http.StatusOK); len(keys["keys"].([]any)) != 1 {
+		t.Fatal(keys)
+	}
+	call(http.MethodGet, sprintPath+"/properties/prefs", http.StatusOK)
+	call(http.MethodDelete, sprintPath+"/properties/prefs", http.StatusNoContent)
+	call(http.MethodGet, sprintPath+"/properties/prefs", http.StatusNotFound)
+	call(http.MethodDelete, sprintPath+"/properties/prefs", http.StatusNotFound)
+
+	// Swapping exchanges two sprints' order on the board; the listing follows.
+	later, _, err := st.CreateSprint(ctx, actor, workspaceID, board.ID, "Later sprint", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := func() []string {
+		t.Helper()
+		sprints, listErr := st.SprintsByBoard(ctx, board.ID)
+		if listErr != nil {
+			t.Fatal(listErr)
+		}
+		out := []string{}
+		for _, each := range sprints {
+			out = append(out, each.Name)
+		}
+		return out
+	}
+	if strings.Join(names(), ",") != "Contract sprint,Later sprint" {
+		t.Fatalf("order=%v", names())
+	}
+	send(http.MethodPost, sprintPath+"/swap", `{"sprintToSwapWith":"`+later.ID+`"}`, http.StatusNoContent)
+	if strings.Join(names(), ",") != "Later sprint,Contract sprint" {
+		t.Fatalf("order=%v", names())
+	}
+	send(http.MethodPost, sprintPath+"/swap", `{"sprintToSwapWith":"`+sprint.ID+`"}`, http.StatusBadRequest)
+	send(http.MethodPost, sprintPath+"/swap", `{"sprintToSwapWith":"spr_missing"}`, http.StatusNotFound)
+	send(http.MethodPost, sprintPath+"/swap", `{}`, http.StatusBadRequest)
+
+	// The software alias serves the same sprint issue read.
+	call(http.MethodGet, "/rest/software/1.0/sprint/"+sprint.ID+"/issue", http.StatusOK)
+	call(http.MethodGet, "/rest/software/1.0/sprint/spr_missing/issue", http.StatusNotFound)
+
+	// Deleting a sprint returns its work to the backlog rather than removing it.
+	call(http.MethodDelete, "/rest/agile/1.0/sprint/"+later.ID, http.StatusNoContent)
+	if strings.Join(names(), ",") != "Contract sprint" {
+		t.Fatalf("order=%v", names())
+	}
+	call(http.MethodDelete, "/rest/agile/1.0/sprint/"+later.ID, http.StatusNotFound)
 }
 
 func strPtr(value string) *string { return &value }

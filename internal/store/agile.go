@@ -449,7 +449,8 @@ func (s *Store) CreateSprint(ctx context.Context, actorID, workspaceID, boardID,
 	}
 	id := NewID("spr")
 	if _, err := tx.Exec(ctx,
-		`INSERT INTO sprints (id, board_id, name, state, goal) VALUES ($1,$2,$3,'future',$4)`,
+		`INSERT INTO sprints (id, board_id, name, state, goal, position)
+		 VALUES ($1,$2,$3,'future',$4,COALESCE((SELECT max(position)+1 FROM sprints WHERE board_id=$2),0))`,
 		id, boardID, name, goal); err != nil {
 		return nil, nil, err
 	}
@@ -481,7 +482,7 @@ func (s *Store) SprintsByBoard(ctx context.Context, boardID string) ([]*models.S
 		        COALESCE(to_char(start_date AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
 		        COALESCE(to_char(end_date AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
 		        s.goal
-			 FROM sprints s WHERE s.board_id=$1 ORDER BY s.created_at, s.id`, boardID)
+			 FROM sprints s WHERE s.board_id=$1 ORDER BY s.position, s.created_at, s.id`, boardID)
 	if err != nil {
 		return nil, err
 	}
