@@ -464,6 +464,18 @@ func (h *Handler) sprintRoute(w http.ResponseWriter, r *http.Request, parts []st
 		h.sprintIssues(w, r, sprint, userID)
 	case len(parts) == 2 && parts[1] == "issue" && r.Method == http.MethodPost:
 		h.moveIssuesToSprint(w, r, wsID, sprint)
+	case len(parts) == 1 && r.Method == http.MethodPost:
+		// Jira's POST is the partial update; PUT replaces. Both land on the
+		// same handler because it already treats absent fields as unchanged.
+		h.updateSprint(w, r, wsID, userID, sprint)
+	case len(parts) == 1 && r.Method == http.MethodDelete:
+		h.deleteSprint(w, r, wsID, userID, sprint)
+	case len(parts) == 2 && parts[1] == "swap" && r.Method == http.MethodPost:
+		h.swapSprint(w, r, wsID, userID, sprint)
+	case len(parts) == 2 && parts[1] == "properties":
+		h.sprintProperties(w, r, sprint)
+	case len(parts) == 3 && parts[1] == "properties":
+		h.sprintProperty(w, r, sprint, parts[2])
 	default:
 		jiraError(w, http.StatusNotFound, "No resource found")
 	}

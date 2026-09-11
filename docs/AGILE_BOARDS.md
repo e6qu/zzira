@@ -1,4 +1,4 @@
-# Jira Software boards
+# Jira Software boards and sprints
 
 Updated: 2026-09-11
 
@@ -61,16 +61,36 @@ something that would mislead a client:
 - `POST /rest/agile/1.0/board/{boardId}/issue`. Moving work onto a board happens
   through the sprint and backlog endpoints, which the browser journey uses.
 
+## Sprints
+
+All 13 pinned sprint operations are implemented. An audit found five working:
+create, read, the replacing update, a sprint's issues, and moving work into one.
+
+The rest are new here. Jira's `POST /sprint/{id}` is the partial update where
+`PUT` replaces, and both reach one handler because absent fields were already
+treated as unchanged. Deleting a sprint **returns its work to the backlog**
+rather than removing it, and an active sprint is refused until it is completed.
+Sprint properties follow the board property rules, including 201 on a new key
+and 200 on a replacement. `POST /sprint/{id}/swap` exchanges two sprints' order
+on the same board, and `/rest/software/1.0/sprint/{id}/issue` serves the same
+read as its agile counterpart.
+
+Sprints had no explicit order before this, so Jira's swap had nothing to
+exchange: the migration adds a position seeded from creation order, new sprints
+append to it, and the sprint listing follows it.
+
 ## Evidence and current boundary
 
-- `internal/agile/board_test.go` covers the project, version, epic, feature,
-  report, sprint-issue and property operations, both base paths, the
-  approximate counts, and the 404s for an unknown board, sprint, epic and
-  property.
+- `internal/agile/board_test.go` covers the board project, version, epic,
+  feature, report, sprint-issue and property operations, the sprint partial
+  update, properties, swap and deletion, both base paths, the approximate
+  counts, and the 404s for an unknown board, sprint, epic and property.
 - `e2e/backlog.spec.ts` and `e2e/v4.spec.ts` cover the browser board and backlog
   journeys.
-- `migrations/139_board_properties.sql` is exercised from a clean PostgreSQL
-  schema.
+- `migrations/139_board_properties.sql` and
+  `migrations/140_sprint_properties_and_order.sql` are exercised from a clean
+  PostgreSQL schema.
 
-Jira's `expand`, JQL and field filters on the board issue reads, board estimation
-configuration, and exact Jira error wording remain.
+Jira's `expand`, JQL and field filters on the board and sprint issue reads,
+board estimation configuration, sprint ranking parameters on the move, and exact
+Jira error wording remain.

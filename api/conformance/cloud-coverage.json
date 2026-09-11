@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 717,
+  "assessedTotal": 730,
   "counts": {
     "delivered": 0,
-    "partial": 706,
+    "partial": 719,
     "missing": 11,
-    "unassessed": 490
+    "unassessed": 477
   },
   "countsByFamily": {
     "automation": {
@@ -36,9 +36,9 @@
     },
     "jira-software": {
       "delivered": 0,
-      "partial": 44,
+      "partial": 57,
       "missing": 4,
-      "unassessed": 57
+      "unassessed": 44
     },
     "organization-admin": {
       "delivered": 0,
@@ -6724,97 +6724,138 @@
       "operationId": "jira-software:POST:/rest/agile/1.0/sprint",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/agile/board_test.go",
+        "e2e/backlog.spec.ts",
+        "docs/AGILE_BOARDS.md"
+      ],
+      "notes": "Creating a sprint on a board is tested through REST and the browser; it appends to the board order."
     },
     {
       "operationId": "jira-software:DELETE:/rest/agile/1.0/sprint/{sprintId}",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/agile/board_test.go",
+        "docs/AGILE_BOARDS.md"
+      ],
+      "notes": "Deleting a sprint returns its work to the backlog rather than removing it, and an active sprint is refused."
     },
     {
       "operationId": "jira-software:GET:/rest/agile/1.0/sprint/{sprintId}",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/agile/board_test.go",
+        "e2e/backlog.spec.ts",
+        "docs/AGILE_BOARDS.md"
+      ],
+      "notes": "Reading a sprint is tested through REST and the browser."
     },
     {
       "operationId": "jira-software:POST:/rest/agile/1.0/sprint/{sprintId}",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/agile/board_test.go",
+        "docs/AGILE_BOARDS.md"
+      ],
+      "notes": "Jira's partial update is tested; absent fields stay unchanged."
     },
     {
       "operationId": "jira-software:PUT:/rest/agile/1.0/sprint/{sprintId}",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/agile/board_test.go",
+        "e2e/backlog.spec.ts",
+        "docs/AGILE_BOARDS.md"
+      ],
+      "notes": "The replacing update covers name, goal, state and dates, with date validation."
     },
     {
       "operationId": "jira-software:GET:/rest/agile/1.0/sprint/{sprintId}/issue",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/agile/board_test.go",
+        "e2e/backlog.spec.ts",
+        "docs/AGILE_BOARDS.md"
+      ],
+      "notes": "Paging a sprint's work is tested through REST and the browser; JQL and field filters remain."
     },
     {
       "operationId": "jira-software:POST:/rest/agile/1.0/sprint/{sprintId}/issue",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/agile/board_test.go",
+        "e2e/backlog.spec.ts",
+        "docs/AGILE_BOARDS.md"
+      ],
+      "notes": "Moving work into a sprint is tested through REST and the browser; ranking parameters remain."
     },
     {
       "operationId": "jira-software:GET:/rest/agile/1.0/sprint/{sprintId}/properties",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/agile/board_test.go",
+        "docs/AGILE_BOARDS.md"
+      ],
+      "notes": "Listing a sprint's property keys is tested."
     },
     {
       "operationId": "jira-software:DELETE:/rest/agile/1.0/sprint/{sprintId}/properties/{propertyKey}",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/agile/board_test.go",
+        "docs/AGILE_BOARDS.md"
+      ],
+      "notes": "Removing a property is tested, and removing it twice is a 404."
     },
     {
       "operationId": "jira-software:GET:/rest/agile/1.0/sprint/{sprintId}/properties/{propertyKey}",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/agile/board_test.go",
+        "docs/AGILE_BOARDS.md"
+      ],
+      "notes": "Reading one property is tested, with a 404 for an unknown key."
     },
     {
       "operationId": "jira-software:PUT:/rest/agile/1.0/sprint/{sprintId}/properties/{propertyKey}",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/agile/board_test.go",
+        "docs/AGILE_BOARDS.md"
+      ],
+      "notes": "Storing a property is tested; a new key answers 201 and a replacement 200."
     },
     {
       "operationId": "jira-software:POST:/rest/agile/1.0/sprint/{sprintId}/swap",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/agile/board_test.go",
+        "docs/AGILE_BOARDS.md"
+      ],
+      "notes": "Swapping two sprints exchanges their board order, which the sprint listing follows; self-swap and a sprint on another board are rejected."
     },
     {
       "operationId": "jira-software:POST:/rest/builds/0.1/bulk",
@@ -7340,9 +7381,12 @@
       "operationId": "jira-software:GET:/rest/software/1.0/sprint/{sprintId}/issue",
       "family": "jira-software",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/agile/board_test.go",
+        "docs/AGILE_BOARDS.md"
+      ],
+      "notes": "Serves the same sprint issue read as the agile path from one implementation."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/assets/workspace",

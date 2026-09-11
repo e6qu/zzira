@@ -184,6 +184,10 @@ func (h *Handler) boardProperty(w http.ResponseWriter, r *http.Request, board *m
 // same data as their /rest/agile/1.0 counterparts, plus the approximate-count
 // variants a board UI uses before it pages.
 func (h *Handler) softwareRoute(w http.ResponseWriter, r *http.Request, path string) {
+	if strings.HasPrefix(path, "/sprint/") && r.Method == http.MethodGet {
+		h.softwareSprintRoute(w, r, strings.Split(strings.Trim(strings.TrimPrefix(path, "/sprint/"), "/"), "/"))
+		return
+	}
 	if !strings.HasPrefix(path, "/board/") {
 		jiraError(w, http.StatusNotFound, "No resource found for path "+r.URL.Path)
 		return
@@ -240,4 +244,24 @@ func (h *Handler) boardIssueList(r *http.Request, board *models.Board, userID st
 		issues = append(issues, columns[statusID]...)
 	}
 	return issues, nil
+}
+
+// softwareSprintRoute serves Jira's /rest/software/1.0 sprint issue read from
+// the same implementation as its agile counterpart.
+func (h *Handler) softwareSprintRoute(w http.ResponseWriter, r *http.Request, parts []string) {
+	if len(parts) != 2 || parts[1] != "issue" {
+		jiraError(w, http.StatusNotFound, "No resource found for path "+r.URL.Path)
+		return
+	}
+	workspaceID, userID, status, msg := h.authWorkspace(r)
+	if status != 0 {
+		jiraError(w, status, msg)
+		return
+	}
+	sprint, err := h.Store.SprintByIDInWorkspace(r.Context(), workspaceID, parts[0])
+	if err != nil {
+		jiraError(w, http.StatusNotFound, "The sprint does not exist.")
+		return
+	}
+	h.sprintIssues(w, r, sprint, userID)
 }

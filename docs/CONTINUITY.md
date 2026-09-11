@@ -8,24 +8,26 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
 ## Active delivery
 
-- Branch: `feat/pr1-agile-board-audit`
-- Base: `origin/main` after merged PR #88 (`33639e0`)
+- Branch: `feat/pr1-agile-sprint-audit`
+- Base: `origin/main` after merged PR #89 (`0625bd5`)
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- Pull request: [#89](https://github.com/e6qu/zzira/pull/89)
-- State: board checkpoint audited all 33 pinned operations against a running
-  server and found eight working. It implements 21 more — board project and
-  version scope, epic reads, features, reports, sprint issues, board properties,
-  and the whole `/rest/software/1.0` base path, which was never mounted — and
-  records the remaining four as missing rather than serving something that would
-  mislead a client: there is no standalone board lifecycle and boards are not
-  filter-backed. Clean migrations, the full uncached Go/PostgreSQL suite, vet,
-  native and WebAssembly builds, conformance checks, every Playwright journey,
-  320 px reflow, and the light/dark axe sweep pass.
+- Pull request: pending
+- State: sprint checkpoint audited all 13 pinned operations against a running
+  server and found five working. It implements the other eight — Jira's partial
+  update, deletion that returns work to the backlog, the four sprint property
+  operations, swap, and the software-path issue read — and fixes what swap
+  needed to mean anything: sprints had no explicit order, so the migration adds
+  one, new sprints append to it, and the listing follows it. Clean migrations,
+  the full uncached Go/PostgreSQL suite, vet, native and WebAssembly builds,
+  conformance checks, every Playwright journey, 320 px reflow, and the
+  light/dark axe sweep pass.
 - Blockers: none
 
 ## Merged baseline
 
-PR [#88](https://github.com/e6qu/zzira/pull/88) merged the completed project
+PR [#89](https://github.com/e6qu/zzira/pull/89) merged the completed board
+surface on top of
+PR [#88](https://github.com/e6qu/zzira/pull/88), which merged the completed project
 version surface on top of
 PR [#87](https://github.com/e6qu/zzira/pull/87), which merged select custom fields and
 their options on top of
@@ -63,15 +65,16 @@ expanded JQL and app functions, stable search identity and paging, Jira votes,
 watches, project components, login-date functions, JSM approval/SLA functions,
 and durable bulk watch/unwatch, editable-field discovery, and field edits.
 
-PR #88's final GitHub matrix passed its required suites before merge.
+PR #89's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Monitor PR #89 through every CI job and resolve review threads inline.
-2. The audit method holds: of 33 board operations only eight worked, so read the
-   routes, then probe every operation against a running server before assessing
-   anything. Sprint (13), Dashboards (17), Issue worklogs (10) and Issue fields
-   (11) are the next families with tests but no operation-level evidence.
+1. Open the sprint pull request, monitor it through every CI job, and resolve
+   review threads inline.
+2. Dashboards (17), Issue worklogs (10) and Issue fields (11) are the next
+   families with tests but no operation-level evidence. Probe every operation
+   against a running server before assessing: versions was 11 of 15, boards 8 of
+   33, sprints 5 of 13.
 
 ## Evidence map
 
@@ -96,7 +99,7 @@ PR #88's final GitHub matrix passed its required suites before merge.
 - [Jira custom field contexts](CUSTOM_FIELD_CONTEXTS.md)
 - [Jira select custom fields](CUSTOM_FIELD_OPTIONS.md)
 - [Jira project versions](PROJECT_VERSIONS.md)
-- [Jira Software boards](AGILE_BOARDS.md)
+- [Jira Software boards and sprints](AGILE_BOARDS.md)
 
 ## Continuity rules
 
