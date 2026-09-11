@@ -8,19 +8,21 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
 ## Active delivery
 
-- Branch: `feat/pr1-app-field-options-audit`
-- Base: `origin/main` after merged PR #94 (`04b361d`)
+- Branch: `feat/pr1-confluence-custom-content`
+- Base: `feat/pr1-app-field-options-audit` (PR #95), itself on `origin/main`
+  after merged PR #94 (`04b361d`)
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- State: app field option checkpoint audited all eight pinned operations against
-  a running server and found none working — and could not have: the descriptor
-  parser refused a `single_select` Connect field, so there was no app select
-  list for the surface to serve. It accepts one now (`multi_select` stays
-  refused rather than being downgraded to a single choice). The two option
-  resources are kept apart in both directions, as Jira specifies, while sharing
-  one option table because nothing downstream cares who supplied the field. The
-  deselect is a real background task: the affected work items are queued as an
-  ordinary bulk edit. A replacement that cannot be selected is refused up front,
-  because letting it through reported a completed deselect that changed nothing.
+- State: Confluence custom content checkpoint audited all 19 pinned operations
+  against a running server and found two working. The find was that custom
+  content existed only as `wiki_page_custom_content` and
+  `wiki_blog_custom_content`: two tables expressing the same thing twice, with
+  no way to put custom content in a space or under other custom content, and no
+  write at all. It now lives in `wiki_content` with everything else in a space,
+  so the hierarchy, permissions, versions and properties are the ones that
+  already govern a space. The two reads that existed answer as before, and their
+  test now creates through the API instead of seeding a row, so the write and
+  the read are shown to agree. The stale-write conflict used to say a page had
+  changed when none had; content has its own message now.
   Clean migrations, the full uncached Go/PostgreSQL suite, vet, native and
   WebAssembly builds, conformance checks, every Playwright journey, 320 px
   reflow, and the light/dark axe sweep pass.
@@ -28,7 +30,9 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
 ## Merged baseline
 
-PR [#94](https://github.com/e6qu/zzira/pull/94) merged the field association
+PR [#95](https://github.com/e6qu/zzira/pull/95) merged app-provided select lists
+and their options on top of
+PR [#94](https://github.com/e6qu/zzira/pull/94), which merged the field association
 scheme surface, served from this product's field configuration scheme, on top of
 PR [#93](https://github.com/e6qu/zzira/pull/93), which merged the completed issue field
 surface, including its trash lifecycle, on top of
@@ -83,12 +87,15 @@ PR #90's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Monitor the app field option pull request through every CI job and resolve
-   review threads inline.
-2. The whole Jira field surface is now assessed. Pick the next family from the
-   410 still unassessed operations in
-   [operation coverage](../api/conformance/cloud-coverage.json); the Confluence
-   v1 and v2 groups (348 between them) are the largest untouched block.
+1. Land PR #95 (app field options), then this branch, through every CI job,
+   resolving review threads inline.
+2. The largest unassessed Confluence groups left are `confluence-v1 content`
+   (18 of 42 unassessed), `confluence-v1 user` (12 of 21), `confluence-v1 space`
+   (15 of 19), `confluence-v1 group` (8) and `confluence-v2 space-permissions`
+   (6, plus `space-role-mode`). The v1 content group is the largest single
+   block; check first how much of it the v2 surface already answers, because a
+   v1 operation that maps onto delivered v2 behavior is a translation rather
+   than a new model.
 3. Probe every operation against a running server before assessing; the eight
    audits so far ran 11 of 15, 8 of 33, 5 of 13, 16 of 17, 4 of 14, 2 of 11,
    0 of 17 and 0 of 8, so the result is not predictable from how well tested a
@@ -124,6 +131,7 @@ PR #90's final GitHub matrix passed its required suites before merge.
 - [Jira issue fields](ISSUE_FIELDS.md)
 - [Jira field association schemes](FIELD_ASSOCIATION_SCHEMES.md)
 - [App-provided select lists](APP_FIELD_OPTIONS.md)
+- [Confluence custom content](CUSTOM_CONTENT.md)
 
 ## Continuity rules
 

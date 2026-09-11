@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 797,
+  "assessedTotal": 815,
   "counts": {
     "delivered": 0,
-    "partial": 786,
+    "partial": 804,
     "missing": 11,
-    "unassessed": 410
+    "unassessed": 392
   },
   "countsByFamily": {
     "automation": {
@@ -18,9 +18,9 @@
     },
     "confluence": {
       "delivered": 0,
-      "partial": 216,
+      "partial": 234,
       "missing": 0,
-      "unassessed": 132
+      "unassessed": 114
     },
     "jira-platform": {
       "delivered": 0,
@@ -10722,16 +10722,17 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "docs/CUSTOM_CONTENT.md",
+        "e2e/wiki.spec.ts",
+        "internal/commands/wiki.go",
         "internal/confluence/blogposts.go",
         "internal/confluence/http_test.go",
-        "internal/store/wiki_blog_redaction.go",
-        "migrations/089_wiki_blog_redaction_custom_content.sql",
-        "internal/commands/wiki.go",
-        "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "internal/store/wiki_blog_redaction.go",
+        "internal/web/wiki.go",
+        "migrations/089_wiki_blog_redaction_custom_content.sql"
       ],
-      "notes": "Blog redaction supports current-version timestamp/version guards, validated and overlap-merged Unicode ranges, title/body markers, optional prior-version scrubbing, privacy-shaped sync and organization audit without retaining removed text. Registered plugin content types support permission-filtered, sorted and paged blog collections. A restoration route, arbitrary ADF node pointers, historical-version-only redaction, and custom-content mutation/install lifecycle remain."
+      "notes": "Reading a page's or blog post's custom content is tested against content created through POST /custom-content, so the write and the read are shown to agree."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{id}/footer-comments",
@@ -10939,137 +10940,188 @@
       "operationId": "confluence-v2:GET:/wiki/api/v2/custom-content",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/custom_content_test.go",
+        "docs/CUSTOM_CONTENT.md"
+      ],
+      "notes": "The global listing is tested, including the type it requires, the sort, the unknown type and an outsider."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/custom-content",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/custom_content_test.go",
+        "docs/CUSTOM_CONTENT.md"
+      ],
+      "notes": "Creating is tested in a space and under all three parent kinds, including the refused two parents, two body representations, unregistered type and missing space."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/custom-content/{custom-content-id}/properties",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/custom_content_test.go",
+        "docs/CUSTOM_CONTENT.md"
+      ],
+      "notes": "Listing properties is tested."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/custom-content/{custom-content-id}/properties",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/custom_content_test.go",
+        "docs/CUSTOM_CONTENT.md"
+      ],
+      "notes": "Creating a property is tested."
     },
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/custom-content/{custom-content-id}/properties/{property-id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/custom_content_test.go",
+        "docs/CUSTOM_CONTENT.md"
+      ],
+      "notes": "Removing a property is tested."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/custom-content/{custom-content-id}/properties/{property-id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/custom_content_test.go",
+        "docs/CUSTOM_CONTENT.md"
+      ],
+      "notes": "Reading one property is tested."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/custom-content/{custom-content-id}/properties/{property-id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/custom_content_test.go",
+        "docs/CUSTOM_CONTENT.md"
+      ],
+      "notes": "Replacing a property is tested."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/custom-content/{custom-content-id}/versions",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/custom_content_test.go",
+        "docs/CUSTOM_CONTENT.md"
+      ],
+      "notes": "The version list is tested."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/custom-content/{custom-content-id}/versions/{version-number}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/custom_content_test.go",
+        "docs/CUSTOM_CONTENT.md"
+      ],
+      "notes": "Reading an earlier version is tested, body included, with the 404 and 400 for a missing and an unparseable number."
     },
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/custom-content/{id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/custom_content_test.go",
+        "docs/CUSTOM_CONTENT.md"
+      ],
+      "notes": "Deleting is tested, including the refusal while a child is still there."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/custom-content/{id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/custom_content_test.go",
+        "docs/CUSTOM_CONTENT.md"
+      ],
+      "notes": "Reading is tested with the body and the include-properties, include-labels and include-operations expansions."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/custom-content/{id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/custom_content_test.go",
+        "docs/CUSTOM_CONTENT.md"
+      ],
+      "notes": "Replacing is tested, including the stale version, the missing version and the refused type change."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/custom-content/{id}/attachments",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/custom_content_test.go",
+        "docs/CUSTOM_CONTENT.md"
+      ],
+      "notes": "The read is tested; it answers an empty page because nothing can be attached to custom content yet."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/custom-content/{id}/children",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/custom_content_test.go",
+        "docs/CUSTOM_CONTENT.md"
+      ],
+      "notes": "Child custom content is tested."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/custom-content/{id}/footer-comments",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/custom_content_test.go",
+        "docs/CUSTOM_CONTENT.md"
+      ],
+      "notes": "The read is tested; it answers an empty page because custom content cannot be commented on yet."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/custom-content/{id}/labels",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/custom_content_test.go",
+        "docs/CUSTOM_CONTENT.md"
+      ],
+      "notes": "The label read is tested, including the 404 for content that does not exist."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/custom-content/{id}/operations",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/custom_content_test.go",
+        "docs/CUSTOM_CONTENT.md"
+      ],
+      "notes": "The operation read is tested."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/data-policies/metadata",
@@ -12344,13 +12396,14 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
-        "internal/confluence/page_governance.go",
+        "docs/CUSTOM_CONTENT.md",
         "internal/confluence/http_test.go",
+        "internal/confluence/page_governance.go",
         "internal/store/wiki_page_governance.go",
         "migrations/089_wiki_blog_redaction_custom_content.sql",
         "migrations/092_wiki_page_governance.sql"
       ],
-      "notes": "Discovers registered page-owned custom content by required type with documented sorts, cursor pagination and storage or raw bodies under page visibility; custom-content lifecycle, ADF bodies and expansion flags remain."
+      "notes": "Reading a page's or blog post's custom content is tested against content created through POST /custom-content, so the write and the read are shown to agree."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{id}/descendants",
@@ -12891,9 +12944,12 @@
       "operationId": "confluence-v2:GET:/wiki/api/v2/spaces/{id}/custom-content",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/custom_content_test.go",
+        "docs/CUSTOM_CONTENT.md"
+      ],
+      "notes": "The space listing is tested."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/spaces/{id}/labels",

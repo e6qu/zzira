@@ -231,7 +231,7 @@ func (s *Store) WikiPageCustomContent(ctx context.Context, ws, actor, pageID, co
 	if !ok {
 		return nil, fmt.Errorf("%w: unsupported custom content sort order", ErrWikiValidation)
 	}
-	rows, err := s.Pool.Query(ctx, `SELECT cc.id::text,cc.type,'current',cc.title,p.space_id::text,cc.page_id::text,cc.author_id,to_char(cc.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),ct.body_representation,cc.body,cc.version,cc.author_id,to_char(cc.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM wiki_page_custom_content cc JOIN wiki_custom_content_types ct ON ct.type=cc.type JOIN wiki_pages p ON p.id=cc.page_id WHERE cc.page_id::text=$1 AND cc.type=$2 ORDER BY `+orderSQL, pageID, contentType)
+	rows, err := s.Pool.Query(ctx, `SELECT cc.id::text,cc.custom_type,cc.status,cc.title,cc.space_id::text,cc.parent_page_id::text,cc.author_id,to_char(cc.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),ct.body_representation,cc.body,cc.version,cc.author_id,to_char(cc.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM wiki_content cc JOIN wiki_custom_content_types ct ON ct.type=cc.custom_type WHERE cc.type='custom' AND cc.parent_page_id::text=$1 AND cc.custom_type=$2 AND cc.status='current' ORDER BY `+orderSQL, pageID, contentType)
 	if err != nil {
 		return nil, err
 	}

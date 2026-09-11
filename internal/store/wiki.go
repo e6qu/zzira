@@ -15,6 +15,10 @@ var ErrWikiValidation = errors.New("invalid wiki content")
 
 var ErrWikiConflict = errors.New("the page changed; reload the latest version before saving")
 
+// ErrWikiContentConflict is the same rule for content that is not a page, so
+// the message does not tell a caller a page changed when none did.
+var ErrWikiContentConflict = errors.New("the content changed; reload the latest version before saving")
+
 var ErrWikiCommentConflict = errors.New("the comment changed; reload the latest version before saving")
 
 var ErrWikiPropertyConflict = errors.New("the property changed; reload the latest version before saving")

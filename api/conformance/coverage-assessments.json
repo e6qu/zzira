@@ -812,6 +812,24 @@
       "notes": "Blog posts support public or creator-private current/draft creation, permission-filtered global and space collections, exact reads, optimistic updates, immutable version history/detail, trash, restore, purge, privacy-shaped actions and an accessible author UI; attachments, comments, labels, likes, properties, classification, redaction and full draft semantics remain."
     },
     {
+      "operationId": "confluence-v2:DELETE:/wiki/api/v2/custom-content/{custom-content-id}/properties/{property-id}",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/custom_content_test.go",
+        "docs/CUSTOM_CONTENT.md"
+      ],
+      "notes": "Removing a property is tested."
+    },
+    {
+      "operationId": "confluence-v2:DELETE:/wiki/api/v2/custom-content/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/custom_content_test.go",
+        "docs/CUSTOM_CONTENT.md"
+      ],
+      "notes": "Deleting is tested, including the refusal while a child is still there."
+    },
+    {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/databases/{database-id}/properties/{property-id}",
       "status": "partial",
       "notes": "Database JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with database privacy, inherited visibility and atomic action records; property history resources remain.",
@@ -1277,16 +1295,17 @@
       "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{id}/custom-content",
       "status": "partial",
       "evidence": [
+        "docs/CUSTOM_CONTENT.md",
+        "e2e/wiki.spec.ts",
+        "internal/commands/wiki.go",
         "internal/confluence/blogposts.go",
         "internal/confluence/http_test.go",
-        "internal/store/wiki_blog_redaction.go",
-        "migrations/089_wiki_blog_redaction_custom_content.sql",
-        "internal/commands/wiki.go",
-        "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "internal/store/wiki_blog_redaction.go",
+        "internal/web/wiki.go",
+        "migrations/089_wiki_blog_redaction_custom_content.sql"
       ],
-      "notes": "Blog redaction supports current-version timestamp/version guards, validated and overlap-merged Unicode ranges, title/body markers, optional prior-version scrubbing, privacy-shaped sync and organization audit without retaining removed text. Registered plugin content types support permission-filtered, sorted and paged blog collections. A restoration route, arbitrary ADF node pointers, historical-version-only redaction, and custom-content mutation/install lifecycle remain."
+      "notes": "Reading a page's or blog post's custom content is tested against content created through POST /custom-content, so the write and the read are shown to agree."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{id}/footer-comments",
@@ -1408,6 +1427,105 @@
         "e2e/wiki.spec.ts"
       ],
       "notes": "Returns the four ordered built-in published classification levels used consistently by page, blog-post, database and whiteboard APIs and author controls; organization-defined level administration and edition entitlements remain."
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/custom-content",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/custom_content_test.go",
+        "docs/CUSTOM_CONTENT.md"
+      ],
+      "notes": "The global listing is tested, including the type it requires, the sort, the unknown type and an outsider."
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/custom-content/{custom-content-id}/properties",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/custom_content_test.go",
+        "docs/CUSTOM_CONTENT.md"
+      ],
+      "notes": "Listing properties is tested."
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/custom-content/{custom-content-id}/properties/{property-id}",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/custom_content_test.go",
+        "docs/CUSTOM_CONTENT.md"
+      ],
+      "notes": "Reading one property is tested."
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/custom-content/{custom-content-id}/versions",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/custom_content_test.go",
+        "docs/CUSTOM_CONTENT.md"
+      ],
+      "notes": "The version list is tested."
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/custom-content/{custom-content-id}/versions/{version-number}",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/custom_content_test.go",
+        "docs/CUSTOM_CONTENT.md"
+      ],
+      "notes": "Reading an earlier version is tested, body included, with the 404 and 400 for a missing and an unparseable number."
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/custom-content/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/custom_content_test.go",
+        "docs/CUSTOM_CONTENT.md"
+      ],
+      "notes": "Reading is tested with the body and the include-properties, include-labels and include-operations expansions."
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/custom-content/{id}/attachments",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/custom_content_test.go",
+        "docs/CUSTOM_CONTENT.md"
+      ],
+      "notes": "The read is tested; it answers an empty page because nothing can be attached to custom content yet."
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/custom-content/{id}/children",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/custom_content_test.go",
+        "docs/CUSTOM_CONTENT.md"
+      ],
+      "notes": "Child custom content is tested."
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/custom-content/{id}/footer-comments",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/custom_content_test.go",
+        "docs/CUSTOM_CONTENT.md"
+      ],
+      "notes": "The read is tested; it answers an empty page because custom content cannot be commented on yet."
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/custom-content/{id}/labels",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/custom_content_test.go",
+        "docs/CUSTOM_CONTENT.md"
+      ],
+      "notes": "The label read is tested, including the 404 for content that does not exist."
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/custom-content/{id}/operations",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/custom_content_test.go",
+        "docs/CUSTOM_CONTENT.md"
+      ],
+      "notes": "The operation read is tested."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/databases/{database-id}/properties/{property-id}",
@@ -2105,13 +2223,14 @@
       "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{id}/custom-content",
       "status": "partial",
       "evidence": [
-        "internal/confluence/page_governance.go",
+        "docs/CUSTOM_CONTENT.md",
         "internal/confluence/http_test.go",
+        "internal/confluence/page_governance.go",
         "internal/store/wiki_page_governance.go",
         "migrations/089_wiki_blog_redaction_custom_content.sql",
         "migrations/092_wiki_page_governance.sql"
       ],
-      "notes": "Discovers registered page-owned custom content by required type with documented sorts, cursor pagination and storage or raw bodies under page visibility; custom-content lifecycle, ADF bodies and expansion flags remain."
+      "notes": "Reading a page's or blog post's custom content is tested against content created through POST /custom-content, so the write and the read are shown to agree."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{id}/descendants",
@@ -2377,6 +2496,15 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/spaces/{id}/custom-content",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/custom_content_test.go",
+        "docs/CUSTOM_CONTENT.md"
+      ],
+      "notes": "The space listing is tested."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/spaces/{id}/labels",
@@ -2699,6 +2827,24 @@
         "e2e/wiki.spec.ts"
       ],
       "notes": "Blog redaction supports current-version timestamp/version guards, validated and overlap-merged Unicode ranges, title/body markers, optional prior-version scrubbing, privacy-shaped sync and organization audit without retaining removed text. Registered plugin content types support permission-filtered, sorted and paged blog collections. A restoration route, arbitrary ADF node pointers, historical-version-only redaction, and custom-content mutation/install lifecycle remain."
+    },
+    {
+      "operationId": "confluence-v2:POST:/wiki/api/v2/custom-content",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/custom_content_test.go",
+        "docs/CUSTOM_CONTENT.md"
+      ],
+      "notes": "Creating is tested in a space and under all three parent kinds, including the refused two parents, two body representations, unregistered type and missing space."
+    },
+    {
+      "operationId": "confluence-v2:POST:/wiki/api/v2/custom-content/{custom-content-id}/properties",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/custom_content_test.go",
+        "docs/CUSTOM_CONTENT.md"
+      ],
+      "notes": "Creating a property is tested."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/databases",
@@ -3057,6 +3203,24 @@
         "e2e/wiki.spec.ts"
       ],
       "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels, and the remaining attachment, comment, custom-content, and redaction routes remain."
+    },
+    {
+      "operationId": "confluence-v2:PUT:/wiki/api/v2/custom-content/{custom-content-id}/properties/{property-id}",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/custom_content_test.go",
+        "docs/CUSTOM_CONTENT.md"
+      ],
+      "notes": "Replacing a property is tested."
+    },
+    {
+      "operationId": "confluence-v2:PUT:/wiki/api/v2/custom-content/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/custom_content_test.go",
+        "docs/CUSTOM_CONTENT.md"
+      ],
+      "notes": "Replacing is tested, including the stale version, the missing version and the refused type change."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/databases/{database-id}/properties/{property-id}",
