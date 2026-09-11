@@ -82,8 +82,9 @@ field type for them to govern. Implementing them would mean inventing a field
 type first, which is its own piece of work rather than a shell around an empty
 concept.
 
-Contexts govern which custom fields a form offers, but the command path does not
-yet reject a REST write that sets a custom field outside its context, the way
-field configurations reject a hidden field. `expand` and `orderBy` on these
+Contexts govern which custom fields a form offers, including bulk edit, but the
+single-item command path does not yet reject a REST write that sets a custom
+field outside its context, the way field configurations reject a hidden field.
+`expand` and `orderBy` on these
 endpoints, Jira's context-scoped field values on issues, and exact Jira error
 wording also remain.

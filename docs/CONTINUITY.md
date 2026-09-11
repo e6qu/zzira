@@ -8,28 +8,25 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
 ## Active delivery
 
-- Branch: `feat/pr1-custom-field-contexts`
-- Base: `origin/main` after merged PR #82 (`18d21ae`)
+- Branch: `feat/pr1-bulk-edit-field-scope`
+- Base: `origin/main` after merged PR #84 (`47eaf70`)
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- Pull request: [#84](https://github.com/e6qu/zzira/pull/84)
-- State: custom-field-context checkpoint implements all 14 pinned context
-  operations. One SQL function decides which context governs a field for a
-  project and work type, preferring a context that names either over one that
-  covers everything, and overlapping contexts are refused so the answer is never
-  ambiguous. That function now backs createmeta, the create dialog, service
-  request forms and per-project field lookup, replacing the primitive
-  field_contexts table those queries each interpreted separately. Per-context
-  defaults reach the field metadata and pre-fill the create dialog. The seven
-  custom field option operations are deliberately not implemented: ZZIRA has no
-  option-bearing field type for them to govern. Clean migrations, the full
-  uncached Go/PostgreSQL suite, vet, native and WebAssembly builds, conformance
-  checks, every Playwright journey, 320 px reflow, and the light/dark axe sweep
-  pass.
+- Pull request: pending
+- State: hardening checkpoint, no new pinned operations. Bulk edit offered the
+  selected projects' field superset, so it bypassed screens, field
+  configurations and custom field contexts at once. It now intersects across the
+  distinct project and work type pairs in the selection, resolving each through
+  the same functions the single-item forms use, and the same set gates the
+  write. Clean migrations, the full uncached Go/PostgreSQL suite, vet, native
+  and WebAssembly builds, conformance checks, every Playwright journey, 320 px
+  reflow, and the light/dark axe sweep pass.
 - Blockers: none
 
 ## Merged baseline
 
-PR [#82](https://github.com/e6qu/zzira/pull/82) merged priority resolution on
+PR [#84](https://github.com/e6qu/zzira/pull/84) merged Jira custom field
+contexts on top of
+PR [#82](https://github.com/e6qu/zzira/pull/82), which merged priority resolution on
 edit and the sticky-header scroll offset on top of
 PR [#81](https://github.com/e6qu/zzira/pull/81), which merged field-rule enforcement on
 edit and transition on top of
@@ -57,16 +54,16 @@ expanded JQL and app functions, stable search identity and paging, Jira votes,
 watches, project components, login-date functions, JSM approval/SLA functions,
 and durable bulk watch/unwatch, editable-field discovery, and field edits.
 
-PR #82's final GitHub matrix passed its required suites before merge.
+PR #84's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Monitor PR #84 through every CI job and resolve review threads inline.
+1. Open the bulk-edit scope pull request, monitor it through every CI job, and
+   resolve review threads inline.
 2. After merge, decide whether to add an option-bearing custom field type, which
    the seven custom field option operations need before they can mean anything.
-   Bulk edit still bypasses screens, field configurations and now contexts;
-   narrowing it needs the field intersection Jira computes across a mixed
-   work-type selection.
+   The single-item command path still accepts a custom field set outside its
+   context, unlike a field configuration's hidden rule.
 
 ## Evidence map
 

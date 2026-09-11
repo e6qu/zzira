@@ -44,6 +44,8 @@ The rules are enforced, not merely advertised:
   replaces the built-in help text with the administrator's, so the create dialog
   and `createmeta` agree.
 - `editmeta` applies the same configuration for the work item's own type.
+- Bulk edit offers only the intersection of what every selected work item's own
+  form allows, so a field hidden for one of them is neither offered nor writable.
 - **The command path rejects a write that breaks a rule**, so it holds for REST
   clients that never read the metadata. On create, a required field may not be
   omitted and a hidden field may not be supplied. On edit and on a transition
@@ -89,9 +91,7 @@ configuration so it can be assigned before anything else is mapped.
 Jira's `renderer` on a field configuration item is not stored; ZZIRA renders each
 field type one way. Workflow rules that set fields during a transition are
 automation rather than a person's edit, so they bypass the configuration, as
-post-functions do in Jira. Bulk edit still offers the project's full field
-superset, as it does for screens, so a bulk write is not yet judged by these
-rules. The `/config/fieldschemes` field association surface, `expand` and
+post-functions do in Jira. The `/config/fieldschemes` field association surface, `expand` and
 `orderBy` on these endpoints, and exact Jira error wording also remain.
 
 `PUT /rest/api/3/issue/{key}` accepts a priority by `id` or by `name`, the same
