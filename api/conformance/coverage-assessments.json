@@ -8575,6 +8575,170 @@
         "docs/AGILE_BOARDS.md"
       ],
       "notes": "Serves the same sprint issue read as the agile path from one implementation."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/dashboard",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/dashboards_test.go",
+        "e2e/dashboards.spec.ts",
+        "docs/DASHBOARDS_API.md"
+      ],
+      "notes": "Paging the dashboards a caller may see is tested through REST and the browser."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/dashboard",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/dashboards_test.go",
+        "e2e/dashboards.spec.ts",
+        "docs/DASHBOARDS_API.md"
+      ],
+      "notes": "Creation with share and edit permissions is tested through REST and the browser."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/dashboard/search",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/dashboards_test.go",
+        "docs/DASHBOARDS_API.md"
+      ],
+      "notes": "Searching with Jira's ordering and filters is tested; expand remains."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/dashboard/gadgets",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/dashboards_test.go",
+        "e2e/dashboards.spec.ts",
+        "docs/DASHBOARDS_API.md"
+      ],
+      "notes": "The available gadget modules are listed and gate what a dashboard may add."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/dashboard/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/dashboards_test.go",
+        "e2e/dashboards.spec.ts",
+        "docs/DASHBOARDS_API.md"
+      ],
+      "notes": "Reading one dashboard is tested, including the 404 for one the caller may not see."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/dashboard/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/dashboards_test.go",
+        "e2e/dashboards.spec.ts",
+        "docs/DASHBOARDS_API.md"
+      ],
+      "notes": "Updating name, description and permissions is tested; extendAdminPermissions remains."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/dashboard/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/dashboards_test.go",
+        "e2e/dashboards.spec.ts",
+        "docs/DASHBOARDS_API.md"
+      ],
+      "notes": "Deletion is tested through REST and the browser."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/dashboard/{id}/copy",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/dashboards_test.go",
+        "e2e/dashboards.spec.ts",
+        "docs/DASHBOARDS_API.md"
+      ],
+      "notes": "Copying a dashboard with its gadgets is tested."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/dashboard/bulk/edit",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/dashboards_test.go",
+        "docs/DASHBOARDS_API.md"
+      ],
+      "notes": "changePermission, changeOwner and delete are tested, with a per-dashboard error map, request-level rejections, and ownership transfer restricted to the owner and to workspace members."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/dashboard/{dashboardId}/gadget",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/dashboards_test.go",
+        "e2e/dashboards.spec.ts",
+        "docs/DASHBOARDS_API.md"
+      ],
+      "notes": "Listing a dashboard's gadgets is tested through REST and the browser."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/dashboard/{dashboardId}/gadget",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/dashboards_test.go",
+        "e2e/dashboards.spec.ts",
+        "docs/DASHBOARDS_API.md"
+      ],
+      "notes": "Adding a gadget is tested, with an unsupported module rejected."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/dashboard/{dashboardId}/gadget/{gadgetId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/dashboards_test.go",
+        "e2e/dashboards.spec.ts",
+        "docs/DASHBOARDS_API.md"
+      ],
+      "notes": "Updating a gadget's title and position is tested."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/dashboard/{dashboardId}/gadget/{gadgetId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/dashboards_test.go",
+        "e2e/dashboards.spec.ts",
+        "docs/DASHBOARDS_API.md"
+      ],
+      "notes": "Removing a gadget is tested."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/dashboard/{dashboardId}/items/{itemId}/properties",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/dashboards_test.go",
+        "docs/DASHBOARDS_API.md"
+      ],
+      "notes": "Listing a gadget's property keys is tested."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/dashboard/{dashboardId}/items/{itemId}/properties/{propertyKey}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/dashboards_test.go",
+        "docs/DASHBOARDS_API.md"
+      ],
+      "notes": "Reading one gadget property is tested."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/dashboard/{dashboardId}/items/{itemId}/properties/{propertyKey}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/dashboards_test.go",
+        "docs/DASHBOARDS_API.md"
+      ],
+      "notes": "Storing a gadget property is tested."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/dashboard/{dashboardId}/items/{itemId}/properties/{propertyKey}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/dashboards_test.go",
+        "docs/DASHBOARDS_API.md"
+      ],
+      "notes": "Removing a gadget property is tested."
     }
   ]
 }

@@ -158,6 +158,10 @@ func (h *Handler) dashboardRoute(w http.ResponseWriter, r *http.Request, p []str
 		}
 		return
 	}
+	if len(p) == 2 && p[0] == "bulk" && p[1] == "edit" && r.Method == http.MethodPut {
+		h.bulkEditDashboards(w, r, ws, user)
+		return
+	}
 	if len(p) == 2 && p[1] == "copy" && r.Method == http.MethodPost {
 		if !dashboardQuery(w, r, "extendAdminPermissions") {
 			return
@@ -461,4 +465,81 @@ func (h *Handler) dashboardPropertyRoute(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	jiraError(w, 405, "Method not allowed.")
+}
+
+// bulkEditDashboards applies one change to several dashboards. Jira answers 200
+// with a per-dashboard error map rather than failing the whole request, so a
+// caller learns exactly which ones it could not change.
+func (h *Handler) bulkEditDashboards(w http.ResponseWriter, r *http.Request, workspaceID, userID string) {
+	var request struct {
+		EntityIDs         []json.RawMessage `json:"entityIds"`
+		Action            string            `json:"action"`
+		ChangeOwnerDetails *struct {
+			NewOwner string `json:"newOwner"`
+		} `json:"changeOwnerDetails"`
+		PermissionDetails *struct {
+			SharePermissions []models.DashboardShare `json:"sharePermissions"`
+			EditPermissions  []models.DashboardShare `json:"editPermissions"`
+		} `json:"permissionDetails"`
+	}
+	if !decodeProjectRequest(w, r, &request) {
+		return
+	}
+	if len(request.EntityIDs) == 0 || len(request.EntityIDs) > 1000 {
+		jiraError(w, http.StatusBadRequest, "entityIds must contain 1 to 1000 dashboard ids.")
+		return
+	}
+	switch request.Action {
+	case "changePermission", "changeOwner", "delete":
+	default:
+		jiraError(w, http.StatusBadRequest, "action must be changePermission, changeOwner, or delete.")
+		return
+	}
+	if request.Action == "changeOwner" && (request.ChangeOwnerDetails == nil || request.ChangeOwnerDetails.NewOwner == "") {
+		jiraError(w, http.StatusBadRequest, "changeOwnerDetails.newOwner is required to change the owner.")
+		return
+	}
+	if request.Action == "changePermission" && request.PermissionDetails == nil {
+		jiraError(w, http.StatusBadRequest, "permissionDetails is required to change permissions.")
+		return
+	}
+	entityErrors := map[string]any{}
+	for _, raw := range request.EntityIDs {
+		id := strings.Trim(string(raw), `"`)
+		fail := func(message string) {
+			entityErrors[id] = map[string]any{
+				"errorMessages": []string{message}, "errors": map[string]any{},
+			}
+		}
+		current, err := h.Store.Dashboard(r.Context(), workspaceID, userID, id)
+		if err != nil {
+			fail("The dashboard does not exist or you do not have permission to edit it.")
+			continue
+		}
+		switch request.Action {
+		case "delete":
+			if err = h.Store.DeleteDashboard(r.Context(), workspaceID, userID, id); err != nil {
+				fail(err.Error())
+			}
+		case "changeOwner":
+			details := store.DashboardDetails{
+				Name: current.Name, Description: current.Description,
+				SharePermissions: current.SharePermissions, EditPermissions: current.EditPermissions,
+				NewOwnerID: request.ChangeOwnerDetails.NewOwner,
+			}
+			if _, err = h.Store.SaveDashboard(r.Context(), workspaceID, userID, id, details); err != nil {
+				fail(err.Error())
+			}
+		case "changePermission":
+			details := store.DashboardDetails{
+				Name: current.Name, Description: current.Description,
+				SharePermissions: request.PermissionDetails.SharePermissions,
+				EditPermissions:  request.PermissionDetails.EditPermissions,
+			}
+			if _, err = h.Store.SaveDashboard(r.Context(), workspaceID, userID, id, details); err != nil {
+				fail(err.Error())
+			}
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"entityErrors": entityErrors})
 }
