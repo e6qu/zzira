@@ -11,7 +11,7 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 - Branch: `feat/pr1-select-custom-fields`
 - Base: `origin/main` after merged PR #86 (`dcd8daf` then release 0.15.1)
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- Pull request: pending
+- Pull request: [#87](https://github.com/e6qu/zzira/pull/87)
 - State: select-field checkpoint adds an option-bearing custom field type and
   implements all seven pinned custom field option operations. Options belong to
   the context that governs the field, so the same field can offer different
@@ -64,8 +64,7 @@ PR #86's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Open the select-field pull request, monitor it through every CI job, and
-   resolve review threads inline.
+1. Monitor PR #87 through every CI job and resolve review threads inline.
 2. After merge, the field families that remain are multi-select and cascading
    custom fields, which hold an array of options rather than one, and the
    `/config/fieldschemes` association surface. Neither is a wrapper around what
