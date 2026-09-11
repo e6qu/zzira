@@ -11,7 +11,7 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 - Branch: `fix/priority-edit-and-axe-reflow`
 - Base: `origin/main` after merged PR #81 (`ee73199`)
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- Pull request: pending
+- Pull request: [#82](https://github.com/e6qu/zzira/pull/82)
 - State: defect checkpoint, no new pinned operations. `PUT /rest/api/3/issue/{key}`
   now accepts a priority by id or name and resolves it, instead of storing an
   unvalidated value and silently clearing the priority when a client sent a
@@ -54,8 +54,7 @@ PR #81's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Open the defect pull request, monitor it through every CI job, and resolve
-   review threads inline.
+1. Monitor PR #82 through every CI job and resolve review threads inline.
 2. After merge, continue with custom field contexts and options, then the
    `/config/fieldschemes` field association surface. Bulk edit still bypasses
    both screens and field configurations; narrowing it needs the field
