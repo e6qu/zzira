@@ -472,8 +472,8 @@ func (h *Handler) dashboardPropertyRoute(w http.ResponseWriter, r *http.Request,
 // caller learns exactly which ones it could not change.
 func (h *Handler) bulkEditDashboards(w http.ResponseWriter, r *http.Request, workspaceID, userID string) {
 	var request struct {
-		EntityIDs         []json.RawMessage `json:"entityIds"`
-		Action            string            `json:"action"`
+		EntityIDs          []json.RawMessage `json:"entityIds"`
+		Action             string            `json:"action"`
 		ChangeOwnerDetails *struct {
 			NewOwner string `json:"newOwner"`
 		} `json:"changeOwnerDetails"`

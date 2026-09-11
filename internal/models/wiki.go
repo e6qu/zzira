@@ -296,3 +296,12 @@ type WikiTask struct {
 	DueAt         string   `json:"dueAt,omitempty"`
 	CompletedAt   string   `json:"completedAt,omitempty"`
 }
+
+// WikiContentState is the label a page carries beyond its text. Kind separates
+// the states a space suggests from the ones a writer made for themselves.
+type WikiContentState struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Color string `json:"color"`
+	Kind  string `json:"-"`
+}
