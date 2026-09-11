@@ -1,6 +1,6 @@
 # Development continuity
 
-Updated: 2026-09-10
+Updated: 2026-09-11
 
 This file is the short-lived handoff for the active branch. Stable scope,
 dependencies, and acceptance gates are in [PLAN.md](../PLAN.md). Product and
@@ -8,24 +8,28 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
 ## Active delivery
 
-- Branch: `feat/pr1-dashboard-audit`
-- Base: `origin/main` after merged PR #90 (`33925ce`)
+- Branch: `feat/pr1-worklog-audit`
+- Base: `origin/main` after merged PR #91 (`3dca6d8`)
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- Pull request: [#91](https://github.com/e6qu/zzira/pull/91)
-- State: dashboard checkpoint audited all 17 pinned operations against a running
-  server and found sixteen working, which is a much better result than boards or
-  sprints and worth recording as such. Only Jira's bulk edit was missing; it now
-  applies changePermission, changeOwner or delete to up to 1,000 dashboards and
-  answers per dashboard rather than failing the whole request. Ownership
-  transfer is restricted to the owner and to workspace members, which the store
-  did not previously support. Clean migrations, the full uncached Go/PostgreSQL
-  suite, vet, native and WebAssembly builds, conformance checks, every
-  Playwright journey, 320 px reflow, and the light/dark axe sweep pass.
+- State: worklog checkpoint audited all 14 pinned operations against a running
+  server and found four working — the list, the create, the single read and the
+  single delete. The other ten are new here: the update, the bulk delete, the
+  move between work items, the updated and deleted feeds, the bulk fetch by id,
+  and the four entity-property operations. Two schema facts the feeds needed did
+  not exist: worklogs had no `updated_at`, and a deleted worklog left nothing
+  behind for the deleted feed to report, so a delete now writes a tombstone.
+  Both feeds compare in milliseconds because they report in milliseconds, so a
+  client that passes the reported `until` back makes progress instead of being
+  handed the same entries forever. Clean migrations, the full uncached
+  Go/PostgreSQL suite, vet, native and WebAssembly builds, conformance checks,
+  every Playwright journey, 320 px reflow, and the light/dark axe sweep pass.
 - Blockers: none
 
 ## Merged baseline
 
-PR [#90](https://github.com/e6qu/zzira/pull/90) merged the completed sprint
+PR [#91](https://github.com/e6qu/zzira/pull/91) merged the completed dashboard
+surface on top of
+PR [#90](https://github.com/e6qu/zzira/pull/90), which merged the completed sprint
 surface on top of
 PR [#89](https://github.com/e6qu/zzira/pull/89), which merged the completed board
 surface on top of
@@ -71,12 +75,16 @@ PR #90's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Monitor PR #91 through every CI job and resolve review threads inline.
-2. Issue worklogs (10) and Issue fields (11) are the next families with tests but
-   no operation-level evidence. Probe every operation against a running server
-   before assessing; the four audits so far ran 11 of 15, 8 of 33, 5 of 13 and
-   16 of 17, so the result is not predictable from how well tested a surface
-   looks.
+1. Monitor the worklog pull request through every CI job and resolve review
+   threads inline.
+2. Issue fields (11) is the next family with tests but no operation-level
+   evidence, and a probe already found only two working: `GET /field` and
+   `POST /field`. Two of the nine answer 405 rather than 404, and one of those,
+   `GET /field/{fieldId}/contexts`, is swallowed by the field-context router
+   added in PR #84 — fix that route rather than adding a second one. Probe every
+   operation against a running server before assessing; the five audits so far
+   ran 11 of 15, 8 of 33, 5 of 13, 16 of 17 and 4 of 14, so the result is not
+   predictable from how well tested a surface looks.
 
 ## Evidence map
 
@@ -103,6 +111,7 @@ PR #90's final GitHub matrix passed its required suites before merge.
 - [Jira project versions](PROJECT_VERSIONS.md)
 - [Jira Software boards and sprints](AGILE_BOARDS.md)
 - [Jira dashboards](DASHBOARDS_API.md)
+- [Jira worklogs](WORKLOGS.md)
 
 ## Continuity rules
 

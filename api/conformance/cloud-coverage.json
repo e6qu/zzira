@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 747,
+  "assessedTotal": 761,
   "counts": {
     "delivered": 0,
-    "partial": 736,
+    "partial": 750,
     "missing": 11,
-    "unassessed": 460
+    "unassessed": 446
   },
   "countsByFamily": {
     "automation": {
@@ -24,9 +24,9 @@
     },
     "jira-platform": {
       "delivered": 0,
-      "partial": 333,
+      "partial": 347,
       "missing": 0,
-      "unassessed": 284
+      "unassessed": 270
     },
     "jira-service-management": {
       "delivered": 0,
@@ -2302,89 +2302,122 @@
       "operationId": "jira-v3:DELETE:/rest/api/3/issue/{issueIdOrKey}/worklog",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/worklogs_test.go",
+        "docs/WORKLOGS.md"
+      ],
+      "notes": "Removing every worklog on a work item is tested."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issue/{issueIdOrKey}/worklog",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/worklogs_test.go",
+        "docs/WORKLOGS.md"
+      ],
+      "notes": "Listing a work item's worklogs is tested."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/issue/{issueIdOrKey}/worklog",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/worklogs_test.go",
+        "docs/WORKLOGS.md"
+      ],
+      "notes": "Logging work is tested, including the rejection of a non-positive time."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/issue/{issueIdOrKey}/worklog/move",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/worklogs_test.go",
+        "docs/WORKLOGS.md"
+      ],
+      "notes": "Moving worklogs is tested, including the unknown destination and a worklog that is not on the source work item."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/issue/{issueIdOrKey}/worklog/{id}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/worklogs_test.go",
+        "docs/WORKLOGS.md"
+      ],
+      "notes": "Removing one worklog is tested, and the tombstone the deleted feed reads from."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issue/{issueIdOrKey}/worklog/{id}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/worklogs_test.go",
+        "docs/WORKLOGS.md"
+      ],
+      "notes": "Reading one worklog is tested, including the 404 for one on another work item."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/issue/{issueIdOrKey}/worklog/{id}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/worklogs_test.go",
+        "docs/WORKLOGS.md"
+      ],
+      "notes": "Changing the time and comment is tested, including that an omitted comment keeps the stored one; adjustEstimate and notifyUsers remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issue/{issueIdOrKey}/worklog/{worklogId}/properties",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/worklogs_test.go",
+        "docs/WORKLOGS.md"
+      ],
+      "notes": "Listing a worklog's property keys is tested."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/issue/{issueIdOrKey}/worklog/{worklogId}/properties/{propertyKey}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/worklogs_test.go",
+        "docs/WORKLOGS.md"
+      ],
+      "notes": "Removing a worklog property is tested, including the cascade when the worklog is deleted."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issue/{issueIdOrKey}/worklog/{worklogId}/properties/{propertyKey}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/worklogs_test.go",
+        "docs/WORKLOGS.md"
+      ],
+      "notes": "Reading one worklog property is tested, including the 404 for an unknown key."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/issue/{issueIdOrKey}/worklog/{worklogId}/properties/{propertyKey}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/worklogs_test.go",
+        "docs/WORKLOGS.md"
+      ],
+      "notes": "Storing a worklog property is tested, with 201 on a new key and 200 on a replacement."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/issueLink",
@@ -6226,25 +6259,34 @@
       "operationId": "jira-v3:GET:/rest/api/3/worklog/deleted",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/worklogs_test.go",
+        "docs/WORKLOGS.md"
+      ],
+      "notes": "The deleted feed is tested; it reports every tombstone so a client can invalidate its cache."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/worklog/list",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/worklogs_test.go",
+        "docs/WORKLOGS.md"
+      ],
+      "notes": "The bulk fetch is tested across work items, including the empty id list and a caller who cannot browse the project."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/worklog/updated",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/worklogs_test.go",
+        "docs/WORKLOGS.md"
+      ],
+      "notes": "The updated feed is tested, including that passing the reported until back reports nothing again; it is scoped to work items the caller may browse."
     },
     {
       "operationId": "jira-v3:GET:/rest/atlassian-connect/1/addons/{addonKey}/properties",

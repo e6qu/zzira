@@ -112,6 +112,11 @@ func (s *Store) DeleteWorklog(ctx context.Context, actorID, workspaceID, worklog
 		WorkspaceID: workspaceID, Seq: seq, EntityType: models.EntityWorklog, EntityID: worklogID,
 		Op: models.OpDelete, SchemaV: models.SchemaVersion, Payload: payload, ActorID: actorID,
 	}
+	// A tombstone lets Jira's deleted-worklog feed report it afterwards.
+	if _, err := tx.Exec(ctx, `INSERT INTO deleted_worklogs(id,workspace_id,issue_id,author_id)
+		VALUES($1,$2,$3,$4) ON CONFLICT (id) DO NOTHING`, worklogID, workspaceID, w.IssueID, w.AuthorID); err != nil {
+		return nil, err
+	}
 	if _, err := tx.Exec(ctx, `DELETE FROM worklogs WHERE id=$1 AND workspace_id=$2`, worklogID, workspaceID); err != nil {
 		return nil, err
 	}

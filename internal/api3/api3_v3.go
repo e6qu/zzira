@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -18,6 +19,8 @@ import (
 	"github.com/e6qu/zzira/internal/authz"
 	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/models"
+	"github.com/e6qu/zzira/internal/store"
+	"github.com/jackc/pgx/v5"
 )
 
 // ---- worklogs ----
@@ -101,6 +104,214 @@ func (h *Handler) issueWorklogRoute(w http.ResponseWriter, r *http.Request, idOr
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
+	case len(sub) == 1 && r.Method == http.MethodPut:
+		wl, err := h.Store.WorklogByID(r.Context(), wsID, sub[0])
+		if err != nil || wl.IssueID != issue.ID {
+			jiraError(w, http.StatusNotFound, "Worklog does not exist.")
+			return
+		}
+		var request struct {
+			TimeSpentSeconds *int            `json:"timeSpentSeconds"`
+			Comment          json.RawMessage `json:"comment"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&request); err != nil {
+			jiraError(w, http.StatusBadRequest, "Invalid request payload.")
+			return
+		}
+		updated, _, err := h.Store.UpdateWorklog(r.Context(), userID, wsID, sub[0], request.Comment, request.TimeSpentSeconds)
+		if err != nil {
+			worklogError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, h.worklogBean(updated))
+	case len(sub) == 0 && r.Method == http.MethodDelete:
+		// Jira's bulk delete removes every worklog on the work item.
+		worklogs, err := h.Store.WorklogsByIssue(r.Context(), issue.ID)
+		if err != nil {
+			jiraError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		for _, wl := range worklogs {
+			if _, err := h.Commands.DeleteWorklog(r.Context(), userID, wsID, wl.ID); err != nil {
+				jiraError(w, http.StatusBadRequest, err.Error())
+				return
+			}
+		}
+		w.WriteHeader(http.StatusNoContent)
+	case len(sub) >= 2 && sub[1] == "properties":
+		wl, err := h.Store.WorklogByID(r.Context(), wsID, sub[0])
+		if err != nil || wl.IssueID != issue.ID {
+			jiraError(w, http.StatusNotFound, "Worklog does not exist.")
+			return
+		}
+		h.worklogProperties(w, r, issue.Key, wl.ID, sub[2:])
+	case len(sub) == 1 && sub[0] == "move" && r.Method == http.MethodPost:
+		var request struct {
+			IDs          []string `json:"ids"`
+			IssueIDOrKey string   `json:"issueIdOrKey"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&request); err != nil {
+			jiraError(w, http.StatusBadRequest, "Invalid request payload.")
+			return
+		}
+		if len(request.IDs) == 0 || len(request.IDs) > 1000 {
+			jiraFieldError(w, http.StatusBadRequest, map[string]string{"ids": "Between 1 and 1000 worklog ids are required."})
+			return
+		}
+		target, e := h.resolveIssue(r, wsID, request.IssueIDOrKey)
+		if e != nil {
+			jiraFieldError(w, http.StatusBadRequest, map[string]string{"issueIdOrKey": "The destination work item does not exist."})
+			return
+		}
+		if err := h.Store.MoveWorklogs(r.Context(), userID, wsID, issue.ID, target.ID, request.IDs); err != nil {
+			worklogError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		jiraError(w, http.StatusNotFound, "No resource found")
+	}
+}
+
+// worklogProperties serves the entity properties hung off one worklog, with
+// Jira's 201-on-create and 200-on-replace split.
+func (h *Handler) worklogProperties(w http.ResponseWriter, r *http.Request, issueKey, worklogID string, rest []string) {
+	self := h.BaseURL + "/rest/api/3/issue/" + issueKey + "/worklog/" + worklogID + "/properties/"
+	switch {
+	case len(rest) == 0 && r.Method == http.MethodGet:
+		keys, err := h.Store.WorklogPropertyKeys(r.Context(), worklogID)
+		if err != nil {
+			jiraError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		values := make([]map[string]any, 0, len(keys))
+		for _, key := range keys {
+			values = append(values, map[string]any{"key": key, "self": self + key})
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"keys": values})
+	case len(rest) == 1 && r.Method == http.MethodGet:
+		value, err := h.Store.WorklogProperty(r.Context(), worklogID, rest[0])
+		if err != nil {
+			jiraError(w, http.StatusNotFound, "The worklog property does not exist.")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"key": rest[0], "value": value, "self": self + rest[0]})
+	case len(rest) == 1 && r.Method == http.MethodPut:
+		raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 64<<10))
+		if err != nil {
+			jiraError(w, http.StatusBadRequest, "The property value is invalid.")
+			return
+		}
+		created, err := h.Store.SetWorklogProperty(r.Context(), worklogID, rest[0], raw)
+		if err != nil {
+			jiraError(w, http.StatusBadRequest, "The property key or value is invalid.")
+			return
+		}
+		if created {
+			w.WriteHeader(http.StatusCreated)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	case len(rest) == 1 && r.Method == http.MethodDelete:
+		if err := h.Store.DeleteWorklogProperty(r.Context(), worklogID, rest[0]); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				jiraError(w, http.StatusNotFound, "The worklog property does not exist.")
+				return
+			}
+			jiraError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		jiraError(w, http.StatusMethodNotAllowed, "Method not allowed")
+	}
+}
+
+func worklogError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, store.ErrWorklogValidation):
+		jiraError(w, http.StatusBadRequest, err.Error())
+	case errors.Is(err, pgx.ErrNoRows):
+		jiraError(w, http.StatusNotFound, "Worklog does not exist.")
+	default:
+		jiraError(w, http.StatusInternalServerError, "Could not complete the worklog operation.")
+	}
+}
+
+// worklogFeedRoute serves Jira's workspace-wide worklog endpoints: the updated
+// and deleted feeds, and the bulk fetch by id.
+func (h *Handler) worklogFeedRoute(w http.ResponseWriter, r *http.Request, path string) {
+	workspaceID, userID, e := h.authWorkspace(r)
+	if e != nil {
+		writeJerr(w, e)
+		return
+	}
+	switch {
+	case path == "/worklog/updated" || path == "/worklog/deleted":
+		if r.Method != http.MethodGet {
+			jiraError(w, http.StatusMethodNotAllowed, "Method not allowed")
+			return
+		}
+		since := time.Time{}
+		if raw := r.URL.Query().Get("since"); raw != "" {
+			millis, err := strconv.ParseInt(raw, 10, 64)
+			if err != nil || millis < 0 {
+				jiraError(w, http.StatusBadRequest, "since must be a millisecond timestamp.")
+				return
+			}
+			since = time.UnixMilli(millis).UTC()
+		}
+		const limit = 1000
+		changes, err := h.Store.WorklogsChangedSince(r.Context(), workspaceID, userID, since, path == "/worklog/deleted", limit)
+		if err != nil {
+			jiraError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		values := make([]map[string]any, 0, len(changes))
+		latest := since
+		for _, change := range changes {
+			values = append(values, map[string]any{
+				"worklogId": wireNumericID(change.ID), "updatedTime": change.UpdatedTime.UnixMilli(),
+				"properties": []any{},
+			})
+			if change.UpdatedTime.After(latest) {
+				latest = change.UpdatedTime
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"values": values, "since": since.UnixMilli(), "until": latest.UnixMilli(),
+			"self": h.BaseURL + "/rest/api/3" + path, "lastPage": len(values) < limit,
+		})
+	case path == "/worklog/list":
+		if r.Method != http.MethodPost {
+			jiraError(w, http.StatusMethodNotAllowed, "Method not allowed")
+			return
+		}
+		var request struct {
+			IDs []json.RawMessage `json:"ids"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&request); err != nil {
+			jiraError(w, http.StatusBadRequest, "Invalid request payload.")
+			return
+		}
+		if len(request.IDs) == 0 || len(request.IDs) > 1000 {
+			jiraFieldError(w, http.StatusBadRequest, map[string]string{"ids": "Between 1 and 1000 worklog ids are required."})
+			return
+		}
+		ids := make([]string, 0, len(request.IDs))
+		for _, raw := range request.IDs {
+			ids = append(ids, strings.Trim(string(raw), `"`))
+		}
+		worklogs, err := h.Store.WorklogsByIDs(r.Context(), workspaceID, userID, ids)
+		if err != nil {
+			jiraError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		beans := make([]map[string]any, 0, len(worklogs))
+		for _, wl := range worklogs {
+			beans = append(beans, h.worklogBean(wl))
+		}
+		writeJSON(w, http.StatusOK, beans)
 	default:
 		jiraError(w, http.StatusNotFound, "No resource found")
 	}
