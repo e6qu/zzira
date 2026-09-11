@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 815,
+  "assessedTotal": 829,
   "counts": {
     "delivered": 0,
-    "partial": 804,
+    "partial": 818,
     "missing": 11,
-    "unassessed": 392
+    "unassessed": 378
   },
   "countsByFamily": {
     "automation": {
@@ -18,9 +18,9 @@
     },
     "confluence": {
       "delivered": 0,
-      "partial": 234,
+      "partial": 248,
       "missing": 0,
-      "unassessed": 114
+      "unassessed": 100
     },
     "jira-platform": {
       "delivered": 0,
@@ -9583,9 +9583,12 @@
       "operationId": "confluence-v1:GET:/wiki/rest/api/search/user",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/users_test.go",
+        "docs/WIKI_USERS.md"
+      ],
+      "notes": "The user search is tested for a match and a miss; a CQL query naming a field this does not filter on is refused rather than matching everyone. sitePermissionTypeFilter remains."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/settings/lookandfeel",
@@ -9895,57 +9898,78 @@
       "operationId": "confluence-v1:GET:/wiki/rest/api/user",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/users_test.go",
+        "docs/WIKI_USERS.md"
+      ],
+      "notes": "Reading one person is tested, including the required accountId and the 404 for someone outside the workspace; the read carries no email address."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/user/anonymous",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/users_test.go",
+        "docs/WIKI_USERS.md"
+      ],
+      "notes": "The anonymous reader is tested; it carries no account id, because it has no account."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/user/bulk",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/users_test.go",
+        "docs/WIKI_USERS.md"
+      ],
+      "notes": "The bulk read is tested, including that an id outside the workspace is skipped rather than failing the request."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/user/current",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/users_test.go",
+        "docs/WIKI_USERS.md"
+      ],
+      "notes": "The caller's own user is tested."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/user/email",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/users_test.go",
+        "docs/WIKI_USERS.md"
+      ],
+      "notes": "One person's email is tested, including that an ordinary member is refused."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/user/email/bulk",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/users_test.go",
+        "docs/WIKI_USERS.md"
+      ],
+      "notes": "The bulk email read is tested, including that an ordinary member is refused."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/user/memberof",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/users_test.go",
+        "docs/WIKI_USERS.md"
+      ],
+      "notes": "The groups a person is in are tested, including the empty answer for someone in none."
     },
     {
       "operationId": "confluence-v1:DELETE:/wiki/rest/api/user/watch/content/{contentId}",
@@ -10113,41 +10137,56 @@
       "operationId": "confluence-v1:GET:/wiki/rest/api/user/{userId}/property",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/users_test.go",
+        "docs/WIKI_USERS.md"
+      ],
+      "notes": "Listing a person's properties is tested."
     },
     {
       "operationId": "confluence-v1:DELETE:/wiki/rest/api/user/{userId}/property/{key}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/users_test.go",
+        "docs/WIKI_USERS.md"
+      ],
+      "notes": "Removing a property is tested, including the 404 afterwards."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/user/{userId}/property/{key}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/users_test.go",
+        "docs/WIKI_USERS.md"
+      ],
+      "notes": "Reading one property is tested, including the 404 for an unknown key."
     },
     {
       "operationId": "confluence-v1:POST:/wiki/rest/api/user/{userId}/property/{key}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/users_test.go",
+        "docs/WIKI_USERS.md"
+      ],
+      "notes": "Creating a property is tested, including the 409 when the key already exists."
     },
     {
       "operationId": "confluence-v1:PUT:/wiki/rest/api/user/{userId}/property/{key}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/users_test.go",
+        "docs/WIKI_USERS.md"
+      ],
+      "notes": "Replacing a property is tested, including the version bump, the mismatched key, and that a member cannot write another person's property while an administrator can."
     },
     {
       "operationId": "confluence-v1:DELETE:/wiki/rest/atlassian-connect/1/app/module/dynamic",
@@ -13191,9 +13230,12 @@
       "operationId": "confluence-v2:POST:/wiki/api/v2/users-bulk",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/users_test.go",
+        "docs/WIKI_USERS.md"
+      ],
+      "notes": "The v2 bulk read is tested, including the empty id list and that someone outside the workspace cannot enumerate its people; cursor paging remains."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/whiteboards",

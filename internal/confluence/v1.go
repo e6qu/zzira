@@ -80,6 +80,26 @@ func (h *V1Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.v1SpaceWatchers(w, r, ws, actor, parts[1])
 	case len(parts) == 4 && parts[0] == "user" && parts[1] == "watch":
 		h.v1UserWatch(w, r, ws, actor, parts[2], parts[3])
+	case len(parts) == 1 && parts[0] == "user" && r.Method == "GET":
+		h.v1User(w, r, ws, actor)
+	case len(parts) == 2 && parts[0] == "user" && parts[1] == "current" && r.Method == "GET":
+		h.v1CurrentUser(w, r, ws, actor)
+	case len(parts) == 2 && parts[0] == "user" && parts[1] == "anonymous" && r.Method == "GET":
+		h.v1AnonymousUser(w, r)
+	case len(parts) == 2 && parts[0] == "user" && parts[1] == "bulk" && r.Method == "GET":
+		h.v1BulkUsers(w, r, ws, actor, false)
+	case len(parts) == 2 && parts[0] == "user" && parts[1] == "email" && r.Method == "GET":
+		h.v1UserEmail(w, r, ws, actor)
+	case len(parts) == 3 && parts[0] == "user" && parts[1] == "email" && parts[2] == "bulk" && r.Method == "GET":
+		h.v1BulkUsers(w, r, ws, actor, true)
+	case len(parts) == 2 && parts[0] == "user" && parts[1] == "memberof" && r.Method == "GET":
+		h.v1UserGroups(w, r, ws, actor)
+	case len(parts) == 2 && parts[0] == "search" && parts[1] == "user" && r.Method == "GET":
+		h.v1SearchUsers(w, r, ws, actor)
+	case len(parts) == 3 && parts[0] == "user" && parts[2] == "property" && r.Method == "GET":
+		h.v1UserProperties(w, r, ws, actor, parts[1])
+	case len(parts) == 4 && parts[0] == "user" && parts[2] == "property":
+		h.v1UserProperty(w, r, ws, actor, parts[1], parts[3])
 	default:
 		failure(w, 404, "This Confluence v1 resource is not implemented.")
 	}
