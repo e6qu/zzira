@@ -251,6 +251,15 @@
       ]
     },
     {
+      "operationId": "confluence-v1:DELETE:/wiki/rest/api/space/{spaceKey}/permission/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_permission_grants_test.go",
+        "docs/SPACE_PERMISSIONS.md"
+      ],
+      "notes": "Removing a grant is tested, including that removing the view permission takes the subject's other grants with it and the 404 afterwards."
+    },
+    {
       "operationId": "confluence-v1:DELETE:/wiki/rest/api/user/watch/content/{contentId}",
       "status": "partial",
       "notes": "Durable page-content, space, and label watches support current-user and administrator-targeted status/mutation, XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; other content types, Confluence space-admin roles, and email delivery remain.",
@@ -853,6 +862,15 @@
       "notes": "The queued hierarchy copy is tested end to end: it answers 202, lands under its destination with the title prefix applied, and a copy into itself fails with the task reporting why."
     },
     {
+      "operationId": "confluence-v1:POST:/wiki/rest/api/content/{id}/permission/check",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_permission_grants_test.go",
+        "docs/SPACE_PERMISSIONS.md"
+      ],
+      "notes": "The permission check is tested for a user and a group, before and after granting, and resolves through the same rules the reads use; the required operation and the 404 for unknown content are covered."
+    },
+    {
       "operationId": "confluence-v1:POST:/wiki/rest/api/content/{id}/restriction",
       "status": "partial",
       "notes": "Adds validated direct-user and organization-directory group grants without replacing existing restrictions.",
@@ -902,6 +920,24 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ]
+    },
+    {
+      "operationId": "confluence-v1:POST:/wiki/rest/api/space/{spaceKey}/permission",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_permission_grants_test.go",
+        "docs/SPACE_PERMISSIONS.md"
+      ],
+      "notes": "Granting one permission is tested, including that Confluence's view permission satisfies this product's separate reads, that a group grant reaches its people, that the first grant closes an open space, and the refused unknown permission, subject type and subject."
+    },
+    {
+      "operationId": "confluence-v1:POST:/wiki/rest/api/space/{spaceKey}/permission/custom-content",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_permission_grants_test.go",
+        "docs/SPACE_PERMISSIONS.md"
+      ],
+      "notes": "Granting several custom content operations at once is tested, including that an operation marked access:false is not granted."
     },
     {
       "operationId": "confluence-v1:POST:/wiki/rest/api/user/watch/content/{contentId}",
@@ -2721,6 +2757,24 @@
         "internal/store/wiki.go"
       ],
       "notes": "Returns exact permission-scoped page version metadata with author, message, minor-edit state, stable previous/next links, collaborator shape and content-type flag; historical body retrieval and expansions remain."
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/space-permissions",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_permission_grants_test.go",
+        "docs/SPACE_PERMISSIONS.md"
+      ],
+      "notes": "The catalogue of grantable permissions is tested; it is derived from the permissions the system roles enforce, so it cannot advertise one nothing checks, and every entry but the view permission names it as a prerequisite."
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/space-role-mode",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_permission_grants_test.go",
+        "docs/SPACE_PERMISSIONS.md"
+      ],
+      "notes": "The space role mode is tested; roles are this product's primary model, so it reports the settled mode rather than a site mid-migration."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/space-roles",

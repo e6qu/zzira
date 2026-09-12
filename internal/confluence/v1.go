@@ -106,6 +106,14 @@ func (h *V1Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.v1SpaceWatchers(w, r, ws, actor, parts[1])
 	case len(parts) == 4 && parts[0] == "user" && parts[1] == "watch":
 		h.v1UserWatch(w, r, ws, actor, parts[2], parts[3])
+	case len(parts) == 3 && parts[0] == "space" && parts[2] == "permission" && r.Method == "POST":
+		h.v1AddSpacePermission(w, r, ws, actor, parts[1])
+	case len(parts) == 4 && parts[0] == "space" && parts[2] == "permission" && parts[3] == "custom-content" && r.Method == "POST":
+		h.v1AddSpaceCustomContentPermissions(w, r, ws, actor, parts[1])
+	case len(parts) == 4 && parts[0] == "space" && parts[2] == "permission" && r.Method == "DELETE":
+		h.v1RemoveSpacePermission(w, r, ws, actor, parts[1], parts[3])
+	case len(parts) == 4 && parts[0] == "content" && parts[2] == "permission" && parts[3] == "check" && r.Method == "POST":
+		h.v1CheckContentPermission(w, r, ws, actor, parts[1])
 	case len(parts) == 1 && parts[0] == "group":
 		h.v1Groups(w, r, ws, actor)
 	case len(parts) == 2 && parts[0] == "group" && parts[1] == "by-id":

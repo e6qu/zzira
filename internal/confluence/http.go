@@ -63,6 +63,8 @@ func writeError(w http.ResponseWriter, err error) {
 		failure(w, 409, err.Error())
 	case errors.Is(err, store.ErrWikiPropertyConflict):
 		failure(w, 409, err.Error())
+	case errors.Is(err, store.ErrWikiPermissionValidation):
+		failure(w, 400, err.Error())
 	case errors.Is(err, store.ErrWikiUserValidation):
 		failure(w, 400, err.Error())
 	case errors.Is(err, store.ErrWikiMoveValidation):
@@ -470,6 +472,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.attachmentVersion(w, r, ws, actor, parts[1], parts[3])
 	case len(parts) == 3 && parts[0] == "pages" && parts[2] == "attachments" && r.Method == "GET":
 		h.attachments(w, r, ws, actor, parts[1])
+	case len(parts) == 1 && parts[0] == "space-permissions" && r.Method == "GET":
+		h.spacePermissionsCatalogue(w, r, ws, actor)
+	case len(parts) == 1 && parts[0] == "space-role-mode" && r.Method == "GET":
+		h.spaceRoleMode(w, r, ws, actor)
 	case len(parts) == 1 && parts[0] == "users-bulk" && r.Method == "POST":
 		h.bulkUsersV2(w, r, ws, actor)
 	case len(parts) == 1 && parts[0] == "custom-content" && r.Method == "GET":

@@ -8,23 +8,26 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
 ## Active delivery
 
-- Branch: `feat/pr1-confluence-groups`
-- Base: `origin/main` after merged PR #98 (`b971949`).
+- Branch: `feat/pr1-confluence-space-permissions`
+- Base: `origin/main` after merged PR #100 (`be7cfe2`). The review queue is
+  empty; this is the only open branch.
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- State: Confluence group checkpoint audited all eight pinned operations
-  against a running server and found none working. Groups here are the
-  directory groups the organization administration already has, so a group made
-  through the wiki is the same group that surface sees rather than a second set.
-  Reading is open to any member — that is how a person decides who to mention or
-  grant access to — while creating, deleting and moving people are
-  administration. Adding someone who is already a member succeeds, because the
-  request describes a state; removing someone who is not is a 404, because there
-  is nothing to remove. Counting is opt-in, and the test asserts its absence as
-  well as its presence. The test also checks that `/user/memberof` and the
-  member list agree after one write: two reads of one membership that can
-  disagree would be worse than either one missing.
-  No migration was needed. The full uncached Go/PostgreSQL suite, vet, native
-  and WebAssembly builds, conformance checks, every Playwright journey, 320 px
+- State: space permission checkpoint audited all six pinned operations in this
+  family against a running server and found none working, and the reason was
+  the model: Confluence says who may do what two ways — a role gathering
+  permissions, and a direct grant of one permission to one subject — and this
+  product had only roles, so the older API had nothing to write to. Grants exist
+  now alongside role assignments and the permission check accepts either.
+  Two things the first probe caught. Confluence has a single View permission per
+  space, not one per content type, so a granted `read/space` has to satisfy this
+  product's separate `read/*` permissions; without that the API would be
+  faithful in shape and wrong in effect. And the first grant closes a space to
+  everyone it does not name, which locked the administrator out of the space
+  they were configuring — so the grant operations resolve the space without the
+  ordinary visibility gate for a workspace administrator, which is the product's
+  existing rule that an administrator administers every space.
+  Clean migrations, the full uncached Go/PostgreSQL suite, vet, native and
+  WebAssembly builds, conformance checks, every Playwright journey, 320 px
   reflow, and the light/dark axe sweep pass.
 - Blockers: none
 
@@ -87,18 +90,17 @@ PR #90's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Monitor the group pull request through every CI job and resolve review
-   threads inline. **A stacked branch gets no CI here**: `.github/workflows/ci.yml`
+1. Monitor the space permission pull request through every CI job and resolve
+   review threads inline. **A stacked branch gets no CI here**: `.github/workflows/ci.yml`
    triggers only on `pull_request` against `main`, and `gh pr checks` reports
    "no checks reported" rather than a failure, so a stacked PR can look fine and
    be unverified. Base every PR on `main` unless it genuinely needs a helper an
    open branch adds.
-2. The largest unassessed Confluence groups left are `confluence-v1 space`
-   (15), `confluence-v1 group` (8, and the two `group/userByGroupId` writes that
-   belong with it), `confluence-v1 settings` (8), `confluence-v1 template` (6),
-   `confluence-v1 audit` (6) and `confluence-v1 relation` (5). Groups are the
-   natural next unit, because the user work just landed reads them and the
-   tables (`groups`, `group_members`) already exist.
+2. The five `space-permissions/transition/*` operations are the natural next
+   unit. They migrate a site from direct grants to roles, and both models now
+   exist, so they have something real to move between — which they did not
+   before this checkpoint. After that: `confluence-v1 space` (12 left),
+   `settings` (8), `template` (6), `audit` (6) and `relation` (5).
 3. Probe every operation against a running server before assessing; the eight
    audits so far ran 11 of 15, 8 of 33, 5 of 13, 16 of 17, 4 of 14, 2 of 11,
    0 of 17 and 0 of 8, so the result is not predictable from how well tested a
@@ -137,6 +139,7 @@ PR #90's final GitHub matrix passed its required suites before merge.
 - [Confluence custom content](CUSTOM_CONTENT.md)
 - [Confluence users](WIKI_USERS.md)
 - [Confluence groups](WIKI_GROUPS.md)
+- [Confluence space permissions](SPACE_PERMISSIONS.md)
 - [Confluence content states](CONTENT_STATES.md)
 - [Confluence page moves and copies](PAGE_MOVES.md)
 
