@@ -106,6 +106,14 @@ func (h *V1Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.v1SpaceWatchers(w, r, ws, actor, parts[1])
 	case len(parts) == 4 && parts[0] == "user" && parts[1] == "watch":
 		h.v1UserWatch(w, r, ws, actor, parts[2], parts[3])
+	case len(parts) == 1 && parts[0] == "audit":
+		h.v1AuditLog(w, r, ws, actor)
+	case len(parts) == 2 && parts[0] == "audit" && parts[1] == "since" && r.Method == "GET":
+		h.v1AuditSince(w, r, ws, actor)
+	case len(parts) == 2 && parts[0] == "audit" && parts[1] == "export" && r.Method == "GET":
+		h.v1AuditExport(w, r, ws, actor)
+	case len(parts) == 2 && parts[0] == "audit" && parts[1] == "retention":
+		h.v1AuditRetention(w, r, ws, actor)
 	case len(parts) == 1 && parts[0] == "template" && r.Method == "POST":
 		h.v1SaveTemplate(w, r, ws, actor, false)
 	case len(parts) == 1 && parts[0] == "template" && r.Method == "PUT":

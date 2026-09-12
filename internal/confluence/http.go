@@ -63,6 +63,8 @@ func writeError(w http.ResponseWriter, err error) {
 		failure(w, 409, err.Error())
 	case errors.Is(err, store.ErrWikiPropertyConflict):
 		failure(w, 409, err.Error())
+	case errors.Is(err, store.ErrWikiAuditValidation):
+		failure(w, 400, err.Error())
 	case errors.Is(err, store.ErrWikiTemplateValidation):
 		failure(w, 400, err.Error())
 	case errors.Is(err, store.ErrWikiPermissionValidation):

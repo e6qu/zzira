@@ -362,6 +362,42 @@
       "notes": "Removal supports repeated moduleKey values and delete-all with durable reinstall semantics."
     },
     {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/audit",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/audit_test.go",
+        "docs/WIKI_AUDIT.md"
+      ],
+      "notes": "Reading the log is tested with the date range and the search across summary, description and category, including a range that matches nothing and a malformed date; the whole log is administration."
+    },
+    {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/audit/export",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/audit_test.go",
+        "docs/WIKI_AUDIT.md"
+      ],
+      "notes": "Both export formats are tested and shown to carry identical rows; an unknown format is refused."
+    },
+    {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/audit/retention",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/audit_test.go",
+        "docs/WIKI_AUDIT.md"
+      ],
+      "notes": "The retention period is tested, including its default."
+    },
+    {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/audit/since",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/audit_test.go",
+        "docs/WIKI_AUDIT.md"
+      ],
+      "notes": "The period back from now is tested, including the refused unknown unit and non-positive number."
+    },
+    {
       "operationId": "confluence-v1:GET:/wiki/rest/api/content-states",
       "status": "partial",
       "evidence": [
@@ -915,6 +951,15 @@
       "notes": "JWT-authenticated listing returns original grouped definitions for supported dynamic modules."
     },
     {
+      "operationId": "confluence-v1:POST:/wiki/rest/api/audit",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/audit_test.go",
+        "docs/WIKI_AUDIT.md"
+      ],
+      "notes": "Adding a record is tested, including the affected object and changed values, that an unnamed author is the caller, and the refused empty summary."
+    },
+    {
       "operationId": "confluence-v1:POST:/wiki/rest/api/content/archive",
       "status": "partial",
       "evidence": [
@@ -1175,6 +1220,15 @@
         "docs/APPS.md"
       ],
       "notes": "Atomic registration supports validated Jira issue web panels and keyed Jira webhooks; remaining module types are rejected explicitly."
+    },
+    {
+      "operationId": "confluence-v1:PUT:/wiki/rest/api/audit/retention",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/audit_test.go",
+        "docs/WIKI_AUDIT.md"
+      ],
+      "notes": "Setting the retention is tested, including the one-year cap however it is expressed, and that shortening it deletes the records that fall outside rather than hiding them."
     },
     {
       "operationId": "confluence-v1:PUT:/wiki/rest/api/content/blueprint/instance/{draftId}",

@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 889,
+  "assessedTotal": 895,
   "counts": {
     "delivered": 0,
-    "partial": 878,
+    "partial": 884,
     "missing": 11,
-    "unassessed": 318
+    "unassessed": 312
   },
   "countsByFamily": {
     "automation": {
@@ -18,9 +18,9 @@
     },
     "confluence": {
       "delivered": 0,
-      "partial": 308,
+      "partial": 314,
       "missing": 0,
-      "unassessed": 40
+      "unassessed": 34
     },
     "jira-platform": {
       "delivered": 0,
@@ -8770,49 +8770,67 @@
       "operationId": "confluence-v1:GET:/wiki/rest/api/audit",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/audit_test.go",
+        "docs/WIKI_AUDIT.md"
+      ],
+      "notes": "Reading the log is tested with the date range and the search across summary, description and category, including a range that matches nothing and a malformed date; the whole log is administration."
     },
     {
       "operationId": "confluence-v1:POST:/wiki/rest/api/audit",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/audit_test.go",
+        "docs/WIKI_AUDIT.md"
+      ],
+      "notes": "Adding a record is tested, including the affected object and changed values, that an unnamed author is the caller, and the refused empty summary."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/audit/export",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/audit_test.go",
+        "docs/WIKI_AUDIT.md"
+      ],
+      "notes": "Both export formats are tested and shown to carry identical rows; an unknown format is refused."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/audit/retention",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/audit_test.go",
+        "docs/WIKI_AUDIT.md"
+      ],
+      "notes": "The retention period is tested, including its default."
     },
     {
       "operationId": "confluence-v1:PUT:/wiki/rest/api/audit/retention",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/audit_test.go",
+        "docs/WIKI_AUDIT.md"
+      ],
+      "notes": "Setting the retention is tested, including the one-year cap however it is expressed, and that shortening it deletes the records that fall outside rather than hiding them."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/audit/since",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/audit_test.go",
+        "docs/WIKI_AUDIT.md"
+      ],
+      "notes": "The period back from now is tested, including the refused unknown unit and non-positive number."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/content-states",
