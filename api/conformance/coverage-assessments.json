@@ -217,6 +217,24 @@
       "notes": "Removing a state is tested, including that it publishes a version and that the space listing stops reporting the page."
     },
     {
+      "operationId": "confluence-v1:DELETE:/wiki/rest/api/group/by-id",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/groups_test.go",
+        "docs/WIKI_GROUPS.md"
+      ],
+      "notes": "Deleting is tested, including that it is administration, the 404 afterwards, and that memberships do not outlive the group."
+    },
+    {
+      "operationId": "confluence-v1:DELETE:/wiki/rest/api/group/userByGroupId",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/groups_test.go",
+        "docs/WIKI_GROUPS.md"
+      ],
+      "notes": "Removing a person is tested, including that it is administration and that removing twice is a 404 because there is nothing to remove."
+    },
+    {
       "operationId": "confluence-v1:DELETE:/wiki/rest/api/space/{spaceKey}/label",
       "status": "partial",
       "notes": "Removes a named space label with workspace-administrator authorization.",
@@ -484,6 +502,42 @@
         "docs/CONTENT_STATES.md"
       ],
       "notes": "The states a page could be set to are tested: every state the space suggests, and the writer's most recent custom ones."
+    },
+    {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/group",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/groups_test.go",
+        "docs/WIKI_GROUPS.md"
+      ],
+      "notes": "Listing groups is tested, including that someone outside the workspace is refused and that no total is reported unless asked. The accessType filter remains."
+    },
+    {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/group/by-id",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/groups_test.go",
+        "docs/WIKI_GROUPS.md"
+      ],
+      "notes": "Reading one group is tested, including the required id and the 404 for an unknown one."
+    },
+    {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/group/picker",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/groups_test.go",
+        "docs/WIKI_GROUPS.md"
+      ],
+      "notes": "The partial-name search is tested for a match and a miss, with the total reported only when asked."
+    },
+    {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/group/{groupId}/membersByGroupId",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/groups_test.go",
+        "docs/WIKI_GROUPS.md"
+      ],
+      "notes": "The people in a group are tested, and agree with what /user/memberof reports after one write. expand remains."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/label",
@@ -814,6 +868,24 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ]
+    },
+    {
+      "operationId": "confluence-v1:POST:/wiki/rest/api/group",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/groups_test.go",
+        "docs/WIKI_GROUPS.md"
+      ],
+      "notes": "Creating a group is tested, including that it is administration and the refused duplicate and empty name."
+    },
+    {
+      "operationId": "confluence-v1:POST:/wiki/rest/api/group/userByGroupId",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/groups_test.go",
+        "docs/WIKI_GROUPS.md"
+      ],
+      "notes": "Adding a person is tested, including that it is administration, that adding twice succeeds because the request describes a state, and the 404 for someone outside the workspace."
     },
     {
       "operationId": "confluence-v1:POST:/wiki/rest/api/space/{spaceKey}/label",

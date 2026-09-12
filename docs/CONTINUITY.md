@@ -8,27 +8,24 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
 ## Active delivery
 
-- Branch: `feat/pr1-confluence-page-moves`
-- Base: `origin/main` after merged PR #97 (`261a38f`).
+- Branch: `feat/pr1-confluence-groups`
+- Base: `origin/main` after merged PR #98 (`b971949`).
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- State: page move checkpoint audited all seven pinned operations against a
-  running server and found none working. The find was that pages had no order
-  to move within: children were returned in id order, so a move would have
-  answered 200 and changed nothing — the failure hardest to notice. Pages carry
-  a position now, seeded from the id order readers were already seeing, and
-  every listing follows it; the test asserts the order a reader gets after each
-  move rather than the status code, and it caught exactly that bug on the first
-  probe. The three operations Confluence runs in the background do so here too,
-  on the durable task queue Jira's bulk operations already use, which is why the
-  long task reads belong in this checkpoint rather than a later one.
-  Clean migrations, the full uncached Go/PostgreSQL suite, vet, native and
-  WebAssembly builds, conformance checks, every Playwright journey, 320 px
+- State: Confluence group checkpoint audited all eight pinned operations
+  against a running server and found none working. Groups here are the
+  directory groups the organization administration already has, so a group made
+  through the wiki is the same group that surface sees rather than a second set.
+  Reading is open to any member — that is how a person decides who to mention or
+  grant access to — while creating, deleting and moving people are
+  administration. Adding someone who is already a member succeeds, because the
+  request describes a state; removing someone who is not is a 404, because there
+  is nothing to remove. Counting is opt-in, and the test asserts its absence as
+  well as its presence. The test also checks that `/user/memberof` and the
+  member list agree after one write: two reads of one membership that can
+  disagree would be worse than either one missing.
+  No migration was needed. The full uncached Go/PostgreSQL suite, vet, native
+  and WebAssembly builds, conformance checks, every Playwright journey, 320 px
   reflow, and the light/dark axe sweep pass.
-- Also open: PR [#100](https://github.com/e6qu/zzira/pull/100) (groups), which
-  is independent of this one. A scratch merge of both was built and verified
-  together before either merged: they share `internal/confluence/v1.go` and it
-  merges cleanly, so the only conflict between them is the conformance ledger
-  and the docs counters.
 - Blockers: none
 
 ## Merged baseline
@@ -90,7 +87,7 @@ PR #90's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Monitor the page move pull request through every CI job and resolve review
+1. Monitor the group pull request through every CI job and resolve review
    threads inline. **A stacked branch gets no CI here**: `.github/workflows/ci.yml`
    triggers only on `pull_request` against `main`, and `gh pr checks` reports
    "no checks reported" rather than a failure, so a stacked PR can look fine and
@@ -139,6 +136,7 @@ PR #90's final GitHub matrix passed its required suites before merge.
 - [App-provided select lists](APP_FIELD_OPTIONS.md)
 - [Confluence custom content](CUSTOM_CONTENT.md)
 - [Confluence users](WIKI_USERS.md)
+- [Confluence groups](WIKI_GROUPS.md)
 - [Confluence content states](CONTENT_STATES.md)
 - [Confluence page moves and copies](PAGE_MOVES.md)
 
