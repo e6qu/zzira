@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 873,
+  "assessedTotal": 881,
   "counts": {
     "delivered": 0,
-    "partial": 862,
+    "partial": 870,
     "missing": 11,
-    "unassessed": 334
+    "unassessed": 326
   },
   "countsByFamily": {
     "automation": {
@@ -18,9 +18,9 @@
     },
     "confluence": {
       "delivered": 0,
-      "partial": 292,
+      "partial": 300,
       "missing": 0,
-      "unassessed": 56
+      "unassessed": 48
     },
     "jira-platform": {
       "delivered": 0,
@@ -9657,65 +9657,89 @@
       "operationId": "confluence-v1:GET:/wiki/rest/api/settings/lookandfeel",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/site_settings_test.go",
+        "docs/SITE_SETTINGS.md"
+      ],
+      "notes": "Reading the look and feel is tested for the site and for one space, including the whole structure and the 404 for an unknown space."
     },
     {
       "operationId": "confluence-v1:PUT:/wiki/rest/api/settings/lookandfeel",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/site_settings_test.go",
+        "docs/SITE_SETTINGS.md"
+      ],
+      "notes": "Choosing which settings a space shows is tested, including that the site itself cannot choose because its look is the global one, the refused unknown type, the refused theme selection on a space with no theme, and that it is administration."
     },
     {
       "operationId": "confluence-v1:DELETE:/wiki/rest/api/settings/lookandfeel/custom",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/site_settings_test.go",
+        "docs/SITE_SETTINGS.md"
+      ],
+      "notes": "Resetting is tested; it returns the custom values to the defaults and leaves the selection where it was."
     },
     {
       "operationId": "confluence-v1:POST:/wiki/rest/api/settings/lookandfeel/custom",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/site_settings_test.go",
+        "docs/SITE_SETTINGS.md"
+      ],
+      "notes": "Writing the custom settings is tested for the site, including that it does not select them, the refused empty body, and that it is administration."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/settings/systemInfo",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/site_settings_test.go",
+        "docs/SITE_SETTINGS.md"
+      ],
+      "notes": "The system information is tested, including the cloud id, site title and base URL; commitHash is empty."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/settings/theme",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/site_settings_test.go",
+        "docs/SITE_SETTINGS.md"
+      ],
+      "notes": "The theme list is tested, including that the default theme is left out because it is what a site shows rather than a theme to choose."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/settings/theme/selected",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/site_settings_test.go",
+        "docs/SITE_SETTINGS.md"
+      ],
+      "notes": "The site's assigned theme is tested; a site with none reports none rather than the default. No pinned operation assigns one."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/settings/theme/{themeKey}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/site_settings_test.go",
+        "docs/SITE_SETTINGS.md"
+      ],
+      "notes": "Reading one theme is tested, including the default by key and the 404 for an unknown one."
     },
     {
       "operationId": "confluence-v1:POST:/wiki/rest/api/space",
