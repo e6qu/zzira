@@ -64,10 +64,11 @@ func (s *Store) WikiPageDescendants(ctx context.Context, ws, user, pageID string
     SELECT child.id,h.depth+1 FROM wiki_pages child JOIN hierarchy h ON child.parent_id=h.id WHERE h.depth<$4
   )
   SELECT p.id::text,h.depth,
-    (SELECT count(*)::int FROM wiki_pages sibling WHERE sibling.parent_id=p.parent_id AND sibling.status='current' AND sibling.id<p.id)
+    (SELECT count(*)::int FROM wiki_pages sibling WHERE sibling.parent_id=p.parent_id AND sibling.status='current'
+      AND (sibling.position,sibling.id)<(p.position,p.id))
   FROM hierarchy h JOIN wiki_pages p ON p.id=h.id JOIN wiki_spaces s ON s.id=p.space_id
   WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND p.status='current'
-  ORDER BY h.depth,p.parent_id,p.id`, ws, user, pageID, maxDepth)
+  ORDER BY h.depth,p.parent_id,p.position,p.id`, ws, user, pageID, maxDepth)
 	if err != nil {
 		return nil, err
 	}

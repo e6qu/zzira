@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 837,
+  "assessedTotal": 844,
   "counts": {
     "delivered": 0,
-    "partial": 826,
+    "partial": 833,
     "missing": 11,
-    "unassessed": 370
+    "unassessed": 363
   },
   "countsByFamily": {
     "automation": {
@@ -18,9 +18,9 @@
     },
     "confluence": {
       "delivered": 0,
-      "partial": 256,
+      "partial": 263,
       "missing": 0,
-      "unassessed": 92
+      "unassessed": 85
     },
     "jira-platform": {
       "delivered": 0,
@@ -8829,9 +8829,12 @@
       "operationId": "confluence-v1:POST:/wiki/rest/api/content/archive",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/page_moves_test.go",
+        "docs/PAGE_MOVES.md"
+      ],
+      "notes": "Archiving is tested end to end; an archived page leaves the space's current content. Restoring one remains."
     },
     {
       "operationId": "confluence-v1:POST:/wiki/rest/api/content/blueprint/instance/{draftId}",
@@ -8946,9 +8949,12 @@
       "operationId": "confluence-v1:POST:/wiki/rest/api/content/{id}/copy",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/page_moves_test.go",
+        "docs/PAGE_MOVES.md"
+      ],
+      "notes": "Copying one page is tested, including the chosen attachments, properties and labels, the rename when a title is already used, and the refused unknown space and destination type. Copying permissions and custom contents remains."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/content/{id}/descendant",
@@ -9100,17 +9106,23 @@
       "operationId": "confluence-v1:DELETE:/wiki/rest/api/content/{id}/pageTree",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/page_moves_test.go",
+        "docs/PAGE_MOVES.md"
+      ],
+      "notes": "Trashing a tree is tested end to end, including that the descendants go with it and that a page which is not current is refused."
     },
     {
       "operationId": "confluence-v1:POST:/wiki/rest/api/content/{id}/pagehierarchy/copy",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/page_moves_test.go",
+        "docs/PAGE_MOVES.md"
+      ],
+      "notes": "The queued hierarchy copy is tested end to end: it answers 202, lands under its destination with the title prefix applied, and a copy into itself fails with the task reporting why."
     },
     {
       "operationId": "confluence-v1:POST:/wiki/rest/api/content/{id}/permission/check",
@@ -9412,9 +9424,12 @@
       "operationId": "confluence-v1:PUT:/wiki/rest/api/content/{pageId}/move/{position}/{targetId}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/page_moves_test.go",
+        "docs/PAGE_MOVES.md"
+      ],
+      "notes": "All four positions are tested by the order a reader then sees, not by the status code; an unknown position, a move relative to itself and a move beneath its own descendant are refused. Moving between spaces remains."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/contentbody/convert/async/bulk/tasks",
@@ -9534,17 +9549,23 @@
       "operationId": "confluence-v1:GET:/wiki/rest/api/longtask",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/page_moves_test.go",
+        "docs/PAGE_MOVES.md"
+      ],
+      "notes": "The background page operations are listed, with the status and message each reports."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/longtask/{id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/page_moves_test.go",
+        "docs/PAGE_MOVES.md"
+      ],
+      "notes": "One task is read back, for both a successful and a failed operation, including the 404 for an unknown id."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/relation/{relationName}/from/{sourceType}/{sourceKey}/to/{targetType}",
