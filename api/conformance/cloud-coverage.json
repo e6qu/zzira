@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 904,
+  "assessedTotal": 909,
   "counts": {
     "delivered": 0,
-    "partial": 893,
+    "partial": 898,
     "missing": 11,
-    "unassessed": 303
+    "unassessed": 298
   },
   "countsByFamily": {
     "automation": {
@@ -18,9 +18,9 @@
     },
     "confluence": {
       "delivered": 0,
-      "partial": 323,
+      "partial": 328,
       "missing": 0,
-      "unassessed": 25
+      "unassessed": 20
     },
     "jira-platform": {
       "delivered": 0,
@@ -9649,41 +9649,66 @@
       "operationId": "confluence-v1:GET:/wiki/rest/api/relation/{relationName}/from/{sourceType}/{sourceKey}/to/{targetType}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/store/wiki_relations.go",
+        "internal/confluence/relations.go",
+        "internal/confluence/relations_test.go",
+        "docs/CONTENT_RELATIONS.md"
+      ],
+      "notes": "Lists what a source is related to, filtered by the far entity type and by content status and version, expanding relationData, source and target, and directing favourite and like reads to their own endpoints."
     },
     {
       "operationId": "confluence-v1:DELETE:/wiki/rest/api/relation/{relationName}/from/{sourceType}/{sourceKey}/to/{targetType}/{targetKey}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/store/wiki_relations.go",
+        "internal/confluence/relations.go",
+        "internal/confluence/relations_test.go",
+        "docs/CONTENT_RELATIONS.md"
+      ],
+      "notes": "Removes a relation and answers 204 whether or not it was there, while an entity that does not exist is still 404."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/relation/{relationName}/from/{sourceType}/{sourceKey}/to/{targetType}/{targetKey}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/store/wiki_relations.go",
+        "internal/confluence/relations.go",
+        "internal/confluence/relations_test.go",
+        "docs/CONTENT_RELATIONS.md"
+      ],
+      "notes": "Reads one relation, 404 when it does not exist, with relationData naming who created it and when."
     },
     {
       "operationId": "confluence-v1:PUT:/wiki/rest/api/relation/{relationName}/from/{sourceType}/{sourceKey}/to/{targetType}/{targetKey}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/store/wiki_relations.go",
+        "internal/confluence/relations.go",
+        "internal/confluence/relations_test.go",
+        "docs/CONTENT_RELATIONS.md"
+      ],
+      "notes": "Creates a relation between a user, space or content pair; favourite runs from a user to a space or content, creating an existing relation is idempotent, and making one for another person requires site administration."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/relation/{relationName}/to/{targetType}/{targetKey}/from/{sourceType}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/store/wiki_relations.go",
+        "internal/confluence/relations.go",
+        "internal/confluence/relations_test.go",
+        "docs/CONTENT_RELATIONS.md"
+      ],
+      "notes": "Lists what is related to a target; relations are one way, so this answers a different question from the source listing rather than mirroring it."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/search",

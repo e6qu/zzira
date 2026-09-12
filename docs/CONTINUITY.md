@@ -1,6 +1,6 @@
 # Development continuity
 
-Updated: 2026-09-11
+Updated: 2026-09-13
 
 This file is the short-lived handoff for the active branch. Stable scope,
 dependencies, and acceptance gates are in [PLAN.md](../PLAN.md). Product and
@@ -8,36 +8,62 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
 ## Active delivery
 
-- Branch: `feat/pr1-confluence-content-versions`
-- Base: `origin/main` after merged PR #106 (`4dd8973`). The review queue is
+- Branch: `feat/pr1-confluence-relations`
+- Base: `origin/main` after merged PR #107 (`389646d`). The review queue is
   empty; this is the only open branch.
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- State: content history checkpoint audited all nine pinned operations against
-  a running server and found none working, and the macro ones could not have
-  worked: the storage validator rejected the whole `ac` namespace, so a body
-  containing a macro could not be saved and the macro reads had nothing to read.
-  Confluence's storage format is built around macros, so the validator accepts
-  them now — the macro, its parameters and the body it wraps — and a macro is
-  structure rather than markup, so none of those elements reach the rendered
-  HTML. The existing storage test asserted a macro was rejected; that assertion
-  was right for the old limitation and is replaced by one that checks what a
-  macro renders as.
-  The asynchronous conversion and its result endpoint are in one checkpoint
-  deliberately: an operation answering an id nothing can fetch is not usable,
-  which this work got wrong once already when the space delete pointed at a long
-  task the long task read refused to report.
-  Converting storage to the document format needed an HTML-to-ADF reading, the
-  inverse of the renderer this product already had; it degrades the same way,
-  keeping the text of anything it does not model.
+- State: content relations checkpoint audited all five pinned operations
+  against a running server and found none working: nothing in this product
+  modelled a named link between two entities, so once again the gap was in the
+  model rather than in a missing handler.
+  A relation is one way. The two listings therefore answer different questions,
+  and the tests check that a sibling created from one page to another is not
+  found by listing from the other — a symmetric implementation would have passed
+  every status-code assertion.
+  Confluence qualifies a content end of a relation with a status and a version,
+  so those are part of the key: a relation to a past revision is a separate
+  relation from one to the content as it stands, and a listing sees only the
+  status it asked for.
+  `favourite` runs from a person to a space or content, and is read through its
+  own endpoints rather than by listing relations, so the listings refuse it
+  instead of answering with an empty page. A relation whose source is a user is
+  that person's own statement, so making or unmaking one for somebody else is
+  site administration.
+  Both writes are idempotent, which is what the operations mean: creating an
+  existing relation answers 200 and deleting a missing one answers 204, while an
+  entity that does not exist is still 404.
   Clean migrations, the full uncached Go/PostgreSQL suite, vet, native and
-  WebAssembly builds, conformance checks, every Playwright journey, 320 px
-  reflow, and the light/dark axe sweep pass.
+  WebAssembly builds, conformance checks and every Playwright journey pass.
 - Blockers: none
 
 ## Merged baseline
 
-PR [#95](https://github.com/e6qu/zzira/pull/95) merged app-provided select lists
-and their options on top of
+PR [#107](https://github.com/e6qu/zzira/pull/107) merged content history, macros
+and body conversion on top of
+PR [#106](https://github.com/e6qu/zzira/pull/106), which merged the Confluence audit
+log, on top of
+PR [#105](https://github.com/e6qu/zzira/pull/105), which merged content templates and
+blueprints, on top of
+PR [#104](https://github.com/e6qu/zzira/pull/104), which merged Confluence site
+settings, on top of
+PR [#103](https://github.com/e6qu/zzira/pull/103), which merged the space lifecycle,
+on top of
+PR [#102](https://github.com/e6qu/zzira/pull/102), which merged the space permission
+transition, on top of
+PR [#101](https://github.com/e6qu/zzira/pull/101), which merged space permissions, on
+top of
+PR [#100](https://github.com/e6qu/zzira/pull/100), which merged Confluence groups, on
+top of
+PR [#98](https://github.com/e6qu/zzira/pull/98), which merged page moves, copies and
+archiving, on top of
+PR [#97](https://github.com/e6qu/zzira/pull/97), which merged content states, on top of
+PR [#99](https://github.com/e6qu/zzira/pull/99), which merged the Confluence user
+surface, on top of
+PR [#96](https://github.com/e6qu/zzira/pull/96), which merged Confluence custom content
+and carried the app-provided select lists and their options that
+PR [#95](https://github.com/e6qu/zzira/pull/95) had prepared; #95 itself was closed
+rather than merged, because its branch predated #96 and its diff against `main`
+would have deleted the custom content work. Those sit on top of
 PR [#94](https://github.com/e6qu/zzira/pull/94), which merged the field association
 scheme surface, served from this product's field configuration scheme, on top of
 PR [#93](https://github.com/e6qu/zzira/pull/93), which merged the completed issue field
@@ -93,23 +119,23 @@ PR #90's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Monitor the content history pull request through every CI job and resolve
+1. Monitor the content relations pull request through every CI job and resolve
    review threads inline. **A stacked branch gets no CI here**: `.github/workflows/ci.yml`
    triggers only on `pull_request` against `main`, and `gh pr checks` reports
    "no checks reported" rather than a failure, so a stacked PR can look fine and
    be unverified. Base every PR on `main` unless it genuinely needs a helper an
    open branch adds.
-2. What is left of `confluence-v1` is small: `relation` (5), `search` (2, the
-   CQL content and user search), `analytics` (2) and `content/search` (1).
-   Content relations are the natural next unit — a named relation between two
-   entities, such as a person favouriting a page — because nothing models them
-   yet and the five operations are one coherent family. After Confluence, the
-   largest untouched block is `jira-service-management` (75).
-3. Probe every operation against a running server before assessing; the eight
+2. What is left of `confluence-v1` is five operations: `search` (2, the CQL
+   content and user search), `analytics` (2) and `content/search` (1). CQL
+   content search is the natural next unit — it is the one of the five that the
+   others read against, and this product has a search of its own to serve it
+   from. After Confluence, the largest untouched block is
+   `jira-service-management` (75).
+3. Probe every operation against a running server before assessing; the nine
    audits so far ran 11 of 15, 8 of 33, 5 of 13, 16 of 17, 4 of 14, 2 of 11,
-   0 of 17 and 0 of 8, so the result is not predictable from how well tested a
-   surface looks. Twice now an operation was missing because something upstream
-   made it impossible, not because the handler was absent.
+   0 of 17, 0 of 8 and 0 of 5, so the result is not predictable from how well
+   tested a surface looks. Three times now an operation was missing because
+   something upstream made it impossible, not because the handler was absent.
 
 ## Evidence map
 
@@ -152,6 +178,7 @@ PR #90's final GitHub matrix passed its required suites before merge.
 - [Confluence content history](CONTENT_HISTORY.md)
 - [Confluence content states](CONTENT_STATES.md)
 - [Confluence page moves and copies](PAGE_MOVES.md)
+- [Confluence content relations](CONTENT_RELATIONS.md)
 
 ## Continuity rules
 
