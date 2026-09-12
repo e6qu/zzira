@@ -11,6 +11,16 @@ import (
 	"strings"
 )
 
+// macroElements and macroAttributes are Confluence's structured macro markup:
+// the macro, the parameters that configure it, and the body it wraps.
+var macroElements = map[string]bool{
+	"structured-macro": true, "parameter": true, "rich-text-body": true, "plain-text-body": true,
+}
+
+var macroAttributes = map[string]bool{
+	"name": true, "macro-id": true, "schema-version": true, "local-id": true,
+}
+
 var tags = map[string]bool{"p": true, "h1": true, "h2": true, "h3": true, "h4": true, "h5": true, "h6": true, "ul": true, "ol": true, "li": true, "blockquote": true, "pre": true, "code": true, "strong": true, "em": true, "b": true, "i": true, "u": true, "s": true, "a": true, "br": true, "hr": true, "table": true, "thead": true, "tbody": true, "tr": true, "th": true, "td": true}
 
 // Render rejects unsupported markup rather than silently dropping content.
@@ -22,6 +32,7 @@ func Render(storage string) (string, error) {
 	d := xml.NewDecoder(strings.NewReader("<root>" + storage + "</root>"))
 	var b strings.Builder
 	depth := 0
+	suppressed := 0
 	rootSeen := false
 	for {
 		token, err := d.Token()
@@ -45,6 +56,24 @@ func Render(storage string) (string, error) {
 				continue
 			}
 			tag := t.Name.Local
+			// Confluence's storage format carries macros in the ac namespace.
+			// They are structure rather than markup: a macro renders as the
+			// body it holds, and its parameters describe it without being
+			// shown, so none of these elements reach the HTML.
+			if t.Name.Space == "ac" {
+				if !macroElements[tag] {
+					return "", fmt.Errorf("unsupported storage element: ac:%s", tag)
+				}
+				for _, a := range t.Attr {
+					if !macroAttributes[a.Name.Local] {
+						return "", fmt.Errorf("unsupported attribute %s on ac:%s", a.Name.Local, tag)
+					}
+				}
+				if tag == "parameter" {
+					suppressed++
+				}
+				continue
+			}
 			if t.Name.Space != "" || !tags[tag] {
 				return "", fmt.Errorf("unsupported storage element: %s", tag)
 			}
@@ -61,12 +90,24 @@ func Render(storage string) (string, error) {
 			}
 			b.WriteString(">")
 		case xml.EndElement:
+			if t.Name.Space == "ac" {
+				if t.Name.Local == "parameter" {
+					suppressed--
+				}
+				depth--
+				continue
+			}
 			if depth > 1 && t.Name.Local != "br" && t.Name.Local != "hr" {
 				b.WriteString("</" + t.Name.Local + ">")
 			}
 			depth--
 		case xml.CharData:
-			b.WriteString(html.EscapeString(string(t)))
+			// A parameter names how a macro behaves; it is not part of what a
+			// reader sees, so its text is kept in the stored body and left out
+			// of the rendering.
+			if suppressed == 0 {
+				b.WriteString(html.EscapeString(string(t)))
+			}
 		case xml.Comment:
 			return "", fmt.Errorf("storage comments are not supported")
 		default:

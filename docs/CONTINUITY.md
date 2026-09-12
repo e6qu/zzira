@@ -8,23 +8,27 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
 ## Active delivery
 
-- Branch: `feat/pr1-confluence-audit`
-- Base: `origin/main` after merged PR #105 (`4b0a678`). The review queue is
+- Branch: `feat/pr1-confluence-content-versions`
+- Base: `origin/main` after merged PR #106 (`4dd8973`). The review queue is
   empty; this is the only open branch.
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- State: audit log checkpoint audited all six pinned operations against a
-  running server and found none working. The first question was whether
-  Confluence's audit records belong in the existing `organization_audit_events`
-  table. They do not: that log belongs to the organization across its products
-  and carries an action, a target and a detail, while a Confluence record has an
-  author, a remote address, a summary, a category, the object affected and the
-  values that changed. Folding one into the other would lose the shape each
-  surface reports, so they are separate.
-  The retention is how long a record is kept from its creation date until it is
-  deleted, so two things follow and both are tested: a record past the retention
-  is not in the log, and setting the retention deletes what falls outside it
-  rather than hiding it — a record that reappeared when the period was
-  lengthened would not have been deleted.
+- State: content history checkpoint audited all nine pinned operations against
+  a running server and found none working, and the macro ones could not have
+  worked: the storage validator rejected the whole `ac` namespace, so a body
+  containing a macro could not be saved and the macro reads had nothing to read.
+  Confluence's storage format is built around macros, so the validator accepts
+  them now — the macro, its parameters and the body it wraps — and a macro is
+  structure rather than markup, so none of those elements reach the rendered
+  HTML. The existing storage test asserted a macro was rejected; that assertion
+  was right for the old limitation and is replaced by one that checks what a
+  macro renders as.
+  The asynchronous conversion and its result endpoint are in one checkpoint
+  deliberately: an operation answering an id nothing can fetch is not usable,
+  which this work got wrong once already when the space delete pointed at a long
+  task the long task read refused to report.
+  Converting storage to the document format needed an HTML-to-ADF reading, the
+  inverse of the renderer this product already had; it degrades the same way,
+  keeping the text of anything it does not model.
   Clean migrations, the full uncached Go/PostgreSQL suite, vet, native and
   WebAssembly builds, conformance checks, every Playwright journey, 320 px
   reflow, and the light/dark axe sweep pass.
@@ -89,20 +93,18 @@ PR #90's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Monitor the audit log pull request through every CI job and resolve review
-   threads inline. **A stacked branch gets no CI here**: `.github/workflows/ci.yml`
+1. Monitor the content history pull request through every CI job and resolve
+   review threads inline. **A stacked branch gets no CI here**: `.github/workflows/ci.yml`
    triggers only on `pull_request` against `main`, and `gh pr checks` reports
    "no checks reported" rather than a failure, so a stacked PR can look fine and
    be unverified. Base every PR on `main` unless it genuinely needs a helper an
    open branch adds.
-2. The largest unassessed groups left are `confluence-v1 relation` (5),
-   `confluence-v1 contentbody` (4), `confluence-v1 analytics` (2),
-   `confluence-v1 search` (2), `confluence-v1 content-states` (done) and the
-   remaining `confluence-v1 content` operations: the three macro reads, the two
-   content version operations (restore and delete), `content/search`, and
-   `content/{id}/permission/check` (done). Content versions are the natural next
-   unit — restoring and deleting a version — because `wiki_page_versions`
-   already holds them and only the reads are delivered.
+2. What is left of `confluence-v1` is small: `relation` (5), `search` (2, the
+   CQL content and user search), `analytics` (2) and `content/search` (1).
+   Content relations are the natural next unit — a named relation between two
+   entities, such as a person favouriting a page — because nothing models them
+   yet and the five operations are one coherent family. After Confluence, the
+   largest untouched block is `jira-service-management` (75).
 3. Probe every operation against a running server before assessing; the eight
    audits so far ran 11 of 15, 8 of 33, 5 of 13, 16 of 17, 4 of 14, 2 of 11,
    0 of 17 and 0 of 8, so the result is not predictable from how well tested a
@@ -147,6 +149,7 @@ PR #90's final GitHub matrix passed its required suites before merge.
 - [Confluence site settings](SITE_SETTINGS.md)
 - [Confluence content templates](CONTENT_TEMPLATES.md)
 - [Confluence audit log](WIKI_AUDIT.md)
+- [Confluence content history](CONTENT_HISTORY.md)
 - [Confluence content states](CONTENT_STATES.md)
 - [Confluence page moves and copies](PAGE_MOVES.md)
 

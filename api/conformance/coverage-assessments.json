@@ -217,6 +217,15 @@
       "notes": "Removing a state is tested, including that it publishes a version and that the space listing stops reporting the page."
     },
     {
+      "operationId": "confluence-v1:DELETE:/wiki/rest/api/content/{id}/version/{versionNumber}",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/content_history_test.go",
+        "docs/CONTENT_HISTORY.md"
+      ],
+      "notes": "Deleting a historical version is tested, including that the page reads the same afterwards, that the current version cannot be deleted, and the 404 for one already gone."
+    },
+    {
       "operationId": "confluence-v1:DELETE:/wiki/rest/api/group/by-id",
       "status": "partial",
       "evidence": [
@@ -450,6 +459,33 @@
       ]
     },
     {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/content/{id}/history/{version}/macro/id/{macroId}",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/content_history_test.go",
+        "docs/CONTENT_HISTORY.md"
+      ],
+      "notes": "Reading a macro from a version is tested with its name, body and parameters, including its absence from a version that does not have it."
+    },
+    {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/content/{id}/history/{version}/macro/id/{macroId}/convert/async/{to}",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/content_history_test.go",
+        "docs/CONTENT_HISTORY.md"
+      ],
+      "notes": "The asynchronous macro conversion is tested, and the id it answers is shown to be readable at the result endpoint."
+    },
+    {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/content/{id}/history/{version}/macro/id/{macroId}/convert/{to}",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/content_history_test.go",
+        "docs/CONTENT_HISTORY.md"
+      ],
+      "notes": "Converting a macro body is tested to view and to the document format, with an unsupported target refused."
+    },
+    {
       "operationId": "confluence-v1:GET:/wiki/rest/api/content/{id}/notification/child-created",
       "status": "partial",
       "notes": "Durable page-content, space, and label watches support current-user and administrator-targeted status/mutation, XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; other content types, Confluence space-admin roles, and email delivery remain.",
@@ -583,6 +619,24 @@
         "docs/CONTENT_STATES.md"
       ],
       "notes": "The states a page could be set to are tested: every state the space suggests, and the writer's most recent custom ones."
+    },
+    {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/contentbody/convert/async/bulk/tasks",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/content_history_test.go",
+        "docs/CONTENT_HISTORY.md"
+      ],
+      "notes": "Reading many results is tested, including that one unreadable id does not fail the others, and the required ids parameter."
+    },
+    {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/contentbody/convert/async/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/content_history_test.go",
+        "docs/CONTENT_HISTORY.md"
+      ],
+      "notes": "Reading a converted body is tested, including the 404 for an id that is not available; results are kept for five minutes."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/group",
@@ -1066,6 +1120,33 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ]
+    },
+    {
+      "operationId": "confluence-v1:POST:/wiki/rest/api/content/{id}/version",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/content_history_test.go",
+        "docs/CONTENT_HISTORY.md"
+      ],
+      "notes": "Restoring a historical version is tested: it adds a version holding the historical content rather than moving the page back, restoreTitle brings the old title, and an unknown version or operation key is refused."
+    },
+    {
+      "operationId": "confluence-v1:POST:/wiki/rest/api/contentbody/convert/async/bulk/tasks",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/content_history_test.go",
+        "docs/CONTENT_HISTORY.md"
+      ],
+      "notes": "Bulk conversion is tested, including the refused empty list."
+    },
+    {
+      "operationId": "confluence-v1:POST:/wiki/rest/api/contentbody/convert/async/{to}",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/content_history_test.go",
+        "docs/CONTENT_HISTORY.md"
+      ],
+      "notes": "Converting a body is tested, including that an unsupported conversion fails with a reason rather than answering the wrong format."
     },
     {
       "operationId": "confluence-v1:POST:/wiki/rest/api/group",

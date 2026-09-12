@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 895,
+  "assessedTotal": 904,
   "counts": {
     "delivered": 0,
-    "partial": 884,
+    "partial": 893,
     "missing": 11,
-    "unassessed": 312
+    "unassessed": 303
   },
   "countsByFamily": {
     "automation": {
@@ -18,9 +18,9 @@
     },
     "confluence": {
       "delivered": 0,
-      "partial": 314,
+      "partial": 323,
       "missing": 0,
-      "unassessed": 34
+      "unassessed": 25
     },
     "jira-platform": {
       "delivered": 0,
@@ -9016,25 +9016,34 @@
       "operationId": "confluence-v1:GET:/wiki/rest/api/content/{id}/history/{version}/macro/id/{macroId}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/content_history_test.go",
+        "docs/CONTENT_HISTORY.md"
+      ],
+      "notes": "Reading a macro from a version is tested with its name, body and parameters, including its absence from a version that does not have it."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/content/{id}/history/{version}/macro/id/{macroId}/convert/async/{to}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/content_history_test.go",
+        "docs/CONTENT_HISTORY.md"
+      ],
+      "notes": "The asynchronous macro conversion is tested, and the id it answers is shown to be readable at the result endpoint."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/content/{id}/history/{version}/macro/id/{macroId}/convert/{to}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/content_history_test.go",
+        "docs/CONTENT_HISTORY.md"
+      ],
+      "notes": "Converting a macro body is tested to view and to the document format, with an unsupported target refused."
     },
     {
       "operationId": "confluence-v1:DELETE:/wiki/rest/api/content/{id}/label",
@@ -9435,17 +9444,23 @@
       "operationId": "confluence-v1:POST:/wiki/rest/api/content/{id}/version",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/content_history_test.go",
+        "docs/CONTENT_HISTORY.md"
+      ],
+      "notes": "Restoring a historical version is tested: it adds a version holding the historical content rather than moving the page back, restoreTitle brings the old title, and an unknown version or operation key is refused."
     },
     {
       "operationId": "confluence-v1:DELETE:/wiki/rest/api/content/{id}/version/{versionNumber}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/content_history_test.go",
+        "docs/CONTENT_HISTORY.md"
+      ],
+      "notes": "Deleting a historical version is tested, including that the page reads the same afterwards, that the current version cannot be deleted, and the 404 for one already gone."
     },
     {
       "operationId": "confluence-v1:PUT:/wiki/rest/api/content/{pageId}/move/{position}/{targetId}",
@@ -9462,33 +9477,45 @@
       "operationId": "confluence-v1:GET:/wiki/rest/api/contentbody/convert/async/bulk/tasks",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/content_history_test.go",
+        "docs/CONTENT_HISTORY.md"
+      ],
+      "notes": "Reading many results is tested, including that one unreadable id does not fail the others, and the required ids parameter."
     },
     {
       "operationId": "confluence-v1:POST:/wiki/rest/api/contentbody/convert/async/bulk/tasks",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/content_history_test.go",
+        "docs/CONTENT_HISTORY.md"
+      ],
+      "notes": "Bulk conversion is tested, including the refused empty list."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/contentbody/convert/async/{id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/content_history_test.go",
+        "docs/CONTENT_HISTORY.md"
+      ],
+      "notes": "Reading a converted body is tested, including the 404 for an id that is not available; results are kept for five minutes."
     },
     {
       "operationId": "confluence-v1:POST:/wiki/rest/api/contentbody/convert/async/{to}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/content_history_test.go",
+        "docs/CONTENT_HISTORY.md"
+      ],
+      "notes": "Converting a body is tested, including that an unsupported conversion fails with a reason rather than answering the wrong format."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/group",
