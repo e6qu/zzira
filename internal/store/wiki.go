@@ -50,6 +50,15 @@ const wikiSpaceRolePrincipalMatches = `(
 
 func wikiSpacePermissionAllowed(permission string) string {
 	literal := "'" + strings.ReplaceAll(permission, "'", "''") + "'"
+	// Confluence has one View permission per space, not one per kind of
+	// content: being able to see the space is what lets you read what is in
+	// it. This product names the reads separately, so a granted read/space
+	// satisfies them all — otherwise a client granting Confluence's View would
+	// find the person still could not open a page.
+	readGrantSatisfies := "FALSE"
+	if strings.HasPrefix(permission, "read/") {
+		readGrantSatisfies = "TRUE"
+	}
 	systemRoleIDs := []string{}
 	for _, role := range systemWikiSpaceRoles {
 		for _, allowed := range role.SpacePermissions {
@@ -63,8 +72,12 @@ func wikiSpacePermissionAllowed(permission string) string {
 	if len(systemRoleIDs) > 0 {
 		systemRoles = "wra.role_id IN (" + strings.Join(systemRoleIDs, ",") + ")"
 	}
+	// A space that says nothing about who may do what is open to its readers.
+	// Saying nothing now means no roles assigned *and* no direct grants, or a
+	// space governed only by grants would read as open to everyone.
 	return `(
-  NOT EXISTS (SELECT 1 FROM wiki_space_role_assignments wra0 WHERE wra0.space_id=s.id)
+  (NOT EXISTS (SELECT 1 FROM wiki_space_role_assignments wra0 WHERE wra0.space_id=s.id)
+   AND NOT EXISTS (SELECT 1 FROM wiki_space_permission_grants wpg0 WHERE wpg0.space_id=s.id))
   OR EXISTS (
     SELECT 1
     FROM wiki_space_role_assignments wra
@@ -72,6 +85,17 @@ func wikiSpacePermissionAllowed(permission string) string {
     WHERE wra.space_id=s.id
       AND ` + wikiSpaceRolePrincipalMatches + `
       AND (` + systemRoles + ` OR ` + literal + `=ANY(wrr.space_permissions) OR 'administer/space'=ANY(wrr.space_permissions))
+  )
+  OR EXISTS (
+    SELECT 1 FROM wiki_space_permission_grants wpg
+    WHERE wpg.space_id=s.id
+      AND (wpg.permission=` + literal + ` OR wpg.permission='administer/space'
+           OR (` + readGrantSatisfies + ` AND wpg.permission='read/space'))
+      AND (
+        (wpg.subject_type='user' AND wpg.subject_id=$2)
+        OR (wpg.subject_type='group' AND EXISTS (
+          SELECT 1 FROM group_members wpgm WHERE wpgm.group_id::text=wpg.subject_id AND wpgm.user_id=$2))
+      )
   )
 )`
 }

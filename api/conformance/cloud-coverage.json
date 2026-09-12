@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 852,
+  "assessedTotal": 858,
   "counts": {
     "delivered": 0,
-    "partial": 841,
+    "partial": 847,
     "missing": 11,
-    "unassessed": 355
+    "unassessed": 349
   },
   "countsByFamily": {
     "automation": {
@@ -18,9 +18,9 @@
     },
     "confluence": {
       "delivered": 0,
-      "partial": 271,
+      "partial": 277,
       "missing": 0,
-      "unassessed": 77
+      "unassessed": 71
     },
     "jira-platform": {
       "delivered": 0,
@@ -9128,9 +9128,12 @@
       "operationId": "confluence-v1:POST:/wiki/rest/api/content/{id}/permission/check",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_permission_grants_test.go",
+        "docs/SPACE_PERMISSIONS.md"
+      ],
+      "notes": "The permission check is tested for a user and a group, before and after granting, and resolves through the same rules the reads use; the required operation and the 404 for unknown content are covered."
     },
     {
       "operationId": "confluence-v1:DELETE:/wiki/rest/api/content/{id}/restriction",
@@ -9804,25 +9807,34 @@
       "operationId": "confluence-v1:POST:/wiki/rest/api/space/{spaceKey}/permission",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_permission_grants_test.go",
+        "docs/SPACE_PERMISSIONS.md"
+      ],
+      "notes": "Granting one permission is tested, including that Confluence's view permission satisfies this product's separate reads, that a group grant reaches its people, that the first grant closes an open space, and the refused unknown permission, subject type and subject."
     },
     {
       "operationId": "confluence-v1:POST:/wiki/rest/api/space/{spaceKey}/permission/custom-content",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_permission_grants_test.go",
+        "docs/SPACE_PERMISSIONS.md"
+      ],
+      "notes": "Granting several custom content operations at once is tested, including that an operation marked access:false is not granted."
     },
     {
       "operationId": "confluence-v1:DELETE:/wiki/rest/api/space/{spaceKey}/permission/{id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_permission_grants_test.go",
+        "docs/SPACE_PERMISSIONS.md"
+      ],
+      "notes": "Removing a grant is tested, including that removing the view permission takes the subject's other grants with it and the 404 afterwards."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/space/{spaceKey}/settings",
@@ -12788,9 +12800,12 @@
       "operationId": "confluence-v2:GET:/wiki/api/v2/space-permissions",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_permission_grants_test.go",
+        "docs/SPACE_PERMISSIONS.md"
+      ],
+      "notes": "The catalogue of grantable permissions is tested; it is derived from the permissions the system roles enforce, so it cannot advertise one nothing checks, and every entry but the view permission names it as a prerequisite."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/space-permissions/transition/access-removals",
@@ -12836,9 +12851,12 @@
       "operationId": "confluence-v2:GET:/wiki/api/v2/space-role-mode",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_permission_grants_test.go",
+        "docs/SPACE_PERMISSIONS.md"
+      ],
+      "notes": "The space role mode is tested; roles are this product's primary model, so it reports the settled mode rather than a site mid-migration."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/space-roles",
