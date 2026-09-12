@@ -367,6 +367,12 @@ func (r *APITaskRunner) execute(ctx context.Context, task APITask) error {
 		return r.Store.executeAssignIssueSecuritySchemeTask(ctx, task)
 	case apiTaskRemoveSecurityLevel:
 		return r.Store.executeRemoveIssueSecurityLevelTask(ctx, task)
+	case apiTaskWikiPermissionCombinations:
+		return r.Store.executeWikiPermissionCombinations(ctx, task)
+	case apiTaskWikiPermissionAssignRoles:
+		return r.Store.executeWikiPermissionAssignRoles(ctx, task)
+	case apiTaskWikiPermissionRemoveAccess:
+		return r.Store.executeWikiPermissionRemoveAccess(ctx, task)
 	case apiTaskWikiCopyHierarchy:
 		return r.Store.executeWikiCopyHierarchy(ctx, task)
 	case apiTaskWikiArchivePages:
