@@ -17,6 +17,13 @@ type WikiSpace struct {
 	CreatedAt                  string `json:"createdAt"`
 	Private                    bool   `json:"private"`
 	DefaultClassificationLevel string `json:"-"`
+	Type                       string `json:"-"`
+	Alias                      string `json:"-"`
+	HomepageID                 string `json:"-"`
+	Status                     string `json:"-"`
+	RouteOverrideEnabled       bool   `json:"-"`
+	ContentMode                string `json:"-"`
+	ThemeKey                   string `json:"-"`
 }
 
 type WikiSpaceRole struct {
@@ -304,4 +311,11 @@ type WikiContentState struct {
 	Name  string `json:"name"`
 	Color string `json:"color"`
 	Kind  string `json:"-"`
+}
+
+// WikiTheme is a look and feel a space may select.
+type WikiTheme struct {
+	Key         string `json:"themeKey"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
 }

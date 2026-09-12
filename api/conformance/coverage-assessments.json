@@ -235,6 +235,15 @@
       "notes": "Removing a person is tested, including that it is administration and that removing twice is a 404 because there is nothing to remove."
     },
     {
+      "operationId": "confluence-v1:DELETE:/wiki/rest/api/space/{spaceKey}",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_lifecycle_test.go",
+        "docs/SPACE_LIFECYCLE.md"
+      ],
+      "notes": "Deleting is tested end to end: it answers 202 with a long task, the task is reported by the long task read, and the space's content goes with it."
+    },
+    {
       "operationId": "confluence-v1:DELETE:/wiki/rest/api/space/{spaceKey}/label",
       "status": "partial",
       "notes": "Removes a named space label with workspace-administrator authorization.",
@@ -258,6 +267,15 @@
         "docs/SPACE_PERMISSIONS.md"
       ],
       "notes": "Removing a grant is tested, including that removing the view permission takes the subject's other grants with it and the 404 afterwards."
+    },
+    {
+      "operationId": "confluence-v1:DELETE:/wiki/rest/api/space/{spaceKey}/theme",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_lifecycle_test.go",
+        "docs/SPACE_LIFECYCLE.md"
+      ],
+      "notes": "Resetting the theme is tested, including the 404 when no theme is set."
     },
     {
       "operationId": "confluence-v1:DELETE:/wiki/rest/api/user/watch/content/{contentId}",
@@ -608,6 +626,15 @@
       ]
     },
     {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/space/{spaceKey}/settings",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_lifecycle_test.go",
+        "docs/SPACE_LIFECYCLE.md"
+      ],
+      "notes": "Reading the settings is tested; it needs only the permission to view the space."
+    },
+    {
       "operationId": "confluence-v1:GET:/wiki/rest/api/space/{spaceKey}/state",
       "status": "partial",
       "evidence": [
@@ -633,6 +660,15 @@
         "docs/CONTENT_STATES.md"
       ],
       "notes": "The space's state settings are tested and agree with the suggested set; restricting which states a space allows remains."
+    },
+    {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/space/{spaceKey}/theme",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_lifecycle_test.go",
+        "docs/SPACE_LIFECYCLE.md"
+      ],
+      "notes": "Reading the theme is tested, including that a space with none set reports no theme rather than a default one."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/space/{spaceKey}/watch",
@@ -906,6 +942,24 @@
       "notes": "Adding a person is tested, including that it is administration, that adding twice succeeds because the request describes a state, and the 404 for someone outside the workspace."
     },
     {
+      "operationId": "confluence-v1:POST:/wiki/rest/api/space",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_lifecycle_test.go",
+        "docs/SPACE_LIFECYCLE.md"
+      ],
+      "notes": "Creating a space is tested, including the duplicate key, the malformed key, the missing name, that it is administration, and a personal space keyed by its account."
+    },
+    {
+      "operationId": "confluence-v1:POST:/wiki/rest/api/space/_private",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_lifecycle_test.go",
+        "docs/SPACE_LIFECYCLE.md"
+      ],
+      "notes": "The private create is tested; as Confluence describes it, it is the ordinary create with permissions set to the creator alone, so it makes a global space another member cannot see."
+    },
+    {
       "operationId": "confluence-v1:POST:/wiki/rest/api/space/{spaceKey}/label",
       "status": "partial",
       "notes": "Adds validated labels to a visible space with workspace-administrator authorization and legacy response shape.",
@@ -1103,6 +1157,33 @@
         "docs/PAGE_MOVES.md"
       ],
       "notes": "All four positions are tested by the order a reader then sees, not by the status code; an unknown position, a move relative to itself and a move beneath its own descendant are refused. Moving between spaces remains."
+    },
+    {
+      "operationId": "confluence-v1:PUT:/wiki/rest/api/space/{spaceKey}",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_lifecycle_test.go",
+        "docs/SPACE_LIFECYCLE.md"
+      ],
+      "notes": "Updating name, description, homepage, type and status is tested, including the refused homepage outside the space, the refused status and type, the 404 for an unknown space and that it is administration."
+    },
+    {
+      "operationId": "confluence-v1:PUT:/wiki/rest/api/space/{spaceKey}/settings",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_lifecycle_test.go",
+        "docs/SPACE_LIFECYCLE.md"
+      ],
+      "notes": "Changing the settings is tested, including the refused content mode and that it is administration."
+    },
+    {
+      "operationId": "confluence-v1:PUT:/wiki/rest/api/space/{spaceKey}/theme",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_lifecycle_test.go",
+        "docs/SPACE_LIFECYCLE.md"
+      ],
+      "notes": "Selecting a theme is tested, including the unknown theme key and that it is administration."
     },
     {
       "operationId": "confluence-v1:PUT:/wiki/rest/api/user/{userId}/property/{key}",
@@ -1886,6 +1967,15 @@
         "docs/CUSTOM_CONTENT.md"
       ],
       "notes": "The operation read is tested."
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/data-policies/spaces",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_lifecycle_test.go",
+        "docs/SPACE_LIFECYCLE.md"
+      ],
+      "notes": "The data policy read is tested; no policy blocks content here, which is the answer rather than an omission."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/databases/{database-id}/properties/{property-id}",
@@ -2789,10 +2879,11 @@
       "operationId": "confluence-v2:GET:/wiki/api/v2/space-role-mode",
       "status": "partial",
       "evidence": [
-        "internal/confluence/space_permission_grants_test.go",
-        "docs/SPACE_PERMISSIONS.md"
+        "docs/SPACE_PERMISSIONS.md",
+        "internal/confluence/space_lifecycle_test.go",
+        "internal/confluence/space_permission_grants_test.go"
       ],
-      "notes": "The space role mode is tested; roles are this product's primary model, so it reports the settled mode rather than a site mid-migration."
+      "notes": "The space role mode is tested; it is read from what the site holds \u2014 grants without role assignments is PRE_ROLES, both is ROLES_TRANSITION, roles alone is ROLES."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/space-roles",
@@ -3440,7 +3531,7 @@
         "internal/confluence/permission_transition_test.go",
         "docs/SPACE_PERMISSION_TRANSITION.md"
       ],
-      "notes": "Removing access is tested end to end; it drops grants without assigning a role, and the empty id list and personal-space selections are refused."
+      "notes": "Removing access is tested end to end; it drops grants without assigning a role, the PERSONAL selection reaches only personal spaces, and the empty id list and unknown space type are refused."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/space-permissions/transition/combinations",

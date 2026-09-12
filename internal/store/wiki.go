@@ -180,7 +180,7 @@ const wikiPageRestrictionWritable = `(
 
 var wikiPageWritable = `(` + wikiSpaceVisible + `) AND (` + wikiSpaceCanUpdatePage + `) AND (` + wikiPageRestrictionWritable + `)`
 
-const wikiSpaceSelect = `SELECT s.id::text,s.workspace_id,s.key,s.name,s.description,s.author_id,s.private,s.default_classification_level,to_char(s.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM wiki_spaces s`
+const wikiSpaceSelect = `SELECT s.id::text,s.workspace_id,s.key,s.name,s.description,s.author_id,s.private,s.default_classification_level,to_char(s.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),s.space_type,s.alias,COALESCE(s.homepage_id::text,''),s.status,s.route_override_enabled,s.content_mode,s.theme_key FROM wiki_spaces s`
 const wikiPageSelect = `SELECT p.id::text,s.workspace_id,p.space_id::text,COALESCE(p.parent_id::text,''),p.title,p.status,p.published,p.classification_level,p.body,p.author_id,to_char(p.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),v.version,v.message,v.minor_edit,v.author_id,to_char(v.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM wiki_pages p JOIN wiki_spaces s ON s.id=p.space_id JOIN wiki_page_versions v ON v.page_id=p.id AND v.version=p.version`
 const wikiCommentSelect = `SELECT c.id::text,COALESCE(p.id::text,''),COALESCE(bp.id::text,''),COALESCE(p.space_id,bp.space_id)::text,COALESCE(c.attachment_id::text,''),COALESCE(c.parent_id::text,''),c.body,c.author_id,u.display_name,c.version,v.message,to_char(c.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),to_char(c.updated_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),v.author_id,to_char(v.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),c.comment_type,c.inline_selection,c.inline_match_count,c.inline_match_index,c.inline_marker_ref,c.resolution_status,COALESCE(c.resolution_modifier_id,''),COALESCE(to_char(c.resolution_modified_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),COALESCE(bp.author_id,''),COALESCE(bp.private,false),COALESCE(bp.published,false) FROM wiki_footer_comments c LEFT JOIN wiki_attachments ca ON ca.id=c.attachment_id LEFT JOIN wiki_pages p ON p.id=COALESCE(c.page_id,ca.page_id) LEFT JOIN wiki_blog_posts bp ON bp.id=COALESCE(c.blog_post_id,ca.blog_post_id) JOIN wiki_spaces s ON s.id=COALESCE(p.space_id,bp.space_id) JOIN users u ON u.id=c.author_id JOIN wiki_footer_comment_versions v ON v.comment_id=c.id AND v.version=c.version`
 
@@ -188,7 +188,9 @@ var wikiCommentVisible = `(` + wikiSpacePermissionAllowed("read/comment") + `) A
 
 func scanWikiSpace(row pgx.Row) (*models.WikiSpace, error) {
 	s := &models.WikiSpace{}
-	err := row.Scan(&s.ID, &s.WorkspaceID, &s.Key, &s.Name, &s.Description, &s.AuthorID, &s.Private, &s.DefaultClassificationLevel, &s.CreatedAt)
+	err := row.Scan(&s.ID, &s.WorkspaceID, &s.Key, &s.Name, &s.Description, &s.AuthorID, &s.Private,
+		&s.DefaultClassificationLevel, &s.CreatedAt, &s.Type, &s.Alias, &s.HomepageID, &s.Status,
+		&s.RouteOverrideEnabled, &s.ContentMode, &s.ThemeKey)
 	return s, err
 }
 func scanWikiPage(row pgx.Row) (*models.WikiPage, error) {

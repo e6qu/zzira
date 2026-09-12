@@ -480,6 +480,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.permissionAccessRemovals(w, r, ws, actor)
 	case len(parts) == 4 && parts[0] == "space-permissions" && parts[1] == "transition" && parts[2] == "tasks" && r.Method == "GET":
 		h.permissionTransitionTask(w, r, ws, actor, parts[3])
+	case len(parts) == 2 && parts[0] == "data-policies" && parts[1] == "spaces" && r.Method == "GET":
+		h.spaceDataPolicies(w, r, ws, actor)
 	case len(parts) == 1 && parts[0] == "space-permissions" && r.Method == "GET":
 		h.spacePermissionsCatalogue(w, r, ws, actor)
 	case len(parts) == 1 && parts[0] == "space-role-mode" && r.Method == "GET":
@@ -1281,7 +1283,20 @@ func (h *Handler) spaceBean(s *models.WikiSpace, descriptionFormat string, inclu
 	if descriptionFormat == "view" {
 		description.Value = "<p>" + strings.ReplaceAll(html.EscapeString(s.Description), "\n", "<br>") + "</p>"
 	}
-	bean := map[string]any{"id": s.ID, "key": s.Key, "name": s.Name, "type": "global", "status": "current", "authorId": s.AuthorID, "spaceOwnerId": s.AuthorID, "currentActiveAlias": s.Key, "createdAt": s.CreatedAt, "description": map[string]any{descriptionFormat: description}, "_links": map[string]string{"webui": "/spaces/" + s.ID, "base": h.BaseURL + "/wiki"}}
+	spaceType, status, alias := s.Type, s.Status, s.Key
+	if spaceType == "" {
+		spaceType = "global"
+	}
+	if status == "" {
+		status = "current"
+	}
+	if s.Alias != "" {
+		alias = s.Alias
+	}
+	bean := map[string]any{"id": s.ID, "key": s.Key, "name": s.Name, "type": spaceType, "status": status, "authorId": s.AuthorID, "spaceOwnerId": s.AuthorID, "currentActiveAlias": alias, "createdAt": s.CreatedAt, "description": map[string]any{descriptionFormat: description}, "_links": map[string]string{"webui": "/spaces/" + s.ID, "base": h.BaseURL + "/wiki"}}
+	if s.HomepageID != "" {
+		bean["homepageId"] = s.HomepageID
+	}
 	if includeIcon {
 		bean["icon"] = map[string]string{"path": "/static/img/space-default.svg", "apiDownloadLink": "/static/img/space-default.svg"}
 	}

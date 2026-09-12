@@ -8,25 +8,25 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
 ## Active delivery
 
-- Branch: `feat/pr1-space-permission-transition`
-- Base: `origin/main` after merged PR #101 (`98b3488`). The review queue is
+- Branch: `feat/pr1-confluence-space-lifecycle`
+- Base: `origin/main` after merged PR #102 (`f0452fb`). The review queue is
   empty; this is the only open branch.
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- State: permission transition checkpoint audited all five pinned operations
-  against a running server and found none working. They move a site from direct
-  space permission grants to roles, and they were not implementable before the
-  previous checkpoint, because only one of the two models existed. The work is
-  three steps because the middle one is a person's decision: scan the site for
-  the distinct permission sets people hold, decide once per combination what
-  each becomes, then apply it in the background. A migration nobody looked at
-  first is how a site loses access to its own content.
-  A combination is named by a hash of its permission set, so a rescan keeps an
-  administrator's unfinished decision valid; the name is workspace-independent,
-  so the workspace is part of the key rather than the id — the first test run
-  found that as a primary key collision across workspaces. One person holding
-  the same set in three spaces is one principal in three spaces, which the first
-  probe got wrong and reported as three principals. Applying a decision removes
-  the direct grants, or the site would be governed by both models at once.
+- State: space lifecycle checkpoint audited all eleven pinned operations
+  against a running server and found none working. Spaces carry more than a key
+  and a name: a type, an alias, a homepage, a status, per-space settings and an
+  optional theme, and the space bean reported a hardcoded `global`/`current`
+  rather than what the space actually was.
+  Personal spaces exist now, keyed `~accountId` as Confluence keys them. That
+  also completes the permission transition delivered previously: its `PERSONAL`
+  and `ALL_EXCEPT_PERSONAL` selections were refused because personal spaces did
+  not exist to select, and they now select what they name. `GET
+  /space-role-mode` likewise reads the site's actual state instead of answering
+  a constant.
+  Two bugs the probe found in the delete: it answers with a long task, and the
+  long task read knew only the page operations, so it pointed at a task nothing
+  would report; and the delete then failed on a foreign key, because a space's
+  pages do not cascade and its content and page versions hold them in place.
   Clean migrations, the full uncached Go/PostgreSQL suite, vet, native and
   WebAssembly builds, conformance checks, every Playwright journey, 320 px
   reflow, and the light/dark axe sweep pass.
@@ -91,19 +91,19 @@ PR #90's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Monitor the permission transition pull request through every CI job and
-   resolve review threads inline. **A stacked branch gets no CI here**: `.github/workflows/ci.yml`
+1. Monitor the space lifecycle pull request through every CI job and resolve
+   review threads inline. **A stacked branch gets no CI here**: `.github/workflows/ci.yml`
    triggers only on `pull_request` against `main`, and `gh pr checks` reports
    "no checks reported" rather than a failure, so a stacked PR can look fine and
    be unverified. Base every PR on `main` unless it genuinely needs a helper an
    open branch adds.
-2. The Confluence space permission surface is now complete. The largest
-   unassessed groups left are `confluence-v1 space` (12: the space lifecycle,
-   settings and theme), `confluence-v1 settings` (8), `confluence-v1 template`
-   (6), `confluence-v1 audit` (6) and `confluence-v1 relation` (5). The space
-   lifecycle is the natural next unit — create, update and delete a space, plus
-   its settings and theme — because `wiki_spaces` already exists and only the
-   v2 reads are delivered.
+2. The Confluence space surface is now complete. The largest unassessed
+   groups left are `confluence-v1 settings` (8: the site's look and feel and
+   themes, which the space theme inherits from), `confluence-v1 template` (6),
+   `confluence-v1 audit` (6), `confluence-v1 relation` (5) and
+   `confluence-v1 contentbody` (4). Site settings are the natural next unit,
+   because the space theme already reads a theme registry that the site-level
+   operations configure.
 3. Probe every operation against a running server before assessing; the eight
    audits so far ran 11 of 15, 8 of 33, 5 of 13, 16 of 17, 4 of 14, 2 of 11,
    0 of 17 and 0 of 8, so the result is not predictable from how well tested a
@@ -144,6 +144,7 @@ PR #90's final GitHub matrix passed its required suites before merge.
 - [Confluence groups](WIKI_GROUPS.md)
 - [Confluence space permissions](SPACE_PERMISSIONS.md)
 - [Space permission transition](SPACE_PERMISSION_TRANSITION.md)
+- [Confluence space lifecycle](SPACE_LIFECYCLE.md)
 - [Confluence content states](CONTENT_STATES.md)
 - [Confluence page moves and copies](PAGE_MOVES.md)
 

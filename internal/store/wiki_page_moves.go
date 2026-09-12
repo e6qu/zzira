@@ -549,7 +549,9 @@ func (s *Store) WikiLongTasks(ctx context.Context, ws, actor, taskID string) ([]
 	}
 	query := `SELECT ` + prefixedAPITaskColumns("task") + ` FROM api_tasks task
 		WHERE task.workspace_id=$1 AND task.kind = ANY($2)`
-	args := []any{ws, []string{apiTaskWikiCopyHierarchy, apiTaskWikiArchivePages, apiTaskWikiTrashPageTree}}
+	// Deleting a space answers with a long task too, so it has to be one the
+	// long task reads will report.
+	args := []any{ws, []string{apiTaskWikiCopyHierarchy, apiTaskWikiArchivePages, apiTaskWikiTrashPageTree, apiTaskWikiDeleteSpace}}
 	if taskID != "" {
 		query += ` AND task.id=$3`
 		args = append(args, taskID)

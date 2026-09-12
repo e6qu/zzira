@@ -185,13 +185,21 @@ func TestSpacePermissionTransition(t *testing.T) {
 	roleResults, _ := roles["results"].([]any)
 	roleID := roleResults[0].(map[string]any)["id"].(string)
 
-	// A space selection this product cannot honor is refused rather than
-	// quietly matching something else.
-	for _, spaceType := range []string{"PERSONAL", "ALL_EXCEPT_PERSONAL"} {
-		callV2(admin, "POST", "/space-permissions/transition/access-removals", map[string]any{
-			"permissionCombinationIds": []string{pairID},
-			"spaceSelection":           map[string]any{"spaceType": spaceType}}, 400)
+	// A personal space selection reaches only personal spaces. TRA and TRB are
+	// global, so a personal removal leaves their grants alone.
+	personalRemoval := object(callV2(admin, "POST", "/space-permissions/transition/access-removals", map[string]any{
+		"permissionCombinationIds": []string{pairID},
+		"spaceSelection":           map[string]any{"spaceType": "PERSONAL"}}, 202))
+	personalTask, _ := personalRemoval["taskId"].(string)
+	if finished := runTask(admin, personalTask); finished["status"] != "COMPLETED" {
+		t.Fatalf("personal removal did not complete: %v", finished)
 	}
+	if grants("TRA") != 3 || grants("TRB") != 2 {
+		t.Fatalf("a personal selection touched global spaces: TRA=%d TRB=%d", grants("TRA"), grants("TRB"))
+	}
+	callV2(admin, "POST", "/space-permissions/transition/access-removals", map[string]any{
+		"permissionCombinationIds": []string{pairID},
+		"spaceSelection":           map[string]any{"spaceType": "sideways"}}, 400)
 	callV2(admin, "POST", "/space-permissions/transition/access-removals", map[string]any{
 		"permissionCombinationIds": []string{pairID},
 		"spaceSelection":           map[string]any{"spaceType": "SPECIFIC"}}, 400)
