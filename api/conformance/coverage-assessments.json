@@ -2768,6 +2768,24 @@
       "notes": "The catalogue of grantable permissions is tested; it is derived from the permissions the system roles enforce, so it cannot advertise one nothing checks, and every entry but the view permission names it as a prerequisite."
     },
     {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/space-permissions/transition/combinations",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/permission_transition_test.go",
+        "docs/SPACE_PERMISSION_TRANSITION.md"
+      ],
+      "notes": "The combinations are tested: two sets told apart, the principal and space counts (one person in two spaces is one principal), and that a set already matching a role is left out. Cursor paging remains."
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/space-permissions/transition/tasks/{taskId}",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/permission_transition_test.go",
+        "docs/SPACE_PERMISSION_TRANSITION.md"
+      ],
+      "notes": "Reading a transition task is tested for the scan, the assignment and the removal, including the 404 for an unknown id and that it is administration."
+    },
+    {
       "operationId": "confluence-v2:GET:/wiki/api/v2/space-role-mode",
       "status": "partial",
       "evidence": [
@@ -3414,6 +3432,33 @@
         "e2e/wiki.spec.ts"
       ],
       "notes": "Creates validated uniquely keyed JSON properties on writable current pages atomically with version one and a permission-filtered sync action; app scope enforcement remains."
+    },
+    {
+      "operationId": "confluence-v2:POST:/wiki/api/v2/space-permissions/transition/access-removals",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/permission_transition_test.go",
+        "docs/SPACE_PERMISSION_TRANSITION.md"
+      ],
+      "notes": "Removing access is tested end to end; it drops grants without assigning a role, and the empty id list and personal-space selections are refused."
+    },
+    {
+      "operationId": "confluence-v2:POST:/wiki/api/v2/space-permissions/transition/combinations",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/permission_transition_test.go",
+        "docs/SPACE_PERMISSION_TRANSITION.md"
+      ],
+      "notes": "Queuing the scan is tested end to end, including that it is administration."
+    },
+    {
+      "operationId": "confluence-v2:POST:/wiki/api/v2/space-permissions/transition/role-assignments",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/permission_transition_test.go",
+        "docs/SPACE_PERMISSION_TRANSITION.md"
+      ],
+      "notes": "Applying decisions is tested end to end: the role is assigned only in the selected spaces, the transitioned subject's grants go, an untransitioned subject in the same space keeps theirs, and a missing role id or unsupported space selection is refused."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/space-roles",

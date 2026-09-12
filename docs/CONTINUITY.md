@@ -8,24 +8,25 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
 ## Active delivery
 
-- Branch: `feat/pr1-confluence-space-permissions`
-- Base: `origin/main` after merged PR #100 (`be7cfe2`). The review queue is
+- Branch: `feat/pr1-space-permission-transition`
+- Base: `origin/main` after merged PR #101 (`98b3488`). The review queue is
   empty; this is the only open branch.
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- State: space permission checkpoint audited all six pinned operations in this
-  family against a running server and found none working, and the reason was
-  the model: Confluence says who may do what two ways — a role gathering
-  permissions, and a direct grant of one permission to one subject — and this
-  product had only roles, so the older API had nothing to write to. Grants exist
-  now alongside role assignments and the permission check accepts either.
-  Two things the first probe caught. Confluence has a single View permission per
-  space, not one per content type, so a granted `read/space` has to satisfy this
-  product's separate `read/*` permissions; without that the API would be
-  faithful in shape and wrong in effect. And the first grant closes a space to
-  everyone it does not name, which locked the administrator out of the space
-  they were configuring — so the grant operations resolve the space without the
-  ordinary visibility gate for a workspace administrator, which is the product's
-  existing rule that an administrator administers every space.
+- State: permission transition checkpoint audited all five pinned operations
+  against a running server and found none working. They move a site from direct
+  space permission grants to roles, and they were not implementable before the
+  previous checkpoint, because only one of the two models existed. The work is
+  three steps because the middle one is a person's decision: scan the site for
+  the distinct permission sets people hold, decide once per combination what
+  each becomes, then apply it in the background. A migration nobody looked at
+  first is how a site loses access to its own content.
+  A combination is named by a hash of its permission set, so a rescan keeps an
+  administrator's unfinished decision valid; the name is workspace-independent,
+  so the workspace is part of the key rather than the id — the first test run
+  found that as a primary key collision across workspaces. One person holding
+  the same set in three spaces is one principal in three spaces, which the first
+  probe got wrong and reported as three principals. Applying a decision removes
+  the direct grants, or the site would be governed by both models at once.
   Clean migrations, the full uncached Go/PostgreSQL suite, vet, native and
   WebAssembly builds, conformance checks, every Playwright journey, 320 px
   reflow, and the light/dark axe sweep pass.
@@ -90,17 +91,19 @@ PR #90's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Monitor the space permission pull request through every CI job and resolve
-   review threads inline. **A stacked branch gets no CI here**: `.github/workflows/ci.yml`
+1. Monitor the permission transition pull request through every CI job and
+   resolve review threads inline. **A stacked branch gets no CI here**: `.github/workflows/ci.yml`
    triggers only on `pull_request` against `main`, and `gh pr checks` reports
    "no checks reported" rather than a failure, so a stacked PR can look fine and
    be unverified. Base every PR on `main` unless it genuinely needs a helper an
    open branch adds.
-2. The five `space-permissions/transition/*` operations are the natural next
-   unit. They migrate a site from direct grants to roles, and both models now
-   exist, so they have something real to move between — which they did not
-   before this checkpoint. After that: `confluence-v1 space` (12 left),
-   `settings` (8), `template` (6), `audit` (6) and `relation` (5).
+2. The Confluence space permission surface is now complete. The largest
+   unassessed groups left are `confluence-v1 space` (12: the space lifecycle,
+   settings and theme), `confluence-v1 settings` (8), `confluence-v1 template`
+   (6), `confluence-v1 audit` (6) and `confluence-v1 relation` (5). The space
+   lifecycle is the natural next unit — create, update and delete a space, plus
+   its settings and theme — because `wiki_spaces` already exists and only the
+   v2 reads are delivered.
 3. Probe every operation against a running server before assessing; the eight
    audits so far ran 11 of 15, 8 of 33, 5 of 13, 16 of 17, 4 of 14, 2 of 11,
    0 of 17 and 0 of 8, so the result is not predictable from how well tested a
@@ -140,6 +143,7 @@ PR #90's final GitHub matrix passed its required suites before merge.
 - [Confluence users](WIKI_USERS.md)
 - [Confluence groups](WIKI_GROUPS.md)
 - [Confluence space permissions](SPACE_PERMISSIONS.md)
+- [Space permission transition](SPACE_PERMISSION_TRANSITION.md)
 - [Confluence content states](CONTENT_STATES.md)
 - [Confluence page moves and copies](PAGE_MOVES.md)
 

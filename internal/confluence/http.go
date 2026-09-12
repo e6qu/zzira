@@ -472,6 +472,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.attachmentVersion(w, r, ws, actor, parts[1], parts[3])
 	case len(parts) == 3 && parts[0] == "pages" && parts[2] == "attachments" && r.Method == "GET":
 		h.attachments(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "space-permissions" && parts[1] == "transition" && parts[2] == "combinations":
+		h.permissionCombinations(w, r, ws, actor)
+	case len(parts) == 3 && parts[0] == "space-permissions" && parts[1] == "transition" && parts[2] == "role-assignments" && r.Method == "POST":
+		h.permissionRoleAssignments(w, r, ws, actor)
+	case len(parts) == 3 && parts[0] == "space-permissions" && parts[1] == "transition" && parts[2] == "access-removals" && r.Method == "POST":
+		h.permissionAccessRemovals(w, r, ws, actor)
+	case len(parts) == 4 && parts[0] == "space-permissions" && parts[1] == "transition" && parts[2] == "tasks" && r.Method == "GET":
+		h.permissionTransitionTask(w, r, ws, actor, parts[3])
 	case len(parts) == 1 && parts[0] == "space-permissions" && r.Method == "GET":
 		h.spacePermissionsCatalogue(w, r, ws, actor)
 	case len(parts) == 1 && parts[0] == "space-role-mode" && r.Method == "GET":
