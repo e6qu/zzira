@@ -176,6 +176,14 @@ func (h *V1Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.v1RemoveSpacePermission(w, r, ws, actor, parts[1], parts[3])
 	case len(parts) == 4 && parts[0] == "content" && parts[2] == "permission" && parts[3] == "check" && r.Method == "POST":
 		h.v1CheckContentPermission(w, r, ws, actor, parts[1])
+	case len(parts) == 6 && parts[0] == "relation" && parts[2] == "from" && parts[5] == "to" && r.Method == "GET":
+		failure(w, 400, "A relation listing names the type of entity at the far end.")
+	case len(parts) == 7 && parts[0] == "relation" && parts[2] == "from" && parts[5] == "to" && r.Method == "GET":
+		h.v1RelationTargets(w, r, ws, actor, parts[1], parts[3], parts[4], parts[6])
+	case len(parts) == 8 && parts[0] == "relation" && parts[2] == "from" && parts[5] == "to":
+		h.v1Relation(w, r, ws, actor, parts[1], parts[3], parts[4], parts[6], parts[7])
+	case len(parts) == 7 && parts[0] == "relation" && parts[2] == "to" && parts[5] == "from" && r.Method == "GET":
+		h.v1RelationSources(w, r, ws, actor, parts[1], parts[3], parts[4], parts[6])
 	case len(parts) == 1 && parts[0] == "group":
 		h.v1Groups(w, r, ws, actor)
 	case len(parts) == 2 && parts[0] == "group" && parts[1] == "by-id":

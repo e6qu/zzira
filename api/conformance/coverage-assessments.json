@@ -244,6 +244,17 @@
       "notes": "Removing a person is tested, including that it is administration and that removing twice is a 404 because there is nothing to remove."
     },
     {
+      "operationId": "confluence-v1:DELETE:/wiki/rest/api/relation/{relationName}/from/{sourceType}/{sourceKey}/to/{targetType}/{targetKey}",
+      "status": "partial",
+      "evidence": [
+        "internal/store/wiki_relations.go",
+        "internal/confluence/relations.go",
+        "internal/confluence/relations_test.go",
+        "docs/CONTENT_RELATIONS.md"
+      ],
+      "notes": "Removes a relation and answers 204 whether or not it was there, while an entity that does not exist is still 404."
+    },
+    {
       "operationId": "confluence-v1:DELETE:/wiki/rest/api/settings/lookandfeel/custom",
       "status": "partial",
       "evidence": [
@@ -707,6 +718,39 @@
         "docs/PAGE_MOVES.md"
       ],
       "notes": "One task is read back, for both a successful and a failed operation, including the 404 for an unknown id."
+    },
+    {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/relation/{relationName}/from/{sourceType}/{sourceKey}/to/{targetType}",
+      "status": "partial",
+      "evidence": [
+        "internal/store/wiki_relations.go",
+        "internal/confluence/relations.go",
+        "internal/confluence/relations_test.go",
+        "docs/CONTENT_RELATIONS.md"
+      ],
+      "notes": "Lists what a source is related to, filtered by the far entity type and by content status and version, expanding relationData, source and target, and directing favourite and like reads to their own endpoints."
+    },
+    {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/relation/{relationName}/from/{sourceType}/{sourceKey}/to/{targetType}/{targetKey}",
+      "status": "partial",
+      "evidence": [
+        "internal/store/wiki_relations.go",
+        "internal/confluence/relations.go",
+        "internal/confluence/relations_test.go",
+        "docs/CONTENT_RELATIONS.md"
+      ],
+      "notes": "Reads one relation, 404 when it does not exist, with relationData naming who created it and when."
+    },
+    {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/relation/{relationName}/to/{targetType}/{targetKey}/from/{sourceType}",
+      "status": "partial",
+      "evidence": [
+        "internal/store/wiki_relations.go",
+        "internal/confluence/relations.go",
+        "internal/confluence/relations_test.go",
+        "docs/CONTENT_RELATIONS.md"
+      ],
+      "notes": "Lists what is related to a target; relations are one way, so this answers a different question from the source listing rather than mirroring it."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/search/user",
@@ -1418,6 +1462,17 @@
         "docs/PAGE_MOVES.md"
       ],
       "notes": "All four positions are tested by the order a reader then sees, not by the status code; an unknown position, a move relative to itself and a move beneath its own descendant are refused. Moving between spaces remains."
+    },
+    {
+      "operationId": "confluence-v1:PUT:/wiki/rest/api/relation/{relationName}/from/{sourceType}/{sourceKey}/to/{targetType}/{targetKey}",
+      "status": "partial",
+      "evidence": [
+        "internal/store/wiki_relations.go",
+        "internal/confluence/relations.go",
+        "internal/confluence/relations_test.go",
+        "docs/CONTENT_RELATIONS.md"
+      ],
+      "notes": "Creates a relation between a user, space or content pair; favourite runs from a user to a space or content, creating an existing relation is idempotent, and making one for another person requires site administration."
     },
     {
       "operationId": "confluence-v1:PUT:/wiki/rest/api/settings/lookandfeel",
