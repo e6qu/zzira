@@ -16,6 +16,10 @@ import (
 
 const apiTaskWikiDeleteSpace = "wiki-delete-space"
 
+// DefaultWikiThemeKey is what a site shows when no theme is chosen, which is
+// why Confluence leaves it out of the list of themes to choose from.
+const DefaultWikiThemeKey = "com.atlassian.confluence.plugins.confluence-default-theme:default"
+
 // wikiThemes is the set of themes a space may select.
 var wikiThemes = map[string]models.WikiTheme{
 	"com.atlassian.confluence.plugins.confluence-default-theme:default": {

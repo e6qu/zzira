@@ -106,6 +106,18 @@ func (h *V1Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.v1SpaceWatchers(w, r, ws, actor, parts[1])
 	case len(parts) == 4 && parts[0] == "user" && parts[1] == "watch":
 		h.v1UserWatch(w, r, ws, actor, parts[2], parts[3])
+	case len(parts) == 2 && parts[0] == "settings" && parts[1] == "lookandfeel":
+		h.v1LookAndFeel(w, r, ws, actor)
+	case len(parts) == 3 && parts[0] == "settings" && parts[1] == "lookandfeel" && parts[2] == "custom":
+		h.v1CustomLookAndFeel(w, r, ws, actor)
+	case len(parts) == 2 && parts[0] == "settings" && parts[1] == "systemInfo" && r.Method == "GET":
+		h.v1SystemInfo(w, r, ws, actor)
+	case len(parts) == 2 && parts[0] == "settings" && parts[1] == "theme" && r.Method == "GET":
+		h.v1Themes(w, r, ws, actor)
+	case len(parts) == 3 && parts[0] == "settings" && parts[1] == "theme" && parts[2] == "selected" && r.Method == "GET":
+		h.v1SelectedTheme(w, r, ws, actor)
+	case len(parts) == 3 && parts[0] == "settings" && parts[1] == "theme" && r.Method == "GET":
+		h.v1ThemeByKey(w, r, ws, actor, parts[2])
 	case len(parts) == 1 && parts[0] == "space" && r.Method == "POST":
 		h.v1CreateSpace(w, r, ws, actor, false)
 	case len(parts) == 2 && parts[0] == "space" && parts[1] == "_private" && r.Method == "POST":

@@ -235,6 +235,15 @@
       "notes": "Removing a person is tested, including that it is administration and that removing twice is a 404 because there is nothing to remove."
     },
     {
+      "operationId": "confluence-v1:DELETE:/wiki/rest/api/settings/lookandfeel/custom",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/site_settings_test.go",
+        "docs/SITE_SETTINGS.md"
+      ],
+      "notes": "Resetting is tested; it returns the custom values to the defaults and leaves the selection where it was."
+    },
+    {
       "operationId": "confluence-v1:DELETE:/wiki/rest/api/space/{spaceKey}",
       "status": "partial",
       "evidence": [
@@ -610,6 +619,51 @@
       "notes": "The user search is tested for a match and a miss; a CQL query naming a field this does not filter on is refused rather than matching everyone. sitePermissionTypeFilter remains."
     },
     {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/settings/lookandfeel",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/site_settings_test.go",
+        "docs/SITE_SETTINGS.md"
+      ],
+      "notes": "Reading the look and feel is tested for the site and for one space, including the whole structure and the 404 for an unknown space."
+    },
+    {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/settings/systemInfo",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/site_settings_test.go",
+        "docs/SITE_SETTINGS.md"
+      ],
+      "notes": "The system information is tested, including the cloud id, site title and base URL; commitHash is empty."
+    },
+    {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/settings/theme",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/site_settings_test.go",
+        "docs/SITE_SETTINGS.md"
+      ],
+      "notes": "The theme list is tested, including that the default theme is left out because it is what a site shows rather than a theme to choose."
+    },
+    {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/settings/theme/selected",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/site_settings_test.go",
+        "docs/SITE_SETTINGS.md"
+      ],
+      "notes": "The site's assigned theme is tested; a site with none reports none rather than the default. No pinned operation assigns one."
+    },
+    {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/settings/theme/{themeKey}",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/site_settings_test.go",
+        "docs/SITE_SETTINGS.md"
+      ],
+      "notes": "Reading one theme is tested, including the default by key and the 404 for an unknown one."
+    },
+    {
       "operationId": "confluence-v1:GET:/wiki/rest/api/space/{spaceKey}/label",
       "status": "partial",
       "notes": "Returns a legacy paginated LabelArray for a visible space with prefix filtering.",
@@ -942,6 +996,15 @@
       "notes": "Adding a person is tested, including that it is administration, that adding twice succeeds because the request describes a state, and the 404 for someone outside the workspace."
     },
     {
+      "operationId": "confluence-v1:POST:/wiki/rest/api/settings/lookandfeel/custom",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/site_settings_test.go",
+        "docs/SITE_SETTINGS.md"
+      ],
+      "notes": "Writing the custom settings is tested for the site, including that it does not select them, the refused empty body, and that it is administration."
+    },
+    {
       "operationId": "confluence-v1:POST:/wiki/rest/api/space",
       "status": "partial",
       "evidence": [
@@ -1157,6 +1220,15 @@
         "docs/PAGE_MOVES.md"
       ],
       "notes": "All four positions are tested by the order a reader then sees, not by the status code; an unknown position, a move relative to itself and a move beneath its own descendant are refused. Moving between spaces remains."
+    },
+    {
+      "operationId": "confluence-v1:PUT:/wiki/rest/api/settings/lookandfeel",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/site_settings_test.go",
+        "docs/SITE_SETTINGS.md"
+      ],
+      "notes": "Choosing which settings a space shows is tested, including that the site itself cannot choose because its look is the global one, the refused unknown type, the refused theme selection on a space with no theme, and that it is administration."
     },
     {
       "operationId": "confluence-v1:PUT:/wiki/rest/api/space/{spaceKey}",
