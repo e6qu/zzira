@@ -106,6 +106,24 @@ func (h *V1Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.v1SpaceWatchers(w, r, ws, actor, parts[1])
 	case len(parts) == 4 && parts[0] == "user" && parts[1] == "watch":
 		h.v1UserWatch(w, r, ws, actor, parts[2], parts[3])
+	case len(parts) == 3 && parts[0] == "content" && parts[2] == "version" && r.Method == "POST":
+		h.v1RestoreVersion(w, r, ws, actor, parts[1])
+	case len(parts) == 4 && parts[0] == "content" && parts[2] == "version" && r.Method == "DELETE":
+		h.v1DeleteVersion(w, r, ws, actor, parts[1], parts[3])
+	case len(parts) == 6 && parts[0] == "content" && parts[2] == "history" && parts[4] == "macro" && r.Method == "GET":
+		failure(w, 404, "This Confluence v1 resource is not implemented.")
+	case len(parts) == 7 && parts[0] == "content" && parts[2] == "history" && parts[4] == "macro" && parts[5] == "id" && r.Method == "GET":
+		h.v1HistoricalMacro(w, r, ws, actor, parts[1], parts[3], parts[6])
+	case len(parts) == 9 && parts[0] == "content" && parts[2] == "history" && parts[4] == "macro" && parts[5] == "id" && parts[7] == "convert" && r.Method == "GET":
+		h.v1ConvertHistoricalMacro(w, r, ws, actor, parts[1], parts[3], parts[6], parts[8], false)
+	case len(parts) == 10 && parts[0] == "content" && parts[2] == "history" && parts[4] == "macro" && parts[5] == "id" && parts[7] == "convert" && parts[8] == "async" && r.Method == "GET":
+		h.v1ConvertHistoricalMacro(w, r, ws, actor, parts[1], parts[3], parts[6], parts[9], true)
+	case len(parts) == 5 && parts[0] == "contentbody" && parts[1] == "convert" && parts[2] == "async" && parts[3] == "bulk" && parts[4] == "tasks":
+		h.v1BulkConversions(w, r, ws, actor)
+	case len(parts) == 4 && parts[0] == "contentbody" && parts[1] == "convert" && parts[2] == "async" && r.Method == "POST":
+		h.v1ConvertBodyAsync(w, r, ws, actor, parts[3])
+	case len(parts) == 4 && parts[0] == "contentbody" && parts[1] == "convert" && parts[2] == "async" && r.Method == "GET":
+		h.v1ConversionResult(w, r, ws, actor, parts[3])
 	case len(parts) == 1 && parts[0] == "audit":
 		h.v1AuditLog(w, r, ws, actor)
 	case len(parts) == 2 && parts[0] == "audit" && parts[1] == "since" && r.Method == "GET":
