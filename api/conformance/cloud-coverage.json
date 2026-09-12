@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 881,
+  "assessedTotal": 889,
   "counts": {
     "delivered": 0,
-    "partial": 870,
+    "partial": 878,
     "missing": 11,
-    "unassessed": 326
+    "unassessed": 318
   },
   "countsByFamily": {
     "automation": {
@@ -18,9 +18,9 @@
     },
     "confluence": {
       "delivered": 0,
-      "partial": 300,
+      "partial": 308,
       "missing": 0,
-      "unassessed": 48
+      "unassessed": 40
     },
     "jira-platform": {
       "delivered": 0,
@@ -8840,17 +8840,23 @@
       "operationId": "confluence-v1:POST:/wiki/rest/api/content/blueprint/instance/{draftId}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/templates_test.go",
+        "docs/CONTENT_TEMPLATES.md"
+      ],
+      "notes": "The legacy draft publish is tested and behaves the same way, which is what Confluence says of it."
     },
     {
       "operationId": "confluence-v1:PUT:/wiki/rest/api/content/blueprint/instance/{draftId}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/templates_test.go",
+        "docs/CONTENT_TEMPLATES.md"
+      ],
+      "notes": "Publishing a shared draft is tested: it becomes a current page with the given title, records a version, refuses a stale version, and cannot be published twice."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/content/search",
@@ -9982,49 +9988,67 @@
       "operationId": "confluence-v1:POST:/wiki/rest/api/template",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/templates_test.go",
+        "docs/CONTENT_TEMPLATES.md"
+      ],
+      "notes": "Creating a content template is tested for the site and for a space, including the labels and body round trip, the refused empty name and unknown type, that it is administration, and that a blueprint's template cannot be created."
     },
     {
       "operationId": "confluence-v1:PUT:/wiki/rest/api/template",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/templates_test.go",
+        "docs/CONTENT_TEMPLATES.md"
+      ],
+      "notes": "Updating is tested, including the required template id and that a blueprint owns its template so the API will not write it."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/template/blueprint",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/templates_test.go",
+        "docs/CONTENT_TEMPLATES.md"
+      ],
+      "notes": "The blueprint listing is tested, including that each names the plugin and module it came from and that a space inherits every global blueprint."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/template/page",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/templates_test.go",
+        "docs/CONTENT_TEMPLATES.md"
+      ],
+      "notes": "The content template listing is tested for the site and for a space; a space inherits the site's templates while the site listing carries only its own."
     },
     {
       "operationId": "confluence-v1:DELETE:/wiki/rest/api/template/{contentTemplateId}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/templates_test.go",
+        "docs/CONTENT_TEMPLATES.md"
+      ],
+      "notes": "Deleting a content template is tested, including that it is administration and that a blueprint id is refused because there is no modification to remove."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/template/{contentTemplateId}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/templates_test.go",
+        "docs/CONTENT_TEMPLATES.md"
+      ],
+      "notes": "Reading one template is tested for a content template and a blueprint, including the 404 for an unknown id."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/user",

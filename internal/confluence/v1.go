@@ -106,6 +106,18 @@ func (h *V1Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.v1SpaceWatchers(w, r, ws, actor, parts[1])
 	case len(parts) == 4 && parts[0] == "user" && parts[1] == "watch":
 		h.v1UserWatch(w, r, ws, actor, parts[2], parts[3])
+	case len(parts) == 1 && parts[0] == "template" && r.Method == "POST":
+		h.v1SaveTemplate(w, r, ws, actor, false)
+	case len(parts) == 1 && parts[0] == "template" && r.Method == "PUT":
+		h.v1SaveTemplate(w, r, ws, actor, true)
+	case len(parts) == 2 && parts[0] == "template" && parts[1] == "page" && r.Method == "GET":
+		h.v1PageTemplates(w, r, ws, actor)
+	case len(parts) == 2 && parts[0] == "template" && parts[1] == "blueprint" && r.Method == "GET":
+		h.v1BlueprintTemplates(w, r, ws, actor)
+	case len(parts) == 2 && parts[0] == "template":
+		h.v1Template(w, r, ws, actor, parts[1])
+	case len(parts) == 4 && parts[0] == "content" && parts[1] == "blueprint" && parts[2] == "instance":
+		h.v1PublishBlueprintDraft(w, r, ws, actor, parts[3])
 	case len(parts) == 2 && parts[0] == "settings" && parts[1] == "lookandfeel":
 		h.v1LookAndFeel(w, r, ws, actor)
 	case len(parts) == 3 && parts[0] == "settings" && parts[1] == "lookandfeel" && parts[2] == "custom":
