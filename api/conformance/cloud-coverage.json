@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 909,
+  "assessedTotal": 911,
   "counts": {
     "delivered": 0,
-    "partial": 898,
+    "partial": 900,
     "missing": 11,
-    "unassessed": 298
+    "unassessed": 296
   },
   "countsByFamily": {
     "automation": {
@@ -18,9 +18,9 @@
     },
     "confluence": {
       "delivered": 0,
-      "partial": 328,
+      "partial": 330,
       "missing": 0,
-      "unassessed": 20
+      "unassessed": 18
     },
     "jira-platform": {
       "delivered": 0,
@@ -8880,9 +8880,17 @@
       "operationId": "confluence-v1:GET:/wiki/rest/api/content/search",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/cql/cql.go",
+        "internal/cql/compile.go",
+        "internal/cql/cql_test.go",
+        "internal/store/wiki_search.go",
+        "internal/confluence/search.go",
+        "internal/confluence/search_test.go",
+        "docs/CQL_SEARCH.md"
+      ],
+      "notes": "The same CQL engine returning content beans rather than search results, restricted to content so a space is never a result however the query is written."
     },
     {
       "operationId": "confluence-v1:POST:/wiki/rest/api/content/{id}/child/attachment",
@@ -9714,9 +9722,17 @@
       "operationId": "confluence-v1:GET:/wiki/rest/api/search",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/cql/cql.go",
+        "internal/cql/compile.go",
+        "internal/cql/cql_test.go",
+        "internal/store/wiki_search.go",
+        "internal/confluence/search.go",
+        "internal/confluence/search_test.go",
+        "docs/CQL_SEARCH.md"
+      ],
+      "notes": "CQL search across pages, blog posts, comments, attachments and spaces with 18 fields, AND/OR/NOT and brackets, IN and NOT IN, currentUser/currentSpace/favouriteSpaces and the relative date functions, ORDER BY, cqlcontext scoping, excerpt strategies and cursor paging; every branch carries the reader's own visibility rules, so results and totals exclude what they may not open."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/search/user",
