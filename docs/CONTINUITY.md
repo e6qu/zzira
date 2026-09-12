@@ -8,23 +8,23 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
 ## Active delivery
 
-- Branch: `feat/pr1-confluence-templates`
-- Base: `origin/main` after merged PR #104 (`d76f385`). The review queue is
+- Branch: `feat/pr1-confluence-audit`
+- Base: `origin/main` after merged PR #105 (`4b0a678`). The review queue is
   empty; this is the only open branch.
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- State: content template checkpoint audited all eight pinned operations
-  against a running server and found none working. Confluence has two kinds of
-  template and the difference decides what the API may do: a content template is
-  written through the API, while a blueprint template comes from a blueprint, so
-  the API refuses to create or update one. The blueprint templates are what this
-  site's blueprints provide rather than rows anyone wrote, which is why the
-  refusal is the right shape rather than a limitation. A space inherits the
-  site's content templates and every global blueprint.
-  A bug the first probe found: the create and update answered 404 while
-  succeeding. They wrote the row and read it back in one statement through a
-  data-modifying CTE, whose rows are not in the outer query's snapshot. That is
-  the second time this shape has appeared — a write is only visible to the
-  transaction that made it — so both are now one transaction.
+- State: audit log checkpoint audited all six pinned operations against a
+  running server and found none working. The first question was whether
+  Confluence's audit records belong in the existing `organization_audit_events`
+  table. They do not: that log belongs to the organization across its products
+  and carries an action, a target and a detail, while a Confluence record has an
+  author, a remote address, a summary, a category, the object affected and the
+  values that changed. Folding one into the other would lose the shape each
+  surface reports, so they are separate.
+  The retention is how long a record is kept from its creation date until it is
+  deleted, so two things follow and both are tested: a record past the retention
+  is not in the log, and setting the retention deletes what falls outside it
+  rather than hiding it — a record that reappeared when the period was
+  lengthened would not have been deleted.
   Clean migrations, the full uncached Go/PostgreSQL suite, vet, native and
   WebAssembly builds, conformance checks, every Playwright journey, 320 px
   reflow, and the light/dark axe sweep pass.
@@ -89,20 +89,20 @@ PR #90's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Monitor the content template pull request through every CI job and resolve
-   review threads inline. **A stacked branch gets no CI here**: `.github/workflows/ci.yml`
+1. Monitor the audit log pull request through every CI job and resolve review
+   threads inline. **A stacked branch gets no CI here**: `.github/workflows/ci.yml`
    triggers only on `pull_request` against `main`, and `gh pr checks` reports
    "no checks reported" rather than a failure, so a stacked PR can look fine and
    be unverified. Base every PR on `main` unless it genuinely needs a helper an
    open branch adds.
-2. The largest unassessed groups left are `confluence-v1 audit` (6),
-   `confluence-v1 relation` (5), `confluence-v1 contentbody` (4),
-   `confluence-v1 analytics` (2), `confluence-v1 search` (2) and the remaining
-   `confluence-v1 content` operations (macro reads, `content/search`, version
-   restore and delete, copy and move). The audit log is the natural next unit:
-   `organization_audit_events` already exists for the organization surface, so
-   check whether Confluence's audit records belong in it before adding a second
-   table.
+2. The largest unassessed groups left are `confluence-v1 relation` (5),
+   `confluence-v1 contentbody` (4), `confluence-v1 analytics` (2),
+   `confluence-v1 search` (2), `confluence-v1 content-states` (done) and the
+   remaining `confluence-v1 content` operations: the three macro reads, the two
+   content version operations (restore and delete), `content/search`, and
+   `content/{id}/permission/check` (done). Content versions are the natural next
+   unit — restoring and deleting a version — because `wiki_page_versions`
+   already holds them and only the reads are delivered.
 3. Probe every operation against a running server before assessing; the eight
    audits so far ran 11 of 15, 8 of 33, 5 of 13, 16 of 17, 4 of 14, 2 of 11,
    0 of 17 and 0 of 8, so the result is not predictable from how well tested a
@@ -146,6 +146,7 @@ PR #90's final GitHub matrix passed its required suites before merge.
 - [Confluence space lifecycle](SPACE_LIFECYCLE.md)
 - [Confluence site settings](SITE_SETTINGS.md)
 - [Confluence content templates](CONTENT_TEMPLATES.md)
+- [Confluence audit log](WIKI_AUDIT.md)
 - [Confluence content states](CONTENT_STATES.md)
 - [Confluence page moves and copies](PAGE_MOVES.md)
 
