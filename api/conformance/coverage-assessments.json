@@ -287,6 +287,15 @@
       "notes": "Resetting the theme is tested, including the 404 when no theme is set."
     },
     {
+      "operationId": "confluence-v1:DELETE:/wiki/rest/api/template/{contentTemplateId}",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/templates_test.go",
+        "docs/CONTENT_TEMPLATES.md"
+      ],
+      "notes": "Deleting a content template is tested, including that it is administration and that a blueprint id is refused because there is no modification to remove."
+    },
+    {
       "operationId": "confluence-v1:DELETE:/wiki/rest/api/user/watch/content/{contentId}",
       "status": "partial",
       "notes": "Durable page-content, space, and label watches support current-user and administrator-targeted status/mutation, XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; other content types, Confluence space-admin roles, and email delivery remain.",
@@ -741,6 +750,33 @@
       ]
     },
     {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/template/blueprint",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/templates_test.go",
+        "docs/CONTENT_TEMPLATES.md"
+      ],
+      "notes": "The blueprint listing is tested, including that each names the plugin and module it came from and that a space inherits every global blueprint."
+    },
+    {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/template/page",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/templates_test.go",
+        "docs/CONTENT_TEMPLATES.md"
+      ],
+      "notes": "The content template listing is tested for the site and for a space; a space inherits the site's templates while the site listing carries only its own."
+    },
+    {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/template/{contentTemplateId}",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/templates_test.go",
+        "docs/CONTENT_TEMPLATES.md"
+      ],
+      "notes": "Reading one template is tested for a content template and a blueprint, including the 404 for an unknown id."
+    },
+    {
       "operationId": "confluence-v1:GET:/wiki/rest/api/user",
       "status": "partial",
       "evidence": [
@@ -886,6 +922,15 @@
         "docs/PAGE_MOVES.md"
       ],
       "notes": "Archiving is tested end to end; an archived page leaves the space's current content. Restoring one remains."
+    },
+    {
+      "operationId": "confluence-v1:POST:/wiki/rest/api/content/blueprint/instance/{draftId}",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/templates_test.go",
+        "docs/CONTENT_TEMPLATES.md"
+      ],
+      "notes": "The legacy draft publish is tested and behaves the same way, which is what Confluence says of it."
     },
     {
       "operationId": "confluence-v1:POST:/wiki/rest/api/content/{id}/child/attachment",
@@ -1057,6 +1102,15 @@
       "notes": "Granting several custom content operations at once is tested, including that an operation marked access:false is not granted."
     },
     {
+      "operationId": "confluence-v1:POST:/wiki/rest/api/template",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/templates_test.go",
+        "docs/CONTENT_TEMPLATES.md"
+      ],
+      "notes": "Creating a content template is tested for the site and for a space, including the labels and body round trip, the refused empty name and unknown type, that it is administration, and that a blueprint's template cannot be created."
+    },
+    {
       "operationId": "confluence-v1:POST:/wiki/rest/api/user/watch/content/{contentId}",
       "status": "partial",
       "notes": "Durable page-content, space, and label watches support current-user and administrator-targeted status/mutation, XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; other content types, Confluence space-admin roles, and email delivery remain.",
@@ -1121,6 +1175,15 @@
         "docs/APPS.md"
       ],
       "notes": "Atomic registration supports validated Jira issue web panels and keyed Jira webhooks; remaining module types are rejected explicitly."
+    },
+    {
+      "operationId": "confluence-v1:PUT:/wiki/rest/api/content/blueprint/instance/{draftId}",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/templates_test.go",
+        "docs/CONTENT_TEMPLATES.md"
+      ],
+      "notes": "Publishing a shared draft is tested: it becomes a current page with the given title, records a version, refuses a stale version, and cannot be published twice."
     },
     {
       "operationId": "confluence-v1:PUT:/wiki/rest/api/content/{id}/child/attachment",
@@ -1256,6 +1319,15 @@
         "docs/SPACE_LIFECYCLE.md"
       ],
       "notes": "Selecting a theme is tested, including the unknown theme key and that it is administration."
+    },
+    {
+      "operationId": "confluence-v1:PUT:/wiki/rest/api/template",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/templates_test.go",
+        "docs/CONTENT_TEMPLATES.md"
+      ],
+      "notes": "Updating is tested, including the required template id and that a blueprint owns its template so the API will not write it."
     },
     {
       "operationId": "confluence-v1:PUT:/wiki/rest/api/user/{userId}/property/{key}",
