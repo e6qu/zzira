@@ -367,6 +367,8 @@ func (r *APITaskRunner) execute(ctx context.Context, task APITask) error {
 		return r.Store.executeAssignIssueSecuritySchemeTask(ctx, task)
 	case apiTaskRemoveSecurityLevel:
 		return r.Store.executeRemoveIssueSecurityLevelTask(ctx, task)
+	case apiTaskWikiDeleteSpace:
+		return r.Store.executeWikiSpaceDeletion(ctx, task)
 	case apiTaskWikiPermissionCombinations:
 		return r.Store.executeWikiPermissionCombinations(ctx, task)
 	case apiTaskWikiPermissionAssignRoles:

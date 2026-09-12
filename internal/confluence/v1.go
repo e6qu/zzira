@@ -106,6 +106,18 @@ func (h *V1Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.v1SpaceWatchers(w, r, ws, actor, parts[1])
 	case len(parts) == 4 && parts[0] == "user" && parts[1] == "watch":
 		h.v1UserWatch(w, r, ws, actor, parts[2], parts[3])
+	case len(parts) == 1 && parts[0] == "space" && r.Method == "POST":
+		h.v1CreateSpace(w, r, ws, actor, false)
+	case len(parts) == 2 && parts[0] == "space" && parts[1] == "_private" && r.Method == "POST":
+		h.v1CreateSpace(w, r, ws, actor, true)
+	case len(parts) == 2 && parts[0] == "space" && r.Method == "PUT":
+		h.v1UpdateSpace(w, r, ws, actor, parts[1])
+	case len(parts) == 2 && parts[0] == "space" && r.Method == "DELETE":
+		h.v1DeleteSpace(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "space" && parts[2] == "settings":
+		h.v1SpaceSettings(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "space" && parts[2] == "theme":
+		h.v1SpaceTheme(w, r, ws, actor, parts[1])
 	case len(parts) == 3 && parts[0] == "space" && parts[2] == "permission" && r.Method == "POST":
 		h.v1AddSpacePermission(w, r, ws, actor, parts[1])
 	case len(parts) == 4 && parts[0] == "space" && parts[2] == "permission" && parts[3] == "custom-content" && r.Method == "POST":

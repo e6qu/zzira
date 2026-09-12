@@ -52,14 +52,29 @@ func (s *Store) WikiSpacePermissions(ctx context.Context, ws, actor string) ([]s
 	return wikiSpacePermissionCatalogue(), nil
 }
 
-// WikiSpaceRoleMode reports whether this site governs spaces by role. Roles are
-// the primary model here and the transition tooling is not implemented, so the
-// answer is the settled one rather than a site in mid-migration.
+// WikiSpaceRoleMode reports how this site governs spaces, read from what it
+// actually holds: direct grants and no role assignments is a site that has not
+// started; both is a site part-way through; only roles is a site that has
+// finished.
 func (s *Store) WikiSpaceRoleMode(ctx context.Context, ws, actor string) (string, error) {
 	if err := s.requireMember(ctx, ws, actor); err != nil {
 		return "", err
 	}
-	return "ROLES", nil
+	var grants, assignments bool
+	if err := s.Pool.QueryRow(ctx, `SELECT
+		EXISTS(SELECT 1 FROM wiki_space_permission_grants g JOIN wiki_spaces s ON s.id=g.space_id WHERE s.workspace_id=$1),
+		EXISTS(SELECT 1 FROM wiki_space_role_assignments a JOIN wiki_spaces s ON s.id=a.space_id WHERE s.workspace_id=$1)`,
+		ws).Scan(&grants, &assignments); err != nil {
+		return "", err
+	}
+	switch {
+	case grants && assignments:
+		return "ROLES_TRANSITION", nil
+	case grants:
+		return "PRE_ROLES", nil
+	default:
+		return "ROLES", nil
+	}
 }
 
 // permissionKey turns Confluence's {key, target} into the form this product

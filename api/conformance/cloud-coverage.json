@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 863,
+  "assessedTotal": 873,
   "counts": {
     "delivered": 0,
-    "partial": 852,
+    "partial": 862,
     "missing": 11,
-    "unassessed": 344
+    "unassessed": 334
   },
   "countsByFamily": {
     "automation": {
@@ -18,9 +18,9 @@
     },
     "confluence": {
       "delivered": 0,
-      "partial": 282,
+      "partial": 292,
       "missing": 0,
-      "unassessed": 66
+      "unassessed": 56
     },
     "jira-platform": {
       "delivered": 0,
@@ -9721,33 +9721,45 @@
       "operationId": "confluence-v1:POST:/wiki/rest/api/space",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_lifecycle_test.go",
+        "docs/SPACE_LIFECYCLE.md"
+      ],
+      "notes": "Creating a space is tested, including the duplicate key, the malformed key, the missing name, that it is administration, and a personal space keyed by its account."
     },
     {
       "operationId": "confluence-v1:POST:/wiki/rest/api/space/_private",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_lifecycle_test.go",
+        "docs/SPACE_LIFECYCLE.md"
+      ],
+      "notes": "The private create is tested; as Confluence describes it, it is the ordinary create with permissions set to the creator alone, so it makes a global space another member cannot see."
     },
     {
       "operationId": "confluence-v1:DELETE:/wiki/rest/api/space/{spaceKey}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_lifecycle_test.go",
+        "docs/SPACE_LIFECYCLE.md"
+      ],
+      "notes": "Deleting is tested end to end: it answers 202 with a long task, the task is reported by the long task read, and the space's content goes with it."
     },
     {
       "operationId": "confluence-v1:PUT:/wiki/rest/api/space/{spaceKey}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_lifecycle_test.go",
+        "docs/SPACE_LIFECYCLE.md"
+      ],
+      "notes": "Updating name, description, homepage, type and status is tested, including the refused homepage outside the space, the refused status and type, the 404 for an unknown space and that it is administration."
     },
     {
       "operationId": "confluence-v1:DELETE:/wiki/rest/api/space/{spaceKey}/label",
@@ -9840,17 +9852,23 @@
       "operationId": "confluence-v1:GET:/wiki/rest/api/space/{spaceKey}/settings",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_lifecycle_test.go",
+        "docs/SPACE_LIFECYCLE.md"
+      ],
+      "notes": "Reading the settings is tested; it needs only the permission to view the space."
     },
     {
       "operationId": "confluence-v1:PUT:/wiki/rest/api/space/{spaceKey}/settings",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_lifecycle_test.go",
+        "docs/SPACE_LIFECYCLE.md"
+      ],
+      "notes": "Changing the settings is tested, including the refused content mode and that it is administration."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/space/{spaceKey}/state",
@@ -9889,25 +9907,34 @@
       "operationId": "confluence-v1:DELETE:/wiki/rest/api/space/{spaceKey}/theme",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_lifecycle_test.go",
+        "docs/SPACE_LIFECYCLE.md"
+      ],
+      "notes": "Resetting the theme is tested, including the 404 when no theme is set."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/space/{spaceKey}/theme",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_lifecycle_test.go",
+        "docs/SPACE_LIFECYCLE.md"
+      ],
+      "notes": "Reading the theme is tested, including that a space with none set reports no theme rather than a default one."
     },
     {
       "operationId": "confluence-v1:PUT:/wiki/rest/api/space/{spaceKey}/theme",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_lifecycle_test.go",
+        "docs/SPACE_LIFECYCLE.md"
+      ],
+      "notes": "Selecting a theme is tested, including the unknown theme key and that it is administration."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/space/{spaceKey}/watch",
@@ -11255,9 +11282,12 @@
       "operationId": "confluence-v2:GET:/wiki/api/v2/data-policies/spaces",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/space_lifecycle_test.go",
+        "docs/SPACE_LIFECYCLE.md"
+      ],
+      "notes": "The data policy read is tested; no policy blocks content here, which is the answer rather than an omission."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/databases",
@@ -12816,7 +12846,7 @@
         "internal/confluence/permission_transition_test.go",
         "docs/SPACE_PERMISSION_TRANSITION.md"
       ],
-      "notes": "Removing access is tested end to end; it drops grants without assigning a role, and the empty id list and personal-space selections are refused."
+      "notes": "Removing access is tested end to end; it drops grants without assigning a role, the PERSONAL selection reaches only personal spaces, and the empty id list and unknown space type are refused."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/space-permissions/transition/combinations",
@@ -12868,10 +12898,11 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
-        "internal/confluence/space_permission_grants_test.go",
-        "docs/SPACE_PERMISSIONS.md"
+        "docs/SPACE_PERMISSIONS.md",
+        "internal/confluence/space_lifecycle_test.go",
+        "internal/confluence/space_permission_grants_test.go"
       ],
-      "notes": "The space role mode is tested; roles are this product's primary model, so it reports the settled mode rather than a site mid-migration."
+      "notes": "The space role mode is tested; it is read from what the site holds \u2014 grants without role assignments is PRE_ROLES, both is ROLES_TRANSITION, roles alone is ROLES."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/space-roles",

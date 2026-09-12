@@ -90,9 +90,9 @@ func validateSpaceSelection(selection WikiSpaceSelection) error {
 		}
 		return nil
 	case "PERSONAL", "ALL_EXCEPT_PERSONAL":
-		return fmt.Errorf("%w: this site has no personal spaces", ErrWikiPermissionValidation)
+		return nil
 	default:
-		return fmt.Errorf("%w: spaceType must be ALL, SPECIFIC or ALL_EXCEPT_SPECIFIC", ErrWikiPermissionValidation)
+		return fmt.Errorf("%w: spaceType must be ALL, ALL_EXCEPT_PERSONAL, ALL_EXCEPT_SPECIFIC, PERSONAL or SPECIFIC", ErrWikiPermissionValidation)
 	}
 }
 
@@ -104,6 +104,12 @@ func spaceSelectionPredicate(selection WikiSpaceSelection) (string, []string) {
 		return `(sel.id::text = ANY($2) OR sel.key = ANY($2))`, selection.SelectedSpaces
 	case "ALL_EXCEPT_SPECIFIC":
 		return `NOT (sel.id::text = ANY($2) OR sel.key = ANY($2))`, selection.SelectedSpaces
+	case "PERSONAL":
+		// Every branch mentions $2 so the query always takes the same
+		// arguments, whether or not the selection names spaces.
+		return `sel.space_type='personal' AND ($2::text[] IS NULL OR TRUE)`, nil
+	case "ALL_EXCEPT_PERSONAL":
+		return `sel.space_type<>'personal' AND ($2::text[] IS NULL OR TRUE)`, nil
 	default:
 		return `($2::text[] IS NULL OR TRUE)`, nil
 	}
