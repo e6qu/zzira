@@ -8,27 +8,27 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
 ## Active delivery
 
-- Branch: `feat/pr1-confluence-users`
-- Base: `origin/main` after merged PR #96 (`dda2368`). Deliberately not stacked:
-  this family touches no code the open branches change, so it gets its own CI.
+- Branch: `feat/pr1-confluence-v1-content`
+- Base: `origin/main` after merged PR #99 (`436a77d`).
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- State: Confluence user checkpoint audited all 14 pinned operations against a
-  running server and found none working. The distinction worth keeping is that
-  an email address is administration: a member may see who someone is, which is
-  why Confluence has separate `/user/email` endpoints rather than an email field
-  on the user read. Both halves are enforced and tested — the user reads carry
-  no email at all, and a member asking the email endpoints is refused. The user
-  search takes CQL, and a query naming a field this does not filter on is
-  refused rather than silently matching everyone. A person's own properties are
-  theirs to write; someone else's needs administration, because a property reads
-  back as if that person had set it.
+- State: content state checkpoint audited all eight pinned operations against a
+  running server and found none working. A content state is the label a page
+  carries beyond its text. Confluence has two kinds and they are kept apart
+  here: the states a space suggests, and the custom ones a writer makes and
+  keeps to themselves. No pinned operation writes a space state, so the
+  suggested set is the product's default defined in code rather than a table
+  nothing can edit; custom states are rows, because the write that uses them is
+  pinned. Setting or removing a state publishes a version without changing the
+  body. Two bugs the first probe found: validation errors answered 500 because
+  the new error was not mapped, and a newly created state was read on a
+  different connection from the transaction that made it, so every custom state
+  answered 404.
   Clean migrations, the full uncached Go/PostgreSQL suite, vet, native and
   WebAssembly builds, conformance checks, every Playwright journey, 320 px
   reflow, and the light/dark axe sweep pass.
-- Also open, both green and both based on each other: PR
-  [#97](https://github.com/e6qu/zzira/pull/97) (content states) and PR
-  [#98](https://github.com/e6qu/zzira/pull/98) (page moves, stacked on #97).
-  Merge #97, then #98, then this one; this branch is independent of both.
+- Also open: PR [#98](https://github.com/e6qu/zzira/pull/98) (page moves,
+  stacked on this one) and PR [#100](https://github.com/e6qu/zzira/pull/100)
+  (groups, already rebased onto `main`). Merge this, then #98, then #100.
 - Blockers: none
 
 ## Merged baseline
@@ -90,8 +90,8 @@ PR #90's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Monitor the user pull request through every CI job and resolve review
-   threads inline. **A stacked branch gets no CI here**: `.github/workflows/ci.yml`
+1. Monitor the content state pull request through every CI job and resolve
+   review threads inline. **A stacked branch gets no CI here**: `.github/workflows/ci.yml`
    triggers only on `pull_request` against `main`, and `gh pr checks` reports
    "no checks reported" rather than a failure, so a stacked PR can look fine and
    be unverified. Base every PR on `main` unless it genuinely needs a helper an
@@ -139,6 +139,7 @@ PR #90's final GitHub matrix passed its required suites before merge.
 - [App-provided select lists](APP_FIELD_OPTIONS.md)
 - [Confluence custom content](CUSTOM_CONTENT.md)
 - [Confluence users](WIKI_USERS.md)
+- [Confluence content states](CONTENT_STATES.md)
 
 ## Continuity rules
 

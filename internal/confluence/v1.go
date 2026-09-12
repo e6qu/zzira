@@ -38,6 +38,18 @@ func (h *V1Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	parts := strings.Split(strings.Trim(strings.TrimPrefix(r.URL.Path, "/wiki/rest/api/"), "/"), "/")
 	switch {
+	case len(parts) == 1 && parts[0] == "content-states" && r.Method == "GET":
+		h.v1CustomContentStates(w, r, ws, actor)
+	case len(parts) == 3 && parts[0] == "content" && parts[2] == "state":
+		h.v1ContentState(w, r, ws, actor, parts[1])
+	case len(parts) == 4 && parts[0] == "content" && parts[2] == "state" && parts[3] == "available" && r.Method == "GET":
+		h.v1AvailableContentStates(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "space" && parts[2] == "state" && r.Method == "GET":
+		h.v1SpaceContentStates(w, r, ws, actor, parts[1])
+	case len(parts) == 4 && parts[0] == "space" && parts[2] == "state" && parts[3] == "settings" && r.Method == "GET":
+		h.v1SpaceContentStateSettings(w, r, ws, actor, parts[1])
+	case len(parts) == 4 && parts[0] == "space" && parts[2] == "state" && parts[3] == "content" && r.Method == "GET":
+		h.v1SpaceContentStateContent(w, r, ws, actor, parts[1])
 	case len(parts) == 4 && parts[0] == "content" && parts[2] == "child" && parts[3] == "attachment":
 		h.v1SaveAttachments(w, r, ws, actor, parts[1])
 	case len(parts) == 4 && parts[0] == "content" && parts[2] == "notification" && (parts[3] == "child-created" || parts[3] == "created") && r.Method == "GET":

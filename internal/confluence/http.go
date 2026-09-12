@@ -65,6 +65,8 @@ func writeError(w http.ResponseWriter, err error) {
 		failure(w, 409, err.Error())
 	case errors.Is(err, store.ErrWikiUserValidation):
 		failure(w, 400, err.Error())
+	case errors.Is(err, store.ErrWikiContentStateValidation):
+		failure(w, 400, err.Error())
 	case errors.Is(err, store.ErrWikiValidation):
 		failure(w, 400, err.Error())
 	case errors.As(err, &pgerr) && pgerr.Code == "23505" && pgerr.ConstraintName == "wiki_attachment_properties_attachment_id_key_key":

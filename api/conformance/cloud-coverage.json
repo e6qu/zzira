@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 829,
+  "assessedTotal": 837,
   "counts": {
     "delivered": 0,
-    "partial": 818,
+    "partial": 826,
     "missing": 11,
-    "unassessed": 378
+    "unassessed": 370
   },
   "countsByFamily": {
     "automation": {
@@ -18,9 +18,9 @@
     },
     "confluence": {
       "delivered": 0,
-      "partial": 248,
+      "partial": 256,
       "missing": 0,
-      "unassessed": 100
+      "unassessed": 92
     },
     "jira-platform": {
       "delivered": 0,
@@ -8818,9 +8818,12 @@
       "operationId": "confluence-v1:GET:/wiki/rest/api/content-states",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/content_states_test.go",
+        "docs/CONTENT_STATES.md"
+      ],
+      "notes": "The caller's own custom states are tested, including that another writer does not see them."
     },
     {
       "operationId": "confluence-v1:POST:/wiki/rest/api/content/archive",
@@ -9349,33 +9352,45 @@
       "operationId": "confluence-v1:DELETE:/wiki/rest/api/content/{id}/state",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/content_states_test.go",
+        "docs/CONTENT_STATES.md"
+      ],
+      "notes": "Removing a state is tested, including that it publishes a version and that the space listing stops reporting the page."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/content/{id}/state",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/content_states_test.go",
+        "docs/CONTENT_STATES.md"
+      ],
+      "notes": "Reading a page's state is tested, including that a new page has none and the 404 for content that does not exist."
     },
     {
       "operationId": "confluence-v1:PUT:/wiki/rest/api/content/{id}/state",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/content_states_test.go",
+        "docs/CONTENT_STATES.md"
+      ],
+      "notes": "Setting a state is tested by id and by describing a new custom one, including that it publishes a version without changing the body, that re-using a name keeps one state, and the refused id-and-description, empty request, bad colour, long name, missing status and unknown id."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/content/{id}/state/available",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/content_states_test.go",
+        "docs/CONTENT_STATES.md"
+      ],
+      "notes": "The states a page could be set to are tested: every state the space suggests, and the writer's most recent custom ones."
     },
     {
       "operationId": "confluence-v1:POST:/wiki/rest/api/content/{id}/version",
@@ -9784,25 +9799,34 @@
       "operationId": "confluence-v1:GET:/wiki/rest/api/space/{spaceKey}/state",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/content_states_test.go",
+        "docs/CONTENT_STATES.md"
+      ],
+      "notes": "The states a space suggests are tested, including the 404 for an unknown space; configuring them is not reachable through any pinned operation."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/space/{spaceKey}/state/content",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/content_states_test.go",
+        "docs/CONTENT_STATES.md"
+      ],
+      "notes": "The content in a state is tested, including paging bounds, the required state-id, and that a page leaves the listing when its state changes; the expand parameter remains."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/space/{spaceKey}/state/settings",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/content_states_test.go",
+        "docs/CONTENT_STATES.md"
+      ],
+      "notes": "The space's state settings are tested and agree with the suggested set; restricting which states a space allows remains."
     },
     {
       "operationId": "confluence-v1:DELETE:/wiki/rest/api/space/{spaceKey}/theme",
