@@ -108,7 +108,8 @@ func TestFieldAssociationSchemes(t *testing.T) {
 		t.Fatal(err)
 	}
 	workTypes := []string{}
-	rows, err := st.Pool.Query(ctx, `SELECT id FROM issue_types ORDER BY id`)
+	// Work types are named by the ids clients know: the site's standard types.
+	rows, err := st.Pool.Query(ctx, `SELECT jira_id::text FROM issue_types WHERE workspace_id IS NULL AND NOT subtask ORDER BY jira_id`)
 	if err != nil {
 		t.Fatal(err)
 	}

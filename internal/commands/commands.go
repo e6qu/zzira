@@ -93,7 +93,7 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 	if err != nil {
 		return nil, nil, fmt.Errorf("project %q not found in workspace", in.ProjectIDOrKey)
 	}
-	issueType, err := s.Store.IssueTypeByIDOrName(ctx, in.IssueTypeID)
+	issueType, err := s.Store.IssueTypeByIDOrName(ctx, in.WorkspaceID, in.IssueTypeID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("issue type %q not found", in.IssueTypeID)
 	}
@@ -128,7 +128,7 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 	}
 	priorityID := ""
 	if in.PriorityID != "" {
-		priority, err := s.Store.PriorityByIDOrName(ctx, in.PriorityID)
+		priority, err := s.Store.PriorityByIDOrName(ctx, in.WorkspaceID, in.PriorityID)
 		if err != nil {
 			return nil, nil, fmt.Errorf("priority %q not found", in.PriorityID)
 		}

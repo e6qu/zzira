@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	neturl "net/url"
 	"slices"
@@ -147,6 +148,27 @@ func (s *Store) UpdateIssue(ctx context.Context, actorID, workspaceID, issueID s
 		}
 		diff["status"] = diffItem("status", current.Status.ID, current.Status.Name, *up.StatusID, newName)
 		sets = append(sets, "status_id = "+arg(*up.StatusID))
+		// An issue is resolved when it reaches a done status and unresolved when
+		// it leaves one, which is what Jira's default workflows do; the site's
+		// default resolution records how it was finished.
+		switch {
+		case newCategory == "done" && current.Resolution == nil:
+			var resolutionID, resolutionName string
+			err := tx.QueryRow(ctx, `SELECT r.id, COALESCE(o.name, r.name) FROM workspace_issue_defaults d
+				JOIN resolutions r ON r.id = d.default_resolution_id
+				LEFT JOIN issue_metadata_overrides o ON o.workspace_id = d.workspace_id AND o.entity_type = 'resolution' AND o.entity_id = r.id
+				WHERE d.workspace_id = $1 AND NOT COALESCE(o.deleted, FALSE)`, current.WorkspaceID).Scan(&resolutionID, &resolutionName)
+			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+				return nil, nil, err
+			}
+			if resolutionID != "" {
+				diff["resolution"] = diffItem("resolution", "", "", resolutionID, resolutionName)
+				sets = append(sets, "resolution_id = "+arg(resolutionID), "resolved_at = now()")
+			}
+		case newCategory != "done" && current.Resolution != nil:
+			diff["resolution"] = diffItem("resolution", current.Resolution.ID, current.Resolution.Name, "", "")
+			sets = append(sets, "resolution_id = NULL", "resolved_at = NULL")
+		}
 	}
 	if up.PriorityID != nil {
 		newID := *up.PriorityID

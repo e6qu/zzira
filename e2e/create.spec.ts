@@ -44,14 +44,14 @@ test('create journey and createmeta share every supported field', async ({ page,
   expect(issueTypes.status()).toBe(200);
   const issueTypeBody = await issueTypes.json();
 	expect(issueTypeBody.issueTypes).toEqual(expect.arrayContaining([
-		expect.objectContaining({ id: 'it_task', name: 'Task', subtask: false }),
-		expect.objectContaining({ id: 'it_subtask', name: 'Sub-task', subtask: true }),
+		expect.objectContaining({ id: '10002', name: 'Task', subtask: false }),
+		expect.objectContaining({ id: '10003', name: 'Sub-task', subtask: true }),
 	]));
 
 	let fieldStart = 0;
 	let fieldMetaBody: any = { fields: [], total: 0 };
 	do {
-		const fieldMeta = await request.get(`/rest/api/3/issue/createmeta/ZZ/issuetypes/it_task?startAt=${fieldStart}&maxResults=100`, auth);
+		const fieldMeta = await request.get(`/rest/api/3/issue/createmeta/ZZ/issuetypes/10002?startAt=${fieldStart}&maxResults=100`, auth);
 		expect(fieldMeta.status()).toBe(200);
 		const pageBody = await fieldMeta.json();
 		fieldMetaBody.fields.push(...pageBody.fields);
@@ -63,10 +63,10 @@ test('create journey and createmeta share every supported field', async ({ page,
   ]));
 	const customMeta = fieldMetaBody.fields.find((field: any) => field.fieldId === customFieldID);
   expect(customMeta.schema).toMatchObject({ type: 'number', customId: Number(customFieldID.replace('customfield_', '')) });
-	const subtaskMeta = await (await request.get('/rest/api/3/issue/createmeta/ZZ/issuetypes/it_subtask?maxResults=100', auth)).json();
+	const subtaskMeta = await (await request.get('/rest/api/3/issue/createmeta/ZZ/issuetypes/10003?maxResults=100', auth)).json();
 	expect(subtaskMeta.fields.find((field: any) => field.fieldId === 'parent')).toMatchObject({ required: true, schema: { system: 'parent' } });
 
-  const legacyMeta = await request.get('/rest/api/3/issue/createmeta?projectKeys=ZZ&issuetypeIds=it_task&expand=projects.issuetypes.fields', auth);
+  const legacyMeta = await request.get('/rest/api/3/issue/createmeta?projectKeys=ZZ&issuetypeIds=10002&expand=projects.issuetypes.fields', auth);
   expect(legacyMeta.status()).toBe(200);
   const legacyBody = await legacyMeta.json();
   expect(legacyBody.projects).toHaveLength(1);
@@ -77,8 +77,8 @@ test('create journey and createmeta share every supported field', async ({ page,
   const apiCreated = await request.post('/rest/api/3/issue', {
     ...auth,
     data: { fields: {
-      project: { id: 'prj_default' }, summary: apiSummary, issuetype: { id: 'it_task' },
-      assignee: { accountId: demoID }, priority: { id: 'pr_medium' }, labels: ['api-create'],
+      project: { id: 'prj_default' }, summary: apiSummary, issuetype: { id: '10002' },
+      assignee: { accountId: demoID }, priority: { id: '3' }, labels: ['api-create'],
       security: { id: levelID }, [customFieldID]: 5,
     } },
   });
@@ -154,7 +154,7 @@ test('create journey and createmeta share every supported field', async ({ page,
   const childIssue = await (await request.get(`/rest/api/3/issue/${childKey}`, auth)).json();
   expect(childIssue.fields).toMatchObject({
     parent: { key: createdKey, fields: { summary: `Metadata UI create ${unique}` } },
-    issuetype: { id: 'it_subtask', subtask: true },
+    issuetype: { id: '10003', subtask: true },
   });
   await page.goto(`/browse/${createdKey}`);
   await expect(page.getByRole('heading', { name: 'Sub-tasks' })).toBeVisible();

@@ -147,12 +147,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.createIssueLink(w, r)
 	case strings.HasPrefix(path, "/issueLink/") && r.Method == http.MethodDelete:
 		h.deleteIssueLink(w, r, strings.TrimPrefix(path, "/issueLink/"))
+	case path == "/issuetype" || strings.HasPrefix(path, "/issuetype/") ||
+		path == "/priority" || strings.HasPrefix(path, "/priority/") ||
+		path == "/resolution" || strings.HasPrefix(path, "/resolution/") ||
+		path == "/issuetypescheme" || strings.HasPrefix(path, "/issuetypescheme/") ||
+		path == "/priorityscheme" || strings.HasPrefix(path, "/priorityscheme/"):
+		if !h.issueMetadataRoute(w, r, path) {
+			jiraError(w, http.StatusNotFound, "No resource found for path /rest/api/3"+path)
+		}
 	case path == "/label" && r.Method == http.MethodGet:
 		h.labelsEndpoint(w, r)
-	case path == "/issuetype" && r.Method == http.MethodGet:
-		h.issueTypesEndpoint(w, r)
-	case path == "/priority" && r.Method == http.MethodGet:
-		h.prioritiesEndpoint(w, r)
 	case path == "/status" && r.Method == http.MethodGet:
 		h.statusesEndpoint(w, r)
 	case strings.HasPrefix(path, "/status/") && r.Method == http.MethodGet:
@@ -169,8 +173,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.searchStatusesEndpoint(w, r)
 	case strings.HasPrefix(path, "/statuses/") && r.Method == http.MethodGet:
 		h.statusUsageEndpoint(w, r, strings.Split(strings.TrimPrefix(path, "/statuses/"), "/"))
-	case path == "/resolution" && r.Method == http.MethodGet:
-		h.resolutionsEndpoint(w, r)
 	case path == "/mypermissions" && r.Method == http.MethodGet:
 		h.myPermissions(w, r)
 	case path == "/permissions" && r.Method == http.MethodGet:
@@ -867,12 +869,7 @@ func (h *Handler) issueBean(i *models.Issue) map[string]any {
 			"id":             i.Status.ID,
 			"statusCategory": statusCategoryBean(i.Status.Category),
 		},
-		"issuetype": map[string]any{
-			"id":      i.IssueType.ID,
-			"name":    i.IssueType.Name,
-			"iconUrl": h.BaseURL + "/static/img/issuetype-task.svg",
-			"subtask": i.IssueType.Subtask,
-		},
+		"issuetype": h.issueTypeBean(i.IssueType),
 	}
 	if i.Parent != nil {
 		parentID := strconv.FormatInt(i.Parent.JiraID, 10)
@@ -883,7 +880,16 @@ func (h *Handler) issueBean(i *models.Issue) map[string]any {
 		}
 	}
 	if i.Priority != nil {
-		fields["priority"] = map[string]any{"id": i.Priority.ID, "name": i.Priority.Name}
+		fields["priority"] = h.priorityBean(*i.Priority)
+	}
+	// Jira always carries both fields: null and absent until the issue is resolved.
+	fields["resolution"] = nil
+	fields["resolutiondate"] = nil
+	if i.Resolution != nil {
+		fields["resolution"] = h.resolutionBean(*i.Resolution)
+		if i.ResolvedAt != "" {
+			fields["resolutiondate"] = i.ResolvedAt
+		}
 	}
 	if i.Assignee != nil {
 		fields["assignee"] = h.userBean(i.Assignee)
@@ -1255,6 +1261,30 @@ func (h *Handler) changelog(w http.ResponseWriter, r *http.Request, idOrKey stri
 	})
 }
 
+// changelogMetadataID turns a stored priority, resolution or issue type id into
+// its numeric id. An id the site no longer has keeps its stored value, since
+// the history of a deleted item still has to say what it was.
+func (h *Handler) changelogMetadataID(ctx context.Context, workspaceID, field, id string) string {
+	if id == "" {
+		return id
+	}
+	switch field {
+	case "priority":
+		if p, err := h.Store.PriorityInWorkspace(ctx, workspaceID, id); err == nil {
+			return jiraIDString(p.JiraID)
+		}
+	case "resolution":
+		if r, err := h.Store.ResolutionInWorkspace(ctx, workspaceID, id); err == nil {
+			return jiraIDString(r.JiraID)
+		}
+	case "issuetype":
+		if t, err := h.Store.IssueTypeInWorkspace(ctx, workspaceID, id); err == nil {
+			return jiraIDString(t.JiraID)
+		}
+	}
+	return id
+}
+
 func (h *Handler) issueChangelogBeans(ctx context.Context, workspaceID, issueID string, newestFirst bool) ([]map[string]any, error) {
 	entries, err := h.Store.IssueChangelog(ctx, workspaceID, issueID)
 	if err != nil {
@@ -1268,10 +1298,17 @@ func (h *Handler) issueChangelogBeans(ctx context.Context, workspaceID, issueID 
 		}
 		items := make([]map[string]any, 0, len(entry.Items))
 		for _, item := range entry.Items {
+			from, to := item.From, item.To
+			// Jira reports a priority, resolution or issue type change by the
+			// numeric ids clients know, so the stored ids are translated here.
+			switch item.Field {
+			case "priority", "resolution", "issuetype":
+				from, to = h.changelogMetadataID(ctx, workspaceID, item.Field, from), h.changelogMetadataID(ctx, workspaceID, item.Field, to)
+			}
 			items = append(items, map[string]any{
 				"field": item.Field, "fieldtype": item.FieldType,
-				"from": item.From, "fromString": item.FromString,
-				"to": item.To, "toString": item.ToString,
+				"from": from, "fromString": item.FromString,
+				"to": to, "toString": item.ToString,
 			})
 		}
 		values = append(values, map[string]any{

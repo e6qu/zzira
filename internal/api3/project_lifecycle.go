@@ -112,11 +112,16 @@ func (h *Handler) recentProjects(w http.ResponseWriter, r *http.Request) {
 	}
 	var issueTypes any
 	if all || querySetContains(expands, "issueTypes") {
-		issueTypes, err = h.Store.IssueTypes(r.Context())
-		if err != nil {
-			projectLifecycleError(w, err)
+		types, typesErr := h.Store.IssueTypes(r.Context(), workspaceID)
+		if typesErr != nil {
+			projectLifecycleError(w, typesErr)
 			return
 		}
+		beans := make([]map[string]any, 0, len(types))
+		for _, issueType := range types {
+			beans = append(beans, h.issueTypeBean(issueType))
+		}
+		issueTypes = beans
 	}
 	values := make([]map[string]any, 0, len(projects))
 	for _, project := range projects {

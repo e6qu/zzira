@@ -85,7 +85,7 @@ test('issue forms can be attached, submitted, reopened, and removed', async ({ p
   await login(page);
   const created = await page.request.post('/rest/api/3/issue', {
     headers: { Authorization: apiAuthHeader() },
-    data: { fields: { project: { key: 'ZZ' }, summary: `Forms journey ${Date.now()}`, issuetype: { id: 'it_task' } } },
+    data: { fields: { project: { key: 'ZZ' }, summary: `Forms journey ${Date.now()}`, issuetype: { id: '10002' } } },
   });
   expect(created.status()).toBe(201);
   const issue = await created.json();
@@ -111,7 +111,7 @@ test('development information appears on the linked issue', async ({ page }) => 
   await login(page);
   const created = await page.request.post('/rest/api/3/issue', {
     headers: { Authorization: apiAuthHeader() },
-    data: { fields: { project: { key: 'ZZ' }, summary: `Development journey ${Date.now()}`, issuetype: { id: 'it_task' } } },
+    data: { fields: { project: { key: 'ZZ' }, summary: `Development journey ${Date.now()}`, issuetype: { id: '10002' } } },
   });
   expect(created.status()).toBe(201);
   const issue = await created.json();

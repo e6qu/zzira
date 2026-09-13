@@ -461,7 +461,7 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	if err != nil {
 		return nil, err
 	}
-	priorities, err := h.Store.Priorities(r.Context())
+	priorities, err := h.Store.Priorities(r.Context(), wsID)
 	if err != nil {
 		return nil, err
 	}
@@ -1248,7 +1248,7 @@ func (h *Handler) ProjectIssues(w http.ResponseWriter, r *http.Request, key stri
 	if data.CanBulk {
 		data.Projects, err = h.Store.ProjectsByWorkspace(r.Context(), wsID)
 		if err == nil {
-			data.IssueTypes, err = h.Store.IssueTypes(r.Context())
+			data.IssueTypes, err = h.Store.IssueTypes(r.Context(), wsID)
 		}
 		if err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
@@ -1449,7 +1449,7 @@ func (h *Handler) SubmitBulkIssueMove(w http.ResponseWriter, r *http.Request, pr
 		http.Error(w, "invalid destination project", http.StatusBadRequest)
 		return
 	}
-	issueType, err := h.Store.IssueTypeByIDOrName(r.Context(), r.FormValue("issueType"))
+	issueType, err := h.Store.IssueTypeByIDOrName(r.Context(), workspaceID, r.FormValue("issueType"))
 	if err != nil {
 		http.Error(w, "invalid destination work type", http.StatusBadRequest)
 		return

@@ -29,7 +29,7 @@ async function createIssueFixture(page: import('@playwright/test').Page, suffix:
     const response = await fetch('/rest/api/3/issue', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fields: { project: { key: 'ZZ' }, issuetype: { id: 'it_task' }, summary } }),
+      body: JSON.stringify({ fields: { project: { key: 'ZZ' }, issuetype: { id: '10002' }, summary } }),
     });
     return { status: response.status, body: await response.text() };
   }, `App fixture issue ${suffix}`);

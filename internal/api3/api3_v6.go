@@ -130,40 +130,6 @@ func (h *Handler) labelsEndpoint(w http.ResponseWriter, r *http.Request) {
 
 // ---- metadata registries ----
 
-func (h *Handler) issueTypesEndpoint(w http.ResponseWriter, r *http.Request) {
-	if _, _, e := h.authWorkspace(r); e != nil {
-		writeJerr(w, e)
-		return
-	}
-	issueType, err := h.Store.FirstIssueType(r.Context())
-	if err != nil {
-		jiraError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	writeJSON(w, http.StatusOK, []map[string]any{{
-		"id": issueType.ID, "name": issueType.Name, "subtask": false,
-		"iconUrl": h.BaseURL + "/static/img/issuetype-task.svg",
-		"self":    h.BaseURL + "/rest/api/3/issuetype/" + issueType.ID,
-	}})
-}
-
-func (h *Handler) prioritiesEndpoint(w http.ResponseWriter, r *http.Request) {
-	if _, _, e := h.authWorkspace(r); e != nil {
-		writeJerr(w, e)
-		return
-	}
-	priorities, err := h.Store.Priorities(r.Context())
-	if err != nil {
-		jiraError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	out := make([]map[string]any, 0, len(priorities))
-	for _, p := range priorities {
-		out = append(out, map[string]any{"id": p.ID, "name": p.Name})
-	}
-	writeJSON(w, http.StatusOK, out)
-}
-
 func (h *Handler) statusesEndpoint(w http.ResponseWriter, r *http.Request) {
 	workspaceID, _, e := h.authWorkspace(r)
 	if e != nil {
@@ -201,14 +167,4 @@ func (h *Handler) statusCategoryDetailEndpoint(w http.ResponseWriter, r *http.Re
 		return
 	}
 	writeJSON(w, http.StatusOK, statusCategoryBean(category))
-}
-
-func (h *Handler) resolutionsEndpoint(w http.ResponseWriter, r *http.Request) {
-	if _, _, e := h.authWorkspace(r); e != nil {
-		writeJerr(w, e)
-		return
-	}
-	writeJSON(w, http.StatusOK, []map[string]any{
-		{"id": "res_done", "name": "Done", "description": "Work has been completed."},
-	})
 }

@@ -6413,6 +6413,56 @@
       "notes": "Removing one unmanaged holder is tested; managed holders are rejected."
     },
     {
+      "operationId": "jira-v3:DELETE:/rest/api/3/issuetype/{id}",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md"
+      ],
+      "notes": "Deletes an issue type, moving issues to alternativeIssueTypeId (404 when required and missing, 409 when itself) and removing it from every scheme and mapping."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/issuetype/{issueTypeId}/properties/{propertyKey}",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md"
+      ],
+      "notes": "Removes an issue type property, 404 when absent."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/issuetypescheme/{issueTypeSchemeId}",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md",
+        "internal/store/issue_schemes.go"
+      ],
+      "notes": "Deletes a scheme no project uses; the default scheme cannot be deleted."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/issuetypescheme/{issueTypeSchemeId}/issuetype/{issueTypeId}",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md",
+        "internal/store/issue_schemes.go"
+      ],
+      "notes": "Removes a type unless issues use it, it is in the default scheme, or it is the last standard type."
+    },
+    {
       "operationId": "jira-v3:DELETE:/rest/api/3/issuetypescreenscheme/{issueTypeScreenSchemeId}",
       "status": "partial",
       "evidence": [
@@ -6463,6 +6513,32 @@
       "notes": "Deletes one workspace-scoped grant with immutable action evidence; every Jira error-body edge remains."
     },
     {
+      "operationId": "jira-v3:DELETE:/rest/api/3/priority/{id}",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md",
+        "internal/store/issue_metadata_tasks.go"
+      ],
+      "notes": "Deletes a priority through a task answered with 303: issues take the site default, schemes drop it, the default cannot be deleted and a concurrent delete is 409."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/priorityscheme/{schemeId}",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md",
+        "internal/store/issue_schemes.go"
+      ],
+      "notes": "Deletes a scheme without projects; the default scheme cannot be deleted."
+    },
+    {
       "operationId": "jira-v3:DELETE:/rest/api/3/project/{projectIdOrKey}",
       "status": "partial",
       "evidence": [
@@ -6501,6 +6577,19 @@
         "docs/PROJECT_GOVERNANCE.md"
       ],
       "notes": "Site-admin delete clears assigned projects and emits their sync actions atomically before returning 204."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/resolution/{id}",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md",
+        "internal/store/issue_metadata_tasks.go"
+      ],
+      "notes": "Deletes a resolution through a task answered with 303, requiring replaceWith, which its issues move to so none become unresolved."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/role/{id}",
@@ -7441,6 +7530,118 @@
       "notes": "Paging one scheme's members filtered by issueSecurityLevelId is tested; expand remains."
     },
     {
+      "operationId": "jira-v3:GET:/rest/api/3/issuetype",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md"
+      ],
+      "notes": "Lists the site's issue types with Jira's numeric ids and defaults Epic, Story, Task, Bug and Sub-task, with a site's changes kept to that site."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/issuetype/project",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md",
+        "internal/store/issue_schemes.go"
+      ],
+      "notes": "Lists the issue types a project's issue type scheme offers, in scheme order, optionally at one hierarchy level."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/issuetype/{id}",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md"
+      ],
+      "notes": "Reads one issue type by numeric id or name within the site; another site's types are 404."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/issuetype/{id}/alternatives",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md"
+      ],
+      "notes": "Lists the site's other issue types of the same kind; Jira further narrows to types sharing workflow, field configuration and screen schemes."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/issuetype/{issueTypeId}/properties",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md"
+      ],
+      "notes": "Lists property keys or reads a property value stored against the site's issue type."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/issuetype/{issueTypeId}/properties/{propertyKey}",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md"
+      ],
+      "notes": "Lists property keys or reads a property value stored against the site's issue type."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/issuetypescheme",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md",
+        "internal/store/issue_schemes.go"
+      ],
+      "notes": "Pages issue type schemes filtered by id and queryString, ordered by id or name, expanding issueTypes and projects."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/issuetypescheme/mapping",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md",
+        "internal/store/issue_schemes.go"
+      ],
+      "notes": "Pages the issue type of every scheme, optionally for given schemes."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/issuetypescheme/project",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md",
+        "internal/store/issue_schemes.go"
+      ],
+      "notes": "Pages the schemes the given projects use, falling back to the default scheme."
+    },
+    {
       "operationId": "jira-v3:GET:/rest/api/3/issuetypescreenscheme",
       "status": "partial",
       "evidence": [
@@ -7600,6 +7801,94 @@
         "docs/PERMISSION_SCHEMES.md"
       ],
       "notes": "Reads one workspace-scoped canonical grant; Jira anonymous behavior and complete expansion beans remain."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/priority",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md"
+      ],
+      "notes": "Lists the site's priorities in site order with numeric ids 1-5 for the defaults, statusColor, iconUrl and isDefault."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/priority/search",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md"
+      ],
+      "notes": "Pages the site's priorities filtered by id, projectId through the project's priority scheme, priorityName and onlyDefault."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/priority/{id}",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md"
+      ],
+      "notes": "Reads one priority by numeric id or name within the site."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/priorityscheme",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md",
+        "internal/store/issue_schemes.go"
+      ],
+      "notes": "Pages priority schemes filtered by priorityId, schemeId, schemeName and onlyDefault, ordered by name, expanding priorities and projects."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/priorityscheme/priorities/available",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md",
+        "internal/store/issue_schemes.go"
+      ],
+      "notes": "Pages the site's priorities not already in a scheme, filtered by query and exclude."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/priorityscheme/{schemeId}/priorities",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md",
+        "internal/store/issue_schemes.go"
+      ],
+      "notes": "Pages a scheme's priorities with each one's sequence."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/priorityscheme/{schemeId}/projects",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md",
+        "internal/store/issue_schemes.go"
+      ],
+      "notes": "Pages a scheme's projects, the default scheme's being every project without another, filtered by projectId and query."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/project",
@@ -7893,6 +8182,45 @@
         "docs/PROJECT_GOVERNANCE.md"
       ],
       "notes": "Returns the requested available name or a collision-free numbered variant; access is authenticated rather than anonymous."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/resolution",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md",
+        "internal/jql/jql.go",
+        "internal/jql/jql_test.go",
+        "internal/store/mutations.go"
+      ],
+      "notes": "Lists the site's resolutions \u2014 Done, Won't Do, Duplicate, Cannot Reproduce by default \u2014 now recorded on issues and searchable with resolution = Unresolved."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/resolution/search",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md"
+      ],
+      "notes": "Pages the site's resolutions filtered by id and onlyDefault, marking the default."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/resolution/{id}",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md"
+      ],
+      "notes": "Reads one resolution by numeric id or name within the site."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/role",
@@ -8714,6 +9042,44 @@
       "notes": "Creation with levels, holders and a default level is tested through REST and the browser; zzira's pre-v3 caller-supplied id extension is retained and scheme copy remains."
     },
     {
+      "operationId": "jira-v3:POST:/rest/api/3/issuetype",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md"
+      ],
+      "notes": "Creates a standard (level 0) or subtask (level -1) issue type owned by the site, 409 on a duplicate name, and adds it to the default issue type scheme."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/issuetype/{id}/avatar2",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md",
+        "migrations/163_issue_type_avatars.sql"
+      ],
+      "notes": "Stores a JPEG, GIF or PNG avatar for a site's issue type and selects it, requiring X-Atlassian-Token no-check; there is no system avatar catalogue."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/issuetypescheme",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md",
+        "internal/store/issue_schemes.go"
+      ],
+      "notes": "Creates a scheme with its types and default type, 409 on a duplicate name."
+    },
+    {
       "operationId": "jira-v3:POST:/rest/api/3/issuetypescreenscheme",
       "status": "partial",
       "evidence": [
@@ -8858,6 +9224,45 @@
       "notes": "Adds one validated, unique, audited grant across supported Jira holder types; app-defined permissions and every validation edge remain."
     },
     {
+      "operationId": "jira-v3:POST:/rest/api/3/priority",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md",
+        "internal/store/issue_schemes.go"
+      ],
+      "notes": "Creates a priority requiring name and a hex statusColor, answers its numeric id, and adds it to the default priority scheme."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/priorityscheme",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md",
+        "internal/store/issue_schemes.go"
+      ],
+      "notes": "Creates a scheme with priorities, default and projects, refusing changes that strand issues unless each stranded priority is mapped."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/priorityscheme/mappings",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md",
+        "internal/store/issue_schemes.go"
+      ],
+      "notes": "Reports the priorities issues use that a proposed change to a scheme's priorities or projects would strand."
+    },
+    {
       "operationId": "jira-v3:POST:/rest/api/3/project",
       "status": "partial",
       "evidence": [
@@ -8917,6 +9322,18 @@
         "docs/PROJECT_GOVERNANCE.md"
       ],
       "notes": "Site-admin create enforces non-empty unique names and returns Jira category shape/status; exact OAuth scopes remain."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/resolution",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md"
+      ],
+      "notes": "Creates a resolution owned by the site and answers its numeric id; a duplicate name is 400."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/role",
@@ -9670,6 +10087,82 @@
       "notes": "Atomic holder addition across the nine Jira holder types is tested; per-holder managed administration remains."
     },
     {
+      "operationId": "jira-v3:PUT:/rest/api/3/issuetype/{id}",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md"
+      ],
+      "notes": "Renames, re-describes or sets the avatar of an issue type; a shared default is changed for this site only."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/issuetype/{issueTypeId}/properties/{propertyKey}",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md"
+      ],
+      "notes": "Stores a non-empty JSON value up to 32768 characters, 201 when new and 200 when replaced."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/issuetypescheme/project",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md",
+        "internal/store/issue_schemes.go"
+      ],
+      "notes": "Assigns a scheme to a project, refused while any issue in the project uses a type the scheme lacks."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/issuetypescheme/{issueTypeSchemeId}",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md",
+        "internal/store/issue_schemes.go"
+      ],
+      "notes": "Updates a scheme's name, description and default type, which must be one of its types."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/issuetypescheme/{issueTypeSchemeId}/issuetype",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md",
+        "internal/store/issue_schemes.go"
+      ],
+      "notes": "Appends issue types, adding none if any is already in the scheme."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/issuetypescheme/{issueTypeSchemeId}/issuetype/move",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md",
+        "internal/store/issue_schemes.go"
+      ],
+      "notes": "Reorders types within a scheme with after or position First/Last."
+    },
+    {
       "operationId": "jira-v3:PUT:/rest/api/3/issuetypescreenscheme/project",
       "status": "partial",
       "evidence": [
@@ -9736,6 +10229,55 @@
         "docs/PERMISSION_SCHEMES.md"
       ],
       "notes": "Atomically updates scheme metadata and optionally replaces grants with audited validation; exact Jira partial-body behavior remains."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/priority/default",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md"
+      ],
+      "notes": "Sets the site's default priority, the one an issue gets when none is chosen."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/priority/move",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md"
+      ],
+      "notes": "Reorders priorities with after or position First/Last, which is also the order ORDER BY priority follows."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/priority/{id}",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md"
+      ],
+      "notes": "Updates a priority, requiring at least one field; a shared default changes for this site only."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/priorityscheme/{schemeId}",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md",
+        "internal/store/issue_schemes.go"
+      ],
+      "notes": "Updates details, priorities and projects from complete or add/remove lists with required mappings, answered 202 without a task because mappings apply before answering."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/project/{projectIdOrKey}",
@@ -9807,6 +10349,45 @@
         "docs/PROJECT_GOVERNANCE.md"
       ],
       "notes": "Site-admin update persists name/description atomically with immutable action evidence and conflict/not-found statuses."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/resolution/default",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md",
+        "internal/jql/jql.go",
+        "internal/jql/jql_test.go",
+        "internal/store/mutations.go"
+      ],
+      "notes": "Sets the site's default resolution, which issues receive on entering a done status."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/resolution/move",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md"
+      ],
+      "notes": "Reorders resolutions with after or position First/Last."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/resolution/{id}",
+      "status": "partial",
+      "evidence": [
+        "migrations/162_issue_metadata.sql",
+        "internal/store/issue_metadata.go",
+        "internal/api3/issue_metadata.go",
+        "internal/api3/issue_metadata_test.go",
+        "docs/ISSUE_METADATA.md"
+      ],
+      "notes": "Renames a resolution; a shared default changes for this site only."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/role/{id}",

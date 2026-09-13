@@ -303,7 +303,8 @@ func TestMultipleOrderFieldsAreBoundedAndDeterministic(t *testing.T) {
 	if compiled.Err != nil {
 		t.Fatal(compiled.Err)
 	}
-	if compiled.OrderSQL != "pr2.name DESC, i.updated_at ASC, i.key DESC, i.id ASC" {
+	// Priority orders by its place in the site's order, as in Jira, not by name.
+	if compiled.OrderSQL != "COALESCE(pro.position, pr2.position) DESC, i.updated_at ASC, i.key DESC, i.id ASC" {
 		t.Fatalf("order = %q", compiled.OrderSQL)
 	}
 	if _, err := Parse(`project = ZZ ORDER BY key,key,key,key,key,key,key,key`); err == nil {
@@ -514,5 +515,48 @@ func TestParseCustomFunctionOnlyOperators(t *testing.T) {
 		if !ok || clause.Op != operator || len(clause.Values) != 1 {
 			t.Fatalf("parse %q = %#v", input, query.Root)
 		}
+	}
+}
+
+// TestResolutionUnresolved pins Jira's Unresolved: the absence of a resolution,
+// not a resolution with that name. Every form of the comparison must agree.
+func TestResolutionUnresolved(t *testing.T) {
+	compile := func(source string) Compiled {
+		t.Helper()
+		query, err := Parse(source)
+		if err != nil {
+			t.Fatalf("%s: %v", source, err)
+		}
+		compiled := Compile(query, "usr_me", DefaultResolver())
+		if compiled.Err != nil {
+			t.Fatalf("%s: %v", source, compiled.Err)
+		}
+		return compiled
+	}
+	col := "COALESCE(reso.name, res.name)"
+	for source, want := range map[string]string{
+		`resolution = Unresolved`:        col + " IS NULL",
+		`resolution = "Unresolved"`:      col + " IS NULL",
+		`resolution != Unresolved`:       col + " IS NOT NULL",
+		`resolution is EMPTY`:            "(" + col + " IS NULL OR " + col + " = '')",
+		`resolution in (Unresolved)`:     "(" + col + " IS NULL OR FALSE)",
+		`resolution not in (Unresolved)`: "(" + col + " IS NOT NULL AND NOT (FALSE))",
+	} {
+		if got := compile(source).Where; !strings.Contains(got, want) {
+			t.Fatalf("%s compiled to %q, want it to contain %q", source, got, want)
+		}
+	}
+	// A named resolution is still compared by name, and Unresolved beside it
+	// widens the match to issues with no resolution at all.
+	mixed := compile(`resolution in (Done, Unresolved)`)
+	if !strings.Contains(mixed.Where, "("+col+" IS NULL OR "+col+" IN (") {
+		t.Fatalf("mixed IN: %q", mixed.Where)
+	}
+	if len(mixed.Args) != 1 || mixed.Args[0] != "Done" {
+		t.Fatalf("mixed IN args: %v", mixed.Args)
+	}
+	// resolutiondate reads when the issue was resolved.
+	if got := compile(`resolutiondate >= "2026-01-01"`).Where; !strings.Contains(got, "i.resolved_at >=") {
+		t.Fatalf("resolutiondate: %q", got)
 	}
 }

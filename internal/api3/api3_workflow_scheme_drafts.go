@@ -116,6 +116,7 @@ func (h *Handler) workflowSchemeSubresourceRoute(w http.ResponseWriter, r *http.
 				}
 			}
 			if request.IssueTypeMappings != nil {
+				request.IssueTypeMappings = h.issueTypeIDsFor(r, workspaceID).mapKeysToInternal(request.IssueTypeMappings)
 				scheme.IssueTypeMappings = make(map[string]string, len(request.IssueTypeMappings))
 				for issueTypeID, workflowName := range request.IssueTypeMappings {
 					workflowID := workflowIDForName(workflows, workflowName)
@@ -160,9 +161,10 @@ func (h *Handler) workflowSchemeSubresourceRoute(w http.ResponseWriter, r *http.
 			jiraError(w, http.StatusBadRequest, "Invalid workflow scheme publish request.")
 			return true
 		}
+		ids := h.issueTypeIDsFor(r, workspaceID)
 		statusMappings := make([]store.WorkflowStatusMapping, 0, len(request.StatusMappings))
 		for _, mapping := range request.StatusMappings {
-			statusMappings = append(statusMappings, store.WorkflowStatusMapping{IssueTypeID: mapping.IssueTypeID, OldStatusID: mapping.StatusID, NewStatusID: mapping.NewStatusID})
+			statusMappings = append(statusMappings, store.WorkflowStatusMapping{IssueTypeID: ids.toInternal(mapping.IssueTypeID), OldStatusID: mapping.StatusID, NewStatusID: mapping.NewStatusID})
 		}
 		if r.URL.Query().Get("validateOnly") == "true" {
 			projects, err := h.Store.ProjectsForWorkflowScheme(r.Context(), workspaceID, schemeID)
@@ -257,7 +259,8 @@ func (h *Handler) workflowSchemeSubresourceRoute(w http.ResponseWriter, r *http.
 		if !ok {
 			return true
 		}
-		issueTypeID := parts[3]
+		ids := h.issueTypeIDsFor(r, workspaceID)
+		issueTypeID := ids.toInternal(parts[3])
 		workflows, err := h.Store.ListGlobalWorkflows(r.Context(), workspaceID)
 		if err != nil {
 			workflowSchemeAPIError(w, err)
@@ -270,7 +273,7 @@ func (h *Handler) workflowSchemeSubresourceRoute(w http.ResponseWriter, r *http.
 				jiraError(w, http.StatusNotFound, "The issue type mapping does not exist.")
 				return true
 			}
-			writeJSON(w, http.StatusOK, map[string]any{"issueType": issueTypeID, "workflow": workflowNameForID(workflows, workflowID)})
+			writeJSON(w, http.StatusOK, map[string]any{"issueType": ids.toWire(issueTypeID), "workflow": workflowNameForID(workflows, workflowID)})
 		case http.MethodPut:
 			var request struct {
 				Workflow string `json:"workflow"`
@@ -314,6 +317,7 @@ func (h *Handler) workflowSchemeSubresourceRoute(w http.ResponseWriter, r *http.
 			workflowSchemeAPIError(w, err)
 			return true
 		}
+		ids := h.issueTypeIDsFor(r, workspaceID)
 		workflowName := r.URL.Query().Get("workflowName")
 		workflowID := workflowIDForName(workflows, workflowName)
 		if workflowID == "" {
@@ -325,7 +329,7 @@ func (h *Handler) workflowSchemeSubresourceRoute(w http.ResponseWriter, r *http.
 			issueTypes := make([]string, 0)
 			for issueTypeID, mappedWorkflowID := range scheme.IssueTypeMappings {
 				if mappedWorkflowID == workflowID {
-					issueTypes = append(issueTypes, issueTypeID)
+					issueTypes = append(issueTypes, ids.toWire(issueTypeID))
 				}
 			}
 			writeJSON(w, http.StatusOK, map[string]any{"workflow": workflowNameForID(workflows, workflowID), "issueTypes": issueTypes, "defaultMapping": scheme.DefaultWorkflowID == workflowID})
@@ -354,7 +358,7 @@ func (h *Handler) workflowSchemeSubresourceRoute(w http.ResponseWriter, r *http.
 				}
 			}
 			for _, issueTypeID := range request.IssueTypes {
-				scheme.IssueTypeMappings[issueTypeID] = targetWorkflowID
+				scheme.IssueTypeMappings[ids.toInternal(issueTypeID)] = targetWorkflowID
 			}
 			if request.DefaultMapping {
 				scheme.DefaultWorkflowID = targetWorkflowID

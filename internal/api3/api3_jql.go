@@ -263,7 +263,7 @@ func (h *Handler) jqlSuggestions(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	case "priority":
-		priorities, err := h.Store.Priorities(r.Context())
+		priorities, err := h.Store.Priorities(r.Context(), workspaceID)
 		if err != nil {
 			jiraError(w, 500, "Could not load JQL suggestions.")
 			return
@@ -272,7 +272,7 @@ func (h *Handler) jqlSuggestions(w http.ResponseWriter, r *http.Request) {
 			add(priority.Name, priority.Name)
 		}
 	case "issuetype":
-		types, err := h.Store.IssueTypes(r.Context())
+		types, err := h.Store.IssueTypes(r.Context(), workspaceID)
 		if err != nil {
 			jiraError(w, 500, "Could not load JQL suggestions.")
 			return

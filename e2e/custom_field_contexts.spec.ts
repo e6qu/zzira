@@ -95,7 +95,7 @@ test('site administrators scope a custom field with a context and the create for
   await page.keyboard.press('Escape');
 
   // The REST contract agrees with what the browser shows.
-  const meta = await (await page.request.get(`/rest/api/3/issue/createmeta/${keyA}/issuetypes/it_task?maxResults=60`, { headers: auth })).json();
+  const meta = await (await page.request.get(`/rest/api/3/issue/createmeta/${keyA}/issuetypes/10002?maxResults=60`, { headers: auth })).json();
   const wire = meta.fields.find((entry: { fieldId: string }) => entry.fieldId === fieldID);
   expect(wire).toBeTruthy();
   expect(wire.defaultValue).toBe('Ship it');

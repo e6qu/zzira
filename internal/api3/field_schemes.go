@@ -24,10 +24,10 @@ func (h *Handler) fieldSchemeBean(scheme *store.FieldScheme) map[string]any {
 	}
 }
 
-func fieldSchemeParametersBean(parameters store.FieldSchemeParameters, withWorkType bool) map[string]any {
+func fieldSchemeParametersBean(ids issueTypeIDs, parameters store.FieldSchemeParameters, withWorkType bool) map[string]any {
 	bean := map[string]any{"isRequired": parameters.IsRequired, "description": parameters.Description}
 	if withWorkType {
-		bean["workTypeId"] = wireNumericID(parameters.WorkTypeID)
+		bean["workTypeId"] = wireNumericID(ids.toWire(parameters.WorkTypeID))
 	}
 	return bean
 }
@@ -200,19 +200,20 @@ func (h *Handler) listFieldSchemeFields(w http.ResponseWriter, r *http.Request, 
 		fieldConfigError(w, err)
 		return
 	}
+	ids := h.issueTypeIDsFor(r, workspaceID)
 	page := pageSlice(fields, startAt, maxResults)
 	values := make([]map[string]any, 0, len(page))
 	for _, field := range page {
 		restricted := make([]any, 0, len(field.RestrictedToWorkTypes))
 		for _, workTypeID := range field.RestrictedToWorkTypes {
-			restricted = append(restricted, wireNumericID(workTypeID))
+			restricted = append(restricted, wireNumericID(ids.toWire(workTypeID)))
 		}
 		overrides := make([]map[string]any, 0, len(field.WorkTypeParameters))
 		for _, parameters := range field.WorkTypeParameters {
-			overrides = append(overrides, fieldSchemeParametersBean(parameters, true))
+			overrides = append(overrides, fieldSchemeParametersBean(ids, parameters, true))
 		}
 		values = append(values, map[string]any{
-			"fieldId": field.FieldID, "parameters": fieldSchemeParametersBean(field.Parameters, false),
+			"fieldId": field.FieldID, "parameters": fieldSchemeParametersBean(ids, field.Parameters, false),
 			"restrictedToWorkTypes": restricted, "workTypeParameters": overrides,
 			// Every associated field can be read and written here; narrower
 			// operation sets belong to rules this model does not have.
@@ -237,12 +238,13 @@ func (h *Handler) fieldSchemeFieldParameters(w http.ResponseWriter, r *http.Requ
 		jiraError(w, http.StatusNotFound, "The field is not associated with this field association scheme.")
 		return
 	}
+	ids := h.issueTypeIDsFor(r, workspaceID)
 	overrides := make([]map[string]any, 0, len(fields[0].WorkTypeParameters))
 	for _, parameters := range fields[0].WorkTypeParameters {
-		overrides = append(overrides, fieldSchemeParametersBean(parameters, true))
+		overrides = append(overrides, fieldSchemeParametersBean(ids, parameters, true))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"fieldId": fieldID, "parameters": fieldSchemeParametersBean(fields[0].Parameters, false),
+		"fieldId": fieldID, "parameters": fieldSchemeParametersBean(ids, fields[0].Parameters, false),
 		"workTypeParameters": overrides,
 	})
 }
@@ -327,6 +329,7 @@ func (h *Handler) writeFieldSchemeFields(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
+	h.internalFieldSchemeItems(r, workspaceID, request)
 	var results []store.FieldSchemeWriteResult
 	var err error
 	if r.Method == http.MethodPut {
@@ -355,6 +358,7 @@ func (h *Handler) writeFieldSchemeParameters(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return
 	}
+	h.internalFieldSchemeItems(r, workspaceID, request)
 	if r.Method == http.MethodDelete {
 		// Removing an override returns the named work types to the scheme's
 		// fallback rules, which is what an absent override means.
@@ -544,4 +548,19 @@ func sortedMapKeys[V any](m map[string]V) []string {
 		}
 	}
 	return keys
+}
+
+// internalFieldSchemeItems turns the work type ids a bulk write names into the
+// ids the product stores.
+func (h *Handler) internalFieldSchemeItems(r *http.Request, workspaceID string, request map[string][]store.FieldSchemeFieldRequest) {
+	ids := h.issueTypeIDsFor(r, workspaceID)
+	for fieldID, items := range request {
+		for i := range items {
+			items[i].RestrictedToWorkTypes = ids.allToInternal(items[i].RestrictedToWorkTypes)
+			for j := range items[i].WorkTypeParameters {
+				items[i].WorkTypeParameters[j].WorkTypeID = ids.toInternal(items[i].WorkTypeParameters[j].WorkTypeID)
+			}
+		}
+		request[fieldID] = items
+	}
 }

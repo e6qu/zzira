@@ -161,7 +161,7 @@ func TestStatusAPILifecycleAndWorkspaceScope(t *testing.T) {
 		t.Fatal(workflowUsage.Body.String())
 	}
 	issueTypeUsage := call(member, "GET", "/rest/api/3/statuses/st_todo/project/"+projectID+"/issueTypeUsages", "", 200)
-	if !strings.Contains(issueTypeUsage.Body.String(), "it_task") {
+	if !strings.Contains(issueTypeUsage.Body.String(), "10002") {
 		t.Fatal(issueTypeUsage.Body.String())
 	}
 	call(actor, "DELETE", "/rest/api/3/statuses?id=st_todo", "", 409)

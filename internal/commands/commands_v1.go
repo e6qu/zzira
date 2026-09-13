@@ -139,7 +139,7 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 	// The edit path passed the priority straight through, so an unknown value
 	// was stored rather than rejected. Resolve it the way CreateIssue does.
 	if in.PriorityID != nil && *in.PriorityID != "" {
-		priority, priorityErr := s.Store.PriorityByIDOrName(ctx, *in.PriorityID)
+		priority, priorityErr := s.Store.PriorityByIDOrName(ctx, in.WorkspaceID, *in.PriorityID)
 		if priorityErr != nil {
 			return nil, nil, fmt.Errorf("priority %q not found", *in.PriorityID)
 		}

@@ -16,9 +16,10 @@ func (h *Handler) workflowSchemeBean(r *http.Request, workspaceID string, scheme
 	for _, item := range workflows {
 		names[item.ID] = item.Name
 	}
+	ids := h.issueTypeIDsFor(r, workspaceID)
 	mappings := make(map[string]string, len(scheme.IssueTypeMappings))
 	for issueTypeID, workflowID := range scheme.IssueTypeMappings {
-		mappings[issueTypeID] = names[workflowID]
+		mappings[ids.toWire(issueTypeID)] = names[workflowID]
 	}
 	return map[string]any{
 		"id": scheme.ID, "name": scheme.Name, "description": scheme.Description,
@@ -101,6 +102,7 @@ func (h *Handler) workflowSchemeRoute(w http.ResponseWriter, r *http.Request, pa
 				workflowSchemeAPIError(w, err)
 				return
 			}
+			request.IssueTypeMappings = h.issueTypeIDsFor(r, workspaceID).mapKeysToInternal(request.IssueTypeMappings)
 			defaultID, mappings, ok := resolveSchemeWorkflowNames(workflows, request.DefaultWorkflow, request.IssueTypeMappings)
 			if !ok {
 				jiraError(w, http.StatusBadRequest, "A mapped workflow does not exist.")
@@ -142,11 +144,12 @@ func (h *Handler) workflowSchemeRoute(w http.ResponseWriter, r *http.Request, pa
 			jiraError(w, http.StatusNotFound, "The project does not exist.")
 			return
 		}
+		ids := h.issueTypeIDsFor(r, workspaceID)
 		var mappings []store.WorkflowStatusMapping
 		for _, override := range request.MappingsByIssueTypeOverride {
 			for _, mapping := range override.StatusMappings {
 				mappings = append(mappings, store.WorkflowStatusMapping{
-					IssueTypeID: override.IssueTypeID,
+					IssueTypeID: ids.toInternal(override.IssueTypeID),
 					OldStatusID: mapping.OldStatusID,
 					NewStatusID: mapping.NewStatusID,
 				})

@@ -2,28 +2,16 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/e6qu/zzira/internal/models"
 )
 
-// IssueTypes lists the issue type registry used by create metadata.
-func (s *Store) IssueTypes(ctx context.Context) ([]models.IssueType, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT id, name, COALESCE(icon,''), subtask FROM issue_types ORDER BY subtask, name, id`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []models.IssueType
-	for rows.Next() {
-		var issueType models.IssueType
-		if err := rows.Scan(&issueType.ID, &issueType.Name, &issueType.Icon, &issueType.Subtask); err != nil {
-			return nil, err
-		}
-		out = append(out, issueType)
-	}
-	return out, rows.Err()
+// IssueTypes lists the site's issue types.
+func (s *Store) IssueTypes(ctx context.Context, workspaceID string) ([]models.IssueType, error) {
+	return s.IssueTypesForWorkspace(ctx, workspaceID)
 }
 
 // ProjectByIDOrKey resolves a project without allowing it to escape the
@@ -40,7 +28,7 @@ func (s *Store) IssueCreateMetadata(ctx context.Context, workspaceID, userID str
 	if err != nil {
 		return nil, err
 	}
-	issueTypes, err := s.IssueTypes(ctx)
+	issueTypes, err := s.IssueTypes(ctx, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -56,7 +44,7 @@ func (s *Store) IssueCreateMetadata(ctx context.Context, workspaceID, userID str
 	if err != nil {
 		return nil, err
 	}
-	priorities, err := s.Priorities(ctx)
+	priorities, err := s.Priorities(ctx, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -72,10 +60,6 @@ func (s *Store) IssueCreateMetadata(ctx context.Context, workspaceID, userID str
 	projectOptions := make([]models.CreateFieldOption, 0, len(projects))
 	for _, project := range projects {
 		projectOptions = append(projectOptions, models.CreateFieldOption{ID: project.ID, Key: project.Key, Name: project.Name})
-	}
-	typeOptions := make([]models.CreateFieldOption, 0, len(issueTypes))
-	for _, issueType := range issueTypes {
-		typeOptions = append(typeOptions, models.CreateFieldOption{ID: issueType.ID, Name: issueType.Name})
 	}
 	priorityOptions := make([]models.CreateFieldOption, 0, len(priorities))
 	for _, priority := range priorities {
@@ -110,9 +94,20 @@ func (s *Store) IssueCreateMetadata(ctx context.Context, workspaceID, userID str
 			return nil, err
 		}
 		parentRows.Close()
+		// A project offers the issue types of its issue type scheme, with the
+		// scheme's default type first, which is the type Jira's create form
+		// starts on.
+		projectTypes, err := s.createMetaProjectIssueTypes(ctx, workspaceID, project.ID, issueTypes)
+		if err != nil {
+			return nil, err
+		}
+		projectTypeOptions := make([]models.CreateFieldOption, 0, len(projectTypes))
+		for _, issueType := range projectTypes {
+			projectTypeOptions = append(projectTypeOptions, models.CreateFieldOption{ID: issueType.ID, Name: issueType.Name})
+		}
 		fields := []models.CreateFieldMeta{
 			{ID: "project", Name: "Project", Type: "project", Required: true, Section: "context", Options: projectOptions},
-			{ID: "issuetype", Name: "Issue type", Type: "issuetype", Required: true, Section: "context", Options: typeOptions},
+			{ID: "issuetype", Name: "Issue type", Type: "issuetype", Required: true, Section: "context", Options: projectTypeOptions},
 			{ID: "summary", Name: "Summary", Type: "string", Required: true, Section: "primary"},
 			{ID: "description", Name: "Description", Type: "doc", Section: "primary"},
 			{ID: "assignee", Name: "Assignee", Type: "user", Section: "details", Options: memberOptions},
@@ -181,7 +176,7 @@ func (s *Store) IssueCreateMetadata(ctx context.Context, workspaceID, userID str
 		// The project's screen scheme decides which of these fields each work
 		// type's create form actually shows.
 		meta.Projects = append(meta.Projects, models.CreateProjectMeta{
-			Project: *project, IssueTypes: issueTypes, Fields: fields,
+			Project: *project, IssueTypes: projectTypes, Fields: fields,
 			ScreenFields: createScreenFields[project.ID], FieldBehaviour: fieldBehaviour[project.ID],
 			CustomFieldContexts: customFieldContexts[project.ID]})
 	}
@@ -210,4 +205,31 @@ func containsString(values []string, target string) bool {
 		}
 	}
 	return false
+}
+
+// createMetaProjectIssueTypes lists a project's issue types in its scheme's
+// order with the scheme's default type first. A site without schemes yet offers
+// all its types.
+func (s *Store) createMetaProjectIssueTypes(ctx context.Context, workspaceID, projectID string, all []models.IssueType) ([]models.IssueType, error) {
+	scheme, err := s.ProjectIssueTypeScheme(ctx, workspaceID, projectID)
+	if err != nil {
+		if errors.Is(err, ErrIssueMetadataNotFound) {
+			return all, nil
+		}
+		return nil, err
+	}
+	byID := make(map[string]models.IssueType, len(all))
+	for _, issueType := range all {
+		byID[issueType.ID] = issueType
+	}
+	ordered := make([]models.IssueType, 0, len(scheme.IssueTypeIDs))
+	if t, ok := byID[scheme.DefaultIssueTypeID]; ok {
+		ordered = append(ordered, t)
+	}
+	for _, id := range scheme.IssueTypeIDs {
+		if t, ok := byID[id]; ok && id != scheme.DefaultIssueTypeID {
+			ordered = append(ordered, t)
+		}
+	}
+	return ordered, nil
 }

@@ -128,8 +128,13 @@ func (h *Handler) fieldContextCollection(w http.ResponseWriter, r *http.Request,
 		if !decodeProjectRequest(w, r, &request) {
 			return
 		}
+		ids, err := h.issueTypeIDTranslator(r.Context(), workspaceID)
+		if err != nil {
+			fieldContextError(w, err)
+			return
+		}
 		found, err := h.Store.CreateCustomFieldContext(r.Context(), workspaceID, actorID, fieldID,
-			request.Name, request.Description, request.ProjectIDs, request.IssueTypeIDs)
+			request.Name, request.Description, request.ProjectIDs, ids.allToInternal(request.IssueTypeIDs))
 		if err != nil {
 			fieldContextError(w, err)
 			return
@@ -192,7 +197,12 @@ func (h *Handler) changeFieldContextScope(w http.ResponseWriter, r *http.Request
 	if !decodeProjectRequest(w, r, &request) {
 		return
 	}
-	projectIDs, issueTypeIDs := request.ProjectIDs, request.IssueTypeIDs
+	ids, err := h.issueTypeIDTranslator(r.Context(), workspaceID)
+	if err != nil {
+		fieldContextError(w, err)
+		return
+	}
+	projectIDs, issueTypeIDs := request.ProjectIDs, ids.allToInternal(request.IssueTypeIDs)
 	if kind == "project" {
 		issueTypeIDs = nil
 	} else {
@@ -290,6 +300,11 @@ func (h *Handler) fieldContextIssueTypeMapping(w http.ResponseWriter, r *http.Re
 		writeJerr(w, authErr)
 		return
 	}
+	ids, idErr := h.issueTypeIDTranslator(r.Context(), workspaceID)
+	if idErr != nil {
+		fieldContextError(w, idErr)
+		return
+	}
 	startAt, maxResults, err := notificationPage(r)
 	if err != nil {
 		jiraError(w, http.StatusBadRequest, "startAt and maxResults are invalid.")
@@ -309,7 +324,7 @@ func (h *Handler) fieldContextIssueTypeMapping(w http.ResponseWriter, r *http.Re
 		}
 		for _, issueTypeID := range found.IssueTypeIDs {
 			values = append(values, map[string]any{
-				"contextId": wireNumericID(found.ID), "issueTypeId": issueTypeID})
+				"contextId": wireNumericID(found.ID), "issueTypeId": ids.toWire(issueTypeID)})
 		}
 	}
 	page := pageSlice(values, startAt, maxResults)
@@ -362,6 +377,11 @@ func (h *Handler) fieldContextsForProjectsAndIssueTypes(w http.ResponseWriter, r
 		writeJerr(w, authErr)
 		return
 	}
+	ids, idErr := h.issueTypeIDTranslator(r.Context(), workspaceID)
+	if idErr != nil {
+		fieldContextError(w, idErr)
+		return
+	}
 	var request struct {
 		Mappings []struct {
 			ProjectID   string `json:"projectId"`
@@ -382,7 +402,7 @@ func (h *Handler) fieldContextsForProjectsAndIssueTypes(w http.ResponseWriter, r
 	}
 	values := []map[string]any{}
 	for _, mapping := range request.Mappings {
-		found, lookupErr := h.Store.ApplicableCustomFieldContext(r.Context(), fieldID, mapping.ProjectID, mapping.IssueTypeID)
+		found, lookupErr := h.Store.ApplicableCustomFieldContext(r.Context(), fieldID, mapping.ProjectID, ids.toInternal(mapping.IssueTypeID))
 		if lookupErr != nil {
 			fieldContextError(w, lookupErr)
 			return
@@ -392,7 +412,7 @@ func (h *Handler) fieldContextsForProjectsAndIssueTypes(w http.ResponseWriter, r
 		}
 		values = append(values, map[string]any{
 			"contextId": wireNumericID(found.ID), "projectId": wireNumericID(mapping.ProjectID),
-			"issueTypeId": mapping.IssueTypeID,
+			"issueTypeId": ids.toWire(ids.toInternal(mapping.IssueTypeID)),
 		})
 	}
 	page := pageSlice(values, startAt, maxResults)

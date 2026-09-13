@@ -8,34 +8,26 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
 ## Active delivery
 
-- Branch: `feat/pr1-confluence-analytics` (PR #115)
-- Base: `origin/main` after merged PR #109 (`4b65b88`).
+- Branch: `feat/pr1-jira-issue-metadata` (PR #116)
+- Base: `origin/main` after merged PR #115 (`61ee683`).
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- State: this PR completes Confluence. Every pinned `confluence-v1` and
-  `confluence-v2` operation is now assessed. It bundles three things, because a
-  two-operation PR was too small to be worth a review cycle of its own:
-  - **Content analytics** — view and distinct-viewer counts with `fromDate`.
-    Views are recorded when published content is opened in the product or read
-    singly through the v2 API, never for writes, listings, searches, drafts or
-    refused reads, and the counts are a 404 for anyone who may not open the
-    content.
-  - **Content id uniqueness.** CI caught a real leak on a fresh database: page 1
-    and blog post 1 both existed, and the analytics of a page the reader could
-    not see fell through to the blog post. Confluence ids are unique across
-    content, so migration 158 puts pages, blog posts, comments and attachments on
-    one sequence, and `WikiContentKindByID` resolves legacy collisions by what
-    exists rather than what the caller may see. The regression test fails
-    against the old resolver and passes against the new one.
-  - **The last sixteen `confluence-v2` operations** — comment properties, Forge
-    app properties under the app-data scopes, the admin key, convert-ids-to-types,
-    access checks and invitations by email, and the data policy metadata.
-  **Behaviour change:** an administrator no longer sees or edits restricted
-  pages by holding the admin role alone. As in Confluence, that access comes from
-  an active admin key; space administration and comment moderation are
-  unchanged. The one existing test that relied on the old bypass now enables a
-  key first and asserts a keyless administrator gets 404.
-  The five Dependabot bumps (#110–#114) are folded in, each version published more
-  than 24 hours before being taken, plus the transitive `x/sync` and `x/text`.
+- State: the Jira issue metadata bundle — all 46 issue type, issue type scheme,
+  issue type property, priority, priority scheme and resolution operations. Only
+  the three list endpoints answered before, and wrongly.
+  The model was the work. Issue types and priorities were global tables every
+  site shared, so any write would have leaked between tenants; they are now per
+  site, with Jira's defaults stored once and a site's changes kept as overrides.
+  Resolutions were a single hard-coded value and issues recorded none; issues
+  now carry a resolution set on entering a done status and cleared on leaving.
+  Clients see Jira's numeric ids; internal ids stay internal, and every caller of
+  the old global lookups is scoped to its site.
+  Two JQL bugs fixed on the way: `resolution = Unresolved` returned no issues,
+  and `ORDER BY priority` sorted alphabetically instead of by position.
+  Playwright then showed the new ids were only half-applied: create metadata,
+  changelogs and a dozen other Jira APIs — screen, field configuration and field
+  association schemes, custom field contexts, workflow schemes and their drafts,
+  usages and service request types — still sent and accepted internal issue type
+  ids. All now go through one translator, so no internal id reaches a client.
 - Blockers: none
 
 ## Merged baseline
@@ -131,11 +123,14 @@ PR #90's final GitHub matrix passed its required suites before merge.
    "no checks reported" rather than a failure, so a stacked PR can look fine and
    be unverified. Base every PR on `main` unless it genuinely needs a helper an
    open branch adds.
-2. Confluence is complete: no `confluence-v1` or `confluence-v2` operation is
-   unassessed. What remains is `jira-v3` (234) and `jira-software`
-   (44). `jira-service-management` has none. Keep PRs substantial —
-   bundle several families rather than opening one per small family, and fold in
-   open Dependabot bumps whose versions are more than 24 hours old.
+2. What remains unassessed is `jira-v3` (188) and `jira-software` (44).
+   Confluence and `jira-service-management` are fully assessed. Keep PRs
+   substantial — bundle several families — and fold in open Dependabot bumps
+   whose versions are more than 24 hours old.
+   Separately, the ledger only records hand-written assessments; nothing
+   executes the operations. An executable conformance harness, and JQL/CQL
+   function and field matrices checked against Atlassian's published lists,
+   are the way to measure coverage deterministically.
 3. Probe every operation against a running server before assessing; the eleven
    audits so far ran 11 of 15, 8 of 33, 5 of 13, 16 of 17, 4 of 14, 2 of 11,
    0 of 17, 0 of 8, 0 of 5, 0 of 2 and 0 of 2, so the result is not predictable
@@ -186,6 +181,7 @@ PR #90's final GitHub matrix passed its required suites before merge.
 - [Confluence content relations](CONTENT_RELATIONS.md)
 - [Confluence CQL search](CQL_SEARCH.md)
 - [Confluence content analytics](CONTENT_ANALYTICS.md)
+- [Jira issue metadata](ISSUE_METADATA.md)
 
 ## Continuity rules
 

@@ -18,7 +18,11 @@ const searchJoin = `
 FROM issues i
 JOIN statuses st ON st.id = i.status_id
 JOIN issue_types it ON it.id = i.issuetype_id
+LEFT JOIN issue_metadata_overrides ito ON ito.workspace_id = i.workspace_id AND ito.entity_type = 'issuetype' AND ito.entity_id = it.id
 LEFT JOIN priorities pr2 ON pr2.id = i.priority_id
+LEFT JOIN issue_metadata_overrides pro ON pro.workspace_id = i.workspace_id AND pro.entity_type = 'priority' AND pro.entity_id = pr2.id
+LEFT JOIN resolutions res ON res.id = i.resolution_id
+LEFT JOIN issue_metadata_overrides reso ON reso.workspace_id = i.workspace_id AND reso.entity_type = 'resolution' AND reso.entity_id = res.id
 LEFT JOIN users a ON a.id = i.assignee_id
 LEFT JOIN users r ON r.id = i.reporter_id
 LEFT JOIN issues parent ON parent.id = i.parent_id
@@ -28,15 +32,17 @@ JOIN projects pr ON pr.id = i.project_id
 const searchSelect = `
 SELECT i.id, i.jira_id, i.workspace_id, i.project_id, i.key, i.summary, i.description,
        st.id, st.name, st.category,
-	       it.id, it.name, it.icon,
+	       it.id, COALESCE(ito.name, it.name), it.icon,
 	       it.subtask,
 	       parent.id, parent.jira_id, parent.key, parent.summary,
-       pr2.id, pr2.name,
+       pr2.id, COALESCE(pro.name, pr2.name),
        a.id, a.display_name,
 	       r.id, r.display_name,
 	       i.rank,
 	       i.security_level_id, i.fields, i.labels,
-	       i.updated_seq, i.updated_at
+	       i.updated_seq, i.updated_at,
+	       it.jira_id, it.hierarchy_level, pr2.jira_id, COALESCE(pro.status_color, pr2.status_color), COALESCE(pro.icon_url, pr2.icon_url),
+	       res.id, res.jira_id, COALESCE(reso.name, res.name), COALESCE(reso.description, res.description), i.resolved_at
 `
 
 // Search runs a compiled JQL query within one workspace. The workspace
@@ -379,7 +385,11 @@ func issueJoinTables() string {
 	return ` FROM issues i
 	JOIN statuses st ON st.id = i.status_id
 	JOIN issue_types it ON it.id = i.issuetype_id
+	LEFT JOIN issue_metadata_overrides ito ON ito.workspace_id = i.workspace_id AND ito.entity_type = 'issuetype' AND ito.entity_id = it.id
 	LEFT JOIN priorities pr2 ON pr2.id = i.priority_id
+	LEFT JOIN issue_metadata_overrides pro ON pro.workspace_id = i.workspace_id AND pro.entity_type = 'priority' AND pro.entity_id = pr2.id
+	LEFT JOIN resolutions res ON res.id = i.resolution_id
+	LEFT JOIN issue_metadata_overrides reso ON reso.workspace_id = i.workspace_id AND reso.entity_type = 'resolution' AND reso.entity_id = res.id
 	LEFT JOIN users a ON a.id = i.assignee_id
 	LEFT JOIN users r ON r.id = i.reporter_id
 	LEFT JOIN issues parent ON parent.id = i.parent_id
