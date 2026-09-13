@@ -94,7 +94,7 @@ test('V2: administrator bulk-deletes navigator selections and follows task progr
   await page.locator('[data-bulk-issue]').check();
   page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Delete selected' }).click();
-  await expect(page).toHaveURL(/\/issues\/ZZ\/bulk\/task_/);
+  await expect(page).toHaveURL(/\/issues\/ZZ\/bulk\/\d+$/);
   await expect(page.getByRole('heading', { name: 'Bulk delete issues' })).toBeVisible();
   await expect(page.locator('.page-header .lozenge')).toHaveText('COMPLETE', { timeout: 20_000 });
   await expect(page.locator('dt', { hasText: /^Processed$/ }).locator('..')).toContainText('1');
@@ -122,7 +122,7 @@ test('V2: administrator submits a bulk move from the navigator', async ({ page, 
   await page.locator('.bulk-move-picker select[name="issueType"]').selectOption({ label: 'Task' });
   page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Start move' }).click();
-  await expect(page).toHaveURL(/\/issues\/ZZ\/bulk\/task_/);
+  await expect(page).toHaveURL(/\/issues\/ZZ\/bulk\/\d+$/);
   await expect(page.locator('.page-header .lozenge')).toHaveText('COMPLETE', { timeout: 20_000 });
   await page.goto(`/browse/${key}`);
   await expect(page.locator('.issue-title-block .eyebrow')).toContainText('Task');
@@ -149,7 +149,7 @@ test('V2: administrator discovers and runs a common bulk transition', async ({ p
   await transitionPicker.selectOption({ index: 0 });
   page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Start transition' }).click();
-  await expect(page).toHaveURL(/\/issues\/ZZ\/bulk\/task_/);
+  await expect(page).toHaveURL(/\/issues\/ZZ\/bulk\/\d+$/);
   await expect(page.locator('.page-header .lozenge')).toHaveText('COMPLETE', { timeout: 20_000 });
   await page.goto(`/browse/${key}`);
   const after = await request.get(`/rest/api/3/issue/${key}`, { headers: { Authorization: apiAuthHeader() } });
