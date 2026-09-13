@@ -58,7 +58,7 @@ func (h *Handler) workflowSchemeSubresourceRoute(w http.ResponseWriter, r *http.
 	if len(parts) < 2 {
 		return false
 	}
-	schemeID := parts[0]
+	schemeID := h.Store.WorkflowSchemeIDByRef(r.Context(), workspaceID, parts[0])
 	if len(parts) == 2 && parts[1] == "createdraft" {
 		if r.Method != http.MethodPost {
 			jiraError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -162,9 +162,10 @@ func (h *Handler) workflowSchemeSubresourceRoute(w http.ResponseWriter, r *http.
 			return true
 		}
 		ids := h.issueTypeIDsFor(r, workspaceID)
+		statusIDs := h.statusIDsFor(r, workspaceID)
 		statusMappings := make([]store.WorkflowStatusMapping, 0, len(request.StatusMappings))
 		for _, mapping := range request.StatusMappings {
-			statusMappings = append(statusMappings, store.WorkflowStatusMapping{IssueTypeID: ids.toInternal(mapping.IssueTypeID), OldStatusID: mapping.StatusID, NewStatusID: mapping.NewStatusID})
+			statusMappings = append(statusMappings, store.WorkflowStatusMapping{IssueTypeID: ids.toInternal(mapping.IssueTypeID), OldStatusID: statusIDs.toInternal(mapping.StatusID), NewStatusID: statusIDs.toInternal(mapping.NewStatusID)})
 		}
 		if r.URL.Query().Get("validateOnly") == "true" {
 			projects, err := h.Store.ProjectsForWorkflowScheme(r.Context(), workspaceID, schemeID)
@@ -210,7 +211,7 @@ func (h *Handler) workflowSchemeSubresourceRoute(w http.ResponseWriter, r *http.
 			workflowSchemeAPIError(w, err)
 			return true
 		}
-		location := h.BaseURL + "/rest/api/3/task/" + task.ID
+		location := h.BaseURL + "/rest/api/3/task/" + task.WireID()
 		w.Header().Set("Location", location)
 		writeJSON(w, http.StatusSeeOther, h.apiTaskBean(task))
 		return true

@@ -233,7 +233,10 @@ func (s *Store) EnqueueWikiSpaceDeletion(ctx context.Context, ws, actor, spaceKe
 	if err != nil {
 		return APITask{}, err
 	}
-	return task, s.enqueueAPITask(ctx, task)
+	if err := s.enqueueAPITask(ctx, &task); err != nil {
+		return APITask{}, err
+	}
+	return task, nil
 }
 
 func (s *Store) executeWikiSpaceDeletion(ctx context.Context, task APITask) error {

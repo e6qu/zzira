@@ -97,7 +97,7 @@ func TestAPITaskRunnerCancellationAndStaleClaimRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.enqueueAPITask(ctx, failedTask); err != nil {
+	if err := st.enqueueAPITask(ctx, &failedTask); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _, _ = st.Pool.Exec(ctx, `DELETE FROM api_tasks WHERE id=$1`, failedTask.ID) })

@@ -42,7 +42,7 @@
 
   <div class="saved-filter-list">
   {{range .Data.Rows}}{{$row := .}}
-    <article class="saved-filter-card" id="filter-{{.Filter.ID}}">
+    <article class="saved-filter-card" id="filter-{{.Filter.JiraID}}">
       <header>
         <div class="filter-title-block">
           <span class="filter-glyph" aria-hidden="true">⌕</span>
@@ -52,7 +52,7 @@
           </div>
         </div>
         <div class="filter-primary-actions">
-          <form method="post" action="/filters/{{.Filter.ID}}">
+          <form method="post" action="/filters/{{.Filter.JiraID}}">
             <input type="hidden" name="action" value="favorite">
             <input type="hidden" name="favorite" value="{{if .Filter.Favourite}}false{{else}}true{{end}}">
             <button class="filter-favorite" type="submit" aria-label="{{if .Filter.Favourite}}Remove {{.Filter.Name}} from favorites{{else}}Add {{.Filter.Name}} to favorites{{end}}" aria-pressed="{{.Filter.Favourite}}"><span aria-hidden="true">{{if .Filter.Favourite}}★{{else}}☆{{end}}</span><span>{{.Filter.FavouritedCount}}</span></button>
@@ -79,14 +79,14 @@
         {{if .CanEdit}}
         <details>
           <summary class="btn">Edit details</summary>
-          <form class="filter-edit-form" method="post" action="/filters/{{.Filter.ID}}">
+          <form class="filter-edit-form" method="post" action="/filters/{{.Filter.JiraID}}">
             <input type="hidden" name="action" value="update">
-            <label for="filter-name-{{.Filter.ID}}">Name</label>
-            <input id="filter-name-{{.Filter.ID}}" name="name" value="{{.Filter.Name}}" maxlength="255" required>
-            <label for="filter-description-{{.Filter.ID}}">Description</label>
-            <textarea id="filter-description-{{.Filter.ID}}" name="description" rows="2" maxlength="16384">{{.Filter.Description}}</textarea>
-            <label for="filter-jql-{{.Filter.ID}}">JQL query</label>
-            <textarea id="filter-jql-{{.Filter.ID}}" name="jql" rows="3" maxlength="20000">{{.Filter.JQL}}</textarea>
+            <label for="filter-name-{{.Filter.JiraID}}">Name</label>
+            <input id="filter-name-{{.Filter.JiraID}}" name="name" value="{{.Filter.Name}}" maxlength="255" required>
+            <label for="filter-description-{{.Filter.JiraID}}">Description</label>
+            <textarea id="filter-description-{{.Filter.JiraID}}" name="description" rows="2" maxlength="16384">{{.Filter.Description}}</textarea>
+            <label for="filter-jql-{{.Filter.JiraID}}">JQL query</label>
+            <textarea id="filter-jql-{{.Filter.JiraID}}" name="jql" rows="3" maxlength="20000">{{.Filter.JQL}}</textarea>
             <button class="btn btn-primary" type="submit">Save filter</button>
           </form>
         </details>
@@ -96,11 +96,11 @@
         <details>
           <summary class="btn">Email results</summary>
           <div class="filter-subscription-panel">
-            {{range .Filter.Subscriptions}}<form method="post" action="/filters/{{$row.Filter.ID}}"><input type="hidden" name="action" value="unsubscribe"><input type="hidden" name="subscriptionId" value="{{.ID}}"><span><strong>{{if eq .CronExpression "0 8 * * *"}}Daily{{else}}Weekly{{end}} at 08:00 UTC</strong>{{if .NextRunAt}}<small>Next {{.NextRunAt}}</small>{{end}}{{if .LastResultCount}}<small>Last run matched {{.LastResultCount}} work items</small>{{end}}{{if .LastError}}<small class="filter-subscription-error">{{.LastError}}</small>{{end}}</span><button class="btn" type="submit">Remove schedule</button></form>{{end}}
-            <form class="filter-edit-form" method="post" action="/filters/{{.Filter.ID}}">
+            {{range .Filter.Subscriptions}}<form method="post" action="/filters/{{$row.Filter.JiraID}}"><input type="hidden" name="action" value="unsubscribe"><input type="hidden" name="subscriptionId" value="{{.ID}}"><span><strong>{{if eq .CronExpression "0 8 * * *"}}Daily{{else}}Weekly{{end}} at 08:00 UTC</strong>{{if .NextRunAt}}<small>Next {{.NextRunAt}}</small>{{end}}{{if .LastResultCount}}<small>Last run matched {{.LastResultCount}} work items</small>{{end}}{{if .LastError}}<small class="filter-subscription-error">{{.LastError}}</small>{{end}}</span><button class="btn" type="submit">Remove schedule</button></form>{{end}}
+            <form class="filter-edit-form" method="post" action="/filters/{{.Filter.JiraID}}">
               <input type="hidden" name="action" value="subscribe">
-              <label for="filter-schedule-{{.Filter.ID}}">Delivery</label>
-              <select id="filter-schedule-{{.Filter.ID}}" name="schedule"><option value="0 8 * * *">Every day at 08:00 UTC</option><option value="0 8 * * 1">Every Monday at 08:00 UTC</option></select>
+              <label for="filter-schedule-{{.Filter.JiraID}}">Delivery</label>
+              <select id="filter-schedule-{{.Filter.JiraID}}" name="schedule"><option value="0 8 * * *">Every day at 08:00 UTC</option><option value="0 8 * * 1">Every Monday at 08:00 UTC</option></select>
               <fieldset><legend>Recipients</legend>{{range $.Data.Members}}<label><input type="checkbox" name="recipient" value="{{.ID}}" {{if eq .ID $row.Filter.OwnerID}}checked{{end}}> {{.DisplayName}}</label>{{end}}</fieldset>
               <p>Leaving every recipient clear sends the result to the filter owner.</p>
               <button class="btn" type="submit">Schedule email</button>
@@ -110,7 +110,7 @@
 
         <details>
           <summary class="btn">Columns</summary>
-          <form class="filter-columns-form" method="post" action="/filters/{{.Filter.ID}}">
+          <form class="filter-columns-form" method="post" action="/filters/{{.Filter.JiraID}}">
             <input type="hidden" name="action" value="columns">
             <fieldset><legend>Columns shown when this filter opens</legend>
             {{range .Columns}}<label><input type="checkbox" name="column" value="{{.Value}}" {{if .Selected}}checked{{end}}> {{.Label}}</label>{{end}}
@@ -125,16 +125,16 @@
           <div class="filter-share-panel">
             <div class="filter-permission-list">
               <h4>Current access</h4>
-              {{range .ViewPermissions}}<form method="post" action="/filters/{{$row.Filter.ID}}"><input type="hidden" name="action" value="remove-share"><input type="hidden" name="permissionId" value="{{.ID}}"><span><i class="filter-access-dot view"></i>{{.Label}} · View</span><button class="icon-danger" type="submit" aria-label="Remove view access for {{.Label}}">×</button></form>{{end}}
-              {{range .EditPermissions}}<form method="post" action="/filters/{{$row.Filter.ID}}"><input type="hidden" name="action" value="remove-share"><input type="hidden" name="permissionId" value="{{.ID}}"><span><i class="filter-access-dot edit"></i>{{.Label}} · Edit</span><button class="icon-danger" type="submit" aria-label="Remove edit access for {{.Label}}">×</button></form>{{end}}
+              {{range .ViewPermissions}}<form method="post" action="/filters/{{$row.Filter.JiraID}}"><input type="hidden" name="action" value="remove-share"><input type="hidden" name="permissionId" value="{{.ID}}"><span><i class="filter-access-dot view"></i>{{.Label}} · View</span><button class="icon-danger" type="submit" aria-label="Remove view access for {{.Label}}">×</button></form>{{end}}
+              {{range .EditPermissions}}<form method="post" action="/filters/{{$row.Filter.JiraID}}"><input type="hidden" name="action" value="remove-share"><input type="hidden" name="permissionId" value="{{.ID}}"><span><i class="filter-access-dot edit"></i>{{.Label}} · Edit</span><button class="icon-danger" type="submit" aria-label="Remove edit access for {{.Label}}">×</button></form>{{end}}
               {{if and (not .ViewPermissions) (not .EditPermissions)}}<p>Only you can open this filter.</p>{{end}}
             </div>
 
             <div class="filter-share-grid">
-              <form method="post" action="/filters/{{.Filter.ID}}"><h4>Workspace access</h4><input type="hidden" name="action" value="share"><input type="hidden" name="shareType" value="authenticated"><label>Access<select name="access"><option value="view">Can view</option><option value="edit">Can edit</option></select></label><button class="btn" type="submit">Share with everyone signed in</button></form>
-              <form method="post" action="/filters/{{.Filter.ID}}"><h4>Person</h4><input type="hidden" name="action" value="share"><input type="hidden" name="shareType" value="user"><label>Person<select name="accountId" required>{{range $.Data.Members}}<option value="{{.ID}}">{{.DisplayName}}</option>{{end}}</select></label><label>Access<select name="access"><option value="view">Can view</option><option value="edit">Can edit</option></select></label><button class="btn" type="submit">Add person</button></form>
-              <form method="post" action="/filters/{{.Filter.ID}}"><h4>Group</h4><input type="hidden" name="action" value="share"><input type="hidden" name="shareType" value="group"><label>Group<select name="groupId" required>{{range $.Data.Groups}}<option value="{{.ID}}">{{.Name}} · {{.MemberCount}} members</option>{{end}}</select></label><label>Access<select name="access"><option value="view">Can view</option><option value="edit">Can edit</option></select></label><button class="btn" type="submit" {{if not $.Data.Groups}}disabled{{end}}>Add group</button></form>
-              <form method="post" action="/filters/{{.Filter.ID}}"><h4>Project</h4><input type="hidden" name="action" value="share"><label>Project<select name="projectId" required>{{range $.Data.Projects}}<option value="{{.ID}}">{{.Name}} ({{.Key}})</option>{{end}}</select></label><label>Scope<select name="shareType"><option value="project">Everyone with project access</option><option value="projectRole">A project role</option></select></label><label>Project role<select name="projectRoleId" required>{{range $.Data.ProjectRoles}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></label><label>Access<select name="access"><option value="view">Can view</option><option value="edit">Can edit</option></select></label><button class="btn" type="submit" {{if or (not $.Data.Projects) (not $.Data.ProjectRoles)}}disabled{{end}}>Add project access</button></form>
+              <form method="post" action="/filters/{{.Filter.JiraID}}"><h4>Workspace access</h4><input type="hidden" name="action" value="share"><input type="hidden" name="shareType" value="authenticated"><label>Access<select name="access"><option value="view">Can view</option><option value="edit">Can edit</option></select></label><button class="btn" type="submit">Share with everyone signed in</button></form>
+              <form method="post" action="/filters/{{.Filter.JiraID}}"><h4>Person</h4><input type="hidden" name="action" value="share"><input type="hidden" name="shareType" value="user"><label>Person<select name="accountId" required>{{range $.Data.Members}}<option value="{{.ID}}">{{.DisplayName}}</option>{{end}}</select></label><label>Access<select name="access"><option value="view">Can view</option><option value="edit">Can edit</option></select></label><button class="btn" type="submit">Add person</button></form>
+              <form method="post" action="/filters/{{.Filter.JiraID}}"><h4>Group</h4><input type="hidden" name="action" value="share"><input type="hidden" name="shareType" value="group"><label>Group<select name="groupId" required>{{range $.Data.Groups}}<option value="{{.ID}}">{{.Name}} · {{.MemberCount}} members</option>{{end}}</select></label><label>Access<select name="access"><option value="view">Can view</option><option value="edit">Can edit</option></select></label><button class="btn" type="submit" {{if not $.Data.Groups}}disabled{{end}}>Add group</button></form>
+              <form method="post" action="/filters/{{.Filter.JiraID}}"><h4>Project</h4><input type="hidden" name="action" value="share"><label>Project<select name="projectId" required>{{range $.Data.Projects}}<option value="{{.ID}}">{{.Name}} ({{.Key}})</option>{{end}}</select></label><label>Scope<select name="shareType"><option value="project">Everyone with project access</option><option value="projectRole">A project role</option></select></label><label>Project role<select name="projectRoleId" required>{{range $.Data.ProjectRoles}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></label><label>Access<select name="access"><option value="view">Can view</option><option value="edit">Can edit</option></select></label><button class="btn" type="submit" {{if or (not $.Data.Projects) (not $.Data.ProjectRoles)}}disabled{{end}}>Add project access</button></form>
             </div>
           </div>
         </details>
@@ -143,10 +143,10 @@
         {{if .CanTransfer}}
         <details>
           <summary class="btn">Transfer ownership</summary>
-          <form class="filter-owner-form" method="post" action="/filters/{{.Filter.ID}}">
+          <form class="filter-owner-form" method="post" action="/filters/{{.Filter.JiraID}}">
             <input type="hidden" name="action" value="owner">
-            <label for="filter-owner-{{.Filter.ID}}">New owner</label>
-            <select id="filter-owner-{{.Filter.ID}}" name="accountId" required>{{range $.Data.Members}}<option value="{{.ID}}" {{if eq .ID $row.Filter.OwnerID}}selected{{end}}>{{.DisplayName}}</option>{{end}}</select>
+            <label for="filter-owner-{{.Filter.JiraID}}">New owner</label>
+            <select id="filter-owner-{{.Filter.JiraID}}" name="accountId" required>{{range $.Data.Members}}<option value="{{.ID}}" {{if eq .ID $row.Filter.OwnerID}}selected{{end}}>{{.DisplayName}}</option>{{end}}</select>
             <button class="btn" type="submit">Transfer filter</button>
           </form>
         </details>
@@ -155,7 +155,7 @@
         {{if .Owner}}
         <details class="filter-delete">
           <summary class="btn">Delete</summary>
-          <form method="post" action="/filters/{{.Filter.ID}}"><input type="hidden" name="action" value="delete"><p>Dashboards that use this filter will need another query.</p><button class="btn btn-danger" type="submit">Delete filter</button></form>
+          <form method="post" action="/filters/{{.Filter.JiraID}}"><input type="hidden" name="action" value="delete"><p>Dashboards that use this filter will need another query.</p><button class="btn btn-danger" type="submit">Delete filter</button></form>
         </details>
         {{end}}
       </div>

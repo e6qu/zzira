@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/e6qu/zzira/internal/store"
@@ -22,9 +23,9 @@ func (h *Handler) workflowSchemeBean(r *http.Request, workspaceID string, scheme
 		mappings[ids.toWire(issueTypeID)] = names[workflowID]
 	}
 	return map[string]any{
-		"id": scheme.ID, "name": scheme.Name, "description": scheme.Description,
+		"id": scheme.JiraID, "name": scheme.Name, "description": scheme.Description,
 		"defaultWorkflow": names[scheme.DefaultWorkflowID], "issueTypeMappings": mappings,
-		"draft": scheme.HasDraft, "self": h.BaseURL + "/rest/api/3/workflowscheme/" + scheme.ID,
+		"draft": scheme.HasDraft, "self": h.BaseURL + "/rest/api/3/workflowscheme/" + strconv.FormatInt(scheme.JiraID, 10),
 	}
 }
 
@@ -145,22 +146,23 @@ func (h *Handler) workflowSchemeRoute(w http.ResponseWriter, r *http.Request, pa
 			return
 		}
 		ids := h.issueTypeIDsFor(r, workspaceID)
+		statusIDs := h.statusIDsFor(r, workspaceID)
 		var mappings []store.WorkflowStatusMapping
 		for _, override := range request.MappingsByIssueTypeOverride {
 			for _, mapping := range override.StatusMappings {
 				mappings = append(mappings, store.WorkflowStatusMapping{
 					IssueTypeID: ids.toInternal(override.IssueTypeID),
-					OldStatusID: mapping.OldStatusID,
-					NewStatusID: mapping.NewStatusID,
+					OldStatusID: statusIDs.toInternal(mapping.OldStatusID),
+					NewStatusID: statusIDs.toInternal(mapping.NewStatusID),
 				})
 			}
 		}
-		task, err := h.Store.SwitchWorkflowSchemeTask(r.Context(), workspaceID, userID, project.ID, request.TargetSchemeID, mappings)
+		task, err := h.Store.SwitchWorkflowSchemeTask(r.Context(), workspaceID, userID, project.ID, h.Store.WorkflowSchemeIDByRef(r.Context(), workspaceID, request.TargetSchemeID), mappings)
 		if err != nil {
 			workflowSchemeAPIError(w, err)
 			return
 		}
-		self := h.BaseURL + "/rest/api/3/task/" + task.ID
+		self := h.BaseURL + "/rest/api/3/task/" + task.WireID()
 		w.Header().Set("Location", self)
 		writeJSON(w, http.StatusSeeOther, h.apiTaskBean(task))
 		return
@@ -176,7 +178,7 @@ func (h *Handler) workflowSchemeRoute(w http.ResponseWriter, r *http.Request, pa
 				}
 				scheme, err := h.Store.WorkflowSchemeForProject(r.Context(), workspaceID, project.ID)
 				if err == nil {
-					values = append(values, map[string]any{"projectId": project.ID, "workflowScheme": h.workflowSchemeBean(r, workspaceID, scheme)})
+					values = append(values, map[string]any{"projectId": wireNumber(project.ID), "workflowScheme": h.workflowSchemeBean(r, workspaceID, scheme)})
 				}
 			}
 			writeJSON(w, http.StatusOK, map[string]any{"values": values})
@@ -193,7 +195,7 @@ func (h *Handler) workflowSchemeRoute(w http.ResponseWriter, r *http.Request, pa
 				jiraError(w, http.StatusNotFound, "The project does not exist.")
 				return
 			}
-			if err := h.Store.AssignWorkflowScheme(r.Context(), workspaceID, userID, project.ID, request.WorkflowSchemeID); err != nil {
+			if err := h.Store.AssignWorkflowScheme(r.Context(), workspaceID, userID, project.ID, h.Store.WorkflowSchemeIDByRef(r.Context(), workspaceID, request.WorkflowSchemeID)); err != nil {
 				workflowSchemeAPIError(w, err)
 				return
 			}
@@ -215,6 +217,8 @@ func (h *Handler) workflowSchemeRoute(w http.ResponseWriter, r *http.Request, pa
 		jiraError(w, http.StatusNotFound, "No resource found")
 		return
 	}
+	// Clients name a scheme by its numeric id.
+	id = h.Store.WorkflowSchemeIDByRef(r.Context(), workspaceID, id)
 	switch r.Method {
 	case http.MethodGet:
 		useDraft := r.URL.Query().Get("returnDraftIfExists") == "true"

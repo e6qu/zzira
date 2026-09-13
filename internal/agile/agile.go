@@ -86,16 +86,34 @@ func (h *Handler) authWorkspace(r *http.Request) (wsID, userID string, status in
 
 func (h *Handler) boardBean(b *models.Board) map[string]any {
 	return map[string]any{
-		"id":   b.ID,
+		"id":   b.JiraID,
 		"name": b.Name,
 		"type": b.Type,
-		"self": h.BaseURL + "/rest/agile/1.0/board/" + b.ID,
+		"self": h.BaseURL + "/rest/agile/1.0/board/" + boardWireID(b),
 		"location": map[string]any{
 			"projectKey":  b.ProjectKey,
 			"projectName": b.ProjectName,
-			"projectId":   b.ProjectID,
+			"projectId":   wireNumber(b.ProjectID),
 		},
 	}
+}
+
+// boardWireID is the id clients know a board by.
+func boardWireID(b *models.Board) string {
+	return strconv.FormatInt(b.JiraID, 10)
+}
+
+// sprintWireID is the id clients know a sprint by.
+func sprintWireID(s *models.Sprint) string {
+	return strconv.FormatInt(s.JiraID, 10)
+}
+
+// wireNumber is a numeric id as a JSON number, or the id unchanged.
+func wireNumber(id string) any {
+	if number, err := strconv.ParseInt(id, 10, 64); err == nil {
+		return number
+	}
+	return id
 }
 
 func (h *Handler) listBoards(w http.ResponseWriter, r *http.Request) {
@@ -191,7 +209,7 @@ func (h *Handler) boardConfiguration(w http.ResponseWriter, r *http.Request, boa
 		column := map[string]any{
 			"name": status.Name,
 			"statuses": []map[string]any{{
-				"id": status.ID, "self": h.BaseURL + "/rest/api/3/status/" + status.ID,
+				"id": strconv.FormatInt(status.JiraID, 10), "self": h.BaseURL + "/rest/api/3/status/" + strconv.FormatInt(status.JiraID, 10),
 			}},
 		}
 		if limit := board.ColumnLimits[statusID]; limit > 0 {
@@ -201,14 +219,14 @@ func (h *Handler) boardConfiguration(w http.ResponseWriter, r *http.Request, boa
 		columns = append(columns, column)
 	}
 	response := map[string]any{
-		"id": board.ID, "name": board.Name, "type": board.Type,
-		"self": h.BaseURL + "/rest/agile/1.0/board/" + board.ID + "/configuration",
+		"id": board.JiraID, "name": board.Name, "type": board.Type,
+		"self": h.BaseURL + "/rest/agile/1.0/board/" + boardWireID(board) + "/configuration",
 		"filter": map[string]any{
-			"id": board.ID + "_filter", "self": h.BaseURL + "/rest/api/3/filter/" + board.ID + "_filter",
+			"id": strconv.FormatInt(board.FilterJiraID, 10), "self": h.BaseURL + "/rest/api/3/filter/" + strconv.FormatInt(board.FilterJiraID, 10),
 		},
 		"location": map[string]any{
-			"id": board.ProjectID, "key": board.ProjectKey, "name": board.ProjectName,
-			"projectId": board.ProjectID, "projectKey": board.ProjectKey, "projectName": board.ProjectName,
+			"id": wireNumber(board.ProjectID), "key": board.ProjectKey, "name": board.ProjectName,
+			"projectId": wireNumber(board.ProjectID), "projectKey": board.ProjectKey, "projectName": board.ProjectName,
 			"displayName": board.ProjectName, "type": "project",
 			"self": h.BaseURL + "/rest/api/3/project/" + board.ProjectID,
 		},
@@ -223,9 +241,9 @@ func (h *Handler) boardConfiguration(w http.ResponseWriter, r *http.Request, boa
 	writeJSON(w, http.StatusOK, response)
 }
 
-func (h *Handler) quickFilterBean(boardID string, filter models.BoardQuickFilter) map[string]any {
+func (h *Handler) quickFilterBean(boardID int64, filter models.BoardQuickFilter) map[string]any {
 	return map[string]any{
-		"id": filter.ID, "boardId": boardID, "name": filter.Name, "description": filter.Description,
+		"id": filter.JiraID, "boardId": boardID, "name": filter.Name, "description": filter.Description,
 		"jql": filter.JQL, "position": filter.Position,
 	}
 }
@@ -257,7 +275,7 @@ func (h *Handler) boardQuickFilters(w http.ResponseWriter, r *http.Request, boar
 	end := min(startAt+maxResults, total)
 	values := make([]map[string]any, 0, end-startAt)
 	for _, filter := range filters[startAt:end] {
-		values = append(values, h.quickFilterBean(board.ID, filter))
+		values = append(values, h.quickFilterBean(board.JiraID, filter))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"startAt": startAt, "maxResults": maxResults, "total": total, "isLast": end == total, "values": values,
@@ -266,8 +284,8 @@ func (h *Handler) boardQuickFilters(w http.ResponseWriter, r *http.Request, boar
 
 func (h *Handler) boardQuickFilter(w http.ResponseWriter, board *models.Board, quickFilterID string) {
 	for _, filter := range board.QuickFilters {
-		if filter.ID == quickFilterID {
-			writeJSON(w, http.StatusOK, h.quickFilterBean(board.ID, filter))
+		if strconv.FormatInt(filter.JiraID, 10) == quickFilterID {
+			writeJSON(w, http.StatusOK, h.quickFilterBean(board.JiraID, filter))
 			return
 		}
 	}
@@ -355,12 +373,12 @@ func (h *Handler) boardSprints(w http.ResponseWriter, r *http.Request, board *mo
 
 func (h *Handler) sprintBean(s *models.Sprint) map[string]any {
 	bean := map[string]any{
-		"id":            s.ID,
+		"id":            s.JiraID,
 		"name":          s.Name,
 		"state":         s.State,
 		"goal":          s.Goal,
-		"originBoardId": s.BoardID,
-		"self":          h.BaseURL + "/rest/agile/1.0/sprint/" + s.ID,
+		"originBoardId": s.BoardJiraID,
+		"self":          h.BaseURL + "/rest/agile/1.0/sprint/" + sprintWireID(s),
 	}
 	if s.StartDate != "" {
 		bean["startDate"] = s.StartDate
@@ -378,24 +396,27 @@ func (h *Handler) createSprint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Name          string `json:"name"`
-		Goal          string `json:"goal"`
-		OriginBoardID string `json:"originBoardId"`
+		Name          string          `json:"name"`
+		Goal          string          `json:"goal"`
+		OriginBoard   json.RawMessage `json:"originBoardId"`
+		OriginBoardID string          `json:"-"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jiraError(w, http.StatusBadRequest, "Invalid request payload.")
 		return
 	}
+	req.OriginBoardID = strings.Trim(string(req.OriginBoard), `"`)
 	req.Name = strings.TrimSpace(req.Name)
 	if req.Name == "" {
 		jiraError(w, http.StatusBadRequest, "A sprint name is required.")
 		return
 	}
-	if _, err := h.Store.BoardByIDInWorkspace(r.Context(), wsID, req.OriginBoardID); err != nil {
+	originBoard, err := h.Store.BoardByIDInWorkspace(r.Context(), wsID, req.OriginBoardID)
+	if err != nil {
 		jiraError(w, http.StatusBadRequest, "The board does not exist.")
 		return
 	}
-	sprint, err := h.Commands.CreateSprint(r.Context(), userID, wsID, req.OriginBoardID, req.Name, req.Goal)
+	sprint, err := h.Commands.CreateSprint(r.Context(), userID, wsID, originBoard.ID, req.Name, req.Goal)
 	if errors.Is(err, store.ErrSprintValidation) {
 		jiraError(w, http.StatusBadRequest, err.Error())
 		return

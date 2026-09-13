@@ -52,8 +52,9 @@ func (h *Handler) workflowUsageRoute(w http.ResponseWriter, r *http.Request, pat
 		return
 	}
 	parts := strings.Split(strings.TrimPrefix(path, "/workflow/"), "/")
+	workflows := h.workflowIDsFor(r, workspaceID)
 	if r.Method == http.MethodDelete && len(parts) == 1 && parts[0] != "" {
-		err := h.Store.DeleteInactiveWorkflow(r.Context(), workspaceID, userID, parts[0])
+		err := h.Store.DeleteInactiveWorkflow(r.Context(), workspaceID, userID, workflows.toInternal(parts[0]))
 		switch {
 		case err == nil:
 			w.WriteHeader(http.StatusNoContent)
@@ -74,20 +75,20 @@ func (h *Handler) workflowUsageRoute(w http.ResponseWriter, r *http.Request, pat
 		jiraError(w, http.StatusNotFound, "No resource found")
 		return
 	}
-	workflowID := parts[0]
+	workflowID := workflows.toInternal(parts[0])
 	var ids []string
 	var err error
 	response := make(map[string]any)
 	switch {
 	case len(parts) == 2 && parts[1] == "projectUsages":
 		ids, err = h.Store.WorkflowProjectUsages(r.Context(), workspaceID, workflowID)
-		response["workflowId"] = workflowID
+		response["workflowId"] = parts[0]
 	case len(parts) == 2 && parts[1] == "workflowSchemes":
 		ids, err = h.Store.WorkflowSchemeUsages(r.Context(), workspaceID, workflowID)
-		response["workflowId"] = workflowID
+		response["workflowId"] = parts[0]
 	case len(parts) == 4 && parts[1] == "project" && parts[3] == "issueTypeUsages":
 		ids, err = h.Store.WorkflowProjectIssueTypeUsages(r.Context(), workspaceID, workflowID, parts[2])
-		response["workflowId"], response["projectId"] = workflowID, parts[2]
+		response["workflowId"], response["projectId"] = parts[0], parts[2]
 	default:
 		jiraError(w, http.StatusNotFound, "No resource found")
 		return

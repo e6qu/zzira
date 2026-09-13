@@ -13,7 +13,7 @@ import (
 // boardProjectBean is the shape Jira returns from a board's project endpoints.
 func (h *Handler) boardProjectBean(board *models.Board, full bool) map[string]any {
 	bean := map[string]any{
-		"id": board.ProjectID, "key": board.ProjectKey, "name": board.ProjectName,
+		"id": wireNumber(board.ProjectID), "key": board.ProjectKey, "name": board.ProjectName,
 		"self": h.BaseURL + "/rest/api/3/project/" + board.ProjectKey,
 		"avatarUrls": map[string]any{
 			"48x48": h.BaseURL + "/static/img/project-avatar.svg",
@@ -53,7 +53,7 @@ func (h *Handler) boardVersions(w http.ResponseWriter, r *http.Request, board *m
 		}
 		values = append(values, map[string]any{
 			"id": version.ID, "name": version.Name, "archived": version.Archived,
-			"released": version.Released, "projectId": board.ProjectID,
+			"released": version.Released, "projectId": wireNumber(board.ProjectID),
 			"self": h.BaseURL + "/rest/api/3/version/" + version.ID,
 		})
 	}
@@ -90,9 +90,9 @@ func (h *Handler) boardSprintIssues(w http.ResponseWriter, r *http.Request, boar
 // is not togglable through this endpoint.
 func (h *Handler) boardFeatures(w http.ResponseWriter, r *http.Request, board *models.Board) {
 	features := []map[string]any{
-		{"boardFeature": "SPRINTS", "boardId": board.ID, "state": featureState(board.Type == "scrum"), "toggleLocked": true},
-		{"boardFeature": "BACKLOG", "boardId": board.ID, "state": featureState(true), "toggleLocked": true},
-		{"boardFeature": "SWIMLANES", "boardId": board.ID, "state": featureState(board.SwimlaneStrategy != "none"), "toggleLocked": true},
+		{"boardFeature": "SPRINTS", "boardId": board.JiraID, "state": featureState(board.Type == "scrum"), "toggleLocked": true},
+		{"boardFeature": "BACKLOG", "boardId": board.JiraID, "state": featureState(true), "toggleLocked": true},
+		{"boardFeature": "SWIMLANES", "boardId": board.JiraID, "state": featureState(board.SwimlaneStrategy != "none"), "toggleLocked": true},
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"features": features})
 }
@@ -130,7 +130,7 @@ func (h *Handler) boardProperties(w http.ResponseWriter, r *http.Request, board 
 	for _, key := range keys {
 		values = append(values, map[string]any{
 			"key":  key,
-			"self": h.BaseURL + "/rest/agile/1.0/board/" + board.ID + "/properties/" + key,
+			"self": h.BaseURL + "/rest/agile/1.0/board/" + boardWireID(board) + "/properties/" + key,
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"keys": values})
@@ -146,7 +146,7 @@ func (h *Handler) boardProperty(w http.ResponseWriter, r *http.Request, board *m
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"key": key, "value": json.RawMessage(value),
-			"self": h.BaseURL + "/rest/agile/1.0/board/" + board.ID + "/properties/" + key,
+			"self": h.BaseURL + "/rest/agile/1.0/board/" + boardWireID(board) + "/properties/" + key,
 		})
 	case http.MethodPut:
 		body := http.MaxBytesReader(w, r.Body, 64<<10)

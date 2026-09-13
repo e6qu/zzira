@@ -1222,7 +1222,7 @@ func (h *Handler) ProjectIssues(w http.ResponseWriter, r *http.Request, key stri
 	if activeFilter != "" {
 		var selected *models.Filter
 		for _, filter := range filters {
-			if filter.ID == activeFilter {
+			if filter.ID == activeFilter || strconv.FormatInt(filter.JiraID, 10) == activeFilter {
 				selected = filter
 				break
 			}
@@ -1428,7 +1428,7 @@ func (h *Handler) SubmitBulkIssueDelete(w http.ResponseWriter, r *http.Request, 
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, "/issues/"+url.PathEscape(project.Key)+"/bulk/"+url.PathEscape(task.ID), http.StatusSeeOther)
+	http.Redirect(w, r, "/issues/"+url.PathEscape(project.Key)+"/bulk/"+url.PathEscape(task.WireID()), http.StatusSeeOther)
 }
 
 func (h *Handler) SubmitBulkIssueMove(w http.ResponseWriter, r *http.Request, projectKey string) {
@@ -1495,7 +1495,7 @@ func (h *Handler) SubmitBulkIssueMove(w http.ResponseWriter, r *http.Request, pr
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, "/issues/"+url.PathEscape(sourceProject.Key)+"/bulk/"+url.PathEscape(task.ID), http.StatusSeeOther)
+	http.Redirect(w, r, "/issues/"+url.PathEscape(sourceProject.Key)+"/bulk/"+url.PathEscape(task.WireID()), http.StatusSeeOther)
 }
 
 func (h *Handler) SubmitBulkIssueTransition(w http.ResponseWriter, r *http.Request, projectKey string) {
@@ -1557,7 +1557,7 @@ func (h *Handler) SubmitBulkIssueTransition(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, "/issues/"+url.PathEscape(project.Key)+"/bulk/"+url.PathEscape(task.ID), http.StatusSeeOther)
+	http.Redirect(w, r, "/issues/"+url.PathEscape(project.Key)+"/bulk/"+url.PathEscape(task.WireID()), http.StatusSeeOther)
 }
 
 func (h *Handler) BulkIssueTask(w http.ResponseWriter, r *http.Request, projectKey, taskID string) {

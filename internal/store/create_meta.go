@@ -74,7 +74,7 @@ func (s *Store) IssueCreateMetadata(ctx context.Context, workspaceID, userID str
 	for _, project := range projects {
 		parentOptions := []models.CreateFieldOption{}
 		parentRows, err := s.Pool.Query(ctx, `
-			SELECT id, key, summary FROM issues
+			SELECT jira_id::text, key, summary FROM issues
 			WHERE project_id=$1 AND parent_id IS NULL
 			ORDER BY updated_seq DESC, key LIMIT 200`, project.ID)
 		if err != nil {

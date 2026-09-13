@@ -113,7 +113,7 @@ func TestFilterAdministrationContractJourney(t *testing.T) {
 	}, http.StatusOK))
 	filterID := created["id"].(string)
 	call(memberID, http.MethodGet, "/rest/api/3/filter/"+filterID, nil, http.StatusBadRequest)
-	subscription, err := st.SaveFilterSubscription(ctx, workspaceID, ownerID, filterID, "0 8 * * *", []string{ownerID, memberID})
+	subscription, err := st.SaveFilterSubscription(ctx, workspaceID, ownerID, st.FilterIDByRef(ctx, workspaceID, filterID), "0 8 * * *", []string{ownerID, memberID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,10 +122,10 @@ func TestFilterAdministrationContractJourney(t *testing.T) {
 	if subscriptions["size"] != float64(1) || len(subscriptions["items"].([]any)) != 1 {
 		t.Fatalf("filter subscriptions = %#v", subscriptions)
 	}
-	if err := st.DeleteFilterSubscription(ctx, workspaceID, memberID, filterID, subscription.ID); !errors.Is(err, store.ErrFilterPermission) {
+	if err := st.DeleteFilterSubscription(ctx, workspaceID, memberID, st.FilterIDByRef(ctx, workspaceID, filterID), subscription.ID); !errors.Is(err, store.ErrFilterPermission) {
 		t.Fatalf("non-owner deleted subscription: %v", err)
 	}
-	if err := st.DeleteFilterSubscription(ctx, workspaceID, ownerID, filterID, subscription.ID); err != nil {
+	if err := st.DeleteFilterSubscription(ctx, workspaceID, ownerID, st.FilterIDByRef(ctx, workspaceID, filterID), subscription.ID); err != nil {
 		t.Fatal(err)
 	}
 

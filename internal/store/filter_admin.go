@@ -99,14 +99,14 @@ SELECT f.id,f.name,COALESCE(f.jql,''),COALESCE(f.description,''),
        EXISTS(SELECT 1 FROM filter_favourites ff WHERE ff.filter_id=f.id AND ff.user_id=$2),
        (SELECT count(*) FROM filter_favourites ff WHERE ff.filter_id=f.id),
        COALESCE(to_char(f.approximate_last_used AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
-       COALESCE(f.columns,'{}'::TEXT[]),` + filterWritable + `
+       COALESCE(f.columns,'{}'::TEXT[]),` + filterWritable + `,f.jira_id
 FROM filters f LEFT JOIN users u ON u.id=f.owner_id
 WHERE f.workspace_id=$1`
 
 func scanFilter(row pgx.Row) (*models.Filter, error) {
 	f := &models.Filter{}
 	err := row.Scan(&f.ID, &f.Name, &f.JQL, &f.Description, &f.OwnerID, &f.OwnerName,
-		&f.Favourite, &f.FavouritedCount, &f.ApproximateLastUsed, &f.Columns, &f.Writable)
+		&f.Favourite, &f.FavouritedCount, &f.ApproximateLastUsed, &f.Columns, &f.Writable, &f.JiraID)
 	return f, err
 }
 
@@ -155,7 +155,12 @@ func (s *Store) loadFilterPermissions(ctx context.Context, filters []*models.Fil
 }
 
 func (s *Store) FilterByID(ctx context.Context, workspaceID, userID, id string) (*models.Filter, error) {
-	filter, err := scanFilter(s.Pool.QueryRow(ctx, filterSelect+` AND f.id=$3 AND `+filterAccess, workspaceID, userID, id))
+	filter, err := scanFilter(s.Pool.QueryRow(ctx, filterSelect+` AND (f.id=$3 OR f.jira_id::text=$3) AND `+filterAccess, workspaceID, userID, id))
+	if errors.Is(err, pgx.ErrNoRows) {
+		if boardFilter, boardErr := s.boardFilter(ctx, workspaceID, id); boardErr == nil {
+			return boardFilter, nil
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -768,4 +773,38 @@ func (s *Store) SetFilterDefaultShareScope(ctx context.Context, workspaceID, use
 		INSERT INTO filter_default_share_scopes(workspace_id,user_id,scope) VALUES($1,$2,$3)
 		ON CONFLICT(workspace_id,user_id) DO UPDATE SET scope=excluded.scope`, workspaceID, userID, scope)
 	return err
+}
+
+// boardFilter is the filter a board is built on, which Jira reports by its own
+// id: the board's query over its project, owned by the project lead and shared
+// with the project.
+func (s *Store) boardFilter(ctx context.Context, workspaceID, id string) (*models.Filter, error) {
+	var jiraID int64
+	var name, projectID, projectKey, filterJQL, leadID, leadName string
+	err := s.Pool.QueryRow(ctx, `SELECT b.filter_jira_id, b.name, p.id, p.key, COALESCE(b.filter_jql,''), COALESCE(p.lead_account_id,''), COALESCE(u.display_name,'')
+		FROM boards b JOIN projects p ON p.id=b.project_id AND p.lifecycle_state='ACTIVE' LEFT JOIN users u ON u.id=p.lead_account_id
+		WHERE p.workspace_id=$1 AND b.filter_jira_id::text=$2`, workspaceID, strings.TrimSpace(id)).
+		Scan(&jiraID, &name, &projectID, &projectKey, &filterJQL, &leadID, &leadName)
+	if err != nil {
+		return nil, err
+	}
+	query := "project = " + projectKey
+	if strings.TrimSpace(filterJQL) != "" {
+		query += " AND (" + filterJQL + ")"
+	}
+	return &models.Filter{
+		ID: "board-filter:" + strconv.FormatInt(jiraID, 10), JiraID: jiraID, Name: "Filter for " + name,
+		JQL: query + " ORDER BY Rank ASC", OwnerID: leadID, OwnerName: leadName, Columns: []string{},
+		SharePermissions: []models.FilterSharePermission{{Type: "project", ProjectID: projectID, ProjectKey: projectKey, Rights: 1}},
+	}, nil
+}
+
+// FilterIDByRef resolves a filter named by the id clients see, or its stored id,
+// to the stored id. Unknown references are returned unchanged.
+func (s *Store) FilterIDByRef(ctx context.Context, workspaceID, ref string) string {
+	var id string
+	if err := s.Pool.QueryRow(ctx, `SELECT id FROM filters WHERE workspace_id=$1 AND (id=$2 OR jira_id::text=$2)`, workspaceID, strings.TrimSpace(ref)).Scan(&id); err != nil {
+		return ref
+	}
+	return id
 }

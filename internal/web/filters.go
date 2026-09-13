@@ -215,6 +215,8 @@ func (h *Handler) UpdateSavedFilter(w http.ResponseWriter, r *http.Request, id s
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
+	// Filter pages link filters by the id clients see.
+	id = h.Store.FilterIDByRef(r.Context(), workspaceID, id)
 	var err error
 	notice := "Filter updated."
 	switch r.FormValue("action") {

@@ -50,6 +50,8 @@ type Status struct {
 	Category    string `json:"category"`
 	ProjectID   string `json:"-"`
 	Protected   bool   `json:"-"`
+	// JiraID is the id clients see.
+	JiraID int64 `json:"-"`
 }
 
 type IssueType struct {

@@ -17,7 +17,7 @@ func (h *Handler) transitionTaskBean(task store.APITask) map[string]any {
 	case "FAILED", "CANCELLED":
 		status = "FAILED"
 	}
-	bean := map[string]any{"taskId": task.ID, "status": status}
+	bean := map[string]any{"taskId": task.WireID(), "status": status}
 	if status == "FAILED" {
 		bean["errorMessage"] = task.Message
 	}
@@ -25,9 +25,9 @@ func (h *Handler) transitionTaskBean(task store.APITask) map[string]any {
 }
 
 func (h *Handler) transitionAccepted(w http.ResponseWriter, task store.APITask) {
-	self := h.BaseURL + "/wiki/api/v2/space-permissions/transition/tasks/" + task.ID
+	self := h.BaseURL + "/wiki/api/v2/space-permissions/transition/tasks/" + task.WireID()
 	w.Header().Set("Location", self)
-	respond(w, 202, map[string]any{"taskId": task.ID, "status": "IN_PROGRESS", "statusUrl": self})
+	respond(w, 202, map[string]any{"taskId": task.WireID(), "status": "IN_PROGRESS", "statusUrl": self})
 }
 
 func (h *Handler) permissionCombinations(w http.ResponseWriter, r *http.Request, ws, actor string) {

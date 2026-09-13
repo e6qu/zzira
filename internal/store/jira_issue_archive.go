@@ -209,7 +209,10 @@ func (s *Store) EnqueueIssueArchive(ctx context.Context, workspaceID, actorID st
 	if err != nil {
 		return APITask{}, err
 	}
-	return task, s.enqueueAPITask(ctx, task)
+	if err := s.enqueueAPITask(ctx, &task); err != nil {
+		return APITask{}, err
+	}
+	return task, nil
 }
 
 func (s *Store) executeArchiveIssuesTask(ctx context.Context, task APITask) error {
@@ -257,7 +260,10 @@ func (s *Store) EnqueueArchivedIssuesExport(ctx context.Context, workspaceID, ac
 	if err != nil {
 		return APITask{}, err
 	}
-	return task, s.enqueueAPITask(ctx, task)
+	if err := s.enqueueAPITask(ctx, &task); err != nil {
+		return APITask{}, err
+	}
+	return task, nil
 }
 
 // ArchivedIssueExportPath is where the person who requested an export downloads it.
@@ -331,17 +337,17 @@ func (s *Store) executeArchivedIssuesExport(ctx context.Context, task APITask) e
 	if err = s.Pool.QueryRow(ctx, `SELECT email FROM users WHERE id=$1`, task.SubmittedBy).Scan(&email); err == nil && email != "" {
 		if _, err = s.Pool.Exec(ctx, `INSERT INTO email_outbox(workspace_id,recipient,subject,body,dedupe_key) VALUES($1,$2,$3,$4,$5)
 			ON CONFLICT(dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`, task.WorkspaceID, email, "Your archived issues export is ready",
-			fmt.Sprintf("The export of %d archived issues is ready to download:\n%s", count, ArchivedIssueExportPath(task.ID)), "archived-issues-export:"+task.ID); err != nil {
+			fmt.Sprintf("The export of %d archived issues is ready to download:\n%s", count, ArchivedIssueExportPath(task.WireID())), "archived-issues-export:"+task.ID); err != nil {
 			return err
 		}
 	}
-	return s.CompleteAPITask(ctx, task, fmt.Sprintf("Exported %d archived issues.", count), map[string]any{"fileUrl": ArchivedIssueExportPath(task.ID), "issueCount": count})
+	return s.CompleteAPITask(ctx, task, fmt.Sprintf("Exported %d archived issues.", count), map[string]any{"fileUrl": ArchivedIssueExportPath(task.WireID()), "issueCount": count})
 }
 
 // ArchivedIssueExport returns an export's CSV to the person who requested it.
 func (s *Store) ArchivedIssueExport(ctx context.Context, workspaceID, taskID, userID string) (string, error) {
 	var content string
-	err := s.Pool.QueryRow(ctx, `SELECT content FROM archived_issue_exports WHERE workspace_id=$1 AND task_id=$2 AND requested_by=$3`, workspaceID, taskID, userID).Scan(&content)
+	err := s.Pool.QueryRow(ctx, `SELECT content FROM archived_issue_exports WHERE workspace_id=$1 AND task_id=(SELECT id FROM api_tasks WHERE workspace_id=$1 AND (id=$2 OR jira_id::text=$2)) AND requested_by=$3`, workspaceID, taskID, userID).Scan(&content)
 	if err != nil {
 		return "", ErrArchivedIssueExportNotFound
 	}

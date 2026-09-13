@@ -97,7 +97,9 @@ test('backlog journey creates, plans, ranks, starts, updates, and completes a sp
   });
   expect(sprintList.status()).toBe(200);
   const sprintBean = (await sprintList.json()).values.find((value: any) => value.name === sprintName);
-  expect(sprintBean).toMatchObject({ state: 'active', originBoardId: 'brd_default' });
+  const board = await (await request.get('/rest/agile/1.0/board/brd_default', { headers: { Authorization: apiAuthHeader() } })).json();
+  expect(typeof board.id).toBe('number');
+  expect(sprintBean).toMatchObject({ state: 'active', originBoardId: board.id });
   expect(sprintBean.startDate).toBeTruthy();
   expect(sprintBean.endDate).toBeTruthy();
 

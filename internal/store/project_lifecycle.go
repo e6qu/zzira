@@ -127,7 +127,7 @@ func appendProjectChildLifecycleActions(ctx context.Context, tx pgx.Tx, project 
 
 	boardRows, err := tx.Query(ctx, `
 		SELECT b.id,b.project_id,p.key,p.name,p.workspace_id,b.name,b.type,b.column_status_ids,b.filter_jql,
-		       b.quick_filters,b.swimlane_strategy,b.card_fields,b.column_limits
+		       b.quick_filters,b.swimlane_strategy,b.card_fields,b.column_limits,b.jira_id,b.filter_jira_id
 		FROM boards b JOIN projects p ON p.id=b.project_id
 		WHERE b.project_id=$1 ORDER BY b.id`, project.ID)
 	if err != nil {
@@ -477,7 +477,7 @@ func (s *Store) EnqueueProjectDeleteTask(ctx context.Context, workspaceID, actor
 	if err != nil {
 		return APITask{}, err
 	}
-	if err = insertAPITask(ctx, tx, task); err != nil {
+	if err = insertAPITask(ctx, tx, &task); err != nil {
 		return APITask{}, err
 	}
 	return task, tx.Commit(ctx)

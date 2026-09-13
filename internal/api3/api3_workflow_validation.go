@@ -180,14 +180,26 @@ func (h *Handler) workflowStatusReferences(r *http.Request, workspaceID, project
 	}
 	known := make(map[string]bool, len(statuses))
 	names := make(map[string]bool, len(statuses)+len(updates))
-	references := make(map[string]string, len(statuses)+len(updates))
+	references := make(map[string]string, len(statuses)*2+len(updates))
+	wireToStored := make(map[string]string, len(statuses))
 	for _, status := range statuses {
 		known[status.ID] = true
 		if projectID == "" || status.ProjectID == projectID {
 			names[strings.ToLower(status.Name)] = true
 		}
 		references[status.ID] = status.ID
+		references[statusWireID(status)] = status.ID
+		wireToStored[statusWireID(status)] = status.ID
 	}
+	// Clients name existing statuses by the ids they see.
+	translated := make([]workflowStatusUpdateRequest, len(updates))
+	for index, update := range updates {
+		if stored, ok := wireToStored[strings.TrimSpace(update.ID)]; ok {
+			update.ID = stored
+		}
+		translated[index] = update
+	}
+	updates = translated
 	created := make([]models.Status, 0)
 	errors := make([]map[string]any, 0)
 	seenReferences := make(map[string]bool, len(updates))
@@ -251,8 +263,9 @@ func (h *Handler) workflowCreateScope(r *http.Request, workspaceID string, paylo
 func (h *Handler) workflowUpdateScope(r *http.Request, workspaceID string, workflows []workflowUpdateItemRequest) (string, error) {
 	projectID := ""
 	found := false
+	stored := h.workflowIDsFor(r, workspaceID)
 	for _, item := range workflows {
-		published, err := h.Store.WorkflowByID(r.Context(), workspaceID, item.ID)
+		published, err := h.Store.WorkflowByID(r.Context(), workspaceID, stored.toInternal(item.ID))
 		if err != nil {
 			continue
 		}
@@ -521,17 +534,19 @@ func (h *Handler) workflowUpdateValidation(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	errors = append(errors, statusErrors...)
+	storedWorkflows := h.workflowIDsFor(r, workspaceID)
 	for _, item := range request.Payload.Workflows {
-		published, err := h.Store.WorkflowByID(r.Context(), workspaceID, item.ID)
+		storedID := storedWorkflows.toInternal(item.ID)
+		published, err := h.Store.WorkflowByID(r.Context(), workspaceID, storedID)
 		if err != nil {
 			errors = append(errors, workflowValidationError("WORKFLOW_NOT_FOUND", "The workflow does not exist.", "WORKFLOW", nil))
 			continue
 		}
-		if item.Version.VersionNumber != published.Version || (item.Version.ID != "" && item.Version.ID != published.ID) {
+		if item.Version.VersionNumber != published.Version || (item.Version.ID != "" && item.Version.ID != storedID && item.Version.ID != workflowWireID(published)) {
 			errors = append(errors, workflowValidationError("WORKFLOW_VERSION_CONFLICT", "The workflow version is stale.", "WORKFLOW", nil))
 		}
 		description, startPointLayout, loopedTransitionContainerLayout := workflowUpdateMetadata(item, published)
-		wf, itemErrors := workflowDefinitionFromRequest(item.ID, published.Name, description, startPointLayout, loopedTransitionContainerLayout, item.Statuses, item.Transitions, references)
+		wf, itemErrors := workflowDefinitionFromRequest(storedID, published.Name, description, startPointLayout, loopedTransitionContainerLayout, item.Statuses, item.Transitions, references)
 		wf.ProjectID = published.ProjectID
 		errors = append(errors, itemErrors...)
 		_, mappingErrors := workflowStatusMigrationsFromRequest(h.issueTypeIDsFor(r, workspaceID), item, references, wf)
@@ -652,7 +667,7 @@ func (h *Handler) workflowCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	workflowValues := make([]map[string]any, 0, len(created))
 	for _, item := range created {
-		workflowValues = append(workflowValues, workflowSearchBean(item, true))
+		workflowValues = append(workflowValues, workflowSearchBean(withWorkflowEntityID(item, h.workflowIDsFor(r, workspaceID)), true, h.statusIDsFor(r, workspaceID)))
 	}
 	statuses, err := h.workflowResponseStatuses(r, workspaceID, created)
 	if err != nil {
@@ -688,17 +703,19 @@ func (h *Handler) workflowUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	validationErrors = append(validationErrors, statusErrors...)
 	updates := make([]store.WorkflowUpdateDefinition, 0, len(payload.Workflows))
+	storedWorkflows := h.workflowIDsFor(r, workspaceID)
 	for _, item := range payload.Workflows {
-		published, err := h.Store.WorkflowByID(r.Context(), workspaceID, item.ID)
+		storedID := storedWorkflows.toInternal(item.ID)
+		published, err := h.Store.WorkflowByID(r.Context(), workspaceID, storedID)
 		if err != nil {
 			validationErrors = append(validationErrors, workflowValidationError("WORKFLOW_NOT_FOUND", "The workflow does not exist.", "WORKFLOW", nil))
 			continue
 		}
-		if item.Version.ID != "" && item.Version.ID != item.ID {
+		if item.Version.ID != "" && item.Version.ID != item.ID && item.Version.ID != storedID && item.Version.ID != workflowWireID(published) {
 			validationErrors = append(validationErrors, workflowValidationError("WORKFLOW_VERSION_CONFLICT", "The workflow version ID does not match the workflow.", "WORKFLOW", nil))
 		}
 		description, startPointLayout, loopedTransitionContainerLayout := workflowUpdateMetadata(item, published)
-		definition, itemErrors := workflowDefinitionFromRequest(item.ID, published.Name, description, startPointLayout, loopedTransitionContainerLayout, item.Statuses, item.Transitions, references)
+		definition, itemErrors := workflowDefinitionFromRequest(storedID, published.Name, description, startPointLayout, loopedTransitionContainerLayout, item.Statuses, item.Transitions, references)
 		definition.ProjectID = published.ProjectID
 		validationErrors = append(validationErrors, itemErrors...)
 		migrations, mappingErrors := workflowStatusMigrationsFromRequest(h.issueTypeIDsFor(r, workspaceID), item, references, definition)
@@ -720,7 +737,7 @@ func (h *Handler) workflowUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	workflowValues := make([]map[string]any, 0, len(updated))
 	for _, item := range updated {
-		workflowValues = append(workflowValues, workflowSearchBean(item, true))
+		workflowValues = append(workflowValues, workflowSearchBean(withWorkflowEntityID(item, h.workflowIDsFor(r, workspaceID)), true, h.statusIDsFor(r, workspaceID)))
 	}
 	statuses, err := h.workflowResponseStatuses(r, workspaceID, updated)
 	if err != nil {

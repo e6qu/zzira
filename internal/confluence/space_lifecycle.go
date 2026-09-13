@@ -102,10 +102,10 @@ func (h *V1Handler) v1DeleteSpace(w http.ResponseWriter, r *http.Request, ws, ac
 		writeError(w, err)
 		return
 	}
-	self := h.BaseURL + "/wiki/rest/api/longtask/" + task.ID
+	self := h.BaseURL + "/wiki/rest/api/longtask/" + task.WireID()
 	w.Header().Set("Location", self)
 	respond(w, 202, map[string]any{
-		"ari": "ari:cloud:confluence::space/" + spaceKey, "id": task.ID,
+		"ari": "ari:cloud:confluence::space/" + spaceKey, "id": task.WireID(),
 		"links": map[string]string{"status": self},
 	})
 }

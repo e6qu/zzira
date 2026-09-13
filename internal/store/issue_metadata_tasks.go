@@ -55,7 +55,10 @@ func (s *Store) EnqueuePriorityDeletion(ctx context.Context, workspaceID, actorI
 	if err != nil {
 		return APITask{}, err
 	}
-	return task, s.enqueueAPITask(ctx, task)
+	if err := s.enqueueAPITask(ctx, &task); err != nil {
+		return APITask{}, err
+	}
+	return task, nil
 }
 
 // EnqueueResolutionDeletion checks the resolution and its replacement and
@@ -82,7 +85,10 @@ func (s *Store) EnqueueResolutionDeletion(ctx context.Context, workspaceID, acto
 	if err != nil {
 		return APITask{}, err
 	}
-	return task, s.enqueueAPITask(ctx, task)
+	if err := s.enqueueAPITask(ctx, &task); err != nil {
+		return APITask{}, err
+	}
+	return task, nil
 }
 
 func (s *Store) executePriorityDeletion(ctx context.Context, task APITask) error {

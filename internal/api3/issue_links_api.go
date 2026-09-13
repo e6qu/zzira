@@ -158,7 +158,7 @@ func (h *Handler) linkedIssueBean(issue *models.Issue) map[string]any {
 	id := jiraIssueID(issue)
 	fields := map[string]any{
 		"summary":   issue.Summary,
-		"status":    h.statusBean(models.Status{ID: issue.Status.ID, Name: issue.Status.Name, Category: issue.Status.Category}),
+		"status":    h.statusBean(models.Status{ID: issue.Status.ID, Name: issue.Status.Name, Category: issue.Status.Category, JiraID: issue.Status.JiraID}),
 		"issuetype": h.issueTypeBean(issue.IssueType),
 	}
 	if issue.Priority != nil {

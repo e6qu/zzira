@@ -71,12 +71,13 @@ func (h *Handler) serviceRequestApprovals(w http.ResponseWriter, r *http.Request
 }
 
 func (h *Handler) serviceAttachmentBean(request *models.ServiceRequest, attachment models.Attachment) map[string]any {
-	content := h.BaseURL + "/rest/servicedeskapi/request/" + request.Issue.Key + "/attachment/" + attachment.ID
+	attachmentID := strconv.FormatInt(attachment.JiraID, 10)
+	content := h.BaseURL + "/rest/servicedeskapi/request/" + request.Issue.Key + "/attachment/" + attachmentID
 	return map[string]any{
 		"filename": attachment.Filename, "mimeType": attachment.MimeType, "size": attachment.Size,
 		"author":  h.serviceUserBean(&models.User{ID: attachment.AuthorID, DisplayName: attachment.AuthorName, Active: true, AccountType: "atlassian"}),
 		"created": serviceDate(parseServiceDate(attachment.Created)),
-		"_links":  map[string]string{"self": content, "content": content, "thumbnail": content + "/thumbnail", "jiraRest": h.BaseURL + "/rest/api/3/attachment/" + attachment.ID},
+		"_links":  map[string]string{"self": content, "content": content, "thumbnail": content + "/thumbnail", "jiraRest": h.BaseURL + "/rest/api/3/attachment/" + attachmentID},
 	}
 }
 

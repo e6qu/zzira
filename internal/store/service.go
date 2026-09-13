@@ -380,7 +380,7 @@ func (s *Store) MarkServiceRequestComment(ctx context.Context, requestIssueID, c
 func (s *Store) ServiceRequestComments(ctx context.Context, requestIssueID string, includeInternal bool) ([]models.ServiceRequestComment, error) {
 	rows, err := s.Pool.Query(ctx, `
 		SELECT c.id,c.issue_id,c.author_id,COALESCE(u.display_name,''),c.body,
-		       to_char(c.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),src.public
+		       to_char(c.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),src.public,c.jira_id
 		FROM comments c LEFT JOIN users u ON u.id=c.author_id
 		JOIN service_request_comments src ON src.comment_id=c.id
 		WHERE src.request_issue_id=$1 AND ($2 OR src.public)
@@ -392,7 +392,7 @@ func (s *Store) ServiceRequestComments(ctx context.Context, requestIssueID strin
 	comments := make([]models.ServiceRequestComment, 0)
 	for rows.Next() {
 		var value models.ServiceRequestComment
-		if err := rows.Scan(&value.Comment.ID, &value.Comment.IssueID, &value.Comment.AuthorID, &value.Comment.AuthorName, &value.Comment.Body, &value.Comment.Created, &value.Public); err != nil {
+		if err := rows.Scan(&value.Comment.ID, &value.Comment.IssueID, &value.Comment.AuthorID, &value.Comment.AuthorName, &value.Comment.Body, &value.Comment.Created, &value.Public, &value.Comment.JiraID); err != nil {
 			return nil, err
 		}
 		comments = append(comments, value)
@@ -404,11 +404,11 @@ func (s *Store) ServiceRequestComment(ctx context.Context, requestIssueID, comme
 	value := &models.ServiceRequestComment{}
 	err := s.Pool.QueryRow(ctx, `
 		SELECT c.id,c.issue_id,c.author_id,COALESCE(u.display_name,''),c.body,
-		       to_char(c.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),src.public
+		       to_char(c.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),src.public,c.jira_id
 		FROM comments c LEFT JOIN users u ON u.id=c.author_id
 		JOIN service_request_comments src ON src.comment_id=c.id
-		WHERE src.request_issue_id=$1 AND c.id=$2 AND ($3 OR src.public)`, requestIssueID, commentID, includeInternal).Scan(
-		&value.Comment.ID, &value.Comment.IssueID, &value.Comment.AuthorID, &value.Comment.AuthorName, &value.Comment.Body, &value.Comment.Created, &value.Public)
+		WHERE src.request_issue_id=$1 AND (c.id=$2 OR c.jira_id::text=$2) AND ($3 OR src.public)`, requestIssueID, commentID, includeInternal).Scan(
+		&value.Comment.ID, &value.Comment.IssueID, &value.Comment.AuthorID, &value.Comment.AuthorName, &value.Comment.Body, &value.Comment.Created, &value.Public, &value.Comment.JiraID)
 	if err != nil {
 		return nil, err
 	}

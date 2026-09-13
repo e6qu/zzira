@@ -22,7 +22,8 @@ func (h *Handler) workflowSchemeProjectUsages(w http.ResponseWriter, r *http.Req
 		jiraError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, err := h.Store.WorkflowSchemeByID(r.Context(), workspaceID, schemeID, false); err != nil {
+	usageScheme, err := h.Store.WorkflowSchemeByID(r.Context(), workspaceID, schemeID, false)
+	if err != nil {
 		jiraError(w, http.StatusNotFound, "The workflow scheme does not exist.")
 		return
 	}
@@ -64,14 +65,14 @@ func (h *Handler) workflowSchemeProjectUsages(w http.ResponseWriter, r *http.Req
 	if end < len(projects) {
 		page["nextPageToken"] = base64.RawURLEncoding.EncodeToString([]byte(strconv.Itoa(end)))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"workflowSchemeId": schemeID, "projects": page})
+	writeJSON(w, http.StatusOK, map[string]any{"workflowSchemeId": strconv.FormatInt(usageScheme.JiraID, 10), "projects": page})
 }
 
 func (h *Handler) workflowSchemePublishedSubresourceRoute(w http.ResponseWriter, r *http.Request, workspaceID, userID string, parts []string) bool {
 	if len(parts) < 2 {
 		return false
 	}
-	schemeID := parts[0]
+	schemeID := h.Store.WorkflowSchemeIDByRef(r.Context(), workspaceID, parts[0])
 	if len(parts) == 2 && parts[1] == "projectUsages" {
 		h.workflowSchemeProjectUsages(w, r, workspaceID, schemeID)
 		return true

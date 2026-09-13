@@ -116,6 +116,7 @@ func (h *Handler) bulkAvailableTransitions(w http.ResponseWriter, r *http.Reques
 	}
 	end := min(start+50, len(workflowIDs))
 	result := make([]map[string]any, 0, end-start)
+	wireStatuses := h.statusIDsFor(r, workspaceID)
 	for _, id := range workflowIDs[start:end] {
 		group := groups[id]
 		transitionIDs := make([]string, 0, len(group.Transitions))
@@ -126,11 +127,11 @@ func (h *Handler) bulkAvailableTransitions(w http.ResponseWriter, r *http.Reques
 		transitions := make([]map[string]any, 0, len(transitionIDs))
 		for _, transitionID := range transitionIDs {
 			candidate := group.Transitions[transitionID]
-			wireTransitionID, wireStatusID := any(candidate.ID), any(candidate.ToID)
+			wireTransitionID, wireStatusID := any(candidate.ID), any(wireStatuses.toWire(candidate.ToID))
 			if numeric, conversionErr := strconv.Atoi(candidate.ID); conversionErr == nil {
 				wireTransitionID = numeric
 			}
-			if numeric, conversionErr := strconv.Atoi(candidate.ToID); conversionErr == nil {
+			if numeric, conversionErr := strconv.Atoi(wireStatuses.toWire(candidate.ToID)); conversionErr == nil {
 				wireStatusID = numeric
 			}
 			transitions = append(transitions, map[string]any{"transitionId": wireTransitionID, "transitionName": candidate.Name, "to": map[string]any{"statusId": wireStatusID, "statusName": candidate.ToName}})
@@ -217,7 +218,7 @@ func (h *Handler) submitBulkTransition(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, http.StatusInternalServerError, "Could not submit the bulk operation.")
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]string{"taskId": task.ID})
+	writeJSON(w, http.StatusCreated, map[string]string{"taskId": task.WireID()})
 }
 
 type bulkMoveTargetRequest struct {
@@ -332,7 +333,7 @@ func (h *Handler) submitBulkMove(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, http.StatusInternalServerError, "Could not submit the bulk operation.")
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]string{"taskId": task.ID})
+	writeJSON(w, http.StatusCreated, map[string]string{"taskId": task.WireID()})
 }
 
 func (h *Handler) submitBulkDelete(w http.ResponseWriter, r *http.Request) {
@@ -378,7 +379,7 @@ func (h *Handler) submitBulkDelete(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, http.StatusInternalServerError, "Could not submit the bulk operation.")
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]string{"taskId": task.ID})
+	writeJSON(w, http.StatusCreated, map[string]string{"taskId": task.WireID()})
 }
 
 type bulkEditableField struct {
@@ -704,7 +705,7 @@ func (h *Handler) submitBulkWatch(w http.ResponseWriter, r *http.Request, watch 
 		jiraError(w, http.StatusInternalServerError, "Could not submit the bulk operation.")
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]string{"taskId": task.ID})
+	writeJSON(w, http.StatusCreated, map[string]string{"taskId": task.WireID()})
 }
 
 func (h *Handler) bulkOperationProgress(w http.ResponseWriter, r *http.Request, taskID string) {
@@ -731,7 +732,7 @@ func (h *Handler) bulkOperationProgress(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	bean := map[string]any{
-		"taskId": task.ID, "status": task.Status, "progressPercent": task.Progress,
+		"taskId": task.WireID(), "status": task.Status, "progressPercent": task.Progress,
 		"submittedBy": map[string]string{"accountId": task.SubmittedBy},
 		"created":     task.SubmittedAt.UnixMilli(), "updated": task.LastUpdateAt.UnixMilli(),
 	}

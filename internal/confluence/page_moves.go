@@ -19,12 +19,12 @@ func (h *V1Handler) longTaskBean(task store.APITask) map[string]any {
 		messages = append(messages, map[string]any{"translation": task.Message, "args": []any{}})
 	}
 	return map[string]any{
-		"id": task.ID, "name": map[string]any{"key": task.Kind}, "elapsedTime": 0,
+		"id": task.WireID(), "name": map[string]any{"key": task.Kind}, "elapsedTime": 0,
 		"percentageComplete": percentage, "successful": task.Status == "COMPLETE",
 		"finished": task.Status == "COMPLETE" || task.Status == "FAILED",
 		"messages": messages,
 		"status":   task.Status,
-		"_links":   map[string]string{"self": h.BaseURL + "/wiki/rest/api/longtask/" + task.ID},
+		"_links":   map[string]string{"self": h.BaseURL + "/wiki/rest/api/longtask/" + task.WireID()},
 	}
 }
 
@@ -150,9 +150,9 @@ func (h *V1Handler) v1CopyPageHierarchy(w http.ResponseWriter, r *http.Request, 
 }
 
 func (h *V1Handler) respondWithTask(w http.ResponseWriter, task store.APITask) {
-	self := h.BaseURL + "/wiki/rest/api/longtask/" + task.ID
+	self := h.BaseURL + "/wiki/rest/api/longtask/" + task.WireID()
 	w.Header().Set("Location", self)
-	respond(w, 202, map[string]any{"id": task.ID, "links": map[string]string{"status": self}})
+	respond(w, 202, map[string]any{"id": task.WireID(), "links": map[string]string{"status": self}})
 }
 
 func (h *V1Handler) v1ArchivePages(w http.ResponseWriter, r *http.Request, ws, actor string) {

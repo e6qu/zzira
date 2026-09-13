@@ -25,7 +25,7 @@ func (h *Handler) sprintProperties(w http.ResponseWriter, r *http.Request, sprin
 	for _, key := range keys {
 		values = append(values, map[string]any{
 			"key":  key,
-			"self": h.BaseURL + "/rest/agile/1.0/sprint/" + sprint.ID + "/properties/" + key,
+			"self": h.BaseURL + "/rest/agile/1.0/sprint/" + sprintWireID(sprint) + "/properties/" + key,
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"keys": values})
@@ -41,7 +41,7 @@ func (h *Handler) sprintProperty(w http.ResponseWriter, r *http.Request, sprint 
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"key": key, "value": json.RawMessage(value),
-			"self": h.BaseURL + "/rest/agile/1.0/sprint/" + sprint.ID + "/properties/" + key,
+			"self": h.BaseURL + "/rest/agile/1.0/sprint/" + sprintWireID(sprint) + "/properties/" + key,
 		})
 	case http.MethodPut:
 		raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 64<<10))

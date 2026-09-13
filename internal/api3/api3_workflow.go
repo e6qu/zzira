@@ -39,7 +39,7 @@ func (h *Handler) workflowRoute(w http.ResponseWriter, r *http.Request) {
 		values := make([]map[string]any, 0, len(workflows))
 		for _, wf := range workflows {
 			values = append(values, map[string]any{
-				"id":          wf.ID,
+				"id":          workflowWireID(wf),
 				"name":        wf.Name,
 				"description": "",
 				"isDefault":   wf.ID == "wf_default",
@@ -69,14 +69,22 @@ func (h *Handler) workflowRoute(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		wf := workflow.Workflow{ID: req.ID, Name: req.Name}
+		statuses := h.statusIDsFor(r, workspaceID)
 		for _, t := range req.Transitions {
-			wf.Transitions = append(wf.Transitions, workflow.Transition{ID: t.ID, Name: t.Name, From: t.From, To: t.To})
+			from := make([]string, len(t.From))
+			for index, status := range t.From {
+				from[index] = statuses.toInternal(status)
+			}
+			wf.Transitions = append(wf.Transitions, workflow.Transition{ID: t.ID, Name: t.Name, From: from, To: statuses.toInternal(t.To)})
 		}
 		if err := h.Store.CreateWorkflow(r.Context(), workspaceID, wf); err != nil {
 			jiraError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		writeJSON(w, http.StatusCreated, map[string]any{"id": wf.ID, "name": wf.Name})
+		if created, err := h.Store.WorkflowByID(r.Context(), workspaceID, wf.ID); err == nil {
+			wf = created
+		}
+		writeJSON(w, http.StatusCreated, map[string]any{"id": workflowWireID(wf), "name": wf.Name})
 	case strings.HasPrefix(rel, "/workflow/project/"):
 		keyOrID := strings.TrimPrefix(rel, "/workflow/project/")
 		wsID, _, e := h.authWorkspaceAdmin(r)
@@ -94,6 +102,9 @@ func (h *Handler) workflowRoute(w http.ResponseWriter, r *http.Request) {
 			if workflowID == "" {
 				workflowID = workflow.Default().ID
 			}
+			if assigned, err := h.Store.WorkflowByID(r.Context(), wsID, workflowID); err == nil {
+				workflowID = workflowWireID(assigned)
+			}
 			writeJSON(w, http.StatusOK, map[string]any{
 				"projectKeyOrId": keyOrID,
 				"workflowId":     workflowID,
@@ -108,11 +119,15 @@ func (h *Handler) workflowRoute(w http.ResponseWriter, r *http.Request) {
 				jiraFieldError(w, http.StatusBadRequest, map[string]string{"workflowId": "workflowId is required."})
 				return
 			}
-			if _, err := h.Store.WorkflowByID(r.Context(), wsID, req.WorkflowID); err != nil {
+			target, err := h.Store.WorkflowByID(r.Context(), wsID, req.WorkflowID)
+			if err != nil {
 				jiraFieldError(w, http.StatusBadRequest, map[string]string{"workflowId": "The workflow does not exist."})
 				return
 			}
-			if err := h.Store.AssignWorkflowToProject(r.Context(), wsID, project.ID, req.WorkflowID); err != nil {
+			if target.ID == "" {
+				target.ID = req.WorkflowID
+			}
+			if err := h.Store.AssignWorkflowToProject(r.Context(), wsID, project.ID, target.ID); err != nil {
 				jiraError(w, http.StatusInternalServerError, "internal error")
 				return
 			}

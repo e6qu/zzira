@@ -116,10 +116,14 @@ func TestWorkflowPersistenceValidatesDefinitionsAndAssignments(t *testing.T) {
 	if err != nil || afterDiscard.HasDraft || len(afterDiscard.Transitions) != len(published.Transitions) {
 		t.Fatalf("workflow after discard = %+v, %v", afterDiscard, err)
 	}
-	if err := st.AssignWorkflowToProject(ctx, "ws_default", "prj_default", workflowID); err != nil {
+	var demoProjectID string
+	if err := st.Pool.QueryRow(ctx, `SELECT id FROM projects WHERE workspace_id='ws_default' AND key='ZZ'`).Scan(&demoProjectID); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AssignWorkflowToProject(ctx, "ws_default", demoProjectID, workflowID); err != nil {
 		t.Fatalf("assign workflow: %v", err)
 	}
-	assigned, err := st.WorkflowForProject(ctx, "prj_default")
+	assigned, err := st.WorkflowForProject(ctx, demoProjectID)
 	if err != nil {
 		t.Fatalf("workflow for project: %v", err)
 	}
