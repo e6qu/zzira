@@ -302,12 +302,17 @@ func (h *Handler) fieldConfigurationSchemeMappings(w http.ResponseWriter, r *htt
 		fieldConfigError(w, err)
 		return
 	}
+	ids, err := h.issueTypeIDTranslator(r.Context(), workspaceID)
+	if err != nil {
+		fieldConfigError(w, err)
+		return
+	}
 	flattened := []map[string]any{}
 	for _, scheme := range schemes {
 		for _, mapping := range scheme.Mappings {
 			flattened = append(flattened, map[string]any{
 				"fieldConfigurationSchemeId": wireNumericID(scheme.ID),
-				"issueTypeId":                mapping.IssueTypeID,
+				"issueTypeId":                ids.toWire(mapping.IssueTypeID),
 				"fieldConfigurationId":       wireNumericID(mapping.FieldConfigurationID),
 			})
 		}
@@ -384,10 +389,15 @@ func (h *Handler) setFieldConfigurationSchemeMapping(w http.ResponseWriter, r *h
 	if !decodeProjectRequest(w, r, &request) {
 		return
 	}
+	ids, err := h.issueTypeIDTranslator(r.Context(), workspaceID)
+	if err != nil {
+		fieldConfigError(w, err)
+		return
+	}
 	mappings := make([]models.FieldConfigurationSchemeItem, 0, len(request.Mappings))
 	for _, mapping := range request.Mappings {
 		mappings = append(mappings, models.FieldConfigurationSchemeItem{
-			IssueTypeID: mapping.IssueTypeID, FieldConfigurationID: mapping.FieldConfigurationID})
+			IssueTypeID: ids.toInternal(mapping.IssueTypeID), FieldConfigurationID: mapping.FieldConfigurationID})
 	}
 	if err := h.Store.SetFieldConfigurationSchemeMappings(r.Context(), workspaceID, actorID, schemeID, mappings); err != nil {
 		fieldConfigError(w, err)
@@ -412,7 +422,12 @@ func (h *Handler) removeFieldConfigurationSchemeMapping(w http.ResponseWriter, r
 	if !decodeProjectRequest(w, r, &request) {
 		return
 	}
-	if err := h.Store.RemoveFieldConfigurationSchemeMappings(r.Context(), workspaceID, actorID, schemeID, request.IssueTypeIDs); err != nil {
+	ids, err := h.issueTypeIDTranslator(r.Context(), workspaceID)
+	if err != nil {
+		fieldConfigError(w, err)
+		return
+	}
+	if err := h.Store.RemoveFieldConfigurationSchemeMappings(r.Context(), workspaceID, actorID, schemeID, ids.allToInternal(request.IssueTypeIDs)); err != nil {
 		fieldConfigError(w, err)
 		return
 	}

@@ -140,14 +140,14 @@ func (h *Handler) screenSchemeResource(w http.ResponseWriter, r *http.Request, s
 	}
 }
 
-func issueTypeScreenSchemeMappingInputs(raw []struct {
+func issueTypeScreenSchemeMappingInputs(ids issueTypeIDs, raw []struct {
 	IssueTypeID    string `json:"issueTypeId"`
 	ScreenSchemeID string `json:"screenSchemeId"`
 }) []models.IssueTypeScreenSchemeItem {
 	mappings := make([]models.IssueTypeScreenSchemeItem, 0, len(raw))
 	for _, item := range raw {
 		mappings = append(mappings, models.IssueTypeScreenSchemeItem{
-			IssueTypeID: item.IssueTypeID, ScreenSchemeID: item.ScreenSchemeID})
+			IssueTypeID: ids.toInternal(item.IssueTypeID), ScreenSchemeID: item.ScreenSchemeID})
 	}
 	return mappings
 }
@@ -188,8 +188,13 @@ func (h *Handler) issueTypeScreenSchemeCollection(w http.ResponseWriter, r *http
 		if !decodeProjectRequest(w, r, &request) {
 			return
 		}
+		ids, err := h.issueTypeIDTranslator(r.Context(), workspaceID)
+		if err != nil {
+			screenError(w, err)
+			return
+		}
 		scheme, err := h.Store.CreateIssueTypeScreenScheme(r.Context(), workspaceID, actorID, request.Name, request.Description,
-			issueTypeScreenSchemeMappingInputs(request.IssueTypeMappings))
+			issueTypeScreenSchemeMappingInputs(ids, request.IssueTypeMappings))
 		if err != nil {
 			screenError(w, err)
 			return
@@ -251,12 +256,17 @@ func (h *Handler) issueTypeScreenSchemeMappings(w http.ResponseWriter, r *http.R
 		screenError(w, err)
 		return
 	}
+	ids, err := h.issueTypeIDTranslator(r.Context(), workspaceID)
+	if err != nil {
+		screenError(w, err)
+		return
+	}
 	flattened := []map[string]any{}
 	for _, scheme := range schemes {
 		for _, mapping := range scheme.Mappings {
 			flattened = append(flattened, map[string]any{
 				"issueTypeScreenSchemeId": wireNumericID(scheme.ID),
-				"issueTypeId":             mapping.IssueTypeID,
+				"issueTypeId":             ids.toWire(mapping.IssueTypeID),
 				"screenSchemeId":          wireNumericID(mapping.ScreenSchemeID),
 			})
 		}
@@ -368,8 +378,13 @@ func (h *Handler) appendIssueTypeScreenSchemeMapping(w http.ResponseWriter, r *h
 	if !decodeProjectRequest(w, r, &request) {
 		return
 	}
+	ids, err := h.issueTypeIDTranslator(r.Context(), workspaceID)
+	if err != nil {
+		screenError(w, err)
+		return
+	}
 	if err := h.Store.AppendIssueTypeScreenSchemeMappings(r.Context(), workspaceID, actorID, schemeID,
-		issueTypeScreenSchemeMappingInputs(request.IssueTypeMappings)); err != nil {
+		issueTypeScreenSchemeMappingInputs(ids, request.IssueTypeMappings)); err != nil {
 		screenError(w, err)
 		return
 	}

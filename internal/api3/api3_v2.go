@@ -210,7 +210,7 @@ func (h *Handler) createMeta(w http.ResponseWriter, r *http.Request) {
 		}
 		issueTypes := make([]map[string]any, 0, len(project.IssueTypes))
 		for _, issueType := range project.IssueTypes {
-			if len(typeFilter) > 0 && !querySetContains(typeFilter, issueType.ID, issueType.Name) {
+			if len(typeFilter) > 0 && !querySetContains(typeFilter, jiraIDString(issueType.JiraID), issueType.ID, issueType.Name) {
 				continue
 			}
 			bean := h.createMetaIssueTypeBean(issueType)
