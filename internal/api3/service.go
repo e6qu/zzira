@@ -1,6 +1,7 @@
 package api3
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -107,12 +108,17 @@ func (h *Handler) serviceDeskRoute(w http.ResponseWriter, r *http.Request) {
 			jiraError(w, http.StatusBadRequest, "name and issueTypeId are required and text fields accept at most 255 characters.")
 			return
 		}
-		requestType, err := h.Store.CreateServiceRequestType(r.Context(), workspaceID, parts[1], strings.TrimSpace(input.Name), input.Description, input.HelpText, input.IssueTypeID)
+		ids, idErr := h.issueTypeIDTranslator(r.Context(), workspaceID)
+		if idErr != nil {
+			jiraError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		requestType, err := h.Store.CreateServiceRequestType(r.Context(), workspaceID, parts[1], strings.TrimSpace(input.Name), input.Description, input.HelpText, ids.toInternal(input.IssueTypeID))
 		if err != nil {
 			jiraError(w, http.StatusBadRequest, "Could not create request type.")
 			return
 		}
-		writeJSON(w, http.StatusOK, serviceRequestTypeBean(h.BaseURL, *requestType))
+		writeJSON(w, http.StatusOK, serviceRequestTypeBean(h.BaseURL, h.wireServiceRequestType(r.Context(), workspaceID, *requestType)))
 	case len(parts) == 3 && parts[0] == "servicedesk" && parts[2] == "customer" && (r.Method == http.MethodGet || r.Method == http.MethodPost || r.Method == http.MethodDelete):
 		h.serviceDeskCustomers(w, r, workspaceID, actorID, parts[1])
 	case len(parts) == 4 && parts[0] == "servicedesk" && parts[2] == "customer" && parts[3] == "invite" && r.Method == http.MethodPost:
@@ -161,7 +167,7 @@ func (h *Handler) serviceDeskRoute(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if len(parts) == 4 && r.Method == http.MethodGet {
-			writeJSON(w, http.StatusOK, serviceRequestTypeBean(h.BaseURL, *requestType))
+			writeJSON(w, http.StatusOK, serviceRequestTypeBean(h.BaseURL, h.wireServiceRequestType(r.Context(), workspaceID, *requestType)))
 			return
 		}
 		if len(parts) == 4 && r.Method == http.MethodDelete {
@@ -610,7 +616,7 @@ func (h *Handler) listServiceRequestTypes(w http.ResponseWriter, r *http.Request
 	}
 	beans := make([]map[string]any, 0, len(values))
 	for _, requestType := range values {
-		beans = append(beans, serviceRequestTypeBean(h.BaseURL, requestType))
+		beans = append(beans, serviceRequestTypeBean(h.BaseURL, h.wireServiceRequestType(r.Context(), workspaceID, requestType)))
 	}
 	h.writeServicePage(w, r, beans)
 }
@@ -748,7 +754,7 @@ func (h *Handler) serviceRequestBean(r *http.Request, workspaceID, viewerID stri
 		"issueId": jiraIssueID(request.Issue), "issueKey": request.Issue.Key, "summary": request.Issue.Summary,
 		"serviceDeskId": request.ServiceDesk.ID, "requestTypeId": request.RequestType.ID,
 		"serviceDesk": serviceDeskBean(h.BaseURL, request.ServiceDesk),
-		"requestType": serviceRequestTypeBean(h.BaseURL, request.RequestType),
+		"requestType": serviceRequestTypeBean(h.BaseURL, h.wireServiceRequestType(r.Context(), workspaceID, request.RequestType)),
 		"reporter":    h.serviceUserBean(request.Customer), "participants": participantBeans,
 		"requestFieldValues": fields, "currentStatus": status, "status": status,
 		"createdDate": serviceDate(request.CreatedAt), "channel": request.Channel,
@@ -1053,4 +1059,13 @@ func (h *Handler) serviceRequestTransition(w http.ResponseWriter, r *http.Reques
 		}
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// wireServiceRequestType gives a request type the issue type id clients know.
+// The request type is a copy, so the stored value is untouched.
+func (h *Handler) wireServiceRequestType(ctx context.Context, workspaceID string, requestType models.ServiceRequestType) models.ServiceRequestType {
+	if ids, err := h.issueTypeIDTranslator(ctx, workspaceID); err == nil {
+		requestType.IssueTypeID = ids.toWire(requestType.IssueTypeID)
+	}
+	return requestType
 }

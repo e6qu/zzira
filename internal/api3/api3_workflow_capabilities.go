@@ -118,7 +118,7 @@ func (h *Handler) workflowCapabilities(w http.ResponseWriter, r *http.Request) {
 	}
 	workflowID := r.URL.Query().Get("workflowId")
 	projectID := r.URL.Query().Get("projectId")
-	issueTypeID := r.URL.Query().Get("issueTypeId")
+	issueTypeID := h.issueTypeIDsFor(r, workspaceID).toInternal(r.URL.Query().Get("issueTypeId"))
 	if workflowID != "" {
 		if projectID != "" || issueTypeID != "" {
 			jiraError(w, http.StatusBadRequest, "workflowId cannot be combined with projectId or issueTypeId")

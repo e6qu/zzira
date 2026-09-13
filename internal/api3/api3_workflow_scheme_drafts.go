@@ -116,6 +116,7 @@ func (h *Handler) workflowSchemeSubresourceRoute(w http.ResponseWriter, r *http.
 				}
 			}
 			if request.IssueTypeMappings != nil {
+				request.IssueTypeMappings = h.issueTypeIDsFor(r, workspaceID).mapKeysToInternal(request.IssueTypeMappings)
 				scheme.IssueTypeMappings = make(map[string]string, len(request.IssueTypeMappings))
 				for issueTypeID, workflowName := range request.IssueTypeMappings {
 					workflowID := workflowIDForName(workflows, workflowName)
@@ -160,9 +161,10 @@ func (h *Handler) workflowSchemeSubresourceRoute(w http.ResponseWriter, r *http.
 			jiraError(w, http.StatusBadRequest, "Invalid workflow scheme publish request.")
 			return true
 		}
+		ids := h.issueTypeIDsFor(r, workspaceID)
 		statusMappings := make([]store.WorkflowStatusMapping, 0, len(request.StatusMappings))
 		for _, mapping := range request.StatusMappings {
-			statusMappings = append(statusMappings, store.WorkflowStatusMapping{IssueTypeID: mapping.IssueTypeID, OldStatusID: mapping.StatusID, NewStatusID: mapping.NewStatusID})
+			statusMappings = append(statusMappings, store.WorkflowStatusMapping{IssueTypeID: ids.toInternal(mapping.IssueTypeID), OldStatusID: mapping.StatusID, NewStatusID: mapping.NewStatusID})
 		}
 		if r.URL.Query().Get("validateOnly") == "true" {
 			projects, err := h.Store.ProjectsForWorkflowScheme(r.Context(), workspaceID, schemeID)

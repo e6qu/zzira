@@ -401,18 +401,18 @@ func workflowConditionGroupFromRequest(group workflowConditionGroupUpdateRequest
 	return converted
 }
 
-func workflowStatusMigrationsFromRequest(item workflowUpdateItemRequest, references map[string]string, wf workflow.Workflow) ([]store.WorkflowStatusMigration, []map[string]any) {
+func workflowStatusMigrationsFromRequest(ids issueTypeIDs, item workflowUpdateItemRequest, references map[string]string, wf workflow.Workflow) ([]store.WorkflowStatusMigration, []map[string]any) {
 	targetStatuses := workflowStatusReferences(wf)
 	migrations := make([]store.WorkflowStatusMigration, 0)
 	errors := make([]map[string]any, 0)
 	add := func(projectID, issueTypeID string, migration workflowStatusMigrationRequest) {
 		oldStatusID, newStatusID := references[migration.OldStatusReference], references[migration.NewStatusReference]
 		if oldStatusID == "" || newStatusID == "" {
-			errors = append(errors, workflowValidationError("STATUS_MAPPING_REFERENCE_INVALID", "Status mappings must reference known old and new statuses.", "STATUS_MAPPING", map[string]any{"statusMappingReference": map[string]string{"projectId": projectID, "issueTypeId": issueTypeID}}))
+			errors = append(errors, workflowValidationError("STATUS_MAPPING_REFERENCE_INVALID", "Status mappings must reference known old and new statuses.", "STATUS_MAPPING", map[string]any{"statusMappingReference": map[string]string{"projectId": projectID, "issueTypeId": ids.toWire(issueTypeID)}}))
 			return
 		}
 		if !targetStatuses[newStatusID] {
-			errors = append(errors, workflowValidationError("STATUS_MAPPING_TARGET_INVALID", "A replacement status must belong to the updated workflow.", "STATUS_MAPPING", map[string]any{"statusMappingReference": map[string]string{"projectId": projectID, "issueTypeId": issueTypeID}}))
+			errors = append(errors, workflowValidationError("STATUS_MAPPING_TARGET_INVALID", "A replacement status must belong to the updated workflow.", "STATUS_MAPPING", map[string]any{"statusMappingReference": map[string]string{"projectId": projectID, "issueTypeId": ids.toWire(issueTypeID)}}))
 			return
 		}
 		migrations = append(migrations, store.WorkflowStatusMigration{ProjectID: projectID, IssueTypeID: issueTypeID, OldStatusID: oldStatusID, NewStatusID: newStatusID})
@@ -426,7 +426,7 @@ func workflowStatusMigrationsFromRequest(item workflowUpdateItemRequest, referen
 			continue
 		}
 		for _, migration := range mapping.StatusMigrations {
-			add(mapping.ProjectID, mapping.IssueTypeID, migration)
+			add(mapping.ProjectID, ids.toInternal(mapping.IssueTypeID), migration)
 		}
 	}
 	return migrations, errors
@@ -534,7 +534,7 @@ func (h *Handler) workflowUpdateValidation(w http.ResponseWriter, r *http.Reques
 		wf, itemErrors := workflowDefinitionFromRequest(item.ID, published.Name, description, startPointLayout, loopedTransitionContainerLayout, item.Statuses, item.Transitions, references)
 		wf.ProjectID = published.ProjectID
 		errors = append(errors, itemErrors...)
-		_, mappingErrors := workflowStatusMigrationsFromRequest(item, references, wf)
+		_, mappingErrors := workflowStatusMigrationsFromRequest(h.issueTypeIDsFor(r, workspaceID), item, references, wf)
 		errors = append(errors, mappingErrors...)
 		if len(itemErrors) == 0 && len(createdStatuses) == 0 {
 			if err := h.Store.ValidateWorkflowDefinition(r.Context(), workspaceID, wf); err != nil {
@@ -701,7 +701,7 @@ func (h *Handler) workflowUpdate(w http.ResponseWriter, r *http.Request) {
 		definition, itemErrors := workflowDefinitionFromRequest(item.ID, published.Name, description, startPointLayout, loopedTransitionContainerLayout, item.Statuses, item.Transitions, references)
 		definition.ProjectID = published.ProjectID
 		validationErrors = append(validationErrors, itemErrors...)
-		migrations, mappingErrors := workflowStatusMigrationsFromRequest(item, references, definition)
+		migrations, mappingErrors := workflowStatusMigrationsFromRequest(h.issueTypeIDsFor(r, workspaceID), item, references, definition)
 		validationErrors = append(validationErrors, mappingErrors...)
 		updates = append(updates, store.WorkflowUpdateDefinition{Workflow: definition, ExpectedVersion: item.Version.VersionNumber, StatusMigrations: migrations})
 	}

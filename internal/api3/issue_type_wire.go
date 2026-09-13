@@ -2,6 +2,7 @@ package api3
 
 import (
 	"context"
+	"net/http"
 	"strings"
 )
 
@@ -68,4 +69,28 @@ func (t issueTypeIDs) allToWire(ids []string) []string {
 		out[i] = t.toWire(id)
 	}
 	return out
+}
+
+// mapKeysToInternal translates the keys of an issue type mapping, such as a
+// workflow scheme's issue type to workflow map.
+func (t issueTypeIDs) mapKeysToInternal(values map[string]string) map[string]string {
+	if values == nil {
+		return nil
+	}
+	out := make(map[string]string, len(values))
+	for key, value := range values {
+		out[t.toInternal(key)] = value
+	}
+	return out
+}
+
+// issueTypeIDsFor builds a translator for a request. If the site's issue types
+// cannot be read, the empty translator passes ids through unchanged, so the
+// operation's own validation still decides.
+func (h *Handler) issueTypeIDsFor(r *http.Request, workspaceID string) issueTypeIDs {
+	ids, err := h.issueTypeIDTranslator(r.Context(), workspaceID)
+	if err != nil {
+		return issueTypeIDs{wire: map[string]string{}, internal: map[string]string{}}
+	}
+	return ids
 }

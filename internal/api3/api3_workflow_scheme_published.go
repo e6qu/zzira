@@ -122,7 +122,8 @@ func (h *Handler) workflowSchemePublishedSubresourceRoute(w http.ResponseWriter,
 			jiraError(w, http.StatusNotFound, "The workflow scheme does not exist.")
 			return true
 		}
-		issueTypeID := parts[2]
+		ids := h.issueTypeIDsFor(r, workspaceID)
+		issueTypeID := ids.toInternal(parts[2])
 		workflows, err := h.Store.ListGlobalWorkflows(r.Context(), workspaceID)
 		if err != nil {
 			workflowSchemeAPIError(w, err)
@@ -135,7 +136,7 @@ func (h *Handler) workflowSchemePublishedSubresourceRoute(w http.ResponseWriter,
 				jiraError(w, http.StatusNotFound, "The issue type mapping does not exist.")
 				return true
 			}
-			writeJSON(w, http.StatusOK, map[string]any{"issueType": issueTypeID, "workflow": workflowNameForID(workflows, workflowID)})
+			writeJSON(w, http.StatusOK, map[string]any{"issueType": ids.toWire(issueTypeID), "workflow": workflowNameForID(workflows, workflowID)})
 		case http.MethodPut:
 			var request struct {
 				Workflow string `json:"workflow"`
@@ -180,6 +181,7 @@ func (h *Handler) workflowSchemePublishedSubresourceRoute(w http.ResponseWriter,
 			workflowSchemeAPIError(w, err)
 			return true
 		}
+		ids := h.issueTypeIDsFor(r, workspaceID)
 		workflowID := workflowIDForName(workflows, r.URL.Query().Get("workflowName"))
 		if workflowID == "" {
 			jiraError(w, http.StatusBadRequest, "workflowName must identify a workflow.")
@@ -190,7 +192,7 @@ func (h *Handler) workflowSchemePublishedSubresourceRoute(w http.ResponseWriter,
 			issueTypes := make([]string, 0)
 			for issueTypeID, mappedWorkflowID := range scheme.IssueTypeMappings {
 				if mappedWorkflowID == workflowID {
-					issueTypes = append(issueTypes, issueTypeID)
+					issueTypes = append(issueTypes, ids.toWire(issueTypeID))
 				}
 			}
 			writeJSON(w, http.StatusOK, map[string]any{"workflow": workflowNameForID(workflows, workflowID), "issueTypes": issueTypes, "defaultMapping": scheme.DefaultWorkflowID == workflowID})
@@ -219,7 +221,7 @@ func (h *Handler) workflowSchemePublishedSubresourceRoute(w http.ResponseWriter,
 				}
 			}
 			for _, issueTypeID := range request.IssueTypes {
-				scheme.IssueTypeMappings[issueTypeID] = targetWorkflowID
+				scheme.IssueTypeMappings[ids.toInternal(issueTypeID)] = targetWorkflowID
 			}
 			if request.DefaultMapping {
 				scheme.DefaultWorkflowID = targetWorkflowID

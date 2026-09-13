@@ -139,7 +139,9 @@ func (h *Handler) workflowPreview(w http.ResponseWriter, r *http.Request) {
 	for _, issueType := range issueTypes {
 		knownIssueTypes[issueType.ID] = true
 	}
-	for _, issueTypeID := range request.IssueTypeIDs {
+	ids := h.issueTypeIDsFor(r, workspaceID)
+	for _, requestedIssueType := range request.IssueTypeIDs {
+		issueTypeID := ids.toInternal(requestedIssueType)
 		if !knownIssueTypes[issueTypeID] {
 			jiraError(w, http.StatusBadRequest, "issueTypeIds contains an invalid issue type")
 			return
