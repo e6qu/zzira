@@ -49,6 +49,9 @@ func (s *Service) visibleIssue(ctx context.Context, actorID, workspaceID, issueI
 	if !visible {
 		return nil, fmt.Errorf("issue %q not found", issueIDOrKey)
 	}
+	if issue.ArchivedAt != "" {
+		return nil, ErrIssueArchived
+	}
 	return issue, nil
 }
 
@@ -706,6 +709,8 @@ type AddCommentInput struct {
 	IssueIDOrKey string
 	Body         json.RawMessage // ADF; empty → empty paragraph
 	PlainText    string          // form path: wrapped into an ADF paragraph
+	// Visibility restricts the comment to a group or project role.
+	Visibility store.CommentVisibility
 }
 
 func (s *Service) AddComment(ctx context.Context, in AddCommentInput) (*models.Comment, *models.Action, error) {
@@ -720,7 +725,7 @@ func (s *Service) AddComment(ctx context.Context, in AddCommentInput) (*models.C
 	if len(body) == 0 {
 		body = adf.Doc(adf.Paragraph())
 	}
-	comment, action, err := s.Store.CreateComment(ctx, in.ActorID, in.WorkspaceID, issue.ID, body)
+	comment, action, err := s.Store.CreateCommentWithVisibility(ctx, in.ActorID, in.WorkspaceID, issue.ID, body, in.Visibility)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -730,13 +735,30 @@ func (s *Service) AddComment(ctx context.Context, in AddCommentInput) (*models.C
 	return comment, action, nil
 }
 
+// DeleteComment removes a comment for someone with Delete all comments, or
+// Delete own comments on their own comment, as Jira's permission scheme decides.
 func (s *Service) DeleteComment(ctx context.Context, actorID, workspaceID, commentID string) (*models.Action, error) {
-	c, err := s.Store.CommentByID(ctx, workspaceID, commentID)
+	c, err := s.Store.CommentByRef(ctx, workspaceID, commentID)
 	if err != nil {
 		return nil, fmt.Errorf("comment %q not found", commentID)
 	}
-	if c.AuthorID != actorID {
-		return nil, fmt.Errorf("only the author may delete a comment")
+	issue, err := s.visibleIssue(ctx, actorID, workspaceID, c.IssueID)
+	if err != nil {
+		return nil, err
 	}
-	return s.Store.DeleteComment(ctx, actorID, workspaceID, commentID)
+	allowed, err := s.commentPermission(ctx, actorID, workspaceID, issue, c, "DELETE_ALL_COMMENTS", "DELETE_OWN_COMMENTS")
+	if err != nil {
+		return nil, err
+	}
+	if !allowed {
+		return nil, ErrCommentPermission
+	}
+	action, err := s.Store.DeleteComment(ctx, actorID, workspaceID, c.ID)
+	if err != nil {
+		return nil, err
+	}
+	if err = s.deliverIssueEvent(ctx, workspaceID, actorID, issue, action, 17, "issue_comment_deleted", "deleted a comment on"); err != nil {
+		return action, err
+	}
+	return action, nil
 }

@@ -216,11 +216,15 @@ type Issue struct {
 	Priority    *Priority       `json:"priority"`
 	Resolution  *Resolution     `json:"resolution,omitempty"`
 	// ResolvedAt is when the issue reached its resolution, empty while unresolved.
-	ResolvedAt string   `json:"resolutiondate,omitempty"`
-	Assignee   *User    `json:"assignee"`
-	Reporter   *User    `json:"reporter"`
-	Labels     []string `json:"labels"`
-	Rank       string   `json:"rank"`
+	ResolvedAt string `json:"resolutiondate,omitempty"`
+	// ArchivedAt is when the issue was archived, empty while it is not.
+	ArchivedAt string `json:"-"`
+	// CreatedAt is when the issue was created.
+	CreatedAt string   `json:"-"`
+	Assignee  *User    `json:"assignee"`
+	Reporter  *User    `json:"reporter"`
+	Labels    []string `json:"labels"`
+	Rank      string   `json:"rank"`
 
 	SecurityLevelID string                     `json:"securityLevelId,omitempty"`
 	Fields          map[string]json.RawMessage `json:"fields,omitempty"`

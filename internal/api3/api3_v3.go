@@ -28,8 +28,8 @@ import (
 func (h *Handler) worklogBean(w *models.Worklog) map[string]any {
 	author := map[string]any{"accountId": w.AuthorID, "displayName": w.AuthorName, "active": true, "accountType": "atlassian"}
 	body := map[string]any{
-		"id":               w.ID,
-		"self":             h.BaseURL + "/rest/api/3/issue/worklog/" + w.ID,
+		"id":               strconv.FormatInt(w.JiraID, 10),
+		"self":             h.BaseURL + "/rest/api/3/issue/worklog/" + strconv.FormatInt(w.JiraID, 10),
 		"author":           author,
 		"updateAuthor":     author,
 		"created":          w.Created,
@@ -335,17 +335,17 @@ func (h *Handler) attachmentSettings(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) attachmentBean(a *models.Attachment) map[string]any {
 	bean := map[string]any{
-		"id":       a.ID,
-		"self":     h.BaseURL + "/rest/api/3/attachment/" + a.ID,
+		"id":       strconv.FormatInt(a.JiraID, 10),
+		"self":     h.BaseURL + "/rest/api/3/attachment/" + strconv.FormatInt(a.JiraID, 10),
 		"filename": a.Filename,
 		"mimeType": a.MimeType,
 		"size":     a.Size,
 		"created":  a.Created,
 		"author":   map[string]any{"accountId": a.AuthorID, "displayName": a.AuthorName, "active": true, "accountType": "atlassian"},
-		"content":  h.BaseURL + "/rest/api/3/attachment/content/" + a.ID,
+		"content":  h.BaseURL + "/rest/api/3/attachment/content/" + strconv.FormatInt(a.JiraID, 10),
 	}
 	if strings.HasPrefix(a.MimeType, "image/") {
-		bean["thumbnail"] = h.BaseURL + "/rest/api/3/attachment/thumbnail/" + a.ID
+		bean["thumbnail"] = h.BaseURL + "/rest/api/3/attachment/thumbnail/" + strconv.FormatInt(a.JiraID, 10)
 	}
 	return bean
 }

@@ -146,12 +146,26 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.screensForField(w, r, strings.TrimSuffix(strings.TrimPrefix(path, "/field/"), "/screens"))
 	case strings.HasPrefix(path, "/field/"):
 		h.fieldRoute(w, r, strings.Split(strings.TrimPrefix(path, "/field/"), "/"))
-	case path == "/issueLinkType" && r.Method == http.MethodGet:
-		h.listLinkTypes(w, r)
-	case path == "/issueLink" && r.Method == http.MethodPost:
-		h.createIssueLink(w, r)
-	case strings.HasPrefix(path, "/issueLink/") && r.Method == http.MethodDelete:
-		h.deleteIssueLink(w, r, strings.TrimPrefix(path, "/issueLink/"))
+	case path == "/issueLinkType":
+		h.issueLinkTypeRoute(w, r, "")
+	case strings.HasPrefix(path, "/issueLinkType/"):
+		h.issueLinkTypeRoute(w, r, strings.TrimPrefix(path, "/issueLinkType/"))
+	case path == "/issueLink":
+		h.issueLinkRoute(w, r, "")
+	case strings.HasPrefix(path, "/issueLink/"):
+		h.issueLinkRoute(w, r, strings.TrimPrefix(path, "/issueLink/"))
+	case path == "/comment/list":
+		h.commentsByIDs(w, r)
+	case strings.HasPrefix(path, "/comment/"):
+		parts := strings.SplitN(strings.TrimPrefix(path, "/comment/"), "/", 3)
+		switch {
+		case len(parts) == 2 && parts[1] == "properties":
+			h.commentPropertyRoute(w, r, parts[0], "")
+		case len(parts) == 3 && parts[1] == "properties" && parts[2] != "":
+			h.commentPropertyRoute(w, r, parts[0], parts[2])
+		default:
+			jiraError(w, http.StatusNotFound, fmt.Sprintf("No resource found for path %s", r.URL.Path))
+		}
 	case path == "/issuetype" || strings.HasPrefix(path, "/issuetype/") ||
 		path == "/priority" || strings.HasPrefix(path, "/priority/") ||
 		path == "/resolution" || strings.HasPrefix(path, "/resolution/") ||
@@ -343,14 +357,14 @@ func (h *Handler) issueRoute(w http.ResponseWriter, r *http.Request, parts []str
 		default:
 			jiraError(w, http.StatusMethodNotAllowed, "method not allowed")
 		}
-	case len(parts) == 2 && parts[1] == "comment" && r.Method == http.MethodGet:
-		h.listComments(w, r, idOrKey)
-	case len(parts) == 2 && parts[1] == "comment" && r.Method == http.MethodPost:
-		h.addComment(w, r, idOrKey)
-	case len(parts) == 3 && parts[1] == "comment" && r.Method == http.MethodGet:
-		h.getComment(w, r, idOrKey, parts[2])
-	case len(parts) == 3 && parts[1] == "comment" && r.Method == http.MethodDelete:
-		h.deleteComment(w, r, idOrKey, parts[2])
+	case len(parts) == 2 && parts[1] == "comment":
+		h.issueCommentRoute(w, r, idOrKey, "")
+	case len(parts) == 3 && parts[1] == "comment":
+		h.issueCommentRoute(w, r, idOrKey, parts[2])
+	case len(parts) == 2 && parts[1] == "remotelink":
+		h.remoteLinkRoute(w, r, idOrKey, "")
+	case len(parts) == 3 && parts[1] == "remotelink":
+		h.remoteLinkRoute(w, r, idOrKey, parts[2])
 	case len(parts) == 2 && parts[1] == "transitions" && r.Method == http.MethodGet:
 		h.listTransitions(w, r, idOrKey)
 	case len(parts) == 2 && parts[1] == "transitions" && r.Method == http.MethodPost:
@@ -959,117 +973,8 @@ func projectKeyOf(i *models.Issue) string {
 
 // ---- comments ----
 
-func (h *Handler) commentBean(c *models.Comment) map[string]any {
-	author := map[string]any{"accountId": c.AuthorID, "displayName": c.AuthorName, "active": true, "accountType": "atlassian"}
-	return map[string]any{
-		"id":        c.ID,
-		"self":      h.BaseURL + "/rest/api/3/issue/comment/" + c.ID,
-		"author":    author,
-		"body":      c.Body,
-		"created":   c.Created,
-		"updated":   c.Created,
-		"jsdPublic": true,
-	}
-}
-
-func (h *Handler) listComments(w http.ResponseWriter, r *http.Request, idOrKey string) {
-	wsID, _, e := h.authWorkspace(r)
-	if e != nil {
-		writeJerr(w, e)
-		return
-	}
-	issue, e := h.resolveIssue(r, wsID, idOrKey)
-	if e != nil {
-		writeJerr(w, e)
-		return
-	}
-	comments, err := h.Store.CommentsByIssue(r.Context(), issue.ID)
-	if err != nil {
-		jiraError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	beans := make([]map[string]any, 0, len(comments))
-	for _, c := range comments {
-		beans = append(beans, h.commentBean(c))
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"comments":   beans,
-		"startAt":    0,
-		"maxResults": 5000,
-		"total":      len(beans),
-	})
-}
-
 type addCommentRequest struct {
 	Body json.RawMessage `json:"body"`
-}
-
-func (h *Handler) addComment(w http.ResponseWriter, r *http.Request, idOrKey string) {
-	wsID, userID, e := h.authWorkspace(r)
-	if e != nil {
-		writeJerr(w, e)
-		return
-	}
-	issue, e := h.resolveIssue(r, wsID, idOrKey)
-	if e != nil {
-		writeJerr(w, e)
-		return
-	}
-	var req addCommentRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.Body) == 0 {
-		jiraFieldError(w, http.StatusBadRequest, map[string]string{"body": "Comment body cannot be empty."})
-		return
-	}
-	comment, _, err := h.Commands.AddComment(r.Context(), commands.AddCommentInput{
-		ActorID: userID, WorkspaceID: wsID, IssueIDOrKey: issue.ID, Body: req.Body,
-	})
-	if err != nil {
-		jiraError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusCreated, h.commentBean(comment))
-}
-
-func (h *Handler) getComment(w http.ResponseWriter, r *http.Request, idOrKey, commentID string) {
-	wsID, _, e := h.authWorkspace(r)
-	if e != nil {
-		writeJerr(w, e)
-		return
-	}
-	issue, e := h.resolveIssue(r, wsID, idOrKey)
-	if e != nil {
-		writeJerr(w, e)
-		return
-	}
-	c, err := h.Store.CommentByID(r.Context(), wsID, commentID)
-	if err != nil || c.IssueID != issue.ID {
-		jiraError(w, http.StatusNotFound, "Comment does not exist.")
-		return
-	}
-	writeJSON(w, http.StatusOK, h.commentBean(c))
-}
-
-func (h *Handler) deleteComment(w http.ResponseWriter, r *http.Request, idOrKey, commentID string) {
-	wsID, userID, e := h.authWorkspace(r)
-	if e != nil {
-		writeJerr(w, e)
-		return
-	}
-	issue, e := h.resolveIssue(r, wsID, idOrKey)
-	if e != nil {
-		writeJerr(w, e)
-		return
-	}
-	c, err := h.Store.CommentByID(r.Context(), wsID, commentID)
-	if err != nil || c.IssueID != issue.ID {
-		jiraError(w, http.StatusNotFound, "Comment does not exist.")
-		return
-	}
-	if _, err := h.Commands.DeleteComment(r.Context(), userID, wsID, commentID); err != nil {
-		jiraError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
 }
 
 // ---- transitions ----

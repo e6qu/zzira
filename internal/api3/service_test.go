@@ -481,7 +481,7 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 		t.Fatalf("calendar after completed change = %+v, %v", changeCalendar, err)
 	}
 	exec(`DELETE FROM issues WHERE id=$1`, overlapIssue.ID)
-	linkTypes, err := st.LinkTypes(ctx)
+	linkTypes, err := st.LinkTypes(ctx, workspaceID)
 	if err != nil || len(linkTypes) == 0 {
 		t.Fatalf("operations link types = %+v, %v", linkTypes, err)
 	}

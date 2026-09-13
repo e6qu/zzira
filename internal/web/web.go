@@ -547,7 +547,7 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 			Summary: other.Summary, Status: other.Status,
 		})
 	}
-	linkTypes, err := h.Store.LinkTypes(r.Context())
+	linkTypes, err := h.Store.LinkTypes(r.Context(), wsID)
 	if err != nil {
 		return nil, err
 	}

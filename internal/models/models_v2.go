@@ -40,6 +40,14 @@ type Comment struct {
 	Body       json.RawMessage `json:"body"`
 	Created    string          `json:"created"`
 	Local      bool            `json:"-"`
+	// The Jira API reads these; the sync payload does not carry them.
+	JiraID           int64  `json:"-"`
+	WorkspaceID      string `json:"-"`
+	Updated          string `json:"-"`
+	UpdateAuthorID   string `json:"-"`
+	UpdateAuthorName string `json:"-"`
+	VisibilityType   string `json:"-"`
+	VisibilityValue  string `json:"-"`
 }
 
 // ChangelogEntry is the derived changelog view of one action.

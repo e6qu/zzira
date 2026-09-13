@@ -17,6 +17,7 @@ type Attachment struct {
 	AuthorID   string `json:"authorId"`
 	AuthorName string `json:"authorName"`
 	Created    string `json:"created"`
+	JiraID     int64  `json:"-"`
 }
 
 type AttachmentUpsertPayload struct {
@@ -37,6 +38,7 @@ type Worklog struct {
 	Comment          json.RawMessage `json:"comment,omitempty"`
 	TimeSpentSeconds int             `json:"timeSpentSeconds"`
 	Created          string          `json:"created"`
+	JiraID           int64           `json:"-"`
 }
 
 type WorklogUpsertPayload struct {

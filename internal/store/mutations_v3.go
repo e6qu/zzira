@@ -12,14 +12,14 @@ import (
 const worklogJoin = `
 SELECT w.id, w.issue_id, w.author_id, COALESCE(u.display_name,''),
        COALESCE(w.comment::text,''), w.time_spent_seconds,
-       to_char(w.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+       to_char(w.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), w.jira_id
 FROM worklogs w LEFT JOIN users u ON u.id = w.author_id
 `
 
 func scanWorklog(row pgx.Row) (*models.Worklog, error) {
 	w := &models.Worklog{}
 	var comment string
-	if err := row.Scan(&w.ID, &w.IssueID, &w.AuthorID, &w.AuthorName, &comment, &w.TimeSpentSeconds, &w.Created); err != nil {
+	if err := row.Scan(&w.ID, &w.IssueID, &w.AuthorID, &w.AuthorName, &comment, &w.TimeSpentSeconds, &w.Created, &w.JiraID); err != nil {
 		return nil, err
 	}
 	if comment != "" {
@@ -87,7 +87,7 @@ func (s *Store) WorklogsByIssue(ctx context.Context, issueID string) ([]*models.
 }
 
 func (s *Store) WorklogByID(ctx context.Context, workspaceID, id string) (*models.Worklog, error) {
-	return scanWorklog(s.Pool.QueryRow(ctx, worklogJoin+`WHERE w.id=$1 AND w.workspace_id=$2`, id, workspaceID))
+	return scanWorklog(s.Pool.QueryRow(ctx, worklogJoin+`WHERE (w.id=$1 OR w.jira_id::text=$1) AND w.workspace_id=$2`, id, workspaceID))
 }
 
 func (s *Store) DeleteWorklog(ctx context.Context, actorID, workspaceID, worklogID string) (*models.Action, error) {
@@ -113,8 +113,8 @@ func (s *Store) DeleteWorklog(ctx context.Context, actorID, workspaceID, worklog
 		Op: models.OpDelete, SchemaV: models.SchemaVersion, Payload: payload, ActorID: actorID,
 	}
 	// A tombstone lets Jira's deleted-worklog feed report it afterwards.
-	if _, err := tx.Exec(ctx, `INSERT INTO deleted_worklogs(id,workspace_id,issue_id,author_id)
-		VALUES($1,$2,$3,$4) ON CONFLICT (id) DO NOTHING`, worklogID, workspaceID, w.IssueID, w.AuthorID); err != nil {
+	if _, err := tx.Exec(ctx, `INSERT INTO deleted_worklogs(id,workspace_id,issue_id,author_id,jira_id)
+		VALUES($1,$2,$3,$4,$5) ON CONFLICT (id) DO NOTHING`, worklogID, workspaceID, w.IssueID, w.AuthorID, w.JiraID); err != nil {
 		return nil, err
 	}
 	if _, err := tx.Exec(ctx, `DELETE FROM worklogs WHERE id=$1 AND workspace_id=$2`, worklogID, workspaceID); err != nil {
@@ -134,13 +134,13 @@ func (s *Store) DeleteWorklog(ctx context.Context, actorID, workspaceID, worklog
 const attachmentJoin = `
 SELECT a.id, a.issue_id, a.filename, a.mime_type, a.size, a.author_id,
        COALESCE(u.display_name,''),
-       to_char(a.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+       to_char(a.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), a.jira_id
 FROM attachments a LEFT JOIN users u ON u.id = a.author_id
 `
 
 func scanAttachment(row pgx.Row) (*models.Attachment, error) {
 	a := &models.Attachment{}
-	err := row.Scan(&a.ID, &a.IssueID, &a.Filename, &a.MimeType, &a.Size, &a.AuthorID, &a.AuthorName, &a.Created)
+	err := row.Scan(&a.ID, &a.IssueID, &a.Filename, &a.MimeType, &a.Size, &a.AuthorID, &a.AuthorName, &a.Created, &a.JiraID)
 	return a, err
 }
 
@@ -200,11 +200,11 @@ func (s *Store) AttachmentsByIssue(ctx context.Context, issueID string) ([]*mode
 
 // AttachmentBlobRef resolves the storage key for an attachment id.
 func (s *Store) AttachmentByID(ctx context.Context, workspaceID, id string) (*models.Attachment, error) {
-	return scanAttachment(s.Pool.QueryRow(ctx, attachmentJoin+`WHERE a.id=$1 AND a.workspace_id=$2`, id, workspaceID))
+	return scanAttachment(s.Pool.QueryRow(ctx, attachmentJoin+`WHERE (a.id=$1 OR a.jira_id::text=$1) AND a.workspace_id=$2`, id, workspaceID))
 }
 
 func (s *Store) AttachmentBlobRef(ctx context.Context, workspaceID, id string) (blobRef string, filename string, mimeType string, err error) {
-	err = s.Pool.QueryRow(ctx, `SELECT blob_ref, filename, mime_type FROM attachments WHERE id=$1 AND workspace_id=$2`, id, workspaceID).
+	err = s.Pool.QueryRow(ctx, `SELECT blob_ref, filename, mime_type FROM attachments WHERE (id=$1 OR jira_id::text=$1) AND workspace_id=$2`, id, workspaceID).
 		Scan(&blobRef, &filename, &mimeType)
 	return
 }

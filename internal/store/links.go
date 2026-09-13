@@ -14,20 +14,21 @@ import (
 
 const linkJoin = `
 SELECT l.id, l.link_type_id, lt.name, lt.inward, lt.outward,
-       l.inward_id, l.outward_id, l.workspace_id
+       l.inward_id, l.outward_id, l.workspace_id, l.jira_id, lt.jira_id
 FROM issue_links l JOIN issue_link_types lt ON lt.id = l.link_type_id
 `
 
 func scanLink(row pgx.Row) (*models.IssueLink, error) {
 	l := &models.IssueLink{}
-	err := row.Scan(&l.ID, &l.TypeID, &l.TypeName, &l.Inward, &l.Outward, &l.InwardID, &l.OutwardID, &l.WorkspaceID)
+	err := row.Scan(&l.ID, &l.TypeID, &l.TypeName, &l.Inward, &l.Outward, &l.InwardID, &l.OutwardID, &l.WorkspaceID, &l.JiraID, &l.TypeJiraID)
 	return l, err
 }
 
 // CreateIssueLink links two issues; direction is semantic (inward ← outward).
 func (s *Store) CreateIssueLink(ctx context.Context, actorID, workspaceID, typeID, inwardIssueID, outwardIssueID string) (*models.IssueLink, *models.Action, error) {
 	var ltName, inward, outward string
-	err := s.Pool.QueryRow(ctx, `SELECT name, inward, outward FROM issue_link_types WHERE id=$1`, typeID).Scan(&ltName, &inward, &outward)
+	var typeJiraID int64
+	err := s.Pool.QueryRow(ctx, `SELECT name, inward, outward, jira_id FROM issue_link_types WHERE id=$1 AND workspace_id=$2`, typeID, workspaceID).Scan(&ltName, &inward, &outward, &typeJiraID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("link type %q does not exist", typeID)
 	}
@@ -47,16 +48,17 @@ func (s *Store) CreateIssueLink(ctx context.Context, actorID, workspaceID, typeI
 		return nil, nil, fmt.Errorf("linked issues must belong to workspace %q", workspaceID)
 	}
 	id := NewID("lnk")
-	if _, err := tx.Exec(ctx, `
+	var jiraID int64
+	if err := tx.QueryRow(ctx, `
 		INSERT INTO issue_links (id, link_type_id, inward_id, outward_id, workspace_id)
-		VALUES ($1,$2,$3,$4,$5)`, id, typeID, inwardIssueID, outwardIssueID, workspaceID); err != nil {
+		VALUES ($1,$2,$3,$4,$5) RETURNING jira_id`, id, typeID, inwardIssueID, outwardIssueID, workspaceID).Scan(&jiraID); err != nil {
 		return nil, nil, err
 	}
 	seq, err := nextSeq(ctx, tx, workspaceID)
 	if err != nil {
 		return nil, nil, err
 	}
-	link := &models.IssueLink{ID: id, TypeID: typeID, TypeName: ltName, Inward: inward, Outward: outward, InwardID: inwardIssueID, OutwardID: outwardIssueID, WorkspaceID: workspaceID}
+	link := &models.IssueLink{ID: id, TypeID: typeID, TypeName: ltName, Inward: inward, Outward: outward, InwardID: inwardIssueID, OutwardID: outwardIssueID, WorkspaceID: workspaceID, JiraID: jiraID, TypeJiraID: typeJiraID}
 	payload, err := json.Marshal(models.IssueLinkPayload{Link: *link})
 	if err != nil {
 		return nil, nil, err
@@ -91,8 +93,9 @@ func (s *Store) LinksByIssue(ctx context.Context, issueID string) ([]*models.Iss
 	return out, rows.Err()
 }
 
+// IssueLinkByID finds a link by the id clients see or the one stored.
 func (s *Store) IssueLinkByID(ctx context.Context, workspaceID, id string) (*models.IssueLink, error) {
-	return scanLink(s.Pool.QueryRow(ctx, linkJoin+`WHERE l.id=$1 AND l.workspace_id=$2`, id, workspaceID))
+	return scanLink(s.Pool.QueryRow(ctx, linkJoin+`WHERE (l.id=$1 OR l.jira_id::text=$1) AND l.workspace_id=$2`, id, workspaceID))
 }
 
 func (s *Store) DeleteIssueLink(ctx context.Context, actorID, workspaceID, linkID string) (*models.Action, error) {
@@ -151,29 +154,4 @@ func (s *Store) Labels(ctx context.Context, workspaceID, userID string, query st
 		labels = append(labels, l)
 	}
 	return int64(len(labels)), labels, rows.Err()
-}
-
-// LinkTypes lists the registry.
-func (s *Store) LinkTypes(ctx context.Context) ([]*models.LinkType, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT id, name, inward, outward FROM issue_link_types ORDER BY id`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []*models.LinkType
-	for rows.Next() {
-		lt := &models.LinkType{}
-		if err := rows.Scan(&lt.ID, &lt.Name, &lt.Inward, &lt.Outward); err != nil {
-			return nil, err
-		}
-		out = append(out, lt)
-	}
-	return out, rows.Err()
-}
-
-// LinkTypeIDByName resolves the registry by name (case-insensitive).
-func (s *Store) LinkTypeIDByName(ctx context.Context, name string) (string, error) {
-	var id string
-	err := s.Pool.QueryRow(ctx, `SELECT id FROM issue_link_types WHERE lower(name)=lower($1)`, name).Scan(&id)
-	return id, err
 }

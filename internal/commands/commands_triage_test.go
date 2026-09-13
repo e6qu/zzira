@@ -87,7 +87,7 @@ func TestIssueTriageCommands(t *testing.T) {
 		t.Fatalf("VotersByIssue() = %v, %v", voters, err)
 	}
 
-	link, action, err := svc.LinkIssue(ctx, actorID, "ws_default", first.Key, "lt_blocks", second.Key)
+	link, action, err := svc.LinkIssue(ctx, actorID, "ws_default", first.Key, blocksLinkTypeID(t, svc), second.Key)
 	if err != nil || link == nil || action == nil {
 		t.Fatalf("LinkIssue link=%v action=%v err=%v", link, action, err)
 	}
@@ -103,4 +103,14 @@ func TestIssueTriageCommands(t *testing.T) {
 	if action, err := svc.SetVoting(ctx, actorID, "ws_default", first.Key, false); err != nil || action == nil {
 		t.Fatalf("SetVoting remove action=%v err=%v", action, err)
 	}
+}
+
+// blocksLinkTypeID finds the default site's Blocks link type.
+func blocksLinkTypeID(t *testing.T, svc *Service) string {
+	t.Helper()
+	id, err := svc.Store.LinkTypeIDByName(context.Background(), "ws_default", "Blocks")
+	if err != nil {
+		t.Fatalf("Blocks link type: %v", err)
+	}
+	return id
 }

@@ -82,6 +82,8 @@ type IssueLink struct {
 	InwardID    string `json:"inwardIssueId"`
 	OutwardID   string `json:"outwardIssueId"`
 	WorkspaceID string `json:"-"`
+	JiraID      int64  `json:"-"`
+	TypeJiraID  int64  `json:"-"`
 }
 
 type IssueLinkPayload struct {
@@ -95,10 +97,12 @@ type IssueLinkDeletePayload struct {
 }
 
 type LinkType struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Inward  string `json:"inward"`
-	Outward string `json:"outward"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Inward      string `json:"inward"`
+	Outward     string `json:"outward"`
+	WorkspaceID string `json:"-"`
+	JiraID      int64  `json:"-"`
 }
 
 // DashboardStats powers the home dashboard (server-rendered).

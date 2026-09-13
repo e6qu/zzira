@@ -748,7 +748,8 @@ SELECT i.id, i.jira_id, i.workspace_id, i.project_id, i.key, i.summary, i.descri
 	       i.security_level_id, i.fields, i.labels,
 	       i.updated_seq, i.updated_at,
 	       it.jira_id, it.hierarchy_level, pr.jira_id, COALESCE(pro.status_color, pr.status_color), COALESCE(pro.icon_url, pr.icon_url),
-	       res.id, res.jira_id, COALESCE(reso.name, res.name), COALESCE(reso.description, res.description), i.resolved_at
+	       res.id, res.jira_id, COALESCE(reso.name, res.name), COALESCE(reso.description, res.description), i.resolved_at,
+	       i.created_at, i.archived_at
 FROM issues i
 JOIN statuses st ON st.id = i.status_id
 JOIN issue_types it ON it.id = i.issuetype_id
@@ -777,6 +778,8 @@ func scanIssue(row pgx.Row) (*models.Issue, error) {
 	var resolutionID, resolutionName, resolutionDescription *string
 	var resolutionJiraID *int64
 	var resolvedAt *time.Time
+	var createdAt time.Time
+	var archivedAt *time.Time
 	err := row.Scan(&i.ID, &i.JiraID, &i.WorkspaceID, &i.ProjectID, &i.Key, &i.Summary, &i.Description,
 		&i.Status.ID, &i.Status.Name, &i.Status.Category,
 		&i.IssueType.ID, &i.IssueType.Name, &i.IssueType.Icon, &i.IssueType.Subtask,
@@ -788,9 +791,14 @@ func scanIssue(row pgx.Row) (*models.Issue, error) {
 		&securityLevelID, &fieldsJSON, &i.Labels,
 		&i.UpdatedSeq, &updatedAt,
 		&i.IssueType.JiraID, &i.IssueType.HierarchyLevel, &priorityJiraID, &priorityColor, &priorityIcon,
-		&resolutionID, &resolutionJiraID, &resolutionName, &resolutionDescription, &resolvedAt)
+		&resolutionID, &resolutionJiraID, &resolutionName, &resolutionDescription, &resolvedAt,
+		&createdAt, &archivedAt)
 	if err != nil {
 		return nil, err
+	}
+	i.CreatedAt = createdAt.UTC().Format(time.RFC3339)
+	if archivedAt != nil {
+		i.ArchivedAt = archivedAt.UTC().Format(time.RFC3339)
 	}
 	if securityLevelID != nil {
 		i.SecurityLevelID = *securityLevelID
