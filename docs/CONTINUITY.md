@@ -8,28 +8,34 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
 ## Active delivery
 
-- Branch: `feat/pr1-confluence-analytics`
-- Base: `origin/main` after merged PR #109 (`4b65b88`). The review queue is
-  empty; this is the only open branch.
+- Branch: `feat/pr1-confluence-analytics` (PR #115)
+- Base: `origin/main` after merged PR #109 (`4b65b88`).
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- State: content analytics checkpoint audited both pinned operations against a
-  running server and found neither working, because nothing recorded a view.
-  Views are now stored one per open, so `views` and `viewers` are two counts
-  over the same rows and `fromDate` can be any moment.
-  What counts as a view was the real design surface, and it follows what the
-  numbers mean: published content opened in the product or read singly through
-  the v2 API. Writes, listings, search results, drafts and reads of the
-  analytics themselves are not views, and the tests pin each of those.
-  A view is recorded only after the read succeeded, so a refused read never
-  counts, and the analytics are a 404 for anyone who may not open the content —
-  the numbers never confirm content exists to someone who cannot see it.
-  Page and blog post ids come from separate sequences here, so views are keyed
-  by content type; a bare id resolves page first, as every v1 content route
-  already does.
-  With these two, every pinned `confluence-v1` operation is assessed;
-  `confluence-v2` still has 16.
-  Clean migrations, the full uncached Go/PostgreSQL suite, vet, native and
-  WebAssembly builds, conformance checks and every Playwright journey pass.
+- State: this PR completes Confluence. Every pinned `confluence-v1` and
+  `confluence-v2` operation is now assessed. It bundles three things, because a
+  two-operation PR was too small to be worth a review cycle of its own:
+  - **Content analytics** — view and distinct-viewer counts with `fromDate`.
+    Views are recorded when published content is opened in the product or read
+    singly through the v2 API, never for writes, listings, searches, drafts or
+    refused reads, and the counts are a 404 for anyone who may not open the
+    content.
+  - **Content id uniqueness.** CI caught a real leak on a fresh database: page 1
+    and blog post 1 both existed, and the analytics of a page the reader could
+    not see fell through to the blog post. Confluence ids are unique across
+    content, so migration 158 puts pages, blog posts, comments and attachments on
+    one sequence, and `WikiContentKindByID` resolves legacy collisions by what
+    exists rather than what the caller may see. The regression test fails
+    against the old resolver and passes against the new one.
+  - **The last sixteen `confluence-v2` operations** — comment properties, Forge
+    app properties under the app-data scopes, the admin key, convert-ids-to-types,
+    access checks and invitations by email, and the data policy metadata.
+  **Behaviour change:** an administrator no longer sees or edits restricted
+  pages by holding the admin role alone. As in Confluence, that access comes from
+  an active admin key; space administration and comment moderation are
+  unchanged. The one existing test that relied on the old bypass now enables a
+  key first and asserts a keyless administrator gets 404.
+  The five Dependabot bumps (#110–#114) are folded in, each version published more
+  than 24 hours before being taken, plus the transitive `x/sync` and `x/text`.
 - Blockers: none
 
 ## Merged baseline
@@ -125,14 +131,11 @@ PR #90's final GitHub matrix passed its required suites before merge.
    "no checks reported" rather than a failure, so a stacked PR can look fine and
    be unverified. Base every PR on `main` unless it genuinely needs a helper an
    open branch adds.
-2. Every pinned `confluence-v1` operation is now assessed. Confluence is not
-   finished: `confluence-v2` has 16 unassessed operations — `Content Properties`
-   (5), `App Properties` (4), `Admin Key` (3), `User` (2), `Content` (1) and
-   `Data Policies` (1) — and finishing them closes Confluence entirely, so that
-   is the next unit. After
-   Confluence, what remains unassessed is `jira-v3` (234) and `jira-software`
-   (44). `jira-service-management` has no unassessed operations; earlier
-   handoffs calling it an untouched block of 75 were stale.
+2. Confluence is complete: no `confluence-v1` or `confluence-v2` operation is
+   unassessed. What remains is `jira-v3` (234) and `jira-software`
+   (44). `jira-service-management` has none. Keep PRs substantial —
+   bundle several families rather than opening one per small family, and fold in
+   open Dependabot bumps whose versions are more than 24 hours old.
 3. Probe every operation against a running server before assessing; the eleven
    audits so far ran 11 of 15, 8 of 33, 5 of 13, 16 of 17, 4 of 14, 2 of 11,
    0 of 17, 0 of 8, 0 of 5, 0 of 2 and 0 of 2, so the result is not predictable

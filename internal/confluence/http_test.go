@@ -1350,8 +1350,14 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	call(member, "GET", "/pages/"+restricted.ID+"/ancestors", nil, 404)
 	call(member, "GET", "/pages/"+restricted.ID+"/descendants", nil, 404)
 	callV1(member, "GET", "/content/"+restricted.ID+"/descendant/page", nil, 404)
+	// An administrator sees restricted content only while holding an admin key,
+	// as in Confluence; the admin role alone is not enough.
+	call(admin, "GET", "/pages/"+restricted.ID, nil, 404)
+	call(admin, "POST", "/admin-key", map[string]any{"durationInMinutes": 5}, 200)
 	call(admin, "GET", "/pages/"+restricted.ID, nil, 200)
 	callV1(admin, "GET", "/content/"+restricted.ID+"/restriction", nil, 200)
+	call(admin, "DELETE", "/admin-key", nil, 204)
+	call(admin, "GET", "/pages/"+restricted.ID, nil, 404)
 	callV1(actor, "GET", "/content/"+restricted.ID+"/restriction/byOperation", nil, 200)
 	callV1(actor, "GET", "/content/"+restricted.ID+"/restriction/byOperation/read", nil, 200)
 	groupPath := "/content/" + restricted.ID + "/restriction/byOperation/read/byGroupId/" + groupID

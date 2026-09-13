@@ -199,7 +199,8 @@ func wikiWatchNotifications(ctx context.Context, tx pgx.Tx, workspaceID, actorID
 		  AND (NOT s.private OR s.author_id=w.user_id)
 		  AND (
 		    p.author_id=w.user_id
-		    OR EXISTS (SELECT 1 FROM memberships am WHERE am.workspace_id=w.workspace_id AND am.user_id=w.user_id AND am.role='admin')
+		    OR (EXISTS (SELECT 1 FROM memberships am WHERE am.workspace_id=w.workspace_id AND am.user_id=w.user_id AND am.role='admin')
+		      AND EXISTS (SELECT 1 FROM wiki_admin_keys ak WHERE ak.workspace_id=w.workspace_id AND ak.user_id=w.user_id AND ak.expires_at > now()))
 		    OR NOT EXISTS (SELECT 1 FROM wiki_page_restrictions r WHERE r.page_id=p.id AND r.operation='read')
 		    OR EXISTS (SELECT 1 FROM wiki_page_restrictions r WHERE r.page_id=p.id AND r.operation='read' AND r.subject_type='user' AND r.subject_id=w.user_id)
 		    OR EXISTS (SELECT 1 FROM wiki_page_restrictions r JOIN group_members gm ON r.subject_type='group' AND gm.group_id::text=r.subject_id WHERE r.page_id=p.id AND r.operation='read' AND gm.user_id=w.user_id)

@@ -164,7 +164,7 @@ var wikiSpaceCanDeleteComment = wikiSpacePermissionAllowed("delete/comment")
 
 var wikiPageVisible = `(` + wikiSpacePermissionAllowed("read/page") + `) AND (p.published OR p.author_id=$2) AND (
   p.author_id=$2
-  OR EXISTS (SELECT 1 FROM memberships am WHERE am.workspace_id=s.workspace_id AND am.user_id=$2 AND am.role='admin')
+  OR ` + wikiAdminKeyActive + `
   OR NOT EXISTS (SELECT 1 FROM wiki_page_restrictions wr WHERE wr.page_id=p.id AND wr.operation='read')
   OR EXISTS (SELECT 1 FROM wiki_page_restrictions wr WHERE wr.page_id=p.id AND wr.operation='read' AND wr.subject_type='user' AND wr.subject_id=$2)
   OR EXISTS (SELECT 1 FROM wiki_page_restrictions wr JOIN group_members gm ON wr.subject_type='group' AND gm.group_id::text=wr.subject_id WHERE wr.page_id=p.id AND wr.operation='read' AND gm.user_id=$2)
@@ -172,7 +172,7 @@ var wikiPageVisible = `(` + wikiSpacePermissionAllowed("read/page") + `) AND (p.
 
 const wikiPageRestrictionWritable = `(
   p.author_id=$2
-  OR EXISTS (SELECT 1 FROM memberships am WHERE am.workspace_id=s.workspace_id AND am.user_id=$2 AND am.role='admin')
+  OR ` + wikiAdminKeyActive + `
   OR NOT EXISTS (SELECT 1 FROM wiki_page_restrictions wr WHERE wr.page_id=p.id AND wr.operation='update')
   OR EXISTS (SELECT 1 FROM wiki_page_restrictions wr WHERE wr.page_id=p.id AND wr.operation='update' AND wr.subject_type='user' AND wr.subject_id=$2)
   OR EXISTS (SELECT 1 FROM wiki_page_restrictions wr JOIN group_members gm ON wr.subject_type='group' AND gm.group_id::text=wr.subject_id WHERE wr.page_id=p.id AND wr.operation='update' AND gm.user_id=$2)

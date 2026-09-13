@@ -50,11 +50,14 @@ content exists to someone who cannot see it.
 
 ## Content ids
 
-Pages and blog posts number their ids independently here, so page 1 and blog
-post 1 are different content. Views are stored with the content type, so the two
-never share a count. A bare id in the analytics path resolves the way every other
-v1 content route in this product does: a page with that id first, then a blog
-post. An id that is not a positive number names no content and is a 404.
+A bare id in the analytics path is resolved by what exists, not by what the
+caller may see: a page first, then a blog post. The resolved content is then read
+through its own visibility rules, so a page the caller may not open is a 404 —
+never a blog post that happens to share its id. New content ids are unique across
+every kind of content since migration 158; ids created earlier can still collide,
+which is exactly the case that rule protects. See
+[CONFLUENCE_SITE_SURFACES.md](CONFLUENCE_SITE_SURFACES.md#content-ids-are-unique-across-content).
+An id that is not a positive number names no content and is a 404.
 
 ## Storage
 

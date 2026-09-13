@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 913,
+  "assessedTotal": 929,
   "counts": {
     "delivered": 0,
-    "partial": 902,
+    "partial": 918,
     "missing": 11,
-    "unassessed": 294
+    "unassessed": 278
   },
   "countsByFamily": {
     "automation": {
@@ -18,9 +18,9 @@
     },
     "confluence": {
       "delivered": 0,
-      "partial": 332,
+      "partial": 348,
       "missing": 0,
-      "unassessed": 16
+      "unassessed": 0
     },
     "jira-platform": {
       "delivered": 0,
@@ -10479,57 +10479,106 @@
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/admin-key",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "migrations/161_wiki_admin_keys.sql",
+        "internal/store/wiki_admin_keys.go",
+        "internal/confluence/admin_key.go",
+        "internal/confluence/v2_site_admin_test.go",
+        "internal/confluence/http_test.go",
+        "docs/CONFLUENCE_SITE_SURFACES.md"
+      ],
+      "notes": "Ends the caller's admin key, idempotently; afterwards restricted content is hidden from the administrator again."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/admin-key",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "migrations/161_wiki_admin_keys.sql",
+        "internal/store/wiki_admin_keys.go",
+        "internal/confluence/admin_key.go",
+        "internal/confluence/v2_site_admin_test.go",
+        "internal/confluence/http_test.go",
+        "docs/CONFLUENCE_SITE_SURFACES.md"
+      ],
+      "notes": "Reports the caller's unexpired admin key, and 404 for none or for anyone who is not an administrator."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/admin-key",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "migrations/161_wiki_admin_keys.sql",
+        "internal/store/wiki_admin_keys.go",
+        "internal/confluence/admin_key.go",
+        "internal/confluence/v2_site_admin_test.go",
+        "internal/confluence/http_test.go",
+        "docs/CONFLUENCE_SITE_SURFACES.md"
+      ],
+      "notes": "Issues or renews an admin key for 10 minutes by default up to 60; the key, not the admin role alone, is now what lets an administrator past page restrictions."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/app/properties",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "migrations/160_wiki_app_properties.sql",
+        "internal/store/wiki_app_properties.go",
+        "internal/confluence/app_properties.go",
+        "internal/confluence/app_properties_test.go",
+        "internal/apps/scope_app_data_test.go",
+        "docs/CONFLUENCE_SITE_SURFACES.md"
+      ],
+      "notes": "Reads the calling app's own properties only through asApp authentication, listing 50 by default up to 250 with an opaque cursor; people are refused with 401 and keys over 127 characters with 400."
     },
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/app/properties/{propertyKey}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "migrations/160_wiki_app_properties.sql",
+        "internal/store/wiki_app_properties.go",
+        "internal/confluence/app_properties.go",
+        "internal/confluence/app_properties_test.go",
+        "internal/apps/scope_app_data_test.go",
+        "docs/CONFLUENCE_SITE_SURFACES.md"
+      ],
+      "notes": "Deletes the calling app's property, idempotently, under the write:app-data:confluence scope."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/app/properties/{propertyKey}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "migrations/160_wiki_app_properties.sql",
+        "internal/store/wiki_app_properties.go",
+        "internal/confluence/app_properties.go",
+        "internal/confluence/app_properties_test.go",
+        "internal/apps/scope_app_data_test.go",
+        "docs/CONFLUENCE_SITE_SURFACES.md"
+      ],
+      "notes": "Reads the calling app's own properties only through asApp authentication, listing 50 by default up to 250 with an opaque cursor; people are refused with 401 and keys over 127 characters with 400."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/app/properties/{propertyKey}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "migrations/160_wiki_app_properties.sql",
+        "internal/store/wiki_app_properties.go",
+        "internal/confluence/app_properties.go",
+        "internal/confluence/app_properties_test.go",
+        "internal/apps/scope_app_data_test.go",
+        "docs/CONFLUENCE_SITE_SURFACES.md"
+      ],
+      "notes": "Creates (201) or replaces (200) an app property holding any JSON value, only for the app itself under the write:app-data:confluence scope."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/attachments",
@@ -11185,49 +11234,85 @@
       "operationId": "confluence-v2:GET:/wiki/api/v2/comments/{comment-id}/properties",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "migrations/159_wiki_comment_properties.sql",
+        "internal/store/wiki_comment_properties.go",
+        "internal/confluence/comment_properties.go",
+        "internal/confluence/comment_properties_test.go",
+        "docs/CONFLUENCE_SITE_SURFACES.md"
+      ],
+      "notes": "Lists or reads content properties on a footer or inline comment the caller may see, filtered by key and sorted by key."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/comments/{comment-id}/properties",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "migrations/159_wiki_comment_properties.sql",
+        "internal/store/wiki_comment_properties.go",
+        "internal/confluence/comment_properties.go",
+        "internal/confluence/comment_properties_test.go",
+        "docs/CONFLUENCE_SITE_SURFACES.md"
+      ],
+      "notes": "Creates a versioned content property on a comment for a caller who may edit it; a duplicate key is refused and a reader who may not edit is refused with 403."
     },
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/comments/{comment-id}/properties/{property-id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "migrations/159_wiki_comment_properties.sql",
+        "internal/store/wiki_comment_properties.go",
+        "internal/confluence/comment_properties.go",
+        "internal/confluence/comment_properties_test.go",
+        "docs/CONFLUENCE_SITE_SURFACES.md"
+      ],
+      "notes": "Deletes a comment property for a caller who may edit the comment."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/comments/{comment-id}/properties/{property-id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "migrations/159_wiki_comment_properties.sql",
+        "internal/store/wiki_comment_properties.go",
+        "internal/confluence/comment_properties.go",
+        "internal/confluence/comment_properties_test.go",
+        "docs/CONFLUENCE_SITE_SURFACES.md"
+      ],
+      "notes": "Lists or reads content properties on a footer or inline comment the caller may see, filtered by key and sorted by key."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/comments/{comment-id}/properties/{property-id}",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "migrations/159_wiki_comment_properties.sql",
+        "internal/store/wiki_comment_properties.go",
+        "internal/confluence/comment_properties.go",
+        "internal/confluence/comment_properties_test.go",
+        "docs/CONFLUENCE_SITE_SURFACES.md"
+      ],
+      "notes": "Updates a comment property only at the next version, refusing a stale version with 409 so concurrent edits cannot overwrite each other."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/content/convert-ids-to-types",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "migrations/158_wiki_global_content_ids.sql",
+        "internal/store/wiki_content_ids.go",
+        "internal/confluence/content_ids.go",
+        "internal/confluence/v2_site_admin_test.go",
+        "docs/CONFLUENCE_SITE_SURFACES.md"
+      ],
+      "notes": "Maps up to 100 string or numeric ids to page, blogpost, attachment, footer-comment, inline-comment, hierarchical or custom types, with null for content the caller may not view or that does not exist; new content ids are unique across kinds and legacy collisions resolve by existence, never by visibility."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/custom-content",
@@ -11420,9 +11505,13 @@
       "operationId": "confluence-v2:GET:/wiki/api/v2/data-policies/metadata",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/app_properties.go",
+        "internal/confluence/app_properties_test.go",
+        "docs/CONFLUENCE_SITE_SURFACES.md"
+      ],
+      "notes": "Answers anyContentBlocked false to an authenticated app, and 401 to a person; no data policy restricts content here."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/data-policies/spaces",
@@ -13493,17 +13582,27 @@
       "operationId": "confluence-v2:POST:/wiki/api/v2/user/access/check-access-by-email",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/store/wiki_user_access.go",
+        "internal/confluence/user_access.go",
+        "internal/confluence/v2_site_admin_test.go",
+        "docs/CONFLUENCE_SITE_SURFACES.md"
+      ],
+      "notes": "Reports which of up to 100 addresses have no site access and which are invalid, answering duplicates once."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/user/access/invite-by-email",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/store/wiki_user_access.go",
+        "internal/confluence/user_access.go",
+        "internal/confluence/v2_site_admin_test.go",
+        "docs/CONFLUENCE_SITE_SURFACES.md"
+      ],
+      "notes": "Invites addresses without access into the organization directory with site access, ignoring invalid addresses and people who already have access; completes before responding rather than asynchronously."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/users-bulk",
