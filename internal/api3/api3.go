@@ -30,6 +30,8 @@ type Handler struct {
 	Blobs         attachments.Store
 	BaseURL       string
 	WorkspaceSlug string
+	// StaticDir holds the server's static assets, such as system avatar icons.
+	StaticDir string
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {

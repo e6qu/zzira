@@ -1,17 +1,21 @@
 package api3
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"html"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/mail"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/e6qu/zzira/internal/apps"
 	"github.com/e6qu/zzira/internal/authn"
@@ -1803,13 +1807,15 @@ func (h *Handler) avatarImage(w http.ResponseWriter, r *http.Request, ownerType,
 		avatarID, _ = store.DefaultSystemAvatar(ownerType)
 	}
 	if icon, system := store.SystemAvatarIcon(ownerType, avatarID); system {
-		data, err := os.ReadFile(filepath.Join(h.staticRoot(), "img", icon))
-		if err != nil {
+		// System icons come from a fixed catalogue; fs.ValidPath keeps the
+		// read inside the static directory all the same.
+		name := path.Join("img", icon)
+		data, err := fs.ReadFile(os.DirFS(h.staticRoot()), name)
+		if !fs.ValidPath(name) || err != nil {
 			jiraError(w, http.StatusNotFound, "The avatar image was not found.")
 			return
 		}
-		w.Header().Set("Content-Type", "image/svg+xml")
-		_, _ = w.Write(data)
+		serveAvatarImage(w, r, "image/svg+xml", icon, data)
 		return
 	}
 	mediaType, data, err := h.Store.AvatarImage(r.Context(), workspaceID, ownerType, avatarID)
@@ -1817,16 +1823,25 @@ func (h *Handler) avatarImage(w http.ResponseWriter, r *http.Request, ownerType,
 		peopleError(w, err)
 		return
 	}
-	w.Header().Set("Content-Type", mediaType)
-	_, _ = w.Write(data)
+	serveAvatarImage(w, r, mediaType, "avatar-"+strconv.FormatInt(avatarID, 10), data)
 }
 
-// staticRoot is where the server's static assets live.
+// serveAvatarImage answers with image bytes of a type the store accepted, never
+// sniffed into anything else.
+func serveAvatarImage(w http.ResponseWriter, r *http.Request, mediaType, name string, data []byte) {
+	w.Header().Set("Content-Type", mediaType)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")
+	http.ServeContent(w, r, name, time.Time{}, bytes.NewReader(data))
+}
+
+// staticRoot is where the server's static assets live: the directory the
+// server was started with, or the repository's when a test builds a handler.
 func (h *Handler) staticRoot() string {
-	if root := os.Getenv("ZZIRA_STATIC_DIR"); root != "" {
-		return root
+	if h.StaticDir != "" {
+		return h.StaticDir
 	}
-	for _, candidate := range []string{"web/static", "../web/static", "../../web/static"} {
+	for _, candidate := range []string{"web/static", "../../web/static"} {
 		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
 			return candidate
 		}
