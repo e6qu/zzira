@@ -23,6 +23,7 @@ var jqlFunctionNamePattern = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]{0,254}$`)
 var allowedScopes = map[string]bool{
 	"read:jira-work": true, "write:jira-work": true,
 	"read:confluence-content": true, "write:confluence-content": true,
+	"read:app-data:confluence": true, "write:app-data:confluence": true,
 	"read:app-storage": true, "write:app-storage": true,
 	"manage:webhooks": true,
 }

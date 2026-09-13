@@ -142,6 +142,14 @@ func appAPIScope(r *http.Request) (string, bool) {
 	if r.URL.Path == "/rest/api/3/jql/function/computation" || r.URL.Path == "/rest/api/3/jql/function/computation/search" {
 		return "read:jira-work", true
 	}
+	// Forge app properties are the app's own data, so Forge classifies them
+	// under the app-data scopes rather than the content scopes.
+	if strings.HasPrefix(r.URL.Path, "/wiki/api/v2/app/properties") {
+		if r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodOptions {
+			return "read:app-data:confluence", true
+		}
+		return "write:app-data:confluence", true
+	}
 	product := ""
 	switch {
 	case strings.HasPrefix(r.URL.Path, "/rest/api/"), strings.HasPrefix(r.URL.Path, "/rest/agile/"), strings.HasPrefix(r.URL.Path, "/rest/servicedeskapi/"):
@@ -196,9 +204,24 @@ func (h *Handler) APIPrincipal(next http.Handler) http.Handler {
 			appFailure(w, http.StatusForbidden, fmt.Errorf("%s scope is required", scope))
 			return
 		}
-		ctx := context.WithValue(authn.WithPrincipal(r.Context(), installation.PrincipalID), appInstallationContextKey{}, installation)
+		ctx := ContextWithInstallation(r.Context(), installation)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+// ContextWithInstallation attaches an authenticated app to a request context,
+// both as the principal a product API identifies and as the installation an
+// app-only API reads. APIPrincipal uses it once the signed request is verified.
+func ContextWithInstallation(ctx context.Context, installation *models.AppInstallation) context.Context {
+	return context.WithValue(authn.WithPrincipal(ctx, installation.PrincipalID), appInstallationContextKey{}, installation)
+}
+
+// InstallationFromContext reports the app a request was authenticated as, for
+// product APIs that only an app may call — Forge app properties and the data
+// policy metadata among them. A request made by a person carries none.
+func InstallationFromContext(ctx context.Context) (*models.AppInstallation, bool) {
+	installation, ok := ctx.Value(appInstallationContextKey{}).(*models.AppInstallation)
+	return installation, ok && installation != nil
 }
 
 func (h *Handler) DynamicModules(w http.ResponseWriter, r *http.Request) {

@@ -382,6 +382,30 @@
       "notes": "Removal supports repeated moduleKey values and delete-all with durable reinstall semantics."
     },
     {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/analytics/content/{contentId}/viewers",
+      "status": "partial",
+      "evidence": [
+        "migrations/157_wiki_content_views.sql",
+        "internal/store/wiki_content_views.go",
+        "internal/confluence/analytics.go",
+        "internal/confluence/analytics_test.go",
+        "docs/CONTENT_ANALYTICS.md"
+      ],
+      "notes": "Counts the distinct people who viewed a page or blog post, optionally from fromDate, under the same recording and visibility rules as the view count."
+    },
+    {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/analytics/content/{contentId}/views",
+      "status": "partial",
+      "evidence": [
+        "migrations/157_wiki_content_views.sql",
+        "internal/store/wiki_content_views.go",
+        "internal/confluence/analytics.go",
+        "internal/confluence/analytics_test.go",
+        "docs/CONTENT_ANALYTICS.md"
+      ],
+      "notes": "Counts every view of a page or blog post, optionally from fromDate; a view is recorded when published content is opened in the product or read singly through the v2 API, never for writes, listings, searches, drafts or refused reads, and the count is a 404 for anyone who may not open the content."
+    },
+    {
       "operationId": "confluence-v1:GET:/wiki/rest/api/audit",
       "status": "partial",
       "evidence": [
@@ -1557,6 +1581,32 @@
       "notes": "Replacing a property is tested, including the version bump, the mismatched key, and that a member cannot write another person's property while an administrator can."
     },
     {
+      "operationId": "confluence-v2:DELETE:/wiki/api/v2/admin-key",
+      "status": "partial",
+      "evidence": [
+        "migrations/161_wiki_admin_keys.sql",
+        "internal/store/wiki_admin_keys.go",
+        "internal/confluence/admin_key.go",
+        "internal/confluence/v2_site_admin_test.go",
+        "internal/confluence/http_test.go",
+        "docs/CONFLUENCE_SITE_SURFACES.md"
+      ],
+      "notes": "Ends the caller's admin key, idempotently; afterwards restricted content is hidden from the administrator again."
+    },
+    {
+      "operationId": "confluence-v2:DELETE:/wiki/api/v2/app/properties/{propertyKey}",
+      "status": "partial",
+      "evidence": [
+        "migrations/160_wiki_app_properties.sql",
+        "internal/store/wiki_app_properties.go",
+        "internal/confluence/app_properties.go",
+        "internal/confluence/app_properties_test.go",
+        "internal/apps/scope_app_data_test.go",
+        "docs/CONFLUENCE_SITE_SURFACES.md"
+      ],
+      "notes": "Deletes the calling app's property, idempotently, under the write:app-data:confluence scope."
+    },
+    {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/attachments/{attachment-id}/properties/{property-id}",
       "status": "partial",
       "notes": "Permission-scoped attachment properties support JSON values, key filtering, cursor pagination, immutable optimistic versions, expansion, conflict handling and deletion; broader content-property targets remain separate.",
@@ -1613,6 +1663,18 @@
         "e2e/wiki.spec.ts"
       ],
       "notes": "Blog posts support public or creator-private current/draft creation, permission-filtered global and space collections, exact reads, optimistic updates, immutable version history/detail, trash, restore, purge, privacy-shaped actions and an accessible author UI; attachments, comments, labels, likes, properties, classification, redaction and full draft semantics remain."
+    },
+    {
+      "operationId": "confluence-v2:DELETE:/wiki/api/v2/comments/{comment-id}/properties/{property-id}",
+      "status": "partial",
+      "evidence": [
+        "migrations/159_wiki_comment_properties.sql",
+        "internal/store/wiki_comment_properties.go",
+        "internal/confluence/comment_properties.go",
+        "internal/confluence/comment_properties_test.go",
+        "docs/CONFLUENCE_SITE_SURFACES.md"
+      ],
+      "notes": "Deletes a comment property for a caller who may edit the comment."
     },
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/custom-content/{custom-content-id}/properties/{property-id}",
@@ -1849,6 +1911,45 @@
         "internal/commands/wiki.go",
         "internal/store/wiki_content_properties.go"
       ]
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/admin-key",
+      "status": "partial",
+      "evidence": [
+        "migrations/161_wiki_admin_keys.sql",
+        "internal/store/wiki_admin_keys.go",
+        "internal/confluence/admin_key.go",
+        "internal/confluence/v2_site_admin_test.go",
+        "internal/confluence/http_test.go",
+        "docs/CONFLUENCE_SITE_SURFACES.md"
+      ],
+      "notes": "Reports the caller's unexpired admin key, and 404 for none or for anyone who is not an administrator."
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/app/properties",
+      "status": "partial",
+      "evidence": [
+        "migrations/160_wiki_app_properties.sql",
+        "internal/store/wiki_app_properties.go",
+        "internal/confluence/app_properties.go",
+        "internal/confluence/app_properties_test.go",
+        "internal/apps/scope_app_data_test.go",
+        "docs/CONFLUENCE_SITE_SURFACES.md"
+      ],
+      "notes": "Reads the calling app's own properties only through asApp authentication, listing 50 by default up to 250 with an opaque cursor; people are refused with 401 and keys over 127 characters with 400."
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/app/properties/{propertyKey}",
+      "status": "partial",
+      "evidence": [
+        "migrations/160_wiki_app_properties.sql",
+        "internal/store/wiki_app_properties.go",
+        "internal/confluence/app_properties.go",
+        "internal/confluence/app_properties_test.go",
+        "internal/apps/scope_app_data_test.go",
+        "docs/CONFLUENCE_SITE_SURFACES.md"
+      ],
+      "notes": "Reads the calling app's own properties only through asApp authentication, listing 50 by default up to 250 with an opaque cursor; people are refused with 401 and keys over 127 characters with 400."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/attachments",
@@ -2232,6 +2333,30 @@
       "notes": "Returns the four ordered built-in published classification levels used consistently by page, blog-post, database and whiteboard APIs and author controls; organization-defined level administration and edition entitlements remain."
     },
     {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/comments/{comment-id}/properties",
+      "status": "partial",
+      "evidence": [
+        "migrations/159_wiki_comment_properties.sql",
+        "internal/store/wiki_comment_properties.go",
+        "internal/confluence/comment_properties.go",
+        "internal/confluence/comment_properties_test.go",
+        "docs/CONFLUENCE_SITE_SURFACES.md"
+      ],
+      "notes": "Lists or reads content properties on a footer or inline comment the caller may see, filtered by key and sorted by key."
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/comments/{comment-id}/properties/{property-id}",
+      "status": "partial",
+      "evidence": [
+        "migrations/159_wiki_comment_properties.sql",
+        "internal/store/wiki_comment_properties.go",
+        "internal/confluence/comment_properties.go",
+        "internal/confluence/comment_properties_test.go",
+        "docs/CONFLUENCE_SITE_SURFACES.md"
+      ],
+      "notes": "Lists or reads content properties on a footer or inline comment the caller may see, filtered by key and sorted by key."
+    },
+    {
       "operationId": "confluence-v2:GET:/wiki/api/v2/custom-content",
       "status": "partial",
       "evidence": [
@@ -2329,6 +2454,16 @@
         "docs/CUSTOM_CONTENT.md"
       ],
       "notes": "The operation read is tested."
+    },
+    {
+      "operationId": "confluence-v2:GET:/wiki/api/v2/data-policies/metadata",
+      "status": "partial",
+      "evidence": [
+        "internal/confluence/app_properties.go",
+        "internal/confluence/app_properties_test.go",
+        "docs/CONFLUENCE_SITE_SURFACES.md"
+      ],
+      "notes": "Answers anyContentBlocked false to an authenticated app, and 401 to a person; no data policy restricts content here."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/data-policies/spaces",
@@ -3604,6 +3739,19 @@
       ]
     },
     {
+      "operationId": "confluence-v2:POST:/wiki/api/v2/admin-key",
+      "status": "partial",
+      "evidence": [
+        "migrations/161_wiki_admin_keys.sql",
+        "internal/store/wiki_admin_keys.go",
+        "internal/confluence/admin_key.go",
+        "internal/confluence/v2_site_admin_test.go",
+        "internal/confluence/http_test.go",
+        "docs/CONFLUENCE_SITE_SURFACES.md"
+      ],
+      "notes": "Issues or renews an admin key for 10 minutes by default up to 60; the key, not the admin role alone, is now what lets an administrator past page restrictions."
+    },
+    {
       "operationId": "confluence-v2:POST:/wiki/api/v2/attachments/{attachment-id}/properties",
       "status": "partial",
       "notes": "Permission-scoped attachment properties support JSON values, key filtering, cursor pagination, immutable optimistic versions, expansion, conflict handling and deletion; broader content-property targets remain separate.",
@@ -3676,6 +3824,30 @@
         "e2e/wiki.spec.ts"
       ],
       "notes": "Blog redaction supports current-version timestamp/version guards, validated and overlap-merged Unicode ranges, title/body markers, optional prior-version scrubbing, privacy-shaped sync and organization audit without retaining removed text. Registered plugin content types support permission-filtered, sorted and paged blog collections. A restoration route, arbitrary ADF node pointers, historical-version-only redaction, and custom-content mutation/install lifecycle remain."
+    },
+    {
+      "operationId": "confluence-v2:POST:/wiki/api/v2/comments/{comment-id}/properties",
+      "status": "partial",
+      "evidence": [
+        "migrations/159_wiki_comment_properties.sql",
+        "internal/store/wiki_comment_properties.go",
+        "internal/confluence/comment_properties.go",
+        "internal/confluence/comment_properties_test.go",
+        "docs/CONFLUENCE_SITE_SURFACES.md"
+      ],
+      "notes": "Creates a versioned content property on a comment for a caller who may edit it; a duplicate key is refused and a reader who may not edit is refused with 403."
+    },
+    {
+      "operationId": "confluence-v2:POST:/wiki/api/v2/content/convert-ids-to-types",
+      "status": "partial",
+      "evidence": [
+        "migrations/158_wiki_global_content_ids.sql",
+        "internal/store/wiki_content_ids.go",
+        "internal/confluence/content_ids.go",
+        "internal/confluence/v2_site_admin_test.go",
+        "docs/CONFLUENCE_SITE_SURFACES.md"
+      ],
+      "notes": "Maps up to 100 string or numeric ids to page, blogpost, attachment, footer-comment, inline-comment, hierarchical or custom types, with null for content the caller may not view or that does not exist; new content ids are unique across kinds and legacy collisions resolve by existence, never by visibility."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/custom-content",
@@ -3973,6 +4145,28 @@
       "notes": "Workspace administrators create uniquely keyed, validated JSON space properties through REST or the accessible UI with immutable version one and an atomic sync action; app scope enforcement remains."
     },
     {
+      "operationId": "confluence-v2:POST:/wiki/api/v2/user/access/check-access-by-email",
+      "status": "partial",
+      "evidence": [
+        "internal/store/wiki_user_access.go",
+        "internal/confluence/user_access.go",
+        "internal/confluence/v2_site_admin_test.go",
+        "docs/CONFLUENCE_SITE_SURFACES.md"
+      ],
+      "notes": "Reports which of up to 100 addresses have no site access and which are invalid, answering duplicates once."
+    },
+    {
+      "operationId": "confluence-v2:POST:/wiki/api/v2/user/access/invite-by-email",
+      "status": "partial",
+      "evidence": [
+        "internal/store/wiki_user_access.go",
+        "internal/confluence/user_access.go",
+        "internal/confluence/v2_site_admin_test.go",
+        "docs/CONFLUENCE_SITE_SURFACES.md"
+      ],
+      "notes": "Invites addresses without access into the organization directory with site access, ignoring invalid addresses and people who already have access; completes before responding rather than asynchronously."
+    },
+    {
       "operationId": "confluence-v2:POST:/wiki/api/v2/users-bulk",
       "status": "partial",
       "evidence": [
@@ -4029,6 +4223,19 @@
         "internal/commands/wiki.go",
         "internal/store/wiki_content_properties.go"
       ]
+    },
+    {
+      "operationId": "confluence-v2:PUT:/wiki/api/v2/app/properties/{propertyKey}",
+      "status": "partial",
+      "evidence": [
+        "migrations/160_wiki_app_properties.sql",
+        "internal/store/wiki_app_properties.go",
+        "internal/confluence/app_properties.go",
+        "internal/confluence/app_properties_test.go",
+        "internal/apps/scope_app_data_test.go",
+        "docs/CONFLUENCE_SITE_SURFACES.md"
+      ],
+      "notes": "Creates (201) or replaces (200) an app property holding any JSON value, only for the app itself under the write:app-data:confluence scope."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/attachments/{attachment-id}/properties/{property-id}",
@@ -4088,6 +4295,18 @@
         "e2e/wiki.spec.ts"
       ],
       "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels, and the remaining attachment, comment, custom-content, and redaction routes remain."
+    },
+    {
+      "operationId": "confluence-v2:PUT:/wiki/api/v2/comments/{comment-id}/properties/{property-id}",
+      "status": "partial",
+      "evidence": [
+        "migrations/159_wiki_comment_properties.sql",
+        "internal/store/wiki_comment_properties.go",
+        "internal/confluence/comment_properties.go",
+        "internal/confluence/comment_properties_test.go",
+        "docs/CONFLUENCE_SITE_SURFACES.md"
+      ],
+      "notes": "Updates a comment property only at the next version, refusing a stale version with 409 so concurrent edits cannot overwrite each other."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/custom-content/{custom-content-id}/properties/{property-id}",

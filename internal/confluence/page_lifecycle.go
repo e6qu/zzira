@@ -159,6 +159,9 @@ func (h *Handler) pageByID(w http.ResponseWriter, r *http.Request, ws, actor, id
 	if flags["include-collaborators"] {
 		bean["collaborators"] = []string{}
 	}
+	if page.Status == "current" {
+		h.recordView(r, ws, actor, "page", page.ID)
+	}
 	respond(w, 200, bean)
 }
 

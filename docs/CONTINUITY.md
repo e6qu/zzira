@@ -8,38 +8,42 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
 ## Active delivery
 
-- Branch: `feat/pr1-confluence-search`
-- Base: `origin/main` after merged PR #108 (`5e065be`). The review queue is
-  empty; this is the only open branch.
+- Branch: `feat/pr1-confluence-analytics` (PR #115)
+- Base: `origin/main` after merged PR #109 (`4b65b88`).
 - Delivery unit: PR 1 — Jira Platform and project/site administration
-- State: CQL search checkpoint audited both pinned operations against a running
-  server and found neither working. They needed a query language the product
-  did not have, so `internal/cql` is a new package on the shape of the existing
-  JQL engine: a hand-rolled recursive-descent parser and a PostgreSQL compiler,
-  pure so the server and the WebAssembly replica share it.
-  The compiler reads a normalised view — pages, blog posts, comments,
-  attachments and spaces reduced to one set of columns — which the store builds
-  with each branch's own visibility rules already applied. A query can then
-  only narrow what a reader sees; the test proves it by restricting a page and
-  checking it is absent from another reader's results *and* from their total.
-  A field the engine does not know is refused rather than dropped, because a
-  dropped condition returns more than was asked for. Values never reach the
-  statement: everything a reader writes becomes an argument, and a typed `%`
-  is escaped so a search for "100%" means those four characters.
-  Two behaviours came straight from what Confluence does rather than from
-  choice: a bare date names a whole day, so equality is the day; and drafts are
-  not searched unless `cqlcontext` asks for them.
-  Ordering always settles ties on type and id — without that, paging would show
-  one row twice and miss another, which is the same class of bug the sprint and
-  page ordering work hit twice.
-  Clean migrations, the full uncached Go/PostgreSQL suite, vet, native and
-  WebAssembly builds, conformance checks and every Playwright journey pass.
+- State: this PR completes Confluence. Every pinned `confluence-v1` and
+  `confluence-v2` operation is now assessed. It bundles three things, because a
+  two-operation PR was too small to be worth a review cycle of its own:
+  - **Content analytics** — view and distinct-viewer counts with `fromDate`.
+    Views are recorded when published content is opened in the product or read
+    singly through the v2 API, never for writes, listings, searches, drafts or
+    refused reads, and the counts are a 404 for anyone who may not open the
+    content.
+  - **Content id uniqueness.** CI caught a real leak on a fresh database: page 1
+    and blog post 1 both existed, and the analytics of a page the reader could
+    not see fell through to the blog post. Confluence ids are unique across
+    content, so migration 158 puts pages, blog posts, comments and attachments on
+    one sequence, and `WikiContentKindByID` resolves legacy collisions by what
+    exists rather than what the caller may see. The regression test fails
+    against the old resolver and passes against the new one.
+  - **The last sixteen `confluence-v2` operations** — comment properties, Forge
+    app properties under the app-data scopes, the admin key, convert-ids-to-types,
+    access checks and invitations by email, and the data policy metadata.
+  **Behaviour change:** an administrator no longer sees or edits restricted
+  pages by holding the admin role alone. As in Confluence, that access comes from
+  an active admin key; space administration and comment moderation are
+  unchanged. The one existing test that relied on the old bypass now enables a
+  key first and asserts a keyless administrator gets 404.
+  The five Dependabot bumps (#110–#114) are folded in, each version published more
+  than 24 hours before being taken, plus the transitive `x/sync` and `x/text`.
 - Blockers: none
 
 ## Merged baseline
 
-PR [#108](https://github.com/e6qu/zzira/pull/108) merged Confluence content
-relations on top of
+PR [#109](https://github.com/e6qu/zzira/pull/109) merged Confluence CQL search
+on top of
+PR [#108](https://github.com/e6qu/zzira/pull/108), which merged Confluence content
+relations, on top of
 PR [#107](https://github.com/e6qu/zzira/pull/107), which merged content history,
 macros and body conversion, on top of
 PR [#106](https://github.com/e6qu/zzira/pull/106), which merged the Confluence audit
@@ -121,22 +125,22 @@ PR #90's final GitHub matrix passed its required suites before merge.
 
 ## Resume here
 
-1. Monitor the CQL search pull request through every CI job and resolve review
-   threads inline. **A stacked branch gets no CI here**: `.github/workflows/ci.yml`
+1. Monitor the content analytics pull request through every CI job and resolve
+   review threads inline. **A stacked branch gets no CI here**: `.github/workflows/ci.yml`
    triggers only on `pull_request` against `main`, and `gh pr checks` reports
    "no checks reported" rather than a failure, so a stacked PR can look fine and
    be unverified. Base every PR on `main` unless it genuinely needs a helper an
    open branch adds.
-2. `confluence-v1` has two operations left, both `analytics`: the view count on
-   a piece of content and the people who viewed it. Nothing records a view yet,
-   so that checkpoint is a model before it is a handler — the tenth in a row.
-   Finishing it closes `confluence-v1` entirely. After Confluence, the largest
-   untouched block is `jira-service-management` (75).
-3. Probe every operation against a running server before assessing; the ten
+2. Confluence is complete: no `confluence-v1` or `confluence-v2` operation is
+   unassessed. What remains is `jira-v3` (234) and `jira-software`
+   (44). `jira-service-management` has none. Keep PRs substantial —
+   bundle several families rather than opening one per small family, and fold in
+   open Dependabot bumps whose versions are more than 24 hours old.
+3. Probe every operation against a running server before assessing; the eleven
    audits so far ran 11 of 15, 8 of 33, 5 of 13, 16 of 17, 4 of 14, 2 of 11,
-   0 of 17, 0 of 8, 0 of 5 and 0 of 2, so the result is not predictable from how
-   well tested a surface looks. Several times an operation was missing because
-   something upstream made it impossible, not because the handler was absent.
+   0 of 17, 0 of 8, 0 of 5, 0 of 2 and 0 of 2, so the result is not predictable
+   from how well tested a surface looks. The last five were all missing a model
+   rather than a handler.
 
 ## Evidence map
 
@@ -181,6 +185,7 @@ PR #90's final GitHub matrix passed its required suites before merge.
 - [Confluence page moves and copies](PAGE_MOVES.md)
 - [Confluence content relations](CONTENT_RELATIONS.md)
 - [Confluence CQL search](CQL_SEARCH.md)
+- [Confluence content analytics](CONTENT_ANALYTICS.md)
 
 ## Continuity rules
 

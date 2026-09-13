@@ -208,6 +208,10 @@ func (h *V1Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.v1BulkUsers(w, r, ws, actor, true)
 	case len(parts) == 2 && parts[0] == "user" && parts[1] == "memberof" && r.Method == "GET":
 		h.v1UserGroups(w, r, ws, actor)
+	case len(parts) == 4 && parts[0] == "analytics" && parts[1] == "content" && parts[3] == "views" && r.Method == "GET":
+		h.v1ContentAnalytics(w, r, ws, actor, parts[2], false)
+	case len(parts) == 4 && parts[0] == "analytics" && parts[1] == "content" && parts[3] == "viewers" && r.Method == "GET":
+		h.v1ContentAnalytics(w, r, ws, actor, parts[2], true)
 	case len(parts) == 1 && parts[0] == "search" && r.Method == "GET":
 		h.v1Search(w, r, ws, actor)
 	case len(parts) == 2 && parts[0] == "content" && parts[1] == "search" && r.Method == "GET":

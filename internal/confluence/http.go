@@ -69,6 +69,12 @@ func writeError(w http.ResponseWriter, err error) {
 		failure(w, 400, err.Error())
 	case errors.Is(err, store.ErrWikiTemplateValidation):
 		failure(w, 400, err.Error())
+	case errors.Is(err, store.ErrWikiAdminKeyValidation):
+		failure(w, 400, err.Error())
+	case errors.Is(err, store.ErrWikiUserAccessValidation):
+		failure(w, 400, err.Error())
+	case errors.Is(err, store.ErrWikiAppPropertyValidation):
+		failure(w, 400, err.Error())
 	case errors.Is(err, store.ErrWikiSearchValidation):
 		failure(w, 400, err.Error())
 	case errors.Is(err, store.ErrWikiRelationValidation):
@@ -416,6 +422,30 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.task(w, r, ws, actor, parts[1])
 	case len(parts) == 2 && parts[0] == "tasks" && r.Method == "PUT":
 		h.updateTask(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "comments" && parts[2] == "properties" && r.Method == "GET":
+		h.commentProperties(w, r, ws, actor, parts[1])
+	case len(parts) == 3 && parts[0] == "comments" && parts[2] == "properties" && r.Method == "POST":
+		h.createCommentProperty(w, r, ws, actor, parts[1])
+	case len(parts) == 4 && parts[0] == "comments" && parts[2] == "properties" && r.Method == "GET":
+		h.commentProperty(w, r, ws, actor, parts[1], parts[3])
+	case len(parts) == 4 && parts[0] == "comments" && parts[2] == "properties" && r.Method == "PUT":
+		h.updateCommentProperty(w, r, ws, actor, parts[1], parts[3])
+	case len(parts) == 4 && parts[0] == "comments" && parts[2] == "properties" && r.Method == "DELETE":
+		h.deleteCommentProperty(w, r, ws, actor, parts[1], parts[3])
+	case len(parts) == 1 && parts[0] == "admin-key":
+		h.adminKey(w, r, ws, actor)
+	case len(parts) == 2 && parts[0] == "content" && parts[1] == "convert-ids-to-types" && r.Method == "POST":
+		h.convertContentIDs(w, r, ws, actor)
+	case len(parts) == 3 && parts[0] == "user" && parts[1] == "access" && parts[2] == "check-access-by-email" && r.Method == "POST":
+		h.checkAccessByEmail(w, r, ws, actor)
+	case len(parts) == 3 && parts[0] == "user" && parts[1] == "access" && parts[2] == "invite-by-email" && r.Method == "POST":
+		h.inviteByEmail(w, r, ws, actor)
+	case len(parts) == 2 && parts[0] == "app" && parts[1] == "properties" && r.Method == "GET":
+		h.appProperties(w, r)
+	case len(parts) == 3 && parts[0] == "app" && parts[1] == "properties":
+		h.appProperty(w, r, parts[2])
+	case len(parts) == 2 && parts[0] == "data-policies" && parts[1] == "metadata" && r.Method == "GET":
+		h.dataPolicyMetadata(w, r)
 	case len(parts) == 1 && parts[0] == "footer-comments" && r.Method == "GET":
 		h.footerComments(w, r, ws, actor, "", "")
 	case len(parts) == 1 && parts[0] == "footer-comments" && r.Method == "POST":

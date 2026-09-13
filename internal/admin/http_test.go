@@ -389,8 +389,15 @@ func TestOrganizationAndGroupAPIJourney(t *testing.T) {
 	if err != nil || !includesExact(memberIDs, invitedID) {
 		t.Fatalf("invitation group was not applied: members=%v err=%v", memberIDs, err)
 	}
-	delivery, err := st.ClaimEmailDelivery(ctx)
-	if err != nil || delivery == nil || delivery.Recipient != inviteEmail || !bytes.Contains([]byte(delivery.Body), []byte("Welcome to the service team.")) {
+	// Claim this invitation's own email rather than whatever is oldest in the
+	// outbox: a shared database can hold queued mail from other journeys, and
+	// taking the head of the queue made this test depend on it being empty.
+	delivery := &store.EmailDelivery{}
+	err = st.Pool.QueryRow(ctx, `UPDATE email_outbox SET state='delivering',locked_at=now()
+		WHERE id=(SELECT id FROM email_outbox WHERE recipient=$1 AND state='pending' ORDER BY id DESC LIMIT 1)
+		RETURNING id,recipient,subject,body,attempt_count`, inviteEmail).
+		Scan(&delivery.ID, &delivery.Recipient, &delivery.Subject, &delivery.Body, &delivery.Attempt)
+	if err != nil || delivery.Recipient != inviteEmail || !bytes.Contains([]byte(delivery.Body), []byte("Welcome to the service team.")) {
 		t.Fatalf("invitation email was not queued: delivery=%+v err=%v", delivery, err)
 	}
 	if err := st.CompleteEmailDelivery(ctx, delivery.ID, nil); err != nil {
