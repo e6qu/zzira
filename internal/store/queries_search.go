@@ -42,7 +42,8 @@ SELECT i.id, i.jira_id, i.workspace_id, i.project_id, i.key, i.summary, i.descri
 	       i.security_level_id, i.fields, i.labels,
 	       i.updated_seq, i.updated_at,
 	       it.jira_id, it.hierarchy_level, pr2.jira_id, COALESCE(pro.status_color, pr2.status_color), COALESCE(pro.icon_url, pr2.icon_url),
-	       res.id, res.jira_id, COALESCE(reso.name, res.name), COALESCE(reso.description, res.description), i.resolved_at
+	       res.id, res.jira_id, COALESCE(reso.name, res.name), COALESCE(reso.description, res.description), i.resolved_at,
+	       i.created_at, i.archived_at
 `
 
 // Search runs a compiled JQL query within one workspace. The workspace

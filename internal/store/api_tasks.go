@@ -381,6 +381,8 @@ func (r *APITaskRunner) execute(ctx context.Context, task APITask) error {
 		return r.Store.executeArchiveIssuesTask(ctx, task)
 	case apiTaskExportArchivedIssues:
 		return r.Store.executeArchivedIssuesExport(ctx, task)
+	case apiTaskRedactIssueContent:
+		return r.Store.executeRedactionTask(ctx, task)
 	case apiTaskWikiPermissionCombinations:
 		return r.Store.executeWikiPermissionCombinations(ctx, task)
 	case apiTaskWikiPermissionAssignRoles:

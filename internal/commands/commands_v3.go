@@ -42,7 +42,7 @@ func (s *Service) DeleteWorklog(ctx context.Context, actorID, workspaceID, workl
 	if _, err := s.visibleIssue(ctx, actorID, workspaceID, w.IssueID); err != nil {
 		return nil, fmt.Errorf("worklog %q not found", worklogID)
 	}
-	return s.Store.DeleteWorklog(ctx, actorID, workspaceID, worklogID)
+	return s.Store.DeleteWorklog(ctx, actorID, workspaceID, w.ID)
 }
 
 // AddAttachment streams the blob to storage, then records metadata + action in
@@ -118,7 +118,7 @@ func (s *Service) DeleteAttachment(ctx context.Context, actorID, workspaceID, at
 	if att.AuthorID != actorID {
 		return nil, fmt.Errorf("only the author may delete an attachment")
 	}
-	blobRef, _, action, err := s.Store.DeleteAttachment(ctx, actorID, workspaceID, attachmentID)
+	blobRef, _, action, err := s.Store.DeleteAttachment(ctx, actorID, workspaceID, att.ID)
 	if err != nil {
 		return nil, err
 	}

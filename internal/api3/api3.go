@@ -150,9 +150,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.issueLinkTypeRoute(w, r, "")
 	case strings.HasPrefix(path, "/issueLinkType/"):
 		h.issueLinkTypeRoute(w, r, strings.TrimPrefix(path, "/issueLinkType/"))
-	case path == "/issueLink":
+	case path == "/issueLink" && r.Method == http.MethodPost:
 		h.issueLinkRoute(w, r, "")
-	case strings.HasPrefix(path, "/issueLink/"):
+	case strings.HasPrefix(path, "/issueLink/") && (r.Method == http.MethodGet || r.Method == http.MethodDelete):
 		h.issueLinkRoute(w, r, strings.TrimPrefix(path, "/issueLink/"))
 	case path == "/comment/list":
 		h.commentsByIDs(w, r)

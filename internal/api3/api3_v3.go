@@ -118,7 +118,7 @@ func (h *Handler) issueWorklogRoute(w http.ResponseWriter, r *http.Request, idOr
 			jiraError(w, http.StatusBadRequest, "Invalid request payload.")
 			return
 		}
-		updated, _, err := h.Store.UpdateWorklog(r.Context(), userID, wsID, sub[0], request.Comment, request.TimeSpentSeconds)
+		updated, _, err := h.Store.UpdateWorklog(r.Context(), userID, wsID, wl.ID, request.Comment, request.TimeSpentSeconds)
 		if err != nil {
 			worklogError(w, err)
 			return
@@ -144,7 +144,7 @@ func (h *Handler) issueWorklogRoute(w http.ResponseWriter, r *http.Request, idOr
 			jiraError(w, http.StatusNotFound, "Worklog does not exist.")
 			return
 		}
-		h.worklogProperties(w, r, issue.Key, wl.ID, sub[2:])
+		h.worklogProperties(w, r, issue.Key, wl, sub[2:])
 	case len(sub) == 1 && sub[0] == "move" && r.Method == http.MethodPost:
 		var request struct {
 			IDs          []string `json:"ids"`
@@ -163,7 +163,16 @@ func (h *Handler) issueWorklogRoute(w http.ResponseWriter, r *http.Request, idOr
 			jiraFieldError(w, http.StatusBadRequest, map[string]string{"issueIdOrKey": "The destination work item does not exist."})
 			return
 		}
-		if err := h.Store.MoveWorklogs(r.Context(), userID, wsID, issue.ID, target.ID, request.IDs); err != nil {
+		storedIDs := make([]string, 0, len(request.IDs))
+		for _, ref := range request.IDs {
+			wl, err := h.Store.WorklogByID(r.Context(), wsID, ref)
+			if err != nil || wl.IssueID != issue.ID {
+				jiraError(w, http.StatusNotFound, "Worklog does not exist.")
+				return
+			}
+			storedIDs = append(storedIDs, wl.ID)
+		}
+		if err := h.Store.MoveWorklogs(r.Context(), userID, wsID, issue.ID, target.ID, storedIDs); err != nil {
 			worklogError(w, err)
 			return
 		}
@@ -175,8 +184,9 @@ func (h *Handler) issueWorklogRoute(w http.ResponseWriter, r *http.Request, idOr
 
 // worklogProperties serves the entity properties hung off one worklog, with
 // Jira's 201-on-create and 200-on-replace split.
-func (h *Handler) worklogProperties(w http.ResponseWriter, r *http.Request, issueKey, worklogID string, rest []string) {
-	self := h.BaseURL + "/rest/api/3/issue/" + issueKey + "/worklog/" + worklogID + "/properties/"
+func (h *Handler) worklogProperties(w http.ResponseWriter, r *http.Request, issueKey string, worklog *models.Worklog, rest []string) {
+	worklogID := worklog.ID
+	self := h.BaseURL + "/rest/api/3/issue/" + issueKey + "/worklog/" + strconv.FormatInt(worklog.JiraID, 10) + "/properties/"
 	switch {
 	case len(rest) == 0 && r.Method == http.MethodGet:
 		keys, err := h.Store.WorklogPropertyKeys(r.Context(), worklogID)
