@@ -15,8 +15,8 @@ use `/rest/zzira/1`.
 | Endpoint | Status | Notes |
 |---|---|---|
 | GET /rest/api/3/serverInfo | ✅ | |
-| GET /rest/api/3/myself | ✅ | |
-| GET /rest/api/3/user · /user/search | ✅ | workspace members |
+| GET /rest/api/3/myself · /mypreferences · /mypreferences/locale | 🟡 | self, locale and groups/applicationRoles expansions; per-site preferences and a supported-locale list |
+| Jira users, user search, structured user query, groups, pickers, user properties and columns, application roles, universal and project avatars | 🟡 | All 52 pinned operations: site-scoped people with email visibility rules, permission-filtered assignable/browse search, Jira's `is <relation> of` and `[property]` query language, organization-scoped groups with swap-group deletion across every grant table, and one avatar store for projects, issue types and priorities; user email lookups require an approved app ([PEOPLE.md](../../docs/PEOPLE.md)) |
 | GET/POST /rest/api/3/project · GET /project/search · GET/PUT /project/{keyOrId} | 🟡 | Shared create/details commands and browser journey; business, service-management and software Scrum/Kanban creation; category assignment/filtering and category beans; pagination/filtering/order; project roles and lifecycle are covered below; complete expansions, schemes and templates remain |
 | POST /rest/api/3/issue | ✅ | Project key/id, ADF description, assignee, priority, labels, fix/affected versions, security and typed context-aware custom fields; unsupported fields are explicit errors |
 | GET/PUT/DELETE /rest/api/3/issue/{idOrKey} | ✅ | expand=renderedFields |

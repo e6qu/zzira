@@ -11038,6 +11038,528 @@
         "docs/ADMIN.md"
       ],
       "notes": "Resource update replaces metadata and links for the exact policy/resource pair and returns the updated policy."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/applicationrole",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Administrator-only product roles counting direct and group-granted product access."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/applicationrole/{key}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Administrator-only product roles counting direct and group-granted product access."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/avatar/{type}/system",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Universal avatar store for projects, issue types and priorities with system catalogue, uploads needing the XSRF header, and image views."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/group",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Organization-scoped groups with administrator-only changes, paginated members, and swap-group deletion that moves grants and members."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/group",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Organization-scoped groups with administrator-only changes, paginated members, and swap-group deletion that moves grants and members."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/group",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Organization-scoped groups with administrator-only changes, paginated members, and swap-group deletion that moves grants and members."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/group/bulk",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Organization-scoped groups with administrator-only changes, paginated members, and swap-group deletion that moves grants and members."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/group/member",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Organization-scoped groups with administrator-only changes, paginated members, and swap-group deletion that moves grants and members."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/group/user",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Organization-scoped groups with administrator-only changes, paginated members, and swap-group deletion that moves grants and members."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/group/user",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Organization-scoped groups with administrator-only changes, paginated members, and swap-group deletion that moves grants and members."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/groups/picker",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Organization-scoped groups with administrator-only changes, paginated members, and swap-group deletion that moves grants and members."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/groupuserpicker",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Combined people and group picker with highlighted matches and totals."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/mypreferences",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Caller preferences and locale stored per site; myself adds locale and expansions."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/mypreferences",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Caller preferences and locale stored per site; myself adds locale and expansions."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/mypreferences",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Caller preferences and locale stored per site; myself adds locale and expansions."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/mypreferences/locale",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Caller preferences and locale stored per site; myself adds locale and expansions."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/mypreferences/locale",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Caller preferences and locale stored per site; myself adds locale and expansions."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/myself",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Caller preferences and locale stored per site; myself adds locale and expansions."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/project/{projectIdOrKey}/avatar",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Project avatar listing, upload, selection and deletion through the universal avatar store, gated to project administrators."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/project/{projectIdOrKey}/avatar/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Project avatar listing, upload, selection and deletion through the universal avatar store, gated to project administrators."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/project/{projectIdOrKey}/avatar2",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Project avatar listing, upload, selection and deletion through the universal avatar store, gated to project administrators."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/project/{projectIdOrKey}/avatars",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Project avatar listing, upload, selection and deletion through the universal avatar store, gated to project administrators."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/universal_avatar/type/{type}/owner/{entityId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Universal avatar store for projects, issue types and priorities with system catalogue, uploads needing the XSRF header, and image views."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/universal_avatar/type/{type}/owner/{entityId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Universal avatar store for projects, issue types and priorities with system catalogue, uploads needing the XSRF header, and image views."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/universal_avatar/type/{type}/owner/{owningObjectId}/avatar/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Universal avatar store for projects, issue types and priorities with system catalogue, uploads needing the XSRF header, and image views."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/universal_avatar/view/type/{type}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Universal avatar store for projects, issue types and priorities with system catalogue, uploads needing the XSRF header, and image views."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/universal_avatar/view/type/{type}/avatar/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Universal avatar store for projects, issue types and priorities with system catalogue, uploads needing the XSRF header, and image views."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/universal_avatar/view/type/{type}/owner/{entityId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Universal avatar store for projects, issue types and priorities with system catalogue, uploads needing the XSRF header, and image views."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/user",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Account-id keyed person records with self, avatars, email shown only to the person or administrators, groups and application role expansions, and site scoping."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/user",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Account-id keyed person records with self, avatars, email shown only to the person or administrators, groups and application role expansions, and site scoping."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/user",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Account-id keyed person records with self, avatars, email shown only to the person or administrators, groups and application role expansions, and site scoping."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/user/assignable/multiProjectSearch",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Search, assignable, multi-project, browse-permission and structured query results scoped to the site and filtered by live project and issue permissions."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/user/assignable/search",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Search, assignable, multi-project, browse-permission and structured query results scoped to the site and filtered by live project and issue permissions."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/user/bulk",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Account-id keyed person records with self, avatars, email shown only to the person or administrators, groups and application role expansions, and site scoping."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/user/bulk/migration",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Account-id keyed person records with self, avatars, email shown only to the person or administrators, groups and application role expansions, and site scoping."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/user/columns",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Account-id keyed person records with self, avatars, email shown only to the person or administrators, groups and application role expansions, and site scoping."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/user/columns",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Account-id keyed person records with self, avatars, email shown only to the person or administrators, groups and application role expansions, and site scoping."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/user/columns",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Account-id keyed person records with self, avatars, email shown only to the person or administrators, groups and application role expansions, and site scoping."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/user/email",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Account-id keyed person records with self, avatars, email shown only to the person or administrators, groups and application role expansions, and site scoping."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/user/email/bulk",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Account-id keyed person records with self, avatars, email shown only to the person or administrators, groups and application role expansions, and site scoping."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/user/groups",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Account-id keyed person records with self, avatars, email shown only to the person or administrators, groups and application role expansions, and site scoping."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/user/picker",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Search, assignable, multi-project, browse-permission and structured query results scoped to the site and filtered by live project and issue permissions."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/user/properties",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Per-person JSON properties with 201/200 create-or-replace, readable by the person or an administrator."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/user/properties/{propertyKey}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Per-person JSON properties with 201/200 create-or-replace, readable by the person or an administrator."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/user/properties/{propertyKey}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Per-person JSON properties with 201/200 create-or-replace, readable by the person or an administrator."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/user/properties/{propertyKey}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Per-person JSON properties with 201/200 create-or-replace, readable by the person or an administrator."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/user/search",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Search, assignable, multi-project, browse-permission and structured query results scoped to the site and filtered by live project and issue permissions."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/user/search/query",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/user_query.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Search, assignable, multi-project, browse-permission and structured query results scoped to the site and filtered by live project and issue permissions."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/user/search/query/key",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/user_query.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Search, assignable, multi-project, browse-permission and structured query results scoped to the site and filtered by live project and issue permissions."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/user/viewissue/search",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Search, assignable, multi-project, browse-permission and structured query results scoped to the site and filtered by live project and issue permissions."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/users",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Account-id keyed person records with self, avatars, email shown only to the person or administrators, groups and application role expansions, and site scoping."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/users/search",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/people.go",
+        "internal/api3/people_test.go",
+        "docs/PEOPLE.md"
+      ],
+      "notes": "Account-id keyed person records with self, avatars, email shown only to the person or administrators, groups and application role expansions, and site scoping."
     }
   ]
 }
