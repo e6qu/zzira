@@ -184,7 +184,7 @@ func (h *Handler) ArchivedIssuesExportFile(w http.ResponseWriter, r *http.Reques
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 	w.Header().Set("Content-Disposition", `attachment; filename="archived-issues.csv"`)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	_, _ = w.Write([]byte(content))
+	http.ServeContent(w, r, "archived-issues.csv", time.Time{}, strings.NewReader(content))
 }
 
 var redactionExternalIDPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
