@@ -22,6 +22,15 @@ creates belongs to that site and is invisible to every other.
 Clients see Jira's numeric ids. Lookups also accept a name; the ids the product
 stores internally are never sent.
 
+That holds across the whole Jira API, not only these endpoints. Every response
+and request that names an issue type uses the numeric id: issue responses and
+changelog items, create metadata, issue type screen schemes, field configuration
+schemes, field association schemes, custom field contexts, workflow schemes with
+their drafts, bulk updates, status-migration validation, preview and
+capabilities, status and workflow issue-type usages, service request types and
+the project list. Priorities and resolutions on issues and in changelog items
+are reported the same way.
+
 ## Issue types
 
 | Method | Path | |

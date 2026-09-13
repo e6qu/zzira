@@ -23,6 +23,11 @@ contract status are in [CLOUD_PARITY.md](CLOUD_PARITY.md).
   the old global lookups is scoped to its site.
   Two JQL bugs fixed on the way: `resolution = Unresolved` returned no issues,
   and `ORDER BY priority` sorted alphabetically instead of by position.
+  Playwright then showed the new ids were only half-applied: create metadata,
+  changelogs and a dozen other Jira APIs — screen, field configuration and field
+  association schemes, custom field contexts, workflow schemes and their drafts,
+  usages and service request types — still sent and accepted internal issue type
+  ids. All now go through one translator, so no internal id reaches a client.
 - Blockers: none
 
 ## Merged baseline
