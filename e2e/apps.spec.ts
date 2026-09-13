@@ -351,7 +351,12 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
   const issueField = page.getByLabel(fieldName);
   await expect(issueField).toBeVisible();
   await issueField.fill('7');
+  // The save and the content add both swap #issue-root; wait for the save to land
+  // so its response cannot replace the page after the content is added.
+  const fieldSaved = page.waitForResponse(r => r.request().method() === 'POST' && r.url().endsWith(`/issues/${issueKey}/fields`));
   await page.getByRole('button', { name: `Save ${fieldName}` }).click();
+  await fieldSaved;
+  await expect(page.locator('.htmx-request')).toHaveCount(0);
   await expect(page.getByLabel(fieldName)).toHaveValue('7');
   await page.getByRole('button', { name: `Add ${contentTitle}` }).click();
   const appContent = page.locator('.app-issue-content', { has: page.getByRole('heading', { name: contentTitle, level: 2 }) });

@@ -30,6 +30,8 @@ type Handler struct {
 	Blobs         attachments.Store
 	BaseURL       string
 	WorkspaceSlug string
+	// StaticDir holds the server's static assets, such as system avatar icons.
+	StaticDir string
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -54,6 +56,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	path := strings.TrimPrefix(r.URL.Path, "/rest/api/3")
+	if h.peopleRoute(w, r, path) {
+		return
+	}
 	switch {
 	case path == "/announcementBanner":
 		h.siteAnnouncementBanner(w, r)
@@ -259,10 +264,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.updateProject(w, r, strings.TrimPrefix(path, "/project/"))
 	case path == "/user/permission/search" && r.Method == http.MethodGet:
 		h.usersWithPermissions(w, r)
-	case path == "/user/search" && r.Method == http.MethodGet:
-		h.searchUsers(w, r)
-	case path == "/user" && r.Method == http.MethodGet:
-		h.getUser(w, r)
 	case path == "/search" && (r.Method == http.MethodGet || r.Method == http.MethodPost):
 		h.search(w, r)
 	case path == "/search/jql" && (r.Method == http.MethodPost || r.Method == http.MethodGet):
@@ -480,7 +481,16 @@ func (h *Handler) myself(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, http.StatusUnauthorized, "You are not authenticated. Authentication required to perform this operation.")
 		return
 	}
-	writeJSON(w, http.StatusOK, h.userBean(u))
+	bean := h.fullUserBean(u, true)
+	bean["expand"] = "groups,applicationRoles"
+	bean["locale"] = acceptLanguageLocale(r)
+	if workspaceID, _, e := h.authWorkspace(r); e == nil {
+		if locale, err := h.Store.UserPreference(r.Context(), workspaceID, userID, store.UserPreferenceLocaleKey); err == nil {
+			bean["locale"] = locale
+		}
+		h.userExpansions(r, workspaceID, u, bean)
+	}
+	writeJSON(w, http.StatusOK, bean)
 }
 
 func (h *Handler) userBean(u *models.User) map[string]any {

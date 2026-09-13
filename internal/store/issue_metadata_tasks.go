@@ -109,23 +109,12 @@ func (s *Store) executeResolutionDeletion(ctx context.Context, task APITask) err
 	return s.CompleteAPITask(ctx, task, "Resolution deleted.", map[string]any{"issuesUpdated": moved})
 }
 
-// SaveIssueTypeAvatar stores an avatar image and selects it for the issue type
-// in this site.
+// SaveIssueTypeAvatar stores an avatar image for an issue type and selects it,
+// which is what the issue type avatar upload does in one step.
 func (s *Store) SaveIssueTypeAvatar(ctx context.Context, workspaceID, issueTypeID, mediaType string, data []byte) (int64, error) {
-	if mediaType == "image/jpg" {
-		mediaType = "image/jpeg"
-	}
-	t, err := s.IssueTypeInWorkspace(ctx, workspaceID, issueTypeID)
+	avatar, err := s.StoreAvatar(ctx, workspaceID, "issuetype", issueTypeID, mediaType, data)
 	if err != nil {
 		return 0, err
 	}
-	var id int64
-	if err = s.Pool.QueryRow(ctx, `INSERT INTO issue_type_avatars(workspace_id,issue_type_id,media_type,data) VALUES($1,$2,$3,$4) RETURNING id`,
-		workspaceID, t.ID, mediaType, data).Scan(&id); err != nil {
-		return 0, err
-	}
-	if _, err = s.UpdateIssueType(ctx, workspaceID, t.ID, nil, nil, &id); err != nil {
-		return 0, err
-	}
-	return id, nil
+	return avatar.ID, s.SelectAvatar(ctx, workspaceID, "issuetype", issueTypeID, avatar.ID)
 }

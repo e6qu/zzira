@@ -182,6 +182,7 @@ PR #90's final GitHub matrix passed its required suites before merge.
 - [Confluence CQL search](CQL_SEARCH.md)
 - [Confluence content analytics](CONTENT_ANALYTICS.md)
 - [Jira issue metadata](ISSUE_METADATA.md)
+- [Jira people, groups and avatars](PEOPLE.md)
 
 ## Continuity rules
 

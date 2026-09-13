@@ -58,7 +58,7 @@ func TestIssueMetadataContract(t *testing.T) {
 		t.Cleanup(func() {
 			for _, q := range []string{
 				`DELETE FROM api_tasks WHERE workspace_id=$1`,
-				`DELETE FROM issue_type_avatars WHERE workspace_id=$1`,
+				`DELETE FROM universal_avatars WHERE workspace_id=$1`,
 				`DELETE FROM issues WHERE workspace_id=$1`,
 				`DELETE FROM project_issue_type_schemes WHERE workspace_id=$1`,
 				`DELETE FROM project_priority_schemes WHERE workspace_id=$1`,
