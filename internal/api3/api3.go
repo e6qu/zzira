@@ -47,6 +47,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.developmentRoute(w, r)
 		return
 	}
+	if module, ok := providerModuleFor(r.URL.Path); ok {
+		h.softwareProviderRoute(w, r, module)
+		return
+	}
 	if strings.HasPrefix(r.URL.Path, "/rest/builds/0.1/") || strings.HasPrefix(r.URL.Path, "/jira/builds/0.1/cloud/") {
 		h.softwareDeliveryRoute(w, r, "builds")
 		return

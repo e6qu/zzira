@@ -127,8 +127,11 @@ func appendProjectChildLifecycleActions(ctx context.Context, tx pgx.Tx, project 
 
 	boardRows, err := tx.Query(ctx, `
 		SELECT b.id,b.project_id,p.key,p.name,p.workspace_id,b.name,b.type,b.column_status_ids,b.filter_jql,
-		       b.quick_filters,b.swimlane_strategy,b.card_fields,b.column_limits,b.jira_id,b.filter_jira_id
+		       b.quick_filters,b.swimlane_strategy,b.card_fields,b.column_limits,b.jira_id,b.filter_jira_id,
+		       COALESCE(b.estimation_field_id,''),COALESCE(ef.name,''),COALESCE(b.source_filter_id,''),COALESCE(sf.jira_id,0)
 		FROM boards b JOIN projects p ON p.id=b.project_id
+		LEFT JOIN custom_fields ef ON ef.id=b.estimation_field_id
+		LEFT JOIN filters sf ON sf.id=b.source_filter_id
 		WHERE b.project_id=$1 ORDER BY b.id`, project.ID)
 	if err != nil {
 		return err

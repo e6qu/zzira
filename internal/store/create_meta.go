@@ -74,9 +74,9 @@ func (s *Store) IssueCreateMetadata(ctx context.Context, workspaceID, userID str
 	for _, project := range projects {
 		parentOptions := []models.CreateFieldOption{}
 		parentRows, err := s.Pool.Query(ctx, `
-			SELECT jira_id::text, key, summary FROM issues
-			WHERE project_id=$1 AND parent_id IS NULL
-			ORDER BY updated_seq DESC, key LIMIT 200`, project.ID)
+			SELECT i.jira_id::text, i.key, i.summary FROM issues i JOIN issue_types t ON t.id=i.issuetype_id
+			WHERE i.project_id=$1 AND NOT t.subtask
+			ORDER BY i.updated_seq DESC, i.key LIMIT 200`, project.ID)
 		if err != nil {
 			return nil, err
 		}

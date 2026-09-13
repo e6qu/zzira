@@ -625,6 +625,9 @@ func main() {
 	mux.Handle("/rest/builds/0.1/", api)
 	mux.Handle("/jira/builds/0.1/cloud/", api)
 	mux.Handle("/rest/deployments/0.1/", api)
+	for _, prefix := range []string{"/rest/operations/1.0/", "/rest/security/1.0/", "/rest/devopscomponents/1.0/", "/rest/featureflags/0.1/", "/rest/remotelinks/1.0/"} {
+		mux.Handle(prefix, api)
+	}
 	mux.Handle("/jira/deployments/0.1/cloud/", api)
 	mux.HandleFunc("GET /_edge/tenant_info", automationAPI.TenantInfo)
 	mux.Handle("/gateway/api/automation/public/jira/", automationAPI)

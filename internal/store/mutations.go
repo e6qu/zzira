@@ -213,7 +213,9 @@ func (s *Store) UpdateIssue(ctx context.Context, actorID, workspaceID, issueID s
 		if newID != oldID {
 			newKey := ""
 			if newID != "" {
-				if err := tx.QueryRow(ctx, `SELECT key FROM issues WHERE id=$1 AND workspace_id=$2 AND project_id=$3`, newID, workspaceID, current.ProjectID).Scan(&newKey); err != nil {
+				// Sub-task parents share the project; an epic may be in any project.
+				if err := tx.QueryRow(ctx, `SELECT parent.key FROM issues parent JOIN issue_types parent_type ON parent_type.id=parent.issuetype_id
+					WHERE parent.id=$1 AND parent.workspace_id=$2 AND (parent.project_id=$3 OR parent_type.hierarchy_level=1)`, newID, workspaceID, current.ProjectID).Scan(&newKey); err != nil {
 					return nil, nil, fmt.Errorf("unknown parent %q", newID)
 				}
 			}
@@ -320,6 +322,10 @@ func (s *Store) DeleteIssue(ctx context.Context, actorID, workspaceID, issueID, 
 		ON CONFLICT (workspace_id, issue_id) DO UPDATE
 		SET project_id=EXCLUDED.project_id, security_level_id=EXCLUDED.security_level_id`,
 		workspaceID, issueID, projectID, securityLevelID); err != nil {
+		return nil, nil, err
+	}
+	// Deleting an epic keeps its issues; they lose their parent.
+	if err := unlinkEpicChildren(ctx, tx, actorID, workspaceID, issueID); err != nil {
 		return nil, nil, err
 	}
 	if _, err := tx.Exec(ctx, `DELETE FROM issues WHERE id=$1 AND workspace_id=$2`, issueID, workspaceID); err != nil {

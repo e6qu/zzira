@@ -50,6 +50,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case path == "/board" && r.Method == http.MethodGet:
 		h.listBoards(w, r)
+	case path == "/board" && r.Method == http.MethodPost:
+		h.createBoard(w, r)
+	case strings.HasPrefix(path, "/board/filter/") && r.Method == http.MethodGet:
+		h.boardsByFilter(w, r, strings.TrimPrefix(path, "/board/filter/"))
 	case strings.HasPrefix(path, "/board/"):
 		h.boardRoute(w, r, strings.Split(strings.TrimPrefix(path, "/board/"), "/"))
 	case path == "/sprint" && r.Method == http.MethodPost:
@@ -58,8 +62,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.sprintRoute(w, r, strings.Split(strings.TrimPrefix(path, "/sprint/"), "/"))
 	case path == "/backlog/issue" && r.Method == http.MethodPost:
 		h.moveIssuesToBacklog(w, r)
-	case path == "/issue/rank" && r.Method == http.MethodPost:
-		h.rank(w, r)
+	case strings.HasPrefix(path, "/backlog/") && strings.HasSuffix(path, "/issue") && r.Method == http.MethodPost:
+		h.moveIssuesToBacklogForBoard(w, r, strings.TrimSuffix(strings.TrimPrefix(path, "/backlog/"), "/issue"))
+	case path == "/issue/rank" && (r.Method == http.MethodPut || r.Method == http.MethodPost):
+		h.rankIssues(w, r)
+	case strings.HasPrefix(path, "/issue/"):
+		h.agileIssueRoute(w, r, strings.Split(strings.TrimPrefix(path, "/issue/"), "/"))
+	case strings.HasPrefix(path, "/epic/"):
+		h.epicRoute(w, r, strings.Split(strings.TrimPrefix(path, "/epic/"), "/"))
 	default:
 		jiraError(w, http.StatusNotFound, fmt.Sprintf("No resource found for path %s", r.URL.Path))
 	}
@@ -91,16 +101,29 @@ func (h *Handler) boardBean(b *models.Board) map[string]any {
 		"type": b.Type,
 		"self": h.BaseURL + "/rest/agile/1.0/board/" + boardWireID(b),
 		"location": map[string]any{
-			"projectKey":  b.ProjectKey,
-			"projectName": b.ProjectName,
-			"projectId":   wireNumber(b.ProjectID),
+			"projectKey":     b.ProjectKey,
+			"projectName":    b.ProjectName,
+			"projectId":      wireNumber(b.ProjectID),
+			"projectTypeKey": "software",
+			"displayName":    b.ProjectName + " (" + b.ProjectKey + ")",
+			"name":           b.ProjectName + " (" + b.ProjectKey + ")",
 		},
+		"isPrivate": false,
 	}
 }
 
 // boardWireID is the id clients know a board by.
 func boardWireID(b *models.Board) string {
 	return strconv.FormatInt(b.JiraID, 10)
+}
+
+// boardFilterWireID is the id of the filter a board shows: the saved filter it
+// was created from, or its own board filter.
+func boardFilterWireID(b *models.Board) string {
+	if b.SourceFilterJiraID != 0 {
+		return strconv.FormatInt(b.SourceFilterJiraID, 10)
+	}
+	return strconv.FormatInt(b.FilterJiraID, 10)
 }
 
 // sprintWireID is the id clients know a sprint by.
@@ -155,8 +178,12 @@ func (h *Handler) boardRoute(w http.ResponseWriter, r *http.Request, parts []str
 	switch {
 	case len(parts) == 1 && r.Method == http.MethodGet:
 		writeJSON(w, http.StatusOK, h.boardBean(board))
+	case len(parts) == 1 && r.Method == http.MethodDelete:
+		h.deleteBoard(w, r, wsID, userID, board)
 	case len(parts) == 2 && parts[1] == "issue" && r.Method == http.MethodGet:
 		h.boardIssues(w, r, board, userID)
+	case len(parts) == 2 && parts[1] == "issue" && r.Method == http.MethodPost:
+		h.moveIssuesToBoard(w, r, wsID, userID, board)
 	case len(parts) == 2 && parts[1] == "backlog" && r.Method == http.MethodGet:
 		h.boardBacklog(w, r, board, userID)
 	case len(parts) == 2 && parts[1] == "sprint" && r.Method == http.MethodGet:
@@ -174,12 +201,9 @@ func (h *Handler) boardRoute(w http.ResponseWriter, r *http.Request, parts []str
 	case len(parts) == 2 && parts[1] == "version" && r.Method == http.MethodGet:
 		h.boardVersions(w, r, board)
 	case len(parts) == 2 && parts[1] == "epic" && r.Method == http.MethodGet:
-		h.boardEpics(w, r)
-	case len(parts) == 4 && parts[1] == "epic" && parts[2] == "none" && parts[3] == "issue" && r.Method == http.MethodGet:
-		// No work type is an epic here, so every board issue is epic-less.
-		h.boardIssues(w, r, board, userID)
+		h.boardEpics(w, r, board, wsID, userID)
 	case len(parts) == 4 && parts[1] == "epic" && parts[3] == "issue" && r.Method == http.MethodGet:
-		jiraError(w, http.StatusNotFound, "The epic does not exist.")
+		h.boardEpicIssues(w, r, board, wsID, userID, parts[2], false)
 	case len(parts) == 4 && parts[1] == "sprint" && parts[3] == "issue" && r.Method == http.MethodGet:
 		h.boardSprintIssues(w, r, board, parts[2], userID)
 	case len(parts) == 2 && parts[1] == "features" && r.Method == http.MethodGet:
@@ -222,7 +246,7 @@ func (h *Handler) boardConfiguration(w http.ResponseWriter, r *http.Request, boa
 		"id": board.JiraID, "name": board.Name, "type": board.Type,
 		"self": h.BaseURL + "/rest/agile/1.0/board/" + boardWireID(board) + "/configuration",
 		"filter": map[string]any{
-			"id": strconv.FormatInt(board.FilterJiraID, 10), "self": h.BaseURL + "/rest/api/3/filter/" + strconv.FormatInt(board.FilterJiraID, 10),
+			"id": boardFilterWireID(board), "self": h.BaseURL + "/rest/api/3/filter/" + boardFilterWireID(board),
 		},
 		"location": map[string]any{
 			"id": wireNumber(board.ProjectID), "key": board.ProjectKey, "name": board.ProjectName,
@@ -231,10 +255,15 @@ func (h *Handler) boardConfiguration(w http.ResponseWriter, r *http.Request, boa
 			"self": h.BaseURL + "/rest/api/3/project/" + board.ProjectID,
 		},
 		"columnConfig": map[string]any{"constraintType": constraintType, "columns": columns},
-		"ranking":      map[string]any{"rankCustomFieldId": "rank"},
+		"ranking":      map[string]any{"rankCustomFieldId": rankCustomFieldID},
 	}
 	if board.Type == "scrum" {
 		response["estimation"] = map[string]any{"type": "issueCount"}
+		if board.EstimationFieldID != "" {
+			response["estimation"] = map[string]any{"type": "field", "field": map[string]any{
+				"fieldId": board.EstimationFieldID, "displayName": board.EstimationFieldName,
+			}}
+		}
 	} else if board.FilterJQL != "" {
 		response["subQuery"] = map[string]any{"query": board.FilterJQL}
 	}
@@ -339,9 +368,10 @@ func (h *Handler) writeIssuePage(w http.ResponseWriter, r *http.Request, issues 
 	if end > total {
 		end = total
 	}
-	beans := make([]map[string]any, 0, end-startAt)
-	for _, i := range issues[startAt:end] {
-		beans = append(beans, h.IssueBean(i))
+	beans, err := h.agileIssueBeans(r.Context(), issues[startAt:end])
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "internal error")
+		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"expand":         "schema,names",
@@ -572,9 +602,10 @@ func (h *Handler) sprintIssues(w http.ResponseWriter, r *http.Request, sprint *m
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	beans := make([]map[string]any, 0, len(issues))
-	for _, i := range issues {
-		beans = append(beans, h.IssueBean(i))
+	beans, err := h.agileIssueBeans(r.Context(), issues)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "internal error")
+		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"maxResults": 50,
@@ -627,109 +658,6 @@ func (h *Handler) moveIssuesToSprint(w http.ResponseWriter, r *http.Request, wsI
 		if err := h.Commands.PlanIssue(r.Context(), userID, wsID, board.ID, issue.ID, sprint.ID, "", ""); err != nil {
 			jiraError(w, http.StatusBadRequest, err.Error())
 			return
-		}
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// rank implements POST /rest/agile/1.0/issue/rank.
-func (h *Handler) rank(w http.ResponseWriter, r *http.Request) {
-	wsID, userID, status, msg := h.authWorkspace(r)
-	if status != 0 {
-		jiraError(w, status, msg)
-		return
-	}
-	var req struct {
-		Issues          []string `json:"issues"`
-		RankBeforeIssue string   `json:"rankBeforeIssue"`
-		RankAfterIssue  string   `json:"rankAfterIssue"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		jiraError(w, http.StatusBadRequest, "Invalid request payload.")
-		return
-	}
-	if len(req.Issues) == 0 {
-		jiraFieldError(w, http.StatusBadRequest, map[string]string{"issues": "At least one issue key or id is required."})
-		return
-	}
-	if req.RankBeforeIssue == "" && req.RankAfterIssue == "" {
-		jiraFieldError(w, http.StatusBadRequest, map[string]string{
-			"rankBeforeIssue": "Either rankBeforeIssue or rankAfterIssue is required.",
-		})
-		return
-	}
-	if req.RankBeforeIssue != "" && req.RankAfterIssue != "" {
-		jiraError(w, http.StatusBadRequest, "Specify only one of rankBeforeIssue or rankAfterIssue.")
-		return
-	}
-	issues := make([]*models.Issue, 0, len(req.Issues))
-	seenIssues := make(map[string]bool, len(req.Issues))
-	for _, issueKey := range req.Issues {
-		issue, err := h.visibleIssue(r, wsID, userID, issueKey)
-		if err != nil {
-			jiraError(w, http.StatusNotFound, "Issue "+issueKey+" does not exist.")
-			return
-		}
-		if !seenIssues[issue.ID] {
-			seenIssues[issue.ID] = true
-			issues = append(issues, issue)
-		}
-	}
-	resolveIssue := func(keyOrID string) (*models.Issue, error) {
-		ref, err := h.visibleIssue(r, wsID, userID, keyOrID)
-		if err != nil {
-			return nil, fmt.Errorf("issue %q does not exist", keyOrID)
-		}
-		return ref, nil
-	}
-	beforeID := ""
-	afterID := ""
-	var reference *models.Issue
-	var err error
-	if req.RankBeforeIssue != "" {
-		if reference, err = resolveIssue(req.RankBeforeIssue); err != nil {
-			jiraError(w, http.StatusNotFound, err.Error())
-			return
-		}
-		beforeID = reference.ID
-	} else {
-		if reference, err = resolveIssue(req.RankAfterIssue); err != nil {
-			jiraError(w, http.StatusNotFound, err.Error())
-			return
-		}
-		afterID = reference.ID
-	}
-	for _, issue := range issues {
-		if issue.ProjectID != reference.ProjectID || issue.Status.ID != reference.Status.ID {
-			jiraFieldError(w, http.StatusBadRequest, map[string]string{
-				"issues": "All ranked issues and the reference issue must be in the same board column.",
-			})
-			return
-		}
-	}
-	rankOne := func(issue *models.Issue) bool {
-		if err := h.Commands.SetIssueRank(r.Context(), userID, wsID, issue.ID, beforeID, afterID, ""); err != nil {
-			jiraError(w, http.StatusInternalServerError, "internal error")
-			return false
-		}
-		if beforeID != "" {
-			beforeID = issue.ID
-		} else {
-			afterID = issue.ID
-		}
-		return true
-	}
-	if beforeID != "" {
-		for i := len(issues) - 1; i >= 0; i-- {
-			if !rankOne(issues[i]) {
-				return
-			}
-		}
-	} else {
-		for _, issue := range issues {
-			if !rankOne(issue) {
-				return
-			}
 		}
 	}
 	w.WriteHeader(http.StatusNoContent)

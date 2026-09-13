@@ -31,6 +31,12 @@ type Board struct {
 	// JiraID and FilterJiraID are the board and board filter ids clients see.
 	JiraID       int64 `json:"-"`
 	FilterJiraID int64 `json:"-"`
+	// EstimationFieldID is the number field a scrum board estimates with.
+	EstimationFieldID   string `json:"-"`
+	EstimationFieldName string `json:"-"`
+	// SourceFilterID is the saved filter the board was created from, if any.
+	SourceFilterID     string `json:"-"`
+	SourceFilterJiraID int64  `json:"-"`
 }
 
 type BoardQuickFilter struct {
