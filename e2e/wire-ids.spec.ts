@@ -73,6 +73,10 @@ test('no stored id reaches a client through the Jira, Agile or Service Managemen
   const sprintId = sprints.values?.[0]?.id;
   const serviceDesks = await (await request.get('/rest/servicedeskapi/servicedesk', { headers })).json();
   const serviceDeskId = serviceDesks.values?.[0]?.id;
+  const workflows = await (await request.get('/rest/api/3/workflow/search', { headers })).json();
+  const workflowId = workflows.values?.[0]?.id;
+  const schemes = await (await request.get('/rest/api/3/workflowscheme', { headers })).json();
+  const schemeId = schemes.values?.[0]?.id;
 
   const paths = [
     '/rest/api/3/project', '/rest/api/3/project/ZZ', '/rest/api/3/project/search', `/rest/api/3/project/${project.id}`,
@@ -92,6 +96,12 @@ test('no stored id reaches a client through the Jira, Agile or Service Managemen
     for (const suffix of ['', '/configuration', '/sprint', '/issue', '/backlog', '/project', '/quickfilter', '/features']) {
       paths.push(`/rest/agile/1.0/board/${boardId}${suffix}`);
     }
+  }
+  if (workflowId) {
+    paths.push(`/rest/api/3/workflow/${workflowId}/workflowSchemes`, `/rest/api/3/workflow/${workflowId}/projectUsages`);
+  }
+  if (schemeId) {
+    paths.push(`/rest/api/3/workflowscheme/${schemeId}`, `/rest/api/3/workflowscheme/${schemeId}/projectUsages`);
   }
   if (sprintId) {
     paths.push(`/rest/agile/1.0/sprint/${sprintId}`, `/rest/agile/1.0/sprint/${sprintId}/issue`);
