@@ -695,6 +695,18 @@ func main() {
 	mux.HandleFunc("POST /wiki/rest/atlassian-connect/1/app/module/dynamic", appAPI.DynamicModules)
 	mux.HandleFunc("DELETE /wiki/rest/atlassian-connect/1/app/module/dynamic", appAPI.DynamicModules)
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.Dir(static))))
+	// Jira names priority icons by /images/icons/priorities/<name>.png or
+	// .svg; both extensions resolve to the same icon, served as SVG.
+	mux.HandleFunc("GET /images/icons/priorities/{file}", func(w http.ResponseWriter, r *http.Request) {
+		name := strings.TrimSuffix(strings.TrimSuffix(strings.TrimSuffix(r.PathValue("file"), ".png"), ".svg"), "_new")
+		if name == "" || strings.ContainsAny(name, "/\\.") {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "image/svg+xml")
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+		http.ServeFile(w, r, filepath.Join(static, "img", "priorities", name+".svg"))
+	})
 	mux.HandleFunc("GET /sw.js", func(w http.ResponseWriter, r *http.Request) {
 		// Root scope is required for the service worker to control page navigations.
 		w.Header().Set("Service-Worker-Allowed", "/")

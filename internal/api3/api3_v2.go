@@ -147,46 +147,6 @@ func (h *Handler) getProject(w http.ResponseWriter, r *http.Request, keyOrID str
 	h.writeProject(w, r, project)
 }
 
-// ---- users ----
-
-func (h *Handler) searchUsers(w http.ResponseWriter, r *http.Request) {
-	wsID, _, e := h.authWorkspace(r)
-	if e != nil {
-		writeJerr(w, e)
-		return
-	}
-	query := r.URL.Query().Get("query")
-	members, err := h.Store.SearchMembers(r.Context(), wsID, query)
-	if err != nil {
-		jiraError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	out := make([]map[string]any, 0, len(members))
-	for _, u := range members {
-		out = append(out, h.userBean(u))
-	}
-	writeJSON(w, http.StatusOK, out)
-}
-
-func (h *Handler) getUser(w http.ResponseWriter, r *http.Request) {
-	wsID, _, e := h.authWorkspace(r)
-	if e != nil {
-		writeJerr(w, e)
-		return
-	}
-	accountID := r.URL.Query().Get("accountId")
-	if accountID == "" {
-		jiraError(w, http.StatusBadRequest, "The accountId parameter is required.")
-		return
-	}
-	u, err := h.Store.MemberByID(r.Context(), wsID, accountID)
-	if err != nil {
-		jiraError(w, http.StatusNotFound, "The user does not exist.")
-		return
-	}
-	writeJSON(w, http.StatusOK, h.userBean(u))
-}
-
 // ---- createmeta ----
 
 func (h *Handler) createMeta(w http.ResponseWriter, r *http.Request) {
