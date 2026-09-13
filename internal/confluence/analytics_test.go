@@ -192,4 +192,35 @@ func TestContentAnalytics(t *testing.T) {
 	if views := count(author, pageID, "views", ""); views != 3 {
 		t.Fatalf("a refused read was counted: %v", views)
 	}
+
+	// Content created before ids were shared across kinds can still collide:
+	// a blog post may carry the same id as a page. The page the reader may not
+	// open must stay a 404 rather than falling through to that blog post and
+	// reporting its views — which is exactly what CI caught on a fresh
+	// database, where page 1 and blog post 1 both existed.
+	legacyPost := ""
+	if err := st.Pool.QueryRow(ctx, `INSERT INTO wiki_blog_posts(id,space_id,title,status,body,author_id,published)
+		VALUES ($1::bigint,$2::bigint,'Legacy twin','current','<p>twin</p>',$3,true) RETURNING id::text`,
+		pageID, spaceID, author).Scan(&legacyPost); err != nil {
+		t.Fatalf("legacy colliding blog post: %v", err)
+	}
+	exec(`INSERT INTO wiki_blog_post_versions(blog_post_id,version,title,status,body,author_id) VALUES ($1::bigint,1,'Legacy twin','current','<p>twin</p>',$2)`, legacyPost, author)
+	exec(`INSERT INTO wiki_content_views(workspace_id,content_type,content_id,user_id) VALUES ($1,'blogpost',$2::bigint,$3)`, ws, legacyPost, reader)
+	send(v1, "/wiki/rest/api", reader, "GET", "/analytics/content/"+pageID+"/views", nil, 404)
+	send(v1, "/wiki/rest/api", reader, "GET", "/analytics/content/"+pageID+"/viewers", nil, 404)
+	// The author, who may open the page, still gets the page's numbers rather
+	// than the twin's.
+	if views := count(author, pageID, "views", ""); views != 3 {
+		t.Fatalf("a colliding id reported the wrong content: %v", views)
+	}
+
+	// New content never collides: a page and a blog post created now carry
+	// different ids.
+	freshPage := object(callV2(author, "POST", "/pages", map[string]any{"spaceId": spaceID, "title": "Fresh page",
+		"status": "current", "body": models.WikiBody{Representation: "storage", Value: "<p>new</p>"}}, 200))
+	freshPost := object(callV2(author, "POST", "/blogposts", map[string]any{"spaceId": spaceID, "title": "Fresh post",
+		"status": "current", "body": models.WikiBody{Representation: "storage", Value: "<p>new</p>"}}, 200))
+	if freshPage["id"] == freshPost["id"] {
+		t.Fatalf("new content shares an id: page %v post %v", freshPage["id"], freshPost["id"])
+	}
 }

@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -29,20 +28,29 @@ func (s *Store) RecordWikiContentView(ctx context.Context, ws, actor, contentTyp
 	return err
 }
 
-// resolveViewedContent finds the content a bare id names, the way every v1
-// content route here does: a page first, then a blog post. Reading it through
-// the ordinary visibility rules means analytics for content a reader may not
-// open is a 404, exactly as the content itself is.
+// resolveViewedContent finds the content a bare id names and reads it through
+// its own visibility rules. The kind is decided by what exists, not by what the
+// reader may see: a page the reader may not open is a 404, never a blog post
+// that happens to share its id.
 func (s *Store) resolveViewedContent(ctx context.Context, ws, actor, id string) (string, error) {
-	if _, err := s.WikiPage(ctx, ws, actor, id); err == nil {
-		return "page", nil
-	} else if !errors.Is(err, pgx.ErrNoRows) {
+	kind, err := s.WikiContentKindByID(ctx, ws, id)
+	if err != nil {
 		return "", err
 	}
-	if _, err := s.WikiBlogPost(ctx, ws, actor, id); err != nil {
+	switch kind.Type {
+	case "page":
+		_, err = s.WikiPage(ctx, ws, actor, id)
+	case "blogpost":
+		_, err = s.WikiBlogPost(ctx, ws, actor, id)
+	default:
+		// Only pages and blog posts are viewed in the sense these numbers
+		// report, so any other content has no analytics to show.
+		err = pgx.ErrNoRows
+	}
+	if err != nil {
 		return "", err
 	}
-	return "blogpost", nil
+	return kind.Type, nil
 }
 
 // WikiContentViews counts the views content has had since from, or ever when
