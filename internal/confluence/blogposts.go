@@ -149,6 +149,9 @@ func (h *Handler) blogPost(w http.ResponseWriter, r *http.Request, ws, actor, id
 		failure(w, 404, "Blog post not found with the requested status.")
 		return
 	}
+	if post.Status == "current" {
+		h.recordView(r, ws, actor, "blogpost", post.ID)
+	}
 	respond(w, 200, h.blogPostBean(post, r.URL.Query().Get("body-format") != ""))
 }
 

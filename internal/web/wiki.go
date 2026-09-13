@@ -619,6 +619,9 @@ func (h *Handler) wikiBlogPost(w http.ResponseWriter, r *http.Request, creating 
 			}
 		}
 	}
+	if !editing && r.Method == http.MethodGet && post.ID != "" && post.Status == "current" {
+		h.recordWikiView(r, ws, user.ID, "blogpost", post.ID)
+	}
 	h.writeWorkspacePageStatus(w, r, "page_wiki_blogpost", user, ws, wikiData{Space: space, BlogPost: post, Versions: versions, Labels: labels, BlogProperties: properties, BlogLikeCount: likeCount, BlogLiked: liked, Attachments: attachments, Comments: blogComments, InlineComments: blogInlineComments, Editing: editing, CanEdit: true, Error: errorMessage}, "wiki", "", pageStatus)
 }
 
@@ -1372,6 +1375,9 @@ func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 				return
 			}
 		}
+	}
+	if !edit && r.Method == http.MethodGet && page.ID != "" && page.Status == "current" {
+		h.recordWikiView(r, ws, user.ID, "page", page.ID)
 	}
 	h.writeWorkspacePageStatus(w, r, "page_wiki_page", user, ws, data, "wiki", "", status)
 }

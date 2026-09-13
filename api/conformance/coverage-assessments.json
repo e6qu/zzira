@@ -382,6 +382,30 @@
       "notes": "Removal supports repeated moduleKey values and delete-all with durable reinstall semantics."
     },
     {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/analytics/content/{contentId}/viewers",
+      "status": "partial",
+      "evidence": [
+        "migrations/157_wiki_content_views.sql",
+        "internal/store/wiki_content_views.go",
+        "internal/confluence/analytics.go",
+        "internal/confluence/analytics_test.go",
+        "docs/CONTENT_ANALYTICS.md"
+      ],
+      "notes": "Counts the distinct people who viewed a page or blog post, optionally from fromDate, under the same recording and visibility rules as the view count."
+    },
+    {
+      "operationId": "confluence-v1:GET:/wiki/rest/api/analytics/content/{contentId}/views",
+      "status": "partial",
+      "evidence": [
+        "migrations/157_wiki_content_views.sql",
+        "internal/store/wiki_content_views.go",
+        "internal/confluence/analytics.go",
+        "internal/confluence/analytics_test.go",
+        "docs/CONTENT_ANALYTICS.md"
+      ],
+      "notes": "Counts every view of a page or blog post, optionally from fromDate; a view is recorded when published content is opened in the product or read singly through the v2 API, never for writes, listings, searches, drafts or refused reads, and the count is a 404 for anyone who may not open the content."
+    },
+    {
       "operationId": "confluence-v1:GET:/wiki/rest/api/audit",
       "status": "partial",
       "evidence": [

@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 911,
+  "assessedTotal": 913,
   "counts": {
     "delivered": 0,
-    "partial": 900,
+    "partial": 902,
     "missing": 11,
-    "unassessed": 296
+    "unassessed": 294
   },
   "countsByFamily": {
     "automation": {
@@ -18,9 +18,9 @@
     },
     "confluence": {
       "delivered": 0,
-      "partial": 330,
+      "partial": 332,
       "missing": 0,
-      "unassessed": 18
+      "unassessed": 16
     },
     "jira-platform": {
       "delivered": 0,
@@ -8754,17 +8754,29 @@
       "operationId": "confluence-v1:GET:/wiki/rest/api/analytics/content/{contentId}/viewers",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "migrations/157_wiki_content_views.sql",
+        "internal/store/wiki_content_views.go",
+        "internal/confluence/analytics.go",
+        "internal/confluence/analytics_test.go",
+        "docs/CONTENT_ANALYTICS.md"
+      ],
+      "notes": "Counts the distinct people who viewed a page or blog post, optionally from fromDate, under the same recording and visibility rules as the view count."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/analytics/content/{contentId}/views",
       "family": "confluence",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "migrations/157_wiki_content_views.sql",
+        "internal/store/wiki_content_views.go",
+        "internal/confluence/analytics.go",
+        "internal/confluence/analytics_test.go",
+        "docs/CONTENT_ANALYTICS.md"
+      ],
+      "notes": "Counts every view of a page or blog post, optionally from fromDate; a view is recorded when published content is opened in the product or read singly through the v2 API, never for writes, listings, searches, drafts or refused reads, and the count is a 404 for anyone who may not open the content."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/audit",
