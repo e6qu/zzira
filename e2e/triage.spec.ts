@@ -121,7 +121,8 @@ test('issue triage journey: inline fields, labels API, watchers, votes, links, a
   await page.getByRole('button', { name: `Remove link to ${linkedKey}` }).click();
   await expect(page.locator('.linked-work-list')).toHaveCount(0);
 
-  const unwatch = await request.delete(`/rest/api/3/issue/${key}/watchers`, { headers: auth });
+  const me = await (await request.get('/rest/api/3/myself', { headers: auth })).json();
+  const unwatch = await request.delete(`/rest/api/3/issue/${key}/watchers?accountId=${me.accountId}`, { headers: auth });
   expect(unwatch.status()).toBe(204);
   const unvote = await request.delete(`/rest/api/3/issue/${key}/votes`, { headers: auth });
   expect(unvote.status()).toBe(204);

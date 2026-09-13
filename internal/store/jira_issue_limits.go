@@ -101,8 +101,8 @@ func (s *Store) IssueADFSizes(ctx context.Context, workspaceID, userID string, b
 		"comment_adf":     `SELECT c.issue_id, c.jira_id::text, octet_length(c.body::text) FROM comments c`,
 		"worklog_adf":     `SELECT w.issue_id, w.id, octet_length(COALESCE(w.comment::text,'')) FROM worklogs w`,
 		"description_adf": `SELECT i.id, i.jira_id::text, octet_length(COALESCE(i.description::text,'')) FROM issues i`,
-		"environment_adf": `SELECT i.id, i.jira_id::text, octet_length(COALESCE((i.fields->'environment')::text,'')) FROM issues i`,
-		"customfield_adf": `SELECT i.id, f.key, octet_length(f.value::text) FROM issues i, jsonb_each(COALESCE(i.fields,'{}'::jsonb)) f
+		"environment_adf": `SELECT i.id, i.jira_id::text, octet_length(CASE WHEN jsonb_typeof(i.fields)='object' THEN COALESCE((i.fields->'environment')::text,'') ELSE '' END) FROM issues i`,
+		"customfield_adf": `SELECT i.id, f.key, octet_length(f.value::text) FROM issues i, jsonb_each(CASE WHEN jsonb_typeof(i.fields)='object' THEN i.fields ELSE '{}'::jsonb END) f
 			WHERE f.key LIKE 'customfield\_%' AND jsonb_typeof(f.value)='object' AND f.value->>'type'='doc'`,
 	}
 	sizeLimit := IssueADFSizeLimit

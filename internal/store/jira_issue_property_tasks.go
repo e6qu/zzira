@@ -94,8 +94,7 @@ func (s *Store) EnqueueIssuePropertiesTask(ctx context.Context, workspaceID, act
 // editableIssueIDs narrows issues to those the submitter can see and edit.
 // Without candidates, every such issue on the site is considered.
 func (s *Store) editableIssueIDs(ctx context.Context, workspaceID, userID string, candidates []string) ([]string, error) {
-	query := `SELECT i.id FROM issues i WHERE i.workspace_id=$1 AND ` + VisibleIssuePredicate("i", "$2") + `
-		AND jira_has_project_permission(i.workspace_id, i.project_id, $2, i.id, 'EDIT_ISSUES')`
+	query := `SELECT i.id, i.project_id FROM issues i WHERE i.workspace_id=$1 AND ` + VisibleIssuePredicate("i", "$2")
 	args := []any{workspaceID, userID}
 	if candidates != nil {
 		query += ` AND i.id = ANY($3)`
@@ -106,15 +105,30 @@ func (s *Store) editableIssueIDs(ctx context.Context, workspaceID, userID string
 		return nil, err
 	}
 	defer rows.Close()
-	ids := []string{}
+	type candidate struct{ id, projectID string }
+	visible := []candidate{}
 	for rows.Next() {
-		var id string
-		if err = rows.Scan(&id); err != nil {
+		var c candidate
+		if err = rows.Scan(&c.id, &c.projectID); err != nil {
 			return nil, err
 		}
-		ids = append(ids, id)
+		visible = append(visible, c)
 	}
-	return ids, rows.Err()
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	ids := []string{}
+	for _, c := range visible {
+		allowed, permErr := s.HasProjectPermission(ctx, workspaceID, userID, c.projectID, c.id, "EDIT_ISSUES")
+		if permErr != nil {
+			return nil, permErr
+		}
+		if allowed {
+			ids = append(ids, c.id)
+		}
+	}
+	return ids, nil
 }
 
 func (s *Store) executeIssuePropertiesTask(ctx context.Context, task APITask) error {

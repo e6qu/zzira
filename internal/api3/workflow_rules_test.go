@@ -191,7 +191,7 @@ func TestWorkflowRulesPersistAndExecuteAcrossAPIJourney(t *testing.T) {
 		t.Fatal("API-only transition was available through the user-facing command path")
 	}
 	call(otherID, "POST", "/rest/api/3/issue/"+issue.Key+"/transitions", `{"transition":{"id":"complete"}}`, 400)
-	visible := call(reporterID, "GET", "/rest/api/3/issue/"+issue.Key+"/transitions", "", 200)
+	visible := call(reporterID, "GET", "/rest/api/3/issue/"+issue.Key+"/transitions?expand=transitions.fields", "", 200)
 	if !strings.Contains(visible.Body.String(), `"id":"complete"`) || !strings.Contains(visible.Body.String(), `"isConditional":true`) || !strings.Contains(visible.Body.String(), `"hasScreen":true`) || !strings.Contains(visible.Body.String(), `"labels":{"name":"Labels"`) {
 		t.Fatal(visible.Body.String())
 	}

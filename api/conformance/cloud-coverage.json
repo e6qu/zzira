@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 1027,
+  "assessedTotal": 1088,
   "counts": {
     "delivered": 0,
-    "partial": 1016,
+    "partial": 1077,
     "missing": 11,
-    "unassessed": 180
+    "unassessed": 119
   },
   "countsByFamily": {
     "automation": {
@@ -24,9 +24,9 @@
     },
     "jira-platform": {
       "delivered": 0,
-      "partial": 481,
+      "partial": 542,
       "missing": 0,
-      "unassessed": 136
+      "unassessed": 75
     },
     "jira-service-management": {
       "delivered": 0,
@@ -413,9 +413,14 @@
       "operationId": "jira-v3:POST:/rest/api/3/changelog/bulkfetch",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_operations.go",
+        "internal/api3/api3.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/classification-levels",
@@ -429,41 +434,66 @@
       "operationId": "jira-v3:POST:/rest/api/3/comment/list",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_comments.go",
+        "internal/store/jira_comments.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric comment ids, paging and ordering, group and role visibility, edit and delete by all/own permissions, per-issue limit and bulk list."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/comment/{commentId}/properties",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_comments.go",
+        "internal/store/jira_comments.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Comment properties with 201/200 create-or-replace, gated by comment visibility and edit permissions."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/comment/{commentId}/properties/{propertyKey}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_comments.go",
+        "internal/store/jira_comments.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Comment properties with 201/200 create-or-replace, gated by comment visibility and edit permissions."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/comment/{commentId}/properties/{propertyKey}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_comments.go",
+        "internal/store/jira_comments.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Comment properties with 201/200 create-or-replace, gated by comment visibility and edit permissions."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/comment/{commentId}/properties/{propertyKey}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_comments.go",
+        "internal/store/jira_comments.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Comment properties with 201/200 create-or-replace, gated by comment visibility and edit permissions."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/component",
@@ -1009,9 +1039,14 @@
       "operationId": "jira-v3:GET:/rest/api/3/events",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_operations.go",
+        "internal/api3/api3.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/expression/analyse",
@@ -1907,9 +1942,14 @@
       "operationId": "jira-v3:POST:/rest/api/3/forge/panel/action/bulk/async",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_admin_ops.go",
+        "internal/store/jira_issue_panel_pins.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Issue panel pinning tasks resolved from Forge module ids."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/group",
@@ -2031,249 +2071,403 @@
       "operationId": "jira-v3:POST:/rest/api/3/issue",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_operations.go",
+        "internal/api3/api3.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/issue/archive",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_admin_ops.go",
+        "internal/store/jira_issue_archive.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/issue/archive",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_admin_ops.go",
+        "internal/store/jira_issue_archive.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/issue/bulk",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_operations.go",
+        "internal/api3/api3.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/issue/bulkfetch",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_operations.go",
+        "internal/api3/api3.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issue/createmeta",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_operations.go",
+        "internal/api3/api3.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issue/createmeta/{projectIdOrKey}/issuetypes",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_operations.go",
+        "internal/api3/api3.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issue/createmeta/{projectIdOrKey}/issuetypes/{issueTypeId}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_operations.go",
+        "internal/api3/api3.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issue/limit/adf/report",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_operations.go",
+        "internal/api3/api3.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issue/limit/report",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_operations.go",
+        "internal/api3/api3.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issue/picker",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_operations.go",
+        "internal/store/jira_issue_views.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Issue picker with history and current-search sections, highlighting and archived exclusion."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/issue/properties",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_admin_ops.go",
+        "internal/store/jira_issue_property_tasks.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Bulk issue property tasks on issues the caller can edit, with filters and overlap conflicts; expression values are refused."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/issue/properties/multi",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_admin_ops.go",
+        "internal/store/jira_issue_property_tasks.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Bulk issue property tasks on issues the caller can edit, with filters and overlap conflicts; expression values are refused."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/issue/properties/{propertyKey}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_admin_ops.go",
+        "internal/store/jira_issue_property_tasks.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Bulk issue property tasks on issues the caller can edit, with filters and overlap conflicts; expression values are refused."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/issue/properties/{propertyKey}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_admin_ops.go",
+        "internal/store/jira_issue_property_tasks.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Bulk issue property tasks on issues the caller can edit, with filters and overlap conflicts; expression values are refused."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/issue/unarchive",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_admin_ops.go",
+        "internal/store/jira_issue_archive.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/issue/watching",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_triage.go",
+        "internal/api3/issue_operations.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Watchers for other users behind Manage watchers, list visibility behind View voters and watchers, and bulk watch status."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/issue/{issueIdOrKey}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_operations.go",
+        "internal/api3/api3.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issue/{issueIdOrKey}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_operations.go",
+        "internal/api3/api3.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/issue/{issueIdOrKey}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_operations.go",
+        "internal/api3/api3.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/issue/{issueIdOrKey}/assignee",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_operations.go",
+        "internal/api3/api3.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/issue/{issueIdOrKey}/attachments",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_v3.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Attachment upload returning numeric attachment ids."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issue/{issueIdOrKey}/changelog",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_operations.go",
+        "internal/api3/api3.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/issue/{issueIdOrKey}/changelog/list",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_operations.go",
+        "internal/api3/api3.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issue/{issueIdOrKey}/comment",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_comments.go",
+        "internal/store/jira_comments.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric comment ids, paging and ordering, group and role visibility, edit and delete by all/own permissions, per-issue limit and bulk list."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/issue/{issueIdOrKey}/comment",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_comments.go",
+        "internal/store/jira_comments.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric comment ids, paging and ordering, group and role visibility, edit and delete by all/own permissions, per-issue limit and bulk list."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/issue/{issueIdOrKey}/comment/{id}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_comments.go",
+        "internal/store/jira_comments.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric comment ids, paging and ordering, group and role visibility, edit and delete by all/own permissions, per-issue limit and bulk list."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issue/{issueIdOrKey}/comment/{id}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_comments.go",
+        "internal/store/jira_comments.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric comment ids, paging and ordering, group and role visibility, edit and delete by all/own permissions, per-issue limit and bulk list."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/issue/{issueIdOrKey}/comment/{id}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_comments.go",
+        "internal/store/jira_comments.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric comment ids, paging and ordering, group and role visibility, edit and delete by all/own permissions, per-issue limit and bulk list."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issue/{issueIdOrKey}/editmeta",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_operations.go",
+        "internal/api3/api3.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/issue/{issueIdOrKey}/notify",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_operations.go",
+        "internal/api3/api3.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issue/{issueIdOrKey}/properties",
@@ -2329,65 +2523,105 @@
       "operationId": "jira-v3:DELETE:/rest/api/3/issue/{issueIdOrKey}/remotelink",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_links_api.go",
+        "internal/store/jira_remote_links.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Remote links with upsert by global id, issue ownership checks and per-issue limit."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issue/{issueIdOrKey}/remotelink",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_links_api.go",
+        "internal/store/jira_remote_links.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Remote links with upsert by global id, issue ownership checks and per-issue limit."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/issue/{issueIdOrKey}/remotelink",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_links_api.go",
+        "internal/store/jira_remote_links.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Remote links with upsert by global id, issue ownership checks and per-issue limit."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/issue/{issueIdOrKey}/remotelink/{linkId}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_links_api.go",
+        "internal/store/jira_remote_links.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Remote links with upsert by global id, issue ownership checks and per-issue limit."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issue/{issueIdOrKey}/remotelink/{linkId}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_links_api.go",
+        "internal/store/jira_remote_links.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Remote links with upsert by global id, issue ownership checks and per-issue limit."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/issue/{issueIdOrKey}/remotelink/{linkId}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_links_api.go",
+        "internal/store/jira_remote_links.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Remote links with upsert by global id, issue ownership checks and per-issue limit."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issue/{issueIdOrKey}/transitions",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_operations.go",
+        "internal/api3/api3.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/issue/{issueIdOrKey}/transitions",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_operations.go",
+        "internal/api3/api3.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/issue/{issueIdOrKey}/votes",
@@ -2431,25 +2665,40 @@
       "operationId": "jira-v3:DELETE:/rest/api/3/issue/{issueIdOrKey}/watchers",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_triage.go",
+        "internal/api3/issue_operations.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Watchers for other users behind Manage watchers, list visibility behind View voters and watchers, and bulk watch status."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issue/{issueIdOrKey}/watchers",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_triage.go",
+        "internal/api3/issue_operations.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Watchers for other users behind Manage watchers, list visibility behind View voters and watchers, and bulk watch status."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/issue/{issueIdOrKey}/watchers",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_triage.go",
+        "internal/api3/issue_operations.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Watchers for other users behind Manage watchers, list visibility behind View voters and watchers, and bulk watch status."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/issue/{issueIdOrKey}/worklog",
@@ -2576,73 +2825,118 @@
       "operationId": "jira-v3:POST:/rest/api/3/issueLink",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_links_api.go",
+        "internal/store/links.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Jira's inward/outward semantics with numeric link ids, Link issues permission, per-issue limit and optional comment."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/issueLink/{linkId}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_links_api.go",
+        "internal/store/links.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Jira's inward/outward semantics with numeric link ids, Link issues permission, per-issue limit and optional comment."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issueLink/{linkId}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_links_api.go",
+        "internal/store/links.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Jira's inward/outward semantics with numeric link ids, Link issues permission, per-issue limit and optional comment."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issueLinkType",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_links_api.go",
+        "internal/store/jira_link_types.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Per-site link types with Jira's default ids, administrator-only changes, name uniqueness and cascading delete."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/issueLinkType",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_links_api.go",
+        "internal/store/jira_link_types.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Per-site link types with Jira's default ids, administrator-only changes, name uniqueness and cascading delete."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/issueLinkType/{issueLinkTypeId}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_links_api.go",
+        "internal/store/jira_link_types.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Per-site link types with Jira's default ids, administrator-only changes, name uniqueness and cascading delete."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issueLinkType/{issueLinkTypeId}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_links_api.go",
+        "internal/store/jira_link_types.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Per-site link types with Jira's default ids, administrator-only changes, name uniqueness and cascading delete."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/issueLinkType/{issueLinkTypeId}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_links_api.go",
+        "internal/store/jira_link_types.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Per-site link types with Jira's default ids, administrator-only changes, name uniqueness and cascading delete."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/issues/archive/export",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_admin_ops.go",
+        "internal/store/jira_issue_archive.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issuesecurityschemes",
@@ -4822,17 +5116,27 @@
       "operationId": "jira-v3:POST:/rest/api/3/redact",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_admin_ops.go",
+        "internal/store/jira_redaction.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Digest-verified redaction jobs over fields, comments and worklogs, with history scrubbing and per-redaction results."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/redact/status/{jobId}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_admin_ops.go",
+        "internal/store/jira_redaction.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Digest-verified redaction jobs over fields, comments and worklogs, with history scrubbing and per-redaction results."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/resolution",
