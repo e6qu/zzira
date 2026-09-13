@@ -198,7 +198,7 @@ func TestProjectAPILifecycle(t *testing.T) {
 	sprintID := store.NewID("spr")
 	exec(`INSERT INTO sprints(id,board_id,name,state) VALUES($1,$2,'Current sprint','active')`, sprintID, teamBoardID)
 	exec(`INSERT INTO sprint_issues(sprint_id,issue_id) VALUES($1,$2)`, sprintID, saved.ID)
-	if _, _, err := st.CreateIssueLink(ctx, actor, ws, "lt_relates", saved.ID, assigned.ID); err != nil {
+	if _, _, err := st.CreateIssueLink(ctx, actor, ws, siteLinkTypeID(t, st, ws, "Relates"), saved.ID, assigned.ID); err != nil {
 		t.Fatal(err)
 	}
 	var directoryID, groupID string
@@ -376,4 +376,14 @@ func TestProjectAPILifecycle(t *testing.T) {
 	call(actor, "POST", "/rest/api/3/search/jql", `{"jql":"project=TEAM","maxResults":1,"nextPageToken":"`+reconcileCursor.NextPageToken+`"}`, 400)
 	call(actor, "GET", "/rest/api/3/search/jql?jql=project%3DTEAM&nextPageToken=LTE%3D", "", 400)
 	call(actor, "GET", "/rest/api/3/search/jql?jql=ORDER%20BY%20key", "", 400)
+}
+
+// siteLinkTypeID finds one of a site's issue link types by name.
+func siteLinkTypeID(t *testing.T, st *store.Store, workspaceID, name string) string {
+	t.Helper()
+	id, err := st.LinkTypeIDByName(context.Background(), workspaceID, name)
+	if err != nil {
+		t.Fatalf("link type %s: %v", name, err)
+	}
+	return id
 }

@@ -19,6 +19,10 @@ type searchOptions struct {
 	FieldsByKeys bool
 	FailFast     bool
 	Validate     string
+	// IssueDetails loads the fields kept outside the issue row — comments,
+	// links, watchers and the like — for every field requested with *all, as a
+	// single-issue read does. Without it only fields named outright are loaded.
+	IssueDetails bool
 }
 
 type searchFieldDefinition struct {
@@ -270,7 +274,13 @@ func (h *Handler) searchIssueBeans(ctx context.Context, workspaceID, userID stri
 	beans := make([]map[string]any, 0, len(issues))
 	editMetadata := map[string]map[string]any{}
 	for _, issue := range issues {
-		bean := remapSearchIssueFields(h.issueBean(issue), definitions, options.FieldsByKeys)
+		full := h.issueBean(issue)
+		if fields, ok := full["fields"].(map[string]any); ok {
+			if err := h.addIssueDetailFields(ctx, workspaceID, userID, issue, fields, requested, options.IssueDetails, defaultAll); err != nil {
+				return nil, err
+			}
+		}
+		bean := remapSearchIssueFields(full, definitions, options.FieldsByKeys)
 		bean = projectSearchIssue(bean, requested, defaultAll)
 		if len(options.Expand) > 0 && len(bean) > 1 {
 			bean["expand"] = strings.Join(options.Expand, ",")

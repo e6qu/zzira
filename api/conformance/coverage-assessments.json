@@ -11560,6 +11560,676 @@
         "docs/PEOPLE.md"
       ],
       "notes": "Account-id keyed person records with self, avatars, email shown only to the person or administrators, groups and application role expansions, and site scoping."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/changelog/bulkfetch",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_operations.go",
+        "internal/api3/api3.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/comment/list",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_comments.go",
+        "internal/store/jira_comments.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric comment ids, paging and ordering, group and role visibility, edit and delete by all/own permissions, per-issue limit and bulk list."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/comment/{commentId}/properties",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_comments.go",
+        "internal/store/jira_comments.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Comment properties with 201/200 create-or-replace, gated by comment visibility and edit permissions."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/comment/{commentId}/properties/{propertyKey}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_comments.go",
+        "internal/store/jira_comments.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Comment properties with 201/200 create-or-replace, gated by comment visibility and edit permissions."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/comment/{commentId}/properties/{propertyKey}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_comments.go",
+        "internal/store/jira_comments.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Comment properties with 201/200 create-or-replace, gated by comment visibility and edit permissions."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/comment/{commentId}/properties/{propertyKey}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_comments.go",
+        "internal/store/jira_comments.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Comment properties with 201/200 create-or-replace, gated by comment visibility and edit permissions."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/events",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_operations.go",
+        "internal/api3/api3.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/forge/panel/action/bulk/async",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_admin_ops.go",
+        "internal/store/jira_issue_panel_pins.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Issue panel pinning tasks resolved from Forge module ids."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/issue",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_operations.go",
+        "internal/api3/api3.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/issue/archive",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_admin_ops.go",
+        "internal/store/jira_issue_archive.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/issue/archive",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_admin_ops.go",
+        "internal/store/jira_issue_archive.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/issue/bulk",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_operations.go",
+        "internal/api3/api3.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/issue/bulkfetch",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_operations.go",
+        "internal/api3/api3.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/issue/createmeta",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_operations.go",
+        "internal/api3/api3.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/issue/createmeta/{projectIdOrKey}/issuetypes",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_operations.go",
+        "internal/api3/api3.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/issue/createmeta/{projectIdOrKey}/issuetypes/{issueTypeId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_operations.go",
+        "internal/api3/api3.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/issue/limit/adf/report",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_operations.go",
+        "internal/api3/api3.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/issue/limit/report",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_operations.go",
+        "internal/api3/api3.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/issue/picker",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_operations.go",
+        "internal/store/jira_issue_views.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Issue picker with history and current-search sections, highlighting and archived exclusion."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/issue/properties",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_admin_ops.go",
+        "internal/store/jira_issue_property_tasks.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Bulk issue property tasks on issues the caller can edit, with filters and overlap conflicts; expression values are refused."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/issue/properties/multi",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_admin_ops.go",
+        "internal/store/jira_issue_property_tasks.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Bulk issue property tasks on issues the caller can edit, with filters and overlap conflicts; expression values are refused."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/issue/properties/{propertyKey}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_admin_ops.go",
+        "internal/store/jira_issue_property_tasks.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Bulk issue property tasks on issues the caller can edit, with filters and overlap conflicts; expression values are refused."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/issue/properties/{propertyKey}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_admin_ops.go",
+        "internal/store/jira_issue_property_tasks.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Bulk issue property tasks on issues the caller can edit, with filters and overlap conflicts; expression values are refused."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/issue/unarchive",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_admin_ops.go",
+        "internal/store/jira_issue_archive.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/issue/watching",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_triage.go",
+        "internal/api3/issue_operations.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Watchers for other users behind Manage watchers, list visibility behind View voters and watchers, and bulk watch status."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/issue/{issueIdOrKey}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_operations.go",
+        "internal/api3/api3.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/issue/{issueIdOrKey}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_operations.go",
+        "internal/api3/api3.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/issue/{issueIdOrKey}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_operations.go",
+        "internal/api3/api3.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/issue/{issueIdOrKey}/assignee",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_operations.go",
+        "internal/api3/api3.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/issue/{issueIdOrKey}/attachments",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_v3.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Attachment upload returning numeric attachment ids."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/issue/{issueIdOrKey}/changelog",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_operations.go",
+        "internal/api3/api3.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/issue/{issueIdOrKey}/changelog/list",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_operations.go",
+        "internal/api3/api3.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/issue/{issueIdOrKey}/comment",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_comments.go",
+        "internal/store/jira_comments.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric comment ids, paging and ordering, group and role visibility, edit and delete by all/own permissions, per-issue limit and bulk list."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/issue/{issueIdOrKey}/comment",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_comments.go",
+        "internal/store/jira_comments.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric comment ids, paging and ordering, group and role visibility, edit and delete by all/own permissions, per-issue limit and bulk list."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/issue/{issueIdOrKey}/comment/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_comments.go",
+        "internal/store/jira_comments.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric comment ids, paging and ordering, group and role visibility, edit and delete by all/own permissions, per-issue limit and bulk list."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/issue/{issueIdOrKey}/comment/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_comments.go",
+        "internal/store/jira_comments.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric comment ids, paging and ordering, group and role visibility, edit and delete by all/own permissions, per-issue limit and bulk list."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/issue/{issueIdOrKey}/comment/{id}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_comments.go",
+        "internal/store/jira_comments.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric comment ids, paging and ordering, group and role visibility, edit and delete by all/own permissions, per-issue limit and bulk list."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/issue/{issueIdOrKey}/editmeta",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_operations.go",
+        "internal/api3/api3.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/issue/{issueIdOrKey}/notify",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_operations.go",
+        "internal/api3/api3.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/issue/{issueIdOrKey}/remotelink",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_links_api.go",
+        "internal/store/jira_remote_links.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Remote links with upsert by global id, issue ownership checks and per-issue limit."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/issue/{issueIdOrKey}/remotelink",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_links_api.go",
+        "internal/store/jira_remote_links.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Remote links with upsert by global id, issue ownership checks and per-issue limit."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/issue/{issueIdOrKey}/remotelink",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_links_api.go",
+        "internal/store/jira_remote_links.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Remote links with upsert by global id, issue ownership checks and per-issue limit."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/issue/{issueIdOrKey}/remotelink/{linkId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_links_api.go",
+        "internal/store/jira_remote_links.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Remote links with upsert by global id, issue ownership checks and per-issue limit."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/issue/{issueIdOrKey}/remotelink/{linkId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_links_api.go",
+        "internal/store/jira_remote_links.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Remote links with upsert by global id, issue ownership checks and per-issue limit."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/issue/{issueIdOrKey}/remotelink/{linkId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_links_api.go",
+        "internal/store/jira_remote_links.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Remote links with upsert by global id, issue ownership checks and per-issue limit."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/issue/{issueIdOrKey}/transitions",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_operations.go",
+        "internal/api3/api3.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/issue/{issueIdOrKey}/transitions",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_operations.go",
+        "internal/api3/api3.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/issue/{issueIdOrKey}/watchers",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_triage.go",
+        "internal/api3/issue_operations.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Watchers for other users behind Manage watchers, list visibility behind View voters and watchers, and bulk watch status."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/issue/{issueIdOrKey}/watchers",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_triage.go",
+        "internal/api3/issue_operations.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Watchers for other users behind Manage watchers, list visibility behind View voters and watchers, and bulk watch status."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/issue/{issueIdOrKey}/watchers",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/api3_triage.go",
+        "internal/api3/issue_operations.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Watchers for other users behind Manage watchers, list visibility behind View voters and watchers, and bulk watch status."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/issueLink",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_links_api.go",
+        "internal/store/links.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Jira's inward/outward semantics with numeric link ids, Link issues permission, per-issue limit and optional comment."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/issueLink/{linkId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_links_api.go",
+        "internal/store/links.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Jira's inward/outward semantics with numeric link ids, Link issues permission, per-issue limit and optional comment."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/issueLink/{linkId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_links_api.go",
+        "internal/store/links.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Jira's inward/outward semantics with numeric link ids, Link issues permission, per-issue limit and optional comment."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/issueLinkType",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_links_api.go",
+        "internal/store/jira_link_types.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Per-site link types with Jira's default ids, administrator-only changes, name uniqueness and cascading delete."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/issueLinkType",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_links_api.go",
+        "internal/store/jira_link_types.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Per-site link types with Jira's default ids, administrator-only changes, name uniqueness and cascading delete."
+    },
+    {
+      "operationId": "jira-v3:DELETE:/rest/api/3/issueLinkType/{issueLinkTypeId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_links_api.go",
+        "internal/store/jira_link_types.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Per-site link types with Jira's default ids, administrator-only changes, name uniqueness and cascading delete."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/issueLinkType/{issueLinkTypeId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_links_api.go",
+        "internal/store/jira_link_types.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Per-site link types with Jira's default ids, administrator-only changes, name uniqueness and cascading delete."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/issueLinkType/{issueLinkTypeId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_links_api.go",
+        "internal/store/jira_link_types.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Per-site link types with Jira's default ids, administrator-only changes, name uniqueness and cascading delete."
+    },
+    {
+      "operationId": "jira-v3:PUT:/rest/api/3/issues/archive/export",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_admin_ops.go",
+        "internal/store/jira_issue_archive.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/redact",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_admin_ops.go",
+        "internal/store/jira_redaction.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Digest-verified redaction jobs over fields, comments and worklogs, with history scrubbing and per-redaction results."
+    },
+    {
+      "operationId": "jira-v3:GET:/rest/api/3/redact/status/{jobId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/issue_admin_ops.go",
+        "internal/store/jira_redaction.go",
+        "internal/api3/issue_surface_test.go",
+        "docs/ISSUE_SURFACE.md"
+      ],
+      "notes": "Digest-verified redaction jobs over fields, comments and worklogs, with history scrubbing and per-redaction results."
     }
   ]
 }

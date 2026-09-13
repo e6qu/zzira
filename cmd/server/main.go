@@ -730,6 +730,7 @@ func main() {
 		w.Header().Set("Cache-Control", "public, max-age=86400")
 		http.ServeFile(w, r, filepath.Join(static, "img", "priorities", icon))
 	})
+	mux.HandleFunc("GET /secure/archived-issues-export/{file}", api.ArchivedIssuesExportFile)
 	mux.HandleFunc("GET /sw.js", func(w http.ResponseWriter, r *http.Request) {
 		// Root scope is required for the service worker to control page navigations.
 		w.Header().Set("Service-Worker-Allowed", "/")

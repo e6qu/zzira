@@ -28,8 +28,8 @@ import (
 func (h *Handler) worklogBean(w *models.Worklog) map[string]any {
 	author := map[string]any{"accountId": w.AuthorID, "displayName": w.AuthorName, "active": true, "accountType": "atlassian"}
 	body := map[string]any{
-		"id":               w.ID,
-		"self":             h.BaseURL + "/rest/api/3/issue/worklog/" + w.ID,
+		"id":               strconv.FormatInt(w.JiraID, 10),
+		"self":             h.BaseURL + "/rest/api/3/issue/worklog/" + strconv.FormatInt(w.JiraID, 10),
 		"author":           author,
 		"updateAuthor":     author,
 		"created":          w.Created,
@@ -118,7 +118,7 @@ func (h *Handler) issueWorklogRoute(w http.ResponseWriter, r *http.Request, idOr
 			jiraError(w, http.StatusBadRequest, "Invalid request payload.")
 			return
 		}
-		updated, _, err := h.Store.UpdateWorklog(r.Context(), userID, wsID, sub[0], request.Comment, request.TimeSpentSeconds)
+		updated, _, err := h.Store.UpdateWorklog(r.Context(), userID, wsID, wl.ID, request.Comment, request.TimeSpentSeconds)
 		if err != nil {
 			worklogError(w, err)
 			return
@@ -144,7 +144,7 @@ func (h *Handler) issueWorklogRoute(w http.ResponseWriter, r *http.Request, idOr
 			jiraError(w, http.StatusNotFound, "Worklog does not exist.")
 			return
 		}
-		h.worklogProperties(w, r, issue.Key, wl.ID, sub[2:])
+		h.worklogProperties(w, r, issue.Key, wl, sub[2:])
 	case len(sub) == 1 && sub[0] == "move" && r.Method == http.MethodPost:
 		var request struct {
 			IDs          []string `json:"ids"`
@@ -163,7 +163,16 @@ func (h *Handler) issueWorklogRoute(w http.ResponseWriter, r *http.Request, idOr
 			jiraFieldError(w, http.StatusBadRequest, map[string]string{"issueIdOrKey": "The destination work item does not exist."})
 			return
 		}
-		if err := h.Store.MoveWorklogs(r.Context(), userID, wsID, issue.ID, target.ID, request.IDs); err != nil {
+		storedIDs := make([]string, 0, len(request.IDs))
+		for _, ref := range request.IDs {
+			wl, err := h.Store.WorklogByID(r.Context(), wsID, ref)
+			if err != nil || wl.IssueID != issue.ID {
+				jiraError(w, http.StatusNotFound, "Worklog does not exist.")
+				return
+			}
+			storedIDs = append(storedIDs, wl.ID)
+		}
+		if err := h.Store.MoveWorklogs(r.Context(), userID, wsID, issue.ID, target.ID, storedIDs); err != nil {
 			worklogError(w, err)
 			return
 		}
@@ -175,8 +184,9 @@ func (h *Handler) issueWorklogRoute(w http.ResponseWriter, r *http.Request, idOr
 
 // worklogProperties serves the entity properties hung off one worklog, with
 // Jira's 201-on-create and 200-on-replace split.
-func (h *Handler) worklogProperties(w http.ResponseWriter, r *http.Request, issueKey, worklogID string, rest []string) {
-	self := h.BaseURL + "/rest/api/3/issue/" + issueKey + "/worklog/" + worklogID + "/properties/"
+func (h *Handler) worklogProperties(w http.ResponseWriter, r *http.Request, issueKey string, worklog *models.Worklog, rest []string) {
+	worklogID := worklog.ID
+	self := h.BaseURL + "/rest/api/3/issue/" + issueKey + "/worklog/" + strconv.FormatInt(worklog.JiraID, 10) + "/properties/"
 	switch {
 	case len(rest) == 0 && r.Method == http.MethodGet:
 		keys, err := h.Store.WorklogPropertyKeys(r.Context(), worklogID)
@@ -335,17 +345,17 @@ func (h *Handler) attachmentSettings(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) attachmentBean(a *models.Attachment) map[string]any {
 	bean := map[string]any{
-		"id":       a.ID,
-		"self":     h.BaseURL + "/rest/api/3/attachment/" + a.ID,
+		"id":       strconv.FormatInt(a.JiraID, 10),
+		"self":     h.BaseURL + "/rest/api/3/attachment/" + strconv.FormatInt(a.JiraID, 10),
 		"filename": a.Filename,
 		"mimeType": a.MimeType,
 		"size":     a.Size,
 		"created":  a.Created,
 		"author":   map[string]any{"accountId": a.AuthorID, "displayName": a.AuthorName, "active": true, "accountType": "atlassian"},
-		"content":  h.BaseURL + "/rest/api/3/attachment/content/" + a.ID,
+		"content":  h.BaseURL + "/rest/api/3/attachment/content/" + strconv.FormatInt(a.JiraID, 10),
 	}
 	if strings.HasPrefix(a.MimeType, "image/") {
-		bean["thumbnail"] = h.BaseURL + "/rest/api/3/attachment/thumbnail/" + a.ID
+		bean["thumbnail"] = h.BaseURL + "/rest/api/3/attachment/thumbnail/" + strconv.FormatInt(a.JiraID, 10)
 	}
 	return bean
 }
@@ -398,39 +408,6 @@ func (h *Handler) uploadAttachments(w http.ResponseWriter, r *http.Request, idOr
 		return
 	}
 	writeJSON(w, http.StatusOK, beans)
-}
-
-// putAssignee implements PUT /issue/{idOrKey}/assignee.
-func (h *Handler) putAssignee(w http.ResponseWriter, r *http.Request, idOrKey string) {
-	wsID, userID, e := h.authWorkspace(r)
-	if e != nil {
-		writeJerr(w, e)
-		return
-	}
-	var req struct {
-		AccountID *string `json:"accountId"`
-	}
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		jiraFieldError(w, http.StatusBadRequest, map[string]string{"accountId": "Invalid request payload."})
-		return
-	}
-	if err := json.Unmarshal(body, &req); err != nil {
-		jiraFieldError(w, http.StatusBadRequest, map[string]string{"accountId": "Invalid request payload."})
-		return
-	}
-	if req.AccountID == nil {
-		jiraFieldError(w, http.StatusBadRequest, map[string]string{"accountId": "accountId is required (null to unassign via PUT /issue)."})
-		return
-	}
-	if _, _, err := h.Commands.UpdateIssue(r.Context(), commands.UpdateIssueInput{
-		ActorID: userID, WorkspaceID: wsID, IssueIDOrKey: idOrKey,
-		AssigneeID: req.AccountID,
-	}); err != nil {
-		jiraError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
 }
 
 // cleanupMultipart removes request temp files; failures are logged, never silent.
@@ -681,4 +658,69 @@ func (h *Handler) attachmentForUser(r *http.Request, workspaceID, userID, attach
 		}
 	}
 	return att, nil
+}
+
+// putAssignee serves PUT /issue/{key}/assignee. Exactly one of accountId, name
+// and key names the assignee; null unassigns and "-1" picks the project default.
+func (h *Handler) putAssignee(w http.ResponseWriter, r *http.Request, idOrKey string) {
+	wsID, userID, e := h.authWorkspace(r)
+	if e != nil {
+		writeJerr(w, e)
+		return
+	}
+	issue, e := h.resolveIssue(r, wsID, idOrKey)
+	if e != nil {
+		writeJerr(w, e)
+		return
+	}
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 64<<10))
+	var request map[string]json.RawMessage
+	if err != nil || json.Unmarshal(body, &request) != nil {
+		jiraFieldError(w, http.StatusBadRequest, map[string]string{"accountId": "Invalid request payload."})
+		return
+	}
+	provided := []string{}
+	for _, name := range []string{"accountId", "name", "key"} {
+		if _, ok := request[name]; ok {
+			provided = append(provided, name)
+		}
+	}
+	if len(provided) == 0 {
+		jiraFieldError(w, http.StatusBadRequest, map[string]string{"accountId": "accountId is required."})
+		return
+	}
+	if len(provided) > 1 {
+		jiraFieldError(w, http.StatusBadRequest, map[string]string{"accountId": "Only one of accountId, name and key can be given."})
+		return
+	}
+	assignee := ""
+	if raw := request[provided[0]]; string(raw) != "null" {
+		var value string
+		if json.Unmarshal(raw, &value) != nil {
+			jiraFieldError(w, http.StatusBadRequest, map[string]string{provided[0]: "The assignee must be a string or null."})
+			return
+		}
+		switch {
+		case value == "-1":
+			if project, projectErr := h.Store.ProjectByIDOrKey(r.Context(), wsID, issue.ProjectID); projectErr == nil && project.AssigneeType == "PROJECT_LEAD" {
+				assignee = project.LeadAccountID
+			}
+		case provided[0] != "accountId":
+			jiraFieldError(w, http.StatusBadRequest, map[string]string{provided[0]: "Usernames and user keys aren't supported; use accountId."})
+			return
+		default:
+			if _, userErr := h.Store.SiteUser(r.Context(), wsID, value); userErr != nil {
+				jiraFieldError(w, http.StatusBadRequest, map[string]string{"accountId": "The user does not exist."})
+				return
+			}
+			assignee = value
+		}
+	}
+	if _, _, err = h.Commands.UpdateIssue(r.Context(), commands.UpdateIssueInput{
+		ActorID: userID, WorkspaceID: wsID, IssueIDOrKey: issue.ID, AssigneeID: &assignee,
+	}); err != nil {
+		issueCommandError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

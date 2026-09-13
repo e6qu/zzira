@@ -42,7 +42,8 @@ SELECT i.id, i.jira_id, i.workspace_id, i.project_id, i.key, i.summary, i.descri
 	       i.security_level_id, i.fields, i.labels,
 	       i.updated_seq, i.updated_at,
 	       it.jira_id, it.hierarchy_level, pr2.jira_id, COALESCE(pro.status_color, pr2.status_color), COALESCE(pro.icon_url, pr2.icon_url),
-	       res.id, res.jira_id, COALESCE(reso.name, res.name), COALESCE(reso.description, res.description), i.resolved_at
+	       res.id, res.jira_id, COALESCE(reso.name, res.name), COALESCE(reso.description, res.description), i.resolved_at,
+	       i.created_at, i.archived_at
 `
 
 // Search runs a compiled JQL query within one workspace. The workspace
@@ -431,7 +432,7 @@ func (s *Store) SecuritySchemes(ctx context.Context) ([]models.SecurityScheme, e
 // `userPlaceholder` (e.g. "$2"). Admins bypass issue security. Callers must
 // append userID to their args at that position.
 func VisibleIssuePredicate(alias string, userPlaceholder string) string {
-	return "EXISTS (SELECT 1 FROM projects visible_project WHERE visible_project.id=" + alias + ".project_id AND visible_project.lifecycle_state='ACTIVE')" +
+	return alias + ".archived_at IS NULL AND EXISTS (SELECT 1 FROM projects visible_project WHERE visible_project.id=" + alias + ".project_id AND visible_project.lifecycle_state='ACTIVE')" +
 		" AND jira_has_project_permission(" + alias + ".workspace_id," + alias + ".project_id," + userPlaceholder + "," + alias + ".id,'BROWSE_PROJECTS')" +
 		" AND jira_issue_security_visible(" + alias + ".workspace_id," + alias + ".project_id," + alias + ".id," + userPlaceholder + "," + alias + ".security_level_id)"
 }

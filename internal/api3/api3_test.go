@@ -204,7 +204,8 @@ func TestMutationRoutesRequireTheirDeclaredMethod(t *testing.T) {
 		method string
 		path   string
 	}{
-		{http.MethodGet, "/rest/api/3/issueLink/lnk_1"},
+		{http.MethodPut, "/rest/api/3/issueLink/10000"},
+		{http.MethodGet, "/rest/api/3/issueLink"},
 		{http.MethodPost, "/rest/api/3/project/ZZ"},
 	} {
 		w := httptest.NewRecorder()

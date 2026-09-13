@@ -72,11 +72,11 @@ func (s *Store) UpdateWorklog(ctx context.Context, actorID, workspaceID, worklog
 func (s *Store) WorklogsByIDs(ctx context.Context, workspaceID, userID string, ids []string) ([]*models.Worklog, error) {
 	query := `SELECT w.id, w.issue_id, w.author_id, COALESCE(u.display_name,''),
 		COALESCE(w.comment::text,''), w.time_spent_seconds,
-		to_char(w.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+		to_char(w.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), w.jira_id
 		FROM worklogs w
 		JOIN issues i ON i.id = w.issue_id
 		LEFT JOIN users u ON u.id = w.author_id
-		WHERE w.workspace_id=$1 AND w.id = ANY($3) AND ` + VisibleIssuePredicate("i", "$2") + `
+		WHERE w.workspace_id=$1 AND (w.id = ANY($3) OR w.jira_id::text = ANY($3)) AND ` + VisibleIssuePredicate("i", "$2") + `
 		ORDER BY w.created_at, w.id`
 	rows, err := s.Pool.Query(ctx, query, workspaceID, userID, ids)
 	if err != nil {
@@ -110,12 +110,12 @@ func (s *Store) WorklogsChangedSince(ctx context.Context, workspaceID, userID st
 	// The feed reports times in milliseconds, so it compares in milliseconds
 	// too: a client that passes the last `until` back must not be handed the
 	// same entries again on the sub-millisecond remainder.
-	query := `SELECT w.id,w.issue_id,w.author_id,date_trunc('milliseconds',w.updated_at) FROM worklogs w
+	query := `SELECT w.jira_id::text,w.issue_id,w.author_id,date_trunc('milliseconds',w.updated_at) FROM worklogs w
 		JOIN issues i ON i.id = w.issue_id
 		WHERE w.workspace_id=$1 AND date_trunc('milliseconds',w.updated_at) > $3 AND ` + VisibleIssuePredicate("i", "$2") + `
 		ORDER BY w.updated_at, w.id LIMIT $4`
 	if deleted {
-		query = `SELECT id,issue_id,author_id,date_trunc('milliseconds',deleted_at) FROM deleted_worklogs
+		query = `SELECT COALESCE(jira_id::text,id),issue_id,author_id,date_trunc('milliseconds',deleted_at) FROM deleted_worklogs
 			WHERE workspace_id=$1 AND $2 <> '' AND date_trunc('milliseconds',deleted_at) > $3
 			ORDER BY deleted_at, id LIMIT $4`
 	}

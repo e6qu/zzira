@@ -1158,7 +1158,7 @@ func (h *Handler) ServiceRequestPage(w http.ResponseWriter, r *http.Request) {
 			}
 			linkViews = append(linkViews, models.IssueLinkView{ID: link.ID, Relationship: relationship, IssueKey: other.Key, Summary: other.Summary, Status: other.Status})
 		}
-		values, err := h.Store.LinkTypes(r.Context())
+		values, err := h.Store.LinkTypes(r.Context(), workspaceID)
 		if err != nil {
 			http.Error(w, "Could not load operations relationship types.", http.StatusInternalServerError)
 			return

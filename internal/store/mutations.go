@@ -352,17 +352,28 @@ func (s *Store) IssueDeletedByBulkTask(ctx context.Context, workspaceID, actorID
 
 const commentJoin = `
 SELECT c.id, c.issue_id, c.author_id, COALESCE(u.display_name,''), c.body,
-       to_char(c.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
-FROM comments c LEFT JOIN users u ON u.id = c.author_id
+       to_char(c.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+       c.jira_id, c.workspace_id,
+       to_char(c.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+       COALESCE(c.update_author_id, c.author_id), COALESCE(uu.display_name, u.display_name, ''),
+       COALESCE(c.visibility_type,''), COALESCE(c.visibility_value,'')
+FROM comments c LEFT JOIN users u ON u.id = c.author_id LEFT JOIN users uu ON uu.id = c.update_author_id
 `
 
 func scanComment(row pgx.Row) (*models.Comment, error) {
 	c := &models.Comment{}
-	err := row.Scan(&c.ID, &c.IssueID, &c.AuthorID, &c.AuthorName, &c.Body, &c.Created)
+	err := row.Scan(&c.ID, &c.IssueID, &c.AuthorID, &c.AuthorName, &c.Body, &c.Created,
+		&c.JiraID, &c.WorkspaceID, &c.Updated, &c.UpdateAuthorID, &c.UpdateAuthorName, &c.VisibilityType, &c.VisibilityValue)
 	return c, err
 }
 
 func (s *Store) CreateComment(ctx context.Context, actorID, workspaceID, issueID string, body json.RawMessage) (*models.Comment, *models.Action, error) {
+	return s.CreateCommentWithVisibility(ctx, actorID, workspaceID, issueID, body, CommentVisibility{})
+}
+
+// CreateCommentWithVisibility adds a comment, restricted to a group or project
+// role when visibility names one.
+func (s *Store) CreateCommentWithVisibility(ctx context.Context, actorID, workspaceID, issueID string, body json.RawMessage, visibility CommentVisibility) (*models.Comment, *models.Action, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return nil, nil, err
@@ -370,8 +381,8 @@ func (s *Store) CreateComment(ctx context.Context, actorID, workspaceID, issueID
 	defer func() { _ = tx.Rollback(ctx) }()
 	commentID := NewID("cmt")
 	if _, err := tx.Exec(ctx,
-		`INSERT INTO comments (id, issue_id, workspace_id, author_id, body) VALUES ($1,$2,$3,$4,$5)`,
-		commentID, issueID, workspaceID, actorID, body); err != nil {
+		`INSERT INTO comments (id, issue_id, workspace_id, author_id, body, visibility_type, visibility_value) VALUES ($1,$2,$3,$4,$5,NULLIF($6,''),NULLIF($7,''))`,
+		commentID, issueID, workspaceID, actorID, body, visibility.Type, visibility.Value); err != nil {
 		return nil, nil, err
 	}
 	seq, err := nextSeq(ctx, tx, workspaceID)

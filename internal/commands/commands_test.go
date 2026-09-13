@@ -204,7 +204,8 @@ func TestUpdateTransitionCommentChangelogPipeline(t *testing.T) {
 		t.Fatal("21 from In Progress must fail")
 	}
 
-	// Comments: create + author-only delete.
+	// Comments: create, then delete as someone else. The default scheme grants
+	// Delete all comments to every project member, so Jira lets them.
 	comment, _, err := svc.AddComment(ctx, AddCommentInput{
 		ActorID: "usr_test", WorkspaceID: "ws_default", IssueIDOrKey: issue.Key, PlainText: "first!",
 	})
@@ -214,8 +215,9 @@ func TestUpdateTransitionCommentChangelogPipeline(t *testing.T) {
 	if adf.PlainText(comment.Body) != "first!" {
 		t.Fatalf("comment body = %q", adf.PlainText(comment.Body))
 	}
-	if _, err := svc.DeleteComment(ctx, "usr_other", "ws_default", comment.ID); err == nil {
-		t.Fatal("non-author delete must fail")
+	deleteAction, err := svc.DeleteComment(ctx, "usr_other", "ws_default", comment.ID)
+	if err != nil || deleteAction == nil || deleteAction.Op != models.OpDelete {
+		t.Fatalf("delete with Delete all comments = %+v, %v", deleteAction, err)
 	}
 
 	// Changelog: derived from the log, ordered, with the right fields.

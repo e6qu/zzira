@@ -373,6 +373,16 @@ func (r *APITaskRunner) execute(ctx context.Context, task APITask) error {
 		return r.Store.executeResolutionDeletion(ctx, task)
 	case apiTaskWikiDeleteSpace:
 		return r.Store.executeWikiSpaceDeletion(ctx, task)
+	case apiTaskIssueProperties:
+		return r.Store.executeIssuePropertiesTask(ctx, task)
+	case apiTaskIssuePanelPins:
+		return r.Store.executeIssuePanelPinTask(ctx, task)
+	case apiTaskArchiveIssues:
+		return r.Store.executeArchiveIssuesTask(ctx, task)
+	case apiTaskExportArchivedIssues:
+		return r.Store.executeArchivedIssuesExport(ctx, task)
+	case apiTaskRedactIssueContent:
+		return r.Store.executeRedactionTask(ctx, task)
 	case apiTaskWikiPermissionCombinations:
 		return r.Store.executeWikiPermissionCombinations(ctx, task)
 	case apiTaskWikiPermissionAssignRoles:
