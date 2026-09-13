@@ -1261,6 +1261,30 @@ func (h *Handler) changelog(w http.ResponseWriter, r *http.Request, idOrKey stri
 	})
 }
 
+// changelogMetadataID turns a stored priority, resolution or issue type id into
+// its numeric id. An id the site no longer has keeps its stored value, since
+// the history of a deleted item still has to say what it was.
+func (h *Handler) changelogMetadataID(ctx context.Context, workspaceID, field, id string) string {
+	if id == "" {
+		return id
+	}
+	switch field {
+	case "priority":
+		if p, err := h.Store.PriorityInWorkspace(ctx, workspaceID, id); err == nil {
+			return jiraIDString(p.JiraID)
+		}
+	case "resolution":
+		if r, err := h.Store.ResolutionInWorkspace(ctx, workspaceID, id); err == nil {
+			return jiraIDString(r.JiraID)
+		}
+	case "issuetype":
+		if t, err := h.Store.IssueTypeInWorkspace(ctx, workspaceID, id); err == nil {
+			return jiraIDString(t.JiraID)
+		}
+	}
+	return id
+}
+
 func (h *Handler) issueChangelogBeans(ctx context.Context, workspaceID, issueID string, newestFirst bool) ([]map[string]any, error) {
 	entries, err := h.Store.IssueChangelog(ctx, workspaceID, issueID)
 	if err != nil {
@@ -1274,10 +1298,17 @@ func (h *Handler) issueChangelogBeans(ctx context.Context, workspaceID, issueID 
 		}
 		items := make([]map[string]any, 0, len(entry.Items))
 		for _, item := range entry.Items {
+			from, to := item.From, item.To
+			// Jira reports a priority, resolution or issue type change by the
+			// numeric ids clients know, so the stored ids are translated here.
+			switch item.Field {
+			case "priority", "resolution", "issuetype":
+				from, to = h.changelogMetadataID(ctx, workspaceID, item.Field, from), h.changelogMetadataID(ctx, workspaceID, item.Field, to)
+			}
 			items = append(items, map[string]any{
 				"field": item.Field, "fieldtype": item.FieldType,
-				"from": item.From, "fromString": item.FromString,
-				"to": item.To, "toString": item.ToString,
+				"from": from, "fromString": item.FromString,
+				"to": to, "toString": item.ToString,
 			})
 		}
 		values = append(values, map[string]any{

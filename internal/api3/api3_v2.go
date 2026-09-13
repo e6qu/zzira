@@ -271,7 +271,7 @@ func (h *Handler) createMetaFields(w http.ResponseWriter, r *http.Request, proje
 	}
 	var selectedType *models.IssueType
 	for _, issueType := range project.IssueTypes {
-		if issueType.ID == issueTypeID {
+		if createMetaTypeMatches(issueType, issueTypeID) {
 			selected := issueType
 			selectedType = &selected
 			break
@@ -320,12 +320,10 @@ func (h *Handler) createMetaProject(r *http.Request, projectIDOrKey string) (*mo
 	return nil, &jerr{http.StatusBadRequest, "You cannot create issues in this project.", nil}
 }
 
+// createMetaIssueTypeBean is the issue type bean create metadata carries: the
+// same numeric id and details every other issue type response uses.
 func (h *Handler) createMetaIssueTypeBean(issueType models.IssueType) map[string]any {
-	return map[string]any{
-		"id": issueType.ID, "name": issueType.Name, "description": "", "subtask": issueType.Subtask,
-		"iconUrl": h.BaseURL + "/static/img/issuetype-task.svg",
-		"self":    h.BaseURL + "/rest/api/3/issuetype/" + issueType.ID,
-	}
+	return h.issueTypeBean(issueType)
 }
 
 func (h *Handler) createFieldBean(field models.CreateFieldMeta) map[string]any {
@@ -897,4 +895,11 @@ func (h *Handler) bootstrap(w http.ResponseWriter, r *http.Request) {
 		"attachments": attachments,
 		"worklogs":    worklogs,
 	})
+}
+
+// createMetaTypeMatches reports whether a request names this issue type, by the
+// numeric id clients use or, for requests the product itself makes, its name.
+func createMetaTypeMatches(issueType models.IssueType, requested string) bool {
+	requested = strings.TrimSpace(requested)
+	return requested == jiraIDString(issueType.JiraID) || requested == issueType.ID || strings.EqualFold(requested, issueType.Name)
 }

@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -60,10 +61,6 @@ func (s *Store) IssueCreateMetadata(ctx context.Context, workspaceID, userID str
 	for _, project := range projects {
 		projectOptions = append(projectOptions, models.CreateFieldOption{ID: project.ID, Key: project.Key, Name: project.Name})
 	}
-	typeOptions := make([]models.CreateFieldOption, 0, len(issueTypes))
-	for _, issueType := range issueTypes {
-		typeOptions = append(typeOptions, models.CreateFieldOption{ID: issueType.ID, Name: issueType.Name})
-	}
 	priorityOptions := make([]models.CreateFieldOption, 0, len(priorities))
 	for _, priority := range priorities {
 		priorityOptions = append(priorityOptions, models.CreateFieldOption{ID: priority.ID, Name: priority.Name})
@@ -97,9 +94,20 @@ func (s *Store) IssueCreateMetadata(ctx context.Context, workspaceID, userID str
 			return nil, err
 		}
 		parentRows.Close()
+		// A project offers the issue types of its issue type scheme, with the
+		// scheme's default type first, which is the type Jira's create form
+		// starts on.
+		projectTypes, err := s.createMetaProjectIssueTypes(ctx, workspaceID, project.ID, issueTypes)
+		if err != nil {
+			return nil, err
+		}
+		projectTypeOptions := make([]models.CreateFieldOption, 0, len(projectTypes))
+		for _, issueType := range projectTypes {
+			projectTypeOptions = append(projectTypeOptions, models.CreateFieldOption{ID: issueType.ID, Name: issueType.Name})
+		}
 		fields := []models.CreateFieldMeta{
 			{ID: "project", Name: "Project", Type: "project", Required: true, Section: "context", Options: projectOptions},
-			{ID: "issuetype", Name: "Issue type", Type: "issuetype", Required: true, Section: "context", Options: typeOptions},
+			{ID: "issuetype", Name: "Issue type", Type: "issuetype", Required: true, Section: "context", Options: projectTypeOptions},
 			{ID: "summary", Name: "Summary", Type: "string", Required: true, Section: "primary"},
 			{ID: "description", Name: "Description", Type: "doc", Section: "primary"},
 			{ID: "assignee", Name: "Assignee", Type: "user", Section: "details", Options: memberOptions},
@@ -168,7 +176,7 @@ func (s *Store) IssueCreateMetadata(ctx context.Context, workspaceID, userID str
 		// The project's screen scheme decides which of these fields each work
 		// type's create form actually shows.
 		meta.Projects = append(meta.Projects, models.CreateProjectMeta{
-			Project: *project, IssueTypes: issueTypes, Fields: fields,
+			Project: *project, IssueTypes: projectTypes, Fields: fields,
 			ScreenFields: createScreenFields[project.ID], FieldBehaviour: fieldBehaviour[project.ID],
 			CustomFieldContexts: customFieldContexts[project.ID]})
 	}
@@ -197,4 +205,31 @@ func containsString(values []string, target string) bool {
 		}
 	}
 	return false
+}
+
+// createMetaProjectIssueTypes lists a project's issue types in its scheme's
+// order with the scheme's default type first. A site without schemes yet offers
+// all its types.
+func (s *Store) createMetaProjectIssueTypes(ctx context.Context, workspaceID, projectID string, all []models.IssueType) ([]models.IssueType, error) {
+	scheme, err := s.ProjectIssueTypeScheme(ctx, workspaceID, projectID)
+	if err != nil {
+		if errors.Is(err, ErrIssueMetadataNotFound) {
+			return all, nil
+		}
+		return nil, err
+	}
+	byID := make(map[string]models.IssueType, len(all))
+	for _, issueType := range all {
+		byID[issueType.ID] = issueType
+	}
+	ordered := make([]models.IssueType, 0, len(scheme.IssueTypeIDs))
+	if t, ok := byID[scheme.DefaultIssueTypeID]; ok {
+		ordered = append(ordered, t)
+	}
+	for _, id := range scheme.IssueTypeIDs {
+		if t, ok := byID[id]; ok && id != scheme.DefaultIssueTypeID {
+			ordered = append(ordered, t)
+		}
+	}
+	return ordered, nil
 }
