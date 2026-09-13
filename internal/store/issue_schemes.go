@@ -560,7 +560,7 @@ func (s *Store) resolveProjectIDs(ctx context.Context, workspaceID string, wire 
 	out := []string{}
 	for _, raw := range wire {
 		var id string
-		err := s.Pool.QueryRow(ctx, `SELECT id FROM projects WHERE workspace_id=$1 AND (id=$2 OR jira_id::text=$2)`, workspaceID, strings.TrimSpace(raw)).Scan(&id)
+		err := s.Pool.QueryRow(ctx, `SELECT id FROM projects WHERE workspace_id=$1 AND (id=$2 OR upper(key)=upper($2))`, workspaceID, strings.TrimSpace(raw)).Scan(&id)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, fmt.Errorf("%w: project %s does not exist", ErrIssueMetadataValidation, raw)
 		}

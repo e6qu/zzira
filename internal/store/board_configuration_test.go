@@ -78,7 +78,7 @@ func TestBoardFilterQueryCombinesBaseQuickAndAssigneeFilters(t *testing.T) {
 	if compiled.Err != nil {
 		t.Fatal(compiled.Err)
 	}
-	if !strings.Contains(compiled.Where, "pr2.name = $3") || !strings.Contains(compiled.Where, "i.reporter_id = $4") || !strings.Contains(compiled.Where, "i.assignee_id IS NULL") {
+	if !strings.Contains(compiled.Where, "COALESCE(pro.name, pr2.name) = $3") || !strings.Contains(compiled.Where, "i.reporter_id = $4") || !strings.Contains(compiled.Where, "i.assignee_id IS NULL") {
 		t.Fatalf("compiled filter = %q", compiled.Where)
 	}
 	if !reflect.DeepEqual(compiled.Args, []any{"Medium", "usr_me"}) {
