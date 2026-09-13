@@ -1446,31 +1446,10 @@ func (h *Handler) projectsInPriorityScheme(w http.ResponseWriter, r *http.Reques
 		issueMetadataError(w, err)
 		return
 	}
-	projectIDs := sc.ProjectIDs
-	if sc.IsDefault {
-		// Projects use the default scheme by having no other.
-		all, err := h.Store.ProjectsByWorkspace(r.Context(), workspaceID)
-		if err != nil {
-			issueMetadataError(w, err)
-			return
-		}
-		schemes, err := h.Store.PrioritySchemes(r.Context(), workspaceID)
-		if err != nil {
-			issueMetadataError(w, err)
-			return
-		}
-		assigned := map[string]bool{}
-		for _, other := range schemes {
-			for _, id := range other.ProjectIDs {
-				assigned[id] = true
-			}
-		}
-		projectIDs = []string{}
-		for _, p := range all {
-			if !assigned[p.ID] {
-				projectIDs = append(projectIDs, p.ID)
-			}
-		}
+	projectIDs, err := h.Store.ProjectsUsingPriorityScheme(r.Context(), workspaceID, sc)
+	if err != nil {
+		issueMetadataError(w, err)
+		return
 	}
 	filter := stringQuerySet(securityQueryValues(r, "projectId"))
 	query := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("query")))
@@ -1580,7 +1559,11 @@ func (h *Handler) prioritySchemeMappingSuggestions(w http.ResponseWriter, r *htt
 			}
 		}
 	}
-	projects := append([]string{}, sc.ProjectIDs...)
+	projects, err := h.Store.ProjectsUsingPriorityScheme(r.Context(), workspaceID, sc)
+	if err != nil {
+		issueMetadataError(w, err)
+		return
+	}
 	if request.Projects != nil {
 		for _, raw := range request.Projects.Add {
 			if p, err := h.Store.ProjectByIDOrKey(r.Context(), workspaceID, idText(raw)); err == nil {

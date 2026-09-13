@@ -807,6 +807,16 @@ func (s *Store) UpdatePriorityScheme(ctx context.Context, workspaceID, schemeID 
 	return s.PrioritySchemeByID(ctx, workspaceID, scheme.ID)
 }
 
+// ProjectsUsingPriorityScheme lists the projects a priority scheme governs. A
+// project uses the default scheme by having no other, so the default scheme's
+// projects are every project without an assignment.
+func (s *Store) ProjectsUsingPriorityScheme(ctx context.Context, workspaceID string, scheme PriorityScheme) ([]string, error) {
+	if scheme.IsDefault {
+		return s.projectsWithoutPriorityScheme(ctx, workspaceID)
+	}
+	return append([]string{}, scheme.ProjectIDs...), nil
+}
+
 func (s *Store) projectsWithoutPriorityScheme(ctx context.Context, workspaceID string) ([]string, error) {
 	rows, err := s.Pool.Query(ctx, `SELECT p.id FROM projects p WHERE p.workspace_id=$1
 		AND NOT EXISTS (SELECT 1 FROM project_priority_schemes pp WHERE pp.project_id=p.id) ORDER BY p.id`, workspaceID)
