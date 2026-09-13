@@ -72,7 +72,7 @@ func (h *Handler) submitBulkEdit(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, http.StatusInternalServerError, "Could not submit the bulk edit operation.")
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]string{"taskId": task.ID})
+	writeJSON(w, http.StatusCreated, map[string]string{"taskId": task.WireID()})
 }
 
 func parseBulkEditOperations(input map[string]json.RawMessage) ([]parsedBulkEditOperation, error) {

@@ -53,7 +53,10 @@ func (s *Store) EnqueueIssuePanelPins(ctx context.Context, workspaceID, actorID,
 	if err != nil {
 		return APITask{}, err
 	}
-	return task, s.enqueueAPITask(ctx, task)
+	if err := s.enqueueAPITask(ctx, &task); err != nil {
+		return APITask{}, err
+	}
+	return task, nil
 }
 
 // IssuePanelPinnedToProject reports whether a panel is pinned on a project.

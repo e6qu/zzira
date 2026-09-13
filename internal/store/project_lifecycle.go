@@ -477,7 +477,7 @@ func (s *Store) EnqueueProjectDeleteTask(ctx context.Context, workspaceID, actor
 	if err != nil {
 		return APITask{}, err
 	}
-	if err = insertAPITask(ctx, tx, task); err != nil {
+	if err = insertAPITask(ctx, tx, &task); err != nil {
 		return APITask{}, err
 	}
 	return task, tx.Commit(ctx)

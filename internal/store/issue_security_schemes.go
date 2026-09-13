@@ -750,7 +750,7 @@ func (s *Store) EnqueueAssignIssueSecurityScheme(ctx context.Context, workspaceI
 	if err != nil {
 		return APITask{}, err
 	}
-	if err = insertAPITask(ctx, tx, task); err != nil {
+	if err = insertAPITask(ctx, tx, &task); err != nil {
 		return APITask{}, err
 	}
 	return task, tx.Commit(ctx)
@@ -789,7 +789,7 @@ func (s *Store) EnqueueRemoveIssueSecurityLevel(ctx context.Context, workspaceID
 	if err != nil {
 		return APITask{}, err
 	}
-	if err = insertAPITask(ctx, tx, task); err != nil {
+	if err = insertAPITask(ctx, tx, &task); err != nil {
 		return APITask{}, err
 	}
 	return task, tx.Commit(ctx)

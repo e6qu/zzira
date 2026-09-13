@@ -53,7 +53,10 @@ func (s *Store) EnqueueRedaction(ctx context.Context, workspaceID, actorID strin
 	if err != nil {
 		return APITask{}, err
 	}
-	return task, s.enqueueAPITask(ctx, task)
+	if err := s.enqueueAPITask(ctx, &task); err != nil {
+		return APITask{}, err
+	}
+	return task, nil
 }
 
 // RedactionJob finds a redaction job by id.

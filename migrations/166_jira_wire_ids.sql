@@ -102,3 +102,25 @@ BEGIN
     WHERE EXISTS (SELECT 1 FROM unnest(rule_scope_aris) AS scope WHERE strpos(scope, 'project/' || project.id) > 0);
   END LOOP;
 END $$;
+
+-- Workflow schemes: numeric ids.
+CREATE SEQUENCE jira_workflow_scheme_id START 10000;
+ALTER TABLE workflow_schemes ADD COLUMN jira_id BIGINT;
+UPDATE workflow_schemes w SET jira_id = 9999 + o.n
+FROM (SELECT id, row_number() OVER (ORDER BY created_at, id) n FROM workflow_schemes) o WHERE o.id = w.id;
+SELECT setval('jira_workflow_scheme_id', GREATEST(10000, COALESCE((SELECT max(jira_id) + 1 FROM workflow_schemes), 10000)), false);
+ALTER TABLE workflow_schemes
+  ALTER COLUMN jira_id SET DEFAULT nextval('jira_workflow_scheme_id'),
+  ALTER COLUMN jira_id SET NOT NULL;
+CREATE UNIQUE INDEX workflow_schemes_jira_id ON workflow_schemes(jira_id);
+
+-- Asynchronous tasks: Jira and Confluence task ids are numeric strings.
+CREATE SEQUENCE jira_task_id START 10000;
+ALTER TABLE api_tasks ADD COLUMN jira_id BIGINT;
+UPDATE api_tasks t SET jira_id = 9999 + o.n
+FROM (SELECT id, row_number() OVER (ORDER BY created_at, id) n FROM api_tasks) o WHERE o.id = t.id;
+SELECT setval('jira_task_id', GREATEST(10000, COALESCE((SELECT max(jira_id) + 1 FROM api_tasks), 10000)), false);
+ALTER TABLE api_tasks
+  ALTER COLUMN jira_id SET DEFAULT nextval('jira_task_id'),
+  ALTER COLUMN jira_id SET NOT NULL;
+CREATE UNIQUE INDEX api_tasks_jira_id ON api_tasks(jira_id);

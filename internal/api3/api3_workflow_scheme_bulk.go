@@ -109,9 +109,9 @@ func (h *Handler) workflowSchemeReadBean(r *http.Request, workspaceID string, sc
 		return mappings[i]["workflow"].(map[string]any)["id"].(string) < mappings[j]["workflow"].(map[string]any)["id"].(string)
 	})
 	return map[string]any{
-		"id": scheme.ID, "name": scheme.Name, "description": scheme.Description,
+		"id": strconv.FormatInt(scheme.JiraID, 10), "name": scheme.Name, "description": scheme.Description,
 		"scope":                  map[string]any{"type": "GLOBAL"},
-		"version":                map[string]any{"id": scheme.ID + ":" + strconv.Itoa(scheme.Version), "versionNumber": scheme.Version},
+		"version":                map[string]any{"id": strconv.FormatInt(scheme.JiraID, 10) + ":" + strconv.Itoa(scheme.Version), "versionNumber": scheme.Version},
 		"defaultWorkflow":        workflowMetadataBean(byID[scheme.DefaultWorkflowID]),
 		"workflowsForIssueTypes": mappings,
 	}, nil
@@ -133,7 +133,7 @@ func (h *Handler) workflowSchemeBulkRoute(w http.ResponseWriter, r *http.Request
 		}
 		ids := make(map[string]bool)
 		for _, id := range request.WorkflowSchemeIDs {
-			ids[id] = true
+			ids[h.Store.WorkflowSchemeIDByRef(r.Context(), workspaceID, id)] = true
 		}
 		for _, projectID := range request.ProjectIDs {
 			project, err := h.Store.ProjectByIDOrKey(r.Context(), workspaceID, projectID)
@@ -175,6 +175,7 @@ func (h *Handler) workflowSchemeBulkRoute(w http.ResponseWriter, r *http.Request
 			jiraError(w, http.StatusBadRequest, "id and workflowsForIssueTypes are required.")
 			return true
 		}
+		request.ID = h.Store.WorkflowSchemeIDByRef(r.Context(), workspaceID, request.ID)
 		current, err := h.Store.WorkflowSchemeByID(r.Context(), workspaceID, request.ID, false)
 		if err != nil {
 			jiraError(w, http.StatusBadRequest, "The workflow scheme does not exist.")
@@ -269,6 +270,7 @@ func (h *Handler) workflowSchemeBulkRoute(w http.ResponseWriter, r *http.Request
 			jiraError(w, http.StatusBadRequest, "id, name, description, and version are required.")
 			return true
 		}
+		request.ID = h.Store.WorkflowSchemeIDByRef(r.Context(), workspaceID, request.ID)
 		current, err := h.Store.WorkflowSchemeByID(r.Context(), workspaceID, request.ID, false)
 		if err != nil {
 			jiraError(w, http.StatusBadRequest, "The workflow scheme does not exist.")
@@ -290,7 +292,7 @@ func (h *Handler) workflowSchemeBulkRoute(w http.ResponseWriter, r *http.Request
 			workflowSchemeAPIError(w, err)
 			return true
 		}
-		location := h.BaseURL + "/rest/api/3/task/" + task.ID
+		location := h.BaseURL + "/rest/api/3/task/" + task.WireID()
 		w.Header().Set("Location", location)
 		writeJSON(w, http.StatusSeeOther, h.apiTaskBean(task))
 		return true

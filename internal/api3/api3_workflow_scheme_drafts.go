@@ -58,7 +58,7 @@ func (h *Handler) workflowSchemeSubresourceRoute(w http.ResponseWriter, r *http.
 	if len(parts) < 2 {
 		return false
 	}
-	schemeID := parts[0]
+	schemeID := h.Store.WorkflowSchemeIDByRef(r.Context(), workspaceID, parts[0])
 	if len(parts) == 2 && parts[1] == "createdraft" {
 		if r.Method != http.MethodPost {
 			jiraError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -211,7 +211,7 @@ func (h *Handler) workflowSchemeSubresourceRoute(w http.ResponseWriter, r *http.
 			workflowSchemeAPIError(w, err)
 			return true
 		}
-		location := h.BaseURL + "/rest/api/3/task/" + task.ID
+		location := h.BaseURL + "/rest/api/3/task/" + task.WireID()
 		w.Header().Set("Location", location)
 		writeJSON(w, http.StatusSeeOther, h.apiTaskBean(task))
 		return true

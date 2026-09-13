@@ -822,10 +822,10 @@ func (h *Handler) serviceCommentBean(request *models.ServiceRequest, comment mod
 		attachments = append(attachments, h.serviceAttachmentBean(request, attachment))
 	}
 	return map[string]any{
-		"id": comment.Comment.ID, "body": serviceADFText(comment.Comment.Body), "renderedBody": adf.ToHTML(comment.Comment.Body),
+		"id": strconv.FormatInt(comment.Comment.JiraID, 10), "body": serviceADFText(comment.Comment.Body), "renderedBody": adf.ToHTML(comment.Comment.Body),
 		"public": comment.Public, "author": h.serviceUserBean(&models.User{ID: comment.Comment.AuthorID, DisplayName: comment.Comment.AuthorName, Active: true, AccountType: "atlassian"}),
 		"created": serviceDate(parseServiceDate(comment.Comment.Created)), "attachments": map[string]any{"start": 0, "limit": 50, "size": len(attachments), "isLastPage": true, "values": attachments}, "_expands": []any{},
-		"_links": map[string]string{"self": h.BaseURL + "/rest/servicedeskapi/request/" + request.Issue.Key + "/comment/" + comment.Comment.ID},
+		"_links": map[string]string{"self": h.BaseURL + "/rest/servicedeskapi/request/" + request.Issue.Key + "/comment/" + strconv.FormatInt(comment.Comment.JiraID, 10)},
 	}
 }
 

@@ -531,7 +531,7 @@ func (h *Handler) securityProjectMappings(w http.ResponseWriter, r *http.Request
 		issueSecurityError(w, err)
 		return
 	}
-	w.Header().Set("Location", h.BaseURL+"/rest/api/3/task/"+task.ID)
+	w.Header().Set("Location", h.BaseURL+"/rest/api/3/task/"+task.WireID())
 	writeJSON(w, http.StatusSeeOther, h.apiTaskBean(task))
 }
 
@@ -646,7 +646,7 @@ func (h *Handler) securityLevelMutation(w http.ResponseWriter, r *http.Request, 
 			issueSecurityError(w, err)
 			return
 		}
-		w.Header().Set("Location", h.BaseURL+"/rest/api/3/task/"+task.ID)
+		w.Header().Set("Location", h.BaseURL+"/rest/api/3/task/"+task.WireID())
 		writeJSON(w, http.StatusSeeOther, h.apiTaskBean(task))
 		return
 	}

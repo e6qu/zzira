@@ -245,7 +245,7 @@ func (h *Handler) deleteProjectAsync(w http.ResponseWriter, r *http.Request, idO
 		projectLifecycleError(w, err)
 		return
 	}
-	location := h.BaseURL + "/rest/api/3/task/" + url.PathEscape(task.ID)
+	location := h.BaseURL + "/rest/api/3/task/" + url.PathEscape(task.WireID())
 	w.Header().Set("Location", location)
 	writeJSON(w, http.StatusSeeOther, h.apiTaskBean(task))
 }

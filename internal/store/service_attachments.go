@@ -106,6 +106,8 @@ func (s *Store) ServiceCommentAttachments(ctx context.Context, requestIssueID, c
 	if err != nil {
 		return nil, err
 	}
+	// The comment may be named by the id clients see.
+	_ = s.Pool.QueryRow(ctx, `SELECT id FROM comments WHERE issue_id=$1 AND jira_id::text=$2`, requestIssueID, commentID).Scan(&commentID)
 	filtered := make([]models.ServiceRequestAttachment, 0)
 	for _, value := range values {
 		if value.CommentID == commentID {

@@ -566,7 +566,7 @@ func (h *Handler) priorityResource(w http.ResponseWriter, r *http.Request, id st
 			issueMetadataError(w, err)
 			return
 		}
-		w.Header().Set("Location", h.BaseURL+"/rest/api/3/task/"+task.ID)
+		w.Header().Set("Location", h.BaseURL+"/rest/api/3/task/"+task.WireID())
 		writeJSON(w, http.StatusSeeOther, h.apiTaskBean(task))
 	default:
 		methodNotAllowed(w)
@@ -782,7 +782,7 @@ func (h *Handler) resolutionResource(w http.ResponseWriter, r *http.Request, id 
 			issueMetadataError(w, err)
 			return
 		}
-		w.Header().Set("Location", h.BaseURL+"/rest/api/3/task/"+task.ID)
+		w.Header().Set("Location", h.BaseURL+"/rest/api/3/task/"+task.WireID())
 		writeJSON(w, http.StatusSeeOther, h.apiTaskBean(task))
 	default:
 		methodNotAllowed(w)

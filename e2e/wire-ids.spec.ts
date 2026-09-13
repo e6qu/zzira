@@ -15,7 +15,7 @@ function apiAuthHeader(): string {
   return 'Basic ' + Buffer.from(`${DEMO.email}:${token}`).toString('base64');
 }
 
-const STORED_ID = /^(st|prj|brd|spr|wf|workflow|flt|lnk|cmt|att|wl|iss|qf|status|project|board|sprint|filter|queue|scheme)_[A-Za-z0-9_]+$/;
+const STORED_ID = /^(st|prj|brd|spr|wf|workflow|flt|lnk|cmt|att|wl|iss|qf|status|project|board|sprint|filter|queue|scheme|task)_[A-Za-z0-9_]+$/;
 const STORED_ID_IN_URL = /\/(st|prj|brd|spr|wf|workflow|flt|lnk|cmt|att|wl|iss|qf|status|project|board|sprint|filter)_[A-Za-z0-9]+/;
 
 function leaks(node: unknown, where: string, out: string[]) {

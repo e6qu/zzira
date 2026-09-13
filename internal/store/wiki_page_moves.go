@@ -333,7 +333,10 @@ func (s *Store) EnqueueWikiCopyHierarchy(ctx context.Context, ws, actor string, 
 	if err != nil {
 		return APITask{}, err
 	}
-	return task, s.enqueueAPITask(ctx, task)
+	if err := s.enqueueAPITask(ctx, &task); err != nil {
+		return APITask{}, err
+	}
+	return task, nil
 }
 
 // EnqueueWikiArchivePages and EnqueueWikiTrashPageTree are the other two
@@ -343,7 +346,10 @@ func (s *Store) EnqueueWikiArchivePages(ctx context.Context, ws, actor string, p
 	if err != nil {
 		return APITask{}, err
 	}
-	return task, s.enqueueAPITask(ctx, task)
+	if err := s.enqueueAPITask(ctx, &task); err != nil {
+		return APITask{}, err
+	}
+	return task, nil
 }
 
 func (s *Store) EnqueueWikiTrashPageTree(ctx context.Context, ws, actor, pageID string) (APITask, error) {
@@ -351,7 +357,10 @@ func (s *Store) EnqueueWikiTrashPageTree(ctx context.Context, ws, actor, pageID 
 	if err != nil {
 		return APITask{}, err
 	}
-	return task, s.enqueueAPITask(ctx, task)
+	if err := s.enqueueAPITask(ctx, &task); err != nil {
+		return APITask{}, err
+	}
+	return task, nil
 }
 
 func (s *Store) executeWikiCopyHierarchy(ctx context.Context, task APITask) error {
@@ -553,7 +562,7 @@ func (s *Store) WikiLongTasks(ctx context.Context, ws, actor, taskID string) ([]
 	// long task reads will report.
 	args := []any{ws, []string{apiTaskWikiCopyHierarchy, apiTaskWikiArchivePages, apiTaskWikiTrashPageTree, apiTaskWikiDeleteSpace}}
 	if taskID != "" {
-		query += ` AND task.id=$3`
+		query += ` AND (task.id=$3 OR task.jira_id::text=$3)`
 		args = append(args, taskID)
 	}
 	query += ` ORDER BY task.submitted_at DESC, task.id DESC`

@@ -88,7 +88,10 @@ func (s *Store) EnqueueIssuePropertiesTask(ctx context.Context, workspaceID, act
 	if err != nil {
 		return APITask{}, err
 	}
-	return task, s.enqueueAPITask(ctx, task)
+	if err := s.enqueueAPITask(ctx, &task); err != nil {
+		return APITask{}, err
+	}
+	return task, nil
 }
 
 // editableIssueIDs narrows issues to those the submitter can see and edit.

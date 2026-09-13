@@ -125,6 +125,8 @@ type Scheme struct {
 	IssueTypeMappings map[string]string `json:"issueTypeMappings"`
 	HasDraft          bool              `json:"-"`
 	Version           int               `json:"-"`
+	// JiraID is the id clients see.
+	JiraID int64 `json:"-"`
 }
 
 // Default is the built-in workflow: To Do ↔ In Progress → Done, Done → To Do.

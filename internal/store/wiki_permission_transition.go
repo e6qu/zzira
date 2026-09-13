@@ -125,7 +125,10 @@ func (s *Store) EnqueueWikiPermissionCombinations(ctx context.Context, ws, actor
 	if err != nil {
 		return APITask{}, err
 	}
-	return task, s.enqueueAPITask(ctx, task)
+	if err := s.enqueueAPITask(ctx, &task); err != nil {
+		return APITask{}, err
+	}
+	return task, nil
 }
 
 func (s *Store) executeWikiPermissionCombinations(ctx context.Context, task APITask) error {
@@ -317,7 +320,10 @@ func (s *Store) EnqueueWikiPermissionRoleAssignments(ctx context.Context, ws, ac
 	if err != nil {
 		return APITask{}, err
 	}
-	return task, s.enqueueAPITask(ctx, task)
+	if err := s.enqueueAPITask(ctx, &task); err != nil {
+		return APITask{}, err
+	}
+	return task, nil
 }
 
 // EnqueueWikiPermissionAccessRemovals queues the removal of every grant in the
@@ -337,7 +343,10 @@ func (s *Store) EnqueueWikiPermissionAccessRemovals(ctx context.Context, ws, act
 	if err != nil {
 		return APITask{}, err
 	}
-	return task, s.enqueueAPITask(ctx, task)
+	if err := s.enqueueAPITask(ctx, &task); err != nil {
+		return APITask{}, err
+	}
+	return task, nil
 }
 
 // matchingGrantHolders finds the (space, subject) pairs whose grant set is one

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -113,7 +114,7 @@ func (s *Store) CreateWorkflowScheme(ctx context.Context, workspaceID, actorID s
 	if err != nil {
 		return scheme, err
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO workflow_schemes(id,workspace_id,name,description,default_workflow_id,issue_type_mappings) VALUES($1,$2,$3,$4,$5,$6)`, scheme.ID, workspaceID, scheme.Name, scheme.Description, scheme.DefaultWorkflowID, mappings)
+	err = tx.QueryRow(ctx, `INSERT INTO workflow_schemes(id,workspace_id,name,description,default_workflow_id,issue_type_mappings) VALUES($1,$2,$3,$4,$5,$6) RETURNING jira_id`, scheme.ID, workspaceID, scheme.Name, scheme.Description, scheme.DefaultWorkflowID, mappings).Scan(&scheme.JiraID)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return scheme, fmt.Errorf("%w: a workflow scheme already uses that name or id", ErrAdminConflict)
@@ -131,7 +132,7 @@ func scanWorkflowScheme(row pgx.Row, useDraft bool) (workflow.Scheme, error) {
 	var scheme workflow.Scheme
 	var mappings []byte
 	var draft []byte
-	err := row.Scan(&scheme.ID, &scheme.Name, &scheme.Description, &scheme.DefaultWorkflowID, &mappings, &draft, &scheme.Version, &scheme.HasDraft)
+	err := row.Scan(&scheme.ID, &scheme.Name, &scheme.Description, &scheme.DefaultWorkflowID, &mappings, &draft, &scheme.Version, &scheme.HasDraft, &scheme.JiraID)
 	if err != nil {
 		return scheme, err
 	}
@@ -149,11 +150,11 @@ func scanWorkflowScheme(row pgx.Row, useDraft bool) (workflow.Scheme, error) {
 }
 
 func (s *Store) WorkflowSchemeByID(ctx context.Context, workspaceID, schemeID string, useDraft bool) (workflow.Scheme, error) {
-	return scanWorkflowScheme(s.Pool.QueryRow(ctx, `SELECT id,name,description,default_workflow_id,issue_type_mappings,COALESCE(draft_def,'null'),version,draft_def IS NOT NULL FROM workflow_schemes WHERE id=$1 AND workspace_id=$2`, schemeID, workspaceID), useDraft)
+	return scanWorkflowScheme(s.Pool.QueryRow(ctx, `SELECT id,name,description,default_workflow_id,issue_type_mappings,COALESCE(draft_def,'null'),version,draft_def IS NOT NULL,jira_id FROM workflow_schemes WHERE (id=$1 OR jira_id::text=$1) AND workspace_id=$2`, schemeID, workspaceID), useDraft)
 }
 
 func (s *Store) ListWorkflowSchemes(ctx context.Context, workspaceID string) ([]workflow.Scheme, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT id,name,description,default_workflow_id,issue_type_mappings,COALESCE(draft_def,'null'),version,draft_def IS NOT NULL FROM workflow_schemes WHERE workspace_id=$1 ORDER BY lower(name),id`, workspaceID)
+	rows, err := s.Pool.Query(ctx, `SELECT id,name,description,default_workflow_id,issue_type_mappings,COALESCE(draft_def,'null'),version,draft_def IS NOT NULL,jira_id FROM workflow_schemes WHERE workspace_id=$1 ORDER BY lower(name),id`, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -208,7 +209,7 @@ func (s *Store) CreateWorkflowSchemeDraft(ctx context.Context, workspaceID, acto
 		return workflow.Scheme{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	scheme, err := scanWorkflowScheme(tx.QueryRow(ctx, `SELECT id,name,description,default_workflow_id,issue_type_mappings,COALESCE(draft_def,'null'),version,draft_def IS NOT NULL FROM workflow_schemes WHERE id=$1 AND workspace_id=$2 FOR UPDATE`, schemeID, workspaceID), false)
+	scheme, err := scanWorkflowScheme(tx.QueryRow(ctx, `SELECT id,name,description,default_workflow_id,issue_type_mappings,COALESCE(draft_def,'null'),version,draft_def IS NOT NULL,jira_id FROM workflow_schemes WHERE id=$1 AND workspace_id=$2 FOR UPDATE`, schemeID, workspaceID), false)
 	if err != nil {
 		return workflow.Scheme{}, ErrAdminNotFound
 	}
@@ -289,7 +290,10 @@ func (s *Store) UpdatePublishedWorkflowSchemeTask(ctx context.Context, workspace
 	if err != nil {
 		return APITask{}, err
 	}
-	return task, s.enqueueAPITask(ctx, task)
+	if err := s.enqueueAPITask(ctx, &task); err != nil {
+		return APITask{}, err
+	}
+	return task, nil
 }
 
 func (s *Store) savePublishedWorkflowScheme(ctx context.Context, workspaceID, actorID string, scheme workflow.Scheme, statusMappings []WorkflowStatusMapping, expectedVersion int, taskID string) error {
@@ -352,7 +356,7 @@ func (s *Store) savePublishedWorkflowScheme(ctx context.Context, workspaceID, ac
 	if err := addWorkflowSchemeAudit(ctx, tx, workspaceID, actorID, "workflow.scheme.updated", scheme.ID, map[string]any{"version": currentVersion + 1, "migratedIssues": migrated}); err != nil {
 		return err
 	}
-	if err := completeAPITask(ctx, tx, workspaceID, taskID, "Workflow scheme updated.", map[string]any{"workflowSchemeId": scheme.ID}); err != nil {
+	if err := completeAPITask(ctx, tx, workspaceID, taskID, "Workflow scheme updated.", map[string]any{"workflowSchemeId": workflowSchemeWireID(ctx, tx, scheme.ID)}); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
@@ -516,7 +520,10 @@ func (s *Store) SwitchWorkflowSchemeTask(ctx context.Context, workspaceID, actor
 	if err != nil {
 		return APITask{}, err
 	}
-	return task, s.enqueueAPITask(ctx, task)
+	if err := s.enqueueAPITask(ctx, &task); err != nil {
+		return APITask{}, err
+	}
+	return task, nil
 }
 
 func migrateWorkflowSchemeIssues(ctx context.Context, tx pgx.Tx, workspaceID, actorID, projectID string, scheme workflow.Scheme, mappings []WorkflowStatusMapping, migrated *int) error {
@@ -613,7 +620,7 @@ func (s *Store) switchWorkflowScheme(ctx context.Context, workspaceID, actorID, 
 	if err := tx.QueryRow(ctx, `SELECT name FROM projects WHERE id=$1 AND workspace_id=$2 FOR UPDATE`, projectID, workspaceID).Scan(&projectName); err != nil {
 		return ErrAdminNotFound
 	}
-	scheme, err := scanWorkflowScheme(tx.QueryRow(ctx, `SELECT id,name,description,default_workflow_id,issue_type_mappings,COALESCE(draft_def,'null'),version,draft_def IS NOT NULL FROM workflow_schemes WHERE id=$1 AND workspace_id=$2`, schemeID, workspaceID), false)
+	scheme, err := scanWorkflowScheme(tx.QueryRow(ctx, `SELECT id,name,description,default_workflow_id,issue_type_mappings,COALESCE(draft_def,'null'),version,draft_def IS NOT NULL,jira_id FROM workflow_schemes WHERE id=$1 AND workspace_id=$2`, schemeID, workspaceID), false)
 	if err != nil {
 		return ErrAdminNotFound
 	}
@@ -627,7 +634,7 @@ func (s *Store) switchWorkflowScheme(ctx context.Context, workspaceID, actorID, 
 	if err := addWorkflowSchemeAudit(ctx, tx, workspaceID, actorID, "workflow.scheme.assigned", schemeID, map[string]any{"projectId": projectID, "projectName": projectName, "migratedIssues": migrated}); err != nil {
 		return err
 	}
-	if err := completeAPITask(ctx, tx, workspaceID, taskID, "Workflow scheme migration completed.", map[string]any{"projectId": projectID, "workflowSchemeId": schemeID}); err != nil {
+	if err := completeAPITask(ctx, tx, workspaceID, taskID, "Workflow scheme migration completed.", map[string]any{"projectId": projectID, "workflowSchemeId": strconv.FormatInt(scheme.JiraID, 10)}); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
@@ -666,7 +673,10 @@ func (s *Store) PublishWorkflowSchemeDraftTaskWithMappings(ctx context.Context, 
 	if err != nil {
 		return APITask{}, err
 	}
-	return task, s.enqueueAPITask(ctx, task)
+	if err := s.enqueueAPITask(ctx, &task); err != nil {
+		return APITask{}, err
+	}
+	return task, nil
 }
 
 func (s *Store) publishWorkflowSchemeDraft(ctx context.Context, workspaceID, actorID, schemeID string, statusMappings []WorkflowStatusMapping, taskID string) error {
@@ -675,7 +685,7 @@ func (s *Store) publishWorkflowSchemeDraft(ctx context.Context, workspaceID, act
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	scheme, err := scanWorkflowScheme(tx.QueryRow(ctx, `SELECT id,name,description,default_workflow_id,issue_type_mappings,COALESCE(draft_def,'null'),version,draft_def IS NOT NULL FROM workflow_schemes WHERE id=$1 AND workspace_id=$2 FOR UPDATE`, schemeID, workspaceID), true)
+	scheme, err := scanWorkflowScheme(tx.QueryRow(ctx, `SELECT id,name,description,default_workflow_id,issue_type_mappings,COALESCE(draft_def,'null'),version,draft_def IS NOT NULL,jira_id FROM workflow_schemes WHERE id=$1 AND workspace_id=$2 FOR UPDATE`, schemeID, workspaceID), true)
 	if err != nil || !scheme.HasDraft {
 		return ErrAdminConflict
 	}
@@ -711,7 +721,7 @@ func (s *Store) publishWorkflowSchemeDraft(ctx context.Context, workspaceID, act
 	if err := addWorkflowSchemeAudit(ctx, tx, workspaceID, actorID, "workflow.scheme.published", schemeID, map[string]any{"version": scheme.Version + 1, "migratedIssues": migrated}); err != nil {
 		return err
 	}
-	if err := completeAPITask(ctx, tx, workspaceID, taskID, "Workflow scheme draft published.", map[string]any{"workflowSchemeId": schemeID}); err != nil {
+	if err := completeAPITask(ctx, tx, workspaceID, taskID, "Workflow scheme draft published.", map[string]any{"workflowSchemeId": workflowSchemeWireID(ctx, tx, schemeID)}); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
@@ -804,4 +814,22 @@ func (s *Store) WorkflowForProjectAndIssueType(ctx context.Context, projectID, i
 		return workflow.Workflow{}, pgx.ErrNoRows
 	}
 	return wf, nil
+}
+
+// WorkflowSchemeIDByRef resolves a workflow scheme named by the id clients see,
+// or its stored id, to the stored id. Unknown references are returned unchanged.
+func (s *Store) WorkflowSchemeIDByRef(ctx context.Context, workspaceID, ref string) string {
+	var id string
+	if err := s.Pool.QueryRow(ctx, `SELECT id FROM workflow_schemes WHERE workspace_id=$1 AND (id=$2 OR jira_id::text=$2)`, workspaceID, strings.TrimSpace(ref)).Scan(&id); err != nil {
+		return ref
+	}
+	return id
+}
+
+func workflowSchemeWireID(ctx context.Context, tx pgx.Tx, schemeID string) string {
+	var jiraID int64
+	if err := tx.QueryRow(ctx, `SELECT jira_id FROM workflow_schemes WHERE id=$1`, schemeID).Scan(&jiraID); err != nil {
+		return ""
+	}
+	return strconv.FormatInt(jiraID, 10)
 }

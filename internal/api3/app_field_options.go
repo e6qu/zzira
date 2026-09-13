@@ -258,7 +258,7 @@ func (h *Handler) deselectAppFieldOption(w http.ResponseWriter, r *http.Request,
 		appFieldOptionError(w, err)
 		return
 	}
-	self := h.BaseURL + "/rest/api/3/task/" + task.ID
+	self := h.BaseURL + "/rest/api/3/task/" + task.WireID()
 	w.Header().Set("Location", self)
-	writeJSON(w, http.StatusSeeOther, map[string]any{"self": self, "id": task.ID})
+	writeJSON(w, http.StatusSeeOther, map[string]any{"self": self, "id": task.WireID()})
 }

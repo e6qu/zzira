@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -36,6 +37,7 @@ var (
 
 type APITask struct {
 	ID           string
+	JiraID       int64
 	WorkspaceID  string
 	SubmittedBy  string
 	Description  string
@@ -50,6 +52,9 @@ type APITask struct {
 	LastUpdateAt time.Time
 	FinishedAt   *time.Time
 }
+
+// WireID is the task id clients see.
+func (task APITask) WireID() string { return strconv.FormatInt(task.JiraID, 10) }
 
 func (task APITask) IsBulkIssueOperation() bool {
 	return task.Kind == apiTaskBulkEdit || task.Kind == apiTaskBulkDelete || task.Kind == apiTaskBulkMove || task.Kind == apiTaskBulkTransition || task.Kind == apiTaskBulkWatch || task.Kind == apiTaskBulkUnwatch
@@ -186,7 +191,7 @@ func (s *Store) enqueueBulkIssueTask(ctx context.Context, task APITask) (APITask
 	if active >= 5 {
 		return APITask{}, ErrBulkTaskLimit
 	}
-	if err := insertAPITask(ctx, tx, task); err != nil {
+	if err := insertAPITask(ctx, tx, &task); err != nil {
 		return APITask{}, err
 	}
 	return task, tx.Commit(ctx)
@@ -206,17 +211,16 @@ func queuedAPITask(workspaceID, actorID, description, kind string, payload any) 
 	}, nil
 }
 
-func insertAPITask(ctx context.Context, tx pgx.Tx, task APITask) error {
-	_, err := tx.Exec(ctx, `
+func insertAPITask(ctx context.Context, tx pgx.Tx, task *APITask) error {
+	return tx.QueryRow(ctx, `
 		INSERT INTO api_tasks(id,workspace_id,submitted_by,description,kind,payload,status,progress,message,result,submitted_at,started_at,last_update_at,finished_at)
-		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING jira_id`,
 		task.ID, task.WorkspaceID, task.SubmittedBy, task.Description, task.Kind, task.Payload,
 		task.Status, task.Progress, task.Message, task.Result, task.SubmittedAt, task.StartedAt,
-		task.LastUpdateAt, task.FinishedAt)
-	return err
+		task.LastUpdateAt, task.FinishedAt).Scan(&task.JiraID)
 }
 
-func (s *Store) enqueueAPITask(ctx context.Context, task APITask) error {
+func (s *Store) enqueueAPITask(ctx context.Context, task *APITask) error {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -233,21 +237,21 @@ func scanAPITask(row pgx.Row) (APITask, error) {
 	err := row.Scan(
 		&task.ID, &task.WorkspaceID, &task.SubmittedBy, &task.Description, &task.Kind,
 		&task.Payload, &task.Status, &task.Progress, &task.Message, &task.Result,
-		&task.SubmittedAt, &task.StartedAt, &task.LastUpdateAt, &task.FinishedAt,
+		&task.SubmittedAt, &task.StartedAt, &task.LastUpdateAt, &task.FinishedAt, &task.JiraID,
 	)
 	return task, err
 }
 
-const apiTaskColumns = `id,workspace_id,submitted_by,description,kind,COALESCE(payload,'null'::jsonb),status,progress,message,COALESCE(result,'null'::jsonb),submitted_at,started_at,last_update_at,finished_at`
+const apiTaskColumns = `id,workspace_id,submitted_by,description,kind,COALESCE(payload,'null'::jsonb),status,progress,message,COALESCE(result,'null'::jsonb),submitted_at,started_at,last_update_at,finished_at,jira_id`
 
 func (s *Store) APITaskByID(ctx context.Context, workspaceID, taskID string) (APITask, error) {
-	return scanAPITask(s.Pool.QueryRow(ctx, `SELECT `+apiTaskColumns+` FROM api_tasks WHERE id=$1 AND workspace_id=$2`, taskID, workspaceID))
+	return scanAPITask(s.Pool.QueryRow(ctx, `SELECT `+apiTaskColumns+` FROM api_tasks WHERE (id=$1 OR jira_id::text=$1) AND workspace_id=$2`, taskID, workspaceID))
 }
 
 func (s *Store) CancelAPITask(ctx context.Context, workspaceID, taskID string) (APITask, error) {
 	task, err := scanAPITask(s.Pool.QueryRow(ctx, `
 		UPDATE api_tasks SET status='CANCELLED',message='Task was cancelled.',last_update_at=now(),finished_at=now()
-		WHERE id=$1 AND workspace_id=$2 AND status IN ('ENQUEUED','RUNNING')
+		WHERE (id=$1 OR jira_id::text=$1) AND workspace_id=$2 AND status IN ('ENQUEUED','RUNNING')
 		RETURNING `+apiTaskColumns, taskID, workspaceID))
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return task, err
@@ -329,7 +333,7 @@ func (r *APITaskRunner) claim(ctx context.Context, workspaceID string) (APITask,
 }
 
 func prefixedAPITaskColumns(alias string) string {
-	return alias + `.id,` + alias + `.workspace_id,` + alias + `.submitted_by,` + alias + `.description,` + alias + `.kind,COALESCE(` + alias + `.payload,'null'::jsonb),` + alias + `.status,` + alias + `.progress,` + alias + `.message,COALESCE(` + alias + `.result,'null'::jsonb),` + alias + `.submitted_at,` + alias + `.started_at,` + alias + `.last_update_at,` + alias + `.finished_at`
+	return alias + `.id,` + alias + `.workspace_id,` + alias + `.submitted_by,` + alias + `.description,` + alias + `.kind,COALESCE(` + alias + `.payload,'null'::jsonb),` + alias + `.status,` + alias + `.progress,` + alias + `.message,COALESCE(` + alias + `.result,'null'::jsonb),` + alias + `.submitted_at,` + alias + `.started_at,` + alias + `.last_update_at,` + alias + `.finished_at,` + alias + `.jira_id`
 }
 
 func (r *APITaskRunner) execute(ctx context.Context, task APITask) error {

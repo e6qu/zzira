@@ -218,7 +218,7 @@ func (h *Handler) submitBulkTransition(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, http.StatusInternalServerError, "Could not submit the bulk operation.")
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]string{"taskId": task.ID})
+	writeJSON(w, http.StatusCreated, map[string]string{"taskId": task.WireID()})
 }
 
 type bulkMoveTargetRequest struct {
@@ -333,7 +333,7 @@ func (h *Handler) submitBulkMove(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, http.StatusInternalServerError, "Could not submit the bulk operation.")
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]string{"taskId": task.ID})
+	writeJSON(w, http.StatusCreated, map[string]string{"taskId": task.WireID()})
 }
 
 func (h *Handler) submitBulkDelete(w http.ResponseWriter, r *http.Request) {
@@ -379,7 +379,7 @@ func (h *Handler) submitBulkDelete(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, http.StatusInternalServerError, "Could not submit the bulk operation.")
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]string{"taskId": task.ID})
+	writeJSON(w, http.StatusCreated, map[string]string{"taskId": task.WireID()})
 }
 
 type bulkEditableField struct {
@@ -705,7 +705,7 @@ func (h *Handler) submitBulkWatch(w http.ResponseWriter, r *http.Request, watch 
 		jiraError(w, http.StatusInternalServerError, "Could not submit the bulk operation.")
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]string{"taskId": task.ID})
+	writeJSON(w, http.StatusCreated, map[string]string{"taskId": task.WireID()})
 }
 
 func (h *Handler) bulkOperationProgress(w http.ResponseWriter, r *http.Request, taskID string) {
@@ -732,7 +732,7 @@ func (h *Handler) bulkOperationProgress(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	bean := map[string]any{
-		"taskId": task.ID, "status": task.Status, "progressPercent": task.Progress,
+		"taskId": task.WireID(), "status": task.Status, "progressPercent": task.Progress,
 		"submittedBy": map[string]string{"accountId": task.SubmittedBy},
 		"created":     task.SubmittedAt.UnixMilli(), "updated": task.LastUpdateAt.UnixMilli(),
 	}

@@ -98,7 +98,7 @@ func (h *Handler) archiveIssuesByJQL(w http.ResponseWriter, r *http.Request, wor
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	writeJSON(w, http.StatusAccepted, h.BaseURL+"/rest/api/3/task/"+task.ID)
+	writeJSON(w, http.StatusAccepted, h.BaseURL+"/rest/api/3/task/"+task.WireID())
 }
 
 var archiveDatePattern = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
@@ -162,7 +162,7 @@ func (h *Handler) exportArchivedIssues(w http.ResponseWriter, r *http.Request) {
 	}
 	payload, _ := json.Marshal(request)
 	writeJSON(w, http.StatusAccepted, map[string]any{
-		"taskId": task.ID, "status": task.Status, "progress": task.Progress, "payload": string(payload),
+		"taskId": task.WireID(), "status": task.Status, "progress": task.Progress, "payload": string(payload),
 		"submittedTime": task.SubmittedAt.UTC().Format(time.RFC3339), "fileUrl": "",
 	})
 }
@@ -290,7 +290,7 @@ func (h *Handler) redactRoute(w http.ResponseWriter, r *http.Request, jobID stri
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	writeJSON(w, http.StatusAccepted, task.ID)
+	writeJSON(w, http.StatusAccepted, task.WireID())
 }
 
 func validPropertyValue(value json.RawMessage) bool {
@@ -440,7 +440,7 @@ func (h *Handler) issuePropertiesBulkRoute(w http.ResponseWriter, r *http.Reques
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	w.Header().Set("Location", h.BaseURL+"/rest/api/3/task/"+task.ID)
+	w.Header().Set("Location", h.BaseURL+"/rest/api/3/task/"+task.WireID())
 	writeJSON(w, http.StatusSeeOther, h.apiTaskBean(task))
 }
 
@@ -485,5 +485,5 @@ func (h *Handler) issuePanelPins(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, http.StatusInternalServerError, "The task could not be submitted.")
 		return
 	}
-	writeJSON(w, http.StatusAccepted, map[string]any{"taskId": task.ID})
+	writeJSON(w, http.StatusAccepted, map[string]any{"taskId": task.WireID()})
 }

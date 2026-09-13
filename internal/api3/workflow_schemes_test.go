@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -242,7 +243,7 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	if err := json.Unmarshal(created.Body.Bytes(), &scheme); err != nil {
 		t.Fatal(err)
 	}
-	schemeID := scheme["id"].(string)
+	schemeID := jsonIDString(t, scheme["id"])
 	call(actor, "GET", "/rest/api/3/workflowscheme", "", 200)
 	call(actor, "GET", "/rest/api/3/workflowscheme/"+schemeID, "", 200)
 	update := `{"name":"Delivery scheme updated","description":"Draft routing","defaultWorkflow":"Default","issueTypeMappings":{}}`
@@ -338,7 +339,10 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	if err := json.Unmarshal(switchable.Body.Bytes(), &scheme); err != nil {
 		t.Fatal(err)
 	}
-	targetSchemeID := scheme["id"].(string)
+	targetSchemeID := jsonIDString(t, scheme["id"])
+	storedSchemeID := func(ref string) string {
+		return st.WorkflowSchemeIDByRef(ctx, ws, ref)
+	}
 	call(actor, "POST", "/rest/api/3/workflowscheme/project/switch", `{"projectId":"`+projectID+`","targetSchemeId":"`+targetSchemeID+`"}`, 409)
 	switchResponse := call(actor, "POST", "/rest/api/3/workflowscheme/project/switch", `{"projectId":"`+projectID+`","targetSchemeId":"`+targetSchemeID+`","mappingsByIssueTypeOverride":[{"issueTypeId":"10002","statusMappings":[{"oldStatusId":"st_inprogress","newStatusId":"st_todo"}]}]}`, 303)
 	if switchResponse.Header().Get("Location") == "" || !strings.Contains(switchResponse.Body.String(), `"status":"ENQUEUED"`) || !strings.Contains(switchResponse.Body.String(), `"progress":0`) {
@@ -362,7 +366,7 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 		t.Fatal(err)
 	}
 	var cancelledIssueStatus, cancelledScheme string
-	if err := st.Pool.QueryRow(ctx, `SELECT i.status_id,p.workflow_scheme_id FROM issues i JOIN projects p ON p.id=i.project_id WHERE i.id=$1`, issueID).Scan(&cancelledIssueStatus, &cancelledScheme); err != nil || cancelledIssueStatus != "st_inprogress" || cancelledScheme != schemeID {
+	if err := st.Pool.QueryRow(ctx, `SELECT i.status_id,p.workflow_scheme_id FROM issues i JOIN projects p ON p.id=i.project_id WHERE i.id=$1`, issueID).Scan(&cancelledIssueStatus, &cancelledScheme); err != nil || cancelledIssueStatus != "st_inprogress" || cancelledScheme != storedSchemeID(schemeID) {
 		t.Fatalf("cancelled switch changed status=%q scheme=%q err=%v", cancelledIssueStatus, cancelledScheme, err)
 	}
 	switchResponse = call(actor, "POST", "/rest/api/3/workflowscheme/project/switch", `{"projectId":"`+projectID+`","targetSchemeId":"`+targetSchemeID+`","mappingsByIssueTypeOverride":[{"issueTypeId":"10002","statusMappings":[{"oldStatusId":"st_inprogress","newStatusId":"st_todo"}]}]}`, 303)
@@ -374,7 +378,7 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	call(actor, "POST", taskPath+"/cancel", "", 400)
 	call(actor, "GET", "/rest/api/3/task/task_missing", "", 404)
 	var issueStatus, assignedScheme string
-	if err := st.Pool.QueryRow(ctx, `SELECT i.status_id,p.workflow_scheme_id FROM issues i JOIN projects p ON p.id=i.project_id WHERE i.id=$1`, issueID).Scan(&issueStatus, &assignedScheme); err != nil || issueStatus != "st_todo" || assignedScheme != targetSchemeID {
+	if err := st.Pool.QueryRow(ctx, `SELECT i.status_id,p.workflow_scheme_id FROM issues i JOIN projects p ON p.id=i.project_id WHERE i.id=$1`, issueID).Scan(&issueStatus, &assignedScheme); err != nil || issueStatus != "st_todo" || assignedScheme != storedSchemeID(targetSchemeID) {
 		t.Fatalf("switch result status=%q scheme=%q err=%v", issueStatus, assignedScheme, err)
 	}
 	projectUsage := call(actor, "GET", "/rest/api/3/workflow/"+workflowID+"/projectUsages?maxResults=1", "", 200)
@@ -442,7 +446,7 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	if err := json.Unmarshal(unused.Body.Bytes(), &scheme); err != nil {
 		t.Fatal(err)
 	}
-	unusedSchemeID := scheme["id"].(string)
+	unusedSchemeID := jsonIDString(t, scheme["id"])
 	deletableWorkflow := simpleWorkflow
 	deletableWorkflow.ID, deletableWorkflow.Name = store.NewID("workflow"), "Delete API lifecycle"
 	if err := st.CreateWorkflow(ctx, ws, deletableWorkflow); err != nil {
@@ -461,4 +465,17 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM organization_audit_events WHERE actor_id=$1 AND action='workflow.deleted' AND target_id=$2`, actor, deletableWorkflow.ID).Scan(&workflowDeleteAudits); err != nil || workflowDeleteAudits != 1 {
 		t.Fatalf("workflow delete audits=%d err=%v", workflowDeleteAudits, err)
 	}
+}
+
+// jsonIDString reads an id a response sent as a JSON number or string.
+func jsonIDString(t *testing.T, value any) string {
+	t.Helper()
+	switch id := value.(type) {
+	case float64:
+		return strconv.FormatInt(int64(id), 10)
+	case string:
+		return id
+	}
+	t.Fatalf("id = %#v, want a number or string", value)
+	return ""
 }
