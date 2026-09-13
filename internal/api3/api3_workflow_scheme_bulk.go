@@ -32,8 +32,8 @@ type mappingsByWorkflowRequest struct {
 	StatusMappings []workflowAssociationStatusMappingRequest `json:"statusMappings"`
 }
 
-func (h *Handler) workflowStatusMappings(r *http.Request, current, candidate workflow.Scheme, byIssueType []mappingsByIssueTypeOverrideRequest, byWorkflow []mappingsByWorkflowRequest) ([]store.WorkflowStatusMapping, error) {
-	issueTypes, err := h.Store.IssueTypes(r.Context())
+func (h *Handler) workflowStatusMappings(r *http.Request, workspaceID string, current, candidate workflow.Scheme, byIssueType []mappingsByIssueTypeOverrideRequest, byWorkflow []mappingsByWorkflowRequest) ([]store.WorkflowStatusMapping, error) {
+	issueTypes, err := h.Store.IssueTypes(r.Context(), workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -263,7 +263,7 @@ func (h *Handler) workflowSchemeBulkRoute(w http.ResponseWriter, r *http.Request
 		}
 		candidate := workflowSchemeFromAssociations(current, request.DefaultWorkflowID, request.WorkflowsForIssueTypes)
 		candidate.Name, candidate.Description = request.Name, request.Description
-		statusMappings, err := h.workflowStatusMappings(r, current, candidate, request.StatusMappingsByIssueTypeOverride, request.StatusMappingsByWorkflows)
+		statusMappings, err := h.workflowStatusMappings(r, workspaceID, current, candidate, request.StatusMappingsByIssueTypeOverride, request.StatusMappingsByWorkflows)
 		if err != nil {
 			workflowSchemeAPIError(w, err)
 			return true

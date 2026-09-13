@@ -7,38 +7,46 @@ import (
 )
 
 // FirstIssueType returns the seeded default issue type (V0 has exactly one).
-func (s *Store) FirstIssueType(ctx context.Context) (*models.IssueType, error) {
-	t := &models.IssueType{}
-	err := s.Pool.QueryRow(ctx, `SELECT id, name, COALESCE(icon,'') FROM issue_types LIMIT 1`).
-		Scan(&t.ID, &t.Name, &t.Icon)
+// FirstIssueType is the site's default issue type for a new issue: the default
+// issue type scheme's default, or its first standard type.
+func (s *Store) FirstIssueType(ctx context.Context, workspaceID string) (*models.IssueType, error) {
+	types, err := s.IssueTypesForWorkspace(ctx, workspaceID)
 	if err != nil {
 		return nil, err
 	}
-	return t, nil
+	var defaultID string
+	_ = s.Pool.QueryRow(ctx, `SELECT COALESCE(default_issue_type_id,'') FROM issue_type_schemes WHERE workspace_id=$1 AND is_default`, workspaceID).Scan(&defaultID)
+	for i := range types {
+		if types[i].ID == defaultID {
+			return &types[i], nil
+		}
+	}
+	for i := range types {
+		if !types[i].Subtask {
+			return &types[i], nil
+		}
+	}
+	return nil, ErrIssueMetadataNotFound
 }
 
-// IssueTypeByIDOrName resolves the two Jira wire representations to the
-// canonical internal identifier. Issue types are workspace-independent today.
-func (s *Store) IssueTypeByIDOrName(ctx context.Context, idOrName string) (*models.IssueType, error) {
-	t := &models.IssueType{}
-	err := s.Pool.QueryRow(ctx, `SELECT id, name, COALESCE(icon,''), subtask FROM issue_types WHERE id=$1 OR name=$1 LIMIT 1`, idOrName).
-		Scan(&t.ID, &t.Name, &t.Icon, &t.Subtask)
+// IssueTypeByIDOrName resolves the ways a client names an issue type to the
+// site's issue type.
+func (s *Store) IssueTypeByIDOrName(ctx context.Context, workspaceID, idOrName string) (*models.IssueType, error) {
+	t, err := s.IssueTypeInWorkspace(ctx, workspaceID, idOrName)
 	if err != nil {
 		return nil, err
 	}
-	return t, nil
+	return &t, nil
 }
 
-// PriorityByIDOrName resolves the two Jira wire representations to the
-// canonical internal identifier. Priorities are workspace-independent today.
-func (s *Store) PriorityByIDOrName(ctx context.Context, idOrName string) (*models.Priority, error) {
-	p := &models.Priority{}
-	err := s.Pool.QueryRow(ctx, `SELECT id, name FROM priorities WHERE id=$1 OR name=$1 LIMIT 1`, idOrName).
-		Scan(&p.ID, &p.Name)
+// PriorityByIDOrName resolves the ways a client names a priority to the
+// site's priority.
+func (s *Store) PriorityByIDOrName(ctx context.Context, workspaceID, idOrName string) (*models.Priority, error) {
+	p, err := s.PriorityInWorkspace(ctx, workspaceID, idOrName)
 	if err != nil {
 		return nil, err
 	}
-	return p, nil
+	return &p, nil
 }
 
 // DefaultProject returns the seeded demo project (V0 has exactly one).
@@ -146,22 +154,17 @@ func (s *Store) IssuesReportedByUser(ctx context.Context, workspaceID, targetUse
 	return out, rows.Err()
 }
 
-// Priorities lists the registry.
-func (s *Store) Priorities(ctx context.Context) ([]*models.Priority, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT id, name FROM priorities ORDER BY id`)
+// Priorities lists the site's priorities in the site's order.
+func (s *Store) Priorities(ctx context.Context, workspaceID string) ([]*models.Priority, error) {
+	priorities, err := s.PrioritiesForWorkspace(ctx, workspaceID)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var out []*models.Priority
-	for rows.Next() {
-		p := &models.Priority{}
-		if err := rows.Scan(&p.ID, &p.Name); err != nil {
-			return nil, err
-		}
-		out = append(out, p)
+	out := make([]*models.Priority, len(priorities))
+	for i := range priorities {
+		out[i] = &priorities[i]
 	}
-	return out, rows.Err()
+	return out, nil
 }
 
 // AllStatuses lists the status registry.

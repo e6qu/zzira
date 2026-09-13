@@ -48,7 +48,7 @@ func (h *Handler) loadCustomFieldsPage(r *http.Request, workspaceID string) (cus
 	if data.Projects, err = h.Store.ProjectsByWorkspace(r.Context(), workspaceID); err != nil {
 		return data, err
 	}
-	if data.IssueTypes, err = h.Store.IssueTypes(r.Context()); err != nil {
+	if data.IssueTypes, err = h.Store.IssueTypes(r.Context(), workspaceID); err != nil {
 		return data, err
 	}
 	projectsByID := map[string]*models.Project{}

@@ -57,6 +57,13 @@ type IssueType struct {
 	Name    string `json:"name"`
 	Icon    string `json:"icon"`
 	Subtask bool   `json:"subtask"`
+
+	// JiraID is the numeric id clients see; ID stays internal.
+	JiraID         int64  `json:"-"`
+	WorkspaceID    string `json:"-"`
+	Description    string `json:"-"`
+	HierarchyLevel int    `json:"-"`
+	AvatarID       int64  `json:"-"`
 }
 
 type IssueParent struct {
@@ -69,6 +76,27 @@ type IssueParent struct {
 type Priority struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
+
+	// JiraID is the numeric id clients see; ID stays internal.
+	JiraID      int64  `json:"-"`
+	WorkspaceID string `json:"-"`
+	Description string `json:"-"`
+	StatusColor string `json:"-"`
+	IconURL     string `json:"-"`
+	AvatarID    int64  `json:"-"`
+	Position    int    `json:"-"`
+	IsDefault   bool   `json:"-"`
+}
+
+// Resolution records how an issue was finished: done, won't do, a duplicate.
+type Resolution struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	JiraID      int64  `json:"-"`
+	WorkspaceID string `json:"-"`
+	Description string `json:"-"`
+	Position    int    `json:"-"`
+	IsDefault   bool   `json:"-"`
 }
 
 type Project struct {
@@ -186,10 +214,13 @@ type Issue struct {
 	IssueType   IssueType       `json:"issuetype"`
 	Parent      *IssueParent    `json:"parent,omitempty"`
 	Priority    *Priority       `json:"priority"`
-	Assignee    *User           `json:"assignee"`
-	Reporter    *User           `json:"reporter"`
-	Labels      []string        `json:"labels"`
-	Rank        string          `json:"rank"`
+	Resolution  *Resolution     `json:"resolution,omitempty"`
+	// ResolvedAt is when the issue reached its resolution, empty while unresolved.
+	ResolvedAt string   `json:"resolutiondate,omitempty"`
+	Assignee   *User    `json:"assignee"`
+	Reporter   *User    `json:"reporter"`
+	Labels     []string `json:"labels"`
+	Rank       string   `json:"rank"`
 
 	SecurityLevelID string                     `json:"securityLevelId,omitempty"`
 	Fields          map[string]json.RawMessage `json:"fields,omitempty"`

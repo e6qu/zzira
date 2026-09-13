@@ -523,7 +523,7 @@ func (h *Handler) WorkflowSchemePage(w http.ResponseWriter, r *http.Request, sch
 		http.Error(w, "internal error", 500)
 		return
 	}
-	issueTypes, err := h.Store.IssueTypes(r.Context())
+	issueTypes, err := h.Store.IssueTypes(r.Context(), workspaceID)
 	if err != nil {
 		http.Error(w, "internal error", 500)
 		return
@@ -611,7 +611,7 @@ func (h *Handler) SaveWorkflowSchemeDraft(w http.ResponseWriter, r *http.Request
 	}
 	scheme.Name, scheme.Description, scheme.DefaultWorkflowID = r.PostFormValue("name"), r.PostFormValue("description"), r.PostFormValue("default_workflow")
 	scheme.IssueTypeMappings = make(map[string]string)
-	issueTypes, err := h.Store.IssueTypes(r.Context())
+	issueTypes, err := h.Store.IssueTypes(r.Context(), workspaceID)
 	if err != nil {
 		http.Error(w, "internal error", 500)
 		return

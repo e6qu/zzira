@@ -145,7 +145,7 @@ func (h *Handler) workflowCapabilities(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, http.StatusBadRequest, "projectId is invalid")
 		return
 	}
-	issueTypes, err := h.Store.IssueTypes(r.Context())
+	issueTypes, err := h.Store.IssueTypes(r.Context(), workspaceID)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return

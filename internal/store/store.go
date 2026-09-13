@@ -738,19 +738,25 @@ func (s *Store) ProjectByKey(ctx context.Context, workspaceID, key string) (*mod
 const issueJoin = `
 SELECT i.id, i.jira_id, i.workspace_id, i.project_id, i.key, i.summary, i.description,
        st.id, st.name, st.category,
-	       it.id, it.name, it.icon,
+	       it.id, COALESCE(ito.name, it.name), it.icon,
 	       it.subtask,
 	       parent.id, parent.jira_id, parent.key, parent.summary,
-       pr.id, pr.name,
+       pr.id, COALESCE(pro.name, pr.name),
        a.id, a.display_name,
 	       r.id, r.display_name,
 	       i.rank,
 	       i.security_level_id, i.fields, i.labels,
-	       i.updated_seq, i.updated_at
+	       i.updated_seq, i.updated_at,
+	       it.jira_id, it.hierarchy_level, pr.jira_id, COALESCE(pro.status_color, pr.status_color), COALESCE(pro.icon_url, pr.icon_url),
+	       res.id, res.jira_id, COALESCE(reso.name, res.name), COALESCE(reso.description, res.description), i.resolved_at
 FROM issues i
 JOIN statuses st ON st.id = i.status_id
 JOIN issue_types it ON it.id = i.issuetype_id
+LEFT JOIN issue_metadata_overrides ito ON ito.workspace_id = i.workspace_id AND ito.entity_type = 'issuetype' AND ito.entity_id = it.id
 LEFT JOIN priorities pr ON pr.id = i.priority_id
+LEFT JOIN issue_metadata_overrides pro ON pro.workspace_id = i.workspace_id AND pro.entity_type = 'priority' AND pro.entity_id = pr.id
+LEFT JOIN resolutions res ON res.id = i.resolution_id
+LEFT JOIN issue_metadata_overrides reso ON reso.workspace_id = i.workspace_id AND reso.entity_type = 'resolution' AND reso.entity_id = res.id
 LEFT JOIN users a ON a.id = i.assignee_id
 LEFT JOIN users r ON r.id = i.reporter_id
 LEFT JOIN issues parent ON parent.id = i.parent_id
@@ -766,6 +772,11 @@ func scanIssue(row pgx.Row) (*models.Issue, error) {
 	var updatedAt time.Time
 	var securityLevelID *string
 	var fieldsJSON []byte
+	var priorityJiraID *int64
+	var priorityColor, priorityIcon *string
+	var resolutionID, resolutionName, resolutionDescription *string
+	var resolutionJiraID *int64
+	var resolvedAt *time.Time
 	err := row.Scan(&i.ID, &i.JiraID, &i.WorkspaceID, &i.ProjectID, &i.Key, &i.Summary, &i.Description,
 		&i.Status.ID, &i.Status.Name, &i.Status.Category,
 		&i.IssueType.ID, &i.IssueType.Name, &i.IssueType.Icon, &i.IssueType.Subtask,
@@ -775,7 +786,9 @@ func scanIssue(row pgx.Row) (*models.Issue, error) {
 		&reporterID, &reporterName,
 		&i.Rank,
 		&securityLevelID, &fieldsJSON, &i.Labels,
-		&i.UpdatedSeq, &updatedAt)
+		&i.UpdatedSeq, &updatedAt,
+		&i.IssueType.JiraID, &i.IssueType.HierarchyLevel, &priorityJiraID, &priorityColor, &priorityIcon,
+		&resolutionID, &resolutionJiraID, &resolutionName, &resolutionDescription, &resolvedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -796,6 +809,24 @@ func scanIssue(row pgx.Row) (*models.Issue, error) {
 	i.UpdatedAt = updatedAt.UTC().Format(time.RFC3339)
 	if priorityID != nil {
 		i.Priority = &models.Priority{ID: *priorityID, Name: *priorityName}
+		if priorityJiraID != nil {
+			i.Priority.JiraID = *priorityJiraID
+		}
+		if priorityColor != nil {
+			i.Priority.StatusColor = *priorityColor
+		}
+		if priorityIcon != nil {
+			i.Priority.IconURL = *priorityIcon
+		}
+	}
+	if resolutionID != nil {
+		i.Resolution = &models.Resolution{ID: *resolutionID, Name: *resolutionName, Description: *resolutionDescription}
+		if resolutionJiraID != nil {
+			i.Resolution.JiraID = *resolutionJiraID
+		}
+		if resolvedAt != nil {
+			i.ResolvedAt = resolvedAt.UTC().Format(time.RFC3339)
+		}
 	}
 	if assigneeID != nil {
 		i.Assignee = &models.User{ID: *assigneeID, DisplayName: *assigneeName, Active: true, AccountType: "atlassian"}

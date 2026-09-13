@@ -45,7 +45,7 @@ func (h *Handler) loadScreenSchemesPage(r *http.Request, workspaceID string) (sc
 	if data.Screens, err = h.Store.Screens(r.Context(), workspaceID, store.ScreenFilter{}); err != nil {
 		return data, err
 	}
-	if data.IssueTypes, err = h.Store.IssueTypes(r.Context()); err != nil {
+	if data.IssueTypes, err = h.Store.IssueTypes(r.Context(), workspaceID); err != nil {
 		return data, err
 	}
 	if data.Projects, err = h.Store.ProjectsByWorkspace(r.Context(), workspaceID); err != nil {

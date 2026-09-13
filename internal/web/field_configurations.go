@@ -51,7 +51,7 @@ func fieldConfigMutationMessage(err error) string {
 func (h *Handler) loadFieldConfigurationsPage(r *http.Request, workspaceID string) (fieldConfigurationsData, error) {
 	data := fieldConfigurationsData{Notice: r.URL.Query().Get("notice"), Error: r.URL.Query().Get("error")}
 	var err error
-	if data.IssueTypes, err = h.Store.IssueTypes(r.Context()); err != nil {
+	if data.IssueTypes, err = h.Store.IssueTypes(r.Context(), workspaceID); err != nil {
 		return data, err
 	}
 	if data.Projects, err = h.Store.ProjectsByWorkspace(r.Context(), workspaceID); err != nil {

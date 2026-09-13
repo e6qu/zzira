@@ -8,22 +8,9 @@ import (
 	"github.com/e6qu/zzira/internal/models"
 )
 
-// IssueTypes lists the issue type registry used by create metadata.
-func (s *Store) IssueTypes(ctx context.Context) ([]models.IssueType, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT id, name, COALESCE(icon,''), subtask FROM issue_types ORDER BY subtask, name, id`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []models.IssueType
-	for rows.Next() {
-		var issueType models.IssueType
-		if err := rows.Scan(&issueType.ID, &issueType.Name, &issueType.Icon, &issueType.Subtask); err != nil {
-			return nil, err
-		}
-		out = append(out, issueType)
-	}
-	return out, rows.Err()
+// IssueTypes lists the site's issue types.
+func (s *Store) IssueTypes(ctx context.Context, workspaceID string) ([]models.IssueType, error) {
+	return s.IssueTypesForWorkspace(ctx, workspaceID)
 }
 
 // ProjectByIDOrKey resolves a project without allowing it to escape the
@@ -40,7 +27,7 @@ func (s *Store) IssueCreateMetadata(ctx context.Context, workspaceID, userID str
 	if err != nil {
 		return nil, err
 	}
-	issueTypes, err := s.IssueTypes(ctx)
+	issueTypes, err := s.IssueTypes(ctx, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -56,7 +43,7 @@ func (s *Store) IssueCreateMetadata(ctx context.Context, workspaceID, userID str
 	if err != nil {
 		return nil, err
 	}
-	priorities, err := s.Priorities(ctx)
+	priorities, err := s.Priorities(ctx, workspaceID)
 	if err != nil {
 		return nil, err
 	}

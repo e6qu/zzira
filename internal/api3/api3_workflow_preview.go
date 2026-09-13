@@ -130,7 +130,7 @@ func (h *Handler) workflowPreview(w http.ResponseWriter, r *http.Request) {
 		}
 		add(item, "")
 	}
-	issueTypes, err := h.Store.IssueTypes(r.Context())
+	issueTypes, err := h.Store.IssueTypes(r.Context(), workspaceID)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return

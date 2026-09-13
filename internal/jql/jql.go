@@ -817,14 +817,14 @@ func DefaultResolver() FieldResolver {
 			"assignee":       "i.assignee_id",
 			"reporter":       "i.reporter_id",
 			"creator":        "i.reporter_id",
-			"priority":       "pr2.name",
-			"issuetype":      "it.name",
+			"priority":       "COALESCE(pro.name, pr2.name)",
+			"issuetype":      "COALESCE(ito.name, it.name)",
 			"updated":        "i.updated_at",
 			"created":        "i.created_at",
 			"labels":         "i.labels",
 			"parent":         "parent.key",
-			"resolution":     `i.fields->>'resolution'`,
-			"resolutiondate": `NULLIF(i.fields->>'resolutiondate','')::timestamptz`,
+			"resolution":     "COALESCE(reso.name, res.name)",
+			"resolutiondate": "i.resolved_at",
 			"due":            `NULLIF(i.fields->>'duedate','')::timestamptz`,
 			"environment":    `i.fields->>'environment'`,
 			"component":      `i.fields->>'component'`,
@@ -833,9 +833,9 @@ func DefaultResolver() FieldResolver {
 		TextColumns: []string{"i.summary", "i.description::text"},
 		DefaultOrder: map[string]string{
 			"updated": "i.updated_at", "created": "i.created_at", "key": "i.key", "summary": "i.summary",
-			"status": "st.name", "priority": "pr2.name", "assignee": "a.display_name", "issuetype": "it.name",
-			"reporter": "r.display_name", "project": "pr.key", "parent": "parent.key", "resolution": `i.fields->>'resolution'`,
-			"due": `NULLIF(i.fields->>'duedate','')::timestamptz`, "resolutiondate": `NULLIF(i.fields->>'resolutiondate','')::timestamptz`,
+			"status": "st.name", "priority": "COALESCE(pro.position, pr2.position)", "assignee": "a.display_name", "issuetype": "COALESCE(ito.name, it.name)",
+			"reporter": "r.display_name", "project": "pr.key", "parent": "parent.key", "resolution": "COALESCE(reso.position, res.position)",
+			"due": `NULLIF(i.fields->>'duedate','')::timestamptz`, "resolutiondate": "i.resolved_at",
 		},
 		DateFields: map[string]bool{"updated": true, "created": true, "due": true, "resolutiondate": true},
 	}
@@ -1027,12 +1027,28 @@ func (c *compiler) clause(cl Clause) string {
 		return "(" + col + " NOT ILIKE " + c.arg("%"+cl.Values[0]+"%") + " OR " + col + " IS NULL)"
 	case "in", "notin":
 		placeholders := make([]string, 0, len(cl.Values))
+		includesNone := false
 		for _, v := range cl.Values {
-			placeholders = append(placeholders, c.arg(c.fieldValue(cl.Field, v)))
+			value := c.fieldValue(cl.Field, v)
+			// A value standing for "no value" — Unresolved — matches the
+			// absence of one; an IN list with NULL in it would match nothing.
+			if value == nil {
+				includesNone = true
+				continue
+			}
+			placeholders = append(placeholders, c.arg(value))
 		}
-		membership := col + " IN (" + strings.Join(placeholders, ",") + ")"
+		membership := "FALSE"
+		if len(placeholders) > 0 {
+			membership = col + " IN (" + strings.Join(placeholders, ",") + ")"
+		}
+		// NOT IN never matches an empty value in Jira, whether or not the list
+		// names one.
 		if cl.Op == "notin" {
 			return "(" + col + " IS NOT NULL AND NOT (" + membership + "))"
+		}
+		if includesNone {
+			return "(" + col + " IS NULL OR " + membership + ")"
 		}
 		return membership
 	case ">", ">=", "<", "<=":
@@ -1412,6 +1428,11 @@ func (c *compiler) componentClause(cl Clause) string {
 
 // fieldValue resolves semantic values: status names, currentUser(), EMPTY/null.
 func (c *compiler) fieldValue(field, value string) any {
+	// Unresolved is Jira's name for having no resolution at all, so it compares
+	// as the absence of one rather than as a resolution called "Unresolved".
+	if field == "resolution" && strings.EqualFold(strings.Trim(strings.TrimSpace(value), `"'`), "unresolved") {
+		return nil
+	}
 	if name, args, ok := splitFunction(value); ok {
 		switch strings.ToLower(name) {
 		case "currentuser":

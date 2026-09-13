@@ -263,7 +263,7 @@ func (h *Handler) submitBulkMove(w http.ResponseWriter, r *http.Request) {
 			bulkOperationError(w, http.StatusBadRequest, "A destination project is invalid or inaccessible")
 			return
 		}
-		issueType, err := h.Store.IssueTypeByIDOrName(r.Context(), strings.TrimSpace(parts[1]))
+		issueType, err := h.Store.IssueTypeByIDOrName(r.Context(), workspaceID, strings.TrimSpace(parts[1]))
 		if err != nil {
 			bulkOperationError(w, http.StatusBadRequest, "A destination issue type is invalid")
 			return
