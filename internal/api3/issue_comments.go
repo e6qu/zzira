@@ -121,8 +121,12 @@ type commentRenderer struct {
 }
 
 func (h *Handler) newCommentRenderer(r *http.Request, workspaceID, readerID string) *commentRenderer {
-	admin, _ := h.Store.IsAdmin(r.Context(), workspaceID, readerID)
-	return &commentRenderer{h: h, ctx: r.Context(), workspaceID: workspaceID, readerID: readerID, readerAdmin: admin, expand: r.URL.Query().Get("expand"), users: map[string]*models.User{}}
+	return h.newCommentRendererContext(r.Context(), workspaceID, readerID, r.URL.Query().Get("expand"))
+}
+
+func (h *Handler) newCommentRendererContext(ctx context.Context, workspaceID, readerID, expand string) *commentRenderer {
+	admin, _ := h.Store.IsAdmin(ctx, workspaceID, readerID)
+	return &commentRenderer{h: h, ctx: ctx, workspaceID: workspaceID, readerID: readerID, readerAdmin: admin, expand: expand, users: map[string]*models.User{}}
 }
 
 func (cr *commentRenderer) user(id, fallbackName string) map[string]any {

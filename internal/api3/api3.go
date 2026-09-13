@@ -10,10 +10,10 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 
-	"github.com/e6qu/zzira/internal/adf"
 	"github.com/e6qu/zzira/internal/attachments"
 	"github.com/e6qu/zzira/internal/authn"
 	"github.com/e6qu/zzira/internal/authz"
@@ -321,6 +321,36 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		} else {
 			jiraError(w, http.StatusNotFound, "No resource found")
 		}
+	case path == "/issue/watching":
+		h.bulkIsWatching(w, r)
+	case path == "/issue/bulkfetch":
+		h.bulkFetchIssues(w, r)
+	case path == "/issue/bulk":
+		h.createIssues(w, r)
+	case path == "/issue/picker":
+		h.issuePicker(w, r)
+	case path == "/issue/archive":
+		h.issueArchivalRoute(w, r, false)
+	case path == "/issue/unarchive":
+		h.issueArchivalRoute(w, r, true)
+	case path == "/issue/limit/report":
+		h.issueLimitReport(w, r, false)
+	case path == "/issue/limit/adf/report":
+		h.issueLimitReport(w, r, true)
+	case path == "/issue/properties" || strings.HasPrefix(path, "/issue/properties/"):
+		h.issuePropertiesBulkRoute(w, r, path)
+	case path == "/issues/archive/export":
+		h.exportArchivedIssues(w, r)
+	case path == "/changelog/bulkfetch":
+		h.bulkChangelogs(w, r)
+	case path == "/events":
+		h.issueEvents(w, r)
+	case path == "/redact":
+		h.redactRoute(w, r, "")
+	case strings.HasPrefix(path, "/redact/status/"):
+		h.redactRoute(w, r, strings.TrimPrefix(path, "/redact/status/"))
+	case path == "/forge/panel/action/bulk/async":
+		h.issuePanelPins(w, r)
 	case strings.HasPrefix(path, "/issue/"):
 		parts := strings.Split(strings.TrimPrefix(path, "/issue/"), "/")
 		h.issueRoute(w, r, parts)
@@ -380,7 +410,11 @@ func (h *Handler) issueRoute(w http.ResponseWriter, r *http.Request, parts []str
 	case len(parts) == 2 && parts[1] == "votes":
 		h.issueVotes(w, r, idOrKey)
 	case len(parts) == 2 && parts[1] == "changelog" && r.Method == http.MethodGet:
-		h.changelog(w, r, idOrKey)
+		h.issueChangelog(w, r, idOrKey)
+	case len(parts) == 3 && parts[1] == "changelog" && parts[2] == "list" && r.Method == http.MethodPost:
+		h.changelogByIDs(w, r, idOrKey)
+	case len(parts) == 2 && parts[1] == "notify":
+		h.notifyIssue(w, r, idOrKey)
 	case len(parts) == 2 && parts[1] == "editmeta" && r.Method == http.MethodGet:
 		h.editMeta(w, r, idOrKey)
 	default:
@@ -666,11 +700,32 @@ func (h *Handler) createIssue(w http.ResponseWriter, r *http.Request) {
 		jiraFieldError(w, http.StatusBadRequest, createIssueFieldError(err))
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{
+	var extras struct {
+		Properties []entityPropertyInput `json:"properties"`
+		Transition *struct {
+			ID string `json:"id"`
+		} `json:"transition"`
+	}
+	_ = json.Unmarshal(body, &extras)
+	for _, property := range extras.Properties {
+		if _, err = h.Store.SetIssueProperty(r.Context(), issue.ID, property.Key, property.Value); err != nil {
+			jiraFieldError(w, http.StatusBadRequest, map[string]string{"properties": "The property " + property.Key + " is invalid."})
+			return
+		}
+	}
+	created := map[string]any{
 		"id":   jiraIssueID(issue),
 		"key":  issue.Key,
 		"self": h.BaseURL + "/rest/api/3/issue/" + jiraIssueID(issue),
-	})
+	}
+	if extras.Transition != nil && extras.Transition.ID != "" {
+		result := map[string]any{"status": http.StatusNoContent, "errorCollection": map[string]any{"errorMessages": []string{}, "errors": map[string]string{}}}
+		if _, _, transitionErr := h.Commands.TransitionIssueWithUpdateFromAPI(r.Context(), userID, wsID, issue.ID, extras.Transition.ID, store.IssueUpdate{}); transitionErr != nil {
+			result = map[string]any{"status": http.StatusBadRequest, "errorCollection": map[string]any{"errorMessages": []string{transitionErr.Error()}, "errors": map[string]string{}}}
+		}
+		created["transition"] = result
+	}
+	writeJSON(w, http.StatusCreated, created)
 }
 
 func unsupportedCreateFields(body []byte) map[string]string {
@@ -732,14 +787,33 @@ func (h *Handler) putIssue(w http.ResponseWriter, r *http.Request, idOrKey strin
 		writeJerr(w, e)
 		return
 	}
-	if _, e := h.resolveIssue(r, wsID, idOrKey); e != nil {
+	current, e := h.resolveIssue(r, wsID, idOrKey)
+	if e != nil {
 		writeJerr(w, e)
 		return
+	}
+	for _, flag := range []string{"overrideScreenSecurity", "overrideEditableFlag"} {
+		if strings.EqualFold(r.URL.Query().Get(flag), "true") {
+			if admin, adminErr := h.Store.IsAdmin(r.Context(), wsID, userID); adminErr != nil || !admin {
+				jiraError(w, http.StatusForbidden, "Only administrators can use "+flag+".")
+				return
+			}
+		}
 	}
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		jiraFieldError(w, http.StatusBadRequest, map[string]string{"fields": "Invalid request payload."})
 		return
+	}
+	var issueProperties struct {
+		Properties []entityPropertyInput `json:"properties"`
+	}
+	_ = json.Unmarshal(body, &issueProperties)
+	for _, property := range issueProperties.Properties {
+		if strings.TrimSpace(property.Key) == "" || !validPropertyValue(property.Value) {
+			jiraFieldError(w, http.StatusBadRequest, map[string]string{"properties": "Each property needs a key and a valid JSON value."})
+			return
+		}
 	}
 	var req putIssueRequest
 	if err := json.Unmarshal(body, &req); err != nil {
@@ -820,6 +894,16 @@ func (h *Handler) putIssue(w http.ResponseWriter, r *http.Request, idOrKey strin
 		jiraFieldError(w, http.StatusBadRequest, map[string]string{field: err.Error()})
 		return
 	}
+	for _, property := range issueProperties.Properties {
+		if _, err := h.Store.SetIssueProperty(r.Context(), current.ID, property.Key, property.Value); err != nil {
+			jiraFieldError(w, http.StatusBadRequest, map[string]string{"properties": "The property " + property.Key + " is invalid."})
+			return
+		}
+	}
+	if strings.EqualFold(r.URL.Query().Get("returnIssue"), "true") {
+		h.getIssue(w, r, current.ID)
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -834,15 +918,36 @@ func (h *Handler) deleteIssue(w http.ResponseWriter, r *http.Request, idOrKey st
 		writeJerr(w, e)
 		return
 	}
-	if _, err := h.Commands.DeleteIssue(r.Context(), userID, wsID, issue.ID, "deleted via API"); err != nil {
-		jiraError(w, http.StatusInternalServerError, "delete failed")
+	children, err := h.Store.ChildIssues(r.Context(), wsID, issue.ID)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	subtasks := children[:0]
+	for _, child := range children {
+		if child.IssueType.Subtask {
+			subtasks = append(subtasks, child)
+		}
+	}
+	if len(subtasks) > 0 && !strings.EqualFold(r.URL.Query().Get("deleteSubtasks"), "true") {
+		jiraError(w, http.StatusBadRequest, "The issue has subtasks. To delete it, set deleteSubtasks to true.")
+		return
+	}
+	for _, subtask := range subtasks {
+		if _, err = h.Commands.DeleteIssue(r.Context(), userID, wsID, subtask.ID, "deleted with its parent via API"); err != nil {
+			issueCommandError(w, err)
+			return
+		}
+	}
+	if _, err = h.Commands.DeleteIssue(r.Context(), userID, wsID, issue.ID, "deleted via API"); err != nil {
+		issueCommandError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) getIssue(w http.ResponseWriter, r *http.Request, idOrKey string) {
-	wsID, _, e := h.authWorkspace(r)
+	wsID, userID, e := h.authWorkspace(r)
 	if e != nil {
 		if e.status == http.StatusUnauthorized {
 			w.Header().Set("WWW-Authenticate", `Basic realm="zzira"`)
@@ -855,15 +960,56 @@ func (h *Handler) getIssue(w http.ResponseWriter, r *http.Request, idOrKey strin
 		writeJerr(w, e)
 		return
 	}
-	bean := h.issueBean(issue)
-	if issue.SecurityLevelID != "" {
-		if name := h.Store.SecurityLevelName(r.Context(), issue.ProjectID, issue.SecurityLevelID); name != "" {
-			bean["fields"].(map[string]any)["security"] = map[string]any{"id": issue.SecurityLevelID, "name": name}
+	q := r.URL.Query()
+	options := searchOptions{Fields: splitSearchValues(q["fields"]), Expand: []string{q.Get("expand")}, Properties: splitSearchValues(q["properties"]), IssueDetails: true}
+	for name, target := range map[string]*bool{"fieldsByKeys": &options.FieldsByKeys, "failFast": &options.FailFast} {
+		if raw := q.Get(name); raw != "" {
+			value, err := strconv.ParseBool(raw)
+			if err != nil {
+				jiraError(w, http.StatusBadRequest, name+" must be true or false.")
+				return
+			}
+			*target = value
 		}
 	}
-	if strings.Contains(r.URL.Query().Get("expand"), "renderedFields") {
-		bean["rendered"] = map[string]any{
-			"description": adf.ToHTML(issue.Description),
+	if e := validateSearchOptions(&options); e != nil {
+		writeJerr(w, e)
+		return
+	}
+	customFields, err := h.Store.CustomFieldsForWorkspace(r.Context(), wsID)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	definitions := searchFieldDefinitions(customFields)
+	beans, err := h.searchIssueBeans(r.Context(), wsID, userID, []*models.Issue{issue}, options, len(options.Fields) == 0, definitions)
+	if err != nil || len(beans) != 1 {
+		jiraError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	bean := beans[0]
+	if fields, ok := bean["fields"].(map[string]any); ok && issue.SecurityLevelID != "" {
+		if _, wanted := fields["security"]; wanted || len(options.Fields) == 0 {
+			if name := h.Store.SecurityLevelName(r.Context(), issue.ProjectID, issue.SecurityLevelID); name != "" {
+				fields["security"] = map[string]any{"id": issue.SecurityLevelID, "name": name}
+			}
+		}
+	}
+	requested := normalizeSearchFields(options.Fields, definitions, options.FieldsByKeys)
+	names, schemas := searchFieldMetadata(requested, len(options.Fields) == 0, options.FieldsByKeys, definitions)
+	if hasSearchExpand(options, "names") {
+		bean["names"] = names
+	}
+	if hasSearchExpand(options, "schema") {
+		bean["schema"] = schemas
+	}
+	if _, ok := bean["expand"]; !ok {
+		bean["expand"] = "renderedFields,names,schema,operations,editmeta,changelog,versionedRepresentations"
+	}
+	if strings.EqualFold(q.Get("updateHistory"), "true") {
+		if err = h.Store.RecordIssueView(r.Context(), wsID, userID, issue.ID); err != nil {
+			jiraError(w, http.StatusInternalServerError, "internal error")
+			return
 		}
 	}
 	writeJSON(w, http.StatusOK, bean)
@@ -881,7 +1027,7 @@ func (h *Handler) issueBean(i *models.Issue) map[string]any {
 		"labels":      i.Labels,
 		"fixVersions": []any{},
 		"versions":    []any{},
-		"created":     i.UpdatedAt,
+		"created":     issueCreated(i),
 		"updated":     i.UpdatedAt,
 		"project": map[string]any{
 			"id":   i.ProjectID,
@@ -941,6 +1087,15 @@ func (h *Handler) issueBean(i *models.Issue) map[string]any {
 	}
 }
 
+// issueCreated is when an issue was created, falling back to its update time
+// for issues built without one, such as those replayed on a client.
+func issueCreated(issue *models.Issue) string {
+	if issue.CreatedAt != "" {
+		return issue.CreatedAt
+	}
+	return issue.UpdatedAt
+}
+
 func jiraIssueID(issue *models.Issue) string {
 	return strconv.FormatInt(issue.JiraID, 10)
 }
@@ -995,9 +1150,28 @@ func (h *Handler) listTransitions(w http.ResponseWriter, r *http.Request, idOrKe
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	q := r.URL.Query()
+	withFields := strings.Contains(q.Get("expand"), "transitions.fields")
+	filtered := []map[string]any{}
+	for _, bean := range beans {
+		if id := q.Get("transitionId"); id != "" && bean["id"] != id {
+			continue
+		}
+		if !withFields {
+			delete(bean, "fields")
+		}
+		filtered = append(filtered, bean)
+	}
+	if strings.EqualFold(q.Get("sortByOpsBarAndStatus"), "true") {
+		sort.SliceStable(filtered, func(i, j int) bool {
+			left, _ := filtered[i]["to"].(map[string]any)
+			right, _ := filtered[j]["to"].(map[string]any)
+			return statusCategoryOrder(left) < statusCategoryOrder(right)
+		})
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"expand":      "transitions",
-		"transitions": beans,
+		"transitions": filtered,
 	})
 }
 
@@ -1050,7 +1224,8 @@ func (h *Handler) performTransition(w http.ResponseWriter, r *http.Request, idOr
 		Transition struct {
 			ID string `json:"id"`
 		} `json:"transition"`
-		Fields map[string]json.RawMessage `json:"fields"`
+		Fields     map[string]json.RawMessage `json:"fields"`
+		Properties []entityPropertyInput      `json:"properties"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Transition.ID == "" {
 		jiraFieldError(w, http.StatusBadRequest, map[string]string{"transition": "Transition id is required."})
@@ -1066,11 +1241,32 @@ func (h *Handler) performTransition(w http.ResponseWriter, r *http.Request, idOr
 		jiraFieldError(w, http.StatusBadRequest, fieldErrors)
 		return
 	}
-	if _, _, err := h.Commands.TransitionIssueWithUpdateFromAPI(r.Context(), userID, wsID, idOrKey, req.Transition.ID, update); err != nil {
-		jiraError(w, http.StatusBadRequest, err.Error())
+	transitioned, _, err := h.Commands.TransitionIssueWithUpdateFromAPI(r.Context(), userID, wsID, idOrKey, req.Transition.ID, update)
+	if err != nil {
+		issueCommandError(w, err)
 		return
 	}
+	for _, property := range req.Properties {
+		if _, err = h.Store.SetIssueProperty(r.Context(), transitioned.ID, property.Key, property.Value); err != nil {
+			jiraFieldError(w, http.StatusBadRequest, map[string]string{"properties": "The property " + property.Key + " is invalid."})
+			return
+		}
+	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// statusCategoryOrder ranks a status by category: to do, in progress, done.
+func statusCategoryOrder(status map[string]any) int {
+	category, _ := status["statusCategory"].(map[string]any)
+	switch category["key"] {
+	case "new":
+		return 0
+	case "indeterminate":
+		return 1
+	case "done":
+		return 2
+	}
+	return 3
 }
 
 func transitionFieldMetadata(field string, required bool) map[string]any {
@@ -1151,31 +1347,6 @@ func transitionIssueUpdate(fields map[string]json.RawMessage) (store.IssueUpdate
 
 // ---- changelog (derived view of the log) ----
 
-func (h *Handler) changelog(w http.ResponseWriter, r *http.Request, idOrKey string) {
-	wsID, _, e := h.authWorkspace(r)
-	if e != nil {
-		writeJerr(w, e)
-		return
-	}
-	issue, e := h.resolveIssue(r, wsID, idOrKey)
-	if e != nil {
-		writeJerr(w, e)
-		return
-	}
-	values, err := h.issueChangelogBeans(r.Context(), wsID, issue.ID, false)
-	if err != nil {
-		jiraError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"startAt":    0,
-		"maxResults": 1000,
-		"total":      len(values),
-		"isLast":     true,
-		"values":     values,
-	})
-}
-
 // changelogMetadataID turns a stored priority, resolution or issue type id into
 // its numeric id. An id the site no longer has keeps its stored value, since
 // the history of a deleted item still has to say what it was.
@@ -1221,7 +1392,7 @@ func (h *Handler) issueChangelogBeans(ctx context.Context, workspaceID, issueID 
 				from, to = h.changelogMetadataID(ctx, workspaceID, item.Field, from), h.changelogMetadataID(ctx, workspaceID, item.Field, to)
 			}
 			items = append(items, map[string]any{
-				"field": item.Field, "fieldtype": item.FieldType,
+				"field": item.Field, "fieldId": item.Field, "fieldtype": item.FieldType,
 				"from": from, "fromString": item.FromString,
 				"to": to, "toString": item.ToString,
 			})

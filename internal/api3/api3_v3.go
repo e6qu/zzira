@@ -410,39 +410,6 @@ func (h *Handler) uploadAttachments(w http.ResponseWriter, r *http.Request, idOr
 	writeJSON(w, http.StatusOK, beans)
 }
 
-// putAssignee implements PUT /issue/{idOrKey}/assignee.
-func (h *Handler) putAssignee(w http.ResponseWriter, r *http.Request, idOrKey string) {
-	wsID, userID, e := h.authWorkspace(r)
-	if e != nil {
-		writeJerr(w, e)
-		return
-	}
-	var req struct {
-		AccountID *string `json:"accountId"`
-	}
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		jiraFieldError(w, http.StatusBadRequest, map[string]string{"accountId": "Invalid request payload."})
-		return
-	}
-	if err := json.Unmarshal(body, &req); err != nil {
-		jiraFieldError(w, http.StatusBadRequest, map[string]string{"accountId": "Invalid request payload."})
-		return
-	}
-	if req.AccountID == nil {
-		jiraFieldError(w, http.StatusBadRequest, map[string]string{"accountId": "accountId is required (null to unassign via PUT /issue)."})
-		return
-	}
-	if _, _, err := h.Commands.UpdateIssue(r.Context(), commands.UpdateIssueInput{
-		ActorID: userID, WorkspaceID: wsID, IssueIDOrKey: idOrKey,
-		AssigneeID: req.AccountID,
-	}); err != nil {
-		jiraError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
 // cleanupMultipart removes request temp files; failures are logged, never silent.
 func cleanupMultipart(r *http.Request) {
 	if r.MultipartForm == nil {
@@ -691,4 +658,69 @@ func (h *Handler) attachmentForUser(r *http.Request, workspaceID, userID, attach
 		}
 	}
 	return att, nil
+}
+
+// putAssignee serves PUT /issue/{key}/assignee. Exactly one of accountId, name
+// and key names the assignee; null unassigns and "-1" picks the project default.
+func (h *Handler) putAssignee(w http.ResponseWriter, r *http.Request, idOrKey string) {
+	wsID, userID, e := h.authWorkspace(r)
+	if e != nil {
+		writeJerr(w, e)
+		return
+	}
+	issue, e := h.resolveIssue(r, wsID, idOrKey)
+	if e != nil {
+		writeJerr(w, e)
+		return
+	}
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 64<<10))
+	var request map[string]json.RawMessage
+	if err != nil || json.Unmarshal(body, &request) != nil {
+		jiraFieldError(w, http.StatusBadRequest, map[string]string{"accountId": "Invalid request payload."})
+		return
+	}
+	provided := []string{}
+	for _, name := range []string{"accountId", "name", "key"} {
+		if _, ok := request[name]; ok {
+			provided = append(provided, name)
+		}
+	}
+	if len(provided) == 0 {
+		jiraFieldError(w, http.StatusBadRequest, map[string]string{"accountId": "accountId is required."})
+		return
+	}
+	if len(provided) > 1 {
+		jiraFieldError(w, http.StatusBadRequest, map[string]string{"accountId": "Only one of accountId, name and key can be given."})
+		return
+	}
+	assignee := ""
+	if raw := request[provided[0]]; string(raw) != "null" {
+		var value string
+		if json.Unmarshal(raw, &value) != nil {
+			jiraFieldError(w, http.StatusBadRequest, map[string]string{provided[0]: "The assignee must be a string or null."})
+			return
+		}
+		switch {
+		case value == "-1":
+			if project, projectErr := h.Store.ProjectByIDOrKey(r.Context(), wsID, issue.ProjectID); projectErr == nil && project.AssigneeType == "PROJECT_LEAD" {
+				assignee = project.LeadAccountID
+			}
+		case provided[0] != "accountId":
+			jiraFieldError(w, http.StatusBadRequest, map[string]string{provided[0]: "Usernames and user keys aren't supported; use accountId."})
+			return
+		default:
+			if _, userErr := h.Store.SiteUser(r.Context(), wsID, value); userErr != nil {
+				jiraFieldError(w, http.StatusBadRequest, map[string]string{"accountId": "The user does not exist."})
+				return
+			}
+			assignee = value
+		}
+	}
+	if _, _, err = h.Commands.UpdateIssue(r.Context(), commands.UpdateIssueInput{
+		ActorID: userID, WorkspaceID: wsID, IssueIDOrKey: issue.ID, AssigneeID: &assignee,
+	}); err != nil {
+		issueCommandError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
