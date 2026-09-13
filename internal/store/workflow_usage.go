@@ -35,10 +35,10 @@ func (s *Store) WorkflowSchemeUsages(ctx context.Context, workspaceID, workflowI
 		return nil, ErrAdminNotFound
 	}
 	rows, err := s.Pool.Query(ctx, `
-		SELECT id FROM workflow_schemes
+		SELECT jira_id::text FROM workflow_schemes
 		WHERE workspace_id=$1 AND (default_workflow_id=$2 OR
 			EXISTS (SELECT 1 FROM jsonb_each_text(issue_type_mappings) mapping WHERE mapping.value=$2))
-		ORDER BY id`, workspaceID, workflowID)
+		ORDER BY jira_id`, workspaceID, workflowID)
 	if err != nil {
 		return nil, err
 	}

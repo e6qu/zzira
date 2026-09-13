@@ -19,6 +19,9 @@ compatibility, but no response contains a stored id.
 | Sprint | numeric, from 1 | `originBoardId` is the board's numeric id |
 | Quick filter | numeric | kept when a board's quick filters are saved again |
 | Comment, issue link, link type, remote link, attachment, worklog | numeric | see [Issue surface](ISSUE_SURFACE.md) |
+| Workflow scheme | numeric, from 10000 | scheme beans, bulk reads, project associations, switch requests and task results |
+| Service request comment | numeric | the comment's Jira id, in the bean and its `_links.self` |
+| Asynchronous task | numeric string, from 10000 | `/rest/api/3/task/{id}`, bulk issue `taskId`, Location headers, archived issue export files and Confluence long tasks |
 
 ## Where ids are translated
 
@@ -32,6 +35,7 @@ compatibility, but no response contains a stored id.
   key or sprint would.
 - Parent candidates in create and edit metadata are issue ids.
 - Service request attachment links use attachment ids.
+- Task results name the workflow scheme and project by the ids clients see.
 
 ## Keeping it that way
 

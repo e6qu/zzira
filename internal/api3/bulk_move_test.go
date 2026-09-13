@@ -92,7 +92,7 @@ func TestBulkMoveChangesKeyPreservesAliasAndReplaysOnce(t *testing.T) {
 	if !strings.Contains(progress.Body.String(), `"processedAccessibleIssues":[`+issue.ID+`]`) {
 		t.Fatal(progress.Body.String())
 	}
-	exec(`UPDATE api_tasks SET status='RUNNING',progress=5,finished_at=NULL WHERE id=$1`, submission.TaskID)
+	exec(`UPDATE api_tasks SET status='RUNNING',progress=5,finished_at=NULL WHERE (id=$1 OR jira_id::text=$1)`, submission.TaskID)
 	task, err := st.APITaskByID(ctx, workspaceID, submission.TaskID)
 	if err != nil || service.ExecuteBulkIssueTask(ctx, task) != nil {
 		t.Fatalf("replay task err=%v", err)
@@ -102,7 +102,7 @@ func TestBulkMoveChangesKeyPreservesAliasAndReplaysOnce(t *testing.T) {
 		t.Fatalf("replayed=%+v err=%v", replayed, err)
 	}
 	var itemCount int
-	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM bulk_issue_task_items WHERE task_id=$1`, submission.TaskID).Scan(&itemCount); err != nil || itemCount != 1 {
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM bulk_issue_task_items WHERE task_id=$1`, task.ID).Scan(&itemCount); err != nil || itemCount != 1 {
 		t.Fatalf("task item count=%d err=%v", itemCount, err)
 	}
 	available := call("GET", "/rest/api/3/bulk/issues/transition?issueIdsOrKeys="+newKey, "", 200)
@@ -123,7 +123,7 @@ func TestBulkMoveChangesKeyPreservesAliasAndReplaysOnce(t *testing.T) {
 	if err != nil || afterTransition.Status.ID != "st_inprogress" {
 		t.Fatalf("transitioned=%+v err=%v", afterTransition, err)
 	}
-	exec(`UPDATE api_tasks SET status='RUNNING',progress=5,finished_at=NULL WHERE id=$1`, transitionSubmission.TaskID)
+	exec(`UPDATE api_tasks SET status='RUNNING',progress=5,finished_at=NULL WHERE (id=$1 OR jira_id::text=$1)`, transitionSubmission.TaskID)
 	transitionTask, err := st.APITaskByID(ctx, workspaceID, transitionSubmission.TaskID)
 	if err != nil {
 		t.Fatal(err)
@@ -135,7 +135,7 @@ func TestBulkMoveChangesKeyPreservesAliasAndReplaysOnce(t *testing.T) {
 	if err != nil || afterReplay.Status.ID != "st_inprogress" {
 		t.Fatalf("transition replay=%+v err=%v", afterReplay, err)
 	}
-	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM bulk_issue_task_items WHERE task_id=$1`, transitionSubmission.TaskID).Scan(&itemCount); err != nil || itemCount != 1 {
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM bulk_issue_task_items WHERE task_id=$1`, transitionTask.ID).Scan(&itemCount); err != nil || itemCount != 1 {
 		t.Fatalf("transition task item count=%d err=%v", itemCount, err)
 	}
 }

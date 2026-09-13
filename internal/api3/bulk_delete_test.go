@@ -181,7 +181,7 @@ func TestBulkDeleteUsesDurableTaskAndAttachmentCleanup(t *testing.T) {
 	}
 	// Replaying a stale claim reconstructs the first success from its atomic
 	// delete action and still treats the access-revoked issue as inaccessible.
-	exec(`UPDATE api_tasks SET status='RUNNING',progress=5,finished_at=NULL WHERE id=$1`, submission.TaskID)
+	exec(`UPDATE api_tasks SET status='RUNNING',progress=5,finished_at=NULL WHERE (id=$1 OR jira_id::text=$1)`, submission.TaskID)
 	replay, err := st.APITaskByID(ctx, workspaceID, submission.TaskID)
 	if err != nil {
 		t.Fatal(err)
@@ -195,7 +195,7 @@ func TestBulkDeleteUsesDurableTaskAndAttachmentCleanup(t *testing.T) {
 		t.Fatal(progress.Body.String())
 	}
 	var deleteActions int
-	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM actions WHERE workspace_id=$1 AND entity_type='issue' AND op='delete' AND payload->>'reason'=$2`, workspaceID, "bulk delete task "+submission.TaskID).Scan(&deleteActions); err != nil || deleteActions != 1 {
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM actions WHERE workspace_id=$1 AND entity_type='issue' AND op='delete' AND payload->>'reason'=$2`, workspaceID, "bulk delete task "+replay.ID).Scan(&deleteActions); err != nil || deleteActions != 1 {
 		t.Fatalf("delete actions=%d err=%v", deleteActions, err)
 	}
 }
