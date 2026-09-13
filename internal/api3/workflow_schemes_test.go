@@ -102,7 +102,7 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 		}
 		return taskPath
 	}
-	body := `{"name":"Delivery scheme","description":"Routes delivery","defaultWorkflow":"Default","issueTypeMappings":{"it_task":"Default"}}`
+	body := `{"name":"Delivery scheme","description":"Routes delivery","defaultWorkflow":"Default","issueTypeMappings":{"10002":"Default"}}`
 	defaultEditor := call(member, "GET", "/rest/api/3/workflows/defaultEditor", "", 200)
 	if defaultEditor.Body.String() != "{\"value\":\"NEW\"}\n" {
 		t.Fatal(defaultEditor.Body.String())
@@ -112,9 +112,9 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	if !strings.Contains(capabilities.Body.String(), `"editorScope":"GLOBAL"`) || !strings.Contains(capabilities.Body.String(), `"projectTypes":["software","business"]`) || !strings.Contains(capabilities.Body.String(), `"ruleKey":"system:change-assignee"`) {
 		t.Fatal(capabilities.Body.String())
 	}
-	call(actor, "GET", "/rest/api/3/workflows/capabilities?projectId="+projectID+"&issueTypeId=it_task", "", 200)
+	call(actor, "GET", "/rest/api/3/workflows/capabilities?projectId="+projectID+"&issueTypeId=10002", "", 200)
 	call(actor, "GET", "/rest/api/3/workflows/capabilities", "", 400)
-	call(actor, "GET", "/rest/api/3/workflows/capabilities?workflowId="+workflowID+"&projectId="+projectID+"&issueTypeId=it_task", "", 400)
+	call(actor, "GET", "/rest/api/3/workflows/capabilities?workflowId="+workflowID+"&projectId="+projectID+"&issueTypeId=10002", "", 400)
 	call(actor, "GET", "/rest/api/3/workflows/capabilities?projectId="+projectID+"&issueTypeId=it_missing", "", 400)
 	createValidationBody := `{"payload":{"scope":{"type":"GLOBAL"},"statuses":[{"id":"st_todo","name":"To Do","statusCategory":"TODO","statusReference":"todo"},{"id":"st_done","name":"Done","statusCategory":"DONE","statusReference":"done"}],"workflows":[{"name":"Validated workflow","statuses":[{"statusReference":"todo","properties":{}},{"statusReference":"done","properties":{}}],"transitions":[{"id":"1","name":"Complete","type":"DIRECTED","toStatusReference":"done","links":[{"fromStatusReference":"todo"}]}]}]}}`
 	call(member, "POST", "/rest/api/3/workflows/create/validation", createValidationBody, 403)
@@ -259,18 +259,18 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/draft/default", `{"workflow":"Simple API lifecycle"}`, 200)
 	call(actor, "DELETE", "/rest/api/3/workflowscheme/"+schemeID+"/draft/default", "", 200)
 	call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/draft/default", `{"workflow":"Default"}`, 200)
-	call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/draft/issuetype/it_task", `{"workflow":"Simple API lifecycle"}`, 200)
-	issueTypeMapping := call(actor, "GET", "/rest/api/3/workflowscheme/"+schemeID+"/draft/issuetype/it_task", "", 200)
+	call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/draft/issuetype/10002", `{"workflow":"Simple API lifecycle"}`, 200)
+	issueTypeMapping := call(actor, "GET", "/rest/api/3/workflowscheme/"+schemeID+"/draft/issuetype/10002", "", 200)
 	if !strings.Contains(issueTypeMapping.Body.String(), `"workflow":"Simple API lifecycle"`) {
 		t.Fatal(issueTypeMapping.Body.String())
 	}
 	workflowMapping := call(actor, "GET", "/rest/api/3/workflowscheme/"+schemeID+"/draft/workflow?workflowName=Simple%20API%20lifecycle", "", 200)
-	if !strings.Contains(workflowMapping.Body.String(), `"it_task"`) {
+	if !strings.Contains(workflowMapping.Body.String(), `"10002"`) {
 		t.Fatal(workflowMapping.Body.String())
 	}
-	call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/draft/workflow?workflowName=Simple%20API%20lifecycle", `{"workflow":"Default","issueTypes":["it_task"]}`, 200)
-	call(actor, "DELETE", "/rest/api/3/workflowscheme/"+schemeID+"/draft/issuetype/it_task", "", 200)
-	call(actor, "GET", "/rest/api/3/workflowscheme/"+schemeID+"/draft/issuetype/it_task", "", 404)
+	call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/draft/workflow?workflowName=Simple%20API%20lifecycle", `{"workflow":"Default","issueTypes":["10002"]}`, 200)
+	call(actor, "DELETE", "/rest/api/3/workflowscheme/"+schemeID+"/draft/issuetype/10002", "", 200)
+	call(actor, "GET", "/rest/api/3/workflowscheme/"+schemeID+"/draft/issuetype/10002", "", 404)
 	call(actor, "POST", "/rest/api/3/workflowscheme/"+schemeID+"/draft/publish?validateOnly=true", `{}`, 204)
 	publishedTask := call(actor, "POST", "/rest/api/3/workflowscheme/"+schemeID+"/draft/publish", `{}`, 303)
 	completeTask(publishedTask)
@@ -280,12 +280,12 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	call(actor, "GET", "/rest/api/3/workflowscheme/"+schemeID+"/default", "", 200)
 	call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/default", `{"workflow":"Simple API lifecycle"}`, 200)
 	call(actor, "DELETE", "/rest/api/3/workflowscheme/"+schemeID+"/default", "", 200)
-	call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/issuetype/it_task", `{"workflow":"Simple API lifecycle"}`, 200)
-	call(actor, "GET", "/rest/api/3/workflowscheme/"+schemeID+"/issuetype/it_task", "", 200)
+	call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/issuetype/10002", `{"workflow":"Simple API lifecycle"}`, 200)
+	call(actor, "GET", "/rest/api/3/workflowscheme/"+schemeID+"/issuetype/10002", "", 200)
 	call(actor, "GET", "/rest/api/3/workflowscheme/"+schemeID+"/workflow?workflowName=Simple%20API%20lifecycle", "", 200)
-	call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/workflow?workflowName=Simple%20API%20lifecycle", `{"workflow":"Default","issueTypes":["it_task"]}`, 200)
-	call(actor, "DELETE", "/rest/api/3/workflowscheme/"+schemeID+"/issuetype/it_task", "", 200)
-	call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/issuetype/it_task", `{"workflow":"Simple API lifecycle"}`, 200)
+	call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/workflow?workflowName=Simple%20API%20lifecycle", `{"workflow":"Default","issueTypes":["10002"]}`, 200)
+	call(actor, "DELETE", "/rest/api/3/workflowscheme/"+schemeID+"/issuetype/10002", "", 200)
+	call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/issuetype/10002", `{"workflow":"Simple API lifecycle"}`, 200)
 	call(actor, "DELETE", "/rest/api/3/workflowscheme/"+schemeID+"/workflow?workflowName=Simple%20API%20lifecycle", "", 204)
 	usage := call(actor, "GET", "/rest/api/3/workflowscheme/"+schemeID+"/projectUsages?maxResults=1", "", 200)
 	if !strings.Contains(usage.Body.String(), `"values":[]`) {
@@ -302,7 +302,7 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	}
 	call(actor, "POST", "/rest/api/3/workflowscheme/"+schemeID+"/createdraft", "", 201)
 	call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/draft/default", `{"workflow":"Simple API lifecycle"}`, 200)
-	publishMappings := `{"statusMappings":[{"issueTypeId":"it_task","statusId":"st_inprogress","newStatusId":"st_todo"}]}`
+	publishMappings := `{"statusMappings":[{"issueTypeId":"10002","statusId":"st_inprogress","newStatusId":"st_todo"}]}`
 	call(actor, "POST", "/rest/api/3/workflowscheme/"+schemeID+"/draft/publish?validateOnly=true", publishMappings, 204)
 	completeTask(call(actor, "POST", "/rest/api/3/workflowscheme/"+schemeID+"/draft/publish", publishMappings, 303))
 	var draftMigratedStatus string
@@ -323,7 +323,7 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	}
 	unsafeBulkUpdate := `{"id":"` + schemeID + `","name":"Unsafe bulk","description":"Unsafe","defaultWorkflowId":"` + workflowID + `","version":{"versionNumber":` + fmt.Sprint(version) + `},"workflowsForIssueTypes":[]}`
 	call(actor, "POST", "/rest/api/3/workflowscheme/update", unsafeBulkUpdate, 409)
-	mappedBulkUpdate := `{"id":"` + schemeID + `","name":"Delivery migrated","description":"Bulk migrated","defaultWorkflowId":"` + workflowID + `","version":{"versionNumber":` + fmt.Sprint(version) + `},"workflowsForIssueTypes":[],"statusMappingsByIssueTypeOverride":[{"issueTypeId":"it_task","statusMappings":[{"oldStatusId":"st_inprogress","newStatusId":"st_todo"}]}]}`
+	mappedBulkUpdate := `{"id":"` + schemeID + `","name":"Delivery migrated","description":"Bulk migrated","defaultWorkflowId":"` + workflowID + `","version":{"versionNumber":` + fmt.Sprint(version) + `},"workflowsForIssueTypes":[],"statusMappingsByIssueTypeOverride":[{"issueTypeId":"10002","statusMappings":[{"oldStatusId":"st_inprogress","newStatusId":"st_todo"}]}]}`
 	completeTask(call(actor, "POST", "/rest/api/3/workflowscheme/update", mappedBulkUpdate, 303))
 	var bulkMigratedStatus string
 	if err := st.Pool.QueryRow(ctx, `SELECT status_id FROM issues WHERE id=$1`, issueID).Scan(&bulkMigratedStatus); err != nil || bulkMigratedStatus != "st_todo" {
@@ -340,7 +340,7 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	}
 	targetSchemeID := scheme["id"].(string)
 	call(actor, "POST", "/rest/api/3/workflowscheme/project/switch", `{"projectId":"`+projectID+`","targetSchemeId":"`+targetSchemeID+`"}`, 409)
-	switchResponse := call(actor, "POST", "/rest/api/3/workflowscheme/project/switch", `{"projectId":"`+projectID+`","targetSchemeId":"`+targetSchemeID+`","mappingsByIssueTypeOverride":[{"issueTypeId":"it_task","statusMappings":[{"oldStatusId":"st_inprogress","newStatusId":"st_todo"}]}]}`, 303)
+	switchResponse := call(actor, "POST", "/rest/api/3/workflowscheme/project/switch", `{"projectId":"`+projectID+`","targetSchemeId":"`+targetSchemeID+`","mappingsByIssueTypeOverride":[{"issueTypeId":"10002","statusMappings":[{"oldStatusId":"st_inprogress","newStatusId":"st_todo"}]}]}`, 303)
 	if switchResponse.Header().Get("Location") == "" || !strings.Contains(switchResponse.Body.String(), `"status":"ENQUEUED"`) || !strings.Contains(switchResponse.Body.String(), `"progress":0`) {
 		t.Fatalf("switch task = %s, location = %q", switchResponse.Body.String(), switchResponse.Header().Get("Location"))
 	}
@@ -365,7 +365,7 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	if err := st.Pool.QueryRow(ctx, `SELECT i.status_id,p.workflow_scheme_id FROM issues i JOIN projects p ON p.id=i.project_id WHERE i.id=$1`, issueID).Scan(&cancelledIssueStatus, &cancelledScheme); err != nil || cancelledIssueStatus != "st_inprogress" || cancelledScheme != schemeID {
 		t.Fatalf("cancelled switch changed status=%q scheme=%q err=%v", cancelledIssueStatus, cancelledScheme, err)
 	}
-	switchResponse = call(actor, "POST", "/rest/api/3/workflowscheme/project/switch", `{"projectId":"`+projectID+`","targetSchemeId":"`+targetSchemeID+`","mappingsByIssueTypeOverride":[{"issueTypeId":"it_task","statusMappings":[{"oldStatusId":"st_inprogress","newStatusId":"st_todo"}]}]}`, 303)
+	switchResponse = call(actor, "POST", "/rest/api/3/workflowscheme/project/switch", `{"projectId":"`+projectID+`","targetSchemeId":"`+targetSchemeID+`","mappingsByIssueTypeOverride":[{"issueTypeId":"10002","statusMappings":[{"oldStatusId":"st_inprogress","newStatusId":"st_todo"}]}]}`, 303)
 	taskPath = completeTask(switchResponse)
 	completedSwitch := call(actor, "GET", taskPath, "", 200)
 	if !strings.Contains(completedSwitch.Body.String(), targetSchemeID) {
@@ -386,7 +386,7 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 		t.Fatal(schemeUsage.Body.String())
 	}
 	issueTypeUsage := call(actor, "GET", "/rest/api/3/workflow/"+workflowID+"/project/"+projectID+"/issueTypeUsages", "", 200)
-	if !strings.Contains(issueTypeUsage.Body.String(), `"it_task"`) {
+	if !strings.Contains(issueTypeUsage.Body.String(), `"10002"`) {
 		t.Fatal(issueTypeUsage.Body.String())
 	}
 	workflowSearch := call(actor, "GET", "/rest/api/3/workflows/search?queryString=Simple&projectId="+projectID+"&isActive=true&orderBy=name&expand=values.transitions", "", 200)
@@ -394,8 +394,8 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 		t.Fatal(workflowSearch.Body.String())
 	}
 	call(member, "POST", "/rest/api/3/workflows/preview", `{"projectId":"`+projectID+`","workflowIds":["`+workflowID+`"]}`, 403)
-	workflowPreview := call(actor, "POST", "/rest/api/3/workflows/preview", `{"projectId":"`+projectID+`","workflowIds":["`+workflowID+`"],"workflowNames":["Simple API lifecycle"],"issueTypeIds":["it_task"]}`, 200)
-	if !strings.Contains(workflowPreview.Body.String(), `"id":"`+workflowID+`"`) || !strings.Contains(workflowPreview.Body.String(), `"issueTypes":["it_task"]`) || !strings.Contains(workflowPreview.Body.String(), `"rawName":"Done"`) || !strings.Contains(workflowPreview.Body.String(), `"toStatusReference":"st_done"`) {
+	workflowPreview := call(actor, "POST", "/rest/api/3/workflows/preview", `{"projectId":"`+projectID+`","workflowIds":["`+workflowID+`"],"workflowNames":["Simple API lifecycle"],"issueTypeIds":["10002"]}`, 200)
+	if !strings.Contains(workflowPreview.Body.String(), `"id":"`+workflowID+`"`) || !strings.Contains(workflowPreview.Body.String(), `"issueTypes":["10002"]`) || !strings.Contains(workflowPreview.Body.String(), `"rawName":"Done"`) || !strings.Contains(workflowPreview.Body.String(), `"toStatusReference":"st_done"`) {
 		t.Fatal(workflowPreview.Body.String())
 	}
 	call(actor, "POST", "/rest/api/3/workflows/preview", `{"projectId":"`+projectID+`","workflowIds":["`+modernWorkflowID+`"]}`, 404)
@@ -411,7 +411,7 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	}
 	unsafeActiveWorkflowUpdate := `{"workflows":[{"id":"` + workflowID + `","version":{"id":"` + workflowID + `","versionNumber":1},"statuses":[{"statusReference":"st_done","properties":{}}],"transitions":[{"id":"1","name":"Stay done","type":"DIRECTED","toStatusReference":"st_done","links":[{"fromStatusReference":"st_done"}]}]}]}`
 	call(actor, "POST", "/rest/api/3/workflows/update", unsafeActiveWorkflowUpdate, 409)
-	mappedActiveWorkflowUpdate := `{"workflows":[{"id":"` + workflowID + `","version":{"id":"` + workflowID + `","versionNumber":1},"statuses":[{"statusReference":"st_inprogress","properties":{}},{"statusReference":"st_done","properties":{}}],"transitions":[{"id":"1","name":"Begin again","type":"DIRECTED","toStatusReference":"st_inprogress","links":[{"fromStatusReference":"st_done"}]}],"defaultStatusMappings":[{"oldStatusReference":"st_todo","newStatusReference":"st_inprogress"}],"statusMappings":[{"projectId":"` + projectID + `","issueTypeId":"it_task","statusMigrations":[{"oldStatusReference":"st_todo","newStatusReference":"st_done"}]}]}]}`
+	mappedActiveWorkflowUpdate := `{"workflows":[{"id":"` + workflowID + `","version":{"id":"` + workflowID + `","versionNumber":1},"statuses":[{"statusReference":"st_inprogress","properties":{}},{"statusReference":"st_done","properties":{}}],"transitions":[{"id":"1","name":"Begin again","type":"DIRECTED","toStatusReference":"st_inprogress","links":[{"fromStatusReference":"st_done"}]}],"defaultStatusMappings":[{"oldStatusReference":"st_todo","newStatusReference":"st_inprogress"}],"statusMappings":[{"projectId":"` + projectID + `","issueTypeId":"10002","statusMigrations":[{"oldStatusReference":"st_todo","newStatusReference":"st_done"}]}]}]}`
 	mappedWorkflowUpdate := call(actor, "POST", "/rest/api/3/workflows/update", mappedActiveWorkflowUpdate, 200)
 	if !strings.Contains(mappedWorkflowUpdate.Body.String(), `"versionNumber":2`) {
 		t.Fatal(mappedWorkflowUpdate.Body.String())

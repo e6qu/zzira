@@ -96,6 +96,9 @@ func (h *Handler) workflowUsageRoute(w http.ResponseWriter, r *http.Request, pat
 		workflowSchemeAPIError(w, err)
 		return
 	}
+	if len(parts) == 4 {
+		ids = h.issueTypeIDsFor(r, workspaceID).allToWire(ids)
+	}
 	page, err := workflowUsagePage(r, ids)
 	if err != nil {
 		jiraError(w, http.StatusBadRequest, "maxResults or nextPageToken is invalid.")

@@ -20,7 +20,7 @@ type workflowPreviewItem struct {
 	IssueTypes []string
 }
 
-func workflowPreviewBean(item workflowPreviewItem, projectID string) map[string]any {
+func workflowPreviewBean(ids issueTypeIDs, item workflowPreviewItem, projectID string) map[string]any {
 	statuses := workflowReferenceStatuses(item.Workflow)
 	for _, status := range statuses {
 		delete(status, "properties")
@@ -31,7 +31,7 @@ func workflowPreviewBean(item workflowPreviewItem, projectID string) map[string]
 	}
 	queryContext := []map[string]any{}
 	if len(item.IssueTypes) > 0 {
-		queryContext = append(queryContext, map[string]any{"project": projectID, "issueTypes": item.IssueTypes})
+		queryContext = append(queryContext, map[string]any{"project": projectID, "issueTypes": ids.allToWire(item.IssueTypes)})
 	}
 	bean := map[string]any{
 		"id": item.Workflow.ID, "name": item.Workflow.Name, "description": item.Workflow.Description,
@@ -156,7 +156,7 @@ func (h *Handler) workflowPreview(w http.ResponseWriter, r *http.Request) {
 	workflowValues := make([]map[string]any, 0, len(items))
 	workflows := make([]workflow.Workflow, 0, len(items))
 	for _, item := range items {
-		workflowValues = append(workflowValues, workflowPreviewBean(item, project.ID))
+		workflowValues = append(workflowValues, workflowPreviewBean(h.issueTypeIDsFor(r, workspaceID), item, project.ID))
 		workflows = append(workflows, item.Workflow)
 	}
 	statuses, err := h.workflowResponseStatuses(r, workspaceID, workflows)

@@ -391,6 +391,9 @@ func (h *Handler) statusUsageEndpoint(w http.ResponseWriter, r *http.Request, pa
 		statusAPIError(w, err)
 		return
 	}
+	if container == "issueTypes" {
+		ids = h.issueTypeIDsFor(r, workspaceID).allToWire(ids)
+	}
 	values, next, err := statusUsagePage(r, ids)
 	if err != nil {
 		jiraError(w, http.StatusBadRequest, err.Error())
