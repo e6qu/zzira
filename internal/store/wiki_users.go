@@ -334,38 +334,29 @@ func (s *Store) CreateWikiGroup(ctx context.Context, ws, actor, name string) (Wi
 	return group, err
 }
 
-// workspaceDirectory finds the directory this workspace's people belong to,
-// creating the organization's default one when there is none yet.
+// workspaceDirectory finds the directory this workspace's people belong to:
+// the first active directory of the organization that owns the site, created
+// when the organization has none. Another organization's directory is never
+// used, so a group made on one site cannot appear on another.
 func (s *Store) workspaceDirectory(ctx context.Context, ws string) (string, error) {
+	var organizationID string
+	if err := s.Pool.QueryRow(ctx, `SELECT organization_id::text FROM sites WHERE workspace_id=$1`, ws).Scan(&organizationID); err != nil {
+		return "", err
+	}
 	var directoryID string
-	err := s.Pool.QueryRow(ctx, `SELECT d.id::text FROM directories d
-		WHERE d.active ORDER BY d.created_at, d.id LIMIT 1`).Scan(&directoryID)
+	err := s.Pool.QueryRow(ctx, `INSERT INTO directories(organization_id,name)
+		SELECT $1::uuid, si.name || ' users' FROM sites si
+		WHERE si.workspace_id=$2 AND NOT EXISTS (SELECT 1 FROM directories d WHERE d.organization_id=$1::uuid AND d.active)
+		RETURNING id::text`, organizationID, ws).Scan(&directoryID)
 	if err == nil {
 		return directoryID, nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return "", err
 	}
-	tx, err := s.Pool.Begin(ctx)
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	var organizationID string
-	if err = tx.QueryRow(ctx, `SELECT id::text FROM organizations ORDER BY created_at, id LIMIT 1`).Scan(&organizationID); err != nil {
-		if !errors.Is(err, pgx.ErrNoRows) {
-			return "", err
-		}
-		if err = tx.QueryRow(ctx, `INSERT INTO organizations(name) SELECT name FROM workspaces WHERE id=$1
-			RETURNING id::text`, ws).Scan(&organizationID); err != nil {
-			return "", err
-		}
-	}
-	if err = tx.QueryRow(ctx, `INSERT INTO directories(organization_id,name) VALUES($1::uuid,'Default directory')
-		RETURNING id::text`, organizationID).Scan(&directoryID); err != nil {
-		return "", err
-	}
-	return directoryID, tx.Commit(ctx)
+	err = s.Pool.QueryRow(ctx, `SELECT id::text FROM directories WHERE organization_id=$1::uuid AND active
+		ORDER BY created_at, id LIMIT 1`, organizationID).Scan(&directoryID)
+	return directoryID, err
 }
 
 // DeleteWikiGroup removes a group and, with it, its memberships.
