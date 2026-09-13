@@ -25,6 +25,7 @@ type Filter struct {
 	SharePermissions    []FilterSharePermission `json:"-"`
 	Subscriptions       []FilterSubscription    `json:"-"`
 	Writable            bool                    `json:"-"`
+	JiraID              int64                   `json:"-"`
 }
 
 type FilterSubscription struct {

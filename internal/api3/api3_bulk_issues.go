@@ -116,6 +116,7 @@ func (h *Handler) bulkAvailableTransitions(w http.ResponseWriter, r *http.Reques
 	}
 	end := min(start+50, len(workflowIDs))
 	result := make([]map[string]any, 0, end-start)
+	wireStatuses := h.statusIDsFor(r, workspaceID)
 	for _, id := range workflowIDs[start:end] {
 		group := groups[id]
 		transitionIDs := make([]string, 0, len(group.Transitions))
@@ -126,11 +127,11 @@ func (h *Handler) bulkAvailableTransitions(w http.ResponseWriter, r *http.Reques
 		transitions := make([]map[string]any, 0, len(transitionIDs))
 		for _, transitionID := range transitionIDs {
 			candidate := group.Transitions[transitionID]
-			wireTransitionID, wireStatusID := any(candidate.ID), any(candidate.ToID)
+			wireTransitionID, wireStatusID := any(candidate.ID), any(wireStatuses.toWire(candidate.ToID))
 			if numeric, conversionErr := strconv.Atoi(candidate.ID); conversionErr == nil {
 				wireTransitionID = numeric
 			}
-			if numeric, conversionErr := strconv.Atoi(candidate.ToID); conversionErr == nil {
+			if numeric, conversionErr := strconv.Atoi(wireStatuses.toWire(candidate.ToID)); conversionErr == nil {
 				wireStatusID = numeric
 			}
 			transitions = append(transitions, map[string]any{"transitionId": wireTransitionID, "transitionName": candidate.Name, "to": map[string]any{"statusId": wireStatusID, "statusName": candidate.ToName}})

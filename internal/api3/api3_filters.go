@@ -113,7 +113,8 @@ func (h *Handler) filterBean(filter *models.Filter) map[string]any {
 			"active": true, "accountType": "atlassian",
 		}
 	}
-	self := h.BaseURL + "/rest/api/3/filter/" + url.PathEscape(filter.ID)
+	filterID := strconv.FormatInt(filter.JiraID, 10)
+	self := h.BaseURL + "/rest/api/3/filter/" + filterID
 	subscriptions := make([]map[string]any, 0, len(filter.Subscriptions))
 	for _, subscription := range filter.Subscriptions {
 		item := map[string]any{
@@ -133,11 +134,11 @@ func (h *Handler) filterBean(filter *models.Filter) map[string]any {
 		subscriptions = append(subscriptions, item)
 	}
 	bean := map[string]any{
-		"id": filter.ID, "name": filter.Name, "self": self,
+		"id": filterID, "name": filter.Name, "self": self,
 		"jql": filter.JQL, "description": filter.Description, "owner": owner,
 		"favourite": filter.Favourite, "favouritedCount": filter.FavouritedCount,
 		"sharePermissions": view, "editPermissions": edit,
-		"viewUrl":   h.BaseURL + "/issues/?filter=" + url.QueryEscape(filter.ID),
+		"viewUrl":   h.BaseURL + "/issues/?filter=" + filterID,
 		"searchUrl": h.BaseURL + "/rest/api/3/search?jql=" + url.QueryEscape(filter.JQL),
 		"subscriptions": map[string]any{
 			"size": len(subscriptions), "items": subscriptions, "start-index": 0,
@@ -405,6 +406,9 @@ func (h *Handler) filterCRUD(w http.ResponseWriter, r *http.Request, rest string
 		return
 	}
 	id := parts[0]
+	if workspaceID, _, authErr := h.authWorkspace(r); authErr == nil {
+		id = h.Store.FilterIDByRef(r.Context(), workspaceID, id)
+	}
 	switch {
 	case len(parts) == 1 && r.Method == http.MethodGet:
 		h.getFilter(w, r, id)

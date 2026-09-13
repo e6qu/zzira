@@ -31,7 +31,7 @@ JOIN projects pr ON pr.id = i.project_id
 
 const searchSelect = `
 SELECT i.id, i.jira_id, i.workspace_id, i.project_id, i.key, i.summary, i.description,
-       st.id, st.name, st.category,
+       st.id, st.name, st.category, st.jira_id,
 	       it.id, COALESCE(ito.name, it.name), it.icon,
 	       it.subtask,
 	       parent.id, parent.jira_id, parent.key, parent.summary,

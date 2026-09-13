@@ -145,7 +145,7 @@ func (s *Store) CreateStatuses(ctx context.Context, workspaceID, actorID string,
 		if err := statusNameAvailableLocked(ctx, tx, workspaceID, status.ProjectID, status.Name, ""); err != nil {
 			return nil, err
 		}
-		if _, err := tx.Exec(ctx, `INSERT INTO statuses(id,name,description,category,workspace_id,project_id) VALUES($1,$2,$3,$4,$5,$6)`, status.ID, status.Name, status.Description, status.Category, workspaceID, nilIfEmpty(status.ProjectID)); err != nil {
+		if err := tx.QueryRow(ctx, `INSERT INTO statuses(id,name,description,category,workspace_id,project_id) VALUES($1,$2,$3,$4,$5,$6) RETURNING jira_id`, status.ID, status.Name, status.Description, status.Category, workspaceID, nilIfEmpty(status.ProjectID)).Scan(&status.JiraID); err != nil {
 			if isUniqueViolation(err) {
 				return nil, fmt.Errorf("%w: a status already uses that name or id", ErrAdminConflict)
 			}

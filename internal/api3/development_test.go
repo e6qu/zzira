@@ -154,7 +154,7 @@ func TestDevelopmentWorkflowTriggerWireValidation(t *testing.T) {
 	if err := workflow.ValidateTransitionRules(transition); err != nil {
 		t.Fatal(err)
 	}
-	encoded, err := json.Marshal(workflowTransitionBean(transition))
+	encoded, err := json.Marshal(workflowTransitionBean(transition, statusIDs{}))
 	if err != nil || !strings.Contains(string(encoded), `"ruleKey":"system:development-triggers"`) {
 		t.Fatalf("transition wire = %s, %v", encoded, err)
 	}

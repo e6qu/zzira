@@ -28,6 +28,9 @@ type Board struct {
 	SwimlaneStrategy string             `json:"swimlaneStrategy"`
 	CardFields       []string           `json:"cardFields,omitempty"`
 	ColumnLimits     map[string]int     `json:"columnLimits,omitempty"`
+	// JiraID and FilterJiraID are the board and board filter ids clients see.
+	JiraID       int64 `json:"-"`
+	FilterJiraID int64 `json:"-"`
 }
 
 type BoardQuickFilter struct {
@@ -36,6 +39,8 @@ type BoardQuickFilter struct {
 	Description string `json:"description,omitempty"`
 	JQL         string `json:"jql"`
 	Position    int    `json:"position"`
+	// JiraID is the id clients see; it is stored with the filter.
+	JiraID int64 `json:"jiraId,omitempty"`
 }
 
 type Sprint struct {
@@ -46,6 +51,9 @@ type Sprint struct {
 	StartDate string `json:"startDate,omitempty"`
 	EndDate   string `json:"endDate,omitempty"`
 	Goal      string `json:"goal,omitempty"`
+	JiraID    int64  `json:"-"`
+	// BoardJiraID is the id clients know the sprint's board by.
+	BoardJiraID int64 `json:"-"`
 }
 
 type SprintIssue struct {

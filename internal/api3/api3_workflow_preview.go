@@ -20,24 +20,24 @@ type workflowPreviewItem struct {
 	IssueTypes []string
 }
 
-func workflowPreviewBean(ids issueTypeIDs, item workflowPreviewItem, projectID string) map[string]any {
-	statuses := workflowReferenceStatuses(item.Workflow)
+func workflowPreviewBean(ids issueTypeIDs, item workflowPreviewItem, projectID string, wire statusIDs) map[string]any {
+	statuses := workflowReferenceStatuses(item.Workflow, wire)
 	for _, status := range statuses {
 		delete(status, "properties")
 	}
 	transitions := make([]map[string]any, 0, len(item.Workflow.Transitions))
 	for _, transition := range item.Workflow.Transitions {
-		transitions = append(transitions, workflowTransitionBean(transition))
+		transitions = append(transitions, workflowTransitionBean(transition, wire))
 	}
 	queryContext := []map[string]any{}
 	if len(item.IssueTypes) > 0 {
 		queryContext = append(queryContext, map[string]any{"project": projectID, "issueTypes": ids.allToWire(item.IssueTypes)})
 	}
 	bean := map[string]any{
-		"id": item.Workflow.ID, "name": item.Workflow.Name, "description": item.Workflow.Description,
+		"id": workflowWireID(item.Workflow), "name": item.Workflow.Name, "description": item.Workflow.Description,
 		"scope": jiraWorkflowScope(item.Workflow), "statuses": statuses, "transitions": transitions,
 		"queryContext": queryContext,
-		"version":      map[string]any{"id": item.Workflow.ID, "versionNumber": item.Workflow.Version},
+		"version":      map[string]any{"id": workflowWireID(item.Workflow), "versionNumber": item.Workflow.Version},
 	}
 	if item.Workflow.StartPointLayout != nil {
 		bean["startPointLayout"] = item.Workflow.StartPointLayout
@@ -98,8 +98,9 @@ func (h *Handler) workflowPreview(w http.ResponseWriter, r *http.Request) {
 		projects, err := h.Store.WorkflowProjectUsages(r.Context(), workspaceID, item.ID)
 		return containsWorkflowUsage(projects, project.ID), err
 	}
+	previewWorkflowIDs := h.workflowIDsFor(r, workspaceID)
 	for _, workflowID := range request.WorkflowIDs {
-		item, exists := byID[workflowID]
+		item, exists := byID[previewWorkflowIDs.toInternal(workflowID)]
 		used := false
 		if exists {
 			used, err = ensureProjectUsage(item)
@@ -156,7 +157,7 @@ func (h *Handler) workflowPreview(w http.ResponseWriter, r *http.Request) {
 	workflowValues := make([]map[string]any, 0, len(items))
 	workflows := make([]workflow.Workflow, 0, len(items))
 	for _, item := range items {
-		workflowValues = append(workflowValues, workflowPreviewBean(h.issueTypeIDsFor(r, workspaceID), item, project.ID))
+		workflowValues = append(workflowValues, workflowPreviewBean(h.issueTypeIDsFor(r, workspaceID), item, project.ID, h.statusIDsFor(r, workspaceID)))
 		workflows = append(workflows, item.Workflow)
 	}
 	statuses, err := h.workflowResponseStatuses(r, workspaceID, workflows)

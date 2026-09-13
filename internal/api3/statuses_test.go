@@ -99,7 +99,7 @@ func TestStatusAPILifecycleAndWorkspaceScope(t *testing.T) {
 	}
 	call(actor, "PUT", "/rest/api/3/statuses", `{"statuses":[{"id":"`+id+`","name":"Must not persist","statusCategory":"TODO"},{"id":"missing-status","name":"Missing","statusCategory":"TODO"}]}`, 404)
 	var unchangedName string
-	if err := st.Pool.QueryRow(ctx, `SELECT name FROM statuses WHERE id=$1`, id).Scan(&unchangedName); err != nil || unchangedName != "Review complete" {
+	if err := st.Pool.QueryRow(ctx, `SELECT name FROM statuses WHERE (id=$1 OR jira_id::text=$1) OR jira_id::text=$1`, id).Scan(&unchangedName); err != nil || unchangedName != "Review complete" {
 		t.Fatalf("rolled-back API update name=%q err=%v", unchangedName, err)
 	}
 	deleteCreated := call(actor, "POST", "/rest/api/3/statuses", `{"scope":{"type":"GLOBAL"},"statuses":[{"name":"Delete batch survivor `+store.NewID("status")+`","statusCategory":"TODO"}]}`, 200)
@@ -111,7 +111,7 @@ func TestStatusAPILifecycleAndWorkspaceScope(t *testing.T) {
 	call(actor, "DELETE", "/rest/api/3/statuses?"+strings.Repeat("id=too-many&", 50)+"id=too-many", "", 400)
 	call(actor, "DELETE", "/rest/api/3/statuses?id="+deleteStatusID+"&id=st_todo", "", 409)
 	var deleteSurvivor bool
-	if err := st.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM statuses WHERE id=$1)`, deleteStatusID).Scan(&deleteSurvivor); err != nil || !deleteSurvivor {
+	if err := st.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM statuses WHERE (id=$1 OR jira_id::text=$1))`, deleteStatusID).Scan(&deleteSurvivor); err != nil || !deleteSurvivor {
 		t.Fatalf("rolled-back API delete exists=%v err=%v", deleteSurvivor, err)
 	}
 	projectBody := `{"scope":{"type":"PROJECT","project":{"id":"` + projectID + `"}},"statuses":[{"name":"Awaiting customer","description":"Waiting for a reply","statusCategory":"IN_PROGRESS"}]}`

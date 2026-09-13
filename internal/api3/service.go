@@ -1008,7 +1008,7 @@ func (h *Handler) availableServiceTransitions(r *http.Request, workspaceID, acto
 		if err != nil {
 			return nil, err
 		}
-		beans = append(beans, map[string]any{"id": transition.ID, "name": transition.Name, "to": map[string]any{"id": status.ID, "name": status.Name, "statusCategory": status.Category}})
+		beans = append(beans, map[string]any{"id": transition.ID, "name": transition.Name, "to": map[string]any{"id": statusWireID(status), "name": status.Name, "statusCategory": status.Category}})
 	}
 	return beans, nil
 }

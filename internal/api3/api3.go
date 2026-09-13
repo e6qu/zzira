@@ -488,8 +488,8 @@ func (h *Handler) resolveIssue(r *http.Request, wsID, idOrKey string) (*models.I
 
 func (h *Handler) statusBean(s models.Status) map[string]any {
 	return map[string]any{
-		"self":           h.BaseURL + "/rest/api/3/status/" + s.ID,
-		"id":             s.ID,
+		"self":           h.BaseURL + "/rest/api/3/status/" + statusWireID(s),
+		"id":             statusWireID(s),
 		"name":           s.Name,
 		"description":    s.Description,
 		"statusCategory": statusCategoryBean(s.Category),
@@ -1036,7 +1036,8 @@ func (h *Handler) issueBean(i *models.Issue) map[string]any {
 		},
 		"status": map[string]any{
 			"name":           i.Status.Name,
-			"id":             i.Status.ID,
+			"id":             statusWireID(i.Status),
+			"self":           h.BaseURL + "/rest/api/3/status/" + statusWireID(i.Status),
 			"statusCategory": statusCategoryBean(i.Status.Category),
 		},
 		"issuetype": h.issueTypeBean(i.IssueType),
@@ -1085,6 +1086,14 @@ func (h *Handler) issueBean(i *models.Issue) map[string]any {
 		"key":    i.Key,
 		"fields": fields,
 	}
+}
+
+// statusWireID is the id clients know a status by.
+func statusWireID(status models.Status) string {
+	if status.JiraID != 0 {
+		return strconv.FormatInt(status.JiraID, 10)
+	}
+	return status.ID
 }
 
 // issueCreated is when an issue was created, falling back to its update time

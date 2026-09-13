@@ -162,9 +162,10 @@ func (h *Handler) workflowSchemeSubresourceRoute(w http.ResponseWriter, r *http.
 			return true
 		}
 		ids := h.issueTypeIDsFor(r, workspaceID)
+		statusIDs := h.statusIDsFor(r, workspaceID)
 		statusMappings := make([]store.WorkflowStatusMapping, 0, len(request.StatusMappings))
 		for _, mapping := range request.StatusMappings {
-			statusMappings = append(statusMappings, store.WorkflowStatusMapping{IssueTypeID: ids.toInternal(mapping.IssueTypeID), OldStatusID: mapping.StatusID, NewStatusID: mapping.NewStatusID})
+			statusMappings = append(statusMappings, store.WorkflowStatusMapping{IssueTypeID: ids.toInternal(mapping.IssueTypeID), OldStatusID: statusIDs.toInternal(mapping.StatusID), NewStatusID: statusIDs.toInternal(mapping.NewStatusID)})
 		}
 		if r.URL.Query().Get("validateOnly") == "true" {
 			projects, err := h.Store.ProjectsForWorkflowScheme(r.Context(), workspaceID, schemeID)

@@ -38,20 +38,23 @@ func (h *Handler) workflowStatusMappings(r *http.Request, workspaceID string, cu
 		return nil, err
 	}
 	ids := h.issueTypeIDsFor(r, workspaceID)
+	statusIDs := h.statusIDsFor(r, workspaceID)
+	workflowIDs := h.workflowIDsFor(r, workspaceID)
 	var mappings []store.WorkflowStatusMapping
 	for _, workflowMapping := range byWorkflow {
+		oldWorkflow, newWorkflow := workflowIDs.toInternal(workflowMapping.OldWorkflowID), workflowIDs.toInternal(workflowMapping.NewWorkflowID)
 		for _, issueType := range issueTypes {
-			if schemeWorkflowIDAPI(current, issueType.ID) != workflowMapping.OldWorkflowID || schemeWorkflowIDAPI(candidate, issueType.ID) != workflowMapping.NewWorkflowID {
+			if schemeWorkflowIDAPI(current, issueType.ID) != oldWorkflow || schemeWorkflowIDAPI(candidate, issueType.ID) != newWorkflow {
 				continue
 			}
 			for _, mapping := range workflowMapping.StatusMappings {
-				mappings = append(mappings, store.WorkflowStatusMapping{IssueTypeID: issueType.ID, OldStatusID: mapping.OldStatusID, NewStatusID: mapping.NewStatusID})
+				mappings = append(mappings, store.WorkflowStatusMapping{IssueTypeID: issueType.ID, OldStatusID: statusIDs.toInternal(mapping.OldStatusID), NewStatusID: statusIDs.toInternal(mapping.NewStatusID)})
 			}
 		}
 	}
 	for _, override := range byIssueType {
 		for _, mapping := range override.StatusMappings {
-			mappings = append(mappings, store.WorkflowStatusMapping{IssueTypeID: ids.toInternal(override.IssueTypeID), OldStatusID: mapping.OldStatusID, NewStatusID: mapping.NewStatusID})
+			mappings = append(mappings, store.WorkflowStatusMapping{IssueTypeID: ids.toInternal(override.IssueTypeID), OldStatusID: statusIDs.toInternal(mapping.OldStatusID), NewStatusID: statusIDs.toInternal(mapping.NewStatusID)})
 		}
 	}
 	return mappings, nil
@@ -77,8 +80,8 @@ func workflowMetadataBean(item workflow.Workflow) map[string]any {
 		version = 1
 	}
 	return map[string]any{
-		"id": item.ID, "name": item.Name, "description": "",
-		"version": map[string]any{"id": item.ID + ":" + strconv.Itoa(version), "versionNumber": version},
+		"id": workflowWireID(item), "name": item.Name, "description": "",
+		"version": map[string]any{"id": workflowWireID(item) + ":" + strconv.Itoa(version), "versionNumber": version},
 	}
 }
 
@@ -177,7 +180,11 @@ func (h *Handler) workflowSchemeBulkRoute(w http.ResponseWriter, r *http.Request
 			jiraError(w, http.StatusBadRequest, "The workflow scheme does not exist.")
 			return true
 		}
-		candidate := workflowSchemeFromAssociations(h.issueTypeIDsFor(r, workspaceID), current, request.DefaultWorkflowID, request.WorkflowsForIssueTypes)
+		schemeWorkflows := h.workflowIDsFor(r, workspaceID)
+		for index := range request.WorkflowsForIssueTypes {
+			request.WorkflowsForIssueTypes[index].WorkflowID = schemeWorkflows.toInternal(request.WorkflowsForIssueTypes[index].WorkflowID)
+		}
+		candidate := workflowSchemeFromAssociations(h.issueTypeIDsFor(r, workspaceID), current, schemeWorkflows.toInternal(request.DefaultWorkflowID), request.WorkflowsForIssueTypes)
 		if err := h.Store.ValidateWorkflowSchemeDefinition(r.Context(), workspaceID, candidate); err != nil {
 			workflowSchemeAPIError(w, err)
 			return true
@@ -216,16 +223,18 @@ func (h *Handler) workflowSchemeBulkRoute(w http.ResponseWriter, r *http.Request
 			statuses[key.statusID] = status
 		}
 		wireIDs := h.issueTypeIDsFor(r, workspaceID)
+		wireStatuses := h.statusIDsFor(r, workspaceID)
+		wireWorkflows := h.workflowIDsFor(r, workspaceID)
 		issueTypeMappings := make([]map[string]any, 0, len(byIssueType))
 		for issueTypeID, statusSet := range byIssueType {
-			issueTypeMappings = append(issueTypeMappings, map[string]any{"issueTypeId": wireIDs.toWire(issueTypeID), "statusIds": sortedSet(statusSet)})
+			issueTypeMappings = append(issueTypeMappings, map[string]any{"issueTypeId": wireIDs.toWire(issueTypeID), "statusIds": wireStatuses.allToWire(sortedSet(statusSet))})
 		}
 		sort.Slice(issueTypeMappings, func(i, j int) bool {
 			return issueTypeMappings[i]["issueTypeId"].(string) < issueTypeMappings[j]["issueTypeId"].(string)
 		})
 		workflowMappings := make([]map[string]any, 0, len(byWorkflow))
 		for pair, statusSet := range byWorkflow {
-			workflowMappings = append(workflowMappings, map[string]any{"sourceWorkflowId": pair[0], "targetWorkflowId": pair[1], "statusIds": sortedSet(statusSet)})
+			workflowMappings = append(workflowMappings, map[string]any{"sourceWorkflowId": wireWorkflows.toWire(pair[0]), "targetWorkflowId": wireWorkflows.toWire(pair[1]), "statusIds": wireStatuses.allToWire(sortedSet(statusSet))})
 		}
 		sort.Slice(workflowMappings, func(i, j int) bool {
 			left, right := workflowMappings[i], workflowMappings[j]
@@ -233,7 +242,7 @@ func (h *Handler) workflowSchemeBulkRoute(w http.ResponseWriter, r *http.Request
 		})
 		statusValues := make([]map[string]any, 0, len(statuses))
 		for _, status := range statuses {
-			statusValues = append(statusValues, map[string]any{"id": status.ID, "name": status.Name, "category": status.Category})
+			statusValues = append(statusValues, map[string]any{"id": statusWireID(status), "name": status.Name, "category": status.Category})
 		}
 		sort.Slice(statusValues, func(i, j int) bool { return statusValues[i]["id"].(string) < statusValues[j]["id"].(string) })
 		writeJSON(w, http.StatusOK, map[string]any{"statusMappingsByIssueTypes": issueTypeMappings, "statusMappingsByWorkflows": workflowMappings, "statuses": statusValues, "statusesPerWorkflow": []any{}})
@@ -265,7 +274,11 @@ func (h *Handler) workflowSchemeBulkRoute(w http.ResponseWriter, r *http.Request
 			jiraError(w, http.StatusBadRequest, "The workflow scheme does not exist.")
 			return true
 		}
-		candidate := workflowSchemeFromAssociations(h.issueTypeIDsFor(r, workspaceID), current, request.DefaultWorkflowID, request.WorkflowsForIssueTypes)
+		schemeWorkflows := h.workflowIDsFor(r, workspaceID)
+		for index := range request.WorkflowsForIssueTypes {
+			request.WorkflowsForIssueTypes[index].WorkflowID = schemeWorkflows.toInternal(request.WorkflowsForIssueTypes[index].WorkflowID)
+		}
+		candidate := workflowSchemeFromAssociations(h.issueTypeIDsFor(r, workspaceID), current, schemeWorkflows.toInternal(request.DefaultWorkflowID), request.WorkflowsForIssueTypes)
 		candidate.Name, candidate.Description = request.Name, request.Description
 		statusMappings, err := h.workflowStatusMappings(r, workspaceID, current, candidate, request.StatusMappingsByIssueTypeOverride, request.StatusMappingsByWorkflows)
 		if err != nil {

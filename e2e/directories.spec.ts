@@ -18,6 +18,13 @@ async function login(page: Page) {
   await expect(page).toHaveURL('/');
 }
 
+// The demo project's id, as the API reports it.
+async function demoProjectID(page: import('@playwright/test').Page): Promise<string> {
+  const project = await page.request.get('/rest/api/3/project/ZZ', { headers: { Authorization: apiAuthHeader() } });
+  expect(project.status()).toBe(200);
+  return (await project.json()).id as string;
+}
+
 test('project and people directories provide Jira-style navigation journeys', async ({ page }) => {
   await login(page);
 
@@ -155,7 +162,7 @@ test('project workflow creation, editor, transition changes, and assignment work
 
   const workflowName = `Delivery ${Date.now()}`;
   await page.fill('#workflow-name', workflowName);
-  await page.selectOption('#workflow-project-scope', 'prj_default');
+  await page.selectOption('#workflow-project-scope', await demoProjectID(page));
   await page.getByRole('button', { name: 'Create workflow' }).click();
   await expect(page).toHaveURL(/\/settings\/workflows\/workflow_/);
   await expect(page.getByRole('heading', { name: workflowName, level: 1 })).toBeVisible();
@@ -247,7 +254,7 @@ test('status administrators can create, classify, edit, inspect, and safely dele
   const originalName = `Review queue ${Date.now()}`;
   await page.fill('#status-name', originalName);
   await page.selectOption('#status-category', 'indeterminate');
-  await page.selectOption('#status-project', 'prj_default');
+  await page.selectOption('#status-project', await demoProjectID(page));
   await page.fill('#status-description', 'Waiting for a peer review.');
   await page.getByRole('button', { name: 'Add status' }).click();
   await expect(page.getByRole('status')).toContainText(`${originalName} created`);
@@ -297,7 +304,7 @@ test('workflow schemes publish safely and migrate incompatible project statuses'
   await expect(page.getByText('Published', { exact: true })).toBeVisible();
   await expect(page.locator('.workflow-editor-header')).toContainText('Version 2');
 
-  await page.selectOption('#scheme-project', 'prj_default');
+  await page.selectOption('#scheme-project', await demoProjectID(page));
   await page.getByRole('button', { name: 'Preview assignment' }).click();
   await expect(page.getByText('All current work item statuses exist in the target workflows.')).toBeVisible();
   await page.getByRole('button', { name: 'Assign scheme' }).click();
@@ -337,7 +344,7 @@ test('workflow schemes publish safely and migrate incompatible project statuses'
   await page.fill('#scheme-name', migrationSchemeName);
   await page.selectOption('#scheme-default', simpleWorkflowID);
   await page.getByRole('button', { name: 'Create scheme' }).click();
-  await page.selectOption('#scheme-project', 'prj_default');
+  await page.selectOption('#scheme-project', await demoProjectID(page));
   await page.getByRole('button', { name: 'Preview assignment' }).click();
   await expect(page.getByText('Choose where existing work moves before assigning this scheme.')).toBeVisible();
   await page.selectOption('#mapping-it_task-st_inprogress', 'st_todo');
@@ -346,5 +353,5 @@ test('workflow schemes publish safely and migrate incompatible project statuses'
 
   const migratedIssue = await page.request.get(`/rest/api/3/issue/${issueKey}`, { headers: { Authorization: apiAuthHeader() } });
   expect(migratedIssue.status()).toBe(200);
-  expect((await migratedIssue.json()).fields.status.id).toBe('st_todo');
+  expect((await migratedIssue.json()).fields.status.id).toBe('10000');
 });

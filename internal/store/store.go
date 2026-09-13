@@ -30,7 +30,13 @@ type Store struct {
 // the server. Keeping the hook on Store gives every product surface that owns
 // JQL the same expansion behavior without coupling persistence to app HTTP.
 func (s *Store) ExpandAppJQL(ctx context.Context, workspaceID string, query *jql.Query) error {
-	if s == nil || s.AppJQLExpander == nil {
+	if s == nil {
+		return nil
+	}
+	if err := s.normalizeJQLWireIDs(ctx, workspaceID, query); err != nil {
+		return err
+	}
+	if s.AppJQLExpander == nil {
 		return nil
 	}
 	return s.AppJQLExpander(ctx, workspaceID, query)
@@ -737,7 +743,7 @@ func (s *Store) ProjectByKey(ctx context.Context, workspaceID, key string) (*mod
 
 const issueJoin = `
 SELECT i.id, i.jira_id, i.workspace_id, i.project_id, i.key, i.summary, i.description,
-       st.id, st.name, st.category,
+       st.id, st.name, st.category, st.jira_id,
 	       it.id, COALESCE(ito.name, it.name), it.icon,
 	       it.subtask,
 	       parent.id, parent.jira_id, parent.key, parent.summary,
@@ -781,7 +787,7 @@ func scanIssue(row pgx.Row) (*models.Issue, error) {
 	var createdAt time.Time
 	var archivedAt *time.Time
 	err := row.Scan(&i.ID, &i.JiraID, &i.WorkspaceID, &i.ProjectID, &i.Key, &i.Summary, &i.Description,
-		&i.Status.ID, &i.Status.Name, &i.Status.Category,
+		&i.Status.ID, &i.Status.Name, &i.Status.Category, &i.Status.JiraID,
 		&i.IssueType.ID, &i.IssueType.Name, &i.IssueType.Icon, &i.IssueType.Subtask,
 		&parentID, &parentJiraID, &parentKey, &parentSummary,
 		&priorityID, &priorityName,

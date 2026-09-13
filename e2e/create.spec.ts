@@ -74,10 +74,11 @@ test('create journey and createmeta share every supported field', async ({ page,
   expect((await request.get('/rest/api/3/issue/createmeta/ZZ/issuetypes/not-a-type', auth)).status()).toBe(400);
 
   const apiSummary = `Metadata API create ${unique}`;
+  const projectID = (await (await request.get('/rest/api/3/project/ZZ', auth)).json()).id as string;
   const apiCreated = await request.post('/rest/api/3/issue', {
     ...auth,
     data: { fields: {
-      project: { id: 'prj_default' }, summary: apiSummary, issuetype: { id: '10002' },
+      project: { id: projectID }, summary: apiSummary, issuetype: { id: '10002' },
       assignee: { accountId: demoID }, priority: { id: '3' }, labels: ['api-create'],
       security: { id: levelID }, [customFieldID]: 5,
     } },

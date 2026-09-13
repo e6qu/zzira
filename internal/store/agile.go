@@ -115,7 +115,7 @@ func (s *Store) RankBetween(ctx context.Context, workspaceID, projectID, statusI
 
 const boardJoin = `
 SELECT b.id, b.project_id, p.key, p.name, p.workspace_id, b.name, b.type, b.column_status_ids, b.filter_jql,
-       b.quick_filters, b.swimlane_strategy, b.card_fields, b.column_limits
+       b.quick_filters, b.swimlane_strategy, b.card_fields, b.column_limits, b.jira_id, b.filter_jira_id
 FROM boards b JOIN projects p ON p.id=b.project_id AND p.lifecycle_state='ACTIVE'
 `
 
@@ -123,7 +123,7 @@ func scanBoard(row pgx.Row) (*models.Board, error) {
 	b := &models.Board{}
 	var quickFilters, columnLimits []byte
 	err := row.Scan(&b.ID, &b.ProjectID, &b.ProjectKey, &b.ProjectName, &b.WorkspaceID, &b.Name, &b.Type, &b.ColumnStatusIDs, &b.FilterJQL,
-		&quickFilters, &b.SwimlaneStrategy, &b.CardFields, &columnLimits)
+		&quickFilters, &b.SwimlaneStrategy, &b.CardFields, &columnLimits, &b.JiraID, &b.FilterJiraID)
 	if err != nil {
 		return b, err
 	}
@@ -144,7 +144,7 @@ func (s *Store) BoardByID(ctx context.Context, id string) (*models.Board, error)
 // requested workspace. Callers handling authenticated requests must use this
 // lookup instead of the global administrative lookup above.
 func (s *Store) BoardByIDInWorkspace(ctx context.Context, workspaceID, id string) (*models.Board, error) {
-	return scanBoard(s.Pool.QueryRow(ctx, boardJoin+`WHERE b.id=$1 AND p.workspace_id=$2`, id, workspaceID))
+	return scanBoard(s.Pool.QueryRow(ctx, boardJoin+`WHERE (b.id=$1 OR b.jira_id::text=$1) AND p.workspace_id=$2`, id, workspaceID))
 }
 
 func (s *Store) BoardsByWorkspace(ctx context.Context, workspaceID string) ([]*models.Board, error) {
@@ -378,6 +378,22 @@ func (s *Store) UpdateBoardConfiguration(ctx context.Context, actorID, workspace
 	if err != nil {
 		return nil, nil, err
 	}
+	// A quick filter keeps the id clients know it by; a new one takes the next id.
+	knownIDs := map[string]int64{}
+	for _, existing := range board.QuickFilters {
+		knownIDs[existing.ID] = existing.JiraID
+	}
+	for index := range input.QuickFilters {
+		filter := &input.QuickFilters[index]
+		if known := knownIDs[filter.ID]; known != 0 {
+			filter.JiraID = known
+		}
+		if filter.JiraID == 0 {
+			if err := tx.QueryRow(ctx, `SELECT nextval('jira_quick_filter_id')`).Scan(&filter.JiraID); err != nil {
+				return nil, nil, err
+			}
+		}
+	}
 	quickFilters, err := json.Marshal(input.QuickFilters)
 	if err != nil {
 		return nil, nil, err
@@ -448,17 +464,19 @@ func (s *Store) CreateSprint(ctx context.Context, actorID, workspaceID, boardID,
 		return nil, nil, fmt.Errorf("board %q does not belong to workspace %q", boardID, workspaceID)
 	}
 	id := NewID("spr")
-	if _, err := tx.Exec(ctx,
+	var sprintJiraID int64
+	if err := tx.QueryRow(ctx,
 		`INSERT INTO sprints (id, board_id, name, state, goal, position)
-		 VALUES ($1,$2,$3,'future',$4,COALESCE((SELECT max(position)+1 FROM sprints WHERE board_id=$2),0))`,
-		id, boardID, name, goal); err != nil {
+		 VALUES ($1,$2,$3,'future',$4,COALESCE((SELECT max(position)+1 FROM sprints WHERE board_id=$2),0)) RETURNING jira_id`,
+		id, boardID, name, goal).Scan(&sprintJiraID); err != nil {
 		return nil, nil, err
 	}
 	seq, err := nextSeq(ctx, tx, workspaceID)
 	if err != nil {
 		return nil, nil, err
 	}
-	sprint := &models.Sprint{ID: id, BoardID: boardID, Name: name, State: "future", Goal: goal}
+	sprint := &models.Sprint{ID: id, BoardID: boardID, Name: name, State: "future", Goal: goal, JiraID: sprintJiraID}
+	_ = tx.QueryRow(ctx, `SELECT jira_id FROM boards WHERE id=$1`, boardID).Scan(&sprint.BoardJiraID)
 	payload, err := json.Marshal(models.SprintUpsertPayload{Sprint: *sprint})
 	if err != nil {
 		return nil, nil, err
@@ -481,7 +499,7 @@ func (s *Store) SprintsByBoard(ctx context.Context, boardID string) ([]*models.S
 		`SELECT s.id, s.board_id, s.name, s.state,
 		        COALESCE(to_char(start_date AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
 		        COALESCE(to_char(end_date AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
-		        s.goal
+		        s.goal, s.jira_id, (SELECT jira_id FROM boards WHERE id=s.board_id)
 			 FROM sprints s WHERE s.board_id=$1 ORDER BY s.position, s.created_at, s.id`, boardID)
 	if err != nil {
 		return nil, err
@@ -490,7 +508,7 @@ func (s *Store) SprintsByBoard(ctx context.Context, boardID string) ([]*models.S
 	var out []*models.Sprint
 	for rows.Next() {
 		sp := &models.Sprint{}
-		if err := rows.Scan(&sp.ID, &sp.BoardID, &sp.Name, &sp.State, &sp.StartDate, &sp.EndDate, &sp.Goal); err != nil {
+		if err := rows.Scan(&sp.ID, &sp.BoardID, &sp.Name, &sp.State, &sp.StartDate, &sp.EndDate, &sp.Goal, &sp.JiraID, &sp.BoardJiraID); err != nil {
 			return nil, err
 		}
 		out = append(out, sp)
@@ -599,7 +617,7 @@ func (s *Store) SprintByID(ctx context.Context, id string) (*models.Sprint, erro
 // SprintByIDInWorkspace returns a sprint only when its board's project belongs
 // to the requested workspace.
 func (s *Store) SprintByIDInWorkspace(ctx context.Context, workspaceID, id string) (*models.Sprint, error) {
-	return s.sprintByID(ctx, "JOIN boards b ON b.id=s.board_id JOIN projects p ON p.id=b.project_id WHERE s.id=$1 AND p.workspace_id=$2", id, workspaceID)
+	return s.sprintByID(ctx, "JOIN boards b ON b.id=s.board_id JOIN projects p ON p.id=b.project_id WHERE (s.id=$1 OR s.jira_id::text=$1) AND p.workspace_id=$2", id, workspaceID)
 }
 
 func (s *Store) sprintByID(ctx context.Context, clause string, args ...any) (*models.Sprint, error) {
@@ -608,9 +626,9 @@ func (s *Store) sprintByID(ctx context.Context, clause string, args ...any) (*mo
 		`SELECT s.id, s.board_id, s.name, s.state,
 		        COALESCE(to_char(s.start_date AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
 		        COALESCE(to_char(s.end_date AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
-		        s.goal
+		        s.goal, s.jira_id, (SELECT jira_id FROM boards WHERE id=s.board_id)
 		 FROM sprints s `+clause, args...).
-		Scan(&sp.ID, &sp.BoardID, &sp.Name, &sp.State, &sp.StartDate, &sp.EndDate, &sp.Goal)
+		Scan(&sp.ID, &sp.BoardID, &sp.Name, &sp.State, &sp.StartDate, &sp.EndDate, &sp.Goal, &sp.JiraID, &sp.BoardJiraID)
 	if err != nil {
 		return nil, err
 	}
@@ -1504,32 +1522,36 @@ func (s *Store) SaveWorkflowDraft(ctx context.Context, workspaceID string, wf wo
 func (s *Store) WorkflowByID(ctx context.Context, workspaceID, id string) (workflow.Workflow, error) {
 	var wf workflow.Workflow
 	var def []byte
-	err := s.Pool.QueryRow(ctx, `SELECT def,version,draft_def IS NOT NULL,COALESCE(project_id,'') FROM workflows WHERE id=$1 AND (workspace_id=$2 OR (id='wf_default' AND workspace_id IS NULL))`, id, workspaceID).Scan(&def, &wf.Version, &wf.HasDraft, &wf.ProjectID)
+	var entityID string
+	err := s.Pool.QueryRow(ctx, `SELECT def,version,draft_def IS NOT NULL,COALESCE(project_id,''),entity_id::text FROM workflows WHERE (id=$1 OR entity_id::text=$1) AND (workspace_id=$2 OR (id='wf_default' AND workspace_id IS NULL))`, id, workspaceID).Scan(&def, &wf.Version, &wf.HasDraft, &wf.ProjectID, &entityID)
 	if err != nil {
 		return wf, err
 	}
 	if err := json.Unmarshal(def, &wf); err != nil {
 		return workflow.Workflow{}, err
 	}
+	wf.EntityID = entityID
 	return wf, nil
 }
 
 func (s *Store) WorkflowDraftByID(ctx context.Context, workspaceID, id string) (workflow.Workflow, error) {
 	var wf workflow.Workflow
 	var def []byte
-	err := s.Pool.QueryRow(ctx, `SELECT COALESCE(draft_def,def),version,draft_def IS NOT NULL,COALESCE(project_id,'') FROM workflows WHERE id=$1 AND (workspace_id=$2 OR (id='wf_default' AND workspace_id IS NULL))`, id, workspaceID).Scan(&def, &wf.Version, &wf.HasDraft, &wf.ProjectID)
+	var entityID string
+	err := s.Pool.QueryRow(ctx, `SELECT COALESCE(draft_def,def),version,draft_def IS NOT NULL,COALESCE(project_id,''),entity_id::text FROM workflows WHERE (id=$1 OR entity_id::text=$1) AND (workspace_id=$2 OR (id='wf_default' AND workspace_id IS NULL))`, id, workspaceID).Scan(&def, &wf.Version, &wf.HasDraft, &wf.ProjectID, &entityID)
 	if err != nil {
 		return wf, err
 	}
 	if err := json.Unmarshal(def, &wf); err != nil {
 		return workflow.Workflow{}, err
 	}
+	wf.EntityID = entityID
 	return wf, nil
 }
 
 // ListWorkflows returns all stored workflow definitions.
 func (s *Store) ListWorkflows(ctx context.Context, workspaceID string) ([]workflow.Workflow, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT id,name,def,version,draft_def IS NOT NULL,COALESCE(project_id,'') FROM workflows WHERE workspace_id=$1 OR (id='wf_default' AND workspace_id IS NULL) ORDER BY id`, workspaceID)
+	rows, err := s.Pool.Query(ctx, `SELECT id,name,def,version,draft_def IS NOT NULL,COALESCE(project_id,''),entity_id::text FROM workflows WHERE workspace_id=$1 OR (id='wf_default' AND workspace_id IS NULL) ORDER BY id`, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -1538,12 +1560,14 @@ func (s *Store) ListWorkflows(ctx context.Context, workspaceID string) ([]workfl
 	for rows.Next() {
 		var wf workflow.Workflow
 		var def []byte
-		if err := rows.Scan(&wf.ID, &wf.Name, &def, &wf.Version, &wf.HasDraft, &wf.ProjectID); err != nil {
+		var entityID string
+		if err := rows.Scan(&wf.ID, &wf.Name, &def, &wf.Version, &wf.HasDraft, &wf.ProjectID, &entityID); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal(def, &wf); err != nil {
 			return nil, err
 		}
+		wf.EntityID = entityID
 		out = append(out, wf)
 	}
 	return out, rows.Err()
@@ -1621,6 +1645,11 @@ func (s *Store) AssignWorkflowToProject(ctx context.Context, workspaceID, projec
 	var projectKey string
 	if err := tx.QueryRow(ctx, `SELECT key FROM projects WHERE id=$1 AND workspace_id=$2 FOR UPDATE`, projectID, workspaceID).Scan(&projectKey); err != nil {
 		return fmt.Errorf("project %q does not exist", projectID)
+	}
+	// A workflow may be named by the UUID clients see.
+	var storedWorkflowID string
+	if err := tx.QueryRow(ctx, `SELECT id FROM workflows WHERE entity_id::text=$1 AND (workspace_id=$2 OR (id='wf_default' AND workspace_id IS NULL))`, workflowID, workspaceID).Scan(&storedWorkflowID); err == nil {
+		workflowID = storedWorkflowID
 	}
 	var workflowProjectID string
 	if err := tx.QueryRow(ctx, `SELECT COALESCE(project_id,'') FROM workflows WHERE id=$1 AND (workspace_id=$2 OR (id='wf_default' AND workspace_id IS NULL))`, workflowID, workspaceID).Scan(&workflowProjectID); err != nil {

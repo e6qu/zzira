@@ -184,6 +184,7 @@ PR #90's final GitHub matrix passed its required suites before merge.
 - [Jira issue metadata](ISSUE_METADATA.md)
 - [Jira people, groups and avatars](PEOPLE.md)
 - [Jira issue comments, links, archiving and bulk operations](ISSUE_SURFACE.md)
+- [Ids clients see](WIRE_IDS.md)
 
 ## Continuity rules
 

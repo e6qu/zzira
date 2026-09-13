@@ -243,6 +243,10 @@ func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue
 		if err := json.Unmarshal(valueRaw, &value); err != nil || value.StatusID == "" {
 			return false, errors.New("transition action requires value.statusId")
 		}
+		// Rules name the target by the status id clients see.
+		if target, lookupErr := r.Service.Store.StatusByID(ctx, value.StatusID); lookupErr == nil {
+			value.StatusID = target.ID
+		}
 		if issue.Status.ID == value.StatusID {
 			return false, nil
 		}

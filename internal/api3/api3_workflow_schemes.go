@@ -145,13 +145,14 @@ func (h *Handler) workflowSchemeRoute(w http.ResponseWriter, r *http.Request, pa
 			return
 		}
 		ids := h.issueTypeIDsFor(r, workspaceID)
+		statusIDs := h.statusIDsFor(r, workspaceID)
 		var mappings []store.WorkflowStatusMapping
 		for _, override := range request.MappingsByIssueTypeOverride {
 			for _, mapping := range override.StatusMappings {
 				mappings = append(mappings, store.WorkflowStatusMapping{
 					IssueTypeID: ids.toInternal(override.IssueTypeID),
-					OldStatusID: mapping.OldStatusID,
-					NewStatusID: mapping.NewStatusID,
+					OldStatusID: statusIDs.toInternal(mapping.OldStatusID),
+					NewStatusID: statusIDs.toInternal(mapping.NewStatusID),
 				})
 			}
 		}

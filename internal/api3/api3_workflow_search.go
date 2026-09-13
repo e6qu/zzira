@@ -58,7 +58,7 @@ func workflowStatusReferences(wf workflow.Workflow) map[string]bool {
 	return ids
 }
 
-func workflowReferenceStatuses(wf workflow.Workflow) []map[string]any {
+func workflowReferenceStatuses(wf workflow.Workflow, wire statusIDs) []map[string]any {
 	statusIDs := workflowStatusReferences(wf)
 	layouts := make(map[string]workflow.StatusLayout, len(wf.Statuses))
 	for _, status := range wf.Statuses {
@@ -71,7 +71,7 @@ func workflowReferenceStatuses(wf workflow.Workflow) []map[string]any {
 		if properties == nil {
 			properties = map[string]string{}
 		}
-		bean := map[string]any{"statusReference": id, "deprecated": false, "properties": properties}
+		bean := map[string]any{"statusReference": wire.toWire(id), "deprecated": false, "properties": properties}
 		if exists && status.Layout != nil {
 			bean["layout"] = status.Layout
 		}
@@ -94,10 +94,10 @@ func workflowStatusCategory(category string) string {
 	}
 }
 
-func workflowTransitionBean(transition workflow.Transition) map[string]any {
+func workflowTransitionBean(transition workflow.Transition, wire statusIDs) map[string]any {
 	links := make([]map[string]any, 0, len(transition.From))
 	for _, from := range transition.From {
-		links = append(links, map[string]any{"fromStatusReference": from})
+		links = append(links, map[string]any{"fromStatusReference": wire.toWire(from)})
 	}
 	actions := transition.Actions
 	if actions == nil {
@@ -113,7 +113,7 @@ func workflowTransitionBean(transition workflow.Transition) map[string]any {
 	}
 	bean := map[string]any{
 		"id": transition.ID, "name": transition.Name, "description": "",
-		"type": "DIRECTED", "toStatusReference": transition.To, "links": links,
+		"type": "DIRECTED", "toStatusReference": wire.toWire(transition.To), "links": links,
 		"properties": map[string]string{}, "actions": actions, "validators": validators, "triggers": triggers,
 	}
 	if transition.Conditions != nil {
@@ -125,11 +125,11 @@ func workflowTransitionBean(transition workflow.Transition) map[string]any {
 	return bean
 }
 
-func workflowSearchBean(wf workflow.Workflow, expandTransitions bool) map[string]any {
+func workflowSearchBean(wf workflow.Workflow, expandTransitions bool, wire statusIDs) map[string]any {
 	bean := map[string]any{
-		"id": wf.ID, "name": wf.Name, "description": wf.Description, "isEditable": wf.ID != workflow.Default().ID,
-		"scope": jiraWorkflowScope(wf), "statuses": workflowReferenceStatuses(wf),
-		"version": map[string]any{"id": wf.ID, "versionNumber": wf.Version},
+		"id": workflowWireID(wf), "name": wf.Name, "description": wf.Description, "isEditable": wf.ID != workflow.Default().ID,
+		"scope": jiraWorkflowScope(wf), "statuses": workflowReferenceStatuses(wf, wire),
+		"version": map[string]any{"id": workflowWireID(wf), "versionNumber": wf.Version},
 	}
 	if wf.StartPointLayout != nil {
 		bean["startPointLayout"] = wf.StartPointLayout
@@ -140,7 +140,7 @@ func workflowSearchBean(wf workflow.Workflow, expandTransitions bool) map[string
 	if expandTransitions {
 		transitions := make([]map[string]any, 0, len(wf.Transitions))
 		for _, transition := range wf.Transitions {
-			transitions = append(transitions, workflowTransitionBean(transition))
+			transitions = append(transitions, workflowTransitionBean(transition, wire))
 		}
 		bean["transitions"] = transitions
 	}
@@ -156,9 +156,9 @@ func jiraWorkflowScope(wf workflow.Workflow) map[string]any {
 
 func workflowSearchStatusBean(status models.Status) map[string]any {
 	return map[string]any{
-		"id": status.ID, "name": status.Name, "description": status.Description,
+		"id": statusWireID(status), "name": status.Name, "description": status.Description,
 		"scope": jiraStatusScope(status), "statusCategory": workflowStatusCategory(status.Category),
-		"statusReference": status.ID,
+		"statusReference": statusWireID(status),
 	}
 }
 
@@ -260,8 +260,9 @@ func (h *Handler) workflowSearch(w http.ResponseWriter, r *http.Request) {
 	}
 	values := make([]map[string]any, 0, end-startAt)
 	referencedStatuses := make(map[string]bool)
+	wireStatuses := h.statusIDsFor(r, workspaceID)
 	for _, item := range filtered[startAt:end] {
-		values = append(values, workflowSearchBean(item, expandTransitions))
+		values = append(values, workflowSearchBean(item, expandTransitions, wireStatuses))
 		for id := range workflowStatusReferences(item) {
 			referencedStatuses[id] = true
 		}

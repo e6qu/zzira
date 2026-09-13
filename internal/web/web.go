@@ -1222,7 +1222,7 @@ func (h *Handler) ProjectIssues(w http.ResponseWriter, r *http.Request, key stri
 	if activeFilter != "" {
 		var selected *models.Filter
 		for _, filter := range filters {
-			if filter.ID == activeFilter {
+			if filter.ID == activeFilter || strconv.FormatInt(filter.JiraID, 10) == activeFilter {
 				selected = filter
 				break
 			}

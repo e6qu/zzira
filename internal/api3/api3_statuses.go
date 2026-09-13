@@ -26,7 +26,7 @@ func internalStatusCategory(category string) string {
 func (h *Handler) jiraStatusBean(status models.Status) map[string]any {
 	scope := jiraStatusScope(status)
 	return map[string]any{
-		"id": status.ID, "name": status.Name, "description": status.Description,
+		"id": statusWireID(status), "name": status.Name, "description": status.Description,
 		"statusCategory": jiraStatusCategory(status.Category), "scope": scope,
 	}
 }
@@ -77,6 +77,9 @@ func (h *Handler) bulkStatusesEndpoint(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		byID := statusesByID(statuses)
+		for _, status := range statuses {
+			byID[statusWireID(status)] = status
+		}
 		out := make([]map[string]any, 0, len(ids))
 		for _, id := range ids {
 			if status, ok := byID[id]; ok {
@@ -151,9 +154,10 @@ func (h *Handler) bulkStatusesEndpoint(w http.ResponseWriter, r *http.Request) {
 			jiraError(w, http.StatusBadRequest, "At least one status is required.")
 			return
 		}
+		wire := h.statusIDsFor(r, workspaceID)
 		statuses := make([]models.Status, 0, len(request.Statuses))
 		for _, input := range request.Statuses {
-			statuses = append(statuses, models.Status{ID: input.ID, Name: input.Name, Description: input.Description, Category: internalStatusCategory(input.StatusCategory)})
+			statuses = append(statuses, models.Status{ID: wire.toInternal(input.ID), Name: input.Name, Description: input.Description, Category: internalStatusCategory(input.StatusCategory)})
 		}
 		if err := h.Store.UpdateStatuses(r.Context(), workspaceID, userID, statuses); err != nil {
 			statusAPIError(w, err)
@@ -166,7 +170,12 @@ func (h *Handler) bulkStatusesEndpoint(w http.ResponseWriter, r *http.Request) {
 			jiraError(w, http.StatusBadRequest, "Between 1 and 50 status ids are required.")
 			return
 		}
-		if err := h.Store.DeleteStatuses(r.Context(), workspaceID, userID, ids); err != nil {
+		wire := h.statusIDsFor(r, workspaceID)
+		stored := make([]string, len(ids))
+		for index, id := range ids {
+			stored[index] = wire.toInternal(id)
+		}
+		if err := h.Store.DeleteStatuses(r.Context(), workspaceID, userID, stored); err != nil {
 			statusAPIError(w, err)
 			return
 		}
@@ -358,7 +367,8 @@ func (h *Handler) statusUsageEndpoint(w http.ResponseWriter, r *http.Request, pa
 		jiraError(w, http.StatusNotFound, "No resource found")
 		return
 	}
-	statusID := parts[0]
+	wireStatusID := parts[0]
+	statusID := h.statusIDsFor(r, workspaceID).toInternal(wireStatusID)
 	if _, err := h.Store.StatusUsage(r.Context(), workspaceID, statusID); err != nil {
 		statusAPIError(w, err)
 		return
@@ -366,7 +376,7 @@ func (h *Handler) statusUsageEndpoint(w http.ResponseWriter, r *http.Request, pa
 	var ids []string
 	var err error
 	container := ""
-	response := map[string]any{"statusId": statusID}
+	response := map[string]any{"statusId": wireStatusID}
 	switch {
 	case len(parts) == 2 && parts[1] == "projectUsages":
 		ids, err = h.Store.StatusProjectUsages(r.Context(), workspaceID, statusID)

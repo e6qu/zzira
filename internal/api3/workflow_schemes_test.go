@@ -194,7 +194,7 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	}
 	call(actor, "POST", "/rest/api/3/issue/WSA-1/transitions", `{"transition":{"id":"ready"}}`, 204)
 	var transitionedStatus string
-	if err := st.Pool.QueryRow(ctx, `SELECT status_id FROM issues WHERE id=$1`, issueID).Scan(&transitionedStatus); err != nil || transitionedStatus != projectStatusID {
+	if err := st.Pool.QueryRow(ctx, `SELECT st.jira_id::text FROM issues i JOIN statuses st ON st.id=i.status_id WHERE i.id=$1`, issueID).Scan(&transitionedStatus); err != nil || transitionedStatus != projectStatusID {
 		t.Fatalf("project workflow transition status=%q err=%v", transitionedStatus, err)
 	}
 	exec(`UPDATE issues SET status_id='st_inprogress' WHERE id=$1`, issueID)
@@ -233,7 +233,7 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 		t.Fatalf("rolled back update statuses=%d err=%v", rolledBackUpdateStatuses, err)
 	}
 	var modernWorkflowAudits int
-	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM organization_audit_events WHERE actor_id=$1 AND target_id=$2 AND action IN ('workflow.created','workflow.updated')`, actor, modernWorkflowID).Scan(&modernWorkflowAudits); err != nil || modernWorkflowAudits != 2 {
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM organization_audit_events WHERE actor_id=$1 AND target_id=(SELECT id FROM workflows WHERE id=$2 OR entity_id::text=$2) AND action IN ('workflow.created','workflow.updated')`, actor, modernWorkflowID).Scan(&modernWorkflowAudits); err != nil || modernWorkflowAudits != 2 {
 		t.Fatalf("modern workflow audits=%d err=%v", modernWorkflowAudits, err)
 	}
 	call(member, "POST", "/rest/api/3/workflowscheme", body, 403)
@@ -318,7 +318,7 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	}
 	version := int(readSchemes[0]["version"].(map[string]any)["versionNumber"].(float64))
 	requiredMappings := call(actor, "POST", "/rest/api/3/workflowscheme/update/mappings", `{"id":"`+schemeID+`","defaultWorkflowId":"`+workflowID+`","workflowsForIssueTypes":[]}`, 200)
-	if !strings.Contains(requiredMappings.Body.String(), `"st_inprogress"`) {
+	if !strings.Contains(requiredMappings.Body.String(), `"3"`) {
 		t.Fatal(requiredMappings.Body.String())
 	}
 	unsafeBulkUpdate := `{"id":"` + schemeID + `","name":"Unsafe bulk","description":"Unsafe","defaultWorkflowId":"` + workflowID + `","version":{"versionNumber":` + fmt.Sprint(version) + `},"workflowsForIssueTypes":[]}`
@@ -390,12 +390,16 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 		t.Fatal(issueTypeUsage.Body.String())
 	}
 	workflowSearch := call(actor, "GET", "/rest/api/3/workflows/search?queryString=Simple&projectId="+projectID+"&isActive=true&orderBy=name&expand=values.transitions", "", 200)
-	if !strings.Contains(workflowSearch.Body.String(), `"id":"`+workflowID+`"`) || !strings.Contains(workflowSearch.Body.String(), `"toStatusReference":"st_done"`) || !strings.Contains(workflowSearch.Body.String(), `"statusCategory":"DONE"`) {
+	var workflowEntityID string
+	if err := st.Pool.QueryRow(ctx, `SELECT entity_id::text FROM workflows WHERE id=$1`, workflowID).Scan(&workflowEntityID); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(workflowSearch.Body.String(), `"id":"`+workflowEntityID+`"`) || !strings.Contains(workflowSearch.Body.String(), `"toStatusReference":"10001"`) || !strings.Contains(workflowSearch.Body.String(), `"statusCategory":"DONE"`) {
 		t.Fatal(workflowSearch.Body.String())
 	}
 	call(member, "POST", "/rest/api/3/workflows/preview", `{"projectId":"`+projectID+`","workflowIds":["`+workflowID+`"]}`, 403)
 	workflowPreview := call(actor, "POST", "/rest/api/3/workflows/preview", `{"projectId":"`+projectID+`","workflowIds":["`+workflowID+`"],"workflowNames":["Simple API lifecycle"],"issueTypeIds":["10002"]}`, 200)
-	if !strings.Contains(workflowPreview.Body.String(), `"id":"`+workflowID+`"`) || !strings.Contains(workflowPreview.Body.String(), `"issueTypes":["10002"]`) || !strings.Contains(workflowPreview.Body.String(), `"rawName":"Done"`) || !strings.Contains(workflowPreview.Body.String(), `"toStatusReference":"st_done"`) {
+	if !strings.Contains(workflowPreview.Body.String(), `"id":"`+workflowEntityID+`"`) || !strings.Contains(workflowPreview.Body.String(), `"issueTypes":["10002"]`) || !strings.Contains(workflowPreview.Body.String(), `"rawName":"Done"`) || !strings.Contains(workflowPreview.Body.String(), `"toStatusReference":"10001"`) {
 		t.Fatal(workflowPreview.Body.String())
 	}
 	call(actor, "POST", "/rest/api/3/workflows/preview", `{"projectId":"`+projectID+`","workflowIds":["`+modernWorkflowID+`"]}`, 404)

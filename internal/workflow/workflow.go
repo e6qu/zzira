@@ -113,6 +113,8 @@ type Workflow struct {
 	Transitions                     []Transition   `json:"transitions"`
 	HasDraft                        bool           `json:"-"`
 	Version                         int            `json:"-"`
+	// EntityID is the UUID clients identify the workflow by.
+	EntityID string `json:"-"`
 }
 
 type Scheme struct {
