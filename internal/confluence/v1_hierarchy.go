@@ -2,13 +2,14 @@ package confluence
 
 import (
 	"net/http"
+	"slices"
 	"strconv"
-	"strings"
 
 	"github.com/e6qu/zzira/internal/store"
+	"github.com/jackc/pgx/v5"
 )
 
-func (h *V1Handler) v1PageContentBean(relation store.WikiPageRelation) map[string]any {
+func (h *V1Handler) v1PageContentBean(relation store.WikiTreeRelation) map[string]any {
 	page := relation.Page
 	return map[string]any{
 		"id": page.ID, "type": "page", "status": page.Status, "title": page.Title,
@@ -31,14 +32,6 @@ func v1HierarchyDepth(w http.ResponseWriter, r *http.Request) (int, bool) {
 		return 0, false
 	}
 	return depth, true
-}
-
-func (h *V1Handler) v1PageDescendantValues(relations []store.WikiPageRelation) []any {
-	values := make([]any, 0, len(relations))
-	for _, relation := range relations {
-		values = append(values, h.v1PageContentBean(relation))
-	}
-	return values
 }
 
 func (h *V1Handler) v1ContentArray(w http.ResponseWriter, r *http.Request, values []any) {
@@ -64,25 +57,56 @@ func (h *V1Handler) v1ContentArray(w http.ResponseWriter, r *http.Request, value
 	respond(w, 200, map[string]any{"results": values[start:end], "start": start, "limit": limit, "size": end - start, "_links": map[string]string{"base": h.BaseURL + "/wiki"}})
 }
 
+// contentDescendants answers everything beneath a page. Each kind the caller
+// expands is listed in full; the others are named under `_expandable`, with
+// the read that lists them where Confluence has one.
 func (h *V1Handler) contentDescendants(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
 	if !supportedQuery(w, r, "expand") {
 		return
 	}
-	relations, err := h.Store.WikiPageDescendants(r.Context(), ws, actor, id, 100)
+	expand, ok := parseV1Expand(w, r, 0)
+	if !ok {
+		return
+	}
+	for key := range expand {
+		if !slices.Contains(v1ChildKinds, key) {
+			failure(w, 400, "Unsupported descendant expansion.")
+			return
+		}
+	}
+	page, err := h.Store.WikiPage(r.Context(), ws, actor, id)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	pageValues := h.v1PageDescendantValues(relations)
-	empty := map[string]any{"results": []any{}, "start": 0, "limit": 0, "size": 0, "_links": map[string]string{"base": h.BaseURL + "/wiki"}}
-	pages := map[string]any{"results": pageValues, "start": 0, "limit": len(pageValues), "size": len(pageValues), "_links": map[string]string{"base": h.BaseURL + "/wiki"}}
-	respond(w, 200, map[string]any{
-		"page": pages, "comment": empty, "attachment": empty,
-		"_expandable": map[string]string{"whiteboard": "", "database": "", "embed": "", "folder": ""},
-		"_links":      map[string]string{"base": h.BaseURL + "/wiki", "self": h.BaseURL + "/wiki/rest/api/content/" + id + "/descendant"},
-	})
+	if page.Status != "current" {
+		writeError(w, pgx.ErrNoRows)
+		return
+	}
+	found, err := h.v1Descendants(r.Context(), ws, actor, page, 100)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	self := h.BaseURL + "/wiki/rest/api/content/" + id + "/descendant"
+	result := map[string]any{"_links": map[string]string{"base": h.BaseURL + "/wiki", "self": self}}
+	expandable := map[string]string{}
+	for _, kind := range v1ChildKinds {
+		switch {
+		case expand[kind]:
+			result[kind] = contentArrayBean(found[kind], self+"/"+kind)
+		case kind == "page" || kind == "comment" || kind == "attachment":
+			expandable[kind] = "/rest/api/content/" + id + "/descendant/" + kind
+		default:
+			expandable[kind] = ""
+		}
+	}
+	result["_expandable"] = expandable
+	respond(w, 200, result)
 }
 
+// contentDescendantsByType lists one kind beneath a page to a depth, each
+// entry expanded as the caller asks.
 func (h *V1Handler) contentDescendantsByType(w http.ResponseWriter, r *http.Request, ws, actor, id, contentType string) {
 	if !supportedQuery(w, r, "expand", "depth", "start", "limit") {
 		return
@@ -91,29 +115,47 @@ func (h *V1Handler) contentDescendantsByType(w http.ResponseWriter, r *http.Requ
 		failure(w, 400, "Descendant type must be page, comment, or attachment.")
 		return
 	}
-	for _, raw := range r.URL.Query()["expand"] {
-		for _, value := range strings.Split(raw, ",") {
-			if value != "" && value != "attachment" && value != "comment" && value != "page" {
-				failure(w, 400, "Unsupported descendant expansion.")
-				return
-			}
-		}
+	expand, ok := parseV1Expand(w, r, 0)
+	if !ok {
+		return
 	}
 	depth, ok := v1HierarchyDepth(w, r)
 	if !ok {
 		return
 	}
-	values := []any{}
-	if contentType == "page" {
-		relations, err := h.Store.WikiPageDescendants(r.Context(), ws, actor, id, depth)
+	page, err := h.Store.WikiPage(r.Context(), ws, actor, id)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if page.Status != "current" {
+		writeError(w, pgx.ErrNoRows)
+		return
+	}
+	found, err := h.v1Descendants(r.Context(), ws, actor, page, depth)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	values := found[contentType]
+	if contentType == "page" && len(expand) > 0 {
+		relations, err := h.Store.WikiTreeDescendants(r.Context(), ws, actor, id, "page", depth)
 		if err != nil {
 			writeError(w, err)
 			return
 		}
-		values = h.v1PageDescendantValues(relations)
-	} else if _, err := h.Store.WikiPage(r.Context(), ws, actor, id); err != nil {
-		writeError(w, err)
-		return
+		values = []any{}
+		for _, relation := range relations {
+			if relation.Page == nil {
+				continue
+			}
+			bean, err := h.v1PageBean(r.Context(), ws, actor, relation.Page, expand)
+			if err != nil {
+				writeError(w, err)
+				return
+			}
+			values = append(values, bean)
+		}
 	}
 	h.v1ContentArray(w, r, values)
 }

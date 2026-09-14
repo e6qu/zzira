@@ -25,9 +25,7 @@ const wikiContentSelect = `SELECT c.id::text,c.type,c.status,c.title,
   COALESCE(c.parent_content_id::text,c.parent_page_id::text,c.parent_blog_post_id::text,''),
   CASE WHEN c.parent_content_id IS NOT NULL THEN parent.type WHEN c.parent_page_id IS NOT NULL THEN 'page'
        WHEN c.parent_blog_post_id IS NOT NULL THEN 'blogpost' ELSE '' END,
-  (SELECT count(*)::int FROM wiki_content sibling WHERE sibling.space_id=c.space_id AND sibling.status='current'
-    AND sibling.parent_page_id IS NOT DISTINCT FROM c.parent_page_id
-    AND sibling.parent_content_id IS NOT DISTINCT FROM c.parent_content_id AND sibling.id<c.id),
+  c.position,
   c.author_id,c.owner_id,to_char(c.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 	c.space_id::text,c.embed_url,c.private,c.classification_level,c.template_key,c.locale,
   COALESCE(c.custom_type,''),c.body,COALESCE(ct.body_representation,''),v.version,v.message,v.author_id,
@@ -82,7 +80,7 @@ func finishWikiContentMutation(ctx context.Context, tx pgx.Tx, ws, actor string,
 }
 
 func (s *Store) WikiContents(ctx context.Context, ws, user, spaceID, contentType string) ([]*models.WikiContent, error) {
-	rows, err := s.Pool.Query(ctx, wikiContentSelect+` WHERE s.workspace_id=$1 AND `+wikiContentVisibleFor(contentType)+` AND c.space_id::text=$3 AND c.type=$4 AND c.status='current' ORDER BY c.id`, ws, user, spaceID, contentType)
+	rows, err := s.Pool.Query(ctx, wikiContentSelect+` WHERE s.workspace_id=$1 AND `+wikiContentVisibleFor(contentType)+` AND c.space_id::text=$3 AND c.type=$4 AND c.status='current' ORDER BY c.position,c.id`, ws, user, spaceID, contentType)
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +118,7 @@ func (s *Store) CreateWikiContent(ctx context.Context, ws, actor string, input m
 		} else {
 			var parentID, parentType, parentRoot string
 			var parentPrivate bool
-			contentErr := tx.QueryRow(ctx, `SELECT c.id::text,c.type,COALESCE(c.root_page_id::text,''),c.private FROM wiki_content c JOIN wiki_spaces s ON s.id=c.space_id LEFT JOIN wiki_pages p ON p.id=c.root_page_id WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+createPermission+` AND `+wikiContentRestrictionWritable+` AND c.id::text=$3 AND c.space_id::text=$4 AND c.status='current' FOR SHARE OF c`, ws, actor, input.ParentID, spaceID).Scan(&parentID, &parentType, &parentRoot, &parentPrivate)
+			contentErr := tx.QueryRow(ctx, `SELECT c.id::text,c.type,COALESCE(c.root_page_id::text,''),c.private FROM wiki_content c JOIN wiki_spaces s ON s.id=c.space_id LEFT JOIN wiki_pages p ON p.id=c.root_page_id WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+createPermission+` AND `+wikiContentRestrictionWritable+` AND c.id::text=$3 AND c.space_id::text=$4 AND c.status='current' AND c.type IN ('folder','whiteboard','database','embed') FOR SHARE OF c`, ws, actor, input.ParentID, spaceID).Scan(&parentID, &parentType, &parentRoot, &parentPrivate)
 			if contentErr != nil {
 				return nil, fmt.Errorf("%w: choose visible parent content from this space", ErrWikiValidation)
 			}
@@ -131,8 +129,16 @@ func (s *Store) CreateWikiContent(ctx context.Context, ws, actor string, input m
 			}
 		}
 	}
-	if err = tx.QueryRow(ctx, `INSERT INTO wiki_content(space_id,parent_page_id,parent_content_id,root_page_id,type,title,embed_url,private,template_key,locale,author_id,owner_id)
-    VALUES($1::bigint,$2::bigint,$3::bigint,$4::bigint,$5,$6,$7,$8,$9,$10,$11,$11) RETURNING id::text`, spaceID, parentPage, parentContent, rootPage, input.Type, input.Title, input.EmbedURL, input.Private, input.TemplateKey, input.Locale, actor).Scan(&input.ID); err != nil {
+	parentNode := ""
+	if parentPage != nil || parentContent != nil {
+		parentNode = input.ParentID
+	}
+	position, err := nextTreePosition(ctx, tx, spaceID, parentNode)
+	if err != nil {
+		return nil, err
+	}
+	if err = tx.QueryRow(ctx, `INSERT INTO wiki_content(space_id,parent_page_id,parent_content_id,root_page_id,type,title,embed_url,private,template_key,locale,author_id,owner_id,position)
+    VALUES($1::bigint,$2::bigint,$3::bigint,$4::bigint,$5,$6,$7,$8,$9,$10,$11,$11,$12) RETURNING id::text`, spaceID, parentPage, parentContent, rootPage, input.Type, input.Title, input.EmbedURL, input.Private, input.TemplateKey, input.Locale, actor, position).Scan(&input.ID); err != nil {
 		return nil, err
 	}
 	if _, err = tx.Exec(ctx, `INSERT INTO wiki_content_versions(content_id,version,title,status,embed_url,author_id) VALUES($1::bigint,1,$2,'current',$3,$4)`, input.ID, input.Title, input.EmbedURL, actor); err != nil {
@@ -162,7 +168,8 @@ func (s *Store) DeleteWikiContent(ctx context.Context, ws, actor, id, contentTyp
 		return err
 	}
 	var children bool
-	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM wiki_content WHERE parent_content_id::text=$1 AND status='current')`, id).Scan(&children); err != nil {
+	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM wiki_content WHERE parent_content_id::text=$1 AND status='current')
+		OR EXISTS(SELECT 1 FROM wiki_pages WHERE parent_content_id::text=$1 AND status<>'trashed')`, id).Scan(&children); err != nil {
 		return err
 	}
 	if children {
@@ -197,72 +204,4 @@ func wikiContentAction(ctx context.Context, tx pgx.Tx, ws, actor string, content
 		return err
 	}
 	return appendAction(ctx, tx, &models.Action{WorkspaceID: ws, Seq: seq, EntityType: "wiki_content", EntityID: content.ID, Op: op, SchemaV: models.SchemaVersion, Payload: payload, ActorID: actor})
-}
-
-func (s *Store) WikiContentAncestors(ctx context.Context, ws, user, id, contentType string) ([]map[string]string, error) {
-	content, err := s.WikiContent(ctx, ws, user, id, contentType)
-	if err != nil {
-		return nil, err
-	}
-	chain := []map[string]string{}
-	for content.ParentID != "" && content.ParentType != "page" {
-		content, err = s.WikiContent(ctx, ws, user, content.ParentID, content.ParentType)
-		if err != nil {
-			return nil, err
-		}
-		chain = append([]map[string]string{{"id": content.ID, "type": content.Type}}, chain...)
-	}
-	if content.ParentType == "page" {
-		page, err := s.WikiPage(ctx, ws, user, content.ParentID)
-		if err != nil {
-			return nil, err
-		}
-		pages, err := s.WikiPageAncestors(ctx, ws, user, page.ID)
-		if err != nil {
-			return nil, err
-		}
-		prefix := make([]map[string]string, 0, len(pages)+1)
-		for _, relation := range pages {
-			prefix = append(prefix, map[string]string{"id": relation.Page.ID, "type": "page"})
-		}
-		prefix = append(prefix, map[string]string{"id": page.ID, "type": "page"})
-		chain = append(prefix, chain...)
-	}
-	return chain, nil
-}
-
-func (s *Store) WikiContentDescendants(ctx context.Context, ws, user, id, contentType string, maxDepth int) ([]models.WikiContentRelation, error) {
-	if _, err := s.WikiContent(ctx, ws, user, id, contentType); err != nil {
-		return nil, err
-	}
-	rows, err := s.Pool.Query(ctx, `WITH RECURSIVE hierarchy(id,depth) AS (
-    SELECT child.id,1 FROM wiki_content child WHERE child.parent_content_id::text=$3 AND child.status='current'
-    UNION ALL SELECT child.id,h.depth+1 FROM wiki_content child JOIN hierarchy h ON child.parent_content_id=h.id WHERE h.depth<$4 AND child.status='current'
-  ) `+wikiContentSelect+` JOIN hierarchy h ON h.id=c.id
-  WHERE s.workspace_id=$1 AND `+wikiContentVisibleFor(contentType)+` AND c.status='current' ORDER BY h.depth,c.parent_content_id,c.id`, ws, user, id, maxDepth)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	relations := []models.WikiContentRelation{}
-	for rows.Next() {
-		content, err := scanWikiContent(rows)
-		if err != nil {
-			return nil, err
-		}
-		// The select cannot expose the CTE depth, so calculate it by walking the
-		// already ordered parent chain below.
-		depth := 1
-		parent := content.ParentID
-		for parent != id && parent != "" {
-			depth++
-			var next string
-			if err := s.Pool.QueryRow(ctx, `SELECT COALESCE(parent_content_id::text,'') FROM wiki_content WHERE id::text=$1`, parent).Scan(&next); err != nil {
-				return nil, err
-			}
-			parent = next
-		}
-		relations = append(relations, models.WikiContentRelation{Content: content, Depth: depth, ChildPosition: content.Position})
-	}
-	return relations, rows.Err()
 }

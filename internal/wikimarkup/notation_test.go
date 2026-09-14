@@ -1,0 +1,27 @@
+package wikimarkup
+
+import "testing"
+
+func TestFromNotation(t *testing.T) {
+	for _, tc := range []struct{ name, in, want string }{
+		{"heading and paragraph", "h2. Release plan\nShip it *today*.", "<h2>Release plan</h2><p>Ship it <strong>today</strong>.</p>"},
+		{"line breaks join a paragraph", "first line\nsecond line", "<p>first line<br />second line</p>"},
+		{"emphasis, strike, underline and mono", "_calm_ -old- +new+ {{go test}}", "<p><em>calm</em> <del>old</del> <u>new</u> <code>go test</code></p>"},
+		{"hyphenated words stay words", "a well-known long-running job", "<p>a well-known long-running job</p>"},
+		{"bullet and nested numbered lists", "* one\n** one a\n* two\n# first", "<ul><li>one<ul><li>one a</li></ul></li><li>two</li></ul><ol><li>first</li></ol>"},
+		{"links", "[Runbook|https://example.test/run?a=1&b=2] and [https://example.test]", `<p><a href="https://example.test/run?a=1&amp;b=2">Runbook</a> and <a href="https://example.test">https://example.test</a></p>`},
+		{"unsafe links stay text", "[click|javascript:alert(1)]", "<p>[click|javascript:alert(1)]</p>"},
+		{"markup is escaped", "<script>alert(1)</script>", "<p>&lt;script&gt;alert(1)&lt;/script&gt;</p>"},
+		{"code block keeps its text", "{code:go}\nif a < b {\n}\n{code}", "<pre>if a &lt; b {\n}</pre>"},
+		{"quote and rule", "bq. Quoted\n----", "<blockquote><p>Quoted</p></blockquote><hr />"},
+		{"table", "||Name||Owner||\n|API|Platform|", "<table><tbody><tr><th>Name</th><th>Owner</th></tr><tr><td>API</td><td>Platform</td></tr></tbody></table>"},
+		{"bold sentence is not a list", "*Note* read this", "<p><strong>Note</strong> read this</p>"},
+	} {
+		if got := FromNotation(tc.in); got != tc.want {
+			t.Errorf("%s:\n got %q\nwant %q", tc.name, got, tc.want)
+		}
+	}
+	if _, err := Render(FromNotation("h1. Title\n* item\n[link|https://example.test]\n{code}x{code}\n||a||\n|b|")); err != nil {
+		t.Fatalf("converted markup is not valid storage: %v", err)
+	}
+}

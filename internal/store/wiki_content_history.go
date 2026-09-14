@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/e6qu/zzira/internal/adf"
+	"github.com/e6qu/zzira/internal/wikimarkup"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -214,6 +215,7 @@ var convertibleTo = map[string]map[string]bool{
 	"atlas_doc_format": {"editor": true, "export_view": true, "storage": true, "styled_view": true, "view": true},
 	"storage":          {"atlas_doc_format": true, "editor": true, "export_view": true, "styled_view": true, "view": true},
 	"editor":           {"storage": true},
+	"wiki":             {"atlas_doc_format": true, "editor": true, "export_view": true, "storage": true, "styled_view": true, "view": true},
 }
 
 // ConvertWikiBody converts one body. The formats this product stores are the
@@ -229,8 +231,11 @@ func ConvertWikiBody(value, from, to string) (string, error) {
 		return "", fmt.Errorf("%w: %s cannot be converted to %s", ErrWikiHistoryValidation, from, to)
 	}
 	source := value
-	if from == "atlas_doc_format" {
+	switch from {
+	case "atlas_doc_format":
 		source = adf.ToHTML(json.RawMessage(value))
+	case "wiki":
+		source = wikimarkup.FromNotation(value)
 	}
 	switch to {
 	case "atlas_doc_format":

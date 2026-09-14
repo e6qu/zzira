@@ -85,6 +85,10 @@ func (h *V1Handler) v1CopyPage(w http.ResponseWriter, r *http.Request, ws, actor
 	if !supportedQuery(w, r, "expand") {
 		return
 	}
+	expand, ok := parseV1Expand(w, r, 8)
+	if !ok {
+		return
+	}
 	var input copyPageRequest
 	if !decode(w, r, &input) {
 		return
@@ -114,10 +118,12 @@ func (h *V1Handler) v1CopyPage(w http.ResponseWriter, r *http.Request, ws, actor
 		writeError(w, err)
 		return
 	}
-	respond(w, 200, map[string]any{
-		"id": page.ID, "type": "page", "status": page.Status, "title": page.Title,
-		"_links": map[string]string{"base": h.BaseURL + "/wiki", "webui": "/wiki/pages/" + page.ID},
-	})
+	bean, err := h.v1PageBean(r.Context(), ws, actor, page, expand)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	respond(w, 200, bean)
 }
 
 // v1CopyPageHierarchy queues the copy and answers with the task that reports

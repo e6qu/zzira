@@ -331,7 +331,7 @@ test('wiki space, rich page, access, stale edits, child pages, history, trash an
   await page.getByLabel('HTTP or HTTPS URL').fill('https://status.example.test/incidents');
   await page.getByRole('region', { name: 'Smart Links' }).getByLabel('Parent content').selectOption({ label: 'Release operations' });
   await page.getByRole('button', { name: 'Add Smart Link', exact: true }).click();
-  const incidentLink = page.getByRole('link', { name: 'Incident dashboard', exact: true });
+  const incidentLink = page.locator('.wiki-smart-links').getByRole('link', { name: 'Incident dashboard', exact: true });
   await expect(incidentLink).toHaveAttribute('href', 'https://status.example.test/incidents');
   await expect(page.locator('.wiki-smart-links li').filter({ hasText: 'Incident dashboard' })).toContainText('Inside folder');
   const databases = page.getByRole('region', { name: 'Databases' });

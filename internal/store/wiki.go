@@ -181,7 +181,7 @@ const wikiPageRestrictionWritable = `(
 var wikiPageWritable = `(` + wikiSpaceVisible + `) AND (` + wikiSpaceCanUpdatePage + `) AND (` + wikiPageRestrictionWritable + `)`
 
 const wikiSpaceSelect = `SELECT s.id::text,s.workspace_id,s.key,s.name,s.description,s.author_id,s.private,s.default_classification_level,to_char(s.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),s.space_type,s.alias,COALESCE(s.homepage_id::text,''),s.status,s.route_override_enabled,s.content_mode,s.theme_key FROM wiki_spaces s`
-const wikiPageSelect = `SELECT p.id::text,s.workspace_id,p.space_id::text,COALESCE(p.parent_id::text,''),p.title,p.status,p.published,p.classification_level,p.body,p.author_id,to_char(p.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),v.version,v.message,v.minor_edit,v.author_id,to_char(v.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM wiki_pages p JOIN wiki_spaces s ON s.id=p.space_id JOIN wiki_page_versions v ON v.page_id=p.id AND v.version=p.version`
+const wikiPageSelect = `SELECT p.id::text,s.workspace_id,p.space_id::text,COALESCE(COALESCE(p.parent_id,p.parent_content_id)::text,''),CASE WHEN p.parent_content_id IS NOT NULL THEN (SELECT pc.type FROM wiki_content pc WHERE pc.id=p.parent_content_id) WHEN p.parent_id IS NOT NULL THEN 'page' ELSE '' END,p.title,p.status,p.published,p.classification_level,p.body,p.author_id,to_char(p.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),v.version,v.message,v.minor_edit,v.author_id,to_char(v.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),p.position,p.subtype,COALESCE(p.owner_id,p.author_id),COALESCE(p.last_owner_id,'') FROM wiki_pages p JOIN wiki_spaces s ON s.id=p.space_id JOIN wiki_page_versions v ON v.page_id=p.id AND v.version=p.version`
 const wikiCommentSelect = `SELECT c.id::text,COALESCE(p.id::text,''),COALESCE(bp.id::text,''),COALESCE(p.space_id,bp.space_id)::text,COALESCE(c.attachment_id::text,''),COALESCE(c.parent_id::text,''),c.body,c.author_id,u.display_name,c.version,v.message,to_char(c.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),to_char(c.updated_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),v.author_id,to_char(v.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),c.comment_type,c.inline_selection,c.inline_match_count,c.inline_match_index,c.inline_marker_ref,c.resolution_status,COALESCE(c.resolution_modifier_id,''),COALESCE(to_char(c.resolution_modified_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),COALESCE(bp.author_id,''),COALESCE(bp.private,false),COALESCE(bp.published,false) FROM wiki_footer_comments c LEFT JOIN wiki_attachments ca ON ca.id=c.attachment_id LEFT JOIN wiki_pages p ON p.id=COALESCE(c.page_id,ca.page_id) LEFT JOIN wiki_blog_posts bp ON bp.id=COALESCE(c.blog_post_id,ca.blog_post_id) JOIN wiki_spaces s ON s.id=COALESCE(p.space_id,bp.space_id) JOIN users u ON u.id=c.author_id JOIN wiki_footer_comment_versions v ON v.comment_id=c.id AND v.version=c.version`
 
 var wikiCommentVisible = `(` + wikiSpacePermissionAllowed("read/comment") + `) AND ((p.id IS NOT NULL AND p.status='current' AND ` + wikiPageVisible + `) OR (bp.id IS NOT NULL AND bp.status='current' AND ` + wikiSpacePermissionAllowed("read/blogpost") + ` AND (bp.published OR bp.author_id=$2) AND (NOT bp.private OR bp.author_id=$2)))`
@@ -195,7 +195,7 @@ func scanWikiSpace(row pgx.Row) (*models.WikiSpace, error) {
 }
 func scanWikiPage(row pgx.Row) (*models.WikiPage, error) {
 	p := &models.WikiPage{Body: models.WikiBody{Representation: "storage"}}
-	err := row.Scan(&p.ID, &p.WorkspaceID, &p.SpaceID, &p.ParentID, &p.Title, &p.Status, &p.Published, &p.ClassificationLevel, &p.Body.Value, &p.AuthorID, &p.CreatedAt, &p.Version.Number, &p.Version.Message, &p.Version.MinorEdit, &p.Version.AuthorID, &p.Version.CreatedAt)
+	err := row.Scan(&p.ID, &p.WorkspaceID, &p.SpaceID, &p.ParentID, &p.ParentType, &p.Title, &p.Status, &p.Published, &p.ClassificationLevel, &p.Body.Value, &p.AuthorID, &p.CreatedAt, &p.Version.Number, &p.Version.Message, &p.Version.MinorEdit, &p.Version.AuthorID, &p.Version.CreatedAt, &p.Position, &p.Subtype, &p.OwnerID, &p.LastOwnerID)
 	return p, err
 }
 
@@ -350,6 +350,7 @@ func (s *Store) SaveWikiPage(ctx context.Context, ws, actor string, input models
 	if err != nil {
 		return nil, err
 	}
+	previousParent := ""
 	if input.ID != "" {
 		old, err := scanWikiPage(tx.QueryRow(ctx, wikiPageSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+spacePermission+` AND `+wikiPageVisible+` AND `+wikiPageRestrictionWritable+` AND p.id::text=$3`, ws, actor, input.ID))
 		if err != nil {
@@ -366,6 +367,7 @@ func (s *Store) SaveWikiPage(ctx context.Context, ws, actor string, input models
 		if input.Version.Number != old.Version.Number+1 {
 			return nil, ErrWikiConflict
 		}
+		previousParent = old.ParentID
 		if input.Status == "draft" && old.Published {
 			return nil, fmt.Errorf("%w: a published page cannot be converted to a draft", ErrWikiValidation)
 		}
@@ -375,29 +377,63 @@ func (s *Store) SaveWikiPage(ctx context.Context, ws, actor string, input models
 			input.ParentID = old.ParentID
 		}
 		input.AuthorID = old.AuthorID
+		input.Subtype = old.Subtype
+		if input.OwnerID == "" || input.OwnerID == old.OwnerID {
+			input.OwnerID, input.LastOwnerID = old.OwnerID, old.LastOwnerID
+		} else {
+			// Ownership goes to someone who belongs to the site, and the page
+			// remembers who held it before.
+			var member bool
+			if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM memberships WHERE workspace_id=$1 AND user_id=$2)`, ws, input.OwnerID).Scan(&member); err != nil {
+				return nil, err
+			}
+			if !member {
+				return nil, fmt.Errorf("%w: the new owner must be a member of this site", ErrWikiValidation)
+			}
+			input.LastOwnerID = old.OwnerID
+		}
+		if old.Subtype == "live" && input.Status == "draft" {
+			return nil, fmt.Errorf("%w: a live doc is always published", ErrWikiValidation)
+		}
 	} else {
 		input.Version.Number = 1
 		input.AuthorID = actor
 		input.ClassificationLevel = defaultClassification
+		input.OwnerID, input.LastOwnerID = actor, ""
+		if input.Subtype != "" && input.Subtype != "live" {
+			return nil, fmt.Errorf("%w: the page subtype must be live or omitted", ErrWikiValidation)
+		}
+		if input.Subtype == "live" && input.Status != "current" {
+			return nil, fmt.Errorf("%w: a live doc is always published", ErrWikiValidation)
+		}
 	}
+	// A page's parent may be a page or any other node of the content tree, but
+	// not private content, which would hide a page others were meant to see.
+	parentType := ""
 	if input.ParentID != "" {
-		var valid bool
-		err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM wiki_pages WHERE id::text=$1 AND space_id::text=$2 AND status='current')`, input.ParentID, spaceID).Scan(&valid)
+		err = tx.QueryRow(ctx, `SELECT n.type FROM wiki_tree_nodes n LEFT JOIN wiki_content c ON c.id=n.id
+			WHERE n.id::text=$1 AND n.space_id::text=$2 AND n.status='current' AND NOT COALESCE(c.private,false)`, input.ParentID, spaceID).Scan(&parentType)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("%w: choose a published parent page or shared content from this space", ErrWikiValidation)
+		}
 		if err != nil {
 			return nil, err
 		}
-		if !valid {
-			return nil, fmt.Errorf("%w: choose a published parent page from this space", ErrWikiValidation)
-		}
 		if input.ID != "" {
-			var cycle bool
-			err = tx.QueryRow(ctx, `WITH RECURSIVE ancestors AS (SELECT id,parent_id FROM wiki_pages WHERE id::text=$1 UNION SELECT p.id,p.parent_id FROM wiki_pages p JOIN ancestors a ON p.id=a.parent_id) SELECT EXISTS(SELECT 1 FROM ancestors WHERE id::text=$2)`, input.ParentID, input.ID).Scan(&cycle)
-			if err != nil {
-				return nil, err
+			cycle, cycleErr := treeNodeIsDescendant(ctx, tx, input.ParentID, input.ID)
+			if cycleErr != nil {
+				return nil, cycleErr
 			}
 			if cycle {
 				return nil, fmt.Errorf("%w: a page cannot be its own ancestor", ErrWikiValidation)
 			}
+		}
+	}
+	position := 0
+	reparented := input.ID == "" || previousParent != input.ParentID
+	if reparented {
+		if position, err = nextTreePosition(ctx, tx, spaceID, input.ParentID); err != nil {
+			return nil, err
 		}
 	}
 	if input.Status == "trashed" {
@@ -410,9 +446,22 @@ func (s *Store) SaveWikiPage(ctx context.Context, ws, actor string, input models
 		}
 	}
 	if input.ID == "" {
-		err = tx.QueryRow(ctx, `INSERT INTO wiki_pages(space_id,parent_id,title,status,body,author_id,published,classification_level) VALUES ($1::bigint,$2::bigint,$3,$4,$5,$6,$4='current',$7) RETURNING id::text`, spaceID, nilIfEmpty(input.ParentID), input.Title, input.Status, input.Body.Value, actor, input.ClassificationLevel).Scan(&input.ID)
+		err = tx.QueryRow(ctx, `INSERT INTO wiki_pages(space_id,parent_id,parent_content_id,title,status,body,author_id,owner_id,published,classification_level,position,subtype)
+			VALUES ($1::bigint,CASE WHEN $8::text='page' THEN $2::bigint END,CASE WHEN $8::text NOT IN ('page','') THEN $2::bigint END,$3,$4,$5,$6,$6,$4='current',$7,$9,$10) RETURNING id::text`,
+			spaceID, nilIfEmpty(input.ParentID), input.Title, input.Status, input.Body.Value, actor, input.ClassificationLevel, parentType, position, input.Subtype).Scan(&input.ID)
+		if err == nil && input.Private {
+			// A private page is one only its creator can view and edit, which is
+			// what a view and an edit restriction naming the creator say.
+			_, err = tx.Exec(ctx, `INSERT INTO wiki_page_restrictions(page_id,operation,subject_type,subject_id,author_id)
+				VALUES ($1::bigint,'read','user',$2,$2),($1::bigint,'update','user',$2,$2)`, input.ID, actor)
+		}
 	} else {
-		_, err = tx.Exec(ctx, `UPDATE wiki_pages SET parent_id=$2::bigint,title=$3,status=$4,body=$5,version=$6,published=(published OR $4='current') WHERE id::text=$1`, input.ID, nilIfEmpty(input.ParentID), input.Title, input.Status, input.Body.Value, input.Version.Number)
+		_, err = tx.Exec(ctx, `UPDATE wiki_pages SET parent_id=CASE WHEN $7::text='page' THEN $2::bigint END,
+			parent_content_id=CASE WHEN $7::text NOT IN ('page','') THEN $2::bigint END,
+			position=CASE WHEN $8::bool THEN $9 ELSE position END,
+			owner_id=$10,last_owner_id=NULLIF($11::text,''),
+			title=$3,status=$4,body=$5,version=$6,published=(published OR $4='current') WHERE id::text=$1`,
+			input.ID, nilIfEmpty(input.ParentID), input.Title, input.Status, input.Body.Value, input.Version.Number, parentType, reparented, position, input.OwnerID, input.LastOwnerID)
 	}
 	if err != nil {
 		return nil, err

@@ -10,6 +10,7 @@ import (
 )
 
 type wikiWhiteboardPageData struct {
+	CanRestore bool
 	Space      *models.WikiSpace
 	Whiteboard *models.WikiContent
 	Objects    []models.WikiWhiteboardObject
@@ -22,7 +23,7 @@ func (h *Handler) WikiWhiteboardPage(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	space, whiteboard, ok := h.wikiWhiteboardContext(w, r, ws, user.ID)
+	space, whiteboard, ok := h.wikiReadableContent(w, r, ws, user.ID, "whiteboard", "whiteboard")
 	if !ok {
 		return
 	}
@@ -32,13 +33,18 @@ func (h *Handler) WikiWhiteboardPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, message, status)
 		return
 	}
-	canEdit, err := h.Store.CanUpdateWikiContent(r.Context(), ws, user.ID, whiteboard.ID, "whiteboard")
+	canEdit, canRestore := false, false
+	if whiteboard.Status == "current" {
+		canEdit, err = h.Store.CanUpdateWikiContent(r.Context(), ws, user.ID, whiteboard.ID, "whiteboard")
+	} else {
+		canRestore, err = h.Store.CanCreateWikiPage(r.Context(), ws, user.ID, space.ID)
+	}
 	if err != nil {
 		status, message := wikiWebError(err)
 		http.Error(w, message, status)
 		return
 	}
-	h.writeWorkspacePage(w, r, "page_wiki_whiteboard", user, ws, wikiWhiteboardPageData{Space: space, Whiteboard: whiteboard, Objects: data.Objects, Connectors: data.Connectors, CanEdit: canEdit}, "wiki", "")
+	h.writeWorkspacePage(w, r, "page_wiki_whiteboard", user, ws, wikiWhiteboardPageData{Space: space, Whiteboard: whiteboard, Objects: data.Objects, Connectors: data.Connectors, CanEdit: canEdit, CanRestore: canRestore}, "wiki", "")
 }
 
 func (h *Handler) WikiWhiteboardObjectSave(w http.ResponseWriter, r *http.Request) {

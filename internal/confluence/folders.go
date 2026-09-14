@@ -1,7 +1,6 @@
 package confluence
 
 import (
-	"cmp"
 	"net/http"
 	"slices"
 	"sort"
@@ -73,7 +72,7 @@ func (h *Handler) hierarchicalContent(w http.ResponseWriter, r *http.Request, ws
 	if !validPageID(w, id) || !supportedQuery(w, r, "include-collaborators", "include-direct-children", "include-operations", "include-properties") {
 		return
 	}
-	content, err := h.Store.WikiContent(r.Context(), ws, actor, id, contentType)
+	content, err := h.Store.WikiTreeContent(r.Context(), ws, actor, id, contentType)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -83,12 +82,16 @@ func (h *Handler) hierarchicalContent(w http.ResponseWriter, r *http.Request, ws
 		bean["collaborators"] = map[string]any{"results": []any{}}
 	}
 	if r.URL.Query().Get("include-direct-children") == "true" {
-		relations, err := h.Store.WikiContentDescendants(r.Context(), ws, actor, id, contentType, 1)
+		relations, err := h.Store.WikiTreeDescendants(r.Context(), ws, actor, id, contentType, 1)
 		if err != nil {
 			writeError(w, err)
 			return
 		}
-		bean["directChildren"] = map[string]any{"results": contentChildren(relations)}
+		values := make([]any, 0, len(relations))
+		for _, relation := range relations {
+			values = append(values, treeChildBean(relation, true))
+		}
+		bean["directChildren"] = map[string]any{"results": values}
 	}
 	if r.URL.Query().Get("include-operations") == "true" {
 		operations, err := h.contentOperationList(r, ws, actor, id, contentType)
@@ -121,87 +124,37 @@ func (h *Handler) deleteHierarchicalContent(w http.ResponseWriter, r *http.Reque
 }
 
 func (h *Handler) contentAncestors(w http.ResponseWriter, r *http.Request, ws, actor, id, contentType string) {
-	if !validPageID(w, id) || !supportedQuery(w, r, "limit") {
-		return
-	}
-	limit, ok := boundedLimit(w, r, 25, 250)
-	if !ok {
-		return
-	}
-	ancestors, err := h.Store.WikiContentAncestors(r.Context(), ws, actor, id, contentType)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	if len(ancestors) > limit {
-		ancestors = ancestors[len(ancestors)-limit:]
-	}
-	respond(w, 200, map[string]any{"results": ancestors, "_links": map[string]string{"base": h.BaseURL + "/wiki"}})
-}
-
-func contentChildren(relations []models.WikiContentRelation) []any {
-	values := make([]any, 0, len(relations))
-	for _, relation := range relations {
-		values = append(values, map[string]any{"id": relation.Content.ID, "status": relation.Content.Status, "title": relation.Content.Title, "type": relation.Content.Type, "spaceId": relation.Content.SpaceID, "childPosition": relation.ChildPosition})
-	}
-	return values
+	h.treeAncestors(w, r, ws, actor, id, contentType)
 }
 
 func (h *Handler) contentDescendants(w http.ResponseWriter, r *http.Request, ws, actor, id, contentType string, direct bool) {
-	queries := []string{"cursor", "limit", "depth"}
-	if direct {
-		queries = []string{"cursor", "limit", "sort"}
-	}
-	if !validPageID(w, id) || !supportedQuery(w, r, queries...) {
+	if contentType == "custom" {
+		h.customContentChildren(w, r, ws, actor, id)
 		return
 	}
-	depth := 1
-	if !direct {
-		var ok bool
-		depth, ok = boundedIntQuery(w, r, "depth", 2, 1, 10)
-		if !ok {
-			return
-		}
+	if direct {
+		h.treeChildren(w, r, ws, actor, id, contentType, false)
+		return
 	}
-	relations, err := h.Store.WikiContentDescendants(r.Context(), ws, actor, id, contentType, depth)
+	h.treeDescendants(w, r, ws, actor, id, contentType)
+}
+
+func (h *Handler) customContentChildren(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
+	if !validPageID(w, id) || !supportedQuery(w, r, "cursor", "limit", "sort") {
+		return
+	}
+	if order := r.URL.Query().Get("sort"); order != "" && order != "title" && order != "-title" && !slices.Contains(childSorts, order) {
+		failure(w, 400, "Unsupported child content sort order.")
+		return
+	}
+	children, err := h.Store.WikiCustomContentChildren(r.Context(), ws, actor, id)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	if direct {
-		order := r.URL.Query().Get("sort")
-		allowed := []string{"created-date", "-created-date", "id", "-id", "child-position", "-child-position", "modified-date", "-modified-date", "title", "-title"}
-		if order != "" && !slices.Contains(allowed, order) {
-			failure(w, 400, "Unsupported child content sort order.")
-			return
-		}
-		sort.SliceStable(relations, func(i, j int) bool {
-			left, right := relations[i].Content, relations[j].Content
-			comparison := cmp.Compare(left.Position, right.Position)
-			switch order {
-			case "id", "-id":
-				comparison = cmp.Compare(left.ID, right.ID)
-			case "title", "-title":
-				comparison = cmp.Compare(left.Title, right.Title)
-			case "created-date", "-created-date":
-				comparison = cmp.Compare(left.CreatedAt, right.CreatedAt)
-			case "modified-date", "-modified-date":
-				comparison = cmp.Compare(left.Version.CreatedAt, right.Version.CreatedAt)
-			}
-			if comparison == 0 {
-				comparison = cmp.Compare(left.ID, right.ID)
-			}
-			if len(order) > 0 && order[0] == '-' {
-				return comparison > 0
-			}
-			return comparison < 0
-		})
-		h.list(w, r, contentChildren(relations))
-		return
-	}
-	values := make([]any, 0, len(relations))
-	for _, relation := range relations {
-		values = append(values, map[string]any{"id": relation.Content.ID, "status": relation.Content.Status, "title": relation.Content.Title, "type": relation.Content.Type, "parentId": relation.Content.ParentID, "depth": relation.Depth, "childPosition": relation.ChildPosition})
+	values := make([]any, 0, len(children))
+	for i, child := range children {
+		values = append(values, map[string]any{"id": child.ID, "status": child.Status, "title": child.Title, "type": child.Type, "spaceId": child.SpaceID, "childPosition": i})
 	}
 	h.list(w, r, values)
 }

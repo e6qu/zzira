@@ -29,7 +29,7 @@ func (h *Handler) attachmentBean(a *models.WikiAttachment) map[string]any {
 	}
 	download := "/wiki/download/attachments/" + parentID + "/" + a.ID + "/" + url.PathEscape(a.Filename)
 	webui := "/wiki/spaces/" + a.SpaceID + "/" + contentType + "/" + parentID
-	bean := map[string]any{"id": a.ID, "status": a.Status, "title": a.Filename, "createdAt": a.CreatedAt, "mediaType": a.MediaType, "mediaTypeDescription": a.MediaType, "comment": a.Comment, "fileId": a.FileID, "fileSize": a.Size, "webuiLink": webui, "downloadLink": download, "version": a.Version, "_links": map[string]string{"webui": webui, "download": download, "base": h.BaseURL + "/wiki"}}
+	bean := map[string]any{"id": a.ID, "status": a.Status, "title": a.Filename, "createdAt": a.CreatedAt, "mediaType": a.MediaType, "mediaTypeDescription": mediaTypeDescription(a.MediaType, a.Filename), "comment": a.Comment, "fileId": a.FileID, "fileSize": a.Size, "webuiLink": webui, "downloadLink": download, "version": a.Version, "_links": map[string]string{"webui": webui, "download": download, "base": h.BaseURL + "/wiki"}}
 	if a.BlogPostID != "" {
 		bean["blogPostId"] = a.BlogPostID
 	} else {
@@ -147,6 +147,18 @@ func (h *Handler) attachment(w http.ResponseWriter, r *http.Request, ws, actor, 
 		a.Version = v.WikiVersion
 	}
 	bean := h.attachmentBean(a)
+	if r.URL.Query().Get("include-collaborators") == "true" {
+		collaborators, err := h.Store.WikiAttachmentCollaborators(r.Context(), ws, actor, id)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		values := make([]any, len(collaborators))
+		for i, accountID := range collaborators {
+			values[i] = map[string]string{"accountId": accountID}
+		}
+		bean["collaborators"] = map[string]any{"results": values}
+	}
 	if r.URL.Query().Get("include-operations") == "true" {
 		bean["operations"] = map[string]any{"results": h.attachmentOperationValues(r, ws, actor, a)}
 	}
@@ -635,7 +647,7 @@ func (h *V1Handler) v1SaveAttachments(w http.ResponseWriter, r *http.Request, ws
 }
 
 func (h *V1Handler) v1AttachmentBean(a *models.WikiAttachment) map[string]any {
-	return map[string]any{"id": a.ID, "type": "attachment", "status": a.Status, "title": a.Filename, "container": map[string]any{"id": a.PageID, "type": "page"}, "metadata": map[string]any{"mediaType": a.MediaType, "comment": a.Comment}, "extensions": map[string]any{"mediaType": a.MediaType, "fileSize": a.Size, "fileId": a.FileID}, "version": a.Version, "_links": map[string]string{"download": "/download/attachments/" + a.PageID + "/" + a.ID + "/" + url.PathEscape(a.Filename), "base": h.BaseURL + "/wiki"}}
+	return map[string]any{"id": a.ID, "type": "attachment", "status": a.Status, "title": a.Filename, "container": map[string]any{"id": a.PageID, "type": "page"}, "metadata": map[string]any{"mediaType": a.MediaType, "comment": a.Comment}, "extensions": map[string]any{"mediaType": a.MediaType, "mediaTypeDescription": mediaTypeDescription(a.MediaType, a.Filename), "fileSize": a.Size, "fileId": a.FileID, "comment": a.Comment}, "version": a.Version, "_links": map[string]string{"download": "/download/attachments/" + a.PageID + "/" + a.ID + "/" + url.PathEscape(a.Filename), "base": h.BaseURL + "/wiki"}}
 }
 
 func (h *V1Handler) v1UpdateAttachmentData(w http.ResponseWriter, r *http.Request, ws, actor, pageID, id string) {
