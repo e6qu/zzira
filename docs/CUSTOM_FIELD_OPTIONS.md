@@ -58,8 +58,23 @@ field no longer offers.
 - `migrations/137_custom_field_options.sql` is exercised from a clean PostgreSQL
   schema.
 
-The field is single-select. Jira's multi-select and checkbox fields hold an
-array of options and are not implemented, nor are cascading select fields. An
-option is stored on a work item as its ID, so JQL matches the ID rather than the
-displayed value. Jira's `optionId` filter on the option list, `expand`, and
-exact Jira error wording also remain.
+## Multi-select fields
+
+A field created with type `multiselect`, or Jira's
+`com.atlassian.jira.plugin.system.customfieldtypes:multiselect` and
+`multicheckboxes` keys, holds several options of its context. Its options are
+managed exactly like a select field's, and createmeta describes it as an
+`array` of `option` with the context's options as `allowedValues`; the create
+form offers them as a multiple choice.
+
+Both option fields accept Jira's value forms on create, edit and transition: an
+option id, `{"id": ...}` or `{"value": ...}` naming an option of the governing
+context, and for a multi-select a list of them (a single one is taken as a list
+of one). Each option may be chosen once. A work item stores option ids, so issue
+responses carry ids rather than Jira's option objects, and JQL matches ids:
+`=`, `!=`, `in`, `not in`, `is empty` and `is not empty` work on a
+multi-select. Changes appear in the changelog as `custom` items listing the
+option values.
+
+Cascading select fields, Jira's `optionId` filter on the option list, `expand`,
+and exact Jira error wording remain.

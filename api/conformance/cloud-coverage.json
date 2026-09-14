@@ -7492,7 +7492,7 @@
         "internal/api3/app_fields_migration_test.go",
         "docs/JIRA_PLATFORM.md"
       ],
-      "notes": "Sets app issue field values by transfer; multi-select fields are 400."
+      "notes": "Sets app issue field values by transfer, collecting multi-select options per issue and field."
     },
     {
       "operationId": "jira-v3:PUT:/rest/atlassian-connect/1/migration/properties/{entityType}",

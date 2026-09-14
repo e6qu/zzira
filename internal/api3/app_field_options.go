@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/e6qu/zzira/internal/apps"
+	"github.com/e6qu/zzira/internal/authz"
 	"github.com/e6qu/zzira/internal/store"
 	"github.com/jackc/pgx/v5"
 )
@@ -75,7 +77,7 @@ func (h *Handler) appFieldOptionRoute(w http.ResponseWriter, r *http.Request, fi
 }
 
 func (h *Handler) listAppFieldOptions(w http.ResponseWriter, r *http.Request, fieldKey string) {
-	workspaceID, _, authErr := h.authWorkspaceAdmin(r)
+	workspaceID, _, authErr := h.authAppFieldOptionManager(r, fieldKey)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
@@ -103,7 +105,7 @@ func (h *Handler) writeAppFieldOptionPage(w http.ResponseWriter, r *http.Request
 }
 
 func (h *Handler) readAppFieldOption(w http.ResponseWriter, r *http.Request, fieldKey, optionID string) {
-	workspaceID, _, authErr := h.authWorkspaceAdmin(r)
+	workspaceID, _, authErr := h.authAppFieldOptionManager(r, fieldKey)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
@@ -117,7 +119,7 @@ func (h *Handler) readAppFieldOption(w http.ResponseWriter, r *http.Request, fie
 }
 
 func (h *Handler) saveAppFieldOption(w http.ResponseWriter, r *http.Request, fieldKey, optionID string) {
-	workspaceID, actorID, authErr := h.authWorkspaceAdmin(r)
+	workspaceID, actorID, authErr := h.authAppFieldOptionManager(r, fieldKey)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
@@ -145,7 +147,7 @@ func (h *Handler) saveAppFieldOption(w http.ResponseWriter, r *http.Request, fie
 }
 
 func (h *Handler) deleteAppFieldOption(w http.ResponseWriter, r *http.Request, fieldKey, optionID string) {
-	workspaceID, actorID, authErr := h.authWorkspaceAdmin(r)
+	workspaceID, actorID, authErr := h.authAppFieldOptionManager(r, fieldKey)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
@@ -184,7 +186,7 @@ func (h *Handler) appFieldOptionSuggestions(w http.ResponseWriter, r *http.Reque
 // this in the background, and so does this: the work is queued as an ordinary
 // bulk edit rather than a path of its own.
 func (h *Handler) deselectAppFieldOption(w http.ResponseWriter, r *http.Request, fieldKey, optionID string) {
-	workspaceID, actorID, authErr := h.authWorkspaceAdmin(r)
+	workspaceID, actorID, authErr := h.authAppFieldOptionManager(r, fieldKey)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
@@ -261,4 +263,27 @@ func (h *Handler) deselectAppFieldOption(w http.ResponseWriter, r *http.Request,
 	self := h.BaseURL + "/rest/api/3/task/" + task.WireID()
 	w.Header().Set("Location", self)
 	writeJSON(w, http.StatusSeeOther, map[string]any{"self": self, "id": task.WireID()})
+}
+
+// authAppFieldOptionManager allows a site administrator, or the app that
+// provides the field, which Jira lets manage its options without Jira
+// permissions.
+func (h *Handler) authAppFieldOptionManager(r *http.Request, fieldKey string) (string, string, *jerr) {
+	workspaceID, userID, authErr := h.authWorkspace(r)
+	if authErr != nil {
+		return "", "", authErr
+	}
+	if installation, ok := apps.InstallationFromContext(r.Context()); ok {
+		if field, err := h.Store.AppCustomField(r.Context(), workspaceID, fieldKey); err == nil && field.InstallationID == installation.ID {
+			return workspaceID, userID, nil
+		}
+	}
+	admin, err := authz.IsWorkspaceAdmin(r.Context(), h.Store, workspaceID, userID)
+	if err != nil {
+		return "", "", &jerr{http.StatusInternalServerError, "internal error", nil}
+	}
+	if !admin {
+		return "", "", &jerr{http.StatusForbidden, "You do not have permission to perform this operation.", nil}
+	}
+	return workspaceID, userID, nil
 }

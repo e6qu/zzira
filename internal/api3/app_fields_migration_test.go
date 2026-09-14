@@ -212,7 +212,24 @@ func TestAppFieldsMigrationAndServiceRegistry(t *testing.T) {
 	if got := fieldValue(); got != "medium" {
 		t.Fatalf("migrated value = %v", got)
 	}
-	send(connectApp, "", "PUT", "/rest/atlassian-connect/1/migration/field", `{"updateValueList":[{"_type":"MultiSelectIssueField","fieldID":`+fieldNumber+`,"issueID":`+issueID+`,"optionID":"1"}]}`, transferHeader, 400)
+	// A multi-select app field collects each MultiSelectIssueField value.
+	var platformsID string
+	if err := st.Pool.QueryRow(ctx, `INSERT INTO custom_fields(id,name,type,description,workspace_id,app_installation_id,app_module_key)
+		VALUES('customfield_'||nextval('jira_app_custom_field_id'),'Platforms','multiselect','',$1,$2,'platforms') RETURNING id`, ws, connectApp.ID).Scan(&platformsID); err != nil {
+		t.Fatal(err)
+	}
+	option := func(value string) string {
+		created := object(send(connectApp, "", "POST", "/rest/api/3/field/"+connectApp.Key+"__platforms/option", `{"value":"`+value+`"}`, nil, 201))
+		return fmt.Sprint(created["id"])
+	}
+	ios, android := option("iOS"), option("Android")
+	platformsNumber := strings.TrimPrefix(platformsID, "customfield_")
+	send(connectApp, "", "PUT", "/rest/atlassian-connect/1/migration/field", `{"updateValueList":[{"_type":"MultiSelectIssueField","fieldID":`+platformsNumber+`,"issueID":`+issueID+`,"optionID":"`+ios+`"},{"_type":"MultiSelectIssueField","fieldID":`+platformsNumber+`,"issueID":`+issueID+`,"optionID":"`+android+`"}]}`, transferHeader, 200)
+	platforms := object(object(send(nil, admin, "GET", "/rest/api/3/issue/"+issueID+"?fields="+platformsID, "", nil, 200))["fields"])[platformsID]
+	if fmt.Sprint(platforms) != "["+ios+" "+android+"]" {
+		t.Fatalf("platforms = %v", platforms)
+	}
+	send(connectApp, "", "PUT", "/rest/atlassian-connect/1/migration/field", `{"updateValueList":[{"_type":"MultiSelectIssueField","fieldID":`+platformsNumber+`,"issueID":`+issueID+`}]}`, transferHeader, 400)
 	send(connectApp, "", "PUT", "/rest/atlassian-connect/1/migration/properties/IssueProperty", `[{"entityId":`+issueID+`,"key":"migrated","value":"{\"ok\":true}"}]`, transferHeader, 200)
 	if property := object(send(nil, admin, "GET", "/rest/api/3/issue/"+issueID+"/properties/migrated", "", nil, 200)); object(property["value"])["ok"] != true {
 		t.Fatal(property)
