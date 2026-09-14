@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/e6qu/zzira/internal/apps"
+	"github.com/e6qu/zzira/internal/authz"
 	"net/http"
 	"strconv"
 	"strings"
@@ -548,11 +549,12 @@ func (h *Handler) permissionContext(r *http.Request, workspaceID string) (projec
 	values := r.URL.Query()
 	projectKey, projectIDQuery := values.Get("projectKey"), values.Get("projectId")
 	issueKey, issueIDQuery := values.Get("issueKey"), values.Get("issueId")
-	if projectKey != "" && projectIDQuery != "" {
-		return "", "", &jerr{status: http.StatusBadRequest, message: "projectKey and projectId cannot be used together."}
+	// As in Jira, a key is ignored when the id is given.
+	if projectIDQuery != "" {
+		projectKey = ""
 	}
-	if issueKey != "" && issueIDQuery != "" {
-		return "", "", &jerr{status: http.StatusBadRequest, message: "issueKey and issueId cannot be used together."}
+	if issueIDQuery != "" {
+		issueKey = ""
 	}
 	issueID = issueKey
 	if issueID == "" {
@@ -615,23 +617,43 @@ func (h *Handler) myPermissions(w http.ResponseWriter, r *http.Request) {
 		writeJerr(w, contextErr)
 		return
 	}
-	catalog, byKey, catalogErr := h.permissionCatalog(r, workspaceID)
+	// The project or work item must be one the caller can see.
+	if issueID != "" {
+		issue, err := h.Store.IssueByIDOrKey(r.Context(), workspaceID, issueID)
+		if err != nil {
+			jiraError(w, http.StatusNotFound, "The issue does not exist.")
+			return
+		}
+		visible, err := authz.CanSeeIssue(r.Context(), h.Store, workspaceID, issue.ProjectID, userID, issue.ID, issue.SecurityLevelID)
+		if err != nil || !visible {
+			jiraError(w, http.StatusNotFound, "The issue does not exist.")
+			return
+		}
+	} else if projectID != "" {
+		if allowed, err := h.canBrowseProject(r, workspaceID, userID, projectID); err != nil || !allowed {
+			jiraError(w, http.StatusNotFound, "The project does not exist.")
+			return
+		}
+	}
+	_, byKey, catalogErr := h.permissionCatalog(r, workspaceID)
 	if catalogErr != nil {
 		jiraError(w, http.StatusInternalServerError, "Could not evaluate permissions.")
 		return
 	}
 	keys := requestedPermissionKeys(r.URL.Query().Get("permissions"))
 	if len(keys) == 0 {
-		for _, definition := range catalog {
-			keys = append(keys, definition.Key)
+		jiraFieldError(w, http.StatusBadRequest, map[string]string{"permissions": "At least one permission is required."})
+		return
+	}
+	for _, key := range keys {
+		if _, known := byKey[key]; !known {
+			jiraFieldError(w, http.StatusBadRequest, map[string]string{"permissions": "Unknown permission: " + key})
+			return
 		}
 	}
 	permissions := map[string]any{}
 	for _, key := range keys {
-		definition, known := byKey[key]
-		if !known {
-			continue
-		}
+		definition := byKey[key]
 		have := false
 		var err error
 		if definition.Type == "GLOBAL" {

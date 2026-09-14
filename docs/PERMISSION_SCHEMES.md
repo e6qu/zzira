@@ -26,7 +26,7 @@ operations:
 | Method and path | Behavior |
 |---|---|
 | `GET /rest/api/3/permissions` | Returns the built-in global and project permissions and those installed apps declare. |
-| `GET /rest/api/3/mypermissions` | Evaluates selected permissions in global, project, issue, or comment context. |
+| `GET /rest/api/3/mypermissions` | Evaluates the requested permissions in global, project, issue, or comment context. `permissions` is required and each key must exist (400 otherwise). `projectId` wins over `projectKey` and `issueId` over `issueKey`; a project or issue the caller cannot see answers 404, and `commentId` allows only `BROWSE_PROJECTS`. |
 | `POST /rest/api/3/permissions/check` | Evaluates bounded global and project permission batches, including another user for administrators. |
 | `POST /rest/api/3/permissions/project` | Returns active projects where the caller has every requested permission. |
 | `GET /rest/api/3/user/permission/search` | Pages active users who satisfy the requested permissions and context. |

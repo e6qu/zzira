@@ -34,6 +34,22 @@ Jira Cloud-compatible REST resources.
   is workspace scoped, administrator authorized, transactional, and paired
   with immutable action-log evidence.
 
+## Creating projects
+
+`POST /rest/api/3/project` accepts every template Jira documents for a project
+type: the Scrum, Kanban and basic software templates (team-managed ones
+included; zzira creates every project company-managed, with a Scrum or Kanban
+board as the template implies), every service management template, and every
+business template. Customer service projects are refused, as zzira has no
+customer service product. The request can name the project's
+`permissionScheme`, `notificationScheme`, `issueSecurityScheme`,
+`workflowScheme`, `issueTypeScheme`, `issueTypeScreenScheme` and `fieldScheme`
+(or the deprecated `fieldConfigurationScheme`), and a system `avatarId`. They
+are assigned in the same transaction that creates the project. A scheme or
+avatar that does not exist refuses the request with its field named, and no
+project is created. The deprecated `lead` is accepted in place of
+`leadAccountId`, but not together with a different one.
+
 ## Jira v3 resources
 
 | Resource family | Operations |

@@ -3859,7 +3859,7 @@
         "internal/api3/anonymous_access_test.go",
         "docs/ANONYMOUS_ACCESS.md"
       ],
-      "notes": "Evaluates selected built-in and app-declared global and project permissions with project, issue, and comment context; anonymous callers are evaluated against permissions granted to anyone; all context edge cases remain."
+      "notes": "Evaluates the requested built-in and app-declared global and project permissions with project, issue, and comment context; permissions is required and every key must exist (400 otherwise), projectId wins over projectKey and issueId over issueKey, a project or issue the caller cannot see answers 404, commentId allows only BROWSE_PROJECTS, and anonymous callers are evaluated against permissions granted to anyone."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/mypreferences",
@@ -4618,12 +4618,13 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/project_create_schemes_test.go",
         "internal/api3/project_governance_test.go",
         "internal/api3/projects_test.go",
         "e2e/projects.spec.ts",
         "docs/PROJECT_GOVERNANCE.md"
       ],
-      "notes": "Creates numeric-ID business, software, or service-management projects with validated category assignment and atomic project/board actions; the full Jira scheme and template inputs remain."
+      "notes": "Creates numeric-ID business, software, or service-management projects from every documented template of their type, with validated category assignment and atomic project/board actions; the permission, notification, issue security, workflow, issue type, issue type screen and field (or deprecated field configuration) schemes and the avatar the request names are assigned in the same transaction, an unknown one refuses the request naming its field, and the deprecated lead is accepted. Customer service projects are refused because zzira has no customer service product."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/project-template",
@@ -5243,7 +5244,7 @@
         "e2e/permission_schemes.spec.ts",
         "docs/PERMISSION_SCHEMES.md"
       ],
-      "notes": "Atomically assigns an existing scheme and records immutable evidence; impact previews and every Jira error edge remain."
+      "notes": "Atomically assigns an existing scheme, records immutable evidence and returns the assigned scheme with its expansions; unknown projects or schemes answer 404."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/project/{projectKeyOrId}/securitylevel",
@@ -5533,7 +5534,7 @@
         "e2e/project_roles.spec.ts",
         "docs/PROJECT_ROLES.md"
       ],
-      "notes": "Creates a globally shared, case-insensitively unique role without default actors and records the change atomically; Jira managed-role variants remain."
+      "notes": "Creates a globally shared, case-insensitively unique role from Jira's name and optional description, with no default actors, and records the change atomically; the request takes no other fields."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/role/{id}",

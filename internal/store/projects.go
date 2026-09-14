@@ -70,6 +70,12 @@ func projectAdmin(ctx context.Context, tx pgx.Tx, workspaceID, actorID string) e
 }
 
 func (s *Store) CreateProject(ctx context.Context, actorID string, p models.Project, boardType string) (*models.Project, error) {
+	return s.CreateProjectWithSchemes(ctx, actorID, p, boardType, NewProjectSchemes{})
+}
+
+// CreateProjectWithSchemes creates a project and, in the same transaction,
+// gives it the avatar and schemes Jira's create project request names.
+func (s *Store) CreateProjectWithSchemes(ctx context.Context, actorID string, p models.Project, boardType string, schemes NewProjectSchemes) (*models.Project, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -143,6 +149,9 @@ func (s *Store) CreateProject(ctx context.Context, actorID string, p models.Proj
 		return nil, err
 	}
 	if err := appendAction(ctx, tx, &models.Action{WorkspaceID: p.WorkspaceID, Seq: seq, EntityType: models.EntityBoard, EntityID: board.ID, Op: models.OpUpsert, SchemaV: models.SchemaVersion, Payload: payload, ActorID: actorID}); err != nil {
+		return nil, err
+	}
+	if err := s.assignNewProjectSchemes(ctx, tx, &p, actorID, schemes); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
