@@ -48,6 +48,7 @@ type adminPageData struct {
 	ProviderRegistrationConfigured    bool
 	AppRegistrationConfigured         bool
 	JiraConfiguration                 *models.JiraSiteConfiguration
+	TimeTrackingProviders             []store.InstalledTimeTrackingProvider
 	ApplicationProperties             []models.ApplicationProperty
 	NavigatorColumns                  []adminNavigatorColumn
 	ProjectCategories                 []*models.ProjectCategory
@@ -189,6 +190,9 @@ func (h *Handler) adminData(r *http.Request, workspaceID, message string) (admin
 		return adminPageData{}, err
 	}
 	data.ApplicationProperties = commands.JiraApplicationProperties(data.JiraConfiguration.ApplicationProperties)
+	if data.TimeTrackingProviders, err = h.Store.TimeTrackingProviders(r.Context(), workspaceID); err != nil {
+		return adminPageData{}, err
+	}
 	selectedColumns := map[string]bool{}
 	for _, column := range data.JiraConfiguration.NavigatorColumns {
 		selectedColumns[column] = true
@@ -515,6 +519,19 @@ func (h *Handler) UpdateAdminJiraConfiguration(w http.ResponseWriter, r *http.Re
 			WorkingHoursPerDay: workingHours, WorkingDaysPerWeek: workingDays,
 			TimeFormat: r.PostFormValue("timeFormat"), DefaultUnit: r.PostFormValue("defaultUnit"),
 		})
+		// Choosing another provider selects it, which enables time tracking;
+		// saving the options alone leaves the provider and the feature as
+		// they are.
+		if provider := r.PostFormValue("timeTrackingProvider"); err == nil && provider != "" {
+			current, currentErr := h.Store.JiraSiteConfiguration(r.Context(), workspaceID)
+			if currentErr != nil {
+				http.Error(w, "internal error", http.StatusInternalServerError)
+				return
+			}
+			if provider != current.TimeTrackingProvider {
+				err = h.Commands.SelectTimeTrackingProvider(r.Context(), workspaceID, user.ID, provider)
+			}
+		}
 		message = "Time tracking settings saved"
 	case "columns":
 		err = h.Commands.UpdateNavigatorColumns(r.Context(), workspaceID, user.ID, r.PostForm["columns"])
