@@ -352,12 +352,18 @@ func (h *Handler) customContentAttachments(w http.ResponseWriter, r *http.Reques
 }
 
 func (h *Handler) customContentFooterComments(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
-	if !validPageID(w, id) || !supportedQuery(w, r, "body-format", "sort", "cursor", "limit") {
+	if !validPageID(w, id) || !commentQuery(w, r, false) {
 		return
 	}
-	if _, err := h.Store.WikiContent(r.Context(), ws, actor, id, "custom"); err != nil {
+	comments, err := h.Store.WikiCustomContentFooterComments(r.Context(), ws, actor, id)
+	if err != nil {
 		writeError(w, err)
 		return
 	}
-	h.list(w, r, []any{})
+	sortFooterComments(comments, r.URL.Query().Get("sort"))
+	values := make([]any, 0, len(comments))
+	for _, comment := range comments {
+		values = append(values, h.footerCommentBeanFormat(comment, r.URL.Query().Get("body-format")))
+	}
+	h.list(w, r, values)
 }

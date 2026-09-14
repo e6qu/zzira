@@ -147,7 +147,7 @@ func (s *Store) searchableView(request WikiSearchRequest) (string, error) {
 	if wanted["comment"] {
 		// A comment has no title of its own, so it is shown by what it is on,
 		// which is how a reader recognises it in a list of results.
-		branches = append(branches, `SELECT 'comment', c.id::text, COALESCE(p.space_id,bp.space_id)::text,
+		branches = append(branches, `SELECT 'comment', c.id::text, COALESCE(p.space_id,bp.space_id,cc.space_id)::text,
 			s.key, s.space_type, 'Re: ' || COALESCE(p.title,bp.title,''), c.body, 'current', c.author_id,
 			COALESCE(p.id::text,bp.id::text,''), COALESCE(p.id::text,bp.id::text,''), COALESCE(p.title,bp.title,''),
 			c.created_at, c.updated_at,
@@ -162,7 +162,8 @@ func (s *Store) searchableView(request WikiSearchRequest) (string, error) {
 			LEFT JOIN wiki_attachments ca ON ca.id=c.attachment_id
 			LEFT JOIN wiki_pages p ON p.id=COALESCE(c.page_id,ca.page_id)
 			LEFT JOIN wiki_blog_posts bp ON bp.id=COALESCE(c.blog_post_id,ca.blog_post_id)
-			JOIN wiki_spaces s ON s.id=COALESCE(p.space_id,bp.space_id)
+			LEFT JOIN wiki_content cc ON cc.id=c.custom_content_id
+			JOIN wiki_spaces s ON s.id=COALESCE(p.space_id,bp.space_id,cc.space_id)
 			WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiCommentVisible+` AND 'current' = ANY($3)`)
 	}
 	if wanted["attachment"] {

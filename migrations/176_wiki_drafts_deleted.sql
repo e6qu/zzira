@@ -23,13 +23,3 @@ CREATE TABLE wiki_content_drafts (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (content_type, content_id)
 );
-
--- Blog posts are starred as pages are.
-CREATE TABLE wiki_blog_post_favourites (
-  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  blog_post_id BIGINT NOT NULL REFERENCES wiki_blog_posts(id) ON DELETE CASCADE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  PRIMARY KEY (user_id, blog_post_id)
-);
-CREATE INDEX wiki_blog_post_favourites_recent ON wiki_blog_post_favourites(workspace_id, user_id, created_at DESC);

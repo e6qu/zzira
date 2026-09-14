@@ -207,6 +207,7 @@ type WikiFooterComment struct {
 	BlogPostID           string      `json:"blogPostId,omitempty"`
 	SpaceID              string      `json:"-"`
 	AttachmentID         string      `json:"attachmentId,omitempty"`
+	CustomContentID      string      `json:"customContentId,omitempty"`
 	ParentCommentID      string      `json:"parentCommentId,omitempty"`
 	AuthorID             string      `json:"authorId"`
 	AuthorName           string      `json:"-"`

@@ -174,6 +174,9 @@ func (s *Store) RedactWikiPage(ctx context.Context, ws, actor, id, createdAt str
 	if _, err := tx.Exec(ctx, `UPDATE wiki_pages SET title=$2,body=$3,version=$4 WHERE id::text=$1`, id, redactedTitle, redactedBody, newVersion); err != nil {
 		return nil, nil, nil, err
 	}
+	if err := relocateInlineComments(ctx, tx, ws, actor, "page", id, redactedBody); err != nil {
+		return nil, nil, nil, err
+	}
 	if _, err := tx.Exec(ctx, `INSERT INTO wiki_page_versions(page_id,version,title,body,status,author_id,message) VALUES($1::bigint,$2,$3,$4,'current',$5,'Sensitive content redacted')`, id, newVersion, redactedTitle, redactedBody, actor); err != nil {
 		return nil, nil, nil, err
 	}

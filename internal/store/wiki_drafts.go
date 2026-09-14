@@ -308,48 +308,6 @@ func (s *Store) WikiBlogPostAtVersion(ctx context.Context, ws, user, id string, 
 	return post, err
 }
 
-// SetWikiBlogPostFavourite stars or unstars a blog post the reader can see.
-func (s *Store) SetWikiBlogPostFavourite(ctx context.Context, ws, user, id string, favourite bool) error {
-	if _, err := s.WikiBlogPost(ctx, ws, user, id); err != nil {
-		return err
-	}
-	if favourite {
-		_, err := s.Pool.Exec(ctx, `INSERT INTO wiki_blog_post_favourites(workspace_id,user_id,blog_post_id) VALUES($1,$2,$3::bigint)
-			ON CONFLICT DO NOTHING`, ws, user, id)
-		return err
-	}
-	_, err := s.Pool.Exec(ctx, `DELETE FROM wiki_blog_post_favourites WHERE workspace_id=$1 AND user_id=$2 AND blog_post_id::text=$3`, ws, user, id)
-	return err
-}
-
-// IsWikiBlogPostFavourite reports whether the reader starred a blog post.
-func (s *Store) IsWikiBlogPostFavourite(ctx context.Context, ws, user, id string) (bool, error) {
-	var favourite bool
-	err := s.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM wiki_blog_post_favourites WHERE workspace_id=$1 AND user_id=$2 AND blog_post_id::text=$3)`,
-		ws, user, id).Scan(&favourite)
-	return favourite, err
-}
-
-// WikiFavouriteBlogPosts lists the current blog posts a reader starred.
-func (s *Store) WikiFavouriteBlogPosts(ctx context.Context, ws, user string) ([]*models.WikiBlogPost, error) {
-	rows, err := s.Pool.Query(ctx, wikiBlogPostSelect+` JOIN wiki_blog_post_favourites f ON f.blog_post_id=b.id AND f.user_id=$2
-		WHERE s.workspace_id=$1 AND f.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiBlogPostVisible+` AND b.status='current'
-		ORDER BY f.created_at DESC, b.id`, ws, user)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	posts := []*models.WikiBlogPost{}
-	for rows.Next() {
-		post, scanErr := scanWikiBlogPost(rows)
-		if scanErr != nil {
-			return nil, scanErr
-		}
-		posts = append(posts, post)
-	}
-	return posts, rows.Err()
-}
-
 // WikiBlogPostCollaborators lists everyone who wrote a version of a blog post.
 func (s *Store) WikiBlogPostCollaborators(ctx context.Context, ws, user, id string) ([]string, error) {
 	if _, err := s.WikiBlogPost(ctx, ws, user, id); err != nil {

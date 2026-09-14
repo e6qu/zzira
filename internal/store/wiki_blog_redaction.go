@@ -160,6 +160,9 @@ func (s *Store) RedactWikiBlogPost(ctx context.Context, ws, actor, id, createdAt
 	if _, err := tx.Exec(ctx, `UPDATE wiki_blog_posts SET title=$2,body=$3,version=$4 WHERE id::text=$1`, id, redactedTitle, redactedBody, newVersion); err != nil {
 		return nil, nil, nil, err
 	}
+	if err := relocateInlineComments(ctx, tx, ws, actor, "blogpost", id, redactedBody); err != nil {
+		return nil, nil, nil, err
+	}
 	if _, err := tx.Exec(ctx, `INSERT INTO wiki_blog_post_versions(blog_post_id,version,title,body,status,author_id,message) VALUES($1::bigint,$2,$3,$4,'current',$5,'Sensitive content redacted')`, id, newVersion, redactedTitle, redactedBody, actor); err != nil {
 		return nil, nil, nil, err
 	}

@@ -47,7 +47,7 @@ func TestContentDraftsAndDeletion(t *testing.T) {
 	t.Cleanup(func() {
 		for _, sql := range []string{
 			`DELETE FROM wiki_content_drafts WHERE workspace_id=$1`,
-			`DELETE FROM wiki_blog_post_favourites WHERE workspace_id=$1`,
+			`DELETE FROM wiki_relations WHERE workspace_id=$1`,
 			`DELETE FROM wiki_blog_post_labels WHERE blog_post_id IN (SELECT b.id FROM wiki_blog_posts b JOIN wiki_spaces s ON s.id=b.space_id WHERE s.workspace_id=$1)`,
 			`DELETE FROM wiki_blog_post_versions WHERE blog_post_id IN (SELECT b.id FROM wiki_blog_posts b JOIN wiki_spaces s ON s.id=b.space_id WHERE s.workspace_id=$1)`,
 			`DELETE FROM wiki_blog_posts WHERE space_id IN (SELECT id FROM wiki_spaces WHERE workspace_id=$1)`,

@@ -49,6 +49,9 @@ func (s *Store) RestoreWikiPageVersion(ctx context.Context, ws, actor, pageID st
 		pageID, title, historicalBody, next); err != nil {
 		return 0, err
 	}
+	if err = relocateInlineComments(ctx, tx, ws, actor, "page", pageID, historicalBody); err != nil {
+		return 0, err
+	}
 	if message == "" {
 		message = fmt.Sprintf("Restored version %d", versionNumber)
 	}

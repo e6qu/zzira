@@ -1062,7 +1062,7 @@ func (s *Store) ActionPageSince(ctx context.Context, workspaceID, userID string,
 		        SELECT 1 FROM wiki_pages wp
 		        WHERE wp.id::text=COALESCE(a.payload->'wiki_footer_comment'->>'pageId',a.payload->'wiki_footer_comment_like'->>'pageId',a.payload->'wiki_inline_comment'->>'pageId',a.payload->'wiki_inline_comment_like'->>'pageId',a.payload->'wiki_task'->>'pageId')
 		          AND wp.space_id=s.id AND wp.status='current'
-		      ) OR COALESCE(a.payload->'wiki_footer_comment'->>'blogPostId',a.payload->'wiki_footer_comment_like'->>'blogPostId',a.payload->'wiki_inline_comment'->>'blogPostId',a.payload->'wiki_inline_comment_like'->>'blogPostId','')<>'')
+		      ) OR COALESCE(a.payload->'wiki_footer_comment'->>'blogPostId',a.payload->'wiki_footer_comment_like'->>'blogPostId',a.payload->'wiki_inline_comment'->>'blogPostId',a.payload->'wiki_inline_comment_like'->>'blogPostId','')<>'' OR COALESCE(a.payload->'wiki_footer_comment'->>'customContentId','')<>'')
 		      AND (a.entity_type<>'wiki_label' OR COALESCE(a.payload->'wiki_label'->>'pageId','')='' OR EXISTS (
 		        SELECT 1 FROM wiki_pages wp
 		        WHERE wp.id::text=a.payload->'wiki_label'->>'pageId'
@@ -1074,6 +1074,7 @@ func (s *Store) ActionPageSince(ctx context.Context, workspaceID, userID string,
 		        OR a.entity_type='wiki_attachment' AND COALESCE(a.payload->'wiki_attachment'->>'blogPostId','')<>''
 		        OR a.entity_type IN ('wiki_footer_comment','wiki_footer_comment_like','wiki_inline_comment','wiki_inline_comment_like') AND
 		          COALESCE(a.payload->'wiki_footer_comment'->>'blogPostId',a.payload->'wiki_footer_comment_like'->>'blogPostId',a.payload->'wiki_inline_comment'->>'blogPostId',a.payload->'wiki_inline_comment_like'->>'blogPostId','')<>''
+		        OR a.entity_type='wiki_footer_comment' AND COALESCE(a.payload->'wiki_footer_comment'->>'customContentId','')<>'' AND (COALESCE((a.payload->>'contentPrivate')::boolean,false)=false OR a.payload->>'contentAuthorId'=$3)
 		        OR a.entity_type IN ('wiki_content','wiki_content_property') AND COALESCE(a.payload->>'rootPageId','')=''
 		        OR EXISTS (
 		          SELECT 1 FROM wiki_pages access_page

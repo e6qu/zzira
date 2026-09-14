@@ -299,13 +299,13 @@ func (s *Service) CreateWikiFooterComment(ctx context.Context, ws, actor string,
 		return nil, err
 	}
 	targets := 0
-	for _, id := range []string{comment.PageID, comment.BlogPostID, comment.AttachmentID, comment.ParentCommentID} {
+	for _, id := range []string{comment.PageID, comment.BlogPostID, comment.AttachmentID, comment.CustomContentID, comment.ParentCommentID} {
 		if id != "" {
 			targets++
 		}
 	}
 	if targets != 1 {
-		return nil, fmt.Errorf("%w: choose exactly one of pageId, blogPostId, attachmentId, or parentCommentId", store.ErrWikiValidation)
+		return nil, fmt.Errorf("%w: choose exactly one of pageId, blogPostId, attachmentId, customContentId, or parentCommentId", store.ErrWikiValidation)
 	}
 	return s.Store.CreateWikiFooterComment(ctx, ws, actor, comment)
 }

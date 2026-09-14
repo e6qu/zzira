@@ -671,38 +671,13 @@ type footerCommentUpdate struct {
 	} `json:"version"`
 }
 
-func decodeCommentBody(raw json.RawMessage) (models.WikiBody, error) {
-	if len(raw) == 0 || string(raw) == "null" {
-		return models.WikiBody{}, fmt.Errorf("comment body is required")
-	}
-	var flat models.WikiBody
-	if err := json.Unmarshal(raw, &flat); err == nil && flat.Representation != "" {
-		return flat, nil
-	}
-	var nested map[string]models.WikiBody
-	if err := json.Unmarshal(raw, &nested); err != nil {
-		return models.WikiBody{}, fmt.Errorf("invalid comment body")
-	}
-	if len(nested) != 1 {
-		return models.WikiBody{}, fmt.Errorf("comment body must contain one representation")
-	}
-	body, ok := nested["storage"]
-	if !ok {
-		return models.WikiBody{}, fmt.Errorf("only the storage comment representation is currently supported")
-	}
-	if body.Representation == "" {
-		body.Representation = "storage"
-	}
-	if body.Representation != "storage" {
-		return models.WikiBody{}, fmt.Errorf("the nested representation must match storage")
-	}
-	return body, nil
-}
-
 func (h *Handler) footerCommentBean(comment *models.WikiFooterComment, body bool) map[string]any {
 	parentType, parentID := "pages", comment.PageID
 	if comment.BlogPostID != "" {
 		parentType, parentID = "blogposts", comment.BlogPostID
+	}
+	if comment.CustomContentID != "" {
+		parentType, parentID = "custom-content", comment.CustomContentID
 	}
 	bean := map[string]any{
 		"id": comment.ID, "status": "current", "title": "",
@@ -711,6 +686,8 @@ func (h *Handler) footerCommentBean(comment *models.WikiFooterComment, body bool
 	}
 	if comment.AttachmentID != "" {
 		bean["attachmentId"] = comment.AttachmentID
+	} else if comment.CustomContentID != "" {
+		bean["customContentId"] = comment.CustomContentID
 	} else if comment.BlogPostID != "" {
 		bean["blogPostId"] = comment.BlogPostID
 	} else {
@@ -726,7 +703,7 @@ func (h *Handler) footerCommentBean(comment *models.WikiFooterComment, body bool
 }
 
 func (h *Handler) attachmentFooterComments(w http.ResponseWriter, r *http.Request, ws, actor, attachmentID string) {
-	if !supportedQuery(w, r, "body-format", "sort", "cursor", "limit", "version") || !storageFormat(w, r) {
+	if !supportedQuery(w, r, "body-format", "sort", "cursor", "limit", "version") || !commentFormat(w, r, false) {
 		return
 	}
 	if order := r.URL.Query().Get("sort"); order != "" && order != "created-date" && order != "-created-date" && order != "modified-date" && order != "-modified-date" {
@@ -749,38 +726,15 @@ func (h *Handler) attachmentFooterComments(w http.ResponseWriter, r *http.Reques
 		writeError(w, err)
 		return
 	}
+	if !commentStatusesAllowCurrent(r) {
+		comments = nil
+	}
 	sortFooterComments(comments, r.URL.Query().Get("sort"))
 	values := make([]any, len(comments))
 	for i, comment := range comments {
-		values[i] = h.footerCommentBean(comment, r.URL.Query().Get("body-format") != "")
+		values[i] = h.footerCommentBeanFormat(comment, r.URL.Query().Get("body-format"))
 	}
 	h.list(w, r, values)
-}
-
-func commentQuery(w http.ResponseWriter, r *http.Request, status bool) bool {
-	allowed := []string{"body-format", "sort", "cursor", "limit"}
-	if status {
-		allowed = append(allowed, "status")
-	}
-	if !supportedQuery(w, r, allowed...) || !storageFormat(w, r) {
-		return false
-	}
-	order := r.URL.Query().Get("sort")
-	if order != "" && order != "created-date" && order != "-created-date" && order != "modified-date" && order != "-modified-date" {
-		failure(w, 400, "Unsupported comment sort order.")
-		return false
-	}
-	if status {
-		for _, raw := range r.URL.Query()["status"] {
-			for _, value := range strings.Split(raw, ",") {
-				if value != "" && value != "current" {
-					failure(w, 400, "Only current footer comments are supported.")
-					return false
-				}
-			}
-		}
-	}
-	return true
 }
 
 func sortFooterComments(comments []*models.WikiFooterComment, order string) {
@@ -838,10 +792,13 @@ func (h *Handler) footerComments(w http.ResponseWriter, r *http.Request, ws, act
 		writeError(w, err)
 		return
 	}
+	if !commentStatusesAllowCurrent(r) {
+		comments = nil
+	}
 	sortFooterComments(comments, r.URL.Query().Get("sort"))
 	values := make([]any, 0, len(comments))
 	for _, comment := range comments {
-		values = append(values, h.footerCommentBean(comment, r.URL.Query().Get("body-format") != ""))
+		values = append(values, h.footerCommentBeanFormat(comment, r.URL.Query().Get("body-format")))
 	}
 	h.list(w, r, values)
 }
@@ -855,56 +812,27 @@ func (h *Handler) blogFooterComments(w http.ResponseWriter, r *http.Request, ws,
 		writeError(w, err)
 		return
 	}
+	if !commentStatusesAllowCurrent(r) {
+		comments = nil
+	}
 	sortFooterComments(comments, r.URL.Query().Get("sort"))
 	values := make([]any, 0, len(comments))
 	for _, comment := range comments {
-		values = append(values, h.footerCommentBean(comment, r.URL.Query().Get("body-format") != ""))
+		values = append(values, h.footerCommentBeanFormat(comment, r.URL.Query().Get("body-format")))
 	}
 	h.list(w, r, values)
 }
 
-func (h *Handler) footerComment(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
-	if !supportedQuery(w, r, "body-format", "version", "include-properties", "include-operations", "include-likes", "include-versions", "include-version") || !storageFormat(w, r) {
-		return
-	}
-	for _, key := range []string{"include-properties", "include-operations", "include-likes", "include-versions", "include-version"} {
-		if r.URL.Query().Get(key) != "" {
-			failure(w, 400, key+" is not yet supported for footer comments.")
-			return
-		}
-	}
-	comment, err := h.Store.WikiFooterComment(r.Context(), ws, actor, id)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	if rawVersion := r.URL.Query().Get("version"); rawVersion != "" {
-		number, parseErr := strconv.Atoi(rawVersion)
-		if parseErr != nil || number < 1 {
-			failure(w, 400, "Version number must be a positive integer.")
-			return
-		}
-		version, versionErr := h.Store.WikiFooterCommentVersion(r.Context(), ws, actor, id, number)
-		if versionErr != nil {
-			writeError(w, versionErr)
-			return
-		}
-		comment.Body = version.Body
-		comment.Version = version.WikiVersion
-	}
-	respond(w, 200, h.footerCommentBean(comment, r.URL.Query().Get("body-format") != ""))
-}
-
-func footerCommentVersionBean(id string, version models.WikiFooterCommentVersion, body bool) map[string]any {
+func footerCommentVersionBean(id string, version models.WikiFooterCommentVersion, format string) map[string]any {
 	comment := map[string]any{"id": id, "title": ""}
-	if body {
-		comment["body"] = map[string]any{"storage": version.Body}
+	if format != "" {
+		comment["body"] = map[string]any{format: commentBodyIn(version.Body, format)}
 	}
 	return map[string]any{"number": version.Number, "message": version.Message, "minorEdit": version.MinorEdit, "authorId": version.AuthorID, "createdAt": version.CreatedAt, "comment": comment}
 }
 
 func (h *Handler) footerCommentVersions(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
-	if !supportedQuery(w, r, "body-format", "cursor", "limit", "sort") || !storageFormat(w, r) {
+	if !supportedQuery(w, r, "body-format", "cursor", "limit", "sort") || !commentFormat(w, r, false) {
 		return
 	}
 	order := r.URL.Query().Get("sort")
@@ -922,7 +850,7 @@ func (h *Handler) footerCommentVersions(w http.ResponseWriter, r *http.Request, 
 	}
 	values := make([]any, 0, len(versions))
 	for _, version := range versions {
-		values = append(values, footerCommentVersionBean(id, version, r.URL.Query().Get("body-format") != ""))
+		values = append(values, footerCommentVersionBean(id, version, r.URL.Query().Get("body-format")))
 	}
 	h.list(w, r, values)
 }
@@ -1190,10 +1118,6 @@ func (h *Handler) labelPages(w http.ResponseWriter, r *http.Request, ws, actor, 
 	h.list(w, r, values)
 }
 
-func unsupportedCommentTarget(in footerCommentWrite) bool {
-	return in.CustomContentID != ""
-}
-
 func (h *Handler) createFooterComment(w http.ResponseWriter, r *http.Request, ws, actor string) {
 	if !supportedQuery(w, r) {
 		return
@@ -1202,16 +1126,12 @@ func (h *Handler) createFooterComment(w http.ResponseWriter, r *http.Request, ws
 	if !decode(w, r, &in) {
 		return
 	}
-	if unsupportedCommentTarget(in) {
-		failure(w, 400, "Custom-content footer comments are not currently supported.")
-		return
-	}
 	body, err := decodeCommentBody(in.Body)
 	if err != nil {
 		failure(w, 400, err.Error())
 		return
 	}
-	comment, err := h.Commands.CreateWikiFooterComment(r.Context(), ws, actor, models.WikiFooterComment{PageID: in.PageID, BlogPostID: in.BlogPostID, AttachmentID: in.AttachmentID, ParentCommentID: in.ParentCommentID, Body: body})
+	comment, err := h.Commands.CreateWikiFooterComment(r.Context(), ws, actor, models.WikiFooterComment{PageID: in.PageID, BlogPostID: in.BlogPostID, AttachmentID: in.AttachmentID, CustomContentID: in.CustomContentID, ParentCommentID: in.ParentCommentID, Body: body})
 	if err != nil {
 		writeError(w, err)
 		return
