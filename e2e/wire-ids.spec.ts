@@ -93,7 +93,7 @@ test('no stored id reaches a client through the Jira, Agile or Service Managemen
     '/rest/api/3/issueLinkType', '/rest/agile/1.0/board',
   ];
   if (boardId) {
-    for (const suffix of ['', '/configuration', '/sprint', '/issue', '/backlog', '/project', '/quickfilter', '/features']) {
+    for (const suffix of ['', '/configuration', '/sprint', '/issue', '/backlog', '/project', '/quickfilter', '/features', '/epic', '/epic/none/issue']) {
       paths.push(`/rest/agile/1.0/board/${boardId}${suffix}`);
     }
   }
@@ -103,6 +103,7 @@ test('no stored id reaches a client through the Jira, Agile or Service Managemen
   if (schemeId) {
     paths.push(`/rest/api/3/workflowscheme/${schemeId}`, `/rest/api/3/workflowscheme/${schemeId}/projectUsages`);
   }
+  paths.push('/rest/agile/1.0/epic/none/issue', `/rest/agile/1.0/issue/${issueKey}`, '/rest/software/1.0/epic/none/issue');
   if (sprintId) {
     paths.push(`/rest/agile/1.0/sprint/${sprintId}`, `/rest/agile/1.0/sprint/${sprintId}/issue`);
   }

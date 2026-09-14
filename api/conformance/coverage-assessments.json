@@ -5558,9 +5558,12 @@
     },
     {
       "operationId": "jira-software:DELETE:/rest/agile/1.0/board/{boardId}",
-      "status": "missing",
-      "evidence": [],
-      "notes": "A board is removed with its project, so there is no standalone board deletion to expose yet."
+      "status": "partial",
+      "evidence": [
+        "internal/agile/software_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Administrators delete a board with its sprints; issues stay."
     },
     {
       "operationId": "jira-software:DELETE:/rest/agile/1.0/board/{boardId}/properties/{propertyKey}",
@@ -5678,9 +5681,12 @@
     },
     {
       "operationId": "jira-software:GET:/rest/agile/1.0/board/filter/{filterId}",
-      "status": "missing",
-      "evidence": [],
-      "notes": "Boards are project-scoped with a JQL string and are not built on a saved filter, so answering would misreport a board that cannot exist."
+      "status": "partial",
+      "evidence": [
+        "internal/agile/software_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Lists the boards created from a filter and the board that owns it, paged."
     },
     {
       "operationId": "jira-software:GET:/rest/agile/1.0/board/{boardId}",
@@ -6015,15 +6021,21 @@
     },
     {
       "operationId": "jira-software:POST:/rest/agile/1.0/board",
-      "status": "missing",
-      "evidence": [],
-      "notes": "A board is created with its project, so there is no standalone board creation to expose yet."
+      "status": "partial",
+      "evidence": [
+        "internal/agile/software_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Boards are created from a visible saved or board filter in a project location; user locations take the project the filter names."
     },
     {
       "operationId": "jira-software:POST:/rest/agile/1.0/board/{boardId}/issue",
-      "status": "missing",
-      "evidence": [],
-      "notes": "Work reaches a board through the sprint and backlog endpoints; this entry point is not implemented."
+      "status": "partial",
+      "evidence": [
+        "internal/agile/software_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Scrum boards move issues into the active sprint, kanban issues are already on the board; ranking with 207 entries."
     },
     {
       "operationId": "jira-software:POST:/rest/agile/1.0/sprint",
@@ -12230,6 +12242,432 @@
         "docs/ISSUE_SURFACE.md"
       ],
       "notes": "Digest-verified redaction jobs over fields, comments and worklogs, with history scrubbing and per-redaction results."
+    },
+    {
+      "operationId": "jira-software:POST:/rest/agile/1.0/backlog/issue",
+      "status": "partial",
+      "evidence": [
+        "internal/agile/software_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Open-sprint membership is removed for up to 50 visible issues; closed sprints stay historical."
+    },
+    {
+      "operationId": "jira-software:POST:/rest/agile/1.0/backlog/{boardId}/issue",
+      "status": "partial",
+      "evidence": [
+        "internal/agile/software_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Board-scoped backlog moves with optional ranking and Jira's 207 per-issue entries."
+    },
+    {
+      "operationId": "jira-software:GET:/rest/agile/1.0/epic/none/issue",
+      "status": "partial",
+      "evidence": [
+        "internal/agile/software_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Standard issues without an epic, JQL-filtered and rank-ordered."
+    },
+    {
+      "operationId": "jira-software:POST:/rest/agile/1.0/epic/none/issue",
+      "status": "partial",
+      "evidence": [
+        "internal/agile/software_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Removes epic parents from up to 50 issues; other parents are untouched."
+    },
+    {
+      "operationId": "jira-software:GET:/rest/agile/1.0/epic/{epicIdOrKey}",
+      "status": "partial",
+      "evidence": [
+        "internal/agile/software_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Epic bean with name, fourteen-color key and done state; non-epics are 404."
+    },
+    {
+      "operationId": "jira-software:POST:/rest/agile/1.0/epic/{epicIdOrKey}",
+      "status": "partial",
+      "evidence": [
+        "internal/agile/software_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Partial update of name, summary, color and done with unknown-field and color validation."
+    },
+    {
+      "operationId": "jira-software:GET:/rest/agile/1.0/epic/{epicIdOrKey}/issue",
+      "status": "partial",
+      "evidence": [
+        "internal/agile/software_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "The epic's standard issues, JQL-filtered and rank-ordered."
+    },
+    {
+      "operationId": "jira-software:POST:/rest/agile/1.0/epic/{epicIdOrKey}/issue",
+      "status": "partial",
+      "evidence": [
+        "internal/agile/software_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Moves up to 50 standard issues into an epic, refusing other hierarchy levels."
+    },
+    {
+      "operationId": "jira-software:PUT:/rest/agile/1.0/epic/{epicIdOrKey}/rank",
+      "status": "partial",
+      "evidence": [
+        "internal/agile/software_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Ranks an epic before or after another epic in the site-wide rank order."
+    },
+    {
+      "operationId": "jira-software:PUT:/rest/agile/1.0/issue/rank",
+      "status": "partial",
+      "evidence": [
+        "internal/agile/software_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Site-wide ranking of up to 50 issues with Jira's numeric rank field and 207 per-issue entries."
+    },
+    {
+      "operationId": "jira-software:GET:/rest/agile/1.0/issue/{issueIdOrKey}",
+      "status": "partial",
+      "evidence": [
+        "internal/agile/software_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Issue bean with sprint, closedSprints, flagged and epic."
+    },
+    {
+      "operationId": "jira-software:GET:/rest/agile/1.0/issue/{issueIdOrKey}/estimation",
+      "status": "partial",
+      "evidence": [
+        "internal/agile/software_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Reads the board's estimation field (Story point estimate on scrum boards) for an issue on the board."
+    },
+    {
+      "operationId": "jira-software:PUT:/rest/agile/1.0/issue/{issueIdOrKey}/estimation",
+      "status": "partial",
+      "evidence": [
+        "internal/agile/software_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Writes a numeric estimate through the issue update command regardless of screens."
+    },
+    {
+      "operationId": "jira-software:GET:/rest/software/1.0/epic/none/issue",
+      "status": "partial",
+      "evidence": [
+        "internal/agile/software_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Token-paged issues without an epic."
+    },
+    {
+      "operationId": "jira-software:GET:/rest/software/1.0/epic/{epicIdOrKey}/issue",
+      "status": "partial",
+      "evidence": [
+        "internal/agile/software_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Token-paged issues of an epic."
+    },
+    {
+      "operationId": "jira-software:POST:/rest/featureflags/0.1/bulk",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/software_providers_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Per-entity schema validation, update-sequence ordering, issue associations with unknown issues reported, and provider properties; provider app scopes are site membership."
+    },
+    {
+      "operationId": "jira-software:DELETE:/rest/featureflags/0.1/bulkByProperties",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/software_providers_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Deletes the module's data carrying every given property; retired sequence parameters are ignored."
+    },
+    {
+      "operationId": "jira-software:DELETE:/rest/featureflags/0.1/flag/{featureFlagId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/software_providers_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Deletes the stored entity; deletion is accepted with 202."
+    },
+    {
+      "operationId": "jira-software:GET:/rest/featureflags/0.1/flag/{featureFlagId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/software_providers_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Returns the stored entity exactly as submitted, or 404."
+    },
+    {
+      "operationId": "jira-software:POST:/rest/remotelinks/1.0/bulk",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/software_providers_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Per-entity schema validation, update-sequence ordering, issue associations with unknown issues reported, and provider properties; provider app scopes are site membership."
+    },
+    {
+      "operationId": "jira-software:DELETE:/rest/remotelinks/1.0/bulkByProperties",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/software_providers_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Deletes the module's data carrying every given property; retired sequence parameters are ignored."
+    },
+    {
+      "operationId": "jira-software:DELETE:/rest/remotelinks/1.0/remotelink/{remoteLinkId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/software_providers_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Deletes the stored entity; deletion is accepted with 202."
+    },
+    {
+      "operationId": "jira-software:GET:/rest/remotelinks/1.0/remotelink/{remoteLinkId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/software_providers_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Returns the stored entity exactly as submitted, or 404."
+    },
+    {
+      "operationId": "jira-software:POST:/rest/security/1.0/bulk",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/software_providers_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Per-entity schema validation, update-sequence ordering, issue associations with unknown issues reported, and provider properties; provider app scopes are site membership."
+    },
+    {
+      "operationId": "jira-software:DELETE:/rest/security/1.0/bulkByProperties",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/software_providers_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Deletes the module's data carrying every given property; retired sequence parameters are ignored."
+    },
+    {
+      "operationId": "jira-software:GET:/rest/security/1.0/linkedWorkspaces",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/software_providers_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Linked provider workspaces are stored per site with Jira's workspace id pattern."
+    },
+    {
+      "operationId": "jira-software:DELETE:/rest/security/1.0/linkedWorkspaces/bulk",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/software_providers_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Linked provider workspaces are stored per site with Jira's workspace id pattern."
+    },
+    {
+      "operationId": "jira-software:POST:/rest/security/1.0/linkedWorkspaces/bulk",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/software_providers_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Linked provider workspaces are stored per site with Jira's workspace id pattern."
+    },
+    {
+      "operationId": "jira-software:GET:/rest/security/1.0/linkedWorkspaces/{workspaceId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/software_providers_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Linked provider workspaces are stored per site with Jira's workspace id pattern."
+    },
+    {
+      "operationId": "jira-software:DELETE:/rest/security/1.0/vulnerability/{vulnerabilityId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/software_providers_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Deletes the stored entity; deletion is accepted with 202."
+    },
+    {
+      "operationId": "jira-software:GET:/rest/security/1.0/vulnerability/{vulnerabilityId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/software_providers_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Returns the stored entity exactly as submitted, or 404."
+    },
+    {
+      "operationId": "jira-software:POST:/rest/operations/1.0/bulk",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/software_providers_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Per-entity schema validation, update-sequence ordering, issue associations with unknown issues reported, and provider properties; provider app scopes are site membership."
+    },
+    {
+      "operationId": "jira-software:DELETE:/rest/operations/1.0/bulkByProperties",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/software_providers_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Deletes the module's data carrying every given property; retired sequence parameters are ignored."
+    },
+    {
+      "operationId": "jira-software:DELETE:/rest/operations/1.0/incidents/{incidentId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/software_providers_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Deletes the stored entity; deletion is accepted with 202."
+    },
+    {
+      "operationId": "jira-software:GET:/rest/operations/1.0/incidents/{incidentId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/software_providers_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Returns the stored entity exactly as submitted, or 404."
+    },
+    {
+      "operationId": "jira-software:GET:/rest/operations/1.0/linkedWorkspaces",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/software_providers_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Linked provider workspaces are stored per site with Jira's workspace id pattern."
+    },
+    {
+      "operationId": "jira-software:DELETE:/rest/operations/1.0/linkedWorkspaces/bulk",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/software_providers_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Linked provider workspaces are stored per site with Jira's workspace id pattern."
+    },
+    {
+      "operationId": "jira-software:POST:/rest/operations/1.0/linkedWorkspaces/bulk",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/software_providers_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Linked provider workspaces are stored per site with Jira's workspace id pattern."
+    },
+    {
+      "operationId": "jira-software:DELETE:/rest/operations/1.0/post-incident-reviews/{reviewId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/software_providers_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Deletes the stored entity; deletion is accepted with 202."
+    },
+    {
+      "operationId": "jira-software:GET:/rest/operations/1.0/post-incident-reviews/{reviewId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/software_providers_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Returns the stored entity exactly as submitted, or 404."
+    },
+    {
+      "operationId": "jira-software:POST:/rest/devopscomponents/1.0/bulk",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/software_providers_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Per-entity schema validation, update-sequence ordering, issue associations with unknown issues reported, and provider properties; provider app scopes are site membership."
+    },
+    {
+      "operationId": "jira-software:DELETE:/rest/devopscomponents/1.0/bulkByProperties",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/software_providers_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Deletes the module's data carrying every given property; retired sequence parameters are ignored."
+    },
+    {
+      "operationId": "jira-software:DELETE:/rest/devopscomponents/1.0/devopscomponents/{componentId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/software_providers_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Deletes the stored entity; deletion is accepted with 202."
+    },
+    {
+      "operationId": "jira-software:GET:/rest/devopscomponents/1.0/devopscomponents/{componentId}",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/software_providers_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Returns the stored entity exactly as submitted, or 404."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/expression/analyse",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/expressions_test.go",
+        "internal/jexpr/jexpr_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Syntax check with line/column errors, experimental type inference against Jira's types and complexity formulae over iterated lists."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/expression/eval",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/expressions_test.go",
+        "internal/jexpr/jexpr_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "Evaluates with user, issue, project, sprint, board, service desk, customer request, JQL issues paged by startAt and custom variables, under Jira's step, expensive operation, bean and primitive limits."
+    },
+    {
+      "operationId": "jira-v3:POST:/rest/api/3/expression/evaluate",
+      "status": "partial",
+      "evidence": [
+        "internal/api3/expressions_test.go",
+        "internal/jexpr/jexpr_test.go",
+        "docs/JIRA_SOFTWARE.md"
+      ],
+      "notes": "The enhanced evaluate variant pages JQL issues with nextPageToken."
     }
   ]
 }

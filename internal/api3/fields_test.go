@@ -121,7 +121,9 @@ func TestFieldOperations(t *testing.T) {
 	if empty := page(adminID, "/rest/api/3/field/search?query=nothingmatchesthis", 200); empty["total"].(float64) != 0 {
 		t.Fatalf("field search: %v", empty)
 	}
-	if typed := page(adminID, "/rest/api/3/field/search?type=com.atlassian.jira.plugin.system.customfieldtypes:float", 200); typed["total"].(float64) != 0 {
+	// Every site has Jira's Story point estimate number field.
+	typed := page(adminID, "/rest/api/3/field/search?type=com.atlassian.jira.plugin.system.customfieldtypes:float", 200)
+	if typedValues, _ := typed["values"].([]any); typed["total"].(float64) != 1 || len(typedValues) != 1 || typedValues[0].(map[string]any)["name"] != "Story point estimate" {
 		t.Fatalf("field search by type: %v", typed)
 	}
 	// The searches are administration, so an ordinary member cannot run them.
