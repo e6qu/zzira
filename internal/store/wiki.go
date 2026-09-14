@@ -371,7 +371,7 @@ func (s *Store) SaveWikiPage(ctx context.Context, ws, actor string, input models
 		if input.Status == "draft" && old.Published {
 			return nil, fmt.Errorf("%w: a published page cannot be converted to a draft", ErrWikiValidation)
 		}
-		if old.Status == "trashed" && input.Status == "current" {
+		if (old.Status == "trashed" || old.Status == "deleted") && input.Status == "current" {
 			input.Title = old.Title
 			input.Body = old.Body
 			input.ParentID = old.ParentID
@@ -469,6 +469,12 @@ func (s *Store) SaveWikiPage(ctx context.Context, ws, actor string, input models
 	_, err = tx.Exec(ctx, `INSERT INTO wiki_page_versions(page_id,version,title,body,status,author_id,message,minor_edit) VALUES ($1::bigint,$2,$3,$4,$5,$6,$7,$8)`, input.ID, input.Version.Number, input.Title, input.Body.Value, input.Status, actor, input.Version.Message, input.Version.MinorEdit)
 	if err != nil {
 		return nil, err
+	}
+	// Publishing replaces the draft that was waiting beside the page.
+	if input.Status == "current" {
+		if _, err := tx.Exec(ctx, `DELETE FROM wiki_content_drafts WHERE content_type='page' AND content_id::text=$1`, input.ID); err != nil {
+			return nil, err
+		}
 	}
 	page, err := scanWikiPage(tx.QueryRow(ctx, wikiPageSelect+` WHERE p.id::text=$1`, input.ID))
 	if err != nil {

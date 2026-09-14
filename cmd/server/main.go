@@ -356,6 +356,8 @@ func main() {
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/restore", webHandler.WikiPageRestore)
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/move", webHandler.WikiPageMove)
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/favourite", webHandler.WikiPageFavourite)
+	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/draft/discard", webHandler.WikiPageDraftDiscard)
+	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/purge", webHandler.WikiPagePurge)
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/owner", webHandler.WikiPageOwner)
 	mux.HandleFunc("GET /wiki/spaces/{space}/embeds/{embed}", webHandler.WikiSmartLinkPage)
 	mux.HandleFunc("POST /wiki/spaces/{space}/content/{node}/move", webHandler.WikiContentMove)

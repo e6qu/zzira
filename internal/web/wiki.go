@@ -79,6 +79,8 @@ type wikiData struct {
 	PageFavourite                         bool
 	PageOwnerName                         string
 	OwnerChoices                          []*models.User
+	Draft                                 *store.WikiContentDraft
+	CanPurge                              bool
 	ChildPageCount                        int
 	ArchivedChildCount                    int
 }
@@ -1212,12 +1214,42 @@ func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 			return
 		}
 		page.Version.Number = version
-		saved, err := h.Commands.SaveWikiPage(r.Context(), ws, user.ID, *page)
-		if err == nil {
-			redirectLocal(w, r, "/wiki/spaces/"+space.ID+"/pages/"+saved.ID)
+		if r.PostFormValue("saveAs") == "draft" && page.ID != "" && page.Published {
+			// A published page saved as a draft keeps its published version.
+			if _, draftErr := h.Commands.SaveWikiContentDraft(r.Context(), ws, user.ID, "page", page.ID, page.Title, page.Body); draftErr != nil {
+				status, data.Error = wikiWebError(draftErr)
+			} else {
+				redirectLocal(w, r, "/wiki/spaces/"+space.ID+"/pages/"+page.ID)
+				return
+			}
+		} else {
+			saved, err := h.Commands.SaveWikiPage(r.Context(), ws, user.ID, *page)
+			if err == nil {
+				redirectLocal(w, r, "/wiki/spaces/"+space.ID+"/pages/"+saved.ID)
+				return
+			}
+			status, data.Error = wikiWebError(err)
+		}
+	}
+	if page.ID != "" && page.Status == "current" && canEdit {
+		draft, draftErr := h.Store.WikiContentDraft(r.Context(), ws, user.ID, "page", page.ID)
+		switch {
+		case draftErr == nil:
+			data.Draft = draft
+			// Editing a page with a waiting draft picks up the draft.
+			if edit && r.Method != "POST" {
+				page.Title, page.Body = draft.Title, draft.Body
+			}
+		case !errors.Is(draftErr, pgx.ErrNoRows):
+			http.Error(w, "Could not load the page draft.", 500)
 			return
 		}
-		status, data.Error = wikiWebError(err)
+	}
+	if page.ID != "" && page.Status == "trashed" {
+		if data.CanPurge, err = h.Store.CanAdministerWikiSpace(r.Context(), ws, user.ID, space.ID); err != nil {
+			http.Error(w, "Could not load space permissions.", 500)
+			return
+		}
 	}
 	if edit {
 		data.Pages, err = h.Store.WikiPages(r.Context(), ws, user.ID, space.ID, "current", "")
@@ -2201,6 +2233,26 @@ func (h *Handler) WikiPageMove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	redirectLocal(w, r, "/wiki/spaces/"+moved.SpaceID+"/pages/"+moved.ID)
+}
+
+// WikiPageDraftDiscard throws away the draft waiting beside a published page.
+func (h *Handler) WikiPageDraftDiscard(w http.ResponseWriter, r *http.Request) {
+	page, userID, ws, ok := h.wikiPageAction(w, r)
+	if !ok {
+		return
+	}
+	err := h.Commands.DiscardWikiContentDraft(r.Context(), ws, userID, "page", page.ID)
+	h.finishWikiTreeAction(w, r, err, "/wiki/spaces/"+page.SpaceID+"/pages/"+page.ID)
+}
+
+// WikiPagePurge takes a trashed page out of the trash.
+func (h *Handler) WikiPagePurge(w http.ResponseWriter, r *http.Request) {
+	page, userID, ws, ok := h.wikiPageAction(w, r)
+	if !ok {
+		return
+	}
+	err := h.Commands.PurgeWikiPage(r.Context(), ws, userID, page.ID)
+	h.finishWikiTreeAction(w, r, err, "/wiki/spaces/"+page.SpaceID+"?status=trashed")
 }
 
 func (h *Handler) WikiTrash(w http.ResponseWriter, r *http.Request) {

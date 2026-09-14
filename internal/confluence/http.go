@@ -318,26 +318,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case len(parts) == 2 && parts[0] == "pages" && r.Method == "GET":
 		h.pageByID(w, r, ws, actor, parts[1])
 	case len(parts) == 2 && parts[0] == "pages" && r.Method == "DELETE":
-		if !supportedQuery(w, r) {
-			return
-		}
-		page, err := h.Store.WikiPage(r.Context(), ws, actor, parts[1])
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-		if page.Status == "trashed" {
-			failure(w, 400, "Permanent deletion is not implemented.")
-			return
-		}
-		page.Status = "trashed"
-		page.Version.Number++
-		page.Version.Message = "Moved to trash"
-		if _, err := h.Commands.SaveWikiPage(r.Context(), ws, actor, *page); err != nil {
-			writeError(w, err)
-			return
-		}
-		w.WriteHeader(204)
+		h.deletePage(w, r, ws, actor, parts[1])
 	case len(parts) == 3 && parts[0] == "pages" && parts[2] == "versions" && r.Method == "GET":
 		if !supportedQuery(w, r, "limit", "cursor", "sort", "body-format") || !storageFormat(w, r) {
 			return
@@ -1562,8 +1543,12 @@ func (h *Handler) pages(w http.ResponseWriter, r *http.Request, ws, actor, space
 		failure(w, 400, "Unsupported page sort order.")
 		return
 	}
+	adminSpaces := map[string]bool{}
 	values := []any{}
 	for _, p := range pages {
+		if p.Status == "deleted" && !h.canSeeDeleted(r, ws, actor, p.SpaceID, adminSpaces) {
+			continue
+		}
 		if q.Get("depth") == "root" && p.ParentID != "" {
 			continue
 		}
@@ -1648,6 +1633,25 @@ func (h *Handler) savePage(w http.ResponseWriter, r *http.Request, ws, actor, id
 		old, err := h.Store.WikiPage(r.Context(), ws, actor, id)
 		if err != nil {
 			writeError(w, err)
+			return
+		}
+		// Saving a published page as a draft keeps the published version and
+		// replaces any draft already waiting beside it.
+		if in.Status == "draft" && old.Status == "current" {
+			if in.Version.Number != 1 {
+				failure(w, 400, "A draft of a published page is saved at version 1.")
+				return
+			}
+			title := in.Title
+			if title == "" {
+				title = old.Title
+			}
+			draft, err := h.Commands.SaveWikiContentDraft(r.Context(), ws, actor, "page", id, title, body)
+			if err != nil {
+				writeError(w, err)
+				return
+			}
+			respond(w, 200, h.pageBean(draftAsPage(old, draft), true))
 			return
 		}
 		if page.SpaceID == "" {

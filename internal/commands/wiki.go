@@ -183,6 +183,30 @@ func (s *Service) TransferWikiPageOwnership(ctx context.Context, ws, actor, page
 	return s.Store.TransferWikiPageOwnership(ctx, ws, actor, pageID, ownerID)
 }
 
+// SaveWikiContentDraft, DiscardWikiContentDraft, DeleteUnpublishedWikiDraft
+// and PurgeWikiPage are the draft and deletion lifecycle of pages and blog
+// posts.
+func (s *Service) SaveWikiContentDraft(ctx context.Context, ws, actor, contentType, id, title string, body models.WikiBody) (*store.WikiContentDraft, error) {
+	return s.Store.SaveWikiContentDraft(ctx, ws, actor, contentType, id, title, body)
+}
+
+func (s *Service) DiscardWikiContentDraft(ctx context.Context, ws, actor, contentType, id string) error {
+	return s.Store.DiscardWikiContentDraft(ctx, ws, actor, contentType, id)
+}
+
+func (s *Service) DeleteUnpublishedWikiDraft(ctx context.Context, ws, actor, contentType, id string) error {
+	return s.Store.DeleteUnpublishedWikiDraft(ctx, ws, actor, contentType, id)
+}
+
+func (s *Service) PurgeWikiPage(ctx context.Context, ws, actor, id string) error {
+	return s.Store.PurgeWikiPage(ctx, ws, actor, id)
+}
+
+// SetWikiBlogPostFavourite stars or unstars a blog post for the reader.
+func (s *Service) SetWikiBlogPostFavourite(ctx context.Context, ws, actor, id string, favourite bool) error {
+	return s.Store.SetWikiBlogPostFavourite(ctx, ws, actor, id, favourite)
+}
+
 func (s *Service) SaveWikiBlogPost(ctx context.Context, ws, actor string, post models.WikiBlogPost) (*models.WikiBlogPost, error) {
 	post.Title = strings.TrimSpace(post.Title)
 	if post.Status == "" && post.ID == "" {

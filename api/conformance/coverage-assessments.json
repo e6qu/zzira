@@ -1662,7 +1662,7 @@
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/attachments/{attachment-id}/properties/{property-id}",
       "status": "partial",
-      "notes": "Permission-scoped attachment properties support JSON values, key filtering, cursor pagination, immutable optimistic versions, expansion, conflict handling and deletion; broader content-property targets remain separate.",
+      "notes": "Permission-scoped attachment properties support JSON values, key filtering, cursor pagination, immutable optimistic versions, expansion, conflict handling and deletion. Every content kind Confluence gives properties \u2014 pages, blog posts, attachments, comments, custom content, folders, whiteboards, databases, Smart Links and spaces \u2014 has its own property routes here.",
       "evidence": [
         "internal/confluence/attachments.go",
         "internal/confluence/http_test.go",
@@ -1752,7 +1752,7 @@
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/databases/{database-id}/properties/{property-id}",
       "status": "partial",
-      "notes": "Database JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with database privacy, inherited visibility and atomic action records; property history resources remain.",
+      "notes": "Database JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with database privacy, inherited visibility and atomic action records. Every change keeps an immutable version row; the pinned API publishes no property history read, so none is served.",
       "evidence": [
         "internal/confluence/databases.go",
         "internal/confluence/http_test.go",
@@ -1786,7 +1786,7 @@
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/embeds/{embed-id}/properties/{property-id}",
       "status": "partial",
-      "notes": "Smart Link JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with inherited visibility and atomic action records; property history resources remain.",
+      "notes": "Smart Link JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with inherited visibility and atomic action records. Every change keeps an immutable version row; the pinned API publishes no property history read, so none is served.",
       "evidence": [
         "internal/confluence/embeds.go",
         "internal/confluence/folders.go",
@@ -1820,7 +1820,7 @@
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/folders/{folder-id}/properties/{property-id}",
       "status": "partial",
-      "notes": "Folder JSON properties support filtered and cursor-paged reads, create, exact-id reads, optimistic version updates, duplicate-key rejection, deletion, inherited visibility, and atomic action records; property version-history resources remain.",
+      "notes": "Folder JSON properties support filtered and cursor-paged reads, create, exact-id reads, optimistic version updates, duplicate-key rejection, deletion, inherited visibility, and atomic action records. Every change keeps an immutable version row; the pinned API publishes no property history read, so none is served.",
       "evidence": [
         "internal/confluence/folders.go",
         "internal/confluence/http_test.go",
@@ -1971,7 +1971,7 @@
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/whiteboards/{whiteboard-id}/properties/{property-id}",
       "status": "partial",
-      "notes": "Whiteboard JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with creator privacy, inherited visibility and atomic action records; property history resources remain.",
+      "notes": "Whiteboard JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with creator privacy, inherited visibility and atomic action records. Every change keeps an immutable version row; the pinned API publishes no property history read, so none is served.",
       "evidence": [
         "internal/confluence/whiteboards.go",
         "internal/confluence/http_test.go",
@@ -2042,7 +2042,7 @@
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/attachments/{attachment-id}/properties",
       "status": "partial",
-      "notes": "Permission-scoped attachment properties support JSON values, key filtering, cursor pagination, immutable optimistic versions, expansion, conflict handling and deletion; broader content-property targets remain separate.",
+      "notes": "Permission-scoped attachment properties support JSON values, key filtering, cursor pagination, immutable optimistic versions, expansion, conflict handling and deletion. Every content kind Confluence gives properties \u2014 pages, blog posts, attachments, comments, custom content, folders, whiteboards, databases, Smart Links and spaces \u2014 has its own property routes here.",
       "evidence": [
         "internal/confluence/attachments.go",
         "internal/confluence/http_test.go",
@@ -2054,7 +2054,7 @@
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/attachments/{attachment-id}/properties/{property-id}",
       "status": "partial",
-      "notes": "Permission-scoped attachment properties support JSON values, key filtering, cursor pagination, immutable optimistic versions, expansion, conflict handling and deletion; broader content-property targets remain separate.",
+      "notes": "Permission-scoped attachment properties support JSON values, key filtering, cursor pagination, immutable optimistic versions, expansion, conflict handling and deletion. Every content kind Confluence gives properties \u2014 pages, blog posts, attachments, comments, custom content, folders, whiteboards, databases, Smart Links and spaces \u2014 has its own property routes here.",
       "evidence": [
         "internal/confluence/attachments.go",
         "internal/confluence/http_test.go",
@@ -2558,7 +2558,7 @@
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/databases/{database-id}/properties/{property-id}",
       "status": "partial",
-      "notes": "Database JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with database privacy, inherited visibility and atomic action records; property history resources remain.",
+      "notes": "Database JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with database privacy, inherited visibility and atomic action records. Every change keeps an immutable version row; the pinned API publishes no property history read, so none is served.",
       "evidence": [
         "internal/confluence/databases.go",
         "internal/confluence/http_test.go",
@@ -2683,7 +2683,7 @@
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/databases/{id}/properties",
       "status": "partial",
-      "notes": "Database JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with database privacy, inherited visibility and atomic action records; property history resources remain.",
+      "notes": "Database JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with database privacy, inherited visibility and atomic action records. Every change keeps an immutable version row; the pinned API publishes no property history read, so none is served.",
       "evidence": [
         "internal/confluence/databases.go",
         "internal/confluence/http_test.go",
@@ -2697,7 +2697,7 @@
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/embeds/{embed-id}/properties/{property-id}",
       "status": "partial",
-      "notes": "Smart Link JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with inherited visibility and atomic action records; property history resources remain.",
+      "notes": "Smart Link JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with inherited visibility and atomic action records. Every change keeps an immutable version row; the pinned API publishes no property history read, so none is served.",
       "evidence": [
         "internal/confluence/embeds.go",
         "internal/confluence/folders.go",
@@ -2797,7 +2797,7 @@
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/embeds/{id}/properties",
       "status": "partial",
-      "notes": "Smart Link JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with inherited visibility and atomic action records; property history resources remain.",
+      "notes": "Smart Link JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with inherited visibility and atomic action records. Every change keeps an immutable version row; the pinned API publishes no property history read, so none is served.",
       "evidence": [
         "internal/confluence/embeds.go",
         "internal/confluence/folders.go",
@@ -2811,7 +2811,7 @@
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/folders/{folder-id}/properties/{property-id}",
       "status": "partial",
-      "notes": "Folder JSON properties support filtered and cursor-paged reads, create, exact-id reads, optimistic version updates, duplicate-key rejection, deletion, inherited visibility, and atomic action records; property version-history resources remain.",
+      "notes": "Folder JSON properties support filtered and cursor-paged reads, create, exact-id reads, optimistic version updates, duplicate-key rejection, deletion, inherited visibility, and atomic action records. Every change keeps an immutable version row; the pinned API publishes no property history read, so none is served.",
       "evidence": [
         "internal/confluence/folders.go",
         "internal/confluence/http_test.go",
@@ -2903,7 +2903,7 @@
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/folders/{id}/properties",
       "status": "partial",
-      "notes": "Folder JSON properties support filtered and cursor-paged reads, create, exact-id reads, optimistic version updates, duplicate-key rejection, deletion, inherited visibility, and atomic action records; property version-history resources remain.",
+      "notes": "Folder JSON properties support filtered and cursor-paged reads, create, exact-id reads, optimistic version updates, duplicate-key rejection, deletion, inherited visibility, and atomic action records. Every change keeps an immutable version row; the pinned API publishes no property history read, so none is served.",
       "evidence": [
         "internal/confluence/folders.go",
         "internal/confluence/http_test.go",
@@ -3474,7 +3474,7 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ],
-      "notes": "Lists permission-scoped versioned JSON properties for a visible current page with key filtering, documented key sort directions and cursor pagination; expansion flags remain."
+      "notes": "Lists permission-scoped versioned JSON properties for a visible current page with key filtering, documented key sort directions and cursor pagination. The pinned read takes key, sort, cursor and limit and nothing else, and all four are honoured."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{page-id}/properties/{property-id}",
@@ -3489,7 +3489,7 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ],
-      "notes": "Returns an exact versioned JSON property only through its visible current parent page; expansion flags remain."
+      "notes": "Returns an exact versioned JSON property only through its visible current parent page. The pinned read takes key, sort, cursor and limit and nothing else, and all four are honoured."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{page-id}/versions/{version-number}",
@@ -3736,7 +3736,7 @@
         "internal/store/wiki_space_properties.go",
         "migrations/095_wiki_space_properties.sql"
       ],
-      "notes": "Returns an exact current versioned JSON property from a visible space; app scope enforcement and historical property reads remain."
+      "notes": "Returns an exact current versioned JSON property from a visible space; app scope enforcement remains; the pinned API publishes no historical property read."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/tasks",
@@ -3888,7 +3888,7 @@
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/whiteboards/{id}/properties",
       "status": "partial",
-      "notes": "Whiteboard JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with creator privacy, inherited visibility and atomic action records; property history resources remain.",
+      "notes": "Whiteboard JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with creator privacy, inherited visibility and atomic action records. Every change keeps an immutable version row; the pinned API publishes no property history read, so none is served.",
       "evidence": [
         "internal/confluence/whiteboards.go",
         "internal/confluence/http_test.go",
@@ -3903,7 +3903,7 @@
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/whiteboards/{whiteboard-id}/properties/{property-id}",
       "status": "partial",
-      "notes": "Whiteboard JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with creator privacy, inherited visibility and atomic action records; property history resources remain.",
+      "notes": "Whiteboard JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with creator privacy, inherited visibility and atomic action records. Every change keeps an immutable version row; the pinned API publishes no property history read, so none is served.",
       "evidence": [
         "internal/confluence/whiteboards.go",
         "internal/confluence/http_test.go",
@@ -3931,7 +3931,7 @@
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/attachments/{attachment-id}/properties",
       "status": "partial",
-      "notes": "Permission-scoped attachment properties support JSON values, key filtering, cursor pagination, immutable optimistic versions, expansion, conflict handling and deletion; broader content-property targets remain separate.",
+      "notes": "Permission-scoped attachment properties support JSON values, key filtering, cursor pagination, immutable optimistic versions, expansion, conflict handling and deletion. Every content kind Confluence gives properties \u2014 pages, blog posts, attachments, comments, custom content, folders, whiteboards, databases, Smart Links and spaces \u2014 has its own property routes here.",
       "evidence": [
         "internal/confluence/attachments.go",
         "internal/confluence/http_test.go",
@@ -4083,7 +4083,7 @@
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/databases/{id}/properties",
       "status": "partial",
-      "notes": "Database JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with database privacy, inherited visibility and atomic action records; property history resources remain.",
+      "notes": "Database JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with database privacy, inherited visibility and atomic action records. Every change keeps an immutable version row; the pinned API publishes no property history read, so none is served.",
       "evidence": [
         "internal/confluence/databases.go",
         "internal/confluence/http_test.go",
@@ -4117,7 +4117,7 @@
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/embeds/{id}/properties",
       "status": "partial",
-      "notes": "Smart Link JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with inherited visibility and atomic action records; property history resources remain.",
+      "notes": "Smart Link JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with inherited visibility and atomic action records. Every change keeps an immutable version row; the pinned API publishes no property history read, so none is served.",
       "evidence": [
         "internal/confluence/embeds.go",
         "internal/confluence/folders.go",
@@ -4148,7 +4148,7 @@
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/folders/{id}/properties",
       "status": "partial",
-      "notes": "Folder JSON properties support filtered and cursor-paged reads, create, exact-id reads, optimistic version updates, duplicate-key rejection, deletion, inherited visibility, and atomic action records; property version-history resources remain.",
+      "notes": "Folder JSON properties support filtered and cursor-paged reads, create, exact-id reads, optimistic version updates, duplicate-key rejection, deletion, inherited visibility, and atomic action records. Every change keeps an immutable version row; the pinned API publishes no property history read, so none is served.",
       "evidence": [
         "internal/confluence/folders.go",
         "internal/confluence/http_test.go",
@@ -4409,7 +4409,7 @@
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/whiteboards/{id}/properties",
       "status": "partial",
-      "notes": "Whiteboard JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with creator privacy, inherited visibility and atomic action records; property history resources remain.",
+      "notes": "Whiteboard JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with creator privacy, inherited visibility and atomic action records. Every change keeps an immutable version row; the pinned API publishes no property history read, so none is served.",
       "evidence": [
         "internal/confluence/whiteboards.go",
         "internal/confluence/http_test.go",
@@ -4437,7 +4437,7 @@
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/attachments/{attachment-id}/properties/{property-id}",
       "status": "partial",
-      "notes": "Permission-scoped attachment properties support JSON values, key filtering, cursor pagination, immutable optimistic versions, expansion, conflict handling and deletion; broader content-property targets remain separate.",
+      "notes": "Permission-scoped attachment properties support JSON values, key filtering, cursor pagination, immutable optimistic versions, expansion, conflict handling and deletion. Every content kind Confluence gives properties \u2014 pages, blog posts, attachments, comments, custom content, folders, whiteboards, databases, Smart Links and spaces \u2014 has its own property routes here.",
       "evidence": [
         "internal/confluence/attachments.go",
         "internal/confluence/http_test.go",
@@ -4526,7 +4526,7 @@
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/databases/{database-id}/properties/{property-id}",
       "status": "partial",
-      "notes": "Database JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with database privacy, inherited visibility and atomic action records; property history resources remain.",
+      "notes": "Database JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with database privacy, inherited visibility and atomic action records. Every change keeps an immutable version row; the pinned API publishes no property history read, so none is served.",
       "evidence": [
         "internal/confluence/databases.go",
         "internal/confluence/http_test.go",
@@ -4556,7 +4556,7 @@
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/embeds/{embed-id}/properties/{property-id}",
       "status": "partial",
-      "notes": "Smart Link JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with inherited visibility and atomic action records; property history resources remain.",
+      "notes": "Smart Link JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with inherited visibility and atomic action records. Every change keeps an immutable version row; the pinned API publishes no property history read, so none is served.",
       "evidence": [
         "internal/confluence/embeds.go",
         "internal/confluence/folders.go",
@@ -4570,7 +4570,7 @@
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/folders/{folder-id}/properties/{property-id}",
       "status": "partial",
-      "notes": "Folder JSON properties support filtered and cursor-paged reads, create, exact-id reads, optimistic version updates, duplicate-key rejection, deletion, inherited visibility, and atomic action records; property version-history resources remain.",
+      "notes": "Folder JSON properties support filtered and cursor-paged reads, create, exact-id reads, optimistic version updates, duplicate-key rejection, deletion, inherited visibility, and atomic action records. Every change keeps an immutable version row; the pinned API publishes no property history read, so none is served.",
       "evidence": [
         "internal/confluence/folders.go",
         "internal/confluence/http_test.go",
@@ -4711,7 +4711,7 @@
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml"
       ],
-      "notes": "Workspace administrators update exact-key JSON properties with optimistic next-version checks, immutable metadata and atomic sync; app scope enforcement and historical property reads remain."
+      "notes": "Workspace administrators update exact-key JSON properties with optimistic next-version checks, immutable metadata and atomic sync; app scope enforcement remains; the pinned API publishes no historical property read."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/tasks/{id}",
@@ -4748,7 +4748,7 @@
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/whiteboards/{whiteboard-id}/properties/{property-id}",
       "status": "partial",
-      "notes": "Whiteboard JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with creator privacy, inherited visibility and atomic action records; property history resources remain.",
+      "notes": "Whiteboard JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with creator privacy, inherited visibility and atomic action records. Every change keeps an immutable version row; the pinned API publishes no property history read, so none is served.",
       "evidence": [
         "internal/confluence/whiteboards.go",
         "internal/confluence/http_test.go",

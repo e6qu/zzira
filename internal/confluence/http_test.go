@@ -1325,7 +1325,10 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		t.Fatal("missing cursor Link header")
 	}
 	call(actor, "GET", "/pages?cursor=broken", nil, 400)
-	call(actor, "DELETE", "/pages/"+draft.ID, nil, 204)
+	// A draft is discarded with draft=true rather than sent to the trash.
+	call(actor, "DELETE", "/pages/"+draft.ID, nil, 400)
+	call(actor, "DELETE", "/pages/"+draft.ID+"?draft=true", nil, 204)
+	call(actor, "GET", "/pages/"+draft.ID+"?status=draft", nil, 404)
 	call(member, "GET", "/pages/"+draft.ID+"?status=trashed", nil, 404)
 	trash := call(member, "GET", "/pages?status=trashed", nil, 200)
 	if strings.Contains(trash.Body.String(), "Private draft") {

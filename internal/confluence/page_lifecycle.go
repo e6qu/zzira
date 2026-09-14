@@ -2,6 +2,8 @@ package confluence
 
 import (
 	"cmp"
+	"errors"
+	"github.com/jackc/pgx/v5"
 	"net/http"
 	"sort"
 	"strconv"
@@ -60,6 +62,11 @@ func (h *Handler) pageByID(w http.ResponseWriter, r *http.Request, ws, actor, id
 		writeError(w, err)
 		return
 	}
+	// Deleted pages are for the space's administrators to see and restore.
+	if page.Status == "deleted" && !h.canSeeDeleted(r, ws, actor, page.SpaceID, map[string]bool{}) {
+		writeError(w, pgx.ErrNoRows)
+		return
+	}
 	if raw := r.URL.Query().Get("version"); raw != "" {
 		number, parseErr := strconv.Atoi(raw)
 		if parseErr != nil || number < 1 {
@@ -78,8 +85,16 @@ func (h *Handler) pageByID(w http.ResponseWriter, r *http.Request, ws, actor, id
 		}
 	}
 	if flags["get-draft"] && page.Status != "draft" {
-		failure(w, 404, "Page draft not found.")
-		return
+		draft, draftErr := h.Store.WikiContentDraft(r.Context(), ws, actor, "page", id)
+		if errors.Is(draftErr, pgx.ErrNoRows) {
+			failure(w, 404, "Page draft not found.")
+			return
+		}
+		if draftErr != nil {
+			writeError(w, draftErr)
+			return
+		}
+		page = draftAsPage(page, draft)
 	}
 	if _, filtered := r.URL.Query()["status"]; filtered && !queryContains(r, "status", page.Status) {
 		failure(w, 404, "Page not found with the requested status.")
