@@ -277,4 +277,7 @@ func TestServiceDeskUploadsAndOrganizations(t *testing.T) {
 	callAs(customerID, http.MethodPost, "/rest/servicedeskapi/organization", `{"name":"Customer org `+deskKey+`"}`, http.StatusForbidden)
 	callAs(outsiderID, http.MethodDelete, "/rest/servicedeskapi/organization/"+agentOrganization.ID, "", http.StatusForbidden)
 	callAs(adminID, http.MethodDelete, "/rest/servicedeskapi/organization/"+agentOrganization.ID, "", http.StatusNoContent)
+
+	// Revoking portal-only access names an invalid account with 404.
+	callAs(adminID, http.MethodPut, "/rest/servicedeskapi/customer/user/nobody-"+deskKey+"/revoke-portal-only-access", "", http.StatusNotFound)
 }

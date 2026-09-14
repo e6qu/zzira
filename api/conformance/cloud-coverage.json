@@ -9029,7 +9029,7 @@
         "migrations/068_service_knowledge_assets.sql",
         "docs/SERVICE_MANAGEMENT.md"
       ],
-      "notes": "Returns the durable Assets-compatible workspace namespace for a site with service desks; Assets objects, schemas and imports remain outside this operation."
+      "notes": "Returns the durable Assets-compatible workspace ID for a site with service desks, paged; Assets objects and schemas are served by zzira's service asset inventory rather than this operation."
     },
     {
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/customer",
@@ -9071,6 +9071,7 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_desk_uploads_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service_organizations.go",
         "internal/commands/service_organizations.go",
@@ -9082,7 +9083,7 @@
         "e2e/service.spec.ts",
         "docs/SERVICE_MANAGEMENT.md"
       ],
-      "notes": "Site administrators durably revoke only portal-only accounts, remove their customer role, desk and organization access, and prevent request auto-enrollment from restoring access; Atlassian lifecycle events remain."
+      "notes": "Site administrators durably revoke only portal-only accounts, remove their customer role, desk and organization access, and prevent request auto-enrollment from restoring access; the revocation is audited, and an account ID that names no active portal-only customer answers 404."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/info",
@@ -9145,7 +9146,7 @@
         "internal/render/templates/service.gohtml",
         "e2e/service.spec.ts"
       ],
-      "notes": "Returns validated rendered storage content for an accessible linked knowledge article; the complete Confluence storage vocabulary remains partial."
+      "notes": "Returns the rendered content of an accessible linked knowledge article, produced by the same storage renderer as Confluence pages."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/organization",
@@ -9507,7 +9508,7 @@
         "e2e/service.spec.ts",
         "docs/SERVICE_MANAGEMENT.md"
       ],
-      "notes": "Consumes actor-owned one-use temporary IDs and creates canonical Jira attachments linked to a public or internal comment; richer comment body forms remain."
+      "notes": "Consumes actor-owned one-use temporary IDs and creates canonical Jira attachments linked to a public or internal comment whose body comes from Jira's additionalComment."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/attachment/{attachmentId}",
@@ -9649,7 +9650,7 @@
         "e2e/service.spec.ts",
         "docs/SERVICE_MANAGEMENT.md"
       ],
-      "notes": "Atomically removes existing non-reporter participants and immediately revokes request visibility; organization membership semantics remain."
+      "notes": "Atomically removes existing non-reporter participants and immediately revokes the request visibility participation gave; access through a shared organization is unaffected."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/participant",
@@ -9664,7 +9665,7 @@
         "e2e/service.spec.ts",
         "docs/SERVICE_MANAGEMENT.md"
       ],
-      "notes": "Lists active request participants with customer-safe user beans and request visibility enforcement; organization-derived participants remain; pages carry Jira base, context, self, next and prev links."
+      "notes": "Lists the request's explicitly added participants with customer-safe user beans and request visibility enforcement; organization members see shared requests through request ownership rather than as participants. Pages carry Jira base, context, self, next and prev links."
     },
     {
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/request/{issueIdOrKey}/participant",
@@ -9897,7 +9898,7 @@
         "e2e/service.spec.ts",
         "docs/SERVICE_MANAGEMENT.md"
       ],
-      "notes": "Agents assigned to the desk receive a paged, display-name ordered active customer list with display-name, email, account-ID query matching; exact project permission variants remain."
+      "notes": "Returns the desk's paged, display-name ordered active customers to those who may view them, its agents and service desk administrators, matching query against display name, email and account ID."
     },
     {
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/servicedesk/{serviceDeskId}/customer",

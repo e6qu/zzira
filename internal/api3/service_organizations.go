@@ -82,6 +82,8 @@ func (h *Handler) revokeServiceCustomer(w http.ResponseWriter, r *http.Request, 
 	if err := h.Commands.RevokePortalOnlyServiceCustomer(r.Context(), actorID, workspaceID, accountID); err != nil {
 		if strings.Contains(err.Error(), "administrator") {
 			jiraError(w, http.StatusForbidden, err.Error())
+		} else if strings.Contains(err.Error(), "not an active portal-only customer") {
+			jiraError(w, http.StatusNotFound, "The account ID is invalid.")
 		} else {
 			jiraError(w, http.StatusBadRequest, err.Error())
 		}
