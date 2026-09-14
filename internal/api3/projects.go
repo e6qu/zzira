@@ -84,26 +84,19 @@ func (h *Handler) updateProject(w http.ResponseWriter, r *http.Request, key stri
 		projectError(w, err)
 		return
 	}
-	h.writeProject(w, r, p)
+	h.writeProject(w, r, userID, p)
 }
 
-func (h *Handler) writeProject(w http.ResponseWriter, r *http.Request, p *models.Project) {
-	bean := h.projectBean(p)
-	if p.CategoryID != "" {
-		category, err := h.Store.ProjectCategory(r.Context(), p.WorkspaceID, p.CategoryID)
-		if err != nil {
-			projectError(w, err)
-			return
-		}
-		bean["projectCategory"] = h.categoryBean(category)
+func (h *Handler) writeProject(w http.ResponseWriter, r *http.Request, userID string, p *models.Project) {
+	view, err := h.newProjectView(r, p.WorkspaceID, true)
+	if err != nil {
+		projectError(w, err)
+		return
 	}
-	if p.LeadAccountID != "" {
-		lead, err := h.Store.UserByID(r.Context(), p.LeadAccountID)
-		if err != nil {
-			projectError(w, err)
-			return
-		}
-		bean["lead"] = h.userBeanFor(r.Context(), lead)
+	bean, err := h.projectRepresentation(r, p.WorkspaceID, userID, p, view)
+	if err != nil {
+		projectError(w, err)
+		return
 	}
 	writeJSON(w, http.StatusOK, bean)
 }
@@ -112,7 +105,7 @@ func filterProjects(r *http.Request, projects []*models.Project) ([]*models.Proj
 	q := r.URL.Query()
 	for key := range q {
 		switch key {
-		case "query", "keys", "id", "typeKey", "categoryId", "startAt", "maxResults", "orderBy":
+		case "query", "keys", "id", "typeKey", "categoryId", "startAt", "maxResults", "orderBy", "action", "status", "expand", "properties", "propertyQuery":
 		default:
 			return nil, &jerr{400, "Unsupported project search parameter: " + key, nil}
 		}
@@ -122,8 +115,10 @@ func filterProjects(r *http.Request, projects []*models.Project) ([]*models.Proj
 		order = "key"
 	}
 	field := strings.TrimLeft(order, "+-")
-	if field != "key" && field != "name" {
-		return nil, &jerr{400, "orderBy must be key, name, -key or -name.", nil}
+	switch field {
+	case "key", "name", "category", "owner", "issueCount", "lastIssueUpdatedDate", "archivedDate", "deletedDate":
+	default:
+		return nil, &jerr{400, "orderBy must be category, key, name, owner, issueCount, lastIssueUpdatedDate, archivedDate or deletedDate, optionally prefixed with + or -.", nil}
 	}
 	keys, ids := commaQuerySet(r, "keys"), commaQuerySet(r, "id")
 	query := strings.ToLower(q.Get("query"))

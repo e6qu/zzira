@@ -10,6 +10,8 @@ import (
 
 	"github.com/e6qu/zzira/internal/store"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/e6qu/zzira/internal/models"
 )
 
 func isProjectLifecyclePath(path string, method string) bool {
@@ -84,92 +86,37 @@ func (h *Handler) recentProjects(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	expands := commaQuerySet(r, "expand")
-	for expand := range expands {
-		switch expand {
-		case "description", "projectkeys", "lead", "issuetypes", "url", "permissions", "insight", "*":
-		default:
-			jiraError(w, http.StatusBadRequest, "Unsupported project expansion: "+expand)
+	// An anonymous caller has no account to remember projects against.
+	projects := []*models.Project{}
+	if userID != "" {
+		recent, err := h.Store.RecentProjects(r.Context(), workspaceID, userID)
+		if err != nil {
+			projectLifecycleError(w, err)
 			return
 		}
-	}
-	projects, err := h.Store.RecentProjects(r.Context(), workspaceID, userID)
-	if err != nil {
-		projectLifecycleError(w, err)
-		return
-	}
-	categories, err := h.projectCategoryMap(r.Context(), workspaceID)
-	if err != nil {
-		projectLifecycleError(w, err)
-		return
-	}
-	propertyKeys := commaQuerySet(r, "properties")
-	all := querySetContains(expands, "*")
-	isAdmin, err := h.Store.IsAdmin(r.Context(), workspaceID, userID)
-	if err != nil {
-		projectLifecycleError(w, err)
-		return
-	}
-	var issueTypes any
-	if all || querySetContains(expands, "issueTypes") {
-		types, typesErr := h.Store.IssueTypes(r.Context(), workspaceID)
-		if typesErr != nil {
-			projectLifecycleError(w, typesErr)
-			return
+		for _, project := range recent {
+			allowed, err := h.canBrowseProject(r, workspaceID, userID, project.ID)
+			if err != nil {
+				projectLifecycleError(w, err)
+				return
+			}
+			if allowed {
+				projects = append(projects, project)
+			}
 		}
-		beans := make([]map[string]any, 0, len(types))
-		for _, issueType := range types {
-			beans = append(beans, h.issueTypeBean(issueType))
-		}
-		issueTypes = beans
 	}
+	view, err := h.newProjectView(r, workspaceID, false)
+	if err != nil {
+		projectLifecycleError(w, err)
+		return
+	}
+	view.insightMillis = true
 	values := make([]map[string]any, 0, len(projects))
 	for _, project := range projects {
-		bean := h.projectBean(project)
-		if category := categories[project.CategoryID]; category != nil {
-			bean["projectCategory"] = h.categoryBean(category)
-		}
-		if all || querySetContains(expands, "projectKeys") {
-			bean["projectKeys"] = []string{project.Key}
-		}
-		if (all || querySetContains(expands, "lead")) && project.LeadAccountID != "" {
-			lead, leadErr := h.Store.UserByID(r.Context(), project.LeadAccountID)
-			if leadErr != nil {
-				projectLifecycleError(w, leadErr)
-				return
-			}
-			bean["lead"] = h.userBeanFor(r.Context(), lead)
-		}
-		if all || querySetContains(expands, "issueTypes") {
-			bean["issueTypes"] = issueTypes
-		}
-		if all || querySetContains(expands, "permissions") {
-			bean["permissions"] = map[string]any{
-				"BROWSE_PROJECTS":     map[string]any{"id": "10", "key": "BROWSE_PROJECTS", "name": "Browse Projects", "havePermission": true},
-				"ADMINISTER_PROJECTS": map[string]any{"id": "23", "key": "ADMINISTER_PROJECTS", "name": "Administer Projects", "havePermission": isAdmin},
-			}
-		}
-		if all || querySetContains(expands, "insight") {
-			count, updated, insightErr := h.Store.ProjectInsight(r.Context(), workspaceID, project.ID)
-			if insightErr != nil {
-				projectLifecycleError(w, insightErr)
-				return
-			}
-			bean["insight"] = map[string]any{"totalIssueCount": count, "lastIssueUpdateTime": updated}
-		}
-		if len(propertyKeys) > 0 {
-			properties, propertyErr := h.Store.ProjectProperties(r.Context(), workspaceID, project.ID)
-			if propertyErr != nil {
-				projectLifecycleError(w, propertyErr)
-				return
-			}
-			selected := map[string]any{}
-			for _, property := range properties {
-				if querySetContains(propertyKeys, property.Key) {
-					selected[property.Key] = property.Value
-				}
-			}
-			bean["properties"] = selected
+		bean, beanErr := h.projectRepresentation(r, workspaceID, userID, project, view)
+		if beanErr != nil {
+			projectLifecycleError(w, beanErr)
+			return
 		}
 		values = append(values, bean)
 	}
@@ -200,7 +147,7 @@ func (h *Handler) restoreProject(w http.ResponseWriter, r *http.Request, idOrKey
 		projectLifecycleError(w, err)
 		return
 	}
-	h.writeProject(w, r, project)
+	h.writeProject(w, r, userID, project)
 }
 
 func parseEnableUndo(r *http.Request) (bool, error) {

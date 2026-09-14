@@ -8518,9 +8518,11 @@
         "internal/api3/project_governance_test.go",
         "internal/api3/projects_test.go",
         "e2e/projects.spec.ts",
-        "docs/PROJECT_GOVERNANCE.md"
+        "docs/PROJECT_GOVERNANCE.md",
+        "internal/api3/project_expansion_test.go",
+        "internal/api3/project_expansion.go"
       ],
-      "notes": "Returns workspace-visible project beans including stored categories; legacy recent/properties expansions remain."
+      "notes": "Returns browsable project beans with stored categories, the description, issueTypes, lead and projectKeys expansions, the recent parameter's most recently viewed projects up to 20, and selected properties; anonymous callers see projects granted to anyone."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/project/recent",
@@ -8528,9 +8530,11 @@
       "evidence": [
         "internal/api3/project_lifecycle_test.go",
         "e2e/projects.spec.ts",
-        "docs/PROJECT_LIFECYCLE.md"
+        "docs/PROJECT_LIFECYCLE.md",
+        "internal/api3/project_expansion_test.go",
+        "internal/api3/project_expansion.go"
       ],
-      "notes": "Returns the caller\u2019s 20 most recently viewed active projects with selected properties and supported project expansions; anonymous project browsing and complete Jira permission schemes remain."
+      "notes": "Returns the caller's 20 most recently viewed browsable projects with every expansion \u2014 description, projectKeys, lead, issueTypes, url, evaluated permissions.canEdit and insight in epoch milliseconds \u2014 and selected properties; anonymous callers, who have no account history, receive an empty list."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/project/search",
@@ -8539,9 +8543,11 @@
         "internal/api3/project_governance_test.go",
         "internal/api3/projects_test.go",
         "e2e/projects.spec.ts",
-        "docs/PROJECT_GOVERNANCE.md"
+        "docs/PROJECT_GOVERNANCE.md",
+        "internal/api3/project_expansion_test.go",
+        "internal/api3/project_expansion.go"
       ],
-      "notes": "Pages and orders workspace projects with key, ID, query, type, and category filters; action/status/property queries and expansions remain."
+      "notes": "Pages projects by action (view, browse, edit, create evaluated through permission schemes) and status (live, archived, deleted), with key, ID, query, type and category filters, propertyQuery over nested and array values, selected properties, every documented ordering and the description, projectKeys, lead, issueTypes, url and insight expansions; archived and deleted projects carry their dates, actor and retention date."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/project/type",
@@ -8590,9 +8596,11 @@
         "internal/api3/project_governance_test.go",
         "internal/api3/projects_test.go",
         "e2e/projects.spec.ts",
-        "docs/PROJECT_GOVERNANCE.md"
+        "docs/PROJECT_GOVERNANCE.md",
+        "internal/api3/project_expansion_test.go",
+        "internal/api3/project_expansion.go"
       ],
-      "notes": "Resolves numeric ID or case-insensitive key and returns details, lead, type, and category; remaining expansions and permission granularity remain."
+      "notes": "Resolves numeric ID or case-insensitive key for browsable projects and returns Jira's full bean \u2014 description, lead, issue types, components, versions, role URLs, category, isPrivate and selected properties \u2014 with the projectKeys and issueTypeHierarchy expansions; anonymous reads follow permissions granted to anyone."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/project/{projectIdOrKey}/component",

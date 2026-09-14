@@ -10,9 +10,13 @@ replicas, asynchronous tasks, and attachment storage.
 
 - Opening a project through the browser or `GET /rest/api/3/project/{idOrKey}`
   records a workspace- and user-scoped view. `GET /rest/api/3/project/recent`
-  returns up to 20 active projects in recency order and supports selected
-  properties plus `projectKeys`, `lead`, `issueTypes`, `permissions`, and
-  `insight` expansions.
+  returns up to 20 browsable active projects in recency order with selected
+  properties and every documented expansion. Project reads share one bean
+  builder: `GET /rest/api/3/project/{idOrKey}` returns components, versions,
+  role URLs and the `issueTypeHierarchy` expansion, and project search filters
+  by `action`, `status` (live, archived, deleted), `propertyQuery` and every
+  documented ordering, reporting archive and trash dates, actors and the
+  60-day retention date.
 - Administrators can archive an active project. Its database state remains
   intact while project reads, search, work-item access, boards, reports, and
   service-desk discovery stop exposing it. Archive actions remove its project,
@@ -58,12 +62,11 @@ transactional.
 
 ## Compatibility limits
 
-- ZZIRA requires authentication for recent-project reads; Jira can expose this
-  operation anonymously when public project permissions allow it.
+- Recent projects are remembered per account, so anonymous callers receive an
+  empty list; Jira's session-scoped anonymous history has no account to attach
+  to.
 - Lifecycle administration remains site-admin scoped; the shared permission
   evaluator is available, but lifecycle mutations have not yet adopted a
   project-level permission key.
-- Recent-project expansions cover the useful Jira project bean fields listed
-  above; every optional project representation remains part of PR 1.
 - Automatic trash deletion uses ZZIRA's hourly worker cadence rather than
   Atlassian's internal scheduling interval.
