@@ -11983,9 +11983,11 @@
         "migrations/079_wiki_attachment_comments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/comment_lifecycle_test.go",
+        "docs/CONFLUENCE_COMMENTS.md"
       ],
-      "notes": "Returns version-validated, permission-scoped top-level attachment comments with storage bodies, documented sorts and cursor pagination; other body representations remain."
+      "notes": "Returns version-validated, permission-scoped top-level attachment comments with storage bodies, documented sorts and cursor pagination; collections read in storage or the document format."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/attachments/{id}/labels",
@@ -12393,9 +12395,11 @@
         "internal/commands/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/comment_lifecycle_test.go",
+        "docs/CONFLUENCE_COMMENTS.md"
       ],
-      "notes": "Blog posts share exact-passage inline threads with pages, including replies, optimistic versions, resolve/reopen state, likes and operations. Collections support body format, status, resolution status, sort and cursor paging; public/private visibility shapes reads and sync, and the UI supports authoring and resolution. Rich anchor relocation after edits and live collaboration remain."
+      "notes": "Blog posts share exact-passage inline threads with pages, including replies, optimistic versions, resolve/reopen state, likes and operations. Collections support body format, status, resolution status, sort and cursor paging; public/private visibility shapes reads and sync, and the UI supports authoring and resolution. Anchors follow edits, versions and redactions, dangling when their passage is gone; live collaboration remains."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{id}/labels",
@@ -12773,9 +12777,11 @@
       "status": "partial",
       "evidence": [
         "internal/confluence/custom_content_test.go",
-        "docs/CUSTOM_CONTENT.md"
+        "docs/CUSTOM_CONTENT.md",
+        "internal/confluence/comment_lifecycle_test.go",
+        "docs/CONFLUENCE_COMMENTS.md"
       ],
-      "notes": "The read is tested; it answers an empty page because custom content cannot be commented on yet."
+      "notes": "Footer comments on custom content are listed in the page comment formats and sorts, with replies inheriting the custom content, visibility following the custom content and privacy-shaped sync."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/custom-content/{id}/labels",
@@ -13540,9 +13546,11 @@
         "migrations/073_wiki_footer_comments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/comment_lifecycle_test.go",
+        "docs/CONFLUENCE_COMMENTS.md"
       ],
-      "notes": "Lists all visible page and attachment footer comments with cursor pagination, storage bodies and four documented sort orders; other content targets and body formats remain."
+      "notes": "Lists all visible page and attachment footer comments with cursor pagination, storage bodies and four documented sort orders; custom content takes footer comments too, and bodies are written and read in the page body forms and formats."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/footer-comments",
@@ -13557,9 +13565,11 @@
         "migrations/073_wiki_footer_comments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/comment_lifecycle_test.go",
+        "docs/CONFLUENCE_COMMENTS.md"
       ],
-      "notes": "Creates page and attachment comments plus threaded replies from flat or representation-keyed storage bodies, returning the documented 201 and Location header; other content targets and body formats remain."
+      "notes": "Creates page and attachment comments plus threaded replies from flat or representation-keyed storage bodies, returning the documented 201 and Location header; custom content takes footer comments too, and bodies are written and read in the page body forms and formats."
     },
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/footer-comments/{comment-id}",
@@ -13591,9 +13601,11 @@
         "migrations/073_wiki_footer_comments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/comment_lifecycle_test.go",
+        "docs/CONFLUENCE_COMMENTS.md"
       ],
-      "notes": "Returns a visible page or attachment footer comment and optional storage body; broader expansions remain."
+      "notes": "Returns a visible page or attachment footer comment and optional storage body; a single footer comment read takes include-properties, include-operations, include-likes, include-versions and include-version."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/footer-comments/{comment-id}",
@@ -13608,9 +13620,11 @@
         "migrations/073_wiki_footer_comments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/comment_lifecycle_test.go",
+        "docs/CONFLUENCE_COMMENTS.md"
       ],
-      "notes": "Updates an author-owned or administrator-moderated page or attachment comment with strict next-version concurrency and immutable version persistence; other body formats remain."
+      "notes": "Updates an author-owned or administrator-moderated page or attachment comment with strict next-version concurrency and immutable version persistence; bodies are written as storage, the document format or wiki markup."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/footer-comments/{id}/children",
@@ -13727,9 +13741,11 @@
         "migrations/081_wiki_inline_comments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/comment_lifecycle_test.go",
+        "docs/CONFLUENCE_COMMENTS.md"
       ],
-      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog-post comments, ADF bodies, rich anchor relocation/dangling detection, and the remaining expansion semantics remain."
+      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog posts take the same threads; bodies are written as storage, the document format or wiki markup and read in every primary format; anchors follow page and blog edits, versions and redactions, dangling when the passage is gone and reattaching when it returns; single reads take every include flag."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/inline-comments",
@@ -13744,9 +13760,11 @@
         "migrations/081_wiki_inline_comments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/comment_lifecycle_test.go",
+        "docs/CONFLUENCE_COMMENTS.md"
       ],
-      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog-post comments, ADF bodies, rich anchor relocation/dangling detection, and the remaining expansion semantics remain."
+      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog posts take the same threads; bodies are written as storage, the document format or wiki markup and read in every primary format; anchors follow page and blog edits, versions and redactions, dangling when the passage is gone and reattaching when it returns; single reads take every include flag."
     },
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/inline-comments/{comment-id}",
@@ -13761,9 +13779,11 @@
         "migrations/081_wiki_inline_comments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/comment_lifecycle_test.go",
+        "docs/CONFLUENCE_COMMENTS.md"
       ],
-      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog-post comments, ADF bodies, rich anchor relocation/dangling detection, and the remaining expansion semantics remain."
+      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog posts take the same threads; bodies are written as storage, the document format or wiki markup and read in every primary format; anchors follow page and blog edits, versions and redactions, dangling when the passage is gone and reattaching when it returns; single reads take every include flag."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/inline-comments/{comment-id}",
@@ -13778,9 +13798,11 @@
         "migrations/081_wiki_inline_comments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/comment_lifecycle_test.go",
+        "docs/CONFLUENCE_COMMENTS.md"
       ],
-      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog-post comments, ADF bodies, rich anchor relocation/dangling detection, and the remaining expansion semantics remain."
+      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog posts take the same threads; bodies are written as storage, the document format or wiki markup and read in every primary format; anchors follow page and blog edits, versions and redactions, dangling when the passage is gone and reattaching when it returns; single reads take every include flag."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/inline-comments/{comment-id}",
@@ -13795,9 +13817,11 @@
         "migrations/081_wiki_inline_comments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/comment_lifecycle_test.go",
+        "docs/CONFLUENCE_COMMENTS.md"
       ],
-      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog-post comments, ADF bodies, rich anchor relocation/dangling detection, and the remaining expansion semantics remain."
+      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog posts take the same threads; bodies are written as storage, the document format or wiki markup and read in every primary format; anchors follow page and blog edits, versions and redactions, dangling when the passage is gone and reattaching when it returns; single reads take every include flag."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/inline-comments/{id}/children",
@@ -13812,9 +13836,11 @@
         "migrations/081_wiki_inline_comments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/comment_lifecycle_test.go",
+        "docs/CONFLUENCE_COMMENTS.md"
       ],
-      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog-post comments, ADF bodies, rich anchor relocation/dangling detection, and the remaining expansion semantics remain."
+      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog posts take the same threads; bodies are written as storage, the document format or wiki markup and read in every primary format; anchors follow page and blog edits, versions and redactions, dangling when the passage is gone and reattaching when it returns; single reads take every include flag."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/inline-comments/{id}/likes/count",
@@ -13829,9 +13855,11 @@
         "migrations/081_wiki_inline_comments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/comment_lifecycle_test.go",
+        "docs/CONFLUENCE_COMMENTS.md"
       ],
-      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog-post comments, ADF bodies, rich anchor relocation/dangling detection, and the remaining expansion semantics remain."
+      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog posts take the same threads; bodies are written as storage, the document format or wiki markup and read in every primary format; anchors follow page and blog edits, versions and redactions, dangling when the passage is gone and reattaching when it returns; single reads take every include flag."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/inline-comments/{id}/likes/users",
@@ -13846,9 +13874,11 @@
         "migrations/081_wiki_inline_comments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/comment_lifecycle_test.go",
+        "docs/CONFLUENCE_COMMENTS.md"
       ],
-      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog-post comments, ADF bodies, rich anchor relocation/dangling detection, and the remaining expansion semantics remain."
+      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog posts take the same threads; bodies are written as storage, the document format or wiki markup and read in every primary format; anchors follow page and blog edits, versions and redactions, dangling when the passage is gone and reattaching when it returns; single reads take every include flag."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/inline-comments/{id}/operations",
@@ -13863,9 +13893,11 @@
         "migrations/081_wiki_inline_comments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/comment_lifecycle_test.go",
+        "docs/CONFLUENCE_COMMENTS.md"
       ],
-      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog-post comments, ADF bodies, rich anchor relocation/dangling detection, and the remaining expansion semantics remain."
+      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog posts take the same threads; bodies are written as storage, the document format or wiki markup and read in every primary format; anchors follow page and blog edits, versions and redactions, dangling when the passage is gone and reattaching when it returns; single reads take every include flag."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/inline-comments/{id}/versions",
@@ -13880,9 +13912,11 @@
         "migrations/081_wiki_inline_comments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/comment_lifecycle_test.go",
+        "docs/CONFLUENCE_COMMENTS.md"
       ],
-      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog-post comments, ADF bodies, rich anchor relocation/dangling detection, and the remaining expansion semantics remain."
+      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog posts take the same threads; bodies are written as storage, the document format or wiki markup and read in every primary format; anchors follow page and blog edits, versions and redactions, dangling when the passage is gone and reattaching when it returns; single reads take every include flag."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/inline-comments/{id}/versions/{version-number}",
@@ -13897,9 +13931,11 @@
         "migrations/081_wiki_inline_comments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/comment_lifecycle_test.go",
+        "docs/CONFLUENCE_COMMENTS.md"
       ],
-      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog-post comments, ADF bodies, rich anchor relocation/dangling detection, and the remaining expansion semantics remain."
+      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog posts take the same threads; bodies are written as storage, the document format or wiki markup and read in every primary format; anchors follow page and blog edits, versions and redactions, dangling when the passage is gone and reattaching when it returns; single reads take every include flag."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/labels",
@@ -14269,9 +14305,11 @@
         "migrations/081_wiki_inline_comments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/comment_lifecycle_test.go",
+        "docs/CONFLUENCE_COMMENTS.md"
       ],
-      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog-post comments, ADF bodies, rich anchor relocation/dangling detection, and the remaining expansion semantics remain."
+      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog posts take the same threads; bodies are written as storage, the document format or wiki markup and read in every primary format; anchors follow page and blog edits, versions and redactions, dangling when the passage is gone and reattaching when it returns; single reads take every include flag."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{id}/labels",
