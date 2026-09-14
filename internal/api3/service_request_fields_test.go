@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -183,5 +184,42 @@ func TestServiceRequestTypeFieldsAndHiddenPresets(t *testing.T) {
 		t.Fatalf("request types in the incidents group = %s", grouped)
 	}
 	call(http.MethodGet, "/rest/servicedeskapi/requesttype?restrictionStatus=SECRET", "", http.StatusBadRequest)
+
+	// A queue's requests carry only the fields the queue shows.
+	var queueID string
+	var queueFields []string
+	if err = st.Pool.QueryRow(ctx, `SELECT id,fields FROM service_queues WHERE service_desk_id=$1 AND kind='all_open'`, serviceDeskID).Scan(&queueID, &queueFields); err != nil {
+		t.Fatal(err)
+	}
+	var queuePage struct {
+		Values []struct {
+			Key    string         `json:"key"`
+			Fields map[string]any `json:"fields"`
+		} `json:"values"`
+	}
+	if err = json.Unmarshal([]byte(call(http.MethodGet, "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/queue/"+queueID+"/issue", "", http.StatusOK)), &queuePage); err != nil || len(queuePage.Values) == 0 {
+		t.Fatalf("queue issues = %+v err=%v", queuePage, err)
+	}
+	for _, value := range queuePage.Values {
+		for field := range value.Fields {
+			if !slices.Contains(queueFields, field) {
+				t.Fatalf("queue issue %s carries %s outside the queue's fields %v", value.Key, field, queueFields)
+			}
+		}
+	}
+
+	// Deleting a request type in use removes it from its requests, which remain.
+	requestTypePath := "/rest/servicedeskapi/servicedesk/" + serviceDeskID + "/requesttype/" + requestTypeID
+	callAs(customerID, http.MethodDelete, requestTypePath, "", http.StatusForbidden)
+	call(http.MethodDelete, requestTypePath, "", http.StatusNoContent)
+	call(http.MethodGet, requestTypePath, "", http.StatusNotFound)
+	call(http.MethodDelete, requestTypePath, "", http.StatusNotFound)
+	if orphan := callAs(customerID, http.MethodGet, "/rest/servicedeskapi/request/"+fmt.Sprint(created["issueKey"]), "", http.StatusOK); !strings.Contains(orphan, `"requestTypeId":""`) {
+		t.Fatalf("a request of a deleted request type = %s", orphan)
+	}
+	var audited bool
+	if err = st.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM organization_audit_events WHERE action='service.request_type.deleted' AND target_id=$1 AND (detail->>'requests')::int >= 1)`, requestTypeID).Scan(&audited); err != nil || !audited {
+		t.Fatalf("request type deletion audit = %v err=%v", audited, err)
+	}
 	call(http.MethodGet, "/rest/servicedeskapi/requesttype?includeHiddenRequestTypesInSearch=maybe", "", http.StatusBadRequest)
 }

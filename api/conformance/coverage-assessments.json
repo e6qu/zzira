@@ -5240,12 +5240,13 @@
       "operationId": "jira-service-management:DELETE:/rest/servicedeskapi/servicedesk/{serviceDeskId}/requesttype/{requestTypeId}",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_request_fields_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service.go",
         "internal/store/service.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Deletes a workspace-scoped request type for administrators with the documented empty response; request migration and audit remain."
+      "notes": "Deletes a request type for administrators and removes it from the customer requests that used it, which remain without a request type, in one transaction with an audit event naming how many requests it touched; unknown desks or request types answer 404 and non-administrators 403."
     },
     {
       "operationId": "jira-service-management:DELETE:/rest/servicedeskapi/servicedesk/{serviceDeskId}/requesttype/{requestTypeId}/property/{propertyKey}",
@@ -5701,37 +5702,40 @@
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/servicedesk/{serviceDeskId}/queue",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_request_fields_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service.go",
         "internal/store/service.go",
         "e2e/service.spec.ts",
         "docs/SERVICE_MANAGEMENT.md"
       ],
-      "notes": "Lists the ordered default queues with optional live request counts and per-service-desk agent authorization; custom queue administration remains."
+      "notes": "Lists the desk's ordered queues, default and custom, with their JQL, configured fields and optional live request counts, for the desk's agents; queues are administered in the agent workspace, as the REST API defines no queue writes."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/servicedesk/{serviceDeskId}/queue/{queueId}",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_request_fields_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service.go",
         "internal/store/service.go",
         "e2e/service.spec.ts",
         "docs/SERVICE_MANAGEMENT.md"
       ],
-      "notes": "Returns one workspace-scoped queue with its JQL, visible fields and optional live count; custom queue configuration remains."
+      "notes": "Returns one workspace-scoped queue, default or custom, with its JQL, configured fields and optional live count, for the desk's agents."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/servicedesk/{serviceDeskId}/queue/{queueId}/issue",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_request_fields_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service.go",
         "internal/store/service.go",
         "e2e/service.spec.ts",
         "docs/SERVICE_MANAGEMENT.md"
       ],
-      "notes": "Returns queue-filtered request issue beans for all-open, SLA-attention, unassigned and current-agent views with breached-first SLA prioritization; arbitrary JQL queues and complete field projection remain."
+      "notes": "Returns a queue's requests (the all-open, SLA-attention, unassigned and current-agent views with breached-first SLA prioritization, or a custom queue's JQL) to the desk's agents, each carrying only the fields the queue is configured to show, paged."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/servicedesk/{serviceDeskId}/requesttype",

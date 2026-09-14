@@ -3,6 +3,7 @@ package api3
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -178,11 +179,16 @@ func (h *Handler) serviceDeskRoute(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if len(parts) == 4 && r.Method == http.MethodDelete {
-			if _, _, err := h.authWorkspaceAdmin(r); err != nil {
-				writeJerr(w, err)
+			_, adminID, adminErr := h.authWorkspaceAdmin(r)
+			if adminErr != nil {
+				writeJerr(w, adminErr)
 				return
 			}
-			if err := h.Store.DeleteServiceRequestType(r.Context(), workspaceID, parts[1], parts[3]); err != nil {
+			if err := h.Store.DeleteServiceRequestType(r.Context(), workspaceID, adminID, parts[1], parts[3]); err != nil {
+				if errors.Is(err, store.ErrServiceRequestTypeNotFound) {
+					jiraError(w, http.StatusNotFound, "The service desk or request type does not exist.")
+					return
+				}
 				jiraError(w, http.StatusInternalServerError, "Could not delete request type.")
 				return
 			}
@@ -263,15 +269,15 @@ func (h *Handler) getServiceQueue(w http.ResponseWriter, r *http.Request, worksp
 		writeJSON(w, http.StatusOK, h.serviceQueueBean(*queue, r.URL.Query().Get("includeCount") == "true"))
 		return
 	}
+	// Each request carries only the fields the queue is configured to show.
 	beans := make([]map[string]any, 0, len(requests))
 	for _, request := range requests {
-		fields := map[string]any{"summary": request.Issue.Summary, "issuetype": request.Issue.IssueType, "created": request.CreatedAt.UTC().Format("2006-01-02T15:04:05.000-0700"), "reporter": h.serviceUserBean(request.Customer), "status": request.Issue.Status}
-		if request.Issue.Assignee != nil {
-			fields["assignee"] = h.serviceUserBean(request.Issue.Assignee)
-		} else {
-			fields["assignee"] = nil
+		bean := projectSearchIssue(h.issueBean(request.Issue), queue.Fields, false)
+		if _, projected := bean["fields"]; !projected {
+			full := h.issueBean(request.Issue)
+			bean["key"], bean["self"], bean["fields"] = full["key"], full["self"], map[string]any{}
 		}
-		beans = append(beans, map[string]any{"id": jiraIssueID(request.Issue), "key": request.Issue.Key, "self": h.BaseURL + "/rest/api/3/issue/" + jiraIssueID(request.Issue), "fields": fields})
+		beans = append(beans, bean)
 	}
 	h.writeServicePage(w, r, beans)
 }

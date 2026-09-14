@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -99,10 +100,43 @@ func (s *Store) CreateServiceRequestType(ctx context.Context, workspaceID, servi
 	return requestType, tx.Commit(ctx)
 }
 
-func (s *Store) DeleteServiceRequestType(ctx context.Context, workspaceID, serviceDeskID, id string) error {
-	_, err := s.Pool.Exec(ctx, `DELETE FROM service_request_types WHERE id=$3 AND service_desk_id=$2 AND service_desk_id IN (SELECT id FROM service_desks WHERE workspace_id=$1)`, workspaceID, serviceDeskID, id)
-	return err
+// DeleteServiceRequestType deletes a request type and removes it from the
+// customer requests that used it, which remain, recording the deletion.
+func (s *Store) DeleteServiceRequestType(ctx context.Context, workspaceID, actorID, serviceDeskID, id string) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var name string
+	var requests int
+	err = tx.QueryRow(ctx, `
+		SELECT rt.name,(SELECT count(*) FROM service_requests sr WHERE sr.request_type_id=rt.id)
+		FROM service_request_types rt JOIN service_desks sd ON sd.id=rt.service_desk_id
+		WHERE sd.workspace_id=$1 AND sd.id=$2 AND rt.id=$3 FOR UPDATE OF rt`, workspaceID, serviceDeskID, id).Scan(&name, &requests)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrServiceRequestTypeNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, `DELETE FROM service_request_types WHERE id=$1`, id); err != nil {
+		return err
+	}
+	detail, err := json.Marshal(map[string]any{"serviceDeskId": serviceDeskID, "name": name, "requests": requests})
+	if err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, `
+		INSERT INTO organization_audit_events(organization_id,actor_id,action,target_type,target_id,detail)
+		SELECT organization_id,$2,'service.request_type.deleted','service_request_type',$3,$4::jsonb FROM sites WHERE workspace_id=$1`, workspaceID, actorID, id, detail); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
+
+// ErrServiceRequestTypeNotFound reports a request type the desk does not have.
+var ErrServiceRequestTypeNotFound = errors.New("request type does not exist")
 
 // EnrollServiceCustomer marks an existing account as a portal customer for a
 // workspace. Product access remains governed independently by role bindings.
@@ -224,7 +258,8 @@ func (s *Store) CreateServiceRequest(ctx context.Context, workspaceID, issueID, 
 }
 
 func (s *Store) serviceRequestFromRow(ctx context.Context, workspaceID string, row pgx.Row) (*models.ServiceRequest, error) {
-	var issueID, deskID, requestTypeID, customerID, channel string
+	var issueID, deskID, customerID, channel string
+	var requestTypeID *string
 	request := &models.ServiceRequest{}
 	if err := row.Scan(&issueID, &deskID, &requestTypeID, &customerID, &channel, &request.CreatedAt); err != nil {
 		return nil, err
@@ -239,11 +274,14 @@ func (s *Store) serviceRequestFromRow(ctx context.Context, workspaceID string, r
 		return nil, err
 	}
 	request.ServiceDesk = *desk
-	requestType, err := s.ServiceRequestType(ctx, workspaceID, deskID, requestTypeID)
-	if err != nil {
-		return nil, err
+	// A request whose request type was deleted keeps no request type.
+	if requestTypeID != nil {
+		requestType, err := s.ServiceRequestType(ctx, workspaceID, deskID, *requestTypeID)
+		if err != nil {
+			return nil, err
+		}
+		request.RequestType = *requestType
 	}
-	request.RequestType = *requestType
 	request.Customer, err = s.UserByID(ctx, customerID)
 	request.Channel = channel
 	return request, err
