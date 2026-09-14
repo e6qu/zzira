@@ -122,7 +122,7 @@ func (h *Handler) serviceDeskRoute(w http.ResponseWriter, r *http.Request) {
 			jiraError(w, http.StatusBadRequest, "Could not create request type.")
 			return
 		}
-		writeJSON(w, http.StatusOK, serviceRequestTypeBean(h.BaseURL, h.wireServiceRequestType(r.Context(), workspaceID, *requestType)))
+		writeJSON(w, http.StatusOK, h.serviceRequestTypeBean(r, workspaceID, actorID, h.wireServiceRequestType(r.Context(), workspaceID, *requestType)))
 	case len(parts) == 3 && parts[0] == "servicedesk" && parts[2] == "customer" && (r.Method == http.MethodGet || r.Method == http.MethodPost || r.Method == http.MethodDelete):
 		h.serviceDeskCustomers(w, r, workspaceID, actorID, parts[1])
 	case len(parts) == 4 && parts[0] == "servicedesk" && parts[2] == "customer" && parts[3] == "invite" && r.Method == http.MethodPost:
@@ -176,7 +176,7 @@ func (h *Handler) serviceDeskRoute(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if len(parts) == 4 && r.Method == http.MethodGet {
-			writeJSON(w, http.StatusOK, serviceRequestTypeBean(h.BaseURL, h.wireServiceRequestType(r.Context(), workspaceID, *requestType)))
+			writeJSON(w, http.StatusOK, h.serviceRequestTypeBean(r, workspaceID, actorID, h.wireServiceRequestType(r.Context(), workspaceID, *requestType)))
 			return
 		}
 		if len(parts) == 4 && r.Method == http.MethodDelete {
@@ -734,6 +734,11 @@ func (h *Handler) servicePageLinks(r *http.Request, start, limit int, more bool)
 }
 
 func (h *Handler) listServiceRequestTypes(w http.ResponseWriter, r *http.Request, workspaceID, serviceDeskID string) {
+	_, actorID, authErr := h.authWorkspace(r)
+	if authErr != nil {
+		writeJerr(w, authErr)
+		return
+	}
 	query := r.URL.Query()
 	search := query.Get("searchQuery")
 	values, err := h.Store.ServiceRequestTypes(r.Context(), workspaceID, serviceDeskID, search)
@@ -776,13 +781,47 @@ func (h *Handler) listServiceRequestTypes(w http.ResponseWriter, r *http.Request
 	values = filtered
 	beans := make([]map[string]any, 0, len(values))
 	for _, requestType := range values {
-		beans = append(beans, serviceRequestTypeBean(h.BaseURL, h.wireServiceRequestType(r.Context(), workspaceID, requestType)))
+		beans = append(beans, h.serviceRequestTypeBean(r, workspaceID, actorID, h.wireServiceRequestType(r.Context(), workspaceID, requestType)))
 	}
 	h.writeServicePage(w, r, beans)
 }
 
-func serviceRequestTypeBean(baseURL string, requestType models.ServiceRequestType) map[string]any {
-	return map[string]any{"id": requestType.ID, "serviceDeskId": requestType.ServiceDeskID, "portalId": requestType.ServiceDeskID, "name": requestType.Name, "description": requestType.Description, "helpText": requestType.HelpText, "issueTypeId": requestType.IssueTypeID, "groupIds": requestType.GroupIDs, "canCreateRequest": true, "restrictionStatus": "OPEN", "practice": "service_desk", "_expands": []any{}, "_links": map[string]string{"self": baseURL + "/rest/servicedeskapi/servicedesk/" + requestType.ServiceDeskID + "/requesttype/" + requestType.ID}}
+// serviceRequestTypeBean describes a request type to a caller: its headset
+// icon, whether they can raise requests with it, and, when expanded, the
+// form fields a request of the type takes.
+func (h *Handler) serviceRequestTypeBean(r *http.Request, workspaceID, actorID string, requestType models.ServiceRequestType) map[string]any {
+	iconID, _ := store.DefaultSystemAvatar("SD_REQTYPE")
+	icon := strconv.FormatInt(iconID, 10)
+	view := h.BaseURL + "/rest/api/3/universal_avatar/view/type/SD_REQTYPE/avatar/" + icon
+	canCreate, err := h.Store.CanCreateServiceRequest(r.Context(), workspaceID, requestType.ServiceDeskID, actorID)
+	if err != nil {
+		canCreate = false
+	}
+	bean := map[string]any{
+		"id": requestType.ID, "serviceDeskId": requestType.ServiceDeskID, "portalId": requestType.ServiceDeskID, "name": requestType.Name,
+		"description": requestType.Description, "helpText": requestType.HelpText, "issueTypeId": requestType.IssueTypeID, "groupIds": requestType.GroupIDs,
+		"canCreateRequest": canCreate, "restrictionStatus": "OPEN", "practice": "service_desk",
+		"icon": map[string]any{"id": icon, "_links": map[string]any{"iconUrls": map[string]string{
+			"48x48": view + "?size=large", "32x32": view + "?size=medium", "24x24": view + "?size=small", "16x16": view + "?size=xsmall",
+		}}},
+		"_expands": []string{"field"},
+		"_links":   map[string]string{"self": h.BaseURL + "/rest/servicedeskapi/servicedesk/" + requestType.ServiceDeskID + "/requesttype/" + requestType.ID},
+	}
+	expandFields := false
+	for _, value := range r.URL.Query()["expand"] {
+		for _, part := range strings.Split(value, ",") {
+			expandFields = expandFields || strings.TrimSpace(part) == "field"
+		}
+	}
+	if expandFields {
+		if fields, err := h.Store.ServiceRequestTypeFields(r.Context(), workspaceID, requestType.ServiceDeskID, requestType.ID); err == nil {
+			if form, formErr := h.serviceRequestTypeFields(r, workspaceID, actorID, requestType.ServiceDeskID, fields); formErr == nil {
+				bean["fields"] = form
+				bean["_expands"] = []string{}
+			}
+		}
+	}
+	return bean
 }
 
 // serviceRequestFieldSchema describes a request type field's value the way
@@ -978,7 +1017,7 @@ func (h *Handler) serviceRequestBean(r *http.Request, workspaceID, viewerID stri
 		unexpanded = append(unexpanded, "serviceDesk")
 	}
 	if expand["requestType"] {
-		bean["requestType"] = serviceRequestTypeBean(h.BaseURL, h.wireServiceRequestType(r.Context(), workspaceID, request.RequestType))
+		bean["requestType"] = h.serviceRequestTypeBean(r, workspaceID, viewerID, h.wireServiceRequestType(r.Context(), workspaceID, request.RequestType))
 	} else {
 		unexpanded = append(unexpanded, "requestType")
 	}

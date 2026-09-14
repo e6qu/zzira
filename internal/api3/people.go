@@ -1721,7 +1721,7 @@ func (h *Handler) universalAvatarRoute(w http.ResponseWriter, r *http.Request, p
 }
 
 func validUniversalAvatarType(ownerType string) bool {
-	return ownerType == "project" || ownerType == "issuetype" || ownerType == "priority"
+	return ownerType == "project" || ownerType == "issuetype" || ownerType == "priority" || ownerType == "SD_REQTYPE"
 }
 
 func (h *Handler) ownerAvatars(w http.ResponseWriter, r *http.Request, ownerType, ownerID string) {

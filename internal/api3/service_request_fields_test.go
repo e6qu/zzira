@@ -208,6 +208,36 @@ func TestServiceRequestTypeFieldsAndHiddenPresets(t *testing.T) {
 		}
 	}
 
+	// A request type shows its headset icon, whether the caller can raise
+	// requests with it, and its form when asked.
+	typePath := "/rest/servicedeskapi/servicedesk/" + serviceDeskID + "/requesttype/" + requestTypeID
+	var described struct {
+		CanCreateRequest bool     `json:"canCreateRequest"`
+		Expands          []string `json:"_expands"`
+		Icon             struct {
+			ID    string `json:"id"`
+			Links struct {
+				IconURLs map[string]string `json:"iconUrls"`
+			} `json:"_links"`
+		} `json:"icon"`
+	}
+	if err = json.Unmarshal([]byte(callAs(customerID, http.MethodGet, typePath, "", http.StatusOK)), &described); err != nil {
+		t.Fatal(err)
+	}
+	if !described.CanCreateRequest || described.Icon.ID != "10500" || len(described.Icon.Links.IconURLs) != 4 || !slices.Equal(described.Expands, []string{"field"}) {
+		t.Fatalf("request type = %+v", described)
+	}
+	iconRequest := httptest.NewRequest(http.MethodGet, strings.TrimPrefix(described.Icon.Links.IconURLs["48x48"], "https://zzira.test"), nil)
+	iconRequest.SetBasicAuth(customerID+"@example.test", customerID)
+	iconResponse := httptest.NewRecorder()
+	h.ServeHTTP(iconResponse, iconRequest)
+	if iconResponse.Code != http.StatusOK || !strings.HasPrefix(iconResponse.Header().Get("Content-Type"), "image/svg") {
+		t.Fatalf("request type icon = %d %s", iconResponse.Code, iconResponse.Header().Get("Content-Type"))
+	}
+	if withForm := callAs(customerID, http.MethodGet, typePath+"?expand=field", "", http.StatusOK); !strings.Contains(withForm, `"fields":{`) || !strings.Contains(withForm, `"requestTypeFields"`) || !strings.Contains(withForm, `"_expands":[]`) {
+		t.Fatalf("request type with its form = %s", withForm)
+	}
+
 	// Deleting a request type in use removes it from its requests, which remain.
 	requestTypePath := "/rest/servicedeskapi/servicedesk/" + serviceDeskID + "/requesttype/" + requestTypeID
 	callAs(customerID, http.MethodDelete, requestTypePath, "", http.StatusForbidden)

@@ -217,7 +217,7 @@ quarter of a goal and sorts breached requests first. Jira's seven SLA JQL
 functions query the same calendar, cycle, goal snapshot, and pause state used by
 these REST and worker journeys.
 
-Deleting a request type removes it from the requests that used it; those
+Request types show Jira's headset icon as an `SD_REQTYPE` universal avatar, say whether the caller can raise requests with them (`canCreateRequest`), and include their form with `expand=field`. Deleting a request type removes it from the requests that used it; those
 requests remain, showing no request type, and the deletion is audited with the
 number of requests it touched. Agents' queue listings return each request with
 only the fields its queue is configured to show.
