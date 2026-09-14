@@ -153,7 +153,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case len(parts) == 2 && parts[0] == "space-roles" && r.Method == "DELETE":
 		h.deleteSpaceRole(w, r, ws, actor, parts[1])
 	case len(parts) == 1 && parts[0] == "classification-levels" && r.Method == "GET":
-		h.classificationLevels(w, r)
+		h.classificationLevels(w, r, ws)
 	case len(parts) == 1 && parts[0] == "spaces" && r.Method == "GET":
 		h.spaces(w, r, ws, actor)
 	case len(parts) == 1 && parts[0] == "spaces" && r.Method == "POST":

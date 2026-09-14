@@ -70,9 +70,19 @@ func (s *Service) CreateWikiSpaceWithAccess(ctx context.Context, ws, actor strin
 	return s.Store.CreateWikiSpaceWithAccess(ctx, ws, actor, req)
 }
 
+// assignableClassification checks a level can be given to a space or content:
+// none clears it, and otherwise it must be one of the organization's published
+// levels.
+func (s *Service) assignableClassification(ctx context.Context, ws, levelID string) error {
+	if levelID == "" {
+		return nil
+	}
+	return s.Store.PublishedDataClassificationLevel(ctx, ws, levelID)
+}
+
 func (s *Service) SetWikiSpaceDefaultClassification(ctx context.Context, ws, actor, id, levelID string) (*models.WikiSpace, error) {
-	if !stringSet("", "public", "internal", "confidential", "restricted")[levelID] {
-		return nil, fmt.Errorf("%w: choose a supported classification level", store.ErrWikiValidation)
+	if err := s.assignableClassification(ctx, ws, levelID); err != nil {
+		return nil, err
 	}
 	return s.Store.SetWikiSpaceDefaultClassification(ctx, ws, actor, id, levelID)
 }
@@ -311,10 +321,8 @@ func (s *Service) DeleteWikiContent(ctx context.Context, ws, actor, id, contentT
 }
 
 func (s *Service) SetWikiContentClassification(ctx context.Context, ws, actor, id, contentType, levelID string) (*models.WikiContent, error) {
-	switch levelID {
-	case "", "public", "internal", "confidential", "restricted":
-	default:
-		return nil, fmt.Errorf("%w: choose a supported classification level", store.ErrWikiValidation)
+	if err := s.assignableClassification(ctx, ws, levelID); err != nil {
+		return nil, err
 	}
 	return s.Store.SetWikiContentClassification(ctx, ws, actor, id, contentType, levelID)
 }
@@ -663,15 +671,15 @@ func (s *Service) DeleteWikiBlogPostProperty(ctx context.Context, ws, actor, blo
 }
 
 func (s *Service) SetWikiBlogPostClassification(ctx context.Context, ws, actor, id, levelID string) (*models.WikiBlogPost, error) {
-	if levelID != "" && levelID != "public" && levelID != "internal" && levelID != "confidential" && levelID != "restricted" {
-		return nil, fmt.Errorf("%w: choose a supported classification level", store.ErrWikiValidation)
+	if err := s.assignableClassification(ctx, ws, levelID); err != nil {
+		return nil, err
 	}
 	return s.Store.SetWikiBlogPostClassification(ctx, ws, actor, id, levelID)
 }
 
 func (s *Service) SetWikiPageClassification(ctx context.Context, ws, actor, id, levelID string) (*models.WikiPage, error) {
-	if levelID != "" && levelID != "public" && levelID != "internal" && levelID != "confidential" && levelID != "restricted" {
-		return nil, fmt.Errorf("%w: choose a supported classification level", store.ErrWikiValidation)
+	if err := s.assignableClassification(ctx, ws, levelID); err != nil {
+		return nil, err
 	}
 	return s.Store.SetWikiPageClassification(ctx, ws, actor, id, levelID)
 }

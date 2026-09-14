@@ -16,6 +16,10 @@ type wikiWhiteboardPageData struct {
 	Objects    []models.WikiWhiteboardObject
 	Connectors []models.WikiWhiteboardConnector
 	CanEdit    bool
+
+	ClassificationLevels    []models.DataClassificationLevel
+	ClassificationNames     map[string]string
+	PublishedClassification map[string]bool
 }
 
 func (h *Handler) WikiWhiteboardPage(w http.ResponseWriter, r *http.Request) {
@@ -44,7 +48,12 @@ func (h *Handler) WikiWhiteboardPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, message, status)
 		return
 	}
-	h.writeWorkspacePage(w, r, "page_wiki_whiteboard", user, ws, wikiWhiteboardPageData{Space: space, Whiteboard: whiteboard, Objects: data.Objects, Connectors: data.Connectors, CanEdit: canEdit, CanRestore: canRestore}, "wiki", "")
+	classLevels, classNames, classPublished, err := h.classificationChoices(r, ws)
+	if err != nil {
+		http.Error(w, "Could not load classification levels.", 500)
+		return
+	}
+	h.writeWorkspacePage(w, r, "page_wiki_whiteboard", user, ws, wikiWhiteboardPageData{Space: space, Whiteboard: whiteboard, Objects: data.Objects, Connectors: data.Connectors, CanEdit: canEdit, CanRestore: canRestore, ClassificationLevels: classLevels, ClassificationNames: classNames, PublishedClassification: classPublished}, "wiki", "")
 }
 
 func (h *Handler) WikiWhiteboardObjectSave(w http.ResponseWriter, r *http.Request) {

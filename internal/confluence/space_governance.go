@@ -11,12 +11,16 @@ func (h *Handler) spaceDefaultClassification(w http.ResponseWriter, r *http.Requ
 		writeError(w, err)
 		return
 	}
-	level, ok := classificationLevels[space.DefaultClassificationLevel]
-	if !ok {
+	if space.DefaultClassificationLevel == "" {
 		failure(w, 404, "Space does not have a default classification level.")
 		return
 	}
-	respond(w, 200, level)
+	level, err := h.Store.DataClassificationLevel(r.Context(), ws, space.DefaultClassificationLevel)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	respond(w, 200, classificationLevelBean(level))
 }
 
 func (h *Handler) setSpaceDefaultClassification(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
@@ -29,8 +33,8 @@ func (h *Handler) setSpaceDefaultClassification(w http.ResponseWriter, r *http.R
 	if !decode(w, r, &input) {
 		return
 	}
-	if classificationLevels[input.ID] == nil {
-		failure(w, 400, "A supported classification level is required.")
+	if input.ID == "" || h.Store.PublishedDataClassificationLevel(r.Context(), ws, input.ID) != nil {
+		failure(w, 400, "A published classification level is required.")
 		return
 	}
 	if _, err := h.Commands.SetWikiSpaceDefaultClassification(r.Context(), ws, actor, id, input.ID); err != nil {

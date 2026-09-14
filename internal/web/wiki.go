@@ -68,6 +68,9 @@ type wikiData struct {
 	Editing                               bool
 	SourceMode                            bool
 	MentionPeople                         []*models.User
+	ClassificationLevels                  []models.DataClassificationLevel
+	ClassificationNames                   map[string]string
+	PublishedClassification               map[string]bool
 	Query                                 string
 	Status                                string
 	SpaceName, SpaceKey, SpaceDescription string
@@ -407,7 +410,12 @@ func (h *Handler) WikiSpacePage(w http.ResponseWriter, r *http.Request) {
 	for _, group := range roleGroups {
 		principalNames[group.ID] = group.Name
 	}
-	h.writeWorkspacePage(w, r, "page_wiki_space", user, ws, wikiData{Space: space, Pages: filtered, BlogPosts: filteredBlogs, Folders: folders, SmartLinks: smartLinks, Databases: databases, Whiteboards: whiteboards, ContentTree: contentTree, TreeTitles: treeTitles, TreeTargets: treeTargets, CanEditTree: canEditTree, Query: query, Status: status, WatchingSpace: watching, CanAdmin: admin, CanManageSpace: canManageSpace, SpaceProperties: properties, SpaceRoles: roles, SpaceRoleAssignments: assignments, SpaceRoleUsers: roleUsers, SpaceRoleGroups: roleGroups, SpaceRoleNames: roleNames, SpaceRolePrincipalNames: principalNames}, "wiki", "")
+	classLevels, classNames, classPublished, err := h.classificationChoices(r, ws)
+	if err != nil {
+		http.Error(w, "Could not load classification levels.", 500)
+		return
+	}
+	h.writeWorkspacePage(w, r, "page_wiki_space", user, ws, wikiData{Space: space, Pages: filtered, BlogPosts: filteredBlogs, Folders: folders, SmartLinks: smartLinks, Databases: databases, Whiteboards: whiteboards, ContentTree: contentTree, TreeTitles: treeTitles, TreeTargets: treeTargets, CanEditTree: canEditTree, Query: query, Status: status, WatchingSpace: watching, CanAdmin: admin, CanManageSpace: canManageSpace, SpaceProperties: properties, SpaceRoles: roles, SpaceRoleAssignments: assignments, SpaceRoleUsers: roleUsers, SpaceRoleGroups: roleGroups, SpaceRoleNames: roleNames, SpaceRolePrincipalNames: principalNames, ClassificationLevels: classLevels, ClassificationNames: classNames, PublishedClassification: classPublished}, "wiki", "")
 }
 
 func (h *Handler) WikiSpaceClassification(w http.ResponseWriter, r *http.Request) {
@@ -674,7 +682,12 @@ func (h *Handler) wikiBlogPost(w http.ResponseWriter, r *http.Request, creating 
 		http.Error(w, "Could not load people to mention.", 500)
 		return
 	}
-	h.writeWorkspacePageStatus(w, r, "page_wiki_blogpost", user, ws, wikiData{Space: space, BlogPost: post, Versions: versions, Labels: labels, BlogProperties: properties, BlogLikeCount: likeCount, BlogLiked: liked, Attachments: attachments, Comments: blogComments, InlineComments: blogInlineComments, Editing: editing, CanEdit: true, Error: errorMessage, MentionPeople: people, WatchingBlogPost: watching, Tasks: blogTasks}, "wiki", "", pageStatus)
+	classLevels, classNames, classPublished, err := h.classificationChoices(r, ws)
+	if err != nil {
+		http.Error(w, "Could not load classification levels.", 500)
+		return
+	}
+	h.writeWorkspacePageStatus(w, r, "page_wiki_blogpost", user, ws, wikiData{Space: space, BlogPost: post, Versions: versions, Labels: labels, BlogProperties: properties, BlogLikeCount: likeCount, BlogLiked: liked, Attachments: attachments, Comments: blogComments, InlineComments: blogInlineComments, Editing: editing, CanEdit: true, Error: errorMessage, MentionPeople: people, WatchingBlogPost: watching, Tasks: blogTasks, ClassificationLevels: classLevels, ClassificationNames: classNames, PublishedClassification: classPublished}, "wiki", "", pageStatus)
 }
 
 func (h *Handler) wikiBlogForDiscussion(w http.ResponseWriter, r *http.Request, ws, userID string) (*models.WikiBlogPost, bool) {
@@ -1203,6 +1216,26 @@ func (h *Handler) WikiBlogPostRedirect(w http.ResponseWriter, r *http.Request) {
 	redirectLocal(w, r, "/wiki/spaces/"+post.SpaceID+"/blogposts/"+post.ID)
 }
 
+// classificationChoices loads the organization's classification levels for a
+// page: the published ones to choose from, every level's name, and which are
+// published, so content keeping an archived level still shows it.
+func (h *Handler) classificationChoices(r *http.Request, ws string) ([]models.DataClassificationLevel, map[string]string, map[string]bool, error) {
+	levels, err := h.Store.DataClassificationLevels(r.Context(), ws)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	choices := []models.DataClassificationLevel{}
+	names, published := map[string]string{}, map[string]bool{}
+	for _, level := range levels {
+		names[level.ID] = level.Name
+		if level.Status == "PUBLISHED" {
+			choices = append(choices, level)
+			published[level.ID] = true
+		}
+	}
+	return choices, names, published, nil
+}
+
 // wikiMentions loads the people who can be mentioned and names the mentions
 // in a body and its comments that carry no label of their own.
 func (h *Handler) wikiMentions(r *http.Request, ws string, body *models.WikiBody, threads ...[]wikiCommentNode) ([]*models.User, error) {
@@ -1558,6 +1591,11 @@ func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 	data.MentionPeople, err = h.wikiMentions(r, ws, &page.Body, data.Comments, data.InlineComments)
 	if err != nil {
 		http.Error(w, "Could not load people to mention.", 500)
+		return
+	}
+	data.ClassificationLevels, data.ClassificationNames, data.PublishedClassification, err = h.classificationChoices(r, ws)
+	if err != nil {
+		http.Error(w, "Could not load classification levels.", 500)
 		return
 	}
 	h.writeWorkspacePageStatus(w, r, "page_wiki_page", user, ws, data, "wiki", "", status)

@@ -1,9 +1,11 @@
 package confluence
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/e6qu/zzira/internal/models"
+	"github.com/jackc/pgx/v5"
 )
 
 type databaseWrite struct {
@@ -17,18 +19,53 @@ type classificationWrite struct {
 	Status string `json:"status"`
 }
 
-// classificationLevels are the site's shared data classification levels in
-// Confluence's shape.
-var classificationLevels = func() map[string]map[string]any {
-	levels := map[string]map[string]any{}
-	for _, level := range models.DataClassificationLevels {
-		levels[level.ID] = map[string]any{
-			"id": level.ID, "status": level.Status, "order": level.Rank, "name": level.Name,
-			"description": level.Description, "guideline": level.Guideline, "color": level.Color,
+// classificationLevelBean is a classification level in Confluence's shape.
+func classificationLevelBean(level models.DataClassificationLevel) map[string]any {
+	return map[string]any{
+		"id": level.ID, "status": level.Status, "order": level.Rank, "name": level.Name,
+		"description": level.Description, "guideline": level.Guideline, "color": level.Color,
+	}
+}
+
+// contentClassificationLevel is the level a piece of content carries: its own,
+// or else its space's default. It reports false when there is neither.
+func (h *Handler) contentClassificationLevel(r *http.Request, ws, actor, own, spaceID string) (map[string]any, bool, error) {
+	levelID := own
+	if levelID == "" {
+		space, err := h.Store.WikiSpace(r.Context(), ws, actor, spaceID)
+		if err != nil {
+			return nil, false, err
+		}
+		levelID = space.DefaultClassificationLevel
+	}
+	if levelID == "" {
+		return nil, false, nil
+	}
+	level, err := h.Store.DataClassificationLevel(r.Context(), ws, levelID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	return classificationLevelBean(level), true, nil
+}
+
+// assignableClassification checks a classification write: a reset names no
+// level, and a set names a published one.
+func (h *Handler) assignableClassification(w http.ResponseWriter, r *http.Request, ws string, input classificationWrite, reset bool) bool {
+	if input.Status != "current" || reset && input.ID != "" || !reset && input.ID == "" {
+		failure(w, 400, "A current, supported classification level is required.")
+		return false
+	}
+	if !reset {
+		if err := h.Store.PublishedDataClassificationLevel(r.Context(), ws, input.ID); err != nil {
+			failure(w, 400, "A current, supported classification level is required.")
+			return false
 		}
 	}
-	return levels
-}()
+	return true
+}
 
 func (h *Handler) createDatabase(w http.ResponseWriter, r *http.Request, ws, actor string) {
 	if !supportedQuery(w, r, "private") {
@@ -94,7 +131,11 @@ func (h *Handler) contentClassification(w http.ResponseWriter, r *http.Request, 
 		writeError(w, err)
 		return
 	}
-	level, ok := classificationLevels[content.ClassificationLevel]
+	level, ok, err := h.contentClassificationLevel(r, ws, actor, content.ClassificationLevel, content.SpaceID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
 	if !ok {
 		failure(w, 404, "Content does not have a classification level.")
 		return
@@ -110,14 +151,10 @@ func (h *Handler) setContentClassification(w http.ResponseWriter, r *http.Reques
 	if !decode(w, r, &input) {
 		return
 	}
-	if input.Status != "current" || (!reset && classificationLevels[input.ID] == nil) || (reset && input.ID != "") {
-		failure(w, 400, "A current, supported classification level is required.")
+	if !h.assignableClassification(w, r, ws, input, reset) {
 		return
 	}
 	levelID := input.ID
-	if reset {
-		levelID = ""
-	}
 	if _, err := h.Commands.SetWikiContentClassification(r.Context(), ws, actor, id, contentType, levelID); err != nil {
 		writeError(w, err)
 		return

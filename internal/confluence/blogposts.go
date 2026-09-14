@@ -280,7 +280,11 @@ func (h *Handler) blogPostClassification(w http.ResponseWriter, r *http.Request,
 		writeError(w, err)
 		return
 	}
-	level, ok := classificationLevels[blog.ClassificationLevel]
+	level, ok, err := h.contentClassificationLevel(r, ws, actor, blog.ClassificationLevel, blog.SpaceID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
 	if !ok {
 		failure(w, 404, "Blog post does not have a classification level.")
 		return
@@ -296,14 +300,10 @@ func (h *Handler) setBlogPostClassification(w http.ResponseWriter, r *http.Reque
 	if !decode(w, r, &input) {
 		return
 	}
-	if input.Status != "current" || (!reset && classificationLevels[input.ID] == nil) || (reset && input.ID != "") {
-		failure(w, 400, "A current, supported classification level is required.")
+	if !h.assignableClassification(w, r, ws, input, reset) {
 		return
 	}
 	levelID := input.ID
-	if reset {
-		levelID = ""
-	}
 	if _, err := h.Commands.SetWikiBlogPostClassification(r.Context(), ws, actor, id, levelID); err != nil {
 		writeError(w, err)
 		return

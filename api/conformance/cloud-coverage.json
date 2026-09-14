@@ -449,9 +449,13 @@
       "status": "partial",
       "evidence": [
         "internal/api3/jira_platform_test.go",
-        "docs/JIRA_PLATFORM.md"
+        "docs/JIRA_PLATFORM.md",
+        "internal/confluence/classification_test.go",
+        "internal/store/data_classification.go",
+        "migrations/181_data_classification_levels.sql",
+        "docs/CLASSIFICATION_LEVELS.md"
       ],
-      "notes": "Jira's four levels filtered by status and ordered by rank; levels are fixed rather than administered per organization."
+      "notes": "The organization's levels, as defined and managed by site administrators and shared with Confluence, filtered by status and ordered by rank."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/comment/list",
@@ -4788,9 +4792,13 @@
       "status": "partial",
       "evidence": [
         "internal/api3/jira_platform_test.go",
-        "docs/JIRA_PLATFORM.md"
+        "docs/JIRA_PLATFORM.md",
+        "internal/confluence/classification_test.go",
+        "internal/store/data_classification.go",
+        "migrations/181_data_classification_levels.sql",
+        "docs/CLASSIFICATION_LEVELS.md"
       ],
-      "notes": "Permitted levels, project default and container override; no organization default."
+      "notes": "Permitted published organization levels, the project default (including an archived one) and container override; no organization default."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/project/{projectIdOrKey}/classification-level/default",
@@ -4810,9 +4818,13 @@
       "status": "partial",
       "evidence": [
         "internal/api3/jira_platform_test.go",
-        "docs/JIRA_PLATFORM.md"
+        "docs/JIRA_PLATFORM.md",
+        "internal/confluence/classification_test.go",
+        "internal/store/data_classification.go",
+        "migrations/181_data_classification_levels.sql",
+        "docs/CLASSIFICATION_LEVELS.md"
       ],
-      "notes": "The project default level or an empty object."
+      "notes": "The project default level from the organization's levels, or an empty object."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/project/{projectIdOrKey}/classification-level/default",
@@ -4821,9 +4833,13 @@
       "status": "partial",
       "evidence": [
         "internal/api3/jira_platform_test.go",
-        "docs/JIRA_PLATFORM.md"
+        "docs/JIRA_PLATFORM.md",
+        "internal/confluence/classification_test.go",
+        "internal/store/data_classification.go",
+        "migrations/181_data_classification_levels.sql",
+        "docs/CLASSIFICATION_LEVELS.md"
       ],
-      "notes": "Sets a published level; requires Administer projects, otherwise 401."
+      "notes": "Sets a published organization level; requires Administer projects, otherwise 401."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/project/{projectIdOrKey}/component",
@@ -12363,9 +12379,13 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts",
         "internal/confluence/content_drafts_test.go",
-        "docs/CONTENT_DRAFTS.md"
+        "docs/CONTENT_DRAFTS.md",
+        "internal/confluence/classification_test.go",
+        "internal/store/data_classification.go",
+        "migrations/181_data_classification_levels.sql",
+        "docs/CLASSIFICATION_LEVELS.md"
       ],
-      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; v1 label writes act on blog posts, and the pinned v2 API has no label or like writes; organization-defined classification levels remain; blog attachment, comment, custom-content and redaction routes are implemented."
+      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, organization-level classification set (published levels only)/reset with space-default inheritance, privacy-shaped synchronized actions, and an accessible author UI; v1 label writes act on blog posts, and the pinned v2 API has no label or like writes; blog attachment, comment, custom-content and redaction routes are implemented."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/blogposts/{id}/classification-level",
@@ -12383,9 +12403,13 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts",
         "internal/confluence/content_drafts_test.go",
-        "docs/CONTENT_DRAFTS.md"
+        "docs/CONTENT_DRAFTS.md",
+        "internal/confluence/classification_test.go",
+        "internal/store/data_classification.go",
+        "migrations/181_data_classification_levels.sql",
+        "docs/CLASSIFICATION_LEVELS.md"
       ],
-      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; v1 label writes act on blog posts, and the pinned v2 API has no label or like writes; organization-defined classification levels remain; blog attachment, comment, custom-content and redaction routes are implemented."
+      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, organization-level classification set (published levels only)/reset with space-default inheritance, privacy-shaped synchronized actions, and an accessible author UI; v1 label writes act on blog posts, and the pinned v2 API has no label or like writes; blog attachment, comment, custom-content and redaction routes are implemented."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/blogposts/{id}/classification-level/reset",
@@ -12403,9 +12427,13 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts",
         "internal/confluence/content_drafts_test.go",
-        "docs/CONTENT_DRAFTS.md"
+        "docs/CONTENT_DRAFTS.md",
+        "internal/confluence/classification_test.go",
+        "internal/store/data_classification.go",
+        "migrations/181_data_classification_levels.sql",
+        "docs/CLASSIFICATION_LEVELS.md"
       ],
-      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; v1 label writes act on blog posts, and the pinned v2 API has no label or like writes; organization-defined classification levels remain; blog attachment, comment, custom-content and redaction routes are implemented."
+      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, organization-level classification set (published levels only)/reset with space-default inheritance, privacy-shaped synchronized actions, and an accessible author UI; v1 label writes act on blog posts, and the pinned v2 API has no label or like writes; blog attachment, comment, custom-content and redaction routes are implemented."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{id}/custom-content",
@@ -12588,9 +12616,13 @@
         "internal/confluence/http_test.go",
         "internal/confluence/databases.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/classification_test.go",
+        "internal/store/data_classification.go",
+        "migrations/181_data_classification_levels.sql",
+        "docs/CLASSIFICATION_LEVELS.md"
       ],
-      "notes": "Returns the four ordered built-in published classification levels used consistently by page, blog-post, database and whiteboard APIs and author controls; organization-defined level administration and edition entitlements remain."
+      "notes": "Returns the organization's published and archived classification levels in order, each with id, status, order, name, description, guideline and color; site administrators create draft levels, edit, publish, archive, restore and reorder them in site administration, and the same levels serve Jira."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/comments/{comment-id}/properties",
@@ -13040,9 +13072,13 @@
         "internal/commands/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/classification_test.go",
+        "internal/store/data_classification.go",
+        "migrations/181_data_classification_levels.sql",
+        "docs/CLASSIFICATION_LEVELS.md"
       ],
-      "notes": "Database classification supports read, set and reset against four durable built-in published levels through the REST API and UI with validation, permission checks and atomic actions; organization-defined level administration and entitlement semantics remain."
+      "notes": "Database classification reads return the item's own level or its space's default, with each level's status, name, description, guideline, color and order from the organization's levels; set accepts only published levels and reset clears the item's own level so it inherits the space default, behind view and edit permission with atomic, permission-filtered sync actions and author UI pickers listing published levels."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/databases/{id}/classification-level",
@@ -13058,9 +13094,13 @@
         "internal/commands/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/classification_test.go",
+        "internal/store/data_classification.go",
+        "migrations/181_data_classification_levels.sql",
+        "docs/CLASSIFICATION_LEVELS.md"
       ],
-      "notes": "Database classification supports read, set and reset against four durable built-in published levels through the REST API and UI with validation, permission checks and atomic actions; organization-defined level administration and entitlement semantics remain."
+      "notes": "Database classification reads return the item's own level or its space's default, with each level's status, name, description, guideline, color and order from the organization's levels; set accepts only published levels and reset clears the item's own level so it inherits the space default, behind view and edit permission with atomic, permission-filtered sync actions and author UI pickers listing published levels."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/databases/{id}/classification-level/reset",
@@ -13076,9 +13116,13 @@
         "internal/commands/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/classification_test.go",
+        "internal/store/data_classification.go",
+        "migrations/181_data_classification_levels.sql",
+        "docs/CLASSIFICATION_LEVELS.md"
       ],
-      "notes": "Database classification supports read, set and reset against four durable built-in published levels through the REST API and UI with validation, permission checks and atomic actions; organization-defined level administration and entitlement semantics remain."
+      "notes": "Database classification reads return the item's own level or its space's default, with each level's status, name, description, guideline, color and order from the organization's levels; set accepts only published levels and reset clears the item's own level so it inherits the space default, behind view and edit permission with atomic, permission-filtered sync actions and author UI pickers listing published levels."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/databases/{id}/descendants",
@@ -14242,9 +14286,13 @@
         "migrations/092_wiki_page_governance.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/classification_test.go",
+        "internal/store/data_classification.go",
+        "migrations/181_data_classification_levels.sql",
+        "docs/CLASSIFICATION_LEVELS.md"
       ],
-      "notes": "Permission-scoped page classification supports reads for matching page status and durable published-level state through the REST API and author UI; archived pages, organization-defined levels and entitlement semantics remain."
+      "notes": "Page classification reads return the item's own level or its space's default, with each level's status, name, description, guideline, color and order from the organization's levels; set accepts only published levels and reset clears the item's own level so it inherits the space default, behind view and edit permission with atomic, permission-filtered sync actions and author UI pickers listing published levels."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/pages/{id}/classification-level",
@@ -14259,9 +14307,13 @@
         "migrations/092_wiki_page_governance.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/classification_test.go",
+        "internal/store/data_classification.go",
+        "migrations/181_data_classification_levels.sql",
+        "docs/CLASSIFICATION_LEVELS.md"
       ],
-      "notes": "Writable current pages accept validated built-in classification assignments atomically, publish a permission-filtered sync action and expose the state in the author UI; organization-defined levels and entitlement semantics remain."
+      "notes": "Page classification reads return the item's own level or its space's default, with each level's status, name, description, guideline, color and order from the organization's levels; set accepts only published levels and reset clears the item's own level so it inherits the space default, behind view and edit permission with atomic, permission-filtered sync actions and author UI pickers listing published levels."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/pages/{id}/classification-level/reset",
@@ -14276,9 +14328,13 @@
         "migrations/092_wiki_page_governance.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/classification_test.go",
+        "internal/store/data_classification.go",
+        "migrations/181_data_classification_levels.sql",
+        "docs/CLASSIFICATION_LEVELS.md"
       ],
-      "notes": "Writable current pages can atomically reset classification state with validated request semantics and permission-filtered sync; space-default inheritance and edition entitlements remain."
+      "notes": "Page classification reads return the item's own level or its space's default, with each level's status, name, description, guideline, color and order from the organization's levels; set accepts only published levels and reset clears the item's own level so it inherits the space default, behind view and edit permission with atomic, permission-filtered sync actions and author UI pickers listing published levels."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{id}/custom-content",
@@ -14826,9 +14882,13 @@
         "migrations/094_wiki_space_classification.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/classification_test.go",
+        "internal/store/data_classification.go",
+        "migrations/181_data_classification_levels.sql",
+        "docs/CLASSIFICATION_LEVELS.md"
       ],
-      "notes": "Workspace administrators can clear a visible space's default built-in classification; new page and blog post writes then stop inheriting a level. Organization-defined levels remain."
+      "notes": "Space administrators clear a visible space's default; content without its own level then has no classification."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/spaces/{id}/classification-level/default",
@@ -14843,9 +14903,13 @@
         "migrations/094_wiki_space_classification.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/classification_test.go",
+        "internal/store/data_classification.go",
+        "migrations/181_data_classification_levels.sql",
+        "docs/CLASSIFICATION_LEVELS.md"
       ],
-      "notes": "Returns the built-in default classification for a visible space and reports no default as not found. Organization-defined levels remain."
+      "notes": "Returns a visible space's default level from the organization's levels, including an archived default, and 404 when the space has none."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/spaces/{id}/classification-level/default",
@@ -14860,9 +14924,13 @@
         "migrations/094_wiki_space_classification.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/classification_test.go",
+        "internal/store/data_classification.go",
+        "migrations/181_data_classification_levels.sql",
+        "docs/CLASSIFICATION_LEVELS.md"
       ],
-      "notes": "Workspace administrators can select a validated built-in space default through REST or the accessible UI; new pages and blog posts inherit it. Organization-defined levels remain."
+      "notes": "Space administrators set a published organization level as the space default through REST or the UI; content without its own level reads it."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/spaces/{id}/content/labels",
@@ -15282,9 +15350,13 @@
         "internal/commands/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/classification_test.go",
+        "internal/store/data_classification.go",
+        "migrations/181_data_classification_levels.sql",
+        "docs/CLASSIFICATION_LEVELS.md"
       ],
-      "notes": "Whiteboard classification supports read, set and reset against four durable built-in published levels through the REST API and UI with validation, permission checks and atomic actions; organization-defined level administration and entitlement semantics remain."
+      "notes": "Whiteboard classification reads return the item's own level or its space's default, with each level's status, name, description, guideline, color and order from the organization's levels; set accepts only published levels and reset clears the item's own level so it inherits the space default, behind view and edit permission with atomic, permission-filtered sync actions and author UI pickers listing published levels."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/whiteboards/{id}/classification-level",
@@ -15301,9 +15373,13 @@
         "internal/commands/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/classification_test.go",
+        "internal/store/data_classification.go",
+        "migrations/181_data_classification_levels.sql",
+        "docs/CLASSIFICATION_LEVELS.md"
       ],
-      "notes": "Whiteboard classification supports read, set and reset against four durable built-in published levels through the REST API and UI with validation, permission checks and atomic actions; organization-defined level administration and entitlement semantics remain."
+      "notes": "Whiteboard classification reads return the item's own level or its space's default, with each level's status, name, description, guideline, color and order from the organization's levels; set accepts only published levels and reset clears the item's own level so it inherits the space default, behind view and edit permission with atomic, permission-filtered sync actions and author UI pickers listing published levels."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/whiteboards/{id}/classification-level/reset",
@@ -15320,9 +15396,13 @@
         "internal/commands/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/classification_test.go",
+        "internal/store/data_classification.go",
+        "migrations/181_data_classification_levels.sql",
+        "docs/CLASSIFICATION_LEVELS.md"
       ],
-      "notes": "Whiteboard classification supports read, set and reset against four durable built-in published levels through the REST API and UI with validation, permission checks and atomic actions; organization-defined level administration and entitlement semantics remain."
+      "notes": "Whiteboard classification reads return the item's own level or its space's default, with each level's status, name, description, guideline, color and order from the organization's levels; set accepts only published levels and reset clears the item's own level so it inherits the space default, behind view and edit permission with atomic, permission-filtered sync actions and author UI pickers listing published levels."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/whiteboards/{id}/descendants",

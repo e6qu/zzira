@@ -303,6 +303,8 @@ func main() {
 	mux.HandleFunc("POST /admin/jira-application-properties/{property}", webHandler.UpdateAdminJiraApplicationProperty)
 	mux.HandleFunc("POST /admin/project-categories", webHandler.CreateAdminProjectCategory)
 	mux.HandleFunc("POST /admin/project-categories/{categoryId}", webHandler.UpdateAdminProjectCategory)
+	mux.HandleFunc("POST /admin/classification-levels", webHandler.CreateAdminClassificationLevel)
+	mux.HandleFunc("POST /admin/classification-levels/{levelId}", webHandler.UpdateAdminClassificationLevel)
 	mux.HandleFunc("GET /wiki", webHandler.WikiHome)
 	mux.HandleFunc("GET /wiki/pages/{page}", webHandler.WikiPageRedirect)
 	mux.HandleFunc("GET /wiki/blogposts/{blogpost}", webHandler.WikiBlogPostRedirect)

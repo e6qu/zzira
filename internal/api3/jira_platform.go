@@ -775,7 +775,8 @@ func classificationLevelBean(level models.DataClassificationLevel) map[string]an
 }
 
 func (h *Handler) classificationLevelsEndpoint(w http.ResponseWriter, r *http.Request) {
-	if _, _, e := h.authWorkspace(r); e != nil {
+	workspaceID, _, e := h.authWorkspace(r)
+	if e != nil {
 		writeJerr(w, e)
 		return
 	}
@@ -795,8 +796,13 @@ func (h *Handler) classificationLevelsEndpoint(w http.ResponseWriter, r *http.Re
 		jiraError(w, http.StatusBadRequest, "orderBy must be rank, +rank or -rank.")
 		return
 	}
+	all, err := h.Store.DataClassificationLevels(r.Context(), workspaceID)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
 	levels := []models.DataClassificationLevel{}
-	for _, level := range models.DataClassificationLevels {
+	for _, level := range all {
 		if len(statuses) == 0 || statuses[level.Status] {
 			levels = append(levels, level)
 		}
@@ -1080,13 +1086,20 @@ func (h *Handler) projectPlatformRoute(w http.ResponseWriter, r *http.Request, p
 			jiraError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
-		permitted := make([]map[string]any, 0, len(models.DataClassificationLevels))
-		for _, level := range models.DataClassificationLevels {
-			permitted = append(permitted, classificationLevelBean(level))
+		levels, err := h.Store.DataClassificationLevels(r.Context(), workspaceID)
+		if err != nil {
+			jiraError(w, http.StatusInternalServerError, "internal error")
+			return
 		}
+		permitted := make([]map[string]any, 0, len(levels))
 		var projectDefault any
-		if level, ok := models.DataClassificationLevelByID(levelID); ok {
-			projectDefault = classificationLevelBean(level)
+		for _, level := range levels {
+			if level.Status == "PUBLISHED" {
+				permitted = append(permitted, classificationLevelBean(level))
+			}
+			if level.ID == levelID {
+				projectDefault = classificationLevelBean(level)
+			}
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"permittedClassificationLevels": permitted, "projectDefaultClassificationLevel": projectDefault,
@@ -1106,9 +1119,16 @@ func (h *Handler) projectDefaultClassification(w http.ResponseWriter, r *http.Re
 			jiraError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
-		if level, ok := models.DataClassificationLevelByID(levelID); ok {
-			writeJSON(w, http.StatusOK, classificationLevelBean(level))
-			return
+		if levelID != "" {
+			level, err := h.Store.DataClassificationLevel(r.Context(), workspaceID, levelID)
+			if err == nil {
+				writeJSON(w, http.StatusOK, classificationLevelBean(level))
+				return
+			}
+			if !errors.Is(err, pgx.ErrNoRows) {
+				jiraError(w, http.StatusInternalServerError, "internal error")
+				return
+			}
 		}
 		writeJSON(w, http.StatusOK, map[string]any{})
 		return
@@ -1135,12 +1155,11 @@ func (h *Handler) projectDefaultClassification(w http.ResponseWriter, r *http.Re
 			jiraFieldError(w, http.StatusBadRequest, map[string]string{"id": "The classification level id is required."})
 			return
 		}
-		level, ok := models.DataClassificationLevelByID(request.ID)
-		if !ok || level.Status != "PUBLISHED" {
+		if err := h.Store.PublishedDataClassificationLevel(r.Context(), workspaceID, request.ID); err != nil {
 			jiraFieldError(w, http.StatusBadRequest, map[string]string{"id": "The classification level does not exist or is not published."})
 			return
 		}
-		levelID = level.ID
+		levelID = request.ID
 	}
 	if err := h.Store.SetProjectDefaultClassification(r.Context(), workspaceID, project.ID, levelID); err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
