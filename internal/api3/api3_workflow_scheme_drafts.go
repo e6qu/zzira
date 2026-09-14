@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/e6qu/zzira/internal/store"
@@ -186,17 +187,7 @@ func (h *Handler) workflowSchemeSubresourceRoute(w http.ResponseWriter, r *http.
 							replacement = mapping.NewStatusID
 						}
 					}
-					allowed := false
-					for _, transition := range impact.TargetWorkflow.Transitions {
-						if transition.To == replacement {
-							allowed = true
-						}
-						for _, from := range transition.From {
-							if from == replacement {
-								allowed = true
-							}
-						}
-					}
+					allowed := slices.Contains(impact.TargetWorkflow.StatusIDs(), replacement)
 					if replacement == "" || !allowed {
 						jiraError(w, http.StatusBadRequest, "The draft requires valid status mappings before it can be published.")
 						return true

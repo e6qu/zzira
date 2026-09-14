@@ -6844,10 +6844,12 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/transition_types_test.go",
+        "internal/api3/api3_workflow.go",
         "e2e/wire-ids.spec.ts",
         "docs/JIRA_PLATFORM.md"
       ],
-      "notes": "Paged workflow search with numeric wire ids."
+      "notes": "Pages published classic (global) workflows by workflowName, queryString, isActive and name, created or updated ordering, with PublishedWorkflowId ids, created and updated dates, nextPage links and every documented expansion: transitions with lowercase initial, global and directed types, rules as conditionsTree, validators and postFunctions, transition properties, statuses and their properties, default, schemes, projects, hasDraftWorkflow and operations; zzira's pre-v3 POST /workflow and /workflow/project routes, which Jira does not have, were removed."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/workflow/{entityId}",
@@ -6932,13 +6934,14 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/transition_types_test.go",
         "internal/api3/workflow_schemes_test.go",
         "internal/api3/workflow_rules_test.go",
         "internal/api3/api3_workflow_validation.go",
         "internal/store/workflow_mutations.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Atomically creates up to 20 validated GLOBAL or PROJECT directed workflows and related statuses with generated IDs, layouts/properties, versions, scoped Jira resources, executable conditions, validators, post-functions, transition screens and customIssueEventId events across all 23 documented system rules, with Jira's numeric ids for transitions without one, rollback, and audit."
+      "notes": "Atomically creates up to 20 validated GLOBAL or PROJECT workflows and related statuses with generated IDs, layouts/properties, versions, scoped Jira resources, INITIAL, GLOBAL and DIRECTED transitions with descriptions, properties and link ports, executable conditions, validators, post-functions, transition screens and customIssueEventId events across all 23 documented system rules, with Jira's numeric ids for transitions without one, rollback, and audit. The initial transition decides where work items start and runs its validators and post functions on creation; a global transition runs from every status."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/workflows/create/validation",
@@ -6946,13 +6949,14 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/transition_types_test.go",
         "internal/api3/workflow_schemes_test.go",
         "internal/api3/workflow_rules_test.go",
         "internal/api3/api3_workflow_validation.go",
         "internal/store/agile.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Returns structured ERROR validation for GLOBAL/PROJECT ownership, names and statuses, sizes, references, designer layouts, directed topology, nested conditions, validators, post-functions, transition screens, custom issue events, conflicts, and level filtering; every documented system rule is validated; non-directed transitions remain."
+      "notes": "Returns structured ERROR validation for GLOBAL/PROJECT ownership, names and statuses, sizes, references, designer layouts, INITIAL, GLOBAL and DIRECTED transition topology (one initial transition, sourceless global and initial links, known types), nested conditions, validators, post-functions, transition screens, custom issue events, conflicts, and level filtering; every documented system rule is validated."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/workflows/defaultEditor",
@@ -7006,7 +7010,7 @@
         "internal/store/workflow_mutations.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Atomically creates related scoped statuses, migrates active work with sync actions, and updates layouts plus executable conditions, validators, post-functions, transition screens and customIssueEventId events with optimistic versions, rollback, and audit; every documented system rule; mixed-scope batches and queued tasks remain."
+      "notes": "Atomically creates related scoped statuses, migrates active work with sync actions, and updates layouts, INITIAL, GLOBAL and DIRECTED transitions plus executable conditions, validators, post-functions, transition screens and customIssueEventId events with optimistic versions, rollback, and audit; every documented system rule; mixed-scope batches and queued tasks remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/workflows/update/validation",
@@ -7014,13 +7018,14 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/transition_types_test.go",
         "internal/api3/workflow_schemes_test.go",
         "internal/api3/workflow_rules_test.go",
         "internal/api3/api3_workflow_validation.go",
         "internal/store/agile.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Returns structured validation for existence and preserved scope, optimistic versions, scoped statuses, layouts, topology, mappings, executable conditions, validators, post-functions, transition screens and custom issue events without mutation; every documented system rule is validated; mixed-scope batches remain."
+      "notes": "Returns structured validation for existence and preserved scope, optimistic versions, scoped statuses, layouts, INITIAL, GLOBAL and DIRECTED topology, mappings, executable conditions, validators, post-functions, transition screens and custom issue events without mutation; every documented system rule is validated; mixed-scope batches remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/workflowscheme",

@@ -8,12 +8,16 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/e6qu/zzira/internal/attachments"
 	"github.com/e6qu/zzira/internal/authz"
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
+	"github.com/e6qu/zzira/internal/workflow"
 )
 
 type Service struct {
@@ -228,14 +232,43 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 	if (in.OriginalEstimate != nil || in.RemainingEstimate != nil) && !configuration.TimeTrackingEnabled {
 		return nil, nil, fmt.Errorf("time tracking is disabled for this site")
 	}
+	// Work starts where the workflow's initial transition leads, after that
+	// transition's validators and post functions run on the new work item.
+	wf, err := s.Store.WorkflowForProjectAndIssueType(ctx, project.ID, issueType.ID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		wf, err = workflow.Default(), nil
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	eventID, notificationKind := int64(1), "issue_created"
+	var triggers store.IssueUpdate
+	if initial := wf.Initial(); initial != nil {
+		created, runErr := s.runInitialTransition(ctx, in, *initial, parentID, description, priorityID, labels)
+		if runErr != nil {
+			return nil, nil, runErr
+		}
+		description, priorityID, labels = created.description, created.priorityID, created.labels
+		in.Summary, in.AssigneeID, in.Fields = created.summary, created.assigneeID, created.fields
+		triggers = created.triggers
+		if custom, parseErr := strconv.ParseInt(initial.CustomIssueEventID, 10, 64); parseErr == nil && custom > 0 {
+			eventID, notificationKind = custom, "issue_event"
+		}
+	}
 	issue, action, err := s.Store.CreateEstimatedIssueForReporter(ctx, in.ActorID, in.ReporterID, project.ID, in.Summary,
-		description, "st_todo", issueType.ID, priorityID, in.AssigneeID, labels, in.Fields, in.SecurityLevelID, parentID,
+		description, wf.InitialStatus(), issueType.ID, priorityID, in.AssigneeID, labels, in.Fields, in.SecurityLevelID, parentID,
 		store.IssueEstimates{Original: in.OriginalEstimate, Remaining: in.RemainingEstimate})
 	if err != nil {
 		return nil, nil, err
 	}
-	if err = s.deliverIssueEvent(ctx, in.WorkspaceID, in.ActorID, issue, action, 1, "issue_created", "created"); err != nil {
+	if err = s.deliverIssueEvent(ctx, in.WorkspaceID, in.ActorID, issue, action, eventID, notificationKind, "created"); err != nil {
 		return issue, action, err
+	}
+	if len(triggers.TriggeredWebhookIDs) > 0 || len(triggers.TriggeredAgents) > 0 {
+		triggers.SuppressChangelog, triggers.SuppressEvents = true, true
+		if _, _, err = s.Store.UpdateIssue(ctx, in.ActorID, in.WorkspaceID, issue.ID, triggers); err != nil {
+			return issue, action, err
+		}
 	}
 	return issue, action, nil
 }
@@ -730,4 +763,116 @@ func (s *Service) normalizeOptionFields(ctx context.Context, workspaceID, projec
 		}
 	}
 	return nil
+}
+
+// createdFromInitialTransition is a new work item's values once the initial
+// transition's post functions have run.
+type createdFromInitialTransition struct {
+	summary, assigneeID, priorityID string
+	description                     json.RawMessage
+	labels                          []string
+	fields                          map[string]json.RawMessage
+	triggers                        store.IssueUpdate
+}
+
+// runInitialTransition applies the workflow's initial transition to a work
+// item about to be created: its validators see the submitted values, and its
+// assignee, field update and field copy post functions change them, as Jira's
+// Create transition does. Webhook and agent triggers are returned to run once
+// the work item exists.
+func (s *Service) runInitialTransition(ctx context.Context, in CreateIssueInput, initial workflow.Transition, parentID string, description json.RawMessage, priorityID string, labels []string) (createdFromInitialTransition, error) {
+	created := createdFromInitialTransition{summary: in.Summary, assigneeID: in.AssigneeID, priorityID: priorityID, description: description, labels: labels, fields: in.Fields}
+	draft := &models.Issue{Summary: in.Summary, Description: description, Labels: labels, Fields: in.Fields}
+	if in.AssigneeID != "" {
+		draft.Assignee = &models.User{ID: in.AssigneeID}
+	}
+	reporterID := in.ReporterID
+	if reporterID == "" {
+		reporterID = in.ActorID
+	}
+	draft.Reporter = &models.User{ID: reporterID}
+	if priorityID != "" {
+		draft.Priority = &models.Priority{ID: priorityID}
+	}
+	context := workflow.ContextForIssue(in.ActorID, draft)
+	permissions, err := authz.JiraPermissions(ctx, s.Store, in.WorkspaceID, in.ActorID)
+	if err != nil {
+		return created, err
+	}
+	context.Permissions = permissions
+	if err = initial.ValidateRules(context); err != nil {
+		return created, err
+	}
+	var update store.IssueUpdate
+	assigneeID, changeAssignee, err := initial.AssigneeEffect(context)
+	if err != nil {
+		return created, err
+	}
+	if changeAssignee {
+		update.AssigneeID = &assigneeID
+	}
+	effects, err := initial.FieldUpdateEffects()
+	if err != nil {
+		return created, err
+	}
+	for _, effect := range effects {
+		switch {
+		case effect.SourceField == "":
+			err = applyWorkflowFieldUpdate(draft, &update, effect)
+		case effect.IssueSource == "PARENT":
+			if parentID == "" {
+				return created, fmt.Errorf("copy-field parent source requires a parent issue")
+			}
+			parent, parentErr := s.Store.IssueByIDOrKey(ctx, in.WorkspaceID, parentID)
+			if parentErr != nil {
+				return created, fmt.Errorf("copy-field parent source is unavailable")
+			}
+			err = applyWorkflowFieldCopyFrom(parent, &store.IssueUpdate{}, &update, effect.SourceField, effect.Field)
+		default:
+			err = applyWorkflowFieldCopyFrom(draft, &update, &update, effect.SourceField, effect.Field)
+		}
+		if err != nil {
+			return created, err
+		}
+	}
+	if update.AssigneeID != nil {
+		if *update.AssigneeID != "" {
+			if _, err := s.Store.MemberByID(ctx, in.WorkspaceID, *update.AssigneeID); err != nil {
+				return created, fmt.Errorf("workflow assignee is not an active workspace member")
+			}
+		}
+		created.assigneeID = *update.AssigneeID
+	}
+	if update.Summary != nil {
+		if len(*update.Summary) == 0 || len(*update.Summary) > 255 {
+			return created, fmt.Errorf("workflow summary update must be between 1 and 255 characters")
+		}
+		created.summary = *update.Summary
+	}
+	if update.Description != nil {
+		created.description = update.Description
+	}
+	if update.Labels != nil {
+		created.labels = *update.Labels
+	}
+	if update.PriorityID != nil {
+		created.priorityID = *update.PriorityID
+	}
+	if len(update.Fields) > 0 {
+		fields := make(map[string]json.RawMessage, len(created.fields)+len(update.Fields))
+		for field, value := range created.fields {
+			fields[field] = value
+		}
+		for field, value := range update.Fields {
+			fields[field] = value
+		}
+		created.fields = fields
+	}
+	if created.triggers.TriggeredWebhookIDs, err = initial.TriggerWebhookIDs(); err != nil {
+		return created, err
+	}
+	for _, agent := range initial.AgentTriggers() {
+		created.triggers.TriggeredAgents = append(created.triggers.TriggeredAgents, models.WorkflowAgentTrigger{AgentID: agent.AgentID, Prompt: agent.Prompt})
+	}
+	return created, nil
 }

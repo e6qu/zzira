@@ -254,8 +254,8 @@ func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue
 		if err != nil {
 			return false, err
 		}
-		for _, transition := range workflow.Transitions {
-			if transition.To == value.StatusID && slices.Contains(transition.From, issue.Status.ID) {
+		for _, transition := range workflow.Available(issue.Status.ID) {
+			if transition.To == value.StatusID {
 				_, changed, err := r.Service.Commands.TransitionIssue(ctx, run.ActorID, run.WorkspaceID, issue.ID, transition.ID)
 				return changed != nil, err
 			}

@@ -347,36 +347,10 @@ func sortedSet(values map[string]bool) []string {
 // workflowStatusIDs lists a workflow's statuses in layout order, then any a
 // transition reaches that the layout omits.
 func workflowStatusIDs(wf workflow.Workflow) []string {
-	seen := map[string]bool{}
-	ids := []string{}
-	add := func(id string) {
-		if id != "" && !seen[id] {
-			seen[id] = true
-			ids = append(ids, id)
-		}
-	}
-	for _, status := range wf.Statuses {
-		add(status.StatusReference)
-	}
-	for _, transition := range wf.Transitions {
-		for _, from := range transition.From {
-			add(from)
-		}
-		add(transition.To)
-	}
-	return ids
+	return wf.StatusIDs()
 }
 
-// workflowInitialStatusID is the status new work starts in: the target of the
-// initial transition, which has no source, or else the first status.
+// workflowInitialStatusID is the status new work starts in.
 func workflowInitialStatusID(wf workflow.Workflow) string {
-	for _, transition := range wf.Transitions {
-		if len(transition.From) == 0 {
-			return transition.To
-		}
-	}
-	if ids := workflowStatusIDs(wf); len(ids) > 0 {
-		return ids[0]
-	}
-	return ""
+	return wf.InitialStatus()
 }

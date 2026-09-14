@@ -170,18 +170,7 @@ func (s *Store) CreateWorkflowBatch(ctx context.Context, workspaceID, actorID st
 }
 
 func workflowDefinitionStatuses(wf workflow.Workflow) []string {
-	seen := make(map[string]bool)
-	for _, transition := range wf.Transitions {
-		seen[transition.To] = true
-		for _, from := range transition.From {
-			seen[from] = true
-		}
-	}
-	ids := make([]string, 0, len(seen))
-	for id := range seen {
-		ids = append(ids, id)
-	}
-	return ids
+	return wf.StatusIDs()
 }
 
 func migrateWorkflowDefinitionIssues(ctx context.Context, tx pgx.Tx, workspaceID, actorID string, update WorkflowUpdateDefinition) (int, error) {

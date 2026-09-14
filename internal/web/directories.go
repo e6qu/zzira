@@ -88,6 +88,9 @@ type workflowTransitionView struct {
 	RuleSummary  []string
 }
 
+// workflowAnyStatus is the editor's source for a global transition.
+const workflowAnyStatus = "any"
+
 type workflowNodeView struct {
 	Status      models.Status
 	X           int
@@ -109,6 +112,9 @@ type workflowEditorData struct {
 	Statuses  []models.Status
 	Projects  []*models.Project
 	Assigned  []*models.Project
+	// Initial and Global are the transitions that start from no status.
+	Initial   *workflowTransitionView
+	Global    []workflowTransitionView
 	Webhooks  []*models.Webhook
 	Events    []store.NotificationEventDefinition
 	CanEdit   bool
@@ -567,13 +573,7 @@ func (h *Handler) WorkflowSchemePage(w http.ResponseWriter, r *http.Request, sch
 				return
 			}
 			for _, impact := range impacts {
-				allowed := make(map[string]bool)
-				for _, transition := range impact.TargetWorkflow.Transitions {
-					allowed[transition.To] = true
-					for _, from := range transition.From {
-						allowed[from] = true
-					}
-				}
+				allowed := workflowStatusIDs(impact.TargetWorkflow)
 				view := workflowSchemeImpactView{IssueTypeID: impact.IssueTypeID, Status: impact.Status, IssueCount: impact.IssueCount}
 				for _, status := range statuses {
 					if allowed[status.ID] {
@@ -816,6 +816,22 @@ func (h *Handler) WorkflowPage(w http.ResponseWriter, r *http.Request, id string
 		return
 	}
 	nodes, edges, mapWidth, mapHeight := workflowDesignerMap(wf, statuses)
+	var initial *workflowTransitionView
+	global := []workflowTransitionView{}
+	for _, transition := range wf.Transitions {
+		view := workflowTransitionView{ID: transition.ID, Name: transition.Name, ScreenFields: transition.ScreenFields(), RuleSummary: workflowRuleSummary(transition)}
+		for _, status := range statuses {
+			if status.ID == transition.To {
+				view.To = status
+			}
+		}
+		switch transition.Kind() {
+		case workflow.TransitionInitial:
+			initial = &view
+		case workflow.TransitionGlobal:
+			global = append(global, view)
+		}
+	}
 	assigned := make([]*models.Project, 0)
 	for _, project := range projects {
 		if project.WorkflowID == wf.ID || (project.WorkflowID == "" && wf.ID == workflow.Default().ID) {
@@ -824,7 +840,7 @@ func (h *Handler) WorkflowPage(w http.ResponseWriter, r *http.Request, id string
 	}
 	admin, _ := h.Store.IsAdmin(r.Context(), wsID, user.ID)
 	h.writeWorkspacePage(w, r, "page_workflow", user, wsID, workflowEditorData{
-		Workflow: wf, Nodes: nodes, Edges: edges, MapWidth: mapWidth, MapHeight: mapHeight, Statuses: statuses, Projects: projects, Assigned: assigned, Webhooks: activeWebhooks, Events: events,
+		Workflow: wf, Initial: initial, Global: global, Nodes: nodes, Edges: edges, MapWidth: mapWidth, MapHeight: mapHeight, Statuses: statuses, Projects: projects, Assigned: assigned, Webhooks: activeWebhooks, Events: events,
 		CanEdit: admin && wf.ID != workflow.Default().ID, CanAssign: admin,
 	}, "workflows", "")
 }
@@ -924,6 +940,10 @@ func (h *Handler) AddWorkflowTransition(w http.ResponseWriter, r *http.Request, 
 	transition := workflow.Transition{
 		ID: workflow.NextTransitionID(wf.Transitions), Name: strings.TrimSpace(r.PostFormValue("name")),
 		From: []string{r.PostFormValue("from")}, To: r.PostFormValue("to"),
+	}
+	// A global transition runs from every status of the workflow.
+	if r.PostFormValue("from") == workflowAnyStatus {
+		transition.Type, transition.From = workflow.TransitionGlobal, nil
 	}
 	changedField := strings.TrimSpace(r.PostFormValue("changed_field_validator"))
 	fields := append([]string(nil), r.PostForm["screen_field"]...)
@@ -1137,6 +1157,10 @@ func (h *Handler) DeleteWorkflowTransition(w http.ResponseWriter, r *http.Reques
 		http.NotFound(w, r)
 		return
 	}
+	if initial := wf.Initial(); initial != nil && initial.ID == transitionID {
+		http.Error(w, "the initial transition creates work items and cannot be deleted", http.StatusBadRequest)
+		return
+	}
 	transitions := wf.Transitions[:0]
 	for _, transition := range wf.Transitions {
 		if transition.ID != transitionID {
@@ -1245,16 +1269,28 @@ func containsValue(values []string, target string) bool {
 
 func workflowStatusIDs(wf workflow.Workflow) map[string]bool {
 	ids := make(map[string]bool)
-	for _, status := range wf.Statuses {
-		ids[status.StatusReference] = true
-	}
-	for _, transition := range wf.Transitions {
-		ids[transition.To] = true
-		for _, from := range transition.From {
-			ids[from] = true
-		}
+	for _, id := range wf.StatusIDs() {
+		ids[id] = true
 	}
 	return ids
+}
+
+// workflowRuleSummary names the kinds of rule a transition carries.
+func workflowRuleSummary(transition workflow.Transition) []string {
+	rules := make([]string, 0, 4)
+	if transition.Conditions != nil {
+		rules = append(rules, "condition")
+	}
+	if len(transition.Validators) > 0 {
+		rules = append(rules, "validator")
+	}
+	if len(transition.Actions) > 0 {
+		rules = append(rules, "post-function")
+	}
+	if len(transition.Triggers) > 0 {
+		rules = append(rules, "trigger")
+	}
+	return rules
 }
 
 func workflowDesignerMap(wf workflow.Workflow, statuses []models.Status) ([]workflowNodeView, []workflowEdgeView, int, int) {
@@ -1283,20 +1319,7 @@ func workflowDesignerMap(wf workflow.Workflow, statuses []models.Status) ([]work
 		transitions := make([]workflowTransitionView, 0)
 		for _, transition := range wf.Transitions {
 			if containsValue(transition.From, status.ID) {
-				rules := make([]string, 0, 3)
-				if transition.Conditions != nil {
-					rules = append(rules, "condition")
-				}
-				if len(transition.Validators) > 0 {
-					rules = append(rules, "validator")
-				}
-				if len(transition.Actions) > 0 {
-					rules = append(rules, "post-function")
-				}
-				if len(transition.Triggers) > 0 {
-					rules = append(rules, "trigger")
-				}
-				transitions = append(transitions, workflowTransitionView{ID: transition.ID, Name: transition.Name, To: statusByID[transition.To], ScreenFields: transition.ScreenFields(), RuleSummary: rules})
+				transitions = append(transitions, workflowTransitionView{ID: transition.ID, Name: transition.Name, To: statusByID[transition.To], ScreenFields: transition.ScreenFields(), RuleSummary: workflowRuleSummary(transition)})
 			}
 		}
 		nodes = append(nodes, workflowNodeView{Status: status, X: x, Y: y, Transitions: transitions})

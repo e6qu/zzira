@@ -415,22 +415,10 @@ func (s *Service) bulkMoveStatus(ctx context.Context, sourceStatusID string, ite
 	if err != nil {
 		return "", err
 	}
-	allowed := map[string]bool{}
-	ordered := make([]string, 0)
-	add := func(id string) {
-		if id != "" && !allowed[id] {
-			allowed[id] = true
-			ordered = append(ordered, id)
-		}
-	}
-	for _, status := range wf.Statuses {
-		add(status.StatusReference)
-	}
-	for _, transition := range wf.Transitions {
-		for _, from := range transition.From {
-			add(from)
-		}
-		add(transition.To)
+	ordered := wf.StatusIDs()
+	allowed := make(map[string]bool, len(ordered))
+	for _, id := range ordered {
+		allowed[id] = true
 	}
 	if allowed[sourceStatusID] {
 		return sourceStatusID, nil
@@ -444,16 +432,11 @@ func (s *Service) bulkMoveStatus(ctx context.Context, sourceStatusID string, ite
 	if !item.InferStatusDefaults {
 		return "", fmt.Errorf("source status %q requires a destination status mapping", sourceStatusID)
 	}
-	if allowed["st_todo"] {
-		return "st_todo", nil
-	}
 	if len(ordered) == 0 {
 		return "", fmt.Errorf("destination workflow has no statuses")
 	}
-	if len(wf.Statuses) == 0 {
-		sort.Strings(ordered)
-	}
-	return ordered[0], nil
+	// Inferred work starts where the destination workflow creates it.
+	return wf.InitialStatus(), nil
 }
 
 func (s *Service) executeBulkDeleteTask(ctx context.Context, task store.APITask) error {

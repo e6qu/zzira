@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -119,16 +120,37 @@ type StatusLayout struct {
 }
 
 // Transition is one workflow edge.
+// Transition types. A directed transition runs from the statuses it links;
+// a global transition runs from every status in the workflow; the initial
+// transition creates work items in its destination status.
+const (
+	TransitionDirected = "DIRECTED"
+	TransitionGlobal   = "GLOBAL"
+	TransitionInitial  = "INITIAL"
+)
+
+// LinkPorts are the designer ports a transition link starts and ends on.
+type LinkPorts struct {
+	FromPort *int `json:"fromPort,omitempty"`
+	ToPort   *int `json:"toPort,omitempty"`
+}
+
 type Transition struct {
-	ID         string          `json:"id"`
-	Name       string          `json:"name"`
-	From       []string        `json:"from"`
-	To         string          `json:"to"`
-	Actions    []Rule          `json:"actions,omitempty"`
-	Validators []Rule          `json:"validators,omitempty"`
-	Triggers   []Rule          `json:"triggers,omitempty"`
-	Conditions *ConditionGroup `json:"conditions,omitempty"`
-	Screen     *Rule           `json:"transitionScreen,omitempty"`
+	ID          string            `json:"id"`
+	Name        string            `json:"name"`
+	Type        string            `json:"type,omitempty"`
+	Description string            `json:"description,omitempty"`
+	Properties  map[string]string `json:"properties,omitempty"`
+	From        []string          `json:"from"`
+	// Ports holds each link's designer ports, keyed by the source status; a
+	// global or initial transition keys its single link by "".
+	Ports      map[string]LinkPorts `json:"ports,omitempty"`
+	To         string               `json:"to"`
+	Actions    []Rule               `json:"actions,omitempty"`
+	Validators []Rule               `json:"validators,omitempty"`
+	Triggers   []Rule               `json:"triggers,omitempty"`
+	Conditions *ConditionGroup      `json:"conditions,omitempty"`
+	Screen     *Rule                `json:"transitionScreen,omitempty"`
 	// CustomIssueEventID is the event the transition fires instead of the
 	// one Jira derives from the status change.
 	CustomIssueEventID string `json:"customIssueEventId,omitempty"`
@@ -182,6 +204,7 @@ func Default() Workflow {
 		ID:   "wf_default",
 		Name: "Default",
 		Transitions: []Transition{
+			{ID: "1", Name: "Create", Type: TransitionInitial, To: "st_todo"},
 			{ID: "11", Name: "To Do", From: []string{"st_inprogress", "st_done"}, To: "st_todo"},
 			{ID: "21", Name: "In Progress", From: []string{"st_todo", "st_done"}, To: "st_inprogress"},
 			{ID: "31", Name: "Done", From: []string{"st_todo", "st_inprogress"}, To: "st_done"},
@@ -189,18 +212,83 @@ func Default() Workflow {
 	}
 }
 
+// Kind is the transition's type; a stored transition without one is directed.
+func (t Transition) Kind() string {
+	if t.Type == "" {
+		return TransitionDirected
+	}
+	return t.Type
+}
+
+// runsFrom reports whether the transition can start from the status. A global
+// transition runs from every status of its workflow, including its own
+// destination, as in Jira; the initial transition only runs on creation.
+func (w Workflow) runsFrom(t Transition, statusID string) bool {
+	switch t.Kind() {
+	case TransitionInitial:
+		return false
+	case TransitionGlobal:
+		return slices.Contains(w.StatusIDs(), statusID)
+	}
+	return slices.Contains(t.From, statusID)
+}
+
 // Available returns the transitions legal from the given status.
 func (w Workflow) Available(statusID string) []Transition {
 	var out []Transition
 	for _, t := range w.Transitions {
-		for _, from := range t.From {
-			if from == statusID {
-				out = append(out, t)
-				break
-			}
+		if w.runsFrom(t, statusID) {
+			out = append(out, t)
 		}
 	}
 	return out
+}
+
+// StatusIDs lists the workflow's statuses: its designer statuses first, then
+// every status its transitions reach or leave, each once.
+func (w Workflow) StatusIDs() []string {
+	seen := make(map[string]bool)
+	ids := make([]string, 0, len(w.Statuses))
+	add := func(id string) {
+		if id != "" && !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+	for _, status := range w.Statuses {
+		add(status.StatusReference)
+	}
+	for _, t := range w.Transitions {
+		for _, from := range t.From {
+			add(from)
+		}
+		add(t.To)
+	}
+	return ids
+}
+
+// Initial returns the workflow's initial transition, or nil.
+func (w Workflow) Initial() *Transition {
+	for i := range w.Transitions {
+		if w.Transitions[i].Kind() == TransitionInitial {
+			return &w.Transitions[i]
+		}
+	}
+	return nil
+}
+
+// InitialStatus is the status new work items start in: the initial
+// transition's destination. A workflow stored before it had one starts in To
+// Do when it uses that status, and otherwise in its first status.
+func (w Workflow) InitialStatus() string {
+	if initial := w.Initial(); initial != nil {
+		return initial.To
+	}
+	ids := w.StatusIDs()
+	if len(ids) == 0 || slices.Contains(ids, "st_todo") {
+		return "st_todo"
+	}
+	return ids[0]
 }
 
 // AvailableFor returns legal transitions whose conditions allow the actor.
@@ -232,12 +320,7 @@ func (w Workflow) Validate(transitionID, currentStatusID string) (*Transition, b
 		if t.ID != transitionID {
 			continue
 		}
-		for _, from := range t.From {
-			if from == currentStatusID {
-				return t, true
-			}
-		}
-		return t, false
+		return t, w.runsFrom(*t, currentStatusID)
 	}
 	return nil, false
 }

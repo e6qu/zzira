@@ -1474,9 +1474,27 @@ func validateWorkflowAgainstStatuses(wf workflow.Workflow, statuses []models.Sta
 		}
 		statusLayouts[status.StatusReference] = struct{}{}
 	}
+	initialTransitions := 0
 	for _, transition := range wf.Transitions {
-		if strings.TrimSpace(transition.ID) == "" || strings.TrimSpace(transition.Name) == "" || transition.To == "" || len(transition.From) == 0 {
-			return nil, fmt.Errorf("every workflow transition requires an id, name, source, and destination")
+		if strings.TrimSpace(transition.ID) == "" || strings.TrimSpace(transition.Name) == "" || transition.To == "" {
+			return nil, fmt.Errorf("every workflow transition requires an id, name, and destination")
+		}
+		switch transition.Kind() {
+		case workflow.TransitionDirected:
+			if len(transition.From) == 0 {
+				return nil, fmt.Errorf("directed workflow transition %q requires a source status", transition.ID)
+			}
+		case workflow.TransitionGlobal, workflow.TransitionInitial:
+			if len(transition.From) > 0 {
+				return nil, fmt.Errorf("%s workflow transition %q cannot have source statuses", strings.ToLower(transition.Kind()), transition.ID)
+			}
+			if transition.Kind() == workflow.TransitionInitial {
+				if initialTransitions++; initialTransitions > 1 {
+					return nil, fmt.Errorf("a workflow can have only one initial transition")
+				}
+			}
+		default:
+			return nil, fmt.Errorf("workflow transition %q has unknown type %q", transition.ID, transition.Type)
 		}
 		if _, duplicate := transitionIDs[transition.ID]; duplicate {
 			return nil, fmt.Errorf("workflow transition id %q is duplicated", transition.ID)

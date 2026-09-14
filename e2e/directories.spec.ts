@@ -231,6 +231,13 @@ test('project workflow creation, editor, transition changes, and assignment work
   await page.getByRole('button', { name: 'Add transition' }).click();
   await expect(page.getByText('Integration reopen', { exact: true })).toBeVisible();
   await expect(page.getByText('to To Do · condition, validator', { exact: true })).toBeVisible();
+  await page.fill('#transition-name', 'Close from anywhere');
+  await page.selectOption('#transition-from', 'any');
+  await page.selectOption('#transition-to', 'st_done');
+  await page.getByRole('button', { name: 'Add transition' }).click();
+  const startTransitions = page.getByRole('region', { name: 'Create and global transitions' });
+  await expect(startTransitions).toContainText('Close from anywhere');
+  await expect(startTransitions.getByText('any status to Done', { exact: true })).toBeVisible();
   await expect(page.getByText('Draft changes', { exact: true })).toBeVisible();
   await expect(page.getByText('Draft changes are not active')).toBeVisible();
   await page.getByRole('button', { name: 'Publish workflow' }).click();

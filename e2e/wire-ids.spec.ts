@@ -74,7 +74,7 @@ test('no stored id reaches a client through the Jira, Agile or Service Managemen
   const serviceDesks = await (await request.get('/rest/servicedeskapi/servicedesk', { headers })).json();
   const serviceDeskId = serviceDesks.values?.[0]?.id;
   const workflows = await (await request.get('/rest/api/3/workflow/search', { headers })).json();
-  const workflowId = workflows.values?.[0]?.id;
+  const workflowId = workflows.values?.[0]?.id?.entityId;
   const schemes = await (await request.get('/rest/api/3/workflowscheme', { headers })).json();
   const schemeId = schemes.values?.[0]?.id;
 

@@ -29,6 +29,8 @@ type workflowStatusLayoutRequest struct {
 
 type workflowTransitionLinkRequest struct {
 	FromStatusReference string `json:"fromStatusReference"`
+	FromPort            *int   `json:"fromPort"`
+	ToPort              *int   `json:"toPort"`
 }
 
 type workflowRuleUpdateRequest struct {
@@ -47,6 +49,8 @@ type workflowTransitionUpdateRequest struct {
 	ID                string                               `json:"id"`
 	Name              string                               `json:"name"`
 	Type              string                               `json:"type"`
+	Description       string                               `json:"description"`
+	Properties        map[string]string                    `json:"properties"`
 	ToStatusReference string                               `json:"toStatusReference"`
 	Links             []workflowTransitionLinkRequest      `json:"links"`
 	Actions           []workflowRuleUpdateRequest          `json:"actions"`
@@ -331,6 +335,7 @@ func workflowDefinitionFromRequest(id, name, description string, startPointLayou
 		errors = append(errors, workflowValidationError("WORKFLOW_TRANSITIONS_REQUIRED", "At least one workflow transition is required.", "WORKFLOW", nil))
 	}
 	transitionIDs := make(map[string]bool)
+	initialTransitions := 0
 	// A transition without an id takes Jira's next numeric id.
 	numbered := make([]workflow.Transition, 0, len(transitions))
 	for _, item := range transitions {
@@ -352,24 +357,66 @@ func workflowDefinitionFromRequest(id, name, description string, startPointLayou
 			errors = append(errors, workflowValidationError("TRANSITION_DESTINATION_INVALID", "The transition destination must reference a workflow status.", "TRANSITION", map[string]any{"transitionId": transitionID}))
 			continue
 		}
-		if item.Type != "" && item.Type != "DIRECTED" {
-			errors = append(errors, workflowValidationError("TRANSITION_TYPE_UNSUPPORTED", "Only directed transitions are currently supported.", "TRANSITION", map[string]any{"transitionId": transitionID}))
+		kind := item.Type
+		if kind == "" {
+			kind = workflow.TransitionDirected
+		}
+		if kind != workflow.TransitionDirected && kind != workflow.TransitionGlobal && kind != workflow.TransitionInitial {
+			errors = append(errors, workflowValidationError("TRANSITION_TYPE_INVALID", "The transition type must be INITIAL, GLOBAL or DIRECTED.", "TRANSITION", map[string]any{"transitionId": transitionID}))
 			continue
 		}
-		from := make([]string, 0, len(item.Links))
-		for _, link := range item.Links {
-			statusID := references[link.FromStatusReference]
-			if statusID == "" || !allowed[statusID] {
-				errors = append(errors, workflowValidationError("TRANSITION_SOURCE_INVALID", "Every transition source must reference a workflow status.", "TRANSITION", map[string]any{"transitionId": transitionID}))
+		if kind == workflow.TransitionInitial {
+			if initialTransitions++; initialTransitions > 1 {
+				errors = append(errors, workflowValidationError("TRANSITION_INITIAL_DUPLICATE", "A workflow can have only one initial transition.", "TRANSITION", map[string]any{"transitionId": transitionID}))
 				continue
 			}
-			from = append(from, statusID)
 		}
-		if strings.TrimSpace(item.Name) == "" || len(from) == 0 {
-			errors = append(errors, workflowValidationError("TRANSITION_INVALID", "A directed transition requires a name and at least one source.", "TRANSITION", map[string]any{"transitionId": transitionID}))
+		// A directed transition starts from the statuses it links; a global or
+		// initial transition starts from no status, so its one link only
+		// carries designer ports.
+		from := make([]string, 0, len(item.Links))
+		ports := map[string]workflow.LinkPorts{}
+		linksValid := true
+		for _, link := range item.Links {
+			source := ""
+			if kind == workflow.TransitionDirected {
+				source = references[link.FromStatusReference]
+				if source == "" || !allowed[source] {
+					errors = append(errors, workflowValidationError("TRANSITION_SOURCE_INVALID", "Every transition source must reference a workflow status.", "TRANSITION", map[string]any{"transitionId": transitionID}))
+					linksValid = false
+					break
+				}
+				from = append(from, source)
+			} else if link.FromStatusReference != "" || len(item.Links) > 1 {
+				errors = append(errors, workflowValidationError("TRANSITION_SOURCE_INVALID", "A global or initial transition cannot start from a status.", "TRANSITION", map[string]any{"transitionId": transitionID}))
+				linksValid = false
+				break
+			}
+			if link.FromPort != nil || link.ToPort != nil {
+				ports[source] = workflow.LinkPorts{FromPort: link.FromPort, ToPort: link.ToPort}
+			}
+		}
+		if !linksValid {
 			continue
 		}
-		transition := workflow.Transition{ID: transitionID, Name: strings.TrimSpace(item.Name), From: from, To: to}
+		if strings.TrimSpace(item.Name) == "" || (kind == workflow.TransitionDirected && len(from) == 0) {
+			errors = append(errors, workflowValidationError("TRANSITION_INVALID", "A transition requires a name, and a directed transition at least one source.", "TRANSITION", map[string]any{"transitionId": transitionID}))
+			continue
+		}
+		if len(item.Description) > 1000 {
+			errors = append(errors, workflowValidationError("TRANSITION_DESCRIPTION_INVALID", "The transition description must be at most 1000 characters.", "TRANSITION", map[string]any{"transitionId": transitionID}))
+			continue
+		}
+		transition := workflow.Transition{ID: transitionID, Name: strings.TrimSpace(item.Name), Description: item.Description, From: from, To: to}
+		if kind != workflow.TransitionDirected {
+			transition.Type = kind
+		}
+		if len(item.Properties) > 0 {
+			transition.Properties = item.Properties
+		}
+		if len(ports) > 0 {
+			transition.Ports = ports
+		}
 		if item.CustomIssueEventID != nil && strings.TrimSpace(*item.CustomIssueEventID) != "" {
 			eventID := strings.TrimSpace(*item.CustomIssueEventID)
 			if parsed, parseErr := strconv.ParseInt(eventID, 10, 64); parseErr != nil || parsed < 1 {

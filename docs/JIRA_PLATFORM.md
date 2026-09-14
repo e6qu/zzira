@@ -84,7 +84,7 @@ kept for 60 days.
 | `POST /rest/api/3/workflow/history/list` | Site administrators: `{workflowId}` gives `entries` newest first with `workflowId`, `workflowVersion`, `writtenAt` and `isIntermediate`; `expand=includeIntermediateWorkflows` adds intermediate saves. An unknown workflow is 400. |
 | `POST /rest/api/3/workflow/history` | `{workflowId, version}` gives that version as a workflow document (statuses, transitions and rules as they were) with `version`, `updated` and `lastUpdateAuthorAAID`, plus the statuses it references. An unknown version is 400. |
 | `POST /rest/api/3/workflows` | Bulk read by `workflowIds`, `workflowNames` or `projectAndIssueTypes`, returning the same documents and referenced statuses; an empty request returns every workflow. |
-| `GET /rest/api/3/workflow/search` | Paged workflow search, unchanged. |
+| `GET /rest/api/3/workflow/search` | Site administrators: a page of published classic workflows (global workflows; team-managed ones are left out) filtered by `workflowName`, `queryString` and `isActive`, ordered by `name`, `created` or `updated`, each identified by `{name, entityId}` with `created` and `updated`. `expand` adds `transitions` (lowercase `initial`, `global` or `directed` types, `from` and `to` status ids), `transitions.rules` (`conditionsTree`, `validators`, `postFunctions`), `transitions.properties`, `statuses`, `statuses.properties`, `default`, `schemes`, `projects`, `hasDraftWorkflow` and `operations` (`canEdit`, and `canDelete` while no project or scheme uses the workflow). Jira has no `POST /rest/api/3/workflow` or `/rest/api/3/workflow/project/{key}`; zzira's old routes of those names are gone. |
 
 ## Transition rules owned by apps
 

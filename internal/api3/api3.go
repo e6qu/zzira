@@ -240,9 +240,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case path == "/permissions/project" && r.Method == http.MethodPost:
 		h.permittedProjects(w, r)
 	case path == "/workflow/search" && r.Method == http.MethodGet:
-		h.workflowRoute(w, r)
-	case path == "/workflow" && r.Method == http.MethodPost:
-		h.workflowRoute(w, r)
+		h.legacyWorkflowSearch(w, r)
 	case path == "/workflows/defaultEditor" && r.Method == http.MethodGet:
 		h.workflowDefaultEditor(w, r)
 	case path == "/workflows/search" && r.Method == http.MethodGet:
@@ -269,8 +267,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.workflowRuleConfigRoute(w, r, path)
 	case path == "/workflows" && r.Method == http.MethodPost:
 		h.readWorkflows(w, r)
-	case strings.HasPrefix(path, "/workflow/project/"):
-		h.workflowRoute(w, r)
 	case strings.HasPrefix(path, "/workflow/"):
 		h.workflowUsageRoute(w, r, path)
 	case path == "/role" || strings.HasPrefix(path, "/role/"):

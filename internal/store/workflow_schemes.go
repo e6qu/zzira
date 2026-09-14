@@ -447,11 +447,8 @@ func workflowByIDQuery(ctx context.Context, q workflowSchemeQuerier, workspaceID
 
 func workflowStatuses(wf workflow.Workflow) map[string]bool {
 	statuses := make(map[string]bool)
-	for _, transition := range wf.Transitions {
-		statuses[transition.To] = true
-		for _, from := range transition.From {
-			statuses[from] = true
-		}
+	for _, id := range wf.StatusIDs() {
+		statuses[id] = true
 	}
 	return statuses
 }
