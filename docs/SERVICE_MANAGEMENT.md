@@ -52,12 +52,26 @@ Revocation immediately removes queue access, all-request visibility, request
 management and internal-comment visibility for that desk.
 
 Site administrators configure each request type's portal fields from the agent
-workspace. Summary is always present and required; description and
-project-available text, number, or date-time custom fields can be shown,
-required, ordered, and given customer help text. The portal UI and JSM field
-metadata read the same durable configuration. UI and REST request creation
-reject unconfigured or missing fields, validate typed values through the
-canonical Jira command layer, and store custom answers on the backing issue.
+workspace. Summary is always present, required and visible. Description and the
+custom fields available to the project can be shown, required, ordered and given
+customer help text. They can also be hidden from the portal with a preset value,
+which every new request takes; a hidden required field needs a preset. The
+portal UI and JSM field metadata read the same durable configuration.
+
+Field metadata gives each field's Jira schema (type, custom field type,
+`customId` and array `items`). Select, multi-select and cascading select fields
+list the options of the context that reaches the desk's project as
+`validValues`, with cascading children. `canRaiseOnBehalfOf` and
+`canAddRequestParticipants` are true only for the desk's agents. Hidden fields
+and their `presetValues` appear only to site administrators who ask for
+`expand=hiddenFields`.
+
+UI and REST request creation reject unconfigured, hidden or missing fields,
+validate typed values through the canonical Jira command layer, and store custom
+answers on the backing issue. Request type lists filter by `groupId`, by
+repeated `serviceDeskId`, and by `restrictionStatus`: `OPEN` keeps every zzira
+request type and `RESTRICTED` keeps none. A `searchQuery` leaves out request
+types in no group unless `includeHiddenRequestTypesInSearch` is true.
 
 Agents can create customer organizations, add or remove active customers, store
 JSON entity properties, and link organizations to the desks they work. A linked
@@ -251,8 +265,8 @@ compensated by a logged issue deletion, so no orphaned ticket remains.
 
 The implemented operations are assessed as partial. JQL support follows the
 documented ZZIRA search subset, including array-aware label matching;
-conditional form logic, select, user, and
-Assets-backed portal fields, participant notifications,
+conditional form logic, user and
+Assets-backed portal pickers, participant notifications,
 approval workflow configuration, image thumbnail generation,
 email delivery and notification preference administration, CSAT configuration,
 service report comparisons, SLA goal distributions, exports and scheduled
