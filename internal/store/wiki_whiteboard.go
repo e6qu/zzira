@@ -8,7 +8,8 @@ import (
 )
 
 func (s *Store) WikiWhiteboardData(ctx context.Context, ws, actor, whiteboardID string) (*models.WikiWhiteboardData, error) {
-	if _, err := s.WikiContent(ctx, ws, actor, whiteboardID, "whiteboard"); err != nil {
+	// An archived whiteboard still reads back; changing it needs it to be current.
+	if _, err := s.WikiTreeContent(ctx, ws, actor, whiteboardID, "whiteboard"); err != nil {
 		return nil, err
 	}
 	data := &models.WikiWhiteboardData{}

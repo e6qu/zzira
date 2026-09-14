@@ -10,7 +10,8 @@ import (
 )
 
 func (s *Store) WikiDatabaseData(ctx context.Context, ws, actor, databaseID string) (*models.WikiDatabaseData, error) {
-	if _, err := s.WikiContent(ctx, ws, actor, databaseID, "database"); err != nil {
+	// An archived database still reads back; changing it needs it to be current.
+	if _, err := s.WikiTreeContent(ctx, ws, actor, databaseID, "database"); err != nil {
 		return nil, err
 	}
 	data := &models.WikiDatabaseData{}
