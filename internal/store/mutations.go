@@ -945,11 +945,13 @@ func (s *Store) MarkWebhookDelivery(ctx context.Context, webhookID string, seq i
 	return err
 }
 
-// NextCustomFieldNumber returns the next suffix for customfield_NNNNN ids.
+// NextCustomFieldNumber returns the next suffix for customfield_NNNNN ids,
+// from the sequence app-provided fields also draw on, so the two never share
+// an id.
 func (s *Store) NextCustomFieldNumber(ctx context.Context) (int, error) {
 	var suffix int
 	err := s.Pool.QueryRow(ctx, `SELECT nextval('jira_app_custom_field_id')::INT`).Scan(&suffix)
-	return suffix - 10000, err
+	return suffix, err
 }
 
 // jsonValuesEqual compares two stored field values, treating a missing value

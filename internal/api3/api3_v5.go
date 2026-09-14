@@ -189,7 +189,7 @@ func (h *Handler) createField(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	id := fmt.Sprintf("customfield_%d", 10000+seq)
+	id := fmt.Sprintf("customfield_%d", seq)
 	field, err := h.Store.CreateWorkspaceCustomFieldOfKind(r.Context(), workspaceID, id, req.Name, fieldType, typeKey, req.Description)
 	if err != nil {
 		jiraError(w, http.StatusBadRequest, err.Error())
