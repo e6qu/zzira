@@ -11,6 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/e6qu/zzira/internal/authz"
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
 )
@@ -53,24 +54,94 @@ func statusAPIError(w http.ResponseWriter, err error) {
 	}
 }
 
-func statusesByID(statuses []models.Status) map[string]models.Status {
-	byID := make(map[string]models.Status, len(statuses))
-	for _, status := range statuses {
-		byID[status.ID] = status
+// statusAccess is what a caller may read of the site's statuses. Jira shows
+// administrators every status and a project's administrators its statuses and
+// the global ones; reads that also accept Browse projects show the statuses of
+// browsable projects and the global ones.
+type statusAccess struct {
+	admin        bool
+	administered map[string]bool
+	browsable    map[string]bool
+}
+
+func (h *Handler) statusAccessFor(r *http.Request, workspaceID, userID string, browse bool) (statusAccess, error) {
+	access := statusAccess{administered: map[string]bool{}, browsable: map[string]bool{}}
+	if userID != "" {
+		admin, err := authz.IsWorkspaceAdmin(r.Context(), h.Store, workspaceID, userID)
+		if err != nil || admin {
+			access.admin = admin
+			return access, err
+		}
+		administered, err := h.Store.ProjectsWithPermissions(r.Context(), workspaceID, userID, []string{"ADMINISTER_PROJECTS"})
+		if err != nil {
+			return access, err
+		}
+		for _, project := range administered {
+			access.administered[project.ID] = true
+		}
 	}
-	return byID
+	if browse {
+		browsable, err := h.Store.ProjectsWithPermissions(r.Context(), workspaceID, userID, []string{"BROWSE_PROJECTS"})
+		if err != nil {
+			return access, err
+		}
+		for _, project := range browsable {
+			access.browsable[project.ID] = true
+		}
+	}
+	return access, nil
+}
+
+func (a statusAccess) canRead(status models.Status) bool {
+	switch {
+	case a.admin:
+		return true
+	case status.ProjectID != "":
+		return a.administered[status.ProjectID] || a.browsable[status.ProjectID]
+	default:
+		return len(a.administered) > 0 || len(a.browsable) > 0
+	}
+}
+
+func (a statusAccess) readable(statuses []models.Status) []models.Status {
+	out := make([]models.Status, 0, len(statuses))
+	for _, status := range statuses {
+		if a.canRead(status) {
+			out = append(out, status)
+		}
+	}
+	return out
+}
+
+// workflowStatusesForBrowser returns the statuses of the active workflows of
+// the projects the caller, possibly anonymous, can browse.
+func (h *Handler) workflowStatusesForBrowser(r *http.Request, workspaceID, userID string) ([]models.Status, error) {
+	projects, err := h.Store.ProjectsWithPermissions(r.Context(), workspaceID, userID, []string{"BROWSE_PROJECTS"})
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(projects))
+	for _, project := range projects {
+		ids = append(ids, project.ID)
+	}
+	return h.Store.StatusesInProjectWorkflows(r.Context(), workspaceID, ids)
 }
 
 func (h *Handler) bulkStatusesEndpoint(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
-		workspaceID, _, e := h.authWorkspace(r)
+		workspaceID, userID, e := h.authWorkspace(r)
 		if e != nil {
 			writeJerr(w, e)
 			return
 		}
 		ids := r.URL.Query()["id"]
-		if len(ids) == 0 {
-			jiraError(w, http.StatusBadRequest, "At least one status id is required.")
+		if len(ids) == 0 || len(ids) > 50 {
+			jiraError(w, http.StatusBadRequest, "Between 1 and 50 status ids are required.")
+			return
+		}
+		access, err := h.statusAccessFor(r, workspaceID, userID, false)
+		if err != nil {
+			statusAPIError(w, err)
 			return
 		}
 		statuses, err := h.Store.StatusesForAdministration(r.Context(), workspaceID)
@@ -78,7 +149,8 @@ func (h *Handler) bulkStatusesEndpoint(w http.ResponseWriter, r *http.Request) {
 			statusAPIError(w, err)
 			return
 		}
-		byID := statusesByID(statuses)
+		statuses = access.readable(statuses)
+		byID := make(map[string]models.Status, len(statuses))
 		for _, status := range statuses {
 			byID[statusWireID(status)] = status
 		}
@@ -187,19 +259,27 @@ func (h *Handler) bulkStatusesEndpoint(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// statusDetailEndpoint finds a status of an active workflow the caller can
+// browse, by its id or, first match wins, its name.
 func (h *Handler) statusDetailEndpoint(w http.ResponseWriter, r *http.Request, idOrName string) {
-	workspaceID, _, e := h.authWorkspace(r)
+	workspaceID, userID, e := h.authWorkspace(r)
 	if e != nil {
 		writeJerr(w, e)
 		return
 	}
-	statuses, err := h.Store.StatusesForWorkspace(r.Context(), workspaceID)
+	statuses, err := h.workflowStatusesForBrowser(r, workspaceID, userID)
 	if err != nil {
 		statusAPIError(w, err)
 		return
 	}
 	for _, status := range statuses {
-		if status.ID == idOrName || strings.EqualFold(status.Name, idOrName) {
+		if statusWireID(status) == idOrName {
+			writeJSON(w, http.StatusOK, h.statusBean(status))
+			return
+		}
+	}
+	for _, status := range statuses {
+		if strings.EqualFold(status.Name, idOrName) {
 			writeJSON(w, http.StatusOK, h.statusBean(status))
 			return
 		}
@@ -208,14 +288,19 @@ func (h *Handler) statusDetailEndpoint(w http.ResponseWriter, r *http.Request, i
 }
 
 func (h *Handler) statusesByNameEndpoint(w http.ResponseWriter, r *http.Request) {
-	workspaceID, _, e := h.authWorkspace(r)
+	workspaceID, userID, e := h.authWorkspace(r)
 	if e != nil {
 		writeJerr(w, e)
 		return
 	}
 	names := r.URL.Query()["name"]
-	if len(names) == 0 {
-		jiraError(w, http.StatusBadRequest, "At least one status name is required.")
+	if len(names) == 0 || len(names) > 50 {
+		jiraError(w, http.StatusBadRequest, "Between 1 and 50 status names are required.")
+		return
+	}
+	access, err := h.statusAccessFor(r, workspaceID, userID, true)
+	if err != nil {
+		statusAPIError(w, err)
 		return
 	}
 	wanted := make(map[string]bool, len(names))
@@ -223,7 +308,6 @@ func (h *Handler) statusesByNameEndpoint(w http.ResponseWriter, r *http.Request)
 		wanted[strings.ToLower(name)] = true
 	}
 	var statuses []models.Status
-	var err error
 	if projectID := r.URL.Query().Get("projectId"); projectID != "" {
 		project, projectErr := h.Store.ProjectByIDOrKey(r.Context(), workspaceID, projectID)
 		if projectErr != nil {
@@ -239,7 +323,7 @@ func (h *Handler) statusesByNameEndpoint(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	out := make([]map[string]any, 0)
-	for _, status := range statuses {
+	for _, status := range access.readable(statuses) {
 		if wanted[strings.ToLower(status.Name)] {
 			out = append(out, h.jiraStatusBean(status))
 		}
@@ -248,9 +332,14 @@ func (h *Handler) statusesByNameEndpoint(w http.ResponseWriter, r *http.Request)
 }
 
 func (h *Handler) searchStatusesEndpoint(w http.ResponseWriter, r *http.Request) {
-	workspaceID, _, e := h.authWorkspace(r)
+	workspaceID, userID, e := h.authWorkspace(r)
 	if e != nil {
 		writeJerr(w, e)
+		return
+	}
+	access, err := h.statusAccessFor(r, workspaceID, userID, false)
+	if err != nil {
+		statusAPIError(w, err)
 		return
 	}
 	start, err := strconv.Atoi(defaultString(r.URL.Query().Get("startAt"), "0"))
@@ -290,7 +379,7 @@ func (h *Handler) searchStatusesEndpoint(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	filtered := statuses[:0]
-	for _, status := range statuses {
+	for _, status := range access.readable(statuses) {
 		if query != "" && !strings.Contains(strings.ToLower(status.Name+" "+status.Description), query) {
 			continue
 		}

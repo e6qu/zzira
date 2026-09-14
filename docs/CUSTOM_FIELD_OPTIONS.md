@@ -17,7 +17,7 @@ This checkpoint implements all seven pinned custom field option operations:
 
 | Method and path | Behavior |
 |---|---|
-| `GET /rest/api/3/customFieldOption/{id}` | Reads one option by its own ID. |
+| `GET /rest/api/3/customFieldOption/{id}` | Reads one option's `self` and `value` by its own ID: administrators always, others when they can browse a project the option's context applies to and a field configuration that project uses shows the field. |
 | `GET/POST/PUT /rest/api/3/field/{fieldId}/context/{contextId}/option` | Pages a context's options in display order, appends options, or renames and enables or disables them. |
 | `PUT /rest/api/3/field/{fieldId}/context/{contextId}/option/move` | Reorders options with `after`, or `position` First or Last. |
 | `DELETE /rest/api/3/field/{fieldId}/context/{contextId}/option/{optionId}` | Removes an option that no work item holds. |

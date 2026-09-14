@@ -81,9 +81,21 @@ func TestStatusAPILifecycleAndWorkspaceScope(t *testing.T) {
 	if createdStatuses[0]["statusCategory"] != "IN_PROGRESS" || createdStatuses[0]["description"] != "Review pending" {
 		t.Fatalf("created status = %#v", createdStatuses[0])
 	}
-	call(member, "GET", "/rest/api/3/statuses?id="+id, "", 200)
-	call(member, "GET", "/rest/api/3/status/Peer%20review", "", 200)
-	search := call(member, "GET", "/rest/api/3/statuses/search?searchString=peer&statusCategory=IN_PROGRESS&maxResults=1", "", 200)
+	// A member who administers no project reads none of the statuses.
+	if unreadable := call(member, "GET", "/rest/api/3/statuses?id="+id, "", 200); strings.TrimSpace(unreadable.Body.String()) != "[]" {
+		t.Fatalf("member bulk statuses = %s", unreadable.Body.String())
+	}
+	if unreadable := call(member, "GET", "/rest/api/3/statuses/search?searchString=peer", "", 200); !strings.Contains(unreadable.Body.String(), `"total":0`) {
+		t.Fatalf("member status search = %s", unreadable.Body.String())
+	}
+	call(actor, "GET", "/rest/api/3/statuses?id="+strings.Repeat("too-many&id=", 50)+"too-many", "", 400)
+	// The legacy reads return only statuses of active workflows.
+	call(actor, "GET", "/rest/api/3/status/Peer%20review", "", 404)
+	if legacy := call(actor, "GET", "/rest/api/3/status", "", 200); strings.Contains(legacy.Body.String(), "Peer review") || !strings.Contains(legacy.Body.String(), `"name":"To Do"`) {
+		t.Fatalf("legacy statuses = %s", legacy.Body.String())
+	}
+	call(actor, "GET", "/rest/api/3/status/to%20do", "", 200)
+	search := call(actor, "GET", "/rest/api/3/statuses/search?searchString=peer&statusCategory=IN_PROGRESS&maxResults=1", "", 200)
 	if !strings.Contains(search.Body.String(), `"total":1`) || !strings.Contains(search.Body.String(), id) {
 		t.Fatal(search.Body.String())
 	}
@@ -132,6 +144,12 @@ func TestStatusAPILifecycleAndWorkspaceScope(t *testing.T) {
 		t.Fatalf("other project status response: %s (%v)", otherCreated.Body.String(), err)
 	}
 	otherStatusID := otherStatuses[0]["id"].(string)
+	// Administering STAT lets the member read its statuses and the global
+	// ones, never another project's.
+	call(actor, "POST", "/rest/api/3/project/STAT/role/10000", `{"user":["`+member+`"]}`, 200)
+	if other := call(member, "GET", "/rest/api/3/statuses?id="+otherStatusID+"&id="+id, "", 200); strings.Contains(other.Body.String(), otherStatusID) || !strings.Contains(other.Body.String(), id) {
+		t.Fatalf("project administrator bulk statuses = %s", other.Body.String())
+	}
 	byName := call(member, "GET", "/rest/api/3/statuses/byNames?projectId="+projectID+"&name=Awaiting%20customer", "", 200)
 	if !strings.Contains(byName.Body.String(), projectStatusID) || strings.Contains(byName.Body.String(), otherStatusID) {
 		t.Fatalf("project byNames leaked status: %s", byName.Body.String())

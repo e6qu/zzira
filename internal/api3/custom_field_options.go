@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/e6qu/zzira/internal/authz"
 	"github.com/e6qu/zzira/internal/models"
 )
 
@@ -25,7 +26,7 @@ func (h *Handler) customFieldOptionResource(w http.ResponseWriter, r *http.Reque
 		jiraError(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
-	workspaceID, _, authErr := h.authWorkspace(r)
+	workspaceID, userID, authErr := h.authWorkspace(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
@@ -35,9 +36,37 @@ func (h *Handler) customFieldOptionResource(w http.ResponseWriter, r *http.Reque
 		fieldContextError(w, err)
 		return
 	}
-	bean := h.customFieldOptionBean(option)
-	bean["self"] = h.BaseURL + "/rest/api/3/customFieldOption/" + option.ID
-	writeJSON(w, http.StatusOK, bean)
+	// Jira returns the option to administrators, and to callers who can
+	// browse a project the field is used in where a field configuration shows
+	// it; anyone else is told it does not exist.
+	admin := false
+	if userID != "" {
+		if admin, err = authz.IsWorkspaceAdmin(r.Context(), h.Store, workspaceID, userID); err != nil {
+			fieldContextError(w, err)
+			return
+		}
+	}
+	if !admin {
+		projects, projectErr := h.Store.ProjectsWithPermissions(r.Context(), workspaceID, userID, []string{"BROWSE_PROJECTS"})
+		if projectErr != nil {
+			fieldContextError(w, projectErr)
+			return
+		}
+		ids := make([]string, 0, len(projects))
+		for _, project := range projects {
+			ids = append(ids, project.ID)
+		}
+		visible, visibleErr := h.Store.CustomFieldOptionVisibleInProjects(r.Context(), workspaceID, option.ID, ids)
+		if visibleErr != nil {
+			fieldContextError(w, visibleErr)
+			return
+		}
+		if !visible {
+			jiraError(w, http.StatusNotFound, "The custom field option does not exist or you do not have permission to see it.")
+			return
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"self": h.BaseURL + "/rest/api/3/customFieldOption/" + option.ID, "value": option.Value})
 }
 
 func (h *Handler) customFieldOptionCollection(w http.ResponseWriter, r *http.Request, fieldID, contextID string) {

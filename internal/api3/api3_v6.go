@@ -13,13 +13,15 @@ import (
 
 // ---- metadata registries ----
 
+// statusesEndpoint lists the statuses of active workflows in projects the
+// caller can browse.
 func (h *Handler) statusesEndpoint(w http.ResponseWriter, r *http.Request) {
-	workspaceID, _, e := h.authWorkspace(r)
+	workspaceID, userID, e := h.authWorkspace(r)
 	if e != nil {
 		writeJerr(w, e)
 		return
 	}
-	statuses, err := h.Store.StatusesForWorkspace(r.Context(), workspaceID)
+	statuses, err := h.workflowStatusesForBrowser(r, workspaceID, userID)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return

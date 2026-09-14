@@ -6989,7 +6989,7 @@
         "internal/api3/time_tracking_test.go",
         "docs/TIME_TRACKING.md"
       ],
-      "notes": "Removing one worklog is tested, and the tombstone the deleted feed reads from; adjustEstimate auto, new, manual with increaseBy, and leave move the remaining estimate back, and Delete all worklogs or Delete own worklogs is required; notifyUsers controls the worklog deleted event sent through the project's notification scheme."
+      "notes": "Removing one worklog is tested, and the tombstone the deleted feed reads from; adjustEstimate auto, new, manual with increaseBy, and leave restore the estimate of work left, and Delete all worklogs or Delete own worklogs is required; notifyUsers controls the worklog deleted event sent through the project's notification scheme."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/issue/{issueIdOrKey}/worklog/{worklogId}/properties/{propertyKey}",
@@ -7246,7 +7246,7 @@
         "e2e/screens.spec.ts",
         "docs/SCREENS.md"
       ],
-      "notes": "Tab deletion renumbers the remaining tabs and refuses to remove a screen's last tab."
+      "notes": "Tab deletion renumbers the tabs after it and refuses to remove a screen's last tab."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/screens/{screenId}/tabs/{tabId}/fields/{id}",
@@ -7684,7 +7684,7 @@
         "internal/api3/custom_field_contexts_test.go",
         "docs/CUSTOM_FIELD_OPTIONS.md"
       ],
-      "notes": "Reads one option by id, scoped to the workspace's fields, with a cascading child's optionId; Jira's expanded option bean remains."
+      "notes": "Returns the documented self and value to administrators, and to callers, anonymous included, who can browse a project the option's context applies to where a field configuration shows the field; others get 404."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/dashboard",
@@ -8949,7 +8949,7 @@
         "internal/api3/screens_test.go",
         "docs/SCREENS.md"
       ],
-      "notes": "Bulk tab reads for selected or all screens are tested; Jira's projectKey scoping remains."
+      "notes": "Bulk tab reads for selected or all screens honour tabId filtering and startAt/maxResult paging capped at 100, rejecting non-numeric ids with 400."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/screens/{screenId}/availableFields",
@@ -8959,7 +8959,7 @@
         "e2e/screens.spec.ts",
         "docs/SCREENS.md"
       ],
-      "notes": "Fields already on the screen are excluded from the catalog; Jira's per-project field scoping remains."
+      "notes": "Returns the fields not yet on the screen to Jira administrators, as documented."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/screens/{screenId}/tabs",
@@ -8969,7 +8969,7 @@
         "e2e/screens.spec.ts",
         "docs/SCREENS.md"
       ],
-      "notes": "Tabs are returned in display order through REST and the browser; projectKey scoping remains."
+      "notes": "Tabs are returned in display order through REST and the browser to administrators, and to a project's administrators when projectKey names the project and its issue type screen scheme uses the screen."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/screens/{screenId}/tabs/{tabId}/fields",
@@ -9025,7 +9025,7 @@
         "internal/api3/issue_security_schemes_test.go",
         "docs/ISSUE_SECURITY_SCHEMES.md"
       ],
-      "notes": "Reading one level by id is tested; Jira's expanded level bean remains."
+      "notes": "Reading one level by id returns the documented SecurityLevel bean: id, name, description, isDefault, issueSecuritySchemeId and self."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/settings/columns",
@@ -9046,7 +9046,7 @@
         "e2e/directories.spec.ts",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Workspace-visible built-in and custom statuses are authenticated and returned with Jira status-category beans; expanded legacy fields and permission nuances remain."
+      "notes": "Returns the statuses of the active workflows, published scheme mappings or project workflows, of projects the caller, anonymous included, can browse, with Jira status-category beans."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/status/{idOrName}",
@@ -9057,7 +9057,7 @@
         "e2e/directories.spec.ts",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Status lookup supports workspace-visible IDs and case-insensitive names with exact not-found behavior; project-specific visibility remains."
+      "notes": "Finds a status of an active workflow in a browsable project by its wire id or, first match wins, its case-insensitive name; a status outside those workflows or projects is not found."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/statuscategory",
@@ -9090,7 +9090,7 @@
         "e2e/directories.spec.ts",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Repeated status IDs return workspace-visible JiraStatus resources with GLOBAL or PROJECT scope. Exact missing-ID/error and permission parity remains."
+      "notes": "Returns up to 50 requested JiraStatus resources with GLOBAL or PROJECT scope: all to administrators, and to a project's administrators its statuses and the global ones; unknown or unreadable ids are omitted."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/statuses/byNames",
@@ -9101,7 +9101,7 @@
         "e2e/directories.spec.ts",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Repeated names return case-insensitive scope-visible matches, with projectId selecting that project's statuses and an omitted selector returning global statuses. Exact Jira permission filtering remains."
+      "notes": "Repeated names (up to 50) return case-insensitive matches, with projectId selecting that project's statuses and an omitted selector returning global statuses, filtered to what the caller administers or browses."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/statuses/search",
@@ -9112,7 +9112,7 @@
         "e2e/directories.spec.ts",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Search supports text, category, projectId, includeGlobalStatuses, startAt/maxResults paging, totals, isLast, and filter-preserving nextPage links. Exact Jira permission filtering remains."
+      "notes": "Search supports text, category, projectId, includeGlobalStatuses, startAt/maxResults paging, totals, isLast, and filter-preserving nextPage links over the statuses the caller administers: all for administrators, a project's and the global ones for its administrators."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/statuses/{statusId}/project/{projectId}/issueTypeUsages",
@@ -9714,7 +9714,7 @@
         "internal/api3/time_tracking_test.go",
         "docs/TIME_TRACKING.md"
       ],
-      "notes": "Logging work as timeSpent or timeSpentSeconds is tested, including the rejection of a non-positive time; adjustEstimate auto, new, manual with reduceBy, and leave move the remaining estimate, and Work on issues is required; notifyUsers controls the work logged event sent through the project's notification scheme."
+      "notes": "Logging work as timeSpent or timeSpentSeconds is tested, including the rejection of a non-positive time; adjustEstimate auto, new, manual with reduceBy, and leave adjust the estimate of work left, and Work on issues is required; notifyUsers controls the work logged event sent through the project's notification scheme."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/issue/{issueIdOrKey}/worklog/move",
@@ -10724,7 +10724,7 @@
         "internal/api3/time_tracking_test.go",
         "migrations/189_issue_time_estimates.sql"
       ],
-      "notes": "Changing the time, as timeSpent or timeSpentSeconds, and the comment is tested, including that an omitted comment keeps the stored one; adjustEstimate auto, new and leave move the remaining estimate, and Edit all worklogs or Edit own worklogs is required; notifyUsers controls the worklog updated event sent through the project's notification scheme."
+      "notes": "Changing the time, as timeSpent or timeSpentSeconds, and the comment is tested, including that an omitted comment keeps the stored one; adjustEstimate auto, new and leave adjust the estimate of work left, and Edit all worklogs or Edit own worklogs is required; notifyUsers controls the worklog updated event sent through the project's notification scheme."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/issue/{issueIdOrKey}/worklog/{worklogId}/properties/{propertyKey}",
