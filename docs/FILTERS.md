@@ -18,8 +18,9 @@ use the same workspace-scoped filter records.
   ownership;
 - stable share-permission identifiers with list, detail, create, and delete
   operations;
-- per-filter issue-navigator columns, reset semantics, and Jira-shaped
-  `ColumnItem` responses;
+- per-filter issue-navigator columns set as HTML form data naming navigable
+  fields (400 otherwise, 403 for non-owners, 404 while unset), reset
+  semantics, and Jira-shaped `ColumnItem` responses;
 - owner transfer by the owner or a Jira administrator, with active workspace
   membership and case-insensitive name-conflict checks;
 - per-user default sharing scope, including Jira's normalization of `GLOBAL`

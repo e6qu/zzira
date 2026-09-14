@@ -23,8 +23,12 @@ audit event and an ordered workspace action in the same transaction.
 | GET/PUT | `/rest/api/3/configuration/timetracking/options` | Administer Jira | current / updated options |
 | GET/PUT | `/rest/api/3/settings/columns` | Administer Jira | ordered column objects / empty `200` |
 
-The issue navigator accepts Jira's repeated `columns` form fields, including
-active workspace custom-field IDs. Empty input clears every default column.
+The issue navigator accepts Jira's repeated `columns` form fields naming
+navigable fields: Jira's navigable system fields, from `issuekey` and
+`summary` to `workratio` and the aggregate time fields, and the site's custom
+fields. A value that is not a navigable field answers 404. Empty input clears
+every default column. The same catalog, with Jira's field labels, validates
+filter columns, personal columns and the administration form.
 Time settings validate supported units and formats and decimal work schedules.
 When time tracking is disabled, the selected-provider route returns `204` and
 the global configuration omits `timeTrackingConfiguration`.

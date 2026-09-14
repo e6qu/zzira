@@ -511,33 +511,52 @@ func (h *Handler) setFilterFavourite(w http.ResponseWriter, r *http.Request, id 
 	writeJSON(w, http.StatusOK, h.filterBeanFor(r, workspaceID, filter))
 }
 
+// filterColumns serves a filter's column configuration. Columns are set as
+// HTML form data and must be navigable fields.
 func (h *Handler) filterColumns(w http.ResponseWriter, r *http.Request, id string) {
 	workspaceID, userID, authErr := h.authWorkspace(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
 	}
+	if _, err := h.Store.FilterByID(r.Context(), workspaceID, userID, id); err != nil {
+		jiraError(w, http.StatusBadRequest, "The filter does not exist or you do not have permission to view it.")
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
 		columns, err := h.Store.FilterColumns(r.Context(), workspaceID, userID, id)
 		if err != nil {
-			jiraError(w, http.StatusNotFound, "Column configuration was not found.")
+			jiraError(w, http.StatusNotFound, "A column configuration is not set for the filter.")
+			return
+		}
+		labels, err := h.Store.NavigableColumnLabels(r.Context(), workspaceID)
+		if err != nil {
+			jiraError(w, http.StatusInternalServerError, "Could not load the column configuration.")
 			return
 		}
 		values := make([]map[string]string, 0, len(columns))
 		for _, column := range columns {
-			values = append(values, map[string]string{"label": filterColumnLabel(column), "value": column})
+			label := labels[column]
+			if label == "" {
+				label = column
+			}
+			values = append(values, map[string]string{"label": label, "value": column})
 		}
 		writeJSON(w, http.StatusOK, values)
 	case http.MethodPut:
-		var request struct {
-			Columns []string `json:"columns"`
-		}
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 32<<10)).Decode(&request); err != nil {
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+		if err := r.ParseForm(); err != nil {
 			jiraError(w, http.StatusBadRequest, "Column configuration is invalid.")
 			return
 		}
-		if err := h.Store.SetFilterColumns(r.Context(), workspaceID, userID, id, request.Columns); err != nil {
+		if strings.HasPrefix(strings.ToLower(r.Header.Get("Content-Type")), "multipart/form-data") {
+			if err := r.ParseMultipartForm(1 << 20); err != nil { // #nosec G120 -- MaxBytesReader caps the complete body above.
+				jiraError(w, http.StatusBadRequest, "Column configuration is invalid.")
+				return
+			}
+		}
+		if err := h.Store.SetFilterColumns(r.Context(), workspaceID, userID, id, r.Form["columns"]); err != nil {
 			writeFilterMutationError(w, err)
 			return
 		}
@@ -551,18 +570,6 @@ func (h *Handler) filterColumns(w http.ResponseWriter, r *http.Request, id strin
 	default:
 		jiraError(w, http.StatusNotFound, "No resource found")
 	}
-}
-
-func filterColumnLabel(column string) string {
-	labels := map[string]string{
-		"key": "Key", "summary": "Summary", "issuetype": "Issue Type",
-		"status": "Status", "priority": "Priority", "assignee": "Assignee",
-		"reporter": "Reporter", "created": "Created", "updated": "Updated",
-	}
-	if label := labels[column]; label != "" {
-		return label
-	}
-	return column
 }
 
 func (h *Handler) changeFilterOwner(w http.ResponseWriter, r *http.Request, id string) {

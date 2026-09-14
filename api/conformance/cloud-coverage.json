@@ -1897,7 +1897,7 @@
         "e2e/filters.spec.ts",
         "docs/FILTERS.md"
       ],
-      "notes": "Owner-managed filter columns, visibility-filtered reads, validation and reset behavior are integration-tested; exact custom-field navigability certification remains."
+      "notes": "Resets an owned filter's columns to the default with 204; an unviewable filter answers 400 and a non-owner 403."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/filter/{id}/columns",
@@ -1909,7 +1909,7 @@
         "e2e/filters.spec.ts",
         "docs/FILTERS.md"
       ],
-      "notes": "Owner-managed filter columns, visibility-filtered reads, validation and reset behavior are integration-tested; exact custom-field navigability certification remains."
+      "notes": "Owner-managed filter columns take HTML form data naming navigable fields: Jira's navigable system fields and the site's custom fields, labelled as Jira names them. Non-navigable or duplicate columns answer 400, non-owners 403, an unset configuration 404, and an unviewable filter 400."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/filter/{id}/columns",
@@ -1921,7 +1921,7 @@
         "e2e/filters.spec.ts",
         "docs/FILTERS.md"
       ],
-      "notes": "Owner-managed filter columns, visibility-filtered reads, validation and reset behavior are integration-tested; exact custom-field navigability certification remains."
+      "notes": "Owner-managed filter columns take HTML form data naming navigable fields: Jira's navigable system fields and the site's custom fields, labelled as Jira names them. Non-navigable or duplicate columns answer 400, non-owners 403, an unset configuration 404, and an unviewable filter 400."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/filter/{id}/favourite",
@@ -5950,7 +5950,7 @@
         "e2e/admin.spec.ts",
         "docs/JIRA_SITE_CONFIGURATION.md"
       ],
-      "notes": "Returns ordered label/value objects for durable built-in and workspace custom-field defaults; the complete Jira navigable system-field catalog remains."
+      "notes": "Returns the site's default columns as label/value objects from the navigable field catalog: Jira's navigable system fields, from Key to Work Ratio and the aggregate time fields, and the site's custom fields."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/settings/columns",
@@ -5962,7 +5962,7 @@
         "e2e/admin.spec.ts",
         "docs/JIRA_SITE_CONFIGURATION.md"
       ],
-      "notes": "Accepts repeated Jira form-data columns, validates active navigable fields, preserves order, supports clearing and returns empty 200; the complete Jira navigable system-field catalog remains."
+      "notes": "Accepts repeated form-data columns naming navigable fields, preserves order, supports clearing and returns an empty 200; a value that is not a navigable field answers 404 and duplicates 400."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/status",

@@ -12,6 +12,10 @@ import (
 )
 
 func siteConfigurationError(w http.ResponseWriter, err error) {
+	if errors.Is(err, commands.ErrSiteConfigurationNotFound) {
+		jiraError(w, http.StatusNotFound, strings.TrimSpace(strings.TrimPrefix(err.Error(), commands.ErrSiteConfigurationNotFound.Error()+":")))
+		return
+	}
 	if errors.Is(err, commands.ErrSiteConfigurationValidation) {
 		jiraError(w, http.StatusBadRequest, strings.TrimSpace(strings.TrimPrefix(err.Error(), commands.ErrSiteConfigurationValidation.Error()+":")))
 		return
@@ -234,8 +238,6 @@ func (h *Handler) siteTimeTracking(w http.ResponseWriter, r *http.Request, path 
 	}
 }
 
-var navigatorColumnLabels = map[string]string{"issuekey": "Key", "summary": "Summary", "description": "Description", "issuetype": "Work type", "priority": "Priority", "status": "Status", "assignee": "Assignee", "reporter": "Reporter", "created": "Created", "updated": "Updated", "fixVersions": "Fix versions", "versions": "Affects versions", "components": "Components", "labels": "Labels"}
-
 func (h *Handler) issueNavigatorColumns(w http.ResponseWriter, r *http.Request) {
 	workspaceID, actorID, authErr := h.authWorkspaceAdmin(r)
 	if authErr != nil {
@@ -249,17 +251,10 @@ func (h *Handler) issueNavigatorColumns(w http.ResponseWriter, r *http.Request) 
 			jiraError(w, http.StatusInternalServerError, "Could not load issue navigator columns.")
 			return
 		}
-		custom, err := h.Store.CustomFieldsForWorkspace(r.Context(), workspaceID)
+		labels, err := h.Store.NavigableColumnLabels(r.Context(), workspaceID)
 		if err != nil {
 			jiraError(w, http.StatusInternalServerError, "Could not load issue navigator columns.")
 			return
-		}
-		labels := map[string]string{}
-		for key, label := range navigatorColumnLabels {
-			labels[key] = label
-		}
-		for _, field := range custom {
-			labels[field.ID] = field.Name
 		}
 		items := make([]models.ColumnItem, 0, len(cfg.NavigatorColumns))
 		for _, value := range cfg.NavigatorColumns {

@@ -48,16 +48,18 @@ type savedFiltersPageData struct {
 	CanAdmin     bool
 }
 
-var savedFilterColumns = []filterColumnChoice{
-	{Value: "key", Label: "Key"},
-	{Value: "summary", Label: "Summary"},
-	{Value: "issuetype", Label: "Work type"},
-	{Value: "status", Label: "Status"},
-	{Value: "priority", Label: "Priority"},
-	{Value: "assignee", Label: "Assignee"},
-	{Value: "reporter", Label: "Reporter"},
-	{Value: "created", Label: "Created"},
-	{Value: "updated", Label: "Updated"},
+// filterColumnChoices offers every navigable field as a filter column: Jira's
+// navigable system fields and the site's custom fields.
+func (h *Handler) filterColumnChoices(r *http.Request, workspaceID string) []filterColumnChoice {
+	columns, err := h.Store.NavigableColumns(r.Context(), workspaceID)
+	if err != nil {
+		return nil
+	}
+	choices := make([]filterColumnChoice, 0, len(columns))
+	for _, column := range columns {
+		choices = append(choices, filterColumnChoice{Value: column.ID, Label: column.Label})
+	}
+	return choices
 }
 
 func (h *Handler) SavedFilters(w http.ResponseWriter, r *http.Request) {
@@ -118,7 +120,7 @@ func (h *Handler) SavedFilters(w http.ResponseWriter, r *http.Request) {
 		projectKey = projects[0].Key
 	}
 	data := savedFiltersPageData{
-		Rows:    savedFilterRows(filters, user.ID, admin, projectKey),
+		Rows:    savedFilterRows(h.filterColumnChoices(r, workspaceID), filters, user.ID, admin, projectKey),
 		Members: members, Groups: groups, Projects: projects, ProjectRoles: projectRoles, DefaultScope: scope,
 		Notice: strings.TrimSpace(r.URL.Query().Get("notice")),
 		Error:  strings.TrimSpace(r.URL.Query().Get("error")), CanAdmin: admin,
@@ -128,15 +130,15 @@ func (h *Handler) SavedFilters(w http.ResponseWriter, r *http.Request) {
 
 // savedFilterRows keeps the page model independent of template logic and makes every
 // permission scope readable without exposing implementation identifiers.
-func savedFilterRows(filters []*models.Filter, userID string, admin bool, projectKey string) []savedFilterRow {
+func savedFilterRows(choices []filterColumnChoice, filters []*models.Filter, userID string, admin bool, projectKey string) []savedFilterRow {
 	rows := make([]savedFilterRow, 0, len(filters))
 	for _, filter := range filters {
 		selected := map[string]bool{}
 		for _, column := range filter.Columns {
 			selected[column] = true
 		}
-		columns := make([]filterColumnChoice, len(savedFilterColumns))
-		for index, column := range savedFilterColumns {
+		columns := make([]filterColumnChoice, len(choices))
+		for index, column := range choices {
 			columns[index] = column
 			columns[index].Selected = selected[column.Value]
 		}

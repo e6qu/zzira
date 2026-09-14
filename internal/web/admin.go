@@ -193,19 +193,13 @@ func (h *Handler) adminData(r *http.Request, workspaceID, message string) (admin
 	for _, column := range data.JiraConfiguration.NavigatorColumns {
 		selectedColumns[column] = true
 	}
-	columnLabels := []adminNavigatorColumn{
-		{Value: "issuekey", Label: "Key"}, {Value: "summary", Label: "Summary"}, {Value: "description", Label: "Description"},
-		{Value: "issuetype", Label: "Work type"}, {Value: "priority", Label: "Priority"}, {Value: "status", Label: "Status"},
-		{Value: "assignee", Label: "Assignee"}, {Value: "reporter", Label: "Reporter"}, {Value: "created", Label: "Created"},
-		{Value: "updated", Label: "Updated"}, {Value: "fixVersions", Label: "Fix versions"}, {Value: "versions", Label: "Affects versions"},
-		{Value: "components", Label: "Components"}, {Value: "labels", Label: "Labels"},
+	navigable, columnErr := h.Store.NavigableColumns(r.Context(), workspaceID)
+	if columnErr != nil {
+		return adminPageData{}, columnErr
 	}
-	customFields, fieldErr := h.Store.CustomFieldsForWorkspace(r.Context(), workspaceID)
-	if fieldErr != nil {
-		return adminPageData{}, fieldErr
-	}
-	for _, field := range customFields {
-		columnLabels = append(columnLabels, adminNavigatorColumn{Value: field.ID, Label: field.Name})
+	columnLabels := make([]adminNavigatorColumn, 0, len(navigable))
+	for _, column := range navigable {
+		columnLabels = append(columnLabels, adminNavigatorColumn{Value: column.ID, Label: column.Label})
 	}
 	for i := range columnLabels {
 		columnLabels[i].Selected = selectedColumns[columnLabels[i].Value]

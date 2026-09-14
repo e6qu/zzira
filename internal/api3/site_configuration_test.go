@@ -127,6 +127,12 @@ func TestJiraSiteConfigurationContractJourney(t *testing.T) {
 	if len(columns) != 3 || columns[2].(map[string]any)["value"] != "status" {
 		t.Fatalf("columns = %#v", columns)
 	}
+	if label := columns[0].(map[string]any)["label"]; label != "Key" {
+		t.Fatalf("column label = %#v", label)
+	}
+	// Only navigable fields can be default columns; others are not found.
+	call(adminID, http.MethodPut, "/rest/api/3/settings/columns", url.Values{"columns": {"summary", "comment"}}.Encode(), "application/x-www-form-urlencoded", http.StatusNotFound)
+	call(adminID, http.MethodPut, "/rest/api/3/settings/columns", url.Values{"columns": {"workratio", "timespent"}}.Encode(), "application/x-www-form-urlencoded", http.StatusOK)
 	call(adminID, http.MethodPut, "/rest/api/3/settings/columns", strings.Repeat("columns=summary&", 70000), "application/x-www-form-urlencoded", http.StatusBadRequest)
 	var oversizedMultipart bytes.Buffer
 	writer := multipart.NewWriter(&oversizedMultipart)
@@ -170,7 +176,7 @@ func TestJiraSiteConfigurationContractJourney(t *testing.T) {
 	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM actions WHERE workspace_id=$1 AND entity_type='jira_configuration'`, workspaceID).Scan(&actions); err != nil {
 		t.Fatal(err)
 	}
-	if audits != 7 || actions != audits {
+	if audits != 8 || actions != audits {
 		t.Fatalf("audit/action counts = %d/%d", audits, actions)
 	}
 }

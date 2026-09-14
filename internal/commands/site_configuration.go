@@ -13,6 +13,10 @@ import (
 
 var ErrSiteConfigurationValidation = errors.New("site configuration validation")
 
+// ErrSiteConfigurationNotFound reports a setting naming something the site
+// does not have.
+var ErrSiteConfigurationNotFound = errors.New("site configuration value not found")
+
 func (s *Service) requireSiteAdmin(ctx context.Context, workspaceID, actorID string) error {
 	ok, err := authz.IsWorkspaceAdmin(ctx, s.Store, workspaceID, actorID)
 	if err != nil {
@@ -118,18 +122,14 @@ func (s *Service) UpdateNavigatorColumns(ctx context.Context, workspaceID, actor
 	if len(columns) > 50 {
 		return validation("at most 50 columns are allowed")
 	}
-	allowed := map[string]bool{"issuekey": true, "summary": true, "description": true, "issuetype": true, "priority": true, "status": true, "assignee": true, "reporter": true, "created": true, "updated": true, "fixVersions": true, "versions": true, "components": true, "labels": true}
-	custom, err := s.Store.CustomFieldsForWorkspace(ctx, workspaceID)
+	allowed, err := s.Store.NavigableColumnLabels(ctx, workspaceID)
 	if err != nil {
 		return err
 	}
-	for _, field := range custom {
-		allowed[field.ID] = true
-	}
 	seen := map[string]bool{}
 	for _, column := range columns {
-		if !allowed[column] {
-			return validation("column " + column + " was not found")
+		if _, navigable := allowed[column]; !navigable {
+			return fmt.Errorf("%w: the navigable field %s was not found", ErrSiteConfigurationNotFound, column)
 		}
 		if seen[column] {
 			return validation("columns must not contain duplicates")

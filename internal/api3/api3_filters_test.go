@@ -148,13 +148,27 @@ func TestFilterAdministrationContractJourney(t *testing.T) {
 	call(memberID, http.MethodGet, "/rest/api/3/filter/"+filterID, nil, http.StatusOK)
 	call(ownerID, http.MethodGet, fmt.Sprintf("/rest/api/3/filter/%s/permission/%d", filterID, permissionID), nil, http.StatusOK)
 
-	call(ownerID, http.MethodPut, "/rest/api/3/filter/"+filterID+"/columns", map[string]any{
-		"columns": []string{"key", "summary", "status"},
-	}, http.StatusOK)
+	// Columns are HTML form data naming navigable fields.
+	setColumns := func(userID, form string, want int) {
+		t.Helper()
+		request := httptest.NewRequest(http.MethodPut, "/rest/api/3/filter/"+filterID+"/columns", strings.NewReader(form))
+		request.SetBasicAuth(userID+"@example.test", userID)
+		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != want {
+			t.Fatalf("set columns %q as %s: got %d want %d: %s", form, userID, response.Code, want, response.Body.String())
+		}
+	}
+	call(memberID, http.MethodGet, "/rest/api/3/filter/"+filterID+"/columns", nil, http.StatusNotFound)
+	setColumns(ownerID, "columns=issuekey&columns=summary&columns=status", http.StatusOK)
 	columns := call(memberID, http.MethodGet, "/rest/api/3/filter/"+filterID+"/columns", nil, http.StatusOK).([]any)
-	if len(columns) != 3 || object(columns[0])["value"] != "key" {
+	if len(columns) != 3 || object(columns[0])["value"] != "issuekey" || object(columns[0])["label"] != "Key" {
 		t.Fatalf("columns = %#v", columns)
 	}
+	setColumns(ownerID, "columns=summary&columns=comment", http.StatusBadRequest)
+	setColumns(ownerID, "columns=summary&columns=summary", http.StatusBadRequest)
+	setColumns(memberID, "columns=summary", http.StatusForbidden)
 
 	call(ownerID, http.MethodPost, "/rest/api/3/filter/"+filterID+"/permission", map[string]any{
 		"type": "user", "accountId": memberID, "rights": 2,

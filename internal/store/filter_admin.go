@@ -702,7 +702,8 @@ func (s *Store) FilterColumns(ctx context.Context, workspaceID, userID, id strin
 	if err != nil {
 		return nil, err
 	}
-	if filter.Columns == nil {
+	// A configuration holds at least one column, so none means none is set.
+	if len(filter.Columns) == 0 {
 		return nil, pgx.ErrNoRows
 	}
 	return filter.Columns, nil
@@ -712,11 +713,17 @@ func (s *Store) SetFilterColumns(ctx context.Context, workspaceID, userID, id st
 	if len(columns) == 0 || len(columns) > 50 {
 		return fmt.Errorf("%w: choose between 1 and 50 columns", ErrFilterValidation)
 	}
-	allowed := map[string]bool{"key": true, "summary": true, "issuetype": true, "status": true, "priority": true, "assignee": true, "reporter": true, "created": true, "updated": true}
+	allowed, err := s.navigableColumnIndex(ctx, workspaceID)
+	if err != nil {
+		return err
+	}
 	seen := map[string]bool{}
 	for _, column := range columns {
-		if !allowed[column] && !strings.HasPrefix(column, "customfield_") || seen[column] {
-			return fmt.Errorf("%w: invalid or duplicate column", ErrFilterValidation)
+		if _, navigable := allowed[column]; !navigable {
+			return fmt.Errorf("%w: %s is not a navigable field", ErrFilterValidation, column)
+		}
+		if seen[column] {
+			return fmt.Errorf("%w: column %s is duplicated", ErrFilterValidation, column)
 		}
 		seen[column] = true
 	}
