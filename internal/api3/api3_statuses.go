@@ -405,8 +405,15 @@ func (h *Handler) statusUsageEndpoint(w http.ResponseWriter, r *http.Request, pa
 		statusAPIError(w, err)
 		return
 	}
-	if container == "issueTypes" {
+	switch container {
+	case "issueTypes":
 		ids = h.issueTypeIDsFor(r, workspaceID).allToWire(ids)
+	case "workflows":
+		// Workflows are named by the ids clients see, never the stored ids.
+		wire := h.workflowIDsFor(r, workspaceID)
+		for index, id := range ids {
+			ids[index] = wire.toWire(id)
+		}
 	}
 	values, next, err := statusUsagePage(r, ids)
 	if err != nil {

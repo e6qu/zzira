@@ -1560,7 +1560,7 @@ func (s *Store) WorkflowDraftByID(ctx context.Context, workspaceID, id string) (
 
 // ListWorkflows returns all stored workflow definitions.
 func (s *Store) ListWorkflows(ctx context.Context, workspaceID string) ([]workflow.Workflow, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT id,name,def,version,draft_def IS NOT NULL,COALESCE(project_id,''),entity_id::text FROM workflows WHERE workspace_id=$1 OR (id='wf_default' AND workspace_id IS NULL) ORDER BY id`, workspaceID)
+	rows, err := s.Pool.Query(ctx, `SELECT id,name,def,version,draft_def IS NOT NULL,COALESCE(project_id,''),entity_id::text,created_at,COALESCE(published_at,created_at) FROM workflows WHERE workspace_id=$1 OR (id='wf_default' AND workspace_id IS NULL) ORDER BY id`, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -1570,13 +1570,15 @@ func (s *Store) ListWorkflows(ctx context.Context, workspaceID string) ([]workfl
 		var wf workflow.Workflow
 		var def []byte
 		var entityID string
-		if err := rows.Scan(&wf.ID, &wf.Name, &def, &wf.Version, &wf.HasDraft, &wf.ProjectID, &entityID); err != nil {
+		var createdAt, updatedAt time.Time
+		if err := rows.Scan(&wf.ID, &wf.Name, &def, &wf.Version, &wf.HasDraft, &wf.ProjectID, &entityID, &createdAt, &updatedAt); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal(def, &wf); err != nil {
 			return nil, err
 		}
 		wf.EntityID = entityID
+		wf.CreatedAt, wf.UpdatedAt = createdAt, updatedAt
 		out = append(out, wf)
 	}
 	return out, rows.Err()

@@ -157,7 +157,12 @@ func TestStatusAPILifecycleAndWorkspaceScope(t *testing.T) {
 		t.Fatal(projectUsage.Body.String())
 	}
 	workflowUsage := call(member, "GET", "/rest/api/3/statuses/st_todo/workflowUsages", "", 200)
-	if !strings.Contains(workflowUsage.Body.String(), "wf_default") {
+	var defaultWorkflowEntity string
+	if err := st.Pool.QueryRow(ctx, `SELECT entity_id::text FROM workflows WHERE id='wf_default'`).Scan(&defaultWorkflowEntity); err != nil {
+		t.Fatal(err)
+	}
+	// Workflows are named by the ids clients see, never the stored ids.
+	if !strings.Contains(workflowUsage.Body.String(), defaultWorkflowEntity) || strings.Contains(workflowUsage.Body.String(), "wf_default") {
 		t.Fatal(workflowUsage.Body.String())
 	}
 	issueTypeUsage := call(member, "GET", "/rest/api/3/statuses/st_todo/project/"+projectID+"/issueTypeUsages", "", 200)

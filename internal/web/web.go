@@ -1132,19 +1132,36 @@ func (h *Handler) CreateIssue(w http.ResponseWriter, r *http.Request) {
 		writeFragment(w, "create_dialog", data)
 		return
 	}
+	// The time tracking field holds the original estimate as a duration.
+	var originalEstimate *int64
+	if estimate := strings.TrimSpace(values["timetracking"]); estimate != "" {
+		configuration, configErr := h.Store.JiraSiteConfiguration(r.Context(), wsID)
+		if configErr != nil {
+			http.Error(w, "Could not load time tracking settings.", http.StatusInternalServerError)
+			return
+		}
+		seconds, parseErr := models.ParseJiraDuration(estimate, configuration.TimeTracking)
+		if parseErr != nil {
+			data.Error = "Time tracking: " + parseErr.Error()
+			writeFragment(w, "create_dialog", data)
+			return
+		}
+		originalEstimate = &seconds
+	}
 	issue, _, err := h.Commands.CreateIssue(r.Context(), commands.CreateIssueInput{
-		ActorID:         user.ID,
-		WorkspaceID:     wsID,
-		ProjectIDOrKey:  values["project"],
-		Summary:         values["summary"],
-		Description:     values["description"],
-		IssueTypeID:     values["issuetype"],
-		ParentIDOrKey:   values["parent"],
-		PriorityID:      values["priority"],
-		AssigneeID:      values["assignee"],
-		SecurityLevelID: values["security"],
-		Labels:          strings.Split(values["labels"], ","),
-		Fields:          customFields,
+		OriginalEstimate: originalEstimate,
+		ActorID:          user.ID,
+		WorkspaceID:      wsID,
+		ProjectIDOrKey:   values["project"],
+		Summary:          values["summary"],
+		Description:      values["description"],
+		IssueTypeID:      values["issuetype"],
+		ParentIDOrKey:    values["parent"],
+		PriorityID:       values["priority"],
+		AssigneeID:       values["assignee"],
+		SecurityLevelID:  values["security"],
+		Labels:           strings.Split(values["labels"], ","),
+		Fields:           customFields,
 	})
 	if err != nil {
 		data.Error = err.Error()
@@ -1974,7 +1991,7 @@ func (h *Handler) AddWorklog(w http.ResponseWriter, r *http.Request, key string)
 	}
 	// The remaining estimate moves by the time logged unless the person sets
 	// it or leaves it as it is.
-	estimate := store.WorklogEstimate{Mode: r.PostFormValue("adjustEstimate")}
+	estimate := store.WorklogEstimate{Mode: r.PostFormValue("adjustEstimate"), Notify: true}
 	if estimate.Mode == "new" {
 		if estimate.NewSeconds, err = models.ParseJiraDuration(r.PostFormValue("newEstimate"), configuration.TimeTracking); err != nil {
 			http.Error(w, "Enter the new remaining estimate, such as 2h.", http.StatusBadRequest)

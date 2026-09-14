@@ -38,6 +38,18 @@ the change, while a scheme with projects saves a draft to review and publish.
 - `POST /workflowscheme/update/mappings` lists, for each workflow the change
   moves work between, its statuses and the status new work starts in.
 
+## Usages
+
+A status's project usages include projects whose work or boards use it and
+projects whose own workflow or workflow scheme — default workflow, work type
+mappings, or their draft — reaches it. Workflow usages list every site workflow
+whose published or draft definition reaches the status, named by the workflow
+ids clients see, whether or not a project uses the workflow; work type usages
+include the types whose workflow in the project's scheme reaches the status. A
+workflow's scheme usages count schemes that reference it only through a draft,
+and workflow search orders by name, creation or last published update.
+`internal/api3/status_workflow_usages_test.go` covers these.
+
 ## Evidence
 
 - `internal/api3/workflow_schemes_test.go` covers direct and draft edits, the

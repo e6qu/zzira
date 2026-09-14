@@ -24,6 +24,9 @@ type WorklogEstimate struct {
 	NewSeconds        int64
 	ReduceBySeconds   int64
 	IncreaseBySeconds int64
+	// Notify sends the work logged, updated or deleted event to the people the
+	// project's notification scheme names, as Jira's notifyUsers does.
+	Notify bool
 }
 
 // ValidateWorklogEstimate checks an adjustment is one Jira accepts.

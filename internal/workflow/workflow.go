@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -115,6 +116,10 @@ type Workflow struct {
 	Version                         int            `json:"-"`
 	// EntityID is the UUID clients identify the workflow by.
 	EntityID string `json:"-"`
+	// CreatedAt and UpdatedAt are when the workflow was created and last
+	// published.
+	CreatedAt time.Time `json:"-"`
+	UpdatedAt time.Time `json:"-"`
 }
 
 type Scheme struct {

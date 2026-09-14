@@ -239,17 +239,33 @@ func (h *Handler) workflowSearch(w http.ResponseWriter, r *http.Request) {
 		}
 		filtered = append(filtered, item)
 	}
-	orderBy := r.URL.Query().Get("orderBy")
-	if orderBy != "" && orderBy != "name" && orderBy != "+name" && orderBy != "-name" {
+	// orderBy is name, created or updated, optionally prefixed with + or -; a
+	// decoded + arrives as a space.
+	orderBy := strings.TrimSpace(r.URL.Query().Get("orderBy"))
+	orderField := strings.TrimLeft(orderBy, "+- ")
+	if orderBy != "" && orderField != "name" && orderField != "created" && orderField != "updated" {
 		jiraError(w, http.StatusBadRequest, "orderBy is invalid")
 		return
 	}
+	descending := strings.HasPrefix(orderBy, "-")
 	sort.SliceStable(filtered, func(i, j int) bool {
-		left, right := strings.ToLower(filtered[i].Name), strings.ToLower(filtered[j].Name)
-		if orderBy == "-name" {
-			return left > right
+		less, equal := false, false
+		switch orderField {
+		case "created":
+			less, equal = filtered[i].CreatedAt.Before(filtered[j].CreatedAt), filtered[i].CreatedAt.Equal(filtered[j].CreatedAt)
+		case "updated":
+			less, equal = filtered[i].UpdatedAt.Before(filtered[j].UpdatedAt), filtered[i].UpdatedAt.Equal(filtered[j].UpdatedAt)
+		default:
+			left, right := strings.ToLower(filtered[i].Name), strings.ToLower(filtered[j].Name)
+			less, equal = left < right, left == right
 		}
-		return left < right
+		if equal {
+			return strings.ToLower(filtered[i].Name) < strings.ToLower(filtered[j].Name)
+		}
+		if descending {
+			return !less
+		}
+		return less
 	})
 	if startAt > len(filtered) {
 		startAt = len(filtered)

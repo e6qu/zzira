@@ -37,7 +37,9 @@ func (s *Store) WorkflowSchemeUsages(ctx context.Context, workspaceID, workflowI
 	rows, err := s.Pool.Query(ctx, `
 		SELECT jira_id::text FROM workflow_schemes
 		WHERE workspace_id=$1 AND (default_workflow_id=$2 OR
-			EXISTS (SELECT 1 FROM jsonb_each_text(issue_type_mappings) mapping WHERE mapping.value=$2))
+			EXISTS (SELECT 1 FROM jsonb_each_text(issue_type_mappings) mapping WHERE mapping.value=$2) OR
+			draft_def->>'defaultWorkflowId'=$2 OR
+			EXISTS (SELECT 1 FROM jsonb_each_text(COALESCE(draft_def->'issueTypeMappings','{}'::jsonb)) mapping WHERE mapping.value=$2))
 		ORDER BY jira_id`, workspaceID, workflowID)
 	if err != nil {
 		return nil, err

@@ -779,7 +779,7 @@ func (h *Handler) worklogTimeTracking(w http.ResponseWriter, r *http.Request, wo
 	}
 	cfg := configuration.TimeTracking
 	query := r.URL.Query()
-	estimate := store.WorklogEstimate{Mode: strings.ToLower(query.Get("adjustEstimate"))}
+	estimate := store.WorklogEstimate{Mode: strings.ToLower(query.Get("adjustEstimate")), Notify: !strings.EqualFold(query.Get("notifyUsers"), "false")}
 	durations := map[string]*int64{"newEstimate": &estimate.NewSeconds, "reduceBy": &estimate.ReduceBySeconds, "increaseBy": &estimate.IncreaseBySeconds}
 	for name, target := range durations {
 		raw := strings.TrimSpace(query.Get(name))

@@ -38,6 +38,16 @@ Logging work needs Work on issues; changing work needs Edit all worklogs, or Edi
 own worklogs for the caller's own; deleting work needs Delete all worklogs or
 Delete own worklogs.
 
+## Forms and notifications
+
+- While time tracking is on, create and edit metadata offer the `timetracking`
+  field, which the default screen carries (`migrations/190_timetracking_screen_field.sql`);
+  the create form takes an original estimate, and edit metadata allows the `set`
+  and `edit` operations.
+- Logging, changing and deleting work send the work logged, worklog updated and
+  worklog deleted events to the people the project's notification scheme names,
+  unless the request sets `notifyUsers=false`.
+
 ## JQL
 
 `originalEstimate`, `remainingEstimate` and `timeSpent` compare with durations

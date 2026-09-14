@@ -495,6 +495,9 @@ func (h *Handler) legacyCreateFieldBean(field models.CreateFieldMeta) map[string
 		bean["hasDefaultValue"] = false
 	}
 	bean["operations"] = []string{"set"}
+	if field.ID == "timetracking" {
+		bean["operations"] = []string{"set", "edit"}
+	}
 	return bean
 }
 

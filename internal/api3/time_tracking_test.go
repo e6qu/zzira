@@ -95,13 +95,34 @@ func TestTimeTracking(t *testing.T) {
 		t.Fatalf("created time tracking = %v", created)
 	}
 
+	// Create metadata offers the time tracking field while time tracking is on.
+	createMeta := call(adminID, http.MethodGet, "/rest/api/3/issue/createmeta?projectKeys="+projectKey+"&expand=projects.issuetypes.fields", "", http.StatusOK)
+	if encoded, _ := json.Marshal(createMeta); !strings.Contains(string(encoded), `"timetracking":{`) {
+		t.Fatalf("create metadata lacks timetracking: %s", encoded)
+	}
+
 	// Logging work moves the remaining estimate as adjustEstimate says.
 	path := "/rest/api/3/issue/" + key + "/worklog"
+	deliveries := func() int {
+		t.Helper()
+		var count int
+		if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM notification_event_deliveries d JOIN issues i ON i.id=d.issue_id WHERE i.key=$1 AND d.event_id=11`, key).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		return count
+	}
 	call(adminID, http.MethodPost, path, `{"timeSpent":"2h"}`, http.StatusCreated)
+	// Logging work notifies unless notifyUsers is false.
+	if deliveries() != 1 {
+		t.Fatalf("work logged deliveries = %d", deliveries())
+	}
 	if got := fields(key)["timeestimate"]; got != float64(10*3600) {
 		t.Fatalf("auto adjustment left %v", got)
 	}
-	call(adminID, http.MethodPost, path+"?adjustEstimate=leave", `{"timeSpentSeconds":3600}`, http.StatusCreated)
+	call(adminID, http.MethodPost, path+"?adjustEstimate=leave&notifyUsers=false", `{"timeSpentSeconds":3600}`, http.StatusCreated)
+	if deliveries() != 1 {
+		t.Fatalf("notifyUsers=false still delivered: %d", deliveries())
+	}
 	call(adminID, http.MethodPost, path+"?adjustEstimate=manual&reduceBy=30m", `{"timeSpent":"1h"}`, http.StatusCreated)
 	if got := fields(key)["timeestimate"]; got != float64(9*3600+1800) {
 		t.Fatalf("leave then manual left %v", got)

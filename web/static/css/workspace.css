@@ -739,3 +739,4 @@ label[for="wiki-subtype"] { display: flex; align-items: center; gap: 8px; }
 .issue-time-tracking .time-tracking-edit summary { display: inline-flex; align-items: center; min-block-size: 24px; min-inline-size: 24px; cursor: pointer; }
 .worklog-form .worklog-estimate label { display: inline-flex; align-items: center; gap: .5rem; min-block-size: 24px; }
 .worklog-form .worklog-estimate input[type="radio"] { inline-size: 24px; block-size: 24px; margin: 0; }
+.worklog-form .worklog-estimate input[type="radio"] { flex: 0 0 24px; min-inline-size: 24px; min-block-size: 24px; }

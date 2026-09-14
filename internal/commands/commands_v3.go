@@ -14,7 +14,7 @@ import (
 )
 
 func (s *Service) AddWorklog(ctx context.Context, actorID, workspaceID, issueIDOrKey string, comment json.RawMessage, seconds int) (*models.Worklog, *models.Action, error) {
-	return s.AddWorklogWithEstimate(ctx, actorID, workspaceID, issueIDOrKey, comment, seconds, store.WorklogEstimate{})
+	return s.AddWorklogWithEstimate(ctx, actorID, workspaceID, issueIDOrKey, comment, seconds, store.WorklogEstimate{Notify: true})
 }
 
 // ErrWorklogPermission refuses logging or changing work without the Work on
@@ -55,7 +55,11 @@ func (s *Service) AddWorklogWithEstimate(ctx context.Context, actorID, workspace
 	if !allowed {
 		return nil, nil, ErrWorklogPermission
 	}
-	return s.Store.CreateWorklogWithEstimate(ctx, actorID, workspaceID, issue.ID, comment, seconds, estimate)
+	worklog, action, err := s.Store.CreateWorklogWithEstimate(ctx, actorID, workspaceID, issue.ID, comment, seconds, estimate)
+	if err == nil && estimate.Notify {
+		err = s.deliverIssueEvent(ctx, workspaceID, actorID, issue, action, 11, "worklog_created", "logged work on")
+	}
+	return worklog, action, err
 }
 
 // UpdateWorklog changes logged work with Edit all worklogs, or Edit own
@@ -83,11 +87,15 @@ func (s *Service) UpdateWorklog(ctx context.Context, actorID, workspaceID, workl
 	if !allowed {
 		return nil, nil, ErrWorklogPermission
 	}
-	return s.Store.UpdateWorklogWithEstimate(ctx, actorID, workspaceID, w.ID, comment, seconds, estimate)
+	worklog, action, err := s.Store.UpdateWorklogWithEstimate(ctx, actorID, workspaceID, w.ID, comment, seconds, estimate)
+	if err == nil && estimate.Notify {
+		err = s.deliverIssueEvent(ctx, workspaceID, actorID, issue, action, 14, "worklog_updated", "updated work logged on")
+	}
+	return worklog, action, err
 }
 
 func (s *Service) DeleteWorklog(ctx context.Context, actorID, workspaceID, worklogID string) (*models.Action, error) {
-	return s.DeleteWorklogWithEstimate(ctx, actorID, workspaceID, worklogID, store.WorklogEstimate{})
+	return s.DeleteWorklogWithEstimate(ctx, actorID, workspaceID, worklogID, store.WorklogEstimate{Notify: true})
 }
 
 // DeleteWorklogWithEstimate removes logged work with Delete all worklogs, or
@@ -108,7 +116,11 @@ func (s *Service) DeleteWorklogWithEstimate(ctx context.Context, actorID, worksp
 	if !allowed {
 		return nil, ErrWorklogPermission
 	}
-	return s.Store.DeleteWorklogWithEstimate(ctx, actorID, workspaceID, w.ID, estimate)
+	action, err := s.Store.DeleteWorklogWithEstimate(ctx, actorID, workspaceID, w.ID, estimate)
+	if err == nil && estimate.Notify {
+		err = s.deliverIssueEvent(ctx, workspaceID, actorID, issue, action, 15, "worklog_deleted", "deleted work logged on")
+	}
+	return action, err
 }
 
 // AddAttachment streams the blob to storage, then records metadata + action in

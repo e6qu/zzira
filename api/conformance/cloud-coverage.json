@@ -2814,7 +2814,7 @@
         "internal/api3/time_tracking_test.go",
         "docs/TIME_TRACKING.md"
       ],
-      "notes": "Logging work as timeSpent or timeSpentSeconds is tested, including the rejection of a non-positive time; adjustEstimate auto, new, manual with reduceBy, and leave move the remaining estimate, and Work on issues is required."
+      "notes": "Logging work as timeSpent or timeSpentSeconds is tested, including the rejection of a non-positive time; adjustEstimate auto, new, manual with reduceBy, and leave move the remaining estimate, and Work on issues is required; notifyUsers controls the work logged event sent through the project's notification scheme."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/issue/{issueIdOrKey}/worklog/move",
@@ -2838,7 +2838,7 @@
         "internal/api3/time_tracking_test.go",
         "docs/TIME_TRACKING.md"
       ],
-      "notes": "Removing one worklog is tested, and the tombstone the deleted feed reads from; adjustEstimate auto, new, manual with increaseBy, and leave move the remaining estimate back, and Delete all worklogs or Delete own worklogs is required."
+      "notes": "Removing one worklog is tested, and the tombstone the deleted feed reads from; adjustEstimate auto, new, manual with increaseBy, and leave move the remaining estimate back, and Delete all worklogs or Delete own worklogs is required; notifyUsers controls the worklog deleted event sent through the project's notification scheme."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issue/{issueIdOrKey}/worklog/{id}",
@@ -2862,7 +2862,7 @@
         "internal/api3/time_tracking_test.go",
         "migrations/189_issue_time_estimates.sql"
       ],
-      "notes": "Changing the time, as timeSpent or timeSpentSeconds, and the comment is tested, including that an omitted comment keeps the stored one; adjustEstimate auto, new and leave move the remaining estimate, and Edit all worklogs or Edit own worklogs is required."
+      "notes": "Changing the time, as timeSpent or timeSpentSeconds, and the comment is tested, including that an omitted comment keeps the stored one; adjustEstimate auto, new and leave move the remaining estimate, and Edit all worklogs or Edit own worklogs is required; notifyUsers controls the worklog updated event sent through the project's notification scheme."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issue/{issueIdOrKey}/worklog/{worklogId}/properties",
@@ -6107,7 +6107,7 @@
         "internal/store/statuses.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Returns paged issue type IDs observed using the status in the requested workspace project with strict status/project validation; scheme-derived unused issue types remain."
+      "notes": "Returns paged issue type IDs whose work in the project is in the status or whose workflow, from the project's workflow scheme mapping, reaches it, with strict status/project validation."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/statuses/{statusId}/projectUsages",
@@ -6119,7 +6119,7 @@
         "internal/store/statuses.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Returns opaque-token pages of workspace projects whose issues, boards, or active workflow use the status; workflow-scheme-only associations remain."
+      "notes": "Returns opaque-token pages of workspace projects whose work, boards, own workflow or workflow scheme \u2014 default, type mappings and draft \u2014 use the status."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/statuses/{statusId}/workflowUsages",
@@ -6131,7 +6131,7 @@
         "internal/store/statuses.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Returns opaque-token pages of active project workflows using the status; unassigned and workflow-scheme draft usages remain."
+      "notes": "Returns opaque-token pages of every site workflow whose published or draft definition reaches the status, whether or not a project uses it."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/task/{taskId}",
@@ -6899,7 +6899,7 @@
         "internal/store/workflow_usage.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Returns opaque-cursor pages of workspace published scheme IDs that reference the workflow through default or issue-type mappings; draft usage remains."
+      "notes": "Returns opaque-cursor pages of workspace scheme IDs that reference the workflow through published or draft default or issue-type mappings."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/workflows",
@@ -6992,7 +6992,7 @@
         "internal/store/workflow_usage.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Searches published global and project-scoped workflows with scope/project/activity filters, validated paging and name ordering, related statuses, versions, designer layouts, transition expansion, and executable condition, validator, post-function, and screen configuration; created/updated ordering remains."
+      "notes": "Searches published global and project-scoped workflows with scope/project/activity filters, validated paging and name ordering, related statuses, versions, designer layouts, transition expansion, and executable condition, validator, post-function, and screen configuration, and name, created and updated ordering."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/workflows/update",
@@ -15019,7 +15019,7 @@
         "internal/confluence/space_roles_states_test.go",
         "docs/CONFLUENCE_SPACE_ROLES.md"
       ],
-      "notes": "Site administrators update custom role names, descriptions and dependency-checked permission bundles, optionally moving anonymous-access and guest assignments to another existing role in every space; answered 202 with a finished long task. System roles remain immutable."
+      "notes": "Site administrators update custom role names, descriptions and dependency-checked permission bundles, optionally moving anonymous-access and guest assignments to another existing role in every space; answered 202 with a finished long task. System roles are immutable, as in Confluence."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/spaces",
