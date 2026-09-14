@@ -28,7 +28,11 @@ type wikiData struct {
 	SmartLinks                            []*models.WikiContent
 	Databases                             []*models.WikiContent
 	Whiteboards                           []*models.WikiContent
-	Tree                                  []wikiTreeNode
+	ContentTree                           []wikiContentRow
+	TreeTitles                            map[string]string
+	TreeTargets                           []wikiMoveTarget
+	CanEditTree                           bool
+	ParentContent                         []wikiMoveTarget
 	Page                                  *models.WikiPage
 	BlogPost                              *models.WikiBlogPost
 	Versions                              []models.WikiVersion
@@ -78,18 +82,13 @@ type wikiData struct {
 // wikiMoveGroup is one space's worth of pages a page can be moved beside or
 // beneath.
 type wikiMoveGroup struct {
-	Space *models.WikiSpace
-	Pages []*models.WikiPage
+	Space   *models.WikiSpace
+	Targets []wikiMoveTarget
 }
 
 type wikiRestrictionOption struct {
 	ID, Name     string
 	Read, Update bool
-}
-
-type wikiTreeNode struct {
-	Page     *models.WikiPage
-	Children []wikiTreeNode
 }
 
 type wikiCommentNode struct {
@@ -119,30 +118,6 @@ func wikiCommentTree(comments []*models.WikiFooterComment, likes map[string][]st
 				}
 			}
 			nodes = append(nodes, wikiCommentNode{Comment: comment, Replies: branch(comment.ID), CanManage: admin || comment.AuthorID == userID, NextVersion: comment.Version.Number + 1, LikeCount: len(likes[comment.ID]), Liked: liked, Versions: versions[comment.ID]})
-		}
-		return nodes
-	}
-	return branch("")
-}
-
-func wikiPageTree(pages []*models.WikiPage) []wikiTreeNode {
-	byID := map[string]bool{}
-	for _, page := range pages {
-		byID[page.ID] = true
-	}
-	children := map[string][]*models.WikiPage{}
-	for _, page := range pages {
-		parent := page.ParentID
-		if !byID[parent] {
-			parent = ""
-		}
-		children[parent] = append(children[parent], page)
-	}
-	var branch func(string) []wikiTreeNode
-	branch = func(parent string) []wikiTreeNode {
-		nodes := []wikiTreeNode{}
-		for _, page := range children[parent] {
-			nodes = append(nodes, wikiTreeNode{Page: page, Children: branch(page.ID)})
 		}
 		return nodes
 	}
@@ -322,6 +297,44 @@ func (h *Handler) WikiSpacePage(w http.ResponseWriter, r *http.Request) {
 			whiteboards = visible
 		}
 	}
+	treeContents := []*models.WikiContent{}
+	switch status {
+	case "current":
+		treeContents = append(treeContents, folders...)
+		treeContents = append(treeContents, smartLinks...)
+		treeContents = append(treeContents, databases...)
+		treeContents = append(treeContents, whiteboards...)
+	case "archived":
+		for _, contentType := range []string{"folder", "whiteboard", "database", "embed"} {
+			archived, archivedErr := h.Store.WikiContentsWithStatus(r.Context(), ws, user.ID, space.ID, contentType, "archived")
+			if archivedErr != nil {
+				http.Error(w, "Could not load archived content.", 500)
+				return
+			}
+			for _, content := range archived {
+				if query == "" || strings.Contains(strings.ToLower(content.Title), strings.ToLower(query)) {
+					treeContents = append(treeContents, content)
+				}
+			}
+		}
+	}
+	contentTree := wikiContentTreeRows(filtered, treeContents)
+	treeTitles := map[string]string{}
+	for _, page := range pages {
+		treeTitles[page.ID] = page.Title
+	}
+	treeTargets := []wikiMoveTarget{}
+	for _, row := range contentTree {
+		treeTitles[row.ID] = row.Title
+		if row.Status == "current" {
+			treeTargets = append(treeTargets, wikiMoveTarget{ID: row.ID, Label: wikiMoveTargetLabel(row)})
+		}
+	}
+	canEditTree, err := h.Store.CanCreateWikiPage(r.Context(), ws, user.ID, space.ID)
+	if err != nil {
+		http.Error(w, "Could not load space permissions.", 500)
+		return
+	}
 	watching, err := h.Store.WikiWatchStatus(r.Context(), ws, user.ID, user.ID, "space", space.Key)
 	if err != nil {
 		http.Error(w, "Could not load space watch status.", 500)
@@ -381,7 +394,7 @@ func (h *Handler) WikiSpacePage(w http.ResponseWriter, r *http.Request) {
 	for _, group := range roleGroups {
 		principalNames[group.ID] = group.Name
 	}
-	h.writeWorkspacePage(w, r, "page_wiki_space", user, ws, wikiData{Space: space, Pages: filtered, BlogPosts: filteredBlogs, Folders: folders, SmartLinks: smartLinks, Databases: databases, Whiteboards: whiteboards, Tree: wikiPageTree(filtered), Query: query, Status: status, WatchingSpace: watching, CanAdmin: admin, CanManageSpace: canManageSpace, SpaceProperties: properties, SpaceRoles: roles, SpaceRoleAssignments: assignments, SpaceRoleUsers: roleUsers, SpaceRoleGroups: roleGroups, SpaceRoleNames: roleNames, SpaceRolePrincipalNames: principalNames}, "wiki", "")
+	h.writeWorkspacePage(w, r, "page_wiki_space", user, ws, wikiData{Space: space, Pages: filtered, BlogPosts: filteredBlogs, Folders: folders, SmartLinks: smartLinks, Databases: databases, Whiteboards: whiteboards, ContentTree: contentTree, TreeTitles: treeTitles, TreeTargets: treeTargets, CanEditTree: canEditTree, Query: query, Status: status, WatchingSpace: watching, CanAdmin: admin, CanManageSpace: canManageSpace, SpaceProperties: properties, SpaceRoles: roles, SpaceRoleAssignments: assignments, SpaceRoleUsers: roleUsers, SpaceRoleGroups: roleGroups, SpaceRoleNames: roleNames, SpaceRolePrincipalNames: principalNames}, "wiki", "")
 }
 
 func (h *Handler) WikiSpaceClassification(w http.ResponseWriter, r *http.Request) {
@@ -1199,6 +1212,16 @@ func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 		if err != nil {
 			http.Error(w, "Could not load parent pages.", 500)
 			return
+		}
+		parentContent, contentErr := h.wikiSpaceTreeContent(r, ws, user.ID, space.ID)
+		if contentErr != nil {
+			http.Error(w, "Could not load parent content.", 500)
+			return
+		}
+		for _, content := range parentContent {
+			if !content.Private {
+				data.ParentContent = append(data.ParentContent, wikiMoveTarget{ID: content.ID, Label: content.Title + " · " + wikiContentTypeName(content.Type)})
+			}
 		}
 		_, err = wikimarkup.Render(page.Body.Value)
 		data.SourceMode = err != nil
@@ -2024,16 +2047,6 @@ func (h *Handler) loadWikiPageLifecycle(r *http.Request, ws, userID string, data
 	if err != nil {
 		return err
 	}
-	subtree := map[string]bool{page.ID: true}
-	for grown := true; grown; {
-		grown = false
-		for _, candidate := range pages {
-			if candidate.ParentID != "" && subtree[candidate.ParentID] && !subtree[candidate.ID] {
-				subtree[candidate.ID] = true
-				grown = true
-			}
-		}
-	}
 	for _, candidate := range pages {
 		if candidate.ParentID == page.ID {
 			data.ChildPageCount++
@@ -2043,15 +2056,35 @@ func (h *Handler) loadWikiPageLifecycle(r *http.Request, ws, userID string, data
 		if space.Status != "current" {
 			continue
 		}
-		group := wikiMoveGroup{Space: space}
+		contents, contentErr := h.wikiSpaceTreeContent(r, ws, userID, space.ID)
+		if contentErr != nil {
+			return contentErr
+		}
+		spacePages := []*models.WikiPage{}
 		for _, candidate := range pages {
-			if candidate.SpaceID == space.ID && !subtree[candidate.ID] {
-				group.Pages = append(group.Pages, candidate)
+			if candidate.SpaceID == space.ID {
+				spacePages = append(spacePages, candidate)
 			}
 		}
-		if len(group.Pages) > 0 {
-			data.MoveTargets = append(data.MoveTargets, group)
+		// A page cannot go beneath itself or beneath private content, so its
+		// own subtree and private content are left out.
+		group := wikiMoveGroup{Space: space}
+		skipBelow := -1
+		for _, row := range wikiContentTreeRows(spacePages, contents) {
+			if skipBelow >= 0 && row.Depth > skipBelow {
+				continue
+			}
+			skipBelow = -1
+			if row.ID == page.ID {
+				skipBelow = row.Depth
+				continue
+			}
+			if row.Private {
+				continue
+			}
+			group.Targets = append(group.Targets, wikiMoveTarget{ID: row.ID, Label: wikiMoveTargetLabel(row)})
 		}
+		data.MoveTargets = append(data.MoveTargets, group)
 	}
 	return nil
 }
@@ -2120,7 +2153,13 @@ func (h *Handler) WikiPageMove(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Choose the page to move this page beside or beneath.", 400)
 		return
 	}
-	if _, err := h.Commands.MoveWikiPage(r.Context(), ws, userID, page.ID, r.PostFormValue("position"), targetID); err != nil {
+	var err error
+	if spaceID, top := strings.CutPrefix(targetID, "space-"); top {
+		_, err = h.Commands.MoveWikiTreeNodeToSpace(r.Context(), ws, userID, page.ID, spaceID)
+	} else {
+		_, err = h.Commands.MoveWikiPage(r.Context(), ws, userID, page.ID, r.PostFormValue("position"), targetID)
+	}
+	if err != nil {
 		status, msg := wikiWebError(err)
 		http.Error(w, msg, status)
 		return

@@ -360,6 +360,17 @@ body.nav-collapsed .project-switcher-panel a { padding-inline: 9px; }
 .wiki-trash form { max-width: 420px; padding: 16px; }
 .wiki-trash form label:has(input[type="checkbox"]) { display: flex; align-items: center; gap: 8px; margin-block: 8px 4px; }
 .wiki-move form { max-width: 480px; }
+.wiki-content-tree .wiki-page-tree > li { list-style: none; }
+.wiki-tree-depth-1 { margin-left: 20px; }
+.wiki-tree-depth-2 { margin-left: 40px; }
+.wiki-tree-depth-3 { margin-left: 60px; }
+.wiki-tree-depth-4 { margin-left: 80px; }
+.wiki-tree-depth-5 { margin-left: 100px; }
+.wiki-tree-depth-6 { margin-left: 120px; }
+.wiki-tree-depth-7 { margin-left: 140px; }
+.wiki-tree-depth-8 { margin-left: 160px; }
+.wiki-tree-action-forms { display: grid; gap: 12px; padding-block: 12px; max-width: 480px; }
+.wiki-tree-action-forms label:has(input[type="checkbox"]) { display: flex; align-items: center; gap: 8px; }
 .wiki-archived-notice { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; padding: 12px 16px; border-left: 4px solid var(--color-warning, #b65c02); }
 .wiki-labels { max-width:960px; margin:0 0 16px; display:flex; align-items:center; flex-wrap:wrap; gap:10px; }.wiki-labels h2 { margin:0; font-size:13px; }.wiki-label-list { display:flex; flex-wrap:wrap; gap:6px; }.wiki-label-chip { min-height:32px; display:flex; align-items:center; overflow:hidden; color:var(--ds-text); background:var(--ds-background-neutral); border-radius:999px; }.wiki-label-chip form { display:flex; align-items:center; }.wiki-label-chip span { padding:4px 2px 4px 10px; }.wiki-label-chip button { min-width:30px; min-height:30px; border:0; color:inherit; background:transparent; cursor:pointer; }.wiki-label-chip button:hover { background:var(--ds-background-neutral-hovered); }.wiki-label-form { width:min(480px,calc(100vw - 48px)); display:grid; gap:8px; padding:12px 0; }.wiki-label-form input { min-width:0; padding:10px; color:var(--ds-text); background:var(--ds-surface); border:1px solid var(--ds-border); border-radius:var(--ds-radius); }.wiki-label-form small { color:var(--ds-text-subtle); }
 .wiki-label-readonly { padding:4px 10px !important; color:var(--ds-text); background:var(--ds-background-neutral); border-radius:999px; }
