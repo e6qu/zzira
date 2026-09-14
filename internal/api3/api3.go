@@ -294,6 +294,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.jqlSuggestions(w, r)
 	case path == "/jql/parse" && r.Method == http.MethodPost:
 		h.jqlParse(w, r)
+	case path == "/expression/analyse" && r.Method == http.MethodPost:
+		h.analyseExpressions(w, r)
+	case path == "/expression/eval" && r.Method == http.MethodPost:
+		h.evaluateExpression(w, r, false)
+	case path == "/expression/evaluate" && r.Method == http.MethodPost:
+		h.evaluateExpression(w, r, true)
 	case path == "/jql/match" && r.Method == http.MethodPost:
 		h.jqlMatch(w, r)
 	case path == "/jql/pdcleaner" && r.Method == http.MethodPost:
