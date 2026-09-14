@@ -35,6 +35,11 @@ type UpdateIssueInput struct {
 	SecurityLevelID *string                    // "" = public, nil = unchanged
 	Labels          *[]string                  // empty = clear, nil = unchanged
 	Fields          map[string]json.RawMessage // custom fields
+
+	// SuppressChangelog and SuppressEvents carry an app's generateChangelog
+	// and generateAppEvents choices.
+	SuppressChangelog bool
+	SuppressEvents    bool
 }
 
 func (s *Service) visibleIssue(ctx context.Context, actorID, workspaceID, issueIDOrKey string) (*models.Issue, error) {
@@ -166,6 +171,8 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 		Labels:            in.Labels,
 		Fields:            in.Fields,
 		VersionOperations: in.VersionOperations,
+		SuppressChangelog: in.SuppressChangelog,
+		SuppressEvents:    in.SuppressEvents,
 	}
 	if err = s.enforceFieldConfigurationWrite(ctx, in.WorkspaceID, issue, update); err != nil {
 		return nil, nil, err

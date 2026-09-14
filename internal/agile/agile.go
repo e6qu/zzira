@@ -49,7 +49,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/rest/agile/1.0")
 	switch {
 	case path == "/board" && r.Method == http.MethodGet:
-		h.listBoards(w, r)
+		h.listBoardsFiltered(w, r)
 	case path == "/board" && r.Method == http.MethodPost:
 		h.createBoard(w, r)
 	case strings.HasPrefix(path, "/board/filter/") && r.Method == http.MethodGet:
@@ -104,7 +104,7 @@ func (h *Handler) boardBean(b *models.Board) map[string]any {
 			"projectKey":     b.ProjectKey,
 			"projectName":    b.ProjectName,
 			"projectId":      wireNumber(b.ProjectID),
-			"projectTypeKey": "software",
+			"projectTypeKey": b.ProjectTypeKey,
 			"displayName":    b.ProjectName + " (" + b.ProjectKey + ")",
 			"name":           b.ProjectName + " (" + b.ProjectKey + ")",
 		},
@@ -139,30 +139,6 @@ func wireNumber(id string) any {
 	return id
 }
 
-func (h *Handler) listBoards(w http.ResponseWriter, r *http.Request) {
-	wsID, _, status, msg := h.authWorkspace(r)
-	if status != 0 {
-		jiraError(w, status, msg)
-		return
-	}
-	boards, err := h.Store.BoardsByWorkspace(r.Context(), wsID)
-	if err != nil {
-		jiraError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	values := make([]map[string]any, 0, len(boards))
-	for _, b := range boards {
-		values = append(values, h.boardBean(b))
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"maxResults": 50,
-		"startAt":    0,
-		"total":      len(values),
-		"isLast":     true,
-		"values":     values,
-	})
-}
-
 func (h *Handler) boardRoute(w http.ResponseWriter, r *http.Request, parts []string) {
 	id := parts[0]
 	wsID, userID, status, msg := h.authWorkspace(r)
@@ -171,8 +147,8 @@ func (h *Handler) boardRoute(w http.ResponseWriter, r *http.Request, parts []str
 		return
 	}
 	board, err := h.Store.BoardByIDInWorkspace(r.Context(), wsID, id)
-	if err != nil {
-		jiraError(w, http.StatusNotFound, "The board does not exist.")
+	if err != nil || !h.canBrowseBoard(r, wsID, userID, board) {
+		jiraError(w, http.StatusNotFound, "The board does not exist or you do not have permission to view it.")
 		return
 	}
 	switch {
@@ -181,13 +157,13 @@ func (h *Handler) boardRoute(w http.ResponseWriter, r *http.Request, parts []str
 	case len(parts) == 1 && r.Method == http.MethodDelete:
 		h.deleteBoard(w, r, wsID, userID, board)
 	case len(parts) == 2 && parts[1] == "issue" && r.Method == http.MethodGet:
-		h.boardIssues(w, r, board, userID)
+		h.agileIssueSearch(w, r, wsID, userID, boardIssueScope, []any{board.ProjectID, board.ColumnStatusIDs, board.Type}, "")
 	case len(parts) == 2 && parts[1] == "issue" && r.Method == http.MethodPost:
 		h.moveIssuesToBoard(w, r, wsID, userID, board)
 	case len(parts) == 2 && parts[1] == "backlog" && r.Method == http.MethodGet:
-		h.boardBacklog(w, r, board, userID)
+		h.agileIssueSearch(w, r, wsID, userID, backlogScope, []any{board.ProjectID}, "")
 	case len(parts) == 2 && parts[1] == "sprint" && r.Method == http.MethodGet:
-		h.boardSprints(w, r, board)
+		h.boardSprintsFiltered(w, r, board)
 	case len(parts) == 2 && parts[1] == "configuration" && r.Method == http.MethodGet:
 		h.boardConfiguration(w, r, board)
 	case len(parts) == 2 && parts[1] == "quickfilter" && r.Method == http.MethodGet:
@@ -321,86 +297,6 @@ func (h *Handler) boardQuickFilter(w http.ResponseWriter, board *models.Board, q
 	jiraError(w, http.StatusNotFound, "The quick filter does not exist.")
 }
 
-func (h *Handler) boardIssues(w http.ResponseWriter, r *http.Request, board *models.Board, userID string) {
-	columns, err := h.Store.BoardIssues(r.Context(), board.ID, userID)
-	if err != nil {
-		jiraError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	issues := []*models.Issue{}
-	for _, st := range board.ColumnStatusIDs {
-		issues = append(issues, columns[st]...)
-	}
-	h.writeIssuePage(w, r, issues)
-}
-
-func (h *Handler) boardBacklog(w http.ResponseWriter, r *http.Request, board *models.Board, userID string) {
-	issues, err := h.Store.BacklogIssues(r.Context(), board.ID, userID)
-	if err != nil {
-		jiraError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	h.writeIssuePage(w, r, issues)
-}
-
-func (h *Handler) writeIssuePage(w http.ResponseWriter, r *http.Request, issues []*models.Issue) {
-	startAt := 0
-	maxResults := 50
-	if v := r.URL.Query().Get("startAt"); v != "" {
-		var err error
-		if startAt, err = strconv.Atoi(v); err != nil || startAt < 0 {
-			jiraError(w, http.StatusBadRequest, "startAt must be a non-negative integer.")
-			return
-		}
-	}
-	if v := r.URL.Query().Get("maxResults"); v != "" {
-		var err error
-		if maxResults, err = strconv.Atoi(v); err != nil || maxResults < 1 || maxResults > 100 {
-			jiraError(w, http.StatusBadRequest, "maxResults must be between 1 and 100.")
-			return
-		}
-	}
-	total := len(issues)
-	if startAt > total {
-		startAt = total
-	}
-	end := startAt + maxResults
-	if end > total {
-		end = total
-	}
-	beans, err := h.agileIssueBeans(r.Context(), issues[startAt:end])
-	if err != nil {
-		jiraError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"expand":         "schema,names",
-		"startAt":        startAt,
-		"maxResults":     maxResults,
-		"total":          total,
-		"issues":         beans,
-		"jqlInformation": map[string]any{},
-	})
-}
-
-func (h *Handler) boardSprints(w http.ResponseWriter, r *http.Request, board *models.Board) {
-	sprints, err := h.Store.SprintsByBoard(r.Context(), board.ID)
-	if err != nil {
-		jiraError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	values := make([]map[string]any, 0, len(sprints))
-	for _, s := range sprints {
-		values = append(values, h.sprintBean(s))
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"maxResults": 50,
-		"startAt":    0,
-		"isLast":     true,
-		"values":     values,
-	})
-}
-
 func (h *Handler) sprintBean(s *models.Sprint) map[string]any {
 	bean := map[string]any{
 		"id":            s.JiraID,
@@ -506,15 +402,19 @@ func (h *Handler) sprintRoute(w http.ResponseWriter, r *http.Request, parts []st
 		jiraError(w, http.StatusNotFound, "The sprint does not exist.")
 		return
 	}
+	if board, boardErr := h.Store.BoardByIDInWorkspace(r.Context(), wsID, sprint.BoardID); boardErr != nil || !h.canBrowseBoard(r, wsID, userID, board) {
+		jiraError(w, http.StatusNotFound, "The sprint does not exist or you do not have permission to view it.")
+		return
+	}
 	switch {
 	case len(parts) == 1 && r.Method == http.MethodGet:
 		writeJSON(w, http.StatusOK, h.sprintBean(sprint))
 	case len(parts) == 1 && r.Method == http.MethodPut:
 		h.updateSprint(w, r, wsID, userID, sprint)
 	case len(parts) == 2 && parts[1] == "issue" && r.Method == http.MethodGet:
-		h.sprintIssues(w, r, sprint, userID)
+		h.agileIssueSearch(w, r, wsID, userID, sprintScope, []any{sprint.ID}, sprintOrder)
 	case len(parts) == 2 && parts[1] == "issue" && r.Method == http.MethodPost:
-		h.moveIssuesToSprint(w, r, wsID, sprint)
+		h.moveIssuesToSprintRanked(w, r, wsID, sprint)
 	case len(parts) == 1 && r.Method == http.MethodPost:
 		// Jira's POST is the partial update; PUT replaces. Both land on the
 		// same handler because it already treats absent fields as unchanged.
@@ -594,71 +494,4 @@ func (h *Handler) updateSprint(w http.ResponseWriter, r *http.Request, wsID, use
 		return
 	}
 	writeJSON(w, http.StatusOK, h.sprintBean(updated))
-}
-
-func (h *Handler) sprintIssues(w http.ResponseWriter, r *http.Request, sprint *models.Sprint, userID string) {
-	issues, err := h.Store.IssuesBySprint(r.Context(), sprint.ID, userID)
-	if err != nil {
-		jiraError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	beans, err := h.agileIssueBeans(r.Context(), issues)
-	if err != nil {
-		jiraError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"maxResults": 50,
-		"startAt":    0,
-		"total":      len(beans),
-		"issues":     beans,
-	})
-}
-
-func (h *Handler) moveIssuesToSprint(w http.ResponseWriter, r *http.Request, wsID string, sprint *models.Sprint) {
-	_, userID, status, msg := h.authWorkspace(r)
-	if status != 0 {
-		jiraError(w, status, msg)
-		return
-	}
-	if sprint.State == "closed" {
-		jiraError(w, http.StatusBadRequest, "Issues cannot be added to a closed sprint.")
-		return
-	}
-	var req struct {
-		Issues []string `json:"issues"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.Issues) == 0 {
-		jiraFieldError(w, http.StatusBadRequest, map[string]string{"issues": "At least one issue key or id is required."})
-		return
-	}
-	board, err := h.Store.BoardByIDInWorkspace(r.Context(), wsID, sprint.BoardID)
-	if err != nil {
-		jiraError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	issues := make([]*models.Issue, 0, len(req.Issues))
-	seen := make(map[string]bool, len(req.Issues))
-	for _, key := range req.Issues {
-		issue, err := h.visibleIssue(r, wsID, userID, key)
-		if err != nil {
-			jiraError(w, http.StatusNotFound, "Issue "+key+" does not exist.")
-			return
-		}
-		if issue.ProjectID != board.ProjectID {
-			jiraFieldError(w, http.StatusBadRequest, map[string]string{"issues": "All issues must belong to the sprint's project."})
-			return
-		}
-		if !seen[issue.ID] {
-			seen[issue.ID] = true
-			issues = append(issues, issue)
-		}
-	}
-	for _, issue := range issues {
-		if err := h.Commands.PlanIssue(r.Context(), userID, wsID, board.ID, issue.ID, sprint.ID, "", ""); err != nil {
-			jiraError(w, http.StatusBadRequest, err.Error())
-			return
-		}
-	}
-	w.WriteHeader(http.StatusNoContent)
 }

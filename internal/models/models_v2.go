@@ -6,7 +6,9 @@ import "encoding/json"
 
 // ChangeItem mirrors one Jira changelog item.
 type ChangeItem struct {
-	Field      string `json:"field"`
+	Field string `json:"field"`
+	// FieldID is the id of a custom field, whose item is named by the field.
+	FieldID    string `json:"fieldId,omitempty"`
 	FieldType  string `json:"fieldtype"`
 	From       string `json:"from,omitempty"`
 	FromString string `json:"fromString,omitempty"`
@@ -19,6 +21,11 @@ type IssueUpdatePayload struct {
 	Diff                map[string]ChangeItem `json:"diff"`
 	Issue               Issue                 `json:"issue"`
 	TriggeredWebhookIDs []string              `json:"triggeredWebhookIds,omitempty"`
+	// SuppressChangelog keeps an update out of the issue's changelog, and
+	// SuppressEvents keeps it from app and administrator webhooks, as an app
+	// asks for when it writes its own field values.
+	SuppressChangelog bool `json:"suppressChangelog,omitempty"`
+	SuppressEvents    bool `json:"suppressEvents,omitempty"`
 }
 
 type CommentUpsertPayload struct {

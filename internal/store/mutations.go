@@ -8,6 +8,7 @@ import (
 	"fmt"
 	neturl "net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -52,6 +53,8 @@ type IssueUpdate struct {
 	Labels              *[]string       // empty = clear, nil = unchanged
 	Fields              map[string]json.RawMessage
 	TriggeredWebhookIDs []string
+	SuppressChangelog   bool
+	SuppressEvents      bool
 	TaskID              string
 }
 
@@ -125,6 +128,16 @@ func (s *Store) UpdateIssue(ctx context.Context, actorID, workspaceID, issueID s
 			if value, ok := up.Fields[field]; ok && string(value) != string(current.Fields[field]) {
 				diff[field] = versionChange(field, current.Fields[field], value)
 			}
+		}
+		for field, value := range up.Fields {
+			if !strings.HasPrefix(field, "customfield_") || jsonValuesEqual(value, current.Fields[field]) {
+				continue
+			}
+			item, err := customFieldChange(ctx, tx, field, current.Fields[field], value)
+			if err != nil {
+				return nil, nil, err
+			}
+			diff[field] = item
 		}
 		merged, err := mergeFields(current.Fields, up.Fields)
 		if err != nil {
@@ -245,7 +258,7 @@ func (s *Store) UpdateIssue(ctx context.Context, actorID, workspaceID, issueID s
 	if err != nil {
 		return nil, nil, err
 	}
-	payload, err := json.Marshal(models.IssueUpdatePayload{Diff: diff, Issue: *updated, TriggeredWebhookIDs: up.TriggeredWebhookIDs})
+	payload, err := json.Marshal(models.IssueUpdatePayload{Diff: diff, Issue: *updated, TriggeredWebhookIDs: up.TriggeredWebhookIDs, SuppressChangelog: up.SuppressChangelog, SuppressEvents: up.SuppressEvents})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -484,6 +497,7 @@ func (s *Store) IssueChangelog(ctx context.Context, workspaceID, issueID string)
 		FROM actions a LEFT JOIN users u ON u.id = a.actor_id
 		WHERE a.workspace_id=$1 AND a.entity_type='issue' AND a.entity_id=$2
 		  AND a.op='upsert' AND a.payload ? 'diff' AND a.schema_v >= 2
+		  AND NOT COALESCE((a.payload->>'suppressChangelog')::boolean, false)
 		ORDER BY a.seq`, workspaceID, issueID)
 	if err != nil {
 		return nil, err
@@ -873,4 +887,62 @@ func (s *Store) NextCustomFieldNumber(ctx context.Context) (int, error) {
 	var suffix int
 	err := s.Pool.QueryRow(ctx, `SELECT nextval('jira_app_custom_field_id')::INT`).Scan(&suffix)
 	return suffix - 10000, err
+}
+
+// jsonValuesEqual compares two stored field values, treating a missing value
+// as null.
+func jsonValuesEqual(left, right json.RawMessage) bool {
+	normalize := func(raw json.RawMessage) string {
+		if len(raw) == 0 {
+			return "null"
+		}
+		var value any
+		if json.Unmarshal(raw, &value) != nil {
+			return string(raw)
+		}
+		encoded, _ := json.Marshal(value)
+		return string(encoded)
+	}
+	return normalize(left) == normalize(right)
+}
+
+// customFieldChange is Jira's changelog item for a custom field: named by the
+// field, with its id, and the values as a person reads them. A select change
+// also carries the option ids.
+func customFieldChange(ctx context.Context, tx pgx.Tx, fieldID string, from, to json.RawMessage) (models.ChangeItem, error) {
+	var name, fieldType string
+	if err := tx.QueryRow(ctx, `SELECT name,type FROM custom_fields WHERE id=$1`, fieldID).Scan(&name, &fieldType); err != nil {
+		return models.ChangeItem{}, err
+	}
+	item := models.ChangeItem{Field: name, FieldID: fieldID, FieldType: "custom"}
+	display := func(raw json.RawMessage) (string, string) {
+		if len(raw) == 0 || string(raw) == "null" {
+			return "", ""
+		}
+		var value any
+		if json.Unmarshal(raw, &value) != nil {
+			return "", string(raw)
+		}
+		text := ""
+		switch typed := value.(type) {
+		case string:
+			text = typed
+		case float64:
+			text = strconv.FormatFloat(typed, 'f', -1, 64)
+		default:
+			encoded, _ := json.Marshal(typed)
+			text = string(encoded)
+		}
+		if fieldType != models.CustomFieldSelect {
+			return "", text
+		}
+		var option string
+		if err := tx.QueryRow(ctx, `SELECT value FROM custom_field_options WHERE id::text=$1`, text).Scan(&option); err != nil {
+			return text, text
+		}
+		return text, option
+	}
+	item.From, item.FromString = display(from)
+	item.To, item.ToString = display(to)
+	return item, nil
 }

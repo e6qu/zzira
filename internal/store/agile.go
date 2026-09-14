@@ -116,7 +116,7 @@ func (s *Store) RankBetween(ctx context.Context, workspaceID, projectID, statusI
 const boardJoin = `
 SELECT b.id, b.project_id, p.key, p.name, p.workspace_id, b.name, b.type, b.column_status_ids, b.filter_jql,
        b.quick_filters, b.swimlane_strategy, b.card_fields, b.column_limits, b.jira_id, b.filter_jira_id,
-       COALESCE(b.estimation_field_id,''), COALESCE(ef.name,''), COALESCE(b.source_filter_id,''), COALESCE(sf.jira_id,0)
+       COALESCE(b.estimation_field_id,''), COALESCE(ef.name,''), COALESCE(b.source_filter_id,''), COALESCE(sf.jira_id,0), p.project_type_key
 FROM boards b JOIN projects p ON p.id=b.project_id AND p.lifecycle_state='ACTIVE'
 LEFT JOIN custom_fields ef ON ef.id=b.estimation_field_id
 LEFT JOIN filters sf ON sf.id=b.source_filter_id
@@ -127,7 +127,7 @@ func scanBoard(row pgx.Row) (*models.Board, error) {
 	var quickFilters, columnLimits []byte
 	err := row.Scan(&b.ID, &b.ProjectID, &b.ProjectKey, &b.ProjectName, &b.WorkspaceID, &b.Name, &b.Type, &b.ColumnStatusIDs, &b.FilterJQL,
 		&quickFilters, &b.SwimlaneStrategy, &b.CardFields, &columnLimits, &b.JiraID, &b.FilterJiraID,
-		&b.EstimationFieldID, &b.EstimationFieldName, &b.SourceFilterID, &b.SourceFilterJiraID)
+		&b.EstimationFieldID, &b.EstimationFieldName, &b.SourceFilterID, &b.SourceFilterJiraID, &b.ProjectTypeKey)
 	if err != nil {
 		return b, err
 	}

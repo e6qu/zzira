@@ -240,12 +240,15 @@ func (h *Handler) updateAppFieldConfigurations(w http.ResponseWriter, r *http.Re
 
 // updateAppFieldValues writes the values of fields the calling app provides.
 func (h *Handler) updateAppFieldValues(w http.ResponseWriter, r *http.Request, workspaceID string, installation *models.AppInstallation, isApp bool, fieldRef string) {
-	for _, flag := range []string{"generateChangelog", "generateAppEvents"} {
+	generate := map[string]bool{"generateChangelog": true, "generateAppEvents": true}
+	for flag := range generate {
 		if raw := r.URL.Query().Get(flag); raw != "" {
-			if _, err := strconv.ParseBool(raw); err != nil {
+			value, err := strconv.ParseBool(raw)
+			if err != nil {
 				jiraError(w, http.StatusBadRequest, flag+" must be true or false.")
 				return
 			}
+			generate[flag] = value
 		}
 	}
 	type update struct {
@@ -307,6 +310,7 @@ func (h *Handler) updateAppFieldValues(w http.ResponseWriter, r *http.Request, w
 	for _, item := range writes {
 		if _, _, err := h.Commands.UpdateIssue(r.Context(), commands.UpdateIssueInput{
 			ActorID: installation.PrincipalID, WorkspaceID: workspaceID, IssueIDOrKey: item.issue.ID, Fields: map[string]json.RawMessage{item.field.ID: item.value},
+			SuppressChangelog: !generate["generateChangelog"], SuppressEvents: !generate["generateAppEvents"],
 		}); err != nil {
 			jiraError(w, http.StatusBadRequest, err.Error())
 			return
