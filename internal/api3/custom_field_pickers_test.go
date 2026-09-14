@@ -110,13 +110,13 @@ func TestProjectAndVersionPickerFields(t *testing.T) {
 	call(http.MethodPost, "/rest/api/3/issue", `{"fields":{"project":{"key":"`+home+`"},"summary":"Missing","issuetype":{"name":"Task"},"`+sourceID+`":{"key":"NOPE"}}}`, http.StatusBadRequest)
 
 	for jql, want := range map[string]int{
-		sourceID + ` = ` + other:      1,
-		sourceID + ` = ` + otherID:    1,
-		sourceID + ` = ` + home:       0,
-		targetID + ` = "2.0"`:         1,
-		shippedID + ` in ("1.0")`:     1,
-		shippedID + ` = ` + foreign:   0,
-		shippedID + ` is not EMPTY`:   1,
+		sourceID + ` = ` + other:    1,
+		sourceID + ` = ` + otherID:  1,
+		sourceID + ` = ` + home:     0,
+		targetID + ` = "2.0"`:       1,
+		shippedID + ` in ("1.0")`:   1,
+		shippedID + ` = ` + foreign: 0,
+		shippedID + ` is not EMPTY`: 1,
 	} {
 		result := call(http.MethodGet, "/rest/api/3/search/jql?fields=summary&jql="+url.QueryEscape(jql+` AND project = `+home), "", http.StatusOK)
 		if got := len(result["issues"].([]any)); got != want {

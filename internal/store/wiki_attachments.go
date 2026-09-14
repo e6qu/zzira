@@ -8,7 +8,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const wikiAttachmentSelect = `SELECT a.id::text,COALESCE(a.page_id::text,''),COALESCE(a.blog_post_id::text,''),COALESCE(p.space_id,b.space_id)::text,a.file_id,a.filename,a.media_type,a.comment,a.size,a.status,a.author_id,to_char(a.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),a.version,v.message,v.minor_edit,v.author_id,to_char(v.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),COALESCE(b.author_id,''),COALESCE(b.private,false),COALESCE(b.published,false) FROM wiki_attachments a LEFT JOIN wiki_pages p ON p.id=a.page_id LEFT JOIN wiki_blog_posts b ON b.id=a.blog_post_id JOIN wiki_spaces s ON s.id=COALESCE(p.space_id,b.space_id) JOIN wiki_attachment_versions v ON v.attachment_id=a.id AND v.version=a.version`
+const wikiAttachmentSelect = `SELECT a.id::text,COALESCE(a.page_id::text,''),COALESCE(a.blog_post_id::text,''),COALESCE(p.space_id,b.space_id)::text,a.file_id,a.filename,a.media_type,a.comment,a.size,CASE WHEN a.status='current' AND p.status='archived' THEN 'archived' ELSE a.status END,a.author_id,to_char(a.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),a.version,v.message,v.minor_edit,v.author_id,to_char(v.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),COALESCE(b.author_id,''),COALESCE(b.private,false),COALESCE(b.published,false) FROM wiki_attachments a LEFT JOIN wiki_pages p ON p.id=a.page_id LEFT JOIN wiki_blog_posts b ON b.id=a.blog_post_id JOIN wiki_spaces s ON s.id=COALESCE(p.space_id,b.space_id) JOIN wiki_attachment_versions v ON v.attachment_id=a.id AND v.version=a.version`
 
 var wikiAttachmentVisible = `(` + wikiSpacePermissionAllowed("read/attachment") + `) AND ((a.page_id IS NOT NULL AND ` + wikiPageVisible + `) OR (a.blog_post_id IS NOT NULL AND ` + wikiBlogPostVisible + `))`
 
@@ -55,7 +55,7 @@ func (s *Store) WikiAttachmentByFilename(ctx context.Context, ws, user, pageID, 
 }
 
 func (s *Store) WikiAttachments(ctx context.Context, ws, user, pageID, mediaType, filename, status string) ([]*models.WikiAttachment, error) {
-	rows, err := s.Pool.Query(ctx, wikiAttachmentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiAttachmentVisible+` AND ($3='' OR a.page_id::text=$3) AND ($4='' OR a.media_type=$4) AND ($5='' OR a.filename=$5) AND ($6='' OR a.status=$6) ORDER BY a.id`, ws, user, pageID, mediaType, filename, status)
+	rows, err := s.Pool.Query(ctx, wikiAttachmentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiAttachmentVisible+` AND ($3='' OR a.page_id::text=$3) AND ($4='' OR a.media_type=$4) AND ($5='' OR a.filename=$5) AND ($6='' OR CASE WHEN a.status='current' AND p.status='archived' THEN 'archived' ELSE a.status END=$6) ORDER BY a.id`, ws, user, pageID, mediaType, filename, status)
 	if err != nil {
 		return nil, err
 	}

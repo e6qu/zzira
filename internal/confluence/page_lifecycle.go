@@ -45,6 +45,16 @@ func (h *Handler) pageByID(w http.ResponseWriter, r *http.Request, ws, actor, id
 		failure(w, 400, "Page web-resource expansion is not available.")
 		return
 	}
+	for _, raw := range r.URL.Query()["status"] {
+		for _, candidate := range strings.Split(raw, ",") {
+			switch candidate {
+			case "current", "archived", "trashed", "deleted", "historical", "draft":
+			default:
+				failure(w, 400, "Unsupported page status.")
+				return
+			}
+		}
+	}
 	page, err := h.Store.WikiPage(r.Context(), ws, actor, id)
 	if err != nil {
 		writeError(w, err)
@@ -56,10 +66,15 @@ func (h *Handler) pageByID(w http.ResponseWriter, r *http.Request, ws, actor, id
 			failure(w, 400, "Version number must be positive.")
 			return
 		}
+		latest := page.Version.Number
 		page, err = h.Store.WikiPageAtVersion(r.Context(), ws, actor, id, number)
 		if err != nil {
 			writeError(w, err)
 			return
+		}
+		// An earlier version is history, which is the status Confluence gives it.
+		if number < latest {
+			page.Status = "historical"
 		}
 	}
 	if flags["get-draft"] && page.Status != "draft" {
@@ -69,7 +84,7 @@ func (h *Handler) pageByID(w http.ResponseWriter, r *http.Request, ws, actor, id
 	if _, filtered := r.URL.Query()["status"]; filtered && !queryContains(r, "status", page.Status) {
 		failure(w, 404, "Page not found with the requested status.")
 		return
-	} else if !filtered && !flags["get-draft"] && page.Status != "current" {
+	} else if !filtered && !flags["get-draft"] && page.Status != "current" && page.Status != "historical" {
 		failure(w, 404, "Page not found with the requested status.")
 		return
 	}

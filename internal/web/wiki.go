@@ -70,6 +70,16 @@ type wikiData struct {
 	WatchingSpace                         bool
 	WatchingPage                          bool
 	WatchedLabels                         map[string]bool
+	MoveTargets                           []wikiMoveGroup
+	ChildPageCount                        int
+	ArchivedChildCount                    int
+}
+
+// wikiMoveGroup is one space's worth of pages a page can be moved beside or
+// beneath.
+type wikiMoveGroup struct {
+	Space *models.WikiSpace
+	Pages []*models.WikiPage
 }
 
 type wikiRestrictionOption struct {
@@ -152,7 +162,7 @@ func wikiWebError(err error) (int, string) {
 		return 409, err.Error()
 	case errors.Is(err, store.ErrWikiPropertyConflict):
 		return 409, err.Error()
-	case errors.Is(err, store.ErrWikiValidation):
+	case errors.Is(err, store.ErrWikiValidation), errors.Is(err, store.ErrWikiMoveValidation):
 		return 400, err.Error()
 	case errors.As(err, &pgerr) && pgerr.Code == "23505" && pgerr.ConstraintName == "wiki_attachment_properties_attachment_id_key_key":
 		return 400, "An attachment property with this key already exists."
@@ -223,7 +233,7 @@ func (h *Handler) WikiSpacePage(w http.ResponseWriter, r *http.Request) {
 	if status == "" {
 		status = "current"
 	}
-	if status != "current" && status != "draft" && status != "trashed" {
+	if status != "current" && status != "draft" && status != "archived" && status != "trashed" {
 		http.Error(w, "Unknown page status.", 400)
 		return
 	}
@@ -1234,6 +1244,12 @@ func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 				data.RestrictionGroups = append(data.RestrictionGroups, wikiRestrictionOption{ID: group.ID, Name: group.Name, Read: readGroups[group.ID], Update: updateGroups[group.ID]})
 			}
 		}
+		if canEdit && (page.Status == "current" || page.Status == "archived") {
+			if err = h.loadWikiPageLifecycle(r, ws, user.ID, &data); err != nil {
+				http.Error(w, "Could not load page locations.", 500)
+				return
+			}
+		}
 		data.Versions, err = h.Store.WikiVersions(r.Context(), ws, user.ID, page.ID)
 		if err != nil {
 			http.Error(w, "Could not load page history.", 500)
@@ -1287,7 +1303,11 @@ func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 				}
 			}
 		}
-		data.Attachments, err = h.Store.WikiAttachments(r.Context(), ws, user.ID, page.ID, "", "", "current")
+		attachmentStatus := "current"
+		if page.Status == "archived" {
+			attachmentStatus = "archived"
+		}
+		data.Attachments, err = h.Store.WikiAttachments(r.Context(), ws, user.ID, page.ID, "", "", attachmentStatus)
 		if err != nil {
 			http.Error(w, "Could not load page attachments.", 500)
 			return
@@ -1976,6 +1996,142 @@ func (h *Handler) wikiPageForComment(r *http.Request, ws, userID string) (*model
 
 func wikiPageURL(page *models.WikiPage) string {
 	return "/wiki/spaces/" + page.SpaceID + "/pages/" + page.ID
+}
+
+// loadWikiPageLifecycle gathers what a page's Archive, Restore and Move actions
+// offer: how many child pages would go along, and every current page in a
+// current space that the page could be moved beside or beneath. The page's own
+// subtree is left out, because a page cannot be moved beneath itself.
+func (h *Handler) loadWikiPageLifecycle(r *http.Request, ws, userID string, data *wikiData) error {
+	page := data.Page
+	if page.Status == "archived" {
+		archived, err := h.Store.WikiPages(r.Context(), ws, userID, page.SpaceID, "archived", "")
+		if err != nil {
+			return err
+		}
+		for _, candidate := range archived {
+			if candidate.ParentID == page.ID {
+				data.ArchivedChildCount++
+			}
+		}
+		return nil
+	}
+	spaces, err := h.Store.WikiSpaces(r.Context(), ws, userID)
+	if err != nil {
+		return err
+	}
+	pages, err := h.Store.WikiPages(r.Context(), ws, userID, "", "current", "")
+	if err != nil {
+		return err
+	}
+	subtree := map[string]bool{page.ID: true}
+	for grown := true; grown; {
+		grown = false
+		for _, candidate := range pages {
+			if candidate.ParentID != "" && subtree[candidate.ParentID] && !subtree[candidate.ID] {
+				subtree[candidate.ID] = true
+				grown = true
+			}
+		}
+	}
+	for _, candidate := range pages {
+		if candidate.ParentID == page.ID {
+			data.ChildPageCount++
+		}
+	}
+	for _, space := range spaces {
+		if space.Status != "current" {
+			continue
+		}
+		group := wikiMoveGroup{Space: space}
+		for _, candidate := range pages {
+			if candidate.SpaceID == space.ID && !subtree[candidate.ID] {
+				group.Pages = append(group.Pages, candidate)
+			}
+		}
+		if len(group.Pages) > 0 {
+			data.MoveTargets = append(data.MoveTargets, group)
+		}
+	}
+	return nil
+}
+
+// wikiPageAction loads the page a page action names, refusing one that is not
+// in the space the address says.
+func (h *Handler) wikiPageAction(w http.ResponseWriter, r *http.Request) (*models.WikiPage, string, string, bool) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok {
+		return nil, "", "", false
+	}
+	page, err := h.Store.WikiPage(r.Context(), ws, user.ID, r.PathValue("page"))
+	if err != nil {
+		status, msg := wikiWebError(err)
+		http.Error(w, msg, status)
+		return nil, "", "", false
+	}
+	if page.SpaceID != r.PathValue("space") {
+		http.NotFound(w, r)
+		return nil, "", "", false
+	}
+	if !parseForm(w, r) {
+		return nil, "", "", false
+	}
+	return page, user.ID, ws, true
+}
+
+// WikiPageArchive archives a page from its own actions. Its child pages go
+// with it when asked, and otherwise move up a level.
+func (h *Handler) WikiPageArchive(w http.ResponseWriter, r *http.Request) {
+	page, userID, ws, ok := h.wikiPageAction(w, r)
+	if !ok {
+		return
+	}
+	if _, err := h.Commands.ArchiveWikiPages(r.Context(), ws, userID, []string{page.ID}, r.PostFormValue("descendants") == "true"); err != nil {
+		status, msg := wikiWebError(err)
+		http.Error(w, msg, status)
+		return
+	}
+	redirectLocal(w, r, "/wiki/spaces/"+page.SpaceID+"/pages/"+page.ID)
+}
+
+// WikiPageRestore returns an archived page to the page tree.
+func (h *Handler) WikiPageRestore(w http.ResponseWriter, r *http.Request) {
+	page, userID, ws, ok := h.wikiPageAction(w, r)
+	if !ok {
+		return
+	}
+	if _, err := h.Commands.RestoreWikiPage(r.Context(), ws, userID, page.ID, r.PostFormValue("descendants") == "true"); err != nil {
+		status, msg := wikiWebError(err)
+		http.Error(w, msg, status)
+		return
+	}
+	redirectLocal(w, r, "/wiki/spaces/"+page.SpaceID+"/pages/"+page.ID)
+}
+
+// WikiPageMove moves a page beside or beneath another, which may be in another
+// space; the page's address follows it there.
+func (h *Handler) WikiPageMove(w http.ResponseWriter, r *http.Request) {
+	page, userID, ws, ok := h.wikiPageAction(w, r)
+	if !ok {
+		return
+	}
+	targetID := r.PostFormValue("targetId")
+	if targetID == "" {
+		http.Error(w, "Choose the page to move this page beside or beneath.", 400)
+		return
+	}
+	if _, err := h.Commands.MoveWikiPage(r.Context(), ws, userID, page.ID, r.PostFormValue("position"), targetID); err != nil {
+		status, msg := wikiWebError(err)
+		http.Error(w, msg, status)
+		return
+	}
+	moved, err := h.Store.WikiPage(r.Context(), ws, userID, page.ID)
+	if err != nil {
+		status, msg := wikiWebError(err)
+		http.Error(w, msg, status)
+		return
+	}
+	redirectLocal(w, r, "/wiki/spaces/"+moved.SpaceID+"/pages/"+moved.ID)
 }
 
 func (h *Handler) WikiTrash(w http.ResponseWriter, r *http.Request) {

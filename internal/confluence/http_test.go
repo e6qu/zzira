@@ -372,7 +372,8 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	if listed := call(actor, "GET", "/pages?status=current,draft&sort=-title&subtype=page", nil, 200); !strings.Contains(listed.Body.String(), "Private draft") || strings.Index(listed.Body.String(), "Security response") > strings.Index(listed.Body.String(), "Release guide") {
 		t.Fatal(listed.Body.String())
 	}
-	call(actor, "GET", "/pages?status=archived", nil, 400)
+	call(actor, "GET", "/pages?status=archived", nil, 200)
+	call(actor, "GET", "/pages?status=historical", nil, 400)
 	call(actor, "GET", "/pages?sort=unknown", nil, 400)
 	call(actor, "GET", "/pages?subtype=live", nil, 400)
 	if levels := call(member, "GET", "/classification-levels", nil, 200); !strings.Contains(levels.Body.String(), `"name":"Public"`) || !strings.Contains(levels.Body.String(), `"name":"Restricted"`) {

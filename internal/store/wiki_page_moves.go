@@ -31,6 +31,8 @@ type WikiCopyHierarchyRequest struct {
 	CopyAttachments   bool   `json:"copyAttachments"`
 	CopyProperties    bool   `json:"copyProperties"`
 	CopyLabels        bool   `json:"copyLabels"`
+	CopyPermissions   bool   `json:"copyPermissions"`
+	CopyCustomContent bool   `json:"copyCustomContents"`
 	CopyDescendants   bool   `json:"copyDescendants"`
 	TitlePrefix       string `json:"titlePrefix"`
 	TitleSearch       string `json:"titleSearch"`
@@ -38,12 +40,14 @@ type WikiCopyHierarchyRequest struct {
 }
 
 type wikiPageIDsPayload struct {
-	PageIDs []string `json:"pageIds"`
+	PageIDs            []string `json:"pageIds"`
+	IncludeDescendants bool     `json:"includeDescendants,omitempty"`
 }
 
 // MoveWikiPage places a page before or after a sibling, or under a new parent.
 // Confluence's four positions are the whole vocabulary for this, so an unknown
-// one is refused rather than guessed at.
+// one is refused rather than guessed at. The target may be in another space,
+// and then the page takes everything beneath it along.
 func (s *Store) MoveWikiPage(ctx context.Context, ws, actor, pageID, position, targetID string) (string, error) {
 	switch position {
 	case "before", "after", "append", "above":
@@ -76,9 +80,6 @@ func (s *Store) MoveWikiPage(ctx context.Context, ws, actor, pageID, position, t
 		target.ID).Scan(&targetSpace, &targetParent, &targetPosition); err != nil {
 		return "", err
 	}
-	if pageSpace != targetSpace {
-		return "", fmt.Errorf("%w: the target is in another space", ErrWikiMoveValidation)
-	}
 	// A page cannot be moved inside its own subtree: the tree would have no
 	// root and the page would disappear from the space.
 	descendant, err := pageIsDescendant(ctx, tx, target.ID, page.ID)
@@ -87,6 +88,12 @@ func (s *Store) MoveWikiPage(ctx context.Context, ws, actor, pageID, position, t
 	}
 	if descendant {
 		return "", fmt.Errorf("%w: a page cannot be moved beneath itself", ErrWikiMoveValidation)
+	}
+	moved := []string{page.ID}
+	if pageSpace != targetSpace {
+		if moved, err = relocatePageTree(ctx, tx, ws, actor, page.ID, pageSpace, targetSpace); err != nil {
+			return "", err
+		}
 	}
 	var newParent any
 	newPosition := 0
@@ -97,7 +104,7 @@ func (s *Store) MoveWikiPage(ctx context.Context, ws, actor, pageID, position, t
 		newParent = target.ID
 		if position == "append" {
 			if err = tx.QueryRow(ctx, `SELECT COALESCE(MAX(position),0)+1 FROM wiki_pages
-				WHERE parent_id::text=$1 AND status='current'`, target.ID).Scan(&newPosition); err != nil {
+				WHERE parent_id::text=$1 AND status='current' AND id::text<>$2`, target.ID, page.ID).Scan(&newPosition); err != nil {
 				return "", err
 			}
 		} else {
@@ -118,7 +125,7 @@ func (s *Store) MoveWikiPage(ctx context.Context, ws, actor, pageID, position, t
 		if _, err = tx.Exec(ctx, `UPDATE wiki_pages SET position=position+1
 			WHERE space_id::text=$1 AND parent_id IS NOT DISTINCT FROM $2::bigint
 			AND status='current' AND position>=$3 AND id::text<>$4`,
-			pageSpace, targetParent, newPosition, page.ID); err != nil {
+			targetSpace, targetParent, newPosition, page.ID); err != nil {
 			return "", err
 		}
 	}
@@ -126,10 +133,100 @@ func (s *Store) MoveWikiPage(ctx context.Context, ws, actor, pageID, position, t
 		page.ID, newParent, newPosition); err != nil {
 		return "", err
 	}
-	if err = wikiPageMoveAction(ctx, tx, ws, actor, page.ID, position, target.ID); err != nil {
-		return "", err
+	for _, id := range moved {
+		if err = wikiPageSnapshotAction(ctx, tx, ws, actor, id); err != nil {
+			return "", err
+		}
 	}
 	return page.ID, tx.Commit(ctx)
+}
+
+// relocatePageTree carries a page and everything beneath it into another
+// space, with the folders, whiteboards, databases and Smart Links that hang off
+// those pages. Confluence asks for permission to delete pages where the tree is
+// and to add pages where it is going; it will not take a space's homepage out
+// of its space, and a destination already showing one of the titles refuses
+// the move rather than holding two current pages of the same name.
+func relocatePageTree(ctx context.Context, tx pgx.Tx, ws, actor, pageID, fromSpace, toSpace string) ([]string, error) {
+	var allowed bool
+	if err := tx.QueryRow(ctx, `SELECT
+		EXISTS(SELECT 1 FROM wiki_spaces s WHERE s.workspace_id=$1 AND s.id::text=$3 AND `+wikiSpaceCanDeletePage+`)
+		AND EXISTS(SELECT 1 FROM wiki_spaces s WHERE s.workspace_id=$1 AND s.id::text=$4 AND `+wikiSpaceVisible+` AND `+wikiSpaceCanCreatePage+`)`,
+		ws, actor, fromSpace, toSpace).Scan(&allowed); err != nil {
+		return nil, err
+	}
+	if !allowed {
+		return nil, fmt.Errorf("%w: moving a page to another space needs permission to delete pages here and to add pages there", ErrProjectPermission)
+	}
+	var homepage bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM wiki_spaces WHERE id::text=$1 AND homepage_id::text=$2)`,
+		fromSpace, pageID).Scan(&homepage); err != nil {
+		return nil, err
+	}
+	if homepage {
+		return nil, fmt.Errorf("%w: a space homepage cannot be moved to another space", ErrWikiMoveValidation)
+	}
+	ids, err := queryPageIDs(ctx, tx, `WITH RECURSIVE tree AS (
+			SELECT id FROM wiki_pages WHERE id::text=$1
+			UNION
+			SELECT p.id FROM wiki_pages p JOIN tree ON p.parent_id=tree.id
+		)
+		SELECT id::text FROM tree`, pageID)
+	if err != nil {
+		return nil, err
+	}
+	var clash string
+	err = tx.QueryRow(ctx, `SELECT moving.title FROM wiki_pages moving
+		JOIN wiki_pages there ON there.title=moving.title AND there.space_id::text=$2 AND there.status='current'
+		WHERE moving.id::text=ANY($1) AND moving.status='current' ORDER BY moving.id LIMIT 1`, ids, toSpace).Scan(&clash)
+	if err == nil {
+		return nil, fmt.Errorf("%w: a page titled %q already exists in the destination space", ErrWikiMoveValidation, clash)
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return nil, err
+	}
+	if _, err = tx.Exec(ctx, `UPDATE wiki_pages SET space_id=$2::bigint WHERE id::text=ANY($1)`, ids, toSpace); err != nil {
+		return nil, err
+	}
+	contentIDs, err := queryPageIDs(ctx, tx, `WITH RECURSIVE owned AS (
+			SELECT id FROM wiki_content WHERE parent_page_id::text=ANY($1) OR root_page_id::text=ANY($1)
+			UNION
+			SELECT c.id FROM wiki_content c JOIN owned ON c.parent_content_id=owned.id
+		)
+		SELECT id::text FROM owned ORDER BY id`, ids)
+	if err != nil {
+		return nil, err
+	}
+	if _, err = tx.Exec(ctx, `UPDATE wiki_content SET space_id=$2::bigint WHERE id::text=ANY($1)`, contentIDs, toSpace); err != nil {
+		return nil, err
+	}
+	for _, id := range contentIDs {
+		content, scanErr := scanWikiContent(tx.QueryRow(ctx, wikiContentSelect+` WHERE c.id::text=$1`, id))
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		if err = wikiContentAction(ctx, tx, ws, actor, content, models.OpUpsert); err != nil {
+			return nil, err
+		}
+	}
+	return ids, nil
+}
+
+func queryPageIDs(ctx context.Context, tx pgx.Tx, query string, args ...any) ([]string, error) {
+	rows, err := tx.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	ids := []string{}
+	for rows.Next() {
+		var id string
+		if err = rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
 }
 
 func pageIsDescendant(ctx context.Context, tx pgx.Tx, candidateID, ancestorID string) (bool, error) {
@@ -144,19 +241,15 @@ func pageIsDescendant(ctx context.Context, tx pgx.Tx, candidateID, ancestorID st
 	return descendant, err
 }
 
-func wikiPageMoveAction(ctx context.Context, tx pgx.Tx, ws, actor, pageID, position, targetID string) error {
-	payload, err := json.Marshal(map[string]any{"pageId": pageID, "position": position, "targetId": targetID})
+// wikiPageSnapshotAction records a page as it now is. Replicas apply a page
+// whole and receive it only when its space and publication say they may, so
+// the action carries the page rather than a description of what happened.
+func wikiPageSnapshotAction(ctx context.Context, tx pgx.Tx, ws, actor, pageID string) error {
+	page, err := scanWikiPage(tx.QueryRow(ctx, wikiPageSelect+` WHERE p.id::text=$1`, pageID))
 	if err != nil {
 		return err
 	}
-	seq, err := nextSeq(ctx, tx, ws)
-	if err != nil {
-		return err
-	}
-	return appendAction(ctx, tx, &models.Action{
-		WorkspaceID: ws, Seq: seq, EntityType: "wiki_page", EntityID: pageID,
-		Op: models.OpUpsert, SchemaV: models.SchemaVersion, Payload: payload, ActorID: actor,
-	})
+	return wikiAction(ctx, tx, ws, actor, "wiki_page", page.ID, page.SpaceID, page)
 }
 
 // WikiPageCopyOptions says what travels with a copy.
@@ -168,6 +261,10 @@ type WikiPageCopyOptions struct {
 	CopyAttachments bool
 	CopyProperties  bool
 	CopyLabels      bool
+	// CopyPermissions carries the page's view and edit restrictions, and
+	// CopyCustomContent the custom content filed directly under it.
+	CopyPermissions   bool
+	CopyCustomContent bool
 }
 
 // CopyWikiPage duplicates one page. What travels with it is the caller's
@@ -199,10 +296,13 @@ func (s *Store) CopyWikiPage(ctx context.Context, ws, actor, pageID string, opti
 	if err != nil {
 		return "", err
 	}
-	if err = copyPageBelongings(ctx, tx, source.ID, copyID, options.CopyAttachments, options.CopyProperties, options.CopyLabels); err != nil {
+	if err = copyPageBelongings(ctx, tx, ws, actor, source.ID, copyID, pageBelongings{
+		Attachments: options.CopyAttachments, Properties: options.CopyProperties, Labels: options.CopyLabels,
+		Permissions: options.CopyPermissions, CustomContent: options.CopyCustomContent,
+	}); err != nil {
 		return "", err
 	}
-	if err = wikiPageMoveAction(ctx, tx, ws, actor, copyID, "copy", source.ID); err != nil {
+	if err = wikiPageSnapshotAction(ctx, tx, ws, actor, copyID); err != nil {
 		return "", err
 	}
 	return copyID, tx.Commit(ctx)
@@ -299,27 +399,77 @@ func availablePageTitle(ctx context.Context, tx pgx.Tx, spaceID, title string) (
 	return "", fmt.Errorf("%w: too many pages share this title", ErrWikiMoveValidation)
 }
 
-func copyPageBelongings(ctx context.Context, tx pgx.Tx, sourceID, copyID string, attachments, properties, labels bool) error {
-	if labels {
+type pageBelongings struct {
+	Attachments, Properties, Labels, Permissions, CustomContent bool
+}
+
+func copyPageBelongings(ctx context.Context, tx pgx.Tx, ws, actor, sourceID, copyID string, what pageBelongings) error {
+	if what.Labels {
 		if _, err := tx.Exec(ctx, `INSERT INTO wiki_page_labels(page_id,label_id)
 			SELECT $2::bigint,label_id FROM wiki_page_labels WHERE page_id::text=$1
 			ON CONFLICT DO NOTHING`, sourceID, copyID); err != nil {
 			return err
 		}
 	}
-	if properties {
+	if what.Properties {
 		if _, err := tx.Exec(ctx, `INSERT INTO wiki_page_properties(page_id,key,value,version,author_id)
 			SELECT $2::bigint,key,value,1,author_id FROM wiki_page_properties WHERE page_id::text=$1`,
 			sourceID, copyID); err != nil {
 			return err
 		}
 	}
-	if attachments {
+	if what.Attachments {
 		// The copy points at the same stored blob; an attachment's bytes are
 		// content-addressed, so duplicating the row is enough.
 		if _, err := tx.Exec(ctx, `INSERT INTO wiki_attachments(page_id,file_id,filename,media_type,comment,size,version,status,author_id)
 			SELECT $2::bigint,file_id,filename,media_type,comment,size,1,status,author_id
 			FROM wiki_attachments WHERE page_id::text=$1 AND status='current'`, sourceID, copyID); err != nil {
+			return err
+		}
+	}
+	if what.Permissions {
+		// Restrictions travel as they are, so a page only some people could
+		// see is not copied into one everybody can.
+		if _, err := tx.Exec(ctx, `INSERT INTO wiki_page_restrictions(page_id,operation,subject_type,subject_id,author_id)
+			SELECT $2::bigint,operation,subject_type,subject_id,$3 FROM wiki_page_restrictions WHERE page_id::text=$1
+			ON CONFLICT DO NOTHING`, sourceID, copyID, actor); err != nil {
+			return err
+		}
+	}
+	if what.CustomContent {
+		if err := copyPageCustomContent(ctx, tx, ws, actor, sourceID, copyID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// copyPageCustomContent copies the current custom content filed directly under
+// a page. Each copy starts its own history at version 1 with the source's
+// latest title and body, the way a copied page does.
+func copyPageCustomContent(ctx context.Context, tx pgx.Tx, ws, actor, sourceID, copyID string) error {
+	copies, err := queryPageIDs(ctx, tx, `WITH source AS (
+			SELECT c.id,c.space_id,c.custom_type,c.title,c.body FROM wiki_content c
+			WHERE c.parent_page_id::text=$1 AND c.type='custom' AND c.status='current' ORDER BY c.id
+		), copied AS (
+			INSERT INTO wiki_content(space_id,parent_page_id,root_page_id,type,custom_type,title,body,author_id,owner_id)
+			SELECT copy.space_id,copy.id,copy.id,'custom',source.custom_type,source.title,source.body,$3,$3
+			FROM source CROSS JOIN wiki_pages copy WHERE copy.id::text=$2
+			RETURNING id,title,body
+		), versions AS (
+			INSERT INTO wiki_content_versions(content_id,version,title,status,author_id,body,message)
+			SELECT id,1,title,'current',$3,body,'Copied' FROM copied
+		)
+		SELECT id::text FROM copied ORDER BY id`, sourceID, copyID, actor)
+	if err != nil {
+		return err
+	}
+	for _, id := range copies {
+		content, scanErr := scanWikiContent(tx.QueryRow(ctx, wikiContentSelect+` WHERE c.id::text=$1`, id))
+		if scanErr != nil {
+			return scanErr
+		}
+		if err = wikiContentAction(ctx, tx, ws, actor, content, models.OpUpsert); err != nil {
 			return err
 		}
 	}
@@ -397,7 +547,7 @@ func (s *Store) copyHierarchy(ctx context.Context, ws, actor string, payload Wik
 	if descendant {
 		return 0, fmt.Errorf("%w: a hierarchy cannot be copied into itself", ErrWikiMoveValidation)
 	}
-	copied, err := copySubtree(ctx, tx, actor, source.ID, targetSpace, targetParent, payload, true)
+	copied, err := copySubtree(ctx, tx, ws, actor, source.ID, targetSpace, targetParent, payload, true)
 	if err != nil {
 		return 0, err
 	}
@@ -407,7 +557,7 @@ func (s *Store) copyHierarchy(ctx context.Context, ws, actor string, payload Wik
 // copySubtree copies one page and, when asked, everything beneath it. The
 // recursion follows the tree rather than a flat list so a child lands under its
 // own copied parent instead of the destination.
-func copySubtree(ctx context.Context, tx pgx.Tx, actor, pageID, spaceID string, parentID any, payload WikiCopyHierarchyRequest, root bool) (int, error) {
+func copySubtree(ctx context.Context, tx pgx.Tx, ws, actor, pageID, spaceID string, parentID any, payload WikiCopyHierarchyRequest, root bool) (int, error) {
 	var title, body string
 	if err := tx.QueryRow(ctx, `SELECT title,body FROM wiki_pages WHERE id::text=$1 AND status='current'`,
 		pageID).Scan(&title, &body); err != nil {
@@ -417,7 +567,13 @@ func copySubtree(ctx context.Context, tx pgx.Tx, actor, pageID, spaceID string, 
 	if err != nil {
 		return 0, err
 	}
-	if err = copyPageBelongings(ctx, tx, pageID, copyID, payload.CopyAttachments, payload.CopyProperties, payload.CopyLabels); err != nil {
+	if err = copyPageBelongings(ctx, tx, ws, actor, pageID, copyID, pageBelongings{
+		Attachments: payload.CopyAttachments, Properties: payload.CopyProperties, Labels: payload.CopyLabels,
+		Permissions: payload.CopyPermissions, CustomContent: payload.CopyCustomContent,
+	}); err != nil {
+		return 0, err
+	}
+	if err = wikiPageSnapshotAction(ctx, tx, ws, actor, copyID); err != nil {
 		return 0, err
 	}
 	copied := 1
@@ -443,7 +599,7 @@ func copySubtree(ctx context.Context, tx pgx.Tx, actor, pageID, spaceID string, 
 		return 0, err
 	}
 	for _, child := range children {
-		childCount, childErr := copySubtree(ctx, tx, actor, child, spaceID, copyID, payload, false)
+		childCount, childErr := copySubtree(ctx, tx, ws, actor, child, spaceID, copyID, payload, false)
 		if childErr != nil {
 			return 0, childErr
 		}
@@ -471,13 +627,9 @@ func (s *Store) executeWikiArchivePages(ctx context.Context, task APITask) error
 	if err := json.Unmarshal(task.Payload, &payload); err != nil {
 		return fmt.Errorf("decode page archive: %w", err)
 	}
-	archived := 0
-	for _, pageID := range payload.PageIDs {
-		changed, err := s.setPageStatus(ctx, task.WorkspaceID, task.SubmittedBy, pageID, "archived", false)
-		if err != nil {
-			return err
-		}
-		archived += changed
+	archived, err := s.ArchiveWikiPages(ctx, task.WorkspaceID, task.SubmittedBy, payload.PageIDs, payload.IncludeDescendants)
+	if err != nil {
+		return err
 	}
 	return s.CompleteAPITask(ctx, task, "Archived the pages.", map[string]any{"archivedPages": archived})
 }
@@ -489,7 +641,7 @@ func (s *Store) executeWikiTrashPageTree(ctx context.Context, task APITask) erro
 	}
 	trashed := 0
 	for _, pageID := range payload.PageIDs {
-		changed, err := s.setPageStatus(ctx, task.WorkspaceID, task.SubmittedBy, pageID, "trashed", true)
+		changed, err := s.changePageStatus(ctx, task.WorkspaceID, task.SubmittedBy, pageID, "current", "trashed", true)
 		if err != nil {
 			return err
 		}
@@ -498,50 +650,92 @@ func (s *Store) executeWikiTrashPageTree(ctx context.Context, task APITask) erro
 	return s.CompleteAPITask(ctx, task, "Trashed the page tree.", map[string]any{"trashedPages": trashed})
 }
 
-// setPageStatus moves a page, and optionally everything beneath it, to another
-// status. Trashing a tree takes the descendants with it; archiving does not,
-// because Confluence archives the pages it was given.
-func (s *Store) setPageStatus(ctx context.Context, ws, actor, pageID, status string, withDescendants bool) (int, error) {
+// ArchiveWikiPages archives pages straight away, which is what a page's own
+// Archive action does; the REST operation queues the same work. Each page is
+// its own change, so one that cannot be archived leaves the earlier ones
+// archived, as Confluence's bulk archive does.
+func (s *Store) ArchiveWikiPages(ctx context.Context, ws, actor string, pageIDs []string, withDescendants bool) (int, error) {
+	archived := 0
+	for _, pageID := range pageIDs {
+		changed, err := s.changePageStatus(ctx, ws, actor, pageID, "current", "archived", withDescendants)
+		if err != nil {
+			return archived, err
+		}
+		archived += changed
+	}
+	return archived, nil
+}
+
+// RestoreWikiPage brings an archived page, and optionally the archived pages
+// beneath it, back into the space's current content.
+func (s *Store) RestoreWikiPage(ctx context.Context, ws, actor, pageID string, withDescendants bool) (int, error) {
+	return s.changePageStatus(ctx, ws, actor, pageID, "archived", "current", withDescendants)
+}
+
+// changePageStatus moves a page, and optionally the pages beneath it that share
+// its status, to another status.
+//
+// Archiving a page without its children lifts them a level so they stay in the
+// page tree, as Confluence does. Restoring puts a page back under its parent
+// when that parent is still current and at the top of the space otherwise, and
+// refuses when the space already shows a current page with one of the titles.
+func (s *Store) changePageStatus(ctx context.Context, ws, actor, pageID, from, to string, withDescendants bool) (int, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return 0, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if _, err = lockWritablePage(ctx, tx, ws, actor, pageID, "current"); err != nil {
+	if _, err = lockWritablePage(ctx, tx, ws, actor, pageID, from); err != nil {
 		return 0, err
 	}
 	ids := []string{pageID}
 	if withDescendants {
-		rows, queryErr := tx.Query(ctx, `
+		if ids, err = queryPageIDs(ctx, tx, `
 			WITH RECURSIVE tree AS (
 				SELECT id FROM wiki_pages WHERE id::text=$1
-				UNION ALL
-				SELECT p.id FROM wiki_pages p JOIN tree ON p.parent_id=tree.id WHERE p.status='current'
+				UNION
+				SELECT p.id FROM wiki_pages p JOIN tree ON p.parent_id=tree.id WHERE p.status=$2
 			)
-			SELECT id::text FROM tree`, pageID)
-		if queryErr != nil {
-			return 0, queryErr
-		}
-		ids = ids[:0]
-		for rows.Next() {
-			var id string
-			if err = rows.Scan(&id); err != nil {
-				rows.Close()
-				return 0, err
-			}
-			ids = append(ids, id)
-		}
-		rows.Close()
-		if err = rows.Err(); err != nil {
+			SELECT id::text FROM tree ORDER BY id`, pageID, from); err != nil {
 			return 0, err
 		}
 	}
-	tag, err := tx.Exec(ctx, `UPDATE wiki_pages SET status=$2 WHERE id::text = ANY($1) AND status='current'`, ids, status)
+	touched := append([]string{}, ids...)
+	switch {
+	case to == "archived" && !withDescendants:
+		lifted, liftErr := queryPageIDs(ctx, tx, `UPDATE wiki_pages child SET parent_id=archived.parent_id
+			FROM wiki_pages archived
+			WHERE archived.id::text=$1 AND child.parent_id=archived.id AND child.status='current'
+			RETURNING child.id::text`, pageID)
+		if liftErr != nil {
+			return 0, liftErr
+		}
+		touched = append(touched, lifted...)
+	case to == "current":
+		var clash string
+		err = tx.QueryRow(ctx, `SELECT restoring.title FROM wiki_pages restoring
+			JOIN wiki_pages there ON there.space_id=restoring.space_id AND there.title=restoring.title AND there.status='current'
+			WHERE restoring.id::text=ANY($1) ORDER BY restoring.id LIMIT 1`, ids).Scan(&clash)
+		if err == nil {
+			return 0, fmt.Errorf("%w: a current page titled %q already exists in this space", ErrWikiMoveValidation, clash)
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return 0, err
+		}
+		if _, err = tx.Exec(ctx, `UPDATE wiki_pages p SET parent_id=NULL
+			WHERE p.id::text=$1 AND p.parent_id IS NOT NULL AND NOT EXISTS(
+				SELECT 1 FROM wiki_pages parent WHERE parent.id=p.parent_id AND parent.status='current')`, pageID); err != nil {
+			return 0, err
+		}
+	}
+	tag, err := tx.Exec(ctx, `UPDATE wiki_pages SET status=$2 WHERE id::text = ANY($1) AND status=$3`, ids, to, from)
 	if err != nil {
 		return 0, err
 	}
-	if err = wikiPageMoveAction(ctx, tx, ws, actor, pageID, status, ""); err != nil {
-		return 0, err
+	for _, id := range touched {
+		if err = wikiPageSnapshotAction(ctx, tx, ws, actor, id); err != nil {
+			return 0, err
+		}
 	}
 	return int(tag.RowsAffected()), tx.Commit(ctx)
 }
