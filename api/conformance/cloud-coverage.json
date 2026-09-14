@@ -1131,10 +1131,11 @@
       "status": "partial",
       "evidence": [
         "internal/api3/custom_field_types_test.go",
+        "internal/api3/custom_field_pickers_test.go",
         "internal/api3/fields_test.go",
         "docs/ISSUE_FIELDS.md"
       ],
-      "notes": "Creates custom fields by short name or Jira type key for text, URL, number, date and time, date, select, multi-select, cascading select, user, multi-user, group, multi-group and labels, keeping the type key; other types are refused."
+      "notes": "Creates custom fields by short name or Jira type key for text, URL, number, date and time, date, select, multi-select, cascading select, user, multi-user, group, multi-group, labels, project, version and multi-version, keeping the type key; other types are refused."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/field/association",

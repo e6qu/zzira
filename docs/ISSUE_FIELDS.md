@@ -78,10 +78,12 @@ field keeps the Jira type key it was created with; responses report it as
 | `grouppicker` | a group | `group` |
 | `multigrouppicker` | groups | `array` of `group` |
 | `labels` | labels | `array` of `string` |
+| `project` | a project | `project` |
+| `version` | a version of the work item's project | `version` |
+| `multiversion` | versions of the work item's project | `array` of `version` |
 
-A key for a type this product does not have, such as `daterange`,
-`numberrange`, `project` or `version`, is refused rather than stored as a
-different type.
+A key for a type this product does not have, such as `daterange` or
+`numberrange`, is refused rather than stored as a different type.
 
 `GET /field/search?type=` resolves the same way, so the filter matches what the
 field was created as.

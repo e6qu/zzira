@@ -357,7 +357,12 @@ type CustomFieldView struct {
 	Name        string
 	Type        string
 	Description string
-	Value       string
+	// Value is the stored value as a form posts it: text, an id, or ids joined
+	// by commas.
+	Value string
+	// Options are the choices a picker offers; Display names the chosen ones.
+	Options []CreateFieldOption
+	Display string
 }
 
 // CreateFieldOption is one selectable value exposed by create metadata.

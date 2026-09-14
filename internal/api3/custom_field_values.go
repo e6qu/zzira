@@ -45,14 +45,15 @@ func (h *Handler) decorateCustomFieldValues(ctx context.Context, workspaceID str
 	for _, definition := range definitions {
 		switch definition.Type {
 		case models.CustomFieldSelect, models.CustomFieldMultiSelect, models.CustomFieldCascadingSelect,
-			models.CustomFieldUser, models.CustomFieldMultiUser, models.CustomFieldGroup, models.CustomFieldMultiGroup:
+			models.CustomFieldUser, models.CustomFieldMultiUser, models.CustomFieldGroup, models.CustomFieldMultiGroup,
+			models.CustomFieldProject, models.CustomFieldVersion, models.CustomFieldMultiVersion:
 			types[definition.ID] = definition.Type
 		}
 	}
 	if len(types) == 0 {
 		return nil
 	}
-	var optionIDs, userIDs, groupIDs []string
+	var optionIDs, userIDs, groupIDs, projectIDs, versionIDs []string
 	for _, bean := range beans {
 		fields, _ := bean["fields"].(map[string]any)
 		for fieldID, fieldType := range types {
@@ -88,6 +89,16 @@ func (h *Handler) decorateCustomFieldValues(ctx context.Context, workspaceID str
 				}
 			case models.CustomFieldMultiGroup:
 				groupIDs = append(groupIDs, stringList(decoded)...)
+			case models.CustomFieldProject:
+				if id, ok := decoded.(string); ok {
+					projectIDs = append(projectIDs, id)
+				}
+			case models.CustomFieldVersion:
+				if id, ok := decoded.(string); ok {
+					versionIDs = append(versionIDs, id)
+				}
+			case models.CustomFieldMultiVersion:
+				versionIDs = append(versionIDs, stringList(decoded)...)
 			}
 		}
 	}
@@ -95,6 +106,29 @@ func (h *Handler) decorateCustomFieldValues(ctx context.Context, workspaceID str
 	if err != nil {
 		return err
 	}
+	projects := map[string]map[string]any{}
+	for _, id := range projectIDs {
+		if _, done := projects[id]; done {
+			continue
+		}
+		if found, err := h.Store.ProjectByIDOrKey(ctx, workspaceID, id); err == nil {
+			projects[id] = h.projectBean(found)
+		} else {
+			projects[id] = map[string]any{"id": id}
+		}
+	}
+	versions := map[string]map[string]any{}
+	for _, id := range versionIDs {
+		if _, done := versions[id]; done {
+			continue
+		}
+		if found, err := h.Store.Version(ctx, workspaceID, id); err == nil {
+			versions[id] = h.versionBean(found)
+		} else {
+			versions[id] = map[string]any{"id": id}
+		}
+	}
+	version := func(id string) map[string]any { return versions[id] }
 	option := func(id string) map[string]any {
 		bean := map[string]any{"self": h.BaseURL + "/rest/api/3/customFieldOption/" + id, "id": id}
 		if found, ok := catalog.Options[id]; ok {
@@ -162,6 +196,16 @@ func (h *Handler) decorateCustomFieldValues(ctx context.Context, workspaceID str
 				}
 			case models.CustomFieldMultiGroup:
 				fields[fieldID] = each(stringList(decoded), group)
+			case models.CustomFieldProject:
+				if id, ok := decoded.(string); ok {
+					fields[fieldID] = projects[id]
+				}
+			case models.CustomFieldVersion:
+				if id, ok := decoded.(string); ok {
+					fields[fieldID] = version(id)
+				}
+			case models.CustomFieldMultiVersion:
+				fields[fieldID] = each(stringList(decoded), version)
 			}
 		}
 	}

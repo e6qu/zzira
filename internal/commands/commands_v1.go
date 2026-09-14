@@ -281,7 +281,7 @@ func (s *Service) validateCustomFields(ctx context.Context, projectID string, va
 				}
 				seen[value] = true
 			}
-		case models.CustomFieldMultiUser, models.CustomFieldMultiGroup:
+		case models.CustomFieldMultiUser, models.CustomFieldMultiGroup, models.CustomFieldMultiVersion:
 			var values []string
 			if err := json.Unmarshal(raw, &values); err != nil {
 				return fmt.Errorf("custom field %q must be a list of ids", id)
@@ -293,7 +293,7 @@ func (s *Service) validateCustomFields(ctx context.Context, projectID string, va
 				}
 				seen[value] = true
 			}
-		case models.CustomFieldUser, models.CustomFieldGroup:
+		case models.CustomFieldUser, models.CustomFieldGroup, models.CustomFieldProject, models.CustomFieldVersion:
 			var value string
 			if err := json.Unmarshal(raw, &value); err != nil || value == "" {
 				return fmt.Errorf("custom field %q must be an id", id)

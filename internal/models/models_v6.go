@@ -23,6 +23,9 @@ const (
 	CustomFieldGroup           = "grouppicker"
 	CustomFieldMultiGroup      = "multigrouppicker"
 	CustomFieldLabels          = "labels"
+	CustomFieldProject         = "project"
+	CustomFieldVersion         = "version"
+	CustomFieldMultiVersion    = "multiversion"
 )
 
 // Tombstone actions are per-user: only excluded users receive them, telling
@@ -96,6 +99,9 @@ var CustomFieldTypeKeys = map[string]string{
 	CustomFieldGroup:           "com.atlassian.jira.plugin.system.customfieldtypes:grouppicker",
 	CustomFieldMultiGroup:      "com.atlassian.jira.plugin.system.customfieldtypes:multigrouppicker",
 	CustomFieldLabels:          "com.atlassian.jira.plugin.system.customfieldtypes:labels",
+	CustomFieldProject:         "com.atlassian.jira.plugin.system.customfieldtypes:project",
+	CustomFieldVersion:         "com.atlassian.jira.plugin.system.customfieldtypes:version",
+	CustomFieldMultiVersion:    "com.atlassian.jira.plugin.system.customfieldtypes:multiversion",
 }
 
 // IsOptionFieldType reports whether a custom field type takes options.

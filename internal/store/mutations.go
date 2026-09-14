@@ -933,7 +933,8 @@ func customFieldChange(ctx context.Context, tx pgx.Tx, fieldID string, from, to 
 			return name
 		}
 		switch fieldType {
-		case models.CustomFieldUser, models.CustomFieldGroup, models.CustomFieldMultiUser, models.CustomFieldMultiGroup, models.CustomFieldLabels:
+		case models.CustomFieldUser, models.CustomFieldGroup, models.CustomFieldMultiUser, models.CustomFieldMultiGroup, models.CustomFieldLabels,
+			models.CustomFieldProject, models.CustomFieldVersion, models.CustomFieldMultiVersion:
 			var ids []string
 			var single string
 			if json.Unmarshal(raw, &single) == nil {
@@ -945,8 +946,13 @@ func customFieldChange(ctx context.Context, tx pgx.Tx, fieldID string, from, to 
 				return "", strings.Join(ids, " ")
 			}
 			query := `SELECT display_name FROM users WHERE id=$1`
-			if fieldType == models.CustomFieldGroup || fieldType == models.CustomFieldMultiGroup {
+			switch fieldType {
+			case models.CustomFieldGroup, models.CustomFieldMultiGroup:
 				query = `SELECT name FROM groups WHERE id::text=$1`
+			case models.CustomFieldProject:
+				query = `SELECT name FROM projects WHERE id=$1`
+			case models.CustomFieldVersion, models.CustomFieldMultiVersion:
+				query = `SELECT name FROM project_versions WHERE id=$1`
 			}
 			names := make([]string, 0, len(ids))
 			for _, id := range ids {

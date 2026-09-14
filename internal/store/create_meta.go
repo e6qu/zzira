@@ -190,6 +190,10 @@ func (s *Store) IssueCreateMetadata(ctx context.Context, workspaceID, userID str
 				fieldMeta.Options = memberOptions
 			case models.CustomFieldGroup, models.CustomFieldMultiGroup:
 				fieldMeta.Options = groupOptions
+			case models.CustomFieldProject:
+				fieldMeta.Options = projectOptions
+			case models.CustomFieldVersion, models.CustomFieldMultiVersion:
+				fieldMeta.Options = versionOptions
 			}
 			fields = append(fields, fieldMeta)
 		}
@@ -231,6 +235,12 @@ func createFieldType(fieldType string) (string, error) {
 		return "groups", nil
 	case models.CustomFieldLabels:
 		return "array", nil
+	case models.CustomFieldProject:
+		return "projectpicker", nil
+	case models.CustomFieldVersion:
+		return "version", nil
+	case models.CustomFieldMultiVersion:
+		return "versions", nil
 	default:
 		return "", fmt.Errorf("unsupported type %q", fieldType)
 	}

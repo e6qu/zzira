@@ -34,6 +34,9 @@ var jiraFieldTypeKeys = map[string]string{
 	"com.atlassian.jira.plugin.system.customfieldtypes:grouppicker":      models.CustomFieldGroup,
 	"com.atlassian.jira.plugin.system.customfieldtypes:multigrouppicker": models.CustomFieldMultiGroup,
 	"com.atlassian.jira.plugin.system.customfieldtypes:labels":           models.CustomFieldLabels,
+	"com.atlassian.jira.plugin.system.customfieldtypes:project":          models.CustomFieldProject,
+	"com.atlassian.jira.plugin.system.customfieldtypes:version":          models.CustomFieldVersion,
+	"com.atlassian.jira.plugin.system.customfieldtypes:multiversion":     models.CustomFieldMultiVersion,
 }
 
 // resolveFieldType accepts either this product's short type name or Jira's
@@ -71,6 +74,12 @@ func customFieldSchema(field *models.CustomField) map[string]any {
 		schema["type"], schema["items"] = "array", "group"
 	case models.CustomFieldLabels:
 		schema["type"], schema["items"] = "array", "string"
+	case models.CustomFieldProject:
+		schema["type"] = "project"
+	case models.CustomFieldVersion:
+		schema["type"] = "version"
+	case models.CustomFieldMultiVersion:
+		schema["type"], schema["items"] = "array", "version"
 	default:
 		schema["type"] = field.Type
 	}

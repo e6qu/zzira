@@ -83,7 +83,11 @@ one, each chosen once); and for a cascading select
 `{"value": ..., "child": {"value": ...}}` or the same with ids. Issue responses
 describe an option as Jira does — `{"self", "value", "id"}`, a list of those
 for a multi-select, and a cascading option carrying its `child` — and user and
-group picker values as user beans and `{"groupId", "name", "self"}`.
+group picker values as user beans and `{"groupId", "name", "self"}`. A project
+picker takes a project by `{"id"}` or `{"key"}` and answers the project bean; a
+version or multi-version picker takes versions of the work item's project by
+`{"id"}` or `{"name"}` and answers version beans. JQL matches projects by id or
+key and versions by id or name.
 
 JQL matches an option field by option id or option value: `=`, `!=`, `in`,
 `not in`, `is empty` and `is not empty`, and for a cascading select
@@ -91,6 +95,10 @@ JQL matches an option field by option id or option value: `=`, `!=`, `in`,
 `cascadeOption(parent, none)`. Changes appear in the changelog as `custom` items
 naming the options, people or groups.
 
-The create form offers a cascading select's first-level options; its child is
-set through the API. Jira's `optionId` filter on the option list, `expand`, and
+The create form offers a cascading select's first-level options. On the work
+item page and in the edit dialog every picker field offers its choices — a
+cascading select lists each option and each option with a child, people, groups,
+projects and the project's versions — and names the chosen values; a field whose
+choices are not loaded, as in the offline replica, keeps a plain input so an
+edit never clears it. Jira's `optionId` filter on the option list, `expand`, and
 exact Jira error wording remain.

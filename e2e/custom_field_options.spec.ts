@@ -226,3 +226,93 @@ test('the create form offers Jira field types and keeps their values', async ({ 
   const search = await (await page.request.get(`/rest/api/3/search/jql?fields=summary&jql=${encodeURIComponent(`${owner.id} = currentUser() AND ${region.id} = Europe AND project = ${projectKey}`)}`, { headers: auth })).json();
   expect(search.issues.map((issue: { key: string }) => issue.key)).toEqual([issueKey]);
 });
+
+// The issue page edits pickers with real choices and shows names, not ids.
+test('the issue page edits custom field pickers', async ({ page }) => {
+  await login(page, 'demo@zzira.dev', 'demo1234');
+  const stamp = Date.now().toString(36);
+  const auth = { Authorization: apiAuthHeader() };
+  const projectKey = `PK${Date.now().toString().slice(-6)}`;
+  const me = await (await page.request.get('/rest/api/3/myself')).json();
+  const created = await page.request.post('/rest/api/3/project', {
+    headers: auth,
+    data: { key: projectKey, name: `Pickers ${stamp}`, projectTypeKey: 'software', leadAccountId: me.accountId, assigneeType: 'PROJECT_LEAD' },
+  });
+  expect(created.status()).toBe(201);
+  const projectID = String((await created.json()).id);
+  for (const name of ['1.0', '2.0']) {
+    expect((await page.request.post('/rest/api/3/version', { headers: auth, data: { project: projectKey, name } })).status()).toBe(201);
+  }
+  const field = async (name: string, type: string) => {
+    const response = await page.request.post('/rest/api/3/field', {
+      headers: auth, data: { name: `${name} ${stamp}`, type: `com.atlassian.jira.plugin.system.customfieldtypes:${type}` },
+    });
+    expect(response.status()).toBe(201);
+    const id = (await response.json()).id;
+    const contexts = await (await page.request.get(`/rest/api/3/field/${id}/context`, { headers: auth })).json();
+    const contextID = String(contexts.values[0].id);
+    expect((await page.request.put(`/rest/api/3/field/${id}/context/${contextID}/project`, { headers: auth, data: { projectIds: [projectID] } })).status()).toBe(204);
+    return { id, contextID, name: `${name} ${stamp}` };
+  };
+  const owner = await field('Owner', 'userpicker');
+  const shipped = await field('Shipped in', 'multiversion');
+  const region = await field('Region', 'cascadingselect');
+  const parents = await (await page.request.post(`/rest/api/3/field/${region.id}/context/${region.contextID}/option`, {
+    headers: auth, data: { options: [{ value: 'Europe' }] },
+  })).json();
+  const europe = String(parents.options[0].id);
+  await page.request.post(`/rest/api/3/field/${region.id}/context/${region.contextID}/option`, { headers: auth, data: { options: [{ value: 'Berlin', optionId: europe }] } });
+
+  const issue = await page.request.post('/rest/api/3/issue', {
+    headers: auth, data: { fields: { project: { key: projectKey }, summary: `Picked work ${stamp}`, issuetype: { name: 'Task' } } },
+  });
+  expect(issue.status()).toBe(201);
+  const issueKey = (await issue.json()).key;
+
+  await page.goto(`/browse/${issueKey}`);
+  // Saving a field re-renders the issue; the next field is used only once that
+  // render has replaced the page the save was made from.
+  const save = async (name: string) => {
+    const root = await page.locator('#issue-root').elementHandle();
+    await Promise.all([
+      page.waitForResponse((response) => response.url().endsWith(`/issues/${issueKey}/fields`) && response.request().method() === 'POST'),
+      page.getByRole('button', { name: `Save ${name}` }).click(),
+    ]);
+    await expect.poll(() => root!.evaluate((element) => !element.isConnected)).toBe(true);
+  };
+  // Saving a field re-renders the page, which may keep the section open.
+  const openMoreFields = async () => {
+    await expect(async () => {
+      const section = page.locator('.more-fields');
+      if (!(await section.evaluate((element) => (element as HTMLDetailsElement).open))) {
+        await section.locator('summary').click();
+      }
+      await expect(section).toHaveJSProperty('open', true, { timeout: 1000 });
+    }).toPass();
+  };
+  await openMoreFields();
+  const ownerControl = page.locator(`#detail-field-${owner.id}`);
+  await expect(ownerControl).toHaveJSProperty('tagName', 'SELECT');
+  await ownerControl.selectOption(me.accountId);
+  await save(owner.name);
+  await expect(page.locator(`#detail-field-${owner.id}`)).toHaveValue(me.accountId);
+
+  await openMoreFields();
+  const regionControl = page.locator(`#detail-field-${region.id}`);
+  expect(await regionControl.locator('option').allTextContents()).toEqual(['None', 'Europe', 'Europe › Berlin']);
+  await regionControl.selectOption({ label: 'Europe › Berlin' });
+  await save(region.name);
+  await expect(page.locator(`#detail-field-${region.id} option:checked`)).toHaveText('Europe › Berlin');
+
+  await openMoreFields();
+  const shippedControl = page.locator(`#detail-field-${shipped.id}`);
+  await expect(shippedControl).toHaveAttribute('multiple', '');
+  await shippedControl.selectOption([{ label: '1.0' }, { label: '2.0' }]);
+  await save(shipped.name);
+  await expect(page.locator(`#detail-field-${shipped.id} option:checked`)).toHaveText(['1.0', '2.0']);
+
+  const stored = await (await page.request.get(`/rest/api/3/issue/${issueKey}`, { headers: auth })).json();
+  expect(stored.fields[owner.id].accountId).toBe(me.accountId);
+  expect(stored.fields[region.id]).toMatchObject({ id: europe, value: 'Europe', child: { value: 'Berlin' } });
+  expect(stored.fields[shipped.id].map((version: { name: string }) => version.name)).toEqual(['1.0', '2.0']);
+});
