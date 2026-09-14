@@ -744,7 +744,7 @@ func (h *Handler) createIssue(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = json.Unmarshal(body, &extras)
 	for _, property := range extras.Properties {
-		if _, err = h.Store.SetIssueProperty(r.Context(), issue.ID, property.Key, property.Value); err != nil {
+		if _, err = h.Store.SetIssueProperty(r.Context(), userID, issue.ID, property.Key, property.Value); err != nil {
 			jiraFieldError(w, http.StatusBadRequest, map[string]string{"properties": "The property " + property.Key + " is invalid."})
 			return
 		}
@@ -931,7 +931,7 @@ func (h *Handler) putIssue(w http.ResponseWriter, r *http.Request, idOrKey strin
 		return
 	}
 	for _, property := range issueProperties.Properties {
-		if _, err := h.Store.SetIssueProperty(r.Context(), current.ID, property.Key, property.Value); err != nil {
+		if _, err := h.Store.SetIssueProperty(r.Context(), userID, current.ID, property.Key, property.Value); err != nil {
 			jiraFieldError(w, http.StatusBadRequest, map[string]string{"properties": "The property " + property.Key + " is invalid."})
 			return
 		}
@@ -1292,7 +1292,7 @@ func (h *Handler) performTransition(w http.ResponseWriter, r *http.Request, idOr
 		return
 	}
 	for _, property := range req.Properties {
-		if _, err = h.Store.SetIssueProperty(r.Context(), transitioned.ID, property.Key, property.Value); err != nil {
+		if _, err = h.Store.SetIssueProperty(r.Context(), userID, transitioned.ID, property.Key, property.Value); err != nil {
 			jiraFieldError(w, http.StatusBadRequest, map[string]string{"properties": "The property " + property.Key + " is invalid."})
 			return
 		}

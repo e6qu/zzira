@@ -1018,6 +1018,7 @@ func (s *Store) ActionPageSince(ctx context.Context, workspaceID, userID string,
 		WHEN 'watcher' THEN a.payload->>'issueId'
 		WHEN 'vote' THEN a.payload->>'issueId'
 		WHEN 'sprint_issue' THEN a.payload->>'issueId'
+		WHEN 'issue_property' THEN a.payload->>'issueId'
 		WHEN 'issue_link' THEN COALESCE(a.payload->'link'->>'inwardIssueId', a.payload->>'inwardIssueId')
 		ELSE NULL
 	END`

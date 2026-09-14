@@ -1,6 +1,9 @@
 package models
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 const (
 	EntityTombstone = "tombstone"
@@ -87,6 +90,18 @@ type Webhook struct {
 }
 
 const EntityIssueLink = "issue_link"
+
+// EntityIssueProperty is an issue property set or deleted through the API.
+const EntityIssueProperty = "issue_property"
+
+// IssuePropertyPayload records an issue property change. Value is absent when
+// the property was deleted.
+type IssuePropertyPayload struct {
+	IssueID  string          `json:"issueId"`
+	IssueKey string          `json:"issueKey"`
+	Key      string          `json:"key"`
+	Value    json.RawMessage `json:"value,omitempty"`
+}
 
 type IssueLink struct {
 	ID          string `json:"id"`

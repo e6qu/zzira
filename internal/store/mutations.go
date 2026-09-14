@@ -762,7 +762,7 @@ func (s *Store) ClaimPendingWebhookBatch(ctx context.Context, workspaceID string
 
 	w := &models.Webhook{}
 	err = tx.QueryRow(ctx, `
-		SELECT w.id, w.url, w.events, w.jql, w.jira_id, COALESCE(w.installation_id,''), COALESCE(w.field_ids_filter,'{}'), w.exclude_body
+		SELECT w.id, w.url, w.events, w.jql, w.jira_id, COALESCE(w.installation_id,''), COALESCE(w.field_ids_filter,'{}'), COALESCE(w.issue_property_keys_filter,'{}'), w.exclude_body
 		FROM webhooks w
 		WHERE w.workspace_id=$1 AND w.active AND (w.expires_at IS NULL OR w.expires_at > now())
 		  AND EXISTS (
@@ -780,7 +780,7 @@ func (s *Store) ClaimPendingWebhookBatch(ctx context.Context, workspaceID string
 				    OR (d.state = 'delivering' AND d.claimed_at <= now() - interval '2 minutes'))
 		)
 		LIMIT 1
-		FOR UPDATE OF w SKIP LOCKED`, workspaceID).Scan(&w.ID, &w.URL, &w.Events, &w.JQL, &w.JiraID, &w.InstallationID, &w.FieldIDs, &w.ExcludeBody)
+		FOR UPDATE OF w SKIP LOCKED`, workspaceID).Scan(&w.ID, &w.URL, &w.Events, &w.JQL, &w.JiraID, &w.InstallationID, &w.FieldIDs, &w.PropertyKeys, &w.ExcludeBody)
 	if err == pgx.ErrNoRows {
 		return nil, nil, false, nil
 	}

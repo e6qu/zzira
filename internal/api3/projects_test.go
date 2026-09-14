@@ -179,8 +179,14 @@ func TestProjectAPILifecycle(t *testing.T) {
 	if err != nil || saved.Assignee != nil || !jsonEqual(saved.Description, []byte(document)) {
 		t.Fatalf("rich description or explicit unassignment was lost: %v %v", saved, err)
 	}
-	if _, err := st.SetIssueProperty(ctx, saved.ID, "release.flag", json.RawMessage(`{"ready":true}`)); err != nil {
-		t.Fatal(err)
+	for range 2 {
+		if _, err := st.SetIssueProperty(ctx, actor, saved.ID, "release.flag", json.RawMessage(`{"ready":true}`)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var propertyActions int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM actions WHERE workspace_id=$1 AND entity_type='issue_property' AND payload->>'issueId'=$2 AND payload->>'issueKey'=$3`, ws, saved.ID, saved.Key).Scan(&propertyActions); err != nil || propertyActions != 1 {
+		t.Fatalf("an issue property change, and not an unchanged rewrite, is recorded: %d %v", propertyActions, err)
 	}
 	teamBoards, err := st.BoardsByWorkspace(ctx, ws)
 	if err != nil {

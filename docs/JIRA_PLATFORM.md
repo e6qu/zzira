@@ -53,7 +53,10 @@ contexts. A `PUT` that sends `contexts` replaces them all.
 
 An app may register one URL and at most 100 webhooks. Webhooks expire after 30
 days unless refreshed, and expired webhooks receive nothing. `fieldIdsFilter`
-limits `jira:issue_updated` to changes of the listed fields.
+limits `jira:issue_updated` to changes of the listed fields, and
+`issuePropertyKeysFilter` limits `issue_property_set` and `issue_property_deleted`
+to the listed property keys. Setting a property to the value it already has sends
+no event.
 
 ### Administrator webhooks
 

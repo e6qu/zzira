@@ -12886,7 +12886,7 @@
         "internal/api3/jira_platform_test.go",
         "docs/JIRA_PLATFORM.md"
       ],
-      "notes": "App-only registration for one URL with Jira's dynamic event set, JQL validation, per-entry results, 100-webhook limit and 30-day expiry; issuePropertyKeysFilter is stored but not applied."
+      "notes": "App-only registration for one URL with Jira's dynamic event set, JQL validation, per-entry results, 100-webhook limit and 30-day expiry, field filters for issue updates and property key filters for issue property events."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/webhook/failed",

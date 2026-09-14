@@ -55,6 +55,11 @@ func EventFor(a *models.Action) (string, bool) {
 		if a.Op == models.OpUpsert {
 			return "attachment_created", true
 		}
+	case models.EntityIssueProperty:
+		if a.Op == models.OpUpsert {
+			return "issue_property_set", true
+		}
+		return "issue_property_deleted", true
 	}
 	return "", false
 }
@@ -123,7 +128,7 @@ func (d *Dispatcher) deliver(ctx context.Context, workspaceID string, webhook *m
 	if !forced && len(webhook.Events) > 0 && !containsString(webhook.Events, event) {
 		return d.mark(ctx, webhook.ID, seq, true, "", "")
 	}
-	if !forced && webhook.JQL != "" && action.EntityType == models.EntityIssue {
+	if !forced && webhook.JQL != "" && actionKey(action) != "" {
 		if d.Checker == nil || d.Checker.Search == nil {
 			return d.markFailed(ctx, webhook.ID, seq, errors.New("JQL checker is not configured"), "")
 		}
@@ -136,6 +141,9 @@ func (d *Dispatcher) deliver(ctx context.Context, workspaceID string, webhook *m
 		}
 	}
 	if !forced && event == "jira:issue_updated" && len(webhook.FieldIDs) > 0 && !changesField(action, webhook.FieldIDs) {
+		return d.mark(ctx, webhook.ID, seq, true, "", "")
+	}
+	if action.EntityType == models.EntityIssueProperty && len(webhook.PropertyKeys) > 0 && !containsString(webhook.PropertyKeys, propertyKey(action)) {
 		return d.mark(ctx, webhook.ID, seq, true, "", "")
 	}
 	payload, err := json.Marshal(map[string]any{
@@ -222,7 +230,22 @@ func actionKey(a *models.Action) string {
 		}
 		return a.EntityID
 	}
+	if a.EntityType == models.EntityIssueProperty {
+		var p models.IssuePropertyPayload
+		if err := json.Unmarshal(a.Payload, &p); err == nil {
+			return p.IssueKey
+		}
+	}
 	return ""
+}
+
+// propertyKey is the issue property an issue property action changed.
+func propertyKey(a *models.Action) string {
+	var p models.IssuePropertyPayload
+	if json.Unmarshal(a.Payload, &p) != nil {
+		return ""
+	}
+	return p.Key
 }
 
 func containsString(list []string, v string) bool {
