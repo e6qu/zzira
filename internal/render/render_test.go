@@ -30,6 +30,7 @@ func fixtureIssue() models.IssueView {
 		ProjectName:         "ZZIRA Demo",
 		BoardID:             "brd_default",
 		CanEdit:             true,
+		Editable:            true,
 		CanTriage:           true,
 		AttachmentsEnabled:  true,
 		IssueLinkingEnabled: true,
