@@ -633,11 +633,13 @@ func (s *Store) SiteProductKeys(ctx context.Context, workspaceID string) ([]stri
 	return keys, rows.Err()
 }
 
-// ActiveMemberCount counts the site's active members.
+// ActiveMemberCount counts the site's active people; app accounts do not use
+// licenses.
 func (s *Store) ActiveMemberCount(ctx context.Context, workspaceID string) (int, error) {
 	var count int
-	err := s.Pool.QueryRow(ctx, `SELECT count(*) FROM memberships m WHERE m.workspace_id=$1
-		AND NOT EXISTS (SELECT 1 FROM directory_users du WHERE du.user_id=m.user_id AND du.deactivated_at IS NOT NULL)`, workspaceID).Scan(&count)
+	err := s.Pool.QueryRow(ctx, `SELECT count(*) FROM memberships m JOIN users u ON u.id=m.user_id
+		WHERE m.workspace_id=$1 AND u.active AND u.deactivated_at IS NULL
+		  AND NOT EXISTS (SELECT 1 FROM app_installations ai WHERE ai.principal_id=u.id)`, workspaceID).Scan(&count)
 	return count, err
 }
 
