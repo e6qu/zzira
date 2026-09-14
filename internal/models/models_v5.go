@@ -37,6 +37,8 @@ type Board struct {
 	// SourceFilterID is the saved filter the board was created from, if any.
 	SourceFilterID     string `json:"-"`
 	SourceFilterJiraID int64  `json:"-"`
+	// ProjectTypeKey is the type of the project the board is located in.
+	ProjectTypeKey string `json:"-"`
 }
 
 type BoardQuickFilter struct {

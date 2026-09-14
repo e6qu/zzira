@@ -90,9 +90,10 @@
       "status": "partial",
       "evidence": [
         "internal/api3/app_fields_migration_test.go",
+        "internal/webhooks/issue_property_test.go",
         "docs/JIRA_PLATFORM.md"
       ],
-      "notes": "The providing app sets values of several fields; changelog and event suppression flags are accepted but not applied."
+      "notes": "The providing app sets values of several fields with generateChangelog and generateAppEvents suppression."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/app/field/{fieldIdOrKey}/context/configuration",
@@ -123,9 +124,10 @@
       "status": "partial",
       "evidence": [
         "internal/api3/app_fields_migration_test.go",
+        "internal/webhooks/issue_property_test.go",
         "docs/JIRA_PLATFORM.md"
       ],
-      "notes": "The providing app sets a field's values through the issue update; suppression flags are not applied."
+      "notes": "The providing app sets a field's values with changelog and webhook suppression and custom changelog items."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/application-properties",
@@ -7490,7 +7492,7 @@
         "internal/api3/app_fields_migration_test.go",
         "docs/JIRA_PLATFORM.md"
       ],
-      "notes": "Sets app issue field values by transfer; multi-select fields are 400."
+      "notes": "Sets app issue field values by transfer, collecting multi-select options per issue and field."
     },
     {
       "operationId": "jira-v3:PUT:/rest/atlassian-connect/1/migration/properties/{entityType}",
@@ -7631,11 +7633,12 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/agile/board_query_test.go",
         "internal/agile/board_test.go",
         "e2e/backlog.spec.ts",
         "docs/AGILE_BOARDS.md"
       ],
-      "notes": "Listing the workspace's boards is tested; Jira's type, name and project filters remain."
+      "notes": "Boards the caller can browse with type, name, project and account location, negation, project type, filter, name order, admins and permissions expansion and paging; private boards do not exist here."
     },
     {
       "operationId": "jira-software:POST:/rest/agile/1.0/board",
@@ -7676,11 +7679,12 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/agile/board_query_test.go",
         "internal/agile/board_test.go",
         "e2e/backlog.spec.ts",
         "docs/AGILE_BOARDS.md"
       ],
-      "notes": "Reading one board with its project location is tested; expand remains."
+      "notes": "One board with its project location and type; unbrowsable boards are 404."
     },
     {
       "operationId": "jira-software:GET:/rest/agile/1.0/board/{boardId}/backlog",
@@ -7688,11 +7692,12 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/agile/board_query_test.go",
         "internal/agile/board_test.go",
         "e2e/backlog.spec.ts",
         "docs/AGILE_BOARDS.md"
       ],
-      "notes": "Paging the backlog is tested; JQL and field filters remain."
+      "notes": "Backlog work filtered by JQL with validateQuery and projected by fields in rank order."
     },
     {
       "operationId": "jira-software:GET:/rest/agile/1.0/board/{boardId}/configuration",
@@ -7701,9 +7706,10 @@
       "status": "partial",
       "evidence": [
         "internal/agile/board_test.go",
+        "internal/agile/software_test.go",
         "docs/AGILE_BOARDS.md"
       ],
-      "notes": "Columns, their statuses and the constraint type are reported; estimation configuration remains."
+      "notes": "Columns, statuses, constraint, filter, location, ranking and scrum estimation or kanban sub-query."
     },
     {
       "operationId": "jira-software:GET:/rest/agile/1.0/board/{boardId}/epic",
@@ -7766,11 +7772,12 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/agile/board_query_test.go",
         "internal/agile/board_test.go",
         "e2e/backlog.spec.ts",
         "docs/AGILE_BOARDS.md"
       ],
-      "notes": "Paging the board's work in column order is tested; JQL and field filters remain."
+      "notes": "Column-mapped work without scrum epics filtered by JQL with validateQuery and projected by fields."
     },
     {
       "operationId": "jira-software:POST:/rest/agile/1.0/board/{boardId}/issue",
@@ -7888,11 +7895,12 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/agile/board_query_test.go",
         "internal/agile/board_test.go",
         "e2e/backlog.spec.ts",
         "docs/AGILE_BOARDS.md"
       ],
-      "notes": "Listing the board's sprints is tested; state filtering remains."
+      "notes": "Sprints closed, active then future with the state filter and paging."
     },
     {
       "operationId": "jira-software:GET:/rest/agile/1.0/board/{boardId}/sprint/{sprintId}/issue",
@@ -8101,11 +8109,12 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/agile/board_query_test.go",
         "internal/agile/board_test.go",
         "e2e/backlog.spec.ts",
         "docs/AGILE_BOARDS.md"
       ],
-      "notes": "Paging a sprint's work is tested through REST and the browser; JQL and field filters remain."
+      "notes": "Sprint work in sprint order with JQL, validateQuery, fields and expand; unbrowsable sprints are 404."
     },
     {
       "operationId": "jira-software:POST:/rest/agile/1.0/sprint/{sprintId}/issue",
@@ -8113,11 +8122,12 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/agile/board_query_test.go",
         "internal/agile/board_test.go",
         "e2e/backlog.spec.ts",
         "docs/AGILE_BOARDS.md"
       ],
-      "notes": "Moving work into a sprint is tested through REST and the browser; ranking parameters remain."
+      "notes": "Moves up to 50 project issues into future or active sprints and ranks them around a reference issue."
     },
     {
       "operationId": "jira-software:GET:/rest/agile/1.0/sprint/{sprintId}/properties",

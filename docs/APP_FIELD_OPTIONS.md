@@ -14,14 +14,17 @@ administrator manages, and Jira says so in every operation's description.
 there was no field for this surface to serve. It is accepted now and maps to
 this product's select type.
 
-`multi_select` stays refused. There is no multi-select field here, and quietly
-downgrading one to a single choice would give an app a field that does not
-behave as its descriptor says.
+`multi_select` is accepted too and maps to the multi-select type, whose value
+is a list of options; this option surface serves both.
 
 ## Jira Cloud REST surface
 
 All eight pinned operations are implemented. An audit against a running server
 found none of them working.
+
+As in Jira, the app that provides the field manages its options without any
+Jira permission; anyone else needs to be a site administrator. The two
+suggestion reads only need access to the site.
 
 | Method and path | Behavior |
 |---|---|
@@ -82,4 +85,4 @@ see, `edit` only what they may choose.
 
 Jira's `projects2` scope form with per-project attributes, the `defaultValue`
 attribute, `overrideScreenSecurity` and `overrideEditableFlag`, option property
-indexes for JQL, and `multi_select` app fields remain.
+indexes for JQL remain.

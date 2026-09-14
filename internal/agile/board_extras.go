@@ -63,17 +63,12 @@ func (h *Handler) boardVersions(w http.ResponseWriter, r *http.Request, board *m
 }
 
 func (h *Handler) boardSprintIssues(w http.ResponseWriter, r *http.Request, board *models.Board, sprintID, userID string) {
-	sprint, err := h.Store.SprintByID(r.Context(), sprintID)
+	sprint, err := h.Store.SprintByIDInWorkspace(r.Context(), board.WorkspaceID, sprintID)
 	if err != nil || sprint.BoardID != board.ID {
 		jiraError(w, http.StatusNotFound, "The sprint does not exist on this board.")
 		return
 	}
-	issues, err := h.Store.IssuesBySprint(r.Context(), sprint.ID, userID)
-	if err != nil {
-		jiraError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	h.writeIssuePage(w, r, issues)
+	h.agileIssueSearch(w, r, board.WorkspaceID, userID, boardSprintScope, []any{sprint.ID, board.ProjectID}, sprintOrder)
 }
 
 // boardFeatures reports the board features Jira toggles. ZZIRA models the
@@ -198,8 +193,8 @@ func (h *Handler) softwareRoute(w http.ResponseWriter, r *http.Request, path str
 		return
 	}
 	board, err := h.Store.BoardByIDInWorkspace(r.Context(), workspaceID, parts[0])
-	if err != nil {
-		jiraError(w, http.StatusNotFound, "The board does not exist.")
+	if err != nil || !h.canBrowseBoard(r, workspaceID, userID, board) {
+		jiraError(w, http.StatusNotFound, "The board does not exist or you do not have permission to view it.")
 		return
 	}
 	count := func(issues []*models.Issue, err error) {
@@ -211,11 +206,11 @@ func (h *Handler) softwareRoute(w http.ResponseWriter, r *http.Request, path str
 	}
 	switch {
 	case len(parts) == 2 && parts[1] == "backlog":
-		h.boardBacklog(w, r, board, userID)
+		h.agileIssueSearch(w, r, workspaceID, userID, backlogScope, []any{board.ProjectID}, "")
 	case len(parts) == 3 && parts[1] == "backlog" && parts[2] == "approximate-count":
 		count(h.Store.BacklogIssues(r.Context(), board.ID, userID))
 	case len(parts) == 2 && parts[1] == "issue":
-		h.boardIssues(w, r, board, userID)
+		h.agileIssueSearch(w, r, workspaceID, userID, boardIssueScope, []any{board.ProjectID, board.ColumnStatusIDs, board.Type}, "")
 	case len(parts) == 3 && parts[1] == "issue" && parts[2] == "approximate-count":
 		count(h.boardIssueList(r, board, userID))
 	case len(parts) == 4 && parts[1] == "epic" && parts[3] == "issue":
@@ -256,5 +251,9 @@ func (h *Handler) softwareSprintRoute(w http.ResponseWriter, r *http.Request, pa
 		jiraError(w, http.StatusNotFound, "The sprint does not exist.")
 		return
 	}
-	h.sprintIssues(w, r, sprint, userID)
+	if board, boardErr := h.Store.BoardByIDInWorkspace(r.Context(), workspaceID, sprint.BoardID); boardErr != nil || !h.canBrowseBoard(r, workspaceID, userID, board) {
+		jiraError(w, http.StatusNotFound, "The sprint does not exist or you do not have permission to view it.")
+		return
+	}
+	h.agileIssueSearch(w, r, workspaceID, userID, sprintScope, []any{sprint.ID}, sprintOrder)
 }

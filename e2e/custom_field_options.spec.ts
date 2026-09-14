@@ -106,3 +106,52 @@ test('site administrators give a select field options and the create form offers
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.setViewportSize({ width: 1280, height: 720 });
 });
+
+// A multi-select field offers its options as a multiple choice and keeps every
+// chosen option on the work item.
+test('a multi-select field keeps every chosen option', async ({ page }) => {
+  await login(page, 'demo@zzira.dev', 'demo1234');
+  const stamp = Date.now().toString(36);
+  const auth = { Authorization: apiAuthHeader() };
+  const projectKey = `MSE${Date.now().toString().slice(-6)}`;
+  const me = await (await page.request.get('/rest/api/3/myself')).json();
+  const created = await page.request.post('/rest/api/3/project', {
+    headers: auth,
+    data: { key: projectKey, name: `Platforms ${stamp}`, projectTypeKey: 'software', leadAccountId: me.accountId, assigneeType: 'PROJECT_LEAD' },
+  });
+  expect(created.status()).toBe(201);
+  const projectID = String((await created.json()).id);
+
+  const field = await page.request.post('/rest/api/3/field', {
+    headers: auth, data: { name: `Platforms ${stamp}`, type: 'com.atlassian.jira.plugin.system.customfieldtypes:multiselect' },
+  });
+  expect(field.status()).toBe(201);
+  const fieldID = (await field.json()).id;
+  const contexts = await (await page.request.get(`/rest/api/3/field/${fieldID}/context`, { headers: auth })).json();
+  const contextID = String(contexts.values[0].id);
+  expect((await page.request.put(`/rest/api/3/field/${fieldID}/context/${contextID}/project`, { headers: auth, data: { projectIds: [projectID] } })).status()).toBe(204);
+  const options = await page.request.post(`/rest/api/3/field/${fieldID}/context/${contextID}/option`, {
+    headers: auth, data: { options: [{ value: 'iOS' }, { value: 'Android' }, { value: 'Web' }] },
+  });
+  expect(options.status()).toBe(200);
+  const ids = Object.fromEntries((await options.json()).options.map((option: { id: string; value: string }) => [option.value, String(option.id)]));
+
+  await page.goto(`/projects/${projectKey}`);
+  await page.locator('#global-create-issue').click();
+  const dialog = page.getByRole('dialog', { name: 'Create issue' });
+  await expect(dialog).toBeVisible();
+  await dialog.locator('.create-more summary').click();
+  const select = dialog.locator(`#create-${fieldID}`);
+  await expect(select).toHaveAttribute('multiple', '');
+  expect(await select.locator('option').allTextContents()).toEqual(['iOS', 'Android', 'Web']);
+  await dialog.getByLabel('Summary', { exact: false }).fill(`Ship everywhere ${stamp}`);
+  await select.selectOption([{ label: 'iOS' }, { label: 'Web' }]);
+  await dialog.getByRole('button', { name: 'Create issue', exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/browse/${projectKey}-\\d+$`));
+  const issueKey = page.url().split('/').pop()!;
+
+  const stored = await (await page.request.get(`/rest/api/3/issue/${issueKey}?fields=${fieldID}`, { headers: auth })).json();
+  expect(stored.fields[fieldID]).toEqual([ids.iOS, ids.Web]);
+  const found = await (await page.request.get(`/rest/api/3/search/jql?fields=summary&jql=${encodeURIComponent(`${fieldID} = ${ids.Web} AND project = ${projectKey}`)}`, { headers: auth })).json();
+  expect(found.issues.map((issue: { key: string }) => issue.key)).toEqual([issueKey]);
+});

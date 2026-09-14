@@ -465,7 +465,7 @@ func (m CreateProjectMeta) applyCustomFieldContexts(issueTypeID string, fields [
 		}
 		field.Default = info.Default
 		// A select field offers exactly the options its governing context holds.
-		if field.Type == "option" {
+		if field.Type == "option" || field.Type == "options" {
 			field.Options = info.Options
 		}
 		out = append(out, field)

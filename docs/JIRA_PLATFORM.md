@@ -183,7 +183,7 @@ is 403.
 
 | Operation | Behavior |
 | --- | --- |
-| `PUT /rest/atlassian-connect/1/migration/field` | Sets the values of the app's issue fields: `StringIssueField`, `TextIssueField`, `RichTextIssueField`, `NumberIssueField` and `SingleSelectIssueField` values by numeric `fieldID` and `issueID`, for up to 200 fields, through the ordinary issue update. Multi-select fields are 400, as they cannot be declared here. |
+| `PUT /rest/atlassian-connect/1/migration/field` | Sets the values of the app's issue fields: `StringIssueField`, `TextIssueField`, `RichTextIssueField`, `NumberIssueField`, `SingleSelectIssueField` and `MultiSelectIssueField` values by numeric `fieldID` and `issueID`, for up to 200 fields, through the ordinary issue update; every `MultiSelectIssueField` entry for an issue and field adds one option to its list. |
 | `PUT /rest/atlassian-connect/1/migration/properties/{entityType}` | Up to 50 properties by Jira's numeric entity id for issues, comments, worklogs, work types, projects, boards, sprints and dashboard items, all or none. `UserProperty` is 400 because accounts have no numeric id. |
 | `POST /rest/atlassian-connect/1/migration/workflow/rule/search` | The calling app's rules among up to 10 `ruleIds` of the workflow `workflowEntityId`, grouped as post functions, conditions and validators, with `invalidRules` for the rest; `expand=transition` adds the transition. |
 | `GET/POST /rest/atlassian-connect/1/migration/{connectKey}/{jiraIssueFieldsKey}/task` | Connect and Forge apps submit and follow the task migrating an issue field to its Forge custom field: 202 when queued, 409 while one runs, a completed migration is only repeated with `retriggerCompletedMigration=true`, and GET returns Jira's TaskProgress. Connect and Forge fields share one record here, so the task verifies the field and reports how many values it holds. |
@@ -205,8 +205,11 @@ tiers; each change advances the revision.
 | `PUT /rest/api/3/app/field/{fieldIdOrKey}/value`, `POST /rest/api/3/app/field/value` | The app that provides a field sets its value on issues, each field and issue combination once; values go through the ordinary issue update, so they are validated and recorded in the changelog. |
 
 Configuration is for site administrators and the providing app; values are for
-the providing app only. `generateChangelog` and `generateAppEvents` are
-accepted, but every change is recorded and sends its events.
+the providing app only. `generateChangelog=false` keeps the write out of the
+issue's changelog and `generateAppEvents=false` keeps it from app and
+administrator webhooks; replicas still receive the new value. Custom field
+changes appear in the changelog as Jira's `custom` items with the field name and
+`fieldId`.
 
 ## References
 

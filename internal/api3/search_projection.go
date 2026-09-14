@@ -57,10 +57,16 @@ func searchFieldDefinitions(customFields []*models.CustomField) []searchFieldDef
 			custom = key
 		}
 		fieldType := string(field.Type)
-		if field.Type == models.CustomFieldText {
+		switch field.Type {
+		case models.CustomFieldText:
 			fieldType = "string"
+		case models.CustomFieldSelect, models.CustomFieldMultiSelect:
+			fieldType = "option"
 		}
 		schema := map[string]any{"type": fieldType, "custom": custom}
+		if field.Type == models.CustomFieldMultiSelect {
+			schema["type"], schema["items"] = "array", "option"
+		}
 		if number, err := strconv.ParseInt(strings.TrimPrefix(field.ID, "customfield_"), 10, 64); err == nil {
 			schema["customId"] = number
 		}

@@ -39,6 +39,9 @@ func EventFor(a *models.Action) (string, bool) {
 		switch a.Op {
 		case models.OpUpsert:
 			var p models.IssueUpdatePayload
+			if json.Unmarshal(a.Payload, &p) == nil && p.SuppressEvents {
+				return "", false
+			}
 			if json.Unmarshal(a.Payload, &p) == nil && (len(p.Diff) > 0 || len(p.TriggeredWebhookIDs) > 0) {
 				return "jira:issue_updated", true
 			}

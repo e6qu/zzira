@@ -766,6 +766,9 @@ type FieldResolver struct {
 	TextColumns  []string          // columns searched by bare text and ~
 	DefaultOrder map[string]string
 	DateFields   map[string]bool
+	// JSONArrayFields are fields whose value is a JSON array of ids, such as a
+	// multi-select custom field.
+	JSONArrayFields map[string]string
 }
 
 // WithCustomFields extends a resolver with customfield_NNNNN columns and app
@@ -787,6 +790,17 @@ func WithCustomFields(base FieldResolver, fields []*models.CustomField) FieldRes
 		}
 		res.Columns[f.ID] = col
 		res.Columns[strings.ToLower(f.Name)] = col
+		if f.Type == models.CustomFieldMultiSelect {
+			if res.JSONArrayFields == nil {
+				res.JSONArrayFields = map[string]string{}
+			}
+			array := `i.fields->'` + f.ID + `'`
+			res.JSONArrayFields[f.ID] = array
+			res.JSONArrayFields[strings.ToLower(f.Name)] = array
+			if f.AppKey != "" {
+				res.JSONArrayFields[strings.ToLower(f.AppKey+"__"+f.AppModuleKey)] = array
+			}
+		}
 		if f.Type == models.CustomFieldDatetime {
 			res.DateFields[f.ID] = true
 			res.DateFields[strings.ToLower(f.Name)] = true
@@ -958,6 +972,9 @@ func (c *compiler) clause(cl Clause) string {
 	}
 	if cl.Field == "labels" {
 		return c.labelsClause(cl)
+	}
+	if array, ok := c.res.JSONArrayFields[cl.Field]; ok {
+		return c.jsonArrayClause(array, cl)
 	}
 	if cl.Field == "sprint" {
 		return c.sprintClause(cl)
@@ -1930,4 +1947,32 @@ func (c *compiler) versionFunctionMatch(element, name string, args []string) str
 		c.err = &SyntaxError{0, "unsupported function " + name + "() for version"}
 		return ""
 	}
+}
+
+// jsonArrayClause matches a field holding a JSON array of ids.
+func (c *compiler) jsonArrayClause(expression string, cl Clause) string {
+	array := "COALESCE(CASE WHEN jsonb_typeof(" + expression + ")='array' THEN " + expression + " END,'[]'::jsonb)"
+	nonempty := "jsonb_array_length(" + array + ") > 0"
+	switch cl.Op {
+	case "=":
+		return "jsonb_exists(" + array + ", " + c.arg(cl.Values[0]) + ")"
+	case "!=":
+		return "(" + nonempty + " AND NOT jsonb_exists(" + array + ", " + c.arg(cl.Values[0]) + "))"
+	case "in", "notin":
+		parts := make([]string, 0, len(cl.Values))
+		for _, value := range cl.Values {
+			parts = append(parts, "jsonb_exists("+array+", "+c.arg(value)+")")
+		}
+		membership := "(" + strings.Join(parts, " OR ") + ")"
+		if cl.Op == "notin" {
+			return "(" + nonempty + " AND NOT " + membership + ")"
+		}
+		return membership
+	case "empty":
+		return "jsonb_array_length(" + array + ") = 0"
+	case "notempty":
+		return nonempty
+	}
+	c.err = &SyntaxError{0, "unsupported operator " + cl.Op}
+	return ""
 }

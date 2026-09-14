@@ -151,16 +151,20 @@ func (s *Store) SearchScoped(ctx context.Context, workspaceID, userID string, c 
 	}
 	args = append(args, userID)
 	where += " AND " + VisibleIssuePredicate("i", fmt.Sprintf("$%d", len(args)))
-	if scope != "" {
-		for index := len(scopeArgs) - 1; index >= 0; index-- {
-			scope = strings.ReplaceAll(scope, fmt.Sprintf("{%d}", index+1), fmt.Sprintf("$%d", len(args)+index+1))
-		}
-		args = append(args, scopeArgs...)
-		where += " AND (" + scope + ")"
-	}
 	order := strings.TrimSpace(c.OrderSQL)
 	if order == "" {
 		order = "i.rank, i.key"
+	}
+	if scope != "" {
+		// Scope arguments may also be used by an order the caller gives, such
+		// as a sprint's own rank.
+		for index := len(scopeArgs) - 1; index >= 0; index-- {
+			placeholder, parameter := fmt.Sprintf("{%d}", index+1), fmt.Sprintf("$%d", len(args)+index+1)
+			scope = strings.ReplaceAll(scope, placeholder, parameter)
+			order = strings.ReplaceAll(order, placeholder, parameter)
+		}
+		args = append(args, scopeArgs...)
+		where += " AND (" + scope + ")"
 	}
 	var total int
 	if err := s.Pool.QueryRow(ctx, `SELECT COUNT(*) `+searchJoin+` WHERE `+where, args...).Scan(&total); err != nil {

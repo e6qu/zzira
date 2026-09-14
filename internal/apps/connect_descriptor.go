@@ -612,12 +612,12 @@ func translateConnectIssueField(field connectIssueFieldWire, dynamic bool) (mode
 	case "date", "datetime":
 		fieldType = models.CustomFieldDatetime
 	case "single_select":
-		// A multi-select has no equivalent here, so it stays refused rather
-		// than being quietly downgraded to a single choice.
 		fieldType = models.CustomFieldSelect
+	case "multi_select":
+		fieldType = models.CustomFieldMultiSelect
 	}
 	if !moduleKeyPattern.MatchString(field.Key) || field.Name.Value == "" || len(field.Name.Value) > 255 || len(field.Description.Value) > 2000 || fieldType == "" {
-		return models.AppIssueField{}, fmt.Errorf("Connect issue field needs a valid key, name, description, and supported string, text, rich_text, single_select, number, date, or datetime type")
+		return models.AppIssueField{}, fmt.Errorf("Connect issue field needs a valid key, name, description, and supported string, text, rich_text, single_select, multi_select, number, date, or datetime type")
 	}
 	return models.AppIssueField{Key: field.Key, Name: field.Name.Value, Description: field.Description.Value, Type: fieldType, Dynamic: dynamic, Active: true}, nil
 }

@@ -100,3 +100,14 @@ func TestDeliverIssuePropertyEventHonorsKeyFilterAndJQL(t *testing.T) {
 		t.Fatalf("states = %q, %v", states, err)
 	}
 }
+
+func TestSuppressedIssueUpdateSendsNoEvent(t *testing.T) {
+	quiet := &models.Action{EntityType: models.EntityIssue, Op: models.OpUpsert, Payload: json.RawMessage(`{"diff":{"customfield_20000":{"field":"Risk"}},"issue":{"key":"OPS-7"},"suppressEvents":true}`)}
+	if event, ok := EventFor(quiet); ok {
+		t.Fatalf("suppressed update produced %q", event)
+	}
+	loud := &models.Action{EntityType: models.EntityIssue, Op: models.OpUpsert, Payload: json.RawMessage(`{"diff":{"customfield_20000":{"field":"Risk"}},"issue":{"key":"OPS-7"}}`)}
+	if event, ok := EventFor(loud); !ok || event != "jira:issue_updated" {
+		t.Fatalf("update event = %q, %v", event, ok)
+	}
+}

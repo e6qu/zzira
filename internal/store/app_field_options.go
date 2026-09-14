@@ -63,7 +63,7 @@ func appSelectField(ctx context.Context, tx pgx.Tx, workspaceID, fieldKey string
 	if appKey == "" {
 		return "", 0, fmt.Errorf("%w: this operation is only for select lists provided by an app", ErrAppFieldOption)
 	}
-	if fieldType != models.CustomFieldSelect {
+	if fieldType != models.CustomFieldSelect && fieldType != models.CustomFieldMultiSelect {
 		return "", 0, fmt.Errorf("%w: the field is not a select list", ErrAppFieldOption)
 	}
 	if err = tx.QueryRow(ctx, `SELECT id FROM custom_field_contexts WHERE field_id=$1 ORDER BY id LIMIT 1`,
@@ -151,7 +151,7 @@ func (s *Store) SaveAppFieldOption(ctx context.Context, workspaceID, actorID, fi
 		return AppFieldOption{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if err = projectAdmin(ctx, tx, workspaceID, actorID); err != nil {
+	if err = appFieldOptionManager(ctx, tx, workspaceID, actorID, fieldKey); err != nil {
 		return AppFieldOption{}, err
 	}
 	_, contextID, err := appSelectField(ctx, tx, workspaceID, fieldKey)
@@ -218,7 +218,7 @@ func (s *Store) DeleteAppFieldOption(ctx context.Context, workspaceID, actorID, 
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if err = projectAdmin(ctx, tx, workspaceID, actorID); err != nil {
+	if err = appFieldOptionManager(ctx, tx, workspaceID, actorID, fieldKey); err != nil {
 		return err
 	}
 	fieldID, contextID, err := appSelectField(ctx, tx, workspaceID, fieldKey)
@@ -329,4 +329,21 @@ func (s *Store) AppFieldOptionIssues(ctx context.Context, workspaceID, fieldKey,
 		items = append(items, item)
 	}
 	return items, fieldID, rows.Err()
+}
+
+// appFieldOptionManager allows the app that provides a field to manage its
+// options, as Jira does without Jira permissions, and otherwise a site
+// administrator.
+func appFieldOptionManager(ctx context.Context, tx pgx.Tx, workspaceID, actorID, fieldKey string) error {
+	var provider bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS(
+		SELECT 1 FROM custom_fields cf JOIN app_installations ai ON ai.id=cf.app_installation_id
+		WHERE ai.workspace_id=$1 AND ai.principal_id=$2 AND ai.status='active'
+		  AND (cf.id=$3 OR ai.app_key||'__'||cf.app_module_key=$3))`, workspaceID, actorID, fieldKey).Scan(&provider); err != nil {
+		return err
+	}
+	if provider {
+		return nil
+	}
+	return projectAdmin(ctx, tx, workspaceID, actorID)
 }

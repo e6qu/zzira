@@ -15,13 +15,13 @@ including the entire `/rest/software/1.0` base path, which was not mounted.
 
 | Method and path | Behavior |
 |---|---|
-| `GET /rest/agile/1.0/board` | Lists the workspace's boards. |
-| `GET /rest/agile/1.0/board/{boardId}` | Reads one board with its project location. |
+| `GET /rest/agile/1.0/board` | Lists the boards the caller can browse, filtered by `type`, `name`, `projectKeyOrId`/`projectLocation`, `accountIdLocation`, `negateLocationFiltering`, `projectTypeLocation` (software by default, or service_desk), `filterId`; ordered by `orderBy=name`; expanded with `admins` and `permissions`; paged at most 50. |
+| `GET /rest/agile/1.0/board/{boardId}` | Reads one board with its project location and project type; a board whose project the caller cannot browse is 404. |
 | `GET /rest/agile/1.0/board/{boardId}/configuration` | Reports the board's columns, their statuses and constraint. |
-| `GET /rest/agile/1.0/board/{boardId}/issue` | Pages the work on the board in column order. |
-| `GET /rest/agile/1.0/board/{boardId}/backlog` | Pages the board's backlog. |
-| `GET /rest/agile/1.0/board/{boardId}/sprint` | Lists the board's sprints. |
-| `GET /rest/agile/1.0/board/{boardId}/sprint/{sprintId}/issue` | Pages one sprint's work; a sprint on another board is a 404. |
+| `GET /rest/agile/1.0/board/{boardId}/issue` | Pages the board's work: its project's work in a status mapped to a column, without epics on a scrum board, in rank order, filtered by `jql` with `validateQuery` and projected by `fields`. |
+| `GET /rest/agile/1.0/board/{boardId}/backlog` | Pages the project's work in no active or future sprint, with the same `jql`, `validateQuery` and `fields` parameters. |
+| `GET /rest/agile/1.0/board/{boardId}/sprint` | Lists the board's sprints closed first, then active, then future, filtered by `state`, paged at most 50. |
+| `GET /rest/agile/1.0/board/{boardId}/sprint/{sprintId}/issue` | Pages one sprint's work in sprint order with `jql`, `validateQuery` and `fields`; a sprint on another board is a 404. |
 | `GET /rest/agile/1.0/board/{boardId}/quickfilter` and `/quickfilter/{id}` | Reads the board's quick filters. |
 | `GET /rest/agile/1.0/board/{boardId}/project` and `/project/full` | Reports the board's project, the full form adding its type and style. |
 | `GET /rest/agile/1.0/board/{boardId}/version` | Lists the project's versions with Jira's `released` filter. |
@@ -91,3 +91,22 @@ append to it, and the sprint listing follows it.
 Jira's `expand`, JQL and field filters on the board and sprint issue reads,
 board estimation configuration, sprint ranking parameters on the move, and exact
 Jira error wording remain.
+
+## Filtering the Agile issue reads
+
+The board, backlog and sprint issue reads take Jira's parameters. `jql` narrows
+the work inside the board's scope; an `ORDER BY` in it replaces rank or sprint
+order. Invalid JQL is 400 unless `validateQuery=false`, which answers an empty
+page with the error in `warningMessages`. `fields` keeps the named fields,
+`*all` and `*navigable` keep every field and `-field` drops one; without it every
+navigable and Agile field (`sprint`, `closedSprints`, `flagged`, `epic`) is
+returned. `expand` is accepted.
+
+`POST /rest/agile/1.0/sprint/{sprintId}/issue` moves up to 50 issues of the
+sprint's project into a future or active sprint and, with `rankBeforeIssue` or
+`rankAfterIssue`, ranks them around that issue in request order. A closed
+sprint, another project's issue or both rank references are 400; an unknown
+issue is 404.
+
+Boards and sprints are only served to people who can browse the board's
+project; others get 404, as in Jira.

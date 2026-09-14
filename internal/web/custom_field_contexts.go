@@ -79,7 +79,7 @@ func (h *Handler) loadCustomFieldsPage(r *http.Request, workspaceID string) (cus
 			for _, issueTypeID := range found.IssueTypeIDs {
 				view.Types = append(view.Types, typeNames[issueTypeID])
 			}
-			if field.Type == models.CustomFieldSelect {
+			if field.Type == models.CustomFieldSelect || field.Type == models.CustomFieldMultiSelect {
 				view.IsSelect = true
 				options, optionErr := h.Store.CustomFieldOptions(r.Context(), workspaceID, field.ID, found.ID)
 				if optionErr != nil {

@@ -518,11 +518,11 @@ func (s *Store) attachContextOptions(ctx context.Context, workspaceID string, re
 		SELECT p.id, work_type.id, f.id, o.id::text, o.value
 		FROM projects p
 		CROSS JOIN issue_types work_type
-		JOIN custom_fields f ON f.active AND f.trashed_at IS NULL AND f.type=$2 AND (f.workspace_id IS NULL OR f.workspace_id=$1)
+		JOIN custom_fields f ON f.active AND f.trashed_at IS NULL AND f.type = ANY($2) AND (f.workspace_id IS NULL OR f.workspace_id=$1)
 		JOIN custom_field_options o
 			ON o.context_id = jira_custom_field_context(f.id,p.id,work_type.id) AND NOT o.disabled
 		WHERE p.workspace_id=$1
-		ORDER BY p.id, work_type.id, f.id, o.position, o.id`, workspaceID, models.CustomFieldSelect)
+		ORDER BY p.id, work_type.id, f.id, o.position, o.id`, workspaceID, optionFieldTypes)
 	if err != nil {
 		return err
 	}
@@ -561,8 +561,8 @@ func (s *Store) CustomFieldOptionScope(ctx context.Context, workspaceID, project
 		SELECT f.id, o.id::text, o.disabled
 		FROM custom_fields f
 		JOIN custom_field_options o ON o.context_id = jira_custom_field_context(f.id,$2,NULLIF($3,''))
-		WHERE f.active AND f.trashed_at IS NULL AND f.type=$4 AND (f.workspace_id IS NULL OR f.workspace_id=$1)`,
-		workspaceID, projectID, issueTypeID, models.CustomFieldSelect)
+		WHERE f.active AND f.trashed_at IS NULL AND f.type = ANY($4) AND (f.workspace_id IS NULL OR f.workspace_id=$1)`,
+		workspaceID, projectID, issueTypeID, optionFieldTypes)
 	if err != nil {
 		return nil, err
 	}
@@ -606,4 +606,49 @@ func (s *Store) CustomFieldWriteScope(ctx context.Context, workspaceID, projectI
 		}
 	}
 	return known, applicable, rows.Err()
+}
+
+// optionFieldTypes are the custom field types that take options.
+var optionFieldTypes = []string{models.CustomFieldSelect, models.CustomFieldMultiSelect}
+
+// OptionCatalog is what a select or multi-select field offers for one project
+// and work type: whether it takes several options, and its option ids by value.
+type OptionCatalog struct {
+	Multi   bool
+	ByValue map[string]string
+}
+
+// CustomFieldOptionCatalog lists the option fields that apply to a project and
+// work type, with the enabled options of the governing context by value.
+func (s *Store) CustomFieldOptionCatalog(ctx context.Context, workspaceID, projectID, issueTypeID string) (map[string]OptionCatalog, error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT f.id, f.type, o.id::text, o.value
+		FROM custom_fields f
+		LEFT JOIN custom_field_options o ON o.context_id = jira_custom_field_context(f.id,$2,NULLIF($3,'')) AND NOT o.disabled
+		WHERE f.active AND f.trashed_at IS NULL AND f.type = ANY($4) AND (f.workspace_id IS NULL OR f.workspace_id=$1)
+		ORDER BY f.id, o.position, o.id`,
+		workspaceID, projectID, issueTypeID, optionFieldTypes)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	catalog := map[string]OptionCatalog{}
+	for rows.Next() {
+		var fieldID, fieldType string
+		var optionID, value *string
+		if err = rows.Scan(&fieldID, &fieldType, &optionID, &value); err != nil {
+			return nil, err
+		}
+		entry, ok := catalog[fieldID]
+		if !ok {
+			entry = OptionCatalog{Multi: fieldType == models.CustomFieldMultiSelect, ByValue: map[string]string{}}
+		}
+		if optionID != nil && value != nil {
+			if _, taken := entry.ByValue[*value]; !taken {
+				entry.ByValue[*value] = *optionID
+			}
+		}
+		catalog[fieldID] = entry
+	}
+	return catalog, rows.Err()
 }

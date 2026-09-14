@@ -12,6 +12,8 @@ const (
 	CustomFieldNumber   = "number"
 	CustomFieldDatetime = "datetime"
 	CustomFieldSelect   = "select"
+	// CustomFieldMultiSelect holds several options of its context.
+	CustomFieldMultiSelect = "multiselect"
 )
 
 // Tombstone actions are per-user: only excluded users receive them, telling

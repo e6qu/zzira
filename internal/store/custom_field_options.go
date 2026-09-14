@@ -83,8 +83,8 @@ func selectFieldTx(ctx context.Context, tx pgx.Tx, workspaceID, fieldID string) 
 	if err != nil {
 		return err
 	}
-	if fieldType != models.CustomFieldSelect {
-		return fmt.Errorf("%w: only a select custom field has options", ErrFieldContextValidation)
+	if fieldType != models.CustomFieldSelect && fieldType != models.CustomFieldMultiSelect {
+		return fmt.Errorf("%w: only a select or multi-select custom field has options", ErrFieldContextValidation)
 	}
 	return nil
 }

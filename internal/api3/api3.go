@@ -1448,8 +1448,12 @@ func (h *Handler) issueChangelogBeans(ctx context.Context, workspaceID, issueID 
 			case "priority", "resolution", "issuetype":
 				from, to = h.changelogMetadataID(ctx, workspaceID, item.Field, from), h.changelogMetadataID(ctx, workspaceID, item.Field, to)
 			}
+			fieldID := item.Field
+			if item.FieldID != "" {
+				fieldID = item.FieldID
+			}
 			items = append(items, map[string]any{
-				"field": item.Field, "fieldId": item.Field, "fieldtype": item.FieldType,
+				"field": item.Field, "fieldId": fieldID, "fieldtype": item.FieldType,
 				"from": from, "fromString": item.FromString,
 				"to": to, "toString": item.ToString,
 			})
