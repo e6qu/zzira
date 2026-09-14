@@ -111,15 +111,20 @@ and Confluence grants. Supported Connect module families are `adminPages`, `gene
 `contentBylineItems`, scalar
 `jiraIssueFields`, `jiraJqlFunctions`, quick-add `jiraIssueContents`, collapsible
 `jiraIssueContexts`, legacy `jiraIssueGlances`, Jira/Confluence navigation
-`webItems`, and `webhooks`.
+`webItems`, `webhooks`, `jiraProjectPermissions`, `jiraGlobalPermissions`,
+`jiraTimeTrackingProviders`, and `jiraEntityProperties`, whose extractions
+make issue property values searchable in JQL (see `docs/JQL.md`).
 The parser rejects unsupported authentication modes, scopes, module families,
 and web-panel locations instead of silently ignoring them.
 
 Connect apps can manage tenant-specific remote issue panels, navigation web
-items, scalar issue fields and keyed Jira webhooks through the
+items, scalar issue fields, keyed Jira webhooks, issue glances, contexts and
+contents, and entity property indexes through the
 standard JWT-signed `GET`, `POST`, and `DELETE`
 `/rest/atlassian-connect/1/app/module/dynamic` resource. `POST` accepts the
-descriptor-shaped `webPanels`, `webItems`, `jiraIssueFields`, and `webhooks` objects and
+descriptor-shaped `webPanels`, `webItems`, `jiraIssueFields`, `webhooks`,
+`jiraIssueGlances`, `jiraIssueContexts`, `jiraIssueContents` and
+`jiraEntityProperties` objects and
 registers the request atomically;
 duplicate static/dynamic keys or any invalid entry reject the whole request.
 `GET` returns the original grouped definitions. `DELETE` accepts repeated
@@ -329,8 +334,7 @@ codes. This provides the storage contract required by issue-context status metad
 bulk issue-property mutations remain a separate API slice.
 
 The runtime is a ZZIRA execution contract for remotely hosted apps. Remaining
-Connect module families, the remaining dynamic module types and webhook
-options, `configurePage`, custom admin-page behavior, project/page-admin, issue-tab and issue-context conditions, dashboard-item
+Connect module families, dynamic webhook options, `configurePage`, custom admin-page behavior, project/page-admin, issue-tab and issue-context conditions, dashboard-item
 configuration/refresh/conditions, workflow modules, select/read-only issue
 fields and option APIs,
 descriptor-driven upgrade migrations, and Atlassian-hosted Forge compute remain

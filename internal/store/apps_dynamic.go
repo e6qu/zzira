@@ -25,17 +25,25 @@ func (s *Store) RegisterDynamicAppModules(ctx context.Context, installation *mod
 	}
 	for position, module := range modules {
 		var exists bool
-		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM app_modules WHERE installation_id=$1 AND module_key=$2 UNION ALL SELECT 1 FROM app_webhook_modules WHERE installation_id=$1 AND module_key=$2 UNION ALL SELECT 1 FROM custom_fields WHERE app_installation_id=$1 AND app_module_key=$2 AND active UNION ALL SELECT 1 FROM app_dynamic_modules WHERE installation_id=$1 AND module_key=$2)`, installation.ID, module.Key).Scan(&exists); err != nil {
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM app_modules WHERE installation_id=$1 AND module_key=$2 UNION ALL SELECT 1 FROM app_webhook_modules WHERE installation_id=$1 AND module_key=$2 UNION ALL SELECT 1 FROM custom_fields WHERE app_installation_id=$1 AND app_module_key=$2 AND active UNION ALL SELECT 1 FROM app_dynamic_modules WHERE installation_id=$1 AND module_key=$2 UNION ALL SELECT 1 FROM app_entity_property_indexes WHERE installation_id=$1 AND module_key=$2)`, installation.ID, module.Key).Scan(&exists); err != nil {
 			return err
 		}
 		if exists {
 			return fmt.Errorf("module key %q is already registered", module.Key)
 		}
-		if _, err := tx.Exec(ctx, `INSERT INTO app_dynamic_modules(installation_id,module_type,module_key,descriptor) VALUES($1,$2,$3,$4)`, installation.ID, module.Type, module.Key, module.Descriptor); err != nil {
+		translated, err := json.Marshal(dynamicModuleTranslation{Module: module.Module, EntityProperties: module.EntityProperties})
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO app_dynamic_modules(installation_id,module_type,module_key,descriptor,translated) VALUES($1,$2,$3,$4,$5)`, installation.ID, module.Type, module.Key, module.Descriptor, translated); err != nil {
 			return err
 		}
 		switch module.Type {
-		case "webPanels", "webItems":
+		case "jiraEntityProperties":
+			if err := writeEntityPropertyIndexes(ctx, tx, installation.ID, module.EntityProperties, true); err != nil {
+				return err
+			}
+		case "webPanels", "webItems", "jiraIssueGlances", "jiraIssueContexts", "jiraIssueContents":
 			value := module.Module
 			if _, err := tx.Exec(ctx, `INSERT INTO app_modules(installation_id,module_key,module_type,location,title,body,remote_url,position,dynamic) VALUES($1,$2,$3,$4,$5,$6,$7,$8,true)`, installation.ID, value.Key, value.Type, value.Location, value.Title, value.Body, value.RemoteURL, 10000+count+position); err != nil {
 				return err
@@ -83,6 +91,9 @@ func (s *Store) DeleteDynamicAppModules(ctx context.Context, installationID stri
 		if _, err := tx.Exec(ctx, `DELETE FROM app_modules WHERE installation_id=$1 AND dynamic`, installationID); err != nil {
 			return err
 		}
+		if _, err := tx.Exec(ctx, `DELETE FROM app_entity_property_indexes WHERE installation_id=$1 AND dynamic`, installationID); err != nil {
+			return err
+		}
 		if _, err := tx.Exec(ctx, `DELETE FROM app_dynamic_modules WHERE installation_id=$1`, installationID); err != nil {
 			return err
 		}
@@ -94,6 +105,9 @@ func (s *Store) DeleteDynamicAppModules(ctx context.Context, installationID stri
 		}
 	} else {
 		if _, err := tx.Exec(ctx, `DELETE FROM app_modules WHERE installation_id=$1 AND dynamic AND module_key=ANY($2)`, installationID, keys); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `DELETE FROM app_entity_property_indexes WHERE installation_id=$1 AND dynamic AND module_key=ANY($2)`, installationID, keys); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(ctx, `DELETE FROM app_dynamic_modules WHERE installation_id=$1 AND module_key=ANY($2)`, installationID, keys); err != nil {
@@ -115,18 +129,19 @@ func restoreDynamicAppModules(ctx context.Context, tx pgx.Tx, installationID str
 			return err
 		}
 	}
-	rows, err := tx.Query(ctx, `SELECT module_type,module_key,descriptor FROM app_dynamic_modules WHERE installation_id=$1 ORDER BY created_at,module_key`, installationID)
+	rows, err := tx.Query(ctx, `SELECT module_type,module_key,descriptor,translated FROM app_dynamic_modules WHERE installation_id=$1 ORDER BY created_at,module_key`, installationID)
 	if err != nil {
 		return err
 	}
 	type storedDynamicModule struct {
 		moduleType, key string
 		raw             json.RawMessage
+		translated      dynamicModuleTranslation
 	}
 	stored := []storedDynamicModule{}
 	for rows.Next() {
 		var module storedDynamicModule
-		if err := rows.Scan(&module.moduleType, &module.key, &module.raw); err != nil {
+		if err := rows.Scan(&module.moduleType, &module.key, &module.raw, &module.translated); err != nil {
 			rows.Close()
 			return err
 		}
@@ -149,6 +164,15 @@ func restoreDynamicAppModules(ctx context.Context, tx pgx.Tx, installationID str
 			return err
 		}
 		switch module.moduleType {
+		case "jiraEntityProperties":
+			if err := writeEntityPropertyIndexes(ctx, tx, installationID, module.translated.EntityProperties, true); err != nil {
+				return err
+			}
+		case "jiraIssueGlances", "jiraIssueContexts", "jiraIssueContents":
+			value := module.translated.Module
+			if _, err := tx.Exec(ctx, `INSERT INTO app_modules(installation_id,module_key,module_type,location,title,body,remote_url,position,dynamic) VALUES($1,$2,$3,$4,$5,$6,$7,$8,true)`, installationID, module.key, value.Type, value.Location, value.Title, value.Body, value.RemoteURL, 10000+position); err != nil {
+				return err
+			}
 		case "webPanels":
 			if _, err := tx.Exec(ctx, `INSERT INTO app_modules(installation_id,module_key,module_type,location,title,body,remote_url,position,dynamic) VALUES($1,$2,'jira:issuePanel','jira.issue.view',$3,'',$4,$5,true)`, installationID, module.key, input.Name.Value, input.URL, 10000+position); err != nil {
 				return err

@@ -249,11 +249,11 @@ func (r *FilterSubscriptionRunner) execute(ctx context.Context, run *claimedFilt
 	if err = r.Store.ExpandAppJQL(ctx, run.WorkspaceID, query); err != nil {
 		return 0, err
 	}
-	fields, err := r.Store.CustomFieldsForWorkspace(ctx, run.WorkspaceID)
+	resolver, err := r.Store.JQLResolver(ctx, run.WorkspaceID)
 	if err != nil {
 		return 0, err
 	}
-	compiled := jql.CompileAt(query, run.UserID, jql.WithCustomFields(jql.DefaultResolver(), fields), 2)
+	compiled := jql.CompileAt(query, run.UserID, resolver, 2)
 	if compiled.Err != nil {
 		return 0, compiled.Err
 	}

@@ -319,10 +319,12 @@ func parseDynamicModules(body []byte, installation *models.AppInstallation) ([]m
 	modules := []models.AppDynamicModule{}
 	keys := map[string]bool{}
 	for moduleType, raw := range groups {
-		if moduleType != "webPanels" && moduleType != "webhooks" && moduleType != "jiraIssueFields" && moduleType != "webItems" {
-			return nil, fmt.Errorf("dynamic module type %q is not supported yet", moduleType)
+		switch moduleType {
+		case "webPanels", "webhooks", "jiraIssueFields", "webItems", "jiraEntityProperties", "jiraIssueGlances", "jiraIssueContexts", "jiraIssueContents":
+		default:
+			return nil, fmt.Errorf("dynamic module type %q is not supported", moduleType)
 		}
-		if (moduleType == "webPanels" || moduleType == "webhooks") && !store.AppHasScope(installation, "read:jira-work") {
+		if (moduleType == "webPanels" || moduleType == "webhooks" || moduleType == "jiraEntityProperties" || moduleType == "jiraIssueGlances" || moduleType == "jiraIssueContexts") && !store.AppHasScope(installation, "read:jira-work") {
 			return nil, fmt.Errorf("dynamic %s require READ scope", moduleType)
 		}
 		var entries []json.RawMessage
@@ -360,6 +362,52 @@ func parseDynamicModules(body []byte, installation *models.AppInstallation) ([]m
 				}
 				keys[field.Key] = true
 				modules = append(modules, models.AppDynamicModule{Type: moduleType, Key: field.Key, Descriptor: entry, IssueField: field})
+				continue
+			}
+			if moduleType == "jiraEntityProperties" {
+				var input connectEntityPropertyWire
+				if err := json.Unmarshal(entry, &input); err != nil {
+					return nil, fmt.Errorf("invalid dynamic entity property module: %w", err)
+				}
+				indexes, err := translateConnectEntityProperty(input)
+				if err != nil {
+					return nil, err
+				}
+				if keys[indexes[0].ModuleKey] {
+					return nil, fmt.Errorf("dynamic module keys must be unique")
+				}
+				keys[indexes[0].ModuleKey] = true
+				modules = append(modules, models.AppDynamicModule{Type: moduleType, Key: indexes[0].ModuleKey, Descriptor: entry, EntityProperties: indexes})
+				continue
+			}
+			if moduleType == "jiraIssueGlances" || moduleType == "jiraIssueContexts" || moduleType == "jiraIssueContents" {
+				var translated moduleWire
+				var err error
+				if moduleType == "jiraIssueContents" {
+					var input connectIssueContentWire
+					if err = json.Unmarshal(entry, &input); err != nil {
+						return nil, fmt.Errorf("invalid dynamic %s: %w", moduleType, err)
+					}
+					translated, err = translateConnectIssueContent(input)
+				} else {
+					var input connectIssueContextWire
+					if err = json.Unmarshal(entry, &input); err != nil {
+						return nil, fmt.Errorf("invalid dynamic %s: %w", moduleType, err)
+					}
+					translatedType := "jira:issueContext"
+					if moduleType == "jiraIssueGlances" {
+						translatedType = "jira:issueGlance"
+					}
+					translated, err = translateConnectIssueViewContext(input, translatedType)
+				}
+				if err != nil {
+					return nil, err
+				}
+				if keys[translated.Key] {
+					return nil, fmt.Errorf("dynamic module keys must be unique")
+				}
+				keys[translated.Key] = true
+				modules = append(modules, models.AppDynamicModule{Type: moduleType, Key: translated.Key, Descriptor: entry, Module: models.AppModule{Key: translated.Key, Type: translated.Type, Location: translated.Location, Title: translated.Title, Body: translated.Body, RemoteURL: translated.URL, Dynamic: true}})
 				continue
 			}
 			if moduleType == "webhooks" {

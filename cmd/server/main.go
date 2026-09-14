@@ -177,7 +177,11 @@ func main() {
 		if err := st.ExpandAppJQL(ctx, wsID, q); err != nil {
 			return false, err
 		}
-		compiled := jql.CompileAt(q, adminID, jql.DefaultResolver(), 1)
+		resolver, err := st.JQLResolver(ctx, wsID)
+		if err != nil {
+			return false, err
+		}
+		compiled := jql.CompileAt(q, adminID, resolver, 1)
 		if compiled.Err != nil {
 			return false, compiled.Err
 		}

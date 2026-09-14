@@ -234,7 +234,11 @@ func (s *Store) BoardIssuesFiltered(ctx context.Context, boardID, userID string,
 	if err := s.ExpandAppJQL(ctx, board.WorkspaceID, query); err != nil {
 		return nil, err
 	}
-	compiled := jql.CompileAt(query, userID, jql.DefaultResolver(), 3)
+	resolver, err := s.JQLResolver(ctx, board.WorkspaceID)
+	if err != nil {
+		return nil, err
+	}
+	compiled := jql.CompileAt(query, userID, resolver, 3)
 	if compiled.Err != nil {
 		return nil, compiled.Err
 	}
@@ -369,7 +373,7 @@ func (s *Store) UpdateBoardConfiguration(ctx context.Context, actorID, workspace
 	if err != nil {
 		return nil, nil, err
 	}
-	fields, err := s.CustomFieldsForWorkspace(ctx, workspaceID)
+	resolver, err := s.JQLResolver(ctx, workspaceID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -377,7 +381,7 @@ func (s *Store) UpdateBoardConfiguration(ctx context.Context, actorID, workspace
 		if err := s.ExpandAppJQL(ctx, workspaceID, query); err != nil {
 			return err
 		}
-		return jql.Compile(query, "validation-user", jql.WithCustomFields(jql.DefaultResolver(), fields)).Err
+		return jql.Compile(query, "validation-user", resolver).Err
 	})
 	if err != nil {
 		return nil, nil, err

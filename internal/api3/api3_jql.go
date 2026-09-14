@@ -214,6 +214,29 @@ func (h *Handler) jqlAutoCompleteData(w http.ResponseWriter, r *http.Request) {
 			fields = append(fields, reference)
 		}
 	}
+	// Issue property values apps index are searchable by their JQL name and by
+	// the alias an app gives them.
+	indexes, err := h.Store.EntityPropertyIndexes(r.Context(), workspaceID)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "Could not load JQL entity property fields.")
+		return
+	}
+	resolver := jql.WithEntityProperties(jql.WithCustomFields(jql.DefaultResolver(), customFields), indexes)
+	for _, index := range indexes {
+		if index.EntityType != "issue" {
+			continue
+		}
+		name := jql.EntityPropertyFieldName(index.PropertyKey, index.ObjectName)
+		reference := jqlEntityPropertyReference(name, index)
+		fields = append(fields, reference)
+		if alias := strings.ToLower(index.Alias); alias != "" {
+			if field, ok := resolver.EntityProperties[alias]; ok && field.PropertyKey == index.PropertyKey && strings.Join(field.Path, ".") == index.ObjectName {
+				aliasReference := jqlEntityPropertyReference(index.Alias, index)
+				aliasReference.DisplayName = index.Alias + " - " + name
+				fields = append(fields, aliasReference)
+			}
+		}
+	}
 	slaMetrics, err := h.Store.ServiceSLAMetricsForWorkspace(r.Context(), workspaceID)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "Could not load JQL SLA fields.")
@@ -995,4 +1018,23 @@ func (h *Handler) sanitizeJQL(r *http.Request, workspaceID, viewer, query string
 		}
 	}
 	return jql.ApplyEdits(query, edits), nil
+}
+
+// jqlEntityPropertyReference describes an indexed issue property value for
+// JQL autocomplete, with the operators its extraction type supports.
+func jqlEntityPropertyReference(value string, index models.AppEntityPropertyIndex) jqlFieldReference {
+	reference := jqlFieldReference{Value: value, DisplayName: value, Auto: "false", Orderable: "true", Searchable: "true"}
+	switch index.Type {
+	case "number":
+		reference.Types, reference.Operators = []string{"NUMBER"}, []string{"=", "!=", ">", ">=", "<", "<=", "in", "not in", "is", "is not"}
+	case "date":
+		reference.Types, reference.Operators = []string{"DATE"}, []string{"=", "!=", ">", ">=", "<", "<=", "in", "not in", "is", "is not"}
+	case "user":
+		reference.Types, reference.Operators = []string{"USER"}, []string{"=", "!=", "in", "not in", "is", "is not"}
+	case "text":
+		reference.Types, reference.Operators = []string{"TEXT"}, []string{"~", "!~", "is", "is not"}
+	default:
+		reference.Types, reference.Operators = []string{"STRING"}, []string{"=", "!=", "in", "not in", "is", "is not"}
+	}
+	return reference
 }

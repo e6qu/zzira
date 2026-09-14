@@ -607,9 +607,9 @@ func (h *Handler) compileJQL(ctx context.Context, workspaceID, raw, currentUser 
 	if err := h.Store.ExpandAppJQL(ctx, workspaceID, q); err != nil {
 		return jql.Compiled{}, &jerr{http.StatusBadRequest, "Error in the JQL Query: " + err.Error(), nil}
 	}
-	resolver := jql.DefaultResolver()
-	if customFields, err := h.Store.CustomFieldsForWorkspace(ctx, workspaceID); err == nil {
-		resolver = jql.WithCustomFields(resolver, customFields)
+	resolver, err := h.Store.JQLResolver(ctx, workspaceID)
+	if err != nil {
+		return jql.Compiled{}, &jerr{http.StatusInternalServerError, "internal error", nil}
 	}
 	// offset 2: store.Search reserves $1 for the workspace predicate
 	c := jql.CompileAt(q, currentUser, resolver, 2)
@@ -634,9 +634,9 @@ func (h *Handler) compileJQLValidated(ctx context.Context, workspaceID, raw, cur
 	if err = h.Store.ExpandAppJQL(ctx, workspaceID, q); err != nil {
 		return jql.Compiled{}, nil, nil, &jerr{http.StatusBadRequest, "Error in the JQL Query: " + err.Error(), nil}
 	}
-	resolver := jql.DefaultResolver()
-	if customFields, fieldErr := h.Store.CustomFieldsForWorkspace(ctx, workspaceID); fieldErr == nil {
-		resolver = jql.WithCustomFields(resolver, customFields)
+	resolver, resolverErr := h.Store.JQLResolver(ctx, workspaceID)
+	if resolverErr != nil {
+		return jql.Compiled{}, nil, nil, &jerr{http.StatusInternalServerError, "internal error", nil}
 	}
 	compiled = jql.CompileLenientAt(q, currentUser, resolver, 2)
 	if compiled.Err != nil {

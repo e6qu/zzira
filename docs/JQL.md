@@ -180,6 +180,31 @@ text as SQL. The same expansion hook is used by REST search and match, the
 browser navigator, boards and quick filters, dashboard gadgets, service queues
 and SLA goals, automation execution, and webhook filtering.
 
+## Entity property search
+
+Issue properties are searchable once an installed app indexes them through a
+Connect `jiraEntityProperties` module, declared in its descriptor or
+registered as a dynamic module. Each extraction names a property key, a path
+inside the property (`objectName`, with dots for nested values) and a type:
+
+| Type | Operators |
+| --- | --- |
+| `number` | `=`, `!=`, `>`, `>=`, `<`, `<=`, `IN`, `NOT IN`, `IS EMPTY`, `IS NOT EMPTY` |
+| `date` | as `number`, with Jira's relative dates and date functions |
+| `string` | `=`, `!=`, `IN`, `NOT IN`, `IS EMPTY`, `IS NOT EMPTY` |
+| `user` | as `string`, and `currentUser()` |
+| `text` | `~`, `!~`, `IS EMPTY`, `IS NOT EMPTY` |
+
+A query names the value as `issue.property[key].path`, or by the extraction's
+`alias`. An alias that matches a system or custom field name is ignored, so it
+never changes what that field means. When the value at the path is an array,
+the clause matches if any element does. Values that are not numbers or dates
+never match number or date clauses and never cause errors. `!=`, `NOT IN` and
+`!~` do not match work items without the value, as for other fields. Indexed
+values can order results. A path no active app indexes is refused as an unknown
+field, and a suspended app's indexes stop answering. JQL reference data lists
+every indexed path and alias with its operators.
+
 ## Current limits
 
 The search and JQL service resources remain assessed as partial. The remaining

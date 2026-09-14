@@ -71,7 +71,9 @@ type descriptorWire struct {
 	Permissions       []models.AppPermission `json:"-"`
 	// TimeTrackingProviders are Connect jiraTimeTrackingProviders modules.
 	TimeTrackingProviders []models.AppTimeTrackingProvider `json:"-"`
-	Format                string                           `json:"-"`
+	// EntityPropertyIndexes are Connect jiraEntityProperties extractions.
+	EntityPropertyIndexes []models.AppEntityPropertyIndex `json:"-"`
+	Format                string                          `json:"-"`
 }
 
 type jqlFunctionWire struct {
@@ -242,6 +244,10 @@ func validateDescriptorWire(wire descriptorWire) (models.AppDescriptor, error) {
 		moduleKeys[provider.Key] = true
 		descriptor.TimeTrackingProviders = append(descriptor.TimeTrackingProviders, provider)
 	}
+	if err := validateEntityPropertyIndexes(wire.EntityPropertyIndexes, moduleKeys); err != nil {
+		return models.AppDescriptor{}, err
+	}
+	descriptor.EntityPropertyIndexes = wire.EntityPropertyIndexes
 	descriptor.Lifecycle = map[string]string{}
 	for event, path := range wire.Lifecycle {
 		if !map[string]bool{"installed": true, "enabled": true, "disabled": true, "upgraded": true, "uninstalled": true}[event] || !validAppCallbackPath(path) {
@@ -425,4 +431,27 @@ func validateAppPermission(permission models.AppPermission, moduleKeys map[strin
 		return permission, fmt.Errorf("permission %q has an unknown type", permission.Key)
 	}
 	return permission, nil
+}
+
+// validateEntityPropertyIndexes checks that entity property modules use keys
+// no other module uses and that aliases are unique across the app, then
+// claims the module keys.
+func validateEntityPropertyIndexes(indexes []models.AppEntityPropertyIndex, moduleKeys map[string]bool) error {
+	modules, aliases := map[string]bool{}, map[string]string{}
+	for _, index := range indexes {
+		if moduleKeys[index.ModuleKey] && !modules[index.ModuleKey] {
+			return fmt.Errorf("entity property module key %q is already used by another module", index.ModuleKey)
+		}
+		modules[index.ModuleKey] = true
+		if alias := strings.ToLower(index.Alias); alias != "" {
+			if owner, taken := aliases[alias]; taken && owner != index.ModuleKey {
+				return fmt.Errorf("entity property alias %q is used by more than one module", index.Alias)
+			}
+			aliases[alias] = index.ModuleKey
+		}
+	}
+	for key := range modules {
+		moduleKeys[key] = true
+	}
+	return nil
 }

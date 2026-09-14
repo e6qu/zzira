@@ -16,6 +16,15 @@ type AppDescriptor struct {
 	JQLFunctions                        []AppJQLFunction
 	Permissions                         []AppPermission
 	TimeTrackingProviders               []AppTimeTrackingProvider
+	EntityPropertyIndexes               []AppEntityPropertyIndex
+}
+
+// AppEntityPropertyIndex is one extraction a Connect jiraEntityProperties
+// module declares: the value at ObjectName inside the entity property
+// PropertyKey, indexed as Type (number, string, text, date or user) and
+// searchable under Alias when one is given.
+type AppEntityPropertyIndex struct {
+	ModuleKey, Name, EntityType, PropertyKey, ObjectName, Type, Alias string
 }
 
 // AppTimeTrackingProvider is a time tracking provider an app declares. Its
@@ -114,6 +123,8 @@ type AppDynamicModule struct {
 	Module     AppModule
 	Webhook    AppWebhook
 	IssueField AppIssueField
+	// EntityProperties are a jiraEntityProperties module's extractions.
+	EntityProperties []AppEntityPropertyIndex
 }
 
 type AppStorageValue struct {

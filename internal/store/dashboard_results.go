@@ -57,11 +57,11 @@ func (s *Store) DashboardGadgetResults(ctx context.Context, ws, user, id string,
 		if e := s.ExpandAppJQL(ctx, ws, q); e != nil {
 			return out, e
 		}
-		fields, e := s.CustomFieldsForWorkspace(ctx, ws)
+		resolver, e := s.JQLResolver(ctx, ws)
 		if e != nil {
 			return out, e
 		}
-		compiled = jql.CompileAt(q, user, jql.WithCustomFields(jql.DefaultResolver(), fields), 2)
+		compiled = jql.CompileAt(q, user, resolver, 2)
 	} else if g.ModuleKey == "com.zzira:assigned-to-me" {
 		q, _ := jql.Parse("assignee = currentUser()")
 		compiled = jql.CompileAt(q, user, jql.DefaultResolver(), 2)

@@ -16,6 +16,7 @@ package jql
 import (
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -881,6 +882,83 @@ type FieldResolver struct {
 	// CollapsedFields maps a collapsed name, such as component[dropdown], to
 	// the custom fields sharing that name and type.
 	CollapsedFields map[string][]string
+	// EntityProperties are the indexed issue property values apps declare, by
+	// their JQL name: issue.property[key].path, or the app's alias.
+	EntityProperties map[string]EntityPropertyField
+}
+
+// EntityPropertyField is an indexed value inside an issue property: the value
+// at Path in the property PropertyKey, compared as Type (number, string,
+// text, date or user). A value that is a JSON array matches by any element.
+type EntityPropertyField struct {
+	PropertyKey string
+	Path        []string
+	Type        string
+}
+
+// EntityPropertyFieldName is the JQL name of an indexed issue property value.
+func EntityPropertyFieldName(propertyKey, objectName string) string {
+	return "issue.property[" + propertyKey + "]." + objectName
+}
+
+// WithEntityProperties extends a resolver with the issue property values apps
+// index. Each is searchable as issue.property[key].path and, when the app gives
+// one, by its alias, which never hides a system or custom field. Indexed values
+// can also order results.
+func WithEntityProperties(base FieldResolver, indexes []models.AppEntityPropertyIndex) FieldResolver {
+	res := base
+	if res.EntityProperties == nil {
+		res.EntityProperties = map[string]EntityPropertyField{}
+	}
+	if res.DateFields == nil {
+		res.DateFields = map[string]bool{}
+	}
+	if res.DefaultOrder == nil {
+		res.DefaultOrder = map[string]string{}
+	}
+	for _, index := range indexes {
+		if index.EntityType != "issue" {
+			continue
+		}
+		field := EntityPropertyField{PropertyKey: index.PropertyKey, Path: strings.Split(index.ObjectName, "."), Type: index.Type}
+		names := []string{strings.ToLower(EntityPropertyFieldName(index.PropertyKey, index.ObjectName))}
+		if alias := strings.ToLower(strings.TrimSpace(index.Alias)); alias != "" {
+			_, column := res.Columns[alias]
+			_, custom := res.CustomValueFields[alias]
+			_, taken := res.EntityProperties[alias]
+			if !column && !custom && !taken {
+				names = append(names, alias)
+			}
+		}
+		for _, name := range names {
+			res.EntityProperties[name] = field
+			if field.Type == "date" {
+				res.DateFields[name] = true
+			}
+			res.DefaultOrder[name] = entityPropertyOrder(field)
+		}
+	}
+	return res
+}
+
+// entityPropertyOrder is the value an indexed property orders by. The key and
+// path are validated when the app installs, and are quoted as SQL literals.
+func entityPropertyOrder(field EntityPropertyField) string {
+	quote := func(value string) string { return "'" + strings.ReplaceAll(value, "'", "''") + "'" }
+	value := "ep.value #>> ARRAY[" + func() string {
+		parts := make([]string, 0, len(field.Path))
+		for _, part := range field.Path {
+			parts = append(parts, quote(part))
+		}
+		return strings.Join(parts, ",")
+	}() + "]::text[]"
+	switch field.Type {
+	case "number":
+		value = "jql_try_numeric(" + value + ")"
+	case "date":
+		value = "jql_try_timestamptz(" + value + ")"
+	}
+	return "(SELECT " + value + " FROM issue_properties ep WHERE ep.issue_id = i.id AND ep.key = " + quote(field.PropertyKey) + ")"
 }
 
 // CustomValueField is a custom field a query matches by what its value names.
@@ -1209,6 +1287,9 @@ func (c *compiler) clause(cl Clause) string {
 	if cl.Field == "project" && (cl.Op == "=" || cl.Op == "!=" || cl.Op == "in" || cl.Op == "notin") && !containsAnyFunction(cl.Values) {
 		return c.projectClause(cl)
 	}
+	if field, indexed := c.res.EntityProperties[cl.Field]; indexed {
+		return c.entityPropertyClause(cl, field)
+	}
 	col, ok := c.res.Columns[cl.Field]
 	if !ok {
 		c.err = &SyntaxError{0, "field does not exist or is not searchable: " + cl.Field}
@@ -1297,6 +1378,87 @@ func (c *compiler) clause(cl Clause) string {
 	}
 	c.err = &SyntaxError{0, "unsupported operator " + cl.Op}
 	return ""
+}
+
+// entityPropertyClause compares an indexed issue property value. A property
+// whose value at the path is an array matches when any element does, and, as
+// for other fields, negative operators never match work items without a value.
+func (c *compiler) entityPropertyClause(cl Clause, field EntityPropertyField) string {
+	supported := map[string][]string{
+		"number": {"=", "!=", ">", ">=", "<", "<=", "in", "notin", "empty", "notempty"},
+		"date":   {"=", "!=", ">", ">=", "<", "<=", "in", "notin", "empty", "notempty"},
+		"string": {"=", "!=", "in", "notin", "empty", "notempty"},
+		"user":   {"=", "!=", "in", "notin", "empty", "notempty"},
+		"text":   {"~", "!~", "empty", "notempty"},
+	}[field.Type]
+	if !slices.Contains(supported, cl.Op) {
+		c.err = &SyntaxError{0, "operator " + cl.Op + " is not supported by " + cl.Field}
+		return ""
+	}
+	key, path := c.arg(field.PropertyKey), c.arg(field.Path)
+	value, cast := "v.value", "::text"
+	switch field.Type {
+	case "number":
+		value, cast = "jql_try_numeric(v.value)", "::numeric"
+	case "date":
+		value, cast = "jql_try_timestamptz(v.value)", "::timestamptz"
+	}
+	matching := func(condition string) string {
+		at := "ep.value #> " + path + "::text[]"
+		return "EXISTS (SELECT 1 FROM issue_properties ep CROSS JOIN LATERAL jsonb_array_elements_text(CASE WHEN jsonb_typeof(" + at + ") = 'array' THEN " + at + " ELSE jsonb_build_array(" + at + ") END) AS v(value) WHERE ep.issue_id = i.id AND ep.key = " + key + "::text AND " + value + " IS NOT NULL AND (" + condition + "))"
+	}
+	operand := func(raw string) string {
+		trimmed := strings.Trim(strings.TrimSpace(raw), `"'`)
+		switch field.Type {
+		case "number":
+			number, err := strconv.ParseFloat(trimmed, 64)
+			if err != nil {
+				c.err = &SyntaxError{0, "invalid number " + strconv.Quote(raw) + " for " + cl.Field}
+				return "NULL"
+			}
+			return c.arg(strconv.FormatFloat(number, 'f', -1, 64)) + cast
+		case "date":
+			return c.arg(c.fieldValue(cl.Field, raw)) + cast
+		case "user":
+			if name, args, function := splitFunction(raw); function {
+				if strings.EqualFold(name, "currentUser") && len(args) == 0 {
+					return c.arg(c.user) + cast
+				}
+				c.err = &SyntaxError{0, "unsupported function " + name + "() for " + cl.Field}
+				return "NULL"
+			}
+		}
+		return c.arg(raw) + cast
+	}
+	present := matching("TRUE")
+	switch cl.Op {
+	case "empty":
+		return "NOT " + present
+	case "notempty":
+		return present
+	case "~":
+		return matching("v.value ILIKE " + c.arg("%"+cl.Values[0]+"%"))
+	case "!~":
+		return "(" + present + " AND NOT " + matching("v.value ILIKE "+c.arg("%"+cl.Values[0]+"%")) + ")"
+	case "=", "!=":
+		equal := matching(value + " = " + operand(cl.Values[0]))
+		if cl.Op == "=" {
+			return equal
+		}
+		return "(" + present + " AND NOT " + equal + ")"
+	case "in", "notin":
+		operands := make([]string, 0, len(cl.Values))
+		for _, raw := range cl.Values {
+			operands = append(operands, operand(raw))
+		}
+		member := matching(value + " IN (" + strings.Join(operands, ",") + ")")
+		if cl.Op == "in" {
+			return member
+		}
+		return "(" + present + " AND NOT " + member + ")"
+	default:
+		return matching(value + " " + cl.Op + " " + operand(cl.Values[0]))
+	}
 }
 
 // projectClause matches a project by its key, id or name, as Jira does.

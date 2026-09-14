@@ -49,9 +49,9 @@ func (h *Handler) compileJQL(ctx context.Context, workspaceID, userID, raw strin
 	if err = h.Store.ExpandAppJQL(ctx, workspaceID, query); err != nil {
 		return jql.Compiled{}, err
 	}
-	resolver := jql.DefaultResolver()
-	if fields, fieldsErr := h.Store.CustomFieldsForWorkspace(ctx, workspaceID); fieldsErr == nil {
-		resolver = jql.WithCustomFields(resolver, fields)
+	resolver, err := h.Store.JQLResolver(ctx, workspaceID)
+	if err != nil {
+		return jql.Compiled{}, err
 	}
 	compiled := jql.CompileAt(query, userID, resolver, 2)
 	if compiled.Err != nil {

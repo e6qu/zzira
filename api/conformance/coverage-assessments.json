@@ -8337,12 +8337,13 @@
       "operationId": "jira-v3:GET:/rest/api/3/jql/autocompletedata",
       "status": "partial",
       "evidence": [
+        "internal/api3/entity_properties_test.go",
         "internal/api3/projects_test.go",
         "internal/api3/api3_jql_test.go",
         "internal/api3/api3_jql_precomputations_test.go",
         "docs/JQL.md"
       ],
-      "notes": "Returns reserved words, supported system fields and functions, active installed-app functions and every custom field with its cf[N] id, field-type operators and value type, and whether values are suggested; a custom field's value is its name while that name is unique and cf[N] otherwise."
+      "notes": "Returns reserved words, supported system fields and functions, active installed-app functions and every custom field with its cf[N] id, field-type operators and value type, and whether values are suggested; a custom field's value is its name while that name is unique and cf[N] otherwise. Issue property values apps index appear as issue.property[key].path fields and aliases with their types' operators."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/jql/autocompletedata/suggestions",
@@ -9009,9 +9010,10 @@
         "internal/jql/jql_test.go",
         "internal/store/jql_history_search_test.go",
         "docs/JQL.md",
-        "internal/api3/search_projection_test.go"
+        "internal/api3/search_projection_test.go",
+        "internal/api3/entity_properties_test.go"
       ],
-      "notes": "Legacy GET search has pagination, strict option validation, selected fields/app keys, every documented expansion name, requested properties and permission-filtered lifecycle evidence; validateQuery strict (and true) refuses with every clause error, warn (and false) returns them as warningMessages while failing clauses match nothing, none skips validation, and malformed JQL is always refused; richer rendering and historical version representations remain."
+      "notes": "Legacy GET search has pagination, strict option validation, selected fields/app keys, every documented expansion name, requested properties and permission-filtered lifecycle evidence; validateQuery strict (and true) refuses with every clause error, warn (and false) returns them as warningMessages while failing clauses match nothing, none skips validation, and malformed JQL is always refused; issue properties apps index through jiraEntityProperties are searchable and orderable by path and alias; richer rendering and historical version representations remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/search/jql",
@@ -9022,9 +9024,10 @@
         "internal/jql/jql_test.go",
         "internal/store/jql_history_search_test.go",
         "docs/JQL.md",
-        "internal/api3/search_projection_test.go"
+        "internal/api3/search_projection_test.go",
+        "internal/api3/entity_properties_test.go"
       ],
-      "notes": "Enhanced GET search has bounded-query, immutable numeric Jira IDs, selected fields/app keys, every documented expansion name, requested properties, strongly consistent reconciliation, durable expiring query/reconciliation/user/workspace-bound result snapshots and invalid-option evidence; richer rendering/history remains."
+      "notes": "Enhanced GET search has bounded-query, immutable numeric Jira IDs, selected fields/app keys, every documented expansion name, requested properties, strongly consistent reconciliation, durable expiring query/reconciliation/user/workspace-bound result snapshots and invalid-option evidence; issue properties apps index through jiraEntityProperties are searchable and orderable by path and alias; richer rendering/history remains."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/securitylevel/{id}",
@@ -9809,12 +9812,13 @@
       "operationId": "jira-v3:POST:/rest/api/3/jql/autocompletedata",
       "status": "partial",
       "evidence": [
+        "internal/api3/entity_properties_test.go",
         "internal/api3/projects_test.go",
         "internal/api3/api3_jql_test.go",
         "internal/api3/api3_jql_precomputations_test.go",
         "docs/JQL.md"
       ],
-      "notes": "Filters custom fields to those a global context or a context naming one of projectIds applies to, ignoring invalid project IDs and always listing system fields; includeCollapsedFields adds \"Name[Type]\" entries for fields sharing a name and type, which JQL searches across every such field."
+      "notes": "Filters custom fields to those a global context or a context naming one of projectIds applies to, ignoring invalid project IDs and always listing system fields; includeCollapsedFields adds \"Name[Type]\" entries for fields sharing a name and type, which JQL searches across every such field. Issue property values apps index appear as issue.property[key].path fields and aliases with their types' operators."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/jql/function/computation",
@@ -10153,9 +10157,10 @@
         "internal/jql/jql_test.go",
         "internal/store/jql_history_search_test.go",
         "docs/JQL.md",
-        "internal/api3/search_projection_test.go"
+        "internal/api3/search_projection_test.go",
+        "internal/api3/entity_properties_test.go"
       ],
-      "notes": "Legacy POST search has strict bounded JSON decoding, pagination, selected fields/app keys, every documented expansion name, requested properties and permission-filtered lifecycle evidence; validateQuery strict (and true) refuses with every clause error, warn (and false) returns them as warningMessages while failing clauses match nothing, none skips validation, and malformed JQL is always refused; richer rendering and historical version representations remain."
+      "notes": "Legacy POST search has strict bounded JSON decoding, pagination, selected fields/app keys, every documented expansion name, requested properties and permission-filtered lifecycle evidence; validateQuery strict (and true) refuses with every clause error, warn (and false) returns them as warningMessages while failing clauses match nothing, none skips validation, and malformed JQL is always refused; issue properties apps index through jiraEntityProperties are searchable and orderable by path and alias; richer rendering and historical version representations remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/search/approximate-count",
@@ -10179,9 +10184,10 @@
         "internal/jql/jql_test.go",
         "internal/store/jql_history_search_test.go",
         "docs/JQL.md",
-        "internal/api3/search_projection_test.go"
+        "internal/api3/search_projection_test.go",
+        "internal/api3/entity_properties_test.go"
       ],
-      "notes": "Enhanced POST search has strict decoding, bounded-query, immutable numeric Jira IDs, selected fields/app keys, every documented expansion name, requested properties, strongly consistent reconciliation, durable expiring query/reconciliation/user/workspace-bound result snapshots and invalid-option evidence; richer rendering/history remains."
+      "notes": "Enhanced POST search has strict decoding, bounded-query, immutable numeric Jira IDs, selected fields/app keys, every documented expansion name, requested properties, strongly consistent reconciliation, durable expiring query/reconciliation/user/workspace-bound result snapshots and invalid-option evidence; issue properties apps index through jiraEntityProperties are searchable and orderable by path and alias; richer rendering/history remains."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/statuses",
@@ -10409,7 +10415,7 @@
         "internal/apps/http_test.go",
         "docs/APPS.md"
       ],
-      "notes": "Atomic registration supports validated Jira issue web panels and keyed Jira webhooks; remaining module types are rejected explicitly."
+      "notes": "Atomic registration supports validated Jira issue web panels, web items, keyed Jira webhooks, issue fields, issue glances, contexts and contents, and jiraEntityProperties indexes, which JQL searches; unsupported module types are rejected, and every dynamic module survives reinstall."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/announcementBanner",

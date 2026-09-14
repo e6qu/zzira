@@ -241,6 +241,9 @@ func writeAppChildren(ctx context.Context, tx pgx.Tx, installationID string, des
 			return err
 		}
 	}
+	if err := writeEntityPropertyIndexes(ctx, tx, installationID, descriptor.EntityPropertyIndexes, false); err != nil {
+		return err
+	}
 	for _, provider := range descriptor.TimeTrackingProviders {
 		if _, err := tx.Exec(ctx, `INSERT INTO app_time_tracking_providers(installation_id,module_key,name,admin_page_key) VALUES($1,$2,$3,$4)`, installationID, provider.Key, provider.Name, provider.AdminPageKey); err != nil {
 			return err
@@ -327,6 +330,10 @@ func (s *Store) InstallApp(ctx context.Context, workspaceID, actorID string, des
 		return nil, err
 	}
 	if _, err := tx.Exec(ctx, `DELETE FROM app_time_tracking_providers WHERE installation_id=$1`, installationID); err != nil {
+		return nil, err
+	}
+	// Dynamic indexes are restored with the other dynamic modules below.
+	if _, err := tx.Exec(ctx, `DELETE FROM app_entity_property_indexes WHERE installation_id=$1`, installationID); err != nil {
 		return nil, err
 	}
 	if _, err := tx.Exec(ctx, `DELETE FROM app_permission_modules WHERE installation_id=$1`, installationID); err != nil {

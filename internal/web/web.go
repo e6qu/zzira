@@ -217,7 +217,14 @@ func compileNavigatorSearch(ctx context.Context, st *store.Store, workspaceID, p
 			return jql.Compiled{}, err
 		}
 	}
-	compiled := jql.CompileAt(query, userID, jql.DefaultResolver(), 2)
+	resolver := jql.DefaultResolver()
+	if st != nil {
+		var err error
+		if resolver, err = st.JQLResolver(ctx, workspaceID); err != nil {
+			return jql.Compiled{}, err
+		}
+	}
+	compiled := jql.CompileAt(query, userID, resolver, 2)
 	if compiled.Err != nil {
 		return jql.Compiled{}, compiled.Err
 	}

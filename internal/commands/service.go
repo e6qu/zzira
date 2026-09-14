@@ -279,11 +279,11 @@ func (s *Service) UpdateServiceSLAMetric(ctx context.Context, actorID, workspace
 		if err := s.Store.ExpandAppJQL(ctx, workspaceID, parsed); err != nil {
 			return err
 		}
-		fields, err := s.Store.CustomFieldsForWorkspace(ctx, workspaceID)
+		resolver, err := s.Store.JQLResolver(ctx, workspaceID)
 		if err != nil {
 			return err
 		}
-		if compiled := jql.Compile(parsed, actorID, jql.WithCustomFields(jql.DefaultResolver(), fields)); compiled.Err != nil {
+		if compiled := jql.Compile(parsed, actorID, resolver); compiled.Err != nil {
 			return compiled.Err
 		}
 	}
@@ -324,12 +324,11 @@ func (s *Service) validateServiceSLAGoal(ctx context.Context, workspaceID, name,
 	if err := s.Store.ExpandAppJQL(ctx, workspaceID, parsed); err != nil {
 		return "", "", err
 	}
-	resolver := jql.DefaultResolver()
-	fields, err := s.Store.CustomFieldsForWorkspace(ctx, workspaceID)
+	resolver, err := s.Store.JQLResolver(ctx, workspaceID)
 	if err != nil {
 		return "", "", err
 	}
-	if compiled := jql.Compile(parsed, "validation", jql.WithCustomFields(resolver, fields)); compiled.Err != nil {
+	if compiled := jql.Compile(parsed, "validation", resolver); compiled.Err != nil {
 		return "", "", compiled.Err
 	}
 	return name, query, nil
@@ -416,12 +415,11 @@ func (s *Service) validateServiceQueue(ctx context.Context, workspaceID, name, q
 	if err := s.Store.ExpandAppJQL(ctx, workspaceID, parsed); err != nil {
 		return "", "", err
 	}
-	resolver := jql.DefaultResolver()
-	fields, err := s.Store.CustomFieldsForWorkspace(ctx, workspaceID)
+	resolver, err := s.Store.JQLResolver(ctx, workspaceID)
 	if err != nil {
 		return "", "", err
 	}
-	if compiled := jql.Compile(parsed, "validation", jql.WithCustomFields(resolver, fields)); compiled.Err != nil {
+	if compiled := jql.Compile(parsed, "validation", resolver); compiled.Err != nil {
 		return "", "", compiled.Err
 	}
 	return name, query, nil
