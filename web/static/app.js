@@ -729,6 +729,37 @@
     const el = document.querySelector('#issue-root');
     return el ? Number(el.getAttribute('data-seq') || 0) : 0;
   }
+  // Replacing the issue root resets its collapsible sections; the ones a person
+  // opened stay open across a save or a live update.
+  function openIssueSections() {
+    const root = document.getElementById('issue-root');
+    if (!root) return [];
+    return Array.from(root.querySelectorAll('details.more-fields[open]')).map((details) => details.className);
+  }
+  function reopenIssueSections(classNames) {
+    const root = document.getElementById('issue-root');
+    if (!root) return;
+    classNames.forEach((className) => {
+      const details = root.querySelector('details.' + className.trim().split(/\s+/).join('.'));
+      if (details) details.open = true;
+    });
+  }
+  function replaceIssueRoot(root, html) {
+    const open = openIssueSections();
+    root.outerHTML = html;
+    reopenIssueSections(open);
+  }
+  let sectionsBeforeSwap = null;
+  document.body.addEventListener('htmx:beforeSwap', (event) => {
+    const target = event.detail.target;
+    sectionsBeforeSwap = target && target.id === 'issue-root' ? openIssueSections() : null;
+  });
+  document.body.addEventListener('htmx:afterSwap', () => {
+    if (!sectionsBeforeSwap) return;
+    reopenIssueSections(sectionsBeforeSwap);
+    sectionsBeforeSwap = null;
+  });
+
   function applyRootHtml(html) {
     const root = document.getElementById('issue-root');
     if (!root) return;
@@ -750,7 +781,7 @@
       pendingRootHtml = null;
       return; // stale replica render: the DOM already has newer data
     }
-    root.outerHTML = html;
+    replaceIssueRoot(root, html);
     pendingRootHtml = null;
     hydrate(document.getElementById('issue-root'));
   }
@@ -762,7 +793,7 @@
     const dirtyForm = root && root.querySelector('form[data-dirty="true"]');
     if (root && !dirtyForm && !mutationAwaitingSync && (!active || !root.contains(active) ||
         (!active.closest('[contenteditable]') && !['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName)))) {
-      root.outerHTML = pendingRootHtml;
+      replaceIssueRoot(root, pendingRootHtml);
       pendingRootHtml = null;
       hydrate(document.getElementById('issue-root'));
     }
