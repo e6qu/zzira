@@ -353,6 +353,9 @@ body.nav-collapsed .project-switcher-panel a { padding-inline: 9px; }
 .wiki-edit-form, .wiki-document { max-width: 960px; }
 .wiki-editor { min-height: 320px; padding: 20px; border: 1px solid var(--ds-border); border-radius: var(--ds-radius); line-height: 1.7; overflow-wrap: anywhere; }
 .wiki-editor-toolbar { display: flex; flex-wrap: wrap; gap: 8px; }
+.wiki-mention-list { list-style: none; margin: 4px 0 0; padding: 4px; max-width: min(320px, 100%); border: 1px solid var(--ds-border); border-radius: var(--ds-radius); background: var(--ds-surface-raised); box-shadow: var(--ds-shadow); }
+.wiki-mention-list [role=option] { padding: 6px 10px; border-radius: var(--ds-radius); cursor: pointer; color: var(--ds-text); }
+.wiki-mention-list [aria-selected=true] { background: var(--ds-primary-soft); }
 .wiki-document { min-height: 200px; line-height: 1.7; overflow-wrap: anywhere; }
 .wiki-document pre, .wiki-editor pre { white-space: pre-wrap; }
 .wiki-document table, .wiki-editor table { border-collapse: collapse; max-width: 100%; }

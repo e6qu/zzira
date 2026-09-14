@@ -57,3 +57,18 @@ func TestMentions(t *testing.T) {
 		}
 	}
 }
+
+func TestLabelMentions(t *testing.T) {
+	body := `<p>Ask <ac:link><ri:user ri:account-id="u1" /></ac:link> and <ac:link><ri:user ri:account-id="u2"/></ac:link> or <ac:link><ri:user ri:account-id="u1" /><ac:plain-text-link-body>Kept</ac:plain-text-link-body></ac:link></p>`
+	labelled := LabelMentions(body, map[string]string{"u1": "Ana <Ops>"})
+	rendered, err := Render(labelled)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `<p>Ask <a href="/people/u1">@Ana &lt;Ops&gt;</a> and <a href="/people/u2">@user</a> or <a href="/people/u1">@Kept</a></p>`; rendered != want {
+		t.Fatalf("got %s", rendered)
+	}
+	if got := MentionedAccounts(labelled); len(got) != 2 {
+		t.Fatalf("labelling changed who is mentioned: %v", got)
+	}
+}

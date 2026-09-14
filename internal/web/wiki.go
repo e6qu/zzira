@@ -67,6 +67,7 @@ type wikiData struct {
 	CanRestrict                           bool
 	Editing                               bool
 	SourceMode                            bool
+	MentionPeople                         []*models.User
 	Query                                 string
 	Status                                string
 	SpaceName, SpaceKey, SpaceDescription string
@@ -656,7 +657,12 @@ func (h *Handler) wikiBlogPost(w http.ResponseWriter, r *http.Request, creating 
 	if !editing && r.Method == http.MethodGet && post.ID != "" && post.Status == "current" {
 		h.recordWikiView(r, ws, user.ID, "blogpost", post.ID)
 	}
-	h.writeWorkspacePageStatus(w, r, "page_wiki_blogpost", user, ws, wikiData{Space: space, BlogPost: post, Versions: versions, Labels: labels, BlogProperties: properties, BlogLikeCount: likeCount, BlogLiked: liked, Attachments: attachments, Comments: blogComments, InlineComments: blogInlineComments, Editing: editing, CanEdit: true, Error: errorMessage}, "wiki", "", pageStatus)
+	people, err := h.wikiMentions(r, ws, &post.Body, blogComments, blogInlineComments)
+	if err != nil {
+		http.Error(w, "Could not load people to mention.", 500)
+		return
+	}
+	h.writeWorkspacePageStatus(w, r, "page_wiki_blogpost", user, ws, wikiData{Space: space, BlogPost: post, Versions: versions, Labels: labels, BlogProperties: properties, BlogLikeCount: likeCount, BlogLiked: liked, Attachments: attachments, Comments: blogComments, InlineComments: blogInlineComments, Editing: editing, CanEdit: true, Error: errorMessage, MentionPeople: people}, "wiki", "", pageStatus)
 }
 
 func (h *Handler) wikiBlogForDiscussion(w http.ResponseWriter, r *http.Request, ws, userID string) (*models.WikiBlogPost, bool) {
@@ -1171,6 +1177,31 @@ func (h *Handler) WikiBlogPostRedirect(w http.ResponseWriter, r *http.Request) {
 	redirectLocal(w, r, "/wiki/spaces/"+post.SpaceID+"/blogposts/"+post.ID)
 }
 
+// wikiMentions loads the people who can be mentioned and names the mentions
+// in a body and its comments that carry no label of their own.
+func (h *Handler) wikiMentions(r *http.Request, ws string, body *models.WikiBody, threads ...[]wikiCommentNode) ([]*models.User, error) {
+	people, err := h.Store.MembersByWorkspace(r.Context(), ws)
+	if err != nil {
+		return nil, err
+	}
+	names := make(map[string]string, len(people))
+	for _, person := range people {
+		names[person.ID] = person.DisplayName
+	}
+	body.Value = wikimarkup.LabelMentions(body.Value, names)
+	var label func([]wikiCommentNode)
+	label = func(nodes []wikiCommentNode) {
+		for _, node := range nodes {
+			node.Comment.Body.Value = wikimarkup.LabelMentions(node.Comment.Body.Value, names)
+			label(node.Replies)
+		}
+	}
+	for _, thread := range threads {
+		label(thread)
+	}
+	return people, nil
+}
+
 func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 	user, ws, ok := h.pageContext(w, r)
 	if !ok {
@@ -1498,6 +1529,11 @@ func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 	}
 	if !edit && r.Method == http.MethodGet && page.ID != "" && page.Status == "current" {
 		h.recordWikiView(r, ws, user.ID, "page", page.ID)
+	}
+	data.MentionPeople, err = h.wikiMentions(r, ws, &page.Body, data.Comments, data.InlineComments)
+	if err != nil {
+		http.Error(w, "Could not load people to mention.", 500)
+		return
 	}
 	h.writeWorkspacePageStatus(w, r, "page_wiki_page", user, ws, data, "wiki", "", status)
 }

@@ -8,6 +8,7 @@ import (
 	"html"
 	"io"
 	"net/url"
+	"regexp"
 	"strings"
 )
 
@@ -244,4 +245,21 @@ func MentionedAccounts(storage string) []string {
 			}
 		}
 	}
+}
+
+var unlabelledMention = regexp.MustCompile(`<ac:link>\s*<ri:user\s+ri:account-id="([^"]+)"\s*/>\s*</ac:link>`)
+
+// LabelMentions names the people a storage body mentions without a link body,
+// so a reader sees who was mentioned rather than a bare "@user".
+func LabelMentions(storage string, names map[string]string) string {
+	if len(names) == 0 || !strings.Contains(storage, "ri:user") {
+		return storage
+	}
+	return unlabelledMention.ReplaceAllStringFunc(storage, func(link string) string {
+		name := names[html.UnescapeString(unlabelledMention.FindStringSubmatch(link)[1])]
+		if name == "" {
+			return link
+		}
+		return strings.TrimSuffix(strings.TrimSpace(link), "</ac:link>") + `<ac:plain-text-link-body>` + html.EscapeString(name) + `</ac:plain-text-link-body></ac:link>`
+	})
 }
