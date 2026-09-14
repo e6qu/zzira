@@ -2,18 +2,18 @@
   "schemaVersion": 1,
   "contractSnapshotDate": "2026-09-06",
   "inventoryTotal": 1207,
-  "assessedTotal": 1135,
+  "assessedTotal": 1207,
   "counts": {
     "delivered": 0,
-    "partial": 1128,
-    "missing": 7,
-    "unassessed": 72
+    "partial": 1175,
+    "missing": 32,
+    "unassessed": 0
   },
   "countsByFamily": {
     "automation": {
       "delivered": 0,
-      "partial": 8,
-      "missing": 7,
+      "partial": 15,
+      "missing": 0,
       "unassessed": 0
     },
     "confluence": {
@@ -24,9 +24,9 @@
     },
     "jira-platform": {
       "delivered": 0,
-      "partial": 545,
-      "missing": 0,
-      "unassessed": 72
+      "partial": 585,
+      "missing": 32,
+      "unassessed": 0
     },
     "jira-service-management": {
       "delivered": 0,
@@ -76,41 +76,41 @@
       "operationId": "jira-v3:POST:/rest/api/3/app/field/context/configuration/list",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
+      "status": "missing",
       "evidence": [],
-      "notes": ""
+      "notes": "App custom field context configuration and values are not implemented."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/app/field/value",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
+      "status": "missing",
       "evidence": [],
-      "notes": ""
+      "notes": "App custom field context configuration and values are not implemented."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/app/field/{fieldIdOrKey}/context/configuration",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
+      "status": "missing",
       "evidence": [],
-      "notes": ""
+      "notes": "App custom field context configuration and values are not implemented."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/app/field/{fieldIdOrKey}/context/configuration",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
+      "status": "missing",
       "evidence": [],
-      "notes": ""
+      "notes": "App custom field context configuration and values are not implemented."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/app/field/{fieldIdOrKey}/value",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
+      "status": "missing",
       "evidence": [],
-      "notes": ""
+      "notes": "App custom field context configuration and values are not implemented."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/application-properties",
@@ -268,9 +268,12 @@
       "operationId": "jira-v3:GET:/rest/api/3/auditing/record",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/jira_platform_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Audit log for site administrators with filter words, from/to, offset and limit up to 1,000; changedValues and associatedItems are not recorded."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/avatar/{type}/system",
@@ -426,9 +429,12 @@
       "operationId": "jira-v3:GET:/rest/api/3/classification-levels",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/jira_platform_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Jira's four levels filtered by status and ordered by rank; levels are fixed rather than administered per organization."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/comment/list",
@@ -1023,17 +1029,23 @@
       "operationId": "jira-v3:GET:/rest/api/3/data-policy",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/jira_platform_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "App-only; no data policy blocks apps, so anyContentBlocked is false."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/data-policy/project",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/jira_platform_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "App-only for 1 to 50 visible projects by id; no data policy blocks apps."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/events",
@@ -2075,9 +2087,12 @@
       "operationId": "jira-v3:GET:/rest/api/3/instance/license",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/jira_platform_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Licensed Jira applications of the site with plan PAID."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/issue",
@@ -3725,25 +3740,34 @@
       "operationId": "jira-v3:GET:/rest/api/3/label",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/jira_platform_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Visible labels as a PageBeanString up to 1,000 per page."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/license/approximateLicenseCount",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/jira_platform_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Active, non-app site users for administrators."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/license/approximateLicenseCount/product/{applicationKey}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/jira_platform_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Active users of a licensed application; unlicensed applications count 0 and unknown keys are 400."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/mypermissions",
@@ -4073,129 +4097,129 @@
       "operationId": "jira-v3:GET:/rest/api/3/plans/plan",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
+      "status": "missing",
       "evidence": [],
-      "notes": ""
+      "notes": "Plans and plan teams are not implemented."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/plans/plan",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
+      "status": "missing",
       "evidence": [],
-      "notes": ""
+      "notes": "Plans and plan teams are not implemented."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/plans/plan/{planId}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
+      "status": "missing",
       "evidence": [],
-      "notes": ""
+      "notes": "Plans and plan teams are not implemented."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/plans/plan/{planId}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
+      "status": "missing",
       "evidence": [],
-      "notes": ""
+      "notes": "Plans and plan teams are not implemented."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/plans/plan/{planId}/archive",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
+      "status": "missing",
       "evidence": [],
-      "notes": ""
+      "notes": "Plans and plan teams are not implemented."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/plans/plan/{planId}/duplicate",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
+      "status": "missing",
       "evidence": [],
-      "notes": ""
+      "notes": "Plans and plan teams are not implemented."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/plans/plan/{planId}/team",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
+      "status": "missing",
       "evidence": [],
-      "notes": ""
+      "notes": "Plans and plan teams are not implemented."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/plans/plan/{planId}/team/atlassian",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
+      "status": "missing",
       "evidence": [],
-      "notes": ""
+      "notes": "Plans and plan teams are not implemented."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/plans/plan/{planId}/team/atlassian/{atlassianTeamId}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
+      "status": "missing",
       "evidence": [],
-      "notes": ""
+      "notes": "Plans and plan teams are not implemented."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/plans/plan/{planId}/team/atlassian/{atlassianTeamId}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
+      "status": "missing",
       "evidence": [],
-      "notes": ""
+      "notes": "Plans and plan teams are not implemented."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/plans/plan/{planId}/team/atlassian/{atlassianTeamId}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
+      "status": "missing",
       "evidence": [],
-      "notes": ""
+      "notes": "Plans and plan teams are not implemented."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/plans/plan/{planId}/team/planonly",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
+      "status": "missing",
       "evidence": [],
-      "notes": ""
+      "notes": "Plans and plan teams are not implemented."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/plans/plan/{planId}/team/planonly/{planOnlyTeamId}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
+      "status": "missing",
       "evidence": [],
-      "notes": ""
+      "notes": "Plans and plan teams are not implemented."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/plans/plan/{planId}/team/planonly/{planOnlyTeamId}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
+      "status": "missing",
       "evidence": [],
-      "notes": ""
+      "notes": "Plans and plan teams are not implemented."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/plans/plan/{planId}/team/planonly/{planOnlyTeamId}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
+      "status": "missing",
       "evidence": [],
-      "notes": ""
+      "notes": "Plans and plan teams are not implemented."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/plans/plan/{planId}/trash",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
+      "status": "missing",
       "evidence": [],
-      "notes": ""
+      "notes": "Plans and plan teams are not implemented."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/priority",
@@ -4461,41 +4485,41 @@
       "operationId": "jira-v3:POST:/rest/api/3/project-template",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
+      "status": "missing",
       "evidence": [],
-      "notes": ""
+      "notes": "Project templates are not implemented."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/project-template/edit-template",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
+      "status": "missing",
       "evidence": [],
-      "notes": ""
+      "notes": "Project templates are not implemented."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/project-template/live-template",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
+      "status": "missing",
       "evidence": [],
-      "notes": ""
+      "notes": "Project templates are not implemented."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/project-template/remove-template",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
+      "status": "missing",
       "evidence": [],
-      "notes": ""
+      "notes": "Project templates are not implemented."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/project-template/save-template",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
+      "status": "missing",
       "evidence": [],
-      "notes": ""
+      "notes": "Project templates are not implemented."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/project/recent",
@@ -4672,33 +4696,45 @@
       "operationId": "jira-v3:GET:/rest/api/3/project/{projectIdOrKey}/classification-config",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/jira_platform_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Permitted levels, project default and container override; no organization default."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/project/{projectIdOrKey}/classification-level/default",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/jira_platform_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Removes the project default; requires Administer projects, otherwise 401."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/project/{projectIdOrKey}/classification-level/default",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/jira_platform_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "The project default level or an empty object."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/project/{projectIdOrKey}/classification-level/default",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/jira_platform_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Sets a published level; requires Administer projects, otherwise 401."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/project/{projectIdOrKey}/component",
@@ -4898,9 +4934,12 @@
       "operationId": "jira-v3:GET:/rest/api/3/project/{projectIdOrKey}/statuses",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/jira_platform_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Each project work type with the statuses of its workflow."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/project/{projectIdOrKey}/version",
@@ -4953,9 +4992,12 @@
       "operationId": "jira-v3:GET:/rest/api/3/project/{projectId}/hierarchy",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/jira_platform_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Work types grouped by Epic, Base and Subtask levels for a numeric project id."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/project/{projectKeyOrId}/issuesecuritylevelscheme",
@@ -5705,9 +5747,12 @@
       "operationId": "jira-v3:GET:/rest/api/3/serverInfo",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/jira_platform_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Cloud server information with version numbers, build and server times and display URLs."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/settings/columns",
@@ -5933,33 +5978,45 @@
       "operationId": "jira-v3:GET:/rest/api/3/uiModifications",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/jira_platform_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Forge apps only; the app's modifications paged to 100 with data and contexts expansion."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/uiModifications",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/jira_platform_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Forge apps only; name, data and context validation with Jira's per-app, per-modification and per-context limits."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/uiModifications/{uiModificationId}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/jira_platform_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Forge apps only; deletes the app's own modification."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/uiModifications/{uiModificationId}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/jira_platform_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Forge apps only; partial update, a sent contexts list replaces all contexts."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/universal_avatar/type/{type}/owner/{entityId}",
@@ -6485,89 +6542,122 @@
       "operationId": "jira-v3:DELETE:/rest/api/3/webhook",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/jira_platform_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "App-only deletion of the app's webhooks by id, 202."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/webhook",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/jira_platform_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "App-only list with expiration and field and property filters, paged to 100."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/webhook",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/jira_platform_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "App-only registration for one URL with Jira's dynamic event set, JQL validation, per-entry results, 100-webhook limit and 30-day expiry, field filters for issue updates and property key filters for issue property events."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/webhook/failed",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/jira_platform_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Connect only; deliveries abandoned after five attempts in the last 72 hours with body and failure time."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/webhook/refresh",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/jira_platform_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "App-only extension of expiry by 30 days."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/workflow/history",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_history_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "A recorded workflow version as a workflow document with its statuses; versions are kept 60 days."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/workflow/history/list",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_history_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Published versions newest first with intermediate expansion; versions are kept 60 days."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/workflow/rule/config",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_history_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "App-only rules by workflow with types, keys, workflowNames, withTags, draft and transition expansion."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/workflow/rule/config",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_history_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "App-only configuration updates with per-rule and per-workflow errors, publishing a new version; app rules do not run remote modules."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/workflow/rule/config/delete",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_history_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Connect only removal of the app's rules by id."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/workflow/search",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "e2e/wire-ids.spec.ts",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Paged workflow search with numeric wire ids."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/workflow/{entityId}",
@@ -6625,9 +6715,12 @@
       "operationId": "jira-v3:POST:/rest/api/3/workflows",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/workflow_history_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Bulk workflow read by ids, names or project and work type pairs with referenced statuses."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/workflows/capabilities",
@@ -7231,33 +7324,45 @@
       "operationId": "jira-v3:GET:/rest/atlassian-connect/1/addons/{addonKey}/properties",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/jira_platform_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Connect app. Keys of the calling app's properties; another app's key is 401."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/atlassian-connect/1/addons/{addonKey}/properties/{propertyKey}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/jira_platform_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Connect app. Deletes a property, 204 or 404; the reserved key is 403."
     },
     {
       "operationId": "jira-v3:GET:/rest/atlassian-connect/1/addons/{addonKey}/properties/{propertyKey}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/jira_platform_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Connect app. Reads a property; the reserved client key property returns the installation's client key."
     },
     {
       "operationId": "jira-v3:PUT:/rest/atlassian-connect/1/addons/{addonKey}/properties/{propertyKey}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/jira_platform_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Connect app. Stores non-empty JSON up to 32,768 characters with 201 or 200; the reserved key is 403."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/atlassian-connect/1/app/module/dynamic",
@@ -7296,89 +7401,104 @@
       "operationId": "jira-v3:PUT:/rest/atlassian-connect/1/migration/field",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
+      "status": "missing",
       "evidence": [],
-      "notes": ""
+      "notes": "Connect-to-Forge migration is not implemented."
     },
     {
       "operationId": "jira-v3:PUT:/rest/atlassian-connect/1/migration/properties/{entityType}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
+      "status": "missing",
       "evidence": [],
-      "notes": ""
+      "notes": "Connect-to-Forge migration is not implemented."
     },
     {
       "operationId": "jira-v3:POST:/rest/atlassian-connect/1/migration/workflow/rule/search",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
+      "status": "missing",
       "evidence": [],
-      "notes": ""
+      "notes": "Connect-to-Forge migration is not implemented."
     },
     {
       "operationId": "jira-v3:GET:/rest/atlassian-connect/1/migration/{connectKey}/{jiraIssueFieldsKey}/task",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
+      "status": "missing",
       "evidence": [],
-      "notes": ""
+      "notes": "Connect-to-Forge migration is not implemented."
     },
     {
       "operationId": "jira-v3:POST:/rest/atlassian-connect/1/migration/{connectKey}/{jiraIssueFieldsKey}/task",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
+      "status": "missing",
       "evidence": [],
-      "notes": ""
+      "notes": "Connect-to-Forge migration is not implemented."
     },
     {
       "operationId": "jira-v3:GET:/rest/atlassian-connect/1/service-registry",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
+      "status": "missing",
       "evidence": [],
-      "notes": ""
+      "notes": "The Connect service registry is not implemented."
     },
     {
       "operationId": "jira-v3:GET:/rest/forge/1/app/properties",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/jira_platform_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Forge app. Keys of the calling app's properties."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/forge/1/app/properties/{propertyKey}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/jira_platform_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Forge app. Deletes a property, 204 or 404."
     },
     {
       "operationId": "jira-v3:GET:/rest/forge/1/app/properties/{propertyKey}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/jira_platform_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Forge app. Reads a property."
     },
     {
       "operationId": "jira-v3:PUT:/rest/forge/1/app/properties/{propertyKey}",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/jira_platform_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Forge app. Stores non-empty JSON up to 32,768 characters with 201 or 200."
     },
     {
       "operationId": "jira-v3:POST:/rest/internal/api/latest/worklog/bulk",
       "family": "jira-platform",
       "hostClass": "site",
-      "status": "unassessed",
-      "evidence": [],
-      "notes": ""
+      "status": "partial",
+      "evidence": [
+        "internal/api3/jira_platform_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Returns which of up to 1,000 issue and worklog id pairs exist."
     },
     {
       "operationId": "jira-software:POST:/rest/agile/1.0/backlog/issue",
@@ -14877,25 +14997,34 @@
       "operationId": "automation:GET:/gateway/api/automation/public/{product}/{cloudid}/rest/v1/rule/manual/search",
       "family": "automation",
       "hostClass": "site-gateway",
-      "status": "missing",
-      "evidence": [],
-      "notes": "Manual-rule search is not implemented."
+      "status": "partial",
+      "evidence": [
+        "internal/automation/manual_test.go",
+        "docs/AUTOMATION.md"
+      ],
+      "notes": "Cursor continuation of a manual rule search for issue objects; alert objects are rejected until Opsgenie alerts exist."
     },
     {
       "operationId": "automation:POST:/gateway/api/automation/public/{product}/{cloudid}/rest/v1/rule/manual/search",
       "family": "automation",
       "hostClass": "site-gateway",
-      "status": "missing",
-      "evidence": [],
-      "notes": "Manual-rule search is not implemented."
+      "status": "partial",
+      "evidence": [
+        "internal/automation/manual_test.go",
+        "docs/AUTOMATION.md"
+      ],
+      "notes": "Enabled manual-trigger rules applicable to the visible issue objects with user input prompts, limit and cursors."
     },
     {
       "operationId": "automation:POST:/gateway/api/automation/public/{product}/{cloudid}/rest/v1/rule/manual/{ruleId}/invocation",
       "family": "automation",
       "hostClass": "site-gateway",
-      "status": "missing",
-      "evidence": [],
-      "notes": "Manual-rule invocation is not implemented."
+      "status": "partial",
+      "evidence": [
+        "internal/automation/manual_test.go",
+        "docs/AUTOMATION.md"
+      ],
+      "notes": "Runs the rule's supported actions for up to 50 issue ARIs as the rule actor, per-object results and an audit run; required user inputs are checked."
     },
     {
       "operationId": "automation:GET:/gateway/api/automation/public/{product}/{cloudid}/rest/v1/rule/summary",
@@ -14978,33 +15107,45 @@
       "operationId": "automation:POST:/gateway/api/automation/public/{product}/{cloudid}/rest/v1/template/create",
       "family": "automation",
       "hostClass": "site-gateway",
-      "status": "missing",
-      "evidence": [],
-      "notes": "Template-based rule creation is not implemented."
+      "status": "partial",
+      "evidence": [
+        "internal/automation/manual_test.go",
+        "docs/AUTOMATION.md"
+      ],
+      "notes": "Creates a rule from a catalog template for the site or a project with typed parameter validation."
     },
     {
       "operationId": "automation:GET:/gateway/api/automation/public/{product}/{cloudid}/rest/v1/template/search",
       "family": "automation",
       "hostClass": "site-gateway",
-      "status": "missing",
-      "evidence": [],
-      "notes": "Template search is not implemented."
+      "status": "partial",
+      "evidence": [
+        "internal/automation/manual_test.go",
+        "docs/AUTOMATION.md"
+      ],
+      "notes": "Template catalog filtered by categories and rule home with cursors."
     },
     {
       "operationId": "automation:POST:/gateway/api/automation/public/{product}/{cloudid}/rest/v1/template/search",
       "family": "automation",
       "hostClass": "site-gateway",
-      "status": "missing",
-      "evidence": [],
-      "notes": "Template search is not implemented."
+      "status": "partial",
+      "evidence": [
+        "internal/automation/manual_test.go",
+        "docs/AUTOMATION.md"
+      ],
+      "notes": "Template catalog search by body filters or cursor."
     },
     {
       "operationId": "automation:GET:/gateway/api/automation/public/{product}/{cloudid}/rest/v1/template/{templateId}",
       "family": "automation",
       "hostClass": "site-gateway",
-      "status": "missing",
-      "evidence": [],
-      "notes": "Template retrieval is not implemented."
+      "status": "partial",
+      "evidence": [
+        "internal/automation/manual_test.go",
+        "docs/AUTOMATION.md"
+      ],
+      "notes": "One catalog template with categories and parameters; the catalog holds templates for the executable actions only."
     },
     {
       "operationId": "organization-admin:GET:/admin/v1/orgs",

@@ -228,7 +228,27 @@ func evaluateConditionGroup(group ConditionGroup, context EvaluationContext) boo
 	return true
 }
 
+// IsAppRule reports a workflow rule provided by a Connect or Forge app. Jira
+// runs such rules in the app; here they keep their configuration and never
+// block a transition.
+func IsAppRule(ruleKey string) bool {
+	return strings.HasPrefix(ruleKey, "connect:") || strings.HasPrefix(ruleKey, "forge:")
+}
+
+func validateAppRule(rule Rule) error {
+	if strings.TrimSpace(rule.Parameters["appKey"]) == "" || strings.TrimSpace(rule.Parameters["key"]) == "" {
+		return fmt.Errorf("app workflow rule %q requires appKey and key", rule.RuleKey)
+	}
+	if disabled := rule.Parameters["disabled"]; disabled != "" && disabled != "true" && disabled != "false" {
+		return fmt.Errorf("app workflow rule disabled must be true or false")
+	}
+	return nil
+}
+
 func evaluateCondition(rule Rule, context EvaluationContext) bool {
+	if IsAppRule(rule.RuleKey) {
+		return true
+	}
 	switch rule.RuleKey {
 	case RuleCheckFieldValue:
 		return checkFieldValue(rule.Parameters, context)
@@ -281,6 +301,9 @@ func evaluateCondition(rule Rule, context EvaluationContext) bool {
 // ValidateRules evaluates validators after a transition is selected.
 func (t Transition) ValidateRules(context EvaluationContext) error {
 	for _, validator := range t.Validators {
+		if IsAppRule(validator.RuleKey) {
+			continue
+		}
 		switch validator.RuleKey {
 		case RuleValidateFieldValue:
 			switch validator.Parameters["ruleType"] {
@@ -441,7 +464,7 @@ func (t Transition) AssigneeEffect(context EvaluationContext) (string, bool, err
 	var assigneeID string
 	changed := false
 	for _, action := range t.Actions {
-		if action.RuleKey == RuleUpdateField || action.RuleKey == RuleCopyFieldValue || action.RuleKey == RuleTriggerWebhook {
+		if action.RuleKey == RuleUpdateField || action.RuleKey == RuleCopyFieldValue || action.RuleKey == RuleTriggerWebhook || IsAppRule(action.RuleKey) {
 			continue
 		}
 		if action.RuleKey != RuleChangeAssignee {
@@ -474,6 +497,9 @@ type FieldUpdateEffect struct {
 func (t Transition) FieldUpdateEffects() ([]FieldUpdateEffect, error) {
 	effects := make([]FieldUpdateEffect, 0)
 	for _, action := range t.Actions {
+		if IsAppRule(action.RuleKey) {
+			continue
+		}
 		switch action.RuleKey {
 		case RuleChangeAssignee, RuleTriggerWebhook:
 			continue
@@ -516,6 +542,9 @@ func (t Transition) TriggerWebhookIDs() ([]string, error) {
 	ids := make([]string, 0)
 	seen := make(map[string]bool)
 	for _, action := range t.Actions {
+		if IsAppRule(action.RuleKey) {
+			continue
+		}
 		switch action.RuleKey {
 		case RuleChangeAssignee, RuleUpdateField, RuleCopyFieldValue:
 			continue
@@ -597,6 +626,12 @@ func ValidateTransitionRules(transition Transition) error {
 		if err := validateRuleID(validator); err != nil {
 			return err
 		}
+		if IsAppRule(validator.RuleKey) {
+			if err := validateAppRule(validator); err != nil {
+				return err
+			}
+			continue
+		}
 		switch validator.RuleKey {
 		case RuleValidateFieldValue:
 			switch validator.Parameters["ruleType"] {
@@ -668,6 +703,12 @@ func ValidateTransitionRules(transition Transition) error {
 	for _, action := range transition.Actions {
 		if err := validateRuleID(action); err != nil {
 			return err
+		}
+		if IsAppRule(action.RuleKey) {
+			if err := validateAppRule(action); err != nil {
+				return err
+			}
+			continue
 		}
 		switch action.RuleKey {
 		case RuleChangeAssignee:
@@ -786,6 +827,12 @@ func validateConditionConfiguration(group ConditionGroup, seen map[string]bool) 
 			return fmt.Errorf("workflow rule id %q is duplicated", condition.ID)
 		}
 		seen[condition.ID] = true
+		if IsAppRule(condition.RuleKey) {
+			if err := validateAppRule(condition); err != nil {
+				return err
+			}
+			continue
+		}
 		switch condition.RuleKey {
 		case RuleRestrictIssueTransition:
 			if len(commaValues(condition.Parameters["accountIds"])) == 0 {

@@ -150,9 +150,15 @@ func appAPIScope(r *http.Request) (string, bool) {
 		}
 		return "write:app-data:confluence", true
 	}
+	// Jira's Connect add-on and Forge app properties are the app's own data;
+	// Jira does not require a scope for them.
+	if strings.HasPrefix(r.URL.Path, "/rest/atlassian-connect/1/addons/") || r.URL.Path == "/rest/forge/1/app/properties" || strings.HasPrefix(r.URL.Path, "/rest/forge/1/app/properties/") {
+		return "", true
+	}
 	product := ""
 	switch {
-	case strings.HasPrefix(r.URL.Path, "/rest/api/"), strings.HasPrefix(r.URL.Path, "/rest/agile/"), strings.HasPrefix(r.URL.Path, "/rest/servicedeskapi/"):
+	case strings.HasPrefix(r.URL.Path, "/rest/api/"), strings.HasPrefix(r.URL.Path, "/rest/agile/"), strings.HasPrefix(r.URL.Path, "/rest/servicedeskapi/"),
+		strings.HasPrefix(r.URL.Path, "/rest/webhooks/"), strings.HasPrefix(r.URL.Path, "/rest/internal/api/"):
 		product = "jira-work"
 	case strings.HasPrefix(r.URL.Path, "/wiki/api/"), strings.HasPrefix(r.URL.Path, "/wiki/rest/api/"):
 		product = "confluence-content"

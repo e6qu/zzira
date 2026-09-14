@@ -1,5 +1,10 @@
 package models
 
+import (
+	"encoding/json"
+	"time"
+)
+
 const (
 	EntityTombstone = "tombstone"
 
@@ -69,9 +74,34 @@ type Webhook struct {
 	JQL      string   `json:"jql"`
 	Active   bool     `json:"active"`
 	StartSeq int64    `json:"-"`
+	// JiraID is the webhook id clients see.
+	JiraID int64 `json:"-"`
+	// InstallationID is the app that registered a dynamic webhook; empty for
+	// an administrator's webhook.
+	InstallationID string     `json:"-"`
+	ExpiresAt      *time.Time `json:"-"`
+	FieldIDs       []string   `json:"-"`
+	PropertyKeys   []string   `json:"-"`
+	Name           string     `json:"-"`
+	ExcludeBody    bool       `json:"-"`
+	UpdatedAt      time.Time  `json:"-"`
+	UpdatedBy      string     `json:"-"`
+	UpdatedByName  string     `json:"-"`
 }
 
 const EntityIssueLink = "issue_link"
+
+// EntityIssueProperty is an issue property set or deleted through the API.
+const EntityIssueProperty = "issue_property"
+
+// IssuePropertyPayload records an issue property change. Value is absent when
+// the property was deleted.
+type IssuePropertyPayload struct {
+	IssueID  string          `json:"issueId"`
+	IssueKey string          `json:"issueKey"`
+	Key      string          `json:"key"`
+	Value    json.RawMessage `json:"value,omitempty"`
+}
 
 type IssueLink struct {
 	ID          string `json:"id"`

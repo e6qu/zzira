@@ -17,12 +17,18 @@ type classificationWrite struct {
 	Status string `json:"status"`
 }
 
-var classificationLevels = map[string]map[string]any{
-	"public":       {"id": "public", "status": "PUBLISHED", "order": 0, "name": "Public", "description": "Approved for public sharing", "guideline": "May be shared outside the organization.", "color": "GREEN"},
-	"internal":     {"id": "internal", "status": "PUBLISHED", "order": 1, "name": "Internal", "description": "For organization members", "guideline": "Share only with authenticated organization members.", "color": "BLUE"},
-	"confidential": {"id": "confidential", "status": "PUBLISHED", "order": 2, "name": "Confidential", "description": "Limited business information", "guideline": "Share only with people who need this information.", "color": "ORANGE"},
-	"restricted":   {"id": "restricted", "status": "PUBLISHED", "order": 3, "name": "Restricted", "description": "Highly sensitive information", "guideline": "Use explicit access controls and approved handling.", "color": "RED_BOLD"},
-}
+// classificationLevels are the site's shared data classification levels in
+// Confluence's shape.
+var classificationLevels = func() map[string]map[string]any {
+	levels := map[string]map[string]any{}
+	for _, level := range models.DataClassificationLevels {
+		levels[level.ID] = map[string]any{
+			"id": level.ID, "status": level.Status, "order": level.Rank, "name": level.Name,
+			"description": level.Description, "guideline": level.Guideline, "color": level.Color,
+		}
+	}
+	return levels
+}()
 
 func (h *Handler) createDatabase(w http.ResponseWriter, r *http.Request, ws, actor string) {
 	if !supportedQuery(w, r, "private") {

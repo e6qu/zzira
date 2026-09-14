@@ -186,6 +186,7 @@ PR #90's final GitHub matrix passed its required suites before merge.
 - [Jira issue comments, links, archiving and bulk operations](ISSUE_SURFACE.md)
 - [Ids clients see](WIRE_IDS.md)
 - [Jira Software: epics, ranking, boards, estimation, DevOps modules and Jira expressions](JIRA_SOFTWARE.md)
+- [Jira platform: app storage, UI modifications, webhooks, workflow history and site reads](JIRA_PLATFORM.md)
 
 ## Continuity rules
 

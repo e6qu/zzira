@@ -17,7 +17,6 @@ import (
 	"github.com/e6qu/zzira/internal/attachments"
 	"github.com/e6qu/zzira/internal/authn"
 	"github.com/e6qu/zzira/internal/authz"
-	"github.com/e6qu/zzira/internal/build"
 	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
@@ -45,6 +44,20 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.HasPrefix(r.URL.Path, "/rest/devinfo/0.10/") || strings.HasPrefix(r.URL.Path, "/jira/devinfo/0.1/cloud/") {
 		h.developmentRoute(w, r)
+		return
+	}
+	switch {
+	case strings.HasPrefix(r.URL.Path, "/rest/webhooks/1.0/"):
+		h.adminWebhookRoute(w, r)
+		return
+	case strings.HasPrefix(r.URL.Path, "/rest/atlassian-connect/1/addons/"):
+		h.connectAddonProperties(w, r)
+		return
+	case r.URL.Path == "/rest/forge/1/app/properties" || strings.HasPrefix(r.URL.Path, "/rest/forge/1/app/properties/"):
+		h.forgeAppProperties(w, r)
+		return
+	case r.URL.Path == "/rest/internal/api/latest/worklog/bulk":
+		h.internalWorklogBulk(w, r)
 		return
 	}
 	if module, ok := providerModuleFor(r.URL.Path); ok {
@@ -228,14 +241,36 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.workflowSchemeRoute(w, r, path)
 	case strings.HasPrefix(path, "/task/"):
 		h.taskRoute(w, r, path)
+	case path == "/workflow/history" || path == "/workflow/history/list":
+		h.workflowHistoryRoute(w, r, path)
+	case path == "/workflow/rule/config" || path == "/workflow/rule/config/delete":
+		h.workflowRuleConfigRoute(w, r, path)
+	case path == "/workflows" && r.Method == http.MethodPost:
+		h.readWorkflows(w, r)
 	case strings.HasPrefix(path, "/workflow/project/"):
 		h.workflowRoute(w, r)
 	case strings.HasPrefix(path, "/workflow/"):
 		h.workflowUsageRoute(w, r, path)
 	case path == "/role" || strings.HasPrefix(path, "/role/"):
 		h.globalProjectRoleRoute(w, r, path)
-	case path == "/webhook" || path == "/webhook/refresh" || strings.HasPrefix(path, "/webhook/"):
-		h.webhookRoute(w, r)
+	case path == "/webhook" || strings.HasPrefix(path, "/webhook/"):
+		h.dynamicWebhookRoute(w, r, path)
+	case path == "/classification-levels" && r.Method == http.MethodGet:
+		h.classificationLevelsEndpoint(w, r)
+	case path == "/data-policy" && r.Method == http.MethodGet:
+		h.workspaceDataPolicy(w, r)
+	case path == "/data-policy/project" && r.Method == http.MethodGet:
+		h.projectDataPolicies(w, r)
+	case path == "/instance/license" && r.Method == http.MethodGet:
+		h.instanceLicense(w, r)
+	case path == "/license/approximateLicenseCount" && r.Method == http.MethodGet:
+		h.approximateLicenseCount(w, r, "")
+	case strings.HasPrefix(path, "/license/approximateLicenseCount/product/") && r.Method == http.MethodGet:
+		h.approximateLicenseCount(w, r, strings.TrimPrefix(path, "/license/approximateLicenseCount/product/"))
+	case path == "/auditing/record" && r.Method == http.MethodGet:
+		h.auditRecords(w, r)
+	case path == "/uiModifications" || strings.HasPrefix(path, "/uiModifications/"):
+		h.uiModificationsRoute(w, r, path)
 	case path == "/filter/defaultShareScope":
 		h.filterDefaultShareScope(w, r)
 	case path == "/filter/favourite" && r.Method == http.MethodGet:
@@ -256,6 +291,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.versionRoute(w, r, nil)
 	case strings.HasPrefix(path, "/version/"):
 		h.versionRoute(w, r, strings.Split(strings.TrimPrefix(path, "/version/"), "/"))
+	case strings.HasPrefix(path, "/project/") && (strings.HasSuffix(path, "/statuses") || strings.HasSuffix(path, "/hierarchy") || strings.Contains(path, "/classification-")):
+		h.projectPlatformRoute(w, r, path)
 	case strings.HasPrefix(path, "/project/") && (strings.HasSuffix(path, "/version") || strings.HasSuffix(path, "/versions")):
 		parts := strings.Split(strings.TrimPrefix(path, "/project/"), "/")
 		if len(parts) != 2 {
@@ -516,17 +553,6 @@ func writeJerr(w http.ResponseWriter, e *jerr) {
 
 // ---- serverInfo / myself ----
 
-func (h *Handler) serverInfo(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{
-		"baseUrl":        h.BaseURL,
-		"version":        build.Version,
-		"buildNumber":    0,
-		"scmInfo":        "",
-		"product":        build.Product,
-		"deploymentType": "Cloud",
-	})
-}
-
 func (h *Handler) myself(w http.ResponseWriter, r *http.Request) {
 	userID, err := authn.Identify(r.Context(), h.Store, r)
 	if err != nil {
@@ -718,7 +744,7 @@ func (h *Handler) createIssue(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = json.Unmarshal(body, &extras)
 	for _, property := range extras.Properties {
-		if _, err = h.Store.SetIssueProperty(r.Context(), issue.ID, property.Key, property.Value); err != nil {
+		if _, err = h.Store.SetIssueProperty(r.Context(), userID, issue.ID, property.Key, property.Value); err != nil {
 			jiraFieldError(w, http.StatusBadRequest, map[string]string{"properties": "The property " + property.Key + " is invalid."})
 			return
 		}
@@ -905,7 +931,7 @@ func (h *Handler) putIssue(w http.ResponseWriter, r *http.Request, idOrKey strin
 		return
 	}
 	for _, property := range issueProperties.Properties {
-		if _, err := h.Store.SetIssueProperty(r.Context(), current.ID, property.Key, property.Value); err != nil {
+		if _, err := h.Store.SetIssueProperty(r.Context(), userID, current.ID, property.Key, property.Value); err != nil {
 			jiraFieldError(w, http.StatusBadRequest, map[string]string{"properties": "The property " + property.Key + " is invalid."})
 			return
 		}
@@ -1266,7 +1292,7 @@ func (h *Handler) performTransition(w http.ResponseWriter, r *http.Request, idOr
 		return
 	}
 	for _, property := range req.Properties {
-		if _, err = h.Store.SetIssueProperty(r.Context(), transitioned.ID, property.Key, property.Value); err != nil {
+		if _, err = h.Store.SetIssueProperty(r.Context(), userID, transitioned.ID, property.Key, property.Value); err != nil {
 			jiraFieldError(w, http.StatusBadRequest, map[string]string{"properties": "The property " + property.Key + " is invalid."})
 			return
 		}

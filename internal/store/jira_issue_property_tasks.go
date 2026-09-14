@@ -203,12 +203,12 @@ func (s *Store) executeIssuePropertiesTask(ctx context.Context, task APITask) er
 	for index, item := range changes {
 		for key, value := range item.properties {
 			if value == nil {
-				if err := s.DeleteIssueProperty(ctx, item.issueID, key); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+				if err := s.DeleteIssueProperty(ctx, task.SubmittedBy, item.issueID, key); err != nil && !errors.Is(err, pgx.ErrNoRows) {
 					return err
 				}
 				continue
 			}
-			if _, err := s.SetIssueProperty(ctx, item.issueID, key, value); err != nil {
+			if _, err := s.SetIssueProperty(ctx, task.SubmittedBy, item.issueID, key, value); err != nil {
 				return err
 			}
 		}

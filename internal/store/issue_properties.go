@@ -7,6 +7,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/e6qu/zzira/internal/models"
 )
 
 var ErrIssuePropertyValidation = errors.New("invalid issue property")
@@ -41,31 +43,72 @@ func (s *Store) IssueProperty(ctx context.Context, issueID, key string) (json.Ra
 }
 
 // SetIssueProperty returns true when the key was created and false when an
-// existing value was replaced.
-func (s *Store) SetIssueProperty(ctx context.Context, issueID, key string, value json.RawMessage) (bool, error) {
+// existing value was replaced. The change is recorded as an issue property
+// action so webhooks can report it.
+func (s *Store) SetIssueProperty(ctx context.Context, actorID, issueID, key string, value json.RawMessage) (bool, error) {
 	if !validIssueProperty(key, value) {
 		return false, ErrIssuePropertyValidation
 	}
-	tag, err := s.Pool.Exec(ctx, `
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	tag, err := tx.Exec(ctx, `
 		INSERT INTO issue_properties(issue_id,key,value) VALUES($1,$2,$3)
 		ON CONFLICT(issue_id,key) DO NOTHING`, issueID, key, []byte(value))
 	if err != nil {
 		return false, err
 	}
-	if tag.RowsAffected() == 1 {
-		return true, nil
+	created := tag.RowsAffected() == 1
+	if !created {
+		tag, err = tx.Exec(ctx, `UPDATE issue_properties SET value=$3,updated_at=now() WHERE issue_id=$1 AND key=$2 AND value IS DISTINCT FROM $3::jsonb`, issueID, key, []byte(value))
+		if err != nil {
+			return false, err
+		}
 	}
-	_, err = s.Pool.Exec(ctx, `UPDATE issue_properties SET value=$3,updated_at=now() WHERE issue_id=$1 AND key=$2`, issueID, key, []byte(value))
-	return false, err
+	if tag.RowsAffected() == 1 {
+		if err = issuePropertyAction(ctx, tx, actorID, issueID, key, value, models.OpUpsert); err != nil {
+			return false, err
+		}
+	}
+	return created, tx.Commit(ctx)
 }
 
-func (s *Store) DeleteIssueProperty(ctx context.Context, issueID, key string) error {
-	tag, err := s.Pool.Exec(ctx, `DELETE FROM issue_properties WHERE issue_id=$1 AND key=$2`, issueID, key)
+func (s *Store) DeleteIssueProperty(ctx context.Context, actorID, issueID, key string) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	tag, err := tx.Exec(ctx, `DELETE FROM issue_properties WHERE issue_id=$1 AND key=$2`, issueID, key)
 	if err != nil {
 		return err
 	}
 	if tag.RowsAffected() == 0 {
 		return pgx.ErrNoRows
 	}
-	return nil
+	if err = issuePropertyAction(ctx, tx, actorID, issueID, key, nil, models.OpDelete); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func issuePropertyAction(ctx context.Context, tx pgx.Tx, actorID, issueID, key string, value json.RawMessage, op string) error {
+	var workspaceID, issueKey string
+	if err := tx.QueryRow(ctx, `SELECT workspace_id,key FROM issues WHERE id=$1`, issueID).Scan(&workspaceID, &issueKey); err != nil {
+		return err
+	}
+	seq, err := nextSeq(ctx, tx, workspaceID)
+	if err != nil {
+		return err
+	}
+	payload, err := json.Marshal(models.IssuePropertyPayload{IssueID: issueID, IssueKey: issueKey, Key: key, Value: value})
+	if err != nil {
+		return err
+	}
+	return appendAction(ctx, tx, &models.Action{
+		WorkspaceID: workspaceID, Seq: seq, EntityType: models.EntityIssueProperty, EntityID: issueID + "/" + key,
+		Op: op, SchemaV: models.SchemaVersion, Payload: payload, ActorID: actorID,
+	})
 }

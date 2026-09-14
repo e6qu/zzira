@@ -55,6 +55,11 @@ func EventFor(a *models.Action) (string, bool) {
 		if a.Op == models.OpUpsert {
 			return "attachment_created", true
 		}
+	case models.EntityIssueProperty:
+		if a.Op == models.OpUpsert {
+			return "issue_property_set", true
+		}
+		return "issue_property_deleted", true
 	}
 	return "", false
 }
@@ -110,30 +115,36 @@ func (d *Dispatcher) deliver(ctx context.Context, workspaceID string, webhook *m
 		// Workspace sequences are monotonic watermarks; maintenance and
 		// permission-shaped actions can leave a sequence without a public
 		// action row. The gap has no event to deliver and is terminal.
-		return d.mark(ctx, webhook.ID, seq, true, "")
+		return d.mark(ctx, webhook.ID, seq, true, "", "")
 	}
 	if err != nil {
-		return d.markFailed(ctx, webhook.ID, seq, fmt.Errorf("load action: %w", err))
+		return d.markFailed(ctx, webhook.ID, seq, fmt.Errorf("load action: %w", err), "")
 	}
 	event, ok := EventFor(action)
 	if !ok {
-		return d.mark(ctx, webhook.ID, seq, true, "")
+		return d.mark(ctx, webhook.ID, seq, true, "", "")
 	}
 	forced := actionTriggersWebhook(action, webhook.ID)
 	if !forced && len(webhook.Events) > 0 && !containsString(webhook.Events, event) {
-		return d.mark(ctx, webhook.ID, seq, true, "")
+		return d.mark(ctx, webhook.ID, seq, true, "", "")
 	}
-	if !forced && webhook.JQL != "" && action.EntityType == models.EntityIssue {
+	if !forced && webhook.JQL != "" && actionKey(action) != "" {
 		if d.Checker == nil || d.Checker.Search == nil {
-			return d.markFailed(ctx, webhook.ID, seq, errors.New("JQL checker is not configured"))
+			return d.markFailed(ctx, webhook.ID, seq, errors.New("JQL checker is not configured"), "")
 		}
 		match, err := d.Checker.Search(ctx, workspaceID, fmt.Sprintf(`(%s) AND key = %s`, webhook.JQL, strconv.Quote(actionKey(action))))
 		if err != nil {
-			return d.markFailed(ctx, webhook.ID, seq, fmt.Errorf("evaluate JQL: %w", err))
+			return d.markFailed(ctx, webhook.ID, seq, fmt.Errorf("evaluate JQL: %w", err), "")
 		}
 		if !match {
-			return d.mark(ctx, webhook.ID, seq, true, "")
+			return d.mark(ctx, webhook.ID, seq, true, "", "")
 		}
+	}
+	if !forced && event == "jira:issue_updated" && len(webhook.FieldIDs) > 0 && !changesField(action, webhook.FieldIDs) {
+		return d.mark(ctx, webhook.ID, seq, true, "", "")
+	}
+	if action.EntityType == models.EntityIssueProperty && len(webhook.PropertyKeys) > 0 && !containsString(webhook.PropertyKeys, propertyKey(action)) {
+		return d.mark(ctx, webhook.ID, seq, true, "", "")
 	}
 	payload, err := json.Marshal(map[string]any{
 		"webhookEvent": event,
@@ -141,30 +152,37 @@ func (d *Dispatcher) deliver(ctx context.Context, workspaceID string, webhook *m
 		"action":       action,
 	})
 	if err != nil {
-		return d.markFailed(ctx, webhook.ID, seq, fmt.Errorf("encode payload: %w", err))
+		return d.markFailed(ctx, webhook.ID, seq, fmt.Errorf("encode payload: %w", err), "")
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, webhook.URL, bytes.NewReader(payload))
+	body := payload
+	if webhook.ExcludeBody {
+		body = nil
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, webhook.URL, bytes.NewReader(body))
 	if err != nil {
-		return d.markFailed(ctx, webhook.ID, seq, fmt.Errorf("create request: %w", err))
+		return d.markFailed(ctx, webhook.ID, seq, fmt.Errorf("create request: %w", err), string(body))
 	}
-	req.Header.Set("Content-Type", "application/json")
+	if !webhook.ExcludeBody {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	req.Header.Set("X-ZZIRA-Event", event)
+	req.Header.Set("X-Atlassian-Webhook-Identifier", fmt.Sprintf("%d-%d", webhook.JiraID, seq))
 	if d.Client == nil {
-		return d.markFailed(ctx, webhook.ID, seq, errors.New("webhook HTTP client is not configured"))
+		return d.markFailed(ctx, webhook.ID, seq, errors.New("webhook HTTP client is not configured"), string(body))
 	}
 	resp, err := d.Client.Do(req)
 	if err != nil {
-		return d.markFailed(ctx, webhook.ID, seq, fmt.Errorf("send request: %w", err))
+		return d.markFailed(ctx, webhook.ID, seq, fmt.Errorf("send request: %w", err), string(body))
 	}
 	_, readErr := io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
 	closeErr := resp.Body.Close()
 	if readErr != nil || closeErr != nil {
-		return d.markFailed(ctx, webhook.ID, seq, errors.Join(readErr, closeErr))
+		return d.markFailed(ctx, webhook.ID, seq, errors.Join(readErr, closeErr), string(body))
 	}
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		return d.mark(ctx, webhook.ID, seq, true, "")
+		return d.mark(ctx, webhook.ID, seq, true, "", "")
 	}
-	return d.markFailed(ctx, webhook.ID, seq, fmt.Errorf("http %d", resp.StatusCode))
+	return d.markFailed(ctx, webhook.ID, seq, fmt.Errorf("http %d", resp.StatusCode), string(body))
 }
 
 func actionTriggersWebhook(action *models.Action, webhookID string) bool {
@@ -175,15 +193,30 @@ func actionTriggersWebhook(action *models.Action, webhookID string) bool {
 	return json.Unmarshal(action.Payload, &payload) == nil && containsString(payload.TriggeredWebhookIDs, webhookID)
 }
 
-func (d *Dispatcher) markFailed(ctx context.Context, webhookID string, seq int64, cause error) error {
-	if err := d.mark(ctx, webhookID, seq, false, cause.Error()); err != nil {
+// changesField reports whether an issue update changed one of the fields a
+// webhook filters on.
+func changesField(action *models.Action, fieldIDs []string) bool {
+	var payload models.IssueUpdatePayload
+	if json.Unmarshal(action.Payload, &payload) != nil {
+		return false
+	}
+	for key, item := range payload.Diff {
+		if containsString(fieldIDs, key) || containsString(fieldIDs, item.Field) {
+			return true
+		}
+	}
+	return false
+}
+
+func (d *Dispatcher) markFailed(ctx context.Context, webhookID string, seq int64, cause error, body string) error {
+	if err := d.mark(ctx, webhookID, seq, false, cause.Error(), body); err != nil {
 		return errors.Join(cause, err)
 	}
 	return cause
 }
 
-func (d *Dispatcher) mark(ctx context.Context, webhookID string, seq int64, delivered bool, lastErr string) error {
-	if err := d.Store.MarkWebhookDelivery(ctx, webhookID, seq, delivered, lastErr); err != nil {
+func (d *Dispatcher) mark(ctx context.Context, webhookID string, seq int64, delivered bool, lastErr, body string) error {
+	if err := d.Store.MarkWebhookDelivery(ctx, webhookID, seq, delivered, lastErr, body); err != nil {
 		return fmt.Errorf("record delivery state: %w", err)
 	}
 	return nil
@@ -197,7 +230,22 @@ func actionKey(a *models.Action) string {
 		}
 		return a.EntityID
 	}
+	if a.EntityType == models.EntityIssueProperty {
+		var p models.IssuePropertyPayload
+		if err := json.Unmarshal(a.Payload, &p); err == nil {
+			return p.IssueKey
+		}
+	}
 	return ""
+}
+
+// propertyKey is the issue property an issue property action changed.
+func propertyKey(a *models.Action) string {
+	var p models.IssuePropertyPayload
+	if json.Unmarshal(a.Payload, &p) != nil {
+		return ""
+	}
+	return p.Key
 }
 
 func containsString(list []string, v string) bool {

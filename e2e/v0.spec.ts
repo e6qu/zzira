@@ -37,7 +37,10 @@ test.afterAll(async () => {
 test('V0 station 4: Jira API contract smoke (serverInfo + create via REST)', async ({ request }) => {
   const info = await request.get('/rest/api/3/serverInfo');
   expect(info.ok()).toBeTruthy();
-  expect((await info.json()).product).toBe('ZZIRA');
+  const server = await info.json();
+  expect(server.deploymentType).toBe('Cloud');
+  expect(server.versionNumbers).toHaveLength(3);
+  expect(server).not.toHaveProperty('product');
 
   const created = await request.post('/rest/api/3/issue', {
     headers: { Authorization: apiAuthHeader() },

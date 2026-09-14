@@ -618,6 +618,9 @@ func main() {
 	mux.Handle("/rest/agile/1.0/", agileAPI)
 	mux.Handle("/rest/software/1.0/", agileAPI)
 	mux.Handle("/rest/api/3/", api)
+	for _, prefix := range []string{"/rest/webhooks/1.0/", "/rest/atlassian-connect/1/addons/", "/rest/forge/1/app/properties", "/rest/forge/1/app/properties/", "/rest/internal/api/latest/worklog/bulk"} {
+		mux.Handle(prefix, api)
+	}
 	mux.Handle("/rest/servicedeskapi/", api)
 	mux.Handle("/jira/forms/cloud/", api)
 	mux.Handle("/rest/devinfo/0.10/", api)

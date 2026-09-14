@@ -18,7 +18,7 @@ import (
 const issuePropertyValueLimit = 32768
 
 func (h *Handler) issueProperties(w http.ResponseWriter, r *http.Request, idOrKey string, propertyKey *string) {
-	workspaceID, _, authErr := h.authWorkspace(r)
+	workspaceID, userID, authErr := h.authWorkspace(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
@@ -73,7 +73,7 @@ func (h *Handler) issueProperties(w http.ResponseWriter, r *http.Request, idOrKe
 		if !ok {
 			return
 		}
-		created, err := h.Store.SetIssueProperty(r.Context(), issue.ID, key, value)
+		created, err := h.Store.SetIssueProperty(r.Context(), userID, issue.ID, key, value)
 		if errors.Is(err, store.ErrIssuePropertyValidation) {
 			jiraError(w, http.StatusBadRequest, "A valid JSON property value of at most 32768 bytes is required.")
 			return
@@ -88,7 +88,7 @@ func (h *Handler) issueProperties(w http.ResponseWriter, r *http.Request, idOrKe
 			w.WriteHeader(http.StatusOK)
 		}
 	case http.MethodDelete:
-		err := h.Store.DeleteIssueProperty(r.Context(), issue.ID, key)
+		err := h.Store.DeleteIssueProperty(r.Context(), userID, issue.ID, key)
 		if errors.Is(err, pgx.ErrNoRows) {
 			jiraError(w, http.StatusNotFound, "Property does not exist.")
 			return

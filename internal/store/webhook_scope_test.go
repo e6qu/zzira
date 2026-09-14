@@ -63,17 +63,34 @@ func TestWebhookClaimsAreWorkspaceScopedAndBounded(t *testing.T) {
 		VALUES ($1,4,'delivering',100)`, wh.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.MarkWebhookDelivery(ctx, wh.ID, 4, false, "still unavailable"); err != nil {
+	if err := st.MarkWebhookDelivery(ctx, wh.ID, 4, false, "still unavailable", `{"webhookEvent":"jira:issue_updated"}`); err != nil {
 		t.Fatalf("high-attempt retry overflowed: %v", err)
 	}
+	// A delivery that exhausts its retries is abandoned with the body it would
+	// have sent, rather than retried forever.
 	var attempts int
-	var scheduled bool
+	var state, body string
+	var scheduled, failed bool
 	if err := st.Pool.QueryRow(ctx, `
-		SELECT attempts, next_attempt_at IS NOT NULL
-		FROM webhook_deliveries WHERE webhook_id=$1 AND seq=4`, wh.ID).Scan(&attempts, &scheduled); err != nil {
+		SELECT attempts, state, COALESCE(body,''), next_attempt_at IS NOT NULL, failed_at IS NOT NULL
+		FROM webhook_deliveries WHERE webhook_id=$1 AND seq=4`, wh.ID).Scan(&attempts, &state, &body, &scheduled, &failed); err != nil {
 		t.Fatal(err)
 	}
-	if attempts != 101 || !scheduled {
-		t.Fatalf("retry attempts=%d scheduled=%v, want 101/true", attempts, scheduled)
+	if attempts != 101 || state != "abandoned" || scheduled || !failed || body == "" {
+		t.Fatalf("exhausted delivery attempts=%d state=%s scheduled=%v failed=%v body=%q", attempts, state, scheduled, failed, body)
+	}
+	if err := st.Pool.QueryRow(ctx, `
+		INSERT INTO webhook_deliveries (webhook_id, seq, state, attempts) VALUES ($1,5,'delivering',1)
+		RETURNING seq`, wh.ID).Scan(new(int64)); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.MarkWebhookDelivery(ctx, wh.ID, 5, false, "unavailable", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Pool.QueryRow(ctx, `SELECT state, next_attempt_at IS NOT NULL FROM webhook_deliveries WHERE webhook_id=$1 AND seq=5`, wh.ID).Scan(&state, &scheduled); err != nil {
+		t.Fatal(err)
+	}
+	if state != "failed" || !scheduled {
+		t.Fatalf("early failure state=%s scheduled=%v, want a scheduled retry", state, scheduled)
 	}
 }
