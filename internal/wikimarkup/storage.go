@@ -120,8 +120,8 @@ func Render(storage string) (string, error) {
 				if len(t.Attr) != 1 || t.Attr[0].Name.Space != "" || t.Attr[0].Name.Local != "datetime" || !storageDate.MatchString(t.Attr[0].Value) {
 					return "", fmt.Errorf("a time element carries only a datetime date")
 				}
-				date := html.EscapeString(t.Attr[0].Value)
-				b.WriteString(`<time datetime="` + date + `">` + date)
+				date := t.Attr[0].Value
+				b.WriteString(`<time datetime=` + quotedAttribute(date) + `>` + html.EscapeString(date))
 				suppressed++
 				continue
 			}
@@ -278,7 +278,14 @@ func readMention(d *xml.Decoder, start xml.StartElement) (string, bool, error) {
 	if label == "" {
 		label = "user"
 	}
-	return `<a href="/people/` + html.EscapeString(url.PathEscape(accountID)) + `">@` + html.EscapeString(label) + `</a>`, true, nil
+	return `<a href=` + quotedAttribute("/people/"+url.PathEscape(accountID)) + `>@` + html.EscapeString(label) + `</a>`, true, nil
+}
+
+// quotedAttribute renders a value as a double-quoted HTML attribute. The value
+// is HTML-escaped, and a double quote, which would end the attribute, is
+// replaced explicitly.
+func quotedAttribute(value string) string {
+	return `"` + strings.ReplaceAll(html.EscapeString(value), `"`, "&#34;") + `"`
 }
 
 // MentionedAccounts lists the accounts a storage body mentions, each once, in
