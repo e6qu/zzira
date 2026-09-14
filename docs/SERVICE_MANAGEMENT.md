@@ -217,6 +217,46 @@ quarter of a goal and sorts breached requests first. Jira's seven SLA JQL
 functions query the same calendar, cycle, goal snapshot, and pause state used by
 these REST and worker journeys.
 
+## Listing and reading requests
+
+`GET /rest/servicedeskapi/request` lists a person's requests, most recently
+active first. `requestOwnership` selects them, and several values combine:
+
+- `OWNED_REQUESTS` — requests the person raised, or that were raised for them.
+- `PARTICIPATED_REQUESTS` — requests they participate in.
+- `ORGANIZATION` with `organizationId`, or `ALL_ORGANIZATIONS` — requests raised by
+  members of an organization the person belongs to and the desk serves.
+- `APPROVER` — requests the person approves. `approvalStatus`
+  `MY_PENDING_APPROVAL` keeps approvals still waiting on them;
+  `MY_HISTORY_APPROVAL` keeps those they decided or that are complete.
+- `ALL_REQUESTS` — every request of the desks an agent serves, or every request
+  for a site administrator.
+
+Without `requestOwnership`, owned, participated and organization requests are
+listed. `requestStatus` (`OPEN_REQUESTS`, `CLOSED_REQUESTS`, `ALL_REQUESTS`),
+`searchTerm` (matched against summaries, with `*` and `?` wildcards),
+`serviceDeskId` and `requestTypeId` narrow the list. An unknown value, an
+`organizationId` without `ORGANIZATION`, an `approvalStatus` without `APPROVER`,
+or a `requestTypeId` without its `serviceDeskId` answers 400. An unknown desk or
+request type answers 404.
+
+A request always carries its visible field values, reporter, current status
+and created date. Status categories are Jira's keys: `NEW`, `INDETERMINATE` or
+`DONE`. The other parts appear only when expanded, and `_expands` lists those
+that were not:
+
+- `serviceDesk` and `requestType`;
+- `participant`, a page of participants;
+- `sla`, for agents;
+- `status`, the chronology from the status the request was created in;
+- `attachment`;
+- `action` — commenting and attaching for everyone who can see the request, and
+  managing participants for its reporter and agents;
+- `comment`, with `comment.attachment` and `comment.renderedBody`.
+
+`GET /rest/servicedeskapi/request/{issueIdOrKey}/status` lists the same
+chronology, most recent status first.
+
 ## REST coverage
 
 The current `/rest/servicedeskapi` slice implements:
@@ -270,8 +310,7 @@ Assets-backed portal pickers, participant notifications,
 approval workflow configuration, image thumbnail generation,
 email delivery and notification preference administration, CSAT configuration,
 service report comparisons, SLA goal distributions, exports and scheduled
-delivery, complete public Assets object/schema/import API parity, full
-status chronology, SLA rule reordering and advanced criteria,
+delivery, complete public Assets object/schema/import API parity, SLA rule reordering and advanced criteria,
 portal invitation email delivery, Atlassian knowledge ranking/analytics, and asset import/reconciliation and review templates
 remain. Customer creation grants only the
 site `atlassian/customer` role and never silently grants Jira product access.

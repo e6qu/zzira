@@ -9358,6 +9358,7 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_request_list_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service.go",
         "internal/commands/service.go",
@@ -9365,7 +9366,7 @@
         "e2e/service.spec.ts",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Lists caller-owned requests, with desk-scoped agent ALL_REQUESTS and desk/type filters; remaining status, participant, approval, organization and pagination filters remain."
+      "notes": "Lists the caller's customer requests, most recently active first, by Jira's requestOwnership values (owned, participated, organization with organizationId, all organizations, approver with MY_PENDING_APPROVAL or MY_HISTORY_APPROVAL, and ALL_REQUESTS for agents' desks or every request for site administrators), defaulting to owned, participated and organization requests; requestStatus, searchTerm with wildcards, serviceDeskId and requestTypeId narrow the list, invalid combinations answer 400 and unknown desks or request types 404; every expansion is honoured. Organization requests are those raised by members of an organization the desk serves."
     },
     {
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/request",
@@ -9405,6 +9406,7 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_request_list_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service.go",
         "internal/commands/service.go",
@@ -9412,7 +9414,7 @@
         "e2e/service.spec.ts",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Returns a customer-safe request by issue ID or key with typed fields, portal, reporter, current status and visible conversation; remaining attachment, approval and expansion shapes remain."
+      "notes": "Returns a visible customer request by issue ID or key with typed visible fields, reporter, current status with Jira's status category key and created date; serviceDesk, requestType, participant, sla, status (the status chronology), attachment, action (what the caller may do), comment, comment.attachment and comment.renderedBody appear only when expanded, with _expands listing the rest."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/approval",
@@ -9678,6 +9680,7 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_request_list_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service.go",
         "internal/commands/service.go",
@@ -9685,7 +9688,7 @@
         "e2e/service.spec.ts",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Returns the current customer-visible status in the Jira Service Management date and category shape; full historical status chronology remains."
+      "notes": "Returns every status the request has attained, most recent first, from the status it was created in through each transition, with Jira's status category keys and dates, paged."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/transition",

@@ -14,6 +14,7 @@ import (
 	"github.com/e6qu/zzira/internal/adf"
 	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/models"
+	"github.com/e6qu/zzira/internal/store"
 	"github.com/e6qu/zzira/internal/workflow"
 )
 
@@ -543,29 +544,104 @@ func (h *Handler) listServiceRequests(w http.ResponseWriter, r *http.Request, wo
 		writeJerr(w, authErr)
 		return
 	}
-	admin, err := h.Store.IsAdmin(r.Context(), workspaceID, actorID)
-	if err != nil {
-		jiraError(w, http.StatusInternalServerError, "Could not load customer requests.")
+	query := r.URL.Query()
+	filter := store.ServiceRequestListFilter{ViewerID: actorID, ServiceDeskID: query.Get("serviceDeskId"), RequestTypeID: query.Get("requestTypeId"), SearchTerm: query.Get("searchTerm")}
+	ownership := []string{}
+	for _, value := range query["requestOwnership"] {
+		for _, part := range strings.Split(value, ",") {
+			if part = strings.TrimSpace(part); part != "" {
+				ownership = append(ownership, strings.ToUpper(part))
+			}
+		}
+	}
+	// Without an ownership filter Jira lists owned, participated and
+	// organization requests.
+	if len(ownership) == 0 {
+		ownership = []string{"OWNED_REQUESTS", "PARTICIPATED_REQUESTS", "ALL_ORGANIZATIONS"}
+	}
+	for _, value := range ownership {
+		switch value {
+		case "OWNED_REQUESTS":
+			filter.Owned = true
+		case "PARTICIPATED_REQUESTS":
+			filter.Participated = true
+		case "ORGANIZATION", "ALL_ORGANIZATIONS":
+			filter.Organizations = true
+		case "APPROVER":
+			filter.Approver = true
+		case "ALL_REQUESTS":
+			filter.AllRequests = true
+		default:
+			jiraError(w, http.StatusBadRequest, "requestOwnership must be OWNED_REQUESTS, PARTICIPATED_REQUESTS, ORGANIZATION, ALL_ORGANIZATIONS, APPROVER or ALL_REQUESTS.")
+			return
+		}
+	}
+	if organizationID := query.Get("organizationId"); organizationID != "" {
+		if !slices.Contains(ownership, "ORGANIZATION") {
+			jiraError(w, http.StatusBadRequest, "organizationId is valid only with requestOwnership=ORGANIZATION.")
+			return
+		}
+		filter.OrganizationID = organizationID
+	} else if slices.Contains(ownership, "ORGANIZATION") && !slices.Contains(ownership, "ALL_ORGANIZATIONS") {
+		jiraError(w, http.StatusBadRequest, "requestOwnership=ORGANIZATION needs an organizationId.")
 		return
 	}
-	allRequests := strings.EqualFold(r.URL.Query().Get("requestOwnership"), "ALL_REQUESTS")
-	var requests []*models.ServiceRequest
-	if allRequests && admin {
-		requests, err = h.Store.ServiceRequests(r.Context(), workspaceID, actorID, r.URL.Query().Get("serviceDeskId"), r.URL.Query().Get("requestTypeId"), true)
-	} else if allRequests {
-		agent, accessErr := h.Store.IsAnyServiceAgent(r.Context(), workspaceID, actorID)
-		if accessErr != nil {
-			jiraError(w, http.StatusInternalServerError, "Could not authorize service access.")
+	switch approval := strings.ToUpper(query.Get("approvalStatus")); approval {
+	case "":
+	case "MY_PENDING_APPROVAL", "MY_HISTORY_APPROVAL":
+		if !filter.Approver {
+			jiraError(w, http.StatusBadRequest, "approvalStatus is valid only with requestOwnership=APPROVER.")
 			return
 		}
-		if !agent {
-			jiraError(w, http.StatusForbidden, "Service agent access is required for all requests.")
-			return
-		}
-		requests, err = h.Store.ServiceRequestsForAgent(r.Context(), workspaceID, actorID, r.URL.Query().Get("serviceDeskId"), r.URL.Query().Get("requestTypeId"))
-	} else {
-		requests, err = h.Store.ServiceRequests(r.Context(), workspaceID, actorID, r.URL.Query().Get("serviceDeskId"), r.URL.Query().Get("requestTypeId"), false)
+		filter.ApprovalStatus = approval
+	default:
+		jiraError(w, http.StatusBadRequest, "approvalStatus must be MY_PENDING_APPROVAL or MY_HISTORY_APPROVAL.")
+		return
 	}
+	switch status := strings.ToUpper(query.Get("requestStatus")); status {
+	case "", "ALL_REQUESTS":
+	case "OPEN_REQUESTS", "CLOSED_REQUESTS":
+		filter.RequestStatus = status
+	default:
+		jiraError(w, http.StatusBadRequest, "requestStatus must be OPEN_REQUESTS, CLOSED_REQUESTS or ALL_REQUESTS.")
+		return
+	}
+	if filter.RequestTypeID != "" && filter.ServiceDeskID == "" {
+		jiraError(w, http.StatusBadRequest, "requestTypeId needs the serviceDeskId of its service desk.")
+		return
+	}
+	if filter.ServiceDeskID != "" {
+		if _, err := h.Store.ServiceDesk(r.Context(), workspaceID, filter.ServiceDeskID); err != nil {
+			jiraError(w, http.StatusNotFound, "The service desk does not exist.")
+			return
+		}
+		if filter.RequestTypeID != "" {
+			if _, err := h.Store.ServiceRequestType(r.Context(), workspaceID, filter.ServiceDeskID, filter.RequestTypeID); err != nil {
+				jiraError(w, http.StatusNotFound, "The service desk does not support the request type.")
+				return
+			}
+		}
+	}
+	if filter.AllRequests {
+		admin, err := h.Store.IsAdmin(r.Context(), workspaceID, actorID)
+		if err != nil {
+			jiraError(w, http.StatusInternalServerError, "Could not load customer requests.")
+			return
+		}
+		filter.SiteAdmin = admin
+		if !admin {
+			agent, accessErr := h.Store.IsAnyServiceAgent(r.Context(), workspaceID, actorID)
+			if accessErr != nil {
+				jiraError(w, http.StatusInternalServerError, "Could not authorize service access.")
+				return
+			}
+			if !agent {
+				jiraError(w, http.StatusForbidden, "Service agent access is required for all requests.")
+				return
+			}
+		}
+	}
+	requests, err := h.Store.ServiceRequestList(r.Context(), workspaceID, filter)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "Could not load customer requests.")
 		return
@@ -803,58 +879,34 @@ func (h *Handler) serviceUserBean(user *models.User) map[string]any {
 }
 
 func (h *Handler) serviceStatusBean(status models.Status, changed string) map[string]any {
-	return map[string]any{
-		"status":         status.Name,
-		"statusCategory": map[string]string{"key": status.Category, "name": status.Category},
-		"statusDate":     serviceDate(parseServiceDate(changed)),
+	return serviceStatusEntryBean(status, parseServiceDate(changed))
+}
+
+// serviceStatusEntryBean is a status a request attained, with Jira's status
+// category key.
+func serviceStatusEntryBean(status models.Status, at time.Time) map[string]any {
+	category := map[string]string{"new": "NEW", "indeterminate": "INDETERMINATE", "done": "DONE"}[strings.ToLower(status.Category)]
+	if category == "" {
+		category = "UNDEFINED"
 	}
+	return map[string]any{"status": status.Name, "statusCategory": category, "statusDate": serviceDate(at)}
+}
+
+// servicePagedValues is Jira Service Management's page of every value.
+func servicePagedValues[T any](values []T) map[string]any {
+	return map[string]any{"start": 0, "limit": len(values), "size": len(values), "isLastPage": true, "values": values, "_expands": []any{}}
 }
 
 func (h *Handler) serviceRequestBean(r *http.Request, workspaceID, viewerID string, request *models.ServiceRequest) (map[string]any, error) {
+	expand := map[string]bool{}
+	for _, value := range r.URL.Query()["expand"] {
+		for _, part := range strings.Split(value, ",") {
+			expand[strings.TrimSpace(part)] = true
+		}
+	}
 	canManage, err := h.Store.CanManageServiceRequest(r.Context(), workspaceID, viewerID, request.Issue.ID)
 	if err != nil {
 		return nil, err
-	}
-	comments, err := h.Store.ServiceRequestComments(r.Context(), request.Issue.ID, canManage)
-	if err != nil {
-		return nil, err
-	}
-	commentBeans := make([]map[string]any, 0, len(comments))
-	for _, comment := range comments {
-		attachments, err := h.Store.ServiceCommentAttachments(r.Context(), request.Issue.ID, comment.Comment.ID, canManage)
-		if err != nil {
-			return nil, err
-		}
-		for _, attachment := range attachments {
-			comment.Attachments = append(comment.Attachments, attachment.Attachment)
-		}
-		commentBeans = append(commentBeans, h.serviceCommentBean(request, comment))
-	}
-	attachments, err := h.Store.ServiceRequestAttachments(r.Context(), request.Issue.ID, canManage)
-	if err != nil {
-		return nil, err
-	}
-	attachmentBeans := make([]map[string]any, 0, len(attachments))
-	for _, attachment := range attachments {
-		attachmentBeans = append(attachmentBeans, h.serviceAttachmentBean(request, attachment.Attachment))
-	}
-	participants, err := h.Store.ServiceRequestParticipants(r.Context(), request.Issue.ID)
-	if err != nil {
-		return nil, err
-	}
-	participantBeans := make([]map[string]any, 0, len(participants))
-	for _, participant := range participants {
-		participantBeans = append(participantBeans, h.serviceUserBean(participant))
-	}
-	slaBeans := make([]map[string]any, 0)
-	if canManage {
-		slas, err := h.Store.ServiceSLAs(r.Context(), workspaceID, request.Issue.ID, time.Now().UTC())
-		if err != nil {
-			return nil, err
-		}
-		for _, sla := range slas {
-			slaBeans = append(slaBeans, h.serviceSLABean(request, sla))
-		}
 	}
 	fields := []map[string]any{
 		{"fieldId": "summary", "label": "Summary", "value": request.Issue.Summary, "renderedValue": request.Issue.Summary},
@@ -865,7 +917,8 @@ func (h *Handler) serviceRequestBean(r *http.Request, workspaceID, viewerID stri
 		return nil, err
 	}
 	for _, field := range configuredFields {
-		if !field.Custom {
+		// Hidden fields are not part of what the request shows.
+		if !field.Custom || field.Hidden {
 			continue
 		}
 		var value any
@@ -876,22 +929,124 @@ func (h *Handler) serviceRequestBean(r *http.Request, workspaceID, viewerID stri
 		}
 		fields = append(fields, map[string]any{"fieldId": field.ID, "label": field.Name, "value": value, "renderedValue": value})
 	}
-	status := h.serviceStatusBean(request.Issue.Status, request.Issue.UpdatedAt)
-	return map[string]any{
+	bean := map[string]any{
 		"issueId": jiraIssueID(request.Issue), "issueKey": request.Issue.Key, "summary": request.Issue.Summary,
 		"serviceDeskId": request.ServiceDesk.ID, "requestTypeId": request.RequestType.ID,
-		"serviceDesk": serviceDeskBean(h.BaseURL, request.ServiceDesk),
-		"requestType": serviceRequestTypeBean(h.BaseURL, h.wireServiceRequestType(r.Context(), workspaceID, request.RequestType)),
-		"reporter":    h.serviceUserBean(request.Customer), "participants": participantBeans,
-		"requestFieldValues": fields, "currentStatus": status, "status": status,
-		"createdDate": serviceDate(request.CreatedAt), "channel": request.Channel,
-		"comments":    map[string]any{"start": 0, "limit": 50, "size": len(commentBeans), "isLastPage": true, "values": commentBeans},
-		"attachments": map[string]any{"start": 0, "limit": 50, "size": len(attachmentBeans), "isLastPage": true, "values": attachmentBeans}, "sla": slaBeans, "actions": []any{}, "_expands": []string{"serviceDesk", "requestType", "currentStatus"},
+		"reporter": h.serviceUserBean(request.Customer), "requestFieldValues": fields,
+		"currentStatus": h.serviceStatusBean(request.Issue.Status, request.Issue.UpdatedAt),
+		"createdDate":   serviceDate(request.CreatedAt),
 		"_links": map[string]string{
 			"self": h.BaseURL + "/rest/servicedeskapi/request/" + request.Issue.Key,
 			"web":  h.BaseURL + "/service/requests/" + request.Issue.Key,
 		},
-	}, nil
+	}
+	unexpanded := []string{}
+	if expand["serviceDesk"] {
+		bean["serviceDesk"] = serviceDeskBean(h.BaseURL, request.ServiceDesk)
+	} else {
+		unexpanded = append(unexpanded, "serviceDesk")
+	}
+	if expand["requestType"] {
+		bean["requestType"] = serviceRequestTypeBean(h.BaseURL, h.wireServiceRequestType(r.Context(), workspaceID, request.RequestType))
+	} else {
+		unexpanded = append(unexpanded, "requestType")
+	}
+	participants, err := h.Store.ServiceRequestParticipants(r.Context(), request.Issue.ID)
+	if err != nil {
+		return nil, err
+	}
+	if expand["participant"] {
+		participantBeans := make([]map[string]any, 0, len(participants))
+		for _, participant := range participants {
+			participantBeans = append(participantBeans, h.serviceUserBean(participant))
+		}
+		bean["participants"] = servicePagedValues(participantBeans)
+	} else {
+		unexpanded = append(unexpanded, "participant")
+	}
+	if expand["sla"] {
+		slaBeans := make([]map[string]any, 0)
+		if canManage {
+			slas, err := h.Store.ServiceSLAs(r.Context(), workspaceID, request.Issue.ID, time.Now().UTC())
+			if err != nil {
+				return nil, err
+			}
+			for _, sla := range slas {
+				slaBeans = append(slaBeans, h.serviceSLABean(request, sla))
+			}
+		}
+		bean["sla"] = servicePagedValues(slaBeans)
+	} else {
+		unexpanded = append(unexpanded, "sla")
+	}
+	if expand["status"] {
+		history, err := h.Store.ServiceRequestStatusHistory(r.Context(), workspaceID, request.Issue.ID)
+		if err != nil {
+			return nil, err
+		}
+		statusBeans := make([]map[string]any, 0, len(history))
+		for _, entry := range history {
+			statusBeans = append(statusBeans, serviceStatusEntryBean(entry.Status, entry.At))
+		}
+		bean["status"] = servicePagedValues(statusBeans)
+	} else {
+		unexpanded = append(unexpanded, "status")
+	}
+	if expand["attachment"] {
+		attachments, err := h.Store.ServiceRequestAttachments(r.Context(), request.Issue.ID, canManage)
+		if err != nil {
+			return nil, err
+		}
+		attachmentBeans := make([]map[string]any, 0, len(attachments))
+		for _, attachment := range attachments {
+			attachmentBeans = append(attachmentBeans, h.serviceAttachmentBean(request, attachment.Attachment))
+		}
+		bean["attachments"] = servicePagedValues(attachmentBeans)
+	} else {
+		unexpanded = append(unexpanded, "attachment")
+	}
+	if expand["action"] {
+		// People who can see a request comment on it and attach files; its
+		// reporter and agents manage who participates.
+		reporter := request.Customer != nil && request.Customer.ID == viewerID
+		bean["actions"] = map[string]any{
+			"addAttachment": map[string]bool{"allowed": true}, "addComment": map[string]bool{"allowed": true},
+			"addParticipant": map[string]bool{"allowed": canManage || reporter}, "removeParticipant": map[string]bool{"allowed": canManage || reporter},
+		}
+	} else {
+		unexpanded = append(unexpanded, "action")
+	}
+	if expand["comment"] {
+		comments, err := h.Store.ServiceRequestComments(r.Context(), request.Issue.ID, canManage)
+		if err != nil {
+			return nil, err
+		}
+		commentBeans := make([]map[string]any, 0, len(comments))
+		for _, comment := range comments {
+			if expand["comment.attachment"] {
+				attachments, err := h.Store.ServiceCommentAttachments(r.Context(), request.Issue.ID, comment.Comment.ID, canManage)
+				if err != nil {
+					return nil, err
+				}
+				for _, attachment := range attachments {
+					comment.Attachments = append(comment.Attachments, attachment.Attachment)
+				}
+			}
+			commentBean := h.serviceCommentBean(request, comment)
+			if !expand["comment.attachment"] {
+				delete(commentBean, "attachments")
+			}
+			if !expand["comment.renderedBody"] {
+				delete(commentBean, "renderedBody")
+			}
+			commentBeans = append(commentBeans, commentBean)
+		}
+		bean["comments"] = servicePagedValues(commentBeans)
+	} else {
+		unexpanded = append(unexpanded, "comment")
+	}
+	bean["_expands"] = unexpanded
+	return bean, nil
 }
 
 func (h *Handler) writeServiceParticipants(w http.ResponseWriter, r *http.Request, users []*models.User) {
@@ -1035,7 +1190,17 @@ func (h *Handler) serviceRequestStatus(w http.ResponseWriter, r *http.Request, w
 		writeJerr(w, accessErr)
 		return
 	}
-	h.writeServicePage(w, r, []map[string]any{h.serviceStatusBean(request.Issue.Status, request.Issue.UpdatedAt)})
+	history, err := h.Store.ServiceRequestStatusHistory(r.Context(), workspaceID, request.Issue.ID)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "Could not load the request's statuses.")
+		return
+	}
+	// The chronology lists the current status first.
+	beans := make([]map[string]any, 0, len(history))
+	for index := len(history) - 1; index >= 0; index-- {
+		beans = append(beans, serviceStatusEntryBean(history[index].Status, history[index].At))
+	}
+	h.writeServicePage(w, r, beans)
 }
 
 func serviceDuration(millis int64, friendly string) map[string]any {

@@ -1001,7 +1001,8 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 		t.Fatal(transitions.Body.String())
 	}
 	callAs(customerID, "POST", "/rest/servicedeskapi/request/"+issueKey+"/transition", `{"id":"21","additionalComment":{"body":"Work can begin.","public":true}}`, 204)
-	detail := callAs(customerID, "GET", "/rest/servicedeskapi/request/"+issueKey, "", 200)
+	// Comments appear on a request only when expanded, as in Jira.
+	detail := callAs(customerID, "GET", "/rest/servicedeskapi/request/"+issueKey+"?expand=comment", "", 200)
 	if !strings.Contains(detail.Body.String(), `"status":"In Progress"`) || !strings.Contains(detail.Body.String(), "Work can begin") {
 		t.Fatal(detail.Body.String())
 	}
@@ -1077,8 +1078,9 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if !strings.Contains(agentRaised.Body.String(), "Agent-raised customer request") {
 		t.Fatal(agentRaised.Body.String())
 	}
-	agentDetail := callAs(agentID, "GET", "/rest/servicedeskapi/request/"+issueKey, "", 200)
-	if !strings.Contains(agentDetail.Body.String(), `"sla":[{`) {
+	// SLAs appear on a request only when expanded, as a page, as in Jira.
+	agentDetail := callAs(agentID, "GET", "/rest/servicedeskapi/request/"+issueKey+"?expand=sla", "", 200)
+	if !strings.Contains(agentDetail.Body.String(), `"sla":{`) || !strings.Contains(agentDetail.Body.String(), `"slaDisplayFormat":"NEW_SLA_FORMAT"`) {
 		t.Fatal(agentDetail.Body.String())
 	}
 	var customerCommentNotificationsBefore int
