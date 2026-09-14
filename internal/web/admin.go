@@ -52,6 +52,7 @@ type adminPageData struct {
 	NavigatorColumns                  []adminNavigatorColumn
 	ProjectCategories                 []*models.ProjectCategory
 	IssueEvents                       []adminIssueEvent
+	GlobalPermissions                 []adminGlobalPermission
 	ClassificationLevels              []models.DataClassificationLevel
 	ClassificationColors              []string
 	LastClassificationIndex           int
@@ -218,6 +219,9 @@ func (h *Handler) adminData(r *http.Request, workspaceID, message string) (admin
 	if err != nil {
 		return adminPageData{}, err
 	}
+	if data.GlobalPermissions, err = h.loadGlobalPermissions(r, workspaceID); err != nil {
+		return adminPageData{}, err
+	}
 	for _, event := range events {
 		data.IssueEvents = append(data.IssueEvents, adminIssueEvent{NotificationEventDefinition: event, Custom: store.IsCustomIssueEvent(event.ID)})
 	}
@@ -261,6 +265,91 @@ func (h *Handler) adminData(r *http.Request, workspaceID, message string) (admin
 		return adminPageData{}, err
 	}
 	return data, nil
+}
+
+// adminGlobalPermission is one global permission and whom it is granted to.
+type adminGlobalPermission struct {
+	store.PermissionDefinition
+	Grants []store.GlobalPermissionGrant
+}
+
+func (h *Handler) loadGlobalPermissions(r *http.Request, workspaceID string) ([]adminGlobalPermission, error) {
+	catalog, err := h.Store.PermissionCatalog(r.Context(), workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	grants, err := h.Store.GlobalPermissionGrants(r.Context(), workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	byPermission := map[string][]store.GlobalPermissionGrant{}
+	for _, grant := range grants {
+		byPermission[grant.Permission] = append(byPermission[grant.Permission], grant)
+	}
+	rows := []adminGlobalPermission{}
+	for _, definition := range catalog {
+		if definition.Type == "GLOBAL" && definition.Key != "ADMINISTER" {
+			rows = append(rows, adminGlobalPermission{PermissionDefinition: definition, Grants: byPermission[definition.Key]})
+		}
+	}
+	return rows, nil
+}
+
+func globalPermissionStatus(err error) int {
+	switch {
+	case errors.Is(err, store.ErrGlobalPermissionValidation):
+		return http.StatusBadRequest
+	case errors.Is(err, store.ErrGlobalPermissionConflict):
+		return http.StatusConflict
+	case errors.Is(err, store.ErrGlobalPermissionNotFound):
+		return http.StatusNotFound
+	case errors.Is(err, store.ErrProjectPermission):
+		return http.StatusForbidden
+	}
+	return http.StatusInternalServerError
+}
+
+// CreateAdminGlobalPermissionGrant grants a global permission to a group or to
+// everyone with a product. The holder is "group:<id>" or "product:<key>".
+func (h *Handler) CreateAdminGlobalPermissionGrant(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	kind, value, _ := strings.Cut(r.PostFormValue("holder"), ":")
+	groupID, productKey := "", ""
+	switch kind {
+	case "group":
+		groupID = value
+	case "product":
+		productKey = value
+	default:
+		http.Error(w, "choose a group or product to grant the permission to", http.StatusBadRequest)
+		return
+	}
+	if _, err := h.Store.AddGlobalPermissionGrant(r.Context(), workspaceID, user.ID, r.PostFormValue("permission"), groupID, productKey); err != nil {
+		http.Error(w, err.Error(), globalPermissionStatus(err))
+		return
+	}
+	redirectLocal(w, r, "/admin?saved="+url.QueryEscape("Global permission granted")+"#admin-global-permissions")
+}
+
+// DeleteAdminGlobalPermissionGrant removes one global permission grant.
+func (h *Handler) DeleteAdminGlobalPermissionGrant(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("grantId"), 10, 64)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if err = h.Store.RemoveGlobalPermissionGrant(r.Context(), workspaceID, user.ID, id); err != nil {
+		http.Error(w, err.Error(), globalPermissionStatus(err))
+		return
+	}
+	redirectLocal(w, r, "/admin?saved="+url.QueryEscape("Global permission grant removed")+"#admin-global-permissions")
 }
 
 // adminIssueEvent is one row of the events list; only custom events change.

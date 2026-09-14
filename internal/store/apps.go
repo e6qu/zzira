@@ -283,8 +283,10 @@ func (s *Store) InstallApp(ctx context.Context, workspaceID, actorID string, des
 	}
 	var installationID, principalID, currentStatus string
 	err = tx.QueryRow(ctx, `SELECT id,principal_id,status FROM app_installations WHERE workspace_id=$1 AND app_key=$2 FOR UPDATE`, workspaceID, descriptor.Key).Scan(&installationID, &principalID, &currentStatus)
+	firstInstall := false
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
+		firstInstall = true
 		if err := tx.QueryRow(ctx, `SELECT nextval('jira_app_installation_id')::text`).Scan(&installationID); err != nil {
 			return nil, err
 		}
@@ -343,6 +345,19 @@ func (s *Store) InstallApp(ctx context.Context, workspaceID, actorID string, des
 	}
 	if err := writeAppChildren(ctx, tx, installationID, descriptor); err != nil {
 		return nil, err
+	}
+	if firstInstall {
+		// Global permissions granted to all users on an app's first installation.
+		for _, permission := range descriptor.Permissions {
+			for _, grant := range permission.DefaultGrants {
+				if permission.Type != "GLOBAL" || grant != "ALL" {
+					continue
+				}
+				if _, err := tx.Exec(ctx, `INSERT INTO global_permission_grants(workspace_id,permission_key,product_key) VALUES($1,$2,'jira-software') ON CONFLICT DO NOTHING`, workspaceID, descriptor.Key+"__"+permission.Key); err != nil {
+					return nil, err
+				}
+			}
+		}
 	}
 	staticModuleKeys := make([]string, 0, len(descriptor.Modules))
 	for _, module := range descriptor.Modules {

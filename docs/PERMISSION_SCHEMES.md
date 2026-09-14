@@ -43,8 +43,8 @@ permission keys, followed by the permissions active apps declare through
 Connect's `jiraProjectPermissions` and `jiraGlobalPermissions` modules. An app
 permission's key joins the app key and module key with two underscores. Schemes
 grant built-in and app project permissions only. An app global permission whose
-`defaultGrants` include `ALL` is held by every site member, and one granted to
-`JIRA-ADMINISTRATORS` is held by administrators. Project grants accept `anyone`, application-role, assignee,
+`defaultGrants` include `ALL` is granted to everyone with Jira access on first
+installation, and administrators hold every app global permission. Project grants accept `anyone`, application-role, assignee,
 group, group-custom-field, project-lead, project-role, reporter, service-portal
 customer, user, and user-custom-field holders. User, group, and role holders are
 validated against the current workspace. Group names remain synchronized after
@@ -58,10 +58,13 @@ new projects receive that default assignment, preserving the access behavior
 that preceded configurable schemes.
 
 Global Jira administration follows organization and site administrator role
-bindings. Active workspace members receive the existing shared-object,
-user-picker, browse-user, bulk-change, and team-managed project capabilities;
-the remaining global permissions stay administrator-only until global
-permission administration is delivered.
+bindings. Every other global permission, including those apps declare, is
+granted to groups or to everyone with Jira or Jira Service Management access,
+in the Global permissions section of site administration (migration 193).
+Sites start with the shared-object, user-picker, browse-user, bulk-change and
+team-managed project permissions granted to everyone with Jira access. An app
+global permission whose `defaultGrants` include `ALL` is granted that way when
+the app is first installed. Administrators hold every global permission.
 
 ## Runtime authorization
 
@@ -90,8 +93,7 @@ which matches Jira's context-dependent permission-query behavior.
   schema as part of the migration and integration gates.
 
 Grants to `anyone` open reads to anonymous callers on the operations Jira
-marks as anonymous; see `docs/ANONYMOUS_ACCESS.md`. Global permission
-administration and action-specific enforcement
+marks as anonymous; see `docs/ANONYMOUS_ACCESS.md`. Action-specific enforcement
 for every remaining issue mutation are later PR 1 work. Holder expansion beans
 and every Jira pagination and error edge also remain under contract review.
 

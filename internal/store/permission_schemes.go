@@ -526,7 +526,7 @@ func globalPermissionForUser(ctx context.Context, tx pgx.Tx, workspaceID, userID
 	if userID == "" {
 		return false, nil
 	}
-	var admin, member bool
+	var admin bool
 	if err := tx.QueryRow(ctx, `SELECT EXISTS(
 		SELECT 1 FROM role_bindings rb JOIN sites si ON
 		 (rb.scope_type='site' AND rb.scope_id=si.id::text) OR
@@ -540,25 +540,16 @@ func globalPermissionForUser(ctx context.Context, tx pgx.Tx, workspaceID, userID
 	if admin {
 		return true, nil
 	}
-	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM memberships m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=$1 AND m.user_id=$2 AND u.active)`, workspaceID, userID).Scan(&member); err != nil {
-		return false, err
-	}
-	switch permission {
-	case "BULK_CHANGE", "CREATE_SHARED_OBJECTS", "SHARE_DASHBOARDS", "USER_PICKER", "BROWSE_USERS", "CREATE_TEAM_MANAGED_PROJECT":
-		return member, nil
-	default:
-		// An app's global permission granted to all users on installation.
-		definition, grants, found, err := appPermission(ctx, tx, workspaceID, permission)
+	// Grants apply to Jira's global permissions and to active apps' ones.
+	if _, builtIn := PermissionDefinitionByKey(permission); !builtIn {
+		definition, _, found, err := appPermission(ctx, tx, workspaceID, permission)
 		if err != nil || !found || definition.Type != "GLOBAL" {
 			return false, err
 		}
-		for _, grant := range grants {
-			if grant == "ALL" {
-				return member, nil
-			}
-		}
-		return false, nil
 	}
+	var granted bool
+	err := tx.QueryRow(ctx, `SELECT `+globalPermissionGranted, workspaceID, userID, permission).Scan(&granted)
+	return granted, err
 }
 
 func hasProjectPermissionTx(ctx context.Context, tx pgx.Tx, workspaceID, userID, projectIDOrKey, issueID, permission string) (bool, string, error) {

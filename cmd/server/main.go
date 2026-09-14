@@ -301,6 +301,8 @@ func main() {
 	mux.HandleFunc("POST /admin/policies/{policyId}", webHandler.UpdateAdminPolicy)
 	mux.HandleFunc("POST /admin/jira-configuration/{section}", webHandler.UpdateAdminJiraConfiguration)
 	mux.HandleFunc("POST /admin/jira-application-properties/{property}", webHandler.UpdateAdminJiraApplicationProperty)
+	mux.HandleFunc("POST /admin/global-permissions", webHandler.CreateAdminGlobalPermissionGrant)
+	mux.HandleFunc("POST /admin/global-permissions/{grantId}/delete", webHandler.DeleteAdminGlobalPermissionGrant)
 	mux.HandleFunc("POST /admin/issue-events", webHandler.CreateAdminIssueEvent)
 	mux.HandleFunc("POST /admin/issue-events/{eventId}", webHandler.UpdateAdminIssueEvent)
 	mux.HandleFunc("POST /admin/project-categories", webHandler.CreateAdminProjectCategory)
