@@ -240,6 +240,27 @@ test('project workflow creation, editor, transition changes, and assignment work
   await expect(doneStatus).toContainText('not editable');
   await doneStatus.getByRole('button', { name: 'Allow editing in Done' }).click();
   await expect(doneStatus).not.toContainText('not editable');
+
+  // A status can require approval before the approved or declined transition.
+  const approvers = await page.request.post('/rest/api/3/field', {
+    headers: { Authorization: apiAuthHeader() },
+    data: { name: `Approvers ${Date.now()}`, type: 'com.atlassian.jira.plugin.system.customfieldtypes:multiuserpicker' },
+  });
+  expect(approvers.status()).toBe(201);
+  const approversField = await approvers.json();
+  await page.reload();
+  const approvals = page.getByRole('region', { name: 'Status approvals' });
+  const reviewApproval = approvals.locator('form[data-status-id="st_inprogress"]');
+  await reviewApproval.getByLabel('Approvers field').selectOption(approversField.id);
+  await reviewApproval.getByLabel('Required approvals').selectOption('number');
+  await reviewApproval.getByLabel('Number or percentage').fill('2');
+  await reviewApproval.getByLabel('Reporter').check();
+  await reviewApproval.getByLabel('Transition when approved').selectOption({ label: 'Ready for review' });
+  await reviewApproval.getByLabel('Transition when declined').selectOption({ label: 'Ready for review' });
+  await reviewApproval.getByRole('button', { name: 'Save approval for In Progress' }).click();
+  await expect(approvals).toContainText('In Progress needs 2 approvals');
+  await approvals.getByRole('button', { name: 'Remove approval from In Progress' }).click();
+  await expect(approvals).not.toContainText('In Progress needs 2 approvals');
   const startTransitions = page.getByRole('region', { name: 'Create and global transitions' });
   await expect(startTransitions).toContainText('Close from anywhere');
   await expect(startTransitions.getByText('any status to Done', { exact: true })).toBeVisible();

@@ -69,6 +69,9 @@ func workflowReferenceStatuses(wf workflow.Workflow, wire statusIDs) []map[strin
 		if exists && status.Layout != nil {
 			bean["layout"] = status.Layout
 		}
+		if exists && status.ApprovalConfiguration != nil {
+			bean["approvalConfiguration"] = status.ApprovalConfiguration
+		}
 		statuses = append(statuses, bean)
 	}
 	sort.Slice(statuses, func(i, j int) bool {

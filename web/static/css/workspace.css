@@ -740,3 +740,7 @@ label[for="wiki-subtype"] { display: flex; align-items: center; gap: 8px; }
 .worklog-form .worklog-estimate label { display: inline-flex; align-items: center; gap: .5rem; min-block-size: 24px; }
 .worklog-form .worklog-estimate input[type="radio"] { inline-size: 24px; block-size: 24px; margin: 0; }
 .worklog-form .worklog-estimate input[type="radio"] { flex: 0 0 24px; min-inline-size: 24px; min-block-size: 24px; }
+
+.workflow-approval-form { margin-top: 1rem; }
+.workflow-approval-form fieldset { display: flex; gap: 1rem; border: 0; padding: 0; margin: 0.5rem 0; }
+.workflow-approval-form input[type="checkbox"] { width: 24px; height: 24px; }

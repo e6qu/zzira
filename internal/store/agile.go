@@ -1516,6 +1516,14 @@ func validateWorkflowAgainstStatuses(wf workflow.Workflow, statuses []models.Sta
 			return nil, fmt.Errorf("workflow transition %q rules: %w", transition.ID, err)
 		}
 	}
+	for _, status := range wf.Statuses {
+		if status.ApprovalConfiguration == nil {
+			continue
+		}
+		if err := workflow.ValidateApprovalConfiguration(status.StatusReference, *status.ApprovalConfiguration, wf.Transitions); err != nil {
+			return nil, fmt.Errorf("workflow status %q: %w", status.StatusReference, err)
+		}
+	}
 	def, err := json.Marshal(wf)
 	if err != nil {
 		return nil, err

@@ -94,6 +94,14 @@ access, organization membership, and desk-link management.
 Agents can request an approval from an active site user. Every approver has an
 independent pending, approved, or declined decision. Any decline completes the
 approval as declined; otherwise it completes only after every approver accepts.
+A workflow status can also carry Jira's approval configuration. When a request
+enters that status, an approval named after it opens for the users in the
+configured user picker field, less the assignee or reporter when excluded, and
+they are notified. It needs the configured number or percentage of approvals,
+any decline declines it, and the configured approved or declined transition then
+moves the request on. Administrators set or remove a status's approval from the
+workflow editor's status approvals panel as well as through the workflow REST
+API.
 Only a pending assigned approver can answer, and an approver can open the request
 even when they are neither its reporter nor a participant.
 

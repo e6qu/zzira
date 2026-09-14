@@ -83,6 +83,11 @@ type ServiceApproval struct {
 	CreatedAt                               time.Time
 	CompletedAt                             *time.Time
 	Approvers                               []ServiceApprover
+	// A workflow status's approval keeps its status, condition and the
+	// transitions that run once it is decided.
+	StatusID, ConditionType                string
+	ConditionValue                         int
+	TransitionApproved, TransitionRejected string
 }
 
 type ServiceTemporaryAttachment struct {

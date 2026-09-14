@@ -615,6 +615,11 @@ func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, worksp
 	if err := s.syncServiceSLAsAfterIssueChange(ctx, actorID, workspaceID, updated, time.Now().UTC()); err != nil {
 		return nil, nil, err
 	}
+	if updated.Status.ID != issue.Status.ID {
+		if err := s.startStatusApproval(ctx, actorID, workspaceID, updated); err != nil {
+			return nil, nil, err
+		}
+	}
 	return updated, action, nil
 }
 

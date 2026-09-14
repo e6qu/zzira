@@ -460,15 +460,25 @@ func (s *Store) ServiceRequestComment(ctx context.Context, requestIssueID, comme
 }
 
 func (s *Store) CreateServiceApproval(ctx context.Context, workspaceID, requestIssueID, actorID, name string, approverIDs []string, automationKey string) (*models.ServiceApproval, bool, error) {
+	return s.createServiceApproval(ctx, workspaceID, requestIssueID, actorID, name, approverIDs, automationKey, models.ServiceApproval{})
+}
+
+// CreateStatusServiceApproval opens the approval a workflow status configures,
+// keeping the rule's status, condition and transitions.
+func (s *Store) CreateStatusServiceApproval(ctx context.Context, workspaceID, requestIssueID, actorID, name string, approverIDs []string, automationKey string, rule models.ServiceApproval) (*models.ServiceApproval, bool, error) {
+	return s.createServiceApproval(ctx, workspaceID, requestIssueID, actorID, name, approverIDs, automationKey, rule)
+}
+
+func (s *Store) createServiceApproval(ctx context.Context, workspaceID, requestIssueID, actorID, name string, approverIDs []string, automationKey string, rule models.ServiceApproval) (*models.ServiceApproval, bool, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return nil, false, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	var id string
-	err = tx.QueryRow(ctx, `INSERT INTO service_request_approvals(request_issue_id,name,created_by,automation_key)
-		SELECT sr.issue_id,$3,$4,NULLIF($5,'') FROM service_requests sr WHERE sr.workspace_id=$1 AND sr.issue_id=$2
-		ON CONFLICT (request_issue_id,automation_key) WHERE automation_key IS NOT NULL DO NOTHING RETURNING id`, workspaceID, requestIssueID, name, actorID, automationKey).Scan(&id)
+	err = tx.QueryRow(ctx, `INSERT INTO service_request_approvals(request_issue_id,name,created_by,automation_key,status_id,condition_type,condition_value,transition_approved,transition_rejected)
+		SELECT sr.issue_id,$3,$4,NULLIF($5,''),NULLIF($6,''),NULLIF($7,''),NULLIF($8::int,0),NULLIF($9,''),NULLIF($10,'') FROM service_requests sr WHERE sr.workspace_id=$1 AND sr.issue_id=$2
+		ON CONFLICT (request_issue_id,automation_key) WHERE automation_key IS NOT NULL DO NOTHING RETURNING id`, workspaceID, requestIssueID, name, actorID, automationKey, rule.StatusID, rule.ConditionType, rule.ConditionValue, rule.TransitionApproved, rule.TransitionRejected).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) && automationKey != "" {
 		if err := tx.QueryRow(ctx, `SELECT id FROM service_request_approvals WHERE request_issue_id=$1 AND automation_key=$2`, requestIssueID, automationKey).Scan(&id); err != nil {
 			return nil, false, err
@@ -515,7 +525,7 @@ func (s *Store) CreateServiceApproval(ctx context.Context, workspaceID, requestI
 }
 
 func (s *Store) ServiceApprovals(ctx context.Context, requestIssueID string) ([]models.ServiceApproval, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT id,name,final_decision,created_at,completed_at FROM service_request_approvals WHERE request_issue_id=$1 ORDER BY created_at,id::bigint`, requestIssueID)
+	rows, err := s.Pool.Query(ctx, `SELECT id,name,final_decision,created_at,completed_at,COALESCE(status_id,''),COALESCE(condition_type,''),COALESCE(condition_value,0),COALESCE(transition_approved,''),COALESCE(transition_rejected,'') FROM service_request_approvals WHERE request_issue_id=$1 ORDER BY created_at,id::bigint`, requestIssueID)
 	if err != nil {
 		return nil, err
 	}
@@ -524,7 +534,7 @@ func (s *Store) ServiceApprovals(ctx context.Context, requestIssueID string) ([]
 	for rows.Next() {
 		var v models.ServiceApproval
 		v.RequestIssueID = requestIssueID
-		if err := rows.Scan(&v.ID, &v.Name, &v.FinalDecision, &v.CreatedAt, &v.CompletedAt); err != nil {
+		if err := rows.Scan(&v.ID, &v.Name, &v.FinalDecision, &v.CreatedAt, &v.CompletedAt, &v.StatusID, &v.ConditionType, &v.ConditionValue, &v.TransitionApproved, &v.TransitionRejected); err != nil {
 			return nil, err
 		}
 		v.Approvers, err = s.ServiceApprovers(ctx, v.ID)
@@ -538,7 +548,7 @@ func (s *Store) ServiceApprovals(ctx context.Context, requestIssueID string) ([]
 
 func (s *Store) ServiceApproval(ctx context.Context, requestIssueID, approvalID string) (*models.ServiceApproval, error) {
 	v := &models.ServiceApproval{RequestIssueID: requestIssueID}
-	err := s.Pool.QueryRow(ctx, `SELECT id,name,final_decision,created_at,completed_at FROM service_request_approvals WHERE request_issue_id=$1 AND id=$2`, requestIssueID, approvalID).Scan(&v.ID, &v.Name, &v.FinalDecision, &v.CreatedAt, &v.CompletedAt)
+	err := s.Pool.QueryRow(ctx, `SELECT id,name,final_decision,created_at,completed_at,COALESCE(status_id,''),COALESCE(condition_type,''),COALESCE(condition_value,0),COALESCE(transition_approved,''),COALESCE(transition_rejected,'') FROM service_request_approvals WHERE request_issue_id=$1 AND id=$2`, requestIssueID, approvalID).Scan(&v.ID, &v.Name, &v.FinalDecision, &v.CreatedAt, &v.CompletedAt, &v.StatusID, &v.ConditionType, &v.ConditionValue, &v.TransitionApproved, &v.TransitionRejected)
 	if err != nil {
 		return nil, err
 	}
@@ -588,15 +598,14 @@ func (s *Store) AnswerServiceApproval(ctx context.Context, requestIssueID, appro
 	if result.RowsAffected() == 0 {
 		return nil, fmt.Errorf("approval is not assigned to this user or was already answered")
 	}
-	var declined, pending bool
-	if err := tx.QueryRow(ctx, `SELECT bool_or(decision='declined'),bool_or(decision='pending') FROM service_request_approvers WHERE approval_id=$1`, approvalID).Scan(&declined, &pending); err != nil {
+	var approved, declined, total, conditionValue int
+	var conditionType string
+	if err := tx.QueryRow(ctx, `SELECT count(*) FILTER (WHERE r.decision='approved'),count(*) FILTER (WHERE r.decision='declined'),count(*),COALESCE(a.condition_type,''),COALESCE(a.condition_value,0)
+		FROM service_request_approvers r JOIN service_request_approvals a ON a.id=r.approval_id
+		WHERE r.approval_id=$1 GROUP BY a.condition_type,a.condition_value`, approvalID).Scan(&approved, &declined, &total, &conditionType, &conditionValue); err != nil {
 		return nil, err
 	}
-	if declined {
-		final = "declined"
-	} else if !pending {
-		final = "approved"
-	}
+	final = serviceApprovalDecision(approved, declined, total, conditionType, conditionValue)
 	if final != "pending" {
 		if _, err := tx.Exec(ctx, `UPDATE service_request_approvals SET final_decision=$2,completed_at=now() WHERE id=$1`, approvalID, final); err != nil {
 			return nil, err
@@ -606,6 +615,27 @@ func (s *Store) AnswerServiceApproval(ctx context.Context, requestIssueID, appro
 		return nil, err
 	}
 	return s.ServiceApproval(ctx, requestIssueID, approvalID)
+}
+
+// serviceApprovalDecision is an approval's outcome: any decline declines it,
+// and it is approved once it has the approvals its condition requires: every
+// approver without a condition, a number of them (at most all) or a
+// percentage of them.
+func serviceApprovalDecision(approved, declined, total int, conditionType string, conditionValue int) string {
+	if declined > 0 {
+		return "declined"
+	}
+	required := total
+	switch conditionType {
+	case "number", "numberPerPrincipal":
+		required = min(conditionValue, total)
+	case "percent":
+		required = (total*conditionValue + 99) / 100
+	}
+	if approved >= max(required, 1) {
+		return "approved"
+	}
+	return "pending"
 }
 
 func scanServiceQueue(row interface{ Scan(...any) error }) (*models.ServiceQueue, error) {

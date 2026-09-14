@@ -6933,9 +6933,11 @@
       "evidence": [
         "internal/api3/workflow_access_test.go",
         "internal/api3/workflow_history_test.go",
-        "docs/JIRA_PLATFORM.md"
+        "docs/JIRA_PLATFORM.md",
+        "internal/api3/workflow_approvals_test.go",
+        "migrations/204_service_status_approvals.sql"
       ],
-      "notes": "Bulk workflow read by ids, names or project and work type pairs with referenced statuses. Site administrators see every workflow; people with Administer projects or View read-only workflow on a project see its project-scoped workflows; others see none."
+      "notes": "Bulk workflow read by ids, names or project and work type pairs with referenced statuses. Site administrators see every workflow; people with Administer projects or View read-only workflow on a project see its project-scoped workflows; others see none. Status layouts carry Jira's approvalConfiguration (active, conditionType and conditionValue within Jira's limits, excluded roles, the approvers field and approved and declined transitions out of the status), validated with STATUS_APPROVAL_CONFIGURATION_INVALID."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/workflows/capabilities",
@@ -6964,9 +6966,11 @@
         "internal/api3/workflow_rules_test.go",
         "internal/api3/api3_workflow_validation.go",
         "internal/store/workflow_mutations.go",
-        "docs/CLOUD_PARITY.md"
+        "docs/CLOUD_PARITY.md",
+        "internal/api3/workflow_approvals_test.go",
+        "migrations/204_service_status_approvals.sql"
       ],
-      "notes": "Atomically creates up to 20 validated GLOBAL or PROJECT workflows and related statuses with generated IDs, layouts/properties, versions, scoped Jira resources, INITIAL, GLOBAL and DIRECTED transitions with descriptions, properties and link ports, executable conditions, validators, post-functions, transition screens and customIssueEventId events across all 23 documented system rules, with Jira's numeric ids for transitions without one, rollback, and audit. The initial transition decides where work items start and runs its validators and post functions on creation; a global transition runs from every status. Site administrators reach every workflow and a project's administrators (Administer projects) its project-scoped workflows; anyone else gets 401."
+      "notes": "Atomically creates up to 20 validated GLOBAL or PROJECT workflows and related statuses with generated IDs, layouts/properties, versions, scoped Jira resources, INITIAL, GLOBAL and DIRECTED transitions with descriptions, properties and link ports, executable conditions, validators, post-functions, transition screens and customIssueEventId events across all 23 documented system rules, with Jira's numeric ids for transitions without one, rollback, and audit. The initial transition decides where work items start and runs its validators and post functions on creation; a global transition runs from every status. Site administrators reach every workflow and a project's administrators (Administer projects) its project-scoped workflows; anyone else gets 401. Status layouts carry Jira's approvalConfiguration (active, conditionType and conditionValue within Jira's limits, excluded roles, the approvers field and approved and declined transitions out of the status), validated with STATUS_APPROVAL_CONFIGURATION_INVALID."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/workflows/create/validation",
@@ -6980,9 +6984,11 @@
         "internal/api3/workflow_rules_test.go",
         "internal/api3/api3_workflow_validation.go",
         "internal/store/agile.go",
-        "docs/CLOUD_PARITY.md"
+        "docs/CLOUD_PARITY.md",
+        "internal/api3/workflow_approvals_test.go",
+        "migrations/204_service_status_approvals.sql"
       ],
-      "notes": "Returns structured ERROR validation for GLOBAL/PROJECT ownership, names and statuses, sizes, references, designer layouts, INITIAL, GLOBAL and DIRECTED transition topology (one initial transition, sourceless global and initial links, known types), nested conditions, validators, post-functions, transition screens, custom issue events, conflicts, and level filtering; every documented system rule is validated. Site administrators reach every workflow and a project's administrators (Administer projects) its project-scoped workflows; anyone else gets 401."
+      "notes": "Returns structured ERROR validation for GLOBAL/PROJECT ownership, names and statuses, sizes, references, designer layouts, INITIAL, GLOBAL and DIRECTED transition topology (one initial transition, sourceless global and initial links, known types), nested conditions, validators, post-functions, transition screens, custom issue events, conflicts, and level filtering; every documented system rule is validated. Site administrators reach every workflow and a project's administrators (Administer projects) its project-scoped workflows; anyone else gets 401. Status layouts carry Jira's approvalConfiguration (active, conditionType and conditionValue within Jira's limits, excluded roles, the approvers field and approved and declined transitions out of the status), validated with STATUS_APPROVAL_CONFIGURATION_INVALID."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/workflows/defaultEditor",
@@ -7022,9 +7028,11 @@
         "internal/api3/workflow_rules_test.go",
         "internal/api3/api3_workflow_search.go",
         "internal/store/workflow_usage.go",
-        "docs/CLOUD_PARITY.md"
+        "docs/CLOUD_PARITY.md",
+        "internal/api3/workflow_approvals_test.go",
+        "migrations/204_service_status_approvals.sql"
       ],
-      "notes": "Searches published global and project-scoped workflows with scope/project/activity filters, validated paging and name ordering, related statuses, versions, designer layouts, transition expansion, and executable condition, validator, post-function, and screen configuration, and name, created and updated ordering. Site administrators see every workflow; people with Administer projects or View read-only workflow on a project see its project-scoped workflows; others see none."
+      "notes": "Searches published global and project-scoped workflows with scope/project/activity filters, validated paging and name ordering, related statuses, versions, designer layouts, transition expansion, and executable condition, validator, post-function, and screen configuration, and name, created and updated ordering. Site administrators see every workflow; people with Administer projects or View read-only workflow on a project see its project-scoped workflows; others see none. Status layouts carry Jira's approvalConfiguration (active, conditionType and conditionValue within Jira's limits, excluded roles, the approvers field and approved and declined transitions out of the status), validated with STATUS_APPROVAL_CONFIGURATION_INVALID."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/workflows/update",
@@ -7037,9 +7045,11 @@
         "internal/api3/workflow_rules_test.go",
         "internal/api3/api3_workflow_validation.go",
         "internal/store/workflow_mutations.go",
-        "docs/CLOUD_PARITY.md"
+        "docs/CLOUD_PARITY.md",
+        "internal/api3/workflow_approvals_test.go",
+        "migrations/204_service_status_approvals.sql"
       ],
-      "notes": "Atomically creates related scoped statuses, migrates active work with sync actions, and updates layouts, INITIAL, GLOBAL and DIRECTED transitions plus executable conditions, validators, post-functions, transition screens and customIssueEventId events with optimistic versions, rollback, and audit; every documented system rule; mixed-scope batches and queued tasks remain. Site administrators reach every workflow and a project's administrators (Administer projects) its project-scoped workflows; anyone else gets 401."
+      "notes": "Atomically creates related scoped statuses, migrates active work with sync actions, and updates layouts, INITIAL, GLOBAL and DIRECTED transitions plus executable conditions, validators, post-functions, transition screens and customIssueEventId events with optimistic versions, rollback, and audit; every documented system rule; mixed-scope batches and queued tasks remain. Site administrators reach every workflow and a project's administrators (Administer projects) its project-scoped workflows; anyone else gets 401. Status layouts carry Jira's approvalConfiguration (active, conditionType and conditionValue within Jira's limits, excluded roles, the approvers field and approved and declined transitions out of the status), validated with STATUS_APPROVAL_CONFIGURATION_INVALID."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/workflows/update/validation",
@@ -7053,9 +7063,11 @@
         "internal/api3/workflow_rules_test.go",
         "internal/api3/api3_workflow_validation.go",
         "internal/store/agile.go",
-        "docs/CLOUD_PARITY.md"
+        "docs/CLOUD_PARITY.md",
+        "internal/api3/workflow_approvals_test.go",
+        "migrations/204_service_status_approvals.sql"
       ],
-      "notes": "Returns structured validation for existence and preserved scope, optimistic versions, scoped statuses, layouts, INITIAL, GLOBAL and DIRECTED topology, mappings, executable conditions, validators, post-functions, transition screens and custom issue events without mutation; every documented system rule is validated; mixed-scope batches remain. Site administrators reach every workflow and a project's administrators (Administer projects) its project-scoped workflows; anyone else gets 401."
+      "notes": "Returns structured validation for existence and preserved scope, optimistic versions, scoped statuses, layouts, INITIAL, GLOBAL and DIRECTED topology, mappings, executable conditions, validators, post-functions, transition screens and custom issue events without mutation; every documented system rule is validated; mixed-scope batches remain. Site administrators reach every workflow and a project's administrators (Administer projects) its project-scoped workflows; anyone else gets 401. Status layouts carry Jira's approvalConfiguration (active, conditionType and conditionValue within Jira's limits, excluded roles, the approvers field and approved and declined transitions out of the status), validated with STATUS_APPROVAL_CONFIGURATION_INVALID."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/workflowscheme",
@@ -9432,9 +9444,11 @@
         "internal/api3/service_test.go",
         "internal/api3/service_approval_attachment.go",
         "e2e/service.spec.ts",
-        "docs/SERVICE_MANAGEMENT.md"
+        "docs/SERVICE_MANAGEMENT.md",
+        "internal/api3/workflow_approvals_test.go",
+        "migrations/204_service_status_approvals.sql"
       ],
-      "notes": "Returns paged approval state, approvers, decisions and caller answerability; workflow-driven approval creation and expansion variants remain."
+      "notes": "Returns paged approval state, approvers, decisions and caller answerability, including the approvals a workflow status opens when a request enters it: named after the status, with approvers from its configured user picker field less excluded roles."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/approval/{approvalId}",
@@ -9444,9 +9458,11 @@
       "evidence": [
         "internal/api3/service_test.go",
         "internal/api3/service_approval_attachment.go",
-        "docs/SERVICE_MANAGEMENT.md"
+        "docs/SERVICE_MANAGEMENT.md",
+        "internal/api3/workflow_approvals_test.go",
+        "migrations/204_service_status_approvals.sql"
       ],
-      "notes": "Returns one request-scoped approval with Jira-shaped dates and approver decisions; workflow-driven approval configuration remains."
+      "notes": "Returns one request-scoped approval with Jira-shaped dates and approver decisions, whether an agent requested it or a workflow status's approval configuration opened it."
     },
     {
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/request/{issueIdOrKey}/approval/{approvalId}",
@@ -9457,9 +9473,11 @@
         "internal/api3/service_test.go",
         "internal/commands/service_approval_attachment.go",
         "e2e/service.spec.ts",
-        "docs/SERVICE_MANAGEMENT.md"
+        "docs/SERVICE_MANAGEMENT.md",
+        "internal/api3/workflow_approvals_test.go",
+        "migrations/204_service_status_approvals.sql"
       ],
-      "notes": "Enforces one decision by a pending assigned approver and computes decline or unanimous approval atomically; approval-stage workflow transitions remain."
+      "notes": "Enforces one decision by a pending assigned approver and computes the outcome atomically: any decline declines, and approval needs every approver or, for a workflow status's approval, its configured number or percentage. The configured approved or declined transition then runs while the request still waits in that status."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/attachment",

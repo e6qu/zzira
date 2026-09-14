@@ -112,6 +112,14 @@ func (s *Service) CreateServiceRequest(ctx context.Context, in CreateServiceRequ
 			return nil, errors.Join(err, cleanupErr)
 		}
 	}
+	// A request created straight into an approval status opens its approval.
+	current, err := s.Store.IssueByIDOrKey(ctx, in.WorkspaceID, issue.ID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.startStatusApproval(ctx, in.ActorID, in.WorkspaceID, current); err != nil {
+		return nil, err
+	}
 	canManage, err := s.Store.CanManageServiceRequest(ctx, in.WorkspaceID, in.ActorID, issue.ID)
 	if err != nil {
 		return nil, err

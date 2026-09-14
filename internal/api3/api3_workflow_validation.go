@@ -22,9 +22,10 @@ type workflowStatusUpdateRequest struct {
 }
 
 type workflowStatusLayoutRequest struct {
-	StatusReference string            `json:"statusReference"`
-	Layout          *workflow.Layout  `json:"layout"`
-	Properties      map[string]string `json:"properties"`
+	StatusReference       string                          `json:"statusReference"`
+	Layout                *workflow.Layout                `json:"layout"`
+	Properties            map[string]string               `json:"properties"`
+	ApprovalConfiguration *workflow.ApprovalConfiguration `json:"approvalConfiguration"`
 }
 
 type workflowTransitionLinkRequest struct {
@@ -311,6 +312,7 @@ func workflowDefinitionFromRequest(id, name, description string, startPointLayou
 		errors = append(errors, workflowValidationError("WORKFLOW_STATUSES_REQUIRED", "At least one workflow status is required.", "WORKFLOW", nil))
 	}
 	statusLayouts := make(map[string]bool, len(statuses))
+	requestReferences := make(map[string]string, len(statuses))
 	for _, status := range statuses {
 		resolved := references[status.StatusReference]
 		if resolved == "" {
@@ -329,7 +331,8 @@ func workflowDefinitionFromRequest(id, name, description string, startPointLayou
 		if properties == nil {
 			properties = map[string]string{}
 		}
-		wf.Statuses = append(wf.Statuses, workflow.StatusLayout{StatusReference: resolved, Layout: status.Layout, Properties: properties})
+		requestReferences[resolved] = status.StatusReference
+		wf.Statuses = append(wf.Statuses, workflow.StatusLayout{StatusReference: resolved, Layout: status.Layout, Properties: properties, ApprovalConfiguration: status.ApprovalConfiguration})
 	}
 	if len(transitions) == 0 {
 		errors = append(errors, workflowValidationError("WORKFLOW_TRANSITIONS_REQUIRED", "At least one workflow transition is required.", "WORKFLOW", nil))
@@ -447,6 +450,14 @@ func workflowDefinitionFromRequest(id, name, description string, startPointLayou
 			continue
 		}
 		wf.Transitions = append(wf.Transitions, transition)
+	}
+	for _, status := range wf.Statuses {
+		if status.ApprovalConfiguration == nil {
+			continue
+		}
+		if err := workflow.ValidateApprovalConfiguration(status.StatusReference, *status.ApprovalConfiguration, wf.Transitions); err != nil {
+			errors = append(errors, workflowValidationError("STATUS_APPROVAL_CONFIGURATION_INVALID", err.Error(), "STATUS", map[string]any{"statusReference": requestReferences[status.StatusReference]}))
+		}
 	}
 	return wf, errors
 }

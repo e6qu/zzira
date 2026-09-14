@@ -114,9 +114,89 @@ type Layout struct {
 
 // StatusLayout keeps a workflow's status membership and designer placement.
 type StatusLayout struct {
-	StatusReference string            `json:"statusReference"`
-	Layout          *Layout           `json:"layout,omitempty"`
-	Properties      map[string]string `json:"properties"`
+	StatusReference       string                 `json:"statusReference"`
+	Layout                *Layout                `json:"layout,omitempty"`
+	Properties            map[string]string      `json:"properties"`
+	ApprovalConfiguration *ApprovalConfiguration `json:"approvalConfiguration,omitempty"`
+}
+
+// ApprovalConfiguration is a status's Jira Service Management approval: the
+// user picker field naming its approvers, how many approvals it needs, and the
+// transitions that run once it is approved or declined.
+type ApprovalConfiguration struct {
+	Active              string   `json:"active"`
+	ConditionType       string   `json:"conditionType"`
+	ConditionValue      string   `json:"conditionValue"`
+	Exclude             []string `json:"exclude,omitempty"`
+	FieldID             string   `json:"fieldId"`
+	PrePopulatedFieldID string   `json:"prePopulatedFieldId,omitempty"`
+	TransitionApproved  string   `json:"transitionApproved"`
+	TransitionRejected  string   `json:"transitionRejected"`
+}
+
+// StatusApproval returns the active approval configured on a status, if any.
+func (w Workflow) StatusApproval(statusID string) *ApprovalConfiguration {
+	for _, status := range w.Statuses {
+		if status.StatusReference == statusID && status.ApprovalConfiguration != nil && status.ApprovalConfiguration.Active == "true" {
+			configuration := *status.ApprovalConfiguration
+			return &configuration
+		}
+	}
+	return nil
+}
+
+// ValidateApprovalConfiguration checks a status's approval configuration
+// against Jira's documented limits and the workflow's transitions.
+func ValidateApprovalConfiguration(statusID string, configuration ApprovalConfiguration, transitions []Transition) error {
+	if configuration.Active != "true" && configuration.Active != "false" {
+		return fmt.Errorf("approval configuration active must be true or false")
+	}
+	limit := 20
+	switch configuration.ConditionType {
+	case "number", "numberPerPrincipal":
+	case "percent":
+		limit = 100
+	default:
+		return fmt.Errorf("approval condition type must be number, percent or numberPerPrincipal")
+	}
+	if value, err := strconv.Atoi(configuration.ConditionValue); err != nil || value < 1 || value > limit {
+		return fmt.Errorf("approval condition value must be a whole number from 1 to %d", limit)
+	}
+	for _, role := range configuration.Exclude {
+		if role != "assignee" && role != "reporter" {
+			return fmt.Errorf("approval exclusions must be assignee or reporter")
+		}
+	}
+	if !strings.HasPrefix(configuration.FieldID, "customfield_") {
+		return fmt.Errorf("approval configuration fieldId must name the approvers custom field")
+	}
+	if configuration.PrePopulatedFieldID != "" && !strings.HasPrefix(configuration.PrePopulatedFieldID, "customfield_") {
+		return fmt.Errorf("approval configuration prePopulatedFieldId must name a custom field")
+	}
+	for _, id := range []string{configuration.TransitionApproved, configuration.TransitionRejected} {
+		if !transitionLeaves(transitions, id, statusID) {
+			return fmt.Errorf("approval transition %q must be a transition out of the status", id)
+		}
+	}
+	return nil
+}
+
+// transitionLeaves reports whether the transition runs from the status.
+func transitionLeaves(transitions []Transition, id, statusID string) bool {
+	for _, transition := range transitions {
+		if id == "" || transition.ID != id {
+			continue
+		}
+		if transition.Kind() == TransitionGlobal {
+			return true
+		}
+		for _, from := range transition.From {
+			if from == statusID {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // Transition is one workflow edge.

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/e6qu/zzira/internal/models"
@@ -72,6 +73,26 @@ func (s *Service) AnswerServiceApproval(ctx context.Context, actorID, workspaceI
 	}
 	if err := s.notifyServiceRequestSubscribers(ctx, actorID, workspaceID, request, "service_approval", decision+" approval on "+request.Issue.Key, false); err != nil {
 		return nil, err
+	}
+	// A workflow status's approval runs the transition its configuration names
+	// for the decision, while the request still waits in that status.
+	transitionID := ""
+	switch approval.FinalDecision {
+	case "approved":
+		transitionID = approval.TransitionApproved
+	case "declined":
+		transitionID = approval.TransitionRejected
+	}
+	if transitionID != "" {
+		current, err := s.Store.IssueByIDOrKey(ctx, workspaceID, request.Issue.ID)
+		if err != nil {
+			return nil, err
+		}
+		if current.Status.ID == approval.StatusID {
+			if _, err := s.TransitionServiceRequest(ctx, actorID, workspaceID, request.Issue.ID, transitionID); err != nil {
+				return nil, fmt.Errorf("the approval was recorded, but its %s transition failed: %w", approval.FinalDecision, err)
+			}
+		}
 	}
 	return approval, nil
 }
@@ -179,4 +200,70 @@ func (s *Service) CreateServiceAttachmentComment(ctx context.Context, actorID, w
 		return nil, nil, err
 	}
 	return values, comment, nil
+}
+
+// startStatusApproval opens the approval a workflow status configures when a
+// service request enters it. Its approvers are the users in the configured
+// user picker field, less the excluded assignee or reporter.
+func (s *Service) startStatusApproval(ctx context.Context, actorID, workspaceID string, issue *models.Issue) error {
+	deskID, err := s.Store.ServiceRequestDeskID(ctx, workspaceID, issue.ID)
+	if err != nil || deskID == "" {
+		return err
+	}
+	wf, err := s.Store.WorkflowForProjectAndIssueType(ctx, issue.ProjectID, issue.IssueType.ID)
+	if err != nil {
+		return err
+	}
+	configuration := wf.StatusApproval(issue.Status.ID)
+	if configuration == nil {
+		return nil
+	}
+	excluded := map[string]bool{}
+	for _, role := range configuration.Exclude {
+		if role == "assignee" && issue.Assignee != nil {
+			excluded[issue.Assignee.ID] = true
+		}
+		if role == "reporter" && issue.Reporter != nil {
+			excluded[issue.Reporter.ID] = true
+		}
+	}
+	approverIDs := []string{}
+	for _, id := range userPickerAccountIDs(issue.Fields[configuration.FieldID]) {
+		if !excluded[id] {
+			approverIDs = append(approverIDs, id)
+		}
+	}
+	if len(approverIDs) == 0 {
+		return nil
+	}
+	conditionValue, err := strconv.Atoi(configuration.ConditionValue)
+	if err != nil {
+		return err
+	}
+	rule := models.ServiceApproval{StatusID: issue.Status.ID, ConditionType: configuration.ConditionType, ConditionValue: conditionValue, TransitionApproved: configuration.TransitionApproved, TransitionRejected: configuration.TransitionRejected}
+	// Each entry into the status opens its own approval.
+	key := fmt.Sprintf("workflow-status:%s:%d", issue.Status.ID, issue.UpdatedSeq)
+	_, created, err := s.Store.CreateStatusServiceApproval(ctx, workspaceID, issue.ID, actorID, issue.Status.Name, approverIDs, key, rule)
+	if err != nil || !created {
+		return err
+	}
+	request, err := s.Store.ServiceRequest(ctx, workspaceID, actorID, issue.ID, true)
+	if err != nil {
+		return err
+	}
+	return s.notifyServiceRequestUsers(ctx, actorID, workspaceID, request, approverIDs, "service_approval", "requested your approval on "+issue.Key, false)
+}
+
+// userPickerAccountIDs reads the account IDs a user or multi-user picker
+// field stores.
+func userPickerAccountIDs(raw json.RawMessage) []string {
+	var single string
+	if json.Unmarshal(raw, &single) == nil && single != "" {
+		return []string{single}
+	}
+	var many []string
+	if json.Unmarshal(raw, &many) == nil {
+		return many
+	}
+	return nil
 }
