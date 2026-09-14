@@ -17,11 +17,11 @@ import (
 
 func scanServiceDesk(row interface{ Scan(...any) error }) (*models.ServiceDesk, error) {
 	desk := &models.ServiceDesk{}
-	err := row.Scan(&desk.ID, &desk.WorkspaceID, &desk.ProjectID, &desk.ProjectKey, &desk.ProjectName, &desk.ProjectTypeKey, &desk.PortalName, &desk.CustomerAccessOpen)
+	err := row.Scan(&desk.ID, &desk.WorkspaceID, &desk.ProjectID, &desk.ProjectKey, &desk.ProjectName, &desk.ProjectTypeKey, &desk.PortalName, &desk.CustomerAccessOpen, &desk.AttachmentsEnabled)
 	return desk, err
 }
 
-const serviceDeskSelect = `SELECT sd.id,sd.workspace_id,p.id,p.key,p.name,p.project_type_key,sd.portal_name,sd.customer_access_open FROM service_desks sd JOIN projects p ON p.id=sd.project_id AND p.lifecycle_state='ACTIVE' `
+const serviceDeskSelect = `SELECT sd.id,sd.workspace_id,p.id,p.key,p.name,p.project_type_key,sd.portal_name,sd.customer_access_open,sd.attachments_enabled FROM service_desks sd JOIN projects p ON p.id=sd.project_id AND p.lifecycle_state='ACTIVE' `
 
 func (s *Store) ServiceDesks(ctx context.Context, workspaceID string) ([]models.ServiceDesk, error) {
 	rows, err := s.Pool.Query(ctx, serviceDeskSelect+`WHERE sd.workspace_id=$1 ORDER BY sd.id::bigint`, workspaceID)
@@ -208,6 +208,17 @@ func (s *Store) ServiceCustomer(ctx context.Context, workspaceID, userIDOrEmail 
 	return s.UserByID(ctx, userID)
 }
 
+// serviceDeskCustomerAccess reports whether a customer may use a service
+// desk's portal: the portal is open, or they are its customer directly or
+// through a linked organization.
+const serviceDeskCustomerAccess = `SELECT EXISTS(
+	SELECT 1 FROM service_desks sd
+	WHERE sd.workspace_id=$1 AND sd.id=$2 AND (
+		sd.customer_access_open
+		OR EXISTS(SELECT 1 FROM service_desk_customers dc WHERE dc.service_desk_id=sd.id AND dc.user_id=$3 AND dc.active)
+		OR EXISTS(SELECT 1 FROM service_desk_organizations dso JOIN service_organization_users sou ON sou.organization_id=dso.organization_id WHERE dso.service_desk_id=sd.id AND sou.user_id=$3)
+	))`
+
 func (s *Store) CreateServiceRequest(ctx context.Context, workspaceID, issueID, serviceDeskID, requestTypeID, customerID, channel string) error {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
@@ -215,13 +226,7 @@ func (s *Store) CreateServiceRequest(ctx context.Context, workspaceID, issueID, 
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	var allowed bool
-	if err := tx.QueryRow(ctx, `SELECT EXISTS(
-		SELECT 1 FROM service_desks sd
-		WHERE sd.workspace_id=$1 AND sd.id=$2 AND (
-			sd.customer_access_open
-			OR EXISTS(SELECT 1 FROM service_desk_customers dc WHERE dc.service_desk_id=sd.id AND dc.user_id=$3 AND dc.active)
-			OR EXISTS(SELECT 1 FROM service_desk_organizations dso JOIN service_organization_users sou ON sou.organization_id=dso.organization_id WHERE dso.service_desk_id=sd.id AND sou.user_id=$3)
-		))`, workspaceID, serviceDeskID, customerID).Scan(&allowed); err != nil {
+	if err := tx.QueryRow(ctx, serviceDeskCustomerAccess, workspaceID, serviceDeskID, customerID).Scan(&allowed); err != nil {
 		return err
 	}
 	if !allowed {

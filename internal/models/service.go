@@ -14,6 +14,7 @@ type ServiceDesk struct {
 	ProjectTypeKey     string
 	PortalName         string
 	CustomerAccessOpen bool
+	AttachmentsEnabled bool
 }
 
 type ServiceOrganization struct {

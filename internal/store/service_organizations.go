@@ -281,6 +281,14 @@ func (s *Store) SetServiceDeskCustomerAccess(ctx context.Context, workspaceID, s
 	return err
 }
 
+func (s *Store) SetServiceDeskAttachmentsEnabled(ctx context.Context, workspaceID, serviceDeskID string, enabled bool) error {
+	result, err := s.Pool.Exec(ctx, `UPDATE service_desks SET attachments_enabled=$3 WHERE workspace_id=$1 AND id=$2`, workspaceID, serviceDeskID, enabled)
+	if err == nil && result.RowsAffected() == 0 {
+		return fmt.Errorf("service desk does not exist")
+	}
+	return err
+}
+
 func (s *Store) RevokePortalOnlyServiceCustomer(ctx context.Context, workspaceID, userID string) error {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {

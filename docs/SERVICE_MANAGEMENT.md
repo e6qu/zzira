@@ -170,6 +170,12 @@ applies through the ordinary Jira attachment metadata and content routes.
 Unclaimed temporary blobs expire after 24 hours and an hourly worker removes
 their metadata and bytes.
 
+Temporary uploads come from the desk's agents and the customers its portal
+admits. They follow the site's attachment switch and upload size limit, and
+each desk's own switch: service desk administrators turn attachments off for
+one desk from the agent workspace, which also removes the file field from that
+desk's request conversations.
+
 Reporters, participants, approvers, and agents can subscribe to a request they
 can view. Reporters and newly added participants start subscribed, approval
 assignment also subscribes the approver, and each viewer can mute or resume

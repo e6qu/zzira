@@ -2,10 +2,13 @@ package api3
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 
 	"github.com/e6qu/zzira/internal/models"
+
+	"github.com/e6qu/zzira/internal/commands"
 )
 
 func (h *Handler) serviceApprovalBean(request *models.ServiceRequest, approval models.ServiceApproval, actorID string) map[string]any {
@@ -110,7 +113,14 @@ func (h *Handler) attachServiceTemporaryFiles(w http.ResponseWriter, r *http.Req
 		value, createErr := h.Commands.CreateServiceTemporaryAttachment(r.Context(), actorID, workspaceID, serviceDeskID, header.Filename, header.Header.Get("Content-Type"), file)
 		closeErr := file.Close()
 		if createErr != nil {
-			jiraError(w, http.StatusBadRequest, createErr.Error())
+			switch {
+			case errors.Is(createErr, commands.ErrServiceDeskNotFound):
+				jiraError(w, http.StatusNotFound, "The service desk does not exist.")
+			case errors.Is(createErr, commands.ErrServiceAttachmentPermission):
+				jiraError(w, http.StatusForbidden, createErr.Error())
+			default:
+				jiraError(w, http.StatusBadRequest, createErr.Error())
+			}
 			return
 		}
 		if closeErr != nil {

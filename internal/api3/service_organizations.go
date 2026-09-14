@@ -330,6 +330,10 @@ func (h *Handler) inviteServiceDeskCustomer(w http.ResponseWriter, r *http.Reque
 }
 
 func (h *Handler) serviceDeskOrganizations(w http.ResponseWriter, r *http.Request, workspaceID, actorID, serviceDeskID string) {
+	if _, err := h.Store.ServiceDesk(r.Context(), workspaceID, serviceDeskID); err != nil {
+		jiraError(w, http.StatusNotFound, "The service desk does not exist.")
+		return
+	}
 	if !h.serviceDeskAgentAccess(r, workspaceID, serviceDeskID, actorID) {
 		jiraError(w, http.StatusForbidden, "Service agent access is required.")
 		return
@@ -340,9 +344,28 @@ func (h *Handler) serviceDeskOrganizations(w http.ResponseWriter, r *http.Reques
 			jiraError(w, http.StatusInternalServerError, "Could not load service desk organizations.")
 			return
 		}
+		// accountId narrows the list to the organizations the user belongs to.
+		member := map[string]bool(nil)
+		if accountID := r.URL.Query().Get("accountId"); accountID != "" {
+			if _, err := h.Store.UserByID(r.Context(), accountID); err != nil {
+				jiraError(w, http.StatusNotFound, "The user does not exist.")
+				return
+			}
+			memberships, err := h.Store.ServiceOrganizations(r.Context(), workspaceID, actorID, accountID, true)
+			if err != nil {
+				jiraError(w, http.StatusInternalServerError, "Could not load service desk organizations.")
+				return
+			}
+			member = make(map[string]bool, len(memberships))
+			for _, organization := range memberships {
+				member[organization.ID] = true
+			}
+		}
 		beans := make([]map[string]any, 0, len(organizations))
 		for _, organization := range organizations {
-			beans = append(beans, h.serviceOrganizationBean(organization))
+			if member == nil || member[organization.ID] {
+				beans = append(beans, h.serviceOrganizationBean(organization))
+			}
 		}
 		h.writeServicePage(w, r, beans)
 		return
@@ -357,7 +380,11 @@ func (h *Handler) serviceDeskOrganizations(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err := h.Commands.SetServiceDeskOrganization(r.Context(), actorID, workspaceID, serviceDeskID, input.OrganizationID.String(), r.Method == http.MethodPost); err != nil {
-		jiraError(w, http.StatusBadRequest, err.Error())
+		if strings.Contains(err.Error(), "does not exist") {
+			jiraError(w, http.StatusNotFound, "The organization does not exist.")
+		} else {
+			jiraError(w, http.StatusBadRequest, err.Error())
+		}
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

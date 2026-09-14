@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -75,21 +76,41 @@ func (s *Service) AnswerServiceApproval(ctx context.Context, actorID, workspaceI
 	return approval, nil
 }
 
+// ErrServiceDeskNotFound reports a service desk that does not exist.
+var ErrServiceDeskNotFound = errors.New("service desk does not exist")
+
+// ErrServiceAttachmentPermission reports a caller who may not add attachments
+// in a service desk.
+var ErrServiceAttachmentPermission = errors.New("permission to add attachments in this service desk is required")
+
 func (s *Service) CreateServiceTemporaryAttachment(ctx context.Context, actorID, workspaceID, serviceDeskID, filename, mimeType string, r io.Reader) (*models.ServiceTemporaryAttachment, error) {
 	if s.Blobs == nil {
 		return nil, fmt.Errorf("attachment storage not configured")
 	}
-	if _, err := s.Store.ServiceDesk(ctx, workspaceID, serviceDeskID); err != nil {
-		return nil, fmt.Errorf("service desk does not exist")
+	desk, err := s.Store.ServiceDesk(ctx, workspaceID, serviceDeskID)
+	if err != nil {
+		return nil, ErrServiceDeskNotFound
 	}
-	agent, err := s.Store.IsServiceAgent(ctx, workspaceID, serviceDeskID, actorID)
+	allowed, err := s.Store.CanCreateServiceRequest(ctx, workspaceID, serviceDeskID, actorID)
 	if err != nil {
 		return nil, err
 	}
-	if !agent {
-		if _, err := s.Store.ServiceCustomer(ctx, workspaceID, actorID); err != nil {
-			return nil, fmt.Errorf("permission to add attachments in this service desk is required")
-		}
+	if !allowed {
+		return nil, ErrServiceAttachmentPermission
+	}
+	if !desk.AttachmentsEnabled {
+		return nil, fmt.Errorf("%w: attachments are turned off for this service desk", ErrServiceAttachmentPermission)
+	}
+	configuration, err := s.jiraSiteConfiguration(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	if !configuration.AttachmentsEnabled {
+		return nil, fmt.Errorf("%w: attachments are disabled for this site", ErrServiceAttachmentPermission)
+	}
+	limit := configuration.AttachmentUploadLimit
+	if limit <= 0 {
+		limit = 32 << 20
 	}
 	filename, err = normalizedAttachmentFilename(filename)
 	if err != nil {
@@ -100,9 +121,15 @@ func (s *Service) CreateServiceTemporaryAttachment(ctx context.Context, actorID,
 		return nil, err
 	}
 	value := &models.ServiceTemporaryAttachment{ID: store.NewID("temp"), WorkspaceID: workspaceID, ServiceDeskID: serviceDeskID, AuthorID: actorID, Filename: filename, MimeType: mimeType, BlobRef: store.NewID("blob")}
-	value.Size, err = s.Blobs.Put(ctx, value.BlobRef, r)
+	value.Size, err = s.Blobs.Put(ctx, value.BlobRef, io.LimitReader(r, limit+1))
 	if err != nil {
 		return nil, err
+	}
+	if value.Size > limit {
+		if cleanupErr := s.Blobs.Delete(ctx, value.BlobRef); cleanupErr != nil {
+			return nil, errors.Join(ErrAttachmentTooLarge, cleanupErr)
+		}
+		return nil, ErrAttachmentTooLarge
 	}
 	if err := s.Store.CreateServiceTemporaryAttachment(ctx, *value); err != nil {
 		cleanupErr := s.Blobs.Delete(ctx, value.BlobRef)

@@ -5222,6 +5222,7 @@
       "operationId": "jira-service-management:DELETE:/rest/servicedeskapi/servicedesk/{serviceDeskId}/organization",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_desk_uploads_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service_organizations.go",
         "internal/commands/service_organizations.go",
@@ -5235,7 +5236,7 @@
         "internal/apps/app_scopes.go",
         "internal/apps/app_scopes_test.go"
       ],
-      "notes": "Assigned agents and administrators idempotently unlink a workspace organization from their desk with the documented empty response; apps need the operation's Connect scope."
+      "notes": "Assigned agents and administrators idempotently unlink a workspace organization from their desk with the documented empty response; unknown desks or organizations answer 404 and apps need the operation's Connect scope."
     },
     {
       "operationId": "jira-service-management:DELETE:/rest/servicedeskapi/servicedesk/{serviceDeskId}/requesttype/{requestTypeId}",
@@ -5694,6 +5695,7 @@
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/servicedesk/{serviceDeskId}/organization",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_desk_uploads_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service_organizations.go",
         "internal/commands/service_organizations.go",
@@ -5705,7 +5707,7 @@
         "e2e/service.spec.ts",
         "docs/SERVICE_MANAGEMENT.md"
       ],
-      "notes": "Returns paged name-ordered organizations linked to a desk for its assigned agents and administrators; all expansions remain."
+      "notes": "Returns paged name-ordered organizations linked to a desk for its agents, narrowed by accountId to the organizations that user belongs to; unknown desks and users answer 404 and other callers 403."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/servicedesk/{serviceDeskId}/queue",
@@ -5990,12 +5992,16 @@
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/servicedesk/{serviceDeskId}/attachTemporaryFile",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_desk_uploads_test.go",
         "internal/api3/service_test.go",
         "internal/commands/service_approval_attachment.go",
         "internal/commands/service_attachment_runner.go",
-        "docs/SERVICE_MANAGEMENT.md"
+        "docs/SERVICE_MANAGEMENT.md",
+        "migrations/202_service_desk_attachments.sql",
+        "internal/web/service.go",
+        "internal/render/templates/service.gohtml"
       ],
-      "notes": "Accepts XSRF-protected multipart uploads with one-use temporary IDs and scheduled expiry cleanup; per-desk attachment-disable settings remain."
+      "notes": "Accepts XSRF-protected multipart uploads with one-use temporary IDs and scheduled expiry cleanup from the desk's agents and the customers its portal admits (open portal, direct customers or linked organizations). Uploads answer 403 when the site or the desk has attachments turned off (service desk administrators switch a desk in the agent workspace), 400 beyond the site's upload size limit, 404 for unknown desks and 413 beyond 60 files."
     },
     {
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/servicedesk/{serviceDeskId}/customer",
@@ -6054,6 +6060,7 @@
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/servicedesk/{serviceDeskId}/organization",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_desk_uploads_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service_organizations.go",
         "internal/commands/service_organizations.go",
@@ -6067,7 +6074,7 @@
         "internal/apps/app_scopes.go",
         "internal/apps/app_scopes_test.go"
       ],
-      "notes": "Assigned agents and administrators idempotently link a workspace organization to their desk and organization members gain closed-portal admission; apps need the operation's Connect scope."
+      "notes": "Assigned agents and administrators idempotently link a workspace organization to their desk and organization members gain closed-portal admission; unknown desks or organizations answer 404 and apps need the operation's Connect scope."
     },
     {
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/servicedesk/{serviceDeskId}/requesttype",

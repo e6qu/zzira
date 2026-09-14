@@ -169,6 +169,15 @@ func (s *Service) SetServiceDeskCustomerAccess(ctx context.Context, actorID, wor
 	return s.Store.SetServiceDeskCustomerAccess(ctx, workspaceID, serviceDeskID, open)
 }
 
+// SetServiceDeskAttachmentsEnabled turns attachments on or off for a service
+// desk.
+func (s *Service) SetServiceDeskAttachmentsEnabled(ctx context.Context, actorID, workspaceID, serviceDeskID string, enabled bool) error {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
+		return err
+	}
+	return s.Store.SetServiceDeskAttachmentsEnabled(ctx, workspaceID, serviceDeskID, enabled)
+}
+
 func (s *Service) SetServiceDeskKnowledgeSpace(ctx context.Context, actorID, workspaceID, serviceDeskID, spaceID string, link bool) error {
 	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
 		return err
