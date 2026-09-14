@@ -158,7 +158,8 @@ func appAPIScope(r *http.Request) (string, bool) {
 	product := ""
 	switch {
 	case strings.HasPrefix(r.URL.Path, "/rest/api/"), strings.HasPrefix(r.URL.Path, "/rest/agile/"), strings.HasPrefix(r.URL.Path, "/rest/servicedeskapi/"),
-		strings.HasPrefix(r.URL.Path, "/rest/webhooks/"), strings.HasPrefix(r.URL.Path, "/rest/internal/api/"):
+		strings.HasPrefix(r.URL.Path, "/rest/webhooks/"), strings.HasPrefix(r.URL.Path, "/rest/internal/api/"),
+		strings.HasPrefix(r.URL.Path, "/rest/atlassian-connect/1/migration/"), r.URL.Path == "/rest/atlassian-connect/1/service-registry":
 		product = "jira-work"
 	case strings.HasPrefix(r.URL.Path, "/wiki/api/"), strings.HasPrefix(r.URL.Path, "/wiki/rest/api/"):
 		product = "confluence-content"
