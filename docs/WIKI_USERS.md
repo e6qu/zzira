@@ -75,3 +75,17 @@ Reading is open to any member, as Confluence has it.
 Confluence's `expand` on the user reads, cursor paging on the bulk reads, the
 `sitePermissionTypeFilter` on the search, external collaborator accounts, and
 the invite-by-email and check-access-by-email operations remain.
+
+## Guests
+
+A guest — an external collaborator — is someone whose Confluence access on the
+site is the guest role, directly or through a group. Every user bean reports
+`isExternalCollaborator` accordingly.
+
+`GET /wiki/rest/api/search/user` finds licensed users by default
+(`sitePermissionTypeFilter=none`), guests only with `externalCollaborator`, and
+everyone with `all`. It pages with `start` and `limit` (25 by default), reports
+the total before paging, and takes the same `expand` values as group members.
+
+`POST /wiki/api/v2/users-bulk` reads between 1 and 250 account ids, the range
+the pinned API allows.

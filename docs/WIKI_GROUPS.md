@@ -60,3 +60,24 @@ because there is nothing to remove.
 
 Confluence's `accessType` filter on the list, `expand` on the member read,
 cursor paging, and groups in the browser journeys remain.
+
+## Groups by access
+
+`GET /wiki/rest/api/group?accessType=` lists this site's groups by the access
+they give, read from the site's role bindings:
+
+- `user` — groups granted use of Confluence (the user, product-user, basic,
+  contributor or viewer role on the site's Confluence);
+- `admin` — groups that administer Confluence (the admin or product-admin
+  role on it);
+- `site-admin` — groups that administer the site or its organization.
+
+Without `accessType` every group of the site's organization is listed; groups
+of other organizations never appear.
+
+`GET /wiki/rest/api/group/{groupId}/membersByGroupId` expands `operations`
+(the site permissions a member holds: `use` the application, and for
+administrators `create` spaces and `administer` the application),
+`personalSpace` (the space keyed for the member, when the caller can see it)
+and `isExternalCollaborator`; unexpanded properties are listed under
+`_expandable`.
