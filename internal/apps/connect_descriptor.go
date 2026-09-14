@@ -36,6 +36,13 @@ type connectIssueFieldWire struct {
 	Type        string          `json:"type"`
 }
 
+// connectTimeTrackingProviderWire is a jiraTimeTrackingProviders module.
+type connectTimeTrackingProviderWire struct {
+	Key          string          `json:"key"`
+	Name         connectNameWire `json:"name"`
+	AdminPageKey string          `json:"adminPageKey"`
+}
+
 // connectPermissionWire is a jiraProjectPermissions or jiraGlobalPermissions
 // module.
 type connectPermissionWire struct {
@@ -241,7 +248,7 @@ func parseConnectDescriptor(raw []byte) (models.AppDescriptor, error) {
 		wire.Scopes = append(wire.Scopes, scope)
 	}
 	sort.Strings(wire.Scopes)
-	supported := map[string]bool{"adminPages": true, "generalPages": true, "jiraProjectPages": true, "jiraProjectAdminTabPanels": true, "jiraReports": true, "jiraDashboardItems": true, "jiraIssueTabPanels": true, "webPanels": true, "contentBylineItems": true, "webhooks": true, "jiraIssueFields": true, "jiraJqlFunctions": true, "webItems": true, "jiraIssueContents": true, "jiraIssueContexts": true, "jiraIssueGlances": true, "jiraProjectPermissions": true, "jiraGlobalPermissions": true}
+	supported := map[string]bool{"adminPages": true, "generalPages": true, "jiraProjectPages": true, "jiraProjectAdminTabPanels": true, "jiraReports": true, "jiraDashboardItems": true, "jiraIssueTabPanels": true, "webPanels": true, "contentBylineItems": true, "webhooks": true, "jiraIssueFields": true, "jiraJqlFunctions": true, "webItems": true, "jiraIssueContents": true, "jiraIssueContexts": true, "jiraIssueGlances": true, "jiraProjectPermissions": true, "jiraGlobalPermissions": true, "jiraTimeTrackingProviders": true}
 	for moduleType, payload := range connect.Modules {
 		if !supported[moduleType] {
 			return models.AppDescriptor{}, fmt.Errorf("Connect module %q is not supported yet", moduleType)
@@ -384,6 +391,14 @@ func parseConnectDescriptor(raw []byte) (models.AppDescriptor, error) {
 					return models.AppDescriptor{}, err
 				}
 				wire.Modules = append(wire.Modules, translated)
+			}
+		case "jiraTimeTrackingProviders":
+			var modules []connectTimeTrackingProviderWire
+			if err := json.Unmarshal(payload, &modules); err != nil {
+				return models.AppDescriptor{}, fmt.Errorf("invalid Connect jiraTimeTrackingProviders: %w", err)
+			}
+			for _, module := range modules {
+				wire.TimeTrackingProviders = append(wire.TimeTrackingProviders, models.AppTimeTrackingProvider{Key: module.Key, Name: module.Name.Value, AdminPageKey: module.AdminPageKey})
 			}
 		case "jiraProjectPermissions", "jiraGlobalPermissions":
 			var modules []connectPermissionWire

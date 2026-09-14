@@ -14,12 +14,12 @@ audit event and an ordered workspace action in the same transaction.
 | Method | Path | Authorization | Response |
 |---|---|---|---|
 | GET/PUT | `/rest/api/3/announcementBanner` | Administer Jira | Jira banner object / `204` |
-| GET | `/rest/api/3/application-properties` | Administer Jira | all properties, a single `key`, or `keyFilter` results |
+| GET | `/rest/api/3/application-properties` | Administer Jira | all properties, a single `key`, or the properties whose whole key matches the `keyFilter` regular expression; `permissionLevel` `ADMIN` or `SYSADMIN` lists every editable property, `SYSADMIN_ONLY` none |
 | GET | `/rest/api/3/application-properties/advanced-settings` | Administer Jira | advanced editable properties |
 | PUT | `/rest/api/3/application-properties/{id}` | Administer Jira | updated property |
 | GET | `/rest/api/3/configuration` | Jira access | global feature flags and enabled time settings |
 | GET/PUT | `/rest/api/3/configuration/timetracking` | Administer Jira | selected provider / `204` |
-| GET | `/rest/api/3/configuration/timetracking/list` | Administer Jira | installed providers |
+| GET | `/rest/api/3/configuration/timetracking/list` | Administer Jira | Jira's provider and those active apps install |
 | GET/PUT | `/rest/api/3/configuration/timetracking/options` | Administer Jira | current / updated options |
 | GET/PUT | `/rest/api/3/settings/columns` | Administer Jira | ordered column objects / empty `200` |
 
@@ -33,8 +33,13 @@ Time settings validate supported units and formats and decimal work schedules.
 When time tracking is disabled, the selected-provider route returns `204` and
 the global configuration omits `timeTrackingConfiguration`.
 
-The current provider catalog contains Jira's built-in provider. Marketplace
-time-tracking-provider modules remain part of the app-platform PR. The editable
+The provider catalog holds Jira's built-in provider (`Jira`) and every
+provider an active app declares through Connect's `jiraTimeTrackingProviders`
+module. An app provider's key is the app key and module key joined by two
+underscores, and its `url` is the app admin page its `adminPageKey` names, at
+`/plugins/servlet/ac/{appKey}/{adminPageKey}`. A descriptor naming an admin page
+the app does not declare is refused. Selecting a provider enables time
+tracking; an unknown provider, or one whose app is suspended, answers 400. The editable
 application-property catalog matches the properties documented by Jira Cloud;
 some look-and-feel values are stored and returned but do not yet restyle every
 ZZIRA surface. Exact Jira validation for paired Java/JavaScript date formats

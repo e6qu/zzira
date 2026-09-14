@@ -15,6 +15,14 @@ type AppDescriptor struct {
 	IssueFields                         []AppIssueField
 	JQLFunctions                        []AppJQLFunction
 	Permissions                         []AppPermission
+	TimeTrackingProviders               []AppTimeTrackingProvider
+}
+
+// AppTimeTrackingProvider is a time tracking provider an app declares. Its
+// provider key is the app key and module key joined by two underscores, and
+// AdminPageKey names the app's admin page that configures it.
+type AppTimeTrackingProvider struct {
+	Key, Name, AdminPageKey string
 }
 
 // AppPermission is a project or global permission an app declares. Type is

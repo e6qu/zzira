@@ -107,10 +107,22 @@ func TestJiraSiteConfigurationContractJourney(t *testing.T) {
 		t.Fatalf("options = %#v", options)
 	}
 
-	properties := call(adminID, http.MethodGet, "/rest/api/3/application-properties?keyFilter=clone", "", "", http.StatusOK).([]any)
+	// keyFilter is a regular expression the whole key must match.
+	properties := call(adminID, http.MethodGet, "/rest/api/3/application-properties?keyFilter=jira%5C.clone%5C..*", "", "", http.StatusOK).([]any)
 	if len(properties) != 1 {
 		t.Fatalf("filtered properties = %#v", properties)
 	}
+	if partial := call(adminID, http.MethodGet, "/rest/api/3/application-properties?keyFilter=clone", "", "", http.StatusOK).([]any); len(partial) != 0 {
+		t.Fatalf("a partial key matched keyFilter: %#v", partial)
+	}
+	call(adminID, http.MethodGet, "/rest/api/3/application-properties?keyFilter=%5B", "", "", http.StatusBadRequest)
+	if admin := call(adminID, http.MethodGet, "/rest/api/3/application-properties?permissionLevel=ADMIN", "", "", http.StatusOK).([]any); len(admin) == 0 {
+		t.Fatal("no properties at the ADMIN permission level")
+	}
+	if sysadminOnly := call(adminID, http.MethodGet, "/rest/api/3/application-properties?permissionLevel=SYSADMIN_ONLY", "", "", http.StatusOK).([]any); len(sysadminOnly) != 0 {
+		t.Fatalf("properties kept for system administrators alone = %#v", sysadminOnly)
+	}
+	call(adminID, http.MethodGet, "/rest/api/3/application-properties?permissionLevel=OWNER", "", "", http.StatusBadRequest)
 	property := call(adminID, http.MethodPut, "/rest/api/3/application-properties/jira.clone.prefix", `{"id":"jira.clone.prefix","value":"COPY -"}`, "application/json", http.StatusOK).(map[string]any)
 	if property["value"] != "COPY -" {
 		t.Fatalf("updated property = %#v", property)

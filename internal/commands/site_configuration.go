@@ -64,10 +64,16 @@ func (s *Service) SelectTimeTrackingProvider(ctx context.Context, workspaceID, a
 	if err := s.requireSiteAdmin(ctx, workspaceID, actorID); err != nil {
 		return err
 	}
-	if key != "Jira" {
-		return validation("time tracking provider was not found")
+	providers, err := s.Store.TimeTrackingProviders(ctx, workspaceID)
+	if err != nil {
+		return err
 	}
-	return s.Store.UpdateTimeTrackingProvider(ctx, workspaceID, actorID, key)
+	for _, provider := range providers {
+		if provider.Key == key {
+			return s.Store.UpdateTimeTrackingProvider(ctx, workspaceID, actorID, key)
+		}
+	}
+	return validation("time tracking provider was not found")
 }
 
 func (s *Service) UpdateTimeTrackingOptions(ctx context.Context, workspaceID, actorID string, cfg models.TimeTrackingConfiguration) error {

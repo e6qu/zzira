@@ -69,7 +69,9 @@ type descriptorWire struct {
 	IssueFields       []models.AppIssueField `json:"-"`
 	JQLFunctions      []jqlFunctionWire      `json:"jqlFunctions"`
 	Permissions       []models.AppPermission `json:"-"`
-	Format            string                 `json:"-"`
+	// TimeTrackingProviders are Connect jiraTimeTrackingProviders modules.
+	TimeTrackingProviders []models.AppTimeTrackingProvider `json:"-"`
+	Format                string                           `json:"-"`
 }
 
 type jqlFunctionWire struct {
@@ -219,6 +221,26 @@ func validateDescriptorWire(wire descriptorWire) (models.AppDescriptor, error) {
 		}
 		moduleKeys[validated.Key] = true
 		descriptor.Permissions = append(descriptor.Permissions, validated)
+	}
+	adminPages := map[string]bool{}
+	for _, module := range descriptor.Modules {
+		if module.Type == "jira:adminPage" {
+			adminPages[module.Key] = true
+		}
+	}
+	for _, provider := range wire.TimeTrackingProviders {
+		provider.Key, provider.Name, provider.AdminPageKey = strings.TrimSpace(provider.Key), strings.TrimSpace(provider.Name), strings.TrimSpace(provider.AdminPageKey)
+		if !appPermissionKeyPattern.MatchString(provider.Key) || moduleKeys[provider.Key] {
+			return models.AppDescriptor{}, fmt.Errorf("time tracking provider modules need a unique key of at most 100 letters, digits and hyphens")
+		}
+		if provider.Name == "" || len(provider.Name) > 255 {
+			return models.AppDescriptor{}, fmt.Errorf("time tracking provider %q needs a name of at most 255 characters", provider.Key)
+		}
+		if provider.AdminPageKey != "" && !adminPages[provider.AdminPageKey] {
+			return models.AppDescriptor{}, fmt.Errorf("time tracking provider %q names admin page %q, which the app does not declare", provider.Key, provider.AdminPageKey)
+		}
+		moduleKeys[provider.Key] = true
+		descriptor.TimeTrackingProviders = append(descriptor.TimeTrackingProviders, provider)
 	}
 	descriptor.Lifecycle = map[string]string{}
 	for event, path := range wire.Lifecycle {

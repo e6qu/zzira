@@ -184,25 +184,77 @@ func (h *Handler) projectTypes(w http.ResponseWriter, r *http.Request, suffix st
 		jiraError(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
-	accessible := suffix == "/accessible" || strings.HasSuffix(suffix, "/accessible")
-	if accessible {
-		if _, _, e := h.authWorkspace(r); e != nil {
-			writeJerr(w, e)
+	key := strings.TrimSuffix(strings.TrimPrefix(suffix, "/"), "accessible")
+	key = strings.TrimSuffix(key, "/")
+	if !strings.HasSuffix(suffix, "accessible") {
+		if key == "" {
+			writeJSON(w, http.StatusOK, jiraProjectTypes)
 			return
 		}
-	}
-	if suffix == "" || suffix == "/accessible" {
-		writeJSON(w, http.StatusOK, jiraProjectTypes)
+		for _, projectType := range jiraProjectTypes {
+			if projectType["key"] == key {
+				writeJSON(w, http.StatusOK, projectType)
+				return
+			}
+		}
+		jiraError(w, http.StatusNotFound, "Project type does not exist.")
 		return
 	}
-	key := strings.TrimSuffix(strings.TrimPrefix(suffix, "/"), "/accessible")
+	workspaceID, userID, e := h.authWorkspace(r)
+	if e != nil {
+		writeJerr(w, e)
+		return
+	}
+	licensed, accessible, err := h.projectTypeAccess(r, workspaceID, userID)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	// The list holds the types the site has a license for; one type is
+	// returned only to someone with access to its product.
+	if key == "" {
+		types := []map[string]any{}
+		for _, projectType := range jiraProjectTypes {
+			if licensed[projectType["key"].(string)] {
+				types = append(types, projectType)
+			}
+		}
+		writeJSON(w, http.StatusOK, types)
+		return
+	}
 	for _, projectType := range jiraProjectTypes {
-		if projectType["key"] == key {
+		if projectType["key"] == key && accessible[key] {
 			writeJSON(w, http.StatusOK, projectType)
 			return
 		}
 	}
-	jiraError(w, http.StatusNotFound, "Project type does not exist.")
+	jiraError(w, http.StatusNotFound, "Project type is not accessible to the user.")
+}
+
+// projectTypeAccess reports the project types the site's products license and
+// those the person can reach through their application roles. Software
+// projects come with Jira Software and service projects with Jira Service
+// Management; business projects come with any Jira product.
+func (h *Handler) projectTypeAccess(r *http.Request, workspaceID, userID string) (licensed, accessible map[string]bool, err error) {
+	productTypes := map[string]string{"jira-software": "software", "jira-servicedesk": "service_desk"}
+	licensed, accessible = map[string]bool{}, map[string]bool{}
+	roles, err := h.Store.ApplicationRoles(r.Context(), workspaceID)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, role := range roles {
+		licensed[productTypes[role.Key]], licensed["business"] = true, true
+	}
+	held, err := h.Store.UserApplicationRoles(r.Context(), workspaceID, userID)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, role := range held {
+		accessible[productTypes[role.Key]], accessible["business"] = true, true
+	}
+	delete(licensed, "")
+	delete(accessible, "")
+	return licensed, accessible, nil
 }
 
 func (h *Handler) projectMetadataRoute(w http.ResponseWriter, r *http.Request, parts []string) {

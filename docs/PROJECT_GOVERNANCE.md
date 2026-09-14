@@ -60,8 +60,12 @@ Jira Cloud-compatible REST resources.
   Code, and Deployments remain.
 - Sender addresses are syntax validated. Custom-domain ownership, verification
   warnings, bounce handling, and outbound notification delivery remain.
-- Project types reflect ZZIRA's installed products; Atlassian license discovery
-  and product-entitlement billing are outside the self-hosted boundary.
+- Project types follow the site's products. `GET /project/type/accessible`
+  lists the types an enabled product licenses: software with Jira Software,
+  service_desk with Jira Service Management, and business with any Jira
+  product. `GET /project/type/{key}/accessible` answers 404 to a person whose
+  application roles do not reach that product. Atlassian billing is outside the
+  self-hosted boundary.
 - Valid key generation is deterministic. Jira does not promise the exact
   replacement string, but clients that assume Atlassian's random choice may
   observe a different available key.

@@ -139,7 +139,7 @@
         "e2e/admin.spec.ts",
         "docs/JIRA_SITE_CONFIGURATION.md"
       ],
-      "notes": "Returns the documented editable catalog, single-key object shape and key filtering from durable site values; exact permissionLevel and every Atlassian edge-filter behavior remain."
+      "notes": "Returns the documented editable catalog, the single-key object shape, keyFilter as a regular expression the whole key must match, and permissionLevel ADMIN or SYSADMIN (every editable property) or SYSADMIN_ONLY (none, as Cloud keeps no property for system administrators alone), from durable site values."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/application-properties/advanced-settings",
@@ -793,11 +793,12 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/app_time_tracking_test.go",
         "internal/api3/site_configuration_test.go",
         "e2e/admin.spec.ts",
         "docs/JIRA_SITE_CONFIGURATION.md"
       ],
-      "notes": "Returns the selected built-in provider or 204 while time tracking is disabled; Marketplace provider modules remain."
+      "notes": "Returns the selected provider, Jira's or an active app's, or 204 while time tracking is disabled."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/configuration/timetracking",
@@ -805,11 +806,12 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/app_time_tracking_test.go",
         "internal/api3/site_configuration_test.go",
         "e2e/admin.spec.ts",
         "docs/JIRA_SITE_CONFIGURATION.md"
       ],
-      "notes": "Selects and enables the installed Jira provider with the documented 204 response and audit/action evidence; Marketplace provider modules remain."
+      "notes": "Selects and enables Jira's or an active app's provider with the documented 204 response and audit/action evidence; unknown or suspended providers answer 400."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/configuration/timetracking/list",
@@ -817,11 +819,12 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/app_time_tracking_test.go",
         "internal/api3/site_configuration_test.go",
         "e2e/admin.spec.ts",
         "docs/JIRA_SITE_CONFIGURATION.md"
       ],
-      "notes": "Returns the Jira-provided time-tracking provider to administrators; app-provided providers remain."
+      "notes": "Returns Jira's provider and every provider active apps declare through Connect jiraTimeTrackingProviders modules, keyed appKey__moduleKey with the configuring admin page URL, to administrators."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/configuration/timetracking/options",
@@ -4722,11 +4725,12 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/app_time_tracking_test.go",
         "internal/api3/project_governance_test.go",
         "e2e/projects.spec.ts",
         "docs/PROJECT_GOVERNANCE.md"
       ],
-      "notes": "Returns the installed types to authenticated workspace members; fine-grained product entitlement remains."
+      "notes": "Returns the project types the site's enabled products license: software with Jira Software, service_desk with Jira Service Management, business with any Jira product."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/project/type/{projectTypeKey}",
@@ -4746,11 +4750,12 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/app_time_tracking_test.go",
         "internal/api3/project_governance_test.go",
         "e2e/projects.spec.ts",
         "docs/PROJECT_GOVERNANCE.md"
       ],
-      "notes": "Resolves an installed project type for a workspace member; fine-grained product entitlement remains."
+      "notes": "Returns a project type only to a person whose application roles reach its product (business with any Jira product), and 404 otherwise."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/project/{projectIdOrKey}",

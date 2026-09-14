@@ -1,6 +1,7 @@
 package apps
 
 import (
+	"github.com/e6qu/zzira/internal/models"
 	"strings"
 	"testing"
 )
@@ -231,5 +232,34 @@ func TestTranslateConnectIssueTabPanelDefaultsWeight(t *testing.T) {
 	}
 	if _, err := translateConnectIssueTabPanel(connectIssueTabPanelWire{Key: "bad_key", URL: "/deployments", Name: connectNameWire{Value: "Deployments"}}); err == nil {
 		t.Fatal("accepted an issue-tab key outside the Connect key pattern")
+	}
+}
+
+// TestParseConnectTimeTrackingProviders covers Connect's
+// jiraTimeTrackingProviders module: a provider keeps its name and the admin
+// page that configures it, and a provider naming an admin page the app does
+// not declare, or reusing a module key, is refused.
+func TestParseConnectTimeTrackingProviders(t *testing.T) {
+	descriptor := func(providers string) []byte {
+		return []byte(`{"key":"tempo.like","name":"Timesheets","baseUrl":"https://time.example.test","authentication":{"type":"jwt"},"scopes":["READ"],
+			"modules":{"adminPages":[{"key":"timesheet-settings","url":"/settings","name":{"value":"Timesheet settings"}}],
+			"jiraTimeTrackingProviders":` + providers + `}}`)
+	}
+	parsed, err := ParseDescriptor(descriptor(`[{"key":"timesheets","name":{"value":"Timesheet tracking"},"adminPageKey":"timesheet-settings"}]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(parsed.TimeTrackingProviders) != 1 || parsed.TimeTrackingProviders[0] != (models.AppTimeTrackingProvider{Key: "timesheets", Name: "Timesheet tracking", AdminPageKey: "timesheet-settings"}) {
+		t.Fatalf("providers = %+v", parsed.TimeTrackingProviders)
+	}
+	for _, invalid := range []string{
+		`[{"key":"timesheets","name":{"value":"Timesheet tracking"},"adminPageKey":"missing-page"}]`,
+		`[{"key":"timesheet-settings","name":{"value":"Reused key"}}]`,
+		`[{"key":"timesheets","name":{"value":""}}]`,
+		`[{"key":"time sheets","name":{"value":"Spaced key"}}]`,
+	} {
+		if _, err := ParseDescriptor(descriptor(invalid)); err == nil {
+			t.Fatalf("accepted providers %s", invalid)
+		}
 	}
 }
