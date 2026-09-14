@@ -334,6 +334,10 @@ func createFieldSchema(field models.CreateFieldMeta) map[string]any {
 	if field.Type == "array" {
 		schema["items"] = "string"
 	}
+	if field.Type == "options" {
+		schema["type"] = "array"
+		schema["items"] = "option"
+	}
 	return schema
 }
 

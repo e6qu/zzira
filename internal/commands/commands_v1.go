@@ -135,6 +135,9 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 			return nil, nil, fmt.Errorf("security level would hide this issue from you")
 		}
 	}
+	if err := s.normalizeOptionFields(ctx, in.WorkspaceID, issue.ProjectID, issue.IssueType.ID, in.Fields); err != nil {
+		return nil, nil, err
+	}
 	if err := s.validateCustomFields(ctx, issue.ProjectID, in.Fields); err != nil {
 		return nil, nil, err
 	}
@@ -265,6 +268,18 @@ func (s *Service) validateCustomFields(ctx context.Context, projectID string, va
 			if err := json.Unmarshal(raw, &value); err != nil {
 				return fmt.Errorf("custom field %q must be an option id", id)
 			}
+		case models.CustomFieldMultiSelect:
+			var values []string
+			if err := json.Unmarshal(raw, &values); err != nil {
+				return fmt.Errorf("custom field %q must be a list of option ids", id)
+			}
+			seen := map[string]bool{}
+			for _, value := range values {
+				if value == "" || seen[value] {
+					return fmt.Errorf("custom field %q must list each option once", id)
+				}
+				seen[value] = true
+			}
 		default:
 			return fmt.Errorf("custom field %q has unsupported type %q", id, field.Type)
 		}
@@ -331,6 +346,9 @@ func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, worksp
 	}
 	if len(update.Description) > 1<<20 {
 		return nil, nil, fmt.Errorf("description must be at most 1 MiB")
+	}
+	if err := s.normalizeOptionFields(ctx, workspaceID, issue.ProjectID, issue.IssueType.ID, update.Fields); err != nil {
+		return nil, nil, err
 	}
 	if err := s.validateCustomFields(ctx, issue.ProjectID, update.Fields); err != nil {
 		return nil, nil, err
@@ -489,6 +507,9 @@ func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, worksp
 		if _, err := s.Store.MemberByID(ctx, workspaceID, *update.AssigneeID); err != nil {
 			return nil, nil, fmt.Errorf("workflow assignee is not an active workspace member")
 		}
+	}
+	if err := s.normalizeOptionFields(ctx, workspaceID, issue.ProjectID, issue.IssueType.ID, update.Fields); err != nil {
+		return nil, nil, err
 	}
 	if err := s.validateCustomFields(ctx, issue.ProjectID, update.Fields); err != nil {
 		return nil, nil, err

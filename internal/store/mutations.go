@@ -919,6 +919,21 @@ func customFieldChange(ctx context.Context, tx pgx.Tx, fieldID string, from, to 
 		if len(raw) == 0 || string(raw) == "null" {
 			return "", ""
 		}
+		if fieldType == models.CustomFieldMultiSelect {
+			var ids []string
+			if json.Unmarshal(raw, &ids) != nil {
+				return "", string(raw)
+			}
+			names := make([]string, 0, len(ids))
+			for _, id := range ids {
+				var option string
+				if err := tx.QueryRow(ctx, `SELECT value FROM custom_field_options WHERE id::text=$1`, id).Scan(&option); err != nil {
+					option = id
+				}
+				names = append(names, option)
+			}
+			return strings.Join(ids, ", "), strings.Join(names, ", ")
+		}
 		var value any
 		if json.Unmarshal(raw, &value) != nil {
 			return "", string(raw)

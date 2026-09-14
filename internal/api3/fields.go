@@ -15,23 +15,25 @@ import (
 // this product has. A client configured against Jira sends the long key, so
 // accepting only the short name would reject every real request.
 var jiraFieldTypeKeys = map[string]string{
-	"com.atlassian.jira.plugin.system.customfieldtypes:textfield":     models.CustomFieldText,
-	"com.atlassian.jira.plugin.system.customfieldtypes:textarea":      models.CustomFieldText,
-	"com.atlassian.jira.plugin.system.customfieldtypes:readonlyfield": models.CustomFieldText,
-	"com.atlassian.jira.plugin.system.customfieldtypes:url":           models.CustomFieldText,
-	"com.atlassian.jira.plugin.system.customfieldtypes:float":         models.CustomFieldNumber,
-	"com.atlassian.jira.plugin.system.customfieldtypes:importid":      models.CustomFieldNumber,
-	"com.atlassian.jira.plugin.system.customfieldtypes:datetime":      models.CustomFieldDatetime,
-	"com.atlassian.jira.plugin.system.customfieldtypes:datepicker":    models.CustomFieldDatetime,
-	"com.atlassian.jira.plugin.system.customfieldtypes:select":        models.CustomFieldSelect,
-	"com.atlassian.jira.plugin.system.customfieldtypes:radiobuttons":  models.CustomFieldSelect,
+	"com.atlassian.jira.plugin.system.customfieldtypes:textfield":       models.CustomFieldText,
+	"com.atlassian.jira.plugin.system.customfieldtypes:textarea":        models.CustomFieldText,
+	"com.atlassian.jira.plugin.system.customfieldtypes:readonlyfield":   models.CustomFieldText,
+	"com.atlassian.jira.plugin.system.customfieldtypes:url":             models.CustomFieldText,
+	"com.atlassian.jira.plugin.system.customfieldtypes:float":           models.CustomFieldNumber,
+	"com.atlassian.jira.plugin.system.customfieldtypes:importid":        models.CustomFieldNumber,
+	"com.atlassian.jira.plugin.system.customfieldtypes:datetime":        models.CustomFieldDatetime,
+	"com.atlassian.jira.plugin.system.customfieldtypes:datepicker":      models.CustomFieldDatetime,
+	"com.atlassian.jira.plugin.system.customfieldtypes:select":          models.CustomFieldSelect,
+	"com.atlassian.jira.plugin.system.customfieldtypes:radiobuttons":    models.CustomFieldSelect,
+	"com.atlassian.jira.plugin.system.customfieldtypes:multiselect":     models.CustomFieldMultiSelect,
+	"com.atlassian.jira.plugin.system.customfieldtypes:multicheckboxes": models.CustomFieldMultiSelect,
 }
 
 // resolveFieldType accepts either this product's short type name or Jira's
 // canonical key, and reports whether the type is one this product can serve.
 func resolveFieldType(requested string) (string, bool) {
 	switch requested {
-	case models.CustomFieldText, models.CustomFieldNumber, models.CustomFieldDatetime, models.CustomFieldSelect:
+	case models.CustomFieldText, models.CustomFieldNumber, models.CustomFieldDatetime, models.CustomFieldSelect, models.CustomFieldMultiSelect:
 		return requested, true
 	}
 	if mapped, ok := jiraFieldTypeKeys[requested]; ok {

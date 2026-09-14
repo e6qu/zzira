@@ -388,8 +388,11 @@ func (h *Handler) migrateConnectFieldValues(w http.ResponseWriter, r *http.Reque
 	type write struct {
 		issueID, fieldID string
 		value            json.RawMessage
+		options          []string
 	}
 	writes := []write{}
+	multi := map[string]*write{}
+	multiOrder := []string{}
 	for _, item := range request.UpdateValueList {
 		if item.FieldID == nil || item.IssueID == nil {
 			operationMessage(w, http.StatusBadRequest, "Each value needs _type, fieldID and issueID.")
@@ -419,8 +422,22 @@ func (h *Handler) migrateConnectFieldValues(w http.ResponseWriter, r *http.Reque
 		case "SingleSelectIssueField":
 			value = item.OptionID
 		case "MultiSelectIssueField":
-			operationMessage(w, http.StatusBadRequest, "Multi-select issue fields are not supported.")
-			return
+			if item.OptionID == nil {
+				operationMessage(w, http.StatusBadRequest, "A MultiSelectIssueField value needs optionID.")
+				return
+			}
+			issue, err := h.Store.IssueByIDOrKey(r.Context(), workspaceID, strconv.FormatInt(*item.IssueID, 10))
+			if err != nil {
+				operationMessage(w, http.StatusBadRequest, fmt.Sprintf("The issue %d does not exist.", *item.IssueID))
+				return
+			}
+			key := issue.ID + "/" + fieldID
+			if multi[key] == nil {
+				multi[key] = &write{issueID: issue.ID, fieldID: fieldID}
+				multiOrder = append(multiOrder, key)
+			}
+			multi[key].options = append(multi[key].options, *item.OptionID)
+			continue
 		default:
 			operationMessage(w, http.StatusBadRequest, "The _type "+item.Type+" is not supported.")
 			return
@@ -432,6 +449,11 @@ func (h *Handler) migrateConnectFieldValues(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		writes = append(writes, write{issueID: issue.ID, fieldID: fieldID, value: raw})
+	}
+	for _, key := range multiOrder {
+		item := multi[key]
+		item.value, _ = json.Marshal(item.options)
+		writes = append(writes, *item)
 	}
 	for _, item := range writes {
 		if _, _, err := h.Commands.UpdateIssue(r.Context(), commands.UpdateIssueInput{

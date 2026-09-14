@@ -104,6 +104,11 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 	if issueType.Subtask && !configuration.SubTasksEnabled {
 		return nil, nil, fmt.Errorf("subtasks are disabled for this site")
 	}
+	// Jira accepts an option as its id, {"id"} or {"value"}; every check below
+	// sees the option ids a work item stores.
+	if err = s.normalizeOptionFields(ctx, in.WorkspaceID, project.ID, issueType.ID, in.Fields); err != nil {
+		return nil, nil, err
+	}
 	if err = s.enforceFieldConfiguration(ctx, in, project.ID, issueType.ID); err != nil {
 		return nil, nil, err
 	}
@@ -425,13 +430,87 @@ func (s *Service) enforceCustomFieldContexts(ctx context.Context, workspaceID, p
 		if !isSelect {
 			continue
 		}
+		var values []string
 		var value string
-		if err := json.Unmarshal(fields[field], &value); err != nil {
+		if err := json.Unmarshal(fields[field], &value); err == nil {
+			values = []string{value}
+		} else if err := json.Unmarshal(fields[field], &values); err != nil {
 			return fmt.Errorf("%s must be an option id", field)
 		}
-		if !choices[value] {
-			return fmt.Errorf("%s does not offer option %q here", field, value)
+		for _, value := range values {
+			if !choices[value] {
+				return fmt.Errorf("%s does not offer option %q here", field, value)
+			}
 		}
+	}
+	return nil
+}
+
+// normalizeOptionFields turns the forms Jira accepts for a select or
+// multi-select value — an option id, {"id": ...} or {"value": ...}, and for a
+// multi-select a list of them — into the option ids a work item stores. A value
+// names an option of the context that governs the project and work type.
+func (s *Service) normalizeOptionFields(ctx context.Context, workspaceID, projectID, issueTypeID string, fields map[string]json.RawMessage) error {
+	if len(fields) == 0 {
+		return nil
+	}
+	catalog, err := s.Store.CustomFieldOptionCatalog(ctx, workspaceID, projectID, issueTypeID)
+	if err != nil {
+		return err
+	}
+	resolve := func(field string, raw json.RawMessage, options store.OptionCatalog) (string, error) {
+		var id string
+		if json.Unmarshal(raw, &id) == nil {
+			return id, nil
+		}
+		var number json.Number
+		if json.Unmarshal(raw, &number) == nil {
+			return number.String(), nil
+		}
+		var object struct {
+			ID    json.RawMessage `json:"id"`
+			Value *string         `json:"value"`
+		}
+		if json.Unmarshal(raw, &object) != nil {
+			return "", fmt.Errorf("%s must be an option id, {\"id\"} or {\"value\"}", field)
+		}
+		if len(object.ID) > 0 {
+			return strings.Trim(string(object.ID), `"`), nil
+		}
+		if object.Value != nil {
+			if optionID, ok := options.ByValue[*object.Value]; ok {
+				return optionID, nil
+			}
+			return "", fmt.Errorf("%s does not offer the option %q here", field, *object.Value)
+		}
+		return "", fmt.Errorf("%s must be an option id, {\"id\"} or {\"value\"}", field)
+	}
+	for field, raw := range fields {
+		options, isOption := catalog[field]
+		if !isOption || !suppliedFieldValue(raw) {
+			continue
+		}
+		if !options.Multi {
+			id, err := resolve(field, raw, options)
+			if err != nil {
+				return err
+			}
+			fields[field], _ = json.Marshal(id)
+			continue
+		}
+		var items []json.RawMessage
+		if json.Unmarshal(raw, &items) != nil {
+			items = []json.RawMessage{raw}
+		}
+		ids := make([]string, 0, len(items))
+		for _, item := range items {
+			id, err := resolve(field, item, options)
+			if err != nil {
+				return err
+			}
+			ids = append(ids, id)
+		}
+		fields[field], _ = json.Marshal(ids)
 	}
 	return nil
 }

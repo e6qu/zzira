@@ -752,8 +752,11 @@ func (h *Handler) buildEditDialogView(ctx context.Context, wsID string, issue *m
 				continue
 			}
 			var text string
+			var list []string
 			if json.Unmarshal(raw, &text) == nil {
 				value = text
+			} else if json.Unmarshal(raw, &list) == nil {
+				value = strings.Join(list, ",")
 			} else {
 				value = string(raw)
 			}
@@ -1047,7 +1050,9 @@ func firstFormValues(r *http.Request) map[string]string {
 	for key, entries := range r.Form {
 		if len(entries) > 0 {
 			values[key] = entries[0]
-			if key == "fixVersions" || key == "versions" {
+			// Fields with several values, such as versions and multi-select
+			// custom fields, post one entry per chosen value.
+			if key == "fixVersions" || key == "versions" || (strings.HasPrefix(key, "customfield_") && len(entries) > 1) {
 				values[key] = strings.Join(entries, ",")
 			}
 		}
@@ -1174,6 +1179,14 @@ func encodeWebCustomField(fieldType, value string) (json.RawMessage, error) {
 		"option", models.CustomFieldSelect:
 		encoded, err := json.Marshal(value)
 		return encoded, err
+	case "options", models.CustomFieldMultiSelect:
+		ids := []string{}
+		for _, id := range strings.Split(value, ",") {
+			if id = strings.TrimSpace(id); id != "" {
+				ids = append(ids, id)
+			}
+		}
+		return json.Marshal(ids)
 	default:
 		return nil, fmt.Errorf("has unsupported type %q", fieldType)
 	}
@@ -1891,7 +1904,15 @@ func (h *Handler) UpdateIssueField(w http.ResponseWriter, r *http.Request, key s
 			http.Error(w, "unknown issue field", http.StatusBadRequest)
 			return
 		}
-		in.Fields = map[string]json.RawMessage{strings.TrimPrefix(field, prefix): json.RawMessage(strconv.Quote(value))}
+		fieldID := strings.TrimPrefix(field, prefix)
+		encoded := json.RawMessage(strconv.Quote(value))
+		if definition, err := h.Store.CustomFieldByID(r.Context(), wsID, fieldID); err == nil && definition.Type == models.CustomFieldMultiSelect {
+			if encoded, err = encodeWebCustomField(definition.Type, value); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+		}
+		in.Fields = map[string]json.RawMessage{fieldID: encoded}
 	}
 	if _, _, err := h.Commands.UpdateIssue(r.Context(), in); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -2044,7 +2065,7 @@ func (h *Handler) EditIssue(w http.ResponseWriter, r *http.Request, key string) 
 			if in.Fields == nil {
 				in.Fields = map[string]json.RawMessage{}
 			}
-			encoded, err := encodeWebCustomField(cf.Type, v[0])
+			encoded, err := encodeWebCustomField(cf.Type, strings.Join(v, ","))
 			if err != nil {
 				http.Error(w, cf.Name+" "+err.Error(), http.StatusBadRequest)
 				return

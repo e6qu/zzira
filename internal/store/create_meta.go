@@ -193,6 +193,8 @@ func createFieldType(fieldType string) (string, error) {
 		return "datetime", nil
 	case models.CustomFieldSelect:
 		return "option", nil
+	case models.CustomFieldMultiSelect:
+		return "options", nil
 	default:
 		return "", fmt.Errorf("unsupported type %q", fieldType)
 	}
