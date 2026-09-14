@@ -113,6 +113,9 @@ func (h *Handler) customFieldBean(f *models.CustomField) map[string]any {
 		"schema":      schema,
 		"description": f.Description,
 		"self":        h.BaseURL + "/rest/api/3/field/" + f.ID,
+		// zzira serves one locale, so the translations are the field's own text.
+		"translatedName":        f.Name,
+		"translatedDescription": f.Description,
 	}
 	if f.AppKey != "" {
 		key := f.AppKey + "__" + f.AppModuleKey

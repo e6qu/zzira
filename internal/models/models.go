@@ -351,6 +351,8 @@ type WorkflowTransition struct {
 	ID           string
 	Name         string
 	ScreenFields []string
+	// ScreenMessage is the prompt a remind-people-to-update-fields screen shows.
+	ScreenMessage string
 }
 
 // EditDialogView drives the edit-issue dialog; rendered by both server and

@@ -53,9 +53,11 @@ type IssueUpdate struct {
 	Labels              *[]string       // empty = clear, nil = unchanged
 	Fields              map[string]json.RawMessage
 	TriggeredWebhookIDs []string
-	SuppressChangelog   bool
-	SuppressEvents      bool
-	TaskID              string
+	// TriggeredAgents are agent runs the transition's post functions request.
+	TriggeredAgents   []models.WorkflowAgentTrigger
+	SuppressChangelog bool
+	SuppressEvents    bool
+	TaskID            string
 	// OriginalEstimate and RemainingEstimate change a work item's estimates in
 	// seconds; nil leaves one unchanged and ClearEstimate marks a value to clear.
 	OriginalEstimate  *int64
@@ -98,6 +100,15 @@ func (s *Store) UpdateIssue(ctx context.Context, actorID, workspaceID, issueID s
 	}
 	if up.ExpectedUpdatedSeq != nil && current.UpdatedSeq != *up.ExpectedUpdatedSeq {
 		return nil, nil, fmt.Errorf("issue changed while applying transition")
+	}
+	for _, agent := range up.TriggeredAgents {
+		var active bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM memberships m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=$1 AND m.user_id=$2 AND u.active AND u.id LIKE 'app!_%' ESCAPE '!')`, workspaceID, agent.AgentID).Scan(&active); err != nil {
+			return nil, nil, err
+		}
+		if !active {
+			return nil, nil, fmt.Errorf("workflow agent %q is not an active agent account", agent.AgentID)
+		}
 	}
 	for _, webhookID := range up.TriggeredWebhookIDs {
 		var lockedID string
@@ -274,7 +285,7 @@ func (s *Store) UpdateIssue(ctx context.Context, actorID, workspaceID, issueID s
 	estimate("timeoriginalestimate", "original_estimate_seconds", up.OriginalEstimate, current.OriginalEstimateSeconds)
 	estimate("timeestimate", "remaining_estimate_seconds", up.RemainingEstimate, current.RemainingEstimateSeconds)
 
-	if len(sets) == 0 && len(up.TriggeredWebhookIDs) == 0 {
+	if len(sets) == 0 && len(up.TriggeredWebhookIDs) == 0 && len(up.TriggeredAgents) == 0 {
 		return current, nil, nil // nothing to do: no action
 	}
 
@@ -297,6 +308,11 @@ func (s *Store) UpdateIssue(ctx context.Context, actorID, workspaceID, issueID s
 	payload, err := json.Marshal(models.IssueUpdatePayload{Diff: diff, Issue: *updated, TriggeredWebhookIDs: up.TriggeredWebhookIDs, SuppressChangelog: up.SuppressChangelog, SuppressEvents: up.SuppressEvents})
 	if err != nil {
 		return nil, nil, err
+	}
+	for _, agent := range up.TriggeredAgents {
+		if _, err := tx.Exec(ctx, `INSERT INTO workflow_agent_runs(workspace_id,issue_id,action_seq,agent_id,prompt,requested_by) VALUES($1,$2,$3,$4,$5,NULLIF($6,''))`, workspaceID, issueID, seq, agent.AgentID, agent.Prompt, actorID); err != nil {
+			return nil, nil, err
+		}
 	}
 	action := &models.Action{
 		WorkspaceID: workspaceID, Seq: seq, EntityType: models.EntityIssue, EntityID: issueID,

@@ -448,6 +448,10 @@ func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, worksp
 	if err != nil {
 		return nil, nil, err
 	}
+	context.Approvals, err = s.Store.IssueApprovalDecisions(ctx, issue.ID)
+	if err != nil {
+		return nil, nil, err
+	}
 	context.Transitions, err = s.Store.IssueTransitionHistory(ctx, workspaceID, issue.ID)
 	if err != nil {
 		return nil, nil, err
@@ -567,6 +571,9 @@ func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, worksp
 	}
 	if len(triggeredWebhookIDs) > 0 {
 		update.TriggeredWebhookIDs = triggeredWebhookIDs
+	}
+	for _, agent := range t.AgentTriggers() {
+		update.TriggeredAgents = append(update.TriggeredAgents, models.WorkflowAgentTrigger{AgentID: agent.AgentID, Prompt: agent.Prompt})
 	}
 	if update.Summary != nil && (len(*update.Summary) == 0 || len(*update.Summary) > 255) {
 		return nil, nil, fmt.Errorf("workflow summary update must be between 1 and 255 characters")

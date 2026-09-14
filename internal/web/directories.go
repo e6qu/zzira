@@ -922,7 +922,7 @@ func (h *Handler) AddWorkflowTransition(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	transition := workflow.Transition{
-		ID: store.NewID("transition"), Name: strings.TrimSpace(r.PostFormValue("name")),
+		ID: workflow.NextTransitionID(wf.Transitions), Name: strings.TrimSpace(r.PostFormValue("name")),
 		From: []string{r.PostFormValue("from")}, To: r.PostFormValue("to"),
 	}
 	changedField := strings.TrimSpace(r.PostFormValue("changed_field_validator"))

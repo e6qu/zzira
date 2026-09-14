@@ -840,3 +840,17 @@ func (s *Store) SetServiceDeskAgent(ctx context.Context, workspaceID, actorID, s
 	}
 	return tx.Commit(ctx)
 }
+
+// IssueApprovalDecisions returns the final decision of each approval on a work
+// item, for workflow approval conditions.
+func (s *Store) IssueApprovalDecisions(ctx context.Context, issueID string) ([]string, error) {
+	approvals, err := s.ServiceApprovals(ctx, issueID)
+	if err != nil {
+		return nil, err
+	}
+	decisions := make([]string, 0, len(approvals))
+	for _, approval := range approvals {
+		decisions = append(decisions, approval.FinalDecision)
+	}
+	return decisions, nil
+}

@@ -33,6 +33,17 @@ const (
 	RuleDevelopmentTrigger       = "system:development-triggers"
 	DevelopmentBranchCreated     = "com.atlassian.jira.plugins.jira-development-integration-plugin:branch-created-trigger"
 	RuleTransitionScreen         = "system:transition-screen"
+	// Approval conditions: block while an approval is pending, or until one is
+	// approved or rejected.
+	RuleBlockInProgressApproval     = "system:block-in-progress-approval"
+	RuleApprovalsBlockUntilApproved = "system:jsd-approvals-block-until-approved"
+	RuleApprovalsBlockUntilRejected = "system:jsd-approvals-block-until-rejected"
+	// RuleRemindToUpdateFields is a screen rule prompting people to update
+	// fields during the transition.
+	RuleRemindToUpdateFields = "system:remind-people-to-update-fields"
+	// RuleTriggerAgent is a post function requesting an agent run after the
+	// transition.
+	RuleTriggerAgent = "system:trigger-agent"
 )
 
 // Rule is the Jira Cloud workflow rule wire shape. Parameters remain strings
@@ -67,6 +78,24 @@ type EvaluationContext struct {
 	FormsAttached  int
 	FormsSubmitted bool
 	IsAPI          bool
+	// Approvals holds the final decision of each approval on the work item:
+	// pending, approved or declined.
+	Approvals []string
+}
+
+// approvalState summarizes the approvals on a work item.
+func approvalState(decisions []string) (pending, approved, declined int) {
+	for _, decision := range decisions {
+		switch decision {
+		case "pending":
+			pending++
+		case "approved":
+			approved++
+		case "declined":
+			declined++
+		}
+	}
+	return pending, approved, declined
 }
 
 type TransitionHistory struct {
@@ -292,6 +321,15 @@ func evaluateCondition(rule Rule, context EvaluationContext) bool {
 		return true
 	case RuleRestrictFromAllUsers:
 		return rule.Parameters["restrictMode"] == "users" && context.IsAPI
+	case RuleBlockInProgressApproval:
+		pending, _, _ := approvalState(context.Approvals)
+		return pending == 0
+	case RuleApprovalsBlockUntilApproved:
+		pending, approved, _ := approvalState(context.Approvals)
+		return pending == 0 && approved > 0
+	case RuleApprovalsBlockUntilRejected:
+		pending, _, declined := approvalState(context.Approvals)
+		return pending == 0 && declined > 0
 	case RuleRestrictIssueTransition:
 	default:
 		return false
@@ -481,7 +519,7 @@ func (t Transition) AssigneeEffect(context EvaluationContext) (string, bool, err
 	var assigneeID string
 	changed := false
 	for _, action := range t.Actions {
-		if action.RuleKey == RuleUpdateField || action.RuleKey == RuleCopyFieldValue || action.RuleKey == RuleTriggerWebhook || IsAppRule(action.RuleKey) {
+		if action.RuleKey == RuleUpdateField || action.RuleKey == RuleCopyFieldValue || action.RuleKey == RuleTriggerWebhook || action.RuleKey == RuleTriggerAgent || IsAppRule(action.RuleKey) {
 			continue
 		}
 		if action.RuleKey != RuleChangeAssignee {
@@ -518,7 +556,7 @@ func (t Transition) FieldUpdateEffects() ([]FieldUpdateEffect, error) {
 			continue
 		}
 		switch action.RuleKey {
-		case RuleChangeAssignee, RuleTriggerWebhook:
+		case RuleChangeAssignee, RuleTriggerWebhook, RuleTriggerAgent:
 			continue
 		case RuleUpdateField:
 			field := action.Parameters["field"]
@@ -563,7 +601,7 @@ func (t Transition) TriggerWebhookIDs() ([]string, error) {
 			continue
 		}
 		switch action.RuleKey {
-		case RuleChangeAssignee, RuleUpdateField, RuleCopyFieldValue:
+		case RuleChangeAssignee, RuleUpdateField, RuleCopyFieldValue, RuleTriggerAgent:
 			continue
 		case RuleTriggerWebhook:
 			id := strings.TrimSpace(action.Parameters["webhookId"])
@@ -579,6 +617,35 @@ func (t Transition) TriggerWebhookIDs() ([]string, error) {
 		}
 	}
 	return ids, nil
+}
+
+// AgentTrigger is an agent run a transition's post function requests.
+type AgentTrigger struct {
+	AgentID, Prompt string
+}
+
+// AgentTriggers returns the agent runs a transition requests, in workflow
+// order.
+func (t Transition) AgentTriggers() []AgentTrigger {
+	triggers := []AgentTrigger{}
+	for _, action := range t.Actions {
+		if action.RuleKey == RuleTriggerAgent {
+			triggers = append(triggers, AgentTrigger{AgentID: strings.TrimSpace(action.Parameters["agentId"]), Prompt: action.Parameters["promptValue"]})
+		}
+	}
+	return triggers
+}
+
+// NextTransitionID numbers a new transition the way Jira does: the next
+// multiple of ten plus one above the workflow's highest numeric id.
+func NextTransitionID(transitions []Transition) string {
+	highest := 1
+	for _, transition := range transitions {
+		if id, err := strconv.Atoi(transition.ID); err == nil && id > highest {
+			highest = id
+		}
+	}
+	return strconv.Itoa((highest/10+1)*10 + 1)
 }
 
 func readableWorkflowField(field string) bool {
@@ -635,7 +702,19 @@ func ValidateTransitionRules(transition Transition) error {
 		if err := validateRuleID(*transition.Screen); err != nil {
 			return err
 		}
-		if transition.Screen.RuleKey != RuleTransitionScreen || len(commaValues(transition.Screen.Parameters["fields"])) == 0 {
+		switch transition.Screen.RuleKey {
+		case RuleTransitionScreen:
+			if len(commaValues(transition.Screen.Parameters["fields"])) == 0 {
+				return fmt.Errorf("workflow transition screen is unsupported or incomplete")
+			}
+		case RuleRemindToUpdateFields:
+			if len(commaValues(transition.Screen.Parameters["remindingFieldIds"])) == 0 {
+				return fmt.Errorf("remind-people-to-update-fields requires remindingFieldIds")
+			}
+			if always := transition.Screen.Parameters["remindingAlwaysAsk"]; always != "" && always != "true" && always != "false" {
+				return fmt.Errorf("remind-people-to-update-fields remindingAlwaysAsk must be true or false")
+			}
+		default:
 			return fmt.Errorf("workflow transition screen is unsupported or incomplete")
 		}
 	}
@@ -760,6 +839,10 @@ func ValidateTransitionRules(transition Transition) error {
 			if strings.TrimSpace(action.Parameters["webhookId"]) == "" {
 				return fmt.Errorf("trigger-webhook registration is required")
 			}
+		case RuleTriggerAgent:
+			if strings.TrimSpace(action.Parameters["agentId"]) == "" {
+				return fmt.Errorf("trigger-agent requires the agent's account id")
+			}
 		default:
 			return fmt.Errorf("workflow post-function %q is unsupported", action.RuleKey)
 		}
@@ -814,7 +897,19 @@ func (t Transition) ScreenFields() []string {
 	if t.Screen == nil {
 		return nil
 	}
+	if t.Screen.RuleKey == RuleRemindToUpdateFields {
+		return commaValues(t.Screen.Parameters["remindingFieldIds"])
+	}
 	return commaValues(t.Screen.Parameters["fields"])
+}
+
+// ScreenReminder returns the message a remind-people-to-update-fields screen
+// shows and whether it always asks.
+func (t Transition) ScreenReminder() (message string, alwaysAsk, ok bool) {
+	if t.Screen == nil || t.Screen.RuleKey != RuleRemindToUpdateFields {
+		return "", false, false
+	}
+	return t.Screen.Parameters["remindingMessage"], t.Screen.Parameters["remindingAlwaysAsk"] == "true", true
 }
 
 func (t Transition) RequiredFields() map[string]bool {
@@ -892,6 +987,16 @@ func validateConditionConfiguration(group ConditionGroup, seen map[string]bool) 
 		case RuleParentChildCondition:
 			if condition.Parameters["blocker"] != "CHILD" || len(commaValues(condition.Parameters["statusIds"])) == 0 {
 				return fmt.Errorf("child blocking condition requires blocker CHILD and statusIds")
+			}
+		case RuleBlockInProgressApproval:
+			if len(condition.Parameters) != 0 {
+				return fmt.Errorf("block-in-progress-approval does not accept parameters")
+			}
+		case RuleApprovalsBlockUntilApproved, RuleApprovalsBlockUntilRejected:
+			raw := strings.TrimSpace(condition.Parameters["approvalConfigurationJson"])
+			var configuration map[string]any
+			if raw == "" || json.Unmarshal([]byte(raw), &configuration) != nil {
+				return fmt.Errorf("%s requires approvalConfigurationJson holding a JSON object", condition.RuleKey)
 			}
 		default:
 			return fmt.Errorf("workflow condition %q is unsupported or incomplete", condition.RuleKey)

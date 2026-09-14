@@ -446,6 +446,10 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	if err != nil {
 		return nil, err
 	}
+	evaluation.Approvals, err = h.Store.IssueApprovalDecisions(r.Context(), issue.ID)
+	if err != nil {
+		return nil, err
+	}
 	evaluation.Transitions, err = h.Store.IssueTransitionHistory(r.Context(), wsID, issue.ID)
 	if err != nil {
 		return nil, err
@@ -455,7 +459,8 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 		return nil, err
 	}
 	for _, t := range wf.AvailableFor(issue.Status.ID, evaluation) {
-		transitions = append(transitions, models.WorkflowTransition{ID: t.ID, Name: t.Name, ScreenFields: t.ScreenFields()})
+		message, _, _ := t.ScreenReminder()
+		transitions = append(transitions, models.WorkflowTransition{ID: t.ID, Name: t.Name, ScreenFields: t.ScreenFields(), ScreenMessage: message})
 	}
 	editView, err := h.buildEditDialogView(r.Context(), wsID, issue)
 	if err != nil {
@@ -1518,6 +1523,10 @@ func (h *Handler) commonBulkTransitions(ctx context.Context, workspaceID, userID
 		}
 		evaluation := workflow.ContextForIssue(userID, issue)
 		evaluation.StatusHistory, err = h.Store.IssueStatusHistory(ctx, workspaceID, issue.ID)
+		if err != nil {
+			return nil, err
+		}
+		evaluation.Approvals, err = h.Store.IssueApprovalDecisions(ctx, issue.ID)
 		if err != nil {
 			return nil, err
 		}

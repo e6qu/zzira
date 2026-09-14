@@ -365,3 +365,9 @@ type VersionRelatedWork struct {
 	Title     string `json:"title,omitempty"`
 	URL       string `json:"url,omitempty"`
 }
+
+// WorkflowAgentTrigger is an agent run a workflow transition requests.
+type WorkflowAgentTrigger struct {
+	AgentID string `json:"agentId"`
+	Prompt  string `json:"promptValue"`
+}

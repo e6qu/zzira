@@ -1430,6 +1430,10 @@ func (h *Handler) issueTransitionBeans(ctx context.Context, workspaceID, userID 
 	if err != nil {
 		return nil, err
 	}
+	evaluation.Approvals, err = h.Store.IssueApprovalDecisions(ctx, issue.ID)
+	if err != nil {
+		return nil, err
+	}
 	evaluation.Transitions, err = h.Store.IssueTransitionHistory(ctx, workspaceID, issue.ID)
 	if err != nil {
 		return nil, err

@@ -375,7 +375,7 @@
         "e2e/v2.spec.ts",
         "docs/BULK_ISSUES.md"
       ],
-      "notes": "Groups up to 1,000 visible issues by workflow, intersects condition-filtered transitions, omits transitions requiring screen fields and cursor-pages workflow groups; exact custom numeric wire IDs, transition-field metadata remain; callers need Jira's global Bulk change permission."
+      "notes": "Groups up to 1,000 visible issues by workflow, intersects condition-filtered transitions, omits transitions requiring screen fields and cursor-pages workflow groups; transition ids are Jira's numeric ids; callers need Jira's global Bulk change permission."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/bulk/issues/transition",
@@ -389,7 +389,7 @@
         "e2e/v2.spec.ts",
         "docs/BULK_ISSUES.md"
       ],
-      "notes": "Queues validated transition groups for up to 1,000 unique visible issues, rechecks execution-time visibility, delegates conditions/validators/post-functions to the ordinary REST transition engine and records transactional replay markers with per-item results; screen-field inputs, exact permission granularity and bulk email delivery remain; callers need Jira's global Bulk change permission."
+      "notes": "Queues validated transition groups for up to 1,000 unique visible issues, rechecks execution-time visibility, delegates conditions/validators/post-functions to the ordinary REST transition engine and records transactional replay markers with per-item results; the documented input is issue ids and a transition id per workflow; exact permission granularity and bulk email delivery remain; callers need Jira's global Bulk change permission."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/bulk/issues/unwatch",
@@ -6924,7 +6924,7 @@
         "internal/store/agile.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Resolves workflows by workflow ID or project and issue type, validates selectors, and reports the resolved GLOBAL or PROJECT editor scope, project types, and executable actor restriction, API-only restriction, typed field-value, previous-status, separation-of-duties, parent/child blocking, required/changed/single-value/regular-expression/date-comparison/date-window/history/permission and Advanced Forms attached/submitted validators, change-assignee, system/custom field-update, same-or-parent field-copy, durable registered-webhook trigger, and transition-screen rules; remaining system/ecosystem rules remain."
+      "notes": "Resolves workflows by workflow ID or project and issue type, validates selectors, and reports the resolved GLOBAL or PROJECT editor scope, project types, and executable actor restriction, API-only restriction, typed field-value, previous-status, separation-of-duties, parent/child blocking, required/changed/single-value/regular-expression/date-comparison/date-window/history/permission and Advanced Forms attached/submitted validators, change-assignee, system/custom field-update, same-or-parent field-copy, durable registered-webhook trigger, and transition-screen rules; and every other system rule Jira documents: the in-progress, until-approved and until-rejected approval conditions, the remind-people-to-update-fields screen and the trigger-agent post function."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/workflows/create",
@@ -6938,7 +6938,7 @@
         "internal/store/workflow_mutations.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Atomically creates up to 20 validated GLOBAL or PROJECT directed workflows and related statuses with generated IDs, layouts/properties, versions, scoped Jira resources, executable conditions, validators, post-functions, transition screens and customIssueEventId events, rollback, and audit; remaining rules remain."
+      "notes": "Atomically creates up to 20 validated GLOBAL or PROJECT directed workflows and related statuses with generated IDs, layouts/properties, versions, scoped Jira resources, executable conditions, validators, post-functions, transition screens and customIssueEventId events across all 23 documented system rules, with Jira's numeric ids for transitions without one, rollback, and audit."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/workflows/create/validation",
@@ -6952,7 +6952,7 @@
         "internal/store/agile.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Returns structured ERROR validation for GLOBAL/PROJECT ownership, names and statuses, sizes, references, designer layouts, directed topology, nested conditions, validators, post-functions, transition screens, custom issue events, conflicts, and level filtering; remaining rules and non-directed transitions remain."
+      "notes": "Returns structured ERROR validation for GLOBAL/PROJECT ownership, names and statuses, sizes, references, designer layouts, directed topology, nested conditions, validators, post-functions, transition screens, custom issue events, conflicts, and level filtering; every documented system rule is validated; non-directed transitions remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/workflows/defaultEditor",
@@ -6978,7 +6978,7 @@
         "internal/store/workflow_usage.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Previews project-associated global or project workflows by ID, name, and issue type, returning scoped resources, query contexts, layouts, topology, versions, statuses, and executable conditions, validators, post-functions, transition screens and customIssueEventId; remaining rules and approval configuration remain."
+      "notes": "Previews project-associated global or project workflows by ID, name, and issue type, returning scoped resources, query contexts, layouts, topology, versions, statuses, and executable conditions, validators, post-functions, transition screens and customIssueEventId; approval conditions and every other documented system rule."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/workflows/search",
@@ -7006,7 +7006,7 @@
         "internal/store/workflow_mutations.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Atomically creates related scoped statuses, migrates active work with sync actions, and updates layouts plus executable conditions, validators, post-functions, transition screens and customIssueEventId events with optimistic versions, rollback, and audit; remaining rules, mixed-scope batches, and queued tasks remain."
+      "notes": "Atomically creates related scoped statuses, migrates active work with sync actions, and updates layouts plus executable conditions, validators, post-functions, transition screens and customIssueEventId events with optimistic versions, rollback, and audit; every documented system rule; mixed-scope batches and queued tasks remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/workflows/update/validation",
@@ -7020,7 +7020,7 @@
         "internal/store/agile.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Returns structured validation for existence and preserved scope, optimistic versions, scoped statuses, layouts, topology, mappings, executable conditions, validators, post-functions, transition screens and custom issue events without mutation; remaining rules and mixed-scope batches remain."
+      "notes": "Returns structured validation for existence and preserved scope, optimistic versions, scoped statuses, layouts, topology, mappings, executable conditions, validators, post-functions, transition screens and custom issue events without mutation; every documented system rule is validated; mixed-scope batches remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/workflowscheme",

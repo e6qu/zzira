@@ -990,6 +990,10 @@ func (h *Handler) availableServiceTransitions(r *http.Request, workspaceID, acto
 	if err != nil {
 		return nil, err
 	}
+	evaluation.Approvals, err = h.Store.IssueApprovalDecisions(r.Context(), request.Issue.ID)
+	if err != nil {
+		return nil, err
+	}
 	evaluation.Transitions, err = h.Store.IssueTransitionHistory(r.Context(), workspaceID, request.Issue.ID)
 	if err != nil {
 		return nil, err

@@ -331,10 +331,16 @@ func workflowDefinitionFromRequest(id, name, description string, startPointLayou
 		errors = append(errors, workflowValidationError("WORKFLOW_TRANSITIONS_REQUIRED", "At least one workflow transition is required.", "WORKFLOW", nil))
 	}
 	transitionIDs := make(map[string]bool)
-	for index, item := range transitions {
+	// A transition without an id takes Jira's next numeric id.
+	numbered := make([]workflow.Transition, 0, len(transitions))
+	for _, item := range transitions {
+		numbered = append(numbered, workflow.Transition{ID: strings.TrimSpace(item.ID)})
+	}
+	for _, item := range transitions {
 		transitionID := strings.TrimSpace(item.ID)
 		if transitionID == "" {
-			transitionID = fmt.Sprintf("new-%d", index+1)
+			transitionID = workflow.NextTransitionID(numbered)
+			numbered = append(numbered, workflow.Transition{ID: transitionID})
 		}
 		if transitionIDs[transitionID] {
 			errors = append(errors, workflowValidationError("TRANSITION_ID_DUPLICATE", "Transition IDs must be unique.", "TRANSITION", map[string]any{"transitionId": transitionID}))
