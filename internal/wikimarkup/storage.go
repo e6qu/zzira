@@ -120,7 +120,8 @@ func Render(storage string) (string, error) {
 				if len(t.Attr) != 1 || t.Attr[0].Name.Space != "" || t.Attr[0].Name.Local != "datetime" || !storageDate.MatchString(t.Attr[0].Value) {
 					return "", fmt.Errorf("a time element carries only a datetime date")
 				}
-				b.WriteString(`<time datetime="` + t.Attr[0].Value + `">` + t.Attr[0].Value)
+				date := html.EscapeString(t.Attr[0].Value)
+				b.WriteString(`<time datetime="` + date + `">` + date)
 				suppressed++
 				continue
 			}
@@ -277,7 +278,7 @@ func readMention(d *xml.Decoder, start xml.StartElement) (string, bool, error) {
 	if label == "" {
 		label = "user"
 	}
-	return `<a href="/people/` + url.PathEscape(accountID) + `">@` + html.EscapeString(label) + `</a>`, true, nil
+	return `<a href="/people/` + html.EscapeString(url.PathEscape(accountID)) + `">@` + html.EscapeString(label) + `</a>`, true, nil
 }
 
 // MentionedAccounts lists the accounts a storage body mentions, each once, in
