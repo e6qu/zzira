@@ -3,7 +3,9 @@ package adf
 import (
 	"encoding/json"
 	"html"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // FromHTML builds an Atlassian Document Format document from the HTML subset
@@ -12,7 +14,7 @@ import (
 // does not model contributes its text rather than failing the conversion.
 func FromHTML(source string) json.RawMessage {
 	parser := &htmlParser{source: source}
-	doc := Node{Type: "doc", Attrs: map[string]any{"version": 1}, Content: parser.blocks()}
+	doc := Node{Type: "doc", Version: 1, Content: parser.blocks()}
 	if len(doc.Content) == 0 {
 		doc.Content = []Node{{Type: "paragraph"}}
 	}
@@ -26,6 +28,9 @@ func FromHTML(source string) json.RawMessage {
 type htmlParser struct {
 	source string
 	at     int
+	// tag is the opening tag of the element nextElement last found, which
+	// is where that element's attributes are.
+	tag string
 }
 
 // blocks reads the block-level elements in order. Text outside any block
@@ -52,7 +57,9 @@ func (p *htmlParser) blocks() []Node {
 			flush()
 			nodes = append(nodes, block)
 		} else {
-			loose.WriteString(inner)
+			// Inline markup outside a block keeps its element, so a mention
+			// or a date in loose text is still read as one.
+			loose.WriteString(p.source[p.at:next])
 		}
 		p.at = next
 	}
@@ -77,12 +84,16 @@ func (p *htmlParser) nextElement() (name, inner string, next int, ok bool) {
 	}
 	close += open
 	tag := p.source[open+1 : close]
-	if strings.HasSuffix(tag, "/") || strings.HasPrefix(tag, "!") {
+	if strings.HasPrefix(tag, "!") {
 		return "", "", close + 1, true
 	}
 	name = tagName(tag)
 	if name == "" {
 		return "", "", close + 1, true
+	}
+	p.tag = tag
+	if strings.HasSuffix(tag, "/") {
+		return name, "", close + 1, true
 	}
 	end := findClosing(p.source, name, close+1)
 	if end < 0 {
@@ -105,18 +116,27 @@ func tagName(tag string) string {
 // findClosing locates the matching close tag, counting nested opens of the
 // same name so a list inside a list closes the right one.
 func findClosing(source, name string, from int) int {
+	lower := strings.ToLower(source)
 	depth := 0
 	at := from
 	for {
-		next := strings.Index(strings.ToLower(source[at:]), "<"+name)
-		closeAt := strings.Index(strings.ToLower(source[at:]), "</"+name+">")
+		closeAt := strings.Index(lower[at:], "</"+name+">")
 		if closeAt < 0 {
 			return -1
 		}
 		closeAt += at
+		next := strings.Index(lower[at:], "<"+name)
 		if next >= 0 && next+at < closeAt {
-			depth++
-			at = next + at + len(name) + 1
+			next += at
+			after := next + 1 + len(name)
+			// Only the same element nests: <p does not open a <pre, and a
+			// self-closing element closes itself.
+			if after < len(lower) && strings.IndexByte(" \t\r\n>/", lower[after]) >= 0 {
+				if end := strings.IndexByte(lower[next:], '>'); end > 0 && lower[next+end-1] != '/' {
+					depth++
+				}
+			}
+			at = after
 			continue
 		}
 		if depth == 0 {
@@ -146,8 +166,48 @@ func blockNode(name, inner string) (Node, bool) {
 		return Node{Type: "codeBlock", Content: textNodes(stripTags(inner))}, true
 	case "hr":
 		return Node{Type: "rule"}, true
+	case "ac:task-list":
+		return Node{Type: "taskList", Attrs: map[string]any{"localId": ""}, Content: taskItems(inner)}, true
 	}
 	return Node{}, false
+}
+
+// taskItems reads the tasks of a Confluence task list: each one's id, whether
+// it is done, and the inline content of its body.
+func taskItems(inner string) []Node {
+	parser := &htmlParser{source: inner}
+	var items []Node
+	for parser.at < len(parser.source) {
+		name, body, next, ok := parser.nextElement()
+		if !ok {
+			break
+		}
+		parser.at = next
+		if name != "ac:task" {
+			continue
+		}
+		item := Node{Type: "taskItem", Attrs: map[string]any{"localId": "", "state": "TODO"}}
+		fields := &htmlParser{source: body}
+		for fields.at < len(fields.source) {
+			field, value, after, ok := fields.nextElement()
+			if !ok {
+				break
+			}
+			fields.at = after
+			switch field {
+			case "ac:task-id":
+				item.Attrs["localId"] = html.UnescapeString(strings.TrimSpace(value))
+			case "ac:task-status":
+				if strings.TrimSpace(value) == "complete" {
+					item.Attrs["state"] = "DONE"
+				}
+			case "ac:task-body":
+				item.Content = inlineNodes(value)
+			}
+		}
+		items = append(items, item)
+	}
+	return items
 }
 
 func listItems(inner string) []Node {
@@ -196,10 +256,32 @@ func inlineNodes(source string) []Node {
 				nodes = append(nodes, child)
 			}
 		case "a":
-			href := attributeValue(source, "href")
+			href := attributeValue(parser.tag, "href")
 			for _, child := range inlineNodes(inner) {
 				child.Mark = append(child.Mark, Mark{Type: "link", Attrs: map[string]any{"href": href}})
 				nodes = append(nodes, child)
+			}
+		case "ac:link":
+			account := attributeValue(inner, "ri:account-id")
+			if account == "" {
+				nodes = append(nodes, inlineNodes(inner)...)
+				break
+			}
+			mention := Node{Type: "mention", Attrs: map[string]any{"id": account}}
+			const labelOpen, labelClose = "<ac:plain-text-link-body>", "</ac:plain-text-link-body>"
+			if at := strings.Index(inner, labelOpen); at >= 0 {
+				label := inner[at+len(labelOpen):]
+				if end := strings.Index(label, labelClose); end >= 0 {
+					label = strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(label[:end]), "<![CDATA["), "]]>")
+					if label != "" {
+						mention.Attrs["text"] = "@" + html.UnescapeString(label)
+					}
+				}
+			}
+			nodes = append(nodes, mention)
+		case "time":
+			if day, err := time.Parse("2006-01-02", attributeValue(parser.tag, "datetime")); err == nil {
+				nodes = append(nodes, Node{Type: "date", Attrs: map[string]any{"timestamp": strconv.FormatInt(day.UnixMilli(), 10)}})
 			}
 		default:
 			nodes = append(nodes, inlineNodes(inner)...)

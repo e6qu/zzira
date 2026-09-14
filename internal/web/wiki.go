@@ -585,6 +585,7 @@ func (h *Handler) wikiBlogPost(w http.ResponseWriter, r *http.Request, creating 
 	attachments := []*models.WikiAttachment{}
 	blogComments, blogInlineComments := []wikiCommentNode{}, []wikiCommentNode{}
 	likeCount, liked, watching := 0, false, false
+	blogTasks := []*models.WikiTask{}
 	if post.ID != "" {
 		versions, err = h.Store.WikiBlogPostVersions(r.Context(), ws, user.ID, post.ID, "-modified-date")
 		if err != nil {
@@ -652,6 +653,11 @@ func (h *Handler) wikiBlogPost(w http.ResponseWriter, r *http.Request, creating 
 				http.Error(w, "Could not load blog post watch.", 500)
 				return
 			}
+			blogTasks, err = h.Store.WikiTasks(r.Context(), ws, user.ID, store.WikiTaskFilter{BlogPostIDs: []string{post.ID}, IncludeBlank: true})
+			if err != nil {
+				http.Error(w, "Could not load blog post tasks.", 500)
+				return
+			}
 			for _, accountID := range likes {
 				if accountID == user.ID {
 					liked = true
@@ -668,7 +674,7 @@ func (h *Handler) wikiBlogPost(w http.ResponseWriter, r *http.Request, creating 
 		http.Error(w, "Could not load people to mention.", 500)
 		return
 	}
-	h.writeWorkspacePageStatus(w, r, "page_wiki_blogpost", user, ws, wikiData{Space: space, BlogPost: post, Versions: versions, Labels: labels, BlogProperties: properties, BlogLikeCount: likeCount, BlogLiked: liked, Attachments: attachments, Comments: blogComments, InlineComments: blogInlineComments, Editing: editing, CanEdit: true, Error: errorMessage, MentionPeople: people, WatchingBlogPost: watching}, "wiki", "", pageStatus)
+	h.writeWorkspacePageStatus(w, r, "page_wiki_blogpost", user, ws, wikiData{Space: space, BlogPost: post, Versions: versions, Labels: labels, BlogProperties: properties, BlogLikeCount: likeCount, BlogLiked: liked, Attachments: attachments, Comments: blogComments, InlineComments: blogInlineComments, Editing: editing, CanEdit: true, Error: errorMessage, MentionPeople: people, WatchingBlogPost: watching, Tasks: blogTasks}, "wiki", "", pageStatus)
 }
 
 func (h *Handler) wikiBlogForDiscussion(w http.ResponseWriter, r *http.Request, ws, userID string) (*models.WikiBlogPost, bool) {
@@ -830,6 +836,13 @@ func (h *Handler) WikiBlogPostMetadata(w http.ResponseWriter, r *http.Request) {
 		} else {
 			err = h.Store.SetWikiBlogPostLike(r.Context(), ws, user.ID, post.ID, liked)
 		}
+	case "task-status":
+		task, taskErr := h.Store.WikiTask(r.Context(), ws, user.ID, r.PostFormValue("task"))
+		if taskErr != nil || task.BlogPostID != post.ID {
+			http.NotFound(w, r)
+			return
+		}
+		_, err = h.Commands.UpdateWikiTask(r.Context(), ws, user.ID, task.ID, r.PostFormValue("status"))
 	case "watch":
 		watching, parseErr := strconv.ParseBool(r.PostFormValue("watching"))
 		if parseErr != nil {
@@ -1326,8 +1339,7 @@ func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 				data.ParentContent = append(data.ParentContent, wikiMoveTarget{ID: content.ID, Label: content.Title + " · " + wikiContentTypeName(content.Type)})
 			}
 		}
-		_, err = wikimarkup.Render(page.Body.Value)
-		data.SourceMode = err != nil
+		data.SourceMode = !wikimarkup.RichEditable(page.Body.Value)
 	} else {
 		data.Restrictions, err = h.Store.WikiPageRestrictions(r.Context(), ws, user.ID, page.ID)
 		if err != nil {

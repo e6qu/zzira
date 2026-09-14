@@ -49,7 +49,7 @@ func (s *Store) RestoreWikiPageVersion(ctx context.Context, ws, actor, pageID st
 		pageID, title, historicalBody, next); err != nil {
 		return 0, err
 	}
-	if err = relocateInlineComments(ctx, tx, ws, actor, "page", pageID, historicalBody); err != nil {
+	if err = wikiBodyChanged(ctx, tx, ws, actor, "page", pageID, historicalBody); err != nil {
 		return 0, err
 	}
 	if message == "" {
@@ -236,7 +236,7 @@ func ConvertWikiBody(value, from, to string) (string, error) {
 	source := value
 	switch from {
 	case "atlas_doc_format":
-		source = adf.ToHTML(json.RawMessage(value))
+		source = adf.ToStorage(json.RawMessage(value))
 	case "wiki":
 		source = wikimarkup.FromNotation(value)
 	}

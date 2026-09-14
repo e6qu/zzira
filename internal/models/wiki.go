@@ -296,7 +296,8 @@ type WikiTask struct {
 	ID            string   `json:"id"`
 	LocalID       string   `json:"localId"`
 	SpaceID       string   `json:"spaceId"`
-	PageID        string   `json:"pageId"`
+	PageID        string   `json:"pageId,omitempty"`
+	BlogPostID    string   `json:"blogPostId,omitempty"`
 	Status        string   `json:"status"`
 	Body          WikiBody `json:"-"`
 	CreatedBy     string   `json:"createdBy"`

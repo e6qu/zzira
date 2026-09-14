@@ -116,7 +116,7 @@ func (s *Store) SaveWikiBlogPost(ctx context.Context, ws, actor string, input mo
 	if _, err := tx.Exec(ctx, `INSERT INTO wiki_blog_post_versions(blog_post_id,version,title,body,status,author_id,message,minor_edit) VALUES($1::bigint,$2,$3,$4,$5,$6,$7,$8)`, input.ID, input.Version.Number, input.Title, input.Body.Value, input.Status, actor, input.Version.Message, input.Version.MinorEdit); err != nil {
 		return nil, err
 	}
-	if err := relocateInlineComments(ctx, tx, ws, actor, "blogpost", input.ID, input.Body.Value); err != nil {
+	if err := wikiBodyChanged(ctx, tx, ws, actor, "blogpost", input.ID, input.Body.Value); err != nil {
 		return nil, err
 	}
 	if input.Status == "current" {

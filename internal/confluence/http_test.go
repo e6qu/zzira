@@ -1302,7 +1302,8 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		t.Fatal(versions.Body.String())
 	}
 	update["parentId"] = page.ID
-	update["version"] = map[string]int{"number": 3}
+	// Adding the two tasks above made two versions of the page.
+	update["version"] = map[string]int{"number": 5}
 	call(actor, "PUT", "/pages/"+page.ID, update, 400)
 	delete(update, "parentId")
 	call(actor, "DELETE", "/pages/"+hierarchyGrandchild.ID, nil, 204)
@@ -1313,7 +1314,7 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	call(actor, "DELETE", "/pages/"+page.ID, nil, 204)
 	call(actor, "GET", "/pages/"+page.ID, nil, 404)
 	call(actor, "GET", "/pages/"+page.ID+"?status=trashed&body-format=storage", nil, 200)
-	update["version"] = map[string]int{"number": 4}
+	update["version"] = map[string]int{"number": 6}
 	call(actor, "PUT", "/pages/"+page.ID, update, 200)
 	got := call(actor, "GET", "/pages/"+page.ID+"?body-format=storage", nil, 200)
 	if !strings.Contains(got.Body.String(), "<h2>Ready</h2>") && !strings.Contains(got.Body.String(), `\u003ch2\u003eReady`) {

@@ -206,11 +206,15 @@ func TestWatchesOnEveryContentKind(t *testing.T) {
 	}
 }
 
+// mustJSON encodes a value for substring checks, leaving markup unescaped so
+// storage bodies read as written.
 func mustJSON(t *testing.T, value any) string {
 	t.Helper()
-	raw, err := json.Marshal(value)
-	if err != nil {
+	var out strings.Builder
+	encoder := json.NewEncoder(&out)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(value); err != nil {
 		t.Fatal(err)
 	}
-	return string(raw)
+	return strings.TrimSpace(out.String())
 }

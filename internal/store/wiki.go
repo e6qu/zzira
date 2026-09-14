@@ -485,7 +485,7 @@ func (s *Store) SaveWikiPage(ctx context.Context, ws, actor string, input models
 	if err != nil {
 		return nil, err
 	}
-	if err := relocateInlineComments(ctx, tx, ws, actor, "page", input.ID, input.Body.Value); err != nil {
+	if err := wikiBodyChanged(ctx, tx, ws, actor, "page", input.ID, input.Body.Value); err != nil {
 		return nil, err
 	}
 	if input.Status == "current" {

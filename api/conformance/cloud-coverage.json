@@ -15066,9 +15066,14 @@
         "migrations/082_wiki_tasks.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/tasks_body_test.go",
+        "internal/wikimarkup/tasks.go",
+        "internal/adf/fromhtml.go",
+        "migrations/179_wiki_body_tasks.sql",
+        "docs/CONFLUENCE_TASKS.md"
       ],
-      "notes": "Durable page tasks support accessible list/item reads, all documented identity/content/status/date filters, blank-task selection, storage bodies, cursor pagination, edit-permission status changes, completion actor/time, private sync filtering, and page UI assignment/due-date/completion; extraction and reconciliation from Confluence storage task macros, blog-post tasks, ADF bodies, and full task authoring semantics remain."
+      "notes": "Tasks live in page and blog post bodies as Confluence task lists (storage ac:task-list and atlas_doc_format taskList/taskItem with mention and date nodes); every body change (publish, edit, version restore, redaction) reconciles the task store, deriving assignee from the first mention of a site member and due date from the first date. Reads cover accessible page and blog post tasks with all documented identity/content/status/date filters (page-id and blogpost-id select either), blank-task selection, storage and atlas_doc_format bodies, pageId/blogPostId beans and cursor pagination; PUT changes status with edit permission, ticking the task in the body in place with completion actor/time; private sync filtering covers blog post tasks; the web UI adds page tasks as body edits and completes page and blog post tasks."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/tasks/{id}",
@@ -15083,9 +15088,14 @@
         "migrations/082_wiki_tasks.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/tasks_body_test.go",
+        "internal/wikimarkup/tasks.go",
+        "internal/adf/fromhtml.go",
+        "migrations/179_wiki_body_tasks.sql",
+        "docs/CONFLUENCE_TASKS.md"
       ],
-      "notes": "Durable page tasks support accessible list/item reads, all documented identity/content/status/date filters, blank-task selection, storage bodies, cursor pagination, edit-permission status changes, completion actor/time, private sync filtering, and page UI assignment/due-date/completion; extraction and reconciliation from Confluence storage task macros, blog-post tasks, ADF bodies, and full task authoring semantics remain."
+      "notes": "Tasks live in page and blog post bodies as Confluence task lists (storage ac:task-list and atlas_doc_format taskList/taskItem with mention and date nodes); every body change (publish, edit, version restore, redaction) reconciles the task store, deriving assignee from the first mention of a site member and due date from the first date. Reads cover accessible page and blog post tasks with all documented identity/content/status/date filters (page-id and blogpost-id select either), blank-task selection, storage and atlas_doc_format bodies, pageId/blogPostId beans and cursor pagination; PUT changes status with edit permission, ticking the task in the body in place with completion actor/time; private sync filtering covers blog post tasks; the web UI adds page tasks as body edits and completes page and blog post tasks."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/tasks/{id}",
@@ -15100,9 +15110,14 @@
         "migrations/082_wiki_tasks.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/tasks_body_test.go",
+        "internal/wikimarkup/tasks.go",
+        "internal/adf/fromhtml.go",
+        "migrations/179_wiki_body_tasks.sql",
+        "docs/CONFLUENCE_TASKS.md"
       ],
-      "notes": "Durable page tasks support accessible list/item reads, all documented identity/content/status/date filters, blank-task selection, storage bodies, cursor pagination, edit-permission status changes, completion actor/time, private sync filtering, and page UI assignment/due-date/completion; extraction and reconciliation from Confluence storage task macros, blog-post tasks, ADF bodies, and full task authoring semantics remain."
+      "notes": "Tasks live in page and blog post bodies as Confluence task lists (storage ac:task-list and atlas_doc_format taskList/taskItem with mention and date nodes); every body change (publish, edit, version restore, redaction) reconciles the task store, deriving assignee from the first mention of a site member and due date from the first date. Reads cover accessible page and blog post tasks with all documented identity/content/status/date filters (page-id and blogpost-id select either), blank-task selection, storage and atlas_doc_format bodies, pageId/blogPostId beans and cursor pagination; PUT changes status with edit permission, ticking the task in the body in place with completion actor/time; private sync filtering covers blog post tasks; the web UI adds page tasks as body edits and completes page and blog post tasks."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/user/access/check-access-by-email",

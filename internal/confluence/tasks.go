@@ -50,11 +50,28 @@ func taskQueryTime(w http.ResponseWriter, r *http.Request, key string) (*time.Ti
 	return &value, true
 }
 
-func (h *Handler) taskBean(task *models.WikiTask, body bool) map[string]any {
+// taskBodyFormat reads the body-format a task is returned in: storage or the
+// document format, or none for no body.
+func taskBodyFormat(w http.ResponseWriter, r *http.Request) (string, bool) {
+	format := r.URL.Query().Get("body-format")
+	if format != "" && format != "storage" && format != "atlas_doc_format" {
+		failure(w, 400, "body-format must be storage or atlas_doc_format.")
+		return "", false
+	}
+	return format, true
+}
+
+func (h *Handler) taskBean(task *models.WikiTask, format string) map[string]any {
 	bean := map[string]any{
 		"id": task.ID, "localId": task.LocalID, "spaceId": task.SpaceID,
-		"pageId": task.PageID, "status": task.Status, "createdBy": task.CreatedBy,
+		"status": task.Status, "createdBy": task.CreatedBy,
 		"createdAt": task.CreatedAt, "updatedAt": task.UpdatedAt,
+	}
+	if task.PageID != "" {
+		bean["pageId"] = task.PageID
+	}
+	if task.BlogPostID != "" {
+		bean["blogPostId"] = task.BlogPostID
 	}
 	if task.AssignedTo != "" {
 		bean["assignedTo"] = task.AssignedTo
@@ -68,14 +85,25 @@ func (h *Handler) taskBean(task *models.WikiTask, body bool) map[string]any {
 	if task.CompletedAt != "" {
 		bean["completedAt"] = task.CompletedAt
 	}
-	if body {
+	switch format {
+	case "storage":
 		bean["body"] = map[string]any{"storage": task.Body}
+	case "atlas_doc_format":
+		value, err := store.ConvertWikiBody(task.Body.Value, "storage", "atlas_doc_format")
+		if err != nil {
+			value = ""
+		}
+		bean["body"] = map[string]any{"atlas_doc_format": models.WikiBody{Representation: "atlas_doc_format", Value: value}}
 	}
 	return bean
 }
 
 func (h *Handler) tasks(w http.ResponseWriter, r *http.Request, ws, actor string) {
-	if !supportedQuery(w, r, "body-format", "include-blank-tasks", "status", "task-id", "space-id", "page-id", "blogpost-id", "created-by", "assigned-to", "completed-by", "created-at-from", "created-at-to", "due-at-from", "due-at-to", "completed-at-from", "completed-at-to", "cursor", "limit") || !storageFormat(w, r) {
+	if !supportedQuery(w, r, "body-format", "include-blank-tasks", "status", "task-id", "space-id", "page-id", "blogpost-id", "created-by", "assigned-to", "completed-by", "created-at-from", "created-at-to", "due-at-from", "due-at-to", "completed-at-from", "completed-at-to", "cursor", "limit") {
+		return
+	}
+	format, ok := taskBodyFormat(w, r)
+	if !ok {
 		return
 	}
 	filter := store.WikiTaskFilter{IncludeBlank: true, Status: r.URL.Query().Get("status")}
@@ -90,7 +118,6 @@ func (h *Handler) tasks(w http.ResponseWriter, r *http.Request, ws, actor string
 		}
 		filter.IncludeBlank = value
 	}
-	var ok bool
 	if filter.TaskIDs, ok = taskQueryValues(w, r, "task-id", true); !ok {
 		return
 	}
@@ -100,8 +127,7 @@ func (h *Handler) tasks(w http.ResponseWriter, r *http.Request, ws, actor string
 	if filter.PageIDs, ok = taskQueryValues(w, r, "page-id", true); !ok {
 		return
 	}
-	blogPostIDs, ok := taskQueryValues(w, r, "blogpost-id", true)
-	if !ok {
+	if filter.BlogPostIDs, ok = taskQueryValues(w, r, "blogpost-id", true); !ok {
 		return
 	}
 	if filter.CreatedBy, ok = taskQueryValues(w, r, "created-by", false); !ok {
@@ -122,10 +148,6 @@ func (h *Handler) tasks(w http.ResponseWriter, r *http.Request, ws, actor string
 			return
 		}
 	}
-	if len(blogPostIDs) > 0 && len(filter.PageIDs) == 0 {
-		h.list(w, r, []any{})
-		return
-	}
 	tasks, err := h.Store.WikiTasks(r.Context(), ws, actor, filter)
 	if err != nil {
 		writeError(w, err)
@@ -133,13 +155,17 @@ func (h *Handler) tasks(w http.ResponseWriter, r *http.Request, ws, actor string
 	}
 	values := make([]any, 0, len(tasks))
 	for _, task := range tasks {
-		values = append(values, h.taskBean(task, r.URL.Query().Get("body-format") != ""))
+		values = append(values, h.taskBean(task, format))
 	}
 	h.list(w, r, values)
 }
 
 func (h *Handler) task(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
-	if !supportedQuery(w, r, "body-format") || !storageFormat(w, r) {
+	if !supportedQuery(w, r, "body-format") {
+		return
+	}
+	format, ok := taskBodyFormat(w, r)
+	if !ok {
 		return
 	}
 	if value, err := strconv.ParseInt(id, 10, 64); err != nil || value < 1 {
@@ -151,7 +177,7 @@ func (h *Handler) task(w http.ResponseWriter, r *http.Request, ws, actor, id str
 		writeError(w, err)
 		return
 	}
-	respond(w, 200, h.taskBean(task, r.URL.Query().Get("body-format") != ""))
+	respond(w, 200, h.taskBean(task, format))
 }
 
 type taskUpdateRequest struct {
@@ -162,7 +188,11 @@ type taskUpdateRequest struct {
 }
 
 func (h *Handler) updateTask(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
-	if !supportedQuery(w, r, "body-format") || !storageFormat(w, r) {
+	if !supportedQuery(w, r, "body-format") {
+		return
+	}
+	format, ok := taskBodyFormat(w, r)
+	if !ok {
 		return
 	}
 	if value, err := strconv.ParseInt(id, 10, 64); err != nil || value < 1 {
@@ -178,5 +208,5 @@ func (h *Handler) updateTask(w http.ResponseWriter, r *http.Request, ws, actor, 
 		writeError(w, err)
 		return
 	}
-	respond(w, 200, h.taskBean(task, r.URL.Query().Get("body-format") != ""))
+	respond(w, 200, h.taskBean(task, format))
 }
