@@ -94,6 +94,7 @@ type servicePageData struct {
 	FieldValues           map[string]string
 	Transitions           []serviceTransitionView
 	CanAdmin              bool
+	CanSiteAdmin          bool
 	CanAgent              bool
 	CanManageParticipants bool
 	CurrentUserID         string
@@ -110,8 +111,8 @@ func (h *Handler) ServiceAgent(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	agent, err := h.Store.IsAnyServiceAgent(r.Context(), workspaceID, user.ID)
-	if err != nil || !agent {
+	staff, err := h.Store.IsAnyServiceDeskStaff(r.Context(), workspaceID, user.ID)
+	if err != nil || !staff {
 		http.Error(w, "Service agent access is required.", http.StatusForbidden)
 		return
 	}
@@ -120,26 +121,32 @@ func (h *Handler) ServiceAgent(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load service desks.", http.StatusInternalServerError)
 		return
 	}
-	admin, err := h.Store.IsAdmin(r.Context(), workspaceID, user.ID)
+	siteAdmin, err := h.Store.IsAdmin(r.Context(), workspaceID, user.ID)
 	if err != nil {
 		http.Error(w, "Could not authorize service administration.", http.StatusInternalServerError)
 		return
 	}
-	data := servicePageData{Desks: desks, CanAdmin: admin, CanAgent: true}
+	data := servicePageData{Desks: desks, CanSiteAdmin: siteAdmin, CanAgent: true}
 	deskID := r.PathValue("desk")
 	if deskID == "" && len(desks) > 0 {
 		deskID = desks[0].ID
 	}
 	if deskID != "" {
-		allowed, err := h.Store.IsServiceAgent(r.Context(), workspaceID, deskID, user.ID)
+		agent, err := h.Store.IsServiceAgent(r.Context(), workspaceID, deskID, user.ID)
 		if err != nil {
 			http.Error(w, "Could not authorize service desk access.", http.StatusInternalServerError)
 			return
 		}
-		if !allowed {
+		deskAdmin, err := h.Store.IsServiceDeskAdmin(r.Context(), workspaceID, deskID, user.ID)
+		if err != nil {
+			http.Error(w, "Could not authorize service desk access.", http.StatusInternalServerError)
+			return
+		}
+		if !agent && !deskAdmin {
 			http.Error(w, "Service agent access is required.", http.StatusForbidden)
 			return
 		}
+		data.CanAdmin = deskAdmin
 		desk, err := h.Store.ServiceDesk(r.Context(), workspaceID, deskID)
 		if err != nil {
 			http.NotFound(w, r)
@@ -170,7 +177,7 @@ func (h *Handler) ServiceAgent(w http.ResponseWriter, r *http.Request) {
 			dependencyNodes[from.ID], dependencyNodes[to.ID] = true, true
 		}
 		data.DependencyNodeCount = len(dependencyNodes)
-		if admin {
+		if deskAdmin {
 			data.Members, err = h.Store.MembersByWorkspace(r.Context(), workspaceID)
 			if err != nil {
 				http.Error(w, "Could not load workspace members.", http.StatusInternalServerError)
@@ -613,13 +620,13 @@ func (h *Handler) ServiceQueueSettings(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	admin, err := h.Store.IsAdmin(r.Context(), workspaceID, user.ID)
+	admin, err := h.Store.IsServiceDeskAdmin(r.Context(), workspaceID, r.PathValue("desk"), user.ID)
 	if err != nil {
 		http.Error(w, "Could not authorize service administration.", http.StatusInternalServerError)
 		return
 	}
 	if !admin {
-		http.Error(w, "Site administrator access is required.", http.StatusForbidden)
+		http.Error(w, "Service desk administrator access is required.", http.StatusForbidden)
 		return
 	}
 	if !parseForm(w, r) {
@@ -656,13 +663,13 @@ func (h *Handler) ServiceRequestTypeFieldSettings(w http.ResponseWriter, r *http
 	if !ok {
 		return
 	}
-	admin, err := h.Store.IsAdmin(r.Context(), workspaceID, user.ID)
+	admin, err := h.Store.IsServiceDeskAdmin(r.Context(), workspaceID, r.PathValue("desk"), user.ID)
 	if err != nil {
 		http.Error(w, "Could not authorize service administration.", http.StatusInternalServerError)
 		return
 	}
 	if !admin {
-		http.Error(w, "Workspace admin access is required.", http.StatusForbidden)
+		http.Error(w, "Service desk administrator access is required.", http.StatusForbidden)
 		return
 	}
 	if !parseForm(w, r) {
@@ -784,13 +791,13 @@ func (h *Handler) ServiceSLAGoalSettings(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
-	admin, err := h.Store.IsAdmin(r.Context(), workspaceID, user.ID)
+	admin, err := h.Store.IsServiceDeskAdmin(r.Context(), workspaceID, r.PathValue("desk"), user.ID)
 	if err != nil {
 		http.Error(w, "Could not authorize service administration.", http.StatusInternalServerError)
 		return
 	}
 	if !admin {
-		http.Error(w, "Workspace admin access is required.", http.StatusForbidden)
+		http.Error(w, "Service desk administrator access is required.", http.StatusForbidden)
 		return
 	}
 	if !parseForm(w, r) {

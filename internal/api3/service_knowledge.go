@@ -240,9 +240,12 @@ func (h *Handler) serviceRequestTypeProperty(w http.ResponseWriter, r *http.Requ
 		writeJSON(w, http.StatusOK, map[string]any{"key": key, "value": json.RawMessage(value)})
 		return
 	}
-	admin, err := h.Store.IsAdmin(r.Context(), workspaceID, actorID)
-	if err != nil || !admin {
-		jiraError(w, http.StatusForbidden, "Site administrator access is required.")
+	if !h.serviceDeskAdminAccess(r, workspaceID, serviceDeskID, actorID) {
+		jiraError(w, http.StatusForbidden, "Service desk administrator access is required.")
+		return
+	}
+	if agent, err := h.Store.IsServiceAgent(r.Context(), workspaceID, serviceDeskID, actorID); err != nil || !agent {
+		jiraError(w, http.StatusForbidden, "A Jira Service Management agent license is required.")
 		return
 	}
 	if r.Method == http.MethodDelete {

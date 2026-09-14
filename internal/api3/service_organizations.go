@@ -25,6 +25,13 @@ func (h *Handler) serviceDeskAgentAccess(r *http.Request, workspaceID, serviceDe
 	return err == nil && agent
 }
 
+// serviceDeskAdminAccess reports whether the caller administers the service
+// desk: a site administrator or an administrator of the desk's project.
+func (h *Handler) serviceDeskAdminAccess(r *http.Request, workspaceID, serviceDeskID, actorID string) bool {
+	admin, err := h.Store.IsServiceDeskAdmin(r.Context(), workspaceID, serviceDeskID, actorID)
+	return err == nil && admin
+}
+
 func (h *Handler) createServiceCustomer(w http.ResponseWriter, r *http.Request, workspaceID, actorID string) {
 	admin, err := h.Store.IsAdmin(r.Context(), workspaceID, actorID)
 	if err != nil {
@@ -264,7 +271,7 @@ func (h *Handler) serviceOrganizationUsers(w http.ResponseWriter, r *http.Reques
 }
 
 func (h *Handler) serviceDeskCustomers(w http.ResponseWriter, r *http.Request, workspaceID, actorID, serviceDeskID string) {
-	if !h.serviceDeskAgentAccess(r, workspaceID, serviceDeskID, actorID) {
+	if !h.serviceDeskAgentAccess(r, workspaceID, serviceDeskID, actorID) && !h.serviceDeskAdminAccess(r, workspaceID, serviceDeskID, actorID) {
 		jiraError(w, http.StatusForbidden, "Service agent access is required.")
 		return
 	}

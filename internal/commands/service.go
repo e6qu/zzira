@@ -251,12 +251,8 @@ func (s *Service) SetServiceDeskAgent(ctx context.Context, actorID, workspaceID,
 }
 
 func (s *Service) UpdateServiceSLAMetric(ctx context.Context, actorID, workspaceID, serviceDeskID, metricID, pauseJQL string, goalMillis int64) error {
-	admin, err := s.Store.IsAdmin(ctx, workspaceID, actorID)
-	if err != nil {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
 		return err
-	}
-	if !admin {
-		return fmt.Errorf("only an administrator may configure service SLAs")
 	}
 	pauseJQL = strings.TrimSpace(pauseJQL)
 	if len(pauseJQL) > 2000 {
@@ -335,7 +331,7 @@ func (s *Service) validateServiceSLAGoal(ctx context.Context, workspaceID, name,
 }
 
 func (s *Service) CreateServiceSLAGoal(ctx context.Context, actorID, workspaceID, serviceDeskID, metricID, name, query string, goalMillis int64) (*models.ServiceSLAGoal, error) {
-	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
 		return nil, err
 	}
 	name, query, err := s.validateServiceSLAGoal(ctx, workspaceID, name, query, goalMillis)
@@ -346,7 +342,7 @@ func (s *Service) CreateServiceSLAGoal(ctx context.Context, actorID, workspaceID
 }
 
 func (s *Service) UpdateServiceSLAGoal(ctx context.Context, actorID, workspaceID, serviceDeskID, metricID, goalID, name, query string, goalMillis int64) error {
-	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
 		return err
 	}
 	name, query, err := s.validateServiceSLAGoal(ctx, workspaceID, name, query, goalMillis)
@@ -357,25 +353,21 @@ func (s *Service) UpdateServiceSLAGoal(ctx context.Context, actorID, workspaceID
 }
 
 func (s *Service) DeleteServiceSLAGoal(ctx context.Context, actorID, workspaceID, serviceDeskID, metricID, goalID string) error {
-	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
 		return err
 	}
 	return s.Store.DeleteServiceSLAGoal(ctx, workspaceID, actorID, serviceDeskID, metricID, goalID)
 }
 
 func (s *Service) UpdateServiceCalendar(ctx context.Context, actorID, workspaceID, serviceDeskID, name, timeZone string, weekdays []int16, startMinute, endMinute int16) error {
-	admin, err := s.Store.IsAdmin(ctx, workspaceID, actorID)
-	if err != nil {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
 		return err
-	}
-	if !admin {
-		return fmt.Errorf("only an administrator may configure service calendars")
 	}
 	return s.Store.UpdateServiceCalendar(ctx, workspaceID, actorID, serviceDeskID, name, timeZone, weekdays, startMinute, endMinute)
 }
 
 func (s *Service) UpsertServiceCalendarHoliday(ctx context.Context, actorID, workspaceID, serviceDeskID, day, name string) error {
-	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
 		return err
 	}
 	holiday, err := time.Parse(time.DateOnly, strings.TrimSpace(day))
@@ -390,7 +382,7 @@ func (s *Service) UpsertServiceCalendarHoliday(ctx context.Context, actorID, wor
 }
 
 func (s *Service) DeleteServiceCalendarHoliday(ctx context.Context, actorID, workspaceID, serviceDeskID, day string) error {
-	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
 		return err
 	}
 	holiday, err := time.Parse(time.DateOnly, strings.TrimSpace(day))
@@ -426,7 +418,7 @@ func (s *Service) validateServiceQueue(ctx context.Context, workspaceID, name, q
 }
 
 func (s *Service) CreateServiceQueue(ctx context.Context, actorID, workspaceID, serviceDeskID, name, query string) (*models.ServiceQueue, error) {
-	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
 		return nil, err
 	}
 	name, query, err := s.validateServiceQueue(ctx, workspaceID, name, query)
@@ -437,7 +429,7 @@ func (s *Service) CreateServiceQueue(ctx context.Context, actorID, workspaceID, 
 }
 
 func (s *Service) UpdateServiceQueue(ctx context.Context, actorID, workspaceID, serviceDeskID, queueID, name, query string) error {
-	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
 		return err
 	}
 	name, query, err := s.validateServiceQueue(ctx, workspaceID, name, query)
@@ -448,14 +440,14 @@ func (s *Service) UpdateServiceQueue(ctx context.Context, actorID, workspaceID, 
 }
 
 func (s *Service) DeleteServiceQueue(ctx context.Context, actorID, workspaceID, serviceDeskID, queueID string) error {
-	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
 		return err
 	}
 	return s.Store.DeleteServiceQueue(ctx, workspaceID, actorID, serviceDeskID, queueID)
 }
 
 func (s *Service) SetServiceRequestTypeFields(ctx context.Context, actorID, workspaceID, serviceDeskID, requestTypeID string, fields []models.ServiceRequestTypeField) error {
-	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
 		return err
 	}
 	if len(fields) == 0 || len(fields) > 50 {

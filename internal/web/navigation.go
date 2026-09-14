@@ -88,7 +88,7 @@ func (h *Handler) workspaceNavigation(r *http.Request, workspaceID, preferred st
 		if err != nil {
 			return nil, err
 		}
-		navigation.CanServiceAgent, err = h.Store.IsAnyServiceAgent(r.Context(), workspaceID, currentUser.ID)
+		navigation.CanServiceAgent, err = h.Store.IsAnyServiceDeskStaff(r.Context(), workspaceID, currentUser.ID)
 		if err != nil {
 			return nil, err
 		}

@@ -31,6 +31,33 @@ func (s *Service) requireServiceDeskAgent(ctx context.Context, workspaceID, serv
 	return nil
 }
 
+// requireServiceDeskAdmin allows a service desk's administrators: site
+// administrators and the people who administer the desk's project, as Jira
+// Service Management's service desk administrator permission does.
+// requireServiceDeskAdminAgent requires the agent access Jira asks of project
+// administrators managing request type properties.
+func (s *Service) requireServiceDeskAdminAgent(ctx context.Context, workspaceID, serviceDeskID, actorID string) error {
+	agent, err := s.Store.IsServiceAgent(ctx, workspaceID, serviceDeskID, actorID)
+	if err != nil {
+		return err
+	}
+	if !agent {
+		return fmt.Errorf("service desk administrator with agent access is required")
+	}
+	return nil
+}
+
+func (s *Service) requireServiceDeskAdmin(ctx context.Context, workspaceID, serviceDeskID, actorID string) error {
+	admin, err := s.Store.IsServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID)
+	if err != nil {
+		return err
+	}
+	if !admin {
+		return fmt.Errorf("service desk administrator access is required")
+	}
+	return nil
+}
+
 func (s *Service) requireServiceAdmin(ctx context.Context, workspaceID, actorID string) error {
 	admin, err := s.Store.IsAdmin(ctx, workspaceID, actorID)
 	if err != nil {
@@ -96,7 +123,7 @@ func (s *Service) SetServiceDeskOrganization(ctx context.Context, actorID, works
 }
 
 func (s *Service) SetServiceDeskCustomers(ctx context.Context, actorID, workspaceID, serviceDeskID string, userIDs []string, add bool) error {
-	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
 		return err
 	}
 	if len(userIDs) == 0 {
@@ -106,6 +133,8 @@ func (s *Service) SetServiceDeskCustomers(ctx context.Context, actorID, workspac
 }
 
 func (s *Service) InviteServiceDeskCustomer(ctx context.Context, actorID, workspaceID, serviceDeskID, email, displayName string) (*models.User, error) {
+	// Jira requires the Jira Administrator global permission as well as
+	// service desk administration; site administrators hold both.
 	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
 		return nil, err
 	}
@@ -134,21 +163,24 @@ func (s *Service) RevokePortalOnlyServiceCustomer(ctx context.Context, actorID, 
 }
 
 func (s *Service) SetServiceDeskCustomerAccess(ctx context.Context, actorID, workspaceID, serviceDeskID string, open bool) error {
-	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
 		return err
 	}
 	return s.Store.SetServiceDeskCustomerAccess(ctx, workspaceID, serviceDeskID, open)
 }
 
 func (s *Service) SetServiceDeskKnowledgeSpace(ctx context.Context, actorID, workspaceID, serviceDeskID, spaceID string, link bool) error {
-	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
 		return err
 	}
 	return s.Store.SetServiceDeskKnowledgeSpace(ctx, workspaceID, actorID, serviceDeskID, spaceID, link)
 }
 
 func (s *Service) SetServiceRequestTypeProperty(ctx context.Context, actorID, workspaceID, serviceDeskID, requestTypeID, key string, value json.RawMessage) (bool, error) {
-	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
+		return false, err
+	}
+	if err := s.requireServiceDeskAdminAgent(ctx, workspaceID, serviceDeskID, actorID); err != nil {
 		return false, err
 	}
 	key = strings.TrimSpace(key)
@@ -159,7 +191,10 @@ func (s *Service) SetServiceRequestTypeProperty(ctx context.Context, actorID, wo
 }
 
 func (s *Service) DeleteServiceRequestTypeProperty(ctx context.Context, actorID, workspaceID, serviceDeskID, requestTypeID, key string) error {
-	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
+		return err
+	}
+	if err := s.requireServiceDeskAdminAgent(ctx, workspaceID, serviceDeskID, actorID); err != nil {
 		return err
 	}
 	return s.Store.DeleteServiceRequestTypeProperty(ctx, workspaceID, serviceDeskID, requestTypeID, key)

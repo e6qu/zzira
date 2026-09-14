@@ -9826,6 +9826,7 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_desk_admin_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service_organizations.go",
         "internal/commands/service_organizations.go",
@@ -9837,7 +9838,7 @@
         "e2e/service.spec.ts",
         "docs/SERVICE_MANAGEMENT.md"
       ],
-      "notes": "Site administrators remove customers from a closed portal using accountIds or legacy usernames, preserving a denial until explicitly re-added; Jira project-admin granularity remains."
+      "notes": "Service desk administrators (site administrators or administrators of the desk's project) remove customers from a closed portal using accountIds or legacy usernames, preserving a denial until explicitly re-added; other callers receive 403."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/servicedesk/{serviceDeskId}/customer",
@@ -9864,6 +9865,7 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_desk_admin_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service_organizations.go",
         "internal/commands/service_organizations.go",
@@ -9875,7 +9877,7 @@
         "e2e/service.spec.ts",
         "docs/SERVICE_MANAGEMENT.md"
       ],
-      "notes": "Site administrators idempotently add active site customers to a desk by accountIds or legacy usernames; Jira project-admin granularity remains."
+      "notes": "Service desk administrators (site administrators or administrators of the desk's project) idempotently add active site customers to a desk by accountIds or legacy usernames; other callers receive 403."
     },
     {
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/servicedesk/{serviceDeskId}/customer/invite",
@@ -9883,6 +9885,7 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_desk_admin_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service_organizations.go",
         "internal/commands/service_organizations.go",
@@ -9894,7 +9897,7 @@
         "e2e/service.spec.ts",
         "docs/SERVICE_MANAGEMENT.md"
       ],
-      "notes": "Site administrators create or reactivate a customer-only account and associate it with the desk, honoring strict conflict mode; actual invitation email delivery and project-admin granularity remain."
+      "notes": "Callers holding both the Jira Administrator global permission and service desk administration create or reactivate a customer-only account and associate it with the desk, honoring strict conflict mode; project administrators alone receive 403. Actual invitation email delivery remains."
     },
     {
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/servicedesk/{serviceDeskId}/customer/skip-permission-check",
@@ -10058,13 +10061,14 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_desk_admin_test.go",
         "internal/api3/service_request_fields_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service.go",
         "internal/store/service.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Creates a workspace-scoped request type backed by an existing Jira issue type for administrators, with Jira's headset icon; its portal form is edited in the agent workspace, where fields can be shown, required, hidden with presets and given help text."
+      "notes": "Creates a workspace-scoped request type backed by an existing Jira issue type for service desk administrators (site administrators or administrators of the desk's project), with Jira's headset icon; its portal form is edited in the agent workspace, where fields can be shown, required, hidden with presets and given help text."
     },
     {
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/servicedesk/{serviceDeskId}/requesttype/permissions/check",
@@ -10086,13 +10090,14 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_desk_admin_test.go",
         "internal/api3/service_request_fields_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service.go",
         "internal/store/service.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Deletes a request type for administrators and removes it from the customer requests that used it, which remain without a request type, in one transaction with an audit event naming how many requests it touched; unknown desks or request types answer 404 and non-administrators 403."
+      "notes": "Deletes a request type for service desk administrators (site administrators or administrators of the desk's project) and removes it from the customer requests that used it, which remain without a request type, in one transaction with an audit event naming how many requests it touched; unknown desks or request types answer 404 and other callers 403."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/servicedesk/{serviceDeskId}/requesttype/{requestTypeId}",
@@ -10114,13 +10119,14 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_desk_admin_test.go",
         "internal/api3/service_request_fields_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service.go",
         "internal/store/service.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Returns the request type form: summary, description and custom fields whose context reaches the desk's project, each with its Jira schema (type, custom type URI, customId, items), required and visible flags, and the select options the context offers as validValues with cascading children; canRaiseOnBehalfOf and canAddRequestParticipants are true only for the desk's agents, and hidden fields with their presetValues appear only to administrators asking for expand=hiddenFields."
+      "notes": "Returns the request type form: summary, description and custom fields whose context reaches the desk's project, each with its Jira schema (type, custom type URI, customId, items), required and visible flags, and the select options the context offers as validValues with cascading children; canRaiseOnBehalfOf and canAddRequestParticipants are true only for the desk's agents, and hidden fields with their presetValues appear only to the desk's administrators asking for expand=hiddenFields."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/servicedesk/{serviceDeskId}/requesttype/{requestTypeId}/property",
@@ -10142,13 +10148,14 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_desk_admin_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service_knowledge.go",
         "internal/store/service_knowledge.go",
         "migrations/068_service_knowledge_assets.sql",
         "docs/SERVICE_MANAGEMENT.md"
       ],
-      "notes": "Deletes an existing request type JSON property with site-administrator authorization."
+      "notes": "Deletes an existing request type JSON property for administrators of the desk's project who also hold agent access; other callers receive 403."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/servicedesk/{serviceDeskId}/requesttype/{requestTypeId}/property/{propertyKey}",
@@ -10170,13 +10177,14 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_desk_admin_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service_knowledge.go",
         "internal/store/service_knowledge.go",
         "migrations/068_service_knowledge_assets.sql",
         "docs/SERVICE_MANAGEMENT.md"
       ],
-      "notes": "Creates or replaces bounded JSON request type properties with Jira 201 and 200 status behavior."
+      "notes": "Creates or replaces bounded JSON request type properties with Jira 201 and 200 status behavior for administrators of the desk's project who also hold agent access; other callers receive 403."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/servicedesk/{serviceDeskId}/requesttypegroup",

@@ -103,8 +103,8 @@ func (h *Handler) serviceDeskRoute(w http.ResponseWriter, r *http.Request) {
 	case len(parts) == 3 && parts[0] == "servicedesk" && parts[2] == "requesttype" && r.Method == http.MethodGet:
 		h.listServiceRequestTypes(w, r, workspaceID, parts[1])
 	case len(parts) == 3 && parts[0] == "servicedesk" && parts[2] == "requesttype" && r.Method == http.MethodPost:
-		if _, _, err := h.authWorkspaceAdmin(r); err != nil {
-			writeJerr(w, err)
+		if !h.serviceDeskAdminAccess(r, workspaceID, parts[1], actorID) {
+			jiraError(w, http.StatusForbidden, "Service desk administrator access is required.")
 			return
 		}
 		var input struct{ Name, Description, HelpText, IssueTypeID string }
@@ -180,12 +180,11 @@ func (h *Handler) serviceDeskRoute(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if len(parts) == 4 && r.Method == http.MethodDelete {
-			_, adminID, adminErr := h.authWorkspaceAdmin(r)
-			if adminErr != nil {
-				writeJerr(w, adminErr)
+			if !h.serviceDeskAdminAccess(r, workspaceID, parts[1], actorID) {
+				jiraError(w, http.StatusForbidden, "Service desk administrator access is required.")
 				return
 			}
-			if err := h.Store.DeleteServiceRequestType(r.Context(), workspaceID, adminID, parts[1], parts[3]); err != nil {
+			if err := h.Store.DeleteServiceRequestType(r.Context(), workspaceID, actorID, parts[1], parts[3]); err != nil {
 				if errors.Is(err, store.ErrServiceRequestTypeNotFound) {
 					jiraError(w, http.StatusNotFound, "The service desk or request type does not exist.")
 					return
@@ -865,14 +864,14 @@ func serviceRequestFieldSchema(field models.ServiceRequestTypeField) map[string]
 
 // serviceRequestTypeFields describes a request type's form to the caller:
 // agents may raise requests for customers and add participants, customers
-// may not, and only administrators asking for hiddenFields see hidden fields
+// may not, and only the desk's administrators asking for hiddenFields see hidden fields
 // and their preset values.
 func (h *Handler) serviceRequestTypeFields(r *http.Request, workspaceID, actorID, serviceDeskID string, fields []models.ServiceRequestTypeField) (map[string]any, error) {
 	agent, err := h.Store.IsServiceAgent(r.Context(), workspaceID, serviceDeskID, actorID)
 	if err != nil {
 		return nil, err
 	}
-	admin, err := h.Store.IsAdmin(r.Context(), workspaceID, actorID)
+	admin, err := h.Store.IsServiceDeskAdmin(r.Context(), workspaceID, serviceDeskID, actorID)
 	if err != nil {
 		return nil, err
 	}

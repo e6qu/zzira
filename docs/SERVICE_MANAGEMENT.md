@@ -19,7 +19,7 @@ its status, request type, portal, channel, description, conversation, files,
 approval state, notification preference, and satisfaction feedback. The browser journey is tested in light and dark themes,
 with WCAG A/AA axe checks and 320 px reflow.
 
-Site administrators link existing Confluence spaces to individual service
+Service desk administrators link existing Confluence spaces to individual service
 desks from the agent workspace. Published pages in those spaces appear as
 portal suggestions when their title or storage body matches the customer's
 search. Customers can open the rendered article without receiving Confluence
@@ -34,7 +34,12 @@ records without granting Jira product access. They can open a portal to all
 active site customers or close it to direct and organization membership, invite
 and remove desk customers, and durably revoke portal-only access. Revocation
 removes the customer role and cannot be undone by request auto-enrollment. Site
-administrators are implicit service managers across every desk. A customer can read only their
+administrators are implicit service managers across every desk.
+Administrators of a service project are that desk's service desk
+administrators: without site administration they manage its request types,
+forms, queues, customers, knowledge base, calendar and SLA goals, and open the
+agent workspace for it. Inviting new customers also needs site administration,
+and request type properties need agent access as well. A customer can read only their
 own requests and public comments; comments created through ordinary Jira issue
 UI have no public marker and remain internal.
 
@@ -51,7 +56,7 @@ administrators can add or remove active workspace members from the desk roster.
 Revocation immediately removes queue access, all-request visibility, request
 management and internal-comment visibility for that desk.
 
-Site administrators configure each request type's portal fields from the agent
+Service desk administrators configure each request type's portal fields from the agent
 workspace. Summary is always present, required and visible. Description and the
 custom fields available to the project can be shown, required, ordered and given
 customer help text. They can also be hidden from the portal with a preset value,
@@ -63,7 +68,7 @@ Field metadata gives each field's Jira schema (type, custom field type,
 list the options of the context that reaches the desk's project as
 `validValues`, with cascading children. `canRaiseOnBehalfOf` and
 `canAddRequestParticipants` are true only for the desk's agents. Hidden fields
-and their `presetValues` appear only to site administrators who ask for
+and their `presetValues` appear only to the desk's administrators who ask for
 `expand=hiddenFields`.
 
 UI and REST request creation reject unconfigured, hidden or missing fields,
@@ -187,7 +192,7 @@ reporter remains a distinct role and cannot be added or removed as a participant
 
 Every service desk starts with a Monday-to-Friday 09:00–17:00 UTC business
 calendar, a four-business-hour first-response goal and an eight-business-hour
-resolution goal. Site administrators can change the calendar name, IANA time
+resolution goal. Service desk administrators can change the calendar name, IANA time
 zone, working days, daily window and both goal durations from the agent
 workspace. New requests start both durable clocks. The first public agent reply
 completes the response cycle, reaching a Done status completes the resolution

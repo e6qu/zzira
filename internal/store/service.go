@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -723,6 +724,21 @@ func (s *Store) ServiceQueueRequests(ctx context.Context, workspaceID, viewerID,
 	return queue, filtered, nil
 }
 
+// IsServiceDeskAdmin reports whether a person administers a service desk: a
+// site administrator, or someone holding Administer Projects on the desk's
+// project.
+func (s *Store) IsServiceDeskAdmin(ctx context.Context, workspaceID, serviceDeskID, userID string) (bool, error) {
+	admin, err := s.IsAdmin(ctx, workspaceID, userID)
+	if err != nil || admin {
+		return admin, err
+	}
+	desk, err := s.ServiceDesk(ctx, workspaceID, serviceDeskID)
+	if err != nil {
+		return false, nil
+	}
+	return s.HasProjectPermission(ctx, workspaceID, userID, desk.ProjectID, "", "ADMINISTER_PROJECTS")
+}
+
 func (s *Store) IsServiceAgent(ctx context.Context, workspaceID, serviceDeskID, userID string) (bool, error) {
 	admin, err := s.IsAdmin(ctx, workspaceID, userID)
 	if err != nil || admin {
@@ -737,6 +753,37 @@ func (s *Store) IsServiceAgent(ctx context.Context, workspaceID, serviceDeskID, 
 		SELECT 1 FROM service_desk_agents a JOIN service_desks sd ON sd.id=a.service_desk_id
 		WHERE sd.workspace_id=$1 AND sd.id=$2 AND a.user_id=$3)`, workspaceID, serviceDeskID, userID).Scan(&allowed)
 	return allowed, err
+}
+
+// ServiceDesksAdministered lists the service desks whose project the user
+// administers.
+func (s *Store) ServiceDesksAdministered(ctx context.Context, workspaceID, userID string) ([]models.ServiceDesk, error) {
+	desks, err := s.ServiceDesks(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	administered := make([]models.ServiceDesk, 0)
+	for _, desk := range desks {
+		admin, err := s.HasProjectPermission(ctx, workspaceID, userID, desk.ProjectID, "", "ADMINISTER_PROJECTS")
+		if err != nil {
+			return nil, err
+		}
+		if admin {
+			administered = append(administered, desk)
+		}
+	}
+	return administered, nil
+}
+
+// IsAnyServiceDeskStaff reports whether the user may open the agent workspace:
+// an agent of some service desk or an administrator of one.
+func (s *Store) IsAnyServiceDeskStaff(ctx context.Context, workspaceID, userID string) (bool, error) {
+	agent, err := s.IsAnyServiceAgent(ctx, workspaceID, userID)
+	if err != nil || agent {
+		return agent, err
+	}
+	administered, err := s.ServiceDesksAdministered(ctx, workspaceID, userID)
+	return len(administered) > 0, err
 }
 
 func (s *Store) IsAnyServiceAgent(ctx context.Context, workspaceID, userID string) (bool, error) {
@@ -802,7 +849,29 @@ func (s *Store) ServiceDesksForAgent(ctx context.Context, workspaceID, userID st
 		}
 		values = append(values, *desk)
 	}
-	return values, rows.Err()
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	administered, err := s.ServiceDesksAdministered(ctx, workspaceID, userID)
+	if err != nil {
+		return nil, err
+	}
+	listed := make(map[string]bool, len(values))
+	for _, desk := range values {
+		listed[desk.ID] = true
+	}
+	for _, desk := range administered {
+		if !listed[desk.ID] {
+			values = append(values, desk)
+		}
+	}
+	sort.Slice(values, func(i, j int) bool {
+		left, _ := strconv.ParseInt(values[i].ID, 10, 64)
+		right, _ := strconv.ParseInt(values[j].ID, 10, 64)
+		return left < right
+	})
+	return values, nil
 }
 
 func (s *Store) ServiceDeskAgents(ctx context.Context, workspaceID, serviceDeskID string) ([]*models.User, error) {
