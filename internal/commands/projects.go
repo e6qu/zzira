@@ -65,7 +65,9 @@ func (s *Service) validateProjectLead(ctx context.Context, workspaceID, lead str
 	return err
 }
 
-func (s *Service) CreateProject(ctx context.Context, actorID, workspaceID string, in CreateProjectInput) (*models.Project, error) {
+// ValidateNewProject checks a new project's details as project creation does
+// and returns the project and the board type its template gives it.
+func (s *Service) ValidateNewProject(ctx context.Context, workspaceID string, in CreateProjectInput) (models.Project, string, error) {
 	in.Name = strings.TrimSpace(in.Name)
 	if in.AssigneeType == "" {
 		in.AssigneeType = "UNASSIGNED"
@@ -101,16 +103,24 @@ func (s *Service) CreateProject(ctx context.Context, actorID, workspaceID string
 		fields["leadAccountId"] = "Choose a project lead."
 	}
 	if err := s.validateProjectLead(ctx, workspaceID, in.LeadAccountID, fields); err != nil {
-		return nil, err
+		return models.Project{}, "", err
 	}
 	if len(fields) > 0 {
-		return nil, &ProjectValidationError{fields}
+		return models.Project{}, "", &ProjectValidationError{fields}
 	}
 	categoryID := ""
 	if in.CategoryID > 0 {
 		categoryID = strconv.FormatInt(in.CategoryID, 10)
 	}
-	p, err := s.Store.CreateProject(ctx, actorID, models.Project{WorkspaceID: workspaceID, Key: in.Key, Name: in.Name, Description: in.Description, URL: in.URL, LeadAccountID: in.LeadAccountID, AssigneeType: in.AssigneeType, ProjectTypeKey: in.ProjectTypeKey, CategoryID: categoryID}, boardType)
+	return models.Project{WorkspaceID: workspaceID, Key: in.Key, Name: in.Name, Description: in.Description, URL: in.URL, LeadAccountID: in.LeadAccountID, AssigneeType: in.AssigneeType, ProjectTypeKey: in.ProjectTypeKey, CategoryID: categoryID}, boardType, nil
+}
+
+func (s *Service) CreateProject(ctx context.Context, actorID, workspaceID string, in CreateProjectInput) (*models.Project, error) {
+	project, boardType, err := s.ValidateNewProject(ctx, workspaceID, in)
+	if err != nil {
+		return nil, err
+	}
+	p, err := s.Store.CreateProject(ctx, actorID, project, boardType)
 	if errors.Is(err, store.ErrProjectCategoryInvalid) {
 		return nil, &ProjectValidationError{map[string]string{"categoryId": err.Error()}}
 	}

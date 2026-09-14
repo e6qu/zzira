@@ -117,6 +117,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.dashboardRoute(w, r, nil)
 	case strings.HasPrefix(path, "/dashboard/"):
 		h.dashboardRoute(w, r, strings.Split(strings.TrimPrefix(path, "/dashboard/"), "/"))
+	case path == "/project-template" || strings.HasPrefix(path, "/project-template/"):
+		h.projectTemplateRoute(w, r, path)
 	case strings.HasPrefix(path, "/app/field/"):
 		h.appFieldRoute(w, r, path)
 	case path == "/plans/plan" || strings.HasPrefix(path, "/plans/plan/"):

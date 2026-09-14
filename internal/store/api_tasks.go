@@ -377,6 +377,8 @@ func (r *APITaskRunner) execute(ctx context.Context, task APITask) error {
 		return r.Store.executeResolutionDeletion(ctx, task)
 	case apiTaskWikiDeleteSpace:
 		return r.Store.executeWikiSpaceDeletion(ctx, task)
+	case apiTaskCreateProjectFromTemplate:
+		return r.Store.executeProjectFromTemplate(ctx, task)
 	case apiTaskConnectFieldMigration:
 		return r.Store.executeConnectFieldMigration(ctx, task)
 	case apiTaskIssueProperties:
