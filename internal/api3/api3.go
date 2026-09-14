@@ -24,11 +24,14 @@ import (
 )
 
 type Handler struct {
-	Store         *store.Store
-	Commands      *commands.Service
-	Blobs         attachments.Store
-	BaseURL       string
-	WorkspaceSlug string
+	// ProviderRateLimit is how many requests a caller may make to one DevOps
+	// provider API in a minute; zero uses the default.
+	ProviderRateLimit int
+	Store             *store.Store
+	Commands          *commands.Service
+	Blobs             attachments.Store
+	BaseURL           string
+	WorkspaceSlug     string
 	// StaticDir holds the server's static assets, such as system avatar icons.
 	StaticDir string
 }

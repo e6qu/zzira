@@ -21,7 +21,8 @@ var connectModuleKeyPattern = regexp.MustCompile(`^[a-zA-Z0-9-]{1,100}$`)
 var jqlFunctionNamePattern = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]{0,254}$`)
 
 var allowedScopes = map[string]bool{
-	"read:jira-work": true, "write:jira-work": true,
+	"read:jira-work": true, "write:jira-work": true, "delete:jira-work": true,
+	"admin:jira-project": true, "admin:jira": true, "act-as-user:jira": true,
 	"read:confluence-content": true, "write:confluence-content": true,
 	"delete:confluence-content": true, "admin:confluence": true, "access:email-addresses": true,
 	"read:app-data:confluence": true, "write:app-data:confluence": true,

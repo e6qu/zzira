@@ -29,7 +29,7 @@ type rejectedSoftwareItem struct {
 }
 
 func (h *Handler) softwareDeliveryRoute(w http.ResponseWriter, r *http.Request, kind string) {
-	workspaceID, _, authErr := h.authWorkspace(r)
+	workspaceID, actorID, authErr := h.authWorkspace(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
@@ -48,6 +48,9 @@ func (h *Handler) softwareDeliveryRoute(w http.ResponseWriter, r *http.Request, 
 		path = strings.TrimPrefix(path, directPrefix)
 	}
 	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) == 1 && parts[0] == "bulk" && r.Method == http.MethodPost && h.providerRateLimited(w, r, workspaceID, actorID, kind, false) {
+		return
+	}
 	if kind == "builds" {
 		h.buildRoute(w, r, workspaceID, parts)
 		return

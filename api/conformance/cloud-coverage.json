@@ -5184,9 +5184,11 @@
       "evidence": [
         "internal/api3/project_governance_test.go",
         "e2e/projects.spec.ts",
-        "docs/PROJECT_GOVERNANCE.md"
+        "docs/PROJECT_GOVERNANCE.md",
+        "internal/apps/app_scopes.go",
+        "internal/apps/app_scopes_test.go"
       ],
-      "notes": "Site-admin create enforces non-empty unique names and returns Jira category shape/status; exact OAuth scopes remain."
+      "notes": "Site-admin create enforces non-empty unique names and returns Jira category shape/status; apps need the operation's Connect scope, enforced per operation from the pinned specification."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/projectCategory/{id}",
@@ -8212,9 +8214,12 @@
         "internal/api3/delivery_test.go",
         "internal/api3/delivery.go",
         "internal/store/delivery.go",
-        "docs/CLOUD_PARITY.md"
+        "docs/CLOUD_PARITY.md",
+        "internal/apps/app_scopes.go",
+        "internal/apps/app_scopes_test.go",
+        "internal/api3/provider_rate_limit_test.go"
       ],
-      "notes": "Stores valid build snapshots with monotonic update ordering, issue-key/ID associations, per-build rejection, unknown associations, provider properties, issue/release UI evidence and the documented 202 result; Connect JWT scopes, rate limits and every optional field constraint remain."
+      "notes": "Stores valid build snapshots with monotonic update ordering, issue-key/ID associations, per-build rejection, unknown associations, provider properties, issue/release UI evidence and the documented 202 result; apps need the operation's Connect scope, and bulk submissions are rate limited per caller per minute with X-RateLimit headers and 429 Retry-After."
     },
     {
       "operationId": "jira-software:DELETE:/rest/builds/0.1/bulkByProperties",
@@ -8251,9 +8256,12 @@
         "internal/api3/delivery_test.go",
         "internal/api3/delivery.go",
         "internal/store/delivery.go",
-        "docs/CLOUD_PARITY.md"
+        "docs/CLOUD_PARITY.md",
+        "internal/apps/app_scopes.go",
+        "internal/apps/app_scopes_test.go",
+        "internal/api3/provider_rate_limit_test.go"
       ],
-      "notes": "Returns the current sequence-ordered build payload by its composite key, including direct and cloudId proxy routing; Connect JWT scopes and rate limits remain."
+      "notes": "Returns the current sequence-ordered build payload by its composite key, including direct and cloudId proxy routing; apps need the operation's Connect scope, and bulk submissions are rate limited per caller per minute with X-RateLimit headers and 429 Retry-After."
     },
     {
       "operationId": "jira-software:POST:/rest/deployments/0.1/bulk",
@@ -8264,9 +8272,12 @@
         "internal/api3/delivery_test.go",
         "internal/api3/delivery.go",
         "internal/store/delivery.go",
-        "docs/CLOUD_PARITY.md"
+        "docs/CLOUD_PARITY.md",
+        "internal/apps/app_scopes.go",
+        "internal/apps/app_scopes_test.go",
+        "internal/api3/provider_rate_limit_test.go"
       ],
-      "notes": "Stores valid deployment snapshots with monotonic update ordering, issue-key/ID associations, per-deployment rejection, provider properties, environment metadata, issue/release UI evidence and the documented 202 result; Connect JWT scopes, rate limits and every optional field constraint remain."
+      "notes": "Stores valid deployment snapshots with monotonic update ordering, issue-key/ID associations, per-deployment rejection, provider properties, environment metadata, issue/release UI evidence and the documented 202 result; apps need the operation's Connect scope, and bulk submissions are rate limited per caller per minute with X-RateLimit headers and 429 Retry-After."
     },
     {
       "operationId": "jira-software:DELETE:/rest/deployments/0.1/bulkByProperties",
@@ -8303,9 +8314,12 @@
         "internal/api3/delivery_test.go",
         "internal/api3/delivery.go",
         "internal/store/delivery.go",
-        "docs/CLOUD_PARITY.md"
+        "docs/CLOUD_PARITY.md",
+        "internal/apps/app_scopes.go",
+        "internal/apps/app_scopes_test.go",
+        "internal/api3/provider_rate_limit_test.go"
       ],
-      "notes": "Returns the current sequence-ordered deployment payload by its composite key, including direct and cloudId proxy routing; Connect JWT scopes and rate limits remain."
+      "notes": "Returns the current sequence-ordered deployment payload by its composite key, including direct and cloudId proxy routing; apps need the operation's Connect scope, and bulk submissions are rate limited per caller per minute with X-RateLimit headers and 429 Retry-After."
     },
     {
       "operationId": "jira-software:GET:/rest/deployments/0.1/pipelines/{pipelineId}/environments/{environmentId}/deployments/{deploymentSequenceNumber}/gating-status",
@@ -8329,9 +8343,12 @@
         "internal/api3/development_test.go",
         "internal/api3/development.go",
         "internal/store/development.go",
-        "docs/CLOUD_PARITY.md"
+        "docs/CLOUD_PARITY.md",
+        "internal/apps/app_scopes.go",
+        "internal/apps/app_scopes_test.go",
+        "internal/api3/provider_rate_limit_test.go"
       ],
-      "notes": "Stores repositories, commits, branches and pull requests with monotonic update ordering, issue-key/ID associations, unknown-key reporting, preventTransitions, browser evidence and branch-created workflow execution; Connect JWT scopes, rate limits and every field constraint remain."
+      "notes": "Stores repositories, commits, branches and pull requests with monotonic update ordering, issue-key/ID associations, unknown-key reporting, preventTransitions, browser evidence and branch-created workflow execution; apps need the operation's Connect scope, and bulk submissions are rate limited per caller per minute with X-RateLimit headers and 429 Retry-After."
     },
     {
       "operationId": "jira-software:DELETE:/rest/devinfo/0.10/bulkByProperties",
@@ -8342,9 +8359,11 @@
         "internal/api3/development_test.go",
         "internal/api3/development.go",
         "internal/store/development.go",
-        "docs/CLOUD_PARITY.md"
+        "docs/CLOUD_PARITY.md",
+        "internal/apps/app_scopes.go",
+        "internal/apps/app_scopes_test.go"
       ],
-      "notes": "Deletes repositories matching all validated provider properties with Jira-compatible accepted response; asynchronous execution and Connect JWT scopes remain."
+      "notes": "Deletes repositories matching all validated provider properties with Jira-compatible accepted response; apps need the operation's Connect scope."
     },
     {
       "operationId": "jira-software:GET:/rest/devinfo/0.10/existsByProperties",
@@ -8355,9 +8374,12 @@
         "internal/api3/development_test.go",
         "internal/api3/development.go",
         "internal/store/development.go",
-        "docs/CLOUD_PARITY.md"
+        "docs/CLOUD_PARITY.md",
+        "internal/apps/app_scopes.go",
+        "internal/apps/app_scopes_test.go",
+        "internal/api3/provider_rate_limit_test.go"
       ],
-      "notes": "Checks property containment with optional update-sequence filtering and validated query cardinality; Connect JWT scopes and rate limits remain."
+      "notes": "Checks property containment with optional update-sequence filtering and validated query cardinality; apps need the operation's Connect scope, and bulk submissions are rate limited per caller per minute with X-RateLimit headers and 429 Retry-After."
     },
     {
       "operationId": "jira-software:DELETE:/rest/devinfo/0.10/repository/{repositoryId}",
@@ -8405,9 +8427,12 @@
       "status": "partial",
       "evidence": [
         "internal/api3/software_providers_test.go",
-        "docs/JIRA_SOFTWARE.md"
+        "docs/JIRA_SOFTWARE.md",
+        "internal/apps/app_scopes.go",
+        "internal/apps/app_scopes_test.go",
+        "internal/api3/provider_rate_limit_test.go"
       ],
-      "notes": "Per-entity schema validation, update-sequence ordering, issue associations with unknown issues reported, and provider properties; provider app scopes are site membership."
+      "notes": "Per-entity schema validation, update-sequence ordering, issue associations with unknown issues reported, and provider properties; apps need the operation's Connect scope and bulk submissions are rate limited per caller."
     },
     {
       "operationId": "jira-software:DELETE:/rest/devopscomponents/1.0/bulkByProperties",
@@ -8449,9 +8474,12 @@
       "status": "partial",
       "evidence": [
         "internal/api3/software_providers_test.go",
-        "docs/JIRA_SOFTWARE.md"
+        "docs/JIRA_SOFTWARE.md",
+        "internal/apps/app_scopes.go",
+        "internal/apps/app_scopes_test.go",
+        "internal/api3/provider_rate_limit_test.go"
       ],
-      "notes": "Per-entity schema validation, update-sequence ordering, issue associations with unknown issues reported, and provider properties; provider app scopes are site membership."
+      "notes": "Per-entity schema validation, update-sequence ordering, issue associations with unknown issues reported, and provider properties; apps need the operation's Connect scope and bulk submissions are rate limited per caller."
     },
     {
       "operationId": "jira-software:DELETE:/rest/featureflags/0.1/bulkByProperties",
@@ -8493,9 +8521,12 @@
       "status": "partial",
       "evidence": [
         "internal/api3/software_providers_test.go",
-        "docs/JIRA_SOFTWARE.md"
+        "docs/JIRA_SOFTWARE.md",
+        "internal/apps/app_scopes.go",
+        "internal/apps/app_scopes_test.go",
+        "internal/api3/provider_rate_limit_test.go"
       ],
-      "notes": "Per-entity schema validation, update-sequence ordering, issue associations with unknown issues reported, and provider properties; provider app scopes are site membership."
+      "notes": "Per-entity schema validation, update-sequence ordering, issue associations with unknown issues reported, and provider properties; apps need the operation's Connect scope and bulk submissions are rate limited per caller."
     },
     {
       "operationId": "jira-software:DELETE:/rest/operations/1.0/bulkByProperties",
@@ -8592,9 +8623,12 @@
       "status": "partial",
       "evidence": [
         "internal/api3/software_providers_test.go",
-        "docs/JIRA_SOFTWARE.md"
+        "docs/JIRA_SOFTWARE.md",
+        "internal/apps/app_scopes.go",
+        "internal/apps/app_scopes_test.go",
+        "internal/api3/provider_rate_limit_test.go"
       ],
-      "notes": "Per-entity schema validation, update-sequence ordering, issue associations with unknown issues reported, and provider properties; provider app scopes are site membership."
+      "notes": "Per-entity schema validation, update-sequence ordering, issue associations with unknown issues reported, and provider properties; apps need the operation's Connect scope and bulk submissions are rate limited per caller."
     },
     {
       "operationId": "jira-software:DELETE:/rest/remotelinks/1.0/bulkByProperties",
@@ -8636,9 +8670,12 @@
       "status": "partial",
       "evidence": [
         "internal/api3/software_providers_test.go",
-        "docs/JIRA_SOFTWARE.md"
+        "docs/JIRA_SOFTWARE.md",
+        "internal/apps/app_scopes.go",
+        "internal/apps/app_scopes_test.go",
+        "internal/api3/provider_rate_limit_test.go"
       ],
-      "notes": "Per-entity schema validation, update-sequence ordering, issue associations with unknown issues reported, and provider properties; provider app scopes are site membership."
+      "notes": "Per-entity schema validation, update-sequence ordering, issue associations with unknown issues reported, and provider properties; apps need the operation's Connect scope and bulk submissions are rate limited per caller."
     },
     {
       "operationId": "jira-software:DELETE:/rest/security/1.0/bulkByProperties",
@@ -9065,9 +9102,11 @@
         "internal/web/service.go",
         "internal/render/templates/service.gohtml",
         "e2e/service.spec.ts",
-        "docs/SERVICE_MANAGEMENT.md"
+        "docs/SERVICE_MANAGEMENT.md",
+        "internal/apps/app_scopes.go",
+        "internal/apps/app_scopes_test.go"
       ],
-      "notes": "Agents and administrators delete a workspace-scoped organization entity property with the documented empty response; app-scope distinctions remain."
+      "notes": "Agents and administrators delete a workspace-scoped organization entity property with the documented empty response; apps need the operation's Connect scope."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/organization/{organizationId}/property/{propertyKey}",
@@ -9084,9 +9123,11 @@
         "internal/web/service.go",
         "internal/render/templates/service.gohtml",
         "e2e/service.spec.ts",
-        "docs/SERVICE_MANAGEMENT.md"
+        "docs/SERVICE_MANAGEMENT.md",
+        "internal/apps/app_scopes.go",
+        "internal/apps/app_scopes_test.go"
       ],
-      "notes": "Returns a JSON organization entity property to agents or organization members while hiding foreign organizations and missing keys; app-scope distinctions remain."
+      "notes": "Returns a JSON organization entity property to agents or organization members while hiding foreign organizations and missing keys; apps need the operation's Connect scope."
     },
     {
       "operationId": "jira-service-management:PUT:/rest/servicedeskapi/organization/{organizationId}/property/{propertyKey}",
@@ -9103,9 +9144,11 @@
         "internal/web/service.go",
         "internal/render/templates/service.gohtml",
         "e2e/service.spec.ts",
-        "docs/SERVICE_MANAGEMENT.md"
+        "docs/SERVICE_MANAGEMENT.md",
+        "internal/apps/app_scopes.go",
+        "internal/apps/app_scopes_test.go"
       ],
-      "notes": "Agents and administrators validate and upsert a JSON organization property with Jira-compatible key and value limits; app-scope distinctions remain."
+      "notes": "Agents and administrators validate and upsert a JSON organization property with Jira-compatible key and value limits; apps need the operation's Connect scope."
     },
     {
       "operationId": "jira-service-management:DELETE:/rest/servicedeskapi/organization/{organizationId}/user",
@@ -9122,9 +9165,11 @@
         "internal/web/service.go",
         "internal/render/templates/service.gohtml",
         "e2e/service.spec.ts",
-        "docs/SERVICE_MANAGEMENT.md"
+        "docs/SERVICE_MANAGEMENT.md",
+        "internal/apps/app_scopes.go",
+        "internal/apps/app_scopes_test.go"
       ],
-      "notes": "Agents and administrators remove one or more accountIds or legacy usernames from an organization with idempotent empty success; app-scope distinctions remain."
+      "notes": "Agents and administrators remove one or more accountIds or legacy usernames from an organization with idempotent empty success; apps need the operation's Connect scope."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/organization/{organizationId}/user",
@@ -9160,9 +9205,11 @@
         "internal/web/service.go",
         "internal/render/templates/service.gohtml",
         "e2e/service.spec.ts",
-        "docs/SERVICE_MANAGEMENT.md"
+        "docs/SERVICE_MANAGEMENT.md",
+        "internal/apps/app_scopes.go",
+        "internal/apps/app_scopes_test.go"
       ],
-      "notes": "Agents and administrators add active service customers by accountIds or legacy usernames idempotently and reject inactive identities; app-scope distinctions remain."
+      "notes": "Agents and administrators add active service customers by accountIds or legacy usernames idempotently and reject inactive identities; apps need the operation's Connect scope."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request",
@@ -9535,9 +9582,11 @@
       "evidence": [
         "internal/api3/service_test.go",
         "internal/commands/service_notifications_feedback.go",
-        "docs/SERVICE_MANAGEMENT.md"
+        "docs/SERVICE_MANAGEMENT.md",
+        "internal/apps/app_scopes.go",
+        "internal/apps/app_scopes_test.go"
       ],
-      "notes": "Deletes feedback only for the request reporter; Connect app authorization and audit export remain."
+      "notes": "Deletes feedback only for the request reporter; apps need the operation's Connect scope."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{requestIdOrKey}/feedback",
@@ -9744,9 +9793,11 @@
         "internal/web/service.go",
         "internal/render/templates/service.gohtml",
         "e2e/service.spec.ts",
-        "docs/SERVICE_MANAGEMENT.md"
+        "docs/SERVICE_MANAGEMENT.md",
+        "internal/apps/app_scopes.go",
+        "internal/apps/app_scopes_test.go"
       ],
-      "notes": "Assigned agents and administrators idempotently unlink a workspace organization from their desk with the documented empty response; app-access rules remain."
+      "notes": "Assigned agents and administrators idempotently unlink a workspace organization from their desk with the documented empty response; apps need the operation's Connect scope."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/servicedesk/{serviceDeskId}/organization",
@@ -9782,9 +9833,11 @@
         "internal/web/service.go",
         "internal/render/templates/service.gohtml",
         "e2e/service.spec.ts",
-        "docs/SERVICE_MANAGEMENT.md"
+        "docs/SERVICE_MANAGEMENT.md",
+        "internal/apps/app_scopes.go",
+        "internal/apps/app_scopes_test.go"
       ],
-      "notes": "Assigned agents and administrators idempotently link a workspace organization to their desk and organization members gain closed-portal admission; app-access rules remain."
+      "notes": "Assigned agents and administrators idempotently link a workspace organization to their desk and organization members gain closed-portal admission; apps need the operation's Connect scope."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/servicedesk/{serviceDeskId}/queue",
@@ -14624,8 +14677,8 @@
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts",
-        "internal/apps/confluence_scopes.go",
-        "internal/apps/confluence_scopes_test.go"
+        "internal/apps/app_scopes.go",
+        "internal/apps/app_scopes_test.go"
       ],
       "notes": "Creates validated uniquely keyed JSON properties on writable current pages atomically with version one and a permission-filtered sync action; apps need the operation's Connect scope, enforced per operation from the pinned specification."
     },
@@ -14643,8 +14696,8 @@
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts",
-        "internal/apps/confluence_scopes.go",
-        "internal/apps/confluence_scopes_test.go"
+        "internal/apps/app_scopes.go",
+        "internal/apps/app_scopes_test.go"
       ],
       "notes": "Deletes an exact property from a writable current page atomically and emits a permission-filtered tombstone action; apps need the operation's Connect scope, enforced per operation from the pinned specification."
     },
@@ -14679,8 +14732,8 @@
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts",
-        "internal/apps/confluence_scopes.go",
-        "internal/apps/confluence_scopes_test.go"
+        "internal/apps/app_scopes.go",
+        "internal/apps/app_scopes_test.go"
       ],
       "notes": "Updates a writable page property with exact key continuity, optimistic next-version checks, immutable version history and a permission-filtered sync action; apps need the operation's Connect scope, enforced per operation from the pinned specification."
     },
@@ -15153,8 +15206,8 @@
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts",
-        "internal/apps/confluence_scopes.go",
-        "internal/apps/confluence_scopes_test.go"
+        "internal/apps/app_scopes.go",
+        "internal/apps/app_scopes_test.go"
       ],
       "notes": "Lists versioned JSON properties on a visible space with key filtering, key sorting and cursor pagination; apps need the operation's Connect scope, enforced per operation from the pinned specification."
     },
@@ -15172,8 +15225,8 @@
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts",
-        "internal/apps/confluence_scopes.go",
-        "internal/apps/confluence_scopes_test.go"
+        "internal/apps/app_scopes.go",
+        "internal/apps/app_scopes_test.go"
       ],
       "notes": "Workspace administrators create uniquely keyed, validated JSON space properties through REST or the accessible UI with immutable version one and an atomic sync action; apps need the operation's Connect scope, enforced per operation from the pinned specification."
     },
@@ -15190,8 +15243,8 @@
         "migrations/095_wiki_space_properties.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "internal/apps/confluence_scopes.go",
-        "internal/apps/confluence_scopes_test.go"
+        "internal/apps/app_scopes.go",
+        "internal/apps/app_scopes_test.go"
       ],
       "notes": "Workspace administrators delete an exact property from its space with an atomic delete sync action; apps need the operation's Connect scope, enforced per operation from the pinned specification."
     },
@@ -15205,8 +15258,8 @@
         "internal/confluence/http_test.go",
         "internal/store/wiki_space_properties.go",
         "migrations/095_wiki_space_properties.sql",
-        "internal/apps/confluence_scopes.go",
-        "internal/apps/confluence_scopes_test.go"
+        "internal/apps/app_scopes.go",
+        "internal/apps/app_scopes_test.go"
       ],
       "notes": "Returns an exact current versioned JSON property from a visible space; apps need the operation's Connect scope, enforced per operation from the pinned specification; the pinned API publishes no historical property read."
     },
@@ -15223,8 +15276,8 @@
         "migrations/095_wiki_space_properties.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "internal/apps/confluence_scopes.go",
-        "internal/apps/confluence_scopes_test.go"
+        "internal/apps/app_scopes.go",
+        "internal/apps/app_scopes_test.go"
       ],
       "notes": "Workspace administrators update exact-key JSON properties with optimistic next-version checks, immutable metadata and atomic sync; apps need the operation's Connect scope, enforced per operation from the pinned specification; the pinned API publishes no historical property read."
     },

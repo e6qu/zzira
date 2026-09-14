@@ -107,7 +107,7 @@ func providerError(w http.ResponseWriter, status int, messages ...string) {
 }
 
 func (h *Handler) softwareProviderRoute(w http.ResponseWriter, r *http.Request, module providerModule) {
-	workspaceID, _, authErr := h.authWorkspace(r)
+	workspaceID, actorID, authErr := h.authWorkspace(r)
 	if authErr != nil {
 		if authErr.status == http.StatusUnauthorized {
 			w.WriteHeader(http.StatusUnauthorized)
@@ -119,6 +119,9 @@ func (h *Handler) softwareProviderRoute(w http.ResponseWriter, r *http.Request, 
 	parts := strings.Split(strings.Trim(strings.TrimPrefix(r.URL.Path, module.prefix), "/"), "/")
 	switch {
 	case len(parts) == 1 && parts[0] == "bulk" && r.Method == http.MethodPost:
+		if h.providerRateLimited(w, r, workspaceID, actorID, module.name, true) {
+			return
+		}
 		h.submitProviderData(w, r, workspaceID, module)
 	case len(parts) == 1 && parts[0] == "bulkByProperties" && r.Method == http.MethodDelete:
 		properties := providerPropertiesFromQuery(r.URL.Query())

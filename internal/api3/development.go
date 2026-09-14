@@ -48,6 +48,9 @@ func (h *Handler) developmentRoute(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(strings.Trim(path, "/"), "/")
 	switch {
 	case len(parts) == 1 && parts[0] == "bulk" && r.Method == http.MethodPost:
+		if h.providerRateLimited(w, r, workspaceID, actorID, "devinfo", false) {
+			return
+		}
 		h.developmentBulk(w, r, workspaceID, actorID)
 	case len(parts) == 1 && parts[0] == "existsByProperties" && r.Method == http.MethodGet:
 		properties, sequence, err := developmentPropertiesFromQuery(r)

@@ -156,17 +156,20 @@ func appAPIScope(r *http.Request) (string, bool) {
 	if strings.HasPrefix(r.URL.Path, "/rest/atlassian-connect/1/addons/") || r.URL.Path == "/rest/forge/1/app/properties" || strings.HasPrefix(r.URL.Path, "/rest/forge/1/app/properties/") {
 		return "", true
 	}
+	// A pinned product operation carries its own Connect scope.
+	if product, connectScope, found := appOperationScope(r.Method, r.URL.Path); found {
+		return grantedScopeFor(product, connectScope), true
+	}
 	product := ""
 	switch {
 	case strings.HasPrefix(r.URL.Path, "/rest/api/"), strings.HasPrefix(r.URL.Path, "/rest/agile/"), strings.HasPrefix(r.URL.Path, "/rest/servicedeskapi/"),
+		strings.HasPrefix(r.URL.Path, "/rest/devinfo/"), strings.HasPrefix(r.URL.Path, "/rest/builds/"), strings.HasPrefix(r.URL.Path, "/rest/deployments/"),
+		strings.HasPrefix(r.URL.Path, "/rest/featureflags/"), strings.HasPrefix(r.URL.Path, "/rest/remotelinks/"), strings.HasPrefix(r.URL.Path, "/rest/security/"),
+		strings.HasPrefix(r.URL.Path, "/rest/operations/"), strings.HasPrefix(r.URL.Path, "/rest/devopscomponents/"),
 		strings.HasPrefix(r.URL.Path, "/rest/webhooks/"), strings.HasPrefix(r.URL.Path, "/rest/internal/api/"),
 		strings.HasPrefix(r.URL.Path, "/rest/atlassian-connect/1/migration/"), r.URL.Path == "/rest/atlassian-connect/1/service-registry":
 		product = "jira-work"
 	case strings.HasPrefix(r.URL.Path, "/wiki/api/"), strings.HasPrefix(r.URL.Path, "/wiki/rest/api/"):
-		// A pinned Confluence operation carries its own Connect scope.
-		if connectScope, found := confluenceConnectScope(r.Method, r.URL.Path); found {
-			return confluenceGrantedScope(connectScope), true
-		}
 		product = "confluence-content"
 	default:
 		return "", false
@@ -231,7 +234,7 @@ func appHoldsScope(installation *models.AppInstallation, scope string) bool {
 	if store.AppHasScope(installation, scope) {
 		return true
 	}
-	for broader, included := range confluenceScopeImplies {
+	for broader, included := range appScopeImplies {
 		if store.AppHasScope(installation, broader) && slices.Contains(included, scope) {
 			return true
 		}
