@@ -205,8 +205,11 @@ tiers; each change advances the revision.
 | `PUT /rest/api/3/app/field/{fieldIdOrKey}/value`, `POST /rest/api/3/app/field/value` | The app that provides a field sets its value on issues, each field and issue combination once; values go through the ordinary issue update, so they are validated and recorded in the changelog. |
 
 Configuration is for site administrators and the providing app; values are for
-the providing app only. `generateChangelog` and `generateAppEvents` are
-accepted, but every change is recorded and sends its events.
+the providing app only. `generateChangelog=false` keeps the write out of the
+issue's changelog and `generateAppEvents=false` keeps it from app and
+administrator webhooks; replicas still receive the new value. Custom field
+changes appear in the changelog as Jira's `custom` items with the field name and
+`fieldId`.
 
 ## References
 
