@@ -435,11 +435,11 @@ func (h *Handler) attachmentMeta(w http.ResponseWriter, r *http.Request, id stri
 	case http.MethodGet:
 		writeJSON(w, http.StatusOK, h.attachmentBean(att))
 	case http.MethodDelete:
-		if att.AuthorID != userID {
-			jiraError(w, http.StatusForbidden, "Only the author may delete an attachment.")
-			return
-		}
 		if _, err := h.Commands.DeleteAttachment(r.Context(), userID, wsID, id); err != nil {
+			if errors.Is(err, commands.ErrAttachmentDeletePermission) {
+				jiraError(w, http.StatusForbidden, "You do not have permission to delete this attachment.")
+				return
+			}
 			// The command error can contain request-derived identifiers. Keep the
 			// failure observable without allowing forged log lines.
 			log.Print("attachment delete failed after authorization")

@@ -6750,9 +6750,10 @@
         "internal/store/mutations_v3.go",
         "internal/commands/delete_issue_test.go",
         "e2e/v3.spec.ts",
-        "docs/ATTACHMENTS.md"
+        "docs/ATTACHMENTS.md",
+        "internal/api3/project_administration_test.go"
       ],
-      "notes": "Deletes authorized metadata and action history atomically with a leased durable blob-cleanup intent; exact project permission-scheme behavior remains."
+      "notes": "Deletes authorized metadata and action history atomically with a leased durable blob-cleanup intent; the caller needs Delete all attachments, or Delete own attachments for their own attachment, in the issue's project."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/component/{id}",
@@ -6761,9 +6762,10 @@
         "internal/api3/components_test.go",
         "internal/store/components.go",
         "e2e/projects.spec.ts",
-        "docs/COMPONENTS.md"
+        "docs/COMPONENTS.md",
+        "internal/api3/project_administration_test.go"
       ],
-      "notes": "Administrator deletion removes or atomically moves issue assignments and emits refreshed issue snapshots; exact project-permission and asynchronous edge behavior remain."
+      "notes": "Deletion by Administer Projects for the project, which Administer Jira implies, removes or atomically moves issue assignments and emits refreshed issue snapshots."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/config/fieldschemes/fields",
@@ -6954,9 +6956,10 @@
         "internal/api3/issue_properties_test.go",
         "internal/api3/issue_properties.go",
         "internal/store/issue_properties.go",
-        "migrations/111_issue_properties.sql"
+        "migrations/111_issue_properties.sql",
+        "internal/api3/project_administration_test.go"
       ],
-      "notes": "Deletes a visible issue property with Jira 204 and not-found behavior; fine-grained Edit issues project permission modeling remains."
+      "notes": "Deletes a visible issue property with Jira 204 and not-found behavior for callers holding Browse projects and Edit issues on the issue."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/issue/{issueIdOrKey}/votes",
@@ -6966,7 +6969,7 @@
         "internal/commands/commands_triage_test.go",
         "internal/store/agile.go"
       ],
-      "notes": "Idempotent self-service vote removal is permission-scoped to a visible issue and integration-tested; exact Jira site voting policy remains."
+      "notes": "Idempotent self-service vote removal needs Browse projects on the visible issue and the site's voting option, and is integration-tested."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/issue/{issueIdOrKey}/worklog",
@@ -7157,7 +7160,7 @@
         "e2e/projects.spec.ts",
         "docs/PROJECT_LIFECYCLE.md"
       ],
-      "notes": "Implements enableUndo trash-by-default and immediate permanent deletion, blocks archived deletion, cascades retained project data, and durably queues attachment blob cleanup; permission-scheme-derived lifecycle delegation remains."
+      "notes": "Implements enableUndo trash-by-default and immediate permanent deletion for Administer Jira, as Jira requires, blocks archived deletion, cascades retained project data, and durably queues attachment blob cleanup."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/project/{projectIdOrKey}/properties/{propertyKey}",
@@ -7165,9 +7168,10 @@
       "evidence": [
         "internal/api3/project_governance_test.go",
         "e2e/projects.spec.ts",
-        "docs/PROJECT_GOVERNANCE.md"
+        "docs/PROJECT_GOVERNANCE.md",
+        "internal/api3/project_administration_test.go"
       ],
-      "notes": "Deletes a workspace-scoped property with Jira 204/not-found behavior and immutable action evidence; permission-scheme-derived project administration remains."
+      "notes": "Deletes a workspace-scoped property for Administer Projects for the project, which Administer Jira implies, with Jira 204/not-found behavior and immutable action evidence."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/project/{projectIdOrKey}/role/{id}",
@@ -7269,9 +7273,10 @@
         "internal/api3/statuses_test.go",
         "internal/store/statuses_test.go",
         "e2e/directories.spec.ts",
-        "docs/CLOUD_PARITY.md"
+        "docs/CLOUD_PARITY.md",
+        "internal/api3/project_administration_test.go"
       ],
-      "notes": "Administrators can atomically delete 1 to 50 unused workspace statuses; built-ins and statuses referenced by work, boards, workflow drafts/published definitions, or automation reject and roll back the complete batch. Exact project-admin permissions remain."
+      "notes": "Atomically deletes 1 to 50 unused statuses; built-ins and statuses referenced by work, boards, workflows or automation reject and roll back the batch; global statuses need Administer Jira and project statuses Administer Projects for their project."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/version/{id}",
@@ -8061,9 +8066,10 @@
         "internal/api3/api3_triage_test.go",
         "internal/api3/api3_triage.go",
         "migrations/117_issue_votes.sql",
-        "e2e/triage.spec.ts"
+        "e2e/triage.spec.ts",
+        "internal/api3/anonymous_access_test.go"
       ],
-      "notes": "The durable vote count, current-user state and voter account beans are visibility-scoped and integration-tested; exact Jira site voting policy remains."
+      "notes": "The durable vote count, current-user state and voter account beans are visibility-scoped; voter details need View voters and watchers, as Jira documents."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issue/{issueIdOrKey}/worklog",
@@ -9497,9 +9503,10 @@
         "internal/api3/components_test.go",
         "internal/store/components.go",
         "e2e/projects.spec.ts",
-        "docs/COMPONENTS.md"
+        "docs/COMPONENTS.md",
+        "internal/api3/project_administration_test.go"
       ],
-      "notes": "Administrators create components with Jira validation, component-led assignment and canonical issue values, integration and browser tested; the created bean follows Jira's default email visibility."
+      "notes": "Creation by Administer Projects for the project, which Administer Jira implies, with Jira validation, component-led assignment and canonical issue values, integration and browser tested."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/config/fieldschemes",
@@ -9694,7 +9701,7 @@
         "internal/render/testdata/issue_view.golden",
         "e2e/triage.spec.ts"
       ],
-      "notes": "Idempotent self-service voting shares the command path used by the browser issue journey and emits a permission-filtered action; exact Jira site voting policy remains."
+      "notes": "Idempotent self-service voting needs Browse projects on the visible issue and the site's voting option, shares the command path used by the browser issue journey and emits a permission-filtered action."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/issue/{issueIdOrKey}/worklog",
@@ -9966,7 +9973,7 @@
         "e2e/projects.spec.ts",
         "docs/PROJECT_LIFECYCLE.md"
       ],
-      "notes": "Administrators archive active projects transactionally, hide dependent work and product surfaces, and emit replica removal actions; permission-scheme-derived lifecycle delegation remains."
+      "notes": "Administer Jira archives active company-managed projects transactionally, hiding dependent work and product surfaces and emitting replica removal actions."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/project/{projectIdOrKey}/delete",
@@ -9986,7 +9993,7 @@
         "e2e/projects.spec.ts",
         "docs/PROJECT_LIFECYCLE.md"
       ],
-      "notes": "Restores archived or trashed projects and republishes project, issue, board, sprint, and sprint-membership state; permission-scheme-derived lifecycle delegation remains."
+      "notes": "Administer Jira restores archived or trashed company-managed projects, as Jira requires, and republishes project, issue, board, sprint, and sprint-membership state."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/project/{projectIdOrKey}/role/{id}",
@@ -10167,9 +10174,10 @@
         "internal/api3/statuses_test.go",
         "internal/store/statuses_test.go",
         "e2e/directories.spec.ts",
-        "docs/CLOUD_PARITY.md"
+        "docs/CLOUD_PARITY.md",
+        "internal/api3/project_administration_test.go"
       ],
-      "notes": "Administrators can atomically create validated GLOBAL or PROJECT status batches with descriptions, categories, scope-local duplicate detection, project ownership checks, rollback, and audit evidence. Exact project-admin permissions remain."
+      "notes": "Atomically creates validated GLOBAL or PROJECT status batches with descriptions, categories, scope-local duplicate detection, rollback and audit evidence; global statuses need Administer Jira and project statuses Administer Projects for their project."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/task/{taskId}/cancel",
@@ -10406,9 +10414,10 @@
         "internal/api3/components_test.go",
         "internal/store/components.go",
         "e2e/projects.spec.ts",
-        "docs/COMPONENTS.md"
+        "docs/COMPONENTS.md",
+        "internal/api3/project_administration_test.go"
       ],
-      "notes": "Administrators update components in projects they can browse with Jira validation and refreshed canonical issue values, integration and browser tested."
+      "notes": "Updates by Administer Projects for the project, which Administer Jira implies, with Jira validation and refreshed canonical issue values, integration and browser tested."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/config/fieldschemes/fields",
@@ -10697,9 +10706,10 @@
         "internal/api3/issue_properties_test.go",
         "internal/api3/issue_properties.go",
         "internal/store/issue_properties.go",
-        "migrations/111_issue_properties.sql"
+        "migrations/111_issue_properties.sql",
+        "internal/api3/project_administration_test.go"
       ],
-      "notes": "Creates or replaces tenant-bound JSON values with exact key/value limits and Jira 201/200 status behavior; fine-grained Edit issues project permission modeling remains."
+      "notes": "Creates or replaces tenant-bound JSON values with exact key/value limits and Jira 201/200 status behavior for callers holding Browse projects and Edit issues on the issue."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/issue/{issueIdOrKey}/worklog/{id}",
@@ -10978,9 +10988,10 @@
         "internal/api3/project_governance_test.go",
         "internal/api3/projects_test.go",
         "e2e/projects.spec.ts",
-        "docs/PROJECT_GOVERNANCE.md"
+        "docs/PROJECT_GOVERNANCE.md",
+        "internal/api3/project_administration_test.go"
       ],
-      "notes": "Atomically validates and updates supported details, lead/default assignment, and numeric category assignment including -1 removal; keys, avatars, schemes, and exact project-admin permission remain."
+      "notes": "Atomically validates and updates supported details, lead/default assignment, and numeric category assignment including -1 removal for Administer Projects for the project, which Administer Jira implies; project keys, avatars and scheme changes, which Jira reserves for Administer Jira, are not offered by this update."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/project/{projectIdOrKey}/features/{featureKey}",
@@ -10988,9 +10999,10 @@
       "evidence": [
         "internal/api3/project_governance_test.go",
         "e2e/projects.spec.ts",
-        "docs/PROJECT_GOVERNANCE.md"
+        "docs/PROJECT_GOVERNANCE.md",
+        "internal/api3/project_administration_test.go"
       ],
-      "notes": "Persists ENABLED/DISABLED state, returns the complete project feature container and updates Backlog/Reports navigation; permission-scheme-derived project administration and remaining runtime feature modules remain."
+      "notes": "Persists ENABLED/DISABLED state for Administer Projects for the project, which Administer Jira implies, returns the complete project feature container and updates Backlog/Reports navigation; remaining runtime feature modules remain."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/project/{projectIdOrKey}/properties/{propertyKey}",
@@ -10998,9 +11010,10 @@
       "evidence": [
         "internal/api3/project_governance_test.go",
         "e2e/projects.spec.ts",
-        "docs/PROJECT_GOVERNANCE.md"
+        "docs/PROJECT_GOVERNANCE.md",
+        "internal/api3/project_administration_test.go"
       ],
-      "notes": "Enforces Jira key/value limits, create/update status codes, workspace isolation and transactional action evidence; permission-scheme-derived project administration remains."
+      "notes": "Enforces Jira key/value limits, create/update status codes, workspace isolation and transactional action evidence for Administer Projects for the project, which Administer Jira implies."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/project/{projectIdOrKey}/role/{id}",
@@ -11018,9 +11031,10 @@
       "evidence": [
         "internal/api3/project_governance_test.go",
         "e2e/projects.spec.ts",
-        "docs/PROJECT_GOVERNANCE.md"
+        "docs/PROJECT_GOVERNANCE.md",
+        "internal/api3/project_administration_test.go"
       ],
-      "notes": "Validates, sets, or clears a sender override with administrator authorization, atomic project action and 204 response; permission-scheme-derived project administration and domain verification remain."
+      "notes": "Validates, sets, or clears a sender override for Administer Projects for the project, which Administer Jira implies, with an atomic project action and 204 response; domain verification remains."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/project/{projectKeyOrId}/permissionscheme",
@@ -11138,9 +11152,10 @@
         "internal/api3/statuses_test.go",
         "internal/store/statuses_test.go",
         "e2e/directories.spec.ts",
-        "docs/CLOUD_PARITY.md"
+        "docs/CLOUD_PARITY.md",
+        "internal/api3/project_administration_test.go"
       ],
-      "notes": "Administrators can atomically update custom status batches, including simultaneous name swaps, while preserving GLOBAL or PROJECT ownership with built-in protection, rollback, and audit evidence. Exact project-admin permissions remain."
+      "notes": "Atomically updates custom status batches, including simultaneous name swaps, while preserving GLOBAL or PROJECT ownership with built-in protection, rollback and audit evidence; global statuses need Administer Jira and project statuses Administer Projects for their project."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/version/{id}",

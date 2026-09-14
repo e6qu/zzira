@@ -116,11 +116,11 @@ func (s *Store) CreateComponent(ctx context.Context, workspaceID, actorID string
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if err = projectAdmin(ctx, tx, workspaceID, actorID); err != nil {
-		return nil, err
-	}
 	var projectID string
 	if err = tx.QueryRow(ctx, `SELECT id FROM projects WHERE workspace_id=$1 AND (id=$2 OR upper(key)=upper($2)) FOR SHARE`, workspaceID, input.ProjectIDOrKey).Scan(&projectID); err != nil {
+		return nil, err
+	}
+	if err = projectAdministrator(ctx, tx, workspaceID, actorID, projectID); err != nil {
 		return nil, err
 	}
 	if err = validateComponentLead(ctx, tx, workspaceID, input.LeadAccountID); err != nil {
@@ -213,7 +213,11 @@ func (s *Store) UpdateComponent(ctx context.Context, workspaceID, actorID, id st
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if err = projectAdmin(ctx, tx, workspaceID, actorID); err != nil {
+	existing, err := scanComponent(tx.QueryRow(ctx, componentSelect+`WHERE p.workspace_id=$1 AND c.id=$2`, workspaceID, id))
+	if err != nil {
+		return nil, err
+	}
+	if err = projectAdministrator(ctx, tx, workspaceID, actorID, existing.ProjectID); err != nil {
 		return nil, err
 	}
 	if err = validateComponentLead(ctx, tx, workspaceID, input.LeadAccountID); err != nil {
@@ -252,11 +256,11 @@ func (s *Store) DeleteComponent(ctx context.Context, workspaceID, actorID, id, m
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if err = projectAdmin(ctx, tx, workspaceID, actorID); err != nil {
-		return err
-	}
 	component, err := scanComponent(tx.QueryRow(ctx, componentSelect+`WHERE p.workspace_id=$1 AND c.id=$2 FOR UPDATE OF c`, workspaceID, id))
 	if err != nil {
+		return err
+	}
+	if err = projectAdministrator(ctx, tx, workspaceID, actorID, component.ProjectID); err != nil {
 		return err
 	}
 	var replacement *models.ProjectComponent

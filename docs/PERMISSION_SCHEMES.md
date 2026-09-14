@@ -89,3 +89,17 @@ marks as anonymous; see `docs/ANONYMOUS_ACCESS.md`. App-defined permission
 registration, global permission administration, and action-specific enforcement
 for every remaining issue mutation are later PR 1 work. Holder expansion beans
 and every Jira pagination and error edge also remain under contract review.
+
+## Project configuration and work item permissions
+
+Project configuration follows the permissions Jira documents for each
+operation. Administer Projects for the project, which Administer Jira implies,
+manages its components, versions and release approvers, properties, features,
+sender email, details and project-scoped statuses, in the API and on the
+project settings and release pages. Administer Jira remains required for global
+statuses, project creation, categories, archiving, trashing, restoring and
+deleting projects, and permission scheme assignment. Issue property writes need
+Edit issues, and deleting an attachment needs Delete all attachments, or Delete
+own attachments for the caller's own. `internal/api3/project_administration_test.go`
+covers each operation for a project administrator who is not a site
+administrator and for a member without the permission.

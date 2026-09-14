@@ -90,7 +90,25 @@ func (h *Handler) ProjectLifecycleSettings(w http.ResponseWriter, r *http.Reques
 }
 
 func (h *Handler) projectSettings(w http.ResponseWriter, r *http.Request, key string) {
-	user, wsID, ok := h.requireAdminPage(w, r)
+	// Creating a project needs site administration; a project's administrators
+	// edit its details, components, properties and features.
+	var (
+		user *models.User
+		wsID string
+		ok   bool
+	)
+	if key == "" {
+		user, wsID, ok = h.requireAdminPage(w, r)
+	} else if user, wsID, ok = h.pageContext(w, r); ok {
+		project, err := h.Store.ProjectByIDOrKey(r.Context(), wsID, key)
+		if err == nil {
+			allowed, permissionErr := h.Store.CanAdministerProject(r.Context(), wsID, user.ID, project.ID)
+			if permissionErr != nil || !allowed {
+				http.Error(w, "forbidden", http.StatusForbidden)
+				ok = false
+			}
+		}
+	}
 	if !ok {
 		return
 	}
@@ -276,13 +294,18 @@ func (h *Handler) ProjectGovernanceSettings(w http.ResponseWriter, r *http.Reque
 }
 
 func (h *Handler) ProjectComponentSettings(w http.ResponseWriter, r *http.Request) {
-	user, workspaceID, ok := h.requireAdminPage(w, r)
+	// Project administrators manage their project's components.
+	user, workspaceID, ok := h.pageContext(w, r)
 	if !ok {
 		return
 	}
 	project, err := h.Store.ProjectByIDOrKey(r.Context(), workspaceID, r.PathValue("key"))
 	if err != nil {
 		http.NotFound(w, r)
+		return
+	}
+	if allowed, permissionErr := h.Store.CanAdministerProject(r.Context(), workspaceID, user.ID, project.ID); permissionErr != nil || !allowed {
+		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 	if !parseForm(w, r) {

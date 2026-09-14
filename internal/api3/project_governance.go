@@ -268,10 +268,6 @@ func (h *Handler) projectProperties(w http.ResponseWriter, r *http.Request, proj
 		}
 		writeJSON(w, http.StatusOK, property)
 	case http.MethodPut:
-		if _, _, e = h.authWorkspaceAdmin(r); e != nil {
-			writeJerr(w, e)
-			return
-		}
 		value, ok := decodeIssuePropertyValue(w, r)
 		if !ok {
 			return
@@ -287,10 +283,6 @@ func (h *Handler) projectProperties(w http.ResponseWriter, r *http.Request, proj
 		}
 		w.WriteHeader(status)
 	case http.MethodDelete:
-		if _, _, e = h.authWorkspaceAdmin(r); e != nil {
-			writeJerr(w, e)
-			return
-		}
 		if err := h.Store.DeleteProjectProperty(r.Context(), workspaceID, actorID, projectIDOrKey, key); err != nil {
 			projectGovernanceError(w, err)
 			return
@@ -335,7 +327,7 @@ func (h *Handler) projectFeatures(w http.ResponseWriter, r *http.Request, projec
 		return
 	}
 	if len(parts) == 1 && r.Method == http.MethodPut {
-		if _, _, e = h.authWorkspaceAdmin(r); e != nil {
+		if _, _, e = h.authWorkspace(r); e != nil {
 			writeJerr(w, e)
 			return
 		}
@@ -387,7 +379,7 @@ func (h *Handler) projectEmail(w http.ResponseWriter, r *http.Request, projectID
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"emailAddress": email, "emailAddressStatus": []string{}})
 	case http.MethodPut:
-		if _, _, e = h.authWorkspaceAdmin(r); e != nil {
+		if _, _, e = h.authWorkspace(r); e != nil {
 			writeJerr(w, e)
 			return
 		}

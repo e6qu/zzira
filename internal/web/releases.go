@@ -75,7 +75,7 @@ func (h *Handler) Releases(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, msg, status)
 		return
 	}
-	admin, err := h.Store.IsAdmin(r.Context(), ws, user.ID)
+	admin, err := h.Store.CanAdministerProject(r.Context(), ws, user.ID, project.ID)
 	if err != nil {
 		http.Error(w, "Could not load releases.", 500)
 		return
@@ -132,7 +132,7 @@ func (h *Handler) Release(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	admin, err := h.Store.IsAdmin(r.Context(), ws, user.ID)
+	admin, err := h.Store.CanAdministerProject(r.Context(), ws, user.ID, project.ID)
 	if err != nil {
 		http.Error(w, "Could not load release.", 500)
 		return

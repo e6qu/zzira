@@ -107,16 +107,32 @@ func normalizedAttachmentMIMEType(value string) (string, error) {
 	return mediaType, nil
 }
 
+// ErrAttachmentDeletePermission refuses deleting an attachment without the
+// Delete own attachments or Delete all attachments permission it needs.
+var ErrAttachmentDeletePermission = errors.New("you do not have permission to delete this attachment")
+
 func (s *Service) DeleteAttachment(ctx context.Context, actorID, workspaceID, attachmentID string) (*models.Action, error) {
 	att, err := s.Store.AttachmentByID(ctx, workspaceID, attachmentID)
 	if err != nil {
 		return nil, fmt.Errorf("attachment %q not found", attachmentID)
 	}
-	if _, err := s.visibleIssue(ctx, actorID, workspaceID, att.IssueID); err != nil {
+	issue, err := s.visibleIssue(ctx, actorID, workspaceID, att.IssueID)
+	if err != nil {
 		return nil, fmt.Errorf("attachment %q not found", attachmentID)
 	}
-	if att.AuthorID != actorID {
-		return nil, fmt.Errorf("only the author may delete an attachment")
+	// Delete own attachments covers the caller's attachments; Delete all
+	// attachments covers anyone's.
+	allowed, err := s.Store.HasProjectPermission(ctx, workspaceID, actorID, issue.ProjectID, issue.ID, "DELETE_ALL_ATTACHMENTS")
+	if err != nil {
+		return nil, err
+	}
+	if !allowed && att.AuthorID == actorID {
+		if allowed, err = s.Store.HasProjectPermission(ctx, workspaceID, actorID, issue.ProjectID, issue.ID, "DELETE_OWN_ATTACHMENTS"); err != nil {
+			return nil, err
+		}
+	}
+	if !allowed {
+		return nil, ErrAttachmentDeletePermission
 	}
 	blobRef, _, action, err := s.Store.DeleteAttachment(ctx, actorID, workspaceID, att.ID)
 	if err != nil {

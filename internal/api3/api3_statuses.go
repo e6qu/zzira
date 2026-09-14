@@ -40,6 +40,8 @@ func jiraStatusScope(status models.Status) map[string]any {
 
 func statusAPIError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, store.ErrAdminForbidden):
+		jiraError(w, http.StatusForbidden, strings.TrimPrefix(err.Error(), store.ErrAdminForbidden.Error()+": "))
 	case errors.Is(err, store.ErrAdminValidation):
 		jiraError(w, http.StatusBadRequest, strings.TrimPrefix(err.Error(), store.ErrAdminValidation.Error()+": "))
 	case errors.Is(err, store.ErrAdminConflict):
@@ -90,7 +92,9 @@ func (h *Handler) bulkStatusesEndpoint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	workspaceID, userID, e := h.authWorkspaceAdmin(r)
+	// The store requires Administer Projects for project statuses and
+	// Administer Jira for global ones.
+	workspaceID, userID, e := h.authWorkspace(r)
 	if e != nil {
 		writeJerr(w, e)
 		return

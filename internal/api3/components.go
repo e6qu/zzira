@@ -151,7 +151,7 @@ func (h *Handler) writeComponentPage(w http.ResponseWriter, r *http.Request, com
 }
 
 func (h *Handler) createComponent(w http.ResponseWriter, r *http.Request) {
-	workspaceID, actorID, authErr := h.authWorkspaceAdmin(r)
+	workspaceID, actorID, authErr := h.authWorkspace(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
@@ -220,10 +220,6 @@ func (h *Handler) componentResource(w http.ResponseWriter, r *http.Request, part
 	case http.MethodGet:
 		writeJSON(w, http.StatusOK, h.componentBean(r, component, false))
 	case http.MethodPut:
-		if _, _, adminErr := h.authWorkspaceAdmin(r); adminErr != nil {
-			writeJerr(w, adminErr)
-			return
-		}
 		var request componentRequest
 		if !decodeProjectRequest(w, r, &request) {
 			return
@@ -248,10 +244,6 @@ func (h *Handler) componentResource(w http.ResponseWriter, r *http.Request, part
 		}
 		writeJSON(w, http.StatusOK, h.componentBean(r, updated, false))
 	case http.MethodDelete:
-		if _, _, adminErr := h.authWorkspaceAdmin(r); adminErr != nil {
-			writeJerr(w, adminErr)
-			return
-		}
 		if err := h.Store.DeleteComponent(r.Context(), workspaceID, actorID, component.ID, r.URL.Query().Get("moveIssuesTo")); err != nil {
 			componentError(w, err)
 			return

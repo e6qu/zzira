@@ -157,7 +157,7 @@ func (s *Store) UpdateProject(ctx context.Context, actorID, workspaceID, idOrKey
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if err := projectAdmin(ctx, tx, workspaceID, actorID); err != nil {
+	if err := projectAdministrator(ctx, tx, workspaceID, actorID, idOrKey); err != nil {
 		return nil, err
 	}
 	if up.CategoryID != nil {

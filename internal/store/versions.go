@@ -99,7 +99,7 @@ func (s *Store) SaveVersion(ctx context.Context, ws, actor, project, id string, 
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if err = projectAdmin(ctx, tx, ws, actor); err != nil {
+	if err = projectAdministrator(ctx, tx, ws, actor, project); err != nil {
 		return nil, err
 	}
 	if err = lockVersionProject(ctx, tx, ws, project); err != nil {
@@ -301,7 +301,7 @@ func (s *Store) DeleteVersion(ctx context.Context, ws, actor, id, fixTo, affecte
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if err = projectAdmin(ctx, tx, ws, actor); err != nil {
+	if err = projectAdministrator(ctx, tx, ws, actor, v.ProjectID); err != nil {
 		return err
 	}
 	if err = lockVersionProject(ctx, tx, ws, v.ProjectID); err != nil {

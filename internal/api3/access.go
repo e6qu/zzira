@@ -67,3 +67,17 @@ func (h *Handler) userBeanFor(ctx context.Context, u *models.User) map[string]an
 	}
 	return bean
 }
+
+// requireIssuePermission answers 403 unless the caller holds the project
+// permission for the issue.
+func (h *Handler) requireIssuePermission(w http.ResponseWriter, r *http.Request, workspaceID, userID string, issue *models.Issue, permission, message string) bool {
+	allowed, err := h.hasProjectPermission(r.Context(), workspaceID, userID, issue.ProjectID, issue.ID, permission)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "internal error")
+		return false
+	}
+	if !allowed {
+		jiraError(w, http.StatusForbidden, message)
+	}
+	return allowed
+}

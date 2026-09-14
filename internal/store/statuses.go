@@ -102,6 +102,34 @@ func (s *Store) CreateStatus(ctx context.Context, workspaceID, actorID string, s
 	return statuses[0], nil
 }
 
+// ErrAdminForbidden refuses an administrative change the caller may not make.
+var ErrAdminForbidden = errors.New("admin forbidden")
+
+// authorizeStatusScopes requires Administer Jira for global statuses and
+// Administer Projects for statuses a project owns, as Jira does.
+func authorizeStatusScopes(ctx context.Context, tx pgx.Tx, workspaceID, actorID string, statuses []models.Status) error {
+	checked := map[string]bool{}
+	for _, status := range statuses {
+		if checked[status.ProjectID] {
+			continue
+		}
+		checked[status.ProjectID] = true
+		var err error
+		if status.ProjectID == "" {
+			err = projectAdmin(ctx, tx, workspaceID, actorID)
+		} else {
+			err = projectAdministrator(ctx, tx, workspaceID, actorID, status.ProjectID)
+		}
+		if errors.Is(err, ErrProjectPermission) {
+			return fmt.Errorf("%w: you do not have permission to manage these statuses", ErrAdminForbidden)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *Store) CreateStatuses(ctx context.Context, workspaceID, actorID string, statuses []models.Status) ([]models.Status, error) {
 	if len(statuses) == 0 {
 		return nil, fmt.Errorf("%w: at least one status is required", ErrAdminValidation)
@@ -136,6 +164,9 @@ func (s *Store) CreateStatuses(ctx context.Context, workspaceID, actorID string,
 		if !validProject {
 			return nil, fmt.Errorf("%w: project scope does not exist in this workspace", ErrAdminValidation)
 		}
+	}
+	if err := authorizeStatusScopes(ctx, tx, workspaceID, actorID, validated); err != nil {
+		return nil, err
 	}
 	if err := lockStatusScopes(ctx, tx, workspaceID, validated); err != nil {
 		return nil, err
@@ -215,6 +246,9 @@ func (s *Store) UpdateStatuses(ctx context.Context, workspaceID, actorID string,
 	}
 	for index := range validated {
 		validated[index].ProjectID = projectsByID[validated[index].ID]
+	}
+	if err := authorizeStatusScopes(ctx, tx, workspaceID, actorID, validated); err != nil {
+		return err
 	}
 	if err := lockStatusScopes(ctx, tx, workspaceID, validated); err != nil {
 		return err
@@ -357,9 +391,10 @@ func (s *Store) DeleteStatuses(ctx context.Context, workspaceID, actorID string,
 	defer func() { _ = tx.Rollback(ctx) }()
 	orderedIDs := append([]string(nil), statusIDs...)
 	sort.Strings(orderedIDs)
+	scopes := make([]models.Status, 0, len(orderedIDs))
 	for _, statusID := range orderedIDs {
-		var owner sql.NullString
-		if err := tx.QueryRow(ctx, `SELECT workspace_id FROM statuses WHERE id=$1 FOR UPDATE`, statusID).Scan(&owner); err != nil {
+		var owner, projectID sql.NullString
+		if err := tx.QueryRow(ctx, `SELECT workspace_id,project_id FROM statuses WHERE id=$1 FOR UPDATE`, statusID).Scan(&owner, &projectID); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return ErrAdminNotFound
 			}
@@ -371,6 +406,10 @@ func (s *Store) DeleteStatuses(ctx context.Context, workspaceID, actorID string,
 		if owner.String != workspaceID {
 			return ErrAdminNotFound
 		}
+		scopes = append(scopes, models.Status{ID: statusID, ProjectID: projectID.String})
+	}
+	if err := authorizeStatusScopes(ctx, tx, workspaceID, actorID, scopes); err != nil {
+		return err
 	}
 	usages := make(map[string]StatusUsage, len(statusIDs))
 	for _, statusID := range statusIDs {

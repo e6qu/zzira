@@ -209,7 +209,7 @@ func (s *Store) SetProjectProperty(ctx context.Context, workspaceID, actorID, pr
 		return nil, false, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if err = projectAdmin(ctx, tx, workspaceID, actorID); err != nil {
+	if err = projectAdministrator(ctx, tx, workspaceID, actorID, projectIDOrKey); err != nil {
 		return nil, false, err
 	}
 	var projectID string
@@ -239,7 +239,7 @@ func (s *Store) DeleteProjectProperty(ctx context.Context, workspaceID, actorID,
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if err = projectAdmin(ctx, tx, workspaceID, actorID); err != nil {
+	if err = projectAdministrator(ctx, tx, workspaceID, actorID, projectIDOrKey); err != nil {
 		return err
 	}
 	var property models.ProjectProperty
@@ -304,7 +304,7 @@ func (s *Store) SetProjectFeature(ctx context.Context, workspaceID, actorID, pro
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if err = projectAdmin(ctx, tx, workspaceID, actorID); err != nil {
+	if err = projectAdministrator(ctx, tx, workspaceID, actorID, projectIDOrKey); err != nil {
 		return nil, err
 	}
 	var projectID, projectType string
@@ -333,7 +333,7 @@ func (s *Store) SetProjectEmail(ctx context.Context, workspaceID, actorID, proje
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if err = projectAdmin(ctx, tx, workspaceID, actorID); err != nil {
+	if err = projectAdministrator(ctx, tx, workspaceID, actorID, projectIDOrKey); err != nil {
 		return err
 	}
 	p := &models.Project{}

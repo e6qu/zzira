@@ -62,11 +62,11 @@ func (s *Store) AddVersionApprover(ctx context.Context, ws, actor, versionID, ac
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if err = projectAdmin(ctx, tx, ws, actor); err != nil {
-		return err
-	}
 	v, err := lockedWorkspaceVersion(ctx, tx, ws, versionID)
 	if err != nil {
+		return err
+	}
+	if err = projectAdministrator(ctx, tx, ws, actor, v.ProjectID); err != nil {
 		return err
 	}
 	if err = requireActiveSiteMember(ctx, tx, ws, accountID, "an approver"); err != nil {
@@ -89,11 +89,11 @@ func (s *Store) RemoveVersionApprover(ctx context.Context, ws, actor, versionID,
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if err = projectAdmin(ctx, tx, ws, actor); err != nil {
-		return err
-	}
 	v, err := lockedWorkspaceVersion(ctx, tx, ws, versionID)
 	if err != nil {
+		return err
+	}
+	if err = projectAdministrator(ctx, tx, ws, actor, v.ProjectID); err != nil {
 		return err
 	}
 	command, err := tx.Exec(ctx, `DELETE FROM project_version_approvers WHERE version_id=$1 AND account_id=$2`, v.ID, accountID)

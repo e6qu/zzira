@@ -69,6 +69,9 @@ func (h *Handler) issueProperties(w http.ResponseWriter, r *http.Request, idOrKe
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"key": key, "value": value})
 	case http.MethodPut:
+		if !h.requireIssuePermission(w, r, workspaceID, userID, issue, "EDIT_ISSUES", "You do not have permission to edit this work item's properties.") {
+			return
+		}
 		value, ok := decodeIssuePropertyValue(w, r)
 		if !ok {
 			return
@@ -88,6 +91,9 @@ func (h *Handler) issueProperties(w http.ResponseWriter, r *http.Request, idOrKe
 			w.WriteHeader(http.StatusOK)
 		}
 	case http.MethodDelete:
+		if !h.requireIssuePermission(w, r, workspaceID, userID, issue, "EDIT_ISSUES", "You do not have permission to edit this work item's properties.") {
+			return
+		}
 		err := h.Store.DeleteIssueProperty(r.Context(), userID, issue.ID, key)
 		if errors.Is(err, pgx.ErrNoRows) {
 			jiraError(w, http.StatusNotFound, "Property does not exist.")
