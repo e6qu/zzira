@@ -190,6 +190,17 @@ each desk's own switch: service desk administrators turn attachments off for
 one desk from the agent workspace, which also removes the file field from that
 desk's request conversations.
 
+Service desk administrators can likewise turn customer satisfaction feedback off
+for a desk from the agent workspace. The portal then stops asking for ratings,
+and the feedback REST operation refuses new ratings for that desk. Connect apps
+may leave or delete feedback on a reporter's behalf.
+
+Service desk agents and administrators create customer organizations, but only
+site administrators, who hold the Jira administrator permission, delete them;
+the agent workspace offers deletion only to them. Knowledge base searches page
+with Jira's opaque cursors, and `GET /rest/servicedeskapi/info` answers without
+credentials.
+
 Reporters, participants, approvers, and agents can subscribe to a request they
 can view. Reporters and newly added participants start subscribed, approval
 assignment also subscribes the approver, and each viewer can mute or resume

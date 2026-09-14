@@ -82,8 +82,16 @@ func (s *Service) PutServiceRequestFeedback(ctx context.Context, actorID, worksp
 	if err != nil {
 		return nil, fmt.Errorf("request does not exist")
 	}
-	if request.Customer.ID != actorID {
+	// The reporter or a Connect app leaves feedback.
+	if request.Customer.ID != actorID && !strings.HasPrefix(actorID, "app_") {
 		return nil, fmt.Errorf("only the reporter may leave feedback")
+	}
+	desk, err := s.Store.ServiceDesk(ctx, workspaceID, request.ServiceDesk.ID)
+	if err != nil {
+		return nil, err
+	}
+	if !desk.FeedbackEnabled {
+		return nil, fmt.Errorf("customer satisfaction feedback is turned off for this service desk")
 	}
 	feedbackType = strings.ToLower(strings.TrimSpace(feedbackType))
 	if feedbackType != "csat" {
@@ -115,7 +123,7 @@ func (s *Service) DeleteServiceRequestFeedback(ctx context.Context, actorID, wor
 	if err != nil {
 		return fmt.Errorf("request does not exist")
 	}
-	if request.Customer.ID != actorID {
+	if request.Customer.ID != actorID && !strings.HasPrefix(actorID, "app_") {
 		return fmt.Errorf("only the reporter may delete feedback")
 	}
 	return s.Store.DeleteServiceRequestFeedback(ctx, request.Issue.ID, actorID)

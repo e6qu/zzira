@@ -226,6 +226,32 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if !strings.Contains(articles.Body.String(), `@@@hl@@@checkout@@@endhl@@@`) || !strings.Contains(articles.Body.String(), `"pageId":"`+page.ID+`"`) || !strings.Contains(articles.Body.String(), `"spaceKey":"HELPKB"`) {
 		t.Fatal(articles.Body.String())
 	}
+	// Knowledge base pages follow Jira's cursors.
+	if _, err := handler.Commands.SaveWikiPage(ctx, workspaceID, actorID, models.WikiPage{
+		SpaceID: space.ID, Title: "Checkout runbook", Status: "current",
+		Body: models.WikiBody{Representation: "storage", Value: "<p>Checkout escalation steps.</p>"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var cursorPage struct {
+		Size   int `json:"size"`
+		Values []struct {
+			Title string `json:"title"`
+		} `json:"values"`
+		Links map[string]string `json:"_links"`
+	}
+	firstPage := callAs(customerID, "GET", "/rest/servicedeskapi/knowledgebase/article?query=checkout&limit=1", "", 200)
+	if err := json.Unmarshal(firstPage.Body.Bytes(), &cursorPage); err != nil || cursorPage.Size != 1 || !strings.Contains(cursorPage.Links["next"], "cursor=") || cursorPage.Links["prev"] != "" {
+		t.Fatalf("first knowledge page = %s", firstPage.Body.String())
+	}
+	firstTitle := cursorPage.Values[0].Title
+	nextPath := strings.TrimPrefix(cursorPage.Links["next"], "https://zzira.test")
+	secondPage := callAs(customerID, "GET", nextPath, "", 200)
+	cursorPage.Links = nil
+	if err := json.Unmarshal(secondPage.Body.Bytes(), &cursorPage); err != nil || cursorPage.Size != 1 || cursorPage.Values[0].Title == firstTitle || !strings.Contains(cursorPage.Links["prev"], "prev=true") {
+		t.Fatalf("second knowledge page = %s", secondPage.Body.String())
+	}
+	callAs(customerID, "GET", "/rest/servicedeskapi/knowledgebase/article?query=checkout&cursor=not-a-cursor", "", 400)
 	deskArticles := callAs(customerID, "GET", "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/knowledgebase/article?query=worker", "", 200)
 	if !strings.Contains(deskArticles.Body.String(), "Restart checkout worker") {
 		t.Fatal(deskArticles.Body.String())

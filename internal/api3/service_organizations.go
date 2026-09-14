@@ -97,8 +97,8 @@ func (h *Handler) serviceOrganizations(w http.ResponseWriter, r *http.Request, w
 		return
 	}
 	if r.Method == http.MethodPost {
-		if !agent {
-			jiraError(w, http.StatusForbidden, "Service agent access is required.")
+		if staff, err := h.Store.IsAnyServiceDeskStaff(r.Context(), workspaceID, actorID); err != nil || !staff {
+			jiraError(w, http.StatusForbidden, "Service desk agent or administrator access is required.")
 			return
 		}
 		var input struct {
@@ -145,8 +145,8 @@ func (h *Handler) serviceOrganization(w http.ResponseWriter, r *http.Request, wo
 		return
 	}
 	if r.Method == http.MethodDelete {
-		if !agent {
-			jiraError(w, http.StatusForbidden, "Service agent access is required.")
+		if admin, err := h.Store.IsAdmin(r.Context(), workspaceID, actorID); err != nil || !admin {
+			jiraError(w, http.StatusForbidden, "Jira administrator access is required.")
 			return
 		}
 		if err := h.Commands.DeleteServiceOrganization(r.Context(), actorID, workspaceID, organization.ID); err != nil {

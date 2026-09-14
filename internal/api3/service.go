@@ -23,6 +23,11 @@ import (
 )
 
 func (h *Handler) serviceDeskRoute(w http.ResponseWriter, r *http.Request) {
+	// Jira answers the instance information without credentials.
+	if r.Method == http.MethodGet && strings.Trim(strings.TrimPrefix(r.URL.Path, "/rest/servicedeskapi"), "/") == "info" {
+		writeJSON(w, http.StatusOK, map[string]any{"version": "5.17.0", "platformVersion": "1001.0.0-SNAPSHOT", "buildChangeSet": "zzira", "buildDate": serviceDate(time.Date(2026, time.September, 6, 0, 0, 0, 0, time.UTC)), "isLicensedForUse": true, "_links": map[string]string{"self": h.BaseURL + "/rest/servicedeskapi/info"}})
+		return
+	}
 	workspaceID, actorID, authErr := h.authWorkspace(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
@@ -84,8 +89,6 @@ func (h *Handler) serviceDeskRoute(w http.ResponseWriter, r *http.Request) {
 		h.serviceRequestSLA(w, r, workspaceID, parts[1], parts[3])
 	case len(parts) == 3 && parts[0] == "request" && parts[2] == "transition" && (r.Method == http.MethodGet || r.Method == http.MethodPost):
 		h.serviceRequestTransition(w, r, workspaceID, parts[1])
-	case len(parts) == 1 && parts[0] == "info" && r.Method == http.MethodGet:
-		writeJSON(w, http.StatusOK, map[string]any{"version": "5.17.0", "platformVersion": "1001.0.0-SNAPSHOT", "buildChangeSet": "zzira", "buildDate": "2026-09-06T00:00:00Z", "isLicensedForUse": true, "_links": map[string]string{"self": h.BaseURL + "/rest/servicedeskapi/info"}})
 	case len(parts) == 1 && parts[0] == "servicedesk" && r.Method == http.MethodGet:
 		desks, err := h.Store.ServiceDesks(r.Context(), workspaceID)
 		if err != nil {

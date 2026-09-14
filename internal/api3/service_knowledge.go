@@ -1,9 +1,11 @@
 package api3
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -91,7 +93,56 @@ func (h *Handler) serviceKnowledgeArticles(w http.ResponseWriter, r *http.Reques
 	for _, article := range articles {
 		values = append(values, h.serviceKnowledgeArticleBean(article, query, highlight))
 	}
-	h.writeServicePage(w, r, values)
+	h.writeServiceCursorPage(w, r, values)
+}
+
+// writeServiceCursorPage pages a list the way Jira's knowledge base search
+// does: an opaque cursor marks where a page starts, prev=true asks for the
+// page before it, and the deprecated start still works without a cursor.
+func (h *Handler) writeServiceCursorPage(w http.ResponseWriter, r *http.Request, values []map[string]any) {
+	limit := 50
+	if value, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && value > 0 && value <= 100 {
+		limit = value
+	}
+	start := 0
+	if cursor := r.URL.Query().Get("cursor"); cursor != "" {
+		decoded, err := base64.RawURLEncoding.DecodeString(cursor)
+		offset, parseErr := strconv.Atoi(strings.TrimPrefix(string(decoded), "offset:"))
+		if err != nil || parseErr != nil || !strings.HasPrefix(string(decoded), "offset:") || offset < 0 {
+			jiraError(w, http.StatusBadRequest, "The cursor is invalid.")
+			return
+		}
+		start = offset
+		if r.URL.Query().Get("prev") == "true" {
+			start = max(0, offset-limit)
+		}
+	} else if value, err := strconv.Atoi(r.URL.Query().Get("start")); err == nil && value >= 0 {
+		start = value
+	}
+	start = min(start, len(values))
+	end := min(start+limit, len(values))
+	page := func(offset int, previous bool) string {
+		query := r.URL.Query()
+		query.Del("start")
+		query.Del("prev")
+		query.Set("cursor", base64.RawURLEncoding.EncodeToString([]byte("offset:"+strconv.Itoa(offset))))
+		if previous {
+			query.Set("prev", "true")
+		}
+		return h.BaseURL + r.URL.Path + "?" + query.Encode()
+	}
+	self := h.BaseURL + r.URL.Path
+	if r.URL.RawQuery != "" {
+		self += "?" + r.URL.RawQuery
+	}
+	links := map[string]string{"base": h.BaseURL + "/rest/servicedeskapi", "context": "", "self": self}
+	if end < len(values) {
+		links["next"] = page(end, false)
+	}
+	if start > 0 {
+		links["prev"] = page(start, true)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"start": start, "limit": limit, "size": end - start, "isLastPage": end == len(values), "values": values[start:end], "_expands": []any{}, "_links": links})
 }
 
 func (h *Handler) serviceKnowledgeArticle(w http.ResponseWriter, r *http.Request, workspaceID, actorID, pageID string) {

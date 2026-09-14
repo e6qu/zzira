@@ -1,6 +1,7 @@
 package api3
 
 import (
+	"encoding/json"
 	"bytes"
 	"context"
 	"fmt"
@@ -234,4 +235,46 @@ func TestServiceDeskUploadsAndOrganizations(t *testing.T) {
 	outbox(outsiderID+"@example.test", "added you as a participant on "+requestKey)
 	callAs(adminID, http.MethodPost, "/rest/servicedeskapi/request/"+requestKey+"/comment", `{"body":"We are looking into it.","public":true}`, http.StatusCreated)
 	outbox(customerID+"@example.test", "commented on "+requestKey)
+
+	// Customer satisfaction can be turned off for a desk.
+	feedbackPath := "/rest/servicedeskapi/request/" + requestKey + "/feedback"
+	if err = h.Commands.SetServiceDeskFeedbackEnabled(ctx, customerID, workspaceID, serviceDeskID, false); err == nil {
+		t.Fatal("a customer turned off the desk's satisfaction feedback")
+	}
+	if err = h.Commands.SetServiceDeskFeedbackEnabled(ctx, adminID, workspaceID, serviceDeskID, false); err != nil {
+		t.Fatal(err)
+	}
+	if refused := callAs(customerID, http.MethodPost, feedbackPath, `{"type":"csat","rating":4}`, http.StatusBadRequest); !strings.Contains(refused, "turned off") {
+		t.Fatalf("feedback on a desk with satisfaction turned off = %s", refused)
+	}
+	if err = h.Commands.SetServiceDeskFeedbackEnabled(ctx, adminID, workspaceID, serviceDeskID, true); err != nil {
+		t.Fatal(err)
+	}
+	// Turned back on, only the request's completion stands in the way.
+	if refused := callAs(customerID, http.MethodPost, feedbackPath, `{"type":"csat","rating":4}`, http.StatusBadRequest); strings.Contains(refused, "turned off") || !strings.Contains(refused, "completed request") {
+		t.Fatalf("feedback on an open request = %s", refused)
+	}
+
+	// Instance information needs no credentials and dates its build.
+	infoResponse := httptest.NewRecorder()
+	h.ServeHTTP(infoResponse, httptest.NewRequest(http.MethodGet, "/rest/servicedeskapi/info", nil))
+	if infoResponse.Code != http.StatusOK || !strings.Contains(infoResponse.Body.String(), `"buildDate":{"epochMillis":`) {
+		t.Fatalf("anonymous info = %d %s", infoResponse.Code, infoResponse.Body.String())
+	}
+
+	// Agents and service desk administrators create organizations; deleting one
+	// needs the Jira administrator permission.
+	if err = h.Commands.SetServiceDeskAgent(ctx, adminID, workspaceID, otherDeskID, outsiderID, true); err != nil {
+		t.Fatal(err)
+	}
+	created := callAs(outsiderID, http.MethodPost, "/rest/servicedeskapi/organization", `{"name":"Agent org `+deskKey+`"}`, http.StatusCreated)
+	var agentOrganization struct {
+		ID string `json:"id"`
+	}
+	if err = json.Unmarshal([]byte(created), &agentOrganization); err != nil {
+		t.Fatal(err)
+	}
+	callAs(customerID, http.MethodPost, "/rest/servicedeskapi/organization", `{"name":"Customer org `+deskKey+`"}`, http.StatusForbidden)
+	callAs(outsiderID, http.MethodDelete, "/rest/servicedeskapi/organization/"+agentOrganization.ID, "", http.StatusForbidden)
+	callAs(adminID, http.MethodDelete, "/rest/servicedeskapi/organization/"+agentOrganization.ID, "", http.StatusNoContent)
 }

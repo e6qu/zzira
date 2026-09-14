@@ -70,8 +70,13 @@ func (s *Service) requireServiceAdmin(ctx context.Context, workspaceID, actorID 
 }
 
 func (s *Service) CreateServiceOrganization(ctx context.Context, actorID, workspaceID, name string) (*models.ServiceOrganization, error) {
-	if err := s.requireAnyServiceAgent(ctx, workspaceID, actorID); err != nil {
+	// Service desk agents and administrators create organizations.
+	staff, err := s.Store.IsAnyServiceDeskStaff(ctx, workspaceID, actorID)
+	if err != nil {
 		return nil, err
+	}
+	if !staff {
+		return nil, fmt.Errorf("service desk agent or administrator access is required")
 	}
 	name = strings.TrimSpace(name)
 	if name == "" || len(name) > 255 {
@@ -81,7 +86,8 @@ func (s *Service) CreateServiceOrganization(ctx context.Context, actorID, worksp
 }
 
 func (s *Service) DeleteServiceOrganization(ctx context.Context, actorID, workspaceID, organizationID string) error {
-	if err := s.requireAnyServiceAgent(ctx, workspaceID, actorID); err != nil {
+	// Deleting an organization needs the Jira administrator permission.
+	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
 		return err
 	}
 	return s.Store.DeleteServiceOrganization(ctx, workspaceID, organizationID)
@@ -183,6 +189,15 @@ func (s *Service) SetServiceDeskAttachmentsEnabled(ctx context.Context, actorID,
 		return err
 	}
 	return s.Store.SetServiceDeskAttachmentsEnabled(ctx, workspaceID, serviceDeskID, enabled)
+}
+
+// SetServiceDeskFeedbackEnabled turns customer satisfaction feedback on or off
+// for a service desk.
+func (s *Service) SetServiceDeskFeedbackEnabled(ctx context.Context, actorID, workspaceID, serviceDeskID string, enabled bool) error {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
+		return err
+	}
+	return s.Store.SetServiceDeskFeedbackEnabled(ctx, workspaceID, serviceDeskID, enabled)
 }
 
 func (s *Service) SetServiceDeskKnowledgeSpace(ctx context.Context, actorID, workspaceID, serviceDeskID, spaceID string, link bool) error {

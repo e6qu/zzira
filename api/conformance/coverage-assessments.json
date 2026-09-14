@@ -5113,6 +5113,7 @@
       "operationId": "jira-service-management:DELETE:/rest/servicedeskapi/organization/{organizationId}",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_desk_uploads_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service_organizations.go",
         "internal/commands/service_organizations.go",
@@ -5124,7 +5125,7 @@
         "e2e/service.spec.ts",
         "docs/SERVICE_MANAGEMENT.md"
       ],
-      "notes": "Agents and administrators delete a workspace organization and cascade its membership, properties, and desk links with the documented empty response; external directory lifecycle remains."
+      "notes": "Callers with the Jira administrator permission delete a workspace organization regardless of its desk links, cascading its membership, properties and desk links with the documented empty response; agents and other callers receive 403 and the agent workspace offers deletion only to site administrators."
     },
     {
       "operationId": "jira-service-management:DELETE:/rest/servicedeskapi/organization/{organizationId}/property/{propertyKey}",
@@ -5199,7 +5200,7 @@
         "internal/apps/app_scopes.go",
         "internal/apps/app_scopes_test.go"
       ],
-      "notes": "Deletes feedback only for the request reporter; apps need the operation's Connect scope."
+      "notes": "Deletes feedback for the request reporter or a Connect app; apps need the operation's Connect scope."
     },
     {
       "operationId": "jira-service-management:DELETE:/rest/servicedeskapi/servicedesk/{serviceDeskId}/customer",
@@ -5281,12 +5282,13 @@
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/info",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_desk_uploads_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service.go",
         "internal/store/service.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Returns the authenticated Service Management version, platform, licensing and self-link shape; exact Atlassian build metadata remains deployment-specific."
+      "notes": "Returns Jira's SoftwareInfoDTO without credentials: version, platform version, build change set, the build date as a DateDTO, licensing and the self link."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/insight/workspace",
@@ -5303,8 +5305,9 @@
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/knowledgebase/article",
       "status": "partial",
-      "notes": "Searches published pages in linked Confluence spaces with portal and agent visibility, pagination and optional Jira highlight markers; Atlassian ranking and analytics remain.",
+      "notes": "Searches published pages in linked Confluence spaces with portal and agent visibility and optional highlight markers, requiring query (400 otherwise). Pages follow Jira's cursor model: next and prev links carry an opaque cursor, prev=true returns the preceding page, the deprecated start still works, and an invalid cursor answers 400.",
       "evidence": [
+        "internal/api3/service_desk_uploads_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service_knowledge.go",
         "internal/store/service_knowledge.go",
@@ -5634,7 +5637,7 @@
         "e2e/service.spec.ts",
         "docs/SERVICE_MANAGEMENT.md"
       ],
-      "notes": "Returns request-visible CSAT feedback with rating and optional comment; configured satisfaction scales and aggregate reporting remain."
+      "notes": "Returns request-visible CSAT feedback with rating and optional comment; the service reports aggregate response counts and the average rating."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/requesttype",
@@ -5868,6 +5871,7 @@
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/organization",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_desk_uploads_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service_organizations.go",
         "internal/commands/service_organizations.go",
@@ -5879,7 +5883,7 @@
         "e2e/service.spec.ts",
         "docs/SERVICE_MANAGEMENT.md"
       ],
-      "notes": "Agents and administrators create a site organization or receive the existing case-insensitive name match with the documented organization bean; SCIM-backed creation policy remains."
+      "notes": "Service desk agents and administrators create a site organization, or receive the existing case-insensitive name match, with the documented organization bean; other callers receive 403."
     },
     {
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/organization/{organizationId}/user",
@@ -5998,12 +6002,14 @@
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/request/{requestIdOrKey}/feedback",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_desk_uploads_test.go",
         "internal/api3/service_test.go",
         "internal/commands/service_notifications_feedback.go",
         "e2e/service.spec.ts",
-        "docs/SERVICE_MANAGEMENT.md"
+        "docs/SERVICE_MANAGEMENT.md",
+        "migrations/205_service_desk_feedback.sql"
       ],
-      "notes": "Creates or revises one-to-five CSAT feedback for the reporter of a completed request and notifies subscribed agents; CSAT configuration remains."
+      "notes": "Creates or revises one-to-five CSAT feedback for the reporter or a Connect app and notifies subscribed agents; a service desk whose administrators turned satisfaction feedback off refuses it with 400."
     },
     {
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/servicedesk/{serviceDeskId}/attachTemporaryFile",
