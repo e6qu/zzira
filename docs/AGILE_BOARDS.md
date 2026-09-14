@@ -47,19 +47,16 @@ type, swimlanes track the swimlane strategy, and the backlog is always present.
 `PUT /features` reports that they cannot be toggled here rather than silently
 accepting a change it would not make.
 
-## What is not implemented
+## Board lifecycle
 
-Four operations remain, and they are recorded as missing rather than served by
-something that would mislead a client:
-
-- `POST /rest/agile/1.0/board` and `DELETE /rest/agile/1.0/board/{boardId}`.
-  A board is created with its project and removed with it, so there is no
-  standalone board lifecycle to expose yet.
-- `GET /rest/agile/1.0/board/filter/{filterId}`. Boards are project-scoped with
-  a JQL string and are not built on a saved filter, so answering "no board uses
-  this filter" would misreport a board that cannot exist.
-- `POST /rest/agile/1.0/board/{boardId}/issue`. Moving work onto a board happens
-  through the sprint and backlog endpoints, which the browser journey uses.
+All 33 pinned board operations are implemented. Boards are created from a
+filter the caller can view with `POST /rest/agile/1.0/board`, found by filter
+with `GET /rest/agile/1.0/board/filter/{filterId}` and deleted by
+administrators with `DELETE /rest/agile/1.0/board/{boardId}`, which removes the
+board's sprints and keeps the issues. `POST /rest/agile/1.0/board/{boardId}/issue`
+moves backlog work onto the board — into a scrum board's active sprint — and
+ranks it. See [Jira Software](JIRA_SOFTWARE.md) for epics, ranking and
+estimation.
 
 ## Sprints
 

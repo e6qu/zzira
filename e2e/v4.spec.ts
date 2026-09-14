@@ -33,7 +33,7 @@ test('board controls, settings, preview, and Agile configuration APIs are cohere
   const configurationBody = await configuration.json();
   expect(configurationBody.location.projectKey).toBe('ZZ');
   expect(configurationBody.columnConfig.columns).toHaveLength(3);
-  expect(configurationBody.ranking.rankCustomFieldId).toBe('rank');
+  expect(configurationBody.ranking.rankCustomFieldId).toBe(10019);
 
   const quickFilters = await request.get('/rest/agile/1.0/board/brd_default/quickfilter?startAt=0&maxResults=1', { headers });
   expect(quickFilters.status()).toBe(200);

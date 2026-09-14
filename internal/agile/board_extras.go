@@ -62,15 +62,6 @@ func (h *Handler) boardVersions(w http.ResponseWriter, r *http.Request, board *m
 	})
 }
 
-// boardEpics reports the board's epics. ZZIRA's work type hierarchy is a single
-// parent level with sub-tasks and has no epic type, so the list is empty and
-// "issues without an epic" is every issue on the board.
-func (h *Handler) boardEpics(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{
-		"maxResults": 50, "startAt": 0, "total": 0, "isLast": true, "values": []any{},
-	})
-}
-
 func (h *Handler) boardSprintIssues(w http.ResponseWriter, r *http.Request, board *models.Board, sprintID, userID string) {
 	sprint, err := h.Store.SprintByID(r.Context(), sprintID)
 	if err != nil || sprint.BoardID != board.ID {
@@ -184,6 +175,10 @@ func (h *Handler) boardProperty(w http.ResponseWriter, r *http.Request, board *m
 // same data as their /rest/agile/1.0 counterparts, plus the approximate-count
 // variants a board UI uses before it pages.
 func (h *Handler) softwareRoute(w http.ResponseWriter, r *http.Request, path string) {
+	if strings.HasPrefix(path, "/epic/") {
+		h.softwareEpicRoute(w, r, strings.Split(strings.Trim(strings.TrimPrefix(path, "/epic/"), "/"), "/"))
+		return
+	}
 	if strings.HasPrefix(path, "/sprint/") && r.Method == http.MethodGet {
 		h.softwareSprintRoute(w, r, strings.Split(strings.Trim(strings.TrimPrefix(path, "/sprint/"), "/"), "/"))
 		return
@@ -223,10 +218,8 @@ func (h *Handler) softwareRoute(w http.ResponseWriter, r *http.Request, path str
 		h.boardIssues(w, r, board, userID)
 	case len(parts) == 3 && parts[1] == "issue" && parts[2] == "approximate-count":
 		count(h.boardIssueList(r, board, userID))
-	case len(parts) == 4 && parts[1] == "epic" && parts[2] == "none" && parts[3] == "issue":
-		h.boardIssues(w, r, board, userID)
 	case len(parts) == 4 && parts[1] == "epic" && parts[3] == "issue":
-		jiraError(w, http.StatusNotFound, "The epic does not exist.")
+		h.boardEpicIssues(w, r, board, workspaceID, userID, parts[2], false)
 	case len(parts) == 4 && parts[1] == "sprint" && parts[3] == "issue":
 		h.boardSprintIssues(w, r, board, parts[2], userID)
 	default:
