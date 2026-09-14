@@ -1346,7 +1346,7 @@ func (h *Handler) pageBean(p *models.WikiPage, body bool) map[string]any {
 	bean := map[string]any{"id": p.ID, "status": p.Status, "title": p.Title, "spaceId": p.SpaceID, "authorId": p.AuthorID, "ownerId": p.AuthorID, "lastOwnerId": p.AuthorID, "createdAt": p.CreatedAt, "version": p.Version, "_links": map[string]string{"webui": "/spaces/" + p.SpaceID + "/pages/" + p.ID, "base": h.BaseURL + "/wiki"}}
 	if p.ParentID != "" {
 		bean["parentId"] = p.ParentID
-		bean["parentType"] = "page"
+		bean["parentType"] = p.ParentType
 	}
 	if body {
 		bean["body"] = map[string]any{"storage": p.Body}

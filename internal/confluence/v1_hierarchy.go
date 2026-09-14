@@ -8,7 +8,7 @@ import (
 	"github.com/e6qu/zzira/internal/store"
 )
 
-func (h *V1Handler) v1PageContentBean(relation store.WikiPageRelation) map[string]any {
+func (h *V1Handler) v1PageContentBean(relation store.WikiTreeRelation) map[string]any {
 	page := relation.Page
 	return map[string]any{
 		"id": page.ID, "type": "page", "status": page.Status, "title": page.Title,
@@ -33,10 +33,14 @@ func v1HierarchyDepth(w http.ResponseWriter, r *http.Request) (int, bool) {
 	return depth, true
 }
 
-func (h *V1Handler) v1PageDescendantValues(relations []store.WikiPageRelation) []any {
+// v1PageDescendantValues keeps the pages, which are what the v1 descendant
+// reads report; pages beneath folders and other content are among them.
+func (h *V1Handler) v1PageDescendantValues(relations []store.WikiTreeRelation) []any {
 	values := make([]any, 0, len(relations))
 	for _, relation := range relations {
-		values = append(values, h.v1PageContentBean(relation))
+		if relation.Page != nil {
+			values = append(values, h.v1PageContentBean(relation))
+		}
 	}
 	return values
 }
@@ -68,7 +72,7 @@ func (h *V1Handler) contentDescendants(w http.ResponseWriter, r *http.Request, w
 	if !supportedQuery(w, r, "expand") {
 		return
 	}
-	relations, err := h.Store.WikiPageDescendants(r.Context(), ws, actor, id, 100)
+	relations, err := h.Store.WikiTreeDescendants(r.Context(), ws, actor, id, "page", 100)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -105,7 +109,7 @@ func (h *V1Handler) contentDescendantsByType(w http.ResponseWriter, r *http.Requ
 	}
 	values := []any{}
 	if contentType == "page" {
-		relations, err := h.Store.WikiPageDescendants(r.Context(), ws, actor, id, depth)
+		relations, err := h.Store.WikiTreeDescendants(r.Context(), ws, actor, id, "page", depth)
 		if err != nil {
 			writeError(w, err)
 			return

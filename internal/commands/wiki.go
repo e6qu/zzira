@@ -150,6 +150,29 @@ func (s *Service) RestoreWikiPage(ctx context.Context, ws, actor, pageID string,
 	return s.Store.RestoreWikiPage(ctx, ws, actor, pageID, withDescendants)
 }
 
+// MoveWikiTreeNode, MoveWikiTreeNodeToSpace, ArchiveWikiTreeNode,
+// RestoreWikiTreeNode and RenameWikiContent act on any node of the content
+// tree: pages, folders, whiteboards, databases and Smart Links.
+func (s *Service) MoveWikiTreeNode(ctx context.Context, ws, actor, nodeID, position, targetID string) (string, error) {
+	return s.Store.MoveWikiTreeNode(ctx, ws, actor, nodeID, position, targetID)
+}
+
+func (s *Service) MoveWikiTreeNodeToSpace(ctx context.Context, ws, actor, nodeID, spaceID string) (string, error) {
+	return s.Store.MoveWikiTreeNodeToSpace(ctx, ws, actor, nodeID, spaceID)
+}
+
+func (s *Service) ArchiveWikiTreeNode(ctx context.Context, ws, actor, nodeID string, withDescendants bool) (int, error) {
+	return s.Store.ArchiveWikiTreeNode(ctx, ws, actor, nodeID, withDescendants)
+}
+
+func (s *Service) RestoreWikiTreeNode(ctx context.Context, ws, actor, nodeID string, withDescendants bool) (int, error) {
+	return s.Store.RestoreWikiTreeNode(ctx, ws, actor, nodeID, withDescendants)
+}
+
+func (s *Service) RenameWikiContent(ctx context.Context, ws, actor, id, title string) (*models.WikiContent, error) {
+	return s.Store.RenameWikiContent(ctx, ws, actor, id, title)
+}
+
 func (s *Service) SaveWikiBlogPost(ctx context.Context, ws, actor string, post models.WikiBlogPost) (*models.WikiBlogPost, error) {
 	post.Title = strings.TrimSpace(post.Title)
 	if post.Status == "" && post.ID == "" {

@@ -63,6 +63,8 @@ type WikiPage struct {
 	WorkspaceID         string      `json:"-"`
 	SpaceID             string      `json:"spaceId"`
 	ParentID            string      `json:"parentId,omitempty"`
+	ParentType          string      `json:"parentType,omitempty"`
+	Position            int         `json:"-"`
 	Title               string      `json:"title"`
 	Status              string      `json:"status"`
 	Published           bool        `json:"published"`

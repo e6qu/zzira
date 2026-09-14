@@ -157,14 +157,14 @@ func (h *Handler) pageByID(w http.ResponseWriter, r *http.Request, ws, actor, id
 		bean["operations"] = wrap(pageOperationsFor(canUpdate, canDelete))
 	}
 	if flags["include-direct-children"] {
-		relations, loadErr := h.Store.WikiPageDescendants(r.Context(), ws, actor, id, 1)
+		relations, loadErr := h.Store.WikiTreeDescendants(r.Context(), ws, actor, id, "page", 1)
 		if loadErr != nil {
 			writeError(w, loadErr)
 			return
 		}
 		values := make([]any, len(relations))
 		for i := range relations {
-			values[i] = pageChildBean(relations[i], true)
+			values[i] = treeChildBean(relations[i], true)
 		}
 		bean["directChildren"] = wrap(values)
 	}
