@@ -50,7 +50,9 @@ func (h *V1Handler) v1WatchUserBean(user *models.User) map[string]any {
 	}
 }
 
-func (h *V1Handler) v1ContentWatches(w http.ResponseWriter, r *http.Request, ws, actor, pageID, notificationType string) {
+// v1ContentWatches lists who watches a piece of content: for
+// child-created, its own watchers; for created, the watchers of its space.
+func (h *V1Handler) v1ContentWatches(w http.ResponseWriter, r *http.Request, ws, actor, contentID, notificationType string) {
 	if !supportedQuery(w, r, "start", "limit") {
 		return
 	}
@@ -58,18 +60,19 @@ func (h *V1Handler) v1ContentWatches(w http.ResponseWriter, r *http.Request, ws,
 	if !ok {
 		return
 	}
-	page, err := h.Store.WikiPage(r.Context(), ws, actor, pageID)
+	canonical, spaceID, err := h.Store.WikiWatchTarget(r.Context(), ws, actor, "content", contentID)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	if page.Status != "current" {
-		failure(w, 404, "Content does not exist or you do not have permission to view it.")
+	kind, err := h.Store.WikiContentKindByID(r.Context(), ws, canonical)
+	if err != nil {
+		writeError(w, err)
 		return
 	}
-	targetType, targetID, watchType := "content", page.ID, "page"
+	targetType, targetID, watchType := "content", canonical, kind.Type
 	if notificationType == "created" {
-		space, spaceErr := h.Store.WikiSpace(r.Context(), ws, actor, page.SpaceID)
+		space, spaceErr := h.Store.WikiSpace(r.Context(), ws, actor, spaceID)
 		if spaceErr != nil {
 			writeError(w, spaceErr)
 			return
@@ -82,14 +85,14 @@ func (h *V1Handler) v1ContentWatches(w http.ResponseWriter, r *http.Request, ws,
 		return
 	}
 	users, start = pageUsers(users, start, limit)
-	contentID, parseErr := strconv.ParseInt(page.ID, 10, 64)
+	numericID, parseErr := strconv.ParseInt(canonical, 10, 64)
 	if parseErr != nil {
 		failure(w, 500, "Content ID is invalid.")
 		return
 	}
 	results := make([]any, 0, len(users))
 	for _, user := range users {
-		results = append(results, map[string]any{"type": watchType, "watcher": h.v1WatchUserBean(user), "contentId": contentID})
+		results = append(results, map[string]any{"type": watchType, "watcher": h.v1WatchUserBean(user), "contentId": numericID})
 	}
 	respond(w, 200, map[string]any{"results": results, "start": start, "limit": limit, "size": len(results), "_links": map[string]string{"base": h.BaseURL + "/wiki"}})
 }
@@ -139,17 +142,9 @@ func (h *V1Handler) v1WatchTargetUser(w http.ResponseWriter, r *http.Request, ws
 		writeError(w, err)
 		return nil, false
 	}
-	if user.ID != actor {
-		admin, adminErr := h.Store.IsAdmin(r.Context(), ws, actor)
-		if adminErr != nil {
-			writeError(w, adminErr)
-			return nil, false
-		}
-		if !admin {
-			failure(w, 403, "Only an administrator can manage watches for another user.")
-			return nil, false
-		}
-	}
+	// Whether the caller may act for this person depends on the target: the
+	// store allows site administrators, and space administrators for their
+	// space and its content.
 	return user, true
 }
 

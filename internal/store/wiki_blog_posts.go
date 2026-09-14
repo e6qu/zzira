@@ -70,7 +70,7 @@ func (s *Store) SaveWikiBlogPost(ctx context.Context, ws, actor string, input mo
 	if err := tx.QueryRow(ctx, `SELECT s.id::text,s.default_classification_level FROM wiki_spaces s WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+spacePermission+` AND s.id::text=$3 FOR UPDATE`, ws, actor, input.SpaceID).Scan(&spaceID, &defaultClassification); err != nil {
 		return nil, err
 	}
-	previousBody := ""
+	previousBody, wasPublished := "", false
 	if !isNew {
 		old, err := scanWikiBlogPost(tx.QueryRow(ctx, wikiBlogPostSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+spacePermission+` AND `+wikiBlogPostVisible+` AND `+wikiBlogPostAuthorWritable+` AND b.id::text=$3 FOR UPDATE OF b`, ws, actor, input.ID))
 		if err != nil {
@@ -89,6 +89,7 @@ func (s *Store) SaveWikiBlogPost(ctx context.Context, ws, actor string, input mo
 			input.Title, input.Body = old.Title, old.Body
 		}
 		input.AuthorID, input.Private, input.CreatedAt = old.AuthorID, old.Private, old.CreatedAt
+		wasPublished = old.Published
 		if old.Status == "current" {
 			previousBody = old.Body.Value
 		}
@@ -119,7 +120,7 @@ func (s *Store) SaveWikiBlogPost(ctx context.Context, ws, actor string, input mo
 		return nil, err
 	}
 	if input.Status == "current" {
-		if err := notifyWikiMentions(ctx, tx, ws, actor, "wiki_blogpost", input.ID, input.Title, wikiBlogPostMentionVisible, input.ID, previousBody, input.Body.Value); err != nil {
+		if err := notifyWikiMentions(ctx, tx, ws, actor, "wiki_blogpost", input.ID, input.Title, wikiBlogPostReadableBy, input.ID, previousBody, input.Body.Value); err != nil {
 			return nil, err
 		}
 	}
@@ -135,6 +136,11 @@ func (s *Store) SaveWikiBlogPost(ctx context.Context, ws, actor string, input mo
 	}
 	if err := wikiAction(ctx, tx, ws, actor, "wiki_blogpost", blog.ID, blog.SpaceID, blog); err != nil {
 		return nil, err
+	}
+	if blog.Status == "current" && !input.Version.MinorEdit {
+		if err := wikiBlogWatchNotifications(ctx, tx, ws, actor, blog, !wasPublished); err != nil {
+			return nil, err
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err

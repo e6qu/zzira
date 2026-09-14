@@ -74,6 +74,7 @@ type wikiData struct {
 	Private                               bool
 	WatchingSpace                         bool
 	WatchingPage                          bool
+	WatchingBlogPost                      bool
 	WatchedLabels                         map[string]bool
 	MoveTargets                           []wikiMoveGroup
 	Starred                               []*models.WikiPage
@@ -583,7 +584,7 @@ func (h *Handler) wikiBlogPost(w http.ResponseWriter, r *http.Request, creating 
 	properties := []models.WikiContentProperty{}
 	attachments := []*models.WikiAttachment{}
 	blogComments, blogInlineComments := []wikiCommentNode{}, []wikiCommentNode{}
-	likeCount, liked := 0, false
+	likeCount, liked, watching := 0, false, false
 	if post.ID != "" {
 		versions, err = h.Store.WikiBlogPostVersions(r.Context(), ws, user.ID, post.ID, "-modified-date")
 		if err != nil {
@@ -646,6 +647,11 @@ func (h *Handler) wikiBlogPost(w http.ResponseWriter, r *http.Request, creating 
 				return
 			}
 			likeCount = len(likes)
+			watching, err = h.Store.WikiWatchStatus(r.Context(), ws, user.ID, user.ID, "content", post.ID)
+			if err != nil {
+				http.Error(w, "Could not load blog post watch.", 500)
+				return
+			}
 			for _, accountID := range likes {
 				if accountID == user.ID {
 					liked = true
@@ -662,7 +668,7 @@ func (h *Handler) wikiBlogPost(w http.ResponseWriter, r *http.Request, creating 
 		http.Error(w, "Could not load people to mention.", 500)
 		return
 	}
-	h.writeWorkspacePageStatus(w, r, "page_wiki_blogpost", user, ws, wikiData{Space: space, BlogPost: post, Versions: versions, Labels: labels, BlogProperties: properties, BlogLikeCount: likeCount, BlogLiked: liked, Attachments: attachments, Comments: blogComments, InlineComments: blogInlineComments, Editing: editing, CanEdit: true, Error: errorMessage, MentionPeople: people}, "wiki", "", pageStatus)
+	h.writeWorkspacePageStatus(w, r, "page_wiki_blogpost", user, ws, wikiData{Space: space, BlogPost: post, Versions: versions, Labels: labels, BlogProperties: properties, BlogLikeCount: likeCount, BlogLiked: liked, Attachments: attachments, Comments: blogComments, InlineComments: blogInlineComments, Editing: editing, CanEdit: true, Error: errorMessage, MentionPeople: people, WatchingBlogPost: watching}, "wiki", "", pageStatus)
 }
 
 func (h *Handler) wikiBlogForDiscussion(w http.ResponseWriter, r *http.Request, ws, userID string) (*models.WikiBlogPost, bool) {
@@ -823,6 +829,13 @@ func (h *Handler) WikiBlogPostMetadata(w http.ResponseWriter, r *http.Request) {
 			err = fmt.Errorf("%w: liked must be true or false", store.ErrWikiValidation)
 		} else {
 			err = h.Store.SetWikiBlogPostLike(r.Context(), ws, user.ID, post.ID, liked)
+		}
+	case "watch":
+		watching, parseErr := strconv.ParseBool(r.PostFormValue("watching"))
+		if parseErr != nil {
+			err = fmt.Errorf("%w: watching must be true or false", store.ErrWikiValidation)
+		} else {
+			err = h.Commands.SetWikiWatch(r.Context(), ws, user.ID, user.ID, "content", post.ID, watching)
 		}
 	case "add-label":
 		_, err = h.Commands.AddWikiBlogPostLabels(r.Context(), ws, user.ID, post.ID, []models.WikiLabel{{Name: r.PostFormValue("label"), Prefix: "global"}})

@@ -198,6 +198,7 @@ func main() {
 	}
 	go (&automation.Runner{Service: automationSvc}).Run(ctx, workspaceID)
 	go (&store.FilterSubscriptionRunner{Store: st, BaseURL: baseURL}).Run(ctx, workspaceID)
+	go (&store.WikiNotificationEmailRunner{Store: st, BaseURL: baseURL}).Run(ctx)
 	go (&store.APITaskRunner{Store: st, BulkIssueExecutor: cmdSvc}).Run(ctx, workspaceID)
 	go (&store.ProjectTrashRunner{Store: st}).Run(ctx, workspaceID)
 	go (&store.ServiceSLARunner{Store: st}).Run(ctx, workspaceID)

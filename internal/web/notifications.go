@@ -6,9 +6,11 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/e6qu/zzira/internal/models"
+	"github.com/e6qu/zzira/internal/store"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -54,11 +56,8 @@ func notificationDestination(notification *models.Notification) string {
 	if notification.EntityType == models.EntityIssue && notification.EntityID != "" {
 		return "/browse/" + url.PathEscape(notification.EntityID)
 	}
-	if notification.EntityType == "wiki_page" && notification.EntityID != "" {
-		return "/wiki/pages/" + url.PathEscape(notification.EntityID)
-	}
-	if notification.EntityType == "wiki_blogpost" && notification.EntityID != "" {
-		return "/wiki/blogposts/" + url.PathEscape(notification.EntityID)
+	if strings.HasPrefix(notification.EntityType, "wiki_") {
+		return store.WikiNotificationPath(notification.EntityType, notification.EntityID)
 	}
 	return "/notifications"
 }

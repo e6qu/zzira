@@ -489,7 +489,7 @@ func (s *Store) SaveWikiPage(ctx context.Context, ws, actor string, input models
 		return nil, err
 	}
 	if input.Status == "current" {
-		if err := notifyWikiMentions(ctx, tx, ws, actor, "wiki_page", input.ID, input.Title, wikiPageMentionVisible, input.ID, previousBody, input.Body.Value); err != nil {
+		if err := notifyWikiMentions(ctx, tx, ws, actor, "wiki_page", input.ID, input.Title, wikiPageReadableBy, input.ID, previousBody, input.Body.Value); err != nil {
 			return nil, err
 		}
 	}
@@ -729,6 +729,9 @@ func (s *Store) CreateWikiFooterComment(ctx context.Context, ws, actor string, i
 		return nil, err
 	}
 	if err := notifyCommentMentions(ctx, tx, ws, actor, input.ID, "", input.Body.Value); err != nil {
+		return nil, err
+	}
+	if err := notifyCommentWatchers(ctx, tx, ws, actor, input.ID); err != nil {
 		return nil, err
 	}
 	comment, err := scanWikiFooterComment(tx.QueryRow(ctx, wikiCommentSelect+` WHERE c.id::text=$1`, input.ID))
