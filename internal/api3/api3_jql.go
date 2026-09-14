@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/e6qu/zzira/internal/jql"
@@ -135,11 +136,11 @@ func (h *Handler) jqlAutoCompleteData(w http.ResponseWriter, r *http.Request) {
 		writeJerr(w, authErr)
 		return
 	}
+	var request struct {
+		IncludeCollapsedFields bool    `json:"includeCollapsedFields"`
+		ProjectIDs             []int64 `json:"projectIds"`
+	}
 	if r.Method == http.MethodPost {
-		var request struct {
-			IncludeCollapsedFields bool    `json:"includeCollapsedFields"`
-			ProjectIDs             []int64 `json:"projectIds"`
-		}
 		if !decodeJQLBody(w, r, &request) {
 			return
 		}
@@ -155,17 +156,63 @@ func (h *Handler) jqlAutoCompleteData(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, http.StatusInternalServerError, "Could not load JQL fields.")
 		return
 	}
-	for _, field := range customFields {
-		types := []string{"TEXT"}
-		operators := []string{"=", "!=", "~", "!~", "in", "not in", "is", "is not"}
-		if string(field.Type) == "number" {
-			types = []string{"NUMBER"}
-			operators = []string{"=", "!=", ">", ">=", "<", "<=", "in", "not in", "is", "is not"}
-		} else if string(field.Type) == "datetime" {
-			types = []string{"DATE"}
-			operators = []string{"=", "!=", ">", ">=", "<", "<=", "is", "is not"}
+	// Project IDs narrow the custom fields to those a context applies in; system
+	// fields always appear and invalid project IDs are ignored.
+	if len(request.ProjectIDs) > 0 {
+		projects, projectErr := h.Store.ProjectsByWorkspace(r.Context(), workspaceID)
+		if projectErr != nil {
+			jiraError(w, http.StatusInternalServerError, "Could not load JQL fields.")
+			return
 		}
-		fields = append(fields, jqlFieldReference{Value: field.ID, CFID: strings.TrimPrefix(field.ID, "customfield_"), DisplayName: field.Name + " - cf[" + strings.TrimPrefix(field.ID, "customfield_") + "]", Auto: "false", Orderable: "false", Searchable: "true", Operators: operators, Types: types})
+		known := map[string]bool{}
+		for _, project := range projects {
+			known[project.ID] = true
+		}
+		selected := map[string]bool{}
+		for _, id := range request.ProjectIDs {
+			if key := strconv.FormatInt(id, 10); known[key] {
+				selected[key] = true
+			}
+		}
+		if len(selected) > 0 {
+			applicable := customFields[:0]
+			for _, field := range customFields {
+				contexts, contextErr := h.Store.CustomFieldContexts(r.Context(), workspaceID, field.ID, nil)
+				if contextErr != nil {
+					jiraError(w, http.StatusInternalServerError, "Could not load JQL fields.")
+					return
+				}
+				if customFieldAppliesToProjects(contexts, selected) {
+					applicable = append(applicable, field)
+				}
+			}
+			customFields = applicable
+		}
+	}
+	nameUses := map[string]int{}
+	collapsed := map[string][]*models.CustomField{}
+	for _, field := range customFields {
+		nameUses[strings.ToLower(field.Name)]++
+		alias := strings.ToLower(models.CollapsedFieldName(field.Name, field.Type))
+		collapsed[alias] = append(collapsed[alias], field)
+	}
+	for _, field := range customFields {
+		reference := jqlCustomFieldReference(field)
+		if nameUses[strings.ToLower(field.Name)] == 1 {
+			reference.Value = field.Name
+		}
+		fields = append(fields, reference)
+	}
+	if request.IncludeCollapsedFields {
+		for _, members := range collapsed {
+			if len(members) < 2 {
+				continue
+			}
+			reference := jqlCustomFieldReference(members[0])
+			name := models.CollapsedFieldName(members[0].Name, members[0].Type)
+			reference.Value, reference.DisplayName, reference.CFID, reference.Orderable = jqlQuoteAlways(name), members[0].Name+" - "+name, "", "false"
+			fields = append(fields, reference)
+		}
 	}
 	slaMetrics, err := h.Store.ServiceSLAMetricsForWorkspace(r.Context(), workspaceID)
 	if err != nil {
@@ -215,6 +262,100 @@ func (h *Handler) jqlAutoCompleteData(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"jqlReservedWords": jqlReservedWords, "visibleFieldNames": fields, "visibleFunctionNames": functions})
 }
 
+// jqlCustomFieldReference describes a custom field the way Jira's JQL
+// reference data does: its cf[N] id, the operators and value type of its field
+// type, and whether values are suggested.
+func jqlCustomFieldReference(field *models.CustomField) jqlFieldReference {
+	cfid := "cf[" + strings.TrimPrefix(field.ID, "customfield_") + "]"
+	reference := jqlFieldReference{Value: cfid, CFID: cfid, DisplayName: field.Name + " - " + cfid, Auto: "false", Orderable: "true", Searchable: "true"}
+	listOperators := []string{"=", "!=", "in", "not in", "is", "is not"}
+	switch field.Type {
+	case models.CustomFieldSelect, models.CustomFieldMultiSelect, models.CustomFieldCascadingSelect:
+		reference.Types, reference.Operators, reference.Auto = []string{"OPTION"}, listOperators, "true"
+	case models.CustomFieldUser, models.CustomFieldMultiUser:
+		reference.Types, reference.Operators, reference.Auto = []string{"USER"}, listOperators, "true"
+	case models.CustomFieldGroup, models.CustomFieldMultiGroup:
+		reference.Types, reference.Operators, reference.Auto = []string{"GROUP"}, listOperators, "true"
+	case models.CustomFieldLabels:
+		reference.Types, reference.Operators, reference.Auto = []string{"LABEL"}, listOperators, "true"
+	case models.CustomFieldProject:
+		reference.Types, reference.Operators, reference.Auto = []string{"PROJECT"}, listOperators, "true"
+	case models.CustomFieldVersion, models.CustomFieldMultiVersion:
+		reference.Types, reference.Operators, reference.Auto = []string{"VERSION"}, append(append([]string{}, listOperators...), ">", ">=", "<", "<="), "true"
+	case models.CustomFieldNumber:
+		reference.Types, reference.Operators = []string{"NUMBER"}, []string{"=", "!=", ">", ">=", "<", "<=", "in", "not in", "is", "is not"}
+	case models.CustomFieldDate, models.CustomFieldDatetime:
+		reference.Types, reference.Operators = []string{"DATE"}, []string{"=", "!=", ">", ">=", "<", "<=", "is", "is not"}
+	default:
+		reference.Types, reference.Operators, reference.Orderable = []string{"TEXT"}, []string{"~", "!~", "is", "is not"}, "false"
+	}
+	return reference
+}
+
+// customFieldAppliesToProjects reports whether a global context, or one naming
+// a selected project, makes the field searchable there.
+func customFieldAppliesToProjects(contexts []*models.CustomFieldContext, projects map[string]bool) bool {
+	for _, context := range contexts {
+		if context.AllProjects {
+			return true
+		}
+		for _, projectID := range context.ProjectIDs {
+			if projects[projectID] {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// jqlQuoteAlways writes a value as a double-quoted JQL string.
+func jqlQuoteAlways(value string) string {
+	encoded, _ := json.Marshal(value)
+	return string(encoded)
+}
+
+// jqlSuggestionCustomField finds the custom field a suggestion request names by
+// cf[N], customfield_N, its name or its collapsed name.
+func (h *Handler) jqlSuggestionCustomField(r *http.Request, workspaceID, name string) (*models.CustomField, error) {
+	fields, err := h.Store.CustomFieldsForWorkspace(r.Context(), workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	name = strings.Trim(name, `"`)
+	if strings.HasPrefix(name, "cf[") && strings.HasSuffix(name, "]") {
+		name = "customfield_" + name[3:len(name)-1]
+	}
+	for _, field := range fields {
+		if strings.EqualFold(field.ID, name) || strings.EqualFold(field.Name, name) || strings.EqualFold(models.CollapsedFieldName(field.Name, field.Type), name) {
+			return field, nil
+		}
+	}
+	return nil, nil
+}
+
+// customFieldOptionValues lists the distinct option values every context of a
+// select field offers.
+func (h *Handler) customFieldOptionValues(r *http.Request, workspaceID, fieldID string) ([]string, error) {
+	contexts, err := h.Store.CustomFieldContexts(r.Context(), workspaceID, fieldID, nil)
+	if err != nil {
+		return nil, err
+	}
+	seen, values := map[string]bool{}, []string{}
+	for _, context := range contexts {
+		options, optionErr := h.Store.CustomFieldOptions(r.Context(), workspaceID, fieldID, context.ID)
+		if optionErr != nil {
+			return nil, optionErr
+		}
+		for _, option := range options {
+			if option.ParentID == "" && !seen[strings.ToLower(option.Value)] {
+				seen[strings.ToLower(option.Value)] = true
+				values = append(values, option.Value)
+			}
+		}
+	}
+	return values, nil
+}
+
 type jqlSuggestion struct {
 	DisplayName string `json:"displayName"`
 	Value       string `json:"value"`
@@ -228,6 +369,18 @@ func (h *Handler) jqlSuggestions(w http.ResponseWriter, r *http.Request) {
 	}
 	field := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("fieldName")))
 	needle := strings.TrimSpace(r.URL.Query().Get("fieldValue"))
+	// CHANGED predicates: BY names people, FROM and TO name the field's values.
+	switch predicate := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("predicateName"))); predicate {
+	case "":
+	case "by", "from", "to":
+		needle = strings.TrimSpace(r.URL.Query().Get("predicateValue"))
+		if predicate == "by" {
+			field = "assignee"
+		}
+	default:
+		jiraError(w, http.StatusBadRequest, "The predicate must be by, from or to.")
+		return
+	}
 	values := []jqlSuggestion{}
 	add := func(value, label string) {
 		if value == "" || needle != "" && !strings.Contains(strings.ToLower(value+" "+label), strings.ToLower(needle)) {
@@ -305,8 +458,73 @@ func (h *Handler) jqlSuggestions(w http.ResponseWriter, r *http.Request) {
 			add(value, value)
 		}
 	default:
-		jiraError(w, http.StatusBadRequest, "The field does not provide autocomplete suggestions.")
-		return
+		customField, err := h.jqlSuggestionCustomField(r, workspaceID, field)
+		if err != nil {
+			jiraError(w, 500, "Could not load JQL suggestions.")
+			return
+		}
+		if customField == nil {
+			jiraError(w, http.StatusBadRequest, "The field does not provide autocomplete suggestions.")
+			return
+		}
+		switch customField.Type {
+		case models.CustomFieldSelect, models.CustomFieldMultiSelect, models.CustomFieldCascadingSelect:
+			options, optionErr := h.customFieldOptionValues(r, workspaceID, customField.ID)
+			if optionErr != nil {
+				jiraError(w, 500, "Could not load JQL suggestions.")
+				return
+			}
+			for _, option := range options {
+				add(option, option)
+			}
+		case models.CustomFieldUser, models.CustomFieldMultiUser:
+			if h.browsesUsers(r, workspaceID, userID) {
+				members, memberErr := h.Store.MembersByWorkspace(r.Context(), workspaceID)
+				if memberErr != nil {
+					jiraError(w, 500, "Could not load JQL suggestions.")
+					return
+				}
+				for _, member := range members {
+					add(member.ID, member.DisplayName)
+				}
+			}
+		case models.CustomFieldGroup, models.CustomFieldMultiGroup:
+			groups, groupErr := h.Store.GroupsByWorkspace(r.Context(), workspaceID)
+			if groupErr != nil {
+				jiraError(w, 500, "Could not load JQL suggestions.")
+				return
+			}
+			for _, group := range groups {
+				add(group.Name, group.Name)
+			}
+		case models.CustomFieldProject:
+			projects, projectErr := h.Store.ProjectsByWorkspace(r.Context(), workspaceID)
+			if projectErr != nil {
+				jiraError(w, 500, "Could not load JQL suggestions.")
+				return
+			}
+			for _, project := range projects {
+				if allowed, browseErr := h.canBrowseProject(r, workspaceID, userID, project.ID); browseErr == nil && allowed {
+					add(project.Key, project.Name+" ("+project.Key+")")
+				}
+			}
+		case models.CustomFieldVersion, models.CustomFieldMultiVersion, models.CustomFieldLabels:
+			source := "fixversion"
+			if customField.Type == models.CustomFieldLabels {
+				source = "labels"
+			}
+			stored, storeErr := h.Store.JQLFieldSuggestions(r.Context(), workspaceID, userID, source, needle, 50)
+			if storeErr != nil {
+				jiraError(w, 500, "Could not load JQL suggestions.")
+				return
+			}
+			for _, value := range stored {
+				add(value, value)
+			}
+		default:
+			jiraError(w, http.StatusBadRequest, "The field does not provide autocomplete suggestions.")
+			return
+		}
 	}
 	if len(values) > 50 {
 		values = values[:50]

@@ -104,10 +104,19 @@ issue ID or key is accepted and in the bulk JQL match resource; internal
 ## Reference and query services
 
 ZZIRA exposes the pinned GET/POST reference-data resources and returns only
-fields, operators, and functions supported by its compiler, including typed
-custom fields. Project, status/category, priority, issue-type, user, label,
+fields, operators, and functions supported by its compiler. Each custom field
+carries its `cf[N]` id and the operators and value type of its field type. Its
+`value` is the field name while that name is unique, and `cf[N]` otherwise.
+The POST resource keeps only custom fields whose contexts apply to the given
+`projectIds`, ignoring invalid ids and always listing system fields. With
+`includeCollapsedFields`, fields sharing a name and type also get a collapsed
+entry such as `"Component[Dropdown]"`. JQL searches a collapsed name across
+every such field: any may match, and a negative condition must hold for all. Project, status/category, priority, issue-type, user, label,
 component, sprint, resolution, and version suggestions are generated from the
-current workspace. Suggestions derived from work items apply issue visibility
+current workspace, as are custom field values named by `cf[N]`, id, name or
+collapsed name: options, people, groups, projects, versions and labels.
+`predicateName` `by` suggests people, and `from` and `to` suggest the field's
+values, filtered by `predicateValue`. Suggestions derived from work items apply issue visibility
 before collecting distinct values.
 
 The parse resource returns one Jira-shaped structure or error list per input

@@ -3683,7 +3683,7 @@
         "internal/api3/api3_jql_precomputations_test.go",
         "docs/JQL.md"
       ],
-      "notes": "Supported system/custom fields, operators, built-ins and active installed-app functions are workspace-scoped and integration-tested; collapsed duplicate-name and complete Jira catalogs remain."
+      "notes": "Returns reserved words, supported system fields and functions, active installed-app functions and every custom field with its cf[N] id, field-type operators and value type, and whether values are suggested; a custom field's value is its name while that name is unique and cf[N] otherwise."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/jql/autocompletedata",
@@ -3696,7 +3696,7 @@
         "internal/api3/api3_jql_precomputations_test.go",
         "docs/JQL.md"
       ],
-      "notes": "Supported system/custom fields, operators, built-ins and active installed-app functions are workspace-scoped and integration-tested; exact project-ID filtering and collapsed fields remain."
+      "notes": "Filters custom fields to those a global context or a context naming one of projectIds applies to, ignoring invalid project IDs and always listing system fields; includeCollapsedFields adds \"Name[Type]\" entries for fields sharing a name and type, which JQL searches across every such field."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/jql/autocompletedata/suggestions",
@@ -3708,7 +3708,7 @@
         "internal/api3/api3_jql_test.go",
         "docs/JQL.md"
       ],
-      "notes": "Project and permission-filtered issue-derived suggestions, filtering, quoting, safe highlighting and bounds are tested; remaining Jira field providers remain."
+      "notes": "Suggests projects, statuses, categories, priorities, work types, people, labels, components, sprints, resolutions and versions, plus custom field values by cf[N], id, name or collapsed name (options, people, groups, projects, versions and labels), with CHANGED by/from/to predicates, filtering, quoting, safe highlighting and a 50-result bound."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/jql/function/computation",

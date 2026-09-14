@@ -878,6 +878,9 @@ type FieldResolver struct {
 	// CustomValueFields are custom fields whose values name options, people or
 	// groups, or are lists, by the name a query uses.
 	CustomValueFields map[string]CustomValueField
+	// CollapsedFields maps a collapsed name, such as component[dropdown], to
+	// the custom fields sharing that name and type.
+	CollapsedFields map[string][]string
 }
 
 // CustomValueField is a custom field a query matches by what its value names.
@@ -936,6 +939,20 @@ func WithCustomFields(base FieldResolver, fields []*models.CustomField) FieldRes
 			}
 		}
 		res.TextColumns = append(res.TextColumns, `i.fields->>'`+f.ID+`'`)
+	}
+	groups := map[string][]string{}
+	for _, f := range fields {
+		alias := strings.ToLower(models.CollapsedFieldName(f.Name, f.Type))
+		groups[alias] = append(groups[alias], f.ID)
+	}
+	for alias, members := range groups {
+		if len(members) < 2 {
+			continue
+		}
+		if res.CollapsedFields == nil {
+			res.CollapsedFields = map[string][]string{}
+		}
+		res.CollapsedFields[alias] = members
 	}
 	return res
 }
@@ -1133,6 +1150,25 @@ func (c *compiler) node(n Node) string {
 }
 
 func (c *compiler) clause(cl Clause) string {
+	// A collapsed field searches each field sharing its name and type: any of
+	// them may match, and a negative condition must hold for all of them.
+	if members, ok := c.res.CollapsedFields[cl.Field]; ok {
+		joiner := " OR "
+		switch cl.Op {
+		case "!=", "notin", "!~", "empty":
+			joiner = " AND "
+		}
+		parts := make([]string, 0, len(members))
+		for _, member := range members {
+			memberClause := cl
+			memberClause.Field = member
+			parts = append(parts, "("+c.clause(memberClause)+")")
+			if c.err != nil {
+				return ""
+			}
+		}
+		return "(" + strings.Join(parts, joiner) + ")"
+	}
 	if containsJQLFunction(cl.Values, "breached", "completed", "everBreached", "paused", "remaining", "running", "withinCalendarHours") {
 		return c.slaClause(cl)
 	}

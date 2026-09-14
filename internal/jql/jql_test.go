@@ -638,3 +638,30 @@ func TestLenientCompileTurnsFailingClausesIntoWarnings(t *testing.T) {
 		t.Fatalf("order = %s", lenient.OrderSQL)
 	}
 }
+
+func TestCollapsedCustomFieldsSearchEveryMember(t *testing.T) {
+	fields := []*models.CustomField{
+		{ID: "customfield_10061", Name: "Component", Type: models.CustomFieldSelect},
+		{ID: "customfield_10062", Name: "Component", Type: models.CustomFieldSelect},
+		{ID: "customfield_10063", Name: "Component", Type: models.CustomFieldText},
+	}
+	resolver := WithCustomFields(DefaultResolver(), fields)
+	if len(resolver.CollapsedFields) != 1 || len(resolver.CollapsedFields["component[dropdown]"]) != 2 {
+		t.Fatalf("collapsed fields = %#v", resolver.CollapsedFields)
+	}
+	positive, err := Parse(`"Component[Dropdown]" = Backend`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled := Compile(positive, "u", resolver)
+	if compiled.Err != nil || !strings.Contains(compiled.Where, "customfield_10061") || !strings.Contains(compiled.Where, "customfield_10062") || strings.Contains(compiled.Where, "customfield_10063") || !strings.Contains(compiled.Where, ") OR (") {
+		t.Fatalf("positive where = %s err=%v", compiled.Where, compiled.Err)
+	}
+	negative, _ := Parse(`"Component[Dropdown]" != Backend`)
+	if compiled = Compile(negative, "u", resolver); compiled.Err != nil || !strings.Contains(compiled.Where, ") AND (") {
+		t.Fatalf("negative where = %s err=%v", compiled.Where, compiled.Err)
+	}
+	if models.CollapsedFieldName("Component", models.CustomFieldSelect) != "Component[Dropdown]" {
+		t.Fatal("collapsed name")
+	}
+}
