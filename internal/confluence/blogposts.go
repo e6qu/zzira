@@ -49,19 +49,7 @@ func (h *Handler) blogPostBean(post *models.WikiBlogPost, body bool) map[string]
 }
 
 func (h *Handler) blogPostVersions(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
-	if !supportedQuery(w, r, "body-format", "cursor", "limit", "sort") || !storageFormat(w, r) {
-		return
-	}
-	versions, err := h.Store.WikiBlogPostVersions(r.Context(), ws, actor, id, r.URL.Query().Get("sort"))
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	values := make([]any, 0, len(versions))
-	for _, version := range versions {
-		values = append(values, version)
-	}
-	h.list(w, r, values)
+	h.contentVersions(w, r, ws, actor, "blogpost", id)
 }
 
 func (h *Handler) blogPostVersion(w http.ResponseWriter, r *http.Request, ws, actor, id, rawVersion string) {
@@ -83,7 +71,7 @@ func (h *Handler) blogPostVersion(w http.ResponseWriter, r *http.Request, ws, ac
 		writeError(w, err)
 		return
 	}
-	bean := map[string]any{"number": version.Number, "authorId": version.AuthorID, "message": version.Message, "createdAt": version.CreatedAt, "minorEdit": version.MinorEdit, "contentTypeModified": false, "collaborators": []string{}}
+	bean := map[string]any{"number": version.Number, "authorId": version.AuthorID, "message": version.Message, "createdAt": version.CreatedAt, "minorEdit": version.MinorEdit, "contentTypeModified": false, "collaborators": []string{version.AuthorID}}
 	for index, candidate := range versions {
 		if candidate.Number != version.Number {
 			continue

@@ -320,19 +320,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case len(parts) == 2 && parts[0] == "pages" && r.Method == "DELETE":
 		h.deletePage(w, r, ws, actor, parts[1])
 	case len(parts) == 3 && parts[0] == "pages" && parts[2] == "versions" && r.Method == "GET":
-		if !supportedQuery(w, r, "limit", "cursor", "sort", "body-format") || !storageFormat(w, r) {
-			return
-		}
-		versions, err := h.Store.WikiVersionsSorted(r.Context(), ws, actor, parts[1], r.URL.Query().Get("sort"))
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-		values := make([]any, 0, len(versions))
-		for _, v := range versions {
-			values = append(values, v)
-		}
-		h.list(w, r, values)
+		h.contentVersions(w, r, ws, actor, "page", parts[1])
 	case len(parts) == 4 && parts[0] == "pages" && parts[2] == "versions" && r.Method == "GET":
 		h.pageVersion(w, r, ws, actor, parts[1], parts[3])
 	case len(parts) == 3 && parts[0] == "pages" && parts[2] == "title" && r.Method == "PUT":

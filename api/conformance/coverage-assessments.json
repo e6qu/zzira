@@ -2243,9 +2243,10 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts",
         "internal/confluence/content_drafts_test.go",
-        "docs/CONTENT_DRAFTS.md"
+        "docs/CONTENT_DRAFTS.md",
+        "internal/confluence/content_versions.go"
       ],
-      "notes": "Blog posts support public or creator-private current/draft creation, permission-filtered global and space collections, exact reads, optimistic updates, immutable version history/detail, trash, restore, purge, privacy-shaped actions and an accessible author UI; attachments, footer and inline comments, labels, likes, properties, classification and redaction share the page routes; drafts of published blog posts are saved at version 1 beside the published version, read with get-draft, discarded with draft=true and replaced by publishing; purge moves trashed posts to the deleted state that space administrators see and restore."
+      "notes": "Blog posts support public or creator-private current/draft creation, permission-filtered global and space collections, exact reads, optimistic updates, immutable version history/detail, trash, restore, purge, privacy-shaped actions and an accessible author UI; attachments, footer and inline comments, labels, likes, properties, classification and redaction share the page routes; drafts of published blog posts are saved at version 1 beside the published version, read with get-draft, discarded with draft=true and replaced by publishing; purge moves trashed posts to the deleted state that space administrators see and restore. With body-format each version carries the blog post's title and body at that version, and a single version names its author as collaborator."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{id}",
@@ -2429,9 +2430,10 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts",
         "internal/confluence/content_drafts_test.go",
-        "docs/CONTENT_DRAFTS.md"
+        "docs/CONTENT_DRAFTS.md",
+        "internal/confluence/content_versions.go"
       ],
-      "notes": "Blog posts support public or creator-private current/draft creation, permission-filtered global and space collections, exact reads, optimistic updates, immutable version history/detail, trash, restore, purge, privacy-shaped actions and an accessible author UI; attachments, footer and inline comments, labels, likes, properties, classification and redaction share the page routes; drafts of published blog posts are saved at version 1 beside the published version, read with get-draft, discarded with draft=true and replaced by publishing; purge moves trashed posts to the deleted state that space administrators see and restore."
+      "notes": "Blog posts support public or creator-private current/draft creation, permission-filtered global and space collections, exact reads, optimistic updates, immutable version history/detail, trash, restore, purge, privacy-shaped actions and an accessible author UI; attachments, footer and inline comments, labels, likes, properties, classification and redaction share the page routes; drafts of published blog posts are saved at version 1 beside the published version, read with get-draft, discarded with draft=true and replaced by publishing; purge moves trashed posts to the deleted state that space administrators see and restore. With body-format each version carries the blog post's title and body at that version, and a single version names its author as collaborator."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/classification-levels",
@@ -3494,9 +3496,11 @@
         "internal/store/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/content_drafts_test.go",
+        "internal/confluence/content_versions.go"
       ],
-      "notes": "Lists permission-scoped page versions with documented modified-date ordering and cursor pagination while excluding another user's draft history; body-format is validated but version bodies and remaining expansion semantics remain."
+      "notes": "Lists permission-scoped page versions with documented modified-date ordering and cursor pagination while excluding another user's draft history; with body-format each version carries the page's title and body at that version, in storage or the document format."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{page-id}/properties",
@@ -3534,9 +3538,11 @@
       "evidence": [
         "internal/confluence/page_governance.go",
         "internal/confluence/http_test.go",
-        "internal/store/wiki.go"
+        "internal/store/wiki.go",
+        "internal/confluence/content_drafts_test.go",
+        "internal/confluence/content_versions.go"
       ],
-      "notes": "Returns exact permission-scoped page version metadata with author, message, minor-edit state, stable previous/next links, collaborator shape and content-type flag; historical body retrieval and expansions remain."
+      "notes": "Returns exact permission-scoped page version metadata with author, message, minor-edit state, stable previous/next links, collaborator shape and content-type flag; collaborators name the version's author, and the body at that version reads through GET /pages/{id}?version, which the pinned single-version schema leaves out."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/space-permissions",

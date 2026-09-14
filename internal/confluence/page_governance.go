@@ -26,7 +26,7 @@ func (h *Handler) pageVersion(w http.ResponseWriter, r *http.Request, ws, actor,
 		writeError(w, err)
 		return
 	}
-	bean := map[string]any{"number": version.Number, "message": version.Message, "minorEdit": version.MinorEdit, "authorId": version.AuthorID, "createdAt": version.CreatedAt, "contentTypeModified": false, "collaborators": []string{}}
+	bean := map[string]any{"number": version.Number, "message": version.Message, "minorEdit": version.MinorEdit, "authorId": version.AuthorID, "createdAt": version.CreatedAt, "contentTypeModified": false, "collaborators": []string{version.AuthorID}}
 	for i := range versions {
 		if versions[i].Number != version.Number {
 			continue
