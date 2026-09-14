@@ -241,6 +241,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.workflowSchemeRoute(w, r, path)
 	case strings.HasPrefix(path, "/task/"):
 		h.taskRoute(w, r, path)
+	case path == "/workflow/history" || path == "/workflow/history/list":
+		h.workflowHistoryRoute(w, r, path)
+	case path == "/workflow/rule/config" || path == "/workflow/rule/config/delete":
+		h.workflowRuleConfigRoute(w, r, path)
+	case path == "/workflows" && r.Method == http.MethodPost:
+		h.readWorkflows(w, r)
 	case strings.HasPrefix(path, "/workflow/project/"):
 		h.workflowRoute(w, r)
 	case strings.HasPrefix(path, "/workflow/"):

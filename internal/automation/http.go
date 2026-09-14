@@ -35,15 +35,25 @@ func (h *Handler) TenantInfo(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	workspaceID, _, ok := h.authorizeAdmin(w, r)
-	if !ok {
-		return
-	}
 	prefix := "/gateway/api/automation/public/jira/"
 	path := strings.TrimPrefix(r.URL.Path, prefix)
 	parts := strings.Split(path, "/")
-	if len(parts) < 4 || parts[1] != "rest" || (parts[2] != "v1" && parts[2] != "latest") || parts[3] != "rule" {
+	if len(parts) < 4 || parts[1] != "rest" || (parts[2] != "v1" && parts[2] != "latest") || (parts[3] != "rule" && parts[3] != "template") {
 		automationError(w, http.StatusNotFound, "automation.resource.not_found", "No resource found", "")
+		return
+	}
+	// Manual rules and templates are for everyone who may use the site;
+	// creating a rule from a template and managing rules are for administrators.
+	memberRoute := (parts[3] == "rule" && len(parts) > 4 && parts[4] == "manual") ||
+		(parts[3] == "template" && !(len(parts) == 5 && parts[4] == "create"))
+	var workspaceID, userID string
+	var ok bool
+	if memberRoute {
+		workspaceID, userID, ok = h.authorizeMember(w, r)
+	} else {
+		workspaceID, userID, ok = h.authorizeAdmin(w, r)
+	}
+	if !ok {
 		return
 	}
 	cloudID, err := h.Service.WorkspaceCloudID(r.Context(), workspaceID)
@@ -52,6 +62,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tail := parts[4:]
+	if parts[3] == "template" {
+		h.templateRoute(w, r, workspaceID, userID, cloudID, tail)
+		return
+	}
+	if len(tail) > 0 && tail[0] == "manual" {
+		h.manualRuleRoute(w, r, workspaceID, userID, cloudID, tail[1:])
+		return
+	}
 	switch {
 	case len(tail) == 1 && tail[0] == "summary" && r.Method == http.MethodGet:
 		h.listSummaries(w, r, workspaceID, summaryFilterFromQuery(r.URL.Query()))
