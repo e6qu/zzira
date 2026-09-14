@@ -72,6 +72,11 @@ func init() {
 		},
 		"join":            strings.Join,
 		"selectedVersion": func(csv, id string) bool { return slices.Contains(strings.Split(csv, ","), id) },
+		// customFieldControl passes a custom field to its control with the
+		// element id prefix and the input name, which defaults to the field id.
+		"customFieldControl": func(field any, prefix, name string) map[string]any {
+			return map[string]any{"Field": field, "Prefix": prefix, "Name": name}
+		},
 		"humanSize": func(n int64) string {
 			const kb, mb = 1 << 10, 1 << 20
 			switch {

@@ -661,6 +661,54 @@ func (s *Service) normalizeOptionFields(ctx context.Context, workspaceID, projec
 				ids = append(ids, groupID)
 			}
 			fields[field], _ = json.Marshal(ids)
+		case models.CustomFieldProject:
+			ref, _, ok := scalar(raw, "id", "key")
+			if !ok || ref == "" {
+				return fmt.Errorf("%s must name a project by id or key", field)
+			}
+			project, err := s.Store.ProjectByIDOrKey(ctx, workspaceID, ref)
+			if err != nil {
+				return fmt.Errorf("%s names the project %q, which does not exist", field, ref)
+			}
+			fields[field], _ = json.Marshal(project.ID)
+		case models.CustomFieldVersion, models.CustomFieldMultiVersion:
+			var versions []*models.Version
+			resolve := func(item json.RawMessage) (string, error) {
+				ref, key, ok := scalar(item, "id", "name")
+				if !ok || ref == "" {
+					return "", fmt.Errorf("%s must name a version by id or name", field)
+				}
+				if versions == nil {
+					loaded, err := s.Store.ProjectVersions(ctx, projectID)
+					if err != nil {
+						return "", err
+					}
+					versions = loaded
+				}
+				for _, version := range versions {
+					if (key == "name" && version.Name == ref) || (key != "name" && version.ID == ref) {
+						return version.ID, nil
+					}
+				}
+				return "", fmt.Errorf("%s names the version %q, which is not a version of this project", field, ref)
+			}
+			if fieldType == models.CustomFieldVersion {
+				id, err := resolve(raw)
+				if err != nil {
+					return err
+				}
+				fields[field], _ = json.Marshal(id)
+				continue
+			}
+			ids := []string{}
+			for _, item := range list(raw) {
+				id, err := resolve(item)
+				if err != nil {
+					return err
+				}
+				ids = append(ids, id)
+			}
+			fields[field], _ = json.Marshal(ids)
 		case models.CustomFieldLabels:
 			labels := []string{}
 			for _, item := range list(raw) {

@@ -174,18 +174,18 @@ func TestJiraCustomFieldTypes(t *testing.T) {
 		return len(result["issues"].([]any))
 	}
 	for jql, want := range map[string]int{
-		region + ` = Europe`:                          1,
-		region + ` in cascadeOption(Europe, Berlin)`:  1,
-		region + ` in cascadeOption(Europe, Paris)`:   0,
-		region + ` in cascadeOption(Europe, none)`:    0,
-		reviewer + ` = currentUser()`:                 0,
-		watchers + ` = currentUser()`:                 1,
-		team + ` = "reviewers-` + stamp + `"`:         1,
-		team + ` = ` + groupID:                        1,
-		topics + ` = urgent`:                          1,
-		topics + ` in (frontend)`:                     0,
-		due + ` >= "2026-09-30"`:                      1,
-		due + ` < "2026-10-01"`:                       0,
+		region + ` = Europe`:                         1,
+		region + ` in cascadeOption(Europe, Berlin)`: 1,
+		region + ` in cascadeOption(Europe, Paris)`:  0,
+		region + ` in cascadeOption(Europe, none)`:   0,
+		reviewer + ` = currentUser()`:                0,
+		watchers + ` = currentUser()`:                1,
+		team + ` = "reviewers-` + stamp + `"`:        1,
+		team + ` = ` + groupID:                       1,
+		topics + ` = urgent`:                         1,
+		topics + ` in (frontend)`:                    0,
+		due + ` >= "2026-09-30"`:                     1,
+		due + ` < "2026-10-01"`:                      0,
 	} {
 		if got := search(admin, jql); got != want {
 			t.Fatalf("%s matched %d, want %d", jql, got, want)

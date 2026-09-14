@@ -343,6 +343,8 @@ func createFieldSchema(field models.CreateFieldMeta) map[string]any {
 		schema["type"], schema["items"] = "array", "group"
 	case "url":
 		schema["type"] = "string"
+	case "projectpicker":
+		schema["type"] = "project"
 	}
 	return schema
 }

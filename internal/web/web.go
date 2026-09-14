@@ -744,26 +744,147 @@ func (h *Handler) buildEditDialogView(ctx context.Context, wsID string, issue *m
 			view.SecurityLevels = append(view.SecurityLevels, models.WorkflowTransition{ID: lvl.ID, Name: lvl.Name})
 		}
 	}
+	choices, err := h.customFieldChoices(ctx, wsID, issue, customFields, members)
+	if err != nil {
+		return nil, err
+	}
 	for _, cf := range customFields {
 		value := ""
-		if raw, ok := issue.Fields[cf.ID]; ok {
-			if string(raw) == "null" {
-				view.CustomFields = append(view.CustomFields, models.CustomFieldView{ID: cf.ID, Name: cf.Name, Type: cf.Type, Description: cf.Description})
-				continue
-			}
+		if raw, ok := issue.Fields[cf.ID]; ok && string(raw) != "null" {
 			var text string
 			var list []string
-			if json.Unmarshal(raw, &text) == nil {
+			var cascade struct {
+				Parent string `json:"parent"`
+				Child  string `json:"child"`
+			}
+			switch {
+			case json.Unmarshal(raw, &text) == nil:
 				value = text
-			} else if json.Unmarshal(raw, &list) == nil {
+			case json.Unmarshal(raw, &list) == nil:
 				value = strings.Join(list, ",")
-			} else {
+			case json.Unmarshal(raw, &cascade) == nil && cascade.Parent != "":
+				value = cascade.Parent
+				if cascade.Child != "" {
+					value += ":" + cascade.Child
+				}
+			default:
 				value = string(raw)
 			}
 		}
-		view.CustomFields = append(view.CustomFields, models.CustomFieldView{ID: cf.ID, Name: cf.Name, Type: cf.Type, Description: cf.Description, Value: value})
+		fieldView := models.CustomFieldView{ID: cf.ID, Name: cf.Name, Type: cf.Type, Description: cf.Description, Value: value, Display: value, Options: choices[cf.ID]}
+		if len(fieldView.Options) > 0 && value != "" {
+			names := map[string]string{}
+			for _, option := range fieldView.Options {
+				names[option.ID] = option.Name
+			}
+			display := []string{}
+			for _, id := range strings.Split(value, ",") {
+				if name := names[id]; name != "" {
+					display = append(display, name)
+				} else {
+					display = append(display, id)
+				}
+			}
+			fieldView.Display = strings.Join(display, ", ")
+		}
+		view.CustomFields = append(view.CustomFields, fieldView)
 	}
 	return view, nil
+}
+
+// customFieldChoices lists what each picker custom field on a work item offers:
+// the options of its governing context (a cascading select's options followed
+// by each option with its children), site members, groups, projects, or the
+// work item's project versions.
+func (h *Handler) customFieldChoices(ctx context.Context, wsID string, issue *models.Issue, fields []*models.CustomField, members []*models.User) (map[string][]models.CreateFieldOption, error) {
+	choices := map[string][]models.CreateFieldOption{}
+	var contexts map[string]models.CustomFieldContextInfo
+	var catalog map[string]store.OptionCatalog
+	var groups, projects, versions []models.CreateFieldOption
+	for _, field := range fields {
+		switch field.Type {
+		case models.CustomFieldSelect, models.CustomFieldMultiSelect, models.CustomFieldCascadingSelect:
+			if contexts == nil {
+				byProject, err := h.Store.CustomFieldContextsByProject(ctx, wsID)
+				if err != nil {
+					return nil, err
+				}
+				contexts = byProject[issue.ProjectID][issue.IssueType.ID]
+				if contexts == nil {
+					contexts = map[string]models.CustomFieldContextInfo{}
+				}
+			}
+			options := contexts[field.ID].Options
+			if field.Type != models.CustomFieldCascadingSelect {
+				choices[field.ID] = options
+				continue
+			}
+			if catalog == nil {
+				loaded, err := h.Store.CustomFieldOptionCatalog(ctx, wsID, issue.ProjectID, issue.IssueType.ID)
+				if err != nil {
+					return nil, err
+				}
+				catalog = loaded
+			}
+			cascade := []models.CreateFieldOption{}
+			for _, parent := range options {
+				cascade = append(cascade, parent)
+				children := catalog[field.ID].Children[parent.ID]
+				names := make([]string, 0, len(children))
+				for name := range children {
+					names = append(names, name)
+				}
+				sort.Strings(names)
+				for _, name := range names {
+					cascade = append(cascade, models.CreateFieldOption{ID: parent.ID + ":" + children[name], Name: parent.Name + " › " + name})
+				}
+			}
+			choices[field.ID] = cascade
+		case models.CustomFieldUser, models.CustomFieldMultiUser:
+			for _, member := range members {
+				choices[field.ID] = append(choices[field.ID], models.CreateFieldOption{ID: member.ID, Name: member.DisplayName})
+			}
+		case models.CustomFieldGroup, models.CustomFieldMultiGroup:
+			if groups == nil {
+				siteGroups, err := h.Store.SiteGroups(ctx, wsID)
+				if err != nil {
+					return nil, err
+				}
+				groups = []models.CreateFieldOption{}
+				for _, group := range siteGroups {
+					groups = append(groups, models.CreateFieldOption{ID: group.ID, Name: group.Name})
+				}
+			}
+			choices[field.ID] = groups
+		case models.CustomFieldProject:
+			if projects == nil {
+				all, err := h.Store.ProjectsByWorkspace(ctx, wsID)
+				if err != nil {
+					return nil, err
+				}
+				projects = []models.CreateFieldOption{}
+				for _, project := range all {
+					projects = append(projects, models.CreateFieldOption{ID: project.ID, Name: project.Name + " (" + project.Key + ")"})
+				}
+			}
+			choices[field.ID] = projects
+		case models.CustomFieldVersion, models.CustomFieldMultiVersion:
+			if versions == nil {
+				all, err := h.Store.ProjectVersions(ctx, issue.ProjectID)
+				if err != nil {
+					return nil, err
+				}
+				versions = []models.CreateFieldOption{}
+				for _, version := range all {
+					if !version.Archived {
+						versions = append(versions, models.CreateFieldOption{ID: version.ID, Name: version.Name})
+					}
+				}
+			}
+			choices[field.ID] = versions
+		}
+	}
+	return choices, nil
 }
 
 func derefComments(in []*models.Comment) []models.Comment {
@@ -1179,7 +1300,7 @@ func encodeWebCustomField(fieldType, value string) (json.RawMessage, error) {
 		"option", models.CustomFieldSelect:
 		encoded, err := json.Marshal(value)
 		return encoded, err
-	case models.CustomFieldDate, models.CustomFieldURL, "user", models.CustomFieldUser, "group", models.CustomFieldGroup:
+	case models.CustomFieldDate, models.CustomFieldURL, "user", models.CustomFieldUser, "group", models.CustomFieldGroup, models.CustomFieldProject, "projectpicker", models.CustomFieldVersion:
 		return json.Marshal(value)
 	case models.CustomFieldCascadingSelect, "option-with-child":
 		parent, child, _ := strings.Cut(value, ":")
@@ -1194,7 +1315,7 @@ func encodeWebCustomField(fieldType, value string) (json.RawMessage, error) {
 			labels = append(labels, label)
 		}
 		return json.Marshal(labels)
-	case "users", models.CustomFieldMultiUser, "groups", models.CustomFieldMultiGroup, "options", models.CustomFieldMultiSelect:
+	case "users", models.CustomFieldMultiUser, "groups", models.CustomFieldMultiGroup, "options", models.CustomFieldMultiSelect, models.CustomFieldMultiVersion:
 		ids := []string{}
 		for _, id := range strings.Split(value, ",") {
 			if id = strings.TrimSpace(id); id != "" {
@@ -1921,8 +2042,13 @@ func (h *Handler) UpdateIssueField(w http.ResponseWriter, r *http.Request, key s
 		}
 		fieldID := strings.TrimPrefix(field, prefix)
 		encoded := json.RawMessage(strconv.Quote(value))
-		if definition, err := h.Store.CustomFieldByID(r.Context(), wsID, fieldID); err == nil && definition.Type == models.CustomFieldMultiSelect {
-			if encoded, err = encodeWebCustomField(definition.Type, value); err != nil {
+		if definition, err := h.Store.CustomFieldByID(r.Context(), wsID, fieldID); err == nil {
+			// A multiple choice posts one value per chosen entry; a blank value
+			// clears the field.
+			joined := strings.Join(r.PostForm["value"], ",")
+			if strings.TrimSpace(joined) == "" {
+				encoded = json.RawMessage("null")
+			} else if encoded, err = encodeWebCustomField(definition.Type, joined); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}

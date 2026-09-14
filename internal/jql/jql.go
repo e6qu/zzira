@@ -799,7 +799,8 @@ func WithCustomFields(base FieldResolver, fields []*models.CustomField) FieldRes
 		res.Columns[strings.ToLower(f.Name)] = col
 		switch f.Type {
 		case models.CustomFieldSelect, models.CustomFieldMultiSelect, models.CustomFieldCascadingSelect,
-			models.CustomFieldUser, models.CustomFieldMultiUser, models.CustomFieldGroup, models.CustomFieldMultiGroup, models.CustomFieldLabels:
+			models.CustomFieldUser, models.CustomFieldMultiUser, models.CustomFieldGroup, models.CustomFieldMultiGroup, models.CustomFieldLabels,
+			models.CustomFieldProject, models.CustomFieldVersion, models.CustomFieldMultiVersion:
 			if res.CustomValueFields == nil {
 				res.CustomValueFields = map[string]CustomValueField{}
 			}
@@ -2013,6 +2014,10 @@ func (c *compiler) customValueCandidates(field CustomValueField, value string) s
 			c.arg(field.ID) + " AND lower(o.value)=lower(" + c.arg(value) + ")))"
 	case models.CustomFieldGroup, models.CustomFieldMultiGroup:
 		return "(" + literal + " || ARRAY(SELECT g.id::text FROM groups g WHERE g.name=" + c.arg(value) + "))"
+	case models.CustomFieldProject:
+		return "(" + literal + " || ARRAY(SELECT p.id FROM projects p WHERE upper(p.key)=upper(" + c.arg(value) + ")))"
+	case models.CustomFieldVersion, models.CustomFieldMultiVersion:
+		return "(" + literal + " || ARRAY(SELECT v.id FROM project_versions v WHERE v.name=" + c.arg(value) + "))"
 	}
 	return literal
 }
@@ -2022,7 +2027,7 @@ func (c *compiler) customValueCandidates(field CustomValueField, value string) s
 func (c *compiler) customValueClause(field CustomValueField, cl Clause) string {
 	stored := "i.fields->'" + field.ID + "'"
 	switch field.Type {
-	case models.CustomFieldMultiSelect, models.CustomFieldMultiUser, models.CustomFieldMultiGroup, models.CustomFieldLabels:
+	case models.CustomFieldMultiSelect, models.CustomFieldMultiUser, models.CustomFieldMultiGroup, models.CustomFieldLabels, models.CustomFieldMultiVersion:
 		array := "COALESCE(CASE WHEN jsonb_typeof(" + stored + ")='array' THEN " + stored + " END,'[]'::jsonb)"
 		nonempty := "jsonb_array_length(" + array + ") > 0"
 		matches := func(values []string) string {
