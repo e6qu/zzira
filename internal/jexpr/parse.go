@@ -349,14 +349,23 @@ func (l *lexer) escape() (string, error) {
 		if l.off+4 > len(l.src) {
 			return "", &SyntaxError{Pos: start, Message: "Invalid unicode escape."}
 		}
-		code, err := strconv.ParseUint(l.src[l.off:l.off+4], 16, 32)
-		if err != nil {
-			return "", &SyntaxError{Pos: start, Message: "Invalid unicode escape."}
+		var code rune
+		for _, digit := range l.src[l.off : l.off+4] {
+			switch {
+			case digit >= '0' && digit <= '9':
+				code = code<<4 | (digit - '0')
+			case digit >= 'a' && digit <= 'f':
+				code = code<<4 | (digit - 'a' + 10)
+			case digit >= 'A' && digit <= 'F':
+				code = code<<4 | (digit - 'A' + 10)
+			default:
+				return "", &SyntaxError{Pos: start, Message: "Invalid unicode escape."}
+			}
 		}
 		for range 4 {
 			l.advance()
 		}
-		return string(rune(code)), nil
+		return string(code), nil
 	default:
 		return string(c), nil
 	}

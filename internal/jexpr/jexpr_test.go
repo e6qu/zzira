@@ -61,6 +61,7 @@ func TestEvaluatesTheLanguage(t *testing.T) {
 		`new Date().getFullYear()`:                            `2026`,
 		`new Date(2026, 0, 2).toISOString()`:                  `"2026-01-02T00:00:00.000Z"`,
 		`new Date('2026-09-14T10:00:00Z') < new Date()`:       `true`,
+		`'\u0041\u00e9' + "\t".length`:                        `"Aé1"`,
 		`!'' && !0 && !!'x'`:                                  `true`,
 		`1 == 1.0 && 'a' != 'b'`:                              `true`,
 		`// comment
