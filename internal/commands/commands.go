@@ -432,9 +432,19 @@ func (s *Service) enforceCustomFieldContexts(ctx context.Context, workspaceID, p
 		}
 		var values []string
 		var value string
+		var cascade struct {
+			Parent string `json:"parent"`
+			Child  string `json:"child"`
+		}
 		if err := json.Unmarshal(fields[field], &value); err == nil {
 			values = []string{value}
-		} else if err := json.Unmarshal(fields[field], &values); err != nil {
+		} else if err := json.Unmarshal(fields[field], &values); err == nil {
+		} else if err := json.Unmarshal(fields[field], &cascade); err == nil && cascade.Parent != "" {
+			values = []string{cascade.Parent}
+			if cascade.Child != "" {
+				values = append(values, cascade.Child)
+			}
+		} else {
 			return fmt.Errorf("%s must be an option id", field)
 		}
 		for _, value := range values {
@@ -446,71 +456,222 @@ func (s *Service) enforceCustomFieldContexts(ctx context.Context, workspaceID, p
 	return nil
 }
 
-// normalizeOptionFields turns the forms Jira accepts for a select or
-// multi-select value — an option id, {"id": ...} or {"value": ...}, and for a
-// multi-select a list of them — into the option ids a work item stores. A value
-// names an option of the context that governs the project and work type.
+// normalizeOptionFields turns the value forms Jira accepts for custom fields
+// into what a work item stores: option ids for select and multi-select fields
+// (an id, {"id"} or {"value"}), {"parent","child"} option ids for a cascading
+// select, account ids for user pickers ({"accountId"}), group ids for group
+// pickers ({"groupId"} or {"name"}), and lists for the multi-value fields, where
+// a single value is taken as a list of one.
 func (s *Service) normalizeOptionFields(ctx context.Context, workspaceID, projectID, issueTypeID string, fields map[string]json.RawMessage) error {
 	if len(fields) == 0 {
 		return nil
 	}
-	catalog, err := s.Store.CustomFieldOptionCatalog(ctx, workspaceID, projectID, issueTypeID)
+	definitions, err := s.Store.CustomFieldsForProject(ctx, projectID)
 	if err != nil {
 		return err
 	}
-	resolve := func(field string, raw json.RawMessage, options store.OptionCatalog) (string, error) {
-		var id string
-		if json.Unmarshal(raw, &id) == nil {
-			return id, nil
-		}
-		var number json.Number
-		if json.Unmarshal(raw, &number) == nil {
-			return number.String(), nil
-		}
-		var object struct {
-			ID    json.RawMessage `json:"id"`
-			Value *string         `json:"value"`
-		}
-		if json.Unmarshal(raw, &object) != nil {
-			return "", fmt.Errorf("%s must be an option id, {\"id\"} or {\"value\"}", field)
-		}
-		if len(object.ID) > 0 {
-			return strings.Trim(string(object.ID), `"`), nil
-		}
-		if object.Value != nil {
-			if optionID, ok := options.ByValue[*object.Value]; ok {
-				return optionID, nil
-			}
-			return "", fmt.Errorf("%s does not offer the option %q here", field, *object.Value)
-		}
-		return "", fmt.Errorf("%s must be an option id, {\"id\"} or {\"value\"}", field)
+	types := map[string]string{}
+	for _, definition := range definitions {
+		types[definition.ID] = definition.Type
 	}
-	for field, raw := range fields {
-		options, isOption := catalog[field]
-		if !isOption || !suppliedFieldValue(raw) {
-			continue
-		}
-		if !options.Multi {
-			id, err := resolve(field, raw, options)
+	var catalog map[string]store.OptionCatalog
+	loadCatalog := func() (map[string]store.OptionCatalog, error) {
+		if catalog == nil {
+			loaded, err := s.Store.CustomFieldOptionCatalog(ctx, workspaceID, projectID, issueTypeID)
 			if err != nil {
-				return err
+				return nil, err
 			}
-			fields[field], _ = json.Marshal(id)
-			continue
+			catalog = loaded
 		}
+		return catalog, nil
+	}
+	list := func(raw json.RawMessage) []json.RawMessage {
 		var items []json.RawMessage
 		if json.Unmarshal(raw, &items) != nil {
 			items = []json.RawMessage{raw}
 		}
-		ids := make([]string, 0, len(items))
-		for _, item := range items {
-			id, err := resolve(field, item, options)
+		return items
+	}
+	scalar := func(raw json.RawMessage, keys ...string) (string, string, bool) {
+		var text string
+		if json.Unmarshal(raw, &text) == nil {
+			return text, "", true
+		}
+		var number json.Number
+		if json.Unmarshal(raw, &number) == nil {
+			return number.String(), "", true
+		}
+		var object map[string]json.RawMessage
+		if json.Unmarshal(raw, &object) != nil {
+			return "", "", false
+		}
+		for _, key := range keys {
+			if value, ok := object[key]; ok && string(value) != "null" {
+				return strings.Trim(string(value), `"`), key, true
+			}
+		}
+		return "", "", false
+	}
+	for field, raw := range fields {
+		fieldType, known := types[field]
+		if !known || !suppliedFieldValue(raw) {
+			continue
+		}
+		switch fieldType {
+		case models.CustomFieldSelect, models.CustomFieldMultiSelect:
+			catalog, err := loadCatalog()
 			if err != nil {
 				return err
 			}
-			ids = append(ids, id)
+			options := catalog[field]
+			resolve := func(item json.RawMessage) (string, error) {
+				value, key, ok := scalar(item, "id", "value")
+				if !ok {
+					return "", fmt.Errorf("%s must be an option id, {\"id\"} or {\"value\"}", field)
+				}
+				if key != "value" {
+					return value, nil
+				}
+				if id, found := options.ByValue[value]; found {
+					return id, nil
+				}
+				return "", fmt.Errorf("%s does not offer the option %q here", field, value)
+			}
+			if fieldType == models.CustomFieldSelect {
+				id, err := resolve(raw)
+				if err != nil {
+					return err
+				}
+				fields[field], _ = json.Marshal(id)
+				continue
+			}
+			ids := []string{}
+			for _, item := range list(raw) {
+				id, err := resolve(item)
+				if err != nil {
+					return err
+				}
+				ids = append(ids, id)
+			}
+			fields[field], _ = json.Marshal(ids)
+		case models.CustomFieldCascadingSelect:
+			catalog, err := loadCatalog()
+			if err != nil {
+				return err
+			}
+			options := catalog[field]
+			var object struct {
+				Parent json.RawMessage `json:"parent"`
+				ID     json.RawMessage `json:"id"`
+				Value  *string         `json:"value"`
+				Child  json.RawMessage `json:"child"`
+			}
+			if json.Unmarshal(raw, &object) != nil {
+				return fmt.Errorf("%s must be an option with an optional child option", field)
+			}
+			parent := strings.Trim(string(object.Parent), `"`)
+			if parent == "" {
+				parent = strings.Trim(string(object.ID), `"`)
+			}
+			if parent == "" && object.Value != nil {
+				parent = options.ByValue[*object.Value]
+				if parent == "" {
+					return fmt.Errorf("%s does not offer the option %q here", field, *object.Value)
+				}
+			}
+			if parent == "" {
+				return fmt.Errorf("%s must name its option by id or value", field)
+			}
+			stored := map[string]string{"parent": parent}
+			if len(object.Child) > 0 && string(object.Child) != "null" {
+				child, key, ok := scalar(object.Child, "id", "value")
+				if !ok {
+					return fmt.Errorf("%s has a child option that is not an id, {\"id\"} or {\"value\"}", field)
+				}
+				if key == "value" {
+					child = options.Children[parent][child]
+					if child == "" {
+						return fmt.Errorf("%s does not offer that child option under the chosen option", field)
+					}
+				}
+				stored["child"] = child
+			}
+			fields[field], _ = json.Marshal(stored)
+		case models.CustomFieldUser, models.CustomFieldMultiUser:
+			resolve := func(item json.RawMessage) (string, error) {
+				accountID, _, ok := scalar(item, "accountId")
+				if !ok || accountID == "" {
+					return "", fmt.Errorf("%s must name a user by accountId", field)
+				}
+				if _, err := s.Store.MemberByID(ctx, workspaceID, accountID); err != nil {
+					return "", fmt.Errorf("%s names %q, who is not a user of this site", field, accountID)
+				}
+				return accountID, nil
+			}
+			if fieldType == models.CustomFieldUser {
+				accountID, err := resolve(raw)
+				if err != nil {
+					return err
+				}
+				fields[field], _ = json.Marshal(accountID)
+				continue
+			}
+			ids := []string{}
+			for _, item := range list(raw) {
+				accountID, err := resolve(item)
+				if err != nil {
+					return err
+				}
+				ids = append(ids, accountID)
+			}
+			fields[field], _ = json.Marshal(ids)
+		case models.CustomFieldGroup, models.CustomFieldMultiGroup:
+			resolve := func(item json.RawMessage) (string, error) {
+				value, key, ok := scalar(item, "groupId", "name")
+				if !ok || value == "" {
+					return "", fmt.Errorf("%s must name a group by groupId or name", field)
+				}
+				groupID, groupName := value, ""
+				if key == "name" {
+					groupID, groupName = "", value
+				}
+				group, err := s.Store.SiteGroupByIDOrName(ctx, workspaceID, groupID, groupName)
+				if err != nil && key == "" {
+					group, err = s.Store.SiteGroupByIDOrName(ctx, workspaceID, "", value)
+				}
+				if err != nil {
+					return "", fmt.Errorf("%s names the group %q, which does not exist", field, value)
+				}
+				return group.ID, nil
+			}
+			if fieldType == models.CustomFieldGroup {
+				groupID, err := resolve(raw)
+				if err != nil {
+					return err
+				}
+				fields[field], _ = json.Marshal(groupID)
+				continue
+			}
+			ids := []string{}
+			for _, item := range list(raw) {
+				groupID, err := resolve(item)
+				if err != nil {
+					return err
+				}
+				ids = append(ids, groupID)
+			}
+			fields[field], _ = json.Marshal(ids)
+		case models.CustomFieldLabels:
+			labels := []string{}
+			for _, item := range list(raw) {
+				var label string
+				if json.Unmarshal(item, &label) != nil {
+					return fmt.Errorf("%s must be a list of labels", field)
+				}
+				labels = append(labels, label)
+			}
+			fields[field], _ = json.Marshal(labels)
 		}
-		fields[field], _ = json.Marshal(ids)
 	}
 	return nil
 }

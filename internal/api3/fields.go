@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/e6qu/zzira/internal/models"
@@ -15,31 +16,76 @@ import (
 // this product has. A client configured against Jira sends the long key, so
 // accepting only the short name would reject every real request.
 var jiraFieldTypeKeys = map[string]string{
-	"com.atlassian.jira.plugin.system.customfieldtypes:textfield":       models.CustomFieldText,
-	"com.atlassian.jira.plugin.system.customfieldtypes:textarea":        models.CustomFieldText,
-	"com.atlassian.jira.plugin.system.customfieldtypes:readonlyfield":   models.CustomFieldText,
-	"com.atlassian.jira.plugin.system.customfieldtypes:url":             models.CustomFieldText,
-	"com.atlassian.jira.plugin.system.customfieldtypes:float":           models.CustomFieldNumber,
-	"com.atlassian.jira.plugin.system.customfieldtypes:importid":        models.CustomFieldNumber,
-	"com.atlassian.jira.plugin.system.customfieldtypes:datetime":        models.CustomFieldDatetime,
-	"com.atlassian.jira.plugin.system.customfieldtypes:datepicker":      models.CustomFieldDatetime,
-	"com.atlassian.jira.plugin.system.customfieldtypes:select":          models.CustomFieldSelect,
-	"com.atlassian.jira.plugin.system.customfieldtypes:radiobuttons":    models.CustomFieldSelect,
-	"com.atlassian.jira.plugin.system.customfieldtypes:multiselect":     models.CustomFieldMultiSelect,
-	"com.atlassian.jira.plugin.system.customfieldtypes:multicheckboxes": models.CustomFieldMultiSelect,
+	"com.atlassian.jira.plugin.system.customfieldtypes:textfield":        models.CustomFieldText,
+	"com.atlassian.jira.plugin.system.customfieldtypes:textarea":         models.CustomFieldText,
+	"com.atlassian.jira.plugin.system.customfieldtypes:readonlyfield":    models.CustomFieldText,
+	"com.atlassian.jira.plugin.system.customfieldtypes:url":              models.CustomFieldURL,
+	"com.atlassian.jira.plugin.system.customfieldtypes:float":            models.CustomFieldNumber,
+	"com.atlassian.jira.plugin.system.customfieldtypes:importid":         models.CustomFieldNumber,
+	"com.atlassian.jira.plugin.system.customfieldtypes:datetime":         models.CustomFieldDatetime,
+	"com.atlassian.jira.plugin.system.customfieldtypes:datepicker":       models.CustomFieldDate,
+	"com.atlassian.jira.plugin.system.customfieldtypes:select":           models.CustomFieldSelect,
+	"com.atlassian.jira.plugin.system.customfieldtypes:radiobuttons":     models.CustomFieldSelect,
+	"com.atlassian.jira.plugin.system.customfieldtypes:multiselect":      models.CustomFieldMultiSelect,
+	"com.atlassian.jira.plugin.system.customfieldtypes:multicheckboxes":  models.CustomFieldMultiSelect,
+	"com.atlassian.jira.plugin.system.customfieldtypes:cascadingselect":  models.CustomFieldCascadingSelect,
+	"com.atlassian.jira.plugin.system.customfieldtypes:userpicker":       models.CustomFieldUser,
+	"com.atlassian.jira.plugin.system.customfieldtypes:multiuserpicker":  models.CustomFieldMultiUser,
+	"com.atlassian.jira.plugin.system.customfieldtypes:grouppicker":      models.CustomFieldGroup,
+	"com.atlassian.jira.plugin.system.customfieldtypes:multigrouppicker": models.CustomFieldMultiGroup,
+	"com.atlassian.jira.plugin.system.customfieldtypes:labels":           models.CustomFieldLabels,
 }
 
 // resolveFieldType accepts either this product's short type name or Jira's
 // canonical key, and reports whether the type is one this product can serve.
 func resolveFieldType(requested string) (string, bool) {
-	switch requested {
-	case models.CustomFieldText, models.CustomFieldNumber, models.CustomFieldDatetime, models.CustomFieldSelect, models.CustomFieldMultiSelect:
+	if _, ok := models.CustomFieldTypeKeys[requested]; ok {
 		return requested, true
 	}
 	if mapped, ok := jiraFieldTypeKeys[requested]; ok {
 		return mapped, true
 	}
 	return "", false
+}
+
+// customFieldSchema is Jira's schema for a custom field: the value type, the
+// item type of a list, the type key and the numeric id.
+func customFieldSchema(field *models.CustomField) map[string]any {
+	schema := map[string]any{}
+	switch field.Type {
+	case models.CustomFieldText, models.CustomFieldURL:
+		schema["type"] = "string"
+	case models.CustomFieldSelect:
+		schema["type"] = "option"
+	case models.CustomFieldMultiSelect:
+		schema["type"], schema["items"] = "array", "option"
+	case models.CustomFieldCascadingSelect:
+		schema["type"] = "option-with-child"
+	case models.CustomFieldUser:
+		schema["type"] = "user"
+	case models.CustomFieldMultiUser:
+		schema["type"], schema["items"] = "array", "user"
+	case models.CustomFieldGroup:
+		schema["type"] = "group"
+	case models.CustomFieldMultiGroup:
+		schema["type"], schema["items"] = "array", "group"
+	case models.CustomFieldLabels:
+		schema["type"], schema["items"] = "array", "string"
+	default:
+		schema["type"] = field.Type
+	}
+	custom := field.TypeKey
+	if custom == "" {
+		custom = models.CustomFieldTypeKeys[field.Type]
+	}
+	if field.AppKey != "" {
+		custom = field.AppKey + "__" + field.AppModuleKey
+	}
+	schema["custom"] = custom
+	if number, err := strconv.ParseInt(strings.TrimPrefix(field.ID, "customfield_"), 10, 64); err == nil {
+		schema["customId"] = number
+	}
+	return schema
 }
 
 func fieldError(w http.ResponseWriter, err error) {

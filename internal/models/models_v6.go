@@ -14,6 +14,15 @@ const (
 	CustomFieldSelect   = "select"
 	// CustomFieldMultiSelect holds several options of its context.
 	CustomFieldMultiSelect = "multiselect"
+	// CustomFieldCascadingSelect holds an option and one of its child options.
+	CustomFieldCascadingSelect = "cascadingselect"
+	CustomFieldDate            = "date"
+	CustomFieldURL             = "url"
+	CustomFieldUser            = "userpicker"
+	CustomFieldMultiUser       = "multiuserpicker"
+	CustomFieldGroup           = "grouppicker"
+	CustomFieldMultiGroup      = "multigrouppicker"
+	CustomFieldLabels          = "labels"
 )
 
 // Tombstone actions are per-user: only excluded users receive them, telling
@@ -67,6 +76,31 @@ type CustomField struct {
 	Active            bool   `json:"-"`
 	SearcherKey       string `json:"-"`
 	Trashed           bool   `json:"-"`
+	// TypeKey is the Jira custom field type key the field was created with.
+	TypeKey string `json:"-"`
+}
+
+// CustomFieldTypeKeys is the Jira custom field type key each type is created
+// with when a client names it by its short name.
+var CustomFieldTypeKeys = map[string]string{
+	CustomFieldText:            "com.atlassian.jira.plugin.system.customfieldtypes:textfield",
+	CustomFieldNumber:          "com.atlassian.jira.plugin.system.customfieldtypes:float",
+	CustomFieldDatetime:        "com.atlassian.jira.plugin.system.customfieldtypes:datetime",
+	CustomFieldDate:            "com.atlassian.jira.plugin.system.customfieldtypes:datepicker",
+	CustomFieldURL:             "com.atlassian.jira.plugin.system.customfieldtypes:url",
+	CustomFieldSelect:          "com.atlassian.jira.plugin.system.customfieldtypes:select",
+	CustomFieldMultiSelect:     "com.atlassian.jira.plugin.system.customfieldtypes:multiselect",
+	CustomFieldCascadingSelect: "com.atlassian.jira.plugin.system.customfieldtypes:cascadingselect",
+	CustomFieldUser:            "com.atlassian.jira.plugin.system.customfieldtypes:userpicker",
+	CustomFieldMultiUser:       "com.atlassian.jira.plugin.system.customfieldtypes:multiuserpicker",
+	CustomFieldGroup:           "com.atlassian.jira.plugin.system.customfieldtypes:grouppicker",
+	CustomFieldMultiGroup:      "com.atlassian.jira.plugin.system.customfieldtypes:multigrouppicker",
+	CustomFieldLabels:          "com.atlassian.jira.plugin.system.customfieldtypes:labels",
+}
+
+// IsOptionFieldType reports whether a custom field type takes options.
+func IsOptionFieldType(fieldType string) bool {
+	return fieldType == CustomFieldSelect || fieldType == CustomFieldMultiSelect || fieldType == CustomFieldCascadingSelect
 }
 
 type Webhook struct {
@@ -265,9 +299,11 @@ type CustomFieldContext struct {
 type CustomFieldOption struct {
 	ID        string `json:"id"`
 	ContextID string `json:"-"`
-	Value     string `json:"value"`
-	Disabled  bool   `json:"disabled"`
-	Position  int    `json:"-"`
+	// ParentID is the option a cascading select's child option belongs to.
+	ParentID string `json:"optionId,omitempty"`
+	Value    string `json:"value"`
+	Disabled bool   `json:"disabled"`
+	Position int    `json:"-"`
 }
 
 // VersionRelatedWork is one external link attached to a release.

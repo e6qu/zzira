@@ -650,22 +650,28 @@ func (s *Store) CreateCustomField(ctx context.Context, id, name, fieldType, desc
 // CreateWorkspaceCustomField registers an administrator-created field for one
 // workspace. Legacy fields with no workspace remain available to every site.
 func (s *Store) CreateWorkspaceCustomField(ctx context.Context, workspaceID, id, name, fieldType, description string) (*models.CustomField, error) {
+	return s.CreateWorkspaceCustomFieldOfKind(ctx, workspaceID, id, name, fieldType, models.CustomFieldTypeKeys[fieldType], description)
+}
+
+// CreateWorkspaceCustomFieldOfKind registers a field with the Jira type key a
+// client created it with.
+func (s *Store) CreateWorkspaceCustomFieldOfKind(ctx context.Context, workspaceID, id, name, fieldType, typeKey, description string) (*models.CustomField, error) {
 	_, err := s.Pool.Exec(ctx,
-		`INSERT INTO custom_fields (id,name,type,description,workspace_id) VALUES ($1,$2,$3,$4,$5)`,
-		id, name, fieldType, description, workspaceID)
+		`INSERT INTO custom_fields (id,name,type,description,workspace_id,type_key) VALUES ($1,$2,$3,$4,$5,$6)`,
+		id, name, fieldType, description, workspaceID, typeKey)
 	if err != nil {
 		return nil, err
 	}
-	return &models.CustomField{ID: id, Name: name, Type: fieldType, Description: description, WorkspaceID: workspaceID, Active: true}, nil
+	return &models.CustomField{ID: id, Name: name, Type: fieldType, Description: description, WorkspaceID: workspaceID, Active: true, TypeKey: typeKey}, nil
 }
 
-const customFieldSelect = `SELECT cf.id,cf.name,cf.type,COALESCE(cf.description,''),COALESCE(cf.workspace_id,''),COALESCE(cf.app_installation_id,''),COALESCE(ai.app_key,''),cf.app_module_key,cf.dynamic,cf.active,cf.searcher_key,cf.trashed_at IS NOT NULL FROM custom_fields cf LEFT JOIN app_installations ai ON ai.id=cf.app_installation_id `
+const customFieldSelect = `SELECT cf.id,cf.name,cf.type,COALESCE(cf.description,''),COALESCE(cf.workspace_id,''),COALESCE(cf.app_installation_id,''),COALESCE(ai.app_key,''),cf.app_module_key,cf.dynamic,cf.active,cf.searcher_key,cf.trashed_at IS NOT NULL,cf.type_key FROM custom_fields cf LEFT JOIN app_installations ai ON ai.id=cf.app_installation_id `
 
 func scanCustomFields(rows pgx.Rows) ([]*models.CustomField, error) {
 	var out []*models.CustomField
 	for rows.Next() {
 		f := &models.CustomField{}
-		if err := rows.Scan(&f.ID, &f.Name, &f.Type, &f.Description, &f.WorkspaceID, &f.AppInstallationID, &f.AppKey, &f.AppModuleKey, &f.Dynamic, &f.Active, &f.SearcherKey, &f.Trashed); err != nil {
+		if err := rows.Scan(&f.ID, &f.Name, &f.Type, &f.Description, &f.WorkspaceID, &f.AppInstallationID, &f.AppKey, &f.AppModuleKey, &f.Dynamic, &f.Active, &f.SearcherKey, &f.Trashed, &f.TypeKey); err != nil {
 			return nil, err
 		}
 		out = append(out, f)

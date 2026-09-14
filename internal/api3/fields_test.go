@@ -78,7 +78,7 @@ func TestFieldOperations(t *testing.T) {
 	if err := json.Unmarshal(created.Body.Bytes(), &field); err != nil || field.ID == "" {
 		t.Fatalf("created field: %v %s", err, created.Body.String())
 	}
-	call(adminID, "POST", "/rest/api/3/field", `{"name":"Nonsense","type":"com.atlassian.jira.plugin.system.customfieldtypes:cascadingselect"}`, 400)
+	call(adminID, "POST", "/rest/api/3/field", `{"name":"Nonsense","type":"com.atlassian.jira.plugin.system.customfieldtypes:daterange"}`, 400)
 
 	// Field discovery reports the system fields the search resolves through,
 	// not a shorter hand-written list.

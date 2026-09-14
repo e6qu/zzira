@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"net/url"
 	"reflect"
 	"slices"
 	"strconv"
@@ -279,6 +280,58 @@ func (s *Service) validateCustomFields(ctx context.Context, projectID string, va
 					return fmt.Errorf("custom field %q must list each option once", id)
 				}
 				seen[value] = true
+			}
+		case models.CustomFieldMultiUser, models.CustomFieldMultiGroup:
+			var values []string
+			if err := json.Unmarshal(raw, &values); err != nil {
+				return fmt.Errorf("custom field %q must be a list of ids", id)
+			}
+			seen := map[string]bool{}
+			for _, value := range values {
+				if value == "" || seen[value] {
+					return fmt.Errorf("custom field %q must list each value once", id)
+				}
+				seen[value] = true
+			}
+		case models.CustomFieldUser, models.CustomFieldGroup:
+			var value string
+			if err := json.Unmarshal(raw, &value); err != nil || value == "" {
+				return fmt.Errorf("custom field %q must be an id", id)
+			}
+		case models.CustomFieldCascadingSelect:
+			var value struct {
+				Parent string `json:"parent"`
+				Child  string `json:"child"`
+			}
+			if err := json.Unmarshal(raw, &value); err != nil || value.Parent == "" {
+				return fmt.Errorf("custom field %q must be an option with an optional child option", id)
+			}
+		case models.CustomFieldLabels:
+			var labels []string
+			if err := json.Unmarshal(raw, &labels); err != nil {
+				return fmt.Errorf("custom field %q must be a list of labels", id)
+			}
+			for _, label := range labels {
+				if label == "" || len(label) > 255 || strings.ContainsAny(label, " \t\n") {
+					return fmt.Errorf("custom field %q labels must be 1 to 255 characters without spaces", id)
+				}
+			}
+		case models.CustomFieldDate:
+			var value string
+			if err := json.Unmarshal(raw, &value); err != nil {
+				return fmt.Errorf("custom field %q must be a date", id)
+			}
+			if _, err := time.Parse("2006-01-02", value); err != nil {
+				return fmt.Errorf("custom field %q must be a date in yyyy-MM-dd form", id)
+			}
+		case models.CustomFieldURL:
+			var value string
+			if err := json.Unmarshal(raw, &value); err != nil {
+				return fmt.Errorf("custom field %q must be a URL", id)
+			}
+			parsed, err := url.Parse(value)
+			if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || len(value) > 2048 {
+				return fmt.Errorf("custom field %q must be an absolute http or https URL", id)
 			}
 		default:
 			return fmt.Errorf("custom field %q has unsupported type %q", id, field.Type)

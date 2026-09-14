@@ -11,11 +11,11 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const customFieldOptionColumns = `id::text,context_id::text,value,disabled,position`
+const customFieldOptionColumns = `id::text,context_id::text,value,disabled,position,COALESCE(parent_id::text,'')`
 
 func scanCustomFieldOption(row pgx.Row) (models.CustomFieldOption, error) {
 	option := models.CustomFieldOption{}
-	err := row.Scan(&option.ID, &option.ContextID, &option.Value, &option.Disabled, &option.Position)
+	err := row.Scan(&option.ID, &option.ContextID, &option.Value, &option.Disabled, &option.Position, &option.ParentID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return option, ErrFieldContextNotFound
 	}
@@ -66,7 +66,7 @@ func (s *Store) CustomFieldOption(ctx context.Context, workspaceID, optionID str
 	}
 	// The joined tables all have an id column, so every column is qualified.
 	return scanCustomFieldOption(s.Pool.QueryRow(ctx, `SELECT
-		o.id::text,o.context_id::text,o.value,o.disabled,o.position
+		o.id::text,o.context_id::text,o.value,o.disabled,o.position,COALESCE(o.parent_id::text,'')
 		FROM custom_field_options o
 		JOIN custom_field_contexts c ON c.id=o.context_id
 		JOIN custom_fields f ON f.id=c.field_id
@@ -83,13 +83,24 @@ func selectFieldTx(ctx context.Context, tx pgx.Tx, workspaceID, fieldID string) 
 	if err != nil {
 		return err
 	}
-	if fieldType != models.CustomFieldSelect && fieldType != models.CustomFieldMultiSelect {
-		return fmt.Errorf("%w: only a select or multi-select custom field has options", ErrFieldContextValidation)
+	if !models.IsOptionFieldType(fieldType) {
+		return fmt.Errorf("%w: only a select, multi-select or cascading select custom field has options", ErrFieldContextValidation)
 	}
 	return nil
 }
 
 func (s *Store) CreateCustomFieldOptions(ctx context.Context, workspaceID, actorID, fieldID, contextID string, values []string) ([]models.CustomFieldOption, error) {
+	options := make([]models.CustomFieldOption, 0, len(values))
+	for _, value := range values {
+		options = append(options, models.CustomFieldOption{Value: value})
+	}
+	return s.CreateCustomFieldOptionsWithParents(ctx, workspaceID, actorID, fieldID, contextID, options)
+}
+
+// CreateCustomFieldOptionsWithParents adds options to a context. An option with
+// a parent is a cascading select's child of a first-level option in the same
+// context.
+func (s *Store) CreateCustomFieldOptionsWithParents(ctx context.Context, workspaceID, actorID, fieldID, contextID string, options []models.CustomFieldOption) ([]models.CustomFieldOption, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -105,15 +116,33 @@ func (s *Store) CreateCustomFieldOptions(ctx context.Context, workspaceID, actor
 	if err != nil {
 		return nil, err
 	}
+	var fieldType string
+	if err = tx.QueryRow(ctx, `SELECT type FROM custom_fields WHERE id=$1`, fieldID).Scan(&fieldType); err != nil {
+		return nil, err
+	}
 	created := []models.CustomFieldOption{}
-	for _, value := range values {
-		value = strings.TrimSpace(value)
+	for _, input := range options {
+		value := strings.TrimSpace(input.Value)
 		if value == "" || len(value) > 255 {
 			return nil, fmt.Errorf("%w: an option value must contain 1 to 255 characters", ErrFieldContextValidation)
 		}
-		option, insertErr := scanCustomFieldOption(tx.QueryRow(ctx, `INSERT INTO custom_field_options(context_id,value,position)
-			VALUES($1,$2,COALESCE((SELECT max(position)+1 FROM custom_field_options WHERE context_id=$1),0))
-			RETURNING `+customFieldOptionColumns, found.ID, value))
+		var parent any
+		if input.ParentID != "" {
+			if fieldType != models.CustomFieldCascadingSelect {
+				return nil, fmt.Errorf("%w: only a cascading select option can have a parent option", ErrFieldContextValidation)
+			}
+			var parentOfParent *int64
+			if err := tx.QueryRow(ctx, `SELECT parent_id FROM custom_field_options WHERE context_id=$1 AND id::text=$2`, found.ID, input.ParentID).Scan(&parentOfParent); err != nil {
+				return nil, fmt.Errorf("%w: the parent option %s is not in this context", ErrFieldContextValidation, input.ParentID)
+			}
+			if parentOfParent != nil {
+				return nil, fmt.Errorf("%w: a cascading select has two levels of options", ErrFieldContextValidation)
+			}
+			parent = input.ParentID
+		}
+		option, insertErr := scanCustomFieldOption(tx.QueryRow(ctx, `INSERT INTO custom_field_options(context_id,value,position,parent_id)
+			VALUES($1,$2,COALESCE((SELECT max(position)+1 FROM custom_field_options WHERE context_id=$1),0),$3::bigint)
+			RETURNING `+customFieldOptionColumns, found.ID, value, parent))
 		if isUniqueViolation(insertErr) {
 			return nil, fmt.Errorf("%w: option %q already exists in this context", ErrFieldContextConflict, value)
 		}
