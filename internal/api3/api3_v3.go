@@ -58,6 +58,13 @@ func (h *Handler) issueWorklogRoute(w http.ResponseWriter, r *http.Request, idOr
 		writeJerr(w, e)
 		return
 	}
+	// Changing logged work on a work item that is not editable needs an app's
+	// overrideEditableFlag.
+	ctx, e := h.requestOverrides(r, wsID, userID, "overrideEditableFlag")
+	if e != nil {
+		writeJerr(w, e)
+		return
+	}
 	switch {
 	case len(sub) == 0 && r.Method == http.MethodGet:
 		worklogs, err := h.Store.WorklogsByIssue(r.Context(), issue.ID)
@@ -98,7 +105,7 @@ func (h *Handler) issueWorklogRoute(w http.ResponseWriter, r *http.Request, idOr
 			jiraFieldError(w, http.StatusBadRequest, map[string]string{"timeSpentSeconds": "A positive timeSpentSeconds is required."})
 			return
 		}
-		wl, _, err := h.Commands.AddWorklogWithEstimate(r.Context(), userID, wsID, issue.ID, req.Comment, req.TimeSpentSeconds, estimate)
+		wl, _, err := h.Commands.AddWorklogWithEstimate(ctx, userID, wsID, issue.ID, req.Comment, req.TimeSpentSeconds, estimate)
 		if err != nil {
 			worklogCommandError(w, err)
 			return
@@ -121,7 +128,7 @@ func (h *Handler) issueWorklogRoute(w http.ResponseWriter, r *http.Request, idOr
 		if !ok {
 			return
 		}
-		if _, err := h.Commands.DeleteWorklogWithEstimate(r.Context(), userID, wsID, wl.ID, estimate); err != nil {
+		if _, err := h.Commands.DeleteWorklogWithEstimate(ctx, userID, wsID, wl.ID, estimate); err != nil {
 			worklogCommandError(w, err)
 			return
 		}
@@ -154,9 +161,9 @@ func (h *Handler) issueWorklogRoute(w http.ResponseWriter, r *http.Request, idOr
 			spent := int(seconds)
 			request.TimeSpentSeconds = &spent
 		}
-		updated, _, err := h.Commands.UpdateWorklog(r.Context(), userID, wsID, wl.ID, request.Comment, request.TimeSpentSeconds, estimate)
+		updated, _, err := h.Commands.UpdateWorklog(ctx, userID, wsID, wl.ID, request.Comment, request.TimeSpentSeconds, estimate)
 		if err != nil {
-			if errors.Is(err, commands.ErrWorklogPermission) {
+			if errors.Is(err, commands.ErrWorklogPermission) || errors.Is(err, commands.ErrIssueNotEditable) {
 				worklogCommandError(w, err)
 				return
 			}
@@ -176,7 +183,7 @@ func (h *Handler) issueWorklogRoute(w http.ResponseWriter, r *http.Request, idOr
 			return
 		}
 		for _, wl := range worklogs {
-			if _, err := h.Commands.DeleteWorklogWithEstimate(r.Context(), userID, wsID, wl.ID, estimate); err != nil {
+			if _, err := h.Commands.DeleteWorklogWithEstimate(ctx, userID, wsID, wl.ID, estimate); err != nil {
 				worklogCommandError(w, err)
 				return
 			}
@@ -216,7 +223,11 @@ func (h *Handler) issueWorklogRoute(w http.ResponseWriter, r *http.Request, idOr
 			}
 			storedIDs = append(storedIDs, wl.ID)
 		}
-		if err := h.Store.MoveWorklogs(r.Context(), userID, wsID, issue.ID, target.ID, storedIDs); err != nil {
+		if err := h.Commands.MoveWorklogs(ctx, userID, wsID, issue, target, storedIDs); err != nil {
+			if errors.Is(err, commands.ErrWorklogPermission) || errors.Is(err, commands.ErrIssueNotEditable) {
+				worklogCommandError(w, err)
+				return
+			}
 			worklogError(w, err)
 			return
 		}
@@ -1008,6 +1019,10 @@ func (h *Handler) worklogTimeTracking(w http.ResponseWriter, r *http.Request, wo
 func worklogCommandError(w http.ResponseWriter, err error) {
 	if errors.Is(err, commands.ErrWorklogPermission) {
 		jiraError(w, http.StatusForbidden, "You do not have permission to change work logged on this work item.")
+		return
+	}
+	if errors.Is(err, commands.ErrIssueNotEditable) {
+		jiraError(w, http.StatusBadRequest, "You cannot change work logged on this work item because it is not editable in its current status.")
 		return
 	}
 	jiraError(w, http.StatusBadRequest, err.Error())

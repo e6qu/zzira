@@ -92,7 +92,9 @@ type workflowTransitionView struct {
 const workflowAnyStatus = "any"
 
 type workflowNodeView struct {
-	Status      models.Status
+	Status models.Status
+	// Editable is false when the status sets jira.issue.editable to false.
+	Editable    bool
 	X           int
 	Y           int
 	Transitions []workflowTransitionView
@@ -889,6 +891,51 @@ func (h *Handler) SaveWorkflowLayout(w http.ResponseWriter, r *http.Request, wor
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// SaveWorkflowStatusEditable sets whether work items in a workflow status can
+// be edited, through Jira's jira.issue.editable status property, on the draft.
+func (h *Handler) SaveWorkflowStatusEditable(w http.ResponseWriter, r *http.Request, workflowID, statusID string) {
+	_, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	if workflowID == workflow.Default().ID {
+		http.Error(w, "the built-in workflow is read-only", http.StatusBadRequest)
+		return
+	}
+	wf, err := h.Store.WorkflowDraftByID(r.Context(), workspaceID, workflowID)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if !workflowStatusIDs(wf)[statusID] {
+		http.Error(w, "status is not part of this workflow", http.StatusBadRequest)
+		return
+	}
+	editable := r.PostFormValue("editable") == "true"
+	index := slices.IndexFunc(wf.Statuses, func(status workflow.StatusLayout) bool { return status.StatusReference == statusID })
+	if index < 0 {
+		wf.Statuses = append(wf.Statuses, workflow.StatusLayout{StatusReference: statusID, Properties: map[string]string{}})
+		index = len(wf.Statuses) - 1
+	}
+	properties := map[string]string{}
+	for key, value := range wf.Statuses[index].Properties {
+		if key != workflow.PropertyIssueEditableLegacy {
+			properties[key] = value
+		}
+	}
+	if editable {
+		delete(properties, workflow.PropertyIssueEditable)
+	} else {
+		properties[workflow.PropertyIssueEditable] = "false"
+	}
+	wf.Statuses[index].Properties = properties
+	if err := h.Store.SaveWorkflowDraft(r.Context(), workspaceID, wf); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	http.Redirect(w, r, "/settings/workflows/"+workflowID, http.StatusSeeOther)
+}
+
 func (h *Handler) CreateWorkflow(w http.ResponseWriter, r *http.Request) {
 	_, wsID, ok := h.requireAdminPage(w, r)
 	if !ok || !parseForm(w, r) {
@@ -1322,7 +1369,7 @@ func workflowDesignerMap(wf workflow.Workflow, statuses []models.Status) ([]work
 				transitions = append(transitions, workflowTransitionView{ID: transition.ID, Name: transition.Name, To: statusByID[transition.To], ScreenFields: transition.ScreenFields(), RuleSummary: workflowRuleSummary(transition)})
 			}
 		}
-		nodes = append(nodes, workflowNodeView{Status: status, X: x, Y: y, Transitions: transitions})
+		nodes = append(nodes, workflowNodeView{Status: status, Editable: wf.StatusEditable(status.ID), X: x, Y: y, Transitions: transitions})
 		maxX, maxY = max(maxX, x), max(maxY, y)
 	}
 	edges := make([]workflowEdgeView, 0, len(wf.Transitions))

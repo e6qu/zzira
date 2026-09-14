@@ -1559,10 +1559,11 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/editable_overrides_test.go",
         "internal/api3/app_field_options_test.go",
         "docs/APP_FIELD_OPTIONS.md"
       ],
-      "notes": "The deselect is tested end to end: it queues an ordinary bulk edit, answers 303 with the task, and the work item ends on its replacement; a self, unknown or unselectable replacement is refused. overrideScreenSecurity and overrideEditableFlag remain."
+      "notes": "The deselect is tested end to end: it queues an ordinary bulk edit, answers 303 with the task, and the work item ends on its replacement; a self, unknown or unselectable replacement is refused. overrideScreenSecurity and overrideEditableFlag, which only Connect and Forge apps with Administer Jira may pass (others get 403), let the task set hidden fields and change work items that are not editable."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/field/{id}",
@@ -2394,12 +2395,13 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/editable_overrides_test.go",
         "internal/api3/issue_operations.go",
         "internal/api3/api3.go",
         "internal/api3/issue_surface_test.go",
         "docs/ISSUE_SURFACE.md"
       ],
-      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules. A status with jira.issue.editable false refuses edits with 400; overrideScreenSecurity (hidden fields) and overrideEditableFlag are honoured only for Connect and Forge apps with Administer Jira, and refused with 403 for anyone else."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/issue/{issueIdOrKey}/assignee",
@@ -2510,12 +2512,13 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/editable_overrides_test.go",
         "internal/api3/issue_comments.go",
         "internal/store/jira_comments.go",
         "internal/api3/issue_surface_test.go",
         "docs/ISSUE_SURFACE.md"
       ],
-      "notes": "Numeric comment ids, paging and ordering, group and role visibility, edit and delete by all/own permissions, per-issue limit and bulk list."
+      "notes": "Numeric comment ids, paging and ordering, group and role visibility, edit and delete by all/own permissions, per-issue limit and bulk list. A status with jira.issue.editable false refuses the change with 400 unless a Connect or Forge app with Administer Jira passes overrideEditableFlag; anyone else passing it gets 403."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issue/{issueIdOrKey}/editmeta",
@@ -2523,12 +2526,13 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/editable_overrides_test.go",
         "internal/api3/issue_operations.go",
         "internal/api3/api3.go",
         "internal/api3/issue_surface_test.go",
         "docs/ISSUE_SURFACE.md"
       ],
-      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules. Edit metadata lists no fields while the status sets jira.issue.editable false, unless a Connect or Forge app with Administer Jira passes overrideEditableFlag; overrideScreenSecurity adds the fields the field configuration hides; anyone else passing either gets 403."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/issue/{issueIdOrKey}/notify",
@@ -2787,10 +2791,11 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/editable_overrides_test.go",
         "internal/api3/worklogs_test.go",
         "docs/WORKLOGS.md"
       ],
-      "notes": "Removing every worklog on a work item is tested."
+      "notes": "Removing every worklog on a work item is tested. A status with jira.issue.editable false refuses the change with 400 unless a Connect or Forge app with Administer Jira passes overrideEditableFlag; anyone else passing it gets 403."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issue/{issueIdOrKey}/worklog",
@@ -2809,12 +2814,13 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/editable_overrides_test.go",
         "internal/api3/worklogs_test.go",
         "docs/WORKLOGS.md",
         "internal/api3/time_tracking_test.go",
         "docs/TIME_TRACKING.md"
       ],
-      "notes": "Logging work as timeSpent or timeSpentSeconds is tested, including the rejection of a non-positive time; adjustEstimate auto, new, manual with reduceBy, and leave adjust the estimate of work left, and Work on issues is required; notifyUsers controls the work logged event sent through the project's notification scheme."
+      "notes": "Logging work as timeSpent or timeSpentSeconds is tested, including the rejection of a non-positive time; adjustEstimate auto, new, manual with reduceBy, and leave adjust the estimate of work left, and Work on issues is required; notifyUsers controls the work logged event sent through the project's notification scheme. A status with jira.issue.editable false refuses the change with 400 unless a Connect or Forge app with Administer Jira passes overrideEditableFlag; anyone else passing it gets 403."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/issue/{issueIdOrKey}/worklog/move",
@@ -2822,10 +2828,11 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/editable_overrides_test.go",
         "internal/api3/worklogs_test.go",
         "docs/WORKLOGS.md"
       ],
-      "notes": "Moving worklogs is tested, including the unknown destination and a worklog that is not on the source work item."
+      "notes": "Moving worklogs is tested, including the unknown destination and a worklog that is not on the source work item; it needs Delete all worklogs and Work on issues on both work items, time tracking, and both work items editable unless a Connect or Forge app with Administer Jira passes overrideEditableFlag."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/issue/{issueIdOrKey}/worklog/{id}",
@@ -2833,12 +2840,13 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/editable_overrides_test.go",
         "internal/api3/worklogs_test.go",
         "docs/WORKLOGS.md",
         "internal/api3/time_tracking_test.go",
         "docs/TIME_TRACKING.md"
       ],
-      "notes": "Removing one worklog is tested, and the tombstone the deleted feed reads from; adjustEstimate auto, new, manual with increaseBy, and leave restore the estimate of work left, and Delete all worklogs or Delete own worklogs is required; notifyUsers controls the worklog deleted event sent through the project's notification scheme."
+      "notes": "Removing one worklog is tested, and the tombstone the deleted feed reads from; adjustEstimate auto, new, manual with increaseBy, and leave restore the estimate of work left, and Delete all worklogs or Delete own worklogs is required; notifyUsers controls the worklog deleted event sent through the project's notification scheme. A status with jira.issue.editable false refuses the change with 400 unless a Connect or Forge app with Administer Jira passes overrideEditableFlag; anyone else passing it gets 403."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issue/{issueIdOrKey}/worklog/{id}",
@@ -2857,12 +2865,13 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/editable_overrides_test.go",
         "internal/api3/worklogs_test.go",
         "docs/WORKLOGS.md",
         "internal/api3/time_tracking_test.go",
         "migrations/189_issue_time_estimates.sql"
       ],
-      "notes": "Changing the time, as timeSpent or timeSpentSeconds, and the comment is tested, including that an omitted comment keeps the stored one; adjustEstimate auto, new and leave adjust the estimate of work left, and Edit all worklogs or Edit own worklogs is required; notifyUsers controls the worklog updated event sent through the project's notification scheme."
+      "notes": "Changing the time, as timeSpent or timeSpentSeconds, and the comment is tested, including that an omitted comment keeps the stored one; adjustEstimate auto, new and leave adjust the estimate of work left, and Edit all worklogs or Edit own worklogs is required; notifyUsers controls the worklog updated event sent through the project's notification scheme. A status with jira.issue.editable false refuses the change with 400 unless a Connect or Forge app with Administer Jira passes overrideEditableFlag; anyone else passing it gets 403."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issue/{issueIdOrKey}/worklog/{worklogId}/properties",

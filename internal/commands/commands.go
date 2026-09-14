@@ -428,7 +428,7 @@ func (s *Service) enforceFieldConfigurationWrite(ctx context.Context, workspaceI
 		if !intent.touched {
 			continue
 		}
-		if rule.IsHidden && intent.hasValue {
+		if rule.IsHidden && intent.hasValue && !OverridesFromContext(ctx).ScreenSecurity {
 			return fmt.Errorf("%s is hidden by the field configuration for this work type", field)
 		}
 		if rule.IsRequired && !intent.hasValue {

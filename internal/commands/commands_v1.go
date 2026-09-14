@@ -71,6 +71,9 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 	if err != nil {
 		return nil, nil, err
 	}
+	if err = s.requireEditable(ctx, issue); err != nil {
+		return nil, nil, err
+	}
 	configuration, err := s.jiraSiteConfiguration(ctx, in.WorkspaceID)
 	if err != nil {
 		return nil, nil, err

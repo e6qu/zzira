@@ -629,12 +629,17 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	if err != nil {
 		return nil, err
 	}
+	editable, err := h.Commands.IssueEditable(r.Context(), issue)
+	if err != nil {
+		return nil, err
+	}
 	return &models.IssueView{
 		Issue:               *issue,
 		ProjectKey:          project.Key,
 		ProjectName:         project.Name,
 		BoardID:             boardID,
 		CanEdit:             true,
+		Editable:            editable,
 		CanTriage:           true,
 		AttachmentsEnabled:  configuration.AttachmentsEnabled,
 		IssueLinkingEnabled: configuration.IssueLinkingEnabled,

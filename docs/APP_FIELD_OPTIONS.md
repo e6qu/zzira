@@ -83,6 +83,10 @@ see, `edit` only what they may choose.
 - `migrations/144_app_field_options.sql` is exercised from a clean PostgreSQL
   schema.
 
+The deselect takes `overrideScreenSecurity` and `overrideEditableFlag`. Only a
+Connect or Forge app with Administer Jira may pass them (anyone else gets 403);
+the queued edit then sets the field even where the field configuration hides it
+and on work items whose status is not editable.
+
 Jira's `projects2` scope form with per-project attributes, the `defaultValue`
-attribute, `overrideScreenSecurity` and `overrideEditableFlag`, option property
-indexes for JQL remain.
+attribute and option property indexes for JQL remain.

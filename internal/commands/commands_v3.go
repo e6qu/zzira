@@ -48,6 +48,9 @@ func (s *Service) AddWorklogWithEstimate(ctx context.Context, actorID, workspace
 	if seconds <= 0 {
 		return nil, nil, fmt.Errorf("timeSpentSeconds must be positive")
 	}
+	if err = s.requireEditable(ctx, issue); err != nil {
+		return nil, nil, err
+	}
 	allowed, err := s.Store.HasProjectPermission(ctx, workspaceID, actorID, issue.ProjectID, issue.ID, "WORK_ON_ISSUES")
 	if err != nil {
 		return nil, nil, err
@@ -87,6 +90,9 @@ func (s *Service) UpdateWorklog(ctx context.Context, actorID, workspaceID, workl
 	if !allowed {
 		return nil, nil, ErrWorklogPermission
 	}
+	if err = s.requireEditable(ctx, issue); err != nil {
+		return nil, nil, err
+	}
 	worklog, action, err := s.Store.UpdateWorklogWithEstimate(ctx, actorID, workspaceID, w.ID, comment, seconds, estimate)
 	if err == nil && estimate.Notify {
 		err = s.deliverIssueEvent(ctx, workspaceID, actorID, issue, action, 14, "worklog_updated", "updated work logged on")
@@ -115,6 +121,9 @@ func (s *Service) DeleteWorklogWithEstimate(ctx context.Context, actorID, worksp
 	}
 	if !allowed {
 		return nil, ErrWorklogPermission
+	}
+	if err = s.requireEditable(ctx, issue); err != nil {
+		return nil, err
 	}
 	action, err := s.Store.DeleteWorklogWithEstimate(ctx, actorID, workspaceID, w.ID, estimate)
 	if err == nil && estimate.Notify {
@@ -253,4 +262,32 @@ func (s *Service) DeleteAttachment(ctx context.Context, actorID, workspaceID, at
 		}
 	}
 	return action, nil
+}
+
+// MoveWorklogs moves logged work between visible work items with Jira's Delete
+// all worklogs and Work on issues permissions. Both work items must be
+// editable unless the request overrides the editable flag.
+func (s *Service) MoveWorklogs(ctx context.Context, actorID, workspaceID string, source, target *models.Issue, worklogIDs []string) error {
+	configuration, err := s.jiraSiteConfiguration(ctx, workspaceID)
+	if err != nil {
+		return err
+	}
+	if !configuration.TimeTrackingEnabled {
+		return fmt.Errorf("%w: time tracking is disabled for this site", store.ErrWorklogValidation)
+	}
+	for _, issue := range []*models.Issue{source, target} {
+		for _, permission := range []string{"DELETE_ALL_WORKLOGS", "WORK_ON_ISSUES"} {
+			allowed, err := s.Store.HasProjectPermission(ctx, workspaceID, actorID, issue.ProjectID, issue.ID, permission)
+			if err != nil {
+				return err
+			}
+			if !allowed {
+				return ErrWorklogPermission
+			}
+		}
+		if err := s.requireEditable(ctx, issue); err != nil {
+			return err
+		}
+	}
+	return s.Store.MoveWorklogs(ctx, actorID, workspaceID, source.ID, target.ID, worklogIDs)
 }

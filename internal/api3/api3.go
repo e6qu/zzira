@@ -982,13 +982,10 @@ func (h *Handler) putIssue(w http.ResponseWriter, r *http.Request, idOrKey strin
 		writeJerr(w, e)
 		return
 	}
-	for _, flag := range []string{"overrideScreenSecurity", "overrideEditableFlag"} {
-		if strings.EqualFold(r.URL.Query().Get(flag), "true") {
-			if admin, adminErr := h.Store.IsAdmin(r.Context(), wsID, userID); adminErr != nil || !admin {
-				jiraError(w, http.StatusForbidden, "Only administrators can use "+flag+".")
-				return
-			}
-		}
+	ctx, e := h.requestOverrides(r, wsID, userID, "overrideScreenSecurity", "overrideEditableFlag")
+	if e != nil {
+		writeJerr(w, e)
+		return
 	}
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -1101,7 +1098,7 @@ func (h *Handler) putIssue(w http.ResponseWriter, r *http.Request, idOrKey strin
 			return
 		}
 	}
-	if _, _, err := h.Commands.UpdateIssue(r.Context(), commands.UpdateIssueInput{
+	if _, _, err := h.Commands.UpdateIssue(ctx, commands.UpdateIssueInput{
 		ActorID: userID, WorkspaceID: wsID, IssueIDOrKey: idOrKey,
 		Summary: up.Summary, Description: up.Description,
 		PriorityID: up.PriorityID, AssigneeID: up.AssigneeID,
@@ -1674,7 +1671,12 @@ func (h *Handler) editMeta(w http.ResponseWriter, r *http.Request, idOrKey strin
 		writeJerr(w, e)
 		return
 	}
-	metadata, err := h.issueEditMetadata(r.Context(), wsID, userID, issue)
+	ctx, e := h.requestOverrides(r, wsID, userID, "overrideScreenSecurity", "overrideEditableFlag")
+	if e != nil {
+		writeJerr(w, e)
+		return
+	}
+	metadata, err := h.issueEditMetadata(ctx, wsID, userID, issue)
 	if err != nil {
 		versionError(w, err)
 		return
@@ -1683,10 +1685,17 @@ func (h *Handler) editMeta(w http.ResponseWriter, r *http.Request, idOrKey strin
 }
 
 // issueEditMetadata is the edit metadata the reader may use: fields are only
-// editable with the Edit issues permission for the issue.
+// editable with the Edit issues permission for the issue, and none while its
+// status is not editable unless an app overrides the editable flag.
 func (h *Handler) issueEditMetadata(ctx context.Context, workspaceID, userID string, issue *models.Issue) (map[string]any, error) {
 	if allowed, err := h.hasProjectPermission(ctx, workspaceID, userID, issue.ProjectID, issue.ID, "EDIT_ISSUES"); err != nil || !allowed {
 		return map[string]any{"fields": map[string]any{}}, err
+	}
+	if !commands.OverridesFromContext(ctx).EditableFlag {
+		editable, err := h.Commands.IssueEditable(ctx, issue)
+		if err != nil || !editable {
+			return map[string]any{"fields": map[string]any{}}, err
+		}
 	}
 	return h.issueEditFields(ctx, workspaceID, userID, issue)
 }
@@ -1713,6 +1722,14 @@ func (h *Handler) issueEditFields(ctx context.Context, workspaceID, userID strin
 		behaviour, behaviourErr := h.Store.ResolveFieldBehaviour(ctx, workspaceID, issue.ProjectID, issue.IssueType.ID)
 		if behaviourErr != nil {
 			return nil, behaviourErr
+		}
+		// An app overriding screen security sees the fields the field
+		// configuration hides.
+		if commands.OverridesFromContext(ctx).ScreenSecurity {
+			for field, rule := range behaviour {
+				rule.IsHidden = false
+				behaviour[field] = rule
+			}
 		}
 		project.FieldBehaviour = map[string]map[string]models.FieldBehaviour{issue.IssueType.ID: behaviour}
 		for _, source := range project.FieldsForIssueType(issue.IssueType.ID) {

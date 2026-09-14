@@ -235,6 +235,11 @@ test('project workflow creation, editor, transition changes, and assignment work
   await page.selectOption('#transition-from', 'any');
   await page.selectOption('#transition-to', 'st_done');
   await page.getByRole('button', { name: 'Add transition' }).click();
+  const doneStatus = page.locator('.workflow-node[data-status-id="st_done"]');
+  await doneStatus.getByRole('button', { name: 'Lock editing in Done' }).click();
+  await expect(doneStatus).toContainText('not editable');
+  await doneStatus.getByRole('button', { name: 'Allow editing in Done' }).click();
+  await expect(doneStatus).not.toContainText('not editable');
   const startTransitions = page.getByRole('region', { name: 'Create and global transitions' });
   await expect(startTransitions).toContainText('Close from anywhere');
   await expect(startTransitions.getByText('any status to Done', { exact: true })).toBeVisible();

@@ -101,9 +101,16 @@ Unknown or hidden issues are left out.
 - `POST /rest/api/3/issue/bulk` creates up to 50 issues, each exactly as a single
   create would; failures are reported with `failedElementNumber`, and the answer
   is 201 when any issue was created, 400 when none was.
-- `PUT /rest/api/3/issue/{issueIdOrKey}` stores `properties`, answers 200 with the
-  issue when `returnIssue=true`, and lets only administrators use
-  `overrideScreenSecurity` or `overrideEditableFlag`.
+- `PUT /rest/api/3/issue/{issueIdOrKey}` stores `properties` and answers 200 with
+  the issue when `returnIssue=true`. A work item whose workflow status sets
+  `jira.issue.editable` (or the deprecated `issueEditable`) to `false` refuses
+  edits, comment edits and worklog changes with 400; it still takes comments and
+  transitions, its edit metadata lists no fields, and the issue page hides Edit
+  and the estimate form. `overrideEditableFlag` lifts the lock and
+  `overrideScreenSecurity` lets an edit set, and `editmeta` list, fields the
+  field configuration hides. Both are for Connect and Forge apps with Administer
+  Jira; anyone else, administrators included, gets 403. The workflow editor
+  locks or allows editing per status.
 - `DELETE /rest/api/3/issue/{issueIdOrKey}` refuses an issue with subtasks unless
   `deleteSubtasks=true`, which deletes them too.
 - `GET /issue/{key}/transitions` includes transition screen fields only with

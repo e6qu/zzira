@@ -281,11 +281,14 @@ type SyncResponse struct {
 // ---- View models (render-only) ----
 
 type IssueView struct {
-	Issue               Issue
-	ProjectKey          string
-	ProjectName         string
-	BoardID             string
-	CanEdit             bool
+	Issue       Issue
+	ProjectKey  string
+	ProjectName string
+	BoardID     string
+	CanEdit     bool
+	// Editable is false while the work item's status sets jira.issue.editable
+	// to false; its fields and estimates cannot then be changed.
+	Editable            bool
 	CanTriage           bool
 	AttachmentsEnabled  bool
 	IssueLinkingEnabled bool

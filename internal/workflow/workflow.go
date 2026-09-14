@@ -1116,3 +1116,27 @@ func validatePreviousStatusRule(parameters map[string]string, condition bool) er
 	}
 	return nil
 }
+
+// Jira's status property keys marking whether work items in a status can be
+// edited; issueEditable is the deprecated spelling.
+const (
+	PropertyIssueEditable       = "jira.issue.editable"
+	PropertyIssueEditableLegacy = "issueEditable"
+)
+
+// StatusEditable reports whether work items in the status can be edited: a
+// status is editable unless its workflow properties set jira.issue.editable,
+// or the deprecated issueEditable, to false.
+func (w Workflow) StatusEditable(statusID string) bool {
+	for _, status := range w.Statuses {
+		if status.StatusReference != statusID {
+			continue
+		}
+		for _, key := range []string{PropertyIssueEditable, PropertyIssueEditableLegacy} {
+			if value, ok := status.Properties[key]; ok {
+				return !strings.EqualFold(strings.TrimSpace(value), "false")
+			}
+		}
+	}
+	return true
+}

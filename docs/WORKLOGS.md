@@ -73,3 +73,14 @@ Jira's `startedAfter`/`startedBefore` filters and `expand` on the worklog reads,
 the `notifyUsers` and `adjustEstimate` parameters, worklog visibility
 restriction to a group or role, and `POST /rest/internal/api/latest/worklog/bulk`
 remain.
+
+## Work items that are not editable
+
+A workflow status whose properties set `jira.issue.editable` (or the
+deprecated `issueEditable`) to `false`, such as a closed status, locks its work
+items: logging, changing, deleting and moving work is refused with 400, as are
+field edits and comment edits. New comments and transitions still work, and
+edit metadata lists no fields. A Connect or Forge app with Administer Jira can
+pass `overrideEditableFlag=true` to change logged work anyway; anyone else who
+passes it gets 403. Moving work needs Delete all worklogs and Work on issues on
+both work items, and both must be editable.

@@ -101,6 +101,10 @@ type BulkIssueEditTaskPayload struct {
 	Issues               []BulkIssueTaskItem      `json:"issues"`
 	Operations           []BulkIssueEditOperation `json:"operations"`
 	SendBulkNotification bool                     `json:"sendBulkNotification"`
+	// OverrideScreenSecurity and OverrideEditableFlag are an app's authorized
+	// overrides, applied to every edit the task makes.
+	OverrideScreenSecurity bool `json:"overrideScreenSecurity,omitempty"`
+	OverrideEditableFlag   bool `json:"overrideEditableFlag,omitempty"`
 }
 
 type BulkIssueDeleteTaskPayload struct {
@@ -152,8 +156,8 @@ type BulkIssueTransitionTaskPayload struct {
 	SendBulkNotification bool                          `json:"sendBulkNotification"`
 }
 
-func (s *Store) EnqueueBulkEditTask(ctx context.Context, workspaceID, actorID string, issues []BulkIssueTaskItem, operations []BulkIssueEditOperation, sendBulkNotification bool) (APITask, error) {
-	task, err := queuedAPITask(workspaceID, actorID, "Bulk edit issues", apiTaskBulkEdit, BulkIssueEditTaskPayload{Issues: issues, Operations: operations, SendBulkNotification: sendBulkNotification})
+func (s *Store) EnqueueBulkEditTask(ctx context.Context, workspaceID, actorID string, payload BulkIssueEditTaskPayload) (APITask, error) {
+	task, err := queuedAPITask(workspaceID, actorID, "Bulk edit issues", apiTaskBulkEdit, payload)
 	if err != nil {
 		return APITask{}, err
 	}

@@ -252,6 +252,8 @@ func issueCommandError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, commands.ErrIssueArchived):
 		jiraError(w, http.StatusBadRequest, "The issue is archived and can't be changed.")
+	case errors.Is(err, commands.ErrIssueNotEditable):
+		jiraError(w, http.StatusBadRequest, "The work item is not editable in its current status.")
 	case errors.Is(err, commands.ErrCommentPermission):
 		jiraError(w, http.StatusBadRequest, "You do not have the permission to change this comment.")
 	case errors.Is(err, store.ErrCommentNotFound):

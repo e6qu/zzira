@@ -239,8 +239,9 @@ func (h *Handler) issueCommentRoute(w http.ResponseWriter, r *http.Request, idOr
 	case http.MethodGet:
 		writeJSON(w, http.StatusOK, renderer.bean(issue, comment))
 	case http.MethodPut:
-		if raw := r.URL.Query().Get("overrideEditableFlag"); raw == "true" && !renderer.readerAdmin {
-			jiraError(w, http.StatusForbidden, "Only administrators can override the editable flag.")
+		ctx, e := h.requestOverrides(r, workspaceID, actorID, "overrideEditableFlag")
+		if e != nil {
+			writeJerr(w, e)
 			return
 		}
 		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
@@ -253,7 +254,7 @@ func (h *Handler) issueCommentRoute(w http.ResponseWriter, r *http.Request, idOr
 			jiraFieldError(w, http.StatusBadRequest, map[string]string{"comment": err.Error()})
 			return
 		}
-		updated, _, err := h.Commands.UpdateComment(r.Context(), commands.UpdateCommentInput{
+		updated, _, err := h.Commands.UpdateComment(ctx, commands.UpdateCommentInput{
 			ActorID: actorID, WorkspaceID: workspaceID, CommentID: comment.ID, Body: input.Body,
 			SetVisibility: input.VisibilityPresent, Visibility: input.Visibility,
 		})

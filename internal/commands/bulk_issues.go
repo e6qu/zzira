@@ -36,6 +36,9 @@ func (s *Service) ExecuteBulkIssueTask(ctx context.Context, task store.APITask) 
 	}
 	collector := &store.BulkNotificationCollector{}
 	ctx = store.WithBulkNotifications(ctx, collector)
+	if payload.OverrideScreenSecurity || payload.OverrideEditableFlag {
+		ctx = WithOverrides(ctx, Overrides{ScreenSecurity: payload.OverrideScreenSecurity, EditableFlag: payload.OverrideEditableFlag})
+	}
 	processed := make([]int64, 0, len(payload.Issues))
 	failed := map[string][]string{}
 	invalid := 0
