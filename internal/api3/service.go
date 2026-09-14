@@ -706,7 +706,31 @@ func (h *Handler) writeServicePage(w http.ResponseWriter, r *http.Request, value
 	if end > len(values) {
 		end = len(values)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"start": start, "limit": limit, "size": end - start, "isLastPage": end == len(values), "values": values[start:end], "_expands": []any{}, "_links": map[string]string{"self": h.BaseURL + r.URL.Path}})
+	writeJSON(w, http.StatusOK, map[string]any{"start": start, "limit": limit, "size": end - start, "isLastPage": end == len(values), "values": values[start:end], "_expands": []any{}, "_links": h.servicePageLinks(r, start, limit, end < len(values))})
+}
+
+// servicePageLinks are Jira Service Management's page links: the API base, the
+// site's context path (empty at the root), the page itself, and the pages
+// before and after it when there are any.
+func (h *Handler) servicePageLinks(r *http.Request, start, limit int, more bool) map[string]string {
+	page := func(from int) string {
+		query := r.URL.Query()
+		query.Set("start", strconv.Itoa(from))
+		query.Set("limit", strconv.Itoa(limit))
+		return h.BaseURL + r.URL.Path + "?" + query.Encode()
+	}
+	self := h.BaseURL + r.URL.Path
+	if r.URL.RawQuery != "" {
+		self += "?" + r.URL.RawQuery
+	}
+	links := map[string]string{"base": h.BaseURL + "/rest/servicedeskapi", "context": "", "self": self}
+	if more {
+		links["next"] = page(start + limit)
+	}
+	if start > 0 {
+		links["prev"] = page(max(0, start-limit))
+	}
+	return links
 }
 
 func (h *Handler) listServiceRequestTypes(w http.ResponseWriter, r *http.Request, workspaceID, serviceDeskID string) {

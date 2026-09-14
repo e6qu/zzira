@@ -5555,7 +5555,7 @@
         "e2e/service.spec.ts",
         "docs/SERVICE_MANAGEMENT.md"
       ],
-      "notes": "Lists active request participants with customer-safe user beans and request visibility enforcement; organization-derived participants and complete pagination links remain."
+      "notes": "Lists active request participants with customer-safe user beans and request visibility enforcement; organization-derived participants remain; pages carry Jira base, context, self, next and prev links."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/sla",
@@ -5642,7 +5642,7 @@
         "internal/store/service.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Returns paged service desks created atomically with service projects; permission schemes, expand variants and exact pagination links remain."
+      "notes": "Returns paged service desks created atomically with service projects; permission schemes, expand variants remain."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/servicedesk/{serviceDeskId}",

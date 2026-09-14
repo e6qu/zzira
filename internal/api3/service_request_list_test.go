@@ -172,6 +172,26 @@ func TestServiceRequestListFiltersAndExpansions(t *testing.T) {
 		callAs(reporterID, http.MethodGet, "/rest/servicedeskapi/request"+refused, "", http.StatusBadRequest)
 	}
 	callAs(reporterID, http.MethodGet, "/rest/servicedeskapi/request?serviceDeskId=999999999", "", http.StatusNotFound)
+
+	// Pages carry Jira's links: the API base, the context path, and the pages
+	// on either side.
+	var firstPage, secondPage struct {
+		IsLastPage bool              `json:"isLastPage"`
+		Links      map[string]string `json:"_links"`
+	}
+	if err = json.Unmarshal([]byte(callAs(reporterID, http.MethodGet, "/rest/servicedeskapi/request?requestOwnership=OWNED_REQUESTS&limit=1", "", http.StatusOK)), &firstPage); err != nil {
+		t.Fatal(err)
+	}
+	if firstPage.IsLastPage || firstPage.Links["base"] != "https://zzira.test/rest/servicedeskapi" || firstPage.Links["context"] != "" ||
+		firstPage.Links["next"] != "https://zzira.test/rest/servicedeskapi/request?limit=1&requestOwnership=OWNED_REQUESTS&start=1" || firstPage.Links["prev"] != "" {
+		t.Fatalf("first page = %+v", firstPage)
+	}
+	if err = json.Unmarshal([]byte(callAs(reporterID, http.MethodGet, strings.TrimPrefix(firstPage.Links["next"], "https://zzira.test"), "", http.StatusOK)), &secondPage); err != nil {
+		t.Fatal(err)
+	}
+	if !secondPage.IsLastPage || secondPage.Links["next"] != "" || secondPage.Links["prev"] != "https://zzira.test/rest/servicedeskapi/request?limit=1&requestOwnership=OWNED_REQUESTS&start=0" {
+		t.Fatalf("second page = %+v", secondPage)
+	}
 	callAs(reporterID, http.MethodGet, "/rest/servicedeskapi/request?requestOwnership=ALL_REQUESTS", "", http.StatusForbidden)
 
 	// A request's optional parts appear only when expanded.
