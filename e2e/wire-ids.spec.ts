@@ -111,6 +111,23 @@ test('no stored id reaches a client through the Jira, Agile or Service Managemen
     paths.push('/rest/servicedeskapi/servicedesk', '/rest/servicedeskapi/request', '/rest/servicedeskapi/organization',
       `/rest/servicedeskapi/servicedesk/${serviceDeskId}/queue`, `/rest/servicedeskapi/servicedesk/${serviceDeskId}/requesttype`);
   }
+  if (boardId) {
+    const plan = await request.post('/rest/api/3/plans/plan', {
+      headers,
+      data: { name: `Wire id plan ${Date.now()}`, scheduling: { estimation: 'Days' }, issueSources: [{ type: 'Board', value: boardId }, { type: 'Project', value: Number(project.id) }] },
+    });
+    expect(plan.status()).toBe(201);
+    const planId = await plan.json();
+    const team = await request.post(`/rest/api/3/plans/plan/${planId}/team/planonly`, { headers, data: { name: 'Wire id team', planningStyle: 'Scrum' } });
+    expect(team.status()).toBe(201);
+    paths.push('/rest/api/3/plans/plan', `/rest/api/3/plans/plan/${planId}`, `/rest/api/3/plans/plan/${planId}/team`, `/rest/api/3/plans/plan/${planId}/team/planonly/${await team.json()}`);
+  }
+  const template = await request.post('/rest/api/3/project-template/save-template', {
+    headers,
+    data: { templateName: `Wire id ${Date.now()}`.slice(0, 50), templateFromProjectRequest: { projectId: Number(project.id), templateType: 'SNAPSHOT' } },
+  });
+  expect(template.status()).toBe(200);
+  paths.push(`/rest/api/3/project-template/live-template?templateKey=${encodeURIComponent((await template.json()).projectTemplateKey.key)}`);
   const found = await crawl(request, paths);
   expect(found, found.join('\n')).toEqual([]);
 });
