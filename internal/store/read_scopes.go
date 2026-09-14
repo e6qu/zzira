@@ -73,6 +73,19 @@ func (s *Store) ScreenUsedByProject(ctx context.Context, workspaceID, projectID,
 	return used, err
 }
 
+// fieldShownInProject is the SQL deciding whether the custom field aliased f
+// is shown in the project aliased p: the project's field configuration scheme,
+// or the default one, maps no configuration or one that does not hide it.
+const fieldShownInProject = `(NOT EXISTS(` + projectFieldConfigurations + `)
+	OR EXISTS(SELECT 1 FROM (` + projectFieldConfigurations + `) layout(configuration_id)
+	  WHERE NOT EXISTS(SELECT 1 FROM field_configuration_items item
+	    WHERE item.configuration_id=layout.configuration_id AND item.field_id=f.id AND item.is_hidden)))`
+
+const projectFieldConfigurations = `SELECT mapping.configuration_id FROM field_configuration_scheme_items mapping
+	WHERE mapping.scheme_id=COALESCE(
+	  (SELECT scheme_id FROM project_field_configuration_schemes WHERE project_id=p.id),
+	  (SELECT id FROM field_configuration_schemes WHERE workspace_id=p.workspace_id AND is_default))`
+
 // CustomFieldOptionVisibleInProjects reports whether an option's field is
 // used in one of the projects, through the context holding the option, and
 // is not hidden by every field configuration that project applies.
@@ -81,10 +94,6 @@ func (s *Store) CustomFieldOptionVisibleInProjects(ctx context.Context, workspac
 	if err != nil || len(projectIDs) == 0 {
 		return false, nil
 	}
-	const projectMappings = `SELECT mapping.configuration_id FROM field_configuration_scheme_items mapping
-		WHERE mapping.scheme_id=COALESCE(
-		  (SELECT scheme_id FROM project_field_configuration_schemes WHERE project_id=p.id),
-		  (SELECT id FROM field_configuration_schemes WHERE workspace_id=p.workspace_id AND is_default))`
 	var visible bool
 	err = s.Pool.QueryRow(ctx, `
 		SELECT EXISTS(
@@ -94,10 +103,59 @@ func (s *Store) CustomFieldOptionVisibleInProjects(ctx context.Context, workspac
 		  JOIN projects p ON p.workspace_id=$1 AND p.id=ANY($3)
 		  WHERE o.id=$2
 		    AND (c.all_projects OR EXISTS(SELECT 1 FROM custom_field_context_projects cp WHERE cp.context_id=c.id AND cp.project_id=p.id))
-		    AND (NOT EXISTS(`+projectMappings+`)
-		      OR EXISTS(SELECT 1 FROM (`+projectMappings+`) layout(configuration_id)
-		        WHERE NOT EXISTS(SELECT 1 FROM field_configuration_items item
-		          WHERE item.configuration_id=layout.configuration_id AND item.field_id=f.id AND item.is_hidden))))`,
-		workspaceID, id, projectIDs).Scan(&visible)
+		    AND `+fieldShownInProject+`)`, workspaceID, id, projectIDs).Scan(&visible)
 	return visible, err
+}
+
+// CustomFieldVisibleInProjects reports whether one of the field's contexts
+// applies to one of the projects and a field configuration there shows it.
+func (s *Store) CustomFieldVisibleInProjects(ctx context.Context, workspaceID, fieldID string, projectIDs []string) (bool, error) {
+	if len(projectIDs) == 0 {
+		return false, nil
+	}
+	var visible bool
+	err := s.Pool.QueryRow(ctx, `
+		SELECT EXISTS(
+		  SELECT 1 FROM custom_field_contexts c
+		  JOIN custom_fields f ON f.id=c.field_id AND (f.workspace_id IS NULL OR f.workspace_id=$1)
+		  JOIN projects p ON p.workspace_id=$1 AND p.id=ANY($3)
+		  WHERE f.id=$2
+		    AND (c.all_projects OR EXISTS(SELECT 1 FROM custom_field_context_projects cp WHERE cp.context_id=c.id AND cp.project_id=p.id))
+		    AND `+fieldShownInProject+`)`, workspaceID, fieldID, projectIDs).Scan(&visible)
+	return visible, err
+}
+
+// NamedProjectEntity is a component or version a JQL value names, with the
+// project it belongs to.
+type NamedProjectEntity struct {
+	ID, ProjectID string
+}
+
+// ComponentsNamed lists the site's components with a name, any case.
+func (s *Store) ComponentsNamed(ctx context.Context, workspaceID, name string) ([]NamedProjectEntity, error) {
+	return s.namedProjectEntities(ctx, `SELECT c.id, c.project_id FROM project_components c JOIN projects p ON p.id=c.project_id
+		WHERE p.workspace_id=$1 AND lower(c.name)=lower($2) ORDER BY length(c.id), c.id`, workspaceID, name)
+}
+
+// VersionsNamed lists the site's versions with a name, any case.
+func (s *Store) VersionsNamed(ctx context.Context, workspaceID, name string) ([]NamedProjectEntity, error) {
+	return s.namedProjectEntities(ctx, `SELECT v.id, v.project_id FROM project_versions v JOIN projects p ON p.id=v.project_id
+		WHERE p.workspace_id=$1 AND lower(v.name)=lower($2) ORDER BY length(v.id), v.id`, workspaceID, name)
+}
+
+func (s *Store) namedProjectEntities(ctx context.Context, query, workspaceID, name string) ([]NamedProjectEntity, error) {
+	rows, err := s.Pool.Query(ctx, query, workspaceID, name)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []NamedProjectEntity
+	for rows.Next() {
+		var entity NamedProjectEntity
+		if err = rows.Scan(&entity.ID, &entity.ProjectID); err != nil {
+			return nil, err
+		}
+		out = append(out, entity)
+	}
+	return out, rows.Err()
 }

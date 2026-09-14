@@ -3786,7 +3786,7 @@
         "internal/api3/api3_jql_test.go",
         "docs/JQL.md"
       ],
-      "notes": "Bounded batch conversion of known equality-clause user identities is tested; list/history operands and unknown-user reporting remain."
+      "notes": "Converts up to 100 queries: people named by email address or unique display name in user fields, user custom fields and WAS/CHANGED FROM, TO and BY operands become account IDs in place; unknown people become 'unknown' and their queries are reported in queriesWithUnknownUsers; an unparsable query fails the request with 400."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/jql/sanitize",
@@ -3798,7 +3798,7 @@
         "internal/api3/api3_jql_test.go",
         "docs/JQL.md"
       ],
-      "notes": "Per-viewer compile validation and per-query success/error results are integration-tested; visibility-driven name-to-ID rewriting remains."
+      "notes": "Administrators sanitize up to 20 unique queries per viewer, anonymous when accountId is null: projects, components and versions of projects the viewer cannot browse and custom fields shown in none of their projects become IDs and cf[N] in place, a name standing for several IDs becoming a list; unparsable queries and unknown accounts report errors."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/label",
@@ -5057,7 +5057,7 @@
         "e2e/project_roles.spec.ts",
         "docs/PROJECT_ROLES.md"
       ],
-      "notes": "Removes a requested user or group actor atomically with Jira validation and permission-scheme-derived project-administrator authorization; app/service actor types remain."
+      "notes": "Removes a requested user or group actor atomically with Jira validation and permission-scheme-derived project-administrator authorization, covering both documented actor types, atlassian-user-role-actor (people and app accounts) and atlassian-group-role-actor."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/project/{projectIdOrKey}/role/{id}",
@@ -5069,7 +5069,7 @@
         "e2e/project_roles.spec.ts",
         "docs/PROJECT_ROLES.md"
       ],
-      "notes": "Returns sorted Jira role and actor beans with direct users, groups, and inactive-user exclusion; app, guest, AI-agent, and other service actors remain."
+      "notes": "Returns sorted Jira role and actor beans with direct users, groups, and inactive-user exclusion, using the documented atlassian-user-role-actor and atlassian-group-role-actor types."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/project/{projectIdOrKey}/role/{id}",
@@ -5081,7 +5081,7 @@
         "e2e/project_roles.spec.ts",
         "docs/PROJECT_ROLES.md"
       ],
-      "notes": "Adds active workspace users or directory groups by account ID, group ID, or group name without duplicates; app/service actors remain."
+      "notes": "Adds active workspace users, app accounts included, or directory groups by account ID, group ID, or group name without duplicates, the documented ActorsMap inputs."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/project/{projectIdOrKey}/role/{id}",
@@ -5093,7 +5093,7 @@
         "e2e/project_roles.spec.ts",
         "docs/PROJECT_ROLES.md"
       ],
-      "notes": "Atomically replaces direct user and group actors from Jira categorisedActors input, including an empty set; additional Jira actor types remain."
+      "notes": "Atomically replaces direct user and group actors from Jira categorisedActors input (atlassian-user-role-actor, atlassian-group-role-actor and atlassian-group-role-actor-id), including an empty set."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/project/{projectIdOrKey}/roledetails",
@@ -5505,7 +5505,7 @@
         "e2e/project_roles.spec.ts",
         "docs/PROJECT_ROLES.md"
       ],
-      "notes": "Lists the workspace role catalog with sorted default user/group actors for Jira administrators; app, guest, AI-agent, and service actor types remain."
+      "notes": "Lists the workspace role catalog with sorted default user/group actors for Jira administrators, in the documented role and actor beans."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/role",
@@ -5541,7 +5541,7 @@
         "e2e/project_roles.spec.ts",
         "docs/PROJECT_ROLES.md"
       ],
-      "notes": "Returns one shared role and its sorted default user/group actors with Jira role beans; additional Jira actor and scope variants remain."
+      "notes": "Returns one shared role and its sorted default user/group actors with Jira role beans."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/role/{id}",
@@ -5577,7 +5577,7 @@
         "e2e/project_roles.spec.ts",
         "docs/PROJECT_ROLES.md"
       ],
-      "notes": "Removes default users or groups by account ID, group ID, or group name without changing existing projects; additional Jira actor types remain."
+      "notes": "Removes default users or groups by account ID, group ID, or group name without changing existing projects; these are the documented actor types."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/role/{id}/actors",
@@ -5589,7 +5589,7 @@
         "e2e/project_roles.spec.ts",
         "docs/PROJECT_ROLES.md"
       ],
-      "notes": "Returns sorted default user/group actors in the Jira ProjectRole response for Jira administrators; additional actor types remain."
+      "notes": "Returns sorted default user/group actors in the Jira ProjectRole response for Jira administrators."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/role/{id}/actors",
@@ -5601,7 +5601,7 @@
         "e2e/project_roles.spec.ts",
         "docs/PROJECT_ROLES.md"
       ],
-      "notes": "Adds one family of default users or groups and copies it only to subsequently created projects, matching Jira lifecycle semantics; additional actor types remain."
+      "notes": "Adds one family of default users or groups and copies it only to subsequently created projects, matching Jira lifecycle semantics for the documented ActorInputBean inputs."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/screens",

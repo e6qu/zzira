@@ -113,9 +113,23 @@ before collecting distinct values.
 The parse resource returns one Jira-shaped structure or error list per input
 query and supports strict, warning, and syntax-only validation. Bulk matching
 compiles each query independently and evaluates it only against the requested,
-visible issue IDs. Sanitization returns per-query errors without failing the
-batch. Personal-data migration converts known workspace member email/display
-operands on assignee, reporter, and creator equality clauses to account IDs.
+visible issue IDs.
+
+Sanitization is for administrators. It rewrites each query for its viewer, or
+for the anonymous user when `accountId` is null. Projects, components and
+versions of projects the viewer cannot browse become their IDs. Custom fields
+shown in none of the viewer's projects become `cf[N]`. A name standing for
+several IDs becomes a list, turning `=` into `in`. The rest of the query keeps
+its text, and unparsable queries or unknown accounts report per-query errors.
+
+Personal-data migration converts people named by email address or unique
+display name into account IDs. It covers user fields, user custom fields, `IN`
+lists and `WAS`/`CHANGED` `FROM`, `TO` and `BY` operands. People who cannot be
+found become `unknown`, and those queries are listed under
+`queriesWithUnknownUsers`. A query that does not parse fails the request.
+
+Project clauses match a project by key (any case), numeric ID or name, and
+`cf[N]` names the custom field `customfield_N`.
 
 ## App function precomputations
 
@@ -152,10 +166,9 @@ and SLA goals, automation execution, and webhook filtering.
 ## Current limits
 
 The search and JQL service resources remain assessed as partial. The remaining
-PR 1 work adds the remaining built-in functions and multi-value fields,
-complete personal-data migration for list/history
-operands and unknown-user reporting; project-aware validation warnings; exact
-historical versioned representations and richer rendered values.
+PR 1 work adds the remaining built-in functions and multi-value fields;
+project-aware validation warnings; exact historical versioned representations
+and richer rendered values.
 
 The remaining built-in catalog includes permission-scheme and
 customer/organization functions. Those

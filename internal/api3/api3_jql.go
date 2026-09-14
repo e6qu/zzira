@@ -5,12 +5,12 @@ import (
 	"html"
 	"io"
 	"net/http"
-	"regexp"
 	"sort"
 	"strings"
 
 	"github.com/e6qu/zzira/internal/jql"
 	"github.com/e6qu/zzira/internal/models"
+	"github.com/e6qu/zzira/internal/store"
 )
 
 type jqlFieldReference struct {
@@ -529,6 +529,10 @@ func (h *Handler) jqlMatch(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"matches": matches})
 }
 
+// jqlPersonalDataMigration converts the people a query names by email or
+// display name into account IDs, as Jira's personal data cleaner converts
+// usernames and user keys. A person who cannot be found becomes "unknown" and
+// the query is reported apart; a query that does not parse fails the request.
 func (h *Handler) jqlPersonalDataMigration(w http.ResponseWriter, r *http.Request) {
 	workspaceID, _, authErr := h.authWorkspace(r)
 	if authErr != nil {
@@ -545,34 +549,82 @@ func (h *Handler) jqlPersonalDataMigration(w http.ResponseWriter, r *http.Reques
 		jiraError(w, 400, "No more than 100 queries may be converted.")
 		return
 	}
-	members, err := h.Store.MembersByWorkspace(r.Context(), workspaceID)
+	users, err := h.Store.SiteUsers(r.Context(), workspaceID)
 	if err != nil {
-		jiraError(w, 500, "Could not load workspace users.")
+		jiraError(w, 500, "Could not load site users.")
 		return
 	}
-	converted := append([]string{}, request.QueryStrings...)
-	for index, query := range converted {
-		converted[index] = migrateJQLPersonalData(query, members)
-	}
-	writeJSON(w, 200, map[string]any{"queryStrings": converted, "queriesWithUnknownUsers": []any{}})
-}
-
-func migrateJQLPersonalData(query string, members []*models.User) string {
-	for _, member := range members {
-		for _, identity := range []string{member.Email, member.DisplayName} {
-			if identity != "" {
-				pattern := `(?i)(\b(?:assignee|reporter|creator)\s*(?:=|!=)\s*)(?:"` + regexp.QuoteMeta(identity) + `"|'` + regexp.QuoteMeta(identity) + `'|` + regexp.QuoteMeta(identity) + `\b)`
-				query = regexp.MustCompile(pattern).ReplaceAllString(query, `${1}`+jqlQuote(member.ID))
+	userFields := map[string]bool{"assignee": true, "reporter": true, "creator": true, "watcher": true, "voter": true}
+	if customFields, fieldErr := h.Store.CustomFieldsForWorkspace(r.Context(), workspaceID); fieldErr == nil {
+		for _, field := range customFields {
+			if field.Type == models.CustomFieldUser || field.Type == models.CustomFieldMultiUser {
+				userFields[field.ID], userFields[strings.ToLower(field.Name)] = true, true
 			}
 		}
 	}
-	return query
+	converted, unknown := []string{}, []map[string]any{}
+	for _, query := range request.QueryStrings {
+		operands, _, parseErr := jql.Operands(query)
+		if parseErr != nil {
+			jiraError(w, 400, "Error in the JQL Query: "+parseErr.Error())
+			return
+		}
+		edits, hasUnknown := []jql.Edit{}, false
+		for _, operand := range operands {
+			person := operand.Role == "by" || (userFields[operand.Field] && (operand.Role == "value" || operand.Role == "from" || operand.Role == "to"))
+			if !person || operand.Function || strings.EqualFold(operand.Value, "empty") || strings.EqualFold(operand.Value, "null") {
+				continue
+			}
+			accountID, found := personalDataAccount(users, operand.Value)
+			switch {
+			case !found:
+				edits, hasUnknown = append(edits, jql.Edit{Start: operand.Start, End: operand.End, Text: "unknown"}), true
+			case accountID != operand.Value:
+				edits = append(edits, jql.Edit{Start: operand.Start, End: operand.End, Text: jql.Quote(accountID)})
+			}
+		}
+		result := jql.ApplyEdits(query, edits)
+		if hasUnknown {
+			unknown = append(unknown, map[string]any{"convertedQuery": result, "originalQuery": query})
+			continue
+		}
+		converted = append(converted, result)
+	}
+	writeJSON(w, 200, map[string]any{"queryStrings": converted, "queriesWithUnknownUsers": unknown})
 }
 
+// personalDataAccount finds the one person a query value names: by account
+// ID, by email address, or by a display name no one else shares.
+func personalDataAccount(users []*models.User, value string) (string, bool) {
+	matched := ""
+	for _, user := range users {
+		switch {
+		case user.ID == value:
+			return user.ID, true
+		case user.Email != "" && strings.EqualFold(user.Email, value):
+			return user.ID, true
+		case strings.EqualFold(user.DisplayName, value):
+			if matched != "" && matched != user.ID {
+				return "", false
+			}
+			matched = user.ID
+		}
+	}
+	return matched, matched != ""
+}
+
+// jqlSanitize rewrites what a viewer may not see into IDs: a project, a
+// component or version of a project they cannot browse, and a custom field
+// shown in none of their projects. With no account ID the viewer is Jira's
+// anonymous user.
 func (h *Handler) jqlSanitize(w http.ResponseWriter, r *http.Request) {
 	workspaceID, userID, authErr := h.authWorkspace(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
+		return
+	}
+	if admin, err := h.Store.IsAdmin(r.Context(), workspaceID, userID); err != nil || !admin {
+		jiraError(w, http.StatusForbidden, "You are not authorized to perform this action. Administrator privileges are required.")
 		return
 	}
 	var request struct {
@@ -584,25 +636,141 @@ func (h *Handler) jqlSanitize(w http.ResponseWriter, r *http.Request) {
 	if !decodeJQLBody(w, r, &request) {
 		return
 	}
+	if len(request.Queries) == 0 {
+		jiraError(w, 400, "The queries has to be provided.")
+		return
+	}
 	if len(request.Queries) > 20 {
 		jiraError(w, 400, "No more than 20 queries may be sanitized.")
 		return
 	}
+	seen := map[string]bool{}
+	for _, item := range request.Queries {
+		key := item.Query + "\x00"
+		if item.AccountID != nil {
+			key += *item.AccountID
+		}
+		if seen[key] {
+			jiraError(w, 400, "The queries must be unique.")
+			return
+		}
+		seen[key] = true
+	}
 	results := make([]map[string]any, 0, len(request.Queries))
 	for _, item := range request.Queries {
-		viewer := userID
-		if item.AccountID != nil && *item.AccountID != "" {
-			viewer = *item.AccountID
+		result := map[string]any{"initialQuery": item.Query}
+		viewer := ""
+		if item.AccountID != nil {
+			result["accountId"] = *item.AccountID
+			user, err := h.Store.SiteUser(r.Context(), workspaceID, *item.AccountID)
+			if err != nil || user == nil {
+				result["errors"] = map[string]any{"errorMessages": []string{"The account ID " + *item.AccountID + " does not identify a user."}, "errors": map[string]string{}}
+				results = append(results, result)
+				continue
+			}
+			viewer = user.ID
 		}
-		result := map[string]any{"accountId": item.AccountID, "initialQuery": item.Query}
-		if _, compileErr := h.compileJQL(r.Context(), workspaceID, item.Query, viewer); compileErr != nil {
-			result["sanitizedQuery"] = nil
-			result["errors"] = map[string]any{"errorMessages": []string{compileErr.message}, "errors": map[string]string{}}
+		sanitized, err := h.sanitizeJQL(r, workspaceID, viewer, item.Query)
+		if err != nil {
+			result["errors"] = map[string]any{"errorMessages": []string{"Error in the JQL Query: " + err.Error()}, "errors": map[string]string{}}
 		} else {
-			result["sanitizedQuery"] = item.Query
-			result["errors"] = map[string]any{"errorMessages": []string{}, "errors": map[string]string{}}
+			result["sanitizedQuery"] = sanitized
 		}
 		results = append(results, result)
 	}
 	writeJSON(w, 200, map[string]any{"queries": results})
+}
+
+func (h *Handler) sanitizeJQL(r *http.Request, workspaceID, viewer, query string) (string, error) {
+	operands, fields, err := jql.Operands(query)
+	if err != nil {
+		return "", err
+	}
+	ctx := r.Context()
+	browsableProjects, err := h.Store.ProjectsWithPermissions(ctx, workspaceID, viewer, []string{"BROWSE_PROJECTS"})
+	if err != nil {
+		return "", err
+	}
+	browsable, browsableIDs := map[string]bool{}, []string{}
+	for _, project := range browsableProjects {
+		browsable[project.ID] = true
+		browsableIDs = append(browsableIDs, project.ID)
+	}
+	projects, err := h.Store.ProjectsByWorkspace(ctx, workspaceID)
+	if err != nil {
+		return "", err
+	}
+	edits := []jql.Edit{}
+	for _, operand := range operands {
+		if operand.Role != "value" || operand.Function {
+			continue
+		}
+		var entities []store.NamedProjectEntity
+		switch operand.Field {
+		case "project":
+			for _, project := range projects {
+				if project.ID == operand.Value {
+					break
+				}
+				if strings.EqualFold(project.Key, operand.Value) || strings.EqualFold(project.Name, operand.Value) {
+					entities = []store.NamedProjectEntity{{ID: project.ID, ProjectID: project.ID}}
+					break
+				}
+			}
+		case "component":
+			entities, err = h.Store.ComponentsNamed(ctx, workspaceID, operand.Value)
+		case "fixversion", "affectedversion":
+			entities, err = h.Store.VersionsNamed(ctx, workspaceID, operand.Value)
+		}
+		if err != nil {
+			return "", err
+		}
+		hidden := false
+		ids := make([]string, 0, len(entities))
+		for _, entity := range entities {
+			hidden = hidden || !browsable[entity.ProjectID]
+			ids = append(ids, entity.ID)
+		}
+		if !hidden || (len(ids) == 1 && ids[0] == operand.Value) {
+			continue
+		}
+		replacement := strings.Join(ids, ", ")
+		if len(ids) > 1 && !operand.InParenthesized {
+			// One name standing for several ids becomes a list.
+			replacement = "(" + replacement + ")"
+			switch operand.Operator {
+			case "=":
+				edits = append(edits, jql.Edit{Start: operand.OperatorStart, End: operand.OperatorEnd, Text: "in"})
+			case "!=":
+				edits = append(edits, jql.Edit{Start: operand.OperatorStart, End: operand.OperatorEnd, Text: "not in"})
+			}
+		}
+		edits = append(edits, jql.Edit{Start: operand.Start, End: operand.End, Text: replacement})
+	}
+	customFields, err := h.Store.CustomFieldsForWorkspace(ctx, workspaceID)
+	if err != nil {
+		return "", err
+	}
+	byName := map[string]*models.CustomField{}
+	for _, field := range customFields {
+		byName[strings.ToLower(field.Name)] = field
+	}
+	shown := map[string]bool{}
+	for _, reference := range fields {
+		field := byName[reference.Name]
+		if field == nil || !strings.HasPrefix(field.ID, "customfield_") {
+			continue
+		}
+		visible, known := shown[field.ID]
+		if !known {
+			if visible, err = h.Store.CustomFieldVisibleInProjects(ctx, workspaceID, field.ID, browsableIDs); err != nil {
+				return "", err
+			}
+			shown[field.ID] = visible
+		}
+		if !visible {
+			edits = append(edits, jql.Edit{Start: reference.Start, End: reference.End, Text: "cf[" + strings.TrimPrefix(field.ID, "customfield_") + "]"})
+		}
+	}
+	return jql.ApplyEdits(query, edits), nil
 }

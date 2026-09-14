@@ -263,8 +263,8 @@ func TestProjectAPILifecycle(t *testing.T) {
 	if !strings.Contains(cleaned.Body.String(), `"queryStrings":["assignee = currentUser()"]`) {
 		t.Fatal(cleaned.Body.String())
 	}
-	sanitized := call(actor, "POST", "/rest/api/3/jql/sanitize", `{"queries":[{"query":"project=TEAM"},{"accountId":"`+actor+`","query":"unknown = value"}]}`, 200)
-	if !strings.Contains(sanitized.Body.String(), `"sanitizedQuery":"project=TEAM"`) || !strings.Contains(sanitized.Body.String(), `"sanitizedQuery":null`) {
+	sanitized := call(actor, "POST", "/rest/api/3/jql/sanitize", `{"queries":[{"accountId":"`+actor+`","query":"project=TEAM"},{"accountId":"`+actor+`","query":"status ="}]}`, 200)
+	if !strings.Contains(sanitized.Body.String(), `"sanitizedQuery":"project=TEAM"`) || !strings.Contains(sanitized.Body.String(), `"errorMessages":["Error in the JQL Query`) {
 		t.Fatal(sanitized.Body.String())
 	}
 	legacy := call(actor, "GET", "/rest/api/3/search?jql=project%3DTEAM&maxResults=1", "", 200)

@@ -16,6 +16,7 @@ package jql
 import (
 	"fmt"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -153,6 +154,7 @@ type token struct {
 	kind string // word, quoted, lparen, rparen, comma, eof
 	text string
 	pos  int
+	end  int // offset just past the token in the source, closing quote included
 }
 
 func lex(src string) ([]token, error) {
@@ -164,24 +166,24 @@ func lex(src string) ([]token, error) {
 		case c == ' ' || c == '\t' || c == '\n':
 			i++
 		case c == '(':
-			out = append(out, token{"lparen", "(", i})
+			out = append(out, token{"lparen", "(", i, i + 1})
 			i++
 		case c == ')':
-			out = append(out, token{"rparen", ")", i})
+			out = append(out, token{"rparen", ")", i, i + 1})
 			i++
 		case c == ',':
-			out = append(out, token{"comma", ",", i})
+			out = append(out, token{"comma", ",", i, i + 1})
 			i++
 		case strings.ContainsRune("=!~<>", rune(c)):
 			if i+1 < len(src) {
 				two := string(c) + string(src[i+1])
 				if two == "!=" || two == "!~" || two == "~=" || two == ">=" || two == "<=" {
-					out = append(out, token{"word", two, i})
+					out = append(out, token{"word", two, i, i + 2})
 					i += 2
 					continue
 				}
 			}
-			out = append(out, token{"word", string(c), i})
+			out = append(out, token{"word", string(c), i, i + 1})
 			i++
 		case c == '\'' || c == '"':
 			j := i + 1
@@ -203,18 +205,18 @@ func lex(src string) ([]token, error) {
 			if !closed {
 				return nil, &SyntaxError{i, "unterminated string"}
 			}
-			out = append(out, token{"quoted", b.String(), i})
+			out = append(out, token{"quoted", b.String(), i, j + 1})
 			i = j + 1
 		default:
 			j := i
 			for j < len(src) && !strings.ContainsRune(" \t\n()',=!~<>", rune(src[j])) {
 				j++
 			}
-			out = append(out, token{"word", src[i:j], i})
+			out = append(out, token{"word", src[i:j], i, j})
 			i = j
 		}
 	}
-	out = append(out, token{"eof", "", len(src)})
+	out = append(out, token{"eof", "", len(src), len(src)})
 	return out, nil
 }
 
@@ -227,6 +229,85 @@ var operators = map[string]string{
 type parser struct {
 	toks []token
 	pos  int
+	// collect records each clause's field and operands with where they sit in
+	// the source, for rewriting a query without reformatting it.
+	collect  bool
+	operands []Operand
+	fields   []FieldReference
+	clause   Operand
+	call     int
+}
+
+// Operand is one value a clause compares with and where it sits in the query.
+// Role is "value" for the clause's own values, or the history predicate the
+// value belongs to: by, from, to, before, after or during.
+type Operand struct {
+	Field, Operator, Role, Value      string
+	Start, End                        int
+	OperatorStart, OperatorEnd        int
+	Quoted, Function, InParenthesized bool
+}
+
+// FieldReference is a clause's field name and where it sits in the query.
+type FieldReference struct {
+	Name       string
+	Start, End int
+}
+
+// Operands parses a query and lists its clauses' fields and operands, in
+// source order. Function arguments and ORDER BY fields are not operands.
+func Operands(src string) ([]Operand, []FieldReference, error) {
+	if _, err := Parse(src); err != nil {
+		return nil, nil, err
+	}
+	toks, err := lex(src)
+	if err != nil {
+		return nil, nil, err
+	}
+	main, _ := splitOrderClause(toks)
+	p := &parser{toks: main, collect: true}
+	if p.peek().kind != "eof" {
+		if _, err = p.parseOr(); err != nil {
+			return nil, nil, err
+		}
+	}
+	return p.operands, p.fields, nil
+}
+
+// Edit replaces the source between Start and End with Text.
+type Edit struct {
+	Start, End int
+	Text       string
+}
+
+// ApplyEdits rewrites non-overlapping spans of a query, leaving the rest of
+// its text as written.
+func ApplyEdits(src string, edits []Edit) string {
+	ordered := append([]Edit(nil), edits...)
+	sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].Start > ordered[j].Start })
+	for _, edit := range ordered {
+		src = src[:edit.Start] + edit.Text + src[edit.End:]
+	}
+	return src
+}
+
+// Quote writes a value as a JQL operand: bare when it is a plain word, and
+// double-quoted otherwise.
+func Quote(value string) string {
+	if value != "" && !reserved(strings.ToLower(value)) && !strings.ContainsAny(value, " \t\n()',=!~<>\"\\") {
+		return value
+	}
+	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(value) + `"`
+}
+
+func (p *parser) record(t token, value string, end int, function bool) {
+	if !p.collect || p.call > 0 || p.clause.Field == "" {
+		return
+	}
+	operand := p.clause
+	operand.Value, operand.Start, operand.End = value, t.pos, end
+	operand.Quoted, operand.Function = t.kind == "quoted", function
+	p.operands = append(p.operands, operand)
 }
 
 func (p *parser) peek() token { return p.toks[p.pos] }
@@ -354,7 +435,7 @@ func splitOrderClause(toks []token) (main, order []token) {
 		case "word":
 			if depth == 0 && strings.EqualFold(t.text, "order") &&
 				i+1 < len(toks) && toks[i+1].kind == "word" && strings.EqualFold(toks[i+1].text, "by") {
-				mainToks := append(append([]token{}, toks[:i]...), token{"eof", "", toks[i].pos})
+				mainToks := append(append([]token{}, toks[:i]...), token{"eof", "", toks[i].pos, toks[i].pos})
 				return mainToks, toks[i+2:]
 			}
 		}
@@ -479,8 +560,13 @@ func (p *parser) isClauseStart() bool {
 }
 
 func (p *parser) parseClause() (Node, error) {
+	fieldTok := p.peek()
 	field := canonicalField(p.word())
 	opTok := p.next()
+	if p.collect {
+		p.fields = append(p.fields, FieldReference{Name: field, Start: fieldTok.pos, End: fieldTok.end})
+		p.clause = Operand{Field: field, Operator: strings.ToLower(opTok.text), Role: "value", OperatorStart: opTok.pos, OperatorEnd: opTok.end}
+	}
 	op := operators[opTok.text]
 	switch {
 	case op != "":
@@ -546,7 +632,14 @@ func canonicalField(field string) string {
 	case "resolved":
 		return "resolutiondate"
 	default:
-		return strings.ToLower(field)
+		// cf[10000] names a custom field by its number.
+		lower := strings.ToLower(field)
+		if strings.HasPrefix(lower, "cf[") && strings.HasSuffix(lower, "]") {
+			if number := lower[3 : len(lower)-1]; number != "" && strings.Trim(number, "0123456789") == "" {
+				return "customfield_" + number
+			}
+		}
+		return lower
 	}
 }
 
@@ -566,6 +659,7 @@ func (p *parser) parseInClause(field string, negated bool) (Node, error) {
 		return Clause{Field: field, Op: op, Values: []string{value}}, nil
 	}
 	p.next()
+	p.clause.InParenthesized = true
 	var vals []string
 	for {
 		v, err := p.parseValue()
@@ -583,6 +677,7 @@ func (p *parser) parseInClause(field string, negated bool) (Node, error) {
 		return nil, &SyntaxError{p.peek().pos, "expected ) to close IN"}
 	}
 	p.next()
+	p.clause.InParenthesized = false
 	op := "in"
 	if negated {
 		op = "notin"
@@ -641,6 +736,7 @@ func (p *parser) parseWasPredicates() ([]HistoryPredicate, error) {
 		}
 		seen[kind] = true
 		p.next()
+		p.clause.Role = kind
 		predicate := HistoryPredicate{Kind: kind}
 		if kind == "during" {
 			if p.peek().kind != "lparen" {
@@ -689,6 +785,7 @@ func (p *parser) parseChangedClause(field string) (Node, error) {
 		}
 		seen[kind] = true
 		p.next()
+		p.clause.Role = kind
 		predicate := HistoryPredicate{Kind: kind}
 		if kind == "during" {
 			if p.peek().kind != "lparen" {
@@ -732,6 +829,7 @@ func (p *parser) parseValue() (string, error) {
 		// compiler (for example startOfMonth(-1M) or currentUser()).
 		if t.kind == "word" && p.peek().kind == "lparen" {
 			p.next()
+			p.call++
 			args := []string{}
 			if p.peek().kind != "rparen" {
 				for {
@@ -749,9 +847,13 @@ func (p *parser) parseValue() (string, error) {
 			if p.peek().kind != "rparen" {
 				return "", &SyntaxError{p.peek().pos, "expected ) after function call"}
 			}
-			p.next()
-			return t.text + "(" + strings.Join(args, ",") + ")", nil
+			closing := p.next()
+			p.call--
+			call := t.text + "(" + strings.Join(args, ",") + ")"
+			p.record(t, call, closing.end, true)
+			return call, nil
 		}
+		p.record(t, t.text, t.end, false)
 		return t.text, nil
 	}
 	return "", &SyntaxError{t.pos, "expected value"}
@@ -1030,6 +1132,9 @@ func (c *compiler) clause(cl Clause) string {
 		"linkedIssues", "linkedWorkItems", "watchedIssues", "watchedWorkItems", "votedIssues", "votedWorkItems", "updatedBy") {
 		return c.issueFunctionClause(cl)
 	}
+	if cl.Field == "project" && (cl.Op == "=" || cl.Op == "!=" || cl.Op == "in" || cl.Op == "notin") && !containsAnyFunction(cl.Values) {
+		return c.projectClause(cl)
+	}
 	col, ok := c.res.Columns[cl.Field]
 	if !ok {
 		c.err = &SyntaxError{0, "field does not exist or is not searchable: " + cl.Field}
@@ -1118,6 +1223,29 @@ func (c *compiler) clause(cl Clause) string {
 	}
 	c.err = &SyntaxError{0, "unsupported operator " + cl.Op}
 	return ""
+}
+
+// projectClause matches a project by its key, id or name, as Jira does.
+func (c *compiler) projectClause(cl Clause) string {
+	matches := make([]string, 0, len(cl.Values))
+	for _, value := range cl.Values {
+		placeholder := c.arg(value)
+		matches = append(matches, "(pr.key = upper("+placeholder+"::text) OR pr.id = "+placeholder+"::text OR lower(pr.name) = lower("+placeholder+"::text))")
+	}
+	match := "(" + strings.Join(matches, " OR ") + ")"
+	if cl.Op == "!=" || cl.Op == "notin" {
+		return "NOT " + match
+	}
+	return match
+}
+
+func containsAnyFunction(values []string) bool {
+	for _, value := range values {
+		if _, _, function := splitFunction(value); function {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *compiler) slaClause(cl Clause) string {

@@ -36,13 +36,22 @@ func TestOwnedJQLFunctionsAreAdvertised(t *testing.T) {
 	}
 }
 
-func TestMigrateJQLPersonalDataOnlyChangesUserOperands(t *testing.T) {
-	members := []*models.User{{ID: "usr_ana", Email: "ana@example.test", DisplayName: "Ana Soursop"}}
-	query := `project = "Ana Soursop" AND assignee = "Ana Soursop" AND reporter != ana@example.test`
-	got := migrateJQLPersonalData(query, members)
-	want := `project = "Ana Soursop" AND assignee = usr_ana AND reporter != usr_ana`
-	if got != want {
-		t.Fatalf("migration = %q, want %q", got, want)
+func TestPersonalDataAccountNamesOnePerson(t *testing.T) {
+	users := []*models.User{
+		{ID: "usr_ana", Email: "ana@example.test", DisplayName: "Ana Soursop"},
+		{ID: "usr_bo", Email: "bo@example.test", DisplayName: "Bo"},
+		{ID: "usr_bo2", Email: "bo2@example.test", DisplayName: "Bo"},
+	}
+	for value, want := range map[string]string{"usr_ana": "usr_ana", "ANA@example.test": "usr_ana", "ana soursop": "usr_ana"} {
+		if got, found := personalDataAccount(users, value); !found || got != want {
+			t.Fatalf("%q = %q (%v), want %q", value, got, found, want)
+		}
+	}
+	// A shared display name and an unknown name name no one.
+	for _, value := range []string{"Bo", "mia"} {
+		if got, found := personalDataAccount(users, value); found {
+			t.Fatalf("%q resolved to %q", value, got)
+		}
 	}
 }
 
