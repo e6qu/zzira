@@ -10073,9 +10073,11 @@
       "status": "partial",
       "evidence": [
         "internal/confluence/page_moves_test.go",
-        "docs/PAGE_MOVES.md"
+        "docs/PAGE_MOVES.md",
+        "internal/confluence/page_lifecycle_test.go",
+        "e2e/wiki_page_lifecycle.spec.ts"
       ],
-      "notes": "Archiving is tested end to end; an archived page leaves the space's current content. Restoring one remains."
+      "notes": "Archiving is tested end to end: an archived page stays listed with current pages by default, reads back with status=archived, is read-only until restored, and lifts its children a level unless they are archived with it. Restoring runs from the page view, returns a page under its parent when that parent is still current and refuses a title the space already shows. Archived pages are listed in the space's Archived tab."
     },
     {
       "operationId": "confluence-v1:POST:/wiki/rest/api/content/blueprint/instance/{draftId}",
@@ -10700,9 +10702,13 @@
       "status": "partial",
       "evidence": [
         "internal/confluence/page_moves_test.go",
-        "docs/PAGE_MOVES.md"
+        "docs/PAGE_MOVES.md",
+        "internal/confluence/page_lifecycle_test.go",
+        "e2e/wiki_page_lifecycle.spec.ts",
+        "internal/web/wiki.go",
+        "internal/render/templates/wiki.gohtml"
       ],
-      "notes": "All four positions are tested by the order a reader then sees, not by the status code; an unknown position, a move relative to itself and a move beneath its own descendant are refused. Moving between spaces remains."
+      "notes": "All four positions are tested by the order a reader then sees, not by the status code; an unknown position, a move relative to itself and a move beneath its own descendant are refused. A target in another space moves the page with its subtree and the folders, whiteboards, databases and Smart Links beneath it, needs delete permission in the source space and add permission in the destination, and refuses a space homepage or a title the destination already shows; replicas receive every moved page with its new space. The page view offers the same move."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/contentbody/convert/async/bulk/tasks",
@@ -12020,7 +12026,7 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ],
-      "notes": "Blog posts support public or creator-private current/draft creation, permission-filtered global and space collections, exact reads, optimistic updates, immutable version history/detail, trash, restore, purge, privacy-shaped actions and an accessible author UI; attachments, comments, labels, likes, properties, classification, redaction and full draft semantics remain."
+      "notes": "Blog posts support public or creator-private current/draft creation, permission-filtered global and space collections, exact reads, optimistic updates, immutable version history/detail, trash, restore, purge, privacy-shaped actions and an accessible author UI; attachments, footer and inline comments, labels, likes, properties, classification and redaction share the page routes; full draft semantics remain."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/blogposts",
@@ -12037,7 +12043,7 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ],
-      "notes": "Blog posts support public or creator-private current/draft creation, permission-filtered global and space collections, exact reads, optimistic updates, immutable version history/detail, trash, restore, purge, privacy-shaped actions and an accessible author UI; attachments, comments, labels, likes, properties, classification, redaction and full draft semantics remain."
+      "notes": "Blog posts support public or creator-private current/draft creation, permission-filtered global and space collections, exact reads, optimistic updates, immutable version history/detail, trash, restore, purge, privacy-shaped actions and an accessible author UI; attachments, footer and inline comments, labels, likes, properties, classification and redaction share the page routes; full draft semantics remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{blogpost-id}/properties",
@@ -12055,7 +12061,7 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ],
-      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels, and the remaining attachment, comment, custom-content, and redaction routes remain."
+      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels remain; blog attachment, comment, custom-content and redaction routes are implemented."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/blogposts/{blogpost-id}/properties",
@@ -12073,7 +12079,7 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ],
-      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels, and the remaining attachment, comment, custom-content, and redaction routes remain."
+      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels remain; blog attachment, comment, custom-content and redaction routes are implemented."
     },
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/blogposts/{blogpost-id}/properties/{property-id}",
@@ -12091,7 +12097,7 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ],
-      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels, and the remaining attachment, comment, custom-content, and redaction routes remain."
+      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels remain; blog attachment, comment, custom-content and redaction routes are implemented."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{blogpost-id}/properties/{property-id}",
@@ -12109,7 +12115,7 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ],
-      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels, and the remaining attachment, comment, custom-content, and redaction routes remain."
+      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels remain; blog attachment, comment, custom-content and redaction routes are implemented."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/blogposts/{blogpost-id}/properties/{property-id}",
@@ -12127,7 +12133,7 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ],
-      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels, and the remaining attachment, comment, custom-content, and redaction routes remain."
+      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels remain; blog attachment, comment, custom-content and redaction routes are implemented."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{blogpost-id}/versions/{version-number}",
@@ -12144,7 +12150,7 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ],
-      "notes": "Blog posts support public or creator-private current/draft creation, permission-filtered global and space collections, exact reads, optimistic updates, immutable version history/detail, trash, restore, purge, privacy-shaped actions and an accessible author UI; attachments, comments, labels, likes, properties, classification, redaction and full draft semantics remain."
+      "notes": "Blog posts support public or creator-private current/draft creation, permission-filtered global and space collections, exact reads, optimistic updates, immutable version history/detail, trash, restore, purge, privacy-shaped actions and an accessible author UI; attachments, footer and inline comments, labels, likes, properties, classification and redaction share the page routes; full draft semantics remain."
     },
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/blogposts/{id}",
@@ -12161,7 +12167,7 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ],
-      "notes": "Blog posts support public or creator-private current/draft creation, permission-filtered global and space collections, exact reads, optimistic updates, immutable version history/detail, trash, restore, purge, privacy-shaped actions and an accessible author UI; attachments, comments, labels, likes, properties, classification, redaction and full draft semantics remain."
+      "notes": "Blog posts support public or creator-private current/draft creation, permission-filtered global and space collections, exact reads, optimistic updates, immutable version history/detail, trash, restore, purge, privacy-shaped actions and an accessible author UI; attachments, footer and inline comments, labels, likes, properties, classification and redaction share the page routes; full draft semantics remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{id}",
@@ -12178,7 +12184,7 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ],
-      "notes": "Blog posts support public or creator-private current/draft creation, permission-filtered global and space collections, exact reads, optimistic updates, immutable version history/detail, trash, restore, purge, privacy-shaped actions and an accessible author UI; attachments, comments, labels, likes, properties, classification, redaction and full draft semantics remain."
+      "notes": "Blog posts support public or creator-private current/draft creation, permission-filtered global and space collections, exact reads, optimistic updates, immutable version history/detail, trash, restore, purge, privacy-shaped actions and an accessible author UI; attachments, footer and inline comments, labels, likes, properties, classification and redaction share the page routes; full draft semantics remain."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/blogposts/{id}",
@@ -12195,7 +12201,7 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ],
-      "notes": "Blog posts support public or creator-private current/draft creation, permission-filtered global and space collections, exact reads, optimistic updates, immutable version history/detail, trash, restore, purge, privacy-shaped actions and an accessible author UI; attachments, comments, labels, likes, properties, classification, redaction and full draft semantics remain."
+      "notes": "Blog posts support public or creator-private current/draft creation, permission-filtered global and space collections, exact reads, optimistic updates, immutable version history/detail, trash, restore, purge, privacy-shaped actions and an accessible author UI; attachments, footer and inline comments, labels, likes, properties, classification and redaction share the page routes; full draft semantics remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{id}/attachments",
@@ -12213,7 +12219,7 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ],
-      "notes": "Blog posts share the permission-filtered, versioned attachment media model with pages. The v2 collection supports status, media type and filename filters plus cursor paging; attachment detail, versions, operations, thumbnail and authenticated download routes recognize the blog parent, and the UI supports upload, replacement and deletion. V1 blog attachment upload compatibility, attachment metadata mutations and richer media processing remain."
+      "notes": "Blog posts share the permission-filtered, versioned attachment media model with pages. The v2 collection supports multi-value status (current and archived by default), media type and filename filters plus cursor paging; attachment detail, versions, operations, thumbnail and authenticated download routes recognize the blog parent, and the UI supports upload, replacement and deletion. V1 blog attachment upload compatibility, attachment metadata mutations and richer media processing remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{id}/classification-level",
@@ -12231,7 +12237,7 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ],
-      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels, and the remaining attachment, comment, custom-content, and redaction routes remain."
+      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels remain; blog attachment, comment, custom-content and redaction routes are implemented."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/blogposts/{id}/classification-level",
@@ -12249,7 +12255,7 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ],
-      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels, and the remaining attachment, comment, custom-content, and redaction routes remain."
+      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels remain; blog attachment, comment, custom-content and redaction routes are implemented."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/blogposts/{id}/classification-level/reset",
@@ -12267,7 +12273,7 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ],
-      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels, and the remaining attachment, comment, custom-content, and redaction routes remain."
+      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels remain; blog attachment, comment, custom-content and redaction routes are implemented."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{id}/custom-content",
@@ -12337,7 +12343,7 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ],
-      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels, and the remaining attachment, comment, custom-content, and redaction routes remain."
+      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels remain; blog attachment, comment, custom-content and redaction routes are implemented."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{id}/likes/count",
@@ -12355,7 +12361,7 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ],
-      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels, and the remaining attachment, comment, custom-content, and redaction routes remain."
+      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels remain; blog attachment, comment, custom-content and redaction routes are implemented."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{id}/likes/users",
@@ -12373,7 +12379,7 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ],
-      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels, and the remaining attachment, comment, custom-content, and redaction routes remain."
+      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels remain; blog attachment, comment, custom-content and redaction routes are implemented."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{id}/operations",
@@ -12391,7 +12397,7 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ],
-      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels, and the remaining attachment, comment, custom-content, and redaction routes remain."
+      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels remain; blog attachment, comment, custom-content and redaction routes are implemented."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/blogposts/{id}/redact",
@@ -12425,7 +12431,7 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ],
-      "notes": "Blog posts support public or creator-private current/draft creation, permission-filtered global and space collections, exact reads, optimistic updates, immutable version history/detail, trash, restore, purge, privacy-shaped actions and an accessible author UI; attachments, comments, labels, likes, properties, classification, redaction and full draft semantics remain."
+      "notes": "Blog posts support public or creator-private current/draft creation, permission-filtered global and space collections, exact reads, optimistic updates, immutable version history/detail, trash, restore, purge, privacy-shaped actions and an accessible author UI; attachments, footer and inline comments, labels, likes, properties, classification and redaction share the page routes; full draft semantics remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/classification-levels",
@@ -13788,7 +13794,7 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ],
-      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels, and the remaining attachment, comment, custom-content, and redaction routes remain."
+      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels remain; blog attachment, comment, custom-content and redaction routes are implemented."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/labels/{id}/pages",
@@ -13820,9 +13826,10 @@
         "internal/store/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/page_lifecycle_test.go"
       ],
-      "notes": "Lists permission-scoped current, author-draft and trashed pages globally or by space with ID/space/title/status/subtype filters, documented sort orders, storage bodies and cursor pagination; archived/deleted states and live documents remain explicit capability gaps."
+      "notes": "Lists permission-scoped current, archived, author-draft and trashed pages globally or by space with ID/space/title/status/subtype filters, documented sort orders, storage bodies and cursor pagination; current and archived pages are listed by default as the spec says, and the deleted filter is accepted; live documents remain."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/pages",
@@ -13854,7 +13861,7 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ],
-      "notes": "Moves a writable childless current page to trash through the canonical optimistic page command while preserving history and enforcing heterogeneous-child safety; draft deletion, permanent purge and archived/deleted state remain."
+      "notes": "Moves a writable childless current page to trash through the canonical optimistic page command while preserving history and enforcing heterogeneous-child safety; an archived page can still be trashed; draft deletion, permanent purge and the deleted state remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{id}",
@@ -13867,9 +13874,10 @@
         "internal/store/wiki.go",
         "internal/store/wiki_page_properties.go",
         "internal/store/wiki_page_governance.go",
-        "internal/store/wiki_hierarchy.go"
+        "internal/store/wiki_hierarchy.go",
+        "internal/confluence/page_lifecycle_test.go"
       ],
-      "notes": "Returns a permission-scoped current or historical page with storage body and optional labels, properties, operations, likes, versions, favorite status, collaborators, direct children and version omission; web resources, live documents, archived/deleted states and remaining expansion metadata remain."
+      "notes": "Returns a permission-scoped current or historical page with storage body and optional labels, properties, operations, likes, versions, favorite status, collaborators, direct children and version omission; an archived page reads back with status=archived, an earlier version reports historical, and an unknown status is refused; web resources, live documents and remaining expansion metadata remain."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/pages/{id}",
@@ -13883,9 +13891,10 @@
         "internal/store/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/page_lifecycle_test.go"
       ],
-      "notes": "Updates writable pages with optimistic versions, rendered storage validation, same-space parent moves and cycle checks, draft/published/restore rules, immutable history, notifications and atomic sync; ownership transfer, live documents, nested bodies and archived state remain."
+      "notes": "Updates writable pages with optimistic versions, rendered storage validation, same-space parent moves and cycle checks, draft/published/restore rules, immutable history, notifications and atomic sync; an archived page is refused until it is restored; ownership transfer, live documents and nested bodies remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{id}/ancestors",
@@ -13916,9 +13925,10 @@
         "migrations/077_wiki_attachments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/page_lifecycle_test.go"
       ],
-      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; advanced expansions and media processing remain."
+      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented. Current and archived attachments are listed by default, several statuses may be asked for, and an attachment reports archived while its page is archived; advanced expansions and media processing remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{id}/children",
@@ -14487,7 +14497,7 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ],
-      "notes": "Blog posts support public or creator-private current/draft creation, permission-filtered global and space collections, exact reads, optimistic updates, immutable version history/detail, trash, restore, purge, privacy-shaped actions and an accessible author UI; attachments, comments, labels, likes, properties, classification, redaction and full draft semantics remain."
+      "notes": "Blog posts support public or creator-private current/draft creation, permission-filtered global and space collections, exact reads, optimistic updates, immutable version history/detail, trash, restore, purge, privacy-shaped actions and an accessible author UI; attachments, footer and inline comments, labels, likes, properties, classification and redaction share the page routes; full draft semantics remain."
     },
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/spaces/{id}/classification-level/default",
@@ -14607,9 +14617,10 @@
       "evidence": [
         "internal/confluence/http.go",
         "internal/confluence/http_test.go",
-        "internal/store/wiki.go"
+        "internal/store/wiki.go",
+        "internal/confluence/page_lifecycle_test.go"
       ],
-      "notes": "Lists permission-scoped current or trashed pages in a visible space with all/root depth, title/status filters, documented sorts, optional storage bodies and cursor pagination; archived/deleted states and live documents remain."
+      "notes": "Lists permission-scoped current, archived or trashed pages in a visible space with all/root depth, title/status filters, documented sorts, optional storage bodies and cursor pagination; current and archived pages are listed by default and the deleted filter is accepted; live documents remain."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/spaces/{id}/permissions",
