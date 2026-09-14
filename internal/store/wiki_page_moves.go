@@ -31,6 +31,8 @@ type WikiCopyHierarchyRequest struct {
 	CopyAttachments   bool   `json:"copyAttachments"`
 	CopyProperties    bool   `json:"copyProperties"`
 	CopyLabels        bool   `json:"copyLabels"`
+	CopyPermissions   bool   `json:"copyPermissions"`
+	CopyCustomContent bool   `json:"copyCustomContents"`
 	CopyDescendants   bool   `json:"copyDescendants"`
 	TitlePrefix       string `json:"titlePrefix"`
 	TitleSearch       string `json:"titleSearch"`
@@ -259,6 +261,10 @@ type WikiPageCopyOptions struct {
 	CopyAttachments bool
 	CopyProperties  bool
 	CopyLabels      bool
+	// CopyPermissions carries the page's view and edit restrictions, and
+	// CopyCustomContent the custom content filed directly under it.
+	CopyPermissions   bool
+	CopyCustomContent bool
 }
 
 // CopyWikiPage duplicates one page. What travels with it is the caller's
@@ -290,7 +296,10 @@ func (s *Store) CopyWikiPage(ctx context.Context, ws, actor, pageID string, opti
 	if err != nil {
 		return "", err
 	}
-	if err = copyPageBelongings(ctx, tx, source.ID, copyID, options.CopyAttachments, options.CopyProperties, options.CopyLabels); err != nil {
+	if err = copyPageBelongings(ctx, tx, ws, actor, source.ID, copyID, pageBelongings{
+		Attachments: options.CopyAttachments, Properties: options.CopyProperties, Labels: options.CopyLabels,
+		Permissions: options.CopyPermissions, CustomContent: options.CopyCustomContent,
+	}); err != nil {
 		return "", err
 	}
 	if err = wikiPageSnapshotAction(ctx, tx, ws, actor, copyID); err != nil {
@@ -390,27 +399,77 @@ func availablePageTitle(ctx context.Context, tx pgx.Tx, spaceID, title string) (
 	return "", fmt.Errorf("%w: too many pages share this title", ErrWikiMoveValidation)
 }
 
-func copyPageBelongings(ctx context.Context, tx pgx.Tx, sourceID, copyID string, attachments, properties, labels bool) error {
-	if labels {
+type pageBelongings struct {
+	Attachments, Properties, Labels, Permissions, CustomContent bool
+}
+
+func copyPageBelongings(ctx context.Context, tx pgx.Tx, ws, actor, sourceID, copyID string, what pageBelongings) error {
+	if what.Labels {
 		if _, err := tx.Exec(ctx, `INSERT INTO wiki_page_labels(page_id,label_id)
 			SELECT $2::bigint,label_id FROM wiki_page_labels WHERE page_id::text=$1
 			ON CONFLICT DO NOTHING`, sourceID, copyID); err != nil {
 			return err
 		}
 	}
-	if properties {
+	if what.Properties {
 		if _, err := tx.Exec(ctx, `INSERT INTO wiki_page_properties(page_id,key,value,version,author_id)
 			SELECT $2::bigint,key,value,1,author_id FROM wiki_page_properties WHERE page_id::text=$1`,
 			sourceID, copyID); err != nil {
 			return err
 		}
 	}
-	if attachments {
+	if what.Attachments {
 		// The copy points at the same stored blob; an attachment's bytes are
 		// content-addressed, so duplicating the row is enough.
 		if _, err := tx.Exec(ctx, `INSERT INTO wiki_attachments(page_id,file_id,filename,media_type,comment,size,version,status,author_id)
 			SELECT $2::bigint,file_id,filename,media_type,comment,size,1,status,author_id
 			FROM wiki_attachments WHERE page_id::text=$1 AND status='current'`, sourceID, copyID); err != nil {
+			return err
+		}
+	}
+	if what.Permissions {
+		// Restrictions travel as they are, so a page only some people could
+		// see is not copied into one everybody can.
+		if _, err := tx.Exec(ctx, `INSERT INTO wiki_page_restrictions(page_id,operation,subject_type,subject_id,author_id)
+			SELECT $2::bigint,operation,subject_type,subject_id,$3 FROM wiki_page_restrictions WHERE page_id::text=$1
+			ON CONFLICT DO NOTHING`, sourceID, copyID, actor); err != nil {
+			return err
+		}
+	}
+	if what.CustomContent {
+		if err := copyPageCustomContent(ctx, tx, ws, actor, sourceID, copyID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// copyPageCustomContent copies the current custom content filed directly under
+// a page. Each copy starts its own history at version 1 with the source's
+// latest title and body, the way a copied page does.
+func copyPageCustomContent(ctx context.Context, tx pgx.Tx, ws, actor, sourceID, copyID string) error {
+	copies, err := queryPageIDs(ctx, tx, `WITH source AS (
+			SELECT c.id,c.space_id,c.custom_type,c.title,c.body FROM wiki_content c
+			WHERE c.parent_page_id::text=$1 AND c.type='custom' AND c.status='current' ORDER BY c.id
+		), copied AS (
+			INSERT INTO wiki_content(space_id,parent_page_id,root_page_id,type,custom_type,title,body,author_id,owner_id)
+			SELECT copy.space_id,copy.id,copy.id,'custom',source.custom_type,source.title,source.body,$3,$3
+			FROM source CROSS JOIN wiki_pages copy WHERE copy.id::text=$2
+			RETURNING id,title,body
+		), versions AS (
+			INSERT INTO wiki_content_versions(content_id,version,title,status,author_id,body,message)
+			SELECT id,1,title,'current',$3,body,'Copied' FROM copied
+		)
+		SELECT id::text FROM copied ORDER BY id`, sourceID, copyID, actor)
+	if err != nil {
+		return err
+	}
+	for _, id := range copies {
+		content, scanErr := scanWikiContent(tx.QueryRow(ctx, wikiContentSelect+` WHERE c.id::text=$1`, id))
+		if scanErr != nil {
+			return scanErr
+		}
+		if err = wikiContentAction(ctx, tx, ws, actor, content, models.OpUpsert); err != nil {
 			return err
 		}
 	}
@@ -508,7 +567,10 @@ func copySubtree(ctx context.Context, tx pgx.Tx, ws, actor, pageID, spaceID stri
 	if err != nil {
 		return 0, err
 	}
-	if err = copyPageBelongings(ctx, tx, pageID, copyID, payload.CopyAttachments, payload.CopyProperties, payload.CopyLabels); err != nil {
+	if err = copyPageBelongings(ctx, tx, ws, actor, pageID, copyID, pageBelongings{
+		Attachments: payload.CopyAttachments, Properties: payload.CopyProperties, Labels: payload.CopyLabels,
+		Permissions: payload.CopyPermissions, CustomContent: payload.CopyCustomContent,
+	}); err != nil {
 		return 0, err
 	}
 	if err = wikiPageSnapshotAction(ctx, tx, ws, actor, copyID); err != nil {

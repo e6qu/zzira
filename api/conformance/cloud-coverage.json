@@ -10211,7 +10211,7 @@
         "internal/confluence/page_moves_test.go",
         "docs/PAGE_MOVES.md"
       ],
-      "notes": "Copying one page is tested, including the chosen attachments, properties and labels, the rename when a title is already used, and the refused unknown space and destination type. Copying permissions and custom contents remains."
+      "notes": "Copying one page is tested, including the chosen attachments, properties, labels, restrictions (copyPermissions) and custom content filed under the page (copyCustomContents), the rename when a title is already used, and the refused unknown space and destination type. Expand on the copy response remains."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/content/{id}/descendant",
@@ -10388,7 +10388,7 @@
         "internal/confluence/page_moves_test.go",
         "docs/PAGE_MOVES.md"
       ],
-      "notes": "The queued hierarchy copy is tested end to end: it answers 202, lands under its destination with the title prefix applied, and a copy into itself fails with the task reporting why."
+      "notes": "The queued hierarchy copy is tested end to end: it answers 202, lands under its destination with the title prefix applied, and a copy into itself fails with the task reporting why. copyPermissions and copyCustomContents apply to every page copied in the tree."
     },
     {
       "operationId": "confluence-v1:POST:/wiki/rest/api/content/{id}/permission/check",

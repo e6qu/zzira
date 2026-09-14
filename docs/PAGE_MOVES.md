@@ -71,7 +71,11 @@ page itself.
 
 ## What travels with a copy
 
-The caller chooses: attachments, properties and labels. A copy made to start a
+The caller chooses: attachments, properties, labels, restrictions
+(`copyPermissions`) and the custom content filed directly under the page
+(`copyCustomContents`). Restrictions travel as they are, so a page only some
+people could see is not copied into one everybody can; copied custom content
+starts its own history at version 1, as a copied page does. A copy made to start a
 new document wants the text and not last quarter's attachments, so none of them
 are implied. An attachment's bytes are content-addressed, so a copied
 attachment points at the same stored blob rather than duplicating it.
@@ -117,6 +121,9 @@ reports `archived` while the page it belongs to is archived.
   descendants, and the long task list and its 404.
 - `migrations/147_page_moves.sql` is exercised from a clean PostgreSQL schema.
 
+- The same test copies a restricted page carrying custom content twice: a plain
+  copy takes neither, and a copy asking for `copyPermissions` and
+  `copyCustomContents` takes both.
 - `internal/confluence/page_lifecycle_test.go` covers the default and filtered
   listings, the `deleted` and `historical` statuses, attachment statuses, an
   archived page refusing edits, restore refusing a current title, children
@@ -127,6 +134,5 @@ reports `archived` while the page it belongs to is archived.
 - `e2e/wiki_page_lifecycle.spec.ts` archives a page in the browser, finds it in
   the Archived tab, restores it and moves a page to another space.
 
-Copying permissions and custom contents with a page, `expand` on the copy
-response, and moving a page to the top level of a space (the REST move always
+`expand` on the copy response, and moving a page to the top level of a space (the REST move always
 names a target page) remain.

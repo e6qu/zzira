@@ -94,6 +94,9 @@ func (h *V1Handler) v1CopyPage(w http.ResponseWriter, r *http.Request, ws, actor
 		CopyAttachments: input.CopyAttachments,
 		CopyProperties:  input.CopyProperties,
 		CopyLabels:      input.CopyLabels,
+
+		CopyPermissions:   input.CopyPermissions,
+		CopyCustomContent: input.CopyCustomContents,
 	}
 	if input.Destination != nil {
 		options.DestinationType, options.DestinationID = input.Destination.Type, input.Destination.Value
@@ -135,6 +138,7 @@ func (h *V1Handler) v1CopyPageHierarchy(w http.ResponseWriter, r *http.Request, 
 		PageID: id, DestinationPageID: input.DestinationPageID,
 		CopyAttachments: input.CopyAttachments, CopyProperties: input.CopyProperties,
 		CopyLabels: input.CopyLabels, CopyDescendants: input.CopyDescendants,
+		CopyPermissions: input.CopyPermissions, CopyCustomContent: input.CopyCustomContents,
 	}
 	if input.TitleOptions != nil {
 		payload.TitlePrefix = input.TitleOptions.Prefix

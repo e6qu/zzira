@@ -84,7 +84,7 @@ func (h *Handler) pageByID(w http.ResponseWriter, r *http.Request, ws, actor, id
 	if _, filtered := r.URL.Query()["status"]; filtered && !queryContains(r, "status", page.Status) {
 		failure(w, 404, "Page not found with the requested status.")
 		return
-	} else if !filtered && !flags["get-draft"] && page.Status != "current" {
+	} else if !filtered && !flags["get-draft"] && page.Status != "current" && page.Status != "historical" {
 		failure(w, 404, "Page not found with the requested status.")
 		return
 	}

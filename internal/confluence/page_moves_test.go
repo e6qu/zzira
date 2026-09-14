@@ -19,6 +19,8 @@ import (
 // page among its siblings or under a new parent, copying one page or a whole
 // hierarchy, archiving pages, trashing a tree, and the long tasks that report
 // the ones that run in the background.
+const moveNoteType = "ac:zzira:page-move-note"
+
 func TestPageMovesAndCopies(t *testing.T) {
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	if dsn == "" {
@@ -49,6 +51,7 @@ func TestPageMovesAndCopies(t *testing.T) {
 			`DELETE FROM api_tasks WHERE workspace_id=$1`,
 			`DELETE FROM wiki_page_properties WHERE page_id IN (SELECT p.id FROM wiki_pages p JOIN wiki_spaces s ON s.id=p.space_id WHERE s.workspace_id=$1)`,
 			`DELETE FROM wiki_page_labels WHERE page_id IN (SELECT p.id FROM wiki_pages p JOIN wiki_spaces s ON s.id=p.space_id WHERE s.workspace_id=$1)`,
+			`DELETE FROM wiki_content WHERE space_id IN (SELECT id FROM wiki_spaces WHERE workspace_id=$1)`,
 			`DELETE FROM wiki_page_versions WHERE page_id IN (SELECT p.id FROM wiki_pages p JOIN wiki_spaces s ON s.id=p.space_id WHERE s.workspace_id=$1)`,
 			`DELETE FROM wiki_pages WHERE space_id IN (SELECT id FROM wiki_spaces WHERE workspace_id=$1)`,
 			`DELETE FROM wiki_spaces WHERE workspace_id=$1`,
@@ -61,6 +64,7 @@ func TestPageMovesAndCopies(t *testing.T) {
 		}
 		exec(`DELETE FROM api_tokens WHERE user_id=$1`, actor)
 		exec(`DELETE FROM users WHERE id=$1`, actor)
+		exec(`DELETE FROM wiki_custom_content_types WHERE type=$1 AND NOT EXISTS(SELECT 1 FROM wiki_content WHERE custom_type=$1)`, moveNoteType)
 	})
 	blobs, err := attachments.NewFS(t.TempDir())
 	if err != nil {
@@ -188,6 +192,32 @@ func TestPageMovesAndCopies(t *testing.T) {
 		"pageTitle": "Alpha, reconsidered", "destination": map[string]any{"type": "space_key", "value": "MVT"}}, 200))
 	if renamed["title"] != "Alpha, reconsidered" {
 		t.Fatalf("named copy: %v", renamed)
+	}
+	// Restrictions and custom content travel only when they are asked for.
+	exec(`INSERT INTO wiki_custom_content_types(type,body_representation,title) VALUES ($1,'storage','Move note') ON CONFLICT DO NOTHING`, moveNoteType)
+	if _, err := st.CreateWikiCustomContent(ctx, ws, actor, models.WikiContent{CustomType: moveNoteType, Title: "Alpha note", Body: "<p>Note</p>", ParentID: alpha, ParentType: "page"}); err != nil {
+		t.Fatal(err)
+	}
+	exec(`INSERT INTO wiki_page_restrictions(page_id,operation,subject_type,subject_id,author_id) VALUES ($1::bigint,'update','user',$2,$2)`, alpha, actor)
+	belongings := func(pageID string) (restrictions, notes int) {
+		t.Helper()
+		if err := st.Pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM wiki_page_restrictions WHERE page_id::text=$1),
+			(SELECT count(*) FROM wiki_content WHERE parent_page_id::text=$1 AND type='custom' AND custom_type=$2 AND title='Alpha note')`,
+			pageID, moveNoteType).Scan(&restrictions, &notes); err != nil {
+			t.Fatal(err)
+		}
+		return restrictions, notes
+	}
+	bare, _ := object(callV1("POST", "/content/"+alpha+"/copy", map[string]any{
+		"pageTitle": "Alpha, bare", "destination": map[string]any{"type": "space_key", "value": "MVT"}}, 200))["id"].(string)
+	if restrictions, notes := belongings(bare); restrictions != 0 || notes != 0 {
+		t.Fatalf("a plain copy took restrictions %d and custom content %d", restrictions, notes)
+	}
+	complete, _ := object(callV1("POST", "/content/"+alpha+"/copy", map[string]any{
+		"pageTitle": "Alpha, complete", "copyPermissions": true, "copyCustomContents": true,
+		"destination": map[string]any{"type": "space_key", "value": "MVT"}}, 200))["id"].(string)
+	if restrictions, notes := belongings(complete); restrictions != 1 || notes != 1 {
+		t.Fatalf("a complete copy took restrictions %d and custom content %d", restrictions, notes)
 	}
 	callV1("POST", "/content/"+alpha+"/copy", map[string]any{
 		"destination": map[string]any{"type": "space_key", "value": "NOPE"}}, 400)
