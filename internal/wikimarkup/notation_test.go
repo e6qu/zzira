@@ -1,6 +1,9 @@
 package wikimarkup
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestFromNotation(t *testing.T) {
 	for _, tc := range []struct{ name, in, want string }{
@@ -23,5 +26,34 @@ func TestFromNotation(t *testing.T) {
 	}
 	if _, err := Render(FromNotation("h1. Title\n* item\n[link|https://example.test]\n{code}x{code}\n||a||\n|b|")); err != nil {
 		t.Fatalf("converted markup is not valid storage: %v", err)
+	}
+}
+
+func TestMentions(t *testing.T) {
+	storage := `<p>Thanks <ac:link><ri:user ri:account-id="usr_ana" /><ac:plain-text-link-body><![CDATA[Ana <Soursop>]]></ac:plain-text-link-body></ac:link> and <ac:link><ri:user ri:account-id="usr_bo"/></ac:link>, and again <ac:link><ri:user ri:account-id="usr_ana"/></ac:link>.</p>`
+	rendered, err := Render(storage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `<p>Thanks <a href="/people/usr_ana">@Ana &lt;Soursop&gt;</a> and <a href="/people/usr_bo">@user</a>, and again <a href="/people/usr_ana">@user</a>.</p>`
+	if rendered != want {
+		t.Fatalf("rendered mention:\n got %q\nwant %q", rendered, want)
+	}
+	if got := MentionedAccounts(storage); len(got) != 2 || got[0] != "usr_ana" || got[1] != "usr_bo" {
+		t.Fatalf("mentioned accounts: %v", got)
+	}
+	if text, err := Text(storage); err != nil || !strings.Contains(text, "Ana <Soursop>") {
+		t.Fatalf("mention text: %q %v", text, err)
+	}
+	for _, bad := range []string{
+		`<p><ac:link><ri:page ri:content-title="Other"/></ac:link></p>`,
+		`<p><ac:link><ri:user ri:account-id="../x"/></ac:link></p>`,
+		`<p><ac:link><ri:user ri:account-id="usr_a" ri:onclick="x"/></ac:link></p>`,
+		`<p><ac:link><ri:user ri:account-id="usr_a"/>loose text</ac:link></p>`,
+		`<p><ri:user ri:account-id="usr_a"/></p>`,
+	} {
+		if _, err := Render(bad); err == nil {
+			t.Errorf("accepted %s", bad)
+		}
 	}
 }

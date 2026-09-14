@@ -21,6 +21,12 @@ var macroAttributes = map[string]bool{
 	"name": true, "macro-id": true, "schema-version": true, "local-id": true,
 }
 
+// A mention is Confluence's user link: an ac:link holding an ri:user that names
+// the account, optionally with the name to show in an ac:plain-text-link-body.
+// It renders as a link to the person, and nothing else in the ri namespace is
+// accepted.
+var mentionAttributes = map[string]bool{"account-id": true, "userkey": true, "local-id": true}
+
 var tags = map[string]bool{"p": true, "h1": true, "h2": true, "h3": true, "h4": true, "h5": true, "h6": true, "ul": true, "ol": true, "li": true, "blockquote": true, "pre": true, "code": true, "strong": true, "em": true, "b": true, "i": true, "u": true, "s": true, "a": true, "br": true, "hr": true, "table": true, "thead": true, "tbody": true, "tr": true, "th": true, "td": true}
 
 // Render rejects unsupported markup rather than silently dropping content.
@@ -60,6 +66,19 @@ func Render(storage string) (string, error) {
 			// They are structure rather than markup: a macro renders as the
 			// body it holds, and its parameters describe it without being
 			// shown, so none of these elements reach the HTML.
+			if t.Name.Space == "ac" && tag == "link" {
+				mention, consumed, err := readMention(d, t)
+				if err != nil {
+					return "", err
+				}
+				depth--
+				_ = consumed
+				b.WriteString(mention)
+				continue
+			}
+			if t.Name.Space == "ri" {
+				return "", fmt.Errorf("unsupported storage element: ri:%s", tag)
+			}
 			if t.Name.Space == "ac" {
 				if !macroElements[tag] {
 					return "", fmt.Errorf("unsupported storage element: ac:%s", tag)
@@ -143,4 +162,86 @@ func Text(storage string) (string, error) {
 		}
 	}
 	return strings.Join(strings.Fields(value.String()), " "), nil
+}
+
+// readMention consumes one ac:link and renders it. Only a link to a user is
+// supported: it becomes a link to that person, labelled with the name the
+// link carries, or with "@user" when it carries none.
+func readMention(d *xml.Decoder, start xml.StartElement) (string, bool, error) {
+	for _, a := range start.Attr {
+		if !mentionAttributes[a.Name.Local] {
+			return "", false, fmt.Errorf("unsupported attribute %s on ac:link", a.Name.Local)
+		}
+	}
+	var accountID, label string
+	depth := 1
+	inLabel := false
+	for depth > 0 {
+		token, err := d.Token()
+		if err != nil {
+			return "", false, fmt.Errorf("invalid storage markup: %w", err)
+		}
+		switch t := token.(type) {
+		case xml.StartElement:
+			depth++
+			switch {
+			case t.Name.Space == "ri" && t.Name.Local == "user":
+				for _, a := range t.Attr {
+					if !mentionAttributes[a.Name.Local] {
+						return "", false, fmt.Errorf("unsupported attribute %s on ri:user", a.Name.Local)
+					}
+					if a.Name.Local == "account-id" {
+						accountID = a.Value
+					}
+				}
+			case t.Name.Space == "ac" && t.Name.Local == "plain-text-link-body":
+				inLabel = true
+			default:
+				return "", false, fmt.Errorf("a link may only mention a user")
+			}
+		case xml.EndElement:
+			depth--
+			if t.Name.Space == "ac" && t.Name.Local == "plain-text-link-body" {
+				inLabel = false
+			}
+		case xml.CharData:
+			if inLabel {
+				label += string(t)
+			} else if strings.TrimSpace(string(t)) != "" {
+				return "", false, fmt.Errorf("a mention's text belongs in its link body")
+			}
+		default:
+			return "", false, fmt.Errorf("storage directives are not supported")
+		}
+	}
+	if accountID == "" || strings.ContainsAny(accountID, "/?#\\ ") {
+		return "", false, fmt.Errorf("a mention names an account")
+	}
+	label = strings.TrimSpace(label)
+	if label == "" {
+		label = "user"
+	}
+	return `<a href="/people/` + url.PathEscape(accountID) + `">@` + html.EscapeString(label) + `</a>`, true, nil
+}
+
+// MentionedAccounts lists the accounts a storage body mentions, each once, in
+// the order they first appear.
+func MentionedAccounts(storage string) []string {
+	decoder := xml.NewDecoder(strings.NewReader("<root>" + storage + "</root>"))
+	seen := map[string]bool{}
+	accounts := []string{}
+	for {
+		token, err := decoder.Token()
+		if err != nil {
+			return accounts
+		}
+		if start, ok := token.(xml.StartElement); ok && start.Name.Space == "ri" && start.Name.Local == "user" {
+			for _, a := range start.Attr {
+				if a.Name.Local == "account-id" && a.Value != "" && !seen[a.Value] {
+					seen[a.Value] = true
+					accounts = append(accounts, a.Value)
+				}
+			}
+		}
+	}
 }
