@@ -70,7 +70,7 @@ The worker executes these action component types in order:
 |---|---|---|
 | `jira.issue.add-label` | `{"label":"reviewed"}` | Adds the label if absent |
 | `jira.issue.assign` | `{"accountId":"..."}` | Assigns an active member; `ACTOR` and `UNASSIGNED` are accepted |
-| `jira.issue.transition` | `{"statusId":"st_done"}` | Uses a valid current-workflow transition to the target status |
+| `jira.issue.transition` | `{"statusId":"10001"}` | Uses a valid current-workflow transition to the target status |
 
 JQL evaluation and every mutation run as the stored rule actor. Issue security
 therefore filters the matched set, and command-layer validation applies to
@@ -81,8 +81,43 @@ Unknown triggers, components, conditions, branches, smart values, and connection
 payloads remain available through the rule API, but the scheduled worker records
 an explicit failed audit entry when asked to execute unsupported behavior. Event
 triggers, Cron, condition evaluation, branching, issue/page creation, comments,
-email/web requests, templates, manual-rule APIs, usage limits, and the complete
-Jira action catalog remain gaps.
+email/web requests, usage limits, and the complete Jira action catalog remain
+gaps.
+
+## Manually triggered rules
+
+A rule whose trigger is `jira.manual.trigger.issue.action` can be run from a work
+item. Its `value.inputPrompts` list the inputs the person running it gives
+(`displayName`, `inputType`, `required`, `variableName`).
+
+| Operation | Behavior |
+| --- | --- |
+| `POST .../rest/v1/rule/manual/search` | Site members: `objects` (issue ARIs `ari:cloud:jira:{cloudId}:issue/{id}`) or `cursor`, never both, and `limit` 1 to 100 (default 50). Returns enabled manual rules whose scope covers every object's project as `data` of `{id, name, userInputs}` with `links.self`, `next` and `prev`. An invisible issue is 403. |
+| `GET .../rest/v1/rule/manual/search?cursor=` | Continues a search; only `cursor` and `limit` are accepted. |
+| `POST .../rest/v1/rule/manual/{ruleId}/invocation` | Runs the rule for 1 to 50 objects with `userInputs`, returning a result per ARI: `SUCCESS`, `INVALID_TARGET_OBJECT` (not a visible issue), `INVALID_RULE_OR_OBJECT` (disabled, not manual or unsupported) or `INVALID_TARGET_SCOPE`. Missing required inputs are 400; an unknown rule is 404. |
+
+Invocation runs the rule's actions immediately as the rule actor and records a
+run in the audit log, like a scheduled run.
+
+## Templates
+
+`GET/POST .../rest/v1/template/search` lists the template catalog by `categories`
+and `ruleHome` (the site ARI `ari:cloud:jira::site/{cloudId}` or a project ARI)
+with cursors; `GET .../rest/v1/template/{templateId}` returns one template with
+its categories and typed parameters. Site members can read the catalog.
+
+| Template | Categories | Parameters |
+| --- | --- | --- |
+| `scheduled-label-stale-work` | popular, scheduled, work item management | `label` (TEXT), `days` (NUMBER) |
+| `scheduled-assign-unassigned` | software, scheduled, work item management | `assigneeAccountId` (TEXT, required) |
+| `manual-assign-to-me` | popular, manually triggered, work item management | none |
+| `manual-transition` | software, manually triggered, work item management | `statusId` (TEXT, required) |
+
+`POST .../rest/v1/template/create` (administrators) builds a rule from
+`templateId`, `ruleHome`, `parameters` (`{type, value}` per key) and an optional
+`state`, returning `{ruleUuid}`. Missing, mistyped and unknown parameters are 400,
+as is a rule home outside the site. The catalog holds templates for the actions
+the worker executes.
 
 ## Durability and audit behavior
 
