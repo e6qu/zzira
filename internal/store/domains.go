@@ -175,3 +175,13 @@ func (s *Store) DeleteOrganizationDomain(ctx context.Context, workspaceID, actor
 	}
 	return tx.Commit(ctx)
 }
+
+// SenderDomainVerified reports whether the site's organization has verified
+// the domain of a project sender address.
+func (s *Store) SenderDomainVerified(ctx context.Context, workspaceID, domain string) (bool, error) {
+	var verified bool
+	err := s.Pool.QueryRow(ctx, `SELECT EXISTS(
+		SELECT 1 FROM organization_domains d JOIN sites si ON si.organization_id=d.organization_id
+		WHERE si.workspace_id=$1 AND lower(d.name)=lower($2) AND d.claim_status='verified')`, workspaceID, domain).Scan(&verified)
+	return verified, err
+}

@@ -95,7 +95,7 @@ func notificationRecipientLabel(entry models.NotificationSchemeEntry, members []
 	return entry.NotificationType
 }
 
-func notificationCards(schemes []*models.NotificationScheme, projects []*models.Project, members []*models.User, groups []*models.Group, roles []*models.ProjectRole, fields []*models.CustomField, mappings []store.NotificationSchemeMapping) []notificationSchemeCard {
+func notificationCards(events []store.NotificationEventDefinition, schemes []*models.NotificationScheme, projects []*models.Project, members []*models.User, groups []*models.Group, roles []*models.ProjectRole, fields []*models.CustomField, mappings []store.NotificationSchemeMapping) []notificationSchemeCard {
 	byScheme := map[int64]map[string]bool{}
 	for _, mapping := range mappings {
 		if byScheme[mapping.SchemeID] == nil {
@@ -103,11 +103,15 @@ func notificationCards(schemes []*models.NotificationScheme, projects []*models.
 		}
 		byScheme[mapping.SchemeID][mapping.ProjectID] = true
 	}
+	eventsByID := map[int64]store.NotificationEventDefinition{}
+	for _, event := range events {
+		eventsByID[event.ID] = event
+	}
 	cards := make([]notificationSchemeCard, 0, len(schemes))
 	for _, scheme := range schemes {
 		card := notificationSchemeCard{Scheme: scheme}
 		for _, configured := range scheme.Events {
-			event, _ := store.NotificationEvent(configured.EventID)
+			event := eventsByID[configured.EventID]
 			for _, entry := range configured.Notifications {
 				card.Entries = append(card.Entries, notificationEntryView{Entry: entry, EventName: event.Name, RecipientLabel: notificationRecipientLabel(entry, members, groups, roles, fields)})
 			}
@@ -123,8 +127,12 @@ func notificationCards(schemes []*models.NotificationScheme, projects []*models.
 }
 
 func (h *Handler) loadNotificationSchemesPage(r *http.Request, workspaceID string) (notificationSchemesData, error) {
-	data := notificationSchemesData{Events: store.NotificationEvents(), Notice: r.URL.Query().Get("notice"), Error: r.URL.Query().Get("error")}
+	data := notificationSchemesData{Notice: r.URL.Query().Get("notice"), Error: r.URL.Query().Get("error")}
 	var err error
+	data.Events, err = h.Store.IssueEvents(r.Context(), workspaceID)
+	if err != nil {
+		return data, err
+	}
 	data.Projects, err = h.Store.ProjectsByWorkspace(r.Context(), workspaceID)
 	if err == nil {
 		data.Members, err = h.Store.MembersByWorkspace(r.Context(), workspaceID)
@@ -147,7 +155,7 @@ func (h *Handler) loadNotificationSchemesPage(r *http.Request, workspaceID strin
 		mappings, err = h.Store.NotificationSchemeMappings(r.Context(), workspaceID)
 	}
 	if err == nil {
-		data.Schemes = notificationCards(schemes, data.Projects, data.Members, data.Groups, data.Roles, data.Fields, mappings)
+		data.Schemes = notificationCards(data.Events, schemes, data.Projects, data.Members, data.Groups, data.Roles, data.Fields, mappings)
 	}
 	return data, err
 }
@@ -256,6 +264,11 @@ func (h *Handler) ProjectNotificationsPage(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "Could not load project notifications.", 500)
 		return
 	}
-	cards := notificationCards([]*models.NotificationScheme{scheme}, []*models.Project{project}, members, groups, roles, fields, []store.NotificationSchemeMapping{{SchemeID: scheme.ID, ProjectID: project.ID}})
+	events, err := h.Store.IssueEvents(r.Context(), workspaceID)
+	if err != nil {
+		http.Error(w, "Could not load project notifications.", 500)
+		return
+	}
+	cards := notificationCards(events, []*models.NotificationScheme{scheme}, []*models.Project{project}, members, groups, roles, fields, []store.NotificationSchemeMapping{{SchemeID: scheme.ID, ProjectID: project.ID}})
 	h.writeWorkspacePage(w, r, "page_project_notifications", user, workspaceID, projectNotificationsData{Project: project, Scheme: cards[0]}, "project-notifications", project.Key)
 }

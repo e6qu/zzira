@@ -51,6 +51,7 @@ type adminPageData struct {
 	ApplicationProperties             []models.ApplicationProperty
 	NavigatorColumns                  []adminNavigatorColumn
 	ProjectCategories                 []*models.ProjectCategory
+	IssueEvents                       []adminIssueEvent
 	ClassificationLevels              []models.DataClassificationLevel
 	ClassificationColors              []string
 	LastClassificationIndex           int
@@ -213,6 +214,13 @@ func (h *Handler) adminData(r *http.Request, workspaceID, message string) (admin
 	if err != nil {
 		return adminPageData{}, err
 	}
+	events, err := h.Store.IssueEvents(r.Context(), workspaceID)
+	if err != nil {
+		return adminPageData{}, err
+	}
+	for _, event := range events {
+		data.IssueEvents = append(data.IssueEvents, adminIssueEvent{NotificationEventDefinition: event, Custom: store.IsCustomIssueEvent(event.ID)})
+	}
 	if len(directories) == 0 {
 		return data, nil
 	}
@@ -253,6 +261,62 @@ func (h *Handler) adminData(r *http.Request, workspaceID, message string) (admin
 		return adminPageData{}, err
 	}
 	return data, nil
+}
+
+// adminIssueEvent is one row of the events list; only custom events change.
+type adminIssueEvent struct {
+	store.NotificationEventDefinition
+	Custom bool
+}
+
+func issueEventStatus(err error) int {
+	switch {
+	case errors.Is(err, store.ErrIssueEventValidation):
+		return http.StatusBadRequest
+	case errors.Is(err, store.ErrIssueEventConflict):
+		return http.StatusConflict
+	case errors.Is(err, store.ErrIssueEventNotFound):
+		return http.StatusNotFound
+	}
+	return http.StatusInternalServerError
+}
+
+// CreateAdminIssueEvent adds a custom event for notification schemes and
+// workflow transitions.
+func (h *Handler) CreateAdminIssueEvent(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	if _, err := h.Store.CreateIssueEvent(r.Context(), workspaceID, user.ID, r.PostFormValue("name"), r.PostFormValue("description")); err != nil {
+		http.Error(w, err.Error(), issueEventStatus(err))
+		return
+	}
+	redirectLocal(w, r, "/admin?saved="+url.QueryEscape("Event created")+"#admin-issue-events")
+}
+
+// UpdateAdminIssueEvent renames or deletes a custom event.
+func (h *Handler) UpdateAdminIssueEvent(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("eventId"), 10, 64)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	saved := "Event saved"
+	if r.PostFormValue("action") == "delete" {
+		err, saved = h.Store.DeleteIssueEvent(r.Context(), workspaceID, user.ID, id), "Event deleted"
+	} else {
+		err = h.Store.UpdateIssueEvent(r.Context(), workspaceID, user.ID, id, r.PostFormValue("name"), r.PostFormValue("description"))
+	}
+	if err != nil {
+		http.Error(w, err.Error(), issueEventStatus(err))
+		return
+	}
+	redirectLocal(w, r, "/admin?saved="+url.QueryEscape(saved)+"#admin-issue-events")
 }
 
 func (h *Handler) CreateAdminProjectCategory(w http.ResponseWriter, r *http.Request) {

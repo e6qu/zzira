@@ -595,6 +595,10 @@ func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, worksp
 	} else if !strings.EqualFold(updated.Status.Category, "done") && strings.EqualFold(issue.Status.Category, "done") {
 		eventID, notificationKind, notificationVerb = 8, "issue_reopened", "reopened"
 	}
+	// A transition configured with an event fires that event instead.
+	if custom, parseErr := strconv.ParseInt(t.CustomIssueEventID, 10, 64); parseErr == nil && custom > 0 {
+		eventID, notificationKind = custom, "issue_event"
+	}
 	if err = s.deliverIssueEvent(ctx, workspaceID, actorID, updated, action, eventID, notificationKind, notificationVerb); err != nil {
 		return updated, action, err
 	}

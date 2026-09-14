@@ -115,7 +115,7 @@ func TestInstalledAppJQLFunctionEvaluationAndPrecomputation(t *testing.T) {
 			t.Fatal(err)
 		}
 		compiled := jql.Compile(query, adminID, jql.DefaultResolver())
-		if compiled.Err != nil || !strings.Contains(compiled.Where, "pr.key") || !reflect.DeepEqual(compiled.Args, []any{"OPS"}) {
+		if compiled.Err != nil || !strings.Contains(compiled.Where, "pr.key = upper(") || !reflect.DeepEqual(compiled.Args, []any{"ops"}) {
 			t.Fatalf("expanded query SQL=%s args=%#v err=%v", compiled.Where, compiled.Args, compiled.Err)
 		}
 	}

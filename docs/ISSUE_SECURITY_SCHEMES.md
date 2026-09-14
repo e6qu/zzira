@@ -44,13 +44,10 @@ level is rejected with `409`. Associating a scheme requires a mapping for every
 level the project currently uses, which keeps work items from being left at a
 level the new scheme does not define.
 
-zzira's two pre-v3 extensions stay available for existing clients: `POST
-/rest/api/3/issuesecurityschemes` still accepts a caller-supplied `id` with
-account-ID level members, and `GET/PUT
-/rest/api/3/issuesecurityschemes/project/{projectKeyOrId}` still reads and sets
-a project's scheme by key. The legacy `PUT` assigns without level mappings, so
-Jira Cloud clients should use the paginated `/issuesecurityschemes/project`
-endpoint above.
+Schemes, levels and members follow Jira Cloud's contract only: ids are
+generated, level members are holder objects, and a project's scheme is read and
+set through `/rest/api/3/issuesecurityschemes/project`. zzira's earlier
+caller-supplied ids, account-ID member strings and project-key route are gone.
 
 ## Holders and enforcement
 

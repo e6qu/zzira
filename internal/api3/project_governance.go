@@ -369,15 +369,25 @@ func (h *Handler) projectEmail(w http.ResponseWriter, r *http.Request, projectID
 	}
 	switch r.Method {
 	case http.MethodGet:
-		email := p.SenderEmail
-		if email == "" {
-			host := "zzira.local"
-			if base, err := urlpkg.Parse(h.BaseURL); err == nil && base.Hostname() != "" {
-				host = base.Hostname()
-			}
-			email = "jira@" + host
+		host := "zzira.local"
+		if base, err := urlpkg.Parse(h.BaseURL); err == nil && base.Hostname() != "" {
+			host = base.Hostname()
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"emailAddress": email, "emailAddressStatus": []string{}})
+		email, status := p.SenderEmail, []string{}
+		if email == "" {
+			email = "jira@" + host
+		} else if at := strings.LastIndex(email, "@"); at >= 0 && !strings.EqualFold(email[at+1:], host) {
+			// A sender on a custom domain reports the domain's claim status.
+			verified, err := h.Store.SenderDomainVerified(r.Context(), workspaceID, email[at+1:])
+			if err != nil {
+				projectGovernanceError(w, err)
+				return
+			}
+			if !verified {
+				status = append(status, "Email address or domain not verified.")
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"emailAddress": email, "emailAddressStatus": status})
 	case http.MethodPut:
 		if _, _, e = h.authWorkspace(r); e != nil {
 			writeJerr(w, e)

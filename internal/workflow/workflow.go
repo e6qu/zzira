@@ -100,6 +100,9 @@ type Transition struct {
 	Triggers   []Rule          `json:"triggers,omitempty"`
 	Conditions *ConditionGroup `json:"conditions,omitempty"`
 	Screen     *Rule           `json:"transitionScreen,omitempty"`
+	// CustomIssueEventID is the event the transition fires instead of the
+	// one Jira derives from the status change.
+	CustomIssueEventID string `json:"customIssueEventId,omitempty"`
 }
 
 // Workflow is a named set of transitions over its visible status registry.

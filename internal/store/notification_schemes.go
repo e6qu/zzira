@@ -165,7 +165,9 @@ func validateNotificationSchemeName(name string) error {
 func validateNotificationEntry(ctx context.Context, tx pgx.Tx, workspaceID string, input NotificationEntryInput) (NotificationEntryInput, string, error) {
 	input.NotificationType = strings.TrimSpace(input.NotificationType)
 	input.Parameter = strings.TrimSpace(input.Parameter)
-	if _, ok := NotificationEvent(input.EventID); !ok {
+	if _, ok, err := issueEvent(ctx, tx, workspaceID, input.EventID); err != nil {
+		return input, "", err
+	} else if !ok {
 		return input, "", fmt.Errorf("%w: event type with ID %d was not found", ErrNotificationSchemeValidation, input.EventID)
 	}
 	recipient := input.Parameter
@@ -472,8 +474,7 @@ func stringValues(value any) []string {
 // commits private inbox actions and durable email deliveries exactly once for
 // the source action and event.
 func (s *Store) DeliverIssueNotification(ctx context.Context, workspaceID, actorID, issueID string, actionSeq, eventID int64, kind, message string) error {
-	event, ok := NotificationEvent(eventID)
-	if !ok || actionSeq <= 0 {
+	if actionSeq <= 0 {
 		return ErrNotificationSchemeValidation
 	}
 	tx, err := s.Pool.Begin(ctx)
@@ -481,6 +482,13 @@ func (s *Store) DeliverIssueNotification(ctx context.Context, workspaceID, actor
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	event, ok, err := issueEvent(ctx, tx, workspaceID, eventID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrNotificationSchemeValidation
+	}
 	command, err := tx.Exec(ctx, `INSERT INTO notification_event_deliveries(workspace_id,action_seq,event_id,issue_id) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING`, workspaceID, actionSeq, eventID, issueID)
 	if err != nil || command.RowsAffected() == 0 {
 		return err

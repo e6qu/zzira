@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/e6qu/zzira/internal/models"
@@ -53,6 +54,8 @@ type workflowTransitionUpdateRequest struct {
 	Conditions        *workflowConditionGroupUpdateRequest `json:"conditions"`
 	TransitionScreen  *workflowRuleUpdateRequest           `json:"transitionScreen"`
 	Triggers          []workflowRuleUpdateRequest          `json:"triggers"`
+	// CustomIssueEventID is the event the transition fires.
+	CustomIssueEventID *string `json:"customIssueEventId"`
 }
 
 type workflowCreateItemRequest struct {
@@ -361,6 +364,14 @@ func workflowDefinitionFromRequest(id, name, description string, startPointLayou
 			continue
 		}
 		transition := workflow.Transition{ID: transitionID, Name: strings.TrimSpace(item.Name), From: from, To: to}
+		if item.CustomIssueEventID != nil && strings.TrimSpace(*item.CustomIssueEventID) != "" {
+			eventID := strings.TrimSpace(*item.CustomIssueEventID)
+			if parsed, parseErr := strconv.ParseInt(eventID, 10, 64); parseErr != nil || parsed < 1 {
+				errors = append(errors, workflowValidationError("TRANSITION_EVENT_INVALID", "The transition's custom issue event must be an event ID.", "TRANSITION", map[string]any{"transitionId": transitionID}))
+				continue
+			}
+			transition.CustomIssueEventID = eventID
+		}
 		if item.TransitionScreen != nil {
 			screen := workflowRuleFromRequest(*item.TransitionScreen, transitionID+"-screen")
 			transition.Screen = &screen
@@ -487,6 +498,7 @@ func (h *Handler) workflowCreateValidation(w http.ResponseWriter, r *http.Reques
 	}
 	for index, item := range request.Payload.Workflows {
 		wf, itemErrors := workflowDefinitionFromRequest(fmt.Sprintf("validation-%d", index+1), item.Name, item.Description, item.StartPointLayout, item.LoopedTransitionContainerLayout, item.Statuses, item.Transitions, references)
+		itemErrors = append(itemErrors, h.transitionEventErrors(r, workspaceID, wf)...)
 		wf.ProjectID = projectID
 		errors = append(errors, itemErrors...)
 		if names[strings.ToLower(wf.Name)] {
@@ -547,6 +559,7 @@ func (h *Handler) workflowUpdateValidation(w http.ResponseWriter, r *http.Reques
 		}
 		description, startPointLayout, loopedTransitionContainerLayout := workflowUpdateMetadata(item, published)
 		wf, itemErrors := workflowDefinitionFromRequest(storedID, published.Name, description, startPointLayout, loopedTransitionContainerLayout, item.Statuses, item.Transitions, references)
+		itemErrors = append(itemErrors, h.transitionEventErrors(r, workspaceID, wf)...)
 		wf.ProjectID = published.ProjectID
 		errors = append(errors, itemErrors...)
 		_, mappingErrors := workflowStatusMigrationsFromRequest(h.issueTypeIDsFor(r, workspaceID), item, references, wf)
@@ -643,6 +656,7 @@ func (h *Handler) workflowCreate(w http.ResponseWriter, r *http.Request) {
 	names := make(map[string]bool)
 	for _, item := range payload.Workflows {
 		definition, itemErrors := workflowDefinitionFromRequest(store.NewID("workflow"), item.Name, item.Description, item.StartPointLayout, item.LoopedTransitionContainerLayout, item.Statuses, item.Transitions, references)
+		itemErrors = append(itemErrors, h.transitionEventErrors(r, workspaceID, definition)...)
 		definition.ProjectID = projectID
 		validationErrors = append(validationErrors, itemErrors...)
 		nameKey := strings.ToLower(definition.Name)
@@ -716,6 +730,7 @@ func (h *Handler) workflowUpdate(w http.ResponseWriter, r *http.Request) {
 		}
 		description, startPointLayout, loopedTransitionContainerLayout := workflowUpdateMetadata(item, published)
 		definition, itemErrors := workflowDefinitionFromRequest(storedID, published.Name, description, startPointLayout, loopedTransitionContainerLayout, item.Statuses, item.Transitions, references)
+		itemErrors = append(itemErrors, h.transitionEventErrors(r, workspaceID, definition)...)
 		definition.ProjectID = published.ProjectID
 		validationErrors = append(validationErrors, itemErrors...)
 		migrations, mappingErrors := workflowStatusMigrationsFromRequest(h.issueTypeIDsFor(r, workspaceID), item, references, definition)
@@ -761,4 +776,20 @@ func workflowUpdateMetadata(item workflowUpdateItemRequest, published workflow.W
 		loopedTransitionContainerLayout = published.LoopedTransitionContainerLayout
 	}
 	return description, startPointLayout, loopedTransitionContainerLayout
+}
+
+// transitionEventErrors reports transitions firing an event the site does not
+// have.
+func (h *Handler) transitionEventErrors(r *http.Request, workspaceID string, wf workflow.Workflow) []map[string]any {
+	errors := []map[string]any{}
+	for _, transition := range wf.Transitions {
+		if transition.CustomIssueEventID == "" {
+			continue
+		}
+		eventID, _ := strconv.ParseInt(transition.CustomIssueEventID, 10, 64)
+		if _, ok, err := h.Store.IssueEvent(r.Context(), workspaceID, eventID); err != nil || !ok {
+			errors = append(errors, workflowValidationError("TRANSITION_EVENT_NOT_FOUND", "The transition's custom issue event does not exist.", "TRANSITION", map[string]any{"transitionId": transition.ID}))
+		}
+	}
+	return errors
 }

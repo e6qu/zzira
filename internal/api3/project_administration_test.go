@@ -138,6 +138,14 @@ func TestProjectAdministrationPermissions(t *testing.T) {
 	call(leadID, http.MethodPut, featurePath, `{"state":"DISABLED"}`, http.StatusOK)
 	call(memberID, http.MethodPut, "/rest/api/3/project/"+projectID+"/email", `{"emailAddress":"member@example.test"}`, http.StatusForbidden)
 	call(leadID, http.MethodPut, "/rest/api/3/project/"+projectID+"/email", `{"emailAddress":"releases@example.test"}`, http.StatusNoContent)
+	// A sender on a domain the organization has not verified says so.
+	if email := call(leadID, http.MethodGet, "/rest/api/3/project/"+projectID+"/email", "", http.StatusOK); !strings.Contains(email, `"emailAddressStatus":["Email address or domain not verified."]`) {
+		t.Fatalf("custom sender email = %s", email)
+	}
+	call(leadID, http.MethodPut, "/rest/api/3/project/"+projectID+"/email", `{"emailAddress":""}`, http.StatusNoContent)
+	if email := call(leadID, http.MethodGet, "/rest/api/3/project/"+projectID+"/email", "", http.StatusOK); !strings.Contains(email, `"emailAddress":"jira@zzira.test","emailAddressStatus":[]`) {
+		t.Fatalf("default sender email = %s", email)
+	}
 
 	// Statuses: a project's administrators manage its statuses, not global ones.
 	projectStatus := `{"scope":{"type":"PROJECT","project":{"id":"` + projectID + `"}},"statuses":[{"name":"Lead review","statusCategory":"IN_PROGRESS"}]}`

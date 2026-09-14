@@ -110,6 +110,7 @@ type workflowEditorData struct {
 	Projects  []*models.Project
 	Assigned  []*models.Project
 	Webhooks  []*models.Webhook
+	Events    []store.NotificationEventDefinition
 	CanEdit   bool
 	CanAssign bool
 }
@@ -809,6 +810,11 @@ func (h *Handler) WorkflowPage(w http.ResponseWriter, r *http.Request, id string
 			activeWebhooks = append(activeWebhooks, webhook)
 		}
 	}
+	events, err := h.Store.IssueEvents(r.Context(), wsID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 	nodes, edges, mapWidth, mapHeight := workflowDesignerMap(wf, statuses)
 	assigned := make([]*models.Project, 0)
 	for _, project := range projects {
@@ -818,7 +824,7 @@ func (h *Handler) WorkflowPage(w http.ResponseWriter, r *http.Request, id string
 	}
 	admin, _ := h.Store.IsAdmin(r.Context(), wsID, user.ID)
 	h.writeWorkspacePage(w, r, "page_workflow", user, wsID, workflowEditorData{
-		Workflow: wf, Nodes: nodes, Edges: edges, MapWidth: mapWidth, MapHeight: mapHeight, Statuses: statuses, Projects: projects, Assigned: assigned, Webhooks: activeWebhooks,
+		Workflow: wf, Nodes: nodes, Edges: edges, MapWidth: mapWidth, MapHeight: mapHeight, Statuses: statuses, Projects: projects, Assigned: assigned, Webhooks: activeWebhooks, Events: events,
 		CanEdit: admin && wf.ID != workflow.Default().ID, CanAssign: admin,
 	}, "workflows", "")
 }
@@ -1072,6 +1078,14 @@ func (h *Handler) AddWorkflowTransition(w http.ResponseWriter, r *http.Request, 
 				"sourceFieldKey": source, "targetFieldKey": r.PostFormValue("copy_target"), "issueSource": r.PostFormValue("copy_issue_source"),
 			},
 		})
+	}
+	if raw := strings.TrimSpace(r.PostFormValue("fire_event")); raw != "" {
+		eventID, parseErr := strconv.ParseInt(raw, 10, 64)
+		if _, known, eventErr := h.Store.IssueEvent(r.Context(), wsID, eventID); parseErr != nil || eventErr != nil || !known {
+			http.Error(w, "the transition event does not exist", http.StatusBadRequest)
+			return
+		}
+		transition.CustomIssueEventID = raw
 	}
 	if webhookID := strings.TrimSpace(r.PostFormValue("trigger_webhook")); webhookID != "" {
 		webhooks, err := h.Store.Webhooks(r.Context(), wsID)

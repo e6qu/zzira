@@ -841,8 +841,13 @@ func (h *Handler) issueEvents(w http.ResponseWriter, r *http.Request) {
 	if !h.requireJiraAdmin(w, r, workspaceID, actorID) {
 		return
 	}
+	events, err := h.Store.IssueEvents(r.Context(), workspaceID)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "Could not load issue events.")
+		return
+	}
 	values := []map[string]any{}
-	for _, event := range store.NotificationEvents() {
+	for _, event := range events {
 		values = append(values, map[string]any{"id": event.ID, "name": event.Name})
 	}
 	writeJSON(w, http.StatusOK, values)

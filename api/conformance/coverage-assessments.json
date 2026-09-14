@@ -8759,7 +8759,7 @@
         "e2e/projects.spec.ts",
         "docs/PROJECT_GOVERNANCE.md"
       ],
-      "notes": "Returns a project sender override or effective host-derived default for a numeric project ID; verified custom-domain warnings remain."
+      "notes": "Returns a project sender override or the effective host-derived default for a numeric project ID; a sender on a custom domain the organization has not verified reports 'Email address or domain not verified.' in emailAddressStatus."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/project/{projectKeyOrId}/issuesecuritylevelscheme",
@@ -9733,7 +9733,7 @@
         "e2e/issue_security_schemes.spec.ts",
         "docs/ISSUE_SECURITY_SCHEMES.md"
       ],
-      "notes": "Creation with levels, holders and a default level is tested through REST and the browser; zzira's pre-v3 caller-supplied id extension is retained and scheme copy remains."
+      "notes": "Creation with generated ids, levels, Jira holder-object members and a default level is tested through REST and the browser, within the documented 60-character name and 255-character description; Jira Cloud's contract has no scheme copy operation."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/issuetype",
@@ -9875,7 +9875,7 @@
         "e2e/notification_schemes.spec.ts",
         "docs/NOTIFICATION_SCHEMES.md"
       ],
-      "notes": "Creates an audited scheme with validated built-in events and Jira recipient types; custom events and every Jira validation/error edge remain."
+      "notes": "Creates an audited scheme with validated built-in events and Jira recipient types; built-in and administrator-added custom events are accepted; every Jira validation/error edge remains."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/permissions/check",
@@ -10243,7 +10243,7 @@
         "internal/store/workflow_mutations.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Atomically creates up to 20 validated GLOBAL or PROJECT directed workflows and related statuses with generated IDs, layouts/properties, versions, scoped Jira resources, executable conditions, validators, post-functions and transition screens, rollback, and audit; remaining rules remain."
+      "notes": "Atomically creates up to 20 validated GLOBAL or PROJECT directed workflows and related statuses with generated IDs, layouts/properties, versions, scoped Jira resources, executable conditions, validators, post-functions, transition screens and customIssueEventId events, rollback, and audit; remaining rules remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/workflows/create/validation",
@@ -10255,7 +10255,7 @@
         "internal/store/agile.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Returns structured ERROR validation for GLOBAL/PROJECT ownership, names and statuses, sizes, references, designer layouts, directed topology, nested conditions, validators, post-functions, transition screens, conflicts, and level filtering; remaining rules and non-directed transitions remain."
+      "notes": "Returns structured ERROR validation for GLOBAL/PROJECT ownership, names and statuses, sizes, references, designer layouts, directed topology, nested conditions, validators, post-functions, transition screens, custom issue events, conflicts, and level filtering; remaining rules and non-directed transitions remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/workflows/preview",
@@ -10267,7 +10267,7 @@
         "internal/store/workflow_usage.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Previews project-associated global or project workflows by ID, name, and issue type, returning scoped resources, query contexts, layouts, topology, versions, statuses, and executable conditions, validators, post-functions and transition screens; remaining rules and approval configuration remain."
+      "notes": "Previews project-associated global or project workflows by ID, name, and issue type, returning scoped resources, query contexts, layouts, topology, versions, statuses, and executable conditions, validators, post-functions, transition screens and customIssueEventId; remaining rules and approval configuration remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/workflows/update",
@@ -10279,7 +10279,7 @@
         "internal/store/workflow_mutations.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Atomically creates related scoped statuses, migrates active work with sync actions, and updates layouts plus executable conditions, validators, post-functions and transition screens with optimistic versions, rollback, and audit; remaining rules, mixed-scope batches, and queued tasks remain."
+      "notes": "Atomically creates related scoped statuses, migrates active work with sync actions, and updates layouts plus executable conditions, validators, post-functions, transition screens and customIssueEventId events with optimistic versions, rollback, and audit; remaining rules, mixed-scope batches, and queued tasks remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/workflows/update/validation",
@@ -10291,7 +10291,7 @@
         "internal/store/agile.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Returns structured validation for existence and preserved scope, optimistic versions, scoped statuses, layouts, topology, mappings, executable conditions, validators, post-functions and transition screens without mutation; remaining rules and mixed-scope batches remain."
+      "notes": "Returns structured validation for existence and preserved scope, optimistic versions, scoped statuses, layouts, topology, mappings, executable conditions, validators, post-functions, transition screens and custom issue events without mutation; remaining rules and mixed-scope batches remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/workflowscheme",
@@ -10926,7 +10926,7 @@
         "e2e/notification_schemes.spec.ts",
         "docs/NOTIFICATION_SCHEMES.md"
       ],
-      "notes": "Atomically adds validated event recipients across all 12 Jira recipient types; custom event IDs and every validation edge remain."
+      "notes": "Atomically adds validated event recipients across all 12 Jira recipient types; built-in and custom event IDs are validated against the site; every validation edge remains."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/permissionscheme/{schemeId}",
@@ -11040,7 +11040,7 @@
         "docs/PROJECT_GOVERNANCE.md",
         "internal/api3/project_administration_test.go"
       ],
-      "notes": "Validates, sets, or clears a sender override for Administer Projects for the project, which Administer Jira implies, with an atomic project action and 204 response; domain verification remains."
+      "notes": "Validates, sets, or clears a sender override for Administer Projects for the project, which Administer Jira implies, with an atomic project action and 204 response; the domain's organization claim status is reported on read."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/project/{projectKeyOrId}/permissionscheme",

@@ -115,6 +115,10 @@ func workflowTransitionBean(transition workflow.Transition, wire statusIDs) map[
 		"id": transition.ID, "name": transition.Name, "description": "",
 		"type": "DIRECTED", "toStatusReference": wire.toWire(transition.To), "links": links,
 		"properties": map[string]string{}, "actions": actions, "validators": validators, "triggers": triggers,
+		"customIssueEventId": nil,
+	}
+	if transition.CustomIssueEventID != "" {
+		bean["customIssueEventId"] = transition.CustomIssueEventID
 	}
 	if transition.Conditions != nil {
 		bean["conditions"] = transition.Conditions
