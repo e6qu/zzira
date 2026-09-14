@@ -183,7 +183,7 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		t.Fatal("private space leaked")
 	}
 	call(member, "GET", "/spaces/"+private, nil, 404)
-	if permissions := call(member, "GET", "/spaces/"+public+"/permissions?limit=5", nil, 200); !strings.Contains(permissions.Body.String(), `"id":"workspace-member"`) || !strings.Contains(permissions.Body.String(), `"key":"read","targetType":"space"`) || !strings.Contains(permissions.Header().Get("Link"), "cursor=") {
+	if permissions := call(member, "GET", "/spaces/"+public+"/permissions?limit=5", nil, 200); !strings.Contains(permissions.Body.String(), `"id":"authenticated-users","type":"role"`) || !strings.Contains(permissions.Body.String(), `"key":"read","targetType":"space"`) || !strings.Contains(permissions.Header().Get("Link"), "cursor=") {
 		t.Fatal(permissions.Body.String(), permissions.Header())
 	}
 	call(member, "GET", "/spaces/"+private+"/permissions", nil, 404)
@@ -286,10 +286,13 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		t.Fatal(spaceList.Body.String())
 	}
 	call(member, "GET", "/spaces?sort=unknown", nil, 400)
-	call(member, "GET", "/spaces?status=archived", nil, 400)
-	call(member, "GET", "/spaces?favorited-by="+member, nil, 400)
+	if archivedSpaces := call(member, "GET", "/spaces?status=archived", nil, 200); strings.Contains(archivedSpaces.Body.String(), `"key"`) {
+		t.Fatal(archivedSpaces.Body.String())
+	}
+	call(member, "GET", "/spaces?status=unknown", nil, 400)
+	call(member, "GET", "/spaces?favorited-by="+member, nil, 200)
 	expandedSpace := call(actor, "GET", "/spaces/"+public+"?include-icon=true&include-operations=true&include-labels=true&include-permissions=true&include-role-assignments=true", nil, 200)
-	if !strings.Contains(expandedSpace.Body.String(), `"operation":"update"`) || !strings.Contains(expandedSpace.Body.String(), `"name":"core-space"`) || !strings.Contains(expandedSpace.Body.String(), `"icon"`) || !strings.Contains(expandedSpace.Body.String(), `"id":"workspace-admin"`) || !strings.Contains(expandedSpace.Body.String(), `"roleId":"`+customRole.ID+`"`) {
+	if !strings.Contains(expandedSpace.Body.String(), `"operation":"update"`) || !strings.Contains(expandedSpace.Body.String(), `"name":"core-space"`) || !strings.Contains(expandedSpace.Body.String(), `"icon"`) || !strings.Contains(expandedSpace.Body.String(), `"principal":{"id":"authenticated-users","type":"role"}`) || !strings.Contains(expandedSpace.Body.String(), `"roleId":"`+customRole.ID+`"`) {
 		t.Fatal(expandedSpace.Body.String())
 	}
 	call(actor, "DELETE", "/space-roles/"+customRole.ID, nil, 204)

@@ -12440,7 +12440,7 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ],
-      "notes": "Blog posts share the threaded, versioned footer-comment lifecycle with pages. Collections support body format, status, sort and cursor paging; create, reply, update, delete, versions, likes and operations use the common comment APIs, public/private visibility shapes reads and sync, and the UI supports authoring and replies. Rich editor mentions and live collaboration remain."
+      "notes": "Blog posts share the threaded, versioned footer-comment lifecycle with pages. Collections support body format, status, sort and cursor paging; create, reply, update, delete, versions, likes and operations use the common comment APIs, public/private visibility shapes reads and sync, and the UI supports authoring and replies. Mentions notify the people they name and the editor offers a mention picker; live collaboration remains."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{id}/inline-comments",
@@ -14747,9 +14747,14 @@
         "web/static/img/space-default.svg",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/spaces_test.go",
+        "internal/store/wiki_space_create.go",
+        "internal/store/wiki_space_access.go",
+        "migrations/180_wiki_space_types_states.sql",
+        "docs/CONFLUENCE_SPACES.md"
       ],
-      "notes": "Lists membership-visible public and creator-private current global spaces with ID, key and all-label filters, documented ID/key/name sorts, plain or escaped view descriptions, optional icons and cursor pagination; archived/personal/system spaces and favorite filters remain explicit capability gaps."
+      "notes": "Lists visible spaces with ids/keys/labels filters, every documented type (global, collaboration, knowledge_base, personal, system, onboarding, xflow_sample_space) and status (current, archived, trashed) with 400 for unknown values, favorited-by/not-favorited-by read from favourite relations, id/key/name sorting, plain/view descriptions, icons and cursor paging."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/spaces",
@@ -14763,9 +14768,14 @@
         "internal/store/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/spaces_test.go",
+        "internal/store/wiki_space_create.go",
+        "internal/store/wiki_space_access.go",
+        "migrations/180_wiki_space_types_states.sql",
+        "docs/CONFLUENCE_SPACES.md"
       ],
-      "notes": "Workspace administrators create validated public or creator-private global spaces with key/alias and plain descriptions through REST or the accessible UI; templates, copied access and Confluence-specific role assignments remain explicit capability gaps."
+      "notes": "Creates spaces from a key or an alias (alias-only derives the key), with exactly one access choice: default roles, createPrivateSpace, roleAssignments (validated roles and principals, at least one administering role, creator-only admin makes the space private) or copySpaceAccessConfiguration (copies role assignments, direct grants and privacy from a space the caller administers); templateKey selects a space template that sets the space type and writes its homepage."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/spaces/{id}",
@@ -14778,9 +14788,11 @@
         "internal/confluence/http_test.go",
         "internal/store/wiki.go",
         "internal/store/wiki_labels.go",
-        "web/static/img/space-default.svg"
+        "web/static/img/space-default.svg",
+        "internal/confluence/spaces_test.go",
+        "docs/CONFLUENCE_SPACES.md"
       ],
-      "notes": "Returns an exact visible current global space with plain or escaped view description, optional default icon, role-shaped operations and labels; properties, granular permissions, role assignments, homepage identity and other space types/states remain."
+      "notes": "Returns an exact visible current global space with plain or escaped view description, optional default icon, role-shaped operations and labels; every include flag (icon, operations, properties, permissions from real role assignments and grants, role assignments, labels), homepage identity and every space type and status are reported."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/spaces/{id}/blogposts",
@@ -14937,9 +14949,14 @@
         "internal/confluence/http_test.go",
         "internal/store/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/spaces_test.go",
+        "internal/store/wiki_space_create.go",
+        "internal/store/wiki_space_access.go",
+        "migrations/180_wiki_space_types_states.sql",
+        "docs/CONFLUENCE_SPACES.md"
       ],
-      "notes": "Projects enforced public-space content access and creator-only private-space access into cursor-paged Confluence permission assignments, with workspace administration shown separately and exact-space expansion; granular Confluence roles, group/user overrides and mutation remain."
+      "notes": "Reports the space's real permissions: every permission of every assigned role for its principal (user, group, or role for an access class, including the default member/admin roles) plus direct grants, each once with stable ids, behind space visibility with cursor paging."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/spaces/{id}/role-assignments",

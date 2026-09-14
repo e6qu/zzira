@@ -125,6 +125,18 @@ func validateSpaceKey(key string) error {
 	return nil
 }
 
+// wikiSpaceTypes and wikiSpaceStatuses are the kinds of space Confluence has
+// and the states a space is in.
+var (
+	wikiSpaceTypes    = map[string]bool{"global": true, "collaboration": true, "knowledge_base": true, "personal": true, "system": true, "onboarding": true, "xflow_sample_space": true}
+	wikiSpaceStatuses = map[string]bool{"current": true, "archived": true, "trashed": true}
+)
+
+// WikiSpaceTypeKnown and WikiSpaceStatusKnown report whether a value is a
+// space type or status Confluence defines.
+func WikiSpaceTypeKnown(value string) bool   { return wikiSpaceTypes[value] }
+func WikiSpaceStatusKnown(value string) bool { return wikiSpaceStatuses[value] }
+
 // UpdateWikiSpaceInput carries the fields Confluence's space update accepts.
 type UpdateWikiSpaceInput struct {
 	Name        *string
@@ -156,14 +168,14 @@ func (s *Store) UpdateWikiSpace(ctx context.Context, ws, actor, spaceKey string,
 		space.Description = *input.Description
 	}
 	if input.Type != nil {
-		if *input.Type != "global" && *input.Type != "personal" {
-			return nil, fmt.Errorf("%w: a space type is global or personal", ErrWikiValidation)
+		if !wikiSpaceTypes[*input.Type] {
+			return nil, fmt.Errorf("%w: a space type is global, collaboration, knowledge_base, personal, system, onboarding or xflow_sample_space", ErrWikiValidation)
 		}
 		space.Type = *input.Type
 	}
 	if input.Status != nil {
-		if *input.Status != "current" && *input.Status != "archived" {
-			return nil, fmt.Errorf("%w: a space status is current or archived", ErrWikiValidation)
+		if !wikiSpaceStatuses[*input.Status] {
+			return nil, fmt.Errorf("%w: a space status is current, archived or trashed", ErrWikiValidation)
 		}
 		space.Status = *input.Status
 	}

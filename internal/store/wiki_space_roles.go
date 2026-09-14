@@ -210,6 +210,37 @@ func (s *Store) WikiSpaceRoleAssignments(ctx context.Context, ws, actor, spaceID
 	return assignments, nil
 }
 
+// validateWikiSpaceRoleAssignment checks an assignment names a role that exists
+// and a principal that belongs to the site.
+func (s *Store) validateWikiSpaceRoleAssignment(ctx context.Context, tx pgx.Tx, ws string, assignment models.WikiSpaceRoleAssignment) error {
+	if systemWikiSpaceRole(assignment.RoleID) == nil {
+		var exists bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM wiki_space_roles WHERE workspace_id=$1 AND id::text=$2)`, ws, assignment.RoleID).Scan(&exists); err != nil {
+			return err
+		}
+		if !exists {
+			return fmt.Errorf("%w: assigned space role does not exist", ErrWikiValidation)
+		}
+	}
+	switch assignment.PrincipalType {
+	case "USER":
+		if err := s.validateWikiRestriction(ctx, tx, ws, models.WikiRestrictionSubject{Type: "user", AccountID: assignment.PrincipalID}); err != nil {
+			return fmt.Errorf("%w: assigned user is not an active workspace member", ErrWikiValidation)
+		}
+	case "GROUP":
+		if err := s.validateWikiRestriction(ctx, tx, ws, models.WikiRestrictionSubject{Type: "group", ID: assignment.PrincipalID}); err != nil {
+			return fmt.Errorf("%w: assigned group does not belong to the workspace directory", ErrWikiValidation)
+		}
+	case "ACCESS_CLASS":
+		if assignment.PrincipalID != "anonymous-users" && assignment.PrincipalID != "authenticated-users" && assignment.PrincipalID != "all-licensed-users" && assignment.PrincipalID != "all-product-admins" && assignment.PrincipalID != "jsm-project-admins" {
+			return fmt.Errorf("%w: assigned access class is not supported", ErrWikiValidation)
+		}
+	default:
+		return fmt.Errorf("%w: assigned principal type is not supported", ErrWikiValidation)
+	}
+	return nil
+}
+
 func (s *Store) SetWikiSpaceRoleAssignments(ctx context.Context, ws, actor, spaceID string, assignments []models.WikiSpaceRoleAssignment) error {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
@@ -227,30 +258,8 @@ func (s *Store) SetWikiSpaceRoleAssignments(ctx context.Context, ws, actor, spac
 		return err
 	}
 	for _, assignment := range assignments {
-		if systemWikiSpaceRole(assignment.RoleID) == nil {
-			var exists bool
-			if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM wiki_space_roles WHERE workspace_id=$1 AND id::text=$2)`, ws, assignment.RoleID).Scan(&exists); err != nil {
-				return err
-			}
-			if !exists {
-				return fmt.Errorf("%w: assigned space role does not exist", ErrWikiValidation)
-			}
-		}
-		switch assignment.PrincipalType {
-		case "USER":
-			if err := s.validateWikiRestriction(ctx, tx, ws, models.WikiRestrictionSubject{Type: "user", AccountID: assignment.PrincipalID}); err != nil {
-				return fmt.Errorf("%w: assigned user is not an active workspace member", ErrWikiValidation)
-			}
-		case "GROUP":
-			if err := s.validateWikiRestriction(ctx, tx, ws, models.WikiRestrictionSubject{Type: "group", ID: assignment.PrincipalID}); err != nil {
-				return fmt.Errorf("%w: assigned group does not belong to the workspace directory", ErrWikiValidation)
-			}
-		case "ACCESS_CLASS":
-			if assignment.PrincipalID != "anonymous-users" && assignment.PrincipalID != "authenticated-users" && assignment.PrincipalID != "all-licensed-users" && assignment.PrincipalID != "all-product-admins" && assignment.PrincipalID != "jsm-project-admins" {
-				return fmt.Errorf("%w: assigned access class is not supported", ErrWikiValidation)
-			}
-		default:
-			return fmt.Errorf("%w: assigned principal type is not supported", ErrWikiValidation)
+		if err := s.validateWikiSpaceRoleAssignment(ctx, tx, ws, assignment); err != nil {
+			return err
 		}
 		if _, err := tx.Exec(ctx, `INSERT INTO wiki_space_role_assignments(space_id,role_id,principal_type,principal_id) VALUES($1::bigint,$2,$3,$4)`, spaceID, assignment.RoleID, assignment.PrincipalType, assignment.PrincipalID); err != nil {
 			return err

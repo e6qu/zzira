@@ -45,6 +45,31 @@ func (s *Service) CreateWikiSpace(ctx context.Context, ws, actor, key, name, des
 	return s.Store.CreateWikiSpace(ctx, ws, actor, key, name, description, private)
 }
 
+// spaceAliasPattern is what a space alias may be: up to 255 letters and digits.
+var spaceAliasPattern = regexp.MustCompile(`^[A-Za-z0-9]{1,255}$`)
+
+// CreateWikiSpaceWithAccess creates a space through the v2 API, where a space
+// named only by an alias takes its key from the alias.
+func (s *Service) CreateWikiSpaceWithAccess(ctx context.Context, ws, actor string, req store.CreateWikiSpaceRequest) (*models.WikiSpace, error) {
+	req.Name = strings.TrimSpace(req.Name)
+	if req.Alias != "" && !spaceAliasPattern.MatchString(req.Alias) {
+		return nil, fmt.Errorf("%w: space alias must contain 1–255 letters or numbers", store.ErrWikiValidation)
+	}
+	if req.Key == "" {
+		req.Key = strings.ToUpper(req.Alias)
+	}
+	if !spaceKeyPattern.MatchString(req.Key) {
+		return nil, fmt.Errorf("%w: space key must contain 1–255 letters or numbers", store.ErrWikiValidation)
+	}
+	if req.Name == "" || utf8.RuneCountInString(req.Name) > 255 {
+		return nil, fmt.Errorf("%w: space name is required (max 255 characters)", store.ErrWikiValidation)
+	}
+	if len(req.Description) > 1<<20 {
+		return nil, fmt.Errorf("%w: space description must be at most 1 MiB", store.ErrWikiValidation)
+	}
+	return s.Store.CreateWikiSpaceWithAccess(ctx, ws, actor, req)
+}
+
 func (s *Service) SetWikiSpaceDefaultClassification(ctx context.Context, ws, actor, id, levelID string) (*models.WikiSpace, error) {
 	if !stringSet("", "public", "internal", "confidential", "restricted")[levelID] {
 		return nil, fmt.Errorf("%w: choose a supported classification level", store.ErrWikiValidation)

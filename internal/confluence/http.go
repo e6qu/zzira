@@ -214,7 +214,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			bean["properties"] = map[string]any{"results": values, "meta": map[string]any{"hasMore": false}, "_links": map[string]any{}}
 		}
 		if flags["include-permissions"] {
-			bean["permissions"] = map[string]any{"results": spacePermissionValues(space), "meta": map[string]any{"hasMore": false}, "_links": map[string]any{}}
+			permissions, permissionErr := h.spacePermissionValues(r, ws, actor, space.ID)
+			if permissionErr != nil {
+				writeError(w, permissionErr)
+				return
+			}
+			bean["permissions"] = map[string]any{"results": permissions, "meta": map[string]any{"hasMore": false}, "_links": map[string]any{}}
 		}
 		if flags["include-role-assignments"] {
 			assignments, assignmentErr := h.Store.WikiSpaceRoleAssignments(r.Context(), ws, actor, space.ID)
@@ -1248,31 +1253,38 @@ func (h *Handler) createSpace(w http.ResponseWriter, r *http.Request, ws, actor 
 		return
 	}
 	var in struct {
-		Name, Key, Alias             string
-		Description                  models.WikiBody
-		CreatePrivateSpace           bool
-		RoleAssignments              []json.RawMessage
+		Name, Key, Alias   string
+		Description        models.WikiBody
+		CreatePrivateSpace bool
+		RoleAssignments    []struct {
+			RoleID    string `json:"roleId"`
+			Principal struct {
+				Type string `json:"principalType"`
+				ID   string `json:"principalId"`
+			} `json:"principal"`
+		}
 		CopySpaceAccessConfiguration *int64
 		TemplateKey                  string
 	}
 	if !decode(w, r, &in) {
 		return
 	}
-	if in.Key == "" {
-		in.Key = in.Alias
-	} else if in.Alias != "" && in.Key != in.Alias {
-		failure(w, 400, "Separate space aliases are not supported.")
+	if in.Key == "" && in.Alias == "" {
+		failure(w, 400, "Give the space a key or an alias.")
 		return
 	}
 	if in.Description.Representation != "" && in.Description.Representation != "plain" {
 		failure(w, 400, "Space description must use plain representation.")
 		return
 	}
-	if len(in.RoleAssignments) > 0 || in.CopySpaceAccessConfiguration != nil || in.TemplateKey != "" {
-		failure(w, 400, "Space role assignments, copied access and templates are not yet supported.")
-		return
+	req := store.CreateWikiSpaceRequest{Key: in.Key, Alias: in.Alias, Name: in.Name, Description: in.Description.Value, Private: in.CreatePrivateSpace, TemplateKey: in.TemplateKey}
+	if in.CopySpaceAccessConfiguration != nil {
+		req.CopyFrom = strconv.FormatInt(*in.CopySpaceAccessConfiguration, 10)
 	}
-	s, err := h.Commands.CreateWikiSpace(r.Context(), ws, actor, in.Key, in.Name, in.Description.Value, in.CreatePrivateSpace)
+	for _, assignment := range in.RoleAssignments {
+		req.RoleAssignments = append(req.RoleAssignments, models.WikiSpaceRoleAssignment{RoleID: assignment.RoleID, PrincipalType: assignment.Principal.Type, PrincipalID: assignment.Principal.ID})
+	}
+	s, err := h.Commands.CreateWikiSpaceWithAccess(r.Context(), ws, actor, req)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -1294,17 +1306,29 @@ func (h *Handler) spaces(w http.ResponseWriter, r *http.Request, ws, actor strin
 	if !ok {
 		return
 	}
-	if q.Get("favorited-by") != "" || q.Get("not-favorited-by") != "" {
-		failure(w, 400, "Space favorite filters are not yet supported.")
+	kind, spaceState := q.Get("type"), q.Get("status")
+	if kind != "" && !store.WikiSpaceTypeKnown(kind) {
+		failure(w, 400, "type must be global, collaboration, knowledge_base, personal, system, onboarding or xflow_sample_space.")
 		return
 	}
-	if kind := q.Get("type"); kind != "" && kind != "global" {
-		failure(w, 400, "Only global spaces are supported.")
+	if spaceState != "" && !store.WikiSpaceStatusKnown(spaceState) {
+		failure(w, 400, "status must be current, archived or trashed.")
 		return
 	}
-	if status := q.Get("status"); status != "" && status != "current" {
-		failure(w, 400, "Only current spaces are supported.")
-		return
+	// Stars are favourite relations from a person to a space.
+	var favourites, notFavourites map[string]bool
+	for _, filter := range []struct {
+		param  string
+		target *map[string]bool
+	}{{"favorited-by", &favourites}, {"not-favorited-by", &notFavourites}} {
+		if accountID := q.Get(filter.param); accountID != "" {
+			keys, favouriteErr := h.Store.WikiSpaceFavouriteKeys(r.Context(), ws, actor, accountID)
+			if favouriteErr != nil {
+				writeError(w, favouriteErr)
+				return
+			}
+			*filter.target = keys
+		}
 	}
 	items, err := h.Store.WikiSpaces(r.Context(), ws, actor)
 	if err != nil {
@@ -1314,6 +1338,17 @@ func (h *Handler) spaces(w http.ResponseWriter, r *http.Request, ws, actor strin
 	filtered := make([]*models.WikiSpace, 0, len(items))
 	for _, s := range items {
 		if !queryContains(r, "keys", s.Key) || !queryContains(r, "ids", s.ID) {
+			continue
+		}
+		spaceType, currentState := s.Type, s.Status
+		if spaceType == "" {
+			spaceType = "global"
+		}
+		if currentState == "" {
+			currentState = "current"
+		}
+		if kind != "" && spaceType != kind || spaceState != "" && currentState != spaceState ||
+			favourites != nil && !favourites[s.Key] || notFavourites != nil && notFavourites[s.Key] {
 			continue
 		}
 		matchesLabels := true
