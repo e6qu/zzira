@@ -1,5 +1,7 @@
 package models
 
+import "encoding/json"
+
 import "time"
 
 // ServiceDesk is the Jira Service Management portal attached to a service project.
@@ -28,6 +30,10 @@ type ServiceRequestTypeField struct {
 	ID, RequestTypeID, Name, Type, Description, HelpText string
 	Required, Custom                                     bool
 	Position                                             int
+	// Hidden is true for a field hidden from the portal; a hidden field is
+	// filled with PresetValue, a Jira field value, when a request is raised.
+	Hidden      bool
+	PresetValue json.RawMessage
 }
 
 type ServiceKnowledgeArticle struct {

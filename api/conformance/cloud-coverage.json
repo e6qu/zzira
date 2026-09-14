@@ -9373,6 +9373,7 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_request_fields_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service.go",
         "internal/commands/service.go",
@@ -9380,7 +9381,7 @@
         "e2e/service.spec.ts",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Validates and creates a customer request as a canonical Jira issue with request type, channel and reporter metadata; dynamic custom fields, attachments and participants remain."
+      "notes": "Creates a customer request as a canonical Jira issue with request type, channel and reporter metadata, validated custom field values (options by id or value), participants and raiseOnBehalfOf for agents; hidden form fields cannot be answered and take their preset values; attachments are added through the request attachment resource."
     },
     {
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/request/validate",
@@ -9388,6 +9389,7 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_request_fields_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service.go",
         "internal/commands/service.go",
@@ -9395,7 +9397,7 @@
         "e2e/service.spec.ts",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Validates service desk, request type, required summary and description wire format without mutation; dynamic form fields and all Atlassian reason keys remain."
+      "notes": "Validates service desk, request type, required visible fields and each custom field's value without mutation, refusing hidden and unconfigured fields with field errors; Atlassian reason keys are not modelled."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}",
@@ -9761,12 +9763,13 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_request_fields_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service.go",
         "internal/store/service.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Searches and pages request types across visible workspace service desks; hidden/restricted types and every expand remain."
+      "notes": "Searches and pages request types across visible service desks by searchQuery and repeated serviceDeskId; a search leaves out request types in no group unless includeHiddenRequestTypesInSearch is true, and restrictionStatus OPEN keeps every zzira request type while RESTRICTED keeps none."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/servicedesk",
@@ -10028,12 +10031,13 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_request_fields_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service.go",
         "internal/store/service.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Searches and pages request types within one service desk with default IT-help and incident types; group/restriction filters and expands remain."
+      "notes": "Searches and pages request types within one service desk by searchQuery and groupId; a search leaves out request types in no group unless includeHiddenRequestTypesInSearch is true, and restrictionStatus OPEN keeps every request type while RESTRICTED keeps none."
     },
     {
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/servicedesk/{serviceDeskId}/requesttype",
@@ -10094,12 +10098,13 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_request_fields_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service.go",
         "internal/store/service.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Returns customer form metadata for required summary and optional description fields; custom fields, preset/valid values and field configuration remain."
+      "notes": "Returns the request type form: summary, description and custom fields whose context reaches the desk's project, each with its Jira schema (type, custom type URI, customId, items), required and visible flags, and the select options the context offers as validValues with cascading children; canRaiseOnBehalfOf and canAddRequestParticipants are true only for the desk's agents, and hidden fields with their presetValues appear only to administrators asking for expand=hiddenFields."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/servicedesk/{serviceDeskId}/requesttype/{requestTypeId}/property",

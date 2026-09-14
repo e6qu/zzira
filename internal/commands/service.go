@@ -486,6 +486,18 @@ func (s *Service) SetServiceRequestTypeFields(ctx context.Context, actorID, work
 		seen[field.ID] = true
 		if field.ID == "summary" {
 			hasSummary, field.Required = true, true
+			if field.Hidden {
+				return fmt.Errorf("summary cannot be hidden from the portal")
+			}
+		}
+		// A hidden field is filled with its preset value, which it needs when
+		// it is required, because a customer cannot answer it.
+		preset := len(field.PresetValue) > 0 && string(field.PresetValue) != "null"
+		if preset && (!json.Valid(field.PresetValue) || len(field.PresetValue) > 64<<10) {
+			return fmt.Errorf("the preset value of %s must be JSON of at most 64 KiB", field.ID)
+		}
+		if field.Hidden && field.Required && !preset {
+			return fmt.Errorf("hidden required field %s needs a preset value", field.ID)
 		}
 	}
 	if !hasSummary {

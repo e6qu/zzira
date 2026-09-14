@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -163,7 +164,12 @@ func (h *Handler) serviceDeskRoute(w http.ResponseWriter, r *http.Request) {
 				jiraError(w, http.StatusInternalServerError, "Could not load request type fields.")
 				return
 			}
-			writeJSON(w, http.StatusOK, serviceRequestTypeFields(fields))
+			form, err := h.serviceRequestTypeFields(r, workspaceID, actorID, parts[1], fields)
+			if err != nil {
+				jiraError(w, http.StatusInternalServerError, "Could not load request type fields.")
+				return
+			}
+			writeJSON(w, http.StatusOK, form)
 			return
 		}
 		if len(parts) == 4 && r.Method == http.MethodGet {
@@ -347,6 +353,10 @@ func (h *Handler) validateServiceRequestBody(r *http.Request, workspaceID string
 	}
 	allowed := make(map[string]models.ServiceRequestTypeField, len(configured))
 	for _, field := range configured {
+		// A hidden field takes its preset value, never a submitted one.
+		if field.Hidden {
+			continue
+		}
 		allowed[field.ID] = field
 		raw, present := input.RequestFieldValues[field.ID]
 		if field.Required {
@@ -473,10 +483,18 @@ func (h *Handler) createServiceRequest(w http.ResponseWriter, r *http.Request, w
 	description, descriptionADF := "", json.RawMessage(nil)
 	customFields := map[string]json.RawMessage{}
 	for _, field := range configuredFields {
-		if field.Custom {
-			if value, ok := input.RequestFieldValues[field.ID]; ok {
-				customFields[field.ID] = value
+		value, ok := input.RequestFieldValues[field.ID]
+		if field.Hidden {
+			value, ok = field.PresetValue, len(field.PresetValue) > 0 && string(field.PresetValue) != "null"
+			if ok && field.ID == "description" {
+				if input.RequestFieldValues == nil {
+					input.RequestFieldValues = map[string]json.RawMessage{}
+				}
+				input.RequestFieldValues["description"] = value
 			}
+		}
+		if field.Custom && ok {
+			customFields[field.ID] = value
 		}
 	}
 	if raw := input.RequestFieldValues["description"]; len(raw) > 0 {
@@ -609,11 +627,46 @@ func (h *Handler) writeServicePage(w http.ResponseWriter, r *http.Request, value
 }
 
 func (h *Handler) listServiceRequestTypes(w http.ResponseWriter, r *http.Request, workspaceID, serviceDeskID string) {
-	values, err := h.Store.ServiceRequestTypes(r.Context(), workspaceID, serviceDeskID, r.URL.Query().Get("searchQuery"))
+	query := r.URL.Query()
+	search := query.Get("searchQuery")
+	values, err := h.Store.ServiceRequestTypes(r.Context(), workspaceID, serviceDeskID, search)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "Could not load request types.")
 		return
 	}
+	includeHidden := false
+	if raw := query.Get("includeHiddenRequestTypesInSearch"); raw != "" {
+		if includeHidden, err = strconv.ParseBool(raw); err != nil {
+			jiraError(w, http.StatusBadRequest, "includeHiddenRequestTypesInSearch must be true or false.")
+			return
+		}
+	}
+	restriction := strings.ToUpper(query.Get("restrictionStatus"))
+	if restriction != "" && restriction != "OPEN" && restriction != "RESTRICTED" {
+		jiraError(w, http.StatusBadRequest, "restrictionStatus must be OPEN or RESTRICTED.")
+		return
+	}
+	desks := map[string]bool{}
+	for _, id := range query["serviceDeskId"] {
+		for _, part := range strings.Split(id, ",") {
+			if part = strings.TrimSpace(part); part != "" {
+				desks[part] = true
+			}
+		}
+	}
+	groupID := query.Get("groupId")
+	filtered := values[:0]
+	for _, requestType := range values {
+		// A request type in no group is hidden from the portal, and a search
+		// leaves hidden types out unless asked for them. Every zzira request
+		// type is open to the desk's customers.
+		if (search != "" && !includeHidden && len(requestType.GroupIDs) == 0) || restriction == "RESTRICTED" ||
+			(len(desks) > 0 && !desks[requestType.ServiceDeskID]) || (groupID != "" && !slices.Contains(requestType.GroupIDs, groupID)) {
+			continue
+		}
+		filtered = append(filtered, requestType)
+	}
+	values = filtered
 	beans := make([]map[string]any, 0, len(values))
 	for _, requestType := range values {
 		beans = append(beans, serviceRequestTypeBean(h.BaseURL, h.wireServiceRequestType(r.Context(), workspaceID, requestType)))
@@ -625,27 +678,101 @@ func serviceRequestTypeBean(baseURL string, requestType models.ServiceRequestTyp
 	return map[string]any{"id": requestType.ID, "serviceDeskId": requestType.ServiceDeskID, "portalId": requestType.ServiceDeskID, "name": requestType.Name, "description": requestType.Description, "helpText": requestType.HelpText, "issueTypeId": requestType.IssueTypeID, "groupIds": requestType.GroupIDs, "canCreateRequest": true, "restrictionStatus": "OPEN", "practice": "service_desk", "_expands": []any{}, "_links": map[string]string{"self": baseURL + "/rest/servicedeskapi/servicedesk/" + requestType.ServiceDeskID + "/requesttype/" + requestType.ID}}
 }
 
-func serviceRequestTypeFields(fields []models.ServiceRequestTypeField) map[string]any {
+// serviceRequestFieldSchema describes a request type field's value the way
+// Jira's field metadata does.
+func serviceRequestFieldSchema(field models.ServiceRequestTypeField) map[string]any {
+	if !field.Custom {
+		return map[string]any{"type": "string", "system": field.ID}
+	}
+	types := map[string][2]string{
+		models.CustomFieldText: {"string", "textfield"}, models.CustomFieldNumber: {"number", "float"},
+		models.CustomFieldDatetime: {"datetime", "datetime"}, models.CustomFieldDate: {"date", "datepicker"},
+		models.CustomFieldURL: {"string", "url"}, models.CustomFieldSelect: {"option", "select"},
+		models.CustomFieldMultiSelect: {"array", "multiselect"}, models.CustomFieldCascadingSelect: {"option-with-child", "cascadingselect"},
+		models.CustomFieldUser: {"user", "userpicker"}, models.CustomFieldMultiUser: {"array", "multiuserpicker"},
+		models.CustomFieldGroup: {"group", "grouppicker"}, models.CustomFieldMultiGroup: {"array", "multigrouppicker"},
+		models.CustomFieldLabels: {"array", "labels"}, models.CustomFieldProject: {"project", "project"},
+		models.CustomFieldVersion: {"version", "version"}, models.CustomFieldMultiVersion: {"array", "multiversion"},
+	}
+	kind, ok := types[field.Type]
+	if !ok {
+		kind = [2]string{"string", field.Type}
+	}
+	schema := map[string]any{"type": kind[0], "custom": "com.atlassian.jira.plugin.system.customfieldtypes:" + kind[1]}
+	if id, err := strconv.ParseInt(strings.TrimPrefix(field.ID, "customfield_"), 10, 64); err == nil {
+		schema["customId"] = id
+	}
+	switch field.Type {
+	case models.CustomFieldMultiSelect:
+		schema["items"] = "option"
+	case models.CustomFieldMultiUser:
+		schema["items"] = "user"
+	case models.CustomFieldMultiGroup:
+		schema["items"] = "group"
+	case models.CustomFieldLabels:
+		schema["items"] = "string"
+	case models.CustomFieldMultiVersion:
+		schema["items"] = "version"
+	}
+	return schema
+}
+
+// serviceRequestTypeFields describes a request type's form to the caller:
+// agents may raise requests for customers and add participants, customers
+// may not, and only administrators asking for hiddenFields see hidden fields
+// and their preset values.
+func (h *Handler) serviceRequestTypeFields(r *http.Request, workspaceID, actorID, serviceDeskID string, fields []models.ServiceRequestTypeField) (map[string]any, error) {
+	agent, err := h.Store.IsServiceAgent(r.Context(), workspaceID, serviceDeskID, actorID)
+	if err != nil {
+		return nil, err
+	}
+	admin, err := h.Store.IsAdmin(r.Context(), workspaceID, actorID)
+	if err != nil {
+		return nil, err
+	}
+	showHidden := false
+	for _, value := range r.URL.Query()["expand"] {
+		for _, part := range strings.Split(value, ",") {
+			showHidden = showHidden || strings.TrimSpace(part) == "hiddenFields"
+		}
+	}
+	showHidden = showHidden && admin
 	beans := make([]map[string]any, 0, len(fields))
 	for _, field := range fields {
-		schema := map[string]string{"type": "string"}
-		if field.Type == models.CustomFieldNumber {
-			schema["type"] = "number"
-		} else if field.Type == models.CustomFieldDatetime {
-			schema["type"] = "datetime"
-		}
-		if !field.Custom {
-			schema["system"] = field.ID
-		} else {
-			schema["custom"] = field.Type
+		if field.Hidden && !showHidden {
+			continue
 		}
 		description := field.HelpText
 		if description == "" {
 			description = field.Description
 		}
-		beans = append(beans, map[string]any{"fieldId": field.ID, "name": field.Name, "description": description, "required": field.Required, "visible": true, "defaultValues": []any{}, "presetValues": []any{}, "validValues": []any{}, "jiraSchema": schema})
+		validValues := []map[string]any{}
+		if field.Type == models.CustomFieldSelect || field.Type == models.CustomFieldMultiSelect || field.Type == models.CustomFieldCascadingSelect {
+			options, err := h.Store.ServiceRequestFieldOptions(r.Context(), workspaceID, serviceDeskID, field.ID)
+			if err != nil {
+				return nil, err
+			}
+			for _, option := range options {
+				children := []map[string]any{}
+				for _, child := range option.Children {
+					children = append(children, map[string]any{"value": child.ID, "label": child.Value, "children": []any{}})
+				}
+				validValues = append(validValues, map[string]any{"value": option.ID, "label": option.Value, "children": children})
+			}
+		}
+		presetValues := []string{}
+		if field.Hidden && len(field.PresetValue) > 0 {
+			var text string
+			if json.Unmarshal(field.PresetValue, &text) == nil {
+				presetValues = append(presetValues, text)
+			} else {
+				presetValues = append(presetValues, string(field.PresetValue))
+			}
+		}
+		beans = append(beans, map[string]any{"fieldId": field.ID, "name": field.Name, "description": description, "required": field.Required, "visible": !field.Hidden,
+			"defaultValues": []any{}, "presetValues": presetValues, "validValues": validValues, "jiraSchema": serviceRequestFieldSchema(field)})
 	}
-	return map[string]any{"canAddRequestParticipants": true, "canRaiseOnBehalfOf": true, "requestTypeFields": beans}
+	return map[string]any{"canAddRequestParticipants": agent, "canRaiseOnBehalfOf": agent, "requestTypeFields": beans}, nil
 }
 
 func serviceDate(value time.Time) map[string]any {

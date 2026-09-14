@@ -672,9 +672,23 @@ func (h *Handler) ServiceRequestTypeFieldSettings(w http.ResponseWriter, r *http
 	for _, fieldID := range r.PostForm["requiredFieldId"] {
 		required[fieldID] = true
 	}
+	hidden := make(map[string]bool, len(r.PostForm["hiddenFieldId"]))
+	for _, fieldID := range r.PostForm["hiddenFieldId"] {
+		hidden[fieldID] = true
+	}
 	fields := make([]models.ServiceRequestTypeField, 0, len(r.PostForm["fieldId"]))
 	for _, fieldID := range r.PostForm["fieldId"] {
-		fields = append(fields, models.ServiceRequestTypeField{ID: fieldID, Required: required[fieldID], HelpText: r.PostFormValue("help_" + fieldID)})
+		field := models.ServiceRequestTypeField{ID: fieldID, Required: required[fieldID], HelpText: r.PostFormValue("help_" + fieldID), Hidden: hidden[fieldID]}
+		// A hidden field's preset is typed as the value a customer would give:
+		// JSON when it parses, otherwise text.
+		if preset := strings.TrimSpace(r.PostFormValue("preset_" + fieldID)); preset != "" {
+			if json.Valid([]byte(preset)) {
+				field.PresetValue = json.RawMessage(preset)
+			} else if encoded, err := json.Marshal(preset); err == nil {
+				field.PresetValue = encoded
+			}
+		}
+		fields = append(fields, field)
 	}
 	deskID, requestTypeID := r.PathValue("desk"), r.PathValue("requestType")
 	if err := h.Commands.SetServiceRequestTypeFields(r.Context(), user.ID, workspaceID, deskID, requestTypeID, fields); err != nil {
