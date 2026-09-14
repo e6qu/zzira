@@ -74,15 +74,32 @@ func (h *Handler) issueWorklogRoute(w http.ResponseWriter, r *http.Request, idOr
 	case len(sub) == 0 && r.Method == http.MethodPost:
 		var req struct {
 			TimeSpentSeconds int             `json:"timeSpentSeconds"`
+			TimeSpent        string          `json:"timeSpent"`
 			Comment          json.RawMessage `json:"comment"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.TimeSpentSeconds <= 0 {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			jiraFieldError(w, http.StatusBadRequest, map[string]string{"timeSpentSeconds": "A positive timeSpentSeconds is required."})
 			return
 		}
-		wl, _, err := h.Commands.AddWorklog(r.Context(), userID, wsID, issue.ID, req.Comment, req.TimeSpentSeconds)
+		cfg, estimate, ok := h.worklogTimeTracking(w, r, wsID)
+		if !ok {
+			return
+		}
+		if req.TimeSpentSeconds <= 0 && strings.TrimSpace(req.TimeSpent) != "" {
+			seconds, parseErr := models.ParseJiraDuration(req.TimeSpent, cfg)
+			if parseErr != nil {
+				jiraFieldError(w, http.StatusBadRequest, map[string]string{"timeLogged": parseErr.Error()})
+				return
+			}
+			req.TimeSpentSeconds = int(seconds)
+		}
+		if req.TimeSpentSeconds <= 0 {
+			jiraFieldError(w, http.StatusBadRequest, map[string]string{"timeSpentSeconds": "A positive timeSpentSeconds is required."})
+			return
+		}
+		wl, _, err := h.Commands.AddWorklogWithEstimate(r.Context(), userID, wsID, issue.ID, req.Comment, req.TimeSpentSeconds, estimate)
 		if err != nil {
-			jiraError(w, http.StatusBadRequest, err.Error())
+			worklogCommandError(w, err)
 			return
 		}
 		writeJSON(w, http.StatusCreated, h.worklogBean(wl))
@@ -99,8 +116,12 @@ func (h *Handler) issueWorklogRoute(w http.ResponseWriter, r *http.Request, idOr
 			jiraError(w, http.StatusNotFound, "Worklog does not exist.")
 			return
 		}
-		if _, err := h.Commands.DeleteWorklog(r.Context(), userID, wsID, sub[0]); err != nil {
-			jiraError(w, http.StatusBadRequest, err.Error())
+		_, estimate, ok := h.worklogTimeTracking(w, r, wsID)
+		if !ok {
+			return
+		}
+		if _, err := h.Commands.DeleteWorklogWithEstimate(r.Context(), userID, wsID, wl.ID, estimate); err != nil {
+			worklogCommandError(w, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -112,14 +133,32 @@ func (h *Handler) issueWorklogRoute(w http.ResponseWriter, r *http.Request, idOr
 		}
 		var request struct {
 			TimeSpentSeconds *int            `json:"timeSpentSeconds"`
+			TimeSpent        string          `json:"timeSpent"`
 			Comment          json.RawMessage `json:"comment"`
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&request); err != nil {
 			jiraError(w, http.StatusBadRequest, "Invalid request payload.")
 			return
 		}
-		updated, _, err := h.Store.UpdateWorklog(r.Context(), userID, wsID, wl.ID, request.Comment, request.TimeSpentSeconds)
+		cfg, estimate, ok := h.worklogTimeTracking(w, r, wsID)
+		if !ok {
+			return
+		}
+		if request.TimeSpentSeconds == nil && strings.TrimSpace(request.TimeSpent) != "" {
+			seconds, parseErr := models.ParseJiraDuration(request.TimeSpent, cfg)
+			if parseErr != nil {
+				jiraFieldError(w, http.StatusBadRequest, map[string]string{"timeLogged": parseErr.Error()})
+				return
+			}
+			spent := int(seconds)
+			request.TimeSpentSeconds = &spent
+		}
+		updated, _, err := h.Commands.UpdateWorklog(r.Context(), userID, wsID, wl.ID, request.Comment, request.TimeSpentSeconds, estimate)
 		if err != nil {
+			if errors.Is(err, commands.ErrWorklogPermission) {
+				worklogCommandError(w, err)
+				return
+			}
 			worklogError(w, err)
 			return
 		}
@@ -131,9 +170,13 @@ func (h *Handler) issueWorklogRoute(w http.ResponseWriter, r *http.Request, idOr
 			jiraError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
+		_, estimate, ok := h.worklogTimeTracking(w, r, wsID)
+		if !ok {
+			return
+		}
 		for _, wl := range worklogs {
-			if _, err := h.Commands.DeleteWorklog(r.Context(), userID, wsID, wl.ID); err != nil {
-				jiraError(w, http.StatusBadRequest, err.Error())
+			if _, err := h.Commands.DeleteWorklogWithEstimate(r.Context(), userID, wsID, wl.ID, estimate); err != nil {
+				worklogCommandError(w, err)
 				return
 			}
 		}
@@ -723,4 +766,48 @@ func (h *Handler) putAssignee(w http.ResponseWriter, r *http.Request, idOrKey st
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// worklogTimeTracking reads the site's time tracking settings and the estimate
+// adjustment a worklog request asks for: adjustEstimate with newEstimate,
+// reduceBy or increaseBy.
+func (h *Handler) worklogTimeTracking(w http.ResponseWriter, r *http.Request, workspaceID string) (models.TimeTrackingConfiguration, store.WorklogEstimate, bool) {
+	configuration, err := h.Store.JiraSiteConfiguration(r.Context(), workspaceID)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "internal error")
+		return models.TimeTrackingConfiguration{}, store.WorklogEstimate{}, false
+	}
+	cfg := configuration.TimeTracking
+	query := r.URL.Query()
+	estimate := store.WorklogEstimate{Mode: strings.ToLower(query.Get("adjustEstimate"))}
+	durations := map[string]*int64{"newEstimate": &estimate.NewSeconds, "reduceBy": &estimate.ReduceBySeconds, "increaseBy": &estimate.IncreaseBySeconds}
+	for name, target := range durations {
+		raw := strings.TrimSpace(query.Get(name))
+		if raw == "" {
+			continue
+		}
+		seconds, parseErr := models.ParseJiraDuration(raw, cfg)
+		if parseErr != nil {
+			jiraFieldError(w, http.StatusBadRequest, map[string]string{name: parseErr.Error()})
+			return cfg, estimate, false
+		}
+		*target = seconds
+	}
+	if estimate.Mode == "new" && strings.TrimSpace(query.Get("newEstimate")) == "" {
+		jiraFieldError(w, http.StatusBadRequest, map[string]string{"newEstimate": "newEstimate is required when adjustEstimate is new."})
+		return cfg, estimate, false
+	}
+	if err = store.ValidateWorklogEstimate(estimate); err != nil {
+		jiraFieldError(w, http.StatusBadRequest, map[string]string{"adjustEstimate": strings.TrimPrefix(err.Error(), store.ErrWorklogValidation.Error()+": ")})
+		return cfg, estimate, false
+	}
+	return cfg, estimate, true
+}
+
+func worklogCommandError(w http.ResponseWriter, err error) {
+	if errors.Is(err, commands.ErrWorklogPermission) {
+		jiraError(w, http.StatusForbidden, "You do not have permission to change work logged on this work item.")
+		return
+	}
+	jiraError(w, http.StatusBadRequest, err.Error())
 }

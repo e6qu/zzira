@@ -547,6 +547,9 @@ func main() {
 	mux.HandleFunc("POST /issues/{key}/forms/{form}/action/{action}", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.UpdateIssueForm(w, r, r.PathValue("key"), r.PathValue("form"), r.PathValue("action"))
 	})
+	mux.HandleFunc("POST /issues/{key}/timetracking", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.EditTimeTracking(w, r, r.PathValue("key"))
+	})
 	mux.HandleFunc("POST /issues/{key}/worklogs", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.AddWorklog(w, r, r.PathValue("key"))
 	})

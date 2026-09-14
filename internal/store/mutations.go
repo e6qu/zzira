@@ -56,6 +56,25 @@ type IssueUpdate struct {
 	SuppressChangelog   bool
 	SuppressEvents      bool
 	TaskID              string
+	// OriginalEstimate and RemainingEstimate change a work item's estimates in
+	// seconds; nil leaves one unchanged and ClearEstimate marks a value to clear.
+	OriginalEstimate  *int64
+	RemainingEstimate *int64
+}
+
+// ClearEstimate is the estimate value that removes an estimate.
+const ClearEstimate int64 = -1
+
+// estimateChange is Jira's changelog item for a time estimate, carrying the
+// seconds as both the value and its text.
+func estimateChange(field string, from, to *int64) models.ChangeItem {
+	text := func(seconds *int64) string {
+		if seconds == nil {
+			return ""
+		}
+		return strconv.FormatInt(*seconds, 10)
+	}
+	return models.ChangeItem{Field: field, FieldType: "jira", From: text(from), FromString: text(from), To: text(to), ToString: text(to)}
 }
 
 func diffItem(field, from, fromString, to, toString string) models.ChangeItem {
@@ -237,6 +256,23 @@ func (s *Store) UpdateIssue(ctx context.Context, actorID, workspaceID, issueID s
 			sets = append(sets, "parent_id = "+arg(nilIfEmpty(newID)))
 		}
 	}
+
+	estimate := func(field, column string, change *int64, current *int64) {
+		if change == nil {
+			return
+		}
+		var next *int64
+		if *change != ClearEstimate {
+			next = change
+		}
+		if (next == nil) == (current == nil) && (next == nil || *next == *current) {
+			return
+		}
+		diff[field] = estimateChange(field, current, next)
+		sets = append(sets, column+" = "+arg(next))
+	}
+	estimate("timeoriginalestimate", "original_estimate_seconds", up.OriginalEstimate, current.OriginalEstimateSeconds)
+	estimate("timeestimate", "remaining_estimate_seconds", up.RemainingEstimate, current.RemainingEstimateSeconds)
 
 	if len(sets) == 0 && len(up.TriggeredWebhookIDs) == 0 {
 		return current, nil, nil // nothing to do: no action

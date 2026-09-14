@@ -82,10 +82,30 @@ func (h *Handler) listFieldSchemes(w http.ResponseWriter, r *http.Request) {
 		fieldConfigError(w, err)
 		return
 	}
+	// Each scheme reports the filters it matched, as Jira's search does.
+	projectFilter, query := securityQueryValues(r, "projectId"), strings.TrimSpace(r.URL.Query().Get("query"))
+	var matched map[string]any
+	if len(projectFilter) > 0 || query != "" {
+		matched = map[string]any{}
+		if len(projectFilter) > 0 {
+			ids := make([]any, 0, len(projectFilter))
+			for _, projectID := range projectFilter {
+				ids = append(ids, wireNumericID(projectID))
+			}
+			matched["projectIds"] = ids
+		}
+		if query != "" {
+			matched["query"] = query
+		}
+	}
 	page := pageSlice(schemes, startAt, maxResults)
 	values := make([]map[string]any, 0, len(page))
 	for i := range page {
-		values = append(values, h.fieldSchemeBean(&page[i]))
+		bean := h.fieldSchemeBean(&page[i])
+		if matched != nil {
+			bean["matchedFilters"] = matched
+		}
+		values = append(values, bean)
 	}
 	writeJSON(w, http.StatusOK, h.securityPageBean(r, values, len(schemes), startAt, maxResults))
 }

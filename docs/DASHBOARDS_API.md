@@ -57,5 +57,6 @@ by group name, group ID and project, and accepts every documented expansion.
 `internal/api3/expansions_filters_test.go` covers the share types, their
 visibility and the search filters.
 
-Jira's `extendAdminPermissions`, dashboard item property expansion, and exact
-Jira error wording remain.
+`extendAdminPermissions=true` lets a site administrator change, copy or delete
+a dashboard they neither own nor were shared, and is refused to everyone else.
+Dashboard item property expansion and exact Jira error wording remain.

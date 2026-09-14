@@ -75,7 +75,24 @@ func (s *Store) Dashboards(ctx context.Context, ws, user string) ([]*models.Dash
 	}
 	return out, rows.Err()
 }
+
+type dashboardAdministrationKey struct{}
+
+// WithDashboardAdministration marks a change made with Jira's
+// extendAdminPermissions: a site administrator acting on any dashboard.
+func WithDashboardAdministration(ctx context.Context) context.Context {
+	return context.WithValue(ctx, dashboardAdministrationKey{}, true)
+}
+
 func lockDashboard(ctx context.Context, tx pgx.Tx, ws, user, id string, ownerOnly bool) (*models.Dashboard, error) {
+	if extended, _ := ctx.Value(dashboardAdministrationKey{}).(bool); extended {
+		if err := projectAdmin(ctx, tx, ws, user); err != nil {
+			return nil, ErrDashboardPermission
+		}
+		// Administration reaches dashboards the administrator was not shared.
+		unshared := strings.Replace(dashboardSelect, " AND "+dashboardAccess, "", 1)
+		return scanDashboard(tx.QueryRow(ctx, unshared+` AND d.id=$3 FOR UPDATE OF d`, ws, user, id))
+	}
 	d, err := scanDashboard(tx.QueryRow(ctx, dashboardSelect+` AND d.id=$3 FOR UPDATE OF d`, ws, user, id))
 	if err != nil {
 		return nil, err

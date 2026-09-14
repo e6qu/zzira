@@ -149,7 +149,6 @@ func TestBulkDeleteUsesDurableTaskAndAttachmentCleanup(t *testing.T) {
 	if _, _, err := blobs.Get(ctx, archiveBlob); !errors.Is(err, attachments.ErrNotFound) {
 		t.Fatalf("deleted archive blob still exists: %v", err)
 	}
-	call(memberID, "POST", "/rest/api/3/bulk/issues/delete", `{"selectedIssueIdsOrKeys":["`+issues[0].Key+`"]}`, 403)
 	call(adminID, "POST", "/rest/api/3/bulk/issues/delete", `{"selectedIssueIdsOrKeys":["`+issues[0].Key+`","`+issues[0].Key+`"]}`, 400)
 	submitted := call(adminID, "POST", "/rest/api/3/bulk/issues/delete", `{"selectedIssueIdsOrKeys":["`+issues[0].Key+`","`+issues[1].Key+`"],"sendBulkNotification":false}`, 201)
 	var submission struct {

@@ -71,6 +71,16 @@
         <p class="muted">No builds or deployments linked.</p>
       </section>
 
+      <section class="issue-section issue-time-tracking" aria-labelledby="time-tracking-title">
+        <div class="section-heading"><h2 id="time-tracking-title">Time tracking</h2></div>
+        <div class="time-tracking-bar" role="img" aria-label=" logged"><span class="time-tracking-spent" style="width: 0%"></span></div>
+        <dl class="time-tracking-values"><div><dt>Logged</dt><dd></dd></div><div><dt>Remaining</dt><dd>Not estimated</dd></div><div><dt>Original estimate</dt><dd>Not estimated</dd></div></dl>
+        <details class="time-tracking-edit"><summary>Edit estimates</summary><form method="post" action="/issues/ZZ-1/timetracking" hx-post="/issues/ZZ-1/timetracking" hx-target="#issue-root" hx-swap="outerHTML">
+          <label for="original-estimate">Original estimate</label><input id="original-estimate" name="originalEstimate" value="" placeholder="2w 4d 6h 45m">
+          <label for="remaining-estimate">Remaining estimate</label><input id="remaining-estimate" name="remainingEstimate" value="" placeholder="3h">
+          <p class="muted">Use weeks, days, hours and minutes. Leave a field empty to remove that estimate.</p><button type="submit" class="btn">Save estimates</button></form></details>
+      </section>
+
       <section class="issue-section issue-attachments" aria-labelledby="attachments-title">
         <div class="section-heading"><h2 id="attachments-title">Attachments <span class="section-count">1</span></h2></div>
         <ul id="attachments-list" class="attachment-list">
@@ -107,8 +117,12 @@
           <div class="form-actions"><small class="muted">Use the toolbar to format your update.</small><button type="submit" class="btn btn-primary">Add comment</button></div>
         </form>
         <form class="worklog-form" method="post" action="/issues/ZZ-1/worklogs" hx-post="/issues/ZZ-1/worklogs" hx-target="#issue-root" hx-swap="outerHTML">
-          <fieldset><legend>Or log work</legend><label for="worklog-seconds">Time in seconds</label>
-          <input id="worklog-seconds" name="seconds" type="number" min="1" placeholder="3600" required class="worklog-seconds">
+          <fieldset><legend>Or log work</legend><label for="worklog-time">Time spent</label>
+          <input id="worklog-time" name="timeSpent" placeholder="1h 30m" required class="worklog-seconds">
+          <fieldset class="worklog-estimate"><legend>Remaining estimate</legend>
+          <label><input type="radio" name="adjustEstimate" value="auto" checked> Reduce by the time spent</label>
+          <label><input type="radio" name="adjustEstimate" value="leave"> Leave it as it is</label>
+          <label><input type="radio" name="adjustEstimate" value="new"> Set to</label><label for="worklog-new-estimate" class="sr-only">New remaining estimate</label><input id="worklog-new-estimate" name="newEstimate" placeholder="2h"></fieldset>
           <label for="worklog-comment">Work description <span class="muted">optional</span></label><input id="worklog-comment" name="comment" placeholder="What did you work on?" class="worklog-comment"><button type="submit" class="btn">Log time</button></fieldset>
         </form></details>
         <div class="activity-ledger" data-activity-ledger>

@@ -14,6 +14,26 @@ import (
 )
 
 func (s *Service) AddWorklog(ctx context.Context, actorID, workspaceID, issueIDOrKey string, comment json.RawMessage, seconds int) (*models.Worklog, *models.Action, error) {
+	return s.AddWorklogWithEstimate(ctx, actorID, workspaceID, issueIDOrKey, comment, seconds, store.WorklogEstimate{})
+}
+
+// ErrWorklogPermission refuses logging or changing work without the Work on
+// issues, Edit own or all worklogs, or Delete own or all worklogs permission.
+var ErrWorklogPermission = errors.New("you do not have permission to change this work log")
+
+// worklogPermitted reports whether the actor may act on work logged by author:
+// the "all" permission covers anyone's work, the "own" permission their own.
+func (s *Service) worklogPermitted(ctx context.Context, workspaceID, actorID string, issue *models.Issue, authorID, allPermission, ownPermission string) (bool, error) {
+	allowed, err := s.Store.HasProjectPermission(ctx, workspaceID, actorID, issue.ProjectID, issue.ID, allPermission)
+	if err != nil || allowed || authorID != actorID {
+		return allowed, err
+	}
+	return s.Store.HasProjectPermission(ctx, workspaceID, actorID, issue.ProjectID, issue.ID, ownPermission)
+}
+
+// AddWorklogWithEstimate logs work with Work on issues and moves the remaining
+// estimate as the adjustment says.
+func (s *Service) AddWorklogWithEstimate(ctx context.Context, actorID, workspaceID, issueIDOrKey string, comment json.RawMessage, seconds int, estimate store.WorklogEstimate) (*models.Worklog, *models.Action, error) {
 	issue, err := s.visibleIssue(ctx, actorID, workspaceID, issueIDOrKey)
 	if err != nil {
 		return nil, nil, err
@@ -28,21 +48,67 @@ func (s *Service) AddWorklog(ctx context.Context, actorID, workspaceID, issueIDO
 	if seconds <= 0 {
 		return nil, nil, fmt.Errorf("timeSpentSeconds must be positive")
 	}
-	return s.Store.CreateWorklog(ctx, actorID, workspaceID, issue.ID, comment, seconds)
+	allowed, err := s.Store.HasProjectPermission(ctx, workspaceID, actorID, issue.ProjectID, issue.ID, "WORK_ON_ISSUES")
+	if err != nil {
+		return nil, nil, err
+	}
+	if !allowed {
+		return nil, nil, ErrWorklogPermission
+	}
+	return s.Store.CreateWorklogWithEstimate(ctx, actorID, workspaceID, issue.ID, comment, seconds, estimate)
+}
+
+// UpdateWorklog changes logged work with Edit all worklogs, or Edit own
+// worklogs for the actor's own, moving the remaining estimate as asked.
+func (s *Service) UpdateWorklog(ctx context.Context, actorID, workspaceID, worklogID string, comment json.RawMessage, seconds *int, estimate store.WorklogEstimate) (*models.Worklog, *models.Action, error) {
+	w, err := s.Store.WorklogByID(ctx, workspaceID, worklogID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("worklog %q not found", worklogID)
+	}
+	issue, err := s.visibleIssue(ctx, actorID, workspaceID, w.IssueID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("worklog %q not found", worklogID)
+	}
+	configuration, err := s.jiraSiteConfiguration(ctx, workspaceID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !configuration.TimeTrackingEnabled {
+		return nil, nil, fmt.Errorf("time tracking is disabled for this site")
+	}
+	allowed, err := s.worklogPermitted(ctx, workspaceID, actorID, issue, w.AuthorID, "EDIT_ALL_WORKLOGS", "EDIT_OWN_WORKLOGS")
+	if err != nil {
+		return nil, nil, err
+	}
+	if !allowed {
+		return nil, nil, ErrWorklogPermission
+	}
+	return s.Store.UpdateWorklogWithEstimate(ctx, actorID, workspaceID, w.ID, comment, seconds, estimate)
 }
 
 func (s *Service) DeleteWorklog(ctx context.Context, actorID, workspaceID, worklogID string) (*models.Action, error) {
+	return s.DeleteWorklogWithEstimate(ctx, actorID, workspaceID, worklogID, store.WorklogEstimate{})
+}
+
+// DeleteWorklogWithEstimate removes logged work with Delete all worklogs, or
+// Delete own worklogs for the actor's own, moving the remaining estimate back.
+func (s *Service) DeleteWorklogWithEstimate(ctx context.Context, actorID, workspaceID, worklogID string, estimate store.WorklogEstimate) (*models.Action, error) {
 	w, err := s.Store.WorklogByID(ctx, workspaceID, worklogID)
 	if err != nil {
 		return nil, fmt.Errorf("worklog %q not found", worklogID)
 	}
-	if w.AuthorID != actorID {
-		return nil, fmt.Errorf("only the author may delete a worklog")
-	}
-	if _, err := s.visibleIssue(ctx, actorID, workspaceID, w.IssueID); err != nil {
+	issue, err := s.visibleIssue(ctx, actorID, workspaceID, w.IssueID)
+	if err != nil {
 		return nil, fmt.Errorf("worklog %q not found", worklogID)
 	}
-	return s.Store.DeleteWorklog(ctx, actorID, workspaceID, w.ID)
+	allowed, err := s.worklogPermitted(ctx, workspaceID, actorID, issue, w.AuthorID, "DELETE_ALL_WORKLOGS", "DELETE_OWN_WORKLOGS")
+	if err != nil {
+		return nil, err
+	}
+	if !allowed {
+		return nil, ErrWorklogPermission
+	}
+	return s.Store.DeleteWorklogWithEstimate(ctx, actorID, workspaceID, w.ID, estimate)
 }
 
 // AddAttachment streams the blob to storage, then records metadata + action in

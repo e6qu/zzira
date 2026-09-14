@@ -60,8 +60,8 @@ func dashboardQuery(w http.ResponseWriter, r *http.Request, keys ...string) bool
 			return false
 		}
 	}
-	if v := r.URL.Query().Get("extendAdminPermissions"); v != "" && v != "false" {
-		jiraError(w, 400, "Admin permission extension is not supported.")
+	if v := r.URL.Query().Get("extendAdminPermissions"); v != "" && v != "true" && v != "false" {
+		jiraError(w, 400, "extendAdminPermissions must be true or false.")
 		return false
 	}
 	return true
@@ -86,6 +86,15 @@ func (h *Handler) dashboardRoute(w http.ResponseWriter, r *http.Request, p []str
 	if e != nil {
 		writeJerr(w, e)
 		return
+	}
+	// extendAdminPermissions lets a site administrator change dashboards they
+	// do not own; it is refused to everyone else.
+	if r.URL.Query().Get("extendAdminPermissions") == "true" {
+		if admin, err := h.Store.IsAdmin(r.Context(), ws, user); err != nil || !admin {
+			jiraError(w, 403, "extendAdminPermissions requires the Administer Jira global permission.")
+			return
+		}
+		r = r.WithContext(store.WithDashboardAdministration(r.Context()))
 	}
 	if (len(p) == 0 || len(p) == 1 && p[0] == "search") && r.Method == http.MethodGet {
 		h.dashboardList(w, r, ws, user, len(p) > 0)

@@ -43,7 +43,12 @@ SELECT i.id, i.jira_id, i.workspace_id, i.project_id, i.key, i.summary, i.descri
 	       i.updated_seq, i.updated_at,
 	       it.jira_id, it.hierarchy_level, pr2.jira_id, COALESCE(pro.status_color, pr2.status_color), COALESCE(pro.icon_url, pr2.icon_url),
 	       res.id, res.jira_id, COALESCE(reso.name, res.name), COALESCE(reso.description, res.description), i.resolved_at,
-	       i.created_at, i.archived_at
+	       i.created_at, i.archived_at,
+	       i.original_estimate_seconds, i.remaining_estimate_seconds,
+	       (SELECT COALESCE(sum(w.time_spent_seconds),0) FROM worklogs w WHERE w.issue_id=i.id),
+	       (SELECT sum(t.original_estimate_seconds) FROM issues t WHERE t.id=i.id OR t.parent_id=i.id AND EXISTS(SELECT 1 FROM issue_types tt WHERE tt.id=t.issuetype_id AND tt.subtask)),
+	       (SELECT sum(t.remaining_estimate_seconds) FROM issues t WHERE t.id=i.id OR t.parent_id=i.id AND EXISTS(SELECT 1 FROM issue_types tt WHERE tt.id=t.issuetype_id AND tt.subtask)),
+	       (SELECT COALESCE(sum(w.time_spent_seconds),0) FROM worklogs w JOIN issues t ON t.id=w.issue_id WHERE t.id=i.id OR t.parent_id=i.id AND EXISTS(SELECT 1 FROM issue_types tt WHERE tt.id=t.issuetype_id AND tt.subtask))
 `
 
 // Search runs a compiled JQL query within one workspace. The workspace

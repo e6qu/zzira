@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -48,7 +49,7 @@ type bulkTransitionCandidate struct {
 }
 
 func (h *Handler) bulkAvailableTransitions(w http.ResponseWriter, r *http.Request) {
-	workspaceID, userID, authErr := h.authWorkspaceAdmin(r)
+	workspaceID, userID, authErr := h.authBulkChange(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
@@ -149,7 +150,7 @@ func (h *Handler) bulkAvailableTransitions(w http.ResponseWriter, r *http.Reques
 }
 
 func (h *Handler) submitBulkTransition(w http.ResponseWriter, r *http.Request) {
-	workspaceID, actorID, authErr := h.authWorkspaceAdmin(r)
+	workspaceID, actorID, authErr := h.authBulkChange(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
@@ -235,7 +236,7 @@ type bulkMoveTargetRequest struct {
 }
 
 func (h *Handler) submitBulkMove(w http.ResponseWriter, r *http.Request) {
-	workspaceID, actorID, authErr := h.authWorkspaceAdmin(r)
+	workspaceID, actorID, authErr := h.authBulkChange(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
@@ -337,7 +338,7 @@ func (h *Handler) submitBulkMove(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) submitBulkDelete(w http.ResponseWriter, r *http.Request) {
-	workspaceID, actorID, authErr := h.authWorkspaceAdmin(r)
+	workspaceID, actorID, authErr := h.authBulkChange(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
@@ -395,7 +396,7 @@ type bulkEditableField struct {
 }
 
 func (h *Handler) bulkEditableFields(w http.ResponseWriter, r *http.Request) {
-	workspaceID, userID, authErr := h.authWorkspaceAdmin(r)
+	workspaceID, userID, authErr := h.authBulkChange(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
@@ -665,7 +666,7 @@ func decodeBulkOperationBody(w http.ResponseWriter, r *http.Request, value any) 
 }
 
 func (h *Handler) submitBulkWatch(w http.ResponseWriter, r *http.Request, watch bool) {
-	workspaceID, actorID, authErr := h.authWorkspaceAdmin(r)
+	workspaceID, actorID, authErr := h.authBulkChange(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
@@ -709,7 +710,7 @@ func (h *Handler) submitBulkWatch(w http.ResponseWriter, r *http.Request, watch 
 }
 
 func (h *Handler) bulkOperationProgress(w http.ResponseWriter, r *http.Request, taskID string) {
-	workspaceID, _, authErr := h.authWorkspaceAdmin(r)
+	workspaceID, _, authErr := h.authBulkChange(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
@@ -731,6 +732,11 @@ func (h *Handler) bulkOperationProgress(w http.ResponseWriter, r *http.Request, 
 		bulkOperationError(w, http.StatusBadRequest, "The task associated with this taskId is not a bulk operation task")
 		return
 	}
+	// Jira keeps a bulk operation's progress for 14 days after it is submitted.
+	if time.Since(task.SubmittedAt) > 14*24*time.Hour {
+		bulkOperationError(w, http.StatusNotFound, "The bulk operation task is no longer available.")
+		return
+	}
 	bean := map[string]any{
 		"taskId": task.WireID(), "status": task.Status, "progressPercent": task.Progress,
 		"submittedBy": map[string]string{"accountId": task.SubmittedBy},
@@ -748,4 +754,23 @@ func (h *Handler) bulkOperationProgress(w http.ResponseWriter, r *http.Request, 
 		}
 	}
 	writeJSON(w, http.StatusOK, bean)
+}
+
+// authBulkChange admits callers holding Jira's global Bulk change permission,
+// which every bulk operation and its progress require.
+func (h *Handler) authBulkChange(r *http.Request) (string, string, *jerr) {
+	workspaceID, userID, authErr := h.authWorkspace(r)
+	if authErr != nil {
+		return "", "", authErr
+	}
+	allowed, err := h.Store.HasGlobalPermission(r.Context(), workspaceID, userID, "BULK_CHANGE")
+	if err != nil {
+		return "", "", &jerr{http.StatusInternalServerError, "internal error", nil}
+	}
+	if !allowed {
+		if admin, adminErr := h.Store.IsAdmin(r.Context(), workspaceID, userID); adminErr != nil || !admin {
+			return "", "", &jerr{http.StatusForbidden, "You do not have the Bulk change global permission.", nil}
+		}
+	}
+	return workspaceID, userID, nil
 }

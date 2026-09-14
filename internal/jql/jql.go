@@ -766,6 +766,11 @@ type FieldResolver struct {
 	TextColumns  []string          // columns searched by bare text and ~
 	DefaultOrder map[string]string
 	DateFields   map[string]bool
+	// DurationFields hold time in seconds and compare with durations such as
+	// "2h" or "1w 2d"; NumberFields hold plain numbers. Both are empty when
+	// unset.
+	DurationFields map[string]bool
+	NumberFields   map[string]bool
 	// JSONArrayFields are fields whose value is a JSON array of ids.
 	JSONArrayFields map[string]string
 	// CustomValueFields are custom fields whose values name options, people or
@@ -859,6 +864,12 @@ func DefaultResolver() FieldResolver {
 			"environment":    `i.fields->>'environment'`,
 			"component":      `i.fields->>'component'`,
 			"sprint":         `i.fields->>'sprint'`,
+			// Time tracking, in seconds; work ratio is time spent as a
+			// percentage of the original estimate.
+			"originalestimate":  "i.original_estimate_seconds",
+			"remainingestimate": "i.remaining_estimate_seconds",
+			"timespent":         "(SELECT COALESCE(sum(w.time_spent_seconds),0) FROM worklogs w WHERE w.issue_id=i.id)",
+			"workratio":         "CASE WHEN i.original_estimate_seconds > 0 THEN (SELECT COALESCE(sum(w.time_spent_seconds),0) FROM worklogs w WHERE w.issue_id=i.id) * 100 / i.original_estimate_seconds END",
 		},
 		TextColumns: []string{"i.summary", "i.description::text"},
 		DefaultOrder: map[string]string{
@@ -866,8 +877,13 @@ func DefaultResolver() FieldResolver {
 			"status": "st.name", "priority": "COALESCE(pro.position, pr2.position)", "assignee": "a.display_name", "issuetype": "COALESCE(ito.name, it.name)",
 			"reporter": "r.display_name", "project": "pr.key", "parent": "parent.key", "resolution": "COALESCE(reso.position, res.position)",
 			"due": `NULLIF(i.fields->>'duedate','')::timestamptz`, "resolutiondate": "i.resolved_at",
+			"originalestimate": "i.original_estimate_seconds", "remainingestimate": "i.remaining_estimate_seconds",
+			"timespent": "(SELECT COALESCE(sum(w.time_spent_seconds),0) FROM worklogs w WHERE w.issue_id=i.id)",
+			"workratio": "CASE WHEN i.original_estimate_seconds > 0 THEN (SELECT COALESCE(sum(w.time_spent_seconds),0) FROM worklogs w WHERE w.issue_id=i.id) * 100 / i.original_estimate_seconds END",
 		},
-		DateFields: map[string]bool{"updated": true, "created": true, "due": true, "resolutiondate": true},
+		DateFields:     map[string]bool{"updated": true, "created": true, "due": true, "resolutiondate": true},
+		DurationFields: map[string]bool{"originalestimate": true, "remainingestimate": true, "timespent": true},
+		NumberFields:   map[string]bool{"workratio": true},
 	}
 }
 
@@ -1090,8 +1106,14 @@ func (c *compiler) clause(cl Clause) string {
 	case ">", ">=", "<", "<=":
 		return col + " " + cl.Op + " " + c.arg(c.fieldValue(cl.Field, cl.Values[0]))
 	case "empty":
+		if c.res.DurationFields[cl.Field] || c.res.NumberFields[cl.Field] {
+			return "(" + col + " IS NULL)"
+		}
 		return "(" + col + " IS NULL OR " + col + " = '')"
 	case "notempty":
+		if c.res.DurationFields[cl.Field] || c.res.NumberFields[cl.Field] {
+			return "(" + col + " IS NOT NULL)"
+		}
 		return "(" + col + " IS NOT NULL AND " + col + " <> '')"
 	}
 	c.err = &SyntaxError{0, "unsupported operator " + cl.Op}
@@ -1464,6 +1486,24 @@ func (c *compiler) componentClause(cl Clause) string {
 
 // fieldValue resolves semantic values: status names, currentUser(), EMPTY/null.
 func (c *compiler) fieldValue(field, value string) any {
+	if c.res.DurationFields[field] || c.res.NumberFields[field] {
+		text := strings.Trim(strings.TrimSpace(value), `"'`)
+		if c.res.NumberFields[field] {
+			number, err := strconv.ParseInt(text, 10, 64)
+			if err != nil {
+				c.err = &SyntaxError{0, "invalid number " + strconv.Quote(value) + " for " + field}
+				return nil
+			}
+			return number
+		}
+		// Durations use Jira's default working time: 8 hours a day, 5 days a week.
+		seconds, err := models.ParseJiraDuration(text, models.TimeTrackingConfiguration{DefaultUnit: "minute", WorkingHoursPerDay: 8, WorkingDaysPerWeek: 5})
+		if err != nil {
+			c.err = &SyntaxError{0, "invalid duration " + strconv.Quote(value) + " for " + field}
+			return nil
+		}
+		return seconds
+	}
 	// Unresolved is Jira's name for having no resolution at all, so it compares
 	// as the absence of one rather than as a resolution called "Unresolved".
 	if field == "resolution" && strings.EqualFold(strings.Trim(strings.TrimSpace(value), `"'`), "unresolved") {

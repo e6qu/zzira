@@ -634,6 +634,7 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 		AttachmentsEnabled:  configuration.AttachmentsEnabled,
 		IssueLinkingEnabled: configuration.IssueLinkingEnabled,
 		TimeTrackingEnabled: configuration.TimeTrackingEnabled,
+		TimeTracking:        models.NewTimeTrackingView(*issue, configuration.TimeTracking),
 		VotingEnabled:       configuration.VotingEnabled,
 		WatchingEnabled:     configuration.WatchingEnabled,
 		CurrentUserID:       user.ID,
@@ -1961,12 +1962,58 @@ func (h *Handler) AddWorklog(w http.ResponseWriter, r *http.Request, key string)
 	if !parseForm(w, r) {
 		return
 	}
-	seconds, err := strconv.Atoi(r.PostFormValue("seconds"))
-	if err != nil || seconds <= 0 {
-		http.Error(w, "seconds must be a positive number", http.StatusBadRequest)
+	configuration, err := h.Store.JiraSiteConfiguration(r.Context(), wsID)
+	if err != nil {
+		http.Error(w, "Could not load time tracking settings.", http.StatusInternalServerError)
 		return
 	}
-	if _, _, err := h.Commands.AddWorklog(r.Context(), user.ID, wsID, key, adf.ParagraphDoc(r.PostFormValue("comment")), seconds); err != nil {
+	spent, err := models.ParseJiraDuration(r.PostFormValue("timeSpent"), configuration.TimeTracking)
+	if err != nil || spent <= 0 {
+		http.Error(w, "Enter the time spent, such as 1h 30m.", http.StatusBadRequest)
+		return
+	}
+	// The remaining estimate moves by the time logged unless the person sets
+	// it or leaves it as it is.
+	estimate := store.WorklogEstimate{Mode: r.PostFormValue("adjustEstimate")}
+	if estimate.Mode == "new" {
+		if estimate.NewSeconds, err = models.ParseJiraDuration(r.PostFormValue("newEstimate"), configuration.TimeTracking); err != nil {
+			http.Error(w, "Enter the new remaining estimate, such as 2h.", http.StatusBadRequest)
+			return
+		}
+	}
+	if _, _, err := h.Commands.AddWorklogWithEstimate(r.Context(), user.ID, wsID, key, adf.ParagraphDoc(r.PostFormValue("comment")), int(spent), estimate); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	h.serveIssue(w, r, user, wsID, key)
+}
+
+// EditTimeTracking sets a work item's original and remaining estimates from
+// the issue page; an empty field removes that estimate.
+func (h *Handler) EditTimeTracking(w http.ResponseWriter, r *http.Request, key string) {
+	user, wsID, ok := h.issueMutationContext(w, r, key)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	configuration, err := h.Store.JiraSiteConfiguration(r.Context(), wsID)
+	if err != nil {
+		http.Error(w, "Could not load time tracking settings.", http.StatusInternalServerError)
+		return
+	}
+	estimates := map[string]*int64{}
+	for _, name := range []string{"originalEstimate", "remainingEstimate"} {
+		value := strings.TrimSpace(r.PostFormValue(name))
+		seconds := store.ClearEstimate
+		if value != "" {
+			if seconds, err = models.ParseJiraDuration(value, configuration.TimeTracking); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+		}
+		estimates[name] = &seconds
+	}
+	if _, _, err := h.Commands.UpdateIssue(r.Context(), commands.UpdateIssueInput{ActorID: user.ID, WorkspaceID: wsID, IssueIDOrKey: key,
+		OriginalEstimate: estimates["originalEstimate"], RemainingEstimate: estimates["remainingEstimate"]}); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}

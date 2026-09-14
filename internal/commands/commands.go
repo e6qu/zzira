@@ -37,6 +37,10 @@ type CreateIssueInput struct {
 	SecurityLevelID           string
 	Labels                    []string
 	Fields                    map[string]json.RawMessage
+	// OriginalEstimate and RemainingEstimate are time tracking estimates in
+	// seconds; nil leaves one unset.
+	OriginalEstimate  *int64
+	RemainingEstimate *int64
 }
 
 // DeleteIssue removes the issue transactionally, then cleans up attachment
@@ -221,8 +225,12 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 		}
 		description = in.DescriptionADF
 	}
-	issue, action, err := s.Store.CreateIssueForReporter(ctx, in.ActorID, in.ReporterID, project.ID, in.Summary,
-		description, "st_todo", issueType.ID, priorityID, in.AssigneeID, labels, in.Fields, in.SecurityLevelID, parentID)
+	if (in.OriginalEstimate != nil || in.RemainingEstimate != nil) && !configuration.TimeTrackingEnabled {
+		return nil, nil, fmt.Errorf("time tracking is disabled for this site")
+	}
+	issue, action, err := s.Store.CreateEstimatedIssueForReporter(ctx, in.ActorID, in.ReporterID, project.ID, in.Summary,
+		description, "st_todo", issueType.ID, priorityID, in.AssigneeID, labels, in.Fields, in.SecurityLevelID, parentID,
+		store.IssueEstimates{Original: in.OriginalEstimate, Remaining: in.RemainingEstimate})
 	if err != nil {
 		return nil, nil, err
 	}

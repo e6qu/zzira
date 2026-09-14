@@ -267,6 +267,7 @@ func (h *Handler) searchIssueBeans(ctx context.Context, workspaceID, userID stri
 	for index, issue := range issues {
 		fulls[index] = h.issueBean(issue)
 	}
+	h.addTimeTracking(ctx, issues, fulls)
 	if err := h.decorateCustomFieldValues(ctx, workspaceID, fulls); err != nil {
 		return nil, err
 	}

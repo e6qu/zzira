@@ -102,7 +102,8 @@ func TestDashboardLifecyclePrivacyAndGadgets(t *testing.T) {
 		}
 	}
 	call(actor, "POST", "/rest/api/3/dashboard", map[string]any{"name": "Missing permissions"}, 400)
-	call(actor, "POST", "/rest/api/3/dashboard?extendAdminPermissions=true", details("No", empty, empty), 400)
+	call(member, "POST", "/rest/api/3/dashboard?extendAdminPermissions=true", details("No", empty, empty), 403)
+	call(actor, "POST", "/rest/api/3/dashboard?extendAdminPermissions=maybe", details("No", empty, empty), 400)
 	call(actor, "PUT", path, details("Shared", loggedin, empty), 200)
 	if got := call(member, "GET", path, nil, 200); got["isWritable"] != false || got["isFavourite"] != false {
 		t.Fatal(got)

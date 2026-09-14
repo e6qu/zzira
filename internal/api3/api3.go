@@ -649,8 +649,114 @@ type createIssueRequest struct {
 		Security *struct {
 			ID string `json:"id"`
 		} `json:"security"`
-		Labels *[]string `json:"labels"`
+		Labels       *[]string          `json:"labels"`
+		TimeTracking *timeTrackingInput `json:"timetracking"`
 	} `json:"fields"`
+}
+
+// timeTrackingInput is Jira's timetracking field value: estimates written as
+// durations such as "1w 2d".
+type timeTrackingInput struct {
+	OriginalEstimate  *string `json:"originalEstimate"`
+	RemainingEstimate *string `json:"remainingEstimate"`
+}
+
+// estimateSeconds converts the timetracking field's estimates; an empty
+// estimate is store.ClearEstimate.
+func (input *timeTrackingInput) estimateSeconds(cfg models.TimeTrackingConfiguration) (original, remaining *int64, fieldErrors map[string]string) {
+	convert := func(value *string) *int64 {
+		if value == nil {
+			return nil
+		}
+		seconds := store.ClearEstimate
+		if strings.TrimSpace(*value) != "" {
+			parsed, err := models.ParseJiraDuration(*value, cfg)
+			if err != nil {
+				fieldErrors = map[string]string{"timetracking": err.Error()}
+				return nil
+			}
+			seconds = parsed
+		}
+		return &seconds
+	}
+	if input == nil {
+		return nil, nil, nil
+	}
+	original = convert(input.OriginalEstimate)
+	remaining = convert(input.RemainingEstimate)
+	return original, remaining, fieldErrors
+}
+
+// addTimeTracking adds Jira's time tracking fields to issue beans when time
+// tracking is on: the timetracking object, the estimate and spent seconds and
+// their sub-task aggregates, progress and work ratio.
+func (h *Handler) addTimeTracking(ctx context.Context, issues []*models.Issue, beans []map[string]any) {
+	configurations := map[string]*models.JiraSiteConfiguration{}
+	for index, issue := range issues {
+		configuration, loaded := configurations[issue.WorkspaceID]
+		if !loaded {
+			configuration, _ = h.Store.JiraSiteConfiguration(ctx, issue.WorkspaceID)
+			configurations[issue.WorkspaceID] = configuration
+		}
+		if configuration == nil || !configuration.TimeTrackingEnabled {
+			continue
+		}
+		fields, ok := beans[index]["fields"].(map[string]any)
+		if !ok {
+			continue
+		}
+		cfg := configuration.TimeTracking
+		tracking := map[string]any{}
+		seconds := func(value *int64) any {
+			if value == nil {
+				return nil
+			}
+			return *value
+		}
+		if issue.OriginalEstimateSeconds != nil {
+			tracking["originalEstimate"] = models.FormatJiraDuration(*issue.OriginalEstimateSeconds, cfg)
+			tracking["originalEstimateSeconds"] = *issue.OriginalEstimateSeconds
+		}
+		if issue.RemainingEstimateSeconds != nil {
+			tracking["remainingEstimate"] = models.FormatJiraDuration(*issue.RemainingEstimateSeconds, cfg)
+			tracking["remainingEstimateSeconds"] = *issue.RemainingEstimateSeconds
+		}
+		var spent any
+		if issue.TimeSpentSeconds > 0 {
+			tracking["timeSpent"] = models.FormatJiraDuration(issue.TimeSpentSeconds, cfg)
+			tracking["timeSpentSeconds"] = issue.TimeSpentSeconds
+			spent = issue.TimeSpentSeconds
+		}
+		var aggregateSpent any
+		if issue.AggregateTimeSpentSeconds > 0 {
+			aggregateSpent = issue.AggregateTimeSpentSeconds
+		}
+		progress := func(spentSeconds int64, remaining *int64) map[string]any {
+			total := spentSeconds
+			if remaining != nil {
+				total += *remaining
+			}
+			bean := map[string]any{"progress": spentSeconds, "total": total}
+			if total > 0 {
+				bean["percent"] = spentSeconds * 100 / total
+			}
+			return bean
+		}
+		workRatio := int64(-1)
+		if issue.OriginalEstimateSeconds != nil && *issue.OriginalEstimateSeconds > 0 {
+			workRatio = issue.TimeSpentSeconds * 100 / *issue.OriginalEstimateSeconds
+		}
+		fields["timetracking"] = tracking
+		fields["timeoriginalestimate"] = seconds(issue.OriginalEstimateSeconds)
+		fields["timeestimate"] = seconds(issue.RemainingEstimateSeconds)
+		fields["timespent"] = spent
+		fields["aggregatetimeoriginalestimate"] = seconds(issue.AggregateOriginalEstimateSeconds)
+		fields["aggregatetimeestimate"] = seconds(issue.AggregateRemainingEstimateSeconds)
+		fields["aggregatetimespent"] = aggregateSpent
+		fields["progress"] = progress(issue.TimeSpentSeconds, issue.RemainingEstimateSeconds)
+		fields["aggregateprogress"] = progress(issue.AggregateTimeSpentSeconds, issue.AggregateRemainingEstimateSeconds)
+		fields["workratio"] = workRatio
+	}
 }
 
 func (h *Handler) createIssue(w http.ResponseWriter, r *http.Request) {
@@ -728,7 +834,26 @@ func (h *Handler) createIssue(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	var originalEstimate, remainingEstimate *int64
+	if req.Fields.TimeTracking != nil {
+		configuration, configErr := h.Store.JiraSiteConfiguration(r.Context(), wsID)
+		if configErr != nil {
+			jiraError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		var fieldErrors map[string]string
+		if originalEstimate, remainingEstimate, fieldErrors = req.Fields.TimeTracking.estimateSeconds(configuration.TimeTracking); fieldErrors != nil {
+			jiraFieldError(w, http.StatusBadRequest, fieldErrors)
+			return
+		}
+		for _, estimate := range []**int64{&originalEstimate, &remainingEstimate} {
+			if *estimate != nil && **estimate == store.ClearEstimate {
+				*estimate = nil
+			}
+		}
+	}
 	issue, _, err := h.Commands.CreateIssue(r.Context(), commands.CreateIssueInput{
+		OriginalEstimate: originalEstimate, RemainingEstimate: remainingEstimate,
 		ActorID:        userID,
 		WorkspaceID:    wsID,
 		ProjectIDOrKey: projectIDOrKey,
@@ -798,6 +923,7 @@ func unsupportedCreateFields(body []byte) map[string]string {
 	supported := map[string]struct{}{
 		"project": {}, "summary": {}, "description": {}, "issuetype": {}, "priority": {},
 		"assignee": {}, "security": {}, "labels": {}, "fixVersions": {}, "versions": {}, "components": {}, "parent": {},
+		"timetracking": {},
 	}
 	for field := range raw.Fields {
 		if _, ok := supported[field]; ok || customFieldIDPattern.MatchString(field) || appCustomFieldKeyPattern.MatchString(field) {
@@ -837,7 +963,8 @@ type putIssueRequest struct {
 		Security *struct {
 			ID string `json:"id"`
 		} `json:"security"`
-		Labels *[]string `json:"labels"`
+		Labels       *[]string          `json:"labels"`
+		TimeTracking *timeTrackingInput `json:"timetracking"`
 	} `json:"fields"`
 }
 
@@ -940,12 +1067,44 @@ func (h *Handler) putIssue(w http.ResponseWriter, r *http.Request, idOrKey strin
 		sid := req.Fields.Security.ID
 		securityID = &sid
 	}
+	// timetracking is set as a field or edited with the update operation.
+	timeTracking := req.Fields.TimeTracking
+	if operations, provided := req.Update["timetracking"]; provided {
+		delete(req.Update, "timetracking")
+		for _, operation := range operations {
+			raw, ok := operation["edit"]
+			if !ok || len(operation) != 1 {
+				jiraFieldError(w, http.StatusBadRequest, map[string]string{"timetracking": "Time tracking supports only the edit operation."})
+				return
+			}
+			var edited timeTrackingInput
+			if err := json.Unmarshal(raw, &edited); err != nil {
+				jiraFieldError(w, http.StatusBadRequest, map[string]string{"timetracking": "Invalid time tracking value."})
+				return
+			}
+			timeTracking = &edited
+		}
+	}
+	var originalEstimate, remainingEstimate *int64
+	if timeTracking != nil {
+		configuration, configErr := h.Store.JiraSiteConfiguration(r.Context(), wsID)
+		if configErr != nil {
+			jiraError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		var fieldErrors map[string]string
+		if originalEstimate, remainingEstimate, fieldErrors = timeTracking.estimateSeconds(configuration.TimeTracking); fieldErrors != nil {
+			jiraFieldError(w, http.StatusBadRequest, fieldErrors)
+			return
+		}
+	}
 	if _, _, err := h.Commands.UpdateIssue(r.Context(), commands.UpdateIssueInput{
 		ActorID: userID, WorkspaceID: wsID, IssueIDOrKey: idOrKey,
 		Summary: up.Summary, Description: up.Description,
 		PriorityID: up.PriorityID, AssigneeID: up.AssigneeID,
 		ParentIDOrKey:   parentIDOrKey,
 		SecurityLevelID: securityID, Labels: req.Fields.Labels, Fields: fields, VersionOperations: req.Update,
+		OriginalEstimate: originalEstimate, RemainingEstimate: remainingEstimate,
 	}); err != nil {
 		field := "fields"
 		if strings.Contains(err.Error(), "parent") || strings.Contains(err.Error(), "sub-task") {
@@ -1080,6 +1239,7 @@ func (h *Handler) getIssue(w http.ResponseWriter, r *http.Request, idOrKey strin
 // IssueBean is exported for the Agile edge, which must render identical beans.
 func (h *Handler) IssueBean(i *models.Issue) map[string]any {
 	bean := h.issueBean(i)
+	h.addTimeTracking(context.Background(), []*models.Issue{i}, []map[string]any{bean})
 	_ = h.decorateCustomFieldValues(context.Background(), i.WorkspaceID, []map[string]any{bean})
 	return bean
 }

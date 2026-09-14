@@ -41,6 +41,11 @@ type UpdateIssueInput struct {
 	// and generateAppEvents choices.
 	SuppressChangelog bool
 	SuppressEvents    bool
+
+	// OriginalEstimate and RemainingEstimate change time tracking estimates in
+	// seconds: nil leaves one unchanged and store.ClearEstimate removes it.
+	OriginalEstimate  *int64
+	RemainingEstimate *int64
 }
 
 func (s *Service) visibleIssue(ctx context.Context, actorID, workspaceID, issueIDOrKey string) (*models.Issue, error) {
@@ -164,7 +169,17 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 		}
 		in.PriorityID = &priority.ID
 	}
+	if in.OriginalEstimate != nil || in.RemainingEstimate != nil {
+		timeTracking, err := s.jiraSiteConfiguration(ctx, in.WorkspaceID)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !timeTracking.TimeTrackingEnabled {
+			return nil, nil, fmt.Errorf("time tracking is disabled for this site")
+		}
+	}
 	update := store.IssueUpdate{
+		OriginalEstimate: in.OriginalEstimate, RemainingEstimate: in.RemainingEstimate,
 		Summary:           in.Summary,
 		Description:       in.Description,
 		PriorityID:        in.PriorityID,

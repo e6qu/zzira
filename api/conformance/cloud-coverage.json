@@ -319,7 +319,7 @@
         "e2e/v2.spec.ts",
         "docs/BULK_ISSUES.md"
       ],
-      "notes": "Queues deletion for up to 1,000 unique visible issues, caps active bulk work at five, rechecks execution-time visibility, reports per-item results, reconstructs recovered successes from atomic actions and durably retries attachment blob cleanup; configurable global Bulk change and delete permissions, bulk email delivery and exact edge errors remain."
+      "notes": "Queues deletion for up to 1,000 unique visible issues, caps active bulk work at five, rechecks execution-time visibility, reports per-item results, reconstructs recovered successes from atomic actions and durably retries attachment blob cleanup; bulk email delivery and exact edge errors remain; callers need Jira's global Bulk change permission."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/bulk/issues/fields",
@@ -332,7 +332,7 @@
         "internal/store/create_meta.go",
         "docs/BULK_ISSUES.md"
       ],
-      "notes": "Returns editable field types shared by all selected visible issues from the canonical project metadata, including Jira-shaped options, field search and bidirectional opaque 50-field cursor pages; configurable global and field permissions, cursor snapshot binding and the remaining Jira bulk field catalog remain."
+      "notes": "Returns editable field types shared by all selected visible issues from the canonical project metadata, including Jira-shaped options, field search and bidirectional opaque 50-field cursor pages; cursor snapshot binding and the remaining Jira bulk field catalog remain; callers need Jira's global Bulk change permission."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/bulk/issues/fields",
@@ -346,7 +346,7 @@
         "internal/commands/bulk_issues_test.go",
         "docs/BULK_ISSUES.md"
       ],
-      "notes": "Queues up to 1,000 visible issues and 200 exactly matched selected fields, strictly parses ten persisted Jira field families, delegates each item to the ordinary issue command, reports successful/inaccessible/accessible-failed IDs and preserves action-idempotent replay; remaining Jira field families, configurable Bulk change/field permissions, bulk email delivery and exact rate-limit semantics remain."
+      "notes": "Queues up to 1,000 visible issues and 200 exactly matched selected fields, strictly parses ten persisted Jira field families, delegates each item to the ordinary issue command, reports successful/inaccessible/accessible-failed IDs and preserves action-idempotent replay; remaining Jira field families, bulk email delivery and exact rate-limit semantics remain; callers need Jira's global Bulk change permission."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/bulk/issues/move",
@@ -361,7 +361,7 @@
         "e2e/v2.spec.ts",
         "docs/BULK_ISSUES.md"
       ],
-      "notes": "Queues up to 1,000 project/type/explicit-parent moves, validates Jira target mappings, maps or infers destination workflow statuses, preserves former keys as aliases, clears incompatible project fields and security, rechecks execution-time visibility and records transactional replay markers; classifications, mandatory-field mappings, implicit parent-with-subtask moves, exact permissions and bulk email delivery remain."
+      "notes": "Queues up to 1,000 project/type/explicit-parent moves, validates Jira target mappings, maps or infers destination workflow statuses, preserves former keys as aliases, clears incompatible project fields and security, rechecks execution-time visibility and records transactional replay markers; classifications, mandatory-field mappings, implicit parent-with-subtask moves, bulk email delivery remain; callers need Jira's global Bulk change permission."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/bulk/issues/transition",
@@ -375,7 +375,7 @@
         "e2e/v2.spec.ts",
         "docs/BULK_ISSUES.md"
       ],
-      "notes": "Groups up to 1,000 visible issues by workflow, intersects condition-filtered transitions, omits transitions requiring screen fields and cursor-pages workflow groups; exact custom numeric wire IDs, configurable Bulk change/transition permissions and transition-field metadata remain."
+      "notes": "Groups up to 1,000 visible issues by workflow, intersects condition-filtered transitions, omits transitions requiring screen fields and cursor-pages workflow groups; exact custom numeric wire IDs, transition-field metadata remain; callers need Jira's global Bulk change permission."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/bulk/issues/transition",
@@ -389,7 +389,7 @@
         "e2e/v2.spec.ts",
         "docs/BULK_ISSUES.md"
       ],
-      "notes": "Queues validated transition groups for up to 1,000 unique visible issues, rechecks execution-time visibility, delegates conditions/validators/post-functions to the ordinary REST transition engine and records transactional replay markers with per-item results; screen-field inputs, exact permission granularity and bulk email delivery remain."
+      "notes": "Queues validated transition groups for up to 1,000 unique visible issues, rechecks execution-time visibility, delegates conditions/validators/post-functions to the ordinary REST transition engine and records transactional replay markers with per-item results; screen-field inputs, exact permission granularity and bulk email delivery remain; callers need Jira's global Bulk change permission."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/bulk/issues/unwatch",
@@ -402,7 +402,7 @@
         "internal/api3/bulk_issues_test.go",
         "docs/BULK_ISSUES.md"
       ],
-      "notes": "Queues durable atomic self-unwatch changes for up to 1,000 unique visible issues, caps active bulk work at five, rechecks execution-time visibility, emits ordinary sync actions and exposes terminal counts; configurable Jira global Bulk change permission, notification controls and exact edge errors remain."
+      "notes": "Queues durable atomic self-unwatch changes for up to 1,000 unique visible issues, caps active bulk work at five, rechecks execution-time visibility, emits ordinary sync actions and exposes terminal counts; notification controls and exact edge errors remain; callers need Jira's global Bulk change permission."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/bulk/issues/watch",
@@ -415,7 +415,7 @@
         "internal/api3/bulk_issues_test.go",
         "docs/BULK_ISSUES.md"
       ],
-      "notes": "Queues durable atomic self-watch changes for up to 1,000 unique visible issues, caps active bulk work at five, rechecks execution-time visibility, emits ordinary sync actions and exposes terminal counts; configurable Jira global Bulk change permission, notification controls and exact edge errors remain."
+      "notes": "Queues durable atomic self-watch changes for up to 1,000 unique visible issues, caps active bulk work at five, rechecks execution-time visibility, emits ordinary sync actions and exposes terminal counts; notification controls and exact edge errors remain; callers need Jira's global Bulk change permission."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/bulk/queue/{taskId}",
@@ -428,7 +428,7 @@
         "internal/api3/bulk_issues_test.go",
         "docs/BULK_ISSUES.md"
       ],
-      "notes": "Returns Jira bulk task identity, submitter, timestamps, status, progress and watch/unwatch terminal issue counts while rejecting unrelated or cross-workspace tasks; 14-day retention and result shapes for the remaining bulk task kinds remain."
+      "notes": "Returns Jira bulk task identity, submitter, timestamps, status, progress and watch/unwatch terminal issue counts for callers holding the global Bulk change permission, while rejecting unrelated, cross-workspace and tasks older than Jira's 14-day window."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/changelog/bulkfetch",
@@ -619,7 +619,7 @@
         "internal/api3/field_schemes_test.go",
         "docs/FIELD_ASSOCIATION_SCHEMES.md"
       ],
-      "notes": "Listing schemes is tested with the name query; the projectId filter and matchedFilters remain."
+      "notes": "Listing schemes is tested with the name query and projectId filter; each scheme reports the filters it matched."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/config/fieldschemes",
@@ -1043,7 +1043,7 @@
         "e2e/dashboards.spec.ts",
         "docs/DASHBOARDS_API.md"
       ],
-      "notes": "Updating name, description and permissions is tested; extendAdminPermissions remains."
+      "notes": "Updating name, description and permissions is tested; extendAdminPermissions lets a site administrator update dashboards they neither own nor were shared, and is refused to others."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/dashboard/{id}/copy",
@@ -2810,9 +2810,11 @@
       "status": "partial",
       "evidence": [
         "internal/api3/worklogs_test.go",
-        "docs/WORKLOGS.md"
+        "docs/WORKLOGS.md",
+        "internal/api3/time_tracking_test.go",
+        "docs/TIME_TRACKING.md"
       ],
-      "notes": "Logging work is tested, including the rejection of a non-positive time."
+      "notes": "Logging work as timeSpent or timeSpentSeconds is tested, including the rejection of a non-positive time; adjustEstimate auto, new, manual with reduceBy, and leave move the remaining estimate, and Work on issues is required."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/issue/{issueIdOrKey}/worklog/move",
@@ -2832,9 +2834,11 @@
       "status": "partial",
       "evidence": [
         "internal/api3/worklogs_test.go",
-        "docs/WORKLOGS.md"
+        "docs/WORKLOGS.md",
+        "internal/api3/time_tracking_test.go",
+        "docs/TIME_TRACKING.md"
       ],
-      "notes": "Removing one worklog is tested, and the tombstone the deleted feed reads from."
+      "notes": "Removing one worklog is tested, and the tombstone the deleted feed reads from; adjustEstimate auto, new, manual with increaseBy, and leave move the remaining estimate back, and Delete all worklogs or Delete own worklogs is required."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issue/{issueIdOrKey}/worklog/{id}",
@@ -2854,9 +2858,11 @@
       "status": "partial",
       "evidence": [
         "internal/api3/worklogs_test.go",
-        "docs/WORKLOGS.md"
+        "docs/WORKLOGS.md",
+        "internal/api3/time_tracking_test.go",
+        "migrations/189_issue_time_estimates.sql"
       ],
-      "notes": "Changing the time and comment is tested, including that an omitted comment keeps the stored one; adjustEstimate and notifyUsers remain."
+      "notes": "Changing the time, as timeSpent or timeSpentSeconds, and the comment is tested, including that an omitted comment keeps the stored one; adjustEstimate auto, new and leave move the remaining estimate, and Edit all worklogs or Edit own worklogs is required."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issue/{issueIdOrKey}/worklog/{worklogId}/properties",
@@ -6880,7 +6886,7 @@
         "internal/store/workflow_usage.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Returns opaque-cursor pages of workspace project IDs whose published scheme resolves the workflow; additional project fields and Jira cursor encoding remain."
+      "notes": "Returns opaque-cursor pages of workspace project IDs whose published scheme resolves the workflow, in Jira's id-only project usage shape."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/workflow/{workflowId}/workflowSchemes",
@@ -7492,7 +7498,7 @@
         "internal/store/workflow_schemes.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Returns opaque-cursor pages of workspace project IDs assigned to the scheme with maxResults validation; additional project fields remain."
+      "notes": "Returns opaque-cursor pages of workspace project IDs assigned to the scheme with maxResults validation, in Jira's id-only project usage shape."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/worklog/deleted",
