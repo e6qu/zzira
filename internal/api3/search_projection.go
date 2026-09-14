@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"html"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/e6qu/zzira/internal/adf"
@@ -51,25 +50,10 @@ func searchFieldDefinitions(customFields []*models.CustomField) []searchFieldDef
 	}
 	for _, field := range customFields {
 		key := field.ID
-		custom := "com.zzira:" + field.Type
 		if field.AppKey != "" {
 			key = field.AppKey + "__" + field.AppModuleKey
-			custom = key
 		}
-		fieldType := string(field.Type)
-		switch field.Type {
-		case models.CustomFieldText:
-			fieldType = "string"
-		case models.CustomFieldSelect, models.CustomFieldMultiSelect:
-			fieldType = "option"
-		}
-		schema := map[string]any{"type": fieldType, "custom": custom}
-		if field.Type == models.CustomFieldMultiSelect {
-			schema["type"], schema["items"] = "array", "option"
-		}
-		if number, err := strconv.ParseInt(strings.TrimPrefix(field.ID, "customfield_"), 10, 64); err == nil {
-			schema["customId"] = number
-		}
+		schema := customFieldSchema(field)
 		definitions = append(definitions, searchFieldDefinition{ID: field.ID, Key: key, Name: field.Name, Schema: schema})
 	}
 	return definitions
@@ -279,8 +263,15 @@ func (h *Handler) searchIssueBeans(ctx context.Context, workspaceID, userID stri
 	requested := normalizeSearchFields(options.Fields, definitions, options.FieldsByKeys)
 	beans := make([]map[string]any, 0, len(issues))
 	editMetadata := map[string]map[string]any{}
-	for _, issue := range issues {
-		full := h.issueBean(issue)
+	fulls := make([]map[string]any, len(issues))
+	for index, issue := range issues {
+		fulls[index] = h.issueBean(issue)
+	}
+	if err := h.decorateCustomFieldValues(ctx, workspaceID, fulls); err != nil {
+		return nil, err
+	}
+	for index, issue := range issues {
+		full := fulls[index]
 		if fields, ok := full["fields"].(map[string]any); ok {
 			if err := h.addIssueDetailFields(ctx, workspaceID, userID, issue, fields, requested, options.IssueDetails, defaultAll); err != nil {
 				return nil, err

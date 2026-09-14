@@ -100,7 +100,7 @@ func (h *Handler) getCustomField(w http.ResponseWriter, r *http.Request, id stri
 }
 
 func (h *Handler) customFieldBean(f *models.CustomField) map[string]any {
-	schema := map[string]any{"type": f.Type}
+	schema := customFieldSchema(f)
 	bean := map[string]any{
 		"id":          f.ID,
 		"key":         f.ID,
@@ -118,7 +118,6 @@ func (h *Handler) customFieldBean(f *models.CustomField) map[string]any {
 		key := f.AppKey + "__" + f.AppModuleKey
 		bean["key"] = key
 		bean["clauseNames"] = []string{f.ID, key, f.Name}
-		schema["custom"] = key
 	}
 	return bean
 }
@@ -174,8 +173,12 @@ func (h *Handler) createField(w http.ResponseWriter, r *http.Request) {
 	resolved, ok := resolveFieldType(fieldType)
 	if !ok {
 		jiraFieldError(w, http.StatusBadRequest, map[string]string{
-			"type": "type must be text, number, datetime or select, or the Jira key for one of them"})
+			"type": "type must be a supported custom field type or its Jira type key"})
 		return
+	}
+	typeKey := models.CustomFieldTypeKeys[resolved]
+	if _, jiraKey := jiraFieldTypeKeys[fieldType]; jiraKey {
+		typeKey = fieldType
 	}
 	fieldType = resolved
 	seq, err := h.Store.NextCustomFieldNumber(r.Context())
@@ -184,7 +187,7 @@ func (h *Handler) createField(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := fmt.Sprintf("customfield_%d", 10000+seq)
-	field, err := h.Store.CreateWorkspaceCustomField(r.Context(), workspaceID, id, req.Name, fieldType, req.Description)
+	field, err := h.Store.CreateWorkspaceCustomFieldOfKind(r.Context(), workspaceID, id, req.Name, fieldType, typeKey, req.Description)
 	if err != nil {
 		jiraError(w, http.StatusBadRequest, err.Error())
 		return

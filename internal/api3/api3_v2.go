@@ -313,7 +313,7 @@ func createFieldSchema(field models.CreateFieldMeta) map[string]any {
 	if field.ID == "description" {
 		schema["system"] = field.ID
 	} else if field.Custom {
-		schema["custom"] = "com.zzira:" + field.Type
+		schema["custom"] = field.TypeKey
 		customID := strings.TrimPrefix(field.ID, "customfield_")
 		if numericID, err := strconv.Atoi(customID); err == nil {
 			schema["customId"] = numericID
@@ -334,9 +334,15 @@ func createFieldSchema(field models.CreateFieldMeta) map[string]any {
 	if field.Type == "array" {
 		schema["items"] = "string"
 	}
-	if field.Type == "options" {
-		schema["type"] = "array"
-		schema["items"] = "option"
+	switch field.Type {
+	case "options":
+		schema["type"], schema["items"] = "array", "option"
+	case "users":
+		schema["type"], schema["items"] = "array", "user"
+	case "groups":
+		schema["type"], schema["items"] = "array", "group"
+	case "url":
+		schema["type"] = "string"
 	}
 	return schema
 }

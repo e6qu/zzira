@@ -226,7 +226,11 @@ func TestAppFieldsMigrationAndServiceRegistry(t *testing.T) {
 	platformsNumber := strings.TrimPrefix(platformsID, "customfield_")
 	send(connectApp, "", "PUT", "/rest/atlassian-connect/1/migration/field", `{"updateValueList":[{"_type":"MultiSelectIssueField","fieldID":`+platformsNumber+`,"issueID":`+issueID+`,"optionID":"`+ios+`"},{"_type":"MultiSelectIssueField","fieldID":`+platformsNumber+`,"issueID":`+issueID+`,"optionID":"`+android+`"}]}`, transferHeader, 200)
 	platforms := object(object(send(nil, admin, "GET", "/rest/api/3/issue/"+issueID+"?fields="+platformsID, "", nil, 200))["fields"])[platformsID]
-	if fmt.Sprint(platforms) != "["+ios+" "+android+"]" {
+	platformIDs := []string{}
+	for _, item := range platforms.([]any) {
+		platformIDs = append(platformIDs, fmt.Sprint(item.(map[string]any)["id"]))
+	}
+	if strings.Join(platformIDs, " ") != ios+" "+android {
 		t.Fatalf("platforms = %v", platforms)
 	}
 	send(connectApp, "", "PUT", "/rest/atlassian-connect/1/migration/field", `{"updateValueList":[{"_type":"MultiSelectIssueField","fieldID":`+platformsNumber+`,"issueID":`+issueID+`}]}`, transferHeader, 400)

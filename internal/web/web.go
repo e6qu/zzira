@@ -1179,7 +1179,22 @@ func encodeWebCustomField(fieldType, value string) (json.RawMessage, error) {
 		"option", models.CustomFieldSelect:
 		encoded, err := json.Marshal(value)
 		return encoded, err
-	case "options", models.CustomFieldMultiSelect:
+	case models.CustomFieldDate, models.CustomFieldURL, "user", models.CustomFieldUser, "group", models.CustomFieldGroup:
+		return json.Marshal(value)
+	case models.CustomFieldCascadingSelect, "option-with-child":
+		parent, child, _ := strings.Cut(value, ":")
+		cascade := map[string]string{"parent": strings.TrimSpace(parent)}
+		if child = strings.TrimSpace(child); child != "" {
+			cascade["child"] = child
+		}
+		return json.Marshal(cascade)
+	case "array", models.CustomFieldLabels:
+		labels := []string{}
+		for _, label := range strings.FieldsFunc(value, func(r rune) bool { return r == ',' || r == ' ' }) {
+			labels = append(labels, label)
+		}
+		return json.Marshal(labels)
+	case "users", models.CustomFieldMultiUser, "groups", models.CustomFieldMultiGroup, "options", models.CustomFieldMultiSelect:
 		ids := []string{}
 		for _, id := range strings.Split(value, ",") {
 			if id = strings.TrimSpace(id); id != "" {

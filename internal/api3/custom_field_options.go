@@ -1,6 +1,7 @@
 package api3
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
 
@@ -8,9 +9,13 @@ import (
 )
 
 func (h *Handler) customFieldOptionBean(option models.CustomFieldOption) map[string]any {
-	return map[string]any{
+	bean := map[string]any{
 		"id": wireNumericID(option.ID), "value": option.Value, "disabled": option.Disabled,
 	}
+	if option.ParentID != "" {
+		bean["optionId"] = wireNumericID(option.ParentID)
+	}
+	return bean
 }
 
 // customFieldOptionResource serves /customFieldOption/{id}.
@@ -61,18 +66,23 @@ func (h *Handler) customFieldOptionCollection(w http.ResponseWriter, r *http.Req
 	case http.MethodPost:
 		var request struct {
 			Options []struct {
-				Value    string `json:"value"`
-				Disabled bool   `json:"disabled"`
+				Value    string          `json:"value"`
+				Disabled bool            `json:"disabled"`
+				OptionID json.RawMessage `json:"optionId"`
 			} `json:"options"`
 		}
 		if !decodeProjectRequest(w, r, &request) {
 			return
 		}
-		values := make([]string, 0, len(request.Options))
+		options := make([]models.CustomFieldOption, 0, len(request.Options))
 		for _, option := range request.Options {
-			values = append(values, option.Value)
+			parent := strings.Trim(string(option.OptionID), `"`)
+			if parent == "null" {
+				parent = ""
+			}
+			options = append(options, models.CustomFieldOption{Value: option.Value, Disabled: option.Disabled, ParentID: parent})
 		}
-		created, err := h.Store.CreateCustomFieldOptions(r.Context(), workspaceID, actorID, fieldID, contextID, values)
+		created, err := h.Store.CreateCustomFieldOptionsWithParents(r.Context(), workspaceID, actorID, fieldID, contextID, options)
 		if err != nil {
 			fieldContextError(w, err)
 			return

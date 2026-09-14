@@ -63,7 +63,7 @@ func appSelectField(ctx context.Context, tx pgx.Tx, workspaceID, fieldKey string
 	if appKey == "" {
 		return "", 0, fmt.Errorf("%w: this operation is only for select lists provided by an app", ErrAppFieldOption)
 	}
-	if fieldType != models.CustomFieldSelect && fieldType != models.CustomFieldMultiSelect {
+	if !models.IsOptionFieldType(fieldType) {
 		return "", 0, fmt.Errorf("%w: the field is not a select list", ErrAppFieldOption)
 	}
 	if err = tx.QueryRow(ctx, `SELECT id FROM custom_field_contexts WHERE field_id=$1 ORDER BY id LIMIT 1`,

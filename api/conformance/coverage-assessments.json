@@ -7094,7 +7094,7 @@
         "internal/api3/custom_field_contexts_test.go",
         "docs/CUSTOM_FIELD_OPTIONS.md"
       ],
-      "notes": "Reading one option by its own ID is tested, scoped to the workspace's fields; Jira's expanded option bean remains."
+      "notes": "Reads one option by id, scoped to the workspace's fields, with a cascading child's optionId; Jira's expanded option bean remains."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/dashboard",
@@ -8914,10 +8914,11 @@
       "operationId": "jira-v3:POST:/rest/api/3/field",
       "status": "partial",
       "evidence": [
+        "internal/api3/custom_field_types_test.go",
         "internal/api3/fields_test.go",
         "docs/ISSUE_FIELDS.md"
       ],
-      "notes": "Creating a custom field is tested, including Jira's canonical type keys and the refusal of a type this product does not serve."
+      "notes": "Creates custom fields by short name or Jira type key for text, URL, number, date and time, date, select, multi-select, cascading select, user, multi-user, group, multi-group and labels, keeping the type key; other types are refused."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/field/{fieldId}/context",
@@ -8952,11 +8953,12 @@
       "operationId": "jira-v3:POST:/rest/api/3/field/{fieldId}/context/{contextId}/option",
       "status": "partial",
       "evidence": [
+        "internal/api3/custom_field_types_test.go",
         "internal/api3/custom_field_contexts_test.go",
         "e2e/custom_field_options.spec.ts",
         "docs/CUSTOM_FIELD_OPTIONS.md"
       ],
-      "notes": "Appending options is tested, including the select-only guard, blank values and case-insensitive duplicates; cascading child options remain."
+      "notes": "Appends options with blank and duplicate guards, and cascading child options under a first-level option with optionId."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/field/{fieldId}/context/{contextId}/project/remove",

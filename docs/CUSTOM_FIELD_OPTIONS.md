@@ -67,14 +67,30 @@ managed exactly like a select field's, and createmeta describes it as an
 `array` of `option` with the context's options as `allowedValues`; the create
 form offers them as a multiple choice.
 
-Both option fields accept Jira's value forms on create, edit and transition: an
-option id, `{"id": ...}` or `{"value": ...}` naming an option of the governing
-context, and for a multi-select a list of them (a single one is taken as a list
-of one). Each option may be chosen once. A work item stores option ids, so issue
-responses carry ids rather than Jira's option objects, and JQL matches ids:
-`=`, `!=`, `in`, `not in`, `is empty` and `is not empty` work on a
-multi-select. Changes appear in the changelog as `custom` items listing the
-option values.
+## Cascading select fields
 
-Cascading select fields, Jira's `optionId` filter on the option list, `expand`,
-and exact Jira error wording remain.
+A `cascadingselect` field has two levels of options. An option created with
+`optionId` is a child of that first-level option of the same context; a child
+cannot have children, and only a cascading select's options can have a parent.
+Its value is an option and optionally one of that option's children.
+
+## Values on work items
+
+Option fields accept Jira's value forms on create, edit and transition: an
+option id, `{"id": ...}` or `{"value": ...}` naming an option of the governing
+context; for a multi-select a list of them (a single one is taken as a list of
+one, each chosen once); and for a cascading select
+`{"value": ..., "child": {"value": ...}}` or the same with ids. Issue responses
+describe an option as Jira does — `{"self", "value", "id"}`, a list of those
+for a multi-select, and a cascading option carrying its `child` — and user and
+group picker values as user beans and `{"groupId", "name", "self"}`.
+
+JQL matches an option field by option id or option value: `=`, `!=`, `in`,
+`not in`, `is empty` and `is not empty`, and for a cascading select
+`in cascadeOption(parent)`, `cascadeOption(parent, child)` and
+`cascadeOption(parent, none)`. Changes appear in the changelog as `custom` items
+naming the options, people or groups.
+
+The create form offers a cascading select's first-level options; its child is
+set through the API. Jira's `optionId` filter on the option list, `expand`, and
+exact Jira error wording remain.

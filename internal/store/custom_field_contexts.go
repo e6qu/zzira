@@ -520,7 +520,7 @@ func (s *Store) attachContextOptions(ctx context.Context, workspaceID string, re
 		CROSS JOIN issue_types work_type
 		JOIN custom_fields f ON f.active AND f.trashed_at IS NULL AND f.type = ANY($2) AND (f.workspace_id IS NULL OR f.workspace_id=$1)
 		JOIN custom_field_options o
-			ON o.context_id = jira_custom_field_context(f.id,p.id,work_type.id) AND NOT o.disabled
+			ON o.context_id = jira_custom_field_context(f.id,p.id,work_type.id) AND NOT o.disabled AND o.parent_id IS NULL
 		WHERE p.workspace_id=$1
 		ORDER BY p.id, work_type.id, f.id, o.position, o.id`, workspaceID, optionFieldTypes)
 	if err != nil {
@@ -609,24 +609,29 @@ func (s *Store) CustomFieldWriteScope(ctx context.Context, workspaceID, projectI
 }
 
 // optionFieldTypes are the custom field types that take options.
-var optionFieldTypes = []string{models.CustomFieldSelect, models.CustomFieldMultiSelect}
+var optionFieldTypes = []string{models.CustomFieldSelect, models.CustomFieldMultiSelect, models.CustomFieldCascadingSelect}
 
-// OptionCatalog is what a select or multi-select field offers for one project
-// and work type: whether it takes several options, and its option ids by value.
+// OptionCatalog is what an option field offers for one project and work type:
+// its type, its first-level option ids by value, and for a cascading select the
+// child options of each parent by value.
 type OptionCatalog struct {
-	Multi   bool
-	ByValue map[string]string
+	Type     string
+	Multi    bool
+	ByValue  map[string]string
+	Parents  map[string]bool
+	Children map[string]map[string]string
+	ChildOf  map[string]string
 }
 
 // CustomFieldOptionCatalog lists the option fields that apply to a project and
-// work type, with the enabled options of the governing context by value.
+// work type, with the enabled options of the governing context.
 func (s *Store) CustomFieldOptionCatalog(ctx context.Context, workspaceID, projectID, issueTypeID string) (map[string]OptionCatalog, error) {
 	rows, err := s.Pool.Query(ctx, `
-		SELECT f.id, f.type, o.id::text, o.value
+		SELECT f.id, f.type, o.id::text, o.value, COALESCE(o.parent_id::text,'')
 		FROM custom_fields f
 		LEFT JOIN custom_field_options o ON o.context_id = jira_custom_field_context(f.id,$2,NULLIF($3,'')) AND NOT o.disabled
 		WHERE f.active AND f.trashed_at IS NULL AND f.type = ANY($4) AND (f.workspace_id IS NULL OR f.workspace_id=$1)
-		ORDER BY f.id, o.position, o.id`,
+		ORDER BY f.id, o.parent_id NULLS FIRST, o.position, o.id`,
 		workspaceID, projectID, issueTypeID, optionFieldTypes)
 	if err != nil {
 		return nil, err
@@ -635,17 +640,29 @@ func (s *Store) CustomFieldOptionCatalog(ctx context.Context, workspaceID, proje
 	catalog := map[string]OptionCatalog{}
 	for rows.Next() {
 		var fieldID, fieldType string
-		var optionID, value *string
-		if err = rows.Scan(&fieldID, &fieldType, &optionID, &value); err != nil {
+		var optionID, value, parentID *string
+		if err = rows.Scan(&fieldID, &fieldType, &optionID, &value, &parentID); err != nil {
 			return nil, err
 		}
 		entry, ok := catalog[fieldID]
 		if !ok {
-			entry = OptionCatalog{Multi: fieldType == models.CustomFieldMultiSelect, ByValue: map[string]string{}}
+			entry = OptionCatalog{Type: fieldType, Multi: fieldType == models.CustomFieldMultiSelect, ByValue: map[string]string{},
+				Parents: map[string]bool{}, Children: map[string]map[string]string{}, ChildOf: map[string]string{}}
 		}
 		if optionID != nil && value != nil {
-			if _, taken := entry.ByValue[*value]; !taken {
-				entry.ByValue[*value] = *optionID
+			if parentID == nil || *parentID == "" {
+				entry.Parents[*optionID] = true
+				if _, taken := entry.ByValue[*value]; !taken {
+					entry.ByValue[*value] = *optionID
+				}
+			} else {
+				if entry.Children[*parentID] == nil {
+					entry.Children[*parentID] = map[string]string{}
+				}
+				if _, taken := entry.Children[*parentID][*value]; !taken {
+					entry.Children[*parentID][*value] = *optionID
+				}
+				entry.ChildOf[*optionID] = *parentID
 			}
 		}
 		catalog[fieldID] = entry

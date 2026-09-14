@@ -69,6 +69,12 @@ func (s *Store) IssueCreateMetadata(ctx context.Context, workspaceID, userID str
 	for _, member := range members {
 		memberOptions = append(memberOptions, models.CreateFieldOption{ID: member.ID, Name: member.DisplayName})
 	}
+	groupOptions := []models.CreateFieldOption{}
+	if groups, groupErr := s.SiteGroups(ctx, workspaceID); groupErr == nil {
+		for _, group := range groups {
+			groupOptions = append(groupOptions, models.CreateFieldOption{ID: group.ID, Name: group.Name})
+		}
+	}
 
 	meta := &models.IssueCreateMetadata{Projects: make([]models.CreateProjectMeta, 0, len(projects))}
 	for _, project := range projects {
@@ -168,10 +174,24 @@ func (s *Store) IssueCreateMetadata(ctx context.Context, workspaceID, userID str
 			if err != nil {
 				return nil, fmt.Errorf("custom field %q: %w", field.ID, err)
 			}
-			fields = append(fields, models.CreateFieldMeta{
+			typeKey := field.TypeKey
+			if typeKey == "" {
+				typeKey = models.CustomFieldTypeKeys[field.Type]
+			}
+			if field.AppKey != "" {
+				typeKey = field.AppKey + "__" + field.AppModuleKey
+			}
+			fieldMeta := models.CreateFieldMeta{
 				ID: field.ID, Name: field.Name, Type: fieldType, Description: field.Description,
-				Custom: true, Section: "details",
-			})
+				Custom: true, Section: "details", TypeKey: typeKey,
+			}
+			switch field.Type {
+			case models.CustomFieldUser, models.CustomFieldMultiUser:
+				fieldMeta.Options = memberOptions
+			case models.CustomFieldGroup, models.CustomFieldMultiGroup:
+				fieldMeta.Options = groupOptions
+			}
+			fields = append(fields, fieldMeta)
 		}
 		// The project's screen scheme decides which of these fields each work
 		// type's create form actually shows.
@@ -195,6 +215,22 @@ func createFieldType(fieldType string) (string, error) {
 		return "option", nil
 	case models.CustomFieldMultiSelect:
 		return "options", nil
+	case models.CustomFieldCascadingSelect:
+		return "option-with-child", nil
+	case models.CustomFieldDate:
+		return "date", nil
+	case models.CustomFieldURL:
+		return "url", nil
+	case models.CustomFieldUser:
+		return "user", nil
+	case models.CustomFieldMultiUser:
+		return "users", nil
+	case models.CustomFieldGroup:
+		return "group", nil
+	case models.CustomFieldMultiGroup:
+		return "groups", nil
+	case models.CustomFieldLabels:
+		return "array", nil
 	default:
 		return "", fmt.Errorf("unsupported type %q", fieldType)
 	}

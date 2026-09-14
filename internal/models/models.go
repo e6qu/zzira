@@ -383,6 +383,8 @@ type CreateFieldMeta struct {
 	// Default is the raw JSON the field's applicable context supplies, empty
 	// when the context sets none.
 	Default string `json:"-"`
+	// TypeKey is a custom field's Jira type key.
+	TypeKey string `json:"-"`
 }
 
 type CreateProjectMeta struct {
@@ -465,7 +467,7 @@ func (m CreateProjectMeta) applyCustomFieldContexts(issueTypeID string, fields [
 		}
 		field.Default = info.Default
 		// A select field offers exactly the options its governing context holds.
-		if field.Type == "option" || field.Type == "options" {
+		if field.Type == "option" || field.Type == "options" || field.Type == "option-with-child" {
 			field.Options = info.Options
 		}
 		out = append(out, field)
