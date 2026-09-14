@@ -246,12 +246,57 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	schemeID := jsonIDString(t, scheme["id"])
 	call(actor, "GET", "/rest/api/3/workflowscheme", "", 200)
 	call(actor, "GET", "/rest/api/3/workflowscheme/"+schemeID, "", 200)
-	update := `{"name":"Delivery scheme updated","description":"Draft routing","defaultWorkflow":"Default","issueTypeMappings":{}}`
-	draft := call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID, update, 200)
-	if !strings.Contains(draft.Body.String(), `"draft":true`) {
-		t.Fatal(draft.Body.String())
+	listPage := call(actor, "GET", "/rest/api/3/workflowscheme?maxResults=1", "", 200)
+	if !strings.Contains(listPage.Body.String(), `"maxResults":1`) || strings.Contains(listPage.Body.String(), `"Default workflow scheme"`) && strings.Contains(listPage.Body.String(), `"total":1,`) {
+		t.Fatal(listPage.Body.String())
+	}
+	// An inactive scheme, one no project uses, changes directly and has no draft.
+	update := `{"name":"Delivery scheme updated","description":"Direct routing","defaultWorkflow":"Default","issueTypeMappings":{}}`
+	updated := call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID, update, 200)
+	if !strings.Contains(updated.Body.String(), `"draft":false`) || !strings.Contains(updated.Body.String(), `"description":"Direct routing"`) {
+		t.Fatal(updated.Body.String())
+	}
+	call(actor, "POST", "/rest/api/3/workflowscheme/"+schemeID+"/createdraft", "", 400)
+	call(actor, "GET", "/rest/api/3/workflowscheme/"+schemeID+"/draft", "", 404)
+	call(actor, "GET", "/rest/api/3/workflowscheme/"+schemeID+"/default", "", 200)
+	call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/default", `{"workflow":"Simple API lifecycle"}`, 200)
+	call(actor, "DELETE", "/rest/api/3/workflowscheme/"+schemeID+"/default", "", 200)
+	call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/issuetype/10002", `{"workflow":"Simple API lifecycle"}`, 200)
+	call(actor, "GET", "/rest/api/3/workflowscheme/"+schemeID+"/issuetype/10002", "", 200)
+	call(actor, "GET", "/rest/api/3/workflowscheme/"+schemeID+"/workflow?workflowName=Simple%20API%20lifecycle", "", 200)
+	call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/workflow?workflowName=Simple%20API%20lifecycle", `{"workflow":"Default","issueTypes":["10002"]}`, 200)
+	call(actor, "DELETE", "/rest/api/3/workflowscheme/"+schemeID+"/issuetype/10002", "", 200)
+	call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/issuetype/10002", `{"workflow":"Simple API lifecycle"}`, 200)
+	call(actor, "DELETE", "/rest/api/3/workflowscheme/"+schemeID+"/workflow?workflowName=Simple%20API%20lifecycle", "", 204)
+	usage := call(actor, "GET", "/rest/api/3/workflowscheme/"+schemeID+"/projectUsages?maxResults=1", "", 200)
+	if !strings.Contains(usage.Body.String(), `"values":[]`) {
+		t.Fatal(usage.Body.String())
+	}
+	call(actor, "PUT", "/rest/api/3/workflowscheme/project", `{"projectId":"`+projectID+`","workflowSchemeId":"`+schemeID+`"}`, 204)
+	association := call(actor, "GET", "/rest/api/3/workflowscheme/project?projectId="+projectID, "", 200)
+	if !strings.Contains(association.Body.String(), schemeID) {
+		t.Fatal(association.Body.String())
+	}
+	usage = call(actor, "GET", "/rest/api/3/workflowscheme/"+schemeID+"/projectUsages?maxResults=1", "", 200)
+	if !strings.Contains(usage.Body.String(), projectID) {
+		t.Fatal(usage.Body.String())
+	}
+	// An active scheme changes only through its draft.
+	call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/default", `{"workflow":"Simple API lifecycle"}`, 400)
+	drafted := call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/default", `{"workflow":"Default","updateDraftIfNeeded":true}`, 200)
+	for _, want := range []string{`"draft":true`, `"originalDefaultWorkflow":"Default"`, `"lastModifiedUser":{`, `"lastModified":"`} {
+		if !strings.Contains(drafted.Body.String(), want) {
+			t.Fatalf("draft bean lacks %s: %s", want, drafted.Body.String())
+		}
 	}
 	call(actor, "POST", "/rest/api/3/workflowscheme/"+schemeID+"/createdraft", "", 409)
+	allMappings := call(actor, "GET", "/rest/api/3/workflowscheme/"+schemeID+"/draft/workflow", "", 200)
+	if !strings.Contains(allMappings.Body.String(), `"defaultMapping":true`) {
+		t.Fatal(allMappings.Body.String())
+	}
+	if published := call(actor, "GET", "/rest/api/3/workflowscheme/"+schemeID+"/workflow", "", 200); !strings.Contains(published.Body.String(), `"workflow":"Default"`) {
+		t.Fatal(published.Body.String())
+	}
 	call(actor, "GET", "/rest/api/3/workflowscheme/"+schemeID+"/draft", "", 200)
 	defaultMapping := call(actor, "GET", "/rest/api/3/workflowscheme/"+schemeID+"/draft/default", "", 200)
 	if !strings.Contains(defaultMapping.Body.String(), `"workflow":"Default"`) {
@@ -278,28 +323,9 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	call(actor, "GET", "/rest/api/3/workflowscheme/"+schemeID+"/draft", "", 404)
 	call(actor, "POST", "/rest/api/3/workflowscheme/"+schemeID+"/createdraft", "", 201)
 	call(actor, "DELETE", "/rest/api/3/workflowscheme/"+schemeID+"/draft", "", 204)
-	call(actor, "GET", "/rest/api/3/workflowscheme/"+schemeID+"/default", "", 200)
-	call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/default", `{"workflow":"Simple API lifecycle"}`, 200)
-	call(actor, "DELETE", "/rest/api/3/workflowscheme/"+schemeID+"/default", "", 200)
-	call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/issuetype/10002", `{"workflow":"Simple API lifecycle"}`, 200)
-	call(actor, "GET", "/rest/api/3/workflowscheme/"+schemeID+"/issuetype/10002", "", 200)
-	call(actor, "GET", "/rest/api/3/workflowscheme/"+schemeID+"/workflow?workflowName=Simple%20API%20lifecycle", "", 200)
-	call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/workflow?workflowName=Simple%20API%20lifecycle", `{"workflow":"Default","issueTypes":["10002"]}`, 200)
-	call(actor, "DELETE", "/rest/api/3/workflowscheme/"+schemeID+"/issuetype/10002", "", 200)
-	call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/issuetype/10002", `{"workflow":"Simple API lifecycle"}`, 200)
-	call(actor, "DELETE", "/rest/api/3/workflowscheme/"+schemeID+"/workflow?workflowName=Simple%20API%20lifecycle", "", 204)
-	usage := call(actor, "GET", "/rest/api/3/workflowscheme/"+schemeID+"/projectUsages?maxResults=1", "", 200)
-	if !strings.Contains(usage.Body.String(), `"values":[]`) {
-		t.Fatal(usage.Body.String())
-	}
-	call(actor, "PUT", "/rest/api/3/workflowscheme/project", `{"projectId":"`+projectID+`","workflowSchemeId":"`+schemeID+`"}`, 204)
-	association := call(actor, "GET", "/rest/api/3/workflowscheme/project?projectId="+projectID, "", 200)
-	if !strings.Contains(association.Body.String(), schemeID) {
-		t.Fatal(association.Body.String())
-	}
-	usage = call(actor, "GET", "/rest/api/3/workflowscheme/"+schemeID+"/projectUsages?maxResults=1", "", 200)
-	if !strings.Contains(usage.Body.String(), projectID) {
-		t.Fatal(usage.Body.String())
+	defaultScheme := call(actor, "GET", "/rest/api/3/workflowscheme/project?projectId="+projectID, "", 200)
+	if !strings.Contains(defaultScheme.Body.String(), `"projectIds":["`+projectID+`"]`) {
+		t.Fatal(defaultScheme.Body.String())
 	}
 	call(actor, "POST", "/rest/api/3/workflowscheme/"+schemeID+"/createdraft", "", 201)
 	call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/draft/default", `{"workflow":"Simple API lifecycle"}`, 200)
@@ -310,7 +336,8 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	if err := st.Pool.QueryRow(ctx, `SELECT status_id FROM issues WHERE id=$1`, issueID).Scan(&draftMigratedStatus); err != nil || draftMigratedStatus != "st_todo" {
 		t.Fatalf("draft migrated status=%q err=%v", draftMigratedStatus, err)
 	}
-	call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/default", `{"workflow":"Default"}`, 200)
+	call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/default", `{"workflow":"Default","updateDraftIfNeeded":true}`, 200)
+	completeTask(call(actor, "POST", "/rest/api/3/workflowscheme/"+schemeID+"/draft/publish", `{}`, 303))
 	exec(`UPDATE issues SET status_id='st_inprogress' WHERE id=$1`, issueID)
 	bulkRead := call(actor, "POST", "/rest/api/3/workflowscheme/read", `{"projectIds":["`+projectID+`"],"workflowSchemeIds":["`+schemeID+`"]}`, 200)
 	var readSchemes []map[string]any
@@ -319,13 +346,18 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	}
 	version := int(readSchemes[0]["version"].(map[string]any)["versionNumber"].(float64))
 	requiredMappings := call(actor, "POST", "/rest/api/3/workflowscheme/update/mappings", `{"id":"`+schemeID+`","defaultWorkflowId":"`+workflowID+`","workflowsForIssueTypes":[]}`, 200)
-	if !strings.Contains(requiredMappings.Body.String(), `"3"`) {
+	if !strings.Contains(requiredMappings.Body.String(), `"3"`) || !strings.Contains(requiredMappings.Body.String(), `"initialStatusId":"`) {
 		t.Fatal(requiredMappings.Body.String())
 	}
 	unsafeBulkUpdate := `{"id":"` + schemeID + `","name":"Unsafe bulk","description":"Unsafe","defaultWorkflowId":"` + workflowID + `","version":{"versionNumber":` + fmt.Sprint(version) + `},"workflowsForIssueTypes":[]}`
 	call(actor, "POST", "/rest/api/3/workflowscheme/update", unsafeBulkUpdate, 409)
 	mappedBulkUpdate := `{"id":"` + schemeID + `","name":"Delivery migrated","description":"Bulk migrated","defaultWorkflowId":"` + workflowID + `","version":{"versionNumber":` + fmt.Sprint(version) + `},"workflowsForIssueTypes":[],"statusMappingsByIssueTypeOverride":[{"issueTypeId":"10002","statusMappings":[{"oldStatusId":"st_inprogress","newStatusId":"st_todo"}]}]}`
-	completeTask(call(actor, "POST", "/rest/api/3/workflowscheme/update", mappedBulkUpdate, 303))
+	queuedUpdate := call(actor, "POST", "/rest/api/3/workflowscheme/update", mappedBulkUpdate, 303)
+	// While the update runs, reads of the scheme name its task.
+	if running := call(actor, "POST", "/rest/api/3/workflowscheme/read", `{"workflowSchemeIds":["`+schemeID+`"]}`, 200); !strings.Contains(running.Body.String(), `"taskId":"`) {
+		t.Fatal(running.Body.String())
+	}
+	completeTask(queuedUpdate)
 	var bulkMigratedStatus string
 	if err := st.Pool.QueryRow(ctx, `SELECT status_id FROM issues WHERE id=$1`, issueID).Scan(&bulkMigratedStatus); err != nil || bulkMigratedStatus != "st_todo" {
 		t.Fatalf("bulk migrated status=%q err=%v", bulkMigratedStatus, err)
@@ -334,7 +366,13 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	completeTask(call(actor, "POST", "/rest/api/3/workflowscheme/update", safeBulkUpdate, 303))
 	call(actor, "POST", "/rest/api/3/workflowscheme/update", safeBulkUpdate, 409)
 	exec(`UPDATE issues SET status_id='st_inprogress' WHERE id=$1`, issueID)
-	call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/default", `{"workflow":"Simple API lifecycle"}`, 409)
+	call(actor, "PUT", "/rest/api/3/workflowscheme/"+schemeID+"/default", `{"workflow":"Simple API lifecycle"}`, 400)
+	var defaultSchemeID string
+	if err := st.Pool.QueryRow(ctx, `SELECT jira_id::text FROM workflow_schemes WHERE workspace_id=$1 AND is_default`, ws).Scan(&defaultSchemeID); err != nil {
+		t.Fatal(err)
+	}
+	call(actor, "DELETE", "/rest/api/3/workflowscheme/"+defaultSchemeID, "", 400)
+	call(actor, "PUT", "/rest/api/3/workflowscheme/"+defaultSchemeID+"/default", `{"workflow":"Simple API lifecycle"}`, 400)
 	switchable := call(actor, "POST", "/rest/api/3/workflowscheme", `{"name":"Switch target","defaultWorkflow":"Simple API lifecycle"}`, 201)
 	if err := json.Unmarshal(switchable.Body.Bytes(), &scheme); err != nil {
 		t.Fatal(err)
@@ -452,10 +490,11 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	if err := st.CreateWorkflow(ctx, ws, deletableWorkflow); err != nil {
 		t.Fatal(err)
 	}
-	call(actor, "POST", "/rest/api/3/workflowscheme/"+unusedSchemeID+"/createdraft", "", 201)
-	call(actor, "PUT", "/rest/api/3/workflowscheme/"+unusedSchemeID+"/draft/default", `{"workflow":"Delete API lifecycle"}`, 200)
+	// An unused scheme has no draft; its published default still refers to the
+	// workflow and so blocks deleting it.
+	call(actor, "POST", "/rest/api/3/workflowscheme/"+unusedSchemeID+"/createdraft", "", 400)
+	call(actor, "PUT", "/rest/api/3/workflowscheme/"+unusedSchemeID+"/default", `{"workflow":"Delete API lifecycle"}`, 200)
 	call(actor, "DELETE", "/rest/api/3/workflow/"+deletableWorkflow.ID, "", 400)
-	call(actor, "DELETE", "/rest/api/3/workflowscheme/"+unusedSchemeID+"/draft", "", 204)
 	call(actor, "DELETE", "/rest/api/3/workflowscheme/"+unusedSchemeID, "", 204)
 	call(actor, "DELETE", "/rest/api/3/workflow/"+deletableWorkflow.ID, "", 204)
 	if _, err := st.WorkflowByID(ctx, ws, deletableWorkflow.ID); err == nil {

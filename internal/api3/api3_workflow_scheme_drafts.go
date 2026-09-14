@@ -321,6 +321,10 @@ func (h *Handler) workflowSchemeSubresourceRoute(w http.ResponseWriter, r *http.
 		ids := h.issueTypeIDsFor(r, workspaceID)
 		workflowName := r.URL.Query().Get("workflowName")
 		workflowID := workflowIDForName(workflows, workflowName)
+		if workflowName == "" && r.Method == http.MethodGet {
+			writeJSON(w, http.StatusOK, h.workflowMappingBeans(r, workspaceID, workflows, scheme))
+			return true
+		}
 		if workflowID == "" {
 			jiraError(w, http.StatusBadRequest, "workflowName must identify a workflow.")
 			return true

@@ -127,6 +127,15 @@ type Scheme struct {
 	Version           int               `json:"-"`
 	// JiraID is the id clients see.
 	JiraID int64 `json:"-"`
+	// IsDefault marks the site's default workflow scheme.
+	IsDefault bool `json:"-"`
+	// DraftView is set when the scheme carries its draft's mappings; the
+	// published mappings are then kept in the Original fields.
+	DraftView                 bool              `json:"-"`
+	OriginalDefaultWorkflowID string            `json:"-"`
+	OriginalIssueTypeMappings map[string]string `json:"-"`
+	DraftModifiedAt           string            `json:"-"`
+	DraftModifiedBy           string            `json:"-"`
 }
 
 // Default is the built-in workflow: To Do ↔ In Progress → Done, Done → To Do.

@@ -295,12 +295,11 @@ test('workflow schemes publish safely and migrate incompatible project statuses'
   await expect(page.getByRole('heading', { name: schemeName, level: 1 })).toBeVisible();
   await expect(page.getByText('Published', { exact: true })).toBeVisible();
 
+  // A scheme no project uses changes directly.
   await page.fill('#scheme-edit-description', 'Routes every task through the published default.');
   await page.selectOption('#mapping-it_task', 'wf_default');
-  await page.getByRole('button', { name: 'Save draft' }).click();
-  await expect(page.getByText('Draft changes', { exact: true })).toBeVisible();
-  await expect(page.getByText('Draft mappings are not active')).toBeVisible();
-  await page.getByRole('button', { name: 'Publish scheme' }).click();
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.getByRole('status')).toContainText('Scheme saved');
   await expect(page.getByText('Published', { exact: true })).toBeVisible();
   await expect(page.locator('.workflow-editor-header')).toContainText('Version 2');
 
@@ -310,6 +309,15 @@ test('workflow schemes publish safely and migrate incompatible project statuses'
   await page.getByRole('button', { name: 'Assign scheme' }).click();
   await expect(page.getByRole('status')).toContainText('Project assigned');
   await expect(page.locator('.assigned-projects')).toContainText('ZZIRA Demo');
+
+  // Once a project uses the scheme, changes wait in a draft until published.
+  await page.fill('#scheme-edit-description', 'Routes delivery work through a reviewed draft.');
+  await page.getByRole('button', { name: 'Save draft' }).click();
+  await expect(page.getByRole('status')).toContainText('Draft saved');
+  await expect(page.getByText('Draft changes', { exact: true })).toBeVisible();
+  await expect(page.getByText('Draft mappings are not active')).toBeVisible();
+  await page.getByRole('button', { name: 'Publish scheme' }).click();
+  await expect(page.getByText('Published', { exact: true })).toBeVisible();
 
   await page.goto('/settings/workflows');
   const simpleWorkflowName = `Simple lifecycle ${Date.now()}`;

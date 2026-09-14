@@ -108,13 +108,22 @@ func (h *Handler) workflowSchemeReadBean(r *http.Request, workspaceID string, sc
 	sort.Slice(mappings, func(i, j int) bool {
 		return mappings[i]["workflow"].(map[string]any)["id"].(string) < mappings[j]["workflow"].(map[string]any)["id"].(string)
 	})
-	return map[string]any{
+	bean := map[string]any{
 		"id": strconv.FormatInt(scheme.JiraID, 10), "name": scheme.Name, "description": scheme.Description,
 		"scope":                  map[string]any{"type": "GLOBAL"},
 		"version":                map[string]any{"id": strconv.FormatInt(scheme.JiraID, 10) + ":" + strconv.Itoa(scheme.Version), "versionNumber": scheme.Version},
 		"defaultWorkflow":        workflowMetadataBean(byID[scheme.DefaultWorkflowID]),
 		"workflowsForIssueTypes": mappings,
-	}, nil
+	}
+	// An unfinished update, switch or publish of the scheme is reported.
+	task, running, err := h.Store.WorkflowSchemeTask(r.Context(), workspaceID, scheme.ID)
+	if err != nil {
+		return nil, err
+	}
+	if running {
+		bean["taskId"] = task.WireID()
+	}
+	return bean, nil
 }
 
 func (h *Handler) workflowSchemeBulkRoute(w http.ResponseWriter, r *http.Request, workspaceID, userID, path string) bool {
@@ -246,7 +255,26 @@ func (h *Handler) workflowSchemeBulkRoute(w http.ResponseWriter, r *http.Request
 			statusValues = append(statusValues, map[string]any{"id": statusWireID(status), "name": status.Name, "category": status.Category})
 		}
 		sort.Slice(statusValues, func(i, j int) bool { return statusValues[i]["id"].(string) < statusValues[j]["id"].(string) })
-		writeJSON(w, http.StatusOK, map[string]any{"statusMappingsByIssueTypes": issueTypeMappings, "statusMappingsByWorkflows": workflowMappings, "statuses": statusValues, "statusesPerWorkflow": []any{}})
+		// Every workflow the change moves work between lists its statuses and
+		// the status new work starts in.
+		involved := map[string]bool{}
+		for pair := range byWorkflow {
+			involved[pair[0]], involved[pair[1]] = true, true
+		}
+		perWorkflow := make([]map[string]any, 0, len(involved))
+		for workflowID := range involved {
+			wf, workflowErr := h.Store.WorkflowByID(r.Context(), workspaceID, workflowID)
+			if workflowErr != nil {
+				workflowSchemeAPIError(w, workflowErr)
+				return true
+			}
+			statusIDs := workflowStatusIDs(wf)
+			perWorkflow = append(perWorkflow, map[string]any{"workflowId": wireWorkflows.toWire(workflowID), "initialStatusId": wireStatuses.toWire(workflowInitialStatusID(wf)), "statuses": wireStatuses.allToWire(statusIDs)})
+		}
+		sort.Slice(perWorkflow, func(i, j int) bool {
+			return perWorkflow[i]["workflowId"].(string) < perWorkflow[j]["workflowId"].(string)
+		})
+		writeJSON(w, http.StatusOK, map[string]any{"statusMappingsByIssueTypes": issueTypeMappings, "statusMappingsByWorkflows": workflowMappings, "statuses": statusValues, "statusesPerWorkflow": perWorkflow})
 		return true
 	}
 	if path == "/workflowscheme/update" {
@@ -314,4 +342,41 @@ func sortedSet(values map[string]bool) []string {
 	}
 	sort.Strings(result)
 	return result
+}
+
+// workflowStatusIDs lists a workflow's statuses in layout order, then any a
+// transition reaches that the layout omits.
+func workflowStatusIDs(wf workflow.Workflow) []string {
+	seen := map[string]bool{}
+	ids := []string{}
+	add := func(id string) {
+		if id != "" && !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+	for _, status := range wf.Statuses {
+		add(status.StatusReference)
+	}
+	for _, transition := range wf.Transitions {
+		for _, from := range transition.From {
+			add(from)
+		}
+		add(transition.To)
+	}
+	return ids
+}
+
+// workflowInitialStatusID is the status new work starts in: the target of the
+// initial transition, which has no source, or else the first status.
+func workflowInitialStatusID(wf workflow.Workflow) string {
+	for _, transition := range wf.Transitions {
+		if len(transition.From) == 0 {
+			return transition.To
+		}
+	}
+	if ids := workflowStatusIDs(wf); len(ids) > 0 {
+		return ids[0]
+	}
+	return ""
 }

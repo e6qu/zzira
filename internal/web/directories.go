@@ -621,11 +621,22 @@ func (h *Handler) SaveWorkflowSchemeDraft(w http.ResponseWriter, r *http.Request
 			scheme.IssueTypeMappings[issueType.ID] = workflowID
 		}
 	}
-	if err := h.Store.SaveWorkflowSchemeDraft(r.Context(), workspaceID, user.ID, scheme); err != nil {
+	// An inactive scheme changes directly; a scheme projects use keeps its
+	// published routing until its draft is published.
+	draft, err := h.Store.UpdateWorkflowScheme(r.Context(), workspaceID, user.ID, scheme, true)
+	if errors.Is(err, store.ErrAdminValidation) {
+		http.Redirect(w, r, "/settings/workflow-schemes/"+url.PathEscape(schemeID)+"?error="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+		return
+	}
+	if err != nil {
 		statusAdminError(w, err)
 		return
 	}
-	http.Redirect(w, r, "/settings/workflow-schemes/"+url.PathEscape(schemeID)+"?saved="+url.QueryEscape("Draft saved"), http.StatusSeeOther)
+	message := "Scheme saved"
+	if draft {
+		message = "Draft saved"
+	}
+	http.Redirect(w, r, "/settings/workflow-schemes/"+url.PathEscape(schemeID)+"?saved="+url.QueryEscape(message), http.StatusSeeOther)
 }
 
 func (h *Handler) FinishWorkflowSchemeDraft(w http.ResponseWriter, r *http.Request, schemeID string) {
