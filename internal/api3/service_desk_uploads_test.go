@@ -188,4 +188,23 @@ func TestServiceDeskUploadsAndOrganizations(t *testing.T) {
 	callAs(adminID, http.MethodGet, "/rest/servicedeskapi/servicedesk/999999999/organization", "", http.StatusNotFound)
 	callAs(adminID, http.MethodPost, organizationsPath, `{"organizationId":999999999}`, http.StatusNotFound)
 	callAs(customerID, http.MethodGet, organizationsPath, "", http.StatusForbidden)
+
+	// Organizations carry Jira's uuid and creation date, and their users are
+	// UserDTOs: links instead of platform-only fields.
+	if single := callAs(customerID, http.MethodGet, "/rest/servicedeskapi/organization/"+organization.ID, "", http.StatusOK); !strings.Contains(single, `"uuid":"`) || !strings.Contains(single, `"created":{"epochMillis":`) {
+		t.Fatalf("organization bean = %s", single)
+	}
+	users := callAs(adminID, http.MethodGet, "/rest/servicedeskapi/organization/"+organization.ID+"/user", "", http.StatusOK)
+	if !strings.Contains(users, `"self":"https://zzira.test/rest/api/3/user?accountId=`) || strings.Contains(users, `"accountType"`) || !strings.Contains(users, `"avatarUrls":{`) {
+		t.Fatalf("organization users = %s", users)
+	}
+
+	// Service desks are listed and returned only to those who can access them.
+	outsiderDesks := callAs(outsiderID, http.MethodGet, "/rest/servicedeskapi/servicedesk", "", http.StatusOK)
+	if !strings.Contains(outsiderDesks, `"projectKey":"`+otherKey+`"`) || strings.Contains(outsiderDesks, `"projectKey":"`+deskKey+`"`) {
+		t.Fatalf("service desks the other desk's customer can access = %s", outsiderDesks)
+	}
+	callAs(outsiderID, http.MethodGet, "/rest/servicedeskapi/servicedesk/"+serviceDeskID, "", http.StatusForbidden)
+	callAs(customerID, http.MethodGet, "/rest/servicedeskapi/servicedesk/"+serviceDeskID, "", http.StatusOK)
+	callAs(adminID, http.MethodGet, "/rest/servicedeskapi/servicedesk/999999999", "", http.StatusNotFound)
 }

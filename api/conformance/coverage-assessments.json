@@ -5333,6 +5333,7 @@
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/organization",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_desk_uploads_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service_organizations.go",
         "internal/commands/service_organizations.go",
@@ -5342,14 +5343,16 @@
         "internal/web/service.go",
         "internal/render/templates/service.gohtml",
         "e2e/service.spec.ts",
-        "docs/SERVICE_MANAGEMENT.md"
+        "docs/SERVICE_MANAGEMENT.md",
+        "migrations/203_service_organization_uuid.sql"
       ],
-      "notes": "Returns paged name-ordered organizations, limits customers to their memberships, and supports agent-only accountId filtering; every expansion and customer-service detail field remain."
+      "notes": "Returns paged name-ordered organizations with Jira's uuid and creation date, limits customers to their memberships, and supports agent-only accountId filtering."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/organization/{organizationId}",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_desk_uploads_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service_organizations.go",
         "internal/commands/service_organizations.go",
@@ -5359,9 +5362,10 @@
         "internal/web/service.go",
         "internal/render/templates/service.gohtml",
         "e2e/service.spec.ts",
-        "docs/SERVICE_MANAGEMENT.md"
+        "docs/SERVICE_MANAGEMENT.md",
+        "migrations/203_service_organization_uuid.sql"
       ],
-      "notes": "Returns the organization to agents and administrators or to a customer who belongs to it, hiding other organizations as not found; customer-service detail fields remain."
+      "notes": "Returns the organization with Jira's uuid, creation date and scimManaged flag to agents and administrators or to a customer who belongs to it, hiding other organizations as not found. Detail field values belong to the Customer Service Management API."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/organization/{organizationId}/property",
@@ -5378,7 +5382,7 @@
         "e2e/service.spec.ts",
         "docs/SERVICE_MANAGEMENT.md"
       ],
-      "notes": "Returns documented entity-property key beans to agents or organization members with the same membership boundary; property expansions remain."
+      "notes": "Returns documented entity-property key beans to agents or organization members with the same membership boundary."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/organization/{organizationId}/property/{propertyKey}",
@@ -5403,6 +5407,7 @@
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/organization/{organizationId}/user",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_desk_uploads_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service_organizations.go",
         "internal/commands/service_organizations.go",
@@ -5412,9 +5417,10 @@
         "internal/web/service.go",
         "internal/render/templates/service.gohtml",
         "e2e/service.spec.ts",
-        "docs/SERVICE_MANAGEMENT.md"
+        "docs/SERVICE_MANAGEMENT.md",
+        "migrations/203_service_organization_uuid.sql"
       ],
-      "notes": "Returns a paged account-ID-ordered list of active organization customers to agents and administrators; all legacy user fields and expansions remain partial."
+      "notes": "Returns a paged account-ID-ordered list of active organization customers to agents and administrators as Jira UserDTOs: account ID, display name, email, active flag and time zone, with self, jiraRest and avatar links and without the deprecated key and name."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request",
@@ -5572,7 +5578,7 @@
         "e2e/service.spec.ts",
         "docs/SERVICE_MANAGEMENT.md"
       ],
-      "notes": "Returns agent-authorized paged SLA metrics with business-calendar-aware ongoing and completed cycles, breach times and durations; multiple goals per metric, pause/status rules and holiday administration remain."
+      "notes": "Returns agent-authorized paged SLA metrics with business-calendar-aware ongoing and completed cycles, breach times and durations; each cycle takes the first matching conditional goal, pauses while its pause JQL matches and skips calendar holidays."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/sla/{slaMetricId}",
@@ -5585,7 +5591,7 @@
         "e2e/service.spec.ts",
         "docs/SERVICE_MANAGEMENT.md"
       ],
-      "notes": "Returns one SLA metric by ID with first-response or resolution cycle state and Jira date/duration shapes; richer goal criteria and display-format variants remain."
+      "notes": "Returns one SLA metric by ID with first-response or resolution cycle state, the conditional goal, pauses and calendar holidays applied, in Jira's date and duration shapes with NEW_SLA_FORMAT display."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/status",
@@ -5612,7 +5618,7 @@
         "e2e/service.spec.ts",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Returns workflow- and condition-aware transitions available to the customer; portal-specific transition naming and field expansions remain."
+      "notes": "Returns workflow- and condition-aware transitions available to the customer as Jira's id and name beans, paged with Jira links."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{requestIdOrKey}/feedback",
@@ -5641,23 +5647,25 @@
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/servicedesk",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_desk_uploads_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service.go",
         "internal/store/service.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Returns paged service desks created atomically with service projects; permission schemes, expand variants remain."
+      "notes": "Returns paged service desks created atomically with service projects, limited to those the caller may access: their administrators, agents and the users their portals admit."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/servicedesk/{serviceDeskId}",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_desk_uploads_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service.go",
         "internal/store/service.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Returns workspace-scoped service desk and backing service-project identity with Jira links; granular agent/customer permissions remain."
+      "notes": "Returns the workspace-scoped service desk and its backing service-project identity with Jira links to its administrators, agents and the users its portal admits; others receive 403 and unknown desks 404."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/servicedesk/{serviceDeskId}/customer",
@@ -5948,7 +5956,7 @@
         "e2e/service.spec.ts",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Creates public customer replies or agent-only internal notes through the canonical Jira comment command; attachment-bearing comments remain."
+      "notes": "Creates public customer replies or agent-only internal notes from Jira's body and public fields through the canonical Jira comment command; customers can only comment publicly, and files join a comment through the request attachment operation."
     },
     {
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/request/{issueIdOrKey}/participant",

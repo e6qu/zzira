@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -90,11 +91,27 @@ func (h *Handler) serviceDeskRoute(w http.ResponseWriter, r *http.Request) {
 			jiraError(w, http.StatusInternalServerError, "Could not load service desks.")
 			return
 		}
-		h.writeServicePage(w, r, serviceDeskBeans(h.BaseURL, desks))
+		// Only the service desks the caller has permission to access.
+		accessible := make([]models.ServiceDesk, 0, len(desks))
+		for _, desk := range desks {
+			allowed, accessErr := h.serviceDeskAccess(r, workspaceID, desk.ID, actorID)
+			if accessErr != nil {
+				jiraError(w, http.StatusInternalServerError, "Could not authorize service desk access.")
+				return
+			}
+			if allowed {
+				accessible = append(accessible, desk)
+			}
+		}
+		h.writeServicePage(w, r, serviceDeskBeans(h.BaseURL, accessible))
 	case len(parts) == 2 && parts[0] == "servicedesk" && r.Method == http.MethodGet:
 		desk, err := h.Store.ServiceDesk(r.Context(), workspaceID, parts[1])
 		if err != nil {
 			jiraError(w, http.StatusNotFound, "Service desk was not found.")
+			return
+		}
+		if allowed, accessErr := h.serviceDeskAccess(r, workspaceID, desk.ID, actorID); accessErr != nil || !allowed {
+			jiraError(w, http.StatusForbidden, "You do not have permission to access this service desk.")
 			return
 		}
 		writeJSON(w, http.StatusOK, serviceDeskBean(h.BaseURL, *desk))
@@ -938,13 +955,21 @@ func parseServiceDate(value string) time.Time {
 	return parsed
 }
 
+// serviceUserBean is Jira Service Management's UserDTO. The deprecated key and
+// name are not sent, and avatars appear only under its links.
 func (h *Handler) serviceUserBean(user *models.User) map[string]any {
 	if user == nil {
 		return nil
 	}
-	bean := h.userBean(user)
-	bean["_links"] = map[string]string{"jiraRest": h.BaseURL + "/rest/api/3/user?accountId=" + user.ID}
-	return bean
+	self := h.BaseURL + "/rest/api/3/user?accountId=" + url.QueryEscape(user.ID)
+	avatar := h.BaseURL + "/static/img/avatar-default.svg"
+	return map[string]any{
+		"accountId": user.ID, "emailAddress": user.Email, "displayName": user.DisplayName, "active": user.Active, "timeZone": user.TimeZone,
+		"_links": map[string]any{
+			"self": self, "jiraRest": self,
+			"avatarUrls": map[string]string{"48x48": avatar, "24x24": avatar, "16x16": avatar, "32x32": avatar},
+		},
+	}
 }
 
 func (h *Handler) serviceStatusBean(status models.Status, changed string) map[string]any {

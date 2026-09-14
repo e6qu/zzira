@@ -18,8 +18,8 @@ type ServiceDesk struct {
 }
 
 type ServiceOrganization struct {
-	ID, WorkspaceID, Name string
-	CreatedAt             time.Time
+	ID, WorkspaceID, Name, UUID string
+	CreatedAt                   time.Time
 }
 
 type ServiceRequestTypeGroup struct {

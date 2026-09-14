@@ -39,7 +39,13 @@ Administrators of a service project are that desk's service desk
 administrators: without site administration they manage its request types,
 forms, queues, customers, knowledge base, calendar and SLA goals, and open the
 agent workspace for it. Inviting new customers also needs site administration,
-and request type properties need agent access as well. A customer can read only their
+and request type properties need agent access as well.
+
+The REST service desk list and service desk lookups answer only to a desk's
+administrators, agents and the users its portal admits; others receive 403.
+Organizations carry Jira's system generated `uuid` and `created` date, and
+customers appear as Jira's UserDTO, with self, `jiraRest` and avatar links and
+without platform-only account fields. A customer can read only their
 own requests and public comments; comments created through ordinary Jira issue
 UI have no public marker and remain internal.
 

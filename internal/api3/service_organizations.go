@@ -10,7 +10,7 @@ import (
 
 func (h *Handler) serviceOrganizationBean(organization models.ServiceOrganization) map[string]any {
 	return map[string]any{
-		"id": organization.ID, "name": organization.Name, "scimManaged": false,
+		"id": organization.ID, "uuid": organization.UUID, "name": organization.Name, "scimManaged": false, "created": serviceDate(organization.CreatedAt),
 		"_links": map[string]string{"self": h.BaseURL + "/rest/servicedeskapi/organization/" + organization.ID},
 	}
 }
@@ -27,6 +27,16 @@ func (h *Handler) serviceDeskAgentAccess(r *http.Request, workspaceID, serviceDe
 
 // serviceDeskAdminAccess reports whether the caller administers the service
 // desk: a site administrator or an administrator of the desk's project.
+// serviceDeskAccess reports whether the caller may access the service desk:
+// its administrators, its agents and the users its portal admits.
+func (h *Handler) serviceDeskAccess(r *http.Request, workspaceID, serviceDeskID, actorID string) (bool, error) {
+	allowed, err := h.Store.CanCreateServiceRequest(r.Context(), workspaceID, serviceDeskID, actorID)
+	if err != nil || allowed {
+		return allowed, err
+	}
+	return h.Store.IsServiceDeskAdmin(r.Context(), workspaceID, serviceDeskID, actorID)
+}
+
 func (h *Handler) serviceDeskAdminAccess(r *http.Request, workspaceID, serviceDeskID, actorID string) bool {
 	admin, err := h.Store.IsServiceDeskAdmin(r.Context(), workspaceID, serviceDeskID, actorID)
 	return err == nil && admin
