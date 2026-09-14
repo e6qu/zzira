@@ -6871,12 +6871,13 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/workflow_access_test.go",
         "internal/api3/workflow_schemes_test.go",
         "internal/api3/api3_workflow_usage.go",
         "internal/store/workflow_admin.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Deletes workspace-owned inactive workflows atomically with audit evidence and rejects system, project-active, published-scheme, and draft-scheme references; project-scoped workflows remain."
+      "notes": "Deletes inactive global and project-scoped workflows atomically with audit evidence for site administrators (project administrators are refused), and rejects system, project-active, published-scheme, and draft-scheme references."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/workflow/{workflowId}/project/{projectId}/issueTypeUsages",

@@ -168,6 +168,20 @@ func TestProjectWorkflowAccess(t *testing.T) {
 		t.Fatalf("workflow search as an administrator = %s", found)
 	}
 
+	// Deleting a workflow stays with site administrators, and an unused
+	// project-scoped workflow can be deleted like a global one.
+	var spare struct {
+		Workflows []struct {
+			ID string `json:"id"`
+		} `json:"workflows"`
+	}
+	if err = json.Unmarshal([]byte(call(leadID, http.MethodPost, "/rest/api/3/workflows/create", create(projectScope, "Spare "+projectKey), http.StatusOK)), &spare); err != nil || len(spare.Workflows) != 1 {
+		t.Fatalf("spare project workflow = %+v err=%v", spare, err)
+	}
+	call(leadID, http.MethodDelete, "/rest/api/3/workflow/"+spare.Workflows[0].ID, "", http.StatusForbidden)
+	call(adminID, http.MethodDelete, "/rest/api/3/workflow/"+spare.Workflows[0].ID, "", http.StatusNoContent)
+	call(adminID, http.MethodDelete, "/rest/api/3/workflow/"+spare.Workflows[0].ID, "", http.StatusNotFound)
+
 	// A preview needs a project permission on the project it previews.
 	var issueTypes []struct {
 		ID string `json:"id"`
