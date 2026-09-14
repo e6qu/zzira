@@ -1156,6 +1156,21 @@ func (h *Handler) WikiPageRedirect(w http.ResponseWriter, r *http.Request) {
 	redirectLocal(w, r, wikiPageURL(page))
 }
 
+// WikiBlogPostRedirect resolves a blog post id, the destination of blog post
+// notifications, to the post in its space.
+func (h *Handler) WikiBlogPostRedirect(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	post, err := h.Store.WikiBlogPost(r.Context(), ws, user.ID, r.PathValue("blogpost"))
+	if err != nil || post.Status != "current" {
+		http.NotFound(w, r)
+		return
+	}
+	redirectLocal(w, r, "/wiki/spaces/"+post.SpaceID+"/blogposts/"+post.ID)
+}
+
 func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 	user, ws, ok := h.pageContext(w, r)
 	if !ok {

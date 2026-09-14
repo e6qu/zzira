@@ -304,6 +304,7 @@ func main() {
 	mux.HandleFunc("POST /admin/project-categories/{categoryId}", webHandler.UpdateAdminProjectCategory)
 	mux.HandleFunc("GET /wiki", webHandler.WikiHome)
 	mux.HandleFunc("GET /wiki/pages/{page}", webHandler.WikiPageRedirect)
+	mux.HandleFunc("GET /wiki/blogposts/{blogpost}", webHandler.WikiBlogPostRedirect)
 	mux.HandleFunc("POST /wiki/spaces", webHandler.WikiHome)
 	mux.HandleFunc("GET /wiki/spaces/{space}", webHandler.WikiSpacePage)
 	mux.HandleFunc("POST /wiki/spaces/{space}/classification", webHandler.WikiSpaceClassification)

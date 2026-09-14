@@ -70,6 +70,7 @@ func (s *Store) SaveWikiBlogPost(ctx context.Context, ws, actor string, input mo
 	if err := tx.QueryRow(ctx, `SELECT s.id::text,s.default_classification_level FROM wiki_spaces s WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+spacePermission+` AND s.id::text=$3 FOR UPDATE`, ws, actor, input.SpaceID).Scan(&spaceID, &defaultClassification); err != nil {
 		return nil, err
 	}
+	previousBody := ""
 	if !isNew {
 		old, err := scanWikiBlogPost(tx.QueryRow(ctx, wikiBlogPostSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+spacePermission+` AND `+wikiBlogPostVisible+` AND `+wikiBlogPostAuthorWritable+` AND b.id::text=$3 FOR UPDATE OF b`, ws, actor, input.ID))
 		if err != nil {
@@ -88,6 +89,9 @@ func (s *Store) SaveWikiBlogPost(ctx context.Context, ws, actor string, input mo
 			input.Title, input.Body = old.Title, old.Body
 		}
 		input.AuthorID, input.Private, input.CreatedAt = old.AuthorID, old.Private, old.CreatedAt
+		if old.Status == "current" {
+			previousBody = old.Body.Value
+		}
 	} else {
 		input.Version.Number, input.AuthorID = 1, actor
 		input.ClassificationLevel = defaultClassification
@@ -113,6 +117,11 @@ func (s *Store) SaveWikiBlogPost(ctx context.Context, ws, actor string, input mo
 	}
 	if err := relocateInlineComments(ctx, tx, ws, actor, "blogpost", input.ID, input.Body.Value); err != nil {
 		return nil, err
+	}
+	if input.Status == "current" {
+		if err := notifyWikiMentions(ctx, tx, ws, actor, "wiki_blogpost", input.ID, input.Title, wikiBlogPostMentionVisible, input.ID, previousBody, input.Body.Value); err != nil {
+			return nil, err
+		}
 	}
 	// Publishing replaces the draft that was waiting beside the blog post.
 	if input.Status == "current" {

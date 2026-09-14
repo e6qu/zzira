@@ -360,7 +360,7 @@ func (s *Store) SaveWikiPage(ctx context.Context, ws, actor string, input models
 	if err != nil {
 		return nil, err
 	}
-	previousParent := ""
+	previousParent, previousBody := "", ""
 	if input.ID != "" {
 		old, err := scanWikiPage(tx.QueryRow(ctx, wikiPageSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+spacePermission+` AND `+wikiPageVisible+` AND `+wikiPageRestrictionWritable+` AND p.id::text=$3`, ws, actor, input.ID))
 		if err != nil {
@@ -378,6 +378,11 @@ func (s *Store) SaveWikiPage(ctx context.Context, ws, actor string, input models
 			return nil, ErrWikiConflict
 		}
 		previousParent = old.ParentID
+		if old.Status == "current" {
+			// Only what readers already saw has told anyone; a draft's
+			// mentions are news when it is published.
+			previousBody = old.Body.Value
+		}
 		if input.Status == "draft" && old.Published {
 			return nil, fmt.Errorf("%w: a published page cannot be converted to a draft", ErrWikiValidation)
 		}
@@ -482,6 +487,11 @@ func (s *Store) SaveWikiPage(ctx context.Context, ws, actor string, input models
 	}
 	if err := relocateInlineComments(ctx, tx, ws, actor, "page", input.ID, input.Body.Value); err != nil {
 		return nil, err
+	}
+	if input.Status == "current" {
+		if err := notifyWikiMentions(ctx, tx, ws, actor, "wiki_page", input.ID, input.Title, wikiPageMentionVisible, input.ID, previousBody, input.Body.Value); err != nil {
+			return nil, err
+		}
 	}
 	// Publishing replaces the draft that was waiting beside the page.
 	if input.Status == "current" {
@@ -718,6 +728,9 @@ func (s *Store) CreateWikiFooterComment(ctx context.Context, ws, actor string, i
 	if _, err := tx.Exec(ctx, `INSERT INTO wiki_footer_comment_versions(comment_id,version,body,author_id,message) VALUES ($1::bigint,1,$2,$3,$4)`, input.ID, input.Body.Value, actor, input.Version.Message); err != nil {
 		return nil, err
 	}
+	if err := notifyCommentMentions(ctx, tx, ws, actor, input.ID, "", input.Body.Value); err != nil {
+		return nil, err
+	}
 	comment, err := scanWikiFooterComment(tx.QueryRow(ctx, wikiCommentSelect+` WHERE c.id::text=$1`, input.ID))
 	if err != nil {
 		return nil, err
@@ -758,6 +771,9 @@ func (s *Store) UpdateWikiFooterComment(ctx context.Context, ws, actor string, i
 		return nil, err
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO wiki_footer_comment_versions(comment_id,version,body,author_id,message) VALUES ($1::bigint,$2,$3,$4,$5)`, input.ID, input.Version.Number, input.Body.Value, actor, input.Version.Message); err != nil {
+		return nil, err
+	}
+	if err := notifyCommentMentions(ctx, tx, ws, actor, input.ID, old.Body.Value, input.Body.Value); err != nil {
 		return nil, err
 	}
 	comment, err := scanWikiFooterComment(tx.QueryRow(ctx, wikiCommentSelect+` WHERE c.id::text=$1`, input.ID))
