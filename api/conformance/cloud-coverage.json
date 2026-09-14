@@ -12482,9 +12482,12 @@
         "internal/commands/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/store/wiki_presence.go",
+        "internal/confluence/presence_test.go",
+        "docs/CONFLUENCE_LIVE.md"
       ],
-      "notes": "Blog posts share the threaded, versioned footer-comment lifecycle with pages. Collections support body format, status, sort and cursor paging; create, reply, update, delete, versions, likes and operations use the common comment APIs, public/private visibility shapes reads and sync, and the UI supports authoring and replies. Mentions notify the people they name and the editor offers a mention picker; live collaboration remains."
+      "notes": "Blog posts share the threaded, versioned footer-comment lifecycle with pages. Collections support body format, status, sort and cursor paging; create, reply, update, delete, versions, likes and operations use the common comment APIs, public/private visibility shapes reads and sync, and the UI supports authoring and replies. Mentions notify the people they name and the editor offers a mention picker; open posts show who else is reading or editing and announce new comments and versions live."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{id}/inline-comments",
@@ -12501,9 +12504,12 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts",
         "internal/confluence/comment_lifecycle_test.go",
-        "docs/CONFLUENCE_COMMENTS.md"
+        "docs/CONFLUENCE_COMMENTS.md",
+        "internal/store/wiki_presence.go",
+        "internal/confluence/presence_test.go",
+        "docs/CONFLUENCE_LIVE.md"
       ],
-      "notes": "Blog posts share exact-passage inline threads with pages, including replies, optimistic versions, resolve/reopen state, likes and operations. Collections support body format, status, resolution status, sort and cursor paging; public/private visibility shapes reads and sync, and the UI supports authoring and resolution. Anchors follow edits, versions and redactions, dangling when their passage is gone; live collaboration remains."
+      "notes": "Blog posts share exact-passage inline threads with pages, including replies, optimistic versions, resolve/reopen state, likes and operations. Collections support body format, status, resolution status, sort and cursor paging; public/private visibility shapes reads and sync, and the UI supports authoring and resolution. Anchors follow edits, versions and redactions, dangling when their passage is gone; open posts show who else is reading or editing and announce new comments and versions live."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{id}/labels",
