@@ -72,3 +72,53 @@ func TestLabelMentions(t *testing.T) {
 		t.Fatalf("labelling changed who is mentioned: %v", got)
 	}
 }
+
+func TestTasks(t *testing.T) {
+	body := `<p>Plan</p><ac:task-list><ac:task><ac:task-id>1</ac:task-id><ac:task-status>incomplete</ac:task-status><ac:task-body>Ship <ac:link><ri:user ri:account-id="u1" /></ac:link> by <time datetime="2030-01-02" /></ac:task-body></ac:task><ac:task><ac:task-id>7</ac:task-id><ac:task-body><strong>Check</strong></ac:task-body></ac:task></ac:task-list>`
+	rendered, err := Render(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `<p>Plan</p><ul><li>☐ Ship <a href="/people/u1">@user</a> by <time datetime="2030-01-02">2030-01-02</time></li><li>☐ <strong>Check</strong></li></ul>`; rendered != want {
+		t.Fatalf("rendered %s", rendered)
+	}
+	if text, err := Text(body); err != nil || text != "Plan Ship by Check" {
+		t.Fatalf("text %q %v", text, err)
+	}
+	tasks, err := Tasks(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 2 || tasks[0].ID != "1" || tasks[0].Assignee != "u1" || tasks[0].Due != "2030-01-02" || tasks[0].Status != "incomplete" || !strings.HasPrefix(tasks[0].Body, "Ship <ac:link>") || tasks[1].Body != "<strong>Check</strong>" || tasks[1].Status != "incomplete" {
+		t.Fatalf("tasks %+v", tasks)
+	}
+	if NextTaskID(tasks) != "8" {
+		t.Fatal(NextTaskID(tasks))
+	}
+	done, err := SetTaskStatus(body, "1", "complete")
+	if err != nil || !strings.Contains(done, "<ac:task-status>complete</ac:task-status>") {
+		t.Fatalf("status %s %v", done, err)
+	}
+	done, err = SetTaskStatus(done, "7", "complete")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tasks, err = Tasks(done); err != nil || tasks[0].Status != "complete" || tasks[1].Status != "complete" {
+		t.Fatalf("after status changes %+v %v", tasks, err)
+	}
+	if rendered, _ := Render(done); !strings.Contains(rendered, "<li>☑ <strong>Check</strong></li>") {
+		t.Fatal(rendered)
+	}
+	for _, bad := range []string{
+		`<ac:task-list><ac:task><ac:task-body>x</ac:task-body></ac:task></ac:task-list>`,
+		`<ac:task-list><ac:task><ac:task-id>1</ac:task-id></ac:task><ac:task><ac:task-id>1</ac:task-id></ac:task></ac:task-list>`,
+		`<ac:task-list><ac:task><ac:task-id>1</ac:task-id><ac:task-status>done</ac:task-status></ac:task></ac:task-list>`,
+	} {
+		if _, err := Tasks(bad); err == nil {
+			t.Fatalf("accepted %s", bad)
+		}
+	}
+	if _, err := Render(`<time datetime="tomorrow" />`); err == nil {
+		t.Fatal("accepted a time that is not a date")
+	}
+}

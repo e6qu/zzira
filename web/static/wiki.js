@@ -12,6 +12,9 @@ const mentionPicker = (people) => {
   list.setAttribute('role', 'listbox');
   list.setAttribute('aria-label', 'People to mention');
   list.hidden = true;
+  // The list stays in the document so the fields' aria-controls always
+  // refer to it; it moves beside whichever field is asking.
+  document.body.append(list);
   let field = null;
   let adapter = null;
   let matches = [];

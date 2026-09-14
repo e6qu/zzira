@@ -16,7 +16,11 @@ import (
 // the macro, the parameters that configure it, and the body it wraps.
 var macroElements = map[string]bool{
 	"structured-macro": true, "parameter": true, "rich-text-body": true, "plain-text-body": true,
+	"task-list": true, "task": true, "task-id": true, "task-uuid": true, "task-status": true, "task-body": true,
 }
+
+// storageDate is the only form a time element's datetime takes in storage.
+var storageDate = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 
 var macroAttributes = map[string]bool{
 	"name": true, "macro-id": true, "schema-version": true, "local-id": true,
@@ -41,6 +45,7 @@ func Render(storage string) (string, error) {
 	depth := 0
 	suppressed := 0
 	rootSeen := false
+	taskStatus, inTaskStatus := "", false
 	for {
 		token, err := d.Token()
 		if err == io.EOF {
@@ -89,9 +94,34 @@ func Render(storage string) (string, error) {
 						return "", fmt.Errorf("unsupported attribute %s on ac:%s", a.Name.Local, tag)
 					}
 				}
-				if tag == "parameter" {
+				switch tag {
+				case "parameter", "task-id", "task-uuid":
 					suppressed++
+				case "task-status":
+					suppressed++
+					inTaskStatus, taskStatus = true, ""
+				case "task-list":
+					b.WriteString("<ul>")
+				case "task":
+					b.WriteString("<li>")
+					taskStatus = ""
+				case "task-body":
+					// A task shows its state the way a checklist does.
+					if strings.TrimSpace(taskStatus) == "complete" {
+						b.WriteString("☑ ")
+					} else {
+						b.WriteString("☐ ")
+					}
 				}
+				continue
+			}
+			if t.Name.Space == "" && tag == "time" {
+				// A date, such as when a task is due, shown as written.
+				if len(t.Attr) != 1 || t.Attr[0].Name.Space != "" || t.Attr[0].Name.Local != "datetime" || !storageDate.MatchString(t.Attr[0].Value) {
+					return "", fmt.Errorf("a time element carries only a datetime date")
+				}
+				b.WriteString(`<time datetime="` + t.Attr[0].Value + `">` + t.Attr[0].Value)
+				suppressed++
 				continue
 			}
 			if t.Name.Space != "" || !tags[tag] {
@@ -111,11 +141,22 @@ func Render(storage string) (string, error) {
 			b.WriteString(">")
 		case xml.EndElement:
 			if t.Name.Space == "ac" {
-				if t.Name.Local == "parameter" {
+				switch t.Name.Local {
+				case "parameter", "task-id", "task-uuid":
 					suppressed--
+				case "task-status":
+					suppressed--
+					inTaskStatus = false
+				case "task-list":
+					b.WriteString("</ul>")
+				case "task":
+					b.WriteString("</li>")
 				}
 				depth--
 				continue
+			}
+			if t.Name.Space == "" && t.Name.Local == "time" {
+				suppressed--
 			}
 			if depth > 1 && t.Name.Local != "br" && t.Name.Local != "hr" {
 				b.WriteString("</" + t.Name.Local + ">")
@@ -125,6 +166,9 @@ func Render(storage string) (string, error) {
 			// A parameter names how a macro behaves; it is not part of what a
 			// reader sees, so its text is kept in the stored body and left out
 			// of the rendering.
+			if inTaskStatus {
+				taskStatus += string(t)
+			}
 			if suppressed == 0 {
 				b.WriteString(html.EscapeString(string(t)))
 			}
@@ -145,6 +189,8 @@ func Text(storage string) (string, error) {
 	}
 	decoder := xml.NewDecoder(strings.NewReader("<root>" + storage + "</root>"))
 	var value strings.Builder
+	// A task's id and status describe it rather than being part of its text.
+	hidden := 0
 	for {
 		token, err := decoder.Token()
 		if err == io.EOF {
@@ -158,8 +204,17 @@ func Text(storage string) (string, error) {
 			if value.Len() > 0 && typed.Name.Local != "root" && typed.Name.Local != "a" && typed.Name.Local != "strong" && typed.Name.Local != "em" && typed.Name.Local != "b" && typed.Name.Local != "i" && typed.Name.Local != "u" && typed.Name.Local != "s" {
 				value.WriteByte(' ')
 			}
+			if typed.Name.Space == "ac" && taskMetadata[typed.Name.Local] {
+				hidden++
+			}
+		case xml.EndElement:
+			if typed.Name.Space == "ac" && taskMetadata[typed.Name.Local] {
+				hidden--
+			}
 		case xml.CharData:
-			value.Write(typed)
+			if hidden == 0 {
+				value.Write(typed)
+			}
 		}
 	}
 	return strings.Join(strings.Fields(value.String()), " "), nil
