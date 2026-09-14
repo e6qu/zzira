@@ -134,5 +134,6 @@ reports `archived` while the page it belongs to is archived.
 - `e2e/wiki_page_lifecycle.spec.ts` archives a page in the browser, finds it in
   the Archived tab, restores it and moves a page to another space.
 
-`expand` on the copy response, and moving a page to the top level of a space (the REST move always
-names a target page) remain.
+`expand` on the copy response remains. Pages beneath folders and other content,
+moving any node of the tree and moving to a space's top level are described in
+CONTENT_TREE.md.
