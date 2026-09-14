@@ -1,7 +1,10 @@
 package confluence
 
 import (
+	"encoding/base64"
 	"net/http"
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/e6qu/zzira/internal/store"
@@ -36,11 +39,36 @@ func (h *Handler) permissionCombinations(w http.ResponseWriter, r *http.Request,
 		if !supportedQuery(w, r, "cursor", "limit") {
 			return
 		}
+		limit, offset := 25, 0
+		if raw := r.URL.Query().Get("limit"); raw != "" {
+			parsed, parseErr := strconv.Atoi(raw)
+			if parseErr != nil || parsed < 1 || parsed > 250 {
+				failure(w, 400, "limit must be between 1 and 250.")
+				return
+			}
+			limit = parsed
+		}
+		if raw := r.URL.Query().Get("cursor"); raw != "" {
+			decoded, decodeErr := base64.RawURLEncoding.DecodeString(raw)
+			parsed, parseErr := strconv.Atoi(string(decoded))
+			if decodeErr != nil || parseErr != nil || parsed < 0 {
+				failure(w, 400, "cursor is not valid.")
+				return
+			}
+			offset = parsed
+		}
 		combinations, generatedAt, err := h.Store.WikiPermissionCombinations(r.Context(), ws, actor)
 		if err != nil {
 			writeError(w, err)
 			return
 		}
+		// Combinations held by the most principals come first.
+		sort.SliceStable(combinations, func(i, j int) bool { return combinations[i].PrincipalCount > combinations[j].PrincipalCount })
+		var next any
+		if offset+limit < len(combinations) {
+			next = base64.RawURLEncoding.EncodeToString([]byte(strconv.Itoa(offset + limit)))
+		}
+		combinations = combinations[min(offset, len(combinations)):min(offset+limit, len(combinations))]
 		results := make([]any, 0, len(combinations))
 		for _, combination := range combinations {
 			results = append(results, map[string]any{
@@ -49,7 +77,7 @@ func (h *Handler) permissionCombinations(w http.ResponseWriter, r *http.Request,
 				"permissions":    combination.Permissions, "principalTypes": combination.PrincipalTypes,
 			})
 		}
-		respond(w, 200, map[string]any{"results": results, "generatedAt": generatedAt})
+		respond(w, 200, map[string]any{"results": results, "generatedAt": generatedAt, "cursor": next})
 	case http.MethodPost:
 		if !supportedQuery(w, r) {
 			return

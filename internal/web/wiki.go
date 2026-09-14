@@ -72,6 +72,7 @@ type wikiData struct {
 	ClassificationNames                   map[string]string
 	PublishedClassification               map[string]bool
 	Redactions                            []store.WikiRedaction
+	ContentStateSettings                  store.WikiContentStateSettings
 	CanRestoreRedactions                  bool
 	Query                                 string
 	Status                                string
@@ -417,7 +418,37 @@ func (h *Handler) WikiSpacePage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load classification levels.", 500)
 		return
 	}
-	h.writeWorkspacePage(w, r, "page_wiki_space", user, ws, wikiData{Space: space, Pages: filtered, BlogPosts: filteredBlogs, Folders: folders, SmartLinks: smartLinks, Databases: databases, Whiteboards: whiteboards, ContentTree: contentTree, TreeTitles: treeTitles, TreeTargets: treeTargets, CanEditTree: canEditTree, Query: query, Status: status, WatchingSpace: watching, CanAdmin: admin, CanManageSpace: canManageSpace, SpaceProperties: properties, SpaceRoles: roles, SpaceRoleAssignments: assignments, SpaceRoleUsers: roleUsers, SpaceRoleGroups: roleGroups, SpaceRoleNames: roleNames, SpaceRolePrincipalNames: principalNames, ClassificationLevels: classLevels, ClassificationNames: classNames, PublishedClassification: classPublished}, "wiki", "")
+	var stateSettings store.WikiContentStateSettings
+	if canManageSpace {
+		if stateSettings, err = h.Store.WikiContentStateSettings(r.Context(), ws, user.ID, space.Key); err != nil {
+			http.Error(w, "Could not load content state settings.", 500)
+			return
+		}
+	}
+	h.writeWorkspacePage(w, r, "page_wiki_space", user, ws, wikiData{ContentStateSettings: stateSettings, Space: space, Pages: filtered, BlogPosts: filteredBlogs, Folders: folders, SmartLinks: smartLinks, Databases: databases, Whiteboards: whiteboards, ContentTree: contentTree, TreeTitles: treeTitles, TreeTargets: treeTargets, CanEditTree: canEditTree, Query: query, Status: status, WatchingSpace: watching, CanAdmin: admin, CanManageSpace: canManageSpace, SpaceProperties: properties, SpaceRoles: roles, SpaceRoleAssignments: assignments, SpaceRoleUsers: roleUsers, SpaceRoleGroups: roleGroups, SpaceRoleNames: roleNames, SpaceRolePrincipalNames: principalNames, ClassificationLevels: classLevels, ClassificationNames: classNames, PublishedClassification: classPublished}, "wiki", "")
+}
+
+// WikiSpaceContentStateSettings saves whether the space's pages carry content
+// states, and which kinds.
+func (h *Handler) WikiSpaceContentStateSettings(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	space, err := h.Store.WikiSpace(r.Context(), ws, user.ID, r.PathValue("space"))
+	if err == nil {
+		err = h.Store.SetWikiContentStateSettings(r.Context(), ws, user.ID, space.Key, store.WikiContentStateSettings{
+			ContentStatesAllowed:       r.PostFormValue("contentStatesAllowed") == "true",
+			CustomContentStatesAllowed: r.PostFormValue("customContentStatesAllowed") == "true",
+			SpaceContentStatesAllowed:  r.PostFormValue("spaceContentStatesAllowed") == "true",
+		})
+	}
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	redirectLocal(w, r, "/wiki/spaces/"+space.ID+"#wiki-content-state-settings")
 }
 
 func (h *Handler) WikiSpaceClassification(w http.ResponseWriter, r *http.Request) {

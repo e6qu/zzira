@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -87,6 +88,35 @@ func (s *Service) SetWikiSpaceDefaultClassification(ctx context.Context, ws, act
 	return s.Store.SetWikiSpaceDefaultClassification(ctx, ws, actor, id, levelID)
 }
 
+// wikiSpaceRoleDependencies checks a role's permissions hold what they depend
+// on, as Confluence requires: every permission needs to see the space, and
+// creating, editing or deleting a kind of content needs to see that content.
+func wikiSpaceRoleDependencies(permissions []string) error {
+	held := map[string]bool{}
+	for _, permission := range permissions {
+		held[permission] = true
+	}
+	missing := []string{}
+	need := func(permission string) {
+		if !held[permission] && !slices.Contains(missing, permission) {
+			missing = append(missing, permission)
+		}
+	}
+	for _, permission := range permissions {
+		operation, target, _ := strings.Cut(permission, "/")
+		if permission != "read/space" {
+			need("read/space")
+		}
+		if (operation == "create" || operation == "update" || operation == "delete") && target != "space" {
+			need("read/" + target)
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("%w: the role's permissions also need %s", store.ErrWikiValidation, strings.Join(missing, ", "))
+	}
+	return nil
+}
+
 func validateWikiSpaceRole(name, description string, permissions []string) error {
 	if strings.TrimSpace(name) == "" || utf8.RuneCountInString(name) > 255 || len(description) > 2000 || len(permissions) == 0 {
 		return fmt.Errorf("%w: role name, description and at least one permission are required", store.ErrWikiValidation)
@@ -101,24 +131,30 @@ func validateWikiSpaceRole(name, description string, permissions []string) error
 	return nil
 }
 
+func (s *Service) UpdateWikiSpaceRole(ctx context.Context, ws, actor, id, name, description string, permissions []string, anonymousRoleID, guestRoleID string) (*models.WikiSpaceRole, store.APITask, error) {
+	name = strings.TrimSpace(name)
+	if err := validateWikiSpaceRole(name, description, permissions); err != nil {
+		return nil, store.APITask{}, err
+	}
+	if err := wikiSpaceRoleDependencies(permissions); err != nil {
+		return nil, store.APITask{}, err
+	}
+	return s.Store.UpdateWikiSpaceRole(ctx, ws, actor, id, name, description, permissions, anonymousRoleID, guestRoleID)
+}
+
+func (s *Service) DeleteWikiSpaceRole(ctx context.Context, ws, actor, id string) (store.APITask, error) {
+	return s.Store.DeleteWikiSpaceRole(ctx, ws, actor, id)
+}
+
 func (s *Service) CreateWikiSpaceRole(ctx context.Context, ws, actor, name, description string, permissions []string) (*models.WikiSpaceRole, error) {
 	name = strings.TrimSpace(name)
 	if err := validateWikiSpaceRole(name, description, permissions); err != nil {
 		return nil, err
 	}
-	return s.Store.CreateWikiSpaceRole(ctx, ws, actor, name, description, permissions)
-}
-
-func (s *Service) UpdateWikiSpaceRole(ctx context.Context, ws, actor, id, name, description string, permissions []string) (*models.WikiSpaceRole, error) {
-	name = strings.TrimSpace(name)
-	if err := validateWikiSpaceRole(name, description, permissions); err != nil {
+	if err := wikiSpaceRoleDependencies(permissions); err != nil {
 		return nil, err
 	}
-	return s.Store.UpdateWikiSpaceRole(ctx, ws, actor, id, name, description, permissions)
-}
-
-func (s *Service) DeleteWikiSpaceRole(ctx context.Context, ws, actor, id string) error {
-	return s.Store.DeleteWikiSpaceRole(ctx, ws, actor, id)
+	return s.Store.CreateWikiSpaceRole(ctx, ws, actor, name, description, permissions)
 }
 
 func (s *Service) SetWikiSpaceRoleAssignments(ctx context.Context, ws, actor, spaceID string, assignments []models.WikiSpaceRoleAssignment) error {

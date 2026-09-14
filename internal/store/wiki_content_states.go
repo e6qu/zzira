@@ -185,6 +185,17 @@ func (s *Store) SetWikiPageContentState(ctx context.Context, ws, actor, pageID, 
 	if err != nil {
 		return nil, "", err
 	}
+	intended := "custom"
+	if _, ok := spaceContentState(stateID); ok && !described {
+		intended = "space"
+	}
+	var spaceID string
+	if err = tx.QueryRow(ctx, `SELECT space_id::text FROM wiki_pages WHERE id::text=$1`, pageID).Scan(&spaceID); err != nil {
+		return nil, "", err
+	}
+	if err = wikiContentStatesPermitted(ctx, tx, spaceID, intended); err != nil {
+		return nil, "", err
+	}
 	kind := "custom"
 	if described {
 		// A writer re-using a name they have used before keeps one state

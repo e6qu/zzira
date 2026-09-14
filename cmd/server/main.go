@@ -350,6 +350,7 @@ func main() {
 	mux.HandleFunc("POST /wiki/spaces/{space}/whiteboards/{whiteboard}/classification", webHandler.WikiWhiteboardClassification)
 	mux.HandleFunc("POST /wiki/spaces/{space}/whiteboards/{whiteboard}/delete", webHandler.WikiWhiteboardDelete)
 	mux.HandleFunc("POST /wiki/spaces/{space}/watch", webHandler.WikiSpaceWatch)
+	mux.HandleFunc("POST /wiki/spaces/{space}/content-state-settings", webHandler.WikiSpaceContentStateSettings)
 	mux.HandleFunc("GET /wiki/spaces/{space}/pages/new", webHandler.WikiEdit)
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/new", webHandler.WikiEdit)
 	mux.HandleFunc("GET /wiki/spaces/{space}/pages/{page}", webHandler.WikiPage)
