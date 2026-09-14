@@ -12,6 +12,7 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -37,23 +38,56 @@ func (h *Handler) attachmentBean(a *models.WikiAttachment) map[string]any {
 	return bean
 }
 
+// attachmentStatuses reads the status filter on an attachment collection.
+// Confluence lists current and archived attachments unless asked for others;
+// an attachment is archived when the page it belongs to is.
+func attachmentStatuses(w http.ResponseWriter, r *http.Request) ([]string, bool) {
+	if _, present := r.URL.Query()["status"]; !present {
+		return []string{"current", "archived"}, true
+	}
+	statuses := []string{}
+	for _, raw := range r.URL.Query()["status"] {
+		for _, candidate := range strings.Split(raw, ",") {
+			switch candidate {
+			case "current", "archived", "trashed":
+			default:
+				failure(w, 400, "Unsupported attachment status.")
+				return nil, false
+			}
+			if !slices.Contains(statuses, candidate) {
+				statuses = append(statuses, candidate)
+			}
+		}
+	}
+	return statuses, true
+}
+
+func sortAttachmentsByID(items []*models.WikiAttachment) {
+	sort.SliceStable(items, func(i, j int) bool {
+		left, _ := strconv.ParseInt(items[i].ID, 10, 64)
+		right, _ := strconv.ParseInt(items[j].ID, 10, 64)
+		return left < right
+	})
+}
+
 func (h *Handler) attachments(w http.ResponseWriter, r *http.Request, ws, actor, pageID string) {
 	if !supportedQuery(w, r, "sort", "cursor", "status", "mediaType", "filename", "limit") {
 		return
 	}
-	status := r.URL.Query().Get("status")
-	if strings.Contains(status, ",") {
-		failure(w, 400, "Only one attachment status is currently supported.")
+	statuses, ok := attachmentStatuses(w, r)
+	if !ok {
 		return
 	}
-	if status == "" {
-		status = "current"
+	items := []*models.WikiAttachment{}
+	for _, status := range statuses {
+		found, err := h.Store.WikiAttachments(r.Context(), ws, actor, pageID, r.URL.Query().Get("mediaType"), r.URL.Query().Get("filename"), status)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		items = append(items, found...)
 	}
-	items, err := h.Store.WikiAttachments(r.Context(), ws, actor, pageID, r.URL.Query().Get("mediaType"), r.URL.Query().Get("filename"), status)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
+	sortAttachmentsByID(items)
 	values := make([]any, 0, len(items))
 	for _, a := range items {
 		values = append(values, h.attachmentBean(a))
@@ -65,19 +99,20 @@ func (h *Handler) blogAttachments(w http.ResponseWriter, r *http.Request, ws, ac
 	if !supportedQuery(w, r, "sort", "cursor", "status", "mediaType", "filename", "limit") {
 		return
 	}
-	status := r.URL.Query().Get("status")
-	if strings.Contains(status, ",") {
-		failure(w, 400, "Only one attachment status is currently supported.")
+	statuses, ok := attachmentStatuses(w, r)
+	if !ok {
 		return
 	}
-	if status == "" {
-		status = "current"
+	items := []*models.WikiAttachment{}
+	for _, status := range statuses {
+		found, err := h.Store.WikiBlogAttachments(r.Context(), ws, actor, blogPostID, r.URL.Query().Get("mediaType"), r.URL.Query().Get("filename"), status)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		items = append(items, found...)
 	}
-	items, err := h.Store.WikiBlogAttachments(r.Context(), ws, actor, blogPostID, r.URL.Query().Get("mediaType"), r.URL.Query().Get("filename"), status)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
+	sortAttachmentsByID(items)
 	values := make([]any, 0, len(items))
 	for _, a := range items {
 		values = append(values, h.attachmentBean(a))

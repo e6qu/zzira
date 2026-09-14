@@ -358,6 +358,11 @@ func (s *Store) SaveWikiPage(ctx context.Context, ws, actor string, input models
 		if old.SpaceID != input.SpaceID {
 			return nil, fmt.Errorf("%w: moving pages between spaces is not supported", ErrWikiValidation)
 		}
+		// An archived page is read-only until it is restored; it can still go to
+		// the trash.
+		if old.Status == "archived" && input.Status != "trashed" {
+			return nil, fmt.Errorf("%w: an archived page cannot be edited; restore it first", ErrWikiValidation)
+		}
 		if input.Version.Number != old.Version.Number+1 {
 			return nil, ErrWikiConflict
 		}

@@ -1524,10 +1524,11 @@ func (h *Handler) pages(w http.ResponseWriter, r *http.Request, ws, actor, space
 		failure(w, 400, "Only standard pages are available.")
 		return
 	}
-	statuses := []string{"current"}
+	// Confluence lists current and archived pages unless asked for others.
+	statuses := []string{"current", "archived"}
 	if _, present := q["status"]; present {
 		statuses = nil
-		allowedStatus := map[string]bool{"current": true, "draft": space == "", "trashed": true}
+		allowedStatus := map[string]bool{"current": true, "archived": true, "deleted": true, "trashed": true, "draft": space == ""}
 		for _, raw := range q["status"] {
 			for _, candidate := range strings.Split(raw, ",") {
 				if !allowedStatus[candidate] {
@@ -1536,7 +1537,7 @@ func (h *Handler) pages(w http.ResponseWriter, r *http.Request, ws, actor, space
 				}
 			}
 		}
-		for _, candidate := range []string{"current", "draft", "trashed"} {
+		for _, candidate := range []string{"current", "archived", "deleted", "trashed", "draft"} {
 			if queryContains(r, "status", candidate) {
 				statuses = append(statuses, candidate)
 			}

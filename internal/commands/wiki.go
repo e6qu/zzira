@@ -136,6 +136,20 @@ func (s *Service) SaveWikiPage(ctx context.Context, ws, actor string, p models.W
 	return s.Store.SaveWikiPage(ctx, ws, actor, p)
 }
 
+// MoveWikiPage, ArchiveWikiPages and RestoreWikiPage are the page tree's
+// lifecycle as a page's own actions offer it.
+func (s *Service) MoveWikiPage(ctx context.Context, ws, actor, pageID, position, targetID string) (string, error) {
+	return s.Store.MoveWikiPage(ctx, ws, actor, pageID, position, targetID)
+}
+
+func (s *Service) ArchiveWikiPages(ctx context.Context, ws, actor string, pageIDs []string, withDescendants bool) (int, error) {
+	return s.Store.ArchiveWikiPages(ctx, ws, actor, pageIDs, withDescendants)
+}
+
+func (s *Service) RestoreWikiPage(ctx context.Context, ws, actor, pageID string, withDescendants bool) (int, error) {
+	return s.Store.RestoreWikiPage(ctx, ws, actor, pageID, withDescendants)
+}
+
 func (s *Service) SaveWikiBlogPost(ctx context.Context, ws, actor string, post models.WikiBlogPost) (*models.WikiBlogPost, error) {
 	post.Title = strings.TrimSpace(post.Title)
 	if post.Status == "" && post.ID == "" {
