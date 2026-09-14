@@ -91,9 +91,9 @@ func permissionGrantLabel(grant models.PermissionGrant, members []*models.User, 
 	return grant.HolderType
 }
 
-func permissionSchemeCards(schemes []*models.PermissionScheme, members []*models.User, groups []*models.Group, roles []*models.ProjectRole) []permissionSchemeCard {
+func permissionSchemeCards(definitions []store.PermissionDefinition, schemes []*models.PermissionScheme, members []*models.User, groups []*models.Group, roles []*models.ProjectRole) []permissionSchemeCard {
 	names := map[string]string{}
-	for _, permission := range store.ProjectPermissionDefinitions() {
+	for _, permission := range definitions {
 		names[permission.Key] = permission.Name
 	}
 	cards := make([]permissionSchemeCard, 0, len(schemes))
@@ -112,10 +112,16 @@ func permissionSchemeCards(schemes []*models.PermissionScheme, members []*models
 }
 
 func (h *Handler) loadPermissionSchemesPage(r *http.Request, workspaceID string) (permissionSchemesData, error) {
-	data := permissionSchemesData{
-		Permissions: store.ProjectPermissionDefinitions(), Notice: r.URL.Query().Get("notice"), Error: r.URL.Query().Get("error"),
+	data := permissionSchemesData{Notice: r.URL.Query().Get("notice"), Error: r.URL.Query().Get("error")}
+	catalog, err := h.Store.PermissionCatalog(r.Context(), workspaceID)
+	if err != nil {
+		return data, err
 	}
-	var err error
+	for _, definition := range catalog {
+		if definition.Type == "PROJECT" {
+			data.Permissions = append(data.Permissions, definition)
+		}
+	}
 	data.Projects, err = h.Store.ProjectsByWorkspace(r.Context(), workspaceID)
 	if err == nil {
 		data.Members, err = h.Store.MembersByWorkspace(r.Context(), workspaceID)
@@ -133,7 +139,7 @@ func (h *Handler) loadPermissionSchemesPage(r *http.Request, workspaceID string)
 	if err != nil {
 		return data, err
 	}
-	data.Schemes = permissionSchemeCards(schemes, data.Members, data.Groups, data.Roles)
+	data.Schemes = permissionSchemeCards(data.Permissions, schemes, data.Members, data.Groups, data.Roles)
 	for index := range data.Schemes {
 		ids, lookupErr := h.Store.ProjectIDsForPermissionScheme(r.Context(), workspaceID, data.Schemes[index].Scheme.ID)
 		if lookupErr != nil {
@@ -260,7 +266,12 @@ func (h *Handler) ProjectPermissionsPage(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "Could not load project permissions.", http.StatusInternalServerError)
 		return
 	}
-	cards := permissionSchemeCards([]*models.PermissionScheme{scheme}, members, groups, roles)
+	catalog, err := h.Store.PermissionCatalog(r.Context(), workspaceID)
+	if err != nil {
+		http.Error(w, "Could not load project permissions.", http.StatusInternalServerError)
+		return
+	}
+	cards := permissionSchemeCards(catalog, []*models.PermissionScheme{scheme}, members, groups, roles)
 	data := projectPermissionsData{Project: project, Scheme: cards[0]}
 	h.writeWorkspacePage(w, r, "page_project_permissions", user, workspaceID, data, "project-permissions", project.Key)
 }

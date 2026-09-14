@@ -68,6 +68,7 @@ type descriptorWire struct {
 	ScheduledTriggers []scheduledTriggerWire `json:"scheduledTriggers"`
 	IssueFields       []models.AppIssueField `json:"-"`
 	JQLFunctions      []jqlFunctionWire      `json:"jqlFunctions"`
+	Permissions       []models.AppPermission `json:"-"`
 	Format            string                 `json:"-"`
 }
 
@@ -210,6 +211,14 @@ func validateDescriptorWire(wire descriptorWire) (models.AppDescriptor, error) {
 		functionNames[name] = true
 		moduleKeys[function.Key] = true
 		descriptor.JQLFunctions = append(descriptor.JQLFunctions, function)
+	}
+	for _, permission := range wire.Permissions {
+		validated, err := validateAppPermission(permission, moduleKeys)
+		if err != nil {
+			return models.AppDescriptor{}, err
+		}
+		moduleKeys[validated.Key] = true
+		descriptor.Permissions = append(descriptor.Permissions, validated)
 	}
 	descriptor.Lifecycle = map[string]string{}
 	for event, path := range wire.Lifecycle {
@@ -355,4 +364,43 @@ func ensureJSONEnd(decoder *json.Decoder) error {
 		return fmt.Errorf("invalid app descriptor: %w", err)
 	}
 	return nil
+}
+
+var appPermissionKeyPattern = regexp.MustCompile(`^[a-zA-Z0-9-]{1,100}$`)
+
+// validateAppPermission applies the Connect project and global permission
+// module rules: a unique key of letters, digits and hyphens, a name and a
+// description, a known category, and known default grants.
+func validateAppPermission(permission models.AppPermission, moduleKeys map[string]bool) (models.AppPermission, error) {
+	permission.Key, permission.Name, permission.Description = strings.TrimSpace(permission.Key), strings.TrimSpace(permission.Name), strings.TrimSpace(permission.Description)
+	if !appPermissionKeyPattern.MatchString(permission.Key) || moduleKeys[permission.Key] {
+		return permission, fmt.Errorf("permission modules need a unique key of at most 100 letters, digits and hyphens")
+	}
+	if permission.Name == "" || len(permission.Name) > 1500 || permission.Description == "" || len(permission.Description) > 1500 {
+		return permission, fmt.Errorf("permission %q needs a name and a description of at most 1500 characters", permission.Key)
+	}
+	switch permission.Type {
+	case "PROJECT":
+		if permission.Category == "" {
+			permission.Category = "other"
+		}
+		switch permission.Category {
+		case "projects", "issues", "voters_and_watchers", "comments", "attachments", "time_tracking", "other", "administration":
+		default:
+			return permission, fmt.Errorf("project permission %q has an unknown category %q", permission.Key, permission.Category)
+		}
+		permission.DefaultGrants, permission.AnonymousAllowed = nil, false
+	case "GLOBAL":
+		permission.Category = ""
+		for index, grant := range permission.DefaultGrants {
+			grant = strings.ToUpper(strings.TrimSpace(grant))
+			if grant != "NONE" && grant != "ALL" && grant != "JIRA-ADMINISTRATORS" {
+				return permission, fmt.Errorf("global permission %q has an unknown default grant %q", permission.Key, grant)
+			}
+			permission.DefaultGrants[index] = grant
+		}
+	default:
+		return permission, fmt.Errorf("permission %q has an unknown type", permission.Key)
+	}
+	return permission, nil
 }

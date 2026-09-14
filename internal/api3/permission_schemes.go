@@ -3,6 +3,7 @@ package api3
 import (
 	"encoding/json"
 	"errors"
+	"github.com/e6qu/zzira/internal/apps"
 	"net/http"
 	"strconv"
 	"strings"
@@ -381,14 +382,33 @@ func (h *Handler) projectPermissionSchemeRoute(w http.ResponseWriter, r *http.Re
 	jiraError(w, http.StatusMethodNotAllowed, "Method not allowed")
 }
 
+// permissionCatalog lists Jira's permissions and those the site's apps declare,
+// indexed by key.
+func (h *Handler) permissionCatalog(r *http.Request, workspaceID string) ([]store.PermissionDefinition, map[string]store.PermissionDefinition, error) {
+	definitions, err := h.Store.PermissionCatalog(r.Context(), workspaceID)
+	if err != nil {
+		return nil, nil, err
+	}
+	byKey := make(map[string]store.PermissionDefinition, len(definitions))
+	for _, definition := range definitions {
+		byKey[definition.Key] = definition
+	}
+	return definitions, byKey, nil
+}
+
 func (h *Handler) allPermissions(w http.ResponseWriter, r *http.Request) {
 	workspaceID, userID, authErr := h.authWorkspace(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
 	}
+	catalog, _, err := h.permissionCatalog(r, workspaceID)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "Could not evaluate permissions.")
+		return
+	}
 	permissions := map[string]any{}
-	for _, definition := range store.PermissionDefinitions() {
+	for _, definition := range catalog {
 		have := false
 		var err error
 		if definition.Type == "GLOBAL" {
@@ -434,15 +454,21 @@ func (h *Handler) bulkPermissions(w http.ResponseWriter, r *http.Request) {
 	userID := request.AccountID
 	if userID == "" {
 		userID = actorID
-	} else if userID != actorID {
+	} else if _, fromApp := apps.InstallationFromContext(r.Context()); userID != actorID && !fromApp {
+		// A Connect app calling from its server may check any user.
 		admin, err := h.Store.HasGlobalPermission(r.Context(), workspaceID, actorID, "ADMINISTER")
 		if err != nil || !admin {
 			jiraError(w, http.StatusForbidden, "Administer Jira permission is required to inspect another user.")
 			return
 		}
 	}
-	if len(request.ProjectPermissions) > 1000 {
-		jiraError(w, http.StatusBadRequest, "No more than 1000 project permission entries can be checked.")
+	// Jira checks at most 1000 projects and 1000 issues across the request.
+	projectCount, issueCount := 0, 0
+	for _, entry := range request.ProjectPermissions {
+		projectCount, issueCount = projectCount+len(entry.Projects), issueCount+len(entry.Issues)
+	}
+	if projectCount > 1000 || issueCount > 1000 {
+		jiraError(w, http.StatusBadRequest, "No more than 1000 projects and 1000 issues can be checked.")
 		return
 	}
 	global := []string{}
@@ -453,10 +479,6 @@ func (h *Handler) bulkPermissions(w http.ResponseWriter, r *http.Request) {
 	}
 	projectGrants := []map[string]any{}
 	for _, entry := range request.ProjectPermissions {
-		if len(entry.Projects) > 1000 || len(entry.Issues) > 1000 {
-			jiraError(w, http.StatusBadRequest, "No more than 1000 projects and 1000 issues can be checked.")
-			return
-		}
 		for _, permission := range entry.Permissions {
 			if permission == "" {
 				continue
@@ -593,15 +615,20 @@ func (h *Handler) myPermissions(w http.ResponseWriter, r *http.Request) {
 		writeJerr(w, contextErr)
 		return
 	}
+	catalog, byKey, catalogErr := h.permissionCatalog(r, workspaceID)
+	if catalogErr != nil {
+		jiraError(w, http.StatusInternalServerError, "Could not evaluate permissions.")
+		return
+	}
 	keys := requestedPermissionKeys(r.URL.Query().Get("permissions"))
 	if len(keys) == 0 {
-		for _, definition := range store.PermissionDefinitions() {
+		for _, definition := range catalog {
 			keys = append(keys, definition.Key)
 		}
 	}
 	permissions := map[string]any{}
 	for _, key := range keys {
-		definition, known := store.PermissionDefinitionByKey(key)
+		definition, known := byKey[key]
 		if !known {
 			continue
 		}
@@ -679,6 +706,11 @@ func (h *Handler) usersWithPermissions(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, http.StatusInternalServerError, "Could not search users.")
 		return
 	}
+	_, catalog, err := h.permissionCatalog(r, workspaceID)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "Could not search users.")
+		return
+	}
 	if startAt > 1000 || startAt >= len(members) {
 		writeJSON(w, http.StatusOK, []any{})
 		return
@@ -694,7 +726,7 @@ func (h *Handler) usersWithPermissions(w http.ResponseWriter, r *http.Request) {
 		}
 		allowed := true
 		for _, permission := range permissions {
-			definition, known := store.PermissionDefinitionByKey(permission)
+			definition, known := catalog[permission]
 			if !known {
 				allowed = false
 				break

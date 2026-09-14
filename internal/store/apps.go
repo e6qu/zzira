@@ -147,7 +147,22 @@ func (s *Store) loadAppChildren(ctx context.Context, value *models.AppInstallati
 		trigger.NextRunAt = trigger.NextRunAt.UTC()
 		value.ScheduledTriggers = append(value.ScheduledTriggers, trigger)
 	}
-	return scheduleRows.Err()
+	if err = scheduleRows.Err(); err != nil {
+		return err
+	}
+	permissionRows, err := s.Pool.Query(ctx, `SELECT module_key,permission_type,name,description,category,anonymous_allowed,default_grants FROM app_permission_modules WHERE installation_id=$1 ORDER BY module_key`, value.ID)
+	if err != nil {
+		return err
+	}
+	defer permissionRows.Close()
+	for permissionRows.Next() {
+		var permission models.AppPermission
+		if err := permissionRows.Scan(&permission.Key, &permission.Type, &permission.Name, &permission.Description, &permission.Category, &permission.AnonymousAllowed, &permission.DefaultGrants); err != nil {
+			return err
+		}
+		value.Permissions = append(value.Permissions, permission)
+	}
+	return permissionRows.Err()
 }
 
 func (s *Store) AppInstallations(ctx context.Context, workspaceID string) ([]*models.AppInstallation, error) {
@@ -214,6 +229,15 @@ func writeAppChildren(ctx context.Context, tx pgx.Tx, installationID string, des
 			return err
 		}
 		if _, err := tx.Exec(ctx, `INSERT INTO app_jql_function_modules(installation_id,module_key,function_name,path,arguments,types,operators) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(installation_id,module_key) DO UPDATE SET function_name=EXCLUDED.function_name,path=EXCLUDED.path,arguments=EXCLUDED.arguments,types=EXCLUDED.types,operators=EXCLUDED.operators`, installationID, function.Key, function.Name, function.Path, arguments, function.Types, function.Operators); err != nil {
+			return err
+		}
+	}
+	for _, permission := range descriptor.Permissions {
+		grants := permission.DefaultGrants
+		if grants == nil {
+			grants = []string{}
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO app_permission_modules(installation_id,module_key,permission_type,name,description,category,anonymous_allowed,default_grants) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, installationID, permission.Key, permission.Type, permission.Name, permission.Description, permission.Category, permission.AnonymousAllowed, grants); err != nil {
 			return err
 		}
 	}
@@ -295,6 +319,9 @@ func (s *Store) InstallApp(ctx context.Context, workspaceID, actorID string, des
 	if _, err := tx.Exec(ctx, `DELETE FROM app_jql_function_modules WHERE installation_id=$1`, installationID); err != nil {
 		return nil, err
 	}
+	if _, err := tx.Exec(ctx, `DELETE FROM app_permission_modules WHERE installation_id=$1`, installationID); err != nil {
+		return nil, err
+	}
 	if _, err := tx.Exec(ctx, `DELETE FROM jql_function_precomputations WHERE installation_id=$1`, installationID); err != nil {
 		return nil, err
 	}
@@ -329,6 +356,9 @@ func (s *Store) InstallApp(ctx context.Context, workspaceID, actorID string, des
 	}
 	for _, function := range descriptor.JQLFunctions {
 		staticModuleKeys = append(staticModuleKeys, function.Key)
+	}
+	for _, permission := range descriptor.Permissions {
+		staticModuleKeys = append(staticModuleKeys, permission.Key)
 	}
 	if err := restoreDynamicAppModules(ctx, tx, installationID, staticModuleKeys); err != nil {
 		return nil, err

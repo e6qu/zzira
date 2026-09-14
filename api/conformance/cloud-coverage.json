@@ -3845,7 +3845,7 @@
         "internal/api3/anonymous_access_test.go",
         "docs/ANONYMOUS_ACCESS.md"
       ],
-      "notes": "Evaluates selected built-in global and project permissions with project, issue, and comment context; anonymous callers are evaluated against permissions granted to anyone; all context edge cases remain."
+      "notes": "Evaluates selected built-in and app-declared global and project permissions with project, issue, and comment context; anonymous callers are evaluated against permissions granted to anyone; all context edge cases remain."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/mypreferences",
@@ -4027,7 +4027,7 @@
         "e2e/permission_schemes.spec.ts",
         "docs/PERMISSION_SCHEMES.md"
       ],
-      "notes": "Returns the built-in global and project permission catalog; app-defined permission registration and every Jira metadata edge remain."
+      "notes": "Returns Jira's built-in global and project permissions and the project and global permissions active apps declare through jiraProjectPermissions and jiraGlobalPermissions, keyed by app and module key, each with the caller's havePermission."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/permissions/check",
@@ -4039,7 +4039,7 @@
         "e2e/permission_schemes.spec.ts",
         "docs/PERMISSION_SCHEMES.md"
       ],
-      "notes": "Evaluates bounded global and project permission batches, including administrator-authorized checks for another account; every Jira limit and error edge remains."
+      "notes": "Evaluates built-in and app-declared global and project permissions for the caller, another account for administrators, or any account for a Connect app calling from its server; at most 1000 projects and 1000 issues across the request, with invalid IDs, nulls and empty permission strings ignored."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/permissions/project",
@@ -4140,7 +4140,7 @@
         "e2e/permission_schemes.spec.ts",
         "docs/PERMISSION_SCHEMES.md"
       ],
-      "notes": "Adds one validated, unique, audited grant across supported Jira holder types; app-defined permissions and every validation edge remain."
+      "notes": "Adds one validated, unique, audited grant across supported Jira holder types for a built-in or app-declared project permission; unknown and global permission keys are refused."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/permissionscheme/{schemeId}/permission/{permissionId}",

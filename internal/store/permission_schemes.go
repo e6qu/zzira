@@ -208,8 +208,15 @@ func validatePermissionGrant(ctx context.Context, tx pgx.Tx, workspaceID string,
 	input.HolderType = strings.TrimSpace(input.HolderType)
 	input.HolderParameter = strings.TrimSpace(input.HolderParameter)
 	input.HolderValue = strings.TrimSpace(input.HolderValue)
-	if !permissionKeyPattern.MatchString(input.Permission) {
-		return input, fmt.Errorf("%w: permission key is invalid", ErrPermissionSchemeValidation)
+	// Schemes grant Jira's project permissions and those installed apps declare.
+	if definition, ok := PermissionDefinitionByKey(input.Permission); !ok || definition.Type != "PROJECT" {
+		appDefinition, _, found, err := appPermission(ctx, tx, workspaceID, input.Permission)
+		if err != nil {
+			return input, err
+		}
+		if !found || appDefinition.Type != "PROJECT" {
+			return input, fmt.Errorf("%w: permission %s is not a project permission", ErrPermissionSchemeValidation, input.Permission)
+		}
 	}
 	switch input.HolderType {
 	case "anyone", "assignee", "projectLead", "reporter", "sd.customer.portal.only":
@@ -540,6 +547,16 @@ func globalPermissionForUser(ctx context.Context, tx pgx.Tx, workspaceID, userID
 	case "BULK_CHANGE", "CREATE_SHARED_OBJECTS", "SHARE_DASHBOARDS", "USER_PICKER", "BROWSE_USERS", "CREATE_TEAM_MANAGED_PROJECT":
 		return member, nil
 	default:
+		// An app's global permission granted to all users on installation.
+		definition, grants, found, err := appPermission(ctx, tx, workspaceID, permission)
+		if err != nil || !found || definition.Type != "GLOBAL" {
+			return false, err
+		}
+		for _, grant := range grants {
+			if grant == "ALL" {
+				return member, nil
+			}
+		}
 		return false, nil
 	}
 }

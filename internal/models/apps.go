@@ -14,6 +14,16 @@ type AppDescriptor struct {
 	ScheduledTriggers                   []AppScheduledTrigger
 	IssueFields                         []AppIssueField
 	JQLFunctions                        []AppJQLFunction
+	Permissions                         []AppPermission
+}
+
+// AppPermission is a project or global permission an app declares. Type is
+// PROJECT or GLOBAL; Category groups project permissions and DefaultGrants
+// (NONE, ALL or JIRA-ADMINISTRATORS) grants global ones on installation.
+type AppPermission struct {
+	Key, Name, Description, Type, Category string
+	AnonymousAllowed                       bool
+	DefaultGrants                          []string
 }
 
 type AppIssueField struct {
@@ -32,6 +42,7 @@ type AppInstallation struct {
 	ScheduledTriggers                                                                      []AppScheduledTrigger
 	IssueFields                                                                            []AppIssueField
 	JQLFunctions                                                                           []AppJQLFunction
+	Permissions                                                                            []AppPermission
 	OutboundDeliveries                                                                     []AppOutboundDelivery
 	InstalledAt, UpdatedAt                                                                 time.Time
 }

@@ -36,6 +36,17 @@ type connectIssueFieldWire struct {
 	Type        string          `json:"type"`
 }
 
+// connectPermissionWire is a jiraProjectPermissions or jiraGlobalPermissions
+// module.
+type connectPermissionWire struct {
+	Key              string          `json:"key"`
+	Name             connectNameWire `json:"name"`
+	Description      connectNameWire `json:"description"`
+	Category         string          `json:"category"`
+	AnonymousAllowed *bool           `json:"anonymousAllowed"`
+	DefaultGrants    []string        `json:"defaultGrants"`
+}
+
 type connectRemoteModuleWire struct {
 	Key      string          `json:"key"`
 	URL      string          `json:"url"`
@@ -230,7 +241,7 @@ func parseConnectDescriptor(raw []byte) (models.AppDescriptor, error) {
 		wire.Scopes = append(wire.Scopes, scope)
 	}
 	sort.Strings(wire.Scopes)
-	supported := map[string]bool{"adminPages": true, "generalPages": true, "jiraProjectPages": true, "jiraProjectAdminTabPanels": true, "jiraReports": true, "jiraDashboardItems": true, "jiraIssueTabPanels": true, "webPanels": true, "contentBylineItems": true, "webhooks": true, "jiraIssueFields": true, "jiraJqlFunctions": true, "webItems": true, "jiraIssueContents": true, "jiraIssueContexts": true, "jiraIssueGlances": true}
+	supported := map[string]bool{"adminPages": true, "generalPages": true, "jiraProjectPages": true, "jiraProjectAdminTabPanels": true, "jiraReports": true, "jiraDashboardItems": true, "jiraIssueTabPanels": true, "webPanels": true, "contentBylineItems": true, "webhooks": true, "jiraIssueFields": true, "jiraJqlFunctions": true, "webItems": true, "jiraIssueContents": true, "jiraIssueContexts": true, "jiraIssueGlances": true, "jiraProjectPermissions": true, "jiraGlobalPermissions": true}
 	for moduleType, payload := range connect.Modules {
 		if !supported[moduleType] {
 			return models.AppDescriptor{}, fmt.Errorf("Connect module %q is not supported yet", moduleType)
@@ -373,6 +384,19 @@ func parseConnectDescriptor(raw []byte) (models.AppDescriptor, error) {
 					return models.AppDescriptor{}, err
 				}
 				wire.Modules = append(wire.Modules, translated)
+			}
+		case "jiraProjectPermissions", "jiraGlobalPermissions":
+			var modules []connectPermissionWire
+			if err := json.Unmarshal(payload, &modules); err != nil {
+				return models.AppDescriptor{}, fmt.Errorf("invalid Connect %s: %w", moduleType, err)
+			}
+			for _, module := range modules {
+				permission := models.AppPermission{Key: module.Key, Name: module.Name.Value, Description: module.Description.Value, Type: "PROJECT", Category: module.Category}
+				if moduleType == "jiraGlobalPermissions" {
+					permission.Type, permission.DefaultGrants = "GLOBAL", module.DefaultGrants
+					permission.AnonymousAllowed = module.AnonymousAllowed == nil || *module.AnonymousAllowed
+				}
+				wire.Permissions = append(wire.Permissions, permission)
 			}
 		case "webhooks":
 			var hooks []connectWebhookWire

@@ -25,7 +25,7 @@ operations:
 
 | Method and path | Behavior |
 |---|---|
-| `GET /rest/api/3/permissions` | Returns the built-in global and project permission catalog. |
+| `GET /rest/api/3/permissions` | Returns the built-in global and project permissions and those installed apps declare. |
 | `GET /rest/api/3/mypermissions` | Evaluates selected permissions in global, project, issue, or comment context. |
 | `POST /rest/api/3/permissions/check` | Evaluates bounded global and project permission batches, including another user for administrators. |
 | `POST /rest/api/3/permissions/project` | Returns active projects where the caller has every requested permission. |
@@ -39,7 +39,12 @@ and assignment mutation writes an immutable action in the same transaction.
 ## Catalog, holders, and defaults
 
 The catalog contains Jira's 36 built-in project permissions and nine global
-permission keys. Project grants accept `anyone`, application-role, assignee,
+permission keys, followed by the permissions active apps declare through
+Connect's `jiraProjectPermissions` and `jiraGlobalPermissions` modules. An app
+permission's key joins the app key and module key with two underscores. Schemes
+grant built-in and app project permissions only. An app global permission whose
+`defaultGrants` include `ALL` is held by every site member, and one granted to
+`JIRA-ADMINISTRATORS` is held by administrators. Project grants accept `anyone`, application-role, assignee,
 group, group-custom-field, project-lead, project-role, reporter, service-portal
 customer, user, and user-custom-field holders. User, group, and role holders are
 validated against the current workspace. Group names remain synchronized after
@@ -85,8 +90,8 @@ which matches Jira's context-dependent permission-query behavior.
   schema as part of the migration and integration gates.
 
 Grants to `anyone` open reads to anonymous callers on the operations Jira
-marks as anonymous; see `docs/ANONYMOUS_ACCESS.md`. App-defined permission
-registration, global permission administration, and action-specific enforcement
+marks as anonymous; see `docs/ANONYMOUS_ACCESS.md`. Global permission
+administration and action-specific enforcement
 for every remaining issue mutation are later PR 1 work. Holder expansion beans
 and every Jira pagination and error edge also remain under contract review.
 
