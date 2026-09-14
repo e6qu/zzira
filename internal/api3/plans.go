@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -25,8 +24,6 @@ func planError(w http.ResponseWriter, err error) {
 		status, message = http.StatusNotFound, "The plan or team was not found."
 	case errors.Is(err, store.ErrPlanNotActive):
 		status, message = http.StatusConflict, "The plan is not active."
-	default:
-		log.Printf("api3: plans: %v", err)
 	}
 	writeJSON(w, status, map[string]any{"errorMessages": []string{message}, "errors": map[string]string{}, "status": status})
 }
