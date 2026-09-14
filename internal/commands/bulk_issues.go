@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 
@@ -33,6 +34,8 @@ func (s *Service) ExecuteBulkIssueTask(ctx context.Context, task store.APITask) 
 	if err := json.Unmarshal(task.Payload, &payload); err != nil {
 		return fmt.Errorf("decode bulk edit operation: %w", err)
 	}
+	collector := &store.BulkNotificationCollector{}
+	ctx = store.WithBulkNotifications(ctx, collector)
 	processed := make([]int64, 0, len(payload.Issues))
 	failed := map[string][]string{}
 	invalid := 0
@@ -70,7 +73,19 @@ func (s *Service) ExecuteBulkIssueTask(ctx context.Context, task store.APITask) 
 	if len(failed) > 0 {
 		result["failedAccessibleIssues"] = failed
 	}
+	if err := s.finishBulkNotifications(ctx, task, "edit", payload.SendBulkNotification, collector); err != nil {
+		return err
+	}
 	return s.Store.CompleteAPITask(ctx, task, fmt.Sprintf("Processed %d of %d issues.", len(processed), len(payload.Issues)), result)
+}
+
+// finishBulkNotifications sends the bulk change emails a task gathered when
+// the request asked for them; otherwise the task's issue events send none.
+func (s *Service) finishBulkNotifications(ctx context.Context, task store.APITask, operation string, send bool, collector *store.BulkNotificationCollector) error {
+	if !send {
+		return nil
+	}
+	return s.Store.WriteBulkNotificationEmails(ctx, task.WorkspaceID, task.ID, operation, collector)
 }
 
 func (s *Service) executeBulkTransitionTask(ctx context.Context, task store.APITask) error {
@@ -78,6 +93,8 @@ func (s *Service) executeBulkTransitionTask(ctx context.Context, task store.APIT
 	if err := json.Unmarshal(task.Payload, &payload); err != nil {
 		return fmt.Errorf("decode bulk transition operation: %w", err)
 	}
+	collector := &store.BulkNotificationCollector{}
+	ctx = store.WithBulkNotifications(ctx, collector)
 	processed := make([]int64, 0, len(payload.Issues))
 	failed := map[string][]string{}
 	invalid := 0
@@ -120,6 +137,9 @@ func (s *Service) executeBulkTransitionTask(ctx context.Context, task store.APIT
 	if len(failed) > 0 {
 		result["failedAccessibleIssues"] = failed
 	}
+	if err := s.finishBulkNotifications(ctx, task, "transition", payload.SendBulkNotification, collector); err != nil {
+		return err
+	}
 	return s.Store.CompleteAPITask(ctx, task, fmt.Sprintf("Processed %d of %d issues.", len(processed), len(payload.Issues)), result)
 }
 
@@ -128,6 +148,8 @@ func (s *Service) executeBulkMoveTask(ctx context.Context, task store.APITask) e
 	if err := json.Unmarshal(task.Payload, &payload); err != nil {
 		return fmt.Errorf("decode bulk move operation: %w", err)
 	}
+	collector := &store.BulkNotificationCollector{}
+	ctx = store.WithBulkNotifications(ctx, collector)
 	processed := make([]int64, 0, len(payload.Issues))
 	failed := map[string][]string{}
 	invalid := 0
@@ -154,21 +176,11 @@ func (s *Service) executeBulkMoveTask(ctx context.Context, task store.APITask) e
 				}
 				if !visible {
 					invalid++
-				} else if children, childErr := s.Store.ChildIssues(ctx, task.WorkspaceID, issue.ID); childErr != nil {
-					return childErr
-				} else if len(children) > 0 && issue.ProjectID != item.ProjectID {
-					failed[strconv.FormatInt(item.JiraID, 10)] = []string{"moving a parent with implicit subtasks requires an explicit subtask mapping"}
+				} else if moved, moveErr := s.bulkMoveIssue(ctx, task, issue, item); moveErr != nil {
+					failed[strconv.FormatInt(item.JiraID, 10)] = []string{moveErr.Error()}
+					processed = append(processed, moved...)
 				} else {
-					statusID, statusErr := s.bulkMoveStatus(ctx, issue.Status.ID, item)
-					if statusErr != nil {
-						failed[strconv.FormatInt(item.JiraID, 10)] = []string{statusErr.Error()}
-					} else if _, _, moveErr := s.Store.MoveIssue(ctx, task.SubmittedBy, task.WorkspaceID, issue.ID, store.IssueMove{
-						ProjectID: item.ProjectID, IssueTypeID: item.IssueTypeID, ParentID: item.ParentID, StatusID: statusID, TaskID: task.ID,
-					}); moveErr != nil {
-						failed[strconv.FormatInt(item.JiraID, 10)] = []string{moveErr.Error()}
-					} else {
-						processed = append(processed, item.JiraID)
-					}
+					processed = append(processed, moved...)
 				}
 			}
 		}
@@ -181,7 +193,221 @@ func (s *Service) executeBulkMoveTask(ctx context.Context, task store.APITask) e
 	if len(failed) > 0 {
 		result["failedAccessibleIssues"] = failed
 	}
+	if err := s.finishBulkNotifications(ctx, task, "move", payload.SendBulkNotification, collector); err != nil {
+		return err
+	}
 	return s.Store.CompleteAPITask(ctx, task, fmt.Sprintf("Processed %d of %d issues.", len(processed), len(payload.Issues)), result)
+}
+
+// bulkMoveIssue moves one work item and, across projects, the sub-tasks that
+// move with it. It returns the Jira ids moved.
+func (s *Service) bulkMoveIssue(ctx context.Context, task store.APITask, issue *models.Issue, item store.BulkIssueMoveTaskItem) ([]int64, error) {
+	children, err := s.Store.ChildIssues(ctx, task.WorkspaceID, issue.ID)
+	if err != nil {
+		return nil, err
+	}
+	crossProject := issue.ProjectID != item.ProjectID
+	// Sub-tasks move with their parent, each under a sub-task type the
+	// destination offers.
+	childTypes := map[string]string{}
+	if crossProject && len(children) > 0 {
+		destinationTypes, typeErr := s.Store.ProjectIssueTypes(ctx, task.WorkspaceID, item.ProjectID, nil)
+		if typeErr != nil {
+			return nil, typeErr
+		}
+		subtaskTypes := map[string]bool{}
+		firstSubtaskType := ""
+		for _, issueType := range destinationTypes {
+			if issueType.Subtask {
+				subtaskTypes[issueType.ID] = true
+				if firstSubtaskType == "" {
+					firstSubtaskType = issueType.ID
+				}
+			}
+		}
+		for _, child := range children {
+			switch {
+			case subtaskTypes[child.IssueType.ID]:
+				childTypes[child.ID] = child.IssueType.ID
+			case item.InferSubtaskTypeDefault && firstSubtaskType != "":
+				childTypes[child.ID] = firstSubtaskType
+			default:
+				return nil, fmt.Errorf("sub-task %s needs a sub-task type the destination project offers; set inferSubtaskTypeDefault", child.Key)
+			}
+		}
+	}
+	move, err := s.bulkMoveTarget(ctx, task, issue, item, item.IssueTypeID)
+	if err != nil {
+		return nil, err
+	}
+	move.ParentID, move.TaskID = item.ParentID, task.ID
+	updated, action, err := s.Store.MoveIssue(ctx, task.SubmittedBy, task.WorkspaceID, issue.ID, move)
+	if err != nil {
+		return nil, err
+	}
+	if err = s.deliverIssueEvent(ctx, task.WorkspaceID, task.SubmittedBy, updated, action, 10, "issue_moved", "moved"); err != nil {
+		return nil, err
+	}
+	moved := []int64{item.JiraID}
+	if !crossProject {
+		return moved, nil
+	}
+	for _, child := range children {
+		childItem := item
+		childItem.IssueTypeID, childItem.ParentID = childTypes[child.ID], updated.ID
+		childMove, childErr := s.bulkMoveTarget(ctx, task, child, childItem, childItem.IssueTypeID)
+		if childErr != nil {
+			return moved, fmt.Errorf("sub-task %s: %w", child.Key, childErr)
+		}
+		childMove.ParentID, childMove.TaskID = updated.ID, task.ID
+		movedChild, childAction, childErr := s.Store.MoveIssue(ctx, task.SubmittedBy, task.WorkspaceID, child.ID, childMove)
+		if childErr != nil {
+			return moved, fmt.Errorf("sub-task %s: %w", child.Key, childErr)
+		}
+		if childErr = s.deliverIssueEvent(ctx, task.WorkspaceID, task.SubmittedBy, movedChild, childAction, 10, "issue_moved", "moved"); childErr != nil {
+			return moved, childErr
+		}
+		moved = append(moved, movedChild.JiraID)
+	}
+	return moved, nil
+}
+
+// bulkMoveTarget resolves a work item's destination status, classification
+// and required field values.
+func (s *Service) bulkMoveTarget(ctx context.Context, task store.APITask, issue *models.Issue, item store.BulkIssueMoveTaskItem, issueTypeID string) (store.IssueMove, error) {
+	item.IssueTypeID = issueTypeID
+	move := store.IssueMove{ProjectID: item.ProjectID, IssueTypeID: issueTypeID}
+	statusID, err := s.bulkMoveStatus(ctx, issue.Status.ID, item)
+	if err != nil {
+		return move, err
+	}
+	move.StatusID = statusID
+
+	level, err := s.Store.IssueClassificationLevel(ctx, task.WorkspaceID, issue.ID)
+	if err != nil {
+		return move, err
+	}
+	switch {
+	case item.InferClassificationDefaults && level == "":
+		destinationDefault, defaultErr := s.Store.ProjectDefaultClassificationLevel(ctx, task.WorkspaceID, item.ProjectID)
+		if defaultErr != nil {
+			return move, defaultErr
+		}
+		move.ClassificationLevel = &destinationDefault
+	case !item.InferClassificationDefaults && level != "":
+		mapped, ok := item.ClassificationMappings[level]
+		if !ok {
+			return move, fmt.Errorf("classification %q requires a target classification", level)
+		}
+		move.ClassificationLevel = &mapped
+	}
+
+	behaviour, err := s.Store.ResolveFieldBehaviour(ctx, task.WorkspaceID, item.ProjectID, issueTypeID)
+	if err != nil {
+		return move, err
+	}
+	customFields, err := s.Store.CustomFieldsForWorkspace(ctx, task.WorkspaceID)
+	if err != nil {
+		return move, err
+	}
+	fieldTypes := map[string]string{}
+	for _, field := range customFields {
+		fieldTypes[field.ID] = field.Type
+	}
+	required := make([]string, 0)
+	for fieldID, rule := range behaviour {
+		if rule.IsRequired {
+			required = append(required, fieldID)
+		}
+	}
+	sort.Strings(required)
+	for _, fieldID := range required {
+		present := bulkMoveFieldPresent(issue, fieldID)
+		supplied, hasValue := item.MandatoryFields[fieldID]
+		switch {
+		case item.InferFieldDefaults:
+			if !present {
+				return move, fmt.Errorf("field %s is required in the destination and has no value", fieldID)
+			}
+		case present && (!hasValue || supplied.Retain):
+		case !hasValue:
+			return move, fmt.Errorf("field %s is required in the destination; provide it in targetMandatoryFields", fieldID)
+		default:
+			fieldType, custom := fieldTypes[fieldID]
+			if !custom {
+				return move, fmt.Errorf("field %s cannot be set by a bulk move", fieldID)
+			}
+			value, valueErr := bulkMoveFieldValue(fieldType, supplied)
+			if valueErr != nil {
+				return move, fmt.Errorf("field %s: %w", fieldID, valueErr)
+			}
+			if move.Fields == nil {
+				move.Fields = map[string]json.RawMessage{}
+			}
+			move.Fields[fieldID] = value
+		}
+	}
+	if len(move.Fields) > 0 {
+		// Option values are stored by option id, as a create or edit stores them.
+		if err = s.normalizeOptionFields(ctx, task.WorkspaceID, item.ProjectID, issueTypeID, move.Fields); err != nil {
+			return move, err
+		}
+		if err = s.validateCustomFields(ctx, item.ProjectID, move.Fields); err != nil {
+			return move, err
+		}
+	}
+	return move, nil
+}
+
+// bulkMoveFieldPresent reports whether a work item already holds a value for
+// a field.
+func bulkMoveFieldPresent(issue *models.Issue, fieldID string) bool {
+	switch fieldID {
+	case "summary":
+		return strings.TrimSpace(issue.Summary) != ""
+	case "labels":
+		return len(issue.Labels) > 0
+	}
+	raw, ok := issue.Fields[fieldID]
+	if !ok {
+		return false
+	}
+	trimmed := strings.TrimSpace(string(raw))
+	return trimmed != "" && trimmed != "null" && trimmed != `""` && trimmed != "[]" && trimmed != "{}"
+}
+
+// bulkMoveFieldValue turns a bulk move's raw values or ADF document into the
+// stored value of a custom field of the given type.
+func bulkMoveFieldValue(fieldType string, supplied store.MoveMandatoryField) (json.RawMessage, error) {
+	if supplied.ADF {
+		return supplied.Value, nil
+	}
+	var values []string
+	if err := json.Unmarshal(supplied.Value, &values); err != nil || len(values) == 0 {
+		return nil, fmt.Errorf("needs at least one value")
+	}
+	var value any
+	switch fieldType {
+	case models.CustomFieldSelect:
+		value = map[string]string{"value": values[0]}
+	case models.CustomFieldMultiSelect:
+		options := make([]map[string]string, 0, len(values))
+		for _, option := range values {
+			options = append(options, map[string]string{"value": option})
+		}
+		value = options
+	case models.CustomFieldNumber:
+		number, err := strconv.ParseFloat(values[0], 64)
+		if err != nil {
+			return nil, fmt.Errorf("needs a number")
+		}
+		value = number
+	case models.CustomFieldLabels, models.CustomFieldMultiUser, models.CustomFieldMultiGroup, models.CustomFieldMultiVersion:
+		value = values
+	default:
+		value = values[0]
+	}
+	return json.Marshal(value)
 }
 
 func (s *Service) bulkMoveStatus(ctx context.Context, sourceStatusID string, item store.BulkIssueMoveTaskItem) (string, error) {
@@ -235,6 +461,8 @@ func (s *Service) executeBulkDeleteTask(ctx context.Context, task store.APITask)
 	if err := json.Unmarshal(task.Payload, &payload); err != nil {
 		return fmt.Errorf("decode bulk delete operation: %w", err)
 	}
+	collector := &store.BulkNotificationCollector{}
+	ctx = store.WithBulkNotifications(ctx, collector)
 	processed := make([]int64, 0, len(payload.Issues))
 	failed := map[string][]string{}
 	invalid := 0
@@ -282,6 +510,9 @@ func (s *Service) executeBulkDeleteTask(ctx context.Context, task store.APITask)
 	}
 	if len(failed) > 0 {
 		result["failedAccessibleIssues"] = failed
+	}
+	if err := s.finishBulkNotifications(ctx, task, "delete", payload.SendBulkNotification, collector); err != nil {
+		return err
 	}
 	return s.Store.CompleteAPITask(ctx, task, fmt.Sprintf("Processed %d of %d issues.", len(processed), len(payload.Issues)), result)
 }

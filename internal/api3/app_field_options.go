@@ -255,7 +255,7 @@ func (h *Handler) deselectAppFieldOption(w http.ResponseWriter, r *http.Request,
 		value = encoded
 	}
 	task, err := h.Store.EnqueueBulkEditTask(r.Context(), workspaceID, actorID, items,
-		[]store.BulkIssueEditOperation{{FieldID: fieldID, Action: "SET", Value: value}})
+		[]store.BulkIssueEditOperation{{FieldID: fieldID, Action: "SET", Value: value}}, true)
 	if err != nil {
 		appFieldOptionError(w, err)
 		return

@@ -482,6 +482,17 @@ func (s *Store) DeliverIssueNotification(ctx context.Context, workspaceID, actor
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	if err = deliverIssueNotificationTx(ctx, tx, workspaceID, actorID, issueID, actionSeq, eventID, kind, message); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// deliverIssueNotificationTx resolves a scheme against the work item as it
+// stands in tx and writes the inbox actions and emails. Under a bulk
+// collector the emails are gathered into one bulk change email per
+// recipient instead.
+func deliverIssueNotificationTx(ctx context.Context, tx pgx.Tx, workspaceID, actorID, issueID string, actionSeq, eventID int64, kind, message string) error {
 	event, ok, err := issueEvent(ctx, tx, workspaceID, eventID)
 	if err != nil {
 		return err
@@ -668,17 +679,25 @@ func (s *Store) DeliverIssueNotification(ctx context.Context, workspaceID, actor
 		if err = appendAction(ctx, tx, &models.Action{WorkspaceID: workspaceID, Seq: seq, EntityType: models.EntityNotification, EntityID: notification.ID, Op: models.OpUpsert, SchemaV: models.SchemaVersion, Payload: payload, ActorID: actorID}); err != nil {
 			return err
 		}
-		dedupe := fmt.Sprintf("issue-notification:%s:%d:%d:%s", workspaceID, actionSeq, eventID, userID)
-		if _, err = tx.Exec(ctx, `INSERT INTO email_outbox(workspace_id,recipient,subject,body,dedupe_key) VALUES($1,$2,$3,$4,$5) ON CONFLICT(dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`, workspaceID, email, subject, body, dedupe); err != nil {
-			return err
+		if collector := bulkNotifications(ctx); collector != nil {
+			collector.add(email, subject)
+		} else {
+			dedupe := fmt.Sprintf("issue-notification:%s:%d:%d:%s", workspaceID, actionSeq, eventID, userID)
+			if _, err = tx.Exec(ctx, `INSERT INTO email_outbox(workspace_id,recipient,subject,body,dedupe_key) VALUES($1,$2,$3,$4,$5) ON CONFLICT(dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`, workspaceID, email, subject, body, dedupe); err != nil {
+				return err
+			}
 		}
 		delete(externalEmails, strings.ToLower(email))
 	}
 	for email := range externalEmails {
+		if collector := bulkNotifications(ctx); collector != nil {
+			collector.add(email, subject)
+			continue
+		}
 		dedupe := fmt.Sprintf("issue-notification:%s:%d:%d:email:%s", workspaceID, actionSeq, eventID, email)
 		if _, err = tx.Exec(ctx, `INSERT INTO email_outbox(workspace_id,recipient,subject,body,dedupe_key) VALUES($1,$2,$3,$4,$5) ON CONFLICT(dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`, workspaceID, email, subject, body, dedupe); err != nil {
 			return err
 		}
 	}
-	return tx.Commit(ctx)
+	return nil
 }

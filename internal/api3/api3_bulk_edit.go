@@ -63,7 +63,7 @@ func (h *Handler) submitBulkEdit(w http.ResponseWriter, r *http.Request) {
 	for _, issue := range issues {
 		items = append(items, store.BulkIssueTaskItem{ID: issue.ID, JiraID: issue.JiraID})
 	}
-	task, err := h.Store.EnqueueBulkEditTask(r.Context(), workspaceID, actorID, items, operations)
+	task, err := h.Store.EnqueueBulkEditTask(r.Context(), workspaceID, actorID, items, operations, request.SendBulkNotification == nil || *request.SendBulkNotification)
 	if errors.Is(err, store.ErrBulkTaskLimit) {
 		bulkOperationError(w, http.StatusBadRequest, err.Error())
 		return

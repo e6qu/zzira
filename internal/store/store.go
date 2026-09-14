@@ -954,8 +954,9 @@ func (s *Store) CreateEstimatedIssueForReporter(ctx context.Context, actorID, re
 	_, err = tx.Exec(ctx, `
 		INSERT INTO issues (id, workspace_id, project_id, key, summary, description, fields, labels,
 		                    status_id, issuetype_id, priority_id, assignee_id, reporter_id, security_level_id, parent_id, updated_seq,
-		                    original_estimate_seconds, remaining_estimate_seconds)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,0,$16,$17)`,
+		                    original_estimate_seconds, remaining_estimate_seconds, classification_level)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,0,$16,$17,
+		        (SELECT default_classification_level FROM projects WHERE id=$3))`,
 		issueID, wsID, projectID, issueKey, summary, description, fieldsJSON, labels, statusID, issueTypeID, nilIfEmpty(priorityID), nilIfEmpty(assigneeID), reporter, nilIfEmpty(securityLevelID), nilIfEmpty(parentID),
 		estimates.Original, estimates.Remaining)
 	if err != nil {

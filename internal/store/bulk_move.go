@@ -14,6 +14,26 @@ type IssueMove struct {
 	ParentID    string
 	StatusID    string
 	TaskID      string
+	// Fields sets values for fields the destination requires.
+	Fields map[string]json.RawMessage
+	// ClassificationLevel, when set, replaces the work item's classification;
+	// an empty value clears it.
+	ClassificationLevel *string
+}
+
+// IssueClassificationLevel returns a work item's data classification level.
+func (s *Store) IssueClassificationLevel(ctx context.Context, workspaceID, issueID string) (string, error) {
+	var level string
+	err := s.Pool.QueryRow(ctx, `SELECT COALESCE(classification_level,'') FROM issues WHERE workspace_id=$1 AND id=$2`, workspaceID, issueID).Scan(&level)
+	return level, err
+}
+
+// ProjectDefaultClassificationLevel returns a project's default data
+// classification level, or an empty string.
+func (s *Store) ProjectDefaultClassificationLevel(ctx context.Context, workspaceID, projectID string) (string, error) {
+	var level string
+	err := s.Pool.QueryRow(ctx, `SELECT COALESCE(default_classification_level,'') FROM projects WHERE workspace_id=$1 AND id=$2`, workspaceID, projectID).Scan(&level)
+	return level, err
 }
 
 // MoveIssue changes an issue's project/type/key mapping and records the task
@@ -94,6 +114,22 @@ func (s *Store) MoveIssue(ctx context.Context, actorID, workspaceID, issueID str
 			}
 		}
 	}
+	if len(move.Fields) > 0 {
+		if current.ProjectID == move.ProjectID {
+			fields = cloneRawFields(current.Fields)
+		}
+		for field, value := range move.Fields {
+			fields[field] = value
+		}
+	}
+	var currentClassification string
+	if err := tx.QueryRow(ctx, `SELECT COALESCE(classification_level,'') FROM issues WHERE id=$1`, issueID).Scan(&currentClassification); err != nil {
+		return nil, nil, err
+	}
+	classification := currentClassification
+	if move.ClassificationLevel != nil {
+		classification = *move.ClassificationLevel
+	}
 	fieldsJSON, err := json.Marshal(fields)
 	if err != nil {
 		return nil, nil, err
@@ -104,9 +140,9 @@ func (s *Store) MoveIssue(ctx context.Context, actorID, workspaceID, issueID str
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE issues SET project_id=$3,key=$4,issuetype_id=$5,parent_id=$6,status_id=$7,
-			security_level_id=$8,fields=$9,updated_seq=$10,updated_at=now()
+			security_level_id=$8,fields=$9,updated_seq=$10,updated_at=now(),classification_level=$11
 		WHERE workspace_id=$1 AND id=$2`, workspaceID, issueID, move.ProjectID, newKey, move.IssueTypeID,
-		nilIfEmpty(move.ParentID), move.StatusID, nilIfEmpty(securityLevelID), fieldsJSON, seq); err != nil {
+		nilIfEmpty(move.ParentID), move.StatusID, nilIfEmpty(securityLevelID), fieldsJSON, seq, nilIfEmpty(classification)); err != nil {
 		return nil, nil, err
 	}
 	updated, err := scanIssue(tx.QueryRow(ctx, issueJoin+`WHERE i.workspace_id=$1 AND i.id=$2`, workspaceID, issueID))
@@ -133,6 +169,12 @@ func (s *Store) MoveIssue(ctx context.Context, actorID, workspaceID, issueID str
 	}
 	if current.SecurityLevelID != securityLevelID {
 		diff["security"] = diffItem("security", current.SecurityLevelID, current.SecurityLevelID, securityLevelID, securityLevelID)
+	}
+	if currentClassification != classification {
+		diff["classification"] = diffItem("classification", currentClassification, currentClassification, classification, classification)
+	}
+	for field := range move.Fields {
+		diff[field] = diffItem(field, "", string(current.Fields[field]), "", string(move.Fields[field]))
 	}
 	payload, err := json.Marshal(models.IssueUpdatePayload{Diff: diff, Issue: *updated})
 	if err != nil {
