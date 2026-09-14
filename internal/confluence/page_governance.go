@@ -255,21 +255,17 @@ func (h *Handler) pageOperations(w http.ResponseWriter, r *http.Request, ws, act
 	if !validPageID(w, id) || !supportedQuery(w, r) {
 		return
 	}
-	if _, err := h.Store.WikiPage(r.Context(), ws, actor, id); err != nil {
-		writeError(w, err)
-		return
-	}
-	canUpdate, err := h.Store.CanUpdateWikiPage(r.Context(), ws, actor, id)
+	page, err := h.Store.WikiPage(r.Context(), ws, actor, id)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	canDelete, err := h.Store.CanDeleteWikiPage(r.Context(), ws, actor, id)
+	operations, err := h.pageOperationValues(r.Context(), ws, actor, page)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	respond(w, 200, map[string]any{"operations": pageOperationsFor(canUpdate, canDelete)})
+	respond(w, 200, map[string]any{"operations": operations})
 }
 
 func (h *Handler) pageCustomContent(w http.ResponseWriter, r *http.Request, ws, actor, id string) {

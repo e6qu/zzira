@@ -66,21 +66,3 @@ func (h *Handler) spaceOperations(w http.ResponseWriter, r *http.Request, ws, ac
 	}
 	respond(w, 200, map[string]any{"operations": operations})
 }
-
-func (h *Handler) spaceOperationValues(r *http.Request, ws, actor, id string) ([]any, error) {
-	if _, err := h.Store.WikiSpace(r.Context(), ws, actor, id); err != nil {
-		return nil, err
-	}
-	operations := []any{map[string]string{"operation": "read", "targetType": "space"}}
-	admin, err := h.Store.CanAdministerWikiSpace(r.Context(), ws, actor, id)
-	if err != nil {
-		return nil, err
-	}
-	if admin {
-		operations = append(operations,
-			map[string]string{"operation": "update", "targetType": "space"},
-			map[string]string{"operation": "delete", "targetType": "space"},
-		)
-	}
-	return operations, nil
-}

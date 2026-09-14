@@ -12,17 +12,6 @@ import (
 	"github.com/e6qu/zzira/internal/models"
 )
 
-func pageOperationsFor(canUpdate, canDelete bool) []any {
-	operations := []any{map[string]string{"operation": "read", "targetType": "page"}}
-	if canUpdate {
-		operations = append(operations, map[string]string{"operation": "update", "targetType": "page"})
-	}
-	if canDelete {
-		operations = append(operations, map[string]string{"operation": "delete", "targetType": "page"})
-	}
-	return operations
-}
-
 func (h *Handler) pageByID(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
 	if !validPageID(w, id) || !supportedQuery(w, r, "body-format", "get-draft", "status", "version", "include-labels", "include-properties", "include-operations", "include-likes", "include-versions", "include-version", "include-favorited-by-current-user-status", "include-webresources", "include-collaborators", "include-direct-children") {
 		return
@@ -166,17 +155,17 @@ func (h *Handler) pageByID(w http.ResponseWriter, r *http.Request, ws, actor, id
 		bean["versions"] = wrap(values)
 	}
 	if flags["include-operations"] {
-		canUpdate, loadErr := h.Store.CanUpdateWikiPage(r.Context(), ws, actor, id)
+		current, loadErr := h.Store.WikiPage(r.Context(), ws, actor, id)
 		if loadErr != nil {
 			writeError(w, loadErr)
 			return
 		}
-		canDelete, loadErr := h.Store.CanDeleteWikiPage(r.Context(), ws, actor, id)
+		operations, loadErr := h.pageOperationValues(r.Context(), ws, actor, current)
 		if loadErr != nil {
 			writeError(w, loadErr)
 			return
 		}
-		bean["operations"] = wrap(pageOperationsFor(canUpdate, canDelete))
+		bean["operations"] = wrap(operations)
 	}
 	if flags["include-direct-children"] {
 		relations, loadErr := h.Store.WikiTreeDescendants(r.Context(), ws, actor, id, "page", 1)

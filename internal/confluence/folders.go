@@ -159,25 +159,6 @@ func (h *Handler) customContentChildren(w http.ResponseWriter, r *http.Request, 
 	h.list(w, r, values)
 }
 
-func (h *Handler) contentOperationList(r *http.Request, ws, actor, id, contentType string) ([]any, error) {
-	canUpdate, err := h.Store.CanUpdateWikiContent(r.Context(), ws, actor, id, contentType)
-	if err != nil {
-		return nil, err
-	}
-	canDelete, err := h.Store.CanDeleteWikiContent(r.Context(), ws, actor, id, contentType)
-	if err != nil {
-		return nil, err
-	}
-	operations := []any{map[string]string{"operation": "read", "targetType": contentType}}
-	if canUpdate {
-		operations = append(operations, map[string]string{"operation": "update", "targetType": contentType})
-	}
-	if canDelete {
-		operations = append(operations, map[string]string{"operation": "delete", "targetType": contentType})
-	}
-	return operations, nil
-}
-
 func (h *Handler) contentOperations(w http.ResponseWriter, r *http.Request, ws, actor, id, contentType string) {
 	if !validPageID(w, id) || !supportedQuery(w, r) {
 		return
