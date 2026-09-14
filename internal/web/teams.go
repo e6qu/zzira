@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -14,6 +15,9 @@ import (
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
 )
+
+// teamIDPattern matches an Atlassian team id.
+var teamIDPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
 type teamsPageData struct {
 	Teams             []store.AtlassianTeam
@@ -45,7 +49,7 @@ func (h *Handler) TeamsPage(w http.ResponseWriter, r *http.Request) {
 		}
 		id, err := h.Store.CreateAtlassianTeam(r.Context(), workspaceID, user.ID, r.PostFormValue("name"), r.PostFormValue("description"))
 		if err == nil {
-			http.Redirect(w, r, "/teams/"+id+"?saved="+url.QueryEscape("Team created"), http.StatusSeeOther)
+			http.Redirect(w, r, "/teams/"+url.PathEscape(id)+"?saved="+url.QueryEscape("Team created"), http.StatusSeeOther)
 			return
 		}
 		if !errors.Is(err, store.ErrPlanValidation) {
@@ -73,6 +77,10 @@ func (h *Handler) TeamPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	teamID := r.PathValue("id")
+	if !teamIDPattern.MatchString(teamID) {
+		http.NotFound(w, r)
+		return
+	}
 	team, err := h.Store.AtlassianTeam(r.Context(), workspaceID, teamID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		http.NotFound(w, r)
@@ -109,7 +117,7 @@ func (h *Handler) TeamPage(w http.ResponseWriter, r *http.Request) {
 				if r.PostFormValue("action") == "remove" {
 					message = "Member removed"
 				}
-				http.Redirect(w, r, "/teams/"+teamID+"?saved="+url.QueryEscape(message), http.StatusSeeOther)
+				http.Redirect(w, r, "/teams/"+url.PathEscape(team.ID)+"?saved="+url.QueryEscape(message), http.StatusSeeOther)
 				return
 			}
 		case "delete":
