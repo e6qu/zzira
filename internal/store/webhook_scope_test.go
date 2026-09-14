@@ -63,7 +63,7 @@ func TestWebhookClaimsAreWorkspaceScopedAndBounded(t *testing.T) {
 		VALUES ($1,4,'delivering',100)`, wh.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.MarkWebhookDelivery(ctx, wh.ID, 4, false, "still unavailable"); err != nil {
+	if err := st.MarkWebhookDelivery(ctx, wh.ID, 4, false, "still unavailable", ""); err != nil {
 		t.Fatalf("high-attempt retry overflowed: %v", err)
 	}
 	var attempts int

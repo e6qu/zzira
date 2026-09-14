@@ -1419,6 +1419,11 @@ func (s *Store) CreateWorkflow(ctx context.Context, workspaceID string, wf workf
 	if tag.RowsAffected() != 1 {
 		return fmt.Errorf("%w: workflow id belongs to another workspace", ErrAdminConflict)
 	}
+	if _, err := tx.Exec(ctx, `INSERT INTO workflow_versions(workflow_id,version,def)
+		SELECT id,version,def FROM workflows WHERE id=$1
+		ON CONFLICT (workflow_id,version) DO UPDATE SET def=EXCLUDED.def, written_at=now()`, wf.ID); err != nil {
+		return err
+	}
 	return tx.Commit(ctx)
 }
 
@@ -1624,6 +1629,12 @@ func (s *Store) finishWorkflowDraft(ctx context.Context, workspaceID, actorID, w
 	}
 	if affected != 1 {
 		return ErrAdminConflict
+	}
+	if publish {
+		if _, err := tx.Exec(ctx, `INSERT INTO workflow_versions(workflow_id,version,def,author_id)
+			SELECT id,version,def,$3 FROM workflows WHERE id=$1 AND workspace_id=$2 ON CONFLICT DO NOTHING`, workflowID, workspaceID, actorID); err != nil {
+			return err
+		}
 	}
 	action := "workflow.draft.discarded"
 	if publish {

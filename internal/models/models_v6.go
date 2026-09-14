@@ -1,5 +1,7 @@
 package models
 
+import "time"
+
 const (
 	EntityTombstone = "tombstone"
 
@@ -69,6 +71,19 @@ type Webhook struct {
 	JQL      string   `json:"jql"`
 	Active   bool     `json:"active"`
 	StartSeq int64    `json:"-"`
+	// JiraID is the webhook id clients see.
+	JiraID int64 `json:"-"`
+	// InstallationID is the app that registered a dynamic webhook; empty for
+	// an administrator's webhook.
+	InstallationID string     `json:"-"`
+	ExpiresAt      *time.Time `json:"-"`
+	FieldIDs       []string   `json:"-"`
+	PropertyKeys   []string   `json:"-"`
+	Name           string     `json:"-"`
+	ExcludeBody    bool       `json:"-"`
+	UpdatedAt      time.Time  `json:"-"`
+	UpdatedBy      string     `json:"-"`
+	UpdatedByName  string     `json:"-"`
 }
 
 const EntityIssueLink = "issue_link"

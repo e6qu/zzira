@@ -9,6 +9,7 @@ import (
 	neturl "net/url"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -715,20 +716,7 @@ func (s *Store) CreateWebhook(ctx context.Context, workspaceID, url string, even
 }
 
 func (s *Store) Webhooks(ctx context.Context, workspaceID string) ([]*models.Webhook, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT id, url, events, jql, active, start_seq FROM webhooks WHERE workspace_id=$1 ORDER BY created_at`, workspaceID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []*models.Webhook
-	for rows.Next() {
-		w := &models.Webhook{}
-		if err := rows.Scan(&w.ID, &w.URL, &w.Events, &w.JQL, &w.Active, &w.StartSeq); err != nil {
-			return nil, err
-		}
-		out = append(out, w)
-	}
-	return out, rows.Err()
+	return s.queryWebhooks(ctx, `w.workspace_id=$1 ORDER BY w.created_at, w.id`, workspaceID)
 }
 
 func (s *Store) DeleteWebhook(ctx context.Context, workspaceID, id string) error {
@@ -749,7 +737,7 @@ func (s *Store) ClaimNewWebhookSeqs(ctx context.Context, workspaceID string, upt
 		return err
 	}
 	for _, w := range webhooks {
-		if !w.Active {
+		if !w.Active || (w.ExpiresAt != nil && !w.ExpiresAt.After(time.Now())) {
 			continue
 		}
 		if _, err := s.Pool.Exec(ctx, `
@@ -774,9 +762,9 @@ func (s *Store) ClaimPendingWebhookBatch(ctx context.Context, workspaceID string
 
 	w := &models.Webhook{}
 	err = tx.QueryRow(ctx, `
-		SELECT w.id, w.url, w.events, w.jql
+		SELECT w.id, w.url, w.events, w.jql, w.jira_id, COALESCE(w.installation_id,''), COALESCE(w.field_ids_filter,'{}'), w.exclude_body
 		FROM webhooks w
-		WHERE w.workspace_id=$1 AND w.active
+		WHERE w.workspace_id=$1 AND w.active AND (w.expires_at IS NULL OR w.expires_at > now())
 		  AND EXISTS (
 			SELECT 1 FROM webhook_deliveries d
 			WHERE d.webhook_id = w.id
@@ -792,7 +780,7 @@ func (s *Store) ClaimPendingWebhookBatch(ctx context.Context, workspaceID string
 				    OR (d.state = 'delivering' AND d.claimed_at <= now() - interval '2 minutes'))
 		)
 		LIMIT 1
-		FOR UPDATE OF w SKIP LOCKED`, workspaceID).Scan(&w.ID, &w.URL, &w.Events, &w.JQL)
+		FOR UPDATE OF w SKIP LOCKED`, workspaceID).Scan(&w.ID, &w.URL, &w.Events, &w.JQL, &w.JiraID, &w.InstallationID, &w.FieldIDs, &w.ExcludeBody)
 	if err == pgx.ErrNoRows {
 		return nil, nil, false, nil
 	}
@@ -853,8 +841,13 @@ func (s *Store) ActionBySeq(ctx context.Context, workspaceID string, seq int64) 
 	return a, nil
 }
 
-// MarkWebhookDelivery records a delivery attempt result.
-func (s *Store) MarkWebhookDelivery(ctx context.Context, webhookID string, seq int64, delivered bool, lastErr string) error {
+// maxWebhookAttempts is how many times a delivery is tried before it is
+// abandoned and reported as a failed webhook.
+const maxWebhookAttempts = 5
+
+// MarkWebhookDelivery records a delivery attempt result. A delivery failing its
+// last attempt is abandoned, keeping the body it would have sent.
+func (s *Store) MarkWebhookDelivery(ctx context.Context, webhookID string, seq int64, delivered bool, lastErr, body string) error {
 	if delivered {
 		_, err := s.Pool.Exec(ctx, `
 			UPDATE webhook_deliveries
@@ -864,11 +857,14 @@ func (s *Store) MarkWebhookDelivery(ctx context.Context, webhookID string, seq i
 	}
 	_, err := s.Pool.Exec(ctx, `
 		UPDATE webhook_deliveries
-		SET state='failed', attempts=attempts+1, last_error=$3,
-		    next_attempt_at=now() + make_interval(
+		SET attempts=attempts+1, last_error=$3,
+		    state=CASE WHEN attempts+1 >= $4 THEN 'abandoned' ELSE 'failed' END,
+		    failed_at=CASE WHEN attempts+1 >= $4 THEN now() ELSE NULL END,
+		    body=CASE WHEN attempts+1 >= $4 THEN $5 ELSE body END,
+		    next_attempt_at=CASE WHEN attempts+1 >= $4 THEN NULL ELSE now() + make_interval(
 		      secs => LEAST(POWER(2, LEAST(attempts, 9))::int, 300)
-		    )
-		WHERE webhook_id=$1 AND seq=$2`, webhookID, seq, lastErr)
+		    ) END
+		WHERE webhook_id=$1 AND seq=$2`, webhookID, seq, lastErr, maxWebhookAttempts, body)
 	return err
 }
 

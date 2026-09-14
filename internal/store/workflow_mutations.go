@@ -156,6 +156,9 @@ func (s *Store) CreateWorkflowBatch(ctx context.Context, workspaceID, actorID st
 			return nil, nil, err
 		}
 		wf.Version = 1
+		if _, err := tx.Exec(ctx, `INSERT INTO workflow_versions(workflow_id,version,def,author_id) VALUES($1,1,$2,$3) ON CONFLICT DO NOTHING`, wf.ID, definitions[index], actorID); err != nil {
+			return nil, nil, err
+		}
 		if err := addWorkflowAudit(ctx, tx, workspaceID, actorID, "workflow.created", *wf, map[string]any{"projectId": wf.ProjectID}); err != nil {
 			return nil, nil, err
 		}
@@ -317,6 +320,9 @@ func (s *Store) UpdateWorkflowBatch(ctx context.Context, workspaceID, actorID st
 		updated := update.Workflow
 		updated.Version = currentVersion + 1
 		if _, err := tx.Exec(ctx, `UPDATE workflows SET def=$3,version=$4,published_at=now() WHERE id=$1 AND workspace_id=$2`, updated.ID, workspaceID, definitions[index], updated.Version); err != nil {
+			return nil, nil, err
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO workflow_versions(workflow_id,version,def,author_id) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING`, updated.ID, updated.Version, definitions[index], actorID); err != nil {
 			return nil, nil, err
 		}
 		updates[index].Workflow = updated

@@ -11,21 +11,6 @@ import (
 
 // ---- labels ----
 
-func (h *Handler) labelsEndpoint(w http.ResponseWriter, r *http.Request) {
-	wsID, userID, e := h.authWorkspace(r)
-	if e != nil {
-		writeJerr(w, e)
-		return
-	}
-	query := r.URL.Query().Get("query")
-	total, labels, err := h.Store.Labels(r.Context(), wsID, userID, query)
-	if err != nil {
-		jiraError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"totalCount": total, "labels": labels})
-}
-
 // ---- metadata registries ----
 
 func (h *Handler) statusesEndpoint(w http.ResponseWriter, r *http.Request) {
