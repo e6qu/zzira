@@ -155,3 +155,74 @@ test('a multi-select field keeps every chosen option', async ({ page }) => {
   const found = await (await page.request.get(`/rest/api/3/search/jql?fields=summary&jql=${encodeURIComponent(`${fieldID} = ${ids.Web} AND project = ${projectKey}`)}`, { headers: auth })).json();
   expect(found.issues.map((issue: { key: string }) => issue.key)).toEqual([issueKey]);
 });
+
+// The create form offers people, groups, dates, links and a cascading select's
+// first-level options, and issue responses describe the chosen values.
+test('the create form offers Jira field types and keeps their values', async ({ page }) => {
+  await login(page, 'demo@zzira.dev', 'demo1234');
+  const stamp = Date.now().toString(36);
+  const auth = { Authorization: apiAuthHeader() };
+  const projectKey = `FT${Date.now().toString().slice(-6)}`;
+  const me = await (await page.request.get('/rest/api/3/myself')).json();
+  const created = await page.request.post('/rest/api/3/project', {
+    headers: auth,
+    data: { key: projectKey, name: `Field types ${stamp}`, projectTypeKey: 'software', leadAccountId: me.accountId, assigneeType: 'PROJECT_LEAD' },
+  });
+  expect(created.status()).toBe(201);
+  const projectID = String((await created.json()).id);
+  const group = await page.request.post('/rest/api/3/group', { headers: auth, data: { name: `on-call-${stamp}` } });
+  expect(group.status()).toBe(201);
+  const groupID = (await group.json()).groupId;
+
+  const field = async (name: string, type: string) => {
+    const response = await page.request.post('/rest/api/3/field', {
+      headers: auth, data: { name: `${name} ${stamp}`, type: `com.atlassian.jira.plugin.system.customfieldtypes:${type}` },
+    });
+    expect(response.status()).toBe(201);
+    const id = (await response.json()).id;
+    const contexts = await (await page.request.get(`/rest/api/3/field/${id}/context`, { headers: auth })).json();
+    const contextID = String(contexts.values[0].id);
+    expect((await page.request.put(`/rest/api/3/field/${id}/context/${contextID}/project`, { headers: auth, data: { projectIds: [projectID] } })).status()).toBe(204);
+    return { id, contextID };
+  };
+  const owner = await field('Owner', 'userpicker');
+  const rota = await field('Rota', 'grouppicker');
+  const launch = await field('Launch', 'datepicker');
+  const runbook = await field('Runbook', 'url');
+  const region = await field('Region', 'cascadingselect');
+  const options = await page.request.post(`/rest/api/3/field/${region.id}/context/${region.contextID}/option`, {
+    headers: auth, data: { options: [{ value: 'Europe' }, { value: 'Asia' }] },
+  });
+  expect(options.status()).toBe(200);
+  const europe = String((await options.json()).options[0].id);
+  expect((await page.request.post(`/rest/api/3/field/${region.id}/context/${region.contextID}/option`, {
+    headers: auth, data: { options: [{ value: 'Berlin', optionId: europe }] },
+  })).status()).toBe(200);
+
+  await page.goto(`/projects/${projectKey}`);
+  await page.locator('#global-create-issue').click();
+  const dialog = page.getByRole('dialog', { name: 'Create issue' });
+  await expect(dialog).toBeVisible();
+  await dialog.locator('.create-more summary').click();
+  await dialog.getByLabel('Summary', { exact: false }).fill(`Launch readiness ${stamp}`);
+  await dialog.locator(`#create-${owner.id}`).selectOption(me.accountId);
+  await dialog.locator(`#create-${rota.id}`).selectOption(groupID);
+  await expect(dialog.locator(`#create-${launch.id}`)).toHaveAttribute('type', 'date');
+  await dialog.locator(`#create-${launch.id}`).fill('2026-11-02');
+  await expect(dialog.locator(`#create-${runbook.id}`)).toHaveAttribute('type', 'url');
+  await dialog.locator(`#create-${runbook.id}`).fill('https://runbooks.example.test/launch');
+  expect(await dialog.locator(`#create-${region.id} option`).allTextContents()).toEqual(['None', 'Europe', 'Asia']);
+  await dialog.locator(`#create-${region.id}`).selectOption({ label: 'Europe' });
+  await dialog.getByRole('button', { name: 'Create issue', exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/browse/${projectKey}-\\d+$`));
+  const issueKey = page.url().split('/').pop()!;
+
+  const stored = await (await page.request.get(`/rest/api/3/issue/${issueKey}`, { headers: auth })).json();
+  expect(stored.fields[owner.id].accountId).toBe(me.accountId);
+  expect(stored.fields[rota.id]).toMatchObject({ groupId: groupID, name: `on-call-${stamp}` });
+  expect(stored.fields[launch.id]).toBe('2026-11-02');
+  expect(stored.fields[runbook.id]).toBe('https://runbooks.example.test/launch');
+  expect(stored.fields[region.id]).toMatchObject({ id: europe, value: 'Europe' });
+  const search = await (await page.request.get(`/rest/api/3/search/jql?fields=summary&jql=${encodeURIComponent(`${owner.id} = currentUser() AND ${region.id} = Europe AND project = ${projectKey}`)}`, { headers: auth })).json();
+  expect(search.issues.map((issue: { key: string }) => issue.key)).toEqual([issueKey]);
+});

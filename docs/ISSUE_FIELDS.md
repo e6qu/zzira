@@ -59,14 +59,32 @@ there now, which also puts it in `expand=names,schema`.
 
 A client configured against Jira sends the canonical custom field type key, for
 example `com.atlassian.jira.plugin.system.customfieldtypes:textfield`.
-`POST /field` used to accept only this product's short type names and rejected
-every such request. Both forms are now accepted, mapped onto the four types
-this product serves: text, number, datetime and select. A key for a type this
-product does not have — a cascading select, say — is still refused, because
-creating a field that cannot behave as asked would be worse than saying no.
+`POST /field` accepts both that key and this product's short type name, and each
+field keeps the Jira type key it was created with; responses report it as
+`schema.custom` with Jira's schema type.
+
+| Jira type keys | Value on a work item | Schema |
+| --- | --- | --- |
+| `textfield`, `textarea`, `readonlyfield` | text | `string` |
+| `url` | an absolute http or https URL | `string` |
+| `float`, `importid` | a number | `number` |
+| `datetime` | a date and time | `datetime` |
+| `datepicker` | a `yyyy-MM-dd` date | `date` |
+| `select`, `radiobuttons` | an option | `option` |
+| `multiselect`, `multicheckboxes` | options | `array` of `option` |
+| `cascadingselect` | an option and one of its child options | `option-with-child` |
+| `userpicker` | a person | `user` |
+| `multiuserpicker` | people | `array` of `user` |
+| `grouppicker` | a group | `group` |
+| `multigrouppicker` | groups | `array` of `group` |
+| `labels` | labels | `array` of `string` |
+
+A key for a type this product does not have, such as `daterange`,
+`numberrange`, `project` or `version`, is refused rather than stored as a
+different type.
 
 `GET /field/search?type=` resolves the same way, so the filter matches what the
-create accepts.
+field was created as.
 
 ## A routing bug this found
 
