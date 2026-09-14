@@ -71,6 +71,8 @@ type wikiData struct {
 	ClassificationLevels                  []models.DataClassificationLevel
 	ClassificationNames                   map[string]string
 	PublishedClassification               map[string]bool
+	Redactions                            []store.WikiRedaction
+	CanRestoreRedactions                  bool
 	Query                                 string
 	Status                                string
 	SpaceName, SpaceKey, SpaceDescription string
@@ -687,7 +689,19 @@ func (h *Handler) wikiBlogPost(w http.ResponseWriter, r *http.Request, creating 
 		http.Error(w, "Could not load classification levels.", 500)
 		return
 	}
-	h.writeWorkspacePageStatus(w, r, "page_wiki_blogpost", user, ws, wikiData{Space: space, BlogPost: post, Versions: versions, Labels: labels, BlogProperties: properties, BlogLikeCount: likeCount, BlogLiked: liked, Attachments: attachments, Comments: blogComments, InlineComments: blogInlineComments, Editing: editing, CanEdit: true, Error: errorMessage, MentionPeople: people, WatchingBlogPost: watching, Tasks: blogTasks, ClassificationLevels: classLevels, ClassificationNames: classNames, PublishedClassification: classPublished}, "wiki", "", pageStatus)
+	var redactions []store.WikiRedaction
+	canRestoreRedactions := false
+	if post.ID != "" && post.Status == "current" {
+		redactions, err = h.Store.WikiRedactions(r.Context(), ws, user.ID, "blogpost", post.ID)
+		if err == nil {
+			canRestoreRedactions, err = h.Store.CanAdministerWikiSpace(r.Context(), ws, user.ID, space.ID)
+		}
+		if err != nil {
+			http.Error(w, "Could not load redactions.", 500)
+			return
+		}
+	}
+	h.writeWorkspacePageStatus(w, r, "page_wiki_blogpost", user, ws, wikiData{Space: space, BlogPost: post, Versions: versions, Labels: labels, BlogProperties: properties, BlogLikeCount: likeCount, BlogLiked: liked, Attachments: attachments, Comments: blogComments, InlineComments: blogInlineComments, Editing: editing, CanEdit: true, Error: errorMessage, MentionPeople: people, WatchingBlogPost: watching, Tasks: blogTasks, ClassificationLevels: classLevels, ClassificationNames: classNames, PublishedClassification: classPublished, Redactions: redactions, CanRestoreRedactions: canRestoreRedactions}, "wiki", "", pageStatus)
 }
 
 func (h *Handler) wikiBlogForDiscussion(w http.ResponseWriter, r *http.Request, ws, userID string) (*models.WikiBlogPost, bool) {
@@ -880,6 +894,8 @@ func (h *Handler) WikiBlogPostMetadata(w http.ResponseWriter, r *http.Request) {
 		}
 	case "delete-property":
 		err = h.Commands.DeleteWikiBlogPostProperty(r.Context(), ws, user.ID, post.ID, r.PostFormValue("propertyId"))
+	case "restore-redaction":
+		err = h.Commands.RestoreWikiRedaction(r.Context(), ws, user.ID, "blogpost", post.ID, r.PostFormValue("redaction"))
 	case "redact":
 		section, target := r.PostFormValue("section"), r.PostFormValue("text")
 		value := post.Body.Value
@@ -1598,6 +1614,16 @@ func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 		http.Error(w, "Could not load classification levels.", 500)
 		return
 	}
+	if page.ID != "" && page.Status == "current" {
+		data.Redactions, err = h.Store.WikiRedactions(r.Context(), ws, user.ID, "page", page.ID)
+		if err == nil {
+			data.CanRestoreRedactions, err = h.Store.CanAdministerWikiSpace(r.Context(), ws, user.ID, space.ID)
+		}
+		if err != nil {
+			http.Error(w, "Could not load redactions.", 500)
+			return
+		}
+	}
 	h.writeWorkspacePageStatus(w, r, "page_wiki_page", user, ws, data, "wiki", "", status)
 }
 
@@ -1632,6 +1658,8 @@ func (h *Handler) WikiPageMetadata(w http.ResponseWriter, r *http.Request) {
 		}
 	case "delete-property":
 		err = h.Commands.DeleteWikiPageProperty(r.Context(), ws, user.ID, page.ID, r.PostFormValue("propertyId"))
+	case "restore-redaction":
+		err = h.Commands.RestoreWikiRedaction(r.Context(), ws, user.ID, "page", page.ID, r.PostFormValue("redaction"))
 	case "redact":
 		section, target := r.PostFormValue("section"), r.PostFormValue("text")
 		value := page.Body.Value

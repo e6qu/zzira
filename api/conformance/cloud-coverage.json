@@ -12593,9 +12593,13 @@
         "internal/commands/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/store/wiki_redaction.go",
+        "internal/confluence/redaction_test.go",
+        "migrations/182_restorable_redactions.sql",
+        "docs/CONFLUENCE_REDACTION.md"
       ],
-      "notes": "Blog redaction supports current-version timestamp/version guards, validated and overlap-merged Unicode ranges, title/body markers, optional prior-version scrubbing, privacy-shaped sync and organization audit without retaining removed text. Registered plugin content types support permission-filtered, sorted and paged blog collections. A restoration route, arbitrary ADF node pointers, historical-version-only redaction, and custom-content mutation/install lifecycle remain."
+      "notes": "Blog posts redact exactly as pages do: current or earlier-version redaction against createdAt, stored-text ranges or document-format pointers, restorable macro and title markers with UUIDs, unrestorable code-block markers without ids, cleanHistory scrubbing, audit and privacy-shaped sync, and restoration by space administrators from the blog post. Registered plugin content types support permission-filtered, sorted and paged blog collections."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{id}/versions",
@@ -14534,9 +14538,13 @@
         "migrations/092_wiki_page_governance.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/store/wiki_redaction.go",
+        "internal/confluence/redaction_test.go",
+        "migrations/182_restorable_redactions.sql",
+        "docs/CONFLUENCE_REDACTION.md"
       ],
-      "notes": "Guarded current-page redaction validates optimistic timestamps and versions, JSON-pointer rune ranges, non-overlap normalization and rendered markup, creates immutable redaction IDs and a new page version, optionally scrubs matching historical text, records an organization audit event, emits permission-filtered sync and supports exact-text author workflows; restoration and code-block-specific semantics remain."
+      "notes": "Redacts current or, with versionNumber, one earlier page version against its createdAt, from stored-text rune ranges or JSON pointers into the document-format body resolved to the stored text; overlapping ranges merge and results keep input order. Body markers are redaction macros carrying the redaction UUID and title markers plain text, both restorable by space administrators from the page (a new version, or in the redacted earlier version); code-block text takes an unrestorable plain marker with no redactionId. cleanHistory scrubs other versions; redactions and restorations are audited and emit permission-filtered sync."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/pages/{id}/title",

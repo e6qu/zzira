@@ -684,6 +684,15 @@ func (s *Service) SetWikiPageClassification(ctx context.Context, ws, actor, id, 
 	return s.Store.SetWikiPageClassification(ctx, ws, actor, id, levelID)
 }
 
+// RestoreWikiRedaction puts back what a redaction of a page or blog post
+// removed.
+func (s *Service) RestoreWikiRedaction(ctx context.Context, ws, actor, kind, id, redactionID string) error {
+	if id == "" || redactionID == "" {
+		return fmt.Errorf("%w: a redaction is required", store.ErrWikiValidation)
+	}
+	return s.Store.RestoreWikiRedaction(ctx, ws, actor, kind, id, redactionID)
+}
+
 func (s *Service) RedactWikiPage(ctx context.Context, ws, actor, id, createdAt string, version int, cleanHistory bool, title, body []models.WikiRedactionPointer) (*models.WikiPage, []models.WikiRedactionResult, []models.WikiRedactionResult, error) {
 	if id == "" || createdAt == "" || version < 0 {
 		return nil, nil, nil, fmt.Errorf("%w: page, createdAt and a nonnegative version are required", store.ErrWikiValidation)

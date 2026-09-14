@@ -135,7 +135,7 @@ type WikiRedactionResult struct {
 	From        int    `json:"from"`
 	To          int    `json:"to"`
 	Reason      string `json:"reason,omitempty"`
-	RedactionID string `json:"redactionId"`
+	RedactionID string `json:"redactionId,omitempty"`
 }
 
 type WikiBlogCustomContent struct {
