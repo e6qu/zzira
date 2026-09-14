@@ -14617,9 +14617,11 @@
         "migrations/093_wiki_page_properties.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/apps/confluence_scopes.go",
+        "internal/apps/confluence_scopes_test.go"
       ],
-      "notes": "Creates validated uniquely keyed JSON properties on writable current pages atomically with version one and a permission-filtered sync action; app scope enforcement remains."
+      "notes": "Creates validated uniquely keyed JSON properties on writable current pages atomically with version one and a permission-filtered sync action; apps need the operation's Connect scope, enforced per operation from the pinned specification."
     },
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/pages/{page-id}/properties/{property-id}",
@@ -14634,9 +14636,11 @@
         "migrations/093_wiki_page_properties.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/apps/confluence_scopes.go",
+        "internal/apps/confluence_scopes_test.go"
       ],
-      "notes": "Deletes an exact property from a writable current page atomically and emits a permission-filtered tombstone action; restore and app scope enforcement remain."
+      "notes": "Deletes an exact property from a writable current page atomically and emits a permission-filtered tombstone action; apps need the operation's Connect scope, enforced per operation from the pinned specification."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{page-id}/properties/{property-id}",
@@ -14668,9 +14672,11 @@
         "migrations/093_wiki_page_properties.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/apps/confluence_scopes.go",
+        "internal/apps/confluence_scopes_test.go"
       ],
-      "notes": "Updates a writable page property with exact key continuity, optimistic next-version checks, immutable version history and a permission-filtered sync action; app scope enforcement remains."
+      "notes": "Updates a writable page property with exact key continuity, optimistic next-version checks, immutable version history and a permission-filtered sync action; apps need the operation's Connect scope, enforced per operation from the pinned specification."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{page-id}/versions/{version-number}",
@@ -15140,9 +15146,11 @@
         "migrations/095_wiki_space_properties.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/apps/confluence_scopes.go",
+        "internal/apps/confluence_scopes_test.go"
       ],
-      "notes": "Lists versioned JSON properties on a visible space with key filtering, key sorting and cursor pagination; app scope enforcement remains."
+      "notes": "Lists versioned JSON properties on a visible space with key filtering, key sorting and cursor pagination; apps need the operation's Connect scope, enforced per operation from the pinned specification."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/spaces/{space-id}/properties",
@@ -15157,9 +15165,11 @@
         "migrations/095_wiki_space_properties.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/apps/confluence_scopes.go",
+        "internal/apps/confluence_scopes_test.go"
       ],
-      "notes": "Workspace administrators create uniquely keyed, validated JSON space properties through REST or the accessible UI with immutable version one and an atomic sync action; app scope enforcement remains."
+      "notes": "Workspace administrators create uniquely keyed, validated JSON space properties through REST or the accessible UI with immutable version one and an atomic sync action; apps need the operation's Connect scope, enforced per operation from the pinned specification."
     },
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/spaces/{space-id}/properties/{property-id}",
@@ -15173,9 +15183,11 @@
         "internal/store/wiki_space_properties.go",
         "migrations/095_wiki_space_properties.sql",
         "internal/web/wiki.go",
-        "internal/render/templates/wiki.gohtml"
+        "internal/render/templates/wiki.gohtml",
+        "internal/apps/confluence_scopes.go",
+        "internal/apps/confluence_scopes_test.go"
       ],
-      "notes": "Workspace administrators delete an exact property from its space with an atomic delete sync action; app scope enforcement remains."
+      "notes": "Workspace administrators delete an exact property from its space with an atomic delete sync action; apps need the operation's Connect scope, enforced per operation from the pinned specification."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/spaces/{space-id}/properties/{property-id}",
@@ -15186,9 +15198,11 @@
         "internal/confluence/space_properties.go",
         "internal/confluence/http_test.go",
         "internal/store/wiki_space_properties.go",
-        "migrations/095_wiki_space_properties.sql"
+        "migrations/095_wiki_space_properties.sql",
+        "internal/apps/confluence_scopes.go",
+        "internal/apps/confluence_scopes_test.go"
       ],
-      "notes": "Returns an exact current versioned JSON property from a visible space; app scope enforcement remains; the pinned API publishes no historical property read."
+      "notes": "Returns an exact current versioned JSON property from a visible space; apps need the operation's Connect scope, enforced per operation from the pinned specification; the pinned API publishes no historical property read."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/spaces/{space-id}/properties/{property-id}",
@@ -15202,9 +15216,11 @@
         "internal/store/wiki_space_properties.go",
         "migrations/095_wiki_space_properties.sql",
         "internal/web/wiki.go",
-        "internal/render/templates/wiki.gohtml"
+        "internal/render/templates/wiki.gohtml",
+        "internal/apps/confluence_scopes.go",
+        "internal/apps/confluence_scopes_test.go"
       ],
-      "notes": "Workspace administrators update exact-key JSON properties with optimistic next-version checks, immutable metadata and atomic sync; app scope enforcement remains; the pinned API publishes no historical property read."
+      "notes": "Workspace administrators update exact-key JSON properties with optimistic next-version checks, immutable metadata and atomic sync; apps need the operation's Connect scope, enforced per operation from the pinned specification; the pinned API publishes no historical property read."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/tasks",
