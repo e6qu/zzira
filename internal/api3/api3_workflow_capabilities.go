@@ -136,11 +136,12 @@ func workflowCapabilitiesResponse(editorScope string) map[string]any {
 }
 
 func (h *Handler) workflowCapabilities(w http.ResponseWriter, r *http.Request) {
-	workspaceID, _, authErr := h.authWorkspaceAdmin(r)
+	access, authErr := h.authWorkflowAccess(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
 	}
+	workspaceID := access.workspaceID
 	workflowID := r.URL.Query().Get("workflowId")
 	projectID := r.URL.Query().Get("projectId")
 	issueTypeID := h.issueTypeIDsFor(r, workspaceID).toInternal(r.URL.Query().Get("issueTypeId"))
@@ -152,6 +153,10 @@ func (h *Handler) workflowCapabilities(w http.ResponseWriter, r *http.Request) {
 		wf, err := h.Store.WorkflowByID(r.Context(), workspaceID, workflowID)
 		if err != nil {
 			jiraError(w, http.StatusBadRequest, "workflowId is invalid")
+			return
+		}
+		if !access.canChange(wf.ProjectID) {
+			writeJerr(w, errWorkflowPermission())
 			return
 		}
 		scope := "GLOBAL"
@@ -189,6 +194,10 @@ func (h *Handler) workflowCapabilities(w http.ResponseWriter, r *http.Request) {
 	wf, err := h.Store.WorkflowForProjectAndIssueType(r.Context(), project.ID, issueTypeID)
 	if err != nil {
 		jiraError(w, http.StatusBadRequest, "the project workflow could not be resolved")
+		return
+	}
+	if !access.canChange(wf.ProjectID) {
+		writeJerr(w, errWorkflowPermission())
 		return
 	}
 	scope := "GLOBAL"

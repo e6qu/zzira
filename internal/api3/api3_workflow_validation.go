@@ -510,11 +510,12 @@ func workflowStatusMigrationsFromRequest(ids issueTypeIDs, item workflowUpdateIt
 }
 
 func (h *Handler) workflowCreateValidation(w http.ResponseWriter, r *http.Request) {
-	workspaceID, _, authErr := h.authWorkspaceAdmin(r)
+	access, authErr := h.authWorkflowAccess(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
 	}
+	workspaceID := access.workspaceID
 	var request workflowCreateValidationRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil || request.Payload == nil {
 		jiraError(w, http.StatusBadRequest, "payload is required")
@@ -528,6 +529,10 @@ func (h *Handler) workflowCreateValidation(w http.ResponseWriter, r *http.Reques
 	projectID, scopeErr := h.workflowCreateScope(r, workspaceID, request.Payload)
 	if scopeErr != nil {
 		errors = append(errors, workflowValidationError("SCOPE_INVALID", scopeErr.Error(), "SCOPE", nil))
+	}
+	if !access.canChange(projectID) {
+		writeJerr(w, errWorkflowPermission())
+		return
 	}
 	if len(request.Payload.Workflows) == 0 || len(request.Payload.Workflows) > 20 || len(request.Payload.Statuses) > 1000 {
 		errors = append(errors, workflowValidationError("PAYLOAD_SIZE_INVALID", "Provide between 1 and 20 workflows and no more than 1000 statuses.", "WORKFLOW", nil))
@@ -571,11 +576,12 @@ func (h *Handler) workflowCreateValidation(w http.ResponseWriter, r *http.Reques
 }
 
 func (h *Handler) workflowUpdateValidation(w http.ResponseWriter, r *http.Request) {
-	workspaceID, _, authErr := h.authWorkspaceAdmin(r)
+	access, authErr := h.authWorkflowAccess(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
 	}
+	workspaceID := access.workspaceID
 	var request workflowUpdateValidationRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil || request.Payload == nil {
 		jiraError(w, http.StatusBadRequest, "payload is required")
@@ -588,6 +594,10 @@ func (h *Handler) workflowUpdateValidation(w http.ResponseWriter, r *http.Reques
 	errors := make([]map[string]any, 0)
 	if len(request.Payload.Workflows) == 0 || len(request.Payload.Workflows) > 20 || len(request.Payload.Statuses) > 1000 {
 		errors = append(errors, workflowValidationError("PAYLOAD_SIZE_INVALID", "Provide between 1 and 20 workflows and no more than 1000 statuses.", "WORKFLOW", nil))
+	}
+	if !access.canChangeWorkflows(workflowUpdateReferences(request.Payload.Workflows)) {
+		writeJerr(w, errWorkflowPermission())
+		return
 	}
 	projectID, scopeErr := h.workflowUpdateScope(r, workspaceID, request.Payload.Workflows)
 	if scopeErr != nil {
@@ -681,11 +691,12 @@ func (h *Handler) workflowResponseStatuses(r *http.Request, workspaceID string, 
 }
 
 func (h *Handler) workflowCreate(w http.ResponseWriter, r *http.Request) {
-	workspaceID, actorID, authErr := h.authWorkspaceAdmin(r)
+	access, authErr := h.authWorkflowAccess(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
 	}
+	workspaceID, actorID := access.workspaceID, access.userID
 	var payload workflowCreatePayloadRequest
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		jiraError(w, http.StatusBadRequest, "request body is invalid")
@@ -695,6 +706,10 @@ func (h *Handler) workflowCreate(w http.ResponseWriter, r *http.Request) {
 	projectID, scopeErr := h.workflowCreateScope(r, workspaceID, &payload)
 	if scopeErr != nil {
 		validationErrors = append(validationErrors, workflowValidationError("SCOPE_INVALID", scopeErr.Error(), "SCOPE", nil))
+	}
+	if !access.canChange(projectID) {
+		writeJerr(w, errWorkflowPermission())
+		return
 	}
 	if len(payload.Workflows) == 0 || len(payload.Workflows) > 20 || len(payload.Statuses) > 1000 {
 		validationErrors = append(validationErrors, workflowValidationError("PAYLOAD_SIZE_INVALID", "Provide between 1 and 20 workflows and no more than 1000 statuses.", "WORKFLOW", nil))
@@ -745,11 +760,12 @@ func (h *Handler) workflowCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) workflowUpdate(w http.ResponseWriter, r *http.Request) {
-	workspaceID, actorID, authErr := h.authWorkspaceAdmin(r)
+	access, authErr := h.authWorkflowAccess(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
 	}
+	workspaceID, actorID := access.workspaceID, access.userID
 	var payload workflowUpdatePayloadRequest
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		jiraError(w, http.StatusBadRequest, "request body is invalid")
@@ -758,6 +774,10 @@ func (h *Handler) workflowUpdate(w http.ResponseWriter, r *http.Request) {
 	validationErrors := make([]map[string]any, 0)
 	if len(payload.Workflows) == 0 || len(payload.Workflows) > 20 || len(payload.Statuses) > 1000 {
 		validationErrors = append(validationErrors, workflowValidationError("PAYLOAD_SIZE_INVALID", "Provide between 1 and 20 workflows and no more than 1000 statuses.", "WORKFLOW", nil))
+	}
+	if !access.canChangeWorkflows(workflowUpdateReferences(payload.Workflows)) {
+		writeJerr(w, errWorkflowPermission())
+		return
 	}
 	projectID, scopeErr := h.workflowUpdateScope(r, workspaceID, payload.Workflows)
 	if scopeErr != nil {
@@ -845,4 +865,13 @@ func (h *Handler) transitionEventErrors(r *http.Request, workspaceID string, wf 
 		}
 	}
 	return errors
+}
+
+// workflowUpdateReferences lists the workflows an update names.
+func workflowUpdateReferences(workflows []workflowUpdateItemRequest) []string {
+	references := make([]string, 0, len(workflows))
+	for _, item := range workflows {
+		references = append(references, item.ID)
+	}
+	return references
 }

@@ -49,11 +49,12 @@ func workflowPreviewBean(ids issueTypeIDs, item workflowPreviewItem, projectID s
 }
 
 func (h *Handler) workflowPreview(w http.ResponseWriter, r *http.Request) {
-	workspaceID, _, authErr := h.authWorkspaceAdmin(r)
+	access, authErr := h.authWorkflowAccess(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
 	}
+	workspaceID := access.workspaceID
 	var request workflowPreviewRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		jiraError(w, http.StatusBadRequest, "request body is invalid")
@@ -66,6 +67,12 @@ func (h *Handler) workflowPreview(w http.ResponseWriter, r *http.Request) {
 	project, err := h.Store.ProjectByIDOrKey(r.Context(), workspaceID, request.ProjectID)
 	if err != nil {
 		jiraError(w, http.StatusBadRequest, "projectId is invalid")
+		return
+	}
+	// A preview shows the project's workflows to its administrators and to
+	// people who may view its workflows read-only.
+	if !access.canRead(project.ID) {
+		writeJerr(w, errWorkflowPermission())
 		return
 	}
 	all, err := h.Store.ListWorkflows(r.Context(), workspaceID)

@@ -188,11 +188,12 @@ func workflowSearchNextPage(baseURL string, r *http.Request, startAt int) string
 }
 
 func (h *Handler) workflowSearch(w http.ResponseWriter, r *http.Request) {
-	workspaceID, _, authErr := h.authWorkspaceAdmin(r)
+	access, authErr := h.authWorkflowAccess(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
 	}
+	workspaceID := access.workspaceID
 	startAt, maxResults, err := parseWorkflowSearchPage(r)
 	if err != nil {
 		jiraError(w, http.StatusBadRequest, err.Error())
@@ -234,6 +235,7 @@ func (h *Handler) workflowSearch(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	workflows = access.scoped(workflows)
 	query := strings.ToLower(r.URL.Query().Get("queryString"))
 	filtered := make([]workflow.Workflow, 0, len(workflows))
 	for _, item := range workflows {

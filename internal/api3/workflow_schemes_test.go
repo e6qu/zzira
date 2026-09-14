@@ -108,7 +108,7 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	if defaultEditor.Body.String() != "{\"value\":\"NEW\"}\n" {
 		t.Fatal(defaultEditor.Body.String())
 	}
-	call(member, "GET", "/rest/api/3/workflows/capabilities?workflowId="+workflowID, "", 403)
+	call(member, "GET", "/rest/api/3/workflows/capabilities?workflowId="+workflowID, "", 401)
 	capabilities := call(actor, "GET", "/rest/api/3/workflows/capabilities?workflowId="+workflowID, "", 200)
 	if !strings.Contains(capabilities.Body.String(), `"editorScope":"GLOBAL"`) || !strings.Contains(capabilities.Body.String(), `"projectTypes":["software","business"]`) || !strings.Contains(capabilities.Body.String(), `"ruleKey":"system:change-assignee"`) {
 		t.Fatal(capabilities.Body.String())
@@ -118,7 +118,7 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	call(actor, "GET", "/rest/api/3/workflows/capabilities?workflowId="+workflowID+"&projectId="+projectID+"&issueTypeId=10002", "", 400)
 	call(actor, "GET", "/rest/api/3/workflows/capabilities?projectId="+projectID+"&issueTypeId=it_missing", "", 400)
 	createValidationBody := `{"payload":{"scope":{"type":"GLOBAL"},"statuses":[{"id":"st_todo","name":"To Do","statusCategory":"TODO","statusReference":"todo"},{"id":"st_done","name":"Done","statusCategory":"DONE","statusReference":"done"}],"workflows":[{"name":"Validated workflow","statuses":[{"statusReference":"todo","properties":{}},{"statusReference":"done","properties":{}}],"transitions":[{"id":"1","name":"Complete","type":"DIRECTED","toStatusReference":"done","links":[{"fromStatusReference":"todo"}]}]}]}}`
-	call(member, "POST", "/rest/api/3/workflows/create/validation", createValidationBody, 403)
+	call(member, "POST", "/rest/api/3/workflows/create/validation", createValidationBody, 401)
 	createValidation := call(actor, "POST", "/rest/api/3/workflows/create/validation", createValidationBody, 200)
 	if createValidation.Body.String() != "{\"errors\":[]}\n" {
 		t.Fatal(createValidation.Body.String())
@@ -152,7 +152,7 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	}
 	call(actor, "POST", "/rest/api/3/workflows/create/validation", `{`, 400)
 	modernCreateBody := `{"scope":{"type":"GLOBAL"},"statuses":[{"id":"st_todo","name":"To Do","statusCategory":"TODO","statusReference":"todo"},{"name":"Review gate","statusCategory":"IN_PROGRESS","statusReference":"review"}],"workflows":[{"name":"Modern workflow","statuses":[{"statusReference":"todo","properties":{}},{"statusReference":"review","properties":{}}],"transitions":[{"id":"1","name":"Review","type":"DIRECTED","toStatusReference":"review","links":[{"fromStatusReference":"todo"}]}]}]}`
-	call(member, "POST", "/rest/api/3/workflows/create", modernCreateBody, 403)
+	call(member, "POST", "/rest/api/3/workflows/create", modernCreateBody, 401)
 	modernCreatedResponse := call(actor, "POST", "/rest/api/3/workflows/create", modernCreateBody, 200)
 	var modernCreated map[string]any
 	if err := json.Unmarshal(modernCreatedResponse.Body.Bytes(), &modernCreated); err != nil {
@@ -439,7 +439,8 @@ func TestWorkflowSchemeAPILifecycleAndAssignment(t *testing.T) {
 	if !strings.Contains(workflowSearch.Body.String(), `"id":"`+workflowEntityID+`"`) || !strings.Contains(workflowSearch.Body.String(), `"toStatusReference":"10001"`) || !strings.Contains(workflowSearch.Body.String(), `"statusCategory":"DONE"`) {
 		t.Fatal(workflowSearch.Body.String())
 	}
-	call(member, "POST", "/rest/api/3/workflows/preview", `{"projectId":"`+projectID+`","workflowIds":["`+workflowID+`"]}`, 403)
+	// Members view the project's workflows read-only through its Members role.
+	call(member, "POST", "/rest/api/3/workflows/preview", `{"projectId":"`+projectID+`","workflowIds":["`+workflowID+`"]}`, 200)
 	workflowPreview := call(actor, "POST", "/rest/api/3/workflows/preview", `{"projectId":"`+projectID+`","workflowIds":["`+workflowID+`"],"workflowNames":["Simple API lifecycle"],"issueTypeIds":["10002"]}`, 200)
 	if !strings.Contains(workflowPreview.Body.String(), `"id":"`+workflowEntityID+`"`) || !strings.Contains(workflowPreview.Body.String(), `"issueTypes":["10002"]`) || !strings.Contains(workflowPreview.Body.String(), `"rawName":"Done"`) || !strings.Contains(workflowPreview.Body.String(), `"toStatusReference":"10001"`) {
 		t.Fatal(workflowPreview.Body.String())

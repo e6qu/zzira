@@ -6918,10 +6918,11 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/workflow_access_test.go",
         "internal/api3/workflow_history_test.go",
         "docs/JIRA_PLATFORM.md"
       ],
-      "notes": "Bulk workflow read by ids, names or project and work type pairs with referenced statuses."
+      "notes": "Bulk workflow read by ids, names or project and work type pairs with referenced statuses. Site administrators see every workflow; people with Administer projects or View read-only workflow on a project see its project-scoped workflows; others see none."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/workflows/capabilities",
@@ -6929,13 +6930,14 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/workflow_access_test.go",
         "internal/api3/workflow_schemes_test.go",
         "internal/api3/workflow_rules_test.go",
         "internal/api3/api3_workflow_capabilities.go",
         "internal/store/agile.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Resolves workflows by workflow ID or project and issue type, validates selectors, and reports the resolved GLOBAL or PROJECT editor scope, project types, and executable actor restriction, API-only restriction, typed field-value, previous-status, separation-of-duties, parent/child blocking, required/changed/single-value/regular-expression/date-comparison/date-window/history/permission and Advanced Forms attached/submitted validators, change-assignee, system/custom field-update, same-or-parent field-copy, durable registered-webhook trigger, and transition-screen rules; and every other system rule Jira documents: the in-progress, until-approved and until-rejected approval conditions, the remind-people-to-update-fields screen and the trigger-agent post function."
+      "notes": "Resolves workflows by workflow ID or project and issue type, validates selectors, and reports the resolved GLOBAL or PROJECT editor scope, project types, and executable actor restriction, API-only restriction, typed field-value, previous-status, separation-of-duties, parent/child blocking, required/changed/single-value/regular-expression/date-comparison/date-window/history/permission and Advanced Forms attached/submitted validators, change-assignee, system/custom field-update, same-or-parent field-copy, durable registered-webhook trigger, and transition-screen rules; and every other system rule Jira documents: the in-progress, until-approved and until-rejected approval conditions, the remind-people-to-update-fields screen and the trigger-agent post function. Site administrators reach every workflow and a project's administrators (Administer projects) its project-scoped workflows; anyone else gets 401."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/workflows/create",
@@ -6943,6 +6945,7 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/workflow_access_test.go",
         "internal/api3/transition_types_test.go",
         "internal/api3/workflow_schemes_test.go",
         "internal/api3/workflow_rules_test.go",
@@ -6950,7 +6953,7 @@
         "internal/store/workflow_mutations.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Atomically creates up to 20 validated GLOBAL or PROJECT workflows and related statuses with generated IDs, layouts/properties, versions, scoped Jira resources, INITIAL, GLOBAL and DIRECTED transitions with descriptions, properties and link ports, executable conditions, validators, post-functions, transition screens and customIssueEventId events across all 23 documented system rules, with Jira's numeric ids for transitions without one, rollback, and audit. The initial transition decides where work items start and runs its validators and post functions on creation; a global transition runs from every status."
+      "notes": "Atomically creates up to 20 validated GLOBAL or PROJECT workflows and related statuses with generated IDs, layouts/properties, versions, scoped Jira resources, INITIAL, GLOBAL and DIRECTED transitions with descriptions, properties and link ports, executable conditions, validators, post-functions, transition screens and customIssueEventId events across all 23 documented system rules, with Jira's numeric ids for transitions without one, rollback, and audit. The initial transition decides where work items start and runs its validators and post functions on creation; a global transition runs from every status. Site administrators reach every workflow and a project's administrators (Administer projects) its project-scoped workflows; anyone else gets 401."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/workflows/create/validation",
@@ -6958,6 +6961,7 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/workflow_access_test.go",
         "internal/api3/transition_types_test.go",
         "internal/api3/workflow_schemes_test.go",
         "internal/api3/workflow_rules_test.go",
@@ -6965,7 +6969,7 @@
         "internal/store/agile.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Returns structured ERROR validation for GLOBAL/PROJECT ownership, names and statuses, sizes, references, designer layouts, INITIAL, GLOBAL and DIRECTED transition topology (one initial transition, sourceless global and initial links, known types), nested conditions, validators, post-functions, transition screens, custom issue events, conflicts, and level filtering; every documented system rule is validated."
+      "notes": "Returns structured ERROR validation for GLOBAL/PROJECT ownership, names and statuses, sizes, references, designer layouts, INITIAL, GLOBAL and DIRECTED transition topology (one initial transition, sourceless global and initial links, known types), nested conditions, validators, post-functions, transition screens, custom issue events, conflicts, and level filtering; every documented system rule is validated. Site administrators reach every workflow and a project's administrators (Administer projects) its project-scoped workflows; anyone else gets 401."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/workflows/defaultEditor",
@@ -6985,13 +6989,14 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/workflow_access_test.go",
         "internal/api3/workflow_schemes_test.go",
         "internal/api3/workflow_rules_test.go",
         "internal/api3/api3_workflow_preview.go",
         "internal/store/workflow_usage.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Previews project-associated global or project workflows by ID, name, and issue type, returning scoped resources, query contexts, layouts, topology, versions, statuses, and executable conditions, validators, post-functions, transition screens and customIssueEventId; approval conditions and every other documented system rule."
+      "notes": "Previews project-associated global or project workflows by ID, name, and issue type, returning scoped resources, query contexts, layouts, topology, versions, statuses, and executable conditions, validators, post-functions, transition screens and customIssueEventId; approval conditions and every other documented system rule. Needs Administer Jira, or Administer projects or View read-only workflow on the previewed project; anyone else gets 401."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/workflows/search",
@@ -6999,13 +7004,14 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/workflow_access_test.go",
         "internal/api3/workflow_schemes_test.go",
         "internal/api3/workflow_rules_test.go",
         "internal/api3/api3_workflow_search.go",
         "internal/store/workflow_usage.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Searches published global and project-scoped workflows with scope/project/activity filters, validated paging and name ordering, related statuses, versions, designer layouts, transition expansion, and executable condition, validator, post-function, and screen configuration, and name, created and updated ordering."
+      "notes": "Searches published global and project-scoped workflows with scope/project/activity filters, validated paging and name ordering, related statuses, versions, designer layouts, transition expansion, and executable condition, validator, post-function, and screen configuration, and name, created and updated ordering. Site administrators see every workflow; people with Administer projects or View read-only workflow on a project see its project-scoped workflows; others see none."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/workflows/update",
@@ -7013,13 +7019,14 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/workflow_access_test.go",
         "internal/api3/workflow_schemes_test.go",
         "internal/api3/workflow_rules_test.go",
         "internal/api3/api3_workflow_validation.go",
         "internal/store/workflow_mutations.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Atomically creates related scoped statuses, migrates active work with sync actions, and updates layouts, INITIAL, GLOBAL and DIRECTED transitions plus executable conditions, validators, post-functions, transition screens and customIssueEventId events with optimistic versions, rollback, and audit; every documented system rule; mixed-scope batches and queued tasks remain."
+      "notes": "Atomically creates related scoped statuses, migrates active work with sync actions, and updates layouts, INITIAL, GLOBAL and DIRECTED transitions plus executable conditions, validators, post-functions, transition screens and customIssueEventId events with optimistic versions, rollback, and audit; every documented system rule; mixed-scope batches and queued tasks remain. Site administrators reach every workflow and a project's administrators (Administer projects) its project-scoped workflows; anyone else gets 401."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/workflows/update/validation",
@@ -7027,6 +7034,7 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/workflow_access_test.go",
         "internal/api3/transition_types_test.go",
         "internal/api3/workflow_schemes_test.go",
         "internal/api3/workflow_rules_test.go",
@@ -7034,7 +7042,7 @@
         "internal/store/agile.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Returns structured validation for existence and preserved scope, optimistic versions, scoped statuses, layouts, INITIAL, GLOBAL and DIRECTED topology, mappings, executable conditions, validators, post-functions, transition screens and custom issue events without mutation; every documented system rule is validated; mixed-scope batches remain."
+      "notes": "Returns structured validation for existence and preserved scope, optimistic versions, scoped statuses, layouts, INITIAL, GLOBAL and DIRECTED topology, mappings, executable conditions, validators, post-functions, transition screens and custom issue events without mutation; every documented system rule is validated; mixed-scope batches remain. Site administrators reach every workflow and a project's administrators (Administer projects) its project-scoped workflows; anyone else gets 401."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/workflowscheme",

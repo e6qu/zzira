@@ -72,3 +72,21 @@ Transitions keep their `description`, `properties` and each link's
 names a source, `TRANSITION_SOURCE_INVALID`. The browser editor adds a global
 transition with the "Any status" source and lists the Create and global
 transitions beside the map; the Create transition cannot be deleted there.
+
+## Who can work with workflows
+
+Workflow resources follow Jira's permissions:
+
+- Site administrators (Administer Jira) create, validate, update and inspect
+  every workflow, global or project-scoped.
+- A project's administrators (Administer projects) create, validate and update
+  workflows scoped to that project and read their capabilities, but cannot
+  create or change global workflows.
+- People with Administer projects or View read-only workflow on a project find
+  its project-scoped workflows in `GET /workflows/search` and
+  `POST /workflows`, and preview the workflows the project uses with
+  `POST /workflows/preview`. Global workflows appear only to site
+  administrators.
+- Anyone else is refused with 401, as Jira documents for these resources.
+  Deleting a workflow and the classic `GET /workflow/search` stay with site
+  administrators.
