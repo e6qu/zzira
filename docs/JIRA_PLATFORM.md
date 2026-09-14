@@ -1,4 +1,4 @@
-# Jira platform: app storage, UI modifications, webhooks, workflow history and site reads
+# Jira platform: apps, webhooks, workflows, plans, templates and site reads
 
 This covers the Jira Cloud platform operations apps and administrators use
 around the core issue APIs: app properties, Forge UI modifications, dynamic and
@@ -133,11 +133,80 @@ Confluence databases use the same levels.
 | `GET /rest/api/3/project/{projectId}/hierarchy` | The project's work types grouped by level (Epic, Base, Subtask); the project must be given by numeric id. |
 | `POST /rest/internal/api/latest/worklog/bulk` | Given 1 to 1,000 `{issueId, worklogId}` pairs, returns the ones that exist. |
 
-## Not yet provided
+## Plans and teams
 
-Plans and plan teams, project templates, Connect-to-Forge migration, the Connect
-service registry and app custom field configuration and values are separate
-work.
+Plans (Advanced planning) are for Jira administrators. Plan, plan-only team and
+issue source ids are Jira's numbers; Atlassian team ids are UUIDs.
+
+| Operation | Behavior |
+| --- | --- |
+| `GET /rest/api/3/plans/plan` | Active plans, with `includeTrashed` and `includeArchived`, paged by an opaque `cursor` with `nextPageCursor`, at most 50. |
+| `POST /rest/api/3/plans/plan` | Creates a plan from `name`, `issueSources` (Board, Project or Filter by id), `scheduling` (estimation StoryPoints, Days or Hours; start and end date fields; inferred dates; dependencies), `exclusionRules`, `crossProjectReleases`, `customFields`, `leadAccountId` and View/Edit `permissions` for groups (by name, or id with `useGroupId`) and people. Every referenced board, project, filter, release, field, work type, status and person must exist; unknown fields are 400. Answers 201 with the id. |
+| `GET /rest/api/3/plans/plan/{planId}` | The plan with Jira's defaults filled in and `lastSaved`. |
+| `PUT /rest/api/3/plans/plan/{planId}` | An RFC 6902 JSON Patch against the plan document (`add`, `remove`, `replace`, `move`, `copy`, `test`), validated like a new plan. Issue sources that stay keep their ids. 409 when the plan is not active. |
+| `PUT .../archive`, `PUT .../trash` | Archives or trashes an active plan; otherwise 409. |
+| `POST .../duplicate` | Copies an active plan with its issue sources and teams under a new name. |
+| `GET .../team` | Plan-only and Atlassian teams in the plan, cursor-paged. |
+| `POST .../team/planonly`, `GET/PUT/DELETE .../team/planonly/{planOnlyTeamId}` | A plan-only team with name, planning style (Scrum or Kanban), issue source, sprint length, capacity and members; PUT is a JSON Patch. |
+| `POST .../team/atlassian`, `GET/PUT/DELETE .../team/atlassian/{atlassianTeamId}` | Adds an existing Atlassian team with its planning settings; an unknown team is 404 and a team already in the plan is 400. |
+
+Every team operation on a plan that is not active is 409. Plans are a planning
+record: ZZIRA has no timeline view that schedules work from them.
+
+Atlassian teams are kept on the site's **People › Teams** page. Anyone can start
+a team; its members and site administrators add and remove members or delete
+it. Deleting a team removes it from every plan.
+
+## Custom project templates
+
+| Operation | Behavior |
+| --- | --- |
+| `POST /rest/api/3/project-template/save-template` | Saves a template from a project: `templateName` (up to 50 characters, unique), `templateDescription` (up to 150) and `templateFromProjectRequest` with `projectId`, `templateType` and `templateGenerationOptions`. Answers `projectTemplateKey` with `key` and `uuid`. |
+| `GET /rest/api/3/project-template/live-template` | A template by `templateKey`, or the LIVE template of `projectId` (id or key), as Jira's ProjectTemplateModel: archetype, default board view, the configuration as `snapshotTemplate`, generation options, type and, for LIVE templates, `liveTemplateProjectIdReference`. |
+| `PUT /rest/api/3/project-template/edit-template` | Changes the name, description and generation options. |
+| `DELETE /rest/api/3/project-template/remove-template` | Removes a template. |
+| `POST /rest/api/3/project-template` | Creates a company-managed project from `details` and a `template` whose `project` capability names the project type and references existing permission, notification, work type, work type screen, field layout, workflow and issue security schemes by `{"type":"ID","id":...}`. The details and schemes are validated first; the project is then created in a task (303 with `Location`) that applies each scheme. |
+
+A LIVE template records a project and reports that project's current
+configuration; a SNAPSHOT keeps the configuration it was saved with. Templates
+are site administrator operations. Creating new schemes, boards, fields, roles,
+work types or workflows inside the template request (`REF` identifiers and the
+other capabilities) and team-managed (`PROJECT` scope) projects are answered
+with 400.
+
+## Connect app migration
+
+A site administrator opens a data transfer for an active Connect app on
+**Administration › Apps › Data migration**. The app sends the transfer id in the
+`Atlassian-Transfer-Id` header; an unknown transfer or another app's transfer
+is 403.
+
+| Operation | Behavior |
+| --- | --- |
+| `PUT /rest/atlassian-connect/1/migration/field` | Sets the values of the app's issue fields: `StringIssueField`, `TextIssueField`, `RichTextIssueField`, `NumberIssueField` and `SingleSelectIssueField` values by numeric `fieldID` and `issueID`, for up to 200 fields, through the ordinary issue update. Multi-select fields are 400, as they cannot be declared here. |
+| `PUT /rest/atlassian-connect/1/migration/properties/{entityType}` | Up to 50 properties by Jira's numeric entity id for issues, comments, worklogs, work types, projects, boards, sprints and dashboard items, all or none. `UserProperty` is 400 because accounts have no numeric id. |
+| `POST /rest/atlassian-connect/1/migration/workflow/rule/search` | The calling app's rules among up to 10 `ruleIds` of the workflow `workflowEntityId`, grouped as post functions, conditions and validators, with `invalidRules` for the rest; `expand=transition` adds the transition. |
+| `GET/POST /rest/atlassian-connect/1/migration/{connectKey}/{jiraIssueFieldsKey}/task` | Connect and Forge apps submit and follow the task migrating an issue field to its Forge custom field: 202 when queued, 409 while one runs, a completed migration is only repeated with `retriggerCompletedMigration=true`, and GET returns Jira's TaskProgress. Connect and Forge fields share one record here, so the task verifies the field and reports how many values it holds. |
+
+## Service registry
+
+`GET /rest/atlassian-connect/1/service-registry?serviceIds=` returns up to 20
+services by id (ids starting `b:` are Base64) with their tier, revision and
+organization id, for Connect apps only. Site administrators maintain services
+on **Service management › Services** with a name, description and one of four
+tiers; each change advances the revision.
+
+## App custom field configuration and values
+
+| Operation | Behavior |
+| --- | --- |
+| `GET/PUT /rest/api/3/app/field/{fieldIdOrKey}/context/configuration` | The configuration and schema of an app field in each of its contexts, filtered by `id`, `fieldContextId`, `issueId` or `projectKeyOrId` with `issueTypeId` (one filter at a time), paged. PUT replaces up to 1000 configurations. |
+| `POST /rest/api/3/app/field/context/configuration/list` | The same for several fields by id or `appKey__moduleKey`, with `customFieldId` on each entry. |
+| `PUT /rest/api/3/app/field/{fieldIdOrKey}/value`, `POST /rest/api/3/app/field/value` | The app that provides a field sets its value on issues, each field and issue combination once; values go through the ordinary issue update, so they are validated and recorded in the changelog. |
+
+Configuration is for site administrators and the providing app; values are for
+the providing app only. `generateChangelog` and `generateAppEvents` are
+accepted, but every change is recorded and sends its events.
 
 ## References
 

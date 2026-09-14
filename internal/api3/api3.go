@@ -50,6 +50,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(r.URL.Path, "/rest/webhooks/1.0/"):
 		h.adminWebhookRoute(w, r)
 		return
+	case strings.HasPrefix(r.URL.Path, "/rest/atlassian-connect/1/migration/"):
+		h.connectMigrationRoute(w, r)
+		return
+	case r.URL.Path == "/rest/atlassian-connect/1/service-registry":
+		h.serviceRegistry(w, r)
+		return
 	case strings.HasPrefix(r.URL.Path, "/rest/atlassian-connect/1/addons/"):
 		h.connectAddonProperties(w, r)
 		return
@@ -111,6 +117,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.dashboardRoute(w, r, nil)
 	case strings.HasPrefix(path, "/dashboard/"):
 		h.dashboardRoute(w, r, strings.Split(strings.TrimPrefix(path, "/dashboard/"), "/"))
+	case path == "/project-template" || strings.HasPrefix(path, "/project-template/"):
+		h.projectTemplateRoute(w, r, path)
+	case strings.HasPrefix(path, "/app/field/"):
+		h.appFieldRoute(w, r, path)
+	case path == "/plans/plan" || strings.HasPrefix(path, "/plans/plan/"):
+		h.plansRoute(w, r, path)
 	case path == "/serverInfo" && r.Method == http.MethodGet:
 		h.serverInfo(w, r)
 	case path == "/myself" && r.Method == http.MethodGet:

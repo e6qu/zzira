@@ -284,6 +284,7 @@ func main() {
 	mux.HandleFunc("GET /admin/apps/modules/{module}", webHandler.AdminAppModulePage)
 	mux.HandleFunc("POST /admin/apps", webHandler.CreateAdminApp)
 	mux.HandleFunc("POST /admin/apps/{appKey}", webHandler.UpdateAdminApp)
+	mux.HandleFunc("POST /admin/apps/{appKey}/transfers", webHandler.CreateAdminAppTransfer)
 	mux.HandleFunc("POST /admin/identity-providers/{provider}", webHandler.UpdateAdminIdentityProvider)
 	mux.HandleFunc("POST /admin/identity-providers", webHandler.CreateAdminIdentityProvider)
 	mux.HandleFunc("POST /admin/groups", webHandler.CreateAdminGroup)
@@ -399,6 +400,13 @@ func main() {
 		webHandler.ProjectOverview(w, r, r.PathValue("key"))
 	})
 	mux.HandleFunc("GET /people", webHandler.PeoplePage)
+	mux.HandleFunc("GET /teams", webHandler.TeamsPage)
+	mux.HandleFunc("POST /teams", webHandler.TeamsPage)
+	mux.HandleFunc("GET /teams/{id}", webHandler.TeamPage)
+	mux.HandleFunc("POST /teams/{id}", webHandler.TeamPage)
+	mux.HandleFunc("GET /service-registry", webHandler.ServiceRegistryPage)
+	mux.HandleFunc("POST /service-registry", webHandler.ServiceRegistryPage)
+	mux.HandleFunc("POST /service-registry/{id}", webHandler.ServiceRegistryPage)
 	mux.HandleFunc("GET /profile", webHandler.SelfProfile)
 	mux.HandleFunc("POST /profile/identities/{provider}/unlink", webHandler.UnlinkIdentityProvider)
 	mux.HandleFunc("GET /people/{id}", func(w http.ResponseWriter, r *http.Request) {
@@ -618,7 +626,7 @@ func main() {
 	mux.Handle("/rest/agile/1.0/", agileAPI)
 	mux.Handle("/rest/software/1.0/", agileAPI)
 	mux.Handle("/rest/api/3/", api)
-	for _, prefix := range []string{"/rest/webhooks/1.0/", "/rest/atlassian-connect/1/addons/", "/rest/forge/1/app/properties", "/rest/forge/1/app/properties/", "/rest/internal/api/latest/worklog/bulk"} {
+	for _, prefix := range []string{"/rest/webhooks/1.0/", "/rest/atlassian-connect/1/addons/", "/rest/atlassian-connect/1/migration/", "/rest/atlassian-connect/1/service-registry", "/rest/forge/1/app/properties", "/rest/forge/1/app/properties/", "/rest/internal/api/latest/worklog/bulk"} {
 		mux.Handle(prefix, api)
 	}
 	mux.Handle("/rest/servicedeskapi/", api)

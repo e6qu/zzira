@@ -883,7 +883,7 @@
   <div class="app-shell">{{template "workspace_nav" .}}
   <main class="page page-directory" id="main-content" tabindex="-1">
     <nav class="issue-breadcrumbs" aria-label="Breadcrumb"><span aria-current="page">People</span></nav>
-    <header class="page-header"><div><span class="eyebrow">Directory</span><h1>People</h1><p>Find teammates and understand the work they own and report.</p></div></header>
+    <header class="page-header"><div><span class="eyebrow">Directory</span><h1>People</h1><p>Find teammates and understand the work they own and report.</p></div><a class="btn" href="/teams">Teams</a></header>
     <div class="people-grid">{{range .Data.People}}<a class="person-card" href="/people/{{.ID}}">{{template "avatar" .}}<span><strong>{{.DisplayName}}</strong><small>{{.Email}}</small></span><span class="lozenge {{if .Active}}lozenge-success{{end}}">{{if .Active}}Active{{else}}Inactive{{end}}</span></a>{{else}}<div class="empty-state"><strong>No people found</strong></div>{{end}}</div>
   </main></div><div id="modal-root"></div><div id="sync-banner" class="sync-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div>
 </body></html>

@@ -1,0 +1,73 @@
+{{define "page_teams"}}
+<!doctype html>
+<html lang="en">
+<head><title>Teams · ZZIRA</title>{{template "head" .}}</head>
+<body class="page-teams">
+  <a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}
+  <div class="app-shell">{{template "workspace_nav" .}}
+  <main class="page page-directory" id="main-content" tabindex="-1">
+    <nav class="issue-breadcrumbs" aria-label="Breadcrumb"><a href="/people">People</a><span aria-hidden="true">/</span><span aria-current="page">Teams</span></nav>
+    <header class="page-header"><div><span class="eyebrow">Directory</span><h1>Teams</h1><p>Teams group the people who plan and deliver work together. Plans schedule work by team.</p></div></header>
+    {{if .Data.Error}}<div class="alert error" role="alert">{{.Data.Error}}</div>{{end}}
+    <section class="surface-card" aria-labelledby="create-team-title">
+      <h2 id="create-team-title">Create team</h2>
+      <form class="stacked-form" method="post" action="/teams">
+        <label for="team-name">Team name</label><input id="team-name" name="name" maxlength="255" required value="{{.Data.Name}}">
+        <label for="team-description">Description</label><textarea id="team-description" name="description" maxlength="2000" rows="2">{{.Data.Description}}</textarea>
+        <button class="btn btn-primary" type="submit">Create team</button>
+      </form>
+    </section>
+    <div class="people-grid">{{range .Data.Teams}}<a class="person-card" href="/teams/{{.ID}}"><span class="profile-avatar" aria-hidden="true">{{initials .Name}}</span><span><strong>{{.Name}}</strong><small>{{len .MemberIDs}} member{{if ne (len .MemberIDs) 1}}s{{end}}{{if .Description}} · {{.Description}}{{end}}</small></span></a>{{else}}<div class="empty-state"><strong>No teams yet</strong><small>Create a team to plan work with it.</small></div>{{end}}</div>
+  </main></div><div id="modal-root"></div><div id="sync-banner" class="sync-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+</body></html>
+{{end}}
+
+{{define "page_team"}}
+<!doctype html>
+<html lang="en">
+<head><title>{{.Data.Team.Name}} · ZZIRA</title>{{template "head" .}}</head>
+<body class="page-team">
+  <a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}
+  <div class="app-shell">{{template "workspace_nav" .}}
+  <main class="page page-directory" id="main-content" tabindex="-1">
+    <nav class="issue-breadcrumbs" aria-label="Breadcrumb"><a href="/people">People</a><span aria-hidden="true">/</span><a href="/teams">Teams</a><span aria-hidden="true">/</span><span aria-current="page">{{.Data.Team.Name}}</span></nav>
+    <header class="page-header"><div><span class="eyebrow">Team</span><h1>{{.Data.Team.Name}}</h1><p>{{if .Data.Team.Description}}{{.Data.Team.Description}}{{else}}No description.{{end}}</p><small>Team ID <code>{{.Data.Team.ID}}</code></small></div></header>
+    {{if .Data.Saved}}<div class="alert success" role="status">{{.Data.Saved}}</div>{{end}}
+    {{if .Data.Error}}<div class="alert error" role="alert">{{.Data.Error}}</div>{{end}}
+    <section class="surface-card" aria-labelledby="team-members-title">
+      <h2 id="team-members-title">Members <span class="section-count">{{len .Data.Members}}</span></h2>
+      <ul class="compact-work-list">{{range .Data.Members}}<li><a href="/people/{{.ID}}"><strong>{{.DisplayName}}</strong><span>{{.Email}}</span></a>{{if $.Data.CanEdit}}<form method="post" action="/teams/{{$.Data.Team.ID}}"><input type="hidden" name="accountId" value="{{.ID}}"><button class="btn" name="action" value="remove" type="submit">Remove {{.DisplayName}}</button></form>{{end}}</li>{{else}}<li class="empty-state"><strong>No members</strong></li>{{end}}</ul>
+      {{if and .Data.CanEdit .Data.Candidates}}<form class="inline-form" method="post" action="/teams/{{.Data.Team.ID}}"><label for="team-add-member">Add member</label><select id="team-add-member" name="accountId">{{range .Data.Candidates}}<option value="{{.ID}}">{{.DisplayName}}</option>{{end}}</select><button class="btn btn-primary" name="action" value="add" type="submit">Add member</button></form>{{end}}
+    </section>
+    {{if .Data.CanEdit}}<form method="post" action="/teams/{{.Data.Team.ID}}"><button class="btn btn-danger" name="action" value="delete" type="submit">Delete team</button></form>{{end}}
+  </main></div><div id="modal-root"></div><div id="sync-banner" class="sync-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+</body></html>
+{{end}}
+
+{{define "page_service_registry"}}
+<!doctype html>
+<html lang="en">
+<head><title>Services · ZZIRA</title>{{template "head" .}}</head>
+<body class="page-service-registry">
+  <a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}
+  <div class="app-shell">{{template "workspace_nav" .}}
+  <main class="page page-directory" id="main-content" tabindex="-1">
+    <nav class="issue-breadcrumbs" aria-label="Breadcrumb"><a href="/service">Service management</a><span aria-hidden="true">/</span><span aria-current="page">Services</span></nav>
+    <header class="page-header"><div><span class="eyebrow">Service registry</span><h1>Services</h1><p>The services your teams operate, with the tier that says how critical each one is. Connect apps read them through the service registry.</p></div></header>
+    {{if .Data.Saved}}<div class="alert success" role="status">{{.Data.Saved}}</div>{{end}}
+    {{if .Data.Error}}<div class="alert error" role="alert">{{.Data.Error}}</div>{{end}}
+    {{if .Data.CanEdit}}<section class="surface-card" aria-labelledby="create-service-title">
+      <h2 id="create-service-title">Add service</h2>
+      <form class="stacked-form" method="post" action="/service-registry">
+        <label for="service-name">Service name</label><input id="service-name" name="name" maxlength="255" required>
+        <label for="service-description">Description</label><textarea id="service-description" name="description" maxlength="2000" rows="2"></textarea>
+        <label for="service-tier">Tier</label><select id="service-tier" name="tier">{{range .Data.Tiers}}<option value="{{.Level}}">{{.Name}} — {{.Description}}</option>{{end}}</select>
+        <button class="btn btn-primary" type="submit">Add service</button>
+      </form>
+    </section>{{end}}
+    <div class="table-scroll" tabindex="0" aria-label="Services"><table><thead><tr><th scope="col">Service</th><th scope="col">Tier</th><th scope="col">Revision</th><th scope="col">ID</th>{{if .Data.CanEdit}}<th scope="col">Actions</th>{{end}}</tr></thead><tbody>
+      {{range .Data.Services}}<tr><td><strong>{{.Name}}</strong>{{if .Description}}<small>{{.Description}}</small>{{end}}</td><td>{{.Tier.Name}}</td><td>{{.Revision}}</td><td><code>{{.ID}}</code></td>{{if $.Data.CanEdit}}<td><form method="post" action="/service-registry/{{.ID}}"><button class="btn btn-danger" name="action" value="delete" type="submit">Delete {{.Name}}</button></form></td>{{end}}</tr>{{else}}<tr><td colspan="5">No services yet.</td></tr>{{end}}
+    </tbody></table></div>
+  </main></div><div id="modal-root"></div><div id="sync-banner" class="sync-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+</body></html>
+{{end}}

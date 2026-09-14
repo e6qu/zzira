@@ -31,6 +31,7 @@ type adminPageData struct {
 	Policies                          []*models.OrganizationPolicy
 	IdentityProviders                 []LoginProvider
 	Apps                              []*models.AppInstallation
+	Transfers                         map[string][]store.AppMigrationTransfer
 	Directory                         *models.Directory
 	Groups                            []adminGroupRow
 	Users                             []*models.User
@@ -163,9 +164,13 @@ func (h *Handler) adminData(r *http.Request, workspaceID, message string) (admin
 	if err != nil {
 		return adminPageData{}, err
 	}
+	data.Transfers = map[string][]store.AppMigrationTransfer{}
 	for _, app := range data.Apps {
 		app.OutboundDeliveries, err = h.Store.AppOutboundDeliveries(r.Context(), app.ID, 5)
 		if err != nil {
+			return adminPageData{}, err
+		}
+		if data.Transfers[app.ID], err = h.Store.AppMigrationTransfers(r.Context(), app.ID); err != nil {
 			return adminPageData{}, err
 		}
 	}
@@ -438,6 +443,30 @@ func (h *Handler) UpdateAdminApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/admin?saved="+url.QueryEscape("App state updated")+"#admin-apps", http.StatusSeeOther)
+}
+
+// CreateAdminAppTransfer opens a data transfer a Connect app uses to migrate
+// its data into the site.
+func (h *Handler) CreateAdminAppTransfer(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	installation, err := h.Store.AppInstallation(r.Context(), workspaceID, r.PathValue("appKey"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if installation.Format != "connect" || installation.Status != "active" {
+		http.Error(w, "Only an active Connect app can receive a data transfer.", http.StatusBadRequest)
+		return
+	}
+	transferID, err := h.Store.CreateAppMigrationTransfer(r.Context(), workspaceID, user.ID, installation.ID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/admin?saved="+url.QueryEscape("Data transfer "+transferID+" opened for "+installation.Name)+"#admin-apps", http.StatusSeeOther)
 }
 
 func (h *Handler) CreateAdminIdentityProvider(w http.ResponseWriter, r *http.Request) {
