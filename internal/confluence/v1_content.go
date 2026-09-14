@@ -301,16 +301,14 @@ func (h *V1Handler) v1Descendants(ctx context.Context, ws, actor string, root *m
 		depth int
 	}
 	pages := []placedPage{{root, 0}}
-	if depth > 1 || depth == 1 {
-		relations, err := h.Store.WikiTreeDescendants(ctx, ws, actor, root.ID, "page", depth)
-		if err != nil {
-			return nil, err
-		}
-		for _, relation := range relations {
-			found[relation.Type()] = append(found[relation.Type()], h.v1TreeNodeBean(relation))
-			if relation.Page != nil && relation.Page.Status == "current" && relation.Depth < depth {
-				pages = append(pages, placedPage{relation.Page, relation.Depth})
-			}
+	relations, err := h.Store.WikiTreeDescendants(ctx, ws, actor, root.ID, "page", depth)
+	if err != nil {
+		return nil, err
+	}
+	for _, relation := range relations {
+		found[relation.Type()] = append(found[relation.Type()], h.v1TreeNodeBean(relation))
+		if relation.Page != nil && relation.Page.Status == "current" && relation.Depth < depth {
+			pages = append(pages, placedPage{relation.Page, relation.Depth})
 		}
 	}
 	for _, placed := range pages {
