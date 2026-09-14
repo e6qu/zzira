@@ -37,7 +37,10 @@ type Handler struct {
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if !authn.PresentsCredentials(r) && anonymousOperation(r.Method, r.URL.Path) {
+	// The attachment downloads anonymous content and thumbnail reads redirect
+	// to are anonymous too.
+	secureDownload := r.Method == http.MethodGet && (strings.HasPrefix(r.URL.Path, "/secure/attachment/") || strings.HasPrefix(r.URL.Path, "/secure/thumbnail/"))
+	if !authn.PresentsCredentials(r) && (anonymousOperation(r.Method, r.URL.Path) || secureDownload) {
 		r = r.WithContext(authn.WithAnonymous(r.Context()))
 	}
 	r = h.withRequestViewer(r)
@@ -372,6 +375,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.filterCRUD(w, r, strings.TrimPrefix(path, "/filter/"))
 	case path == "/bootstrap" && r.Method == http.MethodGet:
 		h.bootstrap(w, r)
+	case strings.HasPrefix(path, "/secure/attachment/"):
+		h.secureAttachmentRoute(w, r, strings.TrimPrefix(path, "/secure/attachment/"), false)
+	case strings.HasPrefix(path, "/secure/thumbnail/"):
+		h.secureAttachmentRoute(w, r, strings.TrimPrefix(path, "/secure/thumbnail/"), true)
 	case path == "/attachment/meta" && r.Method == http.MethodGet:
 		h.attachmentSettings(w, r)
 	case strings.HasPrefix(path, "/attachment/content/"):

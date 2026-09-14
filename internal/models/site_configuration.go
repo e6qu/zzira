@@ -22,8 +22,10 @@ type TimeTrackingConfiguration struct {
 }
 
 type JiraSiteConfiguration struct {
-	Announcement            AnnouncementBanner
-	AttachmentsEnabled      bool
+	Announcement       AnnouncementBanner
+	AttachmentsEnabled bool
+	// AttachmentUploadLimit is the largest attachment accepted, in bytes.
+	AttachmentUploadLimit   int64
 	IssueLinkingEnabled     bool
 	SubTasksEnabled         bool
 	TimeTrackingEnabled     bool

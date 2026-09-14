@@ -1934,8 +1934,19 @@ func (h *Handler) UploadAttachment(w http.ResponseWriter, r *http.Request, key s
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 32<<20)        // bounded: 32MB max upload
+	configuration, err := h.Store.JiraSiteConfiguration(r.Context(), wsID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	// Each of up to 60 files may reach the site's attachment limit.
+	r.Body = http.MaxBytesReader(w, r.Body, min(60*configuration.AttachmentUploadLimit+(1<<20), 2<<30))
 	if err := r.ParseMultipartForm(32 << 20); err != nil { // #nosec G120 -- body capped by MaxBytesReader above
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			http.Error(w, "the attachment exceeds the maximum attachment size", http.StatusRequestEntityTooLarge)
+			return
+		}
 		http.Error(w, "multipart form required", http.StatusBadRequest)
 		return
 	}
@@ -1950,6 +1961,14 @@ func (h *Handler) UploadAttachment(w http.ResponseWriter, r *http.Request, key s
 			_, _, err = h.Commands.AddAttachment(r.Context(), user.ID, wsID, key, fh.Filename, fh.Header.Get("Content-Type"), f)
 			if closeErr := f.Close(); closeErr != nil {
 				log.Printf("attachment file close: %v", closeErr)
+			}
+			if errors.Is(err, commands.ErrAttachmentTooLarge) {
+				http.Error(w, "the attachment exceeds the maximum attachment size", http.StatusRequestEntityTooLarge)
+				return
+			}
+			if errors.Is(err, commands.ErrAttachmentCreatePermission) {
+				http.Error(w, "you do not have permission to attach files to this work item", http.StatusForbidden)
+				return
 			}
 			if err != nil {
 				http.Error(w, "upload failed", http.StatusBadRequest)

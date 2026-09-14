@@ -493,7 +493,16 @@ func (h *Handler) UpdateAdminJiraConfiguration(w http.ResponseWriter, r *http.Re
 		})
 		message = "Announcement banner saved"
 	case "features":
-		cfg := models.JiraSiteConfiguration{
+		limit := int64(0)
+		if raw := strings.TrimSpace(r.PostFormValue("attachmentUploadLimit")); raw != "" {
+			parsed, parseErr := strconv.ParseInt(raw, 10, 64)
+			if parseErr != nil || parsed < 1 || parsed > 1<<30 {
+				http.Error(w, "the maximum attachment size must be between 1 byte and 1 GiB", http.StatusBadRequest)
+				return
+			}
+			limit = parsed
+		}
+		cfg := models.JiraSiteConfiguration{AttachmentUploadLimit: limit,
 			AttachmentsEnabled: r.PostForm.Has("attachmentsEnabled"), IssueLinkingEnabled: r.PostForm.Has("issueLinkingEnabled"),
 			SubTasksEnabled: r.PostForm.Has("subTasksEnabled"), TimeTrackingEnabled: r.PostForm.Has("timeTrackingEnabled"),
 			UnassignedIssuesAllowed: r.PostForm.Has("unassignedIssuesAllowed"), VotingEnabled: r.PostForm.Has("votingEnabled"),

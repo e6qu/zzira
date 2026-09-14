@@ -200,7 +200,7 @@
         "e2e/v3.spec.ts",
         "docs/ATTACHMENTS.md"
       ],
-      "notes": "Streams permission-filtered bytes with content disposition, media type and HTTP range handling; Jira signed redirect behavior and virus-scan lifecycle remain."
+      "notes": "Answers 303 to the /secure/attachment download by default and streams the bytes with redirect=false, both permission-filtered with content disposition, media type and Range handling (206, 400 for malformed ranges, 416 when unsatisfiable); disabled attachments are not found."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/attachment/meta",
@@ -213,7 +213,7 @@
         "e2e/v3.spec.ts",
         "docs/ATTACHMENTS.md"
       ],
-      "notes": "Reports whether attachment storage is configured and the enforced 32 MiB request limit; Jira administrator-controlled attachment and thumbnail settings remain."
+      "notes": "Returns whether attachments are enabled and stored, and the site's maximum attachment size, which administrators set in the Jira features settings and uploads enforce with 413."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/attachment/thumbnail/{id}",
@@ -226,7 +226,7 @@
         "e2e/v3.spec.ts",
         "docs/ATTACHMENTS.md"
       ],
-      "notes": "Serves authorized image bytes and honors fallbackToDefault=false for non-images; derived and dimension-controlled renditions remain."
+      "notes": "Answers 303 to the /secure/thumbnail download by default; images are scaled within width and height (200 pixels when unset) without enlarging, other attachments fall back to the default thumbnail unless fallbackToDefault=false, and invalid bounds are refused."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/attachment/{id}",
@@ -254,7 +254,7 @@
         "e2e/v3.spec.ts",
         "docs/ATTACHMENTS.md"
       ],
-      "notes": "Returns permission-filtered Jira-shaped metadata with author, content and image-thumbnail links; complete media metadata and derived rendition state remain."
+      "notes": "Returns permission-filtered AttachmentMetadata with its numeric id, the author's user bean, properties, content and image-thumbnail links; disabled attachments are not found."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/attachment/{id}/expand/human",
@@ -267,7 +267,7 @@
         "e2e/v3.spec.ts",
         "docs/ATTACHMENTS.md"
       ],
-      "notes": "Returns bounded ZIP entry paths, media types and human-readable sizes; non-ZIP archive formats and Jira exact archive error shapes remain."
+      "notes": "Returns the archive's numeric id, name and media type with ZIP entry labels, paths, media types and human-readable sizes; empty, corrupt or non-archive attachments have no entries and TAR, gzip, bzip2, xz, 7-Zip and RAR archives conflict with 409, since Jira expands only ZIP."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/attachment/{id}/expand/raw",
@@ -280,7 +280,7 @@
         "e2e/v3.spec.ts",
         "docs/ATTACHMENTS.md"
       ],
-      "notes": "Returns bounded ZIP entry indexes, paths, media types and byte sizes; non-ZIP archive formats and Jira exact archive error shapes remain."
+      "notes": "Returns ZIP entry indexes, names, 40-character abbreviated names, media types and byte sizes; empty, corrupt or non-archive attachments have no entries and TAR, gzip, bzip2, xz, 7-Zip and RAR archives conflict with 409, since Jira expands only ZIP."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/auditing/record",
@@ -2424,7 +2424,7 @@
         "internal/api3/issue_surface_test.go",
         "docs/ISSUE_SURFACE.md"
       ],
-      "notes": "Attachment upload returning numeric attachment ids."
+      "notes": "Attachment upload with Jira's X-Atlassian-Token check, Browse projects, Create attachments and issue security, returning attachment beans with string ids; files over the site's maximum attachment size or more than 60 files answer 413, and uploads while attachments are disabled or without Create attachments answer 403."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issue/{issueIdOrKey}/changelog",

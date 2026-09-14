@@ -7,24 +7,38 @@ ZIP archive expansion, and deletion.
 
 | Route | Behavior |
 |---|---|
-| `GET /rest/api/3/attachment/meta` | Reports whether storage is configured and the 32 MiB request limit |
-| `GET /rest/api/3/attachment/{id}` | Returns Jira-shaped metadata, author, content and image-thumbnail links |
-| `GET /rest/api/3/attachment/content/{id}` | Streams authorized bytes and supports one or more HTTP byte ranges through `ServeContent` |
-| `GET /rest/api/3/attachment/thumbnail/{id}` | Serves image bytes inline and honors `fallbackToDefault=false` for non-images |
-| `GET /rest/api/3/attachment/{id}/expand/human` | Lists bounded ZIP entries with paths, media types and display sizes |
-| `GET /rest/api/3/attachment/{id}/expand/raw` | Lists bounded ZIP entries with indexes and byte sizes |
+| `GET /rest/api/3/attachment/meta` | Reports whether attachments are enabled and stored, and the site's maximum attachment size |
+| `POST /rest/api/3/issue/{issueIdOrKey}/attachments` | Uploads up to 60 files, each within the maximum size (413 otherwise), for callers with Create attachments; 403 without it or while attachments are disabled |
+| `GET /rest/api/3/attachment/{id}` | Returns `AttachmentMetadata` with its numeric id, the author's user bean, properties, content and image-thumbnail links |
+| `GET /rest/api/3/attachment/content/{id}` | Answers `303` to `/secure/attachment/{id}/{filename}`, or streams the bytes with `redirect=false`; ranges answer 206, malformed ranges 400 |
+| `GET /rest/api/3/attachment/thumbnail/{id}` | Answers `303` to `/secure/thumbnail/{id}/{filename}`, or renders with `redirect=false` |
+| `GET /rest/api/3/attachment/{id}/expand/human` | Lists ZIP entries with labels, paths, media types and display sizes |
+| `GET /rest/api/3/attachment/{id}/expand/raw` | Lists ZIP entries with indexes, names, abbreviated names and byte sizes |
 | `DELETE /rest/api/3/attachment/{id}` | Deletes authorized metadata atomically and schedules durable blob cleanup |
+
+The `/secure/attachment` and `/secure/thumbnail` downloads apply the same
+checks as the operations that redirect to them, for signed-in and anonymous
+callers alike. While attachments are disabled, every attachment read answers
+404.
+
+Thumbnails scale images within `width` and `height`, 200 pixels when unset,
+keeping the aspect ratio and never enlarging. JPEG sources stay JPEG and other
+images become PNG. Attachments without an image rendition get the default file
+thumbnail, or 404 with `fallbackToDefault=false`.
+
+Jira expands only ZIP archives. Empty, corrupt and non-archive attachments
+list no entries, and TAR, gzip, bzip2, xz, 7-Zip and RAR archives answer 409.
+Raw entries abbreviate names longer than 40 characters, keeping their start and
+end.
+
+Administrators set the maximum attachment size (1 byte to 1 GiB, 32 MiB by
+default) beside the attachment switch in the Jira features settings. The
+browser and REST uploads and the shared attachment command all enforce it.
 
 Issue deletion and direct attachment deletion both write blob cleanup intents in
 the same transaction as metadata and action history. Immediate object-store
 failures are deferred with a bounded backoff and reclaimed through a lease, so
 a worker crash or temporary storage outage cannot permanently orphan bytes.
-
-The current thumbnail route returns the original image because ZZIRA does not
-yet maintain derived renditions. Archive inspection supports ZIP within the
-upload bound; Jira's other archive formats, redirect-to-signed-object behavior,
-virus scanning, configurable limits, project permission schemes and complete
-media processing remain compatibility work.
 
 ## Confluence v1 attachments on blog posts, and metadata updates
 

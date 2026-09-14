@@ -182,4 +182,13 @@ func TestProjectAdministrationPermissions(t *testing.T) {
 	leadAttachment, memberAttachment := upload(leadID), upload(memberID)
 	call(memberID, http.MethodDelete, "/rest/api/3/attachment/"+leadAttachment, "", http.StatusForbidden)
 	call(memberID, http.MethodDelete, "/rest/api/3/attachment/"+memberAttachment, "", http.StatusNoContent)
+
+	// Uploads need Create attachments.
+	exec(`DELETE FROM permission_scheme_grants WHERE workspace_id=$1 AND permission_key='CREATE_ATTACHMENTS' AND holder_type='projectRole' AND holder_value='10001'`, workspaceID)
+	var refused bytes.Buffer
+	refusedWriter := multipart.NewWriter(&refused)
+	refusedPart, _ := refusedWriter.CreateFormFile("file", "refused.txt")
+	_, _ = refusedPart.Write([]byte("refused"))
+	_ = refusedWriter.Close()
+	send(memberID, http.MethodPost, "/rest/api/3/issue/"+issueKey+"/attachments", refusedWriter.FormDataContentType(), refused.String(), http.StatusForbidden)
 }

@@ -130,6 +130,13 @@ func (s *Service) AddAttachment(ctx context.Context, actorID, workspaceID, issue
 	if err != nil {
 		return nil, nil, err
 	}
+	allowed, err := s.Store.HasProjectPermission(ctx, workspaceID, actorID, issue.ProjectID, issue.ID, "CREATE_ATTACHMENTS")
+	if err != nil {
+		return nil, nil, err
+	}
+	if !allowed {
+		return nil, nil, ErrAttachmentCreatePermission
+	}
 	configuration, err := s.jiraSiteConfiguration(ctx, workspaceID)
 	if err != nil {
 		return nil, nil, err
@@ -149,9 +156,19 @@ func (s *Service) AddAttachment(ctx context.Context, actorID, workspaceID, issue
 		return nil, nil, err
 	}
 	blobRef := store.NewID("blob")
-	size, err := s.Blobs.Put(ctx, blobRef, r)
+	limit := configuration.AttachmentUploadLimit
+	if limit <= 0 {
+		limit = 32 << 20
+	}
+	size, err := s.Blobs.Put(ctx, blobRef, io.LimitReader(r, limit+1))
 	if err != nil {
 		return nil, nil, fmt.Errorf("store blob: %w", err)
+	}
+	if size > limit {
+		if cleanupErr := s.Blobs.Delete(ctx, blobRef); cleanupErr != nil {
+			return nil, nil, errors.Join(ErrAttachmentTooLarge, cleanupErr)
+		}
+		return nil, nil, ErrAttachmentTooLarge
 	}
 	att, action, err := s.Store.CreateAttachment(ctx, actorID, workspaceID, issue.ID, filename, mimeType, size, blobRef)
 	if err != nil {
@@ -184,6 +201,14 @@ func normalizedAttachmentMIMEType(value string) (string, error) {
 	}
 	return mediaType, nil
 }
+
+// ErrAttachmentCreatePermission refuses attaching files without the Create
+// attachments project permission.
+var ErrAttachmentCreatePermission = errors.New("you do not have permission to create attachments for this work item")
+
+// ErrAttachmentTooLarge refuses an attachment larger than the site's
+// maximum attachment size.
+var ErrAttachmentTooLarge = errors.New("the attachment exceeds the maximum attachment size")
 
 // ErrAttachmentDeletePermission refuses deleting an attachment without the
 // Delete own attachments or Delete all attachments permission it needs.
