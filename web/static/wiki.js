@@ -18,10 +18,7 @@ const mentionPicker = (people) => {
   let active = 0;
   const close = () => {
     list.hidden = true;
-    if (field) {
-      field.setAttribute('aria-expanded', 'false');
-      field.removeAttribute('aria-activedescendant');
-    }
+    if (field) field.removeAttribute('aria-activedescendant');
   };
   const highlight = (index) => {
     active = index;
@@ -61,13 +58,11 @@ const mentionPicker = (people) => {
     }
     target.after(list);
     list.hidden = false;
-    target.setAttribute('aria-expanded', 'true');
     highlight(0);
   };
   const attach = (target, targetAdapter) => {
     target.setAttribute('aria-autocomplete', 'list');
     target.setAttribute('aria-controls', list.id);
-    target.setAttribute('aria-expanded', 'false');
     target.addEventListener('input', () => update(target, targetAdapter));
     target.addEventListener('blur', () => { if (field === target) close(); });
     target.addEventListener('keydown', (event) => {
