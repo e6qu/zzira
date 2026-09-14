@@ -13052,195 +13052,298 @@
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/app/field/context/configuration/list",
-      "status": "missing",
-      "evidence": [],
-      "notes": "App custom field context configuration and values are not implemented."
+      "status": "partial",
+      "evidence": [
+        "internal/api3/app_fields_migration_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "App field configurations for several fields with filters and paging."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/app/field/value",
-      "status": "missing",
-      "evidence": [],
-      "notes": "App custom field context configuration and values are not implemented."
+      "status": "partial",
+      "evidence": [
+        "internal/api3/app_fields_migration_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "The providing app sets values of several fields; changelog and event suppression flags are accepted but not applied."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/app/field/{fieldIdOrKey}/context/configuration",
-      "status": "missing",
-      "evidence": [],
-      "notes": "App custom field context configuration and values are not implemented."
+      "status": "partial",
+      "evidence": [
+        "internal/api3/app_fields_migration_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Per-context configuration and schema with id, context, issue or project and work type filters."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/app/field/{fieldIdOrKey}/context/configuration",
-      "status": "missing",
-      "evidence": [],
-      "notes": "App custom field context configuration and values are not implemented."
+      "status": "partial",
+      "evidence": [
+        "internal/api3/app_fields_migration_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Replaces up to 1000 configurations for administrators or the providing app."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/app/field/{fieldIdOrKey}/value",
-      "status": "missing",
-      "evidence": [],
-      "notes": "App custom field context configuration and values are not implemented."
+      "status": "partial",
+      "evidence": [
+        "internal/api3/app_fields_migration_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "The providing app sets a field's values through the issue update; suppression flags are not applied."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/plans/plan",
-      "status": "missing",
-      "evidence": [],
-      "notes": "Plans and plan teams are not implemented."
+      "status": "partial",
+      "evidence": [
+        "internal/api3/plans_test.go",
+        "docs/JIRA_PLATFORM.md",
+        "e2e/plans_teams.spec.ts"
+      ],
+      "notes": "Active, trashed and archived plans paged by cursor at most 50."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/plans/plan",
-      "status": "missing",
-      "evidence": [],
-      "notes": "Plans and plan teams are not implemented."
+      "status": "partial",
+      "evidence": [
+        "internal/api3/plans_test.go",
+        "docs/JIRA_PLATFORM.md",
+        "e2e/plans_teams.spec.ts"
+      ],
+      "notes": "Creates plans with validated issue sources, scheduling, exclusion rules, releases, custom fields, lead and group or account permissions; no timeline scheduling runs from plans."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/plans/plan/{planId}",
-      "status": "missing",
-      "evidence": [],
-      "notes": "Plans and plan teams are not implemented."
+      "status": "partial",
+      "evidence": [
+        "internal/api3/plans_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "The plan document with Jira's defaults and lastSaved."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/plans/plan/{planId}",
-      "status": "missing",
-      "evidence": [],
-      "notes": "Plans and plan teams are not implemented."
+      "status": "partial",
+      "evidence": [
+        "internal/api3/plans_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "RFC 6902 JSON Patch against the plan document, validated like a new plan; 409 when not active."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/plans/plan/{planId}/archive",
-      "status": "missing",
-      "evidence": [],
-      "notes": "Plans and plan teams are not implemented."
+      "status": "partial",
+      "evidence": [
+        "internal/api3/plans_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Archives an active plan; 409 otherwise."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/plans/plan/{planId}/duplicate",
-      "status": "missing",
-      "evidence": [],
-      "notes": "Plans and plan teams are not implemented."
+      "status": "partial",
+      "evidence": [
+        "internal/api3/plans_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Copies an active plan with issue sources and teams."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/plans/plan/{planId}/team",
-      "status": "missing",
-      "evidence": [],
-      "notes": "Plans and plan teams are not implemented."
+      "status": "partial",
+      "evidence": [
+        "internal/api3/plans_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Plan-only and Atlassian teams cursor-paged."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/plans/plan/{planId}/team/atlassian",
-      "status": "missing",
-      "evidence": [],
-      "notes": "Plans and plan teams are not implemented."
+      "status": "partial",
+      "evidence": [
+        "internal/api3/plans_test.go",
+        "docs/JIRA_PLATFORM.md",
+        "e2e/plans_teams.spec.ts"
+      ],
+      "notes": "Adds an existing Atlassian team with planning settings; unknown team 404, duplicate 400."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/plans/plan/{planId}/team/atlassian/{atlassianTeamId}",
-      "status": "missing",
-      "evidence": [],
-      "notes": "Plans and plan teams are not implemented."
+      "status": "partial",
+      "evidence": [
+        "internal/api3/plans_test.go",
+        "docs/JIRA_PLATFORM.md",
+        "e2e/plans_teams.spec.ts"
+      ],
+      "notes": "Removes an Atlassian team from an active plan."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/plans/plan/{planId}/team/atlassian/{atlassianTeamId}",
-      "status": "missing",
-      "evidence": [],
-      "notes": "Plans and plan teams are not implemented."
+      "status": "partial",
+      "evidence": [
+        "internal/api3/plans_test.go",
+        "docs/JIRA_PLATFORM.md",
+        "e2e/plans_teams.spec.ts"
+      ],
+      "notes": "Planning settings of an Atlassian team; 409 on inactive plans."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/plans/plan/{planId}/team/atlassian/{atlassianTeamId}",
-      "status": "missing",
-      "evidence": [],
-      "notes": "Plans and plan teams are not implemented."
+      "status": "partial",
+      "evidence": [
+        "internal/api3/plans_test.go",
+        "docs/JIRA_PLATFORM.md",
+        "e2e/plans_teams.spec.ts"
+      ],
+      "notes": "JSON Patch of planning style, issue source, sprint length and capacity."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/plans/plan/{planId}/team/planonly",
-      "status": "missing",
-      "evidence": [],
-      "notes": "Plans and plan teams are not implemented."
+      "status": "partial",
+      "evidence": [
+        "internal/api3/plans_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Creates a plan-only team with members and planning settings."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/plans/plan/{planId}/team/planonly/{planOnlyTeamId}",
-      "status": "missing",
-      "evidence": [],
-      "notes": "Plans and plan teams are not implemented."
+      "status": "partial",
+      "evidence": [
+        "internal/api3/plans_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Deletes a plan-only team."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/plans/plan/{planId}/team/planonly/{planOnlyTeamId}",
-      "status": "missing",
-      "evidence": [],
-      "notes": "Plans and plan teams are not implemented."
+      "status": "partial",
+      "evidence": [
+        "internal/api3/plans_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Planning settings and members of a plan-only team."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/plans/plan/{planId}/team/planonly/{planOnlyTeamId}",
-      "status": "missing",
-      "evidence": [],
-      "notes": "Plans and plan teams are not implemented."
+      "status": "partial",
+      "evidence": [
+        "internal/api3/plans_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "JSON Patch of name, planning settings and members."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/plans/plan/{planId}/trash",
-      "status": "missing",
-      "evidence": [],
-      "notes": "Plans and plan teams are not implemented."
+      "status": "partial",
+      "evidence": [
+        "internal/api3/plans_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Trashes an active plan; 409 otherwise."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/project-template",
-      "status": "missing",
-      "evidence": [],
-      "notes": "Project templates are not implemented."
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_templates_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Creates a company-managed project in a task applying referenced existing schemes; REF-created configuration and team-managed scope are 400."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/project-template/edit-template",
-      "status": "missing",
-      "evidence": [],
-      "notes": "Project templates are not implemented."
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_templates_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Edits template name, description and generation options."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/project-template/live-template",
-      "status": "missing",
-      "evidence": [],
-      "notes": "Project templates are not implemented."
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_templates_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "ProjectTemplateModel by template key or a project's LIVE template."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/project-template/remove-template",
-      "status": "missing",
-      "evidence": [],
-      "notes": "Project templates are not implemented."
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_templates_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Removes a custom template."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/project-template/save-template",
-      "status": "missing",
-      "evidence": [],
-      "notes": "Project templates are not implemented."
+      "status": "partial",
+      "evidence": [
+        "internal/api3/project_templates_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Saves LIVE or SNAPSHOT templates of a project's type, board and scheme configuration."
     },
     {
       "operationId": "jira-v3:PUT:/rest/atlassian-connect/1/migration/field",
-      "status": "missing",
-      "evidence": [],
-      "notes": "Connect-to-Forge migration is not implemented."
+      "status": "partial",
+      "evidence": [
+        "internal/api3/app_fields_migration_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Sets app issue field values by transfer; multi-select fields are 400."
     },
     {
       "operationId": "jira-v3:PUT:/rest/atlassian-connect/1/migration/properties/{entityType}",
-      "status": "missing",
-      "evidence": [],
-      "notes": "Connect-to-Forge migration is not implemented."
+      "status": "partial",
+      "evidence": [
+        "internal/api3/app_fields_migration_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Entity properties by numeric id for eight entity types; UserProperty is 400."
     },
     {
       "operationId": "jira-v3:POST:/rest/atlassian-connect/1/migration/workflow/rule/search",
-      "status": "missing",
-      "evidence": [],
-      "notes": "Connect-to-Forge migration is not implemented."
+      "status": "partial",
+      "evidence": [
+        "internal/api3/app_fields_migration_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "The app's rules of a workflow grouped by kind with invalid rule ids."
     },
     {
       "operationId": "jira-v3:GET:/rest/atlassian-connect/1/migration/{connectKey}/{jiraIssueFieldsKey}/task",
-      "status": "missing",
-      "evidence": [],
-      "notes": "Connect-to-Forge migration is not implemented."
+      "status": "partial",
+      "evidence": [
+        "internal/api3/app_fields_migration_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "The latest field migration task as TaskProgress."
     },
     {
       "operationId": "jira-v3:POST:/rest/atlassian-connect/1/migration/{connectKey}/{jiraIssueFieldsKey}/task",
-      "status": "missing",
-      "evidence": [],
-      "notes": "Connect-to-Forge migration is not implemented."
+      "status": "partial",
+      "evidence": [
+        "internal/api3/app_fields_migration_test.go",
+        "docs/JIRA_PLATFORM.md"
+      ],
+      "notes": "Queues field migration with 409 while running and retrigger for completed tasks; the shared field record means no values move."
     },
     {
       "operationId": "jira-v3:GET:/rest/atlassian-connect/1/service-registry",
-      "status": "missing",
-      "evidence": [],
-      "notes": "The Connect service registry is not implemented."
+      "status": "partial",
+      "evidence": [
+        "internal/api3/app_fields_migration_test.go",
+        "docs/JIRA_PLATFORM.md",
+        "e2e/plans_teams.spec.ts"
+      ],
+      "notes": "Connect apps read site services with tier and revision; services are maintained on the Services page."
     }
   ]
 }
