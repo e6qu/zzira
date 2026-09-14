@@ -339,7 +339,7 @@
     {
       "operationId": "confluence-v1:DELETE:/wiki/rest/api/user/watch/content/{contentId}",
       "status": "partial",
-      "notes": "Durable page-content, space, and label watches support current-user and administrator-targeted status/mutation, XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; other content types, Confluence space-admin roles, and email delivery remain.",
+      "notes": "Durable watches on pages, blog posts, whiteboards, databases, folders, Smart Links, custom content, spaces and labels support current-user, site-administrator and space-administrator targeted status/mutation (label watches for others stay with site administrators; comments and attachments are refused as watch targets), XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; watchers hear about page creation and updates, blog post publication and updates, and new comments once per change (mentions take precedence), and every Confluence notification is also emailed through the outbox with a link to the content.",
       "evidence": [
         "internal/confluence/v1_watches.go",
         "internal/confluence/http_test.go",
@@ -349,13 +349,18 @@
         "migrations/080_wiki_watches.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/watches_test.go",
+        "internal/store/wiki_notification_email.go",
+        "migrations/178_wiki_notification_email.sql",
+        "docs/CONFLUENCE_NOTIFICATIONS.md",
+        "e2e/wiki_watches.spec.ts"
       ]
     },
     {
       "operationId": "confluence-v1:DELETE:/wiki/rest/api/user/watch/label/{labelName}",
       "status": "partial",
-      "notes": "Durable page-content, space, and label watches support current-user and administrator-targeted status/mutation, XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; other content types, Confluence space-admin roles, and email delivery remain.",
+      "notes": "Durable watches on pages, blog posts, whiteboards, databases, folders, Smart Links, custom content, spaces and labels support current-user, site-administrator and space-administrator targeted status/mutation (label watches for others stay with site administrators; comments and attachments are refused as watch targets), XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; watchers hear about page creation and updates, blog post publication and updates, and new comments once per change (mentions take precedence), and every Confluence notification is also emailed through the outbox with a link to the content.",
       "evidence": [
         "internal/confluence/v1_watches.go",
         "internal/confluence/http_test.go",
@@ -365,13 +370,18 @@
         "migrations/080_wiki_watches.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/watches_test.go",
+        "internal/store/wiki_notification_email.go",
+        "migrations/178_wiki_notification_email.sql",
+        "docs/CONFLUENCE_NOTIFICATIONS.md",
+        "e2e/wiki_watches.spec.ts"
       ]
     },
     {
       "operationId": "confluence-v1:DELETE:/wiki/rest/api/user/watch/space/{spaceKey}",
       "status": "partial",
-      "notes": "Durable page-content, space, and label watches support current-user and administrator-targeted status/mutation, XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; other content types, Confluence space-admin roles, and email delivery remain.",
+      "notes": "Durable watches on pages, blog posts, whiteboards, databases, folders, Smart Links, custom content, spaces and labels support current-user, site-administrator and space-administrator targeted status/mutation (label watches for others stay with site administrators; comments and attachments are refused as watch targets), XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; watchers hear about page creation and updates, blog post publication and updates, and new comments once per change (mentions take precedence), and every Confluence notification is also emailed through the outbox with a link to the content.",
       "evidence": [
         "internal/confluence/v1_watches.go",
         "internal/confluence/http_test.go",
@@ -381,7 +391,12 @@
         "migrations/080_wiki_watches.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/watches_test.go",
+        "internal/store/wiki_notification_email.go",
+        "migrations/178_wiki_notification_email.sql",
+        "docs/CONFLUENCE_NOTIFICATIONS.md",
+        "e2e/wiki_watches.spec.ts"
       ]
     },
     {
@@ -568,7 +583,7 @@
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/content/{id}/notification/child-created",
       "status": "partial",
-      "notes": "Durable page-content, space, and label watches support current-user and administrator-targeted status/mutation, XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; other content types, Confluence space-admin roles, and email delivery remain.",
+      "notes": "Durable watches on pages, blog posts, whiteboards, databases, folders, Smart Links, custom content, spaces and labels support current-user, site-administrator and space-administrator targeted status/mutation (label watches for others stay with site administrators; comments and attachments are refused as watch targets), XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; watchers hear about page creation and updates, blog post publication and updates, and new comments once per change (mentions take precedence), and every Confluence notification is also emailed through the outbox with a link to the content.",
       "evidence": [
         "internal/confluence/v1_watches.go",
         "internal/confluence/http_test.go",
@@ -578,13 +593,18 @@
         "migrations/080_wiki_watches.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/watches_test.go",
+        "internal/store/wiki_notification_email.go",
+        "migrations/178_wiki_notification_email.sql",
+        "docs/CONFLUENCE_NOTIFICATIONS.md",
+        "e2e/wiki_watches.spec.ts"
       ]
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/content/{id}/notification/created",
       "status": "partial",
-      "notes": "Durable page-content, space, and label watches support current-user and administrator-targeted status/mutation, XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; other content types, Confluence space-admin roles, and email delivery remain.",
+      "notes": "Durable watches on pages, blog posts, whiteboards, databases, folders, Smart Links, custom content, spaces and labels support current-user, site-administrator and space-administrator targeted status/mutation (label watches for others stay with site administrators; comments and attachments are refused as watch targets), XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; watchers hear about page creation and updates, blog post publication and updates, and new comments once per change (mentions take precedence), and every Confluence notification is also emailed through the outbox with a link to the content.",
       "evidence": [
         "internal/confluence/v1_watches.go",
         "internal/confluence/http_test.go",
@@ -594,7 +614,12 @@
         "migrations/080_wiki_watches.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/watches_test.go",
+        "internal/store/wiki_notification_email.go",
+        "migrations/178_wiki_notification_email.sql",
+        "docs/CONFLUENCE_NOTIFICATIONS.md",
+        "e2e/wiki_watches.spec.ts"
       ]
     },
     {
@@ -955,7 +980,7 @@
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/space/{spaceKey}/watch",
       "status": "partial",
-      "notes": "Durable page-content, space, and label watches support current-user and administrator-targeted status/mutation, XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; other content types, Confluence space-admin roles, and email delivery remain.",
+      "notes": "Durable watches on pages, blog posts, whiteboards, databases, folders, Smart Links, custom content, spaces and labels support current-user, site-administrator and space-administrator targeted status/mutation (label watches for others stay with site administrators; comments and attachments are refused as watch targets), XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; watchers hear about page creation and updates, blog post publication and updates, and new comments once per change (mentions take precedence), and every Confluence notification is also emailed through the outbox with a link to the content.",
       "evidence": [
         "internal/confluence/v1_watches.go",
         "internal/confluence/http_test.go",
@@ -965,7 +990,12 @@
         "migrations/080_wiki_watches.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/watches_test.go",
+        "internal/store/wiki_notification_email.go",
+        "migrations/178_wiki_notification_email.sql",
+        "docs/CONFLUENCE_NOTIFICATIONS.md",
+        "e2e/wiki_watches.spec.ts"
       ]
     },
     {
@@ -1061,7 +1091,7 @@
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/user/watch/content/{contentId}",
       "status": "partial",
-      "notes": "Durable page-content, space, and label watches support current-user and administrator-targeted status/mutation, XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; other content types, Confluence space-admin roles, and email delivery remain.",
+      "notes": "Durable watches on pages, blog posts, whiteboards, databases, folders, Smart Links, custom content, spaces and labels support current-user, site-administrator and space-administrator targeted status/mutation (label watches for others stay with site administrators; comments and attachments are refused as watch targets), XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; watchers hear about page creation and updates, blog post publication and updates, and new comments once per change (mentions take precedence), and every Confluence notification is also emailed through the outbox with a link to the content.",
       "evidence": [
         "internal/confluence/v1_watches.go",
         "internal/confluence/http_test.go",
@@ -1071,13 +1101,18 @@
         "migrations/080_wiki_watches.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/watches_test.go",
+        "internal/store/wiki_notification_email.go",
+        "migrations/178_wiki_notification_email.sql",
+        "docs/CONFLUENCE_NOTIFICATIONS.md",
+        "e2e/wiki_watches.spec.ts"
       ]
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/user/watch/label/{labelName}",
       "status": "partial",
-      "notes": "Durable page-content, space, and label watches support current-user and administrator-targeted status/mutation, XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; other content types, Confluence space-admin roles, and email delivery remain.",
+      "notes": "Durable watches on pages, blog posts, whiteboards, databases, folders, Smart Links, custom content, spaces and labels support current-user, site-administrator and space-administrator targeted status/mutation (label watches for others stay with site administrators; comments and attachments are refused as watch targets), XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; watchers hear about page creation and updates, blog post publication and updates, and new comments once per change (mentions take precedence), and every Confluence notification is also emailed through the outbox with a link to the content.",
       "evidence": [
         "internal/confluence/v1_watches.go",
         "internal/confluence/http_test.go",
@@ -1087,13 +1122,18 @@
         "migrations/080_wiki_watches.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/watches_test.go",
+        "internal/store/wiki_notification_email.go",
+        "migrations/178_wiki_notification_email.sql",
+        "docs/CONFLUENCE_NOTIFICATIONS.md",
+        "e2e/wiki_watches.spec.ts"
       ]
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/user/watch/space/{spaceKey}",
       "status": "partial",
-      "notes": "Durable page-content, space, and label watches support current-user and administrator-targeted status/mutation, XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; other content types, Confluence space-admin roles, and email delivery remain.",
+      "notes": "Durable watches on pages, blog posts, whiteboards, databases, folders, Smart Links, custom content, spaces and labels support current-user, site-administrator and space-administrator targeted status/mutation (label watches for others stay with site administrators; comments and attachments are refused as watch targets), XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; watchers hear about page creation and updates, blog post publication and updates, and new comments once per change (mentions take precedence), and every Confluence notification is also emailed through the outbox with a link to the content.",
       "evidence": [
         "internal/confluence/v1_watches.go",
         "internal/confluence/http_test.go",
@@ -1103,7 +1143,12 @@
         "migrations/080_wiki_watches.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/watches_test.go",
+        "internal/store/wiki_notification_email.go",
+        "migrations/178_wiki_notification_email.sql",
+        "docs/CONFLUENCE_NOTIFICATIONS.md",
+        "e2e/wiki_watches.spec.ts"
       ]
     },
     {
@@ -1380,7 +1425,7 @@
     {
       "operationId": "confluence-v1:POST:/wiki/rest/api/user/watch/content/{contentId}",
       "status": "partial",
-      "notes": "Durable page-content, space, and label watches support current-user and administrator-targeted status/mutation, XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; other content types, Confluence space-admin roles, and email delivery remain.",
+      "notes": "Durable watches on pages, blog posts, whiteboards, databases, folders, Smart Links, custom content, spaces and labels support current-user, site-administrator and space-administrator targeted status/mutation (label watches for others stay with site administrators; comments and attachments are refused as watch targets), XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; watchers hear about page creation and updates, blog post publication and updates, and new comments once per change (mentions take precedence), and every Confluence notification is also emailed through the outbox with a link to the content.",
       "evidence": [
         "internal/confluence/v1_watches.go",
         "internal/confluence/http_test.go",
@@ -1390,13 +1435,18 @@
         "migrations/080_wiki_watches.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/watches_test.go",
+        "internal/store/wiki_notification_email.go",
+        "migrations/178_wiki_notification_email.sql",
+        "docs/CONFLUENCE_NOTIFICATIONS.md",
+        "e2e/wiki_watches.spec.ts"
       ]
     },
     {
       "operationId": "confluence-v1:POST:/wiki/rest/api/user/watch/label/{labelName}",
       "status": "partial",
-      "notes": "Durable page-content, space, and label watches support current-user and administrator-targeted status/mutation, XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; other content types, Confluence space-admin roles, and email delivery remain.",
+      "notes": "Durable watches on pages, blog posts, whiteboards, databases, folders, Smart Links, custom content, spaces and labels support current-user, site-administrator and space-administrator targeted status/mutation (label watches for others stay with site administrators; comments and attachments are refused as watch targets), XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; watchers hear about page creation and updates, blog post publication and updates, and new comments once per change (mentions take precedence), and every Confluence notification is also emailed through the outbox with a link to the content.",
       "evidence": [
         "internal/confluence/v1_watches.go",
         "internal/confluence/http_test.go",
@@ -1406,13 +1456,18 @@
         "migrations/080_wiki_watches.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/watches_test.go",
+        "internal/store/wiki_notification_email.go",
+        "migrations/178_wiki_notification_email.sql",
+        "docs/CONFLUENCE_NOTIFICATIONS.md",
+        "e2e/wiki_watches.spec.ts"
       ]
     },
     {
       "operationId": "confluence-v1:POST:/wiki/rest/api/user/watch/space/{spaceKey}",
       "status": "partial",
-      "notes": "Durable page-content, space, and label watches support current-user and administrator-targeted status/mutation, XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; other content types, Confluence space-admin roles, and email delivery remain.",
+      "notes": "Durable watches on pages, blog posts, whiteboards, databases, folders, Smart Links, custom content, spaces and labels support current-user, site-administrator and space-administrator targeted status/mutation (label watches for others stay with site administrators; comments and attachments are refused as watch targets), XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; watchers hear about page creation and updates, blog post publication and updates, and new comments once per change (mentions take precedence), and every Confluence notification is also emailed through the outbox with a link to the content.",
       "evidence": [
         "internal/confluence/v1_watches.go",
         "internal/confluence/http_test.go",
@@ -1422,7 +1477,12 @@
         "migrations/080_wiki_watches.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/watches_test.go",
+        "internal/store/wiki_notification_email.go",
+        "migrations/178_wiki_notification_email.sql",
+        "docs/CONFLUENCE_NOTIFICATIONS.md",
+        "e2e/wiki_watches.spec.ts"
       ]
     },
     {
