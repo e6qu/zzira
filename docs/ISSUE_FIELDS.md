@@ -106,7 +106,9 @@ cut into a context id of `s`. The two operations are now matched separately,
 - `migrations/143_custom_field_trash.sql` is exercised from a clean PostgreSQL
   schema.
 
-Jira's `expand=lastUsed`, field translations (`translatedName`,
-`translatedDescription`), `stableId`, the searcher key's effect on how a field
+Field search expands `key`, `stableId` and `lastUsed` — taken from the latest
+recorded change to the field on a work item — and orders by `contextsCount`,
+`screensCount` and `lastUsed`. Field translations (`translatedName`,
+`translatedDescription`), the searcher key's effect on how a field
 is searched, `PUT`/`DELETE /field/association`, the legacy
 `/field/{fieldKey}/option` surface and `/config/fieldschemes` remain.

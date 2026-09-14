@@ -32,6 +32,9 @@ type customDashboardsData struct {
 	Dashboard                         *models.Dashboard
 	Details                           store.DashboardDetails
 	Members                           []*models.User
+	Groups                            []store.SiteGroup
+	Projects                          []*models.Project
+	Roles                             []*models.ProjectRole
 	Filters                           []*models.Filter
 	Catalog                           []models.GadgetDefinition
 	Columns                           [][]dashboardTile
@@ -55,13 +58,39 @@ func dashboardWebError(err error) (int, string) {
 		return 500, "Could not complete the dashboard operation."
 	}
 }
+
+// loadDashboardShareChoices lists the groups, browsable projects and project
+// roles a dashboard can be shared with.
+func (h *Handler) loadDashboardShareChoices(w http.ResponseWriter, r *http.Request, ws, userID string, data *customDashboardsData) bool {
+	var err error
+	if data.Groups, err = h.Store.SiteGroups(r.Context(), ws); err == nil {
+		if data.Projects, err = h.Store.ProjectsWithPermissions(r.Context(), ws, userID, []string{"BROWSE_PROJECTS"}); err == nil {
+			data.Roles, err = h.Store.ProjectRoles(r.Context(), ws)
+		}
+	}
+	if err != nil {
+		http.Error(w, "Could not load sharing choices.", 500)
+		return false
+	}
+	return true
+}
+
 func dashboardForm(r *http.Request) store.DashboardDetails {
 	permissions := func(key string) []models.DashboardShare {
 		out := []models.DashboardShare{}
 		for _, v := range r.PostForm[key] {
-			if v == "loggedin" {
+			kind, rest, _ := strings.Cut(v, ":")
+			switch {
+			case v == "loggedin":
 				out = append(out, models.DashboardShare{Type: "loggedin"})
-			} else if v != "" {
+			case kind == "group" && rest != "":
+				out = append(out, models.DashboardShare{Type: "group", Group: &models.DashboardShareGroup{GroupID: rest}})
+			case kind == "project" && rest != "":
+				out = append(out, models.DashboardShare{Type: "project", Project: &models.DashboardShareProject{ID: rest}})
+			case kind == "projectRole" && strings.Contains(rest, ":"):
+				projectID, roleID, _ := strings.Cut(rest, ":")
+				out = append(out, models.DashboardShare{Type: "projectRole", Project: &models.DashboardShareProject{ID: projectID}, Role: &models.DashboardShareRole{ID: models.FlexibleID(roleID)}})
+			case v != "":
 				out = append(out, models.DashboardShare{Type: "user", User: &models.DashboardShareUser{AccountID: v}})
 			}
 		}
@@ -103,6 +132,9 @@ func (h *Handler) CustomDashboards(w http.ResponseWriter, r *http.Request) {
 	data.Members, err = h.Store.MembersByWorkspace(r.Context(), ws)
 	if err != nil {
 		http.Error(w, "Could not load members.", 500)
+		return
+	}
+	if !h.loadDashboardShareChoices(w, r, ws, user.ID, &data) {
 		return
 	}
 	h.writeWorkspacePageStatus(w, r, "page_custom_dashboards", user, ws, data, "dashboards", "", status)
@@ -269,6 +301,9 @@ func (h *Handler) CustomDashboard(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load members.", 500)
 		return
 	}
+	if !h.loadDashboardShareChoices(w, r, ws, user.ID, &data) {
+		return
+	}
 	data.Filters, err = h.Store.ListFilters(r.Context(), ws, user.ID)
 	if err != nil {
 		http.Error(w, "Could not load filters.", 500)
@@ -282,7 +317,14 @@ func (d customDashboardsData) ShareSelected(kind, id string) bool {
 		list = d.Details.EditPermissions
 	}
 	for _, p := range list {
-		if id == "loggedin" && p.Type == "loggedin" || p.User != nil && p.User.AccountID == id {
+		switch {
+		case id == "loggedin" && p.Type == "loggedin", p.User != nil && p.User.AccountID == id:
+			return true
+		case p.Type == "group" && p.Group != nil && id == "group:"+p.Group.GroupID:
+			return true
+		case p.Type == "project" && p.Project != nil && id == "project:"+p.Project.ID:
+			return true
+		case p.Type == "projectRole" && p.Project != nil && p.Role != nil && id == "projectRole:"+p.Project.ID+":"+string(p.Role.ID):
 			return true
 		}
 	}

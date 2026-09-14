@@ -69,6 +69,7 @@ type screen schemes; see [SCREEN_SCHEMES.md](SCREEN_SCHEMES.md) for the
 resolution chain and its boundary. A screen a screen scheme uses cannot be
 deleted, and the default screen carries every system field the forms render.
 Workflow transition screens still carry their own field list rather than
-referencing a screen. Field configurations, per-project field scoping, the
-`expand` and `projectKey` query parameters, and exact Jira error wording also
-remain.
+referencing a screen. The screen list filters by `scope` — every screen on the site is global — and
+orders by name or id, and a field's screens expand the `tab` it is on.
+Field configurations, per-project field scoping, the `projectKey` query
+parameter on tab reads, and exact Jira error wording also remain.

@@ -13,6 +13,16 @@ type Version struct {
 	Released    bool   `json:"released"`
 	Archived    bool   `json:"archived"`
 	Position    int64  `json:"-"`
+	// DriverID is the account responsible for the release.
+	DriverID string `json:"driver,omitempty"`
+}
+
+// VersionApprover is a person asked to approve a release.
+type VersionApprover struct {
+	AccountID     string `json:"accountId"`
+	Status        string `json:"status"`
+	Description   string `json:"description,omitempty"`
+	DeclineReason string `json:"declineReason,omitempty"`
 }
 
 func (v Version) State() string {

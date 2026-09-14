@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
@@ -110,8 +111,21 @@ func fieldError(w http.ResponseWriter, err error) {
 
 // searchFieldBean is the richer field shape Jira's paginated searches return,
 // which carries where the field is used as well as what it is.
-func (h *Handler) searchFieldBean(field *models.CustomField, usage store.FieldUsage) map[string]any {
+func (h *Handler) searchFieldBean(field *models.CustomField, usage store.FieldUsage, expands map[string]struct{}, lastUsed map[string]time.Time) map[string]any {
 	bean := h.customFieldBean(field)
+	if querySetContains(expands, "key") {
+		bean["key"] = field.ID
+	}
+	if querySetContains(expands, "stableId") {
+		bean["stableId"] = "sfid:" + field.ID
+	}
+	if querySetContains(expands, "lastUsed") {
+		if at, ok := lastUsed[field.ID]; ok {
+			bean["lastUsed"] = map[string]any{"type": "TRACKED", "value": at.UTC().Format(jiraDateTime)}
+		} else {
+			bean["lastUsed"] = map[string]any{"type": "NO_INFORMATION"}
+		}
+	}
 	bean["isLocked"] = field.AppKey != ""
 	bean["contextsCount"] = usage.Contexts
 	bean["projectsCount"] = usage.Projects
@@ -173,9 +187,17 @@ func (h *Handler) fieldSearchRoute(w http.ResponseWriter, r *http.Request, trash
 		fieldError(w, err)
 		return
 	}
+	expands := commaQuerySet(r, "expand")
+	var lastUsed map[string]time.Time
+	if querySetContains(expands, "lastUsed") {
+		if lastUsed, err = h.Store.FieldLastUsed(r.Context(), workspaceID, ids); err != nil {
+			fieldError(w, err)
+			return
+		}
+	}
 	values := make([]map[string]any, 0, len(page.Fields))
 	for _, field := range page.Fields {
-		values = append(values, h.searchFieldBean(field, usage[field.ID]))
+		values = append(values, h.searchFieldBean(field, usage[field.ID], expands, lastUsed))
 	}
 	writeJSON(w, http.StatusOK, h.securityPageBean(r, values, page.Total, startAt, maxResults))
 }

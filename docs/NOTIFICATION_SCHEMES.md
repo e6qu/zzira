@@ -65,8 +65,8 @@ watchers. Implicit roles suppress the actor's own changes; an explicit
 
 The assessment remains partial while custom event administration, per-user
 email preferences, mentions, notification diagnostics, event firing for issue
-delete/move and worklog/comment edit/delete mutations, rich email rendering,
-and every nested user/group/role/field expansion bean remain. Jira's deprecated
+delete/move and worklog/comment edit/delete mutations, and rich email rendering remain. The `user`, `group`, `projectRole`, `field`
+and `all` expansions add each recipient's details. Jira's deprecated
 direct email-address recipient is stored and delivered, but it does not create
 an in-app identity. Exact self links on every paged response and all Jira error
 wording also remain under contract review.

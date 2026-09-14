@@ -6911,9 +6911,10 @@
       "evidence": [
         "internal/api3/api3_filters_test.go",
         "e2e/filters.spec.ts",
-        "docs/FILTERS.md"
+        "docs/FILTERS.md",
+        "internal/api3/expansions_filters_test.go"
       ],
-      "notes": "Visibility-filtered lifecycle behavior and Jira-shaped FilterBean responses are integration-tested; exact expansion and JQL certification remain."
+      "notes": "Visibility-filtered lifecycle behavior and Jira-shaped FilterBean responses are integration-tested; the sharedUsers and subscriptions expansions, including index ranges, are tested; JQL certification remains."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/filter/{id}/columns",
@@ -6931,9 +6932,10 @@
       "evidence": [
         "internal/api3/api3_filters_test.go",
         "e2e/filters.spec.ts",
-        "docs/FILTERS.md"
+        "docs/FILTERS.md",
+        "internal/api3/expansions_filters_test.go"
       ],
-      "notes": "Per-user favorites require filter visibility and return durable favorite counts through the Jira HTTP methods; final expansion certification remains."
+      "notes": "Per-user favorites require filter visibility and return durable favorite counts through the Jira HTTP methods; the sharedUsers and subscriptions expansions, including index ranges, are tested."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/filter/{id}/permission/{permissionId}",
@@ -7695,9 +7697,10 @@
       "status": "partial",
       "evidence": [
         "internal/api3/dashboards_test.go",
-        "docs/DASHBOARDS_API.md"
+        "docs/DASHBOARDS_API.md",
+        "internal/api3/expansions_filters_test.go"
       ],
-      "notes": "Searching with Jira's ordering and filters is tested; expand remains."
+      "notes": "Searching with Jira's ordering, name, owner, group name, group ID and project filters and every documented expansion is tested, including dashboards shared with groups, projects and project roles."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/dashboard/{dashboardId}/gadget",
@@ -7751,9 +7754,10 @@
       "status": "partial",
       "evidence": [
         "internal/api3/fields_test.go",
-        "docs/ISSUE_FIELDS.md"
+        "docs/ISSUE_FIELDS.md",
+        "internal/api3/expansions_filters_test.go"
       ],
-      "notes": "The paginated search is tested with the query, type and id filters, the usage counts, and the administration permission; lastUsed and translations remain."
+      "notes": "The paginated search is tested with the query, type and id filters, the usage counts, the key, stableId and lastUsed expansions and the contextsCount, screensCount and lastUsed orderings, with last use taken from recorded work item changes; field name translations remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/field/search/trashed",
@@ -7779,9 +7783,10 @@
       "evidence": [
         "internal/api3/custom_field_contexts_test.go",
         "e2e/custom_field_contexts.spec.ts",
-        "docs/CUSTOM_FIELD_CONTEXTS.md"
+        "docs/CUSTOM_FIELD_CONTEXTS.md",
+        "internal/api3/expansions_filters_test.go"
       ],
-      "notes": "Paging a field's contexts with a contextId filter is tested; Jira's isAnyIssueType and isGlobalContext query filters remain."
+      "notes": "Paging a field's contexts with the contextId, isAnyIssueType and isGlobalContext filters is tested."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/field/{fieldId}/context/defaultValue",
@@ -7826,9 +7831,10 @@
       "evidence": [
         "internal/api3/custom_field_contexts_test.go",
         "e2e/custom_field_options.spec.ts",
-        "docs/CUSTOM_FIELD_OPTIONS.md"
+        "docs/CUSTOM_FIELD_OPTIONS.md",
+        "internal/api3/expansions_filters_test.go"
       ],
-      "notes": "Paging a context's options in display order is tested; Jira's optionId and onlyOptions filters remain."
+      "notes": "Paging a context's options in display order with the optionId and onlyOptions filters is tested."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/field/{fieldId}/contexts",
@@ -7844,9 +7850,10 @@
       "status": "partial",
       "evidence": [
         "internal/api3/screens_test.go",
-        "docs/SCREENS.md"
+        "docs/SCREENS.md",
+        "internal/api3/expansions_filters_test.go"
       ],
-      "notes": "Paging the screens that show one field is tested; expand remains."
+      "notes": "Paging the screens that show one field with the tab expansion is tested."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/field/{fieldKey}/option",
@@ -7890,9 +7897,10 @@
       "evidence": [
         "internal/api3/field_configurations_test.go",
         "e2e/field_configurations.spec.ts",
-        "docs/FIELD_CONFIGURATIONS.md"
+        "docs/FIELD_CONFIGURATIONS.md",
+        "internal/api3/expansions_filters_test.go"
       ],
-      "notes": "Paging configurations with an id filter is tested; Jira's isDefault and query filters remain."
+      "notes": "Paging configurations with the id, isDefault and query filters is tested."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/fieldconfiguration/{id}/fields",
@@ -7912,7 +7920,7 @@
         "e2e/field_configurations.spec.ts",
         "docs/FIELD_CONFIGURATIONS.md"
       ],
-      "notes": "Paging schemes with an id filter is tested; expand and orderBy remain."
+      "notes": "Paging schemes with the id filter is tested, covering every parameter the operation takes."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/fieldconfigurationscheme/mapping",
@@ -7921,7 +7929,7 @@
         "internal/api3/field_configurations_test.go",
         "docs/FIELD_CONFIGURATIONS.md"
       ],
-      "notes": "Paging mappings filtered by scheme is tested; expand remains."
+      "notes": "Paging mappings filtered by scheme is tested, covering every parameter the operation takes."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/fieldconfigurationscheme/project",
@@ -7930,7 +7938,7 @@
         "internal/api3/field_configurations_test.go",
         "docs/FIELD_CONFIGURATIONS.md"
       ],
-      "notes": "Paging project assignments with a projectId filter is tested; expand remains."
+      "notes": "Paging project assignments with a projectId filter is tested, covering every parameter the operation takes."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/filter/defaultShareScope",
@@ -7948,9 +7956,10 @@
       "evidence": [
         "internal/api3/api3_filters_test.go",
         "e2e/filters.spec.ts",
-        "docs/FILTERS.md"
+        "docs/FILTERS.md",
+        "internal/api3/expansions_filters_test.go"
       ],
-      "notes": "Per-user favorites require filter visibility and return durable favorite counts through the Jira HTTP methods; final expansion certification remains."
+      "notes": "Per-user favorites require filter visibility and return durable favorite counts through the Jira HTTP methods; the sharedUsers and subscriptions expansions, including index ranges, are tested."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/filter/my",
@@ -7958,9 +7967,10 @@
       "evidence": [
         "internal/api3/api3_filters_test.go",
         "e2e/filters.spec.ts",
-        "docs/FILTERS.md"
+        "docs/FILTERS.md",
+        "internal/api3/expansions_filters_test.go"
       ],
-      "notes": "Owned filters and the includeFavourites union are visibility-filtered and integration-tested; final expansion certification remains."
+      "notes": "Owned filters and the includeFavourites union are visibility-filtered and integration-tested; the sharedUsers and subscriptions expansions, including index ranges, are tested."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/filter/search",
@@ -7978,9 +7988,10 @@
       "evidence": [
         "internal/api3/api3_filters_test.go",
         "e2e/filters.spec.ts",
-        "docs/FILTERS.md"
+        "docs/FILTERS.md",
+        "internal/api3/expansions_filters_test.go"
       ],
-      "notes": "Visibility-filtered lifecycle behavior, Jira-shaped FilterBean responses and current-user subscription expansion are integration-tested; exact expansion and JQL certification remain."
+      "notes": "Visibility-filtered lifecycle behavior, Jira-shaped FilterBean responses and current-user subscription expansion are integration-tested; the sharedUsers and subscriptions expansions, including index ranges, are tested; JQL certification remains."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/filter/{id}/columns",
@@ -8090,7 +8101,7 @@
         "internal/api3/issue_security_schemes_test.go",
         "docs/ISSUE_SECURITY_SCHEMES.md"
       ],
-      "notes": "Listing every workspace scheme with expanded levels is tested; Jira's nested expansion beans remain."
+      "notes": "Listing every workspace scheme with its levels is tested, covering the operation's response."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issuesecurityschemes/level",
@@ -8099,16 +8110,17 @@
         "internal/api3/issue_security_schemes_test.go",
         "docs/ISSUE_SECURITY_SCHEMES.md"
       ],
-      "notes": "Paging with id, schemeId and onlyDefault filters is tested; expand and level ordering remain."
+      "notes": "Paging with id, schemeId and onlyDefault filters is tested, covering every parameter the operation takes."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issuesecurityschemes/level/member",
       "status": "partial",
       "evidence": [
         "internal/api3/issue_security_schemes_test.go",
-        "docs/ISSUE_SECURITY_SCHEMES.md"
+        "docs/ISSUE_SECURITY_SCHEMES.md",
+        "internal/api3/expansions_filters_test.go"
       ],
-      "notes": "Paging members with id, schemeId and levelId filters is tested; the nested holder expansion beans remain."
+      "notes": "Paging members with id, schemeId and levelId filters and the user, group, projectRole, field and all holder expansions is tested."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issuesecurityschemes/project",
@@ -8118,7 +8130,7 @@
         "e2e/issue_security_schemes.spec.ts",
         "docs/ISSUE_SECURITY_SCHEMES.md"
       ],
-      "notes": "Paging project-to-scheme mappings with project and scheme filters is tested; expand remains."
+      "notes": "Paging project-to-scheme mappings with project and scheme filters is tested, covering every parameter the operation takes."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issuesecurityschemes/search",
@@ -8127,7 +8139,7 @@
         "internal/api3/issue_security_schemes_test.go",
         "docs/ISSUE_SECURITY_SCHEMES.md"
       ],
-      "notes": "Paging with id and projectId filters plus default level and project IDs is tested; expand remains."
+      "notes": "Paging with id and projectId filters plus default level and project IDs is tested, covering every parameter the operation takes."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issuesecurityschemes/{id}",
@@ -8137,16 +8149,17 @@
         "e2e/issue_security_schemes.spec.ts",
         "docs/ISSUE_SECURITY_SCHEMES.md"
       ],
-      "notes": "Reading an expanded scheme is tested; the nested level holder expansion beans remain."
+      "notes": "Reading a scheme with its levels is tested, covering the operation's response."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issuesecurityschemes/{issueSecuritySchemeId}/members",
       "status": "partial",
       "evidence": [
         "internal/api3/issue_security_schemes_test.go",
-        "docs/ISSUE_SECURITY_SCHEMES.md"
+        "docs/ISSUE_SECURITY_SCHEMES.md",
+        "internal/api3/expansions_filters_test.go"
       ],
-      "notes": "Paging one scheme's members filtered by issueSecurityLevelId is tested; expand remains."
+      "notes": "Paging one scheme's members filtered by issueSecurityLevelId with the user, group, projectRole, field and all holder expansions is tested."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issuetype",
@@ -8266,9 +8279,10 @@
       "evidence": [
         "internal/api3/screen_schemes_test.go",
         "e2e/screen_schemes.spec.ts",
-        "docs/SCREEN_SCHEMES.md"
+        "docs/SCREEN_SCHEMES.md",
+        "internal/api3/expansions_filters_test.go"
       ],
-      "notes": "Paging work type screen schemes with an id filter is tested; expand and orderBy remain."
+      "notes": "Paging work type screen schemes with the id and queryString filters, name and id ordering and the projects expansion is tested."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issuetypescreenscheme/mapping",
@@ -8277,7 +8291,7 @@
         "internal/api3/screen_schemes_test.go",
         "docs/SCREEN_SCHEMES.md"
       ],
-      "notes": "Paging mappings filtered by scheme is tested; expand remains."
+      "notes": "Paging mappings filtered by scheme is tested, covering every parameter the operation takes."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issuetypescreenscheme/project",
@@ -8286,16 +8300,17 @@
         "internal/api3/screen_schemes_test.go",
         "docs/SCREEN_SCHEMES.md"
       ],
-      "notes": "Paging project assignments with a projectId filter is tested; expand remains."
+      "notes": "Paging project assignments with a projectId filter is tested, covering every parameter the operation takes."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/issuetypescreenscheme/{issueTypeScreenSchemeId}/project",
       "status": "partial",
       "evidence": [
         "internal/api3/screen_schemes_test.go",
-        "docs/SCREEN_SCHEMES.md"
+        "docs/SCREEN_SCHEMES.md",
+        "internal/api3/expansions_filters_test.go"
       ],
-      "notes": "Paging the projects using one scheme is tested; expand remains."
+      "notes": "Paging the projects using one scheme with the query filter is tested."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/jql/autocompletedata",
@@ -8349,9 +8364,10 @@
       "evidence": [
         "internal/api3/notification_schemes_test.go",
         "e2e/notification_schemes.spec.ts",
-        "docs/NOTIFICATION_SCHEMES.md"
+        "docs/NOTIFICATION_SCHEMES.md",
+        "internal/api3/expansions_filters_test.go"
       ],
-      "notes": "Pages and filters durable workspace schemes with event expansion and project IDs; exact nested expansion beans and every pagination/self-link edge remain."
+      "notes": "Pages and filters durable workspace schemes with event expansion and project IDs; the notificationSchemeEvents, user, group, projectRole, field and all expansions add recipient details and are tested."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/notificationscheme/project",
@@ -8369,9 +8385,10 @@
       "evidence": [
         "internal/api3/notification_schemes_test.go",
         "e2e/notification_schemes.spec.ts",
-        "docs/NOTIFICATION_SCHEMES.md"
+        "docs/NOTIFICATION_SCHEMES.md",
+        "internal/api3/expansions_filters_test.go"
       ],
-      "notes": "Reads a workspace scheme with optional event expansion; complete user, group, role and field expansion beans remain."
+      "notes": "Reads a workspace scheme with optional event expansion; the notificationSchemeEvents, user, group, projectRole, field and all expansions add recipient details and are tested."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/permissions",
@@ -8389,9 +8406,10 @@
       "evidence": [
         "internal/api3/permission_schemes_test.go",
         "e2e/permission_schemes.spec.ts",
-        "docs/PERMISSION_SCHEMES.md"
+        "docs/PERMISSION_SCHEMES.md",
+        "internal/api3/expansions_filters_test.go"
       ],
-      "notes": "Lists durable workspace schemes with optional grants expansion; every expansion bean remains."
+      "notes": "Lists durable workspace schemes with optional grants expansion; the permissions, user, group, projectRole, field and all expansions add holder details and are tested."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/permissionscheme/{schemeId}",
@@ -8399,9 +8417,10 @@
       "evidence": [
         "internal/api3/permission_schemes_test.go",
         "e2e/permission_schemes.spec.ts",
-        "docs/PERMISSION_SCHEMES.md"
+        "docs/PERMISSION_SCHEMES.md",
+        "internal/api3/expansions_filters_test.go"
       ],
-      "notes": "Reads a workspace scheme with optional grants expansion; every expansion bean remains."
+      "notes": "Reads a workspace scheme with optional grants expansion; the permissions, user, group, projectRole, field and all expansions add holder details and are tested."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/permissionscheme/{schemeId}/permission",
@@ -8409,9 +8428,10 @@
       "evidence": [
         "internal/api3/permission_schemes_test.go",
         "e2e/permission_schemes.spec.ts",
-        "docs/PERMISSION_SCHEMES.md"
+        "docs/PERMISSION_SCHEMES.md",
+        "internal/api3/expansions_filters_test.go"
       ],
-      "notes": "Returns ordered grants with canonical holder parameters and values; complete expansion beans remain."
+      "notes": "Returns ordered grants with canonical holder parameters and values; the permissions, user, group, projectRole, field and all expansions add holder details and are tested."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/permissionscheme/{schemeId}/permission/{permissionId}",
@@ -8419,9 +8439,10 @@
       "evidence": [
         "internal/api3/permission_schemes_test.go",
         "e2e/permission_schemes.spec.ts",
-        "docs/PERMISSION_SCHEMES.md"
+        "docs/PERMISSION_SCHEMES.md",
+        "internal/api3/expansions_filters_test.go"
       ],
-      "notes": "Reads one workspace-scoped canonical grant; complete expansion beans remain."
+      "notes": "Reads one workspace-scoped canonical grant; the permissions, user, group, projectRole, field and all expansions add holder details and are tested."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/priority",
@@ -8699,9 +8720,10 @@
       "status": "partial",
       "evidence": [
         "internal/api3/versions_test.go",
-        "docs/PROJECT_VERSIONS.md"
+        "docs/PROJECT_VERSIONS.md",
+        "internal/api3/expansions_filters_test.go"
       ],
-      "notes": "The paginated list with ordering and status filters is tested; expand beyond issue counts remains."
+      "notes": "The paginated list with ordering and status filters and the issuesstatus, operations, driver and approvers expansions is tested; unknown expansions are refused."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/project/{projectIdOrKey}/versions",
@@ -8709,9 +8731,10 @@
       "evidence": [
         "internal/api3/versions_test.go",
         "e2e/releases.spec.ts",
-        "docs/PROJECT_VERSIONS.md"
+        "docs/PROJECT_VERSIONS.md",
+        "internal/api3/expansions_filters_test.go"
       ],
-      "notes": "Listing a project's versions in display order is tested through REST and the browser; Jira's expand remains."
+      "notes": "Listing a project's versions in display order with the operations expansion is tested through REST and the browser."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/project/{projectId}/email",
@@ -8739,9 +8762,10 @@
       "evidence": [
         "internal/api3/notification_schemes_test.go",
         "e2e/notification_schemes.spec.ts",
-        "docs/NOTIFICATION_SCHEMES.md"
+        "docs/NOTIFICATION_SCHEMES.md",
+        "internal/api3/expansions_filters_test.go"
       ],
-      "notes": "Returns the assigned scheme to permission-derived project or site administrators; complete nested expansions and every Jira error edge remain."
+      "notes": "Returns the assigned scheme to permission-derived project or site administrators; the notificationSchemeEvents, user, group, projectRole, field and all expansions add recipient details and are tested."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/project/{projectKeyOrId}/permissionscheme",
@@ -8749,9 +8773,10 @@
       "evidence": [
         "internal/api3/permission_schemes_test.go",
         "e2e/permission_schemes.spec.ts",
-        "docs/PERMISSION_SCHEMES.md"
+        "docs/PERMISSION_SCHEMES.md",
+        "internal/api3/expansions_filters_test.go"
       ],
-      "notes": "Returns the assigned scheme to site or permission-derived project administrators; every Jira expansion remains."
+      "notes": "Returns the assigned scheme to site or permission-derived project administrators; the permissions, user, group, projectRole, field and all expansions add holder details and are tested."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/project/{projectKeyOrId}/securitylevel",
@@ -8897,9 +8922,10 @@
       "evidence": [
         "internal/api3/screens_test.go",
         "e2e/screens.spec.ts",
-        "docs/SCREENS.md"
+        "docs/SCREENS.md",
+        "internal/api3/expansions_filters_test.go"
       ],
-      "notes": "Paging with id and queryString filters is tested; Jira's expand and scope filters remain."
+      "notes": "Paging with the id, queryString and scope filters and name and id ordering is tested; every screen on the site is a global screen."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/screens/tabs",
@@ -8946,9 +8972,10 @@
       "evidence": [
         "internal/api3/screen_schemes_test.go",
         "e2e/screen_schemes.spec.ts",
-        "docs/SCREEN_SCHEMES.md"
+        "docs/SCREEN_SCHEMES.md",
+        "internal/api3/expansions_filters_test.go"
       ],
-      "notes": "Paging schemes with their operation mappings and an id filter is tested; expand, orderBy and queryString remain."
+      "notes": "Paging schemes with their operation mappings, the id and queryString filters, name and id ordering and the issueTypeScreenSchemes expansion is tested."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/search",
@@ -9130,9 +9157,10 @@
       "status": "partial",
       "evidence": [
         "internal/api3/versions_test.go",
-        "docs/PROJECT_VERSIONS.md"
+        "docs/PROJECT_VERSIONS.md",
+        "internal/api3/expansions_filters_test.go"
       ],
-      "notes": "Reading a version with optional issue-count expansion is tested; the operations and driver fields remain."
+      "notes": "Reading a version with the issuesstatus, operations, driver and approvers expansions is tested: operations list the release actions for project administrators, drivers and approvers are durable, and approvers approve or decline releases on the release page."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/version/{id}/relatedIssueCounts",
@@ -10610,9 +10638,10 @@
       "evidence": [
         "internal/api3/api3_filters_test.go",
         "e2e/filters.spec.ts",
-        "docs/FILTERS.md"
+        "docs/FILTERS.md",
+        "internal/api3/expansions_filters_test.go"
       ],
-      "notes": "Visibility-filtered lifecycle behavior and Jira-shaped FilterBean responses are integration-tested; exact expansion and JQL certification remain."
+      "notes": "Visibility-filtered lifecycle behavior and Jira-shaped FilterBean responses are integration-tested; the sharedUsers and subscriptions expansions, including index ranges, are tested; JQL certification remains."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/filter/{id}/columns",
@@ -10630,9 +10659,10 @@
       "evidence": [
         "internal/api3/api3_filters_test.go",
         "e2e/filters.spec.ts",
-        "docs/FILTERS.md"
+        "docs/FILTERS.md",
+        "internal/api3/expansions_filters_test.go"
       ],
-      "notes": "Per-user favorites require filter visibility and return durable favorite counts through the Jira HTTP methods; final expansion certification remains."
+      "notes": "Per-user favorites require filter visibility and return durable favorite counts through the Jira HTTP methods; the sharedUsers and subscriptions expansions, including index ranges, are tested."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/filter/{id}/owner",

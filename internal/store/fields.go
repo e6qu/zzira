@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/jackc/pgx/v5"
@@ -75,6 +76,13 @@ func (s *Store) SearchCustomFields(ctx context.Context, workspaceID string, sear
 		order = "lower(cf.name)"
 	case "description":
 		order = "lower(cf.description)"
+	case "contextsCount":
+		order = "(SELECT count(*) FROM custom_field_contexts ctx WHERE ctx.field_id=cf.id)"
+	case "screensCount":
+		order = "(SELECT count(DISTINCT stf.screen_id) FROM screen_tab_fields stf WHERE stf.field_id=cf.id AND stf.workspace_id=$1)"
+	case "lastUsed":
+		order = `(SELECT max(a.created_at) FROM actions a WHERE a.workspace_id=$1 AND a.entity_type='issue' AND a.op='upsert' AND a.payload->'diff' ? cf.id)`
+		direction += " NULLS LAST"
 	}
 	predicate := strings.Join(where, " AND ")
 	page := &FieldPage{Fields: []*models.CustomField{}}
@@ -298,6 +306,31 @@ type FieldUsage struct {
 	Contexts int
 	Projects int
 	Screens  int
+}
+
+// FieldLastUsed reports when each field's value last changed on a work item,
+// from the recorded issue changes, as an RFC 3339 time; a field never changed
+// is absent.
+func (s *Store) FieldLastUsed(ctx context.Context, workspaceID string, fieldIDs []string) (map[string]time.Time, error) {
+	rows, err := s.Pool.Query(ctx, `SELECT field.key, max(a.created_at)
+		FROM actions a CROSS JOIN LATERAL jsonb_object_keys(a.payload->'diff') field(key)
+		WHERE a.workspace_id=$1 AND a.entity_type='issue' AND a.op='upsert' AND jsonb_typeof(a.payload->'diff')='object'
+		  AND field.key = ANY($2)
+		GROUP BY field.key`, workspaceID, fieldIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	used := map[string]time.Time{}
+	for rows.Next() {
+		var fieldID string
+		var at time.Time
+		if err = rows.Scan(&fieldID, &at); err != nil {
+			return nil, err
+		}
+		used[fieldID] = at
+	}
+	return used, rows.Err()
 }
 
 // FieldUsageCounts answers the counts for a page of fields in one query, rather

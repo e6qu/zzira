@@ -87,7 +87,7 @@ func permissionExpand(r *http.Request) (bool, error) {
 	return expanded, nil
 }
 
-func (h *Handler) permissionGrantBean(schemeID int64, grant models.PermissionGrant) map[string]any {
+func (h *Handler) permissionGrantBean(x *holderExpander, schemeID int64, grant models.PermissionGrant) map[string]any {
 	holder := map[string]any{"type": grant.HolderType}
 	if grant.HolderParameter != "" {
 		holder["parameter"] = grant.HolderParameter
@@ -95,13 +95,14 @@ func (h *Handler) permissionGrantBean(schemeID int64, grant models.PermissionGra
 	if grant.HolderValue != "" {
 		holder["value"] = grant.HolderValue
 	}
+	x.expand(holder, permissionHolderKind(grant.HolderType), grant.HolderValue)
 	return map[string]any{
 		"id": grant.ID, "self": h.BaseURL + "/rest/api/3/permissionscheme/" + strconv.FormatInt(schemeID, 10) + "/permission/" + strconv.FormatInt(grant.ID, 10),
 		"permission": grant.Permission, "holder": holder,
 	}
 }
 
-func (h *Handler) permissionSchemeBean(scheme *models.PermissionScheme, expanded bool) map[string]any {
+func (h *Handler) permissionSchemeBean(x *holderExpander, scheme *models.PermissionScheme, expanded bool) map[string]any {
 	bean := map[string]any{
 		"id": scheme.ID, "self": h.BaseURL + "/rest/api/3/permissionscheme/" + strconv.FormatInt(scheme.ID, 10),
 		"name": scheme.Name, "description": scheme.Description,
@@ -110,7 +111,7 @@ func (h *Handler) permissionSchemeBean(scheme *models.PermissionScheme, expanded
 	if expanded {
 		permissions := make([]map[string]any, 0, len(scheme.Grants))
 		for _, grant := range scheme.Grants {
-			permissions = append(permissions, h.permissionGrantBean(scheme.ID, grant))
+			permissions = append(permissions, h.permissionGrantBean(x, scheme.ID, grant))
 		}
 		bean["permissions"] = permissions
 		bean["expand"] = "permissions"
@@ -143,7 +144,7 @@ func (h *Handler) permissionSchemeRoute(w http.ResponseWriter, r *http.Request, 
 			}
 			values := make([]map[string]any, 0, len(schemes))
 			for _, scheme := range schemes {
-				values = append(values, h.permissionSchemeBean(scheme, expanded))
+				values = append(values, h.permissionSchemeBean(h.newHolderExpander(r, workspaceID), scheme, expanded))
 			}
 			writeJSON(w, http.StatusOK, map[string]any{"permissionSchemes": values})
 			return
@@ -167,7 +168,7 @@ func (h *Handler) permissionSchemeRoute(w http.ResponseWriter, r *http.Request, 
 				permissionSchemeError(w, createErr)
 				return
 			}
-			writeJSON(w, http.StatusCreated, h.permissionSchemeBean(scheme, expanded))
+			writeJSON(w, http.StatusCreated, h.permissionSchemeBean(h.newHolderExpander(r, workspaceID), scheme, expanded))
 			return
 		}
 		jiraError(w, http.StatusMethodNotAllowed, "Method not allowed")
@@ -202,7 +203,7 @@ func (h *Handler) permissionSchemeRoute(w http.ResponseWriter, r *http.Request, 
 			permissionSchemeError(w, getErr)
 			return
 		}
-		writeJSON(w, http.StatusOK, h.permissionSchemeBean(scheme, expanded))
+		writeJSON(w, http.StatusOK, h.permissionSchemeBean(h.newHolderExpander(r, workspaceID), scheme, expanded))
 	case http.MethodPut:
 		workspaceID, actorID, authErr := h.authWorkspaceAdmin(r)
 		if authErr != nil {
@@ -223,7 +224,7 @@ func (h *Handler) permissionSchemeRoute(w http.ResponseWriter, r *http.Request, 
 			permissionSchemeError(w, updateErr)
 			return
 		}
-		writeJSON(w, http.StatusOK, h.permissionSchemeBean(scheme, expanded))
+		writeJSON(w, http.StatusOK, h.permissionSchemeBean(h.newHolderExpander(r, workspaceID), scheme, expanded))
 	case http.MethodDelete:
 		workspaceID, actorID, authErr := h.authWorkspaceAdmin(r)
 		if authErr != nil {
@@ -256,7 +257,7 @@ func (h *Handler) permissionGrantRoute(w http.ResponseWriter, r *http.Request, s
 			}
 			values := make([]map[string]any, 0, len(grants))
 			for _, grant := range grants {
-				values = append(values, h.permissionGrantBean(schemeID, grant))
+				values = append(values, h.permissionGrantBean(h.newHolderExpander(r, workspaceID), schemeID, grant))
 			}
 			writeJSON(w, http.StatusOK, map[string]any{"permissions": values, "expand": "permissions"})
 		case http.MethodPost:
@@ -273,7 +274,7 @@ func (h *Handler) permissionGrantRoute(w http.ResponseWriter, r *http.Request, s
 				permissionSchemeError(w, err)
 				return
 			}
-			writeJSON(w, http.StatusCreated, h.permissionGrantBean(schemeID, grant))
+			writeJSON(w, http.StatusCreated, h.permissionGrantBean(h.newHolderExpander(r, workspaceID), schemeID, grant))
 		default:
 			jiraError(w, http.StatusMethodNotAllowed, "Method not allowed")
 		}
@@ -299,7 +300,7 @@ func (h *Handler) permissionGrantRoute(w http.ResponseWriter, r *http.Request, s
 			permissionSchemeError(w, getErr)
 			return
 		}
-		writeJSON(w, http.StatusOK, h.permissionGrantBean(schemeID, grant))
+		writeJSON(w, http.StatusOK, h.permissionGrantBean(h.newHolderExpander(r, workspaceID), schemeID, grant))
 		return
 	}
 	if r.Method == http.MethodDelete {
@@ -350,7 +351,7 @@ func (h *Handler) projectPermissionSchemeRoute(w http.ResponseWriter, r *http.Re
 			jiraError(w, http.StatusForbidden, "Administer Jira or Administer projects permission is required.")
 			return
 		}
-		writeJSON(w, http.StatusOK, h.permissionSchemeBean(scheme, expanded))
+		writeJSON(w, http.StatusOK, h.permissionSchemeBean(h.newHolderExpander(r, workspaceID), scheme, expanded))
 		return
 	}
 	if r.Method == http.MethodPut {
@@ -374,7 +375,7 @@ func (h *Handler) projectPermissionSchemeRoute(w http.ResponseWriter, r *http.Re
 			permissionSchemeError(w, assignErr)
 			return
 		}
-		writeJSON(w, http.StatusOK, h.permissionSchemeBean(scheme, expanded))
+		writeJSON(w, http.StatusOK, h.permissionSchemeBean(h.newHolderExpander(r, workspaceID), scheme, expanded))
 		return
 	}
 	jiraError(w, http.StatusMethodNotAllowed, "Method not allowed")

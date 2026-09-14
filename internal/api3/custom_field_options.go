@@ -2,6 +2,7 @@ package api3
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -57,6 +58,25 @@ func (h *Handler) customFieldOptionCollection(w http.ResponseWriter, r *http.Req
 			fieldContextError(w, err)
 			return
 		}
+		onlyOptions, parseErr := queryBool(r, "onlyOptions", false)
+		if parseErr != nil {
+			jiraError(w, http.StatusBadRequest, "onlyOptions must be true or false.")
+			return
+		}
+		// optionId selects an option and its cascading children; onlyOptions
+		// leaves the children out.
+		optionID := strings.TrimSpace(r.URL.Query().Get("optionId"))
+		matching := options[:0]
+		for _, option := range options {
+			if onlyOptions && option.ParentID != "" {
+				continue
+			}
+			if optionID != "" && fmt.Sprint(h.customFieldOptionBean(option)["id"]) != optionID && option.ID != optionID && option.ParentID != optionID {
+				continue
+			}
+			matching = append(matching, option)
+		}
+		options = matching
 		page := pageSlice(options, startAt, maxResults)
 		values := make([]map[string]any, 0, len(page))
 		for _, option := range page {

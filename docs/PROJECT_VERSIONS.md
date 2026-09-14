@@ -50,6 +50,16 @@ work mutation writes an immutable action in the same transaction.
 - `migrations/138_version_related_work.sql` is exercised from a clean PostgreSQL
   schema.
 
-Jira's `expand` on the paginated version list beyond issue counts, the
-operations and driver fields on a version, related work ordering, and exact Jira
-error wording remain.
+## Drivers, approvers and operations
+
+A release names a driver, the person responsible for it, set through the
+version API's `driver` field or the release page. Project administrators ask
+site members to approve a release with a note on what they approve; each
+approver approves or declines on the release page, optionally saying why.
+`migrations/187_version_drivers_approvers.sql` stores both. Version reads expand
+`driver`, `approvers` and `operations`, the release actions a project
+administrator may take, alongside `issuesstatus`; unknown expansions are
+refused. `internal/api3/expansions_filters_test.go` covers the expansions and
+approval decisions.
+
+Related work ordering and exact Jira error wording remain.

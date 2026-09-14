@@ -102,7 +102,7 @@ func (h *Handler) securityLevelBean(schemeID string, level models.SecurityLevel)
 	}
 }
 
-func (h *Handler) securityMemberBean(member models.SecurityLevelMember) map[string]any {
+func (h *Handler) securityMemberBean(x *holderExpander, member models.SecurityLevelMember) map[string]any {
 	holder := map[string]any{"type": member.HolderType}
 	if member.HolderParameter != "" {
 		holder["parameter"] = member.HolderParameter
@@ -110,6 +110,7 @@ func (h *Handler) securityMemberBean(member models.SecurityLevelMember) map[stri
 	if member.HolderValue != "" {
 		holder["value"] = member.HolderValue
 	}
+	x.expand(holder, permissionHolderKind(member.HolderType), member.HolderValue)
 	return map[string]any{
 		"id": strconv.FormatInt(member.ID, 10), "issueSecuritySchemeId": member.SchemeID,
 		"issueSecurityLevelId": member.LevelID, "holder": holder, "managed": member.Managed,
@@ -450,10 +451,11 @@ func (h *Handler) securityMemberSearch(w http.ResponseWriter, r *http.Request, s
 		issueSecurityError(w, err)
 		return
 	}
+	expander := h.newHolderExpander(r, workspaceID)
 	page := pageSlice(members, startAt, maxResults)
 	values := make([]map[string]any, 0, len(page))
 	for _, member := range page {
-		values = append(values, h.securityMemberBean(member))
+		values = append(values, h.securityMemberBean(expander, member))
 	}
 	writeJSON(w, http.StatusOK, h.securityPageBean(r, values, len(members), startAt, maxResults))
 }

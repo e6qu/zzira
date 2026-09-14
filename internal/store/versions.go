@@ -23,13 +23,14 @@ type VersionUpdate struct {
 	ReleaseDate *string `json:"releaseDate"`
 	Released    *bool   `json:"released"`
 	Archived    *bool   `json:"archived"`
+	Driver      *string `json:"driver"`
 }
 
-const versionSelect = `SELECT v.id,v.project_id,v.name,v.description,COALESCE(v.start_date::text,''),COALESCE(v.release_date::text,''),v.released,v.archived,v.position FROM project_versions v `
+const versionSelect = `SELECT v.id,v.project_id,v.name,v.description,COALESCE(v.start_date::text,''),COALESCE(v.release_date::text,''),v.released,v.archived,v.position,COALESCE(v.driver_account_id,'') FROM project_versions v `
 
 func scanVersion(row pgx.Row) (*models.Version, error) {
 	v := &models.Version{}
-	err := row.Scan(&v.ID, &v.ProjectID, &v.Name, &v.Description, &v.StartDate, &v.ReleaseDate, &v.Released, &v.Archived, &v.Position)
+	err := row.Scan(&v.ID, &v.ProjectID, &v.Name, &v.Description, &v.StartDate, &v.ReleaseDate, &v.Released, &v.Archived, &v.Position, &v.DriverID)
 	return v, err
 }
 func (s *Store) Version(ctx context.Context, ws, id string) (*models.Version, error) {
@@ -129,13 +130,21 @@ func (s *Store) SaveVersion(ctx context.Context, ws, actor, project, id string, 
 	if up.Archived != nil {
 		v.Archived = *up.Archived
 	}
+	if up.Driver != nil {
+		v.DriverID = strings.TrimSpace(*up.Driver)
+		if v.DriverID != "" {
+			if err = requireActiveSiteMember(ctx, tx, ws, v.DriverID, "the driver"); err != nil {
+				return nil, err
+			}
+		}
+	}
 	if err = validateVersion(v); err != nil {
 		return nil, err
 	}
 	if id == "" {
-		err = tx.QueryRow(ctx, `INSERT INTO project_versions(project_id,name,description,start_date,release_date,released,archived,position) VALUES($1,$2,$3,NULLIF($4,'')::date,NULLIF($5,'')::date,$6,$7,COALESCE((SELECT max(position)+1 FROM project_versions WHERE project_id=$1),0)) RETURNING id,position`, project, v.Name, v.Description, v.StartDate, v.ReleaseDate, v.Released, v.Archived).Scan(&v.ID, &v.Position)
+		err = tx.QueryRow(ctx, `INSERT INTO project_versions(project_id,name,description,start_date,release_date,released,archived,position,driver_account_id) VALUES($1,$2,$3,NULLIF($4,'')::date,NULLIF($5,'')::date,$6,$7,COALESCE((SELECT max(position)+1 FROM project_versions WHERE project_id=$1),0),NULLIF($8,'')) RETURNING id,position`, project, v.Name, v.Description, v.StartDate, v.ReleaseDate, v.Released, v.Archived, v.DriverID).Scan(&v.ID, &v.Position)
 	} else {
-		_, err = tx.Exec(ctx, `UPDATE project_versions SET name=$2,description=$3,start_date=NULLIF($4,'')::date,release_date=NULLIF($5,'')::date,released=$6,archived=$7 WHERE id=$1`, id, v.Name, v.Description, v.StartDate, v.ReleaseDate, v.Released, v.Archived)
+		_, err = tx.Exec(ctx, `UPDATE project_versions SET name=$2,description=$3,start_date=NULLIF($4,'')::date,release_date=NULLIF($5,'')::date,released=$6,archived=$7,driver_account_id=NULLIF($8,'') WHERE id=$1`, id, v.Name, v.Description, v.StartDate, v.ReleaseDate, v.Released, v.Archived, v.DriverID)
 	}
 	if err != nil {
 		return nil, versionDBError(err)

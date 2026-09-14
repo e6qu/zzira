@@ -105,6 +105,14 @@ func (h *Handler) screenCollection(w http.ResponseWriter, r *http.Request) {
 			screenError(w, err)
 			return
 		}
+		// Every screen here is a global screen; team-managed project and
+		// template screens are not created on this site.
+		if scopes := commaQuerySet(r, "scope"); len(scopes) > 0 && !querySetContains(scopes, "GLOBAL") {
+			screens = screens[:0]
+		}
+		if !orderByNameOrID(w, r.URL.Query().Get("orderBy"), screens, func(s *models.Screen) string { return s.Name }, func(s *models.Screen) string { return s.ID }) {
+			return
+		}
 		page := pageSlice(screens, startAt, maxResults)
 		values := make([]map[string]any, 0, len(page))
 		for _, screen := range page {
@@ -419,10 +427,21 @@ func (h *Handler) screensForField(w http.ResponseWriter, r *http.Request, fieldI
 		screenError(w, err)
 		return
 	}
+	var tabs map[string]models.ScreenTab
+	if querySetContains(commaQuerySet(r, "expand"), "tab") {
+		if tabs, err = h.Store.ScreenTabsWithField(r.Context(), workspaceID, fieldID); err != nil {
+			screenError(w, err)
+			return
+		}
+	}
 	page := pageSlice(screens, startAt, maxResults)
 	values := make([]map[string]any, 0, len(page))
 	for _, screen := range page {
-		values = append(values, h.screenBean(screen))
+		bean := h.screenBean(screen)
+		if tab, ok := tabs[screen.ID]; ok {
+			bean["tab"] = h.screenTabBean(tab)
+		}
+		values = append(values, bean)
 	}
 	writeJSON(w, http.StatusOK, h.securityPageBean(r, values, len(screens), startAt, maxResults))
 }

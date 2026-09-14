@@ -98,6 +98,23 @@ func (h *Handler) fieldConfigurationCollection(w http.ResponseWriter, r *http.Re
 			fieldConfigError(w, err)
 			return
 		}
+		defaultsOnly, parseErr := queryBool(r, "isDefault", false)
+		if parseErr != nil {
+			jiraError(w, http.StatusBadRequest, "isDefault must be true or false.")
+			return
+		}
+		query := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("query")))
+		matching := configurations[:0]
+		for _, configuration := range configurations {
+			if defaultsOnly && !configuration.IsDefault {
+				continue
+			}
+			if query != "" && !strings.Contains(strings.ToLower(configuration.Name+"\n"+configuration.Description), query) {
+				continue
+			}
+			matching = append(matching, configuration)
+		}
+		configurations = matching
 		page := pageSlice(configurations, startAt, maxResults)
 		values := make([]map[string]any, 0, len(page))
 		for _, configuration := range page {

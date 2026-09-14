@@ -65,8 +65,11 @@ transfer it as an administrator, and delete it after transferring it back.
 The contract operations remain partial until the broader PR 1 JQL and search
 work completes. The schedule editor intentionally exposes daily and weekly UTC
 choices; arbitrary cron expressions, user-time-zone schedules, HTML email, and
-administrative subscription controls remain. Anonymous global-filter access
-remains outside the authenticated Jira REST handler.
+administrative subscription controls remain. Filter reads list subscriptions
+and the users a filter is shared with only when `expand=subscriptions` or
+`expand=sharedUsers` asks, including Jira's `[start:end]` index ranges; a filter
+shared with a project reaches the people who can browse that project. Jira
+Cloud no longer shares filters publicly, so anonymous callers see none.
 
 The JQL parser currently supports the useful subset recorded in
 [CLOUD_PARITY.md](CLOUD_PARITY.md). Saved filters accept only queries that this

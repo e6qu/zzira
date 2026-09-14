@@ -100,5 +100,5 @@ item page and in the edit dialog every picker field offers its choices — a
 cascading select lists each option and each option with a child, people, groups,
 projects and the project's versions — and names the chosen values; a field whose
 choices are not loaded, as in the offline replica, keeps a plain input so an
-edit never clears it. Jira's `optionId` filter on the option list, `expand`, and
-exact Jira error wording remain.
+edit never clears it. The option list filters by `optionId`, an option and its cascading children,
+and `onlyOptions` leaves the children out. Exact Jira error wording remains.

@@ -166,6 +166,28 @@ func (s *Store) ScreensForField(ctx context.Context, workspaceID, fieldID string
 	return screens, rows.Err()
 }
 
+// ScreenTabsWithField maps each screen showing a field to the tab it is on.
+func (s *Store) ScreenTabsWithField(ctx context.Context, workspaceID, fieldID string) (map[string]models.ScreenTab, error) {
+	rows, err := s.Pool.Query(ctx, `SELECT t.screen_id::text,t.id::text,t.name,t.position FROM screen_tab_fields f
+		JOIN screen_tabs t ON t.id=f.tab_id
+		WHERE t.workspace_id=$1 AND f.field_id=$2 ORDER BY t.screen_id,t.position,t.id`, workspaceID, fieldID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	tabs := map[string]models.ScreenTab{}
+	for rows.Next() {
+		var tab models.ScreenTab
+		if err = rows.Scan(&tab.ScreenID, &tab.ID, &tab.Name, &tab.Position); err != nil {
+			return nil, err
+		}
+		if _, seen := tabs[tab.ScreenID]; !seen {
+			tabs[tab.ScreenID] = tab
+		}
+	}
+	return tabs, rows.Err()
+}
+
 func screenTabsTx(ctx context.Context, tx pgx.Tx, workspaceID string, screenIDs []int64) ([]models.ScreenTab, error) {
 	rows, err := tx.Query(ctx, `SELECT id::text,screen_id::text,name,position FROM screen_tabs
 		WHERE workspace_id=$1 AND screen_id = ANY($2) ORDER BY screen_id,position,id`, workspaceID, screenIDs)

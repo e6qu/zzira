@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -58,9 +59,13 @@ func versionQuery(w http.ResponseWriter, r *http.Request, keys ...string) bool {
 			return false
 		}
 	}
-	if expand := r.URL.Query().Get("expand"); expand != "" && expand != "issuesstatus" {
-		jiraError(w, 400, "Only the issuesstatus expansion is supported.")
-		return false
+	for expand := range commaQuerySet(r, "expand") {
+		switch expand {
+		case "issuesstatus", "operations", "driver", "approvers":
+		default:
+			jiraError(w, 400, "Unsupported version expansion: "+expand)
+			return false
+		}
 	}
 	return true
 }
@@ -82,15 +87,63 @@ func (h *Handler) versionBean(v *models.Version) map[string]any {
 }
 func (h *Handler) expandedVersion(r *http.Request, ws, user string, v *models.Version) (map[string]any, error) {
 	bean := h.versionBean(v)
-	if r.URL.Query().Get("expand") == "issuesstatus" {
+	expands := commaQuerySet(r, "expand")
+	if querySetContains(expands, "issuesstatus") {
 		issues, err := h.Store.VersionIssues(r.Context(), ws, user, v.ProjectID, v.ID, "fixVersions")
 		if err != nil {
 			return nil, err
 		}
 		bean["issuesStatusForFixVersion"] = store.VersionProgress(issues)
 	}
+	if querySetContains(expands, "driver") && v.DriverID != "" {
+		bean["driver"] = v.DriverID
+	}
+	if querySetContains(expands, "approvers") {
+		approvers, err := h.Store.VersionApprovers(r.Context(), v.ID)
+		if err != nil {
+			return nil, err
+		}
+		bean["approvers"] = approvers
+	}
+	if querySetContains(expands, "operations") {
+		operations, err := h.versionOperations(r, ws, user, v)
+		if err != nil {
+			return nil, err
+		}
+		bean["operations"] = operations
+	}
 	return bean, nil
 }
+
+// versionOperations lists what the caller may do with a release, as links to
+// the release page; only project administrators manage releases.
+func (h *Handler) versionOperations(r *http.Request, ws, user string, v *models.Version) ([]map[string]any, error) {
+	allowed, err := h.hasProjectPermission(r.Context(), ws, user, v.ProjectID, "", "ADMINISTER_PROJECTS")
+	if err != nil || !allowed {
+		return []map[string]any{}, err
+	}
+	project, err := h.Store.ProjectByIDOrKey(r.Context(), ws, v.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	href := h.BaseURL + "/projects/" + url.PathEscape(project.Key) + "/releases/" + url.PathEscape(v.ID)
+	link := func(id, label string, weight int) map[string]any {
+		return map[string]any{"id": id, "label": label, "title": label, "href": href, "weight": weight, "styleClass": "", "iconClass": ""}
+	}
+	operations := []map[string]any{link("edit_version", "Edit", 10)}
+	if v.Released {
+		operations = append(operations, link("unrelease_version", "Unrelease", 20))
+	} else {
+		operations = append(operations, link("release_version", "Release", 20))
+	}
+	if v.Archived {
+		operations = append(operations, link("unarchive_version", "Unarchive", 30))
+	} else {
+		operations = append(operations, link("archive_version", "Archive", 30))
+	}
+	return append(operations, link("delete_version", "Delete", 40)), nil
+}
+
 func (h *Handler) versionRoute(w http.ResponseWriter, r *http.Request, parts []string) {
 	ws, user, e := h.authWorkspace(r)
 	if e != nil {

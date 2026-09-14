@@ -223,8 +223,11 @@ func TestDashboardLifecyclePrivacyAndGadgets(t *testing.T) {
 	if page["total"] != float64(1) || page["isLast"] != true {
 		t.Fatal(page)
 	}
-	for _, q := range []string{"maxResults=-1", "startAt=-1", "orderBy=bogus", "groupId=unsupported", "status=archived"} {
+	for _, q := range []string{"maxResults=-1", "startAt=-1", "orderBy=bogus", "groupId=1&groupname=admins", "status=archived", "expand=bogus"} {
 		call(member, "GET", "/rest/api/3/dashboard/search?"+q, nil, 400)
+	}
+	if unshared := call(member, "GET", "/rest/api/3/dashboard/search?groupId=unknown&expand=viewUrl,favourite,favouritedCount,isWritable", nil, 200); unshared["total"] != float64(0) {
+		t.Fatal(unshared)
 	}
 	call(member, "DELETE", prop+"/custom", nil, 204)
 	call(member, "GET", prop+"/custom", nil, 404)

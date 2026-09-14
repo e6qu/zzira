@@ -1,6 +1,7 @@
 package api3
 
 import (
+	"github.com/e6qu/zzira/internal/store"
 	"net/http"
 	"strings"
 
@@ -10,6 +11,21 @@ import (
 func isScreenSchemePath(path string) bool {
 	return path == "/screenscheme" || strings.HasPrefix(path, "/screenscheme/") ||
 		path == "/issuetypescreenscheme" || strings.HasPrefix(path, "/issuetypescreenscheme/")
+}
+
+// namedMatches keeps the items whose name contains the query, ignoring case.
+func namedMatches[T any](items []T, query string, name func(T) string) []T {
+	query = strings.ToLower(strings.TrimSpace(query))
+	if query == "" {
+		return items
+	}
+	matched := items[:0]
+	for _, item := range items {
+		if strings.Contains(strings.ToLower(name(item)), query) {
+			matched = append(matched, item)
+		}
+	}
+	return matched
 }
 
 func (h *Handler) screenSchemeBean(scheme *models.ScreenScheme) map[string]any {
@@ -82,10 +98,35 @@ func (h *Handler) screenSchemeCollection(w http.ResponseWriter, r *http.Request)
 			screenError(w, err)
 			return
 		}
+		schemes = namedMatches(schemes, r.URL.Query().Get("queryString"), func(s *models.ScreenScheme) string { return s.Name })
+		if !orderByNameOrID(w, r.URL.Query().Get("orderBy"), schemes, func(s *models.ScreenScheme) string { return s.Name }, func(s *models.ScreenScheme) string { return s.ID }) {
+			return
+		}
+		var users []*models.IssueTypeScreenScheme
+		expandUsers := querySetContains(commaQuerySet(r, "expand"), "issueTypeScreenSchemes")
+		if expandUsers {
+			if users, err = h.Store.IssueTypeScreenSchemes(r.Context(), workspaceID, nil); err != nil {
+				screenError(w, err)
+				return
+			}
+		}
 		page := pageSlice(schemes, startAt, maxResults)
 		values := make([]map[string]any, 0, len(page))
 		for _, scheme := range page {
-			values = append(values, h.screenSchemeBean(scheme))
+			bean := h.screenSchemeBean(scheme)
+			if expandUsers {
+				using := []map[string]any{}
+				for _, candidate := range users {
+					for _, mapping := range candidate.Mappings {
+						if mapping.ScreenSchemeID == scheme.ID {
+							using = append(using, h.issueTypeScreenSchemeBean(candidate))
+							break
+						}
+					}
+				}
+				bean["issueTypeScreenSchemes"] = pageOf(using)
+			}
+			values = append(values, bean)
 		}
 		writeJSON(w, http.StatusOK, h.securityPageBean(r, values, len(schemes), startAt, maxResults))
 	case http.MethodPost:
@@ -170,10 +211,35 @@ func (h *Handler) issueTypeScreenSchemeCollection(w http.ResponseWriter, r *http
 			screenError(w, err)
 			return
 		}
+		schemes = namedMatches(schemes, r.URL.Query().Get("queryString"), func(s *models.IssueTypeScreenScheme) string { return s.Name })
+		if !orderByNameOrID(w, r.URL.Query().Get("orderBy"), schemes, func(s *models.IssueTypeScreenScheme) string { return s.Name }, func(s *models.IssueTypeScreenScheme) string { return s.ID }) {
+			return
+		}
+		expandProjects := querySetContains(commaQuerySet(r, "expand"), "projects")
+		var assignments []store.IssueTypeScreenSchemeProject
+		if expandProjects {
+			if assignments, err = h.Store.IssueTypeScreenSchemeProjects(r.Context(), workspaceID); err != nil {
+				screenError(w, err)
+				return
+			}
+		}
 		page := pageSlice(schemes, startAt, maxResults)
 		values := make([]map[string]any, 0, len(page))
 		for _, scheme := range page {
-			values = append(values, h.issueTypeScreenSchemeBean(scheme))
+			bean := h.issueTypeScreenSchemeBean(scheme)
+			if expandProjects {
+				projects := []map[string]any{}
+				for _, assignment := range assignments {
+					if assignment.SchemeID != scheme.ID {
+						continue
+					}
+					if project, projectErr := h.Store.ProjectByIDOrKey(r.Context(), workspaceID, assignment.ProjectID); projectErr == nil {
+						projects = append(projects, h.projectBean(project))
+					}
+				}
+				bean["projects"] = pageOf(projects)
+			}
+			values = append(values, bean)
 		}
 		writeJSON(w, http.StatusOK, h.securityPageBean(r, values, len(schemes), startAt, maxResults))
 	case http.MethodPost:
@@ -344,6 +410,7 @@ func (h *Handler) projectsForIssueTypeScreenScheme(w http.ResponseWriter, r *htt
 		screenError(w, err)
 		return
 	}
+	query := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("query")))
 	values := []map[string]any{}
 	for _, assignment := range assignments {
 		if assignment.SchemeID != schemeID {
@@ -351,6 +418,9 @@ func (h *Handler) projectsForIssueTypeScreenScheme(w http.ResponseWriter, r *htt
 		}
 		project, projectErr := h.Store.ProjectByIDOrKey(r.Context(), workspaceID, assignment.ProjectID)
 		if projectErr != nil {
+			continue
+		}
+		if query != "" && !strings.Contains(strings.ToLower(project.Name), query) && !strings.Contains(strings.ToLower(project.Key), query) {
 			continue
 		}
 		values = append(values, h.projectBean(project))

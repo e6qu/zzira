@@ -50,5 +50,12 @@ someone who can edit it.
 - `e2e/dashboards.spec.ts` covers the browser journey from creating a dashboard
   through layouts, favourites, sharing, refresh and gadgets.
 
+Dashboards are shared with users, groups, the people who can browse a project,
+the members of a project role, or everyone signed in, from the API and the
+dashboard form; Jira Cloud no longer shares dashboards publicly. Search filters
+by group name, group ID and project, and accepts every documented expansion.
+`internal/api3/expansions_filters_test.go` covers the share types, their
+visibility and the search filters.
+
 Jira's `extendAdminPermissions`, dashboard item property expansion, and exact
 Jira error wording remain.

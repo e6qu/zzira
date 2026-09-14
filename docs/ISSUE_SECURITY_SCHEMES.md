@@ -96,11 +96,13 @@ arises through the legacy assignment extension described above.
   pages are in the light and dark axe sweep.
 
 The assessment remains partial while issue-security JQL functions, level
-reordering, `expand` on the paged beans, the nested user/group/role/field
-expansion beans, per-holder `managed` administration, scheme copy, and exact
+reordering, per-holder `managed` administration, scheme copy, and exact
 Jira error wording and self links on every response remain. The browser
 assignment form carries no level-remapping step, so assigning a scheme to a
 project that already has restricted work is a REST operation; the form reports
 the store's mapping error rather than silently moving those restrictions. Application-role
 holders resolve against enabled site products rather than Atlassian
 license-tier membership.
+
+Member reads expand each holder's `user`, `group`, `projectRole` or `field`
+details, or `all` of them, as permission scheme grants do.

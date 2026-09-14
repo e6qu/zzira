@@ -117,10 +117,18 @@ func TestFilterAdministrationContractJourney(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	withSubscription := object(call(ownerID, http.MethodGet, "/rest/api/3/filter/"+filterID, nil, http.StatusOK))
+	// Subscriptions are counted on every read and listed only when expanded.
+	unexpanded := object(object(call(ownerID, http.MethodGet, "/rest/api/3/filter/"+filterID, nil, http.StatusOK))["subscriptions"])
+	if unexpanded["size"] != float64(1) || len(unexpanded["items"].([]any)) != 0 {
+		t.Fatalf("unexpanded filter subscriptions = %#v", unexpanded)
+	}
+	withSubscription := object(call(ownerID, http.MethodGet, "/rest/api/3/filter/"+filterID+"?expand=subscriptions,sharedUsers", nil, http.StatusOK))
 	subscriptions := object(withSubscription["subscriptions"])
 	if subscriptions["size"] != float64(1) || len(subscriptions["items"].([]any)) != 1 {
 		t.Fatalf("filter subscriptions = %#v", subscriptions)
+	}
+	if shared := object(withSubscription["sharedUsers"]); shared["size"] != float64(0) {
+		t.Fatalf("a private filter is shared with %#v", shared)
 	}
 	if err := st.DeleteFilterSubscription(ctx, workspaceID, memberID, st.FilterIDByRef(ctx, workspaceID, filterID), subscription.ID); !errors.Is(err, store.ErrFilterPermission) {
 		t.Fatalf("non-owner deleted subscription: %v", err)
