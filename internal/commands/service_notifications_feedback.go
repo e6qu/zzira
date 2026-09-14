@@ -49,6 +49,18 @@ func (s *Service) notifyServiceRequestUsers(ctx context.Context, actorID, worksp
 		}); err != nil {
 			return err
 		}
+		// Jira Service Management also emails each notified person.
+		recipient, err := s.Store.UserByID(ctx, userID)
+		if err != nil {
+			return err
+		}
+		if recipient.Active && recipient.Email != "" {
+			subject := "[" + request.Issue.Key + "] " + actor.DisplayName + " " + message
+			body := actor.DisplayName + " " + message + ".\n\n" + request.Issue.Key + " — " + request.Issue.Summary + "\n/service/requests/" + request.Issue.Key
+			if err := s.Store.QueueEmail(ctx, workspaceID, recipient.Email, subject, body); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }

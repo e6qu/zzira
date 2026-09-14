@@ -137,6 +137,11 @@ func (s *Service) UpdateServiceRequestParticipants(ctx context.Context, actorID,
 	if err := s.Store.UpdateServiceRequestParticipants(ctx, workspaceID, request.Issue.ID, userIDs, remove); err != nil {
 		return nil, err
 	}
+	if !remove {
+		if err := s.notifyServiceRequestUsers(ctx, actorID, workspaceID, request, userIDs, "service_participant", "added you as a participant on "+request.Issue.Key, false); err != nil {
+			return nil, err
+		}
+	}
 	return s.Store.ServiceRequestParticipants(ctx, request.Issue.ID)
 }
 

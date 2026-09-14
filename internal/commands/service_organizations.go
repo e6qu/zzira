@@ -138,7 +138,8 @@ func (s *Service) InviteServiceDeskCustomer(ctx context.Context, actorID, worksp
 	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
 		return nil, err
 	}
-	if _, err := s.Store.ServiceDesk(ctx, workspaceID, serviceDeskID); err != nil {
+	desk, err := s.Store.ServiceDesk(ctx, workspaceID, serviceDeskID)
+	if err != nil {
 		return nil, fmt.Errorf("service desk does not exist")
 	}
 	email, displayName = strings.TrimSpace(strings.ToLower(email)), strings.TrimSpace(displayName)
@@ -150,6 +151,12 @@ func (s *Service) InviteServiceDeskCustomer(ctx context.Context, actorID, worksp
 		return nil, err
 	}
 	if err := s.Store.SetServiceDeskCustomers(ctx, workspaceID, serviceDeskID, []string{customer.ID}, true); err != nil {
+		return nil, err
+	}
+	// An invitation is an email, as Jira sends.
+	subject := "You're invited to the " + desk.PortalName + " help center"
+	body := "Hi " + customer.DisplayName + ",\n\nYou can now raise and follow requests with " + desk.PortalName + ".\n/service/portals/" + desk.ID
+	if err := s.Store.QueueEmail(ctx, workspaceID, customer.Email, subject, body); err != nil {
 		return nil, err
 	}
 	return customer, nil

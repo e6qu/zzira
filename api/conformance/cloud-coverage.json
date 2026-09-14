@@ -9032,7 +9032,7 @@
         "e2e/service.spec.ts",
         "docs/SERVICE_MANAGEMENT.md"
       ],
-      "notes": "Creates or reactivates a site-scoped portal-only customer for site administrators, grants customer-only site access, honors strict conflict mode, and never grants Jira product access; outbound invitation mail and every Atlassian account conflict detail remain."
+      "notes": "Creates or reactivates a site-scoped portal-only customer for site administrators, grants customer-only site access, honors strict conflict mode, and never grants Jira product access. As Jira documents, creation sends no email; the desk invitation operation does."
     },
     {
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/customer/skip-permission-check",
@@ -9396,6 +9396,7 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_desk_uploads_test.go",
         "internal/api3/service_request_fields_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service.go",
@@ -9404,7 +9405,7 @@
         "e2e/service.spec.ts",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Validates service desk, request type, required visible fields and each custom field's value without mutation, refusing hidden and unconfigured fields with field errors; Atlassian reason keys are not modelled."
+      "notes": "Validates service desk, request type, required visible fields and each custom field's value without mutation, refusing hidden and unconfigured fields. Answers Jira's RequestValidationResultDTO: fieldErrors as field and message items, errorMessage and reasonKey null for a valid payload and set for an invalid one, and empty formErrors because zzira has no ProForma forms."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}",
@@ -9578,12 +9579,13 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_desk_uploads_test.go",
         "internal/api3/service_test.go",
         "internal/commands/service_notifications_feedback.go",
         "e2e/service.spec.ts",
         "docs/SERVICE_MANAGEMENT.md"
       ],
-      "notes": "Unsubscribes only the authenticated viewer without changing request access; administrator notification policies remain."
+      "notes": "Unsubscribes only the authenticated viewer without changing request access; they stop receiving the request's notifications and emails."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/notification",
@@ -9596,7 +9598,7 @@
         "e2e/service.spec.ts",
         "docs/SERVICE_MANAGEMENT.md"
       ],
-      "notes": "Returns the authenticated viewer's durable request subscription state after applying request visibility; notification policy administration remains."
+      "notes": "Returns the authenticated viewer's durable request subscription state after applying request visibility."
     },
     {
       "operationId": "jira-service-management:PUT:/rest/servicedeskapi/request/{issueIdOrKey}/notification",
@@ -9604,12 +9606,13 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_desk_uploads_test.go",
         "internal/api3/service_test.go",
         "internal/commands/service_notifications_feedback.go",
         "e2e/service.spec.ts",
         "docs/SERVICE_MANAGEMENT.md"
       ],
-      "notes": "Subscribes the authenticated viewer and delivers public request events through the private notification stream; external email delivery remains."
+      "notes": "Subscribes the authenticated viewer, who then receives public request events as private notifications and emails."
     },
     {
       "operationId": "jira-service-management:DELETE:/rest/servicedeskapi/request/{issueIdOrKey}/participant",
@@ -9647,6 +9650,7 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_desk_uploads_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service.go",
         "internal/commands/service.go",
@@ -9654,7 +9658,7 @@
         "e2e/service.spec.ts",
         "docs/SERVICE_MANAGEMENT.md"
       ],
-      "notes": "Adds active service customers by account ID or email for the reporter or agent and grants request visibility; notification delivery remains."
+      "notes": "Adds active service customers by account ID or email for the reporter or agent, grants request visibility, and notifies each new participant in the product and by email."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/sla",
@@ -9897,6 +9901,7 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_desk_uploads_test.go",
         "internal/api3/service_desk_admin_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service_organizations.go",
@@ -9909,7 +9914,7 @@
         "e2e/service.spec.ts",
         "docs/SERVICE_MANAGEMENT.md"
       ],
-      "notes": "Callers holding both the Jira Administrator global permission and service desk administration create or reactivate a customer-only account and associate it with the desk, honoring strict conflict mode; project administrators alone receive 403. Actual invitation email delivery remains."
+      "notes": "Callers holding both the Jira Administrator global permission and service desk administration create or reactivate a customer-only account, associate it with the desk and queue the invitation email to its help center, honoring strict conflict mode; project administrators alone receive 403."
     },
     {
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/servicedesk/{serviceDeskId}/customer/skip-permission-check",

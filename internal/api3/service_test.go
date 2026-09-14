@@ -301,7 +301,7 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 		t.Fatalf("on-behalf actor = %q, %v", onBehalfActor, err)
 	}
 	invalid := callAs(customerID, "POST", "/rest/servicedeskapi/request/validate", `{"serviceDeskId":"`+serviceDeskID+`","requestTypeId":"`+requestTypeID+`","requestFieldValues":{}}`, 200)
-	if !strings.Contains(invalid.Body.String(), `"valid":false`) || !strings.Contains(invalid.Body.String(), `"summary"`) {
+	if !strings.Contains(invalid.Body.String(), `"valid":false`) || !strings.Contains(invalid.Body.String(), `"fieldErrors":[{"field":"summary"`) || !strings.Contains(invalid.Body.String(), `"reasonKey":"FIELD_VALIDATION_FAILED"`) {
 		t.Fatal(invalid.Body.String())
 	}
 	var incidentTypeID string
@@ -520,11 +520,11 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 		t.Fatal(dynamicFields.Body.String())
 	}
 	missingDynamic := callAs(customerID, "POST", "/rest/servicedeskapi/request/validate", `{"serviceDeskId":"`+serviceDeskID+`","requestTypeId":"`+incidentTypeID+`","requestFieldValues":{"summary":"Dynamic routing question"}}`, 200)
-	if !strings.Contains(missingDynamic.Body.String(), `"`+customFieldID+`":"Business impact is required."`) {
+	if !strings.Contains(missingDynamic.Body.String(), `{"field":"`+customFieldID+`","message":"Business impact is required."}`) {
 		t.Fatal(missingDynamic.Body.String())
 	}
 	invalidDynamic := callAs(customerID, "POST", "/rest/servicedeskapi/request/validate", `{"serviceDeskId":"`+serviceDeskID+`","requestTypeId":"`+incidentTypeID+`","requestFieldValues":{"summary":"Dynamic routing question","`+customFieldID+`":"many"}}`, 200)
-	if !strings.Contains(invalidDynamic.Body.String(), `"valid":false`) || !strings.Contains(invalidDynamic.Body.String(), `"`+customFieldID+`":"Business impact must be a number."`) {
+	if !strings.Contains(invalidDynamic.Body.String(), `"valid":false`) || !strings.Contains(invalidDynamic.Body.String(), `{"field":"`+customFieldID+`","message":"Business impact must be a number."}`) {
 		t.Fatal(invalidDynamic.Body.String())
 	}
 	dynamicRequest := callAs(customerID, "POST", "/rest/servicedeskapi/request", `{"serviceDeskId":"`+serviceDeskID+`","requestTypeId":"`+incidentTypeID+`","requestFieldValues":{"summary":"Dynamic routing question","description":"Route by impact.","`+customFieldID+`":42.5}}`, 201)

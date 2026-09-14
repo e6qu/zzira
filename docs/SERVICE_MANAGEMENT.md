@@ -188,7 +188,11 @@ assignment also subscribes the approver, and each viewer can mute or resume
 updates. Public comments, attachments, status changes, and approval decisions
 create private inbox notifications for subscribed viewers other than the actor.
 Internal notes notify subscribed agents only. Notification actions synchronize
-through the existing per-user notification stream and open the portal request.
+through the existing per-user notification stream and open the portal request. Each
+notification is also queued as an email through the delivery outbox, and newly
+added participants are told they were added. Inviting a customer to a desk
+emails them a link to its help center; creating a customer sends no email, as
+in Jira.
 
 After a request reaches Done, its reporter can submit, revise, read, or delete a
 one-to-five customer satisfaction rating with an optional comment. Agents and
@@ -199,6 +203,10 @@ Reporters and agents can add active service customers as request participants
 by account ID or email. Participants appear on the request, can read its public
 conversation and status, and lose that access immediately when removed. The
 reporter remains a distinct role and cannot be added or removed as a participant.
+
+Request validation answers Jira's validation result: `fieldErrors` lists each
+failing field with its message, and `errorMessage` and `reasonKey` are null for
+a valid payload.
 
 ## Service goals and calendars
 

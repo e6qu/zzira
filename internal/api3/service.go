@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -474,11 +475,22 @@ func (h *Handler) createServiceRequest(w http.ResponseWriter, r *http.Request, w
 		return
 	}
 	if validateOnly {
-		messages := []string{}
-		for _, message := range fieldErrors {
-			messages = append(messages, message)
+		// Jira's RequestValidationResultDTO: field errors are a list, and the
+		// summary and reason key are null for a valid payload.
+		fields := make([]string, 0, len(fieldErrors))
+		for field := range fieldErrors {
+			fields = append(fields, field)
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"valid": len(fieldErrors) == 0, "fieldErrors": fieldErrors, "formErrors": []any{}, "errorMessages": messages, "errorMessage": "", "reasonKey": ""})
+		sort.Strings(fields)
+		errors := make([]map[string]string, 0, len(fields))
+		for _, field := range fields {
+			errors = append(errors, map[string]string{"field": field, "message": fieldErrors[field]})
+		}
+		result := map[string]any{"valid": len(fieldErrors) == 0, "fieldErrors": errors, "formErrors": []any{}, "errorMessages": []string{}, "errorMessage": nil, "reasonKey": nil}
+		if len(fieldErrors) > 0 {
+			result["errorMessage"], result["reasonKey"] = "Request validation failed.", "FIELD_VALIDATION_FAILED"
+		}
+		writeJSON(w, http.StatusOK, result)
 		return
 	}
 	if len(fieldErrors) > 0 {

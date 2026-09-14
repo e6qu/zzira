@@ -207,4 +207,31 @@ func TestServiceDeskUploadsAndOrganizations(t *testing.T) {
 	callAs(outsiderID, http.MethodGet, "/rest/servicedeskapi/servicedesk/"+serviceDeskID, "", http.StatusForbidden)
 	callAs(customerID, http.MethodGet, "/rest/servicedeskapi/servicedesk/"+serviceDeskID, "", http.StatusOK)
 	callAs(adminID, http.MethodGet, "/rest/servicedeskapi/servicedesk/999999999", "", http.StatusNotFound)
+
+	// Validation results follow Jira's RequestValidationResultDTO.
+	validatePath := "/rest/servicedeskapi/request/validate"
+	if result := callAs(customerID, http.MethodPost, validatePath, `{"serviceDeskId":"`+serviceDeskID+`","requestTypeId":"`+requestTypeIDs[deskKey]+`","requestFieldValues":{"summary":"Valid"}}`, http.StatusOK); !strings.Contains(result, `"valid":true`) || !strings.Contains(result, `"errorMessage":null`) || !strings.Contains(result, `"fieldErrors":[]`) {
+		t.Fatalf("valid payload = %s", result)
+	}
+
+	// Invitations and request notifications are emailed.
+	outbox := func(recipient, subjectPart string) {
+		t.Helper()
+		var queued bool
+		if err := st.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM email_outbox WHERE workspace_id=$1 AND recipient=$2 AND strpos(subject,$3)>0)`, workspaceID, recipient, subjectPart).Scan(&queued); err != nil || !queued {
+			t.Fatalf("no email to %s about %q (err=%v)", recipient, subjectPart, err)
+		}
+	}
+	invitee := "invitee-" + strings.ToLower(deskKey) + "@example.test"
+	t.Cleanup(func() { exec(`DELETE FROM users WHERE email=$1`, invitee) })
+	callAs(adminID, http.MethodPost, "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/customer/invite", `{"email":"`+invitee+`","displayName":"Invitee"}`, http.StatusCreated)
+	outbox(invitee, "invited")
+	var requestKey string
+	if err = st.Pool.QueryRow(ctx, `SELECT i.key FROM service_requests sr JOIN issues i ON i.id=sr.issue_id WHERE sr.workspace_id=$1 AND sr.customer_id=$2`, workspaceID, customerID).Scan(&requestKey); err != nil {
+		t.Fatal(err)
+	}
+	callAs(customerID, http.MethodPost, "/rest/servicedeskapi/request/"+requestKey+"/participant", `{"accountIds":["`+outsiderID+`"]}`, http.StatusOK)
+	outbox(outsiderID+"@example.test", "added you as a participant on "+requestKey)
+	callAs(adminID, http.MethodPost, "/rest/servicedeskapi/request/"+requestKey+"/comment", `{"body":"We are looking into it.","public":true}`, http.StatusCreated)
+	outbox(customerID+"@example.test", "commented on "+requestKey)
 }
