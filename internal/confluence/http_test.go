@@ -366,16 +366,16 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	}
 	call(member, "GET", "/spaces/"+public+"/pages?depth=children", nil, 400)
 	call(member, "GET", "/spaces/"+public+"/pages?status=draft", nil, 400)
-	call(actor, "POST", "/pages?private=true", map[string]any{"spaceId": public, "title": "Private query", "status": "current", "body": models.WikiBody{Representation: "storage", Value: "<p>Private</p>"}}, 400)
+	call(actor, "POST", "/pages?private=true", map[string]any{"spaceId": public, "title": "Private query", "status": "current", "body": models.WikiBody{Representation: "storage", Value: "<p>Private</p>"}}, 200)
 	call(actor, "POST", "/pages?embedded=maybe", map[string]any{"spaceId": public, "title": "Embedded query", "status": "current", "body": models.WikiBody{Representation: "storage", Value: "<p>Embedded</p>"}}, 400)
-	call(actor, "POST", "/pages", map[string]any{"spaceId": public, "title": "Live document", "status": "current", "subtype": "live", "body": models.WikiBody{Representation: "storage", Value: "<p>Live</p>"}}, 400)
+	call(actor, "POST", "/pages", map[string]any{"spaceId": public, "title": "Live document", "status": "current", "subtype": "live", "body": models.WikiBody{Representation: "storage", Value: "<p>Live</p>"}}, 200)
 	if listed := call(actor, "GET", "/pages?status=current,draft&sort=-title&subtype=page", nil, 200); !strings.Contains(listed.Body.String(), "Private draft") || strings.Index(listed.Body.String(), "Security response") > strings.Index(listed.Body.String(), "Release guide") {
 		t.Fatal(listed.Body.String())
 	}
 	call(actor, "GET", "/pages?status=archived", nil, 200)
 	call(actor, "GET", "/pages?status=historical", nil, 400)
 	call(actor, "GET", "/pages?sort=unknown", nil, 400)
-	call(actor, "GET", "/pages?subtype=live", nil, 400)
+	call(actor, "GET", "/pages?subtype=live", nil, 200)
 	if levels := call(member, "GET", "/classification-levels", nil, 200); !strings.Contains(levels.Body.String(), `"name":"Public"`) || !strings.Contains(levels.Body.String(), `"name":"Restricted"`) {
 		t.Fatal(levels.Body.String())
 	}
@@ -466,7 +466,7 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	if withoutVersion := call(member, "GET", "/pages/"+governed.ID+"?include-version=false", nil, 200); strings.Contains(withoutVersion.Body.String(), `"version"`) {
 		t.Fatal(withoutVersion.Body.String())
 	}
-	call(member, "GET", "/pages/"+governed.ID+"?include-webresources=true", nil, 400)
+	call(member, "GET", "/pages/"+governed.ID+"?include-webresources=true", nil, 200)
 	var historicalPageSensitive int
 	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM wiki_page_versions WHERE page_id::text=$1 AND body LIKE '%Release%'`, governed.ID).Scan(&historicalPageSensitive); err != nil || historicalPageSensitive != 0 {
 		t.Fatalf("historical page sensitive versions=%d: %v", historicalPageSensitive, err)
@@ -881,7 +881,8 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	call(member, "GET", "/pages/"+secret.ID, nil, 404)
 	call(member, "POST", "/pages", map[string]any{"spaceId": private, "title": "Intrusion", "body": models.WikiBody{Representation: "storage", Value: "<p>x</p>"}}, 404)
 	call(actor, "POST", "/pages", map[string]any{"spaceId": public, "title": "Unsafe", "body": models.WikiBody{Representation: "storage", Value: "<script>alert(1)</script>"}}, 400)
-	call(actor, "GET", "/pages?body-format=atlas_doc_format", nil, 400)
+	call(actor, "GET", "/pages?body-format=atlas_doc_format", nil, 200)
+	call(actor, "GET", "/pages?body-format=view", nil, 400)
 	update := map[string]any{"id": page.ID, "spaceId": public, "title": "Release guide updated", "status": "current", "body": models.WikiBody{Representation: "storage", Value: "<h2>Ready</h2>"}, "version": map[string]any{"number": 2, "message": "Updated release instructions"}}
 	call(member, "PUT", "/pages/"+page.ID, update, 200)
 	call(actor, "PUT", "/pages/"+page.ID, update, 409)
@@ -1024,7 +1025,7 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	if rootIndex, childIndex := strings.Index(ancestors.Body.String(), `"id":"`+page.ID+`"`), strings.Index(ancestors.Body.String(), `"id":"`+hierarchyChild.ID+`"`); rootIndex < 0 || childIndex < rootIndex {
 		t.Fatal(ancestors.Body.String())
 	}
-	v1Descendants := callV1(member, "GET", "/content/"+page.ID+"/descendant", nil, 200)
+	v1Descendants := callV1(member, "GET", "/content/"+page.ID+"/descendant?expand=page", nil, 200)
 	if !strings.Contains(v1Descendants.Body.String(), "Hierarchy grandchild") {
 		t.Fatal(v1Descendants.Body.String())
 	}

@@ -1343,7 +1343,7 @@ func (h *Handler) spaceBean(s *models.WikiSpace, descriptionFormat string, inclu
 	return bean
 }
 func (h *Handler) pageBean(p *models.WikiPage, body bool) map[string]any {
-	bean := map[string]any{"id": p.ID, "status": p.Status, "title": p.Title, "spaceId": p.SpaceID, "authorId": p.AuthorID, "ownerId": p.AuthorID, "lastOwnerId": p.AuthorID, "createdAt": p.CreatedAt, "version": p.Version, "_links": map[string]string{"webui": "/spaces/" + p.SpaceID + "/pages/" + p.ID, "base": h.BaseURL + "/wiki"}}
+	bean := map[string]any{"id": p.ID, "status": p.Status, "title": p.Title, "spaceId": p.SpaceID, "authorId": p.AuthorID, "ownerId": p.OwnerID, "lastOwnerId": stringOrNil(p.LastOwnerID), "createdAt": p.CreatedAt, "version": p.Version, "_links": map[string]string{"webui": "/spaces/" + p.SpaceID + "/pages/" + p.ID, "base": h.BaseURL + "/wiki"}}
 	if p.ParentID != "" {
 		bean["parentId"] = p.ParentID
 		bean["parentType"] = p.ParentType
@@ -1512,7 +1512,8 @@ func (h *Handler) pages(w http.ResponseWriter, r *http.Request, ws, actor, space
 	if !supportedQuery(w, r, allowed...) {
 		return
 	}
-	if !storageFormat(w, r) {
+	bodyFormat, ok := pageBodyFormat(w, r, false)
+	if !ok {
 		return
 	}
 	q := r.URL.Query()
@@ -1520,8 +1521,9 @@ func (h *Handler) pages(w http.ResponseWriter, r *http.Request, ws, actor, space
 		failure(w, 400, "depth must be all or root.")
 		return
 	}
-	if subtype := q.Get("subtype"); subtype != "" && subtype != "page" {
-		failure(w, 400, "Only standard pages are available.")
+	subtype := q.Get("subtype")
+	if subtype != "" && subtype != "page" && subtype != "live" {
+		failure(w, 400, "The subtype must be page or live.")
 		return
 	}
 	// Confluence lists current and archived pages unless asked for others.
@@ -1565,8 +1567,16 @@ func (h *Handler) pages(w http.ResponseWriter, r *http.Request, ws, actor, space
 		if q.Get("depth") == "root" && p.ParentID != "" {
 			continue
 		}
+		if subtype == "page" && p.Subtype != "" || subtype == "live" && p.Subtype != "live" {
+			continue
+		}
 		if queryContains(r, "space-id", p.SpaceID) && queryContains(r, "id", p.ID) {
-			values = append(values, h.pageBean(p, q.Get("body-format") != ""))
+			bean, beanErr := h.pageBeanWithFormat(p, bodyFormat)
+			if beanErr != nil {
+				writeError(w, beanErr)
+				return
+			}
+			values = append(values, bean)
 		}
 	}
 	h.list(w, r, values)
@@ -1577,11 +1587,11 @@ func (h *Handler) savePage(w http.ResponseWriter, r *http.Request, ws, actor, id
 		return
 	}
 	var in struct {
-		ID, SpaceID, Title, Status string
-		ParentID                   *string
-		Body                       models.WikiBody
-		Version                    models.WikiVersion
-		Subtype                    string
+		ID, SpaceID, Title, Status, OwnerID string
+		ParentID                            *string
+		Body                                json.RawMessage
+		Version                             models.WikiVersion
+		Subtype                             string
 	}
 	if !decode(w, r, &in) {
 		return
@@ -1594,54 +1604,66 @@ func (h *Handler) savePage(w http.ResponseWriter, r *http.Request, ws, actor, id
 		failure(w, 400, "New page IDs are assigned by the server.")
 		return
 	}
+	flags := map[string]bool{}
 	for _, key := range []string{"root-level", "embedded", "private"} {
-		if _, ok := queryBool(w, r, key); !ok {
+		value, ok := queryBool(w, r, key)
+		if !ok {
 			return
 		}
+		flags[key] = value
 	}
-	if embedded, _ := queryBool(w, r, "embedded"); embedded {
-		failure(w, 400, "Embedded pages are not available.")
+	body, problem := decodePageBody(in.Body)
+	if problem != "" {
+		failure(w, 400, problem)
 		return
-	}
-	if private, _ := queryBool(w, r, "private"); private {
-		failure(w, 400, "Use page restrictions for private page access.")
-		return
-	}
-	if in.Subtype != "" {
-		failure(w, 400, "Live documents are not available through the page endpoint.")
-		return
-	}
-	if root := r.URL.Query().Get("root-level"); root == "true" && in.ParentID != nil {
-		failure(w, 400, "A root page cannot have a parentId.")
-		return
-	}
-	if id != "" {
-		old, err := h.Store.WikiPage(r.Context(), ws, actor, id)
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-		if in.SpaceID == "" {
-			in.SpaceID = old.SpaceID
-		}
-		if in.ParentID == nil {
-			in.ParentID = &old.ParentID
-		}
 	}
 	if in.Status == "trashed" {
 		failure(w, 400, "Use DELETE to move a page to trash.")
 		return
 	}
-	parentID := ""
-	if in.ParentID != nil {
-		parentID = *in.ParentID
+	page := models.WikiPage{ID: id, SpaceID: in.SpaceID, Title: in.Title, Status: in.Status, Body: body, Version: in.Version, OwnerID: in.OwnerID}
+	if id == "" {
+		if flags["root-level"] && in.ParentID != nil {
+			failure(w, 400, "A root page cannot have a parentId.")
+			return
+		}
+		page.Subtype, page.Private = in.Subtype, flags["private"]
+		// Without a parent, a new page goes beneath the space homepage unless
+		// it is asked to sit at the root of the space.
+		if in.ParentID == nil && !flags["root-level"] && in.SpaceID != "" {
+			if space, err := h.Store.WikiSpace(r.Context(), ws, actor, in.SpaceID); err == nil && space.HomepageID != "" {
+				if homepage, err := h.Store.WikiPage(r.Context(), ws, actor, space.HomepageID); err == nil && homepage.Status == "current" {
+					page.ParentID = homepage.ID
+				}
+			}
+		}
+		if in.ParentID != nil {
+			page.ParentID = *in.ParentID
+		}
+	} else {
+		if in.Subtype != "" {
+			failure(w, 400, "A page's subtype is set when it is created.")
+			return
+		}
+		old, err := h.Store.WikiPage(r.Context(), ws, actor, id)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		if page.SpaceID == "" {
+			page.SpaceID = old.SpaceID
+		}
+		page.ParentID = old.ParentID
+		if in.ParentID != nil {
+			page.ParentID = *in.ParentID
+		}
 	}
-	p, err := h.Commands.SaveWikiPage(r.Context(), ws, actor, models.WikiPage{ID: id, SpaceID: in.SpaceID, ParentID: parentID, Title: in.Title, Status: in.Status, Body: in.Body, Version: in.Version})
+	saved, err := h.Commands.SaveWikiPage(r.Context(), ws, actor, page)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	respond(w, 200, h.pageBean(p, true))
+	respond(w, 200, h.pageBean(saved, true))
 }
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request, values []any) {

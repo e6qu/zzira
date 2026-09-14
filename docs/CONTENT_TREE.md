@@ -117,5 +117,5 @@ inside it arrive in their new space together.
   tree.
 
 Custom content stays outside the tree, as it does in Confluence, and keeps its
-own children read. The v1 descendant reads do not yet expand comments,
-attachments or the other tree kinds.
+own children read. The v1 descendant reads, the Smart Link card and the
+archived whiteboard and database views are described in PAGE_WRITING.md.

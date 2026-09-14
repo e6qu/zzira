@@ -75,6 +75,10 @@ type wikiData struct {
 	WatchingPage                          bool
 	WatchedLabels                         map[string]bool
 	MoveTargets                           []wikiMoveGroup
+	Starred                               []*models.WikiPage
+	PageFavourite                         bool
+	PageOwnerName                         string
+	OwnerChoices                          []*models.User
 	ChildPageCount                        int
 	ArchivedChildCount                    int
 }
@@ -188,6 +192,11 @@ func (h *Handler) WikiHome(w http.ResponseWriter, r *http.Request) {
 	data.Spaces, err = h.Store.WikiSpaces(r.Context(), ws, user.ID)
 	if err != nil {
 		http.Error(w, "Could not load wiki spaces.", 500)
+		return
+	}
+	data.Starred, err = h.Store.WikiFavouritePages(r.Context(), ws, user.ID)
+	if err != nil {
+		http.Error(w, "Could not load starred pages.", 500)
 		return
 	}
 	h.writeWorkspacePageStatus(w, r, "page_wiki_spaces", user, ws, data, "wiki", "", status)
@@ -1193,6 +1202,9 @@ func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 		page.Body.Value = r.PostFormValue("body")
 		page.ParentID = r.PostFormValue("parentId")
 		page.Status = r.PostFormValue("status")
+		if page.ID == "" {
+			page.Subtype = r.PostFormValue("subtype")
+		}
 		page.Version.Message = r.PostFormValue("message")
 		version, err := strconv.Atoi(r.PostFormValue("version"))
 		if err != nil || version < 1 {
@@ -1308,6 +1320,24 @@ func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 					data.PageLiked = true
 					break
 				}
+			}
+			data.PageFavourite, err = h.Store.IsWikiPageFavourite(r.Context(), ws, user.ID, page.ID)
+			if err != nil {
+				http.Error(w, "Could not load page star.", 500)
+				return
+			}
+			members, memberErr := h.Store.MembersByWorkspace(r.Context(), ws)
+			if memberErr != nil {
+				http.Error(w, "Could not load page owner.", 500)
+				return
+			}
+			for _, member := range members {
+				if member.ID == page.OwnerID {
+					data.PageOwnerName = member.DisplayName
+				}
+			}
+			if canEdit {
+				data.OwnerChoices = members
 			}
 			data.WatchingPage, err = h.Store.WikiWatchStatus(r.Context(), ws, user.ID, user.ID, "content", page.ID)
 			if err != nil {

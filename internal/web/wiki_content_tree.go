@@ -30,20 +30,13 @@ func (r wikiContentRow) DepthClass() string {
 	return "wiki-tree-depth-" + strconv.Itoa(min(r.Depth, 8))
 }
 
+// wikiContentTypeName is a kind's name as a label, capitalised.
 func wikiContentTypeName(contentType string) string {
-	switch contentType {
-	case "page":
-		return "Page"
-	case "folder":
-		return "Folder"
-	case "whiteboard":
-		return "Whiteboard"
-	case "database":
-		return "Database"
-	case "embed":
-		return "Smart Link"
+	name := models.WikiContentTypeName(contentType)
+	if name == "" {
+		return ""
 	}
-	return contentType
+	return strings.ToUpper(name[:1]) + name[1:]
 }
 
 // wikiMoveTarget is a place a node can be moved beside or beneath.
@@ -71,14 +64,14 @@ func wikiContentTreeRows(pages []*models.WikiPage, contents []*models.WikiConten
 	}
 	for _, content := range contents {
 		url := ""
-		if content.Status == "current" {
+		if content.Status == "current" || content.Status == "archived" {
 			switch content.Type {
 			case "database":
 				url = "/wiki/spaces/" + content.SpaceID + "/databases/" + content.ID
 			case "whiteboard":
 				url = "/wiki/spaces/" + content.SpaceID + "/whiteboards/" + content.ID
 			case "embed":
-				url = content.EmbedURL
+				url = "/wiki/spaces/" + content.SpaceID + "/embeds/" + content.ID
 			}
 		}
 		order, _ := strconv.ParseInt(content.ID, 10, 64)

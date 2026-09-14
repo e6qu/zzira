@@ -165,11 +165,12 @@ func (s *Store) WikiContentsWithStatus(ctx context.Context, ws, user, spaceID, c
 
 func (s *Store) readableTreeRoot(ctx context.Context, ws, user, id, nodeType string) error {
 	if nodeType == "page" {
+		// An archived page is still read back, and so is the tree beneath it.
 		page, err := s.WikiPage(ctx, ws, user, id)
 		if err != nil {
 			return err
 		}
-		if page.Status != "current" {
+		if page.Status != "current" && page.Status != "archived" {
 			return pgx.ErrNoRows
 		}
 		return nil

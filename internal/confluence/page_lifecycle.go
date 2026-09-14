@@ -22,7 +22,7 @@ func pageOperationsFor(canUpdate, canDelete bool) []any {
 }
 
 func (h *Handler) pageByID(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
-	if !validPageID(w, id) || !supportedQuery(w, r, "body-format", "get-draft", "status", "version", "include-labels", "include-properties", "include-operations", "include-likes", "include-versions", "include-version", "include-favorited-by-current-user-status", "include-webresources", "include-collaborators", "include-direct-children") || !storageFormat(w, r) {
+	if !validPageID(w, id) || !supportedQuery(w, r, "body-format", "get-draft", "status", "version", "include-labels", "include-properties", "include-operations", "include-likes", "include-versions", "include-version", "include-favorited-by-current-user-status", "include-webresources", "include-collaborators", "include-direct-children") {
 		return
 	}
 	flags := map[string]bool{}
@@ -41,8 +41,8 @@ func (h *Handler) pageByID(w http.ResponseWriter, r *http.Request, ws, actor, id
 			return
 		}
 	}
-	if flags["include-webresources"] {
-		failure(w, 400, "Page web-resource expansion is not available.")
+	bodyFormat, ok := pageBodyFormat(w, r, true)
+	if !ok {
 		return
 	}
 	for _, raw := range r.URL.Query()["status"] {
@@ -88,7 +88,14 @@ func (h *Handler) pageByID(w http.ResponseWriter, r *http.Request, ws, actor, id
 		failure(w, 404, "Page not found with the requested status.")
 		return
 	}
-	bean := h.pageBean(page, r.URL.Query().Get("body-format") != "")
+	bean, err := h.pageBeanWithFormat(page, bodyFormat)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if flags["include-webresources"] {
+		bean["webresources"] = pageWebResources(h.BaseURL)
+	}
 	if !includeVersion {
 		delete(bean, "version")
 	}
@@ -169,10 +176,24 @@ func (h *Handler) pageByID(w http.ResponseWriter, r *http.Request, ws, actor, id
 		bean["directChildren"] = wrap(values)
 	}
 	if flags["include-favorited-by-current-user-status"] {
-		bean["isFavoritedByCurrentUser"] = false
+		favourite, loadErr := h.Store.IsWikiPageFavourite(r.Context(), ws, actor, id)
+		if loadErr != nil {
+			writeError(w, loadErr)
+			return
+		}
+		bean["isFavoritedByCurrentUser"] = favourite
 	}
 	if flags["include-collaborators"] {
-		bean["collaborators"] = []string{}
+		collaborators, loadErr := h.Store.WikiPageCollaborators(r.Context(), ws, actor, id)
+		if loadErr != nil {
+			writeError(w, loadErr)
+			return
+		}
+		values := make([]any, len(collaborators))
+		for i, accountID := range collaborators {
+			values[i] = map[string]string{"accountId": accountID}
+		}
+		bean["collaborators"] = wrap(values)
 	}
 	if page.Status == "current" {
 		h.recordView(r, ws, actor, "page", page.ID)

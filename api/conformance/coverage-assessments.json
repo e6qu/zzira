@@ -488,7 +488,7 @@
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/content/{id}/child/attachment/{attachmentId}/download",
       "status": "partial",
-      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; advanced expansions and media processing remain.",
+      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; attachments carry Confluence's media type description (PDF Document, PNG Image) in v2 and in the v1 extensions, include-collaborators lists every uploader of a version, and images have generated thumbnails.",
       "evidence": [
         "internal/confluence/attachments.go",
         "internal/confluence/http_test.go",
@@ -497,13 +497,15 @@
         "migrations/077_wiki_attachments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/page_formats_test.go",
+        "docs/PAGE_WRITING.md"
       ]
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/content/{id}/descendant",
       "status": "partial",
-      "notes": "Permission-filtered page trees support direct child-page and generic-child shapes, bounded top-to-bottom descendant depth, top-to-bottom page ancestors, documented v2 child sorts/cursor pagination, and legacy v1 descendant map/type pagination; direct children and descendants include folders, whiteboards, databases and Smart Links and the pages beneath them in stored childPosition order, the child-page read keeps to pages, and a limited ancestors read returns the nearest ancestors so callers continue from the highest; v1 comment, attachment and non-page descendant expansion remains.",
+      "notes": "Permission-filtered page trees support direct child-page and generic-child shapes, bounded top-to-bottom descendant depth, top-to-bottom page ancestors, documented v2 child sorts/cursor pagination, and legacy v1 descendant map/type pagination; direct children and descendants include folders, whiteboards, databases and Smart Links and the pages beneath them in stored childPosition order, the child-page read keeps to pages, and a limited ancestors read returns the nearest ancestors so callers continue from the highest; the v1 descendant read expands pages, comments (with replies), attachments, folders, whiteboards, databases and Smart Links and names the rest under _expandable, and the typed reads count depth through comments and attachments.",
       "evidence": [
         "internal/confluence/hierarchy.go",
         "internal/confluence/v1_hierarchy.go",
@@ -513,13 +515,15 @@
         "e2e/wiki.spec.ts",
         "internal/confluence/content_tree_test.go",
         "docs/CONTENT_TREE.md",
-        "internal/store/wiki_content_tree.go"
+        "internal/store/wiki_content_tree.go",
+        "internal/confluence/page_formats_test.go",
+        "docs/PAGE_WRITING.md"
       ]
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/content/{id}/descendant/{type}",
       "status": "partial",
-      "notes": "Permission-filtered page trees support direct child-page and generic-child shapes, bounded top-to-bottom descendant depth, top-to-bottom page ancestors, documented v2 child sorts/cursor pagination, and legacy v1 descendant map/type pagination; direct children and descendants include folders, whiteboards, databases and Smart Links and the pages beneath them in stored childPosition order, the child-page read keeps to pages, and a limited ancestors read returns the nearest ancestors so callers continue from the highest; v1 comment, attachment and non-page descendant expansion remains.",
+      "notes": "Permission-filtered page trees support direct child-page and generic-child shapes, bounded top-to-bottom descendant depth, top-to-bottom page ancestors, documented v2 child sorts/cursor pagination, and legacy v1 descendant map/type pagination; direct children and descendants include folders, whiteboards, databases and Smart Links and the pages beneath them in stored childPosition order, the child-page read keeps to pages, and a limited ancestors read returns the nearest ancestors so callers continue from the highest; the v1 descendant read expands pages, comments (with replies), attachments, folders, whiteboards, databases and Smart Links and names the rest under _expandable, and the typed reads count depth through comments and attachments.",
       "evidence": [
         "internal/confluence/hierarchy.go",
         "internal/confluence/v1_hierarchy.go",
@@ -529,7 +533,9 @@
         "e2e/wiki.spec.ts",
         "internal/confluence/content_tree_test.go",
         "docs/CONTENT_TREE.md",
-        "internal/store/wiki_content_tree.go"
+        "internal/store/wiki_content_tree.go",
+        "internal/confluence/page_formats_test.go",
+        "docs/PAGE_WRITING.md"
       ]
     },
     {
@@ -1157,7 +1163,7 @@
     {
       "operationId": "confluence-v1:POST:/wiki/rest/api/content/{id}/child/attachment",
       "status": "partial",
-      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; advanced expansions and media processing remain.",
+      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; attachments carry Confluence's media type description (PDF Document, PNG Image) in v2 and in the v1 extensions, include-collaborators lists every uploader of a version, and images have generated thumbnails.",
       "evidence": [
         "internal/confluence/attachments.go",
         "internal/confluence/http_test.go",
@@ -1166,13 +1172,15 @@
         "migrations/077_wiki_attachments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/page_formats_test.go",
+        "docs/PAGE_WRITING.md"
       ]
     },
     {
       "operationId": "confluence-v1:POST:/wiki/rest/api/content/{id}/child/attachment/{attachmentId}/data",
       "status": "partial",
-      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; advanced expansions and media processing remain.",
+      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; attachments carry Confluence's media type description (PDF Document, PNG Image) in v2 and in the v1 extensions, include-collaborators lists every uploader of a version, and images have generated thumbnails.",
       "evidence": [
         "internal/confluence/attachments.go",
         "internal/confluence/http_test.go",
@@ -1181,7 +1189,9 @@
         "migrations/077_wiki_attachments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/page_formats_test.go",
+        "docs/PAGE_WRITING.md"
       ]
     },
     {
@@ -1189,9 +1199,11 @@
       "status": "partial",
       "evidence": [
         "internal/confluence/page_moves_test.go",
-        "docs/PAGE_MOVES.md"
+        "docs/PAGE_MOVES.md",
+        "internal/confluence/page_formats_test.go",
+        "docs/PAGE_WRITING.md"
       ],
-      "notes": "Copying one page is tested, including the chosen attachments, properties, labels, restrictions (copyPermissions) and custom content filed under the page (copyCustomContents), the rename when a title is already used, and the refused unknown space and destination type. Expand on the copy response remains."
+      "notes": "Copying one page is tested, including the chosen attachments, properties, labels, restrictions (copyPermissions) and custom content filed under the page (copyCustomContents), the rename when a title is already used, and the refused unknown space and destination type. The copy answers v1 content with up to eight expansions \u2014 space, container, version, history, bodies in every primary format, ancestors, labels and properties metadata, operations, restrictions, child types, children and descendants \u2014 and lists the rest under _expandable."
     },
     {
       "operationId": "confluence-v1:POST:/wiki/rest/api/content/{id}/label",
@@ -1258,18 +1270,22 @@
       "status": "partial",
       "evidence": [
         "internal/confluence/content_history_test.go",
-        "docs/CONTENT_HISTORY.md"
+        "docs/CONTENT_HISTORY.md",
+        "internal/wikimarkup/notation_test.go",
+        "docs/PAGE_WRITING.md"
       ],
-      "notes": "Bulk conversion is tested, including the refused empty list."
+      "notes": "Bulk conversion is tested, including the refused empty list. Wiki markup converts to storage, the document format and the reading formats."
     },
     {
       "operationId": "confluence-v1:POST:/wiki/rest/api/contentbody/convert/async/{to}",
       "status": "partial",
       "evidence": [
         "internal/confluence/content_history_test.go",
-        "docs/CONTENT_HISTORY.md"
+        "docs/CONTENT_HISTORY.md",
+        "internal/wikimarkup/notation_test.go",
+        "docs/PAGE_WRITING.md"
       ],
-      "notes": "Converting a body is tested, including that an unsupported conversion fails with a reason rather than answering the wrong format."
+      "notes": "Converting a body is tested, including that an unsupported conversion fails with a reason rather than answering the wrong format. Wiki markup converts to storage, the document format and the reading formats."
     },
     {
       "operationId": "confluence-v1:POST:/wiki/rest/api/group",
@@ -1446,7 +1462,7 @@
     {
       "operationId": "confluence-v1:PUT:/wiki/rest/api/content/{id}/child/attachment",
       "status": "partial",
-      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; advanced expansions and media processing remain.",
+      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; attachments carry Confluence's media type description (PDF Document, PNG Image) in v2 and in the v1 extensions, include-collaborators lists every uploader of a version, and images have generated thumbnails.",
       "evidence": [
         "internal/confluence/attachments.go",
         "internal/confluence/http_test.go",
@@ -1455,13 +1471,15 @@
         "migrations/077_wiki_attachments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/page_formats_test.go",
+        "docs/PAGE_WRITING.md"
       ]
     },
     {
       "operationId": "confluence-v1:PUT:/wiki/rest/api/content/{id}/child/attachment/{attachmentId}",
       "status": "partial",
-      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; advanced expansions and media processing remain.",
+      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; attachments carry Confluence's media type description (PDF Document, PNG Image) in v2 and in the v1 extensions, include-collaborators lists every uploader of a version, and images have generated thumbnails.",
       "evidence": [
         "internal/confluence/attachments.go",
         "internal/confluence/http_test.go",
@@ -1470,7 +1488,9 @@
         "migrations/077_wiki_attachments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/page_formats_test.go",
+        "docs/PAGE_WRITING.md"
       ]
     },
     {
@@ -1654,7 +1674,7 @@
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/attachments/{id}",
       "status": "partial",
-      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; advanced expansions and media processing remain.",
+      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; attachments carry Confluence's media type description (PDF Document, PNG Image) in v2 and in the v1 extensions, include-collaborators lists every uploader of a version, and images have generated thumbnails.",
       "evidence": [
         "internal/confluence/attachments.go",
         "internal/confluence/http_test.go",
@@ -1663,7 +1683,9 @@
         "migrations/077_wiki_attachments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/page_formats_test.go",
+        "docs/PAGE_WRITING.md"
       ]
     },
     {
@@ -1778,7 +1800,7 @@
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/embeds/{id}",
       "status": "partial",
-      "notes": "Smart Link creation, validated optional HTTP/HTTPS embed URLs, current reads with expansions, nonempty deletion checks, inherited page/space permissions, action privacy and the space UI journey are tested; pages can sit beneath a Smart Link, an archived one reads back, and moving (beside or beneath any node, to a space's top level or to another space), renaming, archiving with or without its contents and restoring are offered through the space's content tree, since Confluence publishes no REST operation for them; rich embed rendering remains.",
+      "notes": "Smart Link creation, validated optional HTTP/HTTPS embed URLs, current reads with expansions, nonempty deletion checks, inherited page/space permissions, action privacy and the space UI journey are tested; pages can sit beneath a Smart Link, an archived one reads back, and moving (beside or beneath any node, to a space's top level or to another space), renaming, archiving with or without its contents and restoring are offered through the space's content tree, since Confluence publishes no REST operation for them; in the browser a Smart Link opens as a card with its destination, host and a sandboxed preview of HTTPS destinations.",
       "evidence": [
         "internal/confluence/embeds.go",
         "internal/confluence/folders.go",
@@ -1790,7 +1812,9 @@
         "e2e/wiki.spec.ts",
         "internal/confluence/content_tree_test.go",
         "docs/CONTENT_TREE.md",
-        "e2e/wiki_content_tree.spec.ts"
+        "e2e/wiki_content_tree.spec.ts",
+        "e2e/wiki_page_details.spec.ts",
+        "docs/PAGE_WRITING.md"
       ]
     },
     {
@@ -2001,7 +2025,7 @@
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/attachments",
       "status": "partial",
-      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; advanced expansions and media processing remain.",
+      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; attachments carry Confluence's media type description (PDF Document, PNG Image) in v2 and in the v1 extensions, include-collaborators lists every uploader of a version, and images have generated thumbnails.",
       "evidence": [
         "internal/confluence/attachments.go",
         "internal/confluence/http_test.go",
@@ -2010,7 +2034,9 @@
         "migrations/077_wiki_attachments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/page_formats_test.go",
+        "docs/PAGE_WRITING.md"
       ]
     },
     {
@@ -2040,7 +2066,7 @@
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/attachments/{attachment-id}/versions/{version-number}",
       "status": "partial",
-      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; advanced expansions and media processing remain.",
+      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; attachments carry Confluence's media type description (PDF Document, PNG Image) in v2 and in the v1 extensions, include-collaborators lists every uploader of a version, and images have generated thumbnails.",
       "evidence": [
         "internal/confluence/attachments.go",
         "internal/confluence/http_test.go",
@@ -2049,13 +2075,15 @@
         "migrations/077_wiki_attachments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/page_formats_test.go",
+        "docs/PAGE_WRITING.md"
       ]
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/attachments/{id}",
       "status": "partial",
-      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; advanced expansions and media processing remain.",
+      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; attachments carry Confluence's media type description (PDF Document, PNG Image) in v2 and in the v1 extensions, include-collaborators lists every uploader of a version, and images have generated thumbnails.",
       "evidence": [
         "internal/confluence/attachments.go",
         "internal/confluence/http_test.go",
@@ -2064,7 +2092,9 @@
         "migrations/077_wiki_attachments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/page_formats_test.go",
+        "docs/PAGE_WRITING.md"
       ]
     },
     {
@@ -2096,7 +2126,7 @@
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/attachments/{id}/operations",
       "status": "partial",
-      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; advanced expansions and media processing remain.",
+      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; attachments carry Confluence's media type description (PDF Document, PNG Image) in v2 and in the v1 extensions, include-collaborators lists every uploader of a version, and images have generated thumbnails.",
       "evidence": [
         "internal/confluence/attachments.go",
         "internal/confluence/http_test.go",
@@ -2105,7 +2135,9 @@
         "migrations/077_wiki_attachments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/page_formats_test.go",
+        "docs/PAGE_WRITING.md"
       ]
     },
     {
@@ -2121,7 +2153,7 @@
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/attachments/{id}/versions",
       "status": "partial",
-      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; advanced expansions and media processing remain.",
+      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; attachments carry Confluence's media type description (PDF Document, PNG Image) in v2 and in the v1 extensions, include-collaborators lists every uploader of a version, and images have generated thumbnails.",
       "evidence": [
         "internal/confluence/attachments.go",
         "internal/confluence/http_test.go",
@@ -2130,7 +2162,9 @@
         "migrations/077_wiki_attachments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/page_formats_test.go",
+        "docs/PAGE_WRITING.md"
       ]
     },
     {
@@ -2538,7 +2572,7 @@
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/databases/{id}",
       "status": "partial",
-      "notes": "Database containers support public or creator-private creation, current reads with optional expansions, inherited page/space permissions, nonempty deletion checks, privacy-shaped actions and a space UI journey. Columns, rows and saved views are edited on the database page; pages can sit beneath a database (not a private one), an archived database reads back, and moving (beside or beneath any node, to a space's top level or to another space), renaming, archiving with or without its contents and restoring are offered through the space's content tree, since Confluence publishes no REST operation for them.",
+      "notes": "Database containers support public or creator-private creation, current reads with optional expansions, inherited page/space permissions, nonempty deletion checks, privacy-shaped actions and a space UI journey. Columns, rows and saved views are edited on the database page; pages can sit beneath a database (not a private one), an archived database reads back, and moving (beside or beneath any node, to a space's top level or to another space), renaming, archiving with or without its contents and restoring are offered through the space's content tree, since Confluence publishes no REST operation for them. In the browser an archived one still opens read-only, with Restore for those who may restore it.",
       "evidence": [
         "internal/confluence/databases.go",
         "internal/confluence/http_test.go",
@@ -2552,7 +2586,9 @@
         "internal/confluence/content_tree_test.go",
         "docs/CONTENT_TREE.md",
         "e2e/wiki_content_tree.spec.ts",
-        "internal/web/wiki_database.go"
+        "internal/web/wiki_database.go",
+        "e2e/wiki_page_details.spec.ts",
+        "docs/PAGE_WRITING.md"
       ]
     },
     {
@@ -2675,7 +2711,7 @@
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/embeds/{id}",
       "status": "partial",
-      "notes": "Smart Link creation, validated optional HTTP/HTTPS embed URLs, current reads with expansions, nonempty deletion checks, inherited page/space permissions, action privacy and the space UI journey are tested; pages can sit beneath a Smart Link, an archived one reads back, and moving (beside or beneath any node, to a space's top level or to another space), renaming, archiving with or without its contents and restoring are offered through the space's content tree, since Confluence publishes no REST operation for them; rich embed rendering remains.",
+      "notes": "Smart Link creation, validated optional HTTP/HTTPS embed URLs, current reads with expansions, nonempty deletion checks, inherited page/space permissions, action privacy and the space UI journey are tested; pages can sit beneath a Smart Link, an archived one reads back, and moving (beside or beneath any node, to a space's top level or to another space), renaming, archiving with or without its contents and restoring are offered through the space's content tree, since Confluence publishes no REST operation for them; in the browser a Smart Link opens as a card with its destination, host and a sandboxed preview of HTTPS destinations.",
       "evidence": [
         "internal/confluence/embeds.go",
         "internal/confluence/folders.go",
@@ -2687,7 +2723,9 @@
         "e2e/wiki.spec.ts",
         "internal/confluence/content_tree_test.go",
         "docs/CONTENT_TREE.md",
-        "e2e/wiki_content_tree.spec.ts"
+        "e2e/wiki_content_tree.spec.ts",
+        "e2e/wiki_page_details.spec.ts",
+        "docs/PAGE_WRITING.md"
       ]
     },
     {
@@ -3186,9 +3224,11 @@
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts",
-        "internal/confluence/page_lifecycle_test.go"
+        "internal/confluence/page_lifecycle_test.go",
+        "internal/confluence/page_formats_test.go",
+        "docs/PAGE_WRITING.md"
       ],
-      "notes": "Lists permission-scoped current, archived, author-draft and trashed pages globally or by space with ID/space/title/status/subtype filters, documented sort orders, storage bodies and cursor pagination; current and archived pages are listed by default as the spec says, and the deleted filter is accepted; live documents remain."
+      "notes": "Lists permission-scoped current, archived, author-draft and trashed pages globally or by space with ID/space/title/status/subtype filters, documented sort orders, storage bodies and cursor pagination; current and archived pages are listed by default as the spec says, and the deleted filter is accepted; live docs are listed with pages, and subtype=live or subtype=page picks one kind."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{id}",
@@ -3200,14 +3240,16 @@
         "internal/store/wiki_page_properties.go",
         "internal/store/wiki_page_governance.go",
         "internal/confluence/page_lifecycle_test.go",
-        "internal/store/wiki_content_tree.go"
+        "internal/store/wiki_content_tree.go",
+        "internal/confluence/page_formats_test.go",
+        "docs/PAGE_WRITING.md"
       ],
-      "notes": "Returns a permission-scoped current or historical page with storage body and optional labels, properties, operations, likes, versions, favorite status, collaborators, direct children and version omission; an archived page reads back with status=archived, an earlier version reports historical, and an unknown status is refused; web resources, live documents and remaining expansion metadata remain."
+      "notes": "Returns a permission-scoped current or historical page with storage body and optional labels, properties, operations, likes, versions, favorite status, collaborators, direct children and version omission; an archived page reads back with status=archived, an earlier version reports historical, and an unknown status is refused; every primary body format reads back, include-webresources names the stylesheets and script that render page content, include-collaborators lists the page's version authors, and the favourite flag reports the reader's star."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{id}/ancestors",
       "status": "partial",
-      "notes": "Permission-filtered page trees support direct child-page and generic-child shapes, bounded top-to-bottom descendant depth, top-to-bottom page ancestors, documented v2 child sorts/cursor pagination, and legacy v1 descendant map/type pagination; direct children and descendants include folders, whiteboards, databases and Smart Links and the pages beneath them in stored childPosition order, the child-page read keeps to pages, and a limited ancestors read returns the nearest ancestors so callers continue from the highest; v1 comment, attachment and non-page descendant expansion remains.",
+      "notes": "Permission-filtered page trees support direct child-page and generic-child shapes, bounded top-to-bottom descendant depth, top-to-bottom page ancestors, documented v2 child sorts/cursor pagination, and legacy v1 descendant map/type pagination; direct children and descendants include folders, whiteboards, databases and Smart Links and the pages beneath them in stored childPosition order, the child-page read keeps to pages, and a limited ancestors read returns the nearest ancestors so callers continue from the highest; the v1 descendant read expands pages, comments (with replies), attachments, folders, whiteboards, databases and Smart Links and names the rest under _expandable, and the typed reads count depth through comments and attachments.",
       "evidence": [
         "internal/confluence/hierarchy.go",
         "internal/confluence/v1_hierarchy.go",
@@ -3217,13 +3259,15 @@
         "e2e/wiki.spec.ts",
         "internal/confluence/content_tree_test.go",
         "docs/CONTENT_TREE.md",
-        "internal/store/wiki_content_tree.go"
+        "internal/store/wiki_content_tree.go",
+        "internal/confluence/page_formats_test.go",
+        "docs/PAGE_WRITING.md"
       ]
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{id}/attachments",
       "status": "partial",
-      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented. Current and archived attachments are listed by default, several statuses may be asked for, and an attachment reports archived while its page is archived; advanced expansions and media processing remain.",
+      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented. Current and archived attachments are listed by default, several statuses may be asked for, and an attachment reports archived while its page is archived; attachments carry Confluence's media type description (PDF Document, PNG Image) in v2 and in the v1 extensions, include-collaborators lists every uploader of a version, and images have generated thumbnails.",
       "evidence": [
         "internal/confluence/attachments.go",
         "internal/confluence/http_test.go",
@@ -3233,13 +3277,15 @@
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts",
-        "internal/confluence/page_lifecycle_test.go"
+        "internal/confluence/page_lifecycle_test.go",
+        "internal/confluence/page_formats_test.go",
+        "docs/PAGE_WRITING.md"
       ]
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{id}/children",
       "status": "partial",
-      "notes": "Permission-filtered page trees support direct child-page and generic-child shapes, bounded top-to-bottom descendant depth, top-to-bottom page ancestors, documented v2 child sorts/cursor pagination, and legacy v1 descendant map/type pagination; direct children and descendants include folders, whiteboards, databases and Smart Links and the pages beneath them in stored childPosition order, the child-page read keeps to pages, and a limited ancestors read returns the nearest ancestors so callers continue from the highest; v1 comment, attachment and non-page descendant expansion remains.",
+      "notes": "Permission-filtered page trees support direct child-page and generic-child shapes, bounded top-to-bottom descendant depth, top-to-bottom page ancestors, documented v2 child sorts/cursor pagination, and legacy v1 descendant map/type pagination; direct children and descendants include folders, whiteboards, databases and Smart Links and the pages beneath them in stored childPosition order, the child-page read keeps to pages, and a limited ancestors read returns the nearest ancestors so callers continue from the highest; the v1 descendant read expands pages, comments (with replies), attachments, folders, whiteboards, databases and Smart Links and names the rest under _expandable, and the typed reads count depth through comments and attachments.",
       "evidence": [
         "internal/confluence/hierarchy.go",
         "internal/confluence/v1_hierarchy.go",
@@ -3249,7 +3295,9 @@
         "e2e/wiki.spec.ts",
         "internal/confluence/content_tree_test.go",
         "docs/CONTENT_TREE.md",
-        "internal/store/wiki_content_tree.go"
+        "internal/store/wiki_content_tree.go",
+        "internal/confluence/page_formats_test.go",
+        "docs/PAGE_WRITING.md"
       ]
     },
     {
@@ -3282,7 +3330,7 @@
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{id}/descendants",
       "status": "partial",
-      "notes": "Permission-filtered page trees support direct child-page and generic-child shapes, bounded top-to-bottom descendant depth, top-to-bottom page ancestors, documented v2 child sorts/cursor pagination, and legacy v1 descendant map/type pagination; direct children and descendants include folders, whiteboards, databases and Smart Links and the pages beneath them in stored childPosition order, the child-page read keeps to pages, and a limited ancestors read returns the nearest ancestors so callers continue from the highest; v1 comment, attachment and non-page descendant expansion remains.",
+      "notes": "Permission-filtered page trees support direct child-page and generic-child shapes, bounded top-to-bottom descendant depth, top-to-bottom page ancestors, documented v2 child sorts/cursor pagination, and legacy v1 descendant map/type pagination; direct children and descendants include folders, whiteboards, databases and Smart Links and the pages beneath them in stored childPosition order, the child-page read keeps to pages, and a limited ancestors read returns the nearest ancestors so callers continue from the highest; the v1 descendant read expands pages, comments (with replies), attachments, folders, whiteboards, databases and Smart Links and names the rest under _expandable, and the typed reads count depth through comments and attachments.",
       "evidence": [
         "internal/confluence/hierarchy.go",
         "internal/confluence/v1_hierarchy.go",
@@ -3292,13 +3340,15 @@
         "e2e/wiki.spec.ts",
         "internal/confluence/content_tree_test.go",
         "docs/CONTENT_TREE.md",
-        "internal/store/wiki_content_tree.go"
+        "internal/store/wiki_content_tree.go",
+        "internal/confluence/page_formats_test.go",
+        "docs/PAGE_WRITING.md"
       ]
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{id}/direct-children",
       "status": "partial",
-      "notes": "Permission-filtered page trees support direct child-page and generic-child shapes, bounded top-to-bottom descendant depth, top-to-bottom page ancestors, documented v2 child sorts/cursor pagination, and legacy v1 descendant map/type pagination; direct children and descendants include folders, whiteboards, databases and Smart Links and the pages beneath them in stored childPosition order, the child-page read keeps to pages, and a limited ancestors read returns the nearest ancestors so callers continue from the highest; v1 comment, attachment and non-page descendant expansion remains.",
+      "notes": "Permission-filtered page trees support direct child-page and generic-child shapes, bounded top-to-bottom descendant depth, top-to-bottom page ancestors, documented v2 child sorts/cursor pagination, and legacy v1 descendant map/type pagination; direct children and descendants include folders, whiteboards, databases and Smart Links and the pages beneath them in stored childPosition order, the child-page read keeps to pages, and a limited ancestors read returns the nearest ancestors so callers continue from the highest; the v1 descendant read expands pages, comments (with replies), attachments, folders, whiteboards, databases and Smart Links and names the rest under _expandable, and the typed reads count depth through comments and attachments.",
       "evidence": [
         "internal/confluence/hierarchy.go",
         "internal/confluence/v1_hierarchy.go",
@@ -3308,7 +3358,9 @@
         "e2e/wiki.spec.ts",
         "internal/confluence/content_tree_test.go",
         "docs/CONTENT_TREE.md",
-        "internal/store/wiki_content_tree.go"
+        "internal/store/wiki_content_tree.go",
+        "internal/confluence/page_formats_test.go",
+        "docs/PAGE_WRITING.md"
       ]
     },
     {
@@ -3627,9 +3679,11 @@
         "internal/confluence/http.go",
         "internal/confluence/http_test.go",
         "internal/store/wiki.go",
-        "internal/confluence/page_lifecycle_test.go"
+        "internal/confluence/page_lifecycle_test.go",
+        "internal/confluence/page_formats_test.go",
+        "docs/PAGE_WRITING.md"
       ],
-      "notes": "Lists permission-scoped current, archived or trashed pages in a visible space with all/root depth, title/status filters, documented sorts, optional storage bodies and cursor pagination; current and archived pages are listed by default and the deleted filter is accepted; live documents remain."
+      "notes": "Lists permission-scoped current, archived or trashed pages in a visible space with all/root depth, title/status filters, documented sorts, optional storage bodies and cursor pagination; current and archived pages are listed by default and the deleted filter is accepted; live docs are listed alongside pages."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/spaces/{id}/permissions",
@@ -3717,7 +3771,7 @@
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/whiteboards/{id}",
       "status": "partial",
-      "notes": "Whiteboards support public or creator-private creation, every documented template key and locale, current reads with optional expansions, inherited page/space permissions, nonempty deletion checks, privacy-shaped actions and a space UI journey; canvas objects and connectors are edited on the whiteboard page; pages can sit beneath a whiteboard, an archived one reads back, and moving (beside or beneath any node, to a space's top level or to another space), renaming, archiving with or without its contents and restoring are offered through the space's content tree, since Confluence publishes no REST operation for them.",
+      "notes": "Whiteboards support public or creator-private creation, every documented template key and locale, current reads with optional expansions, inherited page/space permissions, nonempty deletion checks, privacy-shaped actions and a space UI journey; canvas objects and connectors are edited on the whiteboard page; pages can sit beneath a whiteboard, an archived one reads back, and moving (beside or beneath any node, to a space's top level or to another space), renaming, archiving with or without its contents and restoring are offered through the space's content tree, since Confluence publishes no REST operation for them. In the browser an archived one still opens read-only, with Restore for those who may restore it.",
       "evidence": [
         "internal/confluence/whiteboards.go",
         "internal/confluence/http_test.go",
@@ -3732,7 +3786,9 @@
         "internal/confluence/content_tree_test.go",
         "docs/CONTENT_TREE.md",
         "e2e/wiki_content_tree.spec.ts",
-        "internal/web/wiki_whiteboard.go"
+        "internal/web/wiki_whiteboard.go",
+        "e2e/wiki_page_details.spec.ts",
+        "docs/PAGE_WRITING.md"
       ]
     },
     {
@@ -4041,7 +4097,7 @@
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/embeds",
       "status": "partial",
-      "notes": "Smart Link creation, validated optional HTTP/HTTPS embed URLs, current reads with expansions, nonempty deletion checks, inherited page/space permissions, action privacy and the space UI journey are tested; pages can sit beneath a Smart Link, an archived one reads back, and moving (beside or beneath any node, to a space's top level or to another space), renaming, archiving with or without its contents and restoring are offered through the space's content tree, since Confluence publishes no REST operation for them; rich embed rendering remains.",
+      "notes": "Smart Link creation, validated optional HTTP/HTTPS embed URLs, current reads with expansions, nonempty deletion checks, inherited page/space permissions, action privacy and the space UI journey are tested; pages can sit beneath a Smart Link, an archived one reads back, and moving (beside or beneath any node, to a space's top level or to another space), renaming, archiving with or without its contents and restoring are offered through the space's content tree, since Confluence publishes no REST operation for them; in the browser a Smart Link opens as a card with its destination, host and a sandboxed preview of HTTPS destinations.",
       "evidence": [
         "internal/confluence/embeds.go",
         "internal/confluence/folders.go",
@@ -4053,7 +4109,9 @@
         "e2e/wiki.spec.ts",
         "internal/confluence/content_tree_test.go",
         "docs/CONTENT_TREE.md",
-        "e2e/wiki_content_tree.spec.ts"
+        "e2e/wiki_content_tree.spec.ts",
+        "e2e/wiki_page_details.spec.ts",
+        "docs/PAGE_WRITING.md"
       ]
     },
     {
@@ -4142,9 +4200,11 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts",
         "internal/confluence/content_tree_test.go",
-        "docs/CONTENT_TREE.md"
+        "docs/CONTENT_TREE.md",
+        "internal/confluence/page_formats_test.go",
+        "docs/PAGE_WRITING.md"
       ],
-      "notes": "Creates validated current or author-draft storage pages at the space root or beneath an existing page with immutable version one and an atomic permission-filtered action; parentId may name a page or a folder, whiteboard, database or Smart Link that is not private, and the page takes its place last among that parent's children; embedded/private query modes, live documents, nested body forms and homepage-default parenting remain explicit capability gaps."
+      "notes": "Creates validated current or author-draft storage pages at the space root or beneath an existing page with immutable version one and an atomic permission-filtered action; parentId may name a page or a folder, whiteboard, database or Smart Link that is not private, and the page takes its place last among that parent's children; without a parentId the page goes beneath the space homepage unless root-level is set, bodies are accepted flat or nested as storage, atlas_doc_format or wiki markup, subtype=live creates an always-published live doc, private=true restricts viewing and editing to the creator in the same transaction, and embedded is accepted."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/pages/{id}/classification-level/reset",
@@ -4563,9 +4623,11 @@
         "e2e/wiki.spec.ts",
         "internal/confluence/page_lifecycle_test.go",
         "internal/confluence/content_tree_test.go",
-        "docs/CONTENT_TREE.md"
+        "docs/CONTENT_TREE.md",
+        "internal/confluence/page_formats_test.go",
+        "docs/PAGE_WRITING.md"
       ],
-      "notes": "Updates writable pages with optimistic versions, rendered storage validation, same-space parent moves beneath pages or other content with cycle checks across the whole content tree, draft/published/restore rules, immutable history, notifications and atomic sync; an archived page is refused until it is restored; ownership transfer, live documents and nested bodies remain."
+      "notes": "Updates writable pages with optimistic versions, rendered storage validation, same-space parent moves beneath pages or other content with cycle checks across the whole content tree, draft/published/restore rules, immutable history, notifications and atomic sync; an archived page is refused until it is restored; ownerId hands the page to another member and the page reports lastOwnerId, nested and converted bodies are accepted, and a live doc cannot become a draft."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/pages/{id}/classification-level",
@@ -4589,9 +4651,11 @@
         "internal/confluence/page_governance.go",
         "internal/confluence/http_test.go",
         "internal/commands/wiki.go",
-        "internal/store/wiki.go"
+        "internal/store/wiki.go",
+        "internal/confluence/page_formats_test.go",
+        "docs/PAGE_WRITING.md"
       ],
-      "notes": "Updates a writable page title through the canonical optimistic page command, preserving body and hierarchy while creating an immutable version and permission-filtered sync action; live-doc subtype semantics remain."
+      "notes": "Updates a writable page title through the canonical optimistic page command, preserving body and hierarchy while creating an immutable version and permission-filtered sync action; a live doc's title updates like any page's, and it stays published."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/pages/{page-id}/properties/{property-id}",

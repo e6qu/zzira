@@ -10,6 +10,7 @@ import (
 )
 
 type wikiDatabasePageData struct {
+	CanRestore bool
 	Space      *models.WikiSpace
 	Database   *models.WikiContent
 	Columns    []models.WikiDatabaseColumn
@@ -24,7 +25,7 @@ func (h *Handler) WikiDatabasePage(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	space, database, ok := h.wikiDatabaseContext(w, r, ws, user.ID)
+	space, database, ok := h.wikiReadableContent(w, r, ws, user.ID, "database", "database")
 	if !ok {
 		return
 	}
@@ -34,14 +35,19 @@ func (h *Handler) WikiDatabasePage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, message, status)
 		return
 	}
-	canEdit, err := h.Store.CanUpdateWikiContent(r.Context(), ws, user.ID, database.ID, "database")
+	canEdit, canRestore := false, false
+	if database.Status == "current" {
+		canEdit, err = h.Store.CanUpdateWikiContent(r.Context(), ws, user.ID, database.ID, "database")
+	} else {
+		canRestore, err = h.Store.CanCreateWikiPage(r.Context(), ws, user.ID, space.ID)
+	}
 	if err != nil {
 		status, message := wikiWebError(err)
 		http.Error(w, message, status)
 		return
 	}
 
-	page := wikiDatabasePageData{Space: space, Database: database, Columns: data.Columns, Rows: data.Rows, Views: data.Views, CanEdit: canEdit}
+	page := wikiDatabasePageData{Space: space, Database: database, Columns: data.Columns, Rows: data.Rows, Views: data.Views, CanEdit: canEdit, CanRestore: canRestore}
 	viewID := strings.TrimSpace(r.URL.Query().Get("view"))
 	if viewID != "" {
 		for i := range data.Views {

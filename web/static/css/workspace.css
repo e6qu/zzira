@@ -360,6 +360,13 @@ body.nav-collapsed .project-switcher-panel a { padding-inline: 9px; }
 .wiki-trash form { max-width: 420px; padding: 16px; }
 .wiki-trash form label:has(input[type="checkbox"]) { display: flex; align-items: center; gap: 8px; margin-block: 8px 4px; }
 .wiki-move form { max-width: 480px; }
+.wiki-smart-link-details { display: grid; gap: 8px; margin: 0 0 12px; }
+.wiki-smart-link-details div { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.wiki-smart-link-details dt { font-weight: 600; min-width: 80px; }
+.wiki-smart-link-details dd { margin: 0; overflow-wrap: anywhere; }
+.wiki-smart-link-preview { display: block; width: 100%; max-width: 100%; aspect-ratio: 16 / 9; border: 1px solid var(--color-border, #dfe1e6); border-radius: 8px; margin-block: 8px; background: #fff; }
+.wiki-smart-link-card-link { font-size: 12px; margin-left: 8px; }
+label[for="wiki-subtype"] { display: flex; align-items: center; gap: 8px; }
 .wiki-content-tree .wiki-page-tree > li { list-style: none; }
 .wiki-tree-depth-1 { margin-left: 20px; }
 .wiki-tree-depth-2 { margin-left: 40px; }

@@ -414,7 +414,7 @@ func (s *Store) copyHierarchy(ctx context.Context, ws, actor string, payload Wik
 	if descendant {
 		return 0, fmt.Errorf("%w: a hierarchy cannot be copied into itself", ErrWikiMoveValidation)
 	}
-	copied, err := copySubtree(ctx, tx, ws, actor, source.ID, targetSpace, targetParent, payload, true)
+	copied, err := copySubtree(ctx, tx, ws, actor, source.ID, targetSpace, targetParent, payload)
 	if err != nil {
 		return 0, err
 	}
@@ -424,13 +424,13 @@ func (s *Store) copyHierarchy(ctx context.Context, ws, actor string, payload Wik
 // copySubtree copies one page and, when asked, everything beneath it. The
 // recursion follows the tree rather than a flat list so a child lands under its
 // own copied parent instead of the destination.
-func copySubtree(ctx context.Context, tx pgx.Tx, ws, actor, pageID, spaceID string, parentID any, payload WikiCopyHierarchyRequest, root bool) (int, error) {
+func copySubtree(ctx context.Context, tx pgx.Tx, ws, actor, pageID, spaceID string, parentID any, payload WikiCopyHierarchyRequest) (int, error) {
 	var title, body string
 	if err := tx.QueryRow(ctx, `SELECT title,body FROM wiki_pages WHERE id::text=$1 AND status='current'`,
 		pageID).Scan(&title, &body); err != nil {
 		return 0, err
 	}
-	copyID, err := insertCopiedPage(ctx, tx, actor, spaceID, parentID, applyTitleOptions(title, payload, root), body)
+	copyID, err := insertCopiedPage(ctx, tx, actor, spaceID, parentID, applyTitleOptions(title, payload), body)
 	if err != nil {
 		return 0, err
 	}
@@ -466,7 +466,7 @@ func copySubtree(ctx context.Context, tx pgx.Tx, ws, actor, pageID, spaceID stri
 		return 0, err
 	}
 	for _, child := range children {
-		childCount, childErr := copySubtree(ctx, tx, ws, actor, child, spaceID, copyID, payload, false)
+		childCount, childErr := copySubtree(ctx, tx, ws, actor, child, spaceID, copyID, payload)
 		if childErr != nil {
 			return 0, childErr
 		}
@@ -478,14 +478,13 @@ func copySubtree(ctx context.Context, tx pgx.Tx, ws, actor, pageID, spaceID stri
 // applyTitleOptions renames a copy the way Confluence's titleOptions ask. They
 // apply to every page in the tree, which is what makes a copied hierarchy
 // distinguishable from the original.
-func applyTitleOptions(title string, payload WikiCopyHierarchyRequest, root bool) string {
+func applyTitleOptions(title string, payload WikiCopyHierarchyRequest) string {
 	if payload.TitleSearch != "" {
 		title = strings.ReplaceAll(title, payload.TitleSearch, payload.TitleReplace)
 	}
 	if payload.TitlePrefix != "" {
 		title = payload.TitlePrefix + title
 	}
-	_ = root
 	return title
 }
 

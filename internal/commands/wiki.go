@@ -173,6 +173,16 @@ func (s *Service) RenameWikiContent(ctx context.Context, ws, actor, id, title st
 	return s.Store.RenameWikiContent(ctx, ws, actor, id, title)
 }
 
+// SetWikiPageFavourite stars or unstars a page for the reader.
+func (s *Service) SetWikiPageFavourite(ctx context.Context, ws, actor, pageID string, favourite bool) error {
+	return s.Store.SetWikiPageFavourite(ctx, ws, actor, pageID, favourite)
+}
+
+// TransferWikiPageOwnership hands a page to another member.
+func (s *Service) TransferWikiPageOwnership(ctx context.Context, ws, actor, pageID, ownerID string) (*models.WikiPage, error) {
+	return s.Store.TransferWikiPageOwnership(ctx, ws, actor, pageID, ownerID)
+}
+
 func (s *Service) SaveWikiBlogPost(ctx context.Context, ws, actor string, post models.WikiBlogPost) (*models.WikiBlogPost, error) {
 	post.Title = strings.TrimSpace(post.Title)
 	if post.Status == "" && post.ID == "" {
