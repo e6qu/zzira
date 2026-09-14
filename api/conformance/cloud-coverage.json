@@ -9460,11 +9460,12 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_request_list_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service_approval_attachment.go",
         "docs/SERVICE_MANAGEMENT.md"
       ],
-      "notes": "Returns paged request attachments and filters internal files from customers; additional expansion and media metadata variants remain."
+      "notes": "Returns paged request attachments, identified by their links as Jira does, and filters internal files from customers."
     },
     {
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/request/{issueIdOrKey}/attachment",
@@ -9485,11 +9486,12 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_request_list_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service_approval_attachment.go",
         "docs/SERVICE_MANAGEMENT.md"
       ],
-      "notes": "Streams attachment content behind request and public/internal visibility checks; conditional range and cache headers remain."
+      "notes": "Serves attachment content, by the numeric id in the attachment's links or its stored id, behind request and public/internal visibility checks, with Range and conditional requests as Jira's attachment content does."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/attachment/{attachmentId}/thumbnail",
@@ -9497,11 +9499,12 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_request_list_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service_approval_attachment.go",
         "docs/SERVICE_MANAGEMENT.md"
       ],
-      "notes": "Streams visible image content at the thumbnail URL; generated resized thumbnails and conditional cache headers remain."
+      "notes": "Serves a scaled image thumbnail of a visible request attachment, or Jira's default file thumbnail for other files, as Jira's attachment thumbnails do."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/comment",
@@ -9509,6 +9512,7 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_request_list_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service.go",
         "internal/commands/service.go",
@@ -9516,7 +9520,7 @@
         "e2e/service.spec.ts",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Lists public request comments for customers and includes internal notes for assigned agents; full query filters, attachment expansion and cursor links remain."
+      "notes": "Lists request comments, public ones for customers and internal notes too for agents, filtered by public and internal (each defaulting to true), paged by start and limit; attachment and renderedBody appear only when expanded, with _expands listing the rest."
     },
     {
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/request/{issueIdOrKey}/comment",
@@ -9539,6 +9543,7 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_request_list_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service.go",
         "internal/commands/service.go",
@@ -9546,7 +9551,7 @@
         "e2e/service.spec.ts",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Returns one visible request comment while enforcing the public/internal portal boundary; attachment expansion remains."
+      "notes": "Returns one visible request comment by stored or numeric id while enforcing the public/internal portal boundary; its attachments and rendered body appear only when expanded."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/request/{issueIdOrKey}/comment/{commentId}/attachment",
@@ -9554,11 +9559,12 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_request_list_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service_approval_attachment.go",
         "docs/SERVICE_MANAGEMENT.md"
       ],
-      "notes": "Returns attachments associated with a visible request comment and filters internal comments and files from customers; expansion variants remain."
+      "notes": "Returns attachments associated with a visible request comment and filters internal comments and files from customers, paged."
     },
     {
       "operationId": "jira-service-management:DELETE:/rest/servicedeskapi/request/{issueIdOrKey}/notification",
@@ -9711,6 +9717,7 @@
       "hostClass": "site",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_request_list_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service.go",
         "internal/commands/service.go",
@@ -9718,7 +9725,7 @@
         "e2e/service.spec.ts",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Executes an available canonical Jira workflow transition and optional public/internal comment with the documented empty response; atomic transition-plus-comment rollback remains."
+      "notes": "Performs a customer-visible workflow transition with an optional public or internal comment and the documented empty response; the comment is validated (length, customers' public-only rule) before the request moves, so a refused comment leaves the transition unapplied."
     },
     {
       "operationId": "jira-service-management:DELETE:/rest/servicedeskapi/request/{requestIdOrKey}/feedback",

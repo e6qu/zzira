@@ -1,9 +1,12 @@
 package api3
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/e6qu/zzira/internal/attachments"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -68,7 +71,11 @@ func TestServiceRequestListFiltersAndExpansions(t *testing.T) {
 			exec(`DELETE FROM users WHERE id=$1`, person.id)
 		}
 	})
-	h := &Handler{Store: st, Commands: &commands.Service{Store: st}, WorkspaceSlug: workspaceID, BaseURL: "https://zzira.test"}
+	blobs, err := attachments.NewFS(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := &Handler{Store: st, Commands: &commands.Service{Store: st, Blobs: blobs}, Blobs: blobs, WorkspaceSlug: workspaceID, BaseURL: "https://zzira.test"}
 	callAs := func(accountID, method, path, body string, want int) string {
 		t.Helper()
 		request := httptest.NewRequest(method, path, strings.NewReader(body))
@@ -203,5 +210,94 @@ func TestServiceRequestListFiltersAndExpansions(t *testing.T) {
 	}
 	if chronology.Size != 2 || chronology.Values[0].StatusCategory != "DONE" || chronology.Values[1].StatusCategory != "NEW" {
 		t.Fatalf("status chronology = %+v", chronology)
+	}
+
+	// Comments filter by public and internal and expand their attachments.
+	callAs(adminID, http.MethodPost, "/rest/servicedeskapi/request/"+vpn+"/comment", `{"body":"Customer-visible update","public":true}`, http.StatusCreated)
+	callAs(adminID, http.MethodPost, "/rest/servicedeskapi/request/"+vpn+"/comment", `{"body":"Internal investigation","public":false}`, http.StatusCreated)
+	commentsPath := "/rest/servicedeskapi/request/" + vpn + "/comment"
+	if internal := callAs(adminID, http.MethodGet, commentsPath+"?public=false", "", http.StatusOK); !strings.Contains(internal, "Internal investigation") || strings.Contains(internal, "Customer-visible update") {
+		t.Fatalf("internal comments = %s", internal)
+	}
+	if public := callAs(adminID, http.MethodGet, commentsPath+"?internal=false", "", http.StatusOK); strings.Contains(public, "Internal investigation") || !strings.Contains(public, "Customer-visible update") {
+		t.Fatalf("public comments = %s", public)
+	}
+	if customer := callAs(reporterID, http.MethodGet, commentsPath+"?public=true&internal=true", "", http.StatusOK); strings.Contains(customer, "Internal investigation") {
+		t.Fatalf("a customer saw an internal comment: %s", customer)
+	}
+	callAs(adminID, http.MethodGet, commentsPath+"?public=sometimes", "", http.StatusBadRequest)
+	// _expands names renderedBody, so look for the keys themselves.
+	if plainComments := callAs(adminID, http.MethodGet, commentsPath, "", http.StatusOK); strings.Contains(plainComments, `"attachments":`) || strings.Contains(plainComments, `"renderedBody":`) || !strings.Contains(plainComments, `"_expands":["attachment","renderedBody"]`) {
+		t.Fatalf("unexpanded comments = %s", plainComments)
+	}
+
+	// Request attachments are served with ranges, and thumbnails are images.
+	var upload bytes.Buffer
+	writer := multipart.NewWriter(&upload)
+	part, err := writer.CreateFormFile("file", "trace.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = part.Write([]byte("0123456789 connection trace")); err != nil {
+		t.Fatal(err)
+	}
+	if err = writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	uploadRequest := httptest.NewRequest(http.MethodPost, "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/attachTemporaryFile", &upload)
+	uploadRequest.SetBasicAuth(reporterID+"@example.test", reporterID)
+	uploadRequest.Header.Set("Content-Type", writer.FormDataContentType())
+	uploadRequest.Header.Set("X-Atlassian-Token", "no-check")
+	uploadResponse := httptest.NewRecorder()
+	h.ServeHTTP(uploadResponse, uploadRequest)
+	var temporary struct {
+		TemporaryAttachments []struct {
+			TemporaryAttachmentID string `json:"temporaryAttachmentId"`
+		} `json:"temporaryAttachments"`
+	}
+	if err = json.Unmarshal(uploadResponse.Body.Bytes(), &temporary); err != nil || len(temporary.TemporaryAttachments) != 1 {
+		t.Fatalf("temporary upload = %d %s", uploadResponse.Code, uploadResponse.Body.String())
+	}
+	// Jira identifies a request attachment only by its links.
+	var attached struct {
+		Attachments struct {
+			Values []struct {
+				Links struct {
+					Content string `json:"content"`
+				} `json:"_links"`
+			} `json:"values"`
+		} `json:"attachments"`
+	}
+	if err = json.Unmarshal([]byte(callAs(reporterID, http.MethodPost, "/rest/servicedeskapi/request/"+vpn+"/attachment", `{"temporaryAttachmentIds":["`+temporary.TemporaryAttachments[0].TemporaryAttachmentID+`"],"public":true,"additionalComment":{"body":"Trace attached"}}`, http.StatusCreated)), &attached); err != nil || len(attached.Attachments.Values) != 1 {
+		t.Fatalf("attached = %+v err=%v", attached, err)
+	}
+	attachmentPath := strings.TrimPrefix(attached.Attachments.Values[0].Links.Content, "https://zzira.test")
+	if !strings.HasPrefix(attachmentPath, "/rest/servicedeskapi/request/"+vpn+"/attachment/") || strings.HasSuffix(attachmentPath, "/") {
+		t.Fatalf("attachment content link = %q", attached.Attachments.Values[0].Links.Content)
+	}
+	rangeRequest := httptest.NewRequest(http.MethodGet, attachmentPath, nil)
+	rangeRequest.SetBasicAuth(reporterID+"@example.test", reporterID)
+	rangeRequest.Header.Set("Range", "bytes=0-9")
+	rangeResponse := httptest.NewRecorder()
+	h.ServeHTTP(rangeResponse, rangeRequest)
+	if rangeResponse.Code != http.StatusPartialContent || rangeResponse.Body.String() != "0123456789" {
+		t.Fatalf("ranged attachment content = %d %q", rangeResponse.Code, rangeResponse.Body.String())
+	}
+	thumbnailRequest := httptest.NewRequest(http.MethodGet, attachmentPath+"/thumbnail", nil)
+	thumbnailRequest.SetBasicAuth(reporterID+"@example.test", reporterID)
+	thumbnailResponse := httptest.NewRecorder()
+	h.ServeHTTP(thumbnailResponse, thumbnailRequest)
+	if thumbnailResponse.Code != http.StatusOK || !strings.HasPrefix(thumbnailResponse.Header().Get("Content-Type"), "image/") {
+		t.Fatalf("attachment thumbnail = %d %s", thumbnailResponse.Code, thumbnailResponse.Header().Get("Content-Type"))
+	}
+	if expandedComments := callAs(reporterID, http.MethodGet, commentsPath+"?expand=attachment", "", http.StatusOK); !strings.Contains(expandedComments, `"attachments":{`) || !strings.Contains(expandedComments, "trace.txt") {
+		t.Fatalf("comments with attachments = %s", expandedComments)
+	}
+
+	// A comment refused for its length leaves the request where it was.
+	tooLong := strings.Repeat("x", 32768)
+	callAs(reporterID, http.MethodPost, "/rest/servicedeskapi/request/"+vpn+"/transition", `{"id":"31","additionalComment":{"body":"`+tooLong+`"}}`, http.StatusBadRequest)
+	if still := callAs(reporterID, http.MethodGet, "/rest/servicedeskapi/request/"+vpn, "", http.StatusOK); !strings.Contains(still, `"statusCategory":"NEW"`) {
+		t.Fatalf("a refused transition comment moved the request: %s", still)
 	}
 }

@@ -262,6 +262,14 @@ that were not:
 `GET /rest/servicedeskapi/request/{issueIdOrKey}/status` lists the same
 chronology, most recent status first.
 
+Request comments filter by `public` and `internal`, both true by default;
+customers only ever see public comments. Comment attachments and rendered
+bodies appear only when expanded. Request attachments are identified by their
+links, as in Jira. Their content honours `Range` and conditional requests, and
+their thumbnails are scaled images (Jira's default file thumbnail for other
+files). A transition's additional comment is checked before the request moves,
+so a comment refused for its length leaves the request where it was.
+
 ## REST coverage
 
 The current `/rest/servicedeskapi` slice implements:
@@ -312,8 +320,7 @@ The implemented operations are assessed as partial. JQL support follows the
 documented ZZIRA search subset, including array-aware label matching;
 conditional form logic, user and
 Assets-backed portal pickers, participant notifications,
-approval workflow configuration, image thumbnail generation,
-email delivery and notification preference administration, CSAT configuration,
+approval workflow configuration, email delivery and notification preference administration, CSAT configuration,
 service report comparisons, SLA goal distributions, exports and scheduled
 delivery, complete public Assets object/schema/import API parity, SLA rule reordering and advanced criteria,
 portal invitation email delivery, Atlassian knowledge ranking/analytics, and asset import/reconciliation and review templates

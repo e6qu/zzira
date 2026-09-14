@@ -2,9 +2,6 @@ package api3
 
 import (
 	"encoding/json"
-	"io"
-	"log"
-	"mime"
 	"net/http"
 	"strconv"
 
@@ -203,7 +200,8 @@ func (h *Handler) serviceRequestAttachmentContent(w http.ResponseWriter, r *http
 		writeJerr(w, accessErr)
 		return
 	}
-	if _, err := h.Store.ServiceRequestAttachment(r.Context(), request.Issue.ID, attachmentID, canManage); err != nil {
+	attachment, err := h.Store.ServiceRequestAttachment(r.Context(), request.Issue.ID, attachmentID, canManage)
+	if err != nil {
 		jiraError(w, http.StatusNotFound, "Attachment does not exist or is not visible.")
 		return
 	}
@@ -211,31 +209,11 @@ func (h *Handler) serviceRequestAttachmentContent(w http.ResponseWriter, r *http
 		jiraError(w, http.StatusNotFound, "Attachment content is unavailable.")
 		return
 	}
-	blobRef, filename, mimeType, err := h.Store.AttachmentBlobRef(r.Context(), workspaceID, attachmentID)
-	if err != nil {
-		jiraError(w, http.StatusNotFound, "Attachment does not exist.")
+	// Request attachments are served as Jira serves attachments: content with
+	// ranges and conditional requests, thumbnails as scaled images.
+	if thumbnail {
+		h.serveAttachmentThumbnail(w, r, workspaceID, &attachment.Attachment)
 		return
 	}
-	reader, size, err := h.Blobs.Get(r.Context(), blobRef)
-	if err != nil {
-		jiraError(w, http.StatusNotFound, "Attachment does not exist.")
-		return
-	}
-	defer func() {
-		if err := reader.Close(); err != nil {
-			log.Printf("service attachment close: %v", err)
-		}
-	}()
-	w.Header().Set("Content-Type", mimeType)
-	if !thumbnail {
-		if disposition := mime.FormatMediaType("attachment", map[string]string{"filename": filename}); disposition != "" {
-			w.Header().Set("Content-Disposition", disposition)
-		}
-	}
-	if size > 0 {
-		w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
-	}
-	if _, err := io.Copy(w, reader); err != nil {
-		log.Printf("service attachment stream: %v", err)
-	}
+	h.serveAttachmentBytes(w, r, workspaceID, &attachment.Attachment)
 }

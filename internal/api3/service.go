@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/e6qu/zzira/internal/adf"
 	"github.com/e6qu/zzira/internal/commands"
@@ -1117,12 +1118,51 @@ func (h *Handler) serviceCommentBean(request *models.ServiceRequest, comment mod
 	}
 }
 
+// serviceCommentExpansions reads which optional parts of request comments the
+// caller asked for: attachment and renderedBody.
+func serviceCommentExpansions(r *http.Request) map[string]bool {
+	expand := map[string]bool{}
+	for _, value := range r.URL.Query()["expand"] {
+		for _, part := range strings.Split(value, ",") {
+			expand[strings.TrimSpace(part)] = true
+		}
+	}
+	return expand
+}
+
+// expandedServiceComment keeps a comment's attachments and rendered body only
+// when expanded, listing the others in _expands.
+func (h *Handler) expandedServiceComment(r *http.Request, request *models.ServiceRequest, comment models.ServiceRequestComment, expand map[string]bool, canManage bool) (map[string]any, error) {
+	if expand["attachment"] {
+		attachments, err := h.Store.ServiceCommentAttachments(r.Context(), request.Issue.ID, comment.Comment.ID, canManage)
+		if err != nil {
+			return nil, err
+		}
+		for _, attachment := range attachments {
+			comment.Attachments = append(comment.Attachments, attachment.Attachment)
+		}
+	}
+	bean := h.serviceCommentBean(request, comment)
+	unexpanded := []string{}
+	if !expand["attachment"] {
+		delete(bean, "attachments")
+		unexpanded = append(unexpanded, "attachment")
+	}
+	if !expand["renderedBody"] {
+		delete(bean, "renderedBody")
+		unexpanded = append(unexpanded, "renderedBody")
+	}
+	bean["_expands"] = unexpanded
+	return bean, nil
+}
+
 func (h *Handler) serviceRequestComments(w http.ResponseWriter, r *http.Request, workspaceID, issueIDOrKey, commentID string) {
 	request, canManage, actorID, accessErr := h.serviceRequestAccess(r, workspaceID, issueIDOrKey)
 	if accessErr != nil {
 		writeJerr(w, accessErr)
 		return
 	}
+	expand := serviceCommentExpansions(r)
 	if r.Method == http.MethodPost {
 		var input struct {
 			Body   json.RawMessage `json:"body"`
@@ -1150,7 +1190,12 @@ func (h *Handler) serviceRequestComments(w http.ResponseWriter, r *http.Request,
 			jiraError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		writeJSON(w, http.StatusCreated, h.serviceCommentBean(request, *comment))
+		bean, err := h.expandedServiceComment(r, request, *comment, expand, canManage)
+		if err != nil {
+			jiraError(w, http.StatusInternalServerError, "Could not load the comment.")
+			return
+		}
+		writeJSON(w, http.StatusCreated, bean)
 		return
 	}
 	if commentID != "" {
@@ -1159,16 +1204,26 @@ func (h *Handler) serviceRequestComments(w http.ResponseWriter, r *http.Request,
 			jiraError(w, http.StatusNotFound, "Comment does not exist or is not visible.")
 			return
 		}
-		attachments, err := h.Store.ServiceCommentAttachments(r.Context(), request.Issue.ID, comment.Comment.ID, canManage)
+		bean, err := h.expandedServiceComment(r, request, *comment, expand, canManage)
 		if err != nil {
 			jiraError(w, http.StatusInternalServerError, "Could not load comment attachments.")
 			return
 		}
-		for _, attachment := range attachments {
-			comment.Attachments = append(comment.Attachments, attachment.Attachment)
-		}
-		writeJSON(w, http.StatusOK, h.serviceCommentBean(request, *comment))
+		writeJSON(w, http.StatusOK, bean)
 		return
+	}
+	// public and internal each default to true; customers only ever see
+	// public comments.
+	include := map[string]bool{"public": true, "internal": true}
+	for name := range include {
+		if raw := r.URL.Query().Get(name); raw != "" {
+			value, err := strconv.ParseBool(raw)
+			if err != nil {
+				jiraError(w, http.StatusBadRequest, name+" must be true or false.")
+				return
+			}
+			include[name] = value
+		}
 	}
 	comments, err := h.Store.ServiceRequestComments(r.Context(), request.Issue.ID, canManage)
 	if err != nil {
@@ -1177,15 +1232,15 @@ func (h *Handler) serviceRequestComments(w http.ResponseWriter, r *http.Request,
 	}
 	beans := make([]map[string]any, 0, len(comments))
 	for _, comment := range comments {
-		attachments, err := h.Store.ServiceCommentAttachments(r.Context(), request.Issue.ID, comment.Comment.ID, canManage)
+		if (comment.Public && !include["public"]) || (!comment.Public && !include["internal"]) {
+			continue
+		}
+		bean, err := h.expandedServiceComment(r, request, comment, expand, canManage)
 		if err != nil {
 			jiraError(w, http.StatusInternalServerError, "Could not load comment attachments.")
 			return
 		}
-		for _, attachment := range attachments {
-			comment.Attachments = append(comment.Attachments, attachment.Attachment)
-		}
-		beans = append(beans, h.serviceCommentBean(request, comment))
+		beans = append(beans, bean)
 	}
 	h.writeServicePage(w, r, beans)
 }
@@ -1343,6 +1398,12 @@ func (h *Handler) serviceRequestTransition(w http.ResponseWriter, r *http.Reques
 	}
 	if input.AdditionalComment != nil && input.AdditionalComment.Public != nil && !*input.AdditionalComment.Public && !canManage {
 		jiraError(w, http.StatusBadRequest, "Customers may only add public comments.")
+		return
+	}
+	// Everything the comment could be refused for is checked before the
+	// request moves, so a refused comment never leaves a transition behind.
+	if input.AdditionalComment != nil && utf8.RuneCountInString(input.AdditionalComment.Body) > 32767 {
+		jiraError(w, http.StatusBadRequest, "The comment is too long.")
 		return
 	}
 	updated, err := h.Commands.TransitionServiceRequest(r.Context(), actorID, workspaceID, request.Issue.ID, input.ID)
