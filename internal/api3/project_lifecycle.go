@@ -138,7 +138,7 @@ func (h *Handler) recentProjects(w http.ResponseWriter, r *http.Request) {
 				projectLifecycleError(w, leadErr)
 				return
 			}
-			bean["lead"] = h.userBean(lead)
+			bean["lead"] = h.userBeanFor(r.Context(), lead)
 		}
 		if all || querySetContains(expands, "issueTypes") {
 			bean["issueTypes"] = issueTypes

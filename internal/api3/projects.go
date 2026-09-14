@@ -103,7 +103,7 @@ func (h *Handler) writeProject(w http.ResponseWriter, r *http.Request, p *models
 			projectError(w, err)
 			return
 		}
-		bean["lead"] = h.userBean(lead)
+		bean["lead"] = h.userBeanFor(r.Context(), lead)
 	}
 	writeJSON(w, http.StatusOK, bean)
 }

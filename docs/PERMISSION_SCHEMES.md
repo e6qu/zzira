@@ -84,9 +84,8 @@ which matches Jira's context-dependent permission-query behavior.
 - `migrations/130_permission_schemes.sql` is exercised from a clean PostgreSQL
   schema as part of the migration and integration gates.
 
-The compatibility assessment remains partial because Jira permits anonymous
-access to some discovery operations while ZZIRA currently requires a workspace
-identity at the HTTP boundary. App-defined permission registration, global
-permission administration, and action-specific enforcement for every remaining
-issue mutation are later PR 1 work. Holder expansion beans and every Jira
-pagination and error edge also remain under contract review.
+Grants to `anyone` open reads to anonymous callers on the operations Jira
+marks as anonymous; see `docs/ANONYMOUS_ACCESS.md`. App-defined permission
+registration, global permission administration, and action-specific enforcement
+for every remaining issue mutation are later PR 1 work. Holder expansion beans
+and every Jira pagination and error edge also remain under contract review.

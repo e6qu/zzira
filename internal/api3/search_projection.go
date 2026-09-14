@@ -303,15 +303,21 @@ func (h *Handler) searchIssueBeans(ctx context.Context, workspaceID, userID stri
 			}}}
 		}
 		if hasSearchExpand(options, "editmeta") {
+			editable, err := h.hasProjectPermission(ctx, workspaceID, userID, issue.ProjectID, issue.ID, "EDIT_ISSUES")
+			if err != nil {
+				return nil, err
+			}
 			cacheKey := issue.ProjectID + ":" + issue.IssueType.ID
 			metadata := editMetadata[cacheKey]
-			if metadata == nil {
-				var err error
-				metadata, err = h.issueEditMetadata(ctx, workspaceID, userID, issue)
+			if editable && metadata == nil {
+				metadata, err = h.issueEditFields(ctx, workspaceID, userID, issue)
 				if err != nil {
 					return nil, err
 				}
 				editMetadata[cacheKey] = metadata
+			}
+			if !editable {
+				metadata = map[string]any{"fields": map[string]any{}}
 			}
 			bean["editmeta"] = metadata
 		}

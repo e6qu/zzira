@@ -140,6 +140,10 @@ func (h *Handler) getProject(w http.ResponseWriter, r *http.Request, keyOrID str
 		jiraError(w, http.StatusNotFound, "No project could be found with key or id "+keyOrID+".")
 		return
 	}
+	if userID == "" {
+		h.writeProject(w, r, project)
+		return
+	}
 	if err = h.Store.RecordProjectView(r.Context(), wsID, userID, project.ID); err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -155,7 +159,7 @@ func (h *Handler) createMeta(w http.ResponseWriter, r *http.Request) {
 		writeJerr(w, e)
 		return
 	}
-	meta, err := h.Store.IssueCreateMetadata(r.Context(), wsID, userID)
+	meta, err := h.creatableMetadata(r, wsID, userID)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -267,7 +271,7 @@ func (h *Handler) createMetaProject(r *http.Request, projectIDOrKey string) (*mo
 	if e != nil {
 		return nil, e
 	}
-	meta, err := h.Store.IssueCreateMetadata(r.Context(), wsID, userID)
+	meta, err := h.creatableMetadata(r, wsID, userID)
 	if err != nil {
 		return nil, &jerr{http.StatusInternalServerError, "internal error", nil}
 	}
@@ -278,6 +282,44 @@ func (h *Handler) createMetaProject(r *http.Request, projectIDOrKey string) (*mo
 		}
 	}
 	return nil, &jerr{http.StatusBadRequest, "You cannot create issues in this project.", nil}
+}
+
+// creatableMetadata is the create metadata for the projects where the caller
+// holds Create issues; the project field offers only those projects.
+func (h *Handler) creatableMetadata(r *http.Request, workspaceID, userID string) (*models.IssueCreateMetadata, error) {
+	meta, err := h.Store.IssueCreateMetadata(r.Context(), workspaceID, userID)
+	if err != nil {
+		return nil, err
+	}
+	creatable, err := h.Store.ProjectsWithPermissions(r.Context(), workspaceID, userID, []string{"CREATE_ISSUES"})
+	if err != nil {
+		return nil, err
+	}
+	allowed := map[string]bool{}
+	for _, project := range creatable {
+		allowed[project.ID] = true
+	}
+	projects := meta.Projects[:0]
+	for _, project := range meta.Projects {
+		if !allowed[project.Project.ID] {
+			continue
+		}
+		for i := range project.Fields {
+			if project.Fields[i].ID != "project" {
+				continue
+			}
+			options := []models.CreateFieldOption{}
+			for _, option := range project.Fields[i].Options {
+				if allowed[option.ID] {
+					options = append(options, option)
+				}
+			}
+			project.Fields[i].Options = options
+		}
+		projects = append(projects, project)
+	}
+	meta.Projects = projects
+	return meta, nil
 }
 
 // createMetaIssueTypeBean is the issue type bean create metadata carries: the

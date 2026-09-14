@@ -714,7 +714,7 @@ func (h *Handler) usersWithPermissions(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if allowed {
-			results = append(results, h.userBean(member))
+			results = append(results, h.userBeanFor(r.Context(), member))
 		}
 	}
 	writeJSON(w, http.StatusOK, results)

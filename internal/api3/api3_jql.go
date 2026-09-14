@@ -243,6 +243,9 @@ func (h *Handler) jqlSuggestions(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		for _, project := range projects {
+			if allowed, browseErr := h.canBrowseProject(r, workspaceID, userID, project.ID); browseErr != nil || !allowed {
+				continue
+			}
 			add(project.Key, project.Name+" ("+project.Key+")")
 		}
 	case "status", "statuscategory":
@@ -281,6 +284,9 @@ func (h *Handler) jqlSuggestions(w http.ResponseWriter, r *http.Request) {
 			add(issueType.Name, issueType.Name)
 		}
 	case "assignee", "reporter", "creator":
+		if !h.browsesUsers(r, workspaceID, userID) {
+			break
+		}
 		members, err := h.Store.MembersByWorkspace(r.Context(), workspaceID)
 		if err != nil {
 			jiraError(w, 500, "Could not load JQL suggestions.")

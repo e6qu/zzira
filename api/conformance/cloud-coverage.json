@@ -531,9 +531,11 @@
         "internal/api3/components_test.go",
         "internal/store/components.go",
         "e2e/projects.spec.ts",
-        "docs/COMPONENTS.md"
+        "docs/COMPONENTS.md",
+        "internal/api3/anonymous_access_test.go",
+        "docs/ANONYMOUS_ACCESS.md"
       ],
-      "notes": "Authenticated workspace-scoped Jira component behavior is integration and browser tested, including canonical issue values and component-led assignment; exact Browse Projects, anonymous, Compass and edge-error parity remain."
+      "notes": "Components are listed and read only in projects the caller can browse, including anonymous callers through permissions granted to anyone, with integration and browser evidence for canonical issue values and component-led assignment. Compass components appear only on sites connected to Compass, and ZZIRA hosts no Compass, so the collection is the Jira component set a site without Compass returns."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/component",
@@ -546,7 +548,7 @@
         "e2e/projects.spec.ts",
         "docs/COMPONENTS.md"
       ],
-      "notes": "Authenticated workspace-scoped Jira component behavior is integration and browser tested, including canonical issue values and component-led assignment; exact Browse Projects, anonymous, Compass and edge-error parity remain."
+      "notes": "Administrators create components with Jira validation, component-led assignment and canonical issue values, integration and browser tested; the created bean follows Jira's default email visibility."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/component/{id}",
@@ -570,9 +572,11 @@
         "internal/api3/components_test.go",
         "internal/store/components.go",
         "e2e/projects.spec.ts",
-        "docs/COMPONENTS.md"
+        "docs/COMPONENTS.md",
+        "internal/api3/anonymous_access_test.go",
+        "docs/ANONYMOUS_ACCESS.md"
       ],
-      "notes": "Authenticated workspace-scoped Jira component behavior is integration and browser tested, including canonical issue values and component-led assignment; exact Browse Projects, anonymous, Compass and edge-error parity remain."
+      "notes": "Reads a component in a project the caller can browse, answering 404 otherwise, including for anonymous callers; lead and assignee beans follow Jira's default email visibility. Component-led assignment and canonical issue values are integration and browser tested."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/component/{id}",
@@ -585,7 +589,7 @@
         "e2e/projects.spec.ts",
         "docs/COMPONENTS.md"
       ],
-      "notes": "Authenticated workspace-scoped Jira component behavior is integration and browser tested, including canonical issue values and component-led assignment; exact Browse Projects, anonymous, Compass and edge-error parity remain."
+      "notes": "Administrators update components in projects they can browse with Jira validation and refreshed canonical issue values, integration and browser tested."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/component/{id}/relatedIssueCounts",
@@ -596,9 +600,11 @@
         "internal/api3/components_test.go",
         "internal/store/components.go",
         "e2e/projects.spec.ts",
-        "docs/COMPONENTS.md"
+        "docs/COMPONENTS.md",
+        "internal/api3/anonymous_access_test.go",
+        "docs/ANONYMOUS_ACCESS.md"
       ],
-      "notes": "Counts canonical component assignments across project issues; anonymous and issue-security count semantics remain to be certified."
+      "notes": "Counts canonical component assignments across the project's issues for a component the caller can browse, answering 404 otherwise, including for anonymous callers."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/config/fieldschemes",
@@ -2528,9 +2534,11 @@
       "evidence": [
         "internal/api3/issue_properties_test.go",
         "internal/api3/issue_properties.go",
-        "internal/store/issue_properties.go"
+        "internal/store/issue_properties.go",
+        "internal/api3/anonymous_access_test.go",
+        "docs/ANONYMOUS_ACCESS.md"
       ],
-      "notes": "Permission-shaped single-issue key listing returns stable Jira property beans; anonymous-project access remains unsupported."
+      "notes": "Lists property keys on issues the caller can browse, including anonymous callers through permissions granted to anyone, with Jira-shaped not-found behavior."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/issue/{issueIdOrKey}/properties/{propertyKey}",
@@ -2553,9 +2561,11 @@
       "evidence": [
         "internal/api3/issue_properties_test.go",
         "internal/api3/issue_properties.go",
-        "internal/store/issue_properties.go"
+        "internal/store/issue_properties.go",
+        "internal/api3/anonymous_access_test.go",
+        "docs/ANONYMOUS_ACCESS.md"
       ],
-      "notes": "Visible issue properties round-trip arbitrary JSON values with Jira-shaped not-found behavior; anonymous-project access remains unsupported."
+      "notes": "Visible issue properties round-trip arbitrary JSON values with Jira-shaped not-found behavior, including anonymous reads through permissions granted to anyone."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/issue/{issueIdOrKey}/properties/{propertyKey}",
@@ -3801,9 +3811,11 @@
       "evidence": [
         "internal/api3/permission_schemes_test.go",
         "e2e/permission_schemes.spec.ts",
-        "docs/PERMISSION_SCHEMES.md"
+        "docs/PERMISSION_SCHEMES.md",
+        "internal/api3/anonymous_access_test.go",
+        "docs/ANONYMOUS_ACCESS.md"
       ],
-      "notes": "Evaluates selected built-in global and project permissions with project, issue, and comment context; authentication is required and anonymous Jira behavior and all context edge cases remain."
+      "notes": "Evaluates selected built-in global and project permissions with project, issue, and comment context; anonymous callers are evaluated against permissions granted to anyone; all context edge cases remain."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/mypreferences",
@@ -4005,9 +4017,11 @@
       "evidence": [
         "internal/api3/permission_schemes_test.go",
         "e2e/permission_schemes.spec.ts",
-        "docs/PERMISSION_SCHEMES.md"
+        "docs/PERMISSION_SCHEMES.md",
+        "internal/api3/anonymous_access_test.go",
+        "docs/ANONYMOUS_ACCESS.md"
       ],
-      "notes": "Returns active projects where the caller has every requested permission using assigned schemes; anonymous access and every Jira paging edge remain."
+      "notes": "Returns active projects where the caller has every requested permission using assigned schemes; anonymous callers receive the projects granted to anyone; every Jira paging edge remains."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/permissionscheme",
@@ -4019,7 +4033,7 @@
         "e2e/permission_schemes.spec.ts",
         "docs/PERMISSION_SCHEMES.md"
       ],
-      "notes": "Lists durable workspace schemes with optional grants expansion; Jira anonymous behavior and every expansion bean remain."
+      "notes": "Lists durable workspace schemes with optional grants expansion; every expansion bean remains."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/permissionscheme",
@@ -4055,7 +4069,7 @@
         "e2e/permission_schemes.spec.ts",
         "docs/PERMISSION_SCHEMES.md"
       ],
-      "notes": "Reads a workspace scheme with optional grants expansion; Jira anonymous behavior and every expansion bean remain."
+      "notes": "Reads a workspace scheme with optional grants expansion; every expansion bean remains."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/permissionscheme/{schemeId}",
@@ -4079,7 +4093,7 @@
         "e2e/permission_schemes.spec.ts",
         "docs/PERMISSION_SCHEMES.md"
       ],
-      "notes": "Returns ordered grants with canonical holder parameters and values; Jira anonymous behavior and complete expansion beans remain."
+      "notes": "Returns ordered grants with canonical holder parameters and values; complete expansion beans remain."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/permissionscheme/{schemeId}/permission",
@@ -4115,7 +4129,7 @@
         "e2e/permission_schemes.spec.ts",
         "docs/PERMISSION_SCHEMES.md"
       ],
-      "notes": "Reads one workspace-scoped canonical grant; Jira anonymous behavior and complete expansion beans remain."
+      "notes": "Reads one workspace-scoped canonical grant; complete expansion beans remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/plans/plan",
@@ -4850,9 +4864,11 @@
         "internal/api3/components_test.go",
         "internal/store/components.go",
         "e2e/projects.spec.ts",
-        "docs/COMPONENTS.md"
+        "docs/COMPONENTS.md",
+        "internal/api3/anonymous_access_test.go",
+        "docs/ANONYMOUS_ACCESS.md"
       ],
-      "notes": "Project-scoped filtering, name ordering, offset pagination, counts and links are integration-tested; Compass sources and exact Browse Projects behavior remain."
+      "notes": "Project-scoped filtering, name ordering, offset pagination, counts and links are integration-tested; projects the caller cannot browse answer 404, including for anonymous callers. componentSource accepts jira, the only source on a site without Compass."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/project/{projectIdOrKey}/components",
@@ -4863,9 +4879,11 @@
         "internal/api3/components_test.go",
         "internal/store/components.go",
         "e2e/projects.spec.ts",
-        "docs/COMPONENTS.md"
+        "docs/COMPONENTS.md",
+        "internal/api3/anonymous_access_test.go",
+        "docs/ANONYMOUS_ACCESS.md"
       ],
-      "notes": "The legacy complete project component collection returns Jira-shaped values; anonymous and Compass component behavior remain."
+      "notes": "The legacy complete project component collection returns Jira-shaped values for projects the caller can browse and 404 otherwise, including for anonymous callers."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/project/{projectIdOrKey}/delete",
@@ -4911,9 +4929,11 @@
       "evidence": [
         "internal/api3/project_governance_test.go",
         "e2e/projects.spec.ts",
-        "docs/PROJECT_GOVERNANCE.md"
+        "docs/PROJECT_GOVERNANCE.md",
+        "internal/api3/anonymous_access_test.go",
+        "docs/ANONYMOUS_ACCESS.md"
       ],
-      "notes": "Returns sorted project-property keys and Jira self links; anonymous Browse Projects access remains."
+      "notes": "Returns sorted project-property keys and Jira self links for projects the caller can browse, including anonymous callers; other projects answer 404."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/project/{projectIdOrKey}/properties/{propertyKey}",
@@ -4935,9 +4955,11 @@
       "evidence": [
         "internal/api3/project_governance_test.go",
         "e2e/projects.spec.ts",
-        "docs/PROJECT_GOVERNANCE.md"
+        "docs/PROJECT_GOVERNANCE.md",
+        "internal/api3/anonymous_access_test.go",
+        "docs/ANONYMOUS_ACCESS.md"
       ],
-      "notes": "Returns arbitrary stored JSON in the Jira entity-property shape; anonymous Browse Projects access remains."
+      "notes": "Returns arbitrary stored JSON in the Jira entity-property shape for projects the caller can browse, including anonymous callers; other projects answer 404."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/project/{projectIdOrKey}/properties/{propertyKey}",
@@ -4971,9 +4993,11 @@
       "evidence": [
         "internal/api3/project_roles_test.go",
         "e2e/project_roles.spec.ts",
-        "docs/PROJECT_ROLES.md"
+        "docs/PROJECT_ROLES.md",
+        "internal/api3/anonymous_access_test.go",
+        "docs/ANONYMOUS_ACCESS.md"
       ],
-      "notes": "Returns the workspace-wide role-name to project-role URL map for an active project to Jira, organization, or delegated project administrators; anonymous permission-scheme evaluation remains."
+      "notes": "Returns the workspace-wide role-name to project-role URL map for an active project to Jira, organization, or delegated project administrators, the Administer Projects requirement Jira documents; anonymous callers hold no such permission and are refused."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/project/{projectIdOrKey}/role/{id}",
@@ -4985,7 +5009,7 @@
         "e2e/project_roles.spec.ts",
         "docs/PROJECT_ROLES.md"
       ],
-      "notes": "Removes a requested user or group actor atomically with Jira validation and permission-scheme-derived project-administrator authorization; anonymous access and app/service actor types remain."
+      "notes": "Removes a requested user or group actor atomically with Jira validation and permission-scheme-derived project-administrator authorization; app/service actor types remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/project/{projectIdOrKey}/role/{id}",
@@ -5009,7 +5033,7 @@
         "e2e/project_roles.spec.ts",
         "docs/PROJECT_ROLES.md"
       ],
-      "notes": "Adds active workspace users or directory groups by account ID, group ID, or group name without duplicates; app/service actors and anonymous permission evaluation remain."
+      "notes": "Adds active workspace users or directory groups by account ID, group ID, or group name without duplicates; app/service actors remain."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/project/{projectIdOrKey}/role/{id}",
@@ -5033,7 +5057,7 @@
         "e2e/project_roles.spec.ts",
         "docs/PROJECT_ROLES.md"
       ],
-      "notes": "Returns shared role details with currentMember filtering and validated Connect/service exclusion flags; those actor types are absent, and anonymous permission-scheme access remains."
+      "notes": "Returns shared role details with currentMember filtering and validated Connect/service exclusion flags; those actor types are absent and anonymous callers, who hold no project administration, are refused."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/project/{projectIdOrKey}/statuses",
@@ -5138,7 +5162,7 @@
         "e2e/permission_schemes.spec.ts",
         "docs/PERMISSION_SCHEMES.md"
       ],
-      "notes": "Returns the assigned scheme to site or permission-derived project administrators; every Jira expansion and anonymous edge remains."
+      "notes": "Returns the assigned scheme to site or permission-derived project administrators; every Jira expansion remains."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/project/{projectKeyOrId}/permissionscheme",
@@ -6363,7 +6387,7 @@
         "e2e/permission_schemes.spec.ts",
         "docs/PERMISSION_SCHEMES.md"
       ],
-      "notes": "Pages active workspace users who satisfy requested global/project permissions and query text; anonymous access, exact Jira ranking, and every pagination edge remain."
+      "notes": "Pages active workspace users who satisfy requested global/project permissions and query text; anonymous callers, who hold no administration, are refused; exact Jira ranking, and every pagination edge remain."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/user/picker",

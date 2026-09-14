@@ -233,6 +233,10 @@ func (h *Handler) projectProperties(w http.ResponseWriter, r *http.Request, proj
 		writeJerr(w, e)
 		return
 	}
+	if allowed, err := h.canBrowseProject(r, workspaceID, actorID, projectIDOrKey); err != nil || !allowed {
+		jiraError(w, http.StatusNotFound, "Project resource does not exist or is not visible.")
+		return
+	}
 	if len(parts) == 0 && r.Method == http.MethodGet {
 		properties, err := h.Store.ProjectProperties(r.Context(), workspaceID, projectIDOrKey)
 		if err != nil {

@@ -139,6 +139,10 @@ func (h *Handler) versionRoute(w http.ResponseWriter, r *http.Request, parts []s
 		versionError(w, err)
 		return
 	}
+	if allowed, browseErr := h.canBrowseProject(r, ws, user, v.ProjectID); browseErr != nil || !allowed {
+		jiraError(w, 404, "Version or project does not exist.")
+		return
+	}
 	if len(parts) == 1 {
 		switch r.Method {
 		case http.MethodGet:
@@ -353,6 +357,10 @@ func (h *Handler) projectVersions(w http.ResponseWriter, r *http.Request, key st
 	p, err := h.Store.ProjectByIDOrKey(r.Context(), ws, key)
 	if err != nil {
 		versionError(w, err)
+		return
+	}
+	if allowed, browseErr := h.canBrowseProject(r, ws, user, p.ID); browseErr != nil || !allowed {
+		jiraError(w, 404, "Version or project does not exist.")
 		return
 	}
 	versions, err := h.Store.ProjectVersions(r.Context(), p.ID)

@@ -28,14 +28,23 @@ func (h *Handler) issueVotes(w http.ResponseWriter, r *http.Request, idOrKey str
 			jiraError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
+		// Voter details need View voters and watchers; the count does not.
+		seeVoters, err := h.hasProjectPermission(r.Context(), wsID, userID, issue.ProjectID, issue.ID, "VIEW_VOTERS_AND_WATCHERS")
+		if err != nil {
+			jiraError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
 		voters := make([]map[string]any, 0, len(voterIDs))
 		hasVoted := false
 		for _, voterID := range voterIDs {
 			if voterID == userID {
 				hasVoted = true
 			}
+			if !seeVoters {
+				continue
+			}
 			if user, err := h.Store.MemberByID(r.Context(), wsID, voterID); err == nil {
-				voters = append(voters, h.userBean(user))
+				voters = append(voters, h.userBeanFor(r.Context(), user))
 			}
 		}
 		writeJSON(w, http.StatusOK, map[string]any{

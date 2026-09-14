@@ -37,6 +37,10 @@ type Handler struct {
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if !authn.PresentsCredentials(r) && anonymousOperation(r.Method, r.URL.Path) {
+		r = r.WithContext(authn.WithAnonymous(r.Context()))
+	}
+	r = h.withRequestViewer(r)
 	if strings.HasPrefix(r.URL.Path, "/rest/servicedeskapi/") {
 		h.serviceDeskRoute(w, r)
 		return
@@ -503,6 +507,11 @@ func (h *Handler) authWorkspace(r *http.Request) (wsID, userID string, j *jerr) 
 	wsID, err = h.Store.WorkspaceBySlug(r.Context(), h.WorkspaceSlug)
 	if err != nil {
 		return "", "", &jerr{http.StatusInternalServerError, "no workspace configured", nil}
+	}
+	if authn.Anonymous(r.Context()) {
+		// The anonymous user reads only what permissions granted to anyone
+		// allow; each operation applies those checks to userID "".
+		return wsID, "", nil
 	}
 	ok, err := authz.CanSeeWorkspace(r.Context(), h.Store, wsID, userID)
 	if err != nil || !ok {
@@ -1240,6 +1249,10 @@ func (h *Handler) listTransitions(w http.ResponseWriter, r *http.Request, idOrKe
 }
 
 func (h *Handler) issueTransitionBeans(ctx context.Context, workspaceID, userID string, issue *models.Issue) ([]map[string]any, error) {
+	// Without Transition issues the list is empty, as Jira documents.
+	if allowed, err := h.hasProjectPermission(ctx, workspaceID, userID, issue.ProjectID, issue.ID, "TRANSITION_ISSUES"); err != nil || !allowed {
+		return []map[string]any{}, err
+	}
 	wf, err := h.Store.WorkflowForProjectAndIssueType(ctx, issue.ProjectID, issue.IssueType.ID)
 	if err != nil {
 		return nil, err
@@ -1466,7 +1479,7 @@ func (h *Handler) issueChangelogBeans(ctx context.Context, workspaceID, issueID 
 			})
 		}
 		values = append(values, map[string]any{
-			"id": fmt.Sprintf("%d", entry.Seq), "author": h.userBean(entry.Author),
+			"id": fmt.Sprintf("%d", entry.Seq), "author": h.userBeanFor(ctx, entry.Author),
 			"created": entry.Created, "items": items,
 		})
 	}
@@ -1502,7 +1515,16 @@ func (h *Handler) editMeta(w http.ResponseWriter, r *http.Request, idOrKey strin
 	writeJSON(w, http.StatusOK, metadata)
 }
 
+// issueEditMetadata is the edit metadata the reader may use: fields are only
+// editable with the Edit issues permission for the issue.
 func (h *Handler) issueEditMetadata(ctx context.Context, workspaceID, userID string, issue *models.Issue) (map[string]any, error) {
+	if allowed, err := h.hasProjectPermission(ctx, workspaceID, userID, issue.ProjectID, issue.ID, "EDIT_ISSUES"); err != nil || !allowed {
+		return map[string]any{"fields": map[string]any{}}, err
+	}
+	return h.issueEditFields(ctx, workspaceID, userID, issue)
+}
+
+func (h *Handler) issueEditFields(ctx context.Context, workspaceID, userID string, issue *models.Issue) (map[string]any, error) {
 	metadata, err := h.Store.IssueCreateMetadata(ctx, workspaceID, userID)
 	if err != nil {
 		return nil, err
