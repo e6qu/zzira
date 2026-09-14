@@ -9265,7 +9265,7 @@
         "internal/api3/api3_workflow.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Returns the authenticated user default editor contract as NEW because ZZIRA exposes its new workflow editor; per-user legacy editor preference remains."
+      "notes": "Returns NEW to authenticated users: zzira's only workflow editor is the new editor, so no user can prefer a legacy one."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/workflows/search",
@@ -10321,7 +10321,7 @@
         "e2e/directories.spec.ts",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Creates audited workspace schemes with validated default and issue-type workflow mappings; additional classic Jira flags remain."
+      "notes": "Creates audited workspace schemes from Jira's writable fields (name, description, defaultWorkflow and issueTypeMappings by workflow name) and returns the WorkflowScheme bean with id, self and draft; read-only fields are ignored, as in Jira."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/workflowscheme/project/switch",
