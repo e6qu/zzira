@@ -10148,9 +10148,10 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts",
         "internal/confluence/page_formats_test.go",
-        "docs/PAGE_WRITING.md"
+        "docs/PAGE_WRITING.md",
+        "internal/confluence/v1_blog_attachments_test.go"
       ],
-      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; attachments carry Confluence's media type description (PDF Document, PNG Image) in v2 and in the v1 extensions, include-collaborators lists every uploader of a version, and images have generated thumbnails."
+      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; attachments carry Confluence's media type description (PDF Document, PNG Image) in v2 and in the v1 extensions, include-collaborators lists every uploader of a version, and images have generated thumbnails. Pages and blog posts are both containers; beans name the container type and collectionName."
     },
     {
       "operationId": "confluence-v1:PUT:/wiki/rest/api/content/{id}/child/attachment",
@@ -10167,9 +10168,10 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts",
         "internal/confluence/page_formats_test.go",
-        "docs/PAGE_WRITING.md"
+        "docs/PAGE_WRITING.md",
+        "internal/confluence/v1_blog_attachments_test.go"
       ],
-      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; attachments carry Confluence's media type description (PDF Document, PNG Image) in v2 and in the v1 extensions, include-collaborators lists every uploader of a version, and images have generated thumbnails."
+      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; attachments carry Confluence's media type description (PDF Document, PNG Image) in v2 and in the v1 extensions, include-collaborators lists every uploader of a version, and images have generated thumbnails. Pages and blog posts are both containers; beans name the container type and collectionName."
     },
     {
       "operationId": "confluence-v1:PUT:/wiki/rest/api/content/{id}/child/attachment/{attachmentId}",
@@ -10186,9 +10188,10 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts",
         "internal/confluence/page_formats_test.go",
-        "docs/PAGE_WRITING.md"
+        "docs/PAGE_WRITING.md",
+        "internal/confluence/v1_blog_attachments_test.go"
       ],
-      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; attachments carry Confluence's media type description (PDF Document, PNG Image) in v2 and in the v1 extensions, include-collaborators lists every uploader of a version, and images have generated thumbnails."
+      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; attachments carry Confluence's media type description (PDF Document, PNG Image) in v2 and in the v1 extensions, include-collaborators lists every uploader of a version, and images have generated thumbnails. Updates the filename, media type and comment, and moves the attachment to another page or blog post the caller may add attachments to, each as a new version holding the same file with optimistic version checks."
     },
     {
       "operationId": "confluence-v1:POST:/wiki/rest/api/content/{id}/child/attachment/{attachmentId}/data",
@@ -10205,9 +10208,10 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts",
         "internal/confluence/page_formats_test.go",
-        "docs/PAGE_WRITING.md"
+        "docs/PAGE_WRITING.md",
+        "internal/confluence/v1_blog_attachments_test.go"
       ],
-      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; attachments carry Confluence's media type description (PDF Document, PNG Image) in v2 and in the v1 extensions, include-collaborators lists every uploader of a version, and images have generated thumbnails."
+      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; attachments carry Confluence's media type description (PDF Document, PNG Image) in v2 and in the v1 extensions, include-collaborators lists every uploader of a version, and images have generated thumbnails. Pages and blog posts are both containers; beans name the container type and collectionName."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/content/{id}/child/attachment/{attachmentId}/download",
@@ -10224,9 +10228,10 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts",
         "internal/confluence/page_formats_test.go",
-        "docs/PAGE_WRITING.md"
+        "docs/PAGE_WRITING.md",
+        "internal/confluence/v1_blog_attachments_test.go"
       ],
-      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; attachments carry Confluence's media type description (PDF Document, PNG Image) in v2 and in the v1 extensions, include-collaborators lists every uploader of a version, and images have generated thumbnails."
+      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; attachments carry Confluence's media type description (PDF Document, PNG Image) in v2 and in the v1 extensions, include-collaborators lists every uploader of a version, and images have generated thumbnails. Pages and blog posts are both containers; beans name the container type and collectionName."
     },
     {
       "operationId": "confluence-v1:POST:/wiki/rest/api/content/{id}/copy",
@@ -12368,7 +12373,7 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ],
-      "notes": "Blog posts share the permission-filtered, versioned attachment media model with pages. The v2 collection supports multi-value status (current and archived by default), media type and filename filters plus cursor paging; attachment detail, versions, operations, thumbnail and authenticated download routes recognize the blog parent, and the UI supports upload, replacement and deletion. V1 blog attachment upload compatibility, attachment metadata mutations and richer media processing remain."
+      "notes": "Blog posts share the permission-filtered, versioned attachment media model with pages. The v2 collection supports multi-value status (current and archived by default), media type and filename filters plus cursor paging; attachment detail, versions, operations, thumbnail and authenticated download routes recognize the blog parent, and the UI supports upload, replacement and deletion. The v1 attachment routes work on blog posts (upload, new versions by name or id, download) and v1 metadata updates rename, retype, comment and move attachments between pages and blog posts as new versions; image attachments have generated thumbnails."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{id}/classification-level",
