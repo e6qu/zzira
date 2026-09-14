@@ -925,6 +925,50 @@ func customFieldChange(ctx context.Context, tx pgx.Tx, fieldID string, from, to 
 		if len(raw) == 0 || string(raw) == "null" {
 			return "", ""
 		}
+		lookup := func(query, id string) string {
+			var name string
+			if err := tx.QueryRow(ctx, query, id).Scan(&name); err != nil {
+				return id
+			}
+			return name
+		}
+		switch fieldType {
+		case models.CustomFieldUser, models.CustomFieldGroup, models.CustomFieldMultiUser, models.CustomFieldMultiGroup, models.CustomFieldLabels:
+			var ids []string
+			var single string
+			if json.Unmarshal(raw, &single) == nil {
+				ids = []string{single}
+			} else if json.Unmarshal(raw, &ids) != nil {
+				return "", string(raw)
+			}
+			if fieldType == models.CustomFieldLabels {
+				return "", strings.Join(ids, " ")
+			}
+			query := `SELECT display_name FROM users WHERE id=$1`
+			if fieldType == models.CustomFieldGroup || fieldType == models.CustomFieldMultiGroup {
+				query = `SELECT name FROM groups WHERE id::text=$1`
+			}
+			names := make([]string, 0, len(ids))
+			for _, id := range ids {
+				names = append(names, lookup(query, id))
+			}
+			return strings.Join(ids, ", "), strings.Join(names, ", ")
+		case models.CustomFieldCascadingSelect:
+			var cascade struct {
+				Parent string `json:"parent"`
+				Child  string `json:"child"`
+			}
+			if json.Unmarshal(raw, &cascade) != nil {
+				return "", string(raw)
+			}
+			optionQuery := `SELECT value FROM custom_field_options WHERE id::text=$1`
+			ids, names := cascade.Parent, lookup(optionQuery, cascade.Parent)
+			if cascade.Child != "" {
+				ids += "," + cascade.Child
+				names += " - " + lookup(optionQuery, cascade.Child)
+			}
+			return ids, names
+		}
 		if fieldType == models.CustomFieldMultiSelect {
 			var ids []string
 			if json.Unmarshal(raw, &ids) != nil {

@@ -766,9 +766,16 @@ type FieldResolver struct {
 	TextColumns  []string          // columns searched by bare text and ~
 	DefaultOrder map[string]string
 	DateFields   map[string]bool
-	// JSONArrayFields are fields whose value is a JSON array of ids, such as a
-	// multi-select custom field.
+	// JSONArrayFields are fields whose value is a JSON array of ids.
 	JSONArrayFields map[string]string
+	// CustomValueFields are custom fields whose values name options, people or
+	// groups, or are lists, by the name a query uses.
+	CustomValueFields map[string]CustomValueField
+}
+
+// CustomValueField is a custom field a query matches by what its value names.
+type CustomValueField struct {
+	ID, Type string
 }
 
 // WithCustomFields extends a resolver with customfield_NNNNN columns and app
@@ -790,16 +797,24 @@ func WithCustomFields(base FieldResolver, fields []*models.CustomField) FieldRes
 		}
 		res.Columns[f.ID] = col
 		res.Columns[strings.ToLower(f.Name)] = col
-		if f.Type == models.CustomFieldMultiSelect {
-			if res.JSONArrayFields == nil {
-				res.JSONArrayFields = map[string]string{}
+		switch f.Type {
+		case models.CustomFieldSelect, models.CustomFieldMultiSelect, models.CustomFieldCascadingSelect,
+			models.CustomFieldUser, models.CustomFieldMultiUser, models.CustomFieldGroup, models.CustomFieldMultiGroup, models.CustomFieldLabels:
+			if res.CustomValueFields == nil {
+				res.CustomValueFields = map[string]CustomValueField{}
 			}
-			array := `i.fields->'` + f.ID + `'`
-			res.JSONArrayFields[f.ID] = array
-			res.JSONArrayFields[strings.ToLower(f.Name)] = array
+			field := CustomValueField{ID: f.ID, Type: f.Type}
+			res.CustomValueFields[f.ID] = field
+			res.CustomValueFields[strings.ToLower(f.Name)] = field
 			if f.AppKey != "" {
-				res.JSONArrayFields[strings.ToLower(f.AppKey+"__"+f.AppModuleKey)] = array
+				res.CustomValueFields[strings.ToLower(f.AppKey+"__"+f.AppModuleKey)] = field
 			}
+		case models.CustomFieldDate:
+			col = `NULLIF(i.fields->>'` + f.ID + `','')::date`
+			res.Columns[f.ID] = col
+			res.Columns[strings.ToLower(f.Name)] = col
+			res.DateFields[f.ID] = true
+			res.DateFields[strings.ToLower(f.Name)] = true
 		}
 		if f.Type == models.CustomFieldDatetime {
 			res.DateFields[f.ID] = true
@@ -972,6 +987,9 @@ func (c *compiler) clause(cl Clause) string {
 	}
 	if cl.Field == "labels" {
 		return c.labelsClause(cl)
+	}
+	if field, ok := c.res.CustomValueFields[cl.Field]; ok {
+		return c.customValueClause(field, cl)
 	}
 	if array, ok := c.res.JSONArrayFields[cl.Field]; ok {
 		return c.jsonArrayClause(array, cl)
@@ -1974,5 +1992,114 @@ func (c *compiler) jsonArrayClause(expression string, cl Clause) string {
 		return nonempty
 	}
 	c.err = &SyntaxError{0, "unsupported operator " + cl.Op}
+	return ""
+}
+
+// customValueCandidates is the SQL text[] of stored ids a query value stands
+// for: the value itself, and the options or groups of that name, or the caller
+// for currentUser().
+func (c *compiler) customValueCandidates(field CustomValueField, value string) string {
+	if name, args, ok := splitFunction(value); ok {
+		if strings.EqualFold(name, "currentUser") && len(args) == 0 && (field.Type == models.CustomFieldUser || field.Type == models.CustomFieldMultiUser) {
+			return "ARRAY[" + c.arg(c.user) + "::text]"
+		}
+		c.err = &SyntaxError{0, "unsupported function " + name + "() for " + field.ID}
+		return "ARRAY[]::text[]"
+	}
+	literal := "ARRAY[" + c.arg(value) + "::text]"
+	switch field.Type {
+	case models.CustomFieldSelect, models.CustomFieldMultiSelect, models.CustomFieldCascadingSelect:
+		return "(" + literal + " || ARRAY(SELECT o.id::text FROM custom_field_options o JOIN custom_field_contexts x ON x.id=o.context_id WHERE x.field_id=" +
+			c.arg(field.ID) + " AND lower(o.value)=lower(" + c.arg(value) + ")))"
+	case models.CustomFieldGroup, models.CustomFieldMultiGroup:
+		return "(" + literal + " || ARRAY(SELECT g.id::text FROM groups g WHERE g.name=" + c.arg(value) + "))"
+	}
+	return literal
+}
+
+// customValueClause matches option, cascading, user, group and labels custom
+// fields by the ids, option values, group names or people a query names.
+func (c *compiler) customValueClause(field CustomValueField, cl Clause) string {
+	stored := "i.fields->'" + field.ID + "'"
+	switch field.Type {
+	case models.CustomFieldMultiSelect, models.CustomFieldMultiUser, models.CustomFieldMultiGroup, models.CustomFieldLabels:
+		array := "COALESCE(CASE WHEN jsonb_typeof(" + stored + ")='array' THEN " + stored + " END,'[]'::jsonb)"
+		nonempty := "jsonb_array_length(" + array + ") > 0"
+		matches := func(values []string) string {
+			parts := make([]string, 0, len(values))
+			for _, value := range values {
+				parts = append(parts, "jsonb_exists_any("+array+", "+c.customValueCandidates(field, value)+")")
+			}
+			return "(" + strings.Join(parts, " OR ") + ")"
+		}
+		switch cl.Op {
+		case "=", "in":
+			return matches(cl.Values)
+		case "!=", "notin":
+			return "(" + nonempty + " AND NOT " + matches(cl.Values) + ")"
+		case "empty":
+			return "jsonb_array_length(" + array + ") = 0"
+		case "notempty":
+			return nonempty
+		}
+	case models.CustomFieldCascadingSelect:
+		parent := "(" + stored + "->>'parent')"
+		child := "(" + stored + "->>'child')"
+		match := func(value string) string {
+			if name, args, ok := splitFunction(value); ok && strings.EqualFold(name, "cascadeOption") {
+				if len(args) == 0 || len(args) > 2 {
+					c.err = &SyntaxError{0, "cascadeOption() takes an option and an optional child option"}
+					return "FALSE"
+				}
+				clause := parent + " = ANY(" + c.customValueCandidates(field, args[0]) + ")"
+				if len(args) == 2 {
+					if strings.EqualFold(args[1], "none") {
+						return "(" + clause + " AND " + child + " IS NULL)"
+					}
+					return "(" + clause + " AND " + child + " = ANY(" + c.customValueCandidates(field, args[1]) + "))"
+				}
+				return clause
+			}
+			candidates := c.customValueCandidates(field, value)
+			return "(" + parent + " = ANY(" + candidates + ") OR " + child + " = ANY(" + candidates + "))"
+		}
+		matches := func(values []string) string {
+			parts := make([]string, 0, len(values))
+			for _, value := range values {
+				parts = append(parts, match(value))
+			}
+			return "(" + strings.Join(parts, " OR ") + ")"
+		}
+		switch cl.Op {
+		case "=", "in":
+			return matches(cl.Values)
+		case "!=", "notin":
+			return "(" + parent + " IS NOT NULL AND NOT " + matches(cl.Values) + ")"
+		case "empty":
+			return parent + " IS NULL"
+		case "notempty":
+			return parent + " IS NOT NULL"
+		}
+	default:
+		column := "NULLIF(i.fields->>'" + field.ID + "','')"
+		matches := func(values []string) string {
+			parts := make([]string, 0, len(values))
+			for _, value := range values {
+				parts = append(parts, column+" = ANY("+c.customValueCandidates(field, value)+")")
+			}
+			return "(" + strings.Join(parts, " OR ") + ")"
+		}
+		switch cl.Op {
+		case "=", "in":
+			return matches(cl.Values)
+		case "!=", "notin":
+			return "(" + column + " IS NOT NULL AND NOT " + matches(cl.Values) + ")"
+		case "empty":
+			return column + " IS NULL"
+		case "notempty":
+			return column + " IS NOT NULL"
+		}
+	}
+	c.err = &SyntaxError{0, "unsupported operator " + cl.Op + " for " + field.ID}
 	return ""
 }

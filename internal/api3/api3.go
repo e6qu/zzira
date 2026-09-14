@@ -1066,7 +1066,11 @@ func (h *Handler) getIssue(w http.ResponseWriter, r *http.Request, idOrKey strin
 // issueBean renders the Jira IssueBean (V3 subset). Field keys match the
 // published contract; golden tests lock them.
 // IssueBean is exported for the Agile edge, which must render identical beans.
-func (h *Handler) IssueBean(i *models.Issue) map[string]any { return h.issueBean(i) }
+func (h *Handler) IssueBean(i *models.Issue) map[string]any {
+	bean := h.issueBean(i)
+	_ = h.decorateCustomFieldValues(context.Background(), i.WorkspaceID, []map[string]any{bean})
+	return bean
+}
 
 func (h *Handler) issueBean(i *models.Issue) map[string]any {
 	fields := map[string]any{

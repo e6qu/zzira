@@ -151,7 +151,7 @@ test('a multi-select field keeps every chosen option', async ({ page }) => {
   const issueKey = page.url().split('/').pop()!;
 
   const stored = await (await page.request.get(`/rest/api/3/issue/${issueKey}?fields=${fieldID}`, { headers: auth })).json();
-  expect(stored.fields[fieldID]).toEqual([ids.iOS, ids.Web]);
+  expect(stored.fields[fieldID].map((option: { id: string; value: string }) => [option.id, option.value])).toEqual([[ids.iOS, 'iOS'], [ids.Web, 'Web']]);
   const found = await (await page.request.get(`/rest/api/3/search/jql?fields=summary&jql=${encodeURIComponent(`${fieldID} = ${ids.Web} AND project = ${projectKey}`)}`, { headers: auth })).json();
   expect(found.issues.map((issue: { key: string }) => issue.key)).toEqual([issueKey]);
 });

@@ -520,7 +520,7 @@ func (s *Store) attachContextOptions(ctx context.Context, workspaceID string, re
 		CROSS JOIN issue_types work_type
 		JOIN custom_fields f ON f.active AND f.trashed_at IS NULL AND f.type = ANY($2) AND (f.workspace_id IS NULL OR f.workspace_id=$1)
 		JOIN custom_field_options o
-			ON o.context_id = jira_custom_field_context(f.id,p.id,work_type.id) AND NOT o.disabled
+			ON o.context_id = jira_custom_field_context(f.id,p.id,work_type.id) AND NOT o.disabled AND o.parent_id IS NULL
 		WHERE p.workspace_id=$1
 		ORDER BY p.id, work_type.id, f.id, o.position, o.id`, workspaceID, optionFieldTypes)
 	if err != nil {

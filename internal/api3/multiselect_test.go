@@ -87,7 +87,15 @@ func TestMultiSelectCustomField(t *testing.T) {
 	issueKey := created["key"].(string)
 	stored := func() string {
 		fields := call(http.MethodGet, "/rest/api/3/issue/"+issueKey+"?fields="+fieldID, "", http.StatusOK)["fields"].(map[string]any)
-		return fmt.Sprint(fields[fieldID])
+		ids := []string{}
+		for _, item := range fields[fieldID].([]any) {
+			option := item.(map[string]any)
+			if option["self"] != "https://zzira.test/rest/api/3/customFieldOption/"+fmt.Sprint(option["id"]) || option["value"] == nil {
+				t.Fatalf("option = %v", option)
+			}
+			ids = append(ids, fmt.Sprint(option["id"]))
+		}
+		return "[" + strings.Join(ids, " ") + "]"
 	}
 	if got := stored(); got != "["+canary+" "+broad+"]" {
 		t.Fatalf("stored = %s", got)

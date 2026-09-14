@@ -179,6 +179,14 @@
 		  <select id="create-{{.ID}}" name="{{.ID}}" {{if $.SelectedIssueTypeSubtask}}required{{end}}><option value="">{{if $.SelectedIssueTypeSubtask}}Choose a parent{{else}}No parent{{end}}</option>{{range .Options}}<option value="{{.ID}}" {{if eq $value .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select>
           {{else if eq .Type "option"}}
           <select id="create-{{.ID}}" name="{{.ID}}" {{if .Required}}required{{end}} {{if .Description}}aria-describedby="create-help-{{.ID}}"{{end}}><option value="">None</option>{{range .Options}}<option value="{{.ID}}" {{if eq $value .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select>
+          {{else if or (eq .Type "users") (eq .Type "groups")}}
+          <select id="create-{{.ID}}" name="{{.ID}}" multiple size="3" {{if .Required}}required{{end}} {{if .Description}}aria-describedby="create-help-{{.ID}}"{{end}}>{{range .Options}}<option value="{{.ID}}" {{if selectedVersion $value .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select>
+          {{else if or (eq .Type "group") (eq .Type "option-with-child")}}
+          <select id="create-{{.ID}}" name="{{.ID}}" {{if .Required}}required{{end}} {{if .Description}}aria-describedby="create-help-{{.ID}}"{{end}}><option value="">None</option>{{range .Options}}<option value="{{.ID}}" {{if eq $value .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select>
+          {{else if eq .Type "date"}}
+          <input id="create-{{.ID}}" name="{{.ID}}" value="{{$value}}" type="date" {{if .Required}}required{{end}} {{if .Description}}aria-describedby="create-help-{{.ID}}"{{end}}>
+          {{else if eq .Type "url"}}
+          <input id="create-{{.ID}}" name="{{.ID}}" value="{{$value}}" type="url" maxlength="2048" {{if .Required}}required{{end}} {{if .Description}}aria-describedby="create-help-{{.ID}}"{{end}}>
           {{else if eq .Type "options"}}
           <select id="create-{{.ID}}" name="{{.ID}}" multiple size="3" {{if .Required}}required{{end}} {{if .Description}}aria-describedby="create-help-{{.ID}}"{{end}}>{{range .Options}}<option value="{{.ID}}" {{if selectedVersion $value .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select>
           {{else if eq .Type "array"}}
