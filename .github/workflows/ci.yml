@@ -40,6 +40,7 @@ jobs:
           python3 -m unittest api/conformance/test_inventory.py api/conformance/test_coverage.py
           python3 api/conformance/inventory.py --check
           python3 api/conformance/coverage.py --check
+          python3 api/conformance/confluence_app_scopes.py --check
       - name: Unit + integration tests
         env:
           TEST_DATABASE_URL: postgres://zzira:zzira@localhost:5433/zzira?sslmode=disable
