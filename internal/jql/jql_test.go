@@ -614,3 +614,27 @@ func TestProjectClauseMatchesKeyIDOrName(t *testing.T) {
 		t.Fatalf("where = %s", compiled.Where)
 	}
 }
+
+func TestLenientCompileTurnsFailingClausesIntoWarnings(t *testing.T) {
+	q, err := Parse(`nosuchfield = 1 AND summary ~ release OR updated > nosuchdate() ORDER BY nosuchorder DESC, key ASC`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strict := Compile(q, "u", DefaultResolver()); strict.Err == nil {
+		t.Fatal("the strict compile accepted an unknown field")
+	}
+	lenient := CompileLenientAt(q, "u", DefaultResolver(), 2)
+	if lenient.Err != nil {
+		t.Fatal(lenient.Err)
+	}
+	if len(lenient.Warnings) != 3 || !strings.Contains(lenient.Warnings[0], "nosuchfield") || !strings.Contains(lenient.Warnings[2], "nosuchorder") {
+		t.Fatalf("warnings = %q", lenient.Warnings)
+	}
+	// The summary clause keeps the first placeholder after the workspace one.
+	if !strings.Contains(lenient.Where, "(FALSE) AND") || !strings.Contains(lenient.Where, "$2") || strings.Contains(lenient.Where, "$3") || len(lenient.Args) != 1 {
+		t.Fatalf("where = %s args = %#v", lenient.Where, lenient.Args)
+	}
+	if strings.Contains(lenient.OrderSQL, "nosuchorder") || !strings.Contains(lenient.OrderSQL, "i.key ASC") {
+		t.Fatalf("order = %s", lenient.OrderSQL)
+	}
+}

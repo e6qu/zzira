@@ -619,6 +619,43 @@ func (h *Handler) compileJQL(ctx context.Context, workspaceID, raw, currentUser 
 	return c, nil
 }
 
+// compileJQLValidated compiles a query under Jira's validation modes.
+// Malformed JQL is always refused. strict (and its legacy synonym true)
+// reports every clause error; warn (and false) reports them as warnings while
+// the failing clauses match nothing; none reports nothing.
+func (h *Handler) compileJQLValidated(ctx context.Context, workspaceID, raw, currentUser, mode string) (compiled jql.Compiled, warnings, errors []string, failure *jerr) {
+	if raw == "" {
+		raw = "ORDER BY updated DESC"
+	}
+	q, err := jql.Parse(raw)
+	if err != nil {
+		return jql.Compiled{}, nil, nil, &jerr{http.StatusBadRequest, "Error in the JQL Query: " + err.Error(), nil}
+	}
+	if err = h.Store.ExpandAppJQL(ctx, workspaceID, q); err != nil {
+		return jql.Compiled{}, nil, nil, &jerr{http.StatusBadRequest, "Error in the JQL Query: " + err.Error(), nil}
+	}
+	resolver := jql.DefaultResolver()
+	if customFields, fieldErr := h.Store.CustomFieldsForWorkspace(ctx, workspaceID); fieldErr == nil {
+		resolver = jql.WithCustomFields(resolver, customFields)
+	}
+	compiled = jql.CompileLenientAt(q, currentUser, resolver, 2)
+	if compiled.Err != nil {
+		return jql.Compiled{}, nil, nil, &jerr{http.StatusBadRequest, "Error in the JQL Query: " + compiled.Err.Error(), nil}
+	}
+	messages := make([]string, 0, len(compiled.Warnings))
+	for _, warning := range compiled.Warnings {
+		messages = append(messages, "Error in the JQL Query: "+warning)
+	}
+	switch mode {
+	case "none":
+		return compiled, nil, nil, nil
+	case "warn", "false":
+		return compiled, messages, nil, nil
+	default:
+		return compiled, nil, messages, nil
+	}
+}
+
 const defaultSearchPageSize = 50
 const maximumSearchPageSize = 100
 
@@ -669,9 +706,13 @@ func (h *Handler) runSearch(w http.ResponseWriter, r *http.Request, jqlText stri
 		writeJerr(w, e)
 		return
 	}
-	c, e := h.compileJQL(r.Context(), wsID, jqlText, userID)
+	c, warnings, validationErrors, e := h.compileJQLValidated(r.Context(), wsID, jqlText, userID, options.Validate)
 	if e != nil {
 		writeJerr(w, e)
+		return
+	}
+	if len(validationErrors) > 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"errorMessages": validationErrors, "errors": map[string]string{}})
 		return
 	}
 	issues, total, err := h.Store.Search(r.Context(), wsID, userID, c, maxResults, startAt)
@@ -696,6 +737,9 @@ func (h *Handler) runSearch(w http.ResponseWriter, r *http.Request, jqlText stri
 		"maxResults": maxResults,
 		"total":      total,
 		"issues":     beans,
+	}
+	if len(warnings) > 0 {
+		response["warningMessages"] = warnings
 	}
 	requested := normalizeSearchFields(options.Fields, definitions, options.FieldsByKeys)
 	names, schemas := searchFieldMetadata(requested, true, options.FieldsByKeys, definitions)

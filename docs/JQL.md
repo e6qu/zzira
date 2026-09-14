@@ -111,7 +111,15 @@ current workspace. Suggestions derived from work items apply issue visibility
 before collecting distinct values.
 
 The parse resource returns one Jira-shaped structure or error list per input
-query and supports strict, warning, and syntax-only validation. Bulk matching
+query. `strict` lists every clause and ordering error and omits the
+structure. `warn` lists them as warnings beside the structure. `none` only
+parses.
+
+Legacy search follows the same rules through `validateQuery`. `strict` (and
+its legacy synonym `true`) answers 400 with every error. `warn` (and `false`)
+runs the query with failing clauses matching nothing and skips unsortable
+ordering fields, returning each problem in `warningMessages`. `none` does the
+same without reporting. Malformed JQL answers 400 in every mode. Bulk matching
 compiles each query independently and evaluates it only against the requested,
 visible issue IDs.
 

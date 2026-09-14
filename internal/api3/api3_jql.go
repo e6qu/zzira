@@ -369,14 +369,18 @@ func (h *Handler) jqlParse(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		if validation != "none" {
-			if _, compileErr := h.compileJQL(r.Context(), workspaceID, raw, userID); compileErr != nil {
-				if validation == "warn" {
-					result["warnings"] = []string{compileErr.message}
-				} else {
-					result["errors"] = []string{compileErr.message}
-					results = append(results, result)
-					continue
-				}
+			_, warnings, validationErrors, compileErr := h.compileJQLValidated(r.Context(), workspaceID, raw, userID, validation)
+			switch {
+			case compileErr != nil:
+				result["errors"] = []string{compileErr.message}
+				results = append(results, result)
+				continue
+			case len(validationErrors) > 0:
+				result["errors"] = validationErrors
+				results = append(results, result)
+				continue
+			case len(warnings) > 0:
+				result["warnings"] = warnings
 			}
 		}
 		result["structure"] = jqlQueryStructure(parsed)

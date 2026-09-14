@@ -994,6 +994,8 @@ type Compiled struct {
 	Args     []any
 	OrderSQL string
 	Err      error
+	// Warnings are the clause and ordering errors a lenient compile skipped.
+	Warnings []string
 }
 
 // Compile turns a parsed query into a WHERE fragment. `userArg` is the
@@ -1006,10 +1008,22 @@ func Compile(q *Query, currentUserID string, res FieldResolver) Compiled {
 // CompileAt is Compile with placeholder numbering starting at paramOffset
 // (use when the caller prepends its own parameters, e.g. workspace id = $1).
 func CompileAt(q *Query, currentUserID string, res FieldResolver, paramOffset int) Compiled {
+	return compileQuery(q, currentUserID, res, paramOffset, false)
+}
+
+// CompileLenientAt compiles a query the way Jira validates it in warn mode:
+// a clause that fails validation matches nothing and an ordering field that
+// cannot be sorted is skipped, each reported in Warnings instead of failing
+// the whole query.
+func CompileLenientAt(q *Query, currentUserID string, res FieldResolver, paramOffset int) Compiled {
+	return compileQuery(q, currentUserID, res, paramOffset, true)
+}
+
+func compileQuery(q *Query, currentUserID string, res FieldResolver, paramOffset int, lenient bool) Compiled {
 	if q == nil || q.Root == nil {
 		return Compiled{Err: &SyntaxError{0, "empty query"}}
 	}
-	c := &compiler{res: res, user: currentUserID, offset: paramOffset - 1}
+	c := &compiler{res: res, user: currentUserID, offset: paramOffset - 1, lenient: lenient}
 	c.now = time.Now().UTC()
 	where := c.node(q.Root)
 	if c.err != nil {
@@ -1026,6 +1040,10 @@ func CompileAt(q *Query, currentUserID string, res FieldResolver, paramOffset in
 		for _, requested := range orders {
 			col, ok := res.DefaultOrder[requested.Field]
 			if !ok {
+				if lenient {
+					c.warnings = append(c.warnings, (&SyntaxError{0, "cannot order by " + requested.Field}).Error())
+					continue
+				}
 				return Compiled{Err: &SyntaxError{0, "cannot order by " + requested.Field}}
 			}
 			dir := "ASC"
@@ -1040,7 +1058,7 @@ func CompileAt(q *Query, currentUserID string, res FieldResolver, paramOffset in
 	if !strings.Contains(strings.Join(orderParts, ","), "i.id ") {
 		orderParts = append(orderParts, "i.id ASC")
 	}
-	return Compiled{Where: where, Args: c.args, OrderSQL: strings.Join(orderParts, ", ")}
+	return Compiled{Where: where, Args: c.args, OrderSQL: strings.Join(orderParts, ", "), Warnings: c.warnings}
 }
 
 type compiler struct {
@@ -1050,6 +1068,26 @@ type compiler struct {
 	err    error
 	offset int
 	now    time.Time
+	// lenient turns a failing clause into a warning and FALSE.
+	lenient  bool
+	warnings []string
+}
+
+// terminal compiles one clause. In a lenient compile a clause that fails is
+// recorded as a warning, its parameters are dropped so later placeholders stay
+// consecutive, and it matches nothing.
+func (c *compiler) terminal(compile func() string) string {
+	if !c.lenient {
+		return compile()
+	}
+	mark := len(c.args)
+	sql := compile()
+	if c.err == nil {
+		return sql
+	}
+	c.warnings = append(c.warnings, c.err.Error())
+	c.err, c.args = nil, c.args[:mark]
+	return "FALSE"
 }
 
 func (c *compiler) arg(v any) string {
@@ -1086,9 +1124,9 @@ func (c *compiler) node(n Node) string {
 		}
 		return "(" + strings.Join(likes, " OR ") + ")"
 	case Clause:
-		return c.clause(t)
+		return c.terminal(func() string { return c.clause(t) })
 	case HistoryClause:
-		return c.historyClause(t)
+		return c.terminal(func() string { return c.historyClause(t) })
 	}
 	c.err = &SyntaxError{0, "unknown node"}
 	return ""
