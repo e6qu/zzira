@@ -454,8 +454,15 @@ colour, the banner text colour, the navigation background and text colours,
 and an announcement title and message shown on the home page. Colours are hex;
 a colour pair is applied only when its text keeps 4.5:1 contrast, and the
 banner, link and button colour styles links and buttons only when white text
-stays readable on it. Changes are audited. Portal announcements that agents
-add are not yet available.
+stays readable on it. Changes are audited.
+
+A portal's administrators can let its agents add announcements, with the
+*Agents can add announcements to this portal* setting in the Portal section.
+While it is on, the desk's agents and administrators write an announcement
+title and message in the agent workspace's Portal announcement section, and
+the portal page shows it under the portal's name; clearing both fields removes
+it. Titles are one line of up to 255 characters, messages up to 2000, and a
+message needs a title. Announcement changes are audited.
 
 ## Customer notifications
 

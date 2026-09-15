@@ -31,9 +31,6 @@ func (s *Service) requireServiceDeskAgent(ctx context.Context, workspaceID, serv
 	return nil
 }
 
-// requireServiceDeskAdmin allows a service desk's administrators: site
-// administrators and the people who administer the desk's project, as Jira
-// Service Management's service desk administrator permission does.
 // requireServiceDeskAdminAgent requires the agent access Jira asks of project
 // administrators managing request type properties.
 func (s *Service) requireServiceDeskAdminAgent(ctx context.Context, workspaceID, serviceDeskID, actorID string) error {
@@ -47,6 +44,9 @@ func (s *Service) requireServiceDeskAdminAgent(ctx context.Context, workspaceID,
 	return nil
 }
 
+// requireServiceDeskAdmin allows a service desk's administrators: site
+// administrators and the people who administer the desk's project, as Jira
+// Service Management's service desk administrator permission does.
 func (s *Service) requireServiceDeskAdmin(ctx context.Context, workspaceID, serviceDeskID, actorID string) error {
 	admin, err := s.Store.IsServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID)
 	if err != nil {
@@ -229,6 +229,50 @@ func (s *Service) UpdateServiceHelpCenter(ctx context.Context, actorID, workspac
 		}
 	}
 	return s.Store.UpdateServiceHelpCenter(ctx, workspaceID, actorID, center)
+}
+
+// SetServiceDeskAnnouncementsEnabled lets or stops a desk's agents adding a
+// portal announcement; only the desk's administrators decide.
+func (s *Service) SetServiceDeskAnnouncementsEnabled(ctx context.Context, actorID, workspaceID, serviceDeskID string, enabled bool) error {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
+		return err
+	}
+	return s.Store.SetServiceDeskAnnouncementsEnabled(ctx, workspaceID, serviceDeskID, enabled)
+}
+
+// UpdateServiceDeskAnnouncement sets or clears a portal's announcement for the
+// desk's agents and administrators, while the portal lets agents add
+// announcements.
+func (s *Service) UpdateServiceDeskAnnouncement(ctx context.Context, actorID, workspaceID, serviceDeskID, title, message string) error {
+	agent, err := s.Store.IsServiceAgent(ctx, workspaceID, serviceDeskID, actorID)
+	if err != nil {
+		return err
+	}
+	admin, err := s.Store.IsServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID)
+	if err != nil {
+		return err
+	}
+	if !agent && !admin {
+		return fmt.Errorf("service agent access is required")
+	}
+	desk, err := s.Store.ServiceDesk(ctx, workspaceID, serviceDeskID)
+	if err != nil {
+		return fmt.Errorf("service desk does not exist")
+	}
+	if !desk.AnnouncementsEnabled {
+		return fmt.Errorf("agents cannot add announcements to this portal")
+	}
+	title, message = strings.TrimSpace(title), strings.TrimSpace(message)
+	if len(title) > 255 || strings.ContainsAny(title, "\r\n") {
+		return fmt.Errorf("the announcement title must be at most 255 characters on one line")
+	}
+	if len(message) > 2000 {
+		return fmt.Errorf("the announcement message accepts at most 2000 characters")
+	}
+	if message != "" && title == "" {
+		return fmt.Errorf("an announcement needs a title")
+	}
+	return s.Store.UpdateServiceDeskAnnouncement(ctx, workspaceID, actorID, serviceDeskID, title, message)
 }
 
 // UpdateServiceDeskPortal changes a portal's name, introduction text and logo,

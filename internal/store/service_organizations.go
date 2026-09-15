@@ -329,6 +329,43 @@ func (s *Store) UpdateServiceHelpCenter(ctx context.Context, workspaceID, actorI
 	return tx.Commit(ctx)
 }
 
+// SetServiceDeskAnnouncementsEnabled lets or stops a desk's agents adding a
+// portal announcement.
+func (s *Store) SetServiceDeskAnnouncementsEnabled(ctx context.Context, workspaceID, serviceDeskID string, enabled bool) error {
+	result, err := s.Pool.Exec(ctx, `UPDATE service_desks SET announcements_enabled=$3 WHERE workspace_id=$1 AND id=$2`, workspaceID, serviceDeskID, enabled)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return fmt.Errorf("service desk does not exist")
+	}
+	return nil
+}
+
+// UpdateServiceDeskAnnouncement replaces a portal's announcement; an empty
+// title and message remove it.
+func (s *Store) UpdateServiceDeskAnnouncement(ctx context.Context, workspaceID, actorID, serviceDeskID, title, message string) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	result, err := tx.Exec(ctx, `UPDATE service_desks SET announcement_title=$3,announcement_message=$4 WHERE workspace_id=$1 AND id=$2`, workspaceID, serviceDeskID, title, message)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return fmt.Errorf("service desk does not exist")
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO organization_audit_events(organization_id,actor_id,action,target_type,target_id,detail)
+		SELECT si.organization_id,$2,'service.portal.announcement.updated','service_desk',$3,jsonb_build_object('title',$4::text)
+		FROM sites si WHERE si.workspace_id=$1`, workspaceID, actorID, serviceDeskID, title); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
 // UpdateServiceDeskPortal changes a portal's name, introduction text and logo.
 func (s *Store) UpdateServiceDeskPortal(ctx context.Context, workspaceID, actorID, serviceDeskID, name, description, logoURL string) error {
 	tx, err := s.Pool.Begin(ctx)

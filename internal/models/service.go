@@ -19,9 +19,13 @@ type ServiceDesk struct {
 	// PortalDescription is the portal's introduction text and PortalLogoURL
 	// its logo, both shown on the portal and the help center.
 	PortalDescription, PortalLogoURL string
-	CustomerAccessOpen               bool
-	AttachmentsEnabled               bool
-	FeedbackEnabled                  bool
+	// AnnouncementsEnabled lets the desk's agents add an announcement to the
+	// portal: AnnouncementTitle and AnnouncementMessage.
+	AnnouncementsEnabled                   bool
+	AnnouncementTitle, AnnouncementMessage string
+	CustomerAccessOpen                     bool
+	AttachmentsEnabled                     bool
+	FeedbackEnabled                        bool
 	// DisabledCustomerNotifications are the customer notifications the desk
 	// does not send.
 	DisabledCustomerNotifications []string

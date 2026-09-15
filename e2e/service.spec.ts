@@ -464,17 +464,32 @@ test('admin creates a service project with Jira Service Management request types
   await page.getByRole('region', { name: 'Customer notifications' }).getByRole('button', { name: 'Turn on Public comment added' }).click();
   await expect(page.getByRole('region', { name: 'Customer notifications' }).getByRole('button', { name: 'Turn off Public comment added' })).toBeVisible();
   // The portal introduces itself with the text its administrators write.
-  const portalSettings = page.getByRole('region', { name: 'Portal' });
+  const portalSettings = page.getByRole('region', { name: 'Portal', exact: true });
   const portalName = await portalSettings.getByLabel('Portal name').inputValue();
   await portalSettings.getByLabel('Introduction text').fill('Laptops, access and office moves.');
   await portalSettings.getByLabel('Logo URL').fill('/static/img/avatar-default.svg');
+  await portalSettings.getByLabel('Agents can add announcements to this portal').check();
   await portalSettings.getByRole('button', { name: 'Save portal' }).click();
-  await expect(page.getByRole('region', { name: 'Portal' }).getByLabel('Introduction text')).toHaveValue('Laptops, access and office moves.');
+  await expect(page.getByRole('region', { name: 'Portal', exact: true }).getByLabel('Introduction text')).toHaveValue('Laptops, access and office moves.');
+  // With announcements allowed, the portal announces planned work.
+  const portalAnnouncement = page.getByRole('region', { name: 'Portal announcement' });
+  await portalAnnouncement.getByLabel('Announcement title').fill('Planned maintenance');
+  await portalAnnouncement.getByLabel('Announcement message').fill('Laptop imaging is paused on Friday.');
+  await portalAnnouncement.getByRole('button', { name: 'Save announcement' }).click();
+  await expect(page.getByRole('region', { name: 'Portal announcement' }).getByLabel('Announcement title')).toHaveValue('Planned maintenance');
   await page.goto(`/service/portals/${desk.id}`);
   await expect(page.getByRole('heading', { name: portalName, level: 1 })).toBeVisible();
   await expect(page.locator('.service-hero')).toContainText('Laptops, access and office moves.');
   await expect(page.locator('.service-hero img.service-portal-logo')).toHaveAttribute('src', '/static/img/avatar-default.svg');
+  await expect(page.getByRole('region', { name: 'Planned maintenance' })).toContainText('Laptop imaging is paused on Friday.');
   await accessible(page);
+  await page.goto(`/service/agent/${desk.id}`);
+  // Clearing the announcement removes it from the portal.
+  await page.getByRole('region', { name: 'Portal announcement' }).getByLabel('Announcement title').fill('');
+  await page.getByRole('region', { name: 'Portal announcement' }).getByLabel('Announcement message').fill('');
+  await page.getByRole('region', { name: 'Portal announcement' }).getByRole('button', { name: 'Save announcement' }).click();
+  await page.goto(`/service/portals/${desk.id}`);
+  await expect(page.getByRole('region', { name: 'Planned maintenance' })).toHaveCount(0);
   await page.goto(`/service/agent/${desk.id}`);
   const organizationName = `Customer organization ${Date.now()}`;
   const organizationSettings = page.locator('#organizations');

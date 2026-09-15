@@ -1465,6 +1465,28 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if desk, err := st.ServiceDesk(ctx, workspaceID, serviceDeskID); err != nil || desk.PortalName != "Workplace help" || desk.PortalDescription != "Laptops, access and moves." || desk.PortalLogoURL != "/static/img/avatar-default.svg" {
 		t.Fatalf("portal = %+v, %v", desk, err)
 	}
+	// Agents add portal announcements only once the desk's administrators allow it.
+	if err := handler.Commands.UpdateServiceDeskAnnouncement(ctx, agentID, workspaceID, serviceDeskID, "Planned maintenance", "Email is offline on Saturday."); err == nil {
+		t.Fatal("an agent added an announcement to a portal that does not allow it")
+	}
+	if err := handler.Commands.SetServiceDeskAnnouncementsEnabled(ctx, agentID, workspaceID, serviceDeskID, true); err == nil {
+		t.Fatal("an agent allowed portal announcements")
+	}
+	if err := handler.Commands.SetServiceDeskAnnouncementsEnabled(ctx, actorID, workspaceID, serviceDeskID, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := handler.Commands.UpdateServiceDeskAnnouncement(ctx, customerID, workspaceID, serviceDeskID, "Planned maintenance", ""); err == nil {
+		t.Fatal("a customer added a portal announcement")
+	}
+	if err := handler.Commands.UpdateServiceDeskAnnouncement(ctx, agentID, workspaceID, serviceDeskID, "", "A message without a title"); err == nil {
+		t.Fatal("an announcement without a title was accepted")
+	}
+	if err := handler.Commands.UpdateServiceDeskAnnouncement(ctx, agentID, workspaceID, serviceDeskID, " Planned maintenance ", " Email is offline on Saturday. "); err != nil {
+		t.Fatal(err)
+	}
+	if desk, err := st.ServiceDesk(ctx, workspaceID, serviceDeskID); err != nil || !desk.AnnouncementsEnabled || desk.AnnouncementTitle != "Planned maintenance" || desk.AnnouncementMessage != "Email is offline on Saturday." {
+		t.Fatalf("portal announcement = %+v, %v", desk, err)
+	}
 	regularAgentComments := callAs(agentID, "GET", "/rest/servicedeskapi/request/"+issueKey+"/comment", "", 200)
 	if !strings.Contains(regularAgentComments.Body.String(), "Agent-only investigation detail") {
 		t.Fatal(regularAgentComments.Body.String())

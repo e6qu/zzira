@@ -137,10 +137,13 @@ type servicePageData struct {
 	CanAdmin     bool
 	CanSiteAdmin bool
 	// HelpCenter is the help center's branding and announcement.
-	HelpCenter            models.ServiceHelpCenter
-	DeploymentGate        *store.ServiceDeploymentGate
-	DeploymentProviders   []*models.AppInstallation
-	CanAgent              bool
+	HelpCenter          models.ServiceHelpCenter
+	DeploymentGate      *store.ServiceDeploymentGate
+	DeploymentProviders []*models.AppInstallation
+	CanAgent            bool
+	// CanAnnounce shows the portal announcement form to the desk's agents and
+	// administrators while the portal lets agents add announcements.
+	CanAnnounce           bool
 	CanManageParticipants bool
 	CurrentUserID         string
 	Subscribed            bool
@@ -198,6 +201,7 @@ func (h *Handler) ServiceAgent(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		data.Desk = desk
+		data.CanAnnounce = desk.AnnouncementsEnabled
 		now := time.Now().UTC()
 		data.ChangeWindows, err = h.Store.ServiceChangeCalendar(r.Context(), workspaceID, user.ID, deskID, now.AddDate(0, 0, -7), now.AddDate(0, 0, 90))
 		if err != nil {
@@ -702,7 +706,28 @@ func (h *Handler) ServicePortalSettings(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if err := h.Commands.SetServiceDeskAnnouncementsEnabled(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("announcementsEnabled") == "true"); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	redirectLocal(w, r, "/service/agent/"+deskID+"#portal-settings")
+}
+
+// ServicePortalAnnouncement saves or clears the portal's announcement.
+func (h *Handler) ServicePortalAnnouncement(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	deskID := r.PathValue("desk")
+	if err := h.Commands.UpdateServiceDeskAnnouncement(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("title"), r.PostFormValue("message")); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	redirectLocal(w, r, "/service/agent/"+deskID+"#portal-announcement")
 }
 
 func (h *Handler) ServiceCustomerSettings(w http.ResponseWriter, r *http.Request) {
