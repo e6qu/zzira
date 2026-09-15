@@ -71,6 +71,22 @@ request. Configuration callbacks, refresh opt-in and conditions are not
 implemented yet, so descriptors that request behavioral options are rejected
 explicitly.
 
+## Dashboard emails
+
+Anyone who can view a dashboard can have it emailed every day or every Monday
+at 08:00 UTC from **Email this dashboard**, to themselves or to members who can
+view it too; a recipient who cannot is refused when the email is scheduled.
+Each recipient receives the dashboard as they see it: its name and link, then
+a line per gadget — a list gadget's count and first five work items, a chart
+gadget's count by its grouping, a report gadget's created and resolved counts,
+average resolution time, average velocity or the active sprint's remaining
+work, and a pointer to the dashboard for app gadgets or gadgets still to be
+configured. Deliveries are durable runs claimed one at a time and retried with
+backoff; a recipient who can no longer view the dashboard fails the run with
+that reason, which the panel shows, and people already sent to are not sent
+again. The panel lists the viewer's own dashboard emails with their next
+delivery and removes them.
+
 The browser supports Jira-style one, two and three-column layouts (`A`, `AA`,
 `AB`, `BA`, `AAA`), gadget reordering, eight accent colors, favourites, manual
 refresh, and automatic refresh at one, five or fifteen minutes. The content
