@@ -32,6 +32,15 @@ type serviceRequestFieldChoice struct {
 type serviceRequestTypeFormView struct {
 	RequestType models.ServiceRequestType
 	Fields      []serviceRequestFieldChoice
+	// ChoiceFields are the select and multi-select fields a field can be shown
+	// for, with their options.
+	ChoiceFields []serviceRequestChoiceField
+}
+
+// serviceRequestChoiceField is a select or multi-select field and its options.
+type serviceRequestChoiceField struct {
+	ID, Name string
+	Options  []store.ServiceRequestFieldOption
 }
 
 type serviceRequestFieldValueView struct {
@@ -277,6 +286,18 @@ func (h *Handler) ServiceAgent(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "Could not load service form fields.", http.StatusInternalServerError)
 				return
 			}
+			choiceFields := []serviceRequestChoiceField{}
+			for _, customField := range customFields {
+				if customField.Type != models.CustomFieldSelect && customField.Type != models.CustomFieldMultiSelect {
+					continue
+				}
+				options, err := h.Store.ServiceRequestFieldOptions(r.Context(), workspaceID, deskID, customField.ID)
+				if err != nil {
+					http.Error(w, "Could not load service form options.", http.StatusInternalServerError)
+					return
+				}
+				choiceFields = append(choiceFields, serviceRequestChoiceField{ID: customField.ID, Name: customField.Name, Options: options})
+			}
 			for _, requestType := range data.RequestTypes {
 				configured, err := h.Store.ServiceRequestTypeFields(r.Context(), workspaceID, deskID, requestType.ID)
 				if err != nil {
@@ -304,7 +325,7 @@ func (h *Handler) ServiceAgent(w http.ResponseWriter, r *http.Request) {
 					}
 					choices = append(choices, serviceRequestFieldChoice{ServiceRequestTypeField: field, Enabled: enabled})
 				}
-				data.RequestTypeForms = append(data.RequestTypeForms, serviceRequestTypeFormView{RequestType: requestType, Fields: choices})
+				data.RequestTypeForms = append(data.RequestTypeForms, serviceRequestTypeFormView{RequestType: requestType, Fields: choices, ChoiceFields: choiceFields})
 			}
 		}
 		data.Queues, err = h.Store.ServiceQueues(r.Context(), workspaceID, deskID)
@@ -803,6 +824,25 @@ func (h *Handler) ServiceRequestTypeFieldSettings(w http.ResponseWriter, r *http
 	fields := make([]models.ServiceRequestTypeField, 0, len(r.PostForm["fieldId"]))
 	for _, fieldID := range r.PostForm["fieldId"] {
 		field := models.ServiceRequestTypeField{ID: fieldID, Required: required[fieldID], HelpText: r.PostFormValue("help_" + fieldID), Hidden: hidden[fieldID]}
+		// The form lists every choice field's options; only those of the chosen
+		// field show this one.
+		if condition := strings.TrimSpace(r.PostFormValue("condition_" + fieldID)); condition != "" {
+			field.ConditionFieldID = condition
+			options, err := h.Store.ServiceRequestFieldOptions(r.Context(), workspaceID, r.PathValue("desk"), condition)
+			if err != nil {
+				http.Error(w, "Could not load service form options.", http.StatusInternalServerError)
+				return
+			}
+			offered := map[string]bool{}
+			for _, option := range options {
+				offered[option.ID] = true
+			}
+			for _, id := range r.PostForm["condition_options_"+fieldID] {
+				if offered[id] {
+					field.ConditionOptionIDs = append(field.ConditionOptionIDs, id)
+				}
+			}
+		}
 		// A hidden field's preset is typed as the value a customer would give:
 		// JSON when it parses, otherwise text.
 		if preset := strings.TrimSpace(r.PostFormValue("preset_" + fieldID)); preset != "" {
@@ -1113,6 +1153,12 @@ func (h *Handler) ServiceRequestForm(w http.ResponseWriter, r *http.Request) {
 		}
 		customFields := map[string]json.RawMessage{}
 		var descriptionADF json.RawMessage
+		chosen := map[string][]string{}
+		for _, field := range fields {
+			if field.Type == models.CustomFieldSelect || field.Type == models.CustomFieldMultiSelect {
+				chosen[field.ID] = r.PostForm["field_"+field.ID]
+			}
+		}
 		for _, field := range fields {
 			// A hidden field takes its preset value, as REST request creation does.
 			if field.Hidden {
@@ -1129,6 +1175,10 @@ func (h *Handler) ServiceRequestForm(w http.ResponseWriter, r *http.Request) {
 				} else if field.Custom {
 					customFields[field.ID] = field.PresetValue
 				}
+				continue
+			}
+			// A field the other answers keep hidden is neither required nor sent.
+			if !field.ShownFor(chosen) {
 				continue
 			}
 			submitted := r.PostForm["field_"+field.ID]

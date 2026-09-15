@@ -302,14 +302,22 @@ test('admin creates a service project with Jira Service Management request types
   await choiceField(contactName, 'userpicker', []);
   await page.goto(`/service/agent/${desk.id}`);
   const choicesForm = page.locator('#request-forms form').filter({ has: page.getByRole('heading', { name: 'Report an incident', level: 3 }) });
-  for (const name of [platformName, regionsName, contactName]) await choicesForm.locator('fieldset').filter({ hasText: name }).getByRole('checkbox', { name: 'Show on portal' }).check();
+  const fieldSettings = (name: string) => choicesForm.locator(`xpath=.//fieldset[legend[normalize-space()="${name}"]]`);
+  for (const name of [platformName, regionsName, contactName]) await fieldSettings(name).getByRole('checkbox', { name: 'Show on portal' }).check();
+  // The contact is asked for only when the platform is Mobile.
+  await fieldSettings(contactName).getByLabel('Show only when').selectOption({ label: `${platformName} has one of the options below` });
+  await fieldSettings(contactName).getByRole('group', { name: `Options of ${platformName} that show ${contactName}` }).getByLabel('Mobile').check();
   await choicesForm.getByRole('button', { name: 'Save Report an incident form' }).click();
   await page.goto(`/service/portals/${desk.id}/request/${incidentRequestType.id}`);
   const choicesSummary = `Structured incident ${choiceStamp}`;
   await page.getByLabel('Summary').fill(choicesSummary);
   await page.getByLabel('Description').fill('Portal choices route the incident.');
   await page.getByLabel(impactFieldName).fill('7');
+  await expect(page.getByLabel(contactName)).toBeHidden();
+  await page.getByLabel(platformName).selectOption({ label: 'Web' });
+  await expect(page.getByLabel(contactName)).toBeHidden();
   await page.getByLabel(platformName).selectOption({ label: 'Mobile' });
+  await expect(page.getByLabel(contactName)).toBeVisible();
   const regions = page.getByRole('group', { name: regionsName });
   await regions.getByLabel('EU').check();
   await regions.getByLabel('US').check();

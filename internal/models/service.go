@@ -36,6 +36,46 @@ type ServiceRequestTypeField struct {
 	// filled with PresetValue, a Jira field value, when a request is raised.
 	Hidden      bool
 	PresetValue json.RawMessage
+	// ConditionFieldID and ConditionOptionIDs show the field only when that
+	// select or multi-select field of the form has one of those options.
+	ConditionFieldID   string
+	ConditionOptionIDs []string
+}
+
+// ShownFor reports whether the field is shown for the option ids chosen for
+// each field of its form.
+func (f ServiceRequestTypeField) ShownFor(chosen map[string][]string) bool {
+	if f.ConditionFieldID == "" {
+		return true
+	}
+	for _, id := range chosen[f.ConditionFieldID] {
+		if f.HasConditionOption(id) {
+			return true
+		}
+	}
+	return false
+}
+
+// HasConditionOption reports whether an option shows the field.
+func (f ServiceRequestTypeField) HasConditionOption(id string) bool {
+	for _, wanted := range f.ConditionOptionIDs {
+		if wanted == id {
+			return true
+		}
+	}
+	return false
+}
+
+// ConditionOptions lists the options that show the field, separated by spaces.
+func (f ServiceRequestTypeField) ConditionOptions() string {
+	out := ""
+	for index, id := range f.ConditionOptionIDs {
+		if index > 0 {
+			out += " "
+		}
+		out += id
+	}
+	return out
 }
 
 type ServiceKnowledgeArticle struct {

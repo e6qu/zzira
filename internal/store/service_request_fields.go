@@ -14,7 +14,7 @@ func (s *Store) ServiceRequestTypeFields(ctx context.Context, workspaceID, servi
 		  CASE f.field_id WHEN 'summary' THEN 'Summary' WHEN 'description' THEN 'Description' ELSE cf.name END,
 		  CASE f.field_id WHEN 'summary' THEN 'text' WHEN 'description' THEN 'text' ELSE cf.type END,
 		  CASE f.field_id WHEN 'summary' THEN rt.description WHEN 'description' THEN 'Describe the request.' ELSE COALESCE(cf.description,'') END,
-		  f.help_text,f.required,(f.field_id LIKE 'customfield_%'),f.position,NOT f.visible,f.preset_value
+		  f.help_text,f.required,(f.field_id LIKE 'customfield_%'),f.position,NOT f.visible,f.preset_value,COALESCE(f.condition_field_id,''),f.condition_option_ids
 		FROM service_request_type_fields f
 		JOIN service_request_types rt ON rt.id=f.request_type_id
 		JOIN service_desks sd ON sd.id=rt.service_desk_id
@@ -30,7 +30,7 @@ func (s *Store) ServiceRequestTypeFields(ctx context.Context, workspaceID, servi
 	fields := make([]models.ServiceRequestTypeField, 0)
 	for rows.Next() {
 		var field models.ServiceRequestTypeField
-		if err := rows.Scan(&field.ID, &field.RequestTypeID, &field.Name, &field.Type, &field.Description, &field.HelpText, &field.Required, &field.Custom, &field.Position, &field.Hidden, &field.PresetValue); err != nil {
+		if err := rows.Scan(&field.ID, &field.RequestTypeID, &field.Name, &field.Type, &field.Description, &field.HelpText, &field.Required, &field.Custom, &field.Position, &field.Hidden, &field.PresetValue, &field.ConditionFieldID, &field.ConditionOptionIDs); err != nil {
 			return nil, err
 		}
 		fields = append(fields, field)
@@ -59,7 +59,11 @@ func (s *Store) SetServiceRequestTypeFields(ctx context.Context, workspaceID, ac
 		if len(field.PresetValue) > 0 && string(field.PresetValue) != "null" {
 			preset = field.PresetValue
 		}
-		if _, err := tx.Exec(ctx, `INSERT INTO service_request_type_fields(request_type_id,field_id,required,help_text,position,visible,preset_value) VALUES($1,$2,$3,$4,$5,$6,$7)`, requestTypeID, field.ID, field.Required, field.HelpText, position, !field.Hidden, preset); err != nil {
+		conditionOptions := field.ConditionOptionIDs
+		if conditionOptions == nil {
+			conditionOptions = []string{}
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO service_request_type_fields(request_type_id,field_id,required,help_text,position,visible,preset_value,condition_field_id,condition_option_ids) VALUES($1,$2,$3,$4,$5,$6,$7,NULLIF($8,''),$9)`, requestTypeID, field.ID, field.Required, field.HelpText, position, !field.Hidden, preset, field.ConditionFieldID, conditionOptions); err != nil {
 			return err
 		}
 	}

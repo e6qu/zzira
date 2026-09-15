@@ -84,6 +84,13 @@ picker takes a site member's email address and a multi-user picker several,
 separated by commas; the portal finds the member without listing the site's
 people. The request page shows the chosen options and people by name.
 
+A field can also be shown only for some answers. Administrators choose another
+visible select or multi-select field of the same form, which is not conditional
+itself, and the options of it that show the field. The portal hides the field
+until one of those options is chosen. Portal and REST request creation require
+a conditional field only while it is shown, and refuse an answer to a field the
+other answers keep hidden.
+
 Field metadata gives each field's Jira schema (type, custom field type,
 `customId` and array `items`). Select, multi-select and cascading select fields
 list the options of the context that reaches the desk's project as

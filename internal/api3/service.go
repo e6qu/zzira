@@ -379,6 +379,23 @@ func (h *Handler) validateServiceRequestBody(r *http.Request, workspaceID string
 			configured = fields
 		}
 	}
+	// A field shown only for some answers counts only while those answers are
+	// given.
+	chosen := map[string][]string{}
+	for _, field := range configured {
+		if field.Type != models.CustomFieldSelect && field.Type != models.CustomFieldMultiSelect {
+			continue
+		}
+		raw, present := input.RequestFieldValues[field.ID]
+		if !present || len(raw) == 0 || string(raw) == "null" {
+			continue
+		}
+		options, err := h.Store.ServiceRequestFieldOptions(r.Context(), workspaceID, input.ServiceDeskID, field.ID)
+		if err != nil {
+			return nil, nil, err
+		}
+		chosen[field.ID] = serviceChosenOptionIDs(raw, options)
+	}
 	allowed := make(map[string]models.ServiceRequestTypeField, len(configured))
 	for _, field := range configured {
 		// A hidden field takes its preset value, never a submitted one.
@@ -387,6 +404,12 @@ func (h *Handler) validateServiceRequestBody(r *http.Request, workspaceID string
 		}
 		allowed[field.ID] = field
 		raw, present := input.RequestFieldValues[field.ID]
+		if !field.ShownFor(chosen) {
+			if present && len(raw) > 0 && string(raw) != "null" {
+				errors[field.ID] = "This field is not shown for the answers given."
+			}
+			continue
+		}
 		if field.Required {
 			text, isText := decodeServiceText(raw)
 			if !present || len(raw) == 0 || string(raw) == "null" || (isText && strings.TrimSpace(text) == "") {
@@ -422,6 +445,39 @@ func (h *Handler) validateServiceRequestBody(r *http.Request, workspaceID string
 		}
 	}
 	return errors, configured, nil
+}
+
+// serviceChosenOptionIDs reads the option ids a select or multi-select answer
+// chooses: ids, {"id"} or {"value"} objects, alone or in a list.
+func serviceChosenOptionIDs(raw json.RawMessage, options []store.ServiceRequestFieldOption) []string {
+	items := []json.RawMessage{}
+	if json.Unmarshal(raw, &items) != nil {
+		items = []json.RawMessage{raw}
+	}
+	ids := []string{}
+	for _, item := range items {
+		var text string
+		var number json.Number
+		var object struct {
+			ID    json.RawMessage `json:"id"`
+			Value string          `json:"value"`
+		}
+		switch {
+		case json.Unmarshal(item, &text) == nil:
+			ids = append(ids, text)
+		case json.Unmarshal(item, &number) == nil:
+			ids = append(ids, number.String())
+		case json.Unmarshal(item, &object) == nil && len(object.ID) > 0:
+			ids = append(ids, strings.Trim(string(object.ID), `"`))
+		case object.Value != "":
+			for _, option := range options {
+				if option.Value == object.Value {
+					ids = append(ids, option.ID)
+				}
+			}
+		}
+	}
+	return ids
 }
 
 func serviceRequestFieldValueError(field models.ServiceRequestTypeField, raw json.RawMessage) string {

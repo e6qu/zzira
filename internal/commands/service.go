@@ -508,5 +508,53 @@ func (s *Service) SetServiceRequestTypeFields(ctx context.Context, actorID, work
 	if !hasSummary {
 		return fmt.Errorf("summary is required on every request type form")
 	}
+	// A field shown only for some answers waits on a visible select or
+	// multi-select field of the same form that is not conditional itself.
+	types := map[string]string{}
+	for _, field := range customFields {
+		types[field.ID] = field.Type
+	}
+	byID := map[string]models.ServiceRequestTypeField{}
+	for _, field := range fields {
+		byID[field.ID] = field
+	}
+	for index := range fields {
+		field := &fields[index]
+		field.ConditionFieldID = strings.TrimSpace(field.ConditionFieldID)
+		if field.ConditionFieldID == "" {
+			field.ConditionOptionIDs = nil
+			continue
+		}
+		source, onForm := byID[field.ConditionFieldID]
+		switch {
+		case field.ID == "summary" || field.Hidden:
+			return fmt.Errorf("%s cannot be shown only for some answers", field.ID)
+		case !onForm || source.Hidden || strings.TrimSpace(source.ConditionFieldID) != "" || source.ID == field.ID:
+			return fmt.Errorf("%s must wait on another visible, unconditional field of the form", field.ID)
+		case types[source.ID] != models.CustomFieldSelect && types[source.ID] != models.CustomFieldMultiSelect:
+			return fmt.Errorf("%s can only wait on a select or multi-select field", field.ID)
+		case len(field.ConditionOptionIDs) == 0 || len(field.ConditionOptionIDs) > 20:
+			return fmt.Errorf("choose between 1 and 20 options that show %s", field.ID)
+		}
+		options, err := s.Store.ServiceRequestFieldOptions(ctx, workspaceID, serviceDeskID, source.ID)
+		if err != nil {
+			return err
+		}
+		offered := map[string]bool{}
+		for _, option := range options {
+			offered[option.ID] = true
+		}
+		seen, ids := map[string]bool{}, []string{}
+		for _, id := range field.ConditionOptionIDs {
+			if !offered[id] {
+				return fmt.Errorf("%s offers no option %q", source.ID, id)
+			}
+			if !seen[id] {
+				seen[id] = true
+				ids = append(ids, id)
+			}
+		}
+		field.ConditionOptionIDs = ids
+	}
 	return s.Store.SetServiceRequestTypeFields(ctx, workspaceID, actorID, serviceDeskID, requestTypeID, fields)
 }
