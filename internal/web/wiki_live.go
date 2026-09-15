@@ -21,8 +21,18 @@ type wikiLiveResponse struct {
 	Applied bool `json:"applied"`
 }
 
-// WikiPageLive exchanges an editor's changes with the page's live document.
+// WikiPageLive exchanges an editor's changes with a page's live document.
 func (h *Handler) WikiPageLive(w http.ResponseWriter, r *http.Request) {
+	h.wikiLive(w, r, "page", r.PathValue("page"))
+}
+
+// WikiBlogPostLive exchanges an editor's changes with a blog post's live
+// document.
+func (h *Handler) WikiBlogPostLive(w http.ResponseWriter, r *http.Request) {
+	h.wikiLive(w, r, "blogpost", r.PathValue("blogpost"))
+}
+
+func (h *Handler) wikiLive(w http.ResponseWriter, r *http.Request, kind, id string) {
 	user, ws, ok := h.pageContext(w, r)
 	if !ok {
 		return
@@ -32,16 +42,33 @@ func (h *Handler) WikiPageLive(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid live changes.", http.StatusBadRequest)
 		return
 	}
-	page, err := h.Store.WikiPage(r.Context(), ws, user.ID, r.PathValue("page"))
-	if err != nil || page.SpaceID != r.PathValue("space") {
+	spaceID := ""
+	switch kind {
+	case "page":
+		page, err := h.Store.WikiPage(r.Context(), ws, user.ID, id)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		id, spaceID = page.ID, page.SpaceID
+	default:
+		post, err := h.Store.WikiBlogPost(r.Context(), ws, user.ID, id)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		id, spaceID = post.ID, post.SpaceID
+	}
+	if spaceID != r.PathValue("space") {
 		http.NotFound(w, r)
 		return
 	}
+	var err error
 	response := wikiLiveResponse{}
 	if len(request.Changes) == 0 {
-		response.WikiLiveDocument, err = h.Store.WikiLiveDocument(r.Context(), ws, user.ID, page.ID, request.Session, request.Revision)
+		response.WikiLiveDocument, err = h.Store.WikiLiveDocument(r.Context(), ws, user.ID, kind, id, request.Session, request.Revision)
 	} else {
-		response.WikiLiveDocument, err = h.Store.ApplyWikiLiveChanges(r.Context(), ws, user.ID, page.ID, request.Session, request.Revision, request.Changes)
+		response.WikiLiveDocument, err = h.Store.ApplyWikiLiveChanges(r.Context(), ws, user.ID, kind, id, request.Session, request.Revision, request.Changes)
 		if errors.Is(err, store.ErrWikiLiveStale) {
 			err = nil
 		} else if err == nil {

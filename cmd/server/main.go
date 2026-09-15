@@ -385,6 +385,7 @@ func main() {
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/presence", webHandler.WikiPagePresence)
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/live", webHandler.WikiPageLive)
 	mux.HandleFunc("POST /wiki/spaces/{space}/blogposts/{blogpost}/presence", webHandler.WikiBlogPostPresence)
+	mux.HandleFunc("POST /wiki/spaces/{space}/blogposts/{blogpost}/live", webHandler.WikiBlogPostLive)
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/labels/{label}/watch", webHandler.WikiLabelWatch)
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/restrictions", webHandler.WikiPageRestrictions)
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/attachments", webHandler.WikiAttachmentCreate)

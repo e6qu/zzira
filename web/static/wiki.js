@@ -419,7 +419,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const editor = document.querySelector('[data-wiki-editor]');
   const liveSync = document.querySelector('[data-wiki-live-sync]');
   if (!editor) {
-    const textarea = liveSync && liveSync.closest('form').querySelector('#wiki-body');
+    const textarea = liveSync && liveSync.closest('form').querySelector('textarea[name=body]');
     if (textarea) startLiveEditing(liveSync, textareaText(textarea), liveSync.closest('form'));
     return;
   }
