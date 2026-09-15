@@ -393,7 +393,8 @@ help, incident, problem, and change request types. Operations requests receive
 one deterministic `incident`, `problem`, or `change` label, problem/change
 descriptions are required, and agents can link visible related Jira work from
 the service request without exposing those links to portal customers. Managers can define ordered JQL
-conditions per SLA metric; the first matching condition wins and every cycle
+conditions per SLA metric and move each one up or down; the first matching
+condition wins, a reorder applies to cycles that start afterwards, and every cycle
 snapshots the chosen goal name and duration so completed history remains stable.
 Active cycles follow edits to their selected goal, and the default remains the
 fallback. Managers also configure per-metric pause JQL in this workspace.
@@ -404,10 +405,10 @@ compensated by a logged issue deletion, so no orphaned ticket remains.
 
 The implemented operations are assessed as partial. JQL support follows the
 documented ZZIRA search subset, including array-aware label matching;
-conditional form logic, user and
+group, project, version, team and
 Assets-backed portal pickers, participant notifications,
 approval workflow configuration, email delivery and notification preference administration, CSAT configuration,
-SLA goal distributions, complete public Assets object/schema/import API parity, SLA rule reordering and advanced criteria,
+SLA goal distributions, complete public Assets object/schema/import API parity, advanced SLA criteria,
 portal invitation email delivery, Atlassian knowledge ranking/analytics, and asset import/reconciliation and review templates
 remain. Customer creation grants only the
 site `atlassian/customer` role and never silently grants Jira product access.

@@ -372,6 +372,15 @@ func (s *Service) DeleteServiceSLAGoal(ctx context.Context, actorID, workspaceID
 	return s.Store.DeleteServiceSLAGoal(ctx, workspaceID, actorID, serviceDeskID, metricID, goalID)
 }
 
+// MoveServiceSLAGoal moves a conditional SLA goal up or down in the order its
+// metric evaluates goals.
+func (s *Service) MoveServiceSLAGoal(ctx context.Context, actorID, workspaceID, serviceDeskID, metricID, goalID, direction string) error {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
+		return err
+	}
+	return s.Store.MoveServiceSLAGoal(ctx, workspaceID, actorID, serviceDeskID, metricID, goalID, direction)
+}
+
 func (s *Service) UpdateServiceCalendar(ctx context.Context, actorID, workspaceID, serviceDeskID, name, timeZone string, weekdays []int16, startMinute, endMinute int16) error {
 	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
 		return err

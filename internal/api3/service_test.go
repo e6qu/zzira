@@ -909,6 +909,49 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 			t.Fatalf("default SLA fallback = %+v", defaultSLAs[index].OngoingCycle)
 		}
 	}
+	// Moving a conditional goal changes which goal new requests take first.
+	if err := handler.Commands.MoveServiceSLAGoal(ctx, customerID, workspaceID, serviceDeskID, metricByKind["first_response"], keywordGoal.ID, "up"); err == nil {
+		t.Fatal("customer reordered conditional SLA goals")
+	}
+	if err := handler.Commands.MoveServiceSLAGoal(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], keywordGoal.ID, "sideways"); err == nil {
+		t.Fatal("an unknown move direction succeeded")
+	}
+	if err := handler.Commands.MoveServiceSLAGoal(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], incidentGoal.ID, "up"); err != nil {
+		t.Fatalf("moving the first goal up: %v", err)
+	}
+	if err := handler.Commands.MoveServiceSLAGoal(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], keywordGoal.ID, "up"); err != nil {
+		t.Fatalf("move keyword goal up: %v", err)
+	}
+	ordered, err := st.ServiceSLAGoals(ctx, workspaceID, serviceDeskID, metricByKind["first_response"])
+	if err != nil || len(ordered) < 3 || ordered[0].ID != keywordGoal.ID || ordered[1].ID != incidentGoal.ID || ordered[len(ordered)-1].JQL != "" {
+		t.Fatalf("reordered goals = %+v, %v", ordered, err)
+	}
+	reorderedRequest := callAs(customerID, "POST", "/rest/servicedeskapi/request", `{"serviceDeskId":"`+serviceDeskID+`","requestTypeId":"`+incidentTypeID+`","requestFieldValues":{"summary":"Incident after conditional reorder","description":"The keyword goal now comes first.","`+customFieldID+`":7}}`, 201)
+	var reorderedBean map[string]any
+	if err := json.Unmarshal(reorderedRequest.Body.Bytes(), &reorderedBean); err != nil {
+		t.Fatal(err)
+	}
+	reorderedIssue, err := st.IssueByIDOrKey(ctx, workspaceID, reorderedBean["issueKey"].(string))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reorderedSLAs, err := st.ServiceSLAs(ctx, workspaceID, reorderedIssue.ID, time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	selectedGoal := ""
+	for _, sla := range reorderedSLAs {
+		if sla.Kind == "first_response" && sla.OngoingCycle != nil {
+			selectedGoal = sla.OngoingCycle.GoalID
+		}
+	}
+	if selectedGoal != keywordGoal.ID {
+		t.Fatalf("goal selected after reorder = %q, want %q", selectedGoal, keywordGoal.ID)
+	}
+	// The default goal is not conditional and cannot be moved.
+	if err := handler.Commands.MoveServiceSLAGoal(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], ordered[len(ordered)-1].ID, "up"); err == nil {
+		t.Fatal("the default SLA goal was moved")
+	}
 	if err := handler.Commands.DeleteServiceSLAGoal(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], keywordGoal.ID); err != nil {
 		t.Fatal(err)
 	}

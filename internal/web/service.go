@@ -24,6 +24,9 @@ import (
 
 type serviceTransitionView struct{ ID, Name, To string }
 
+// serviceSLAGoalOrder is where a conditional SLA goal stands in its order.
+type serviceSLAGoalOrder struct{ First, Last bool }
+
 type serviceRequestFieldChoice struct {
 	models.ServiceRequestTypeField
 	Enabled bool
@@ -60,38 +63,40 @@ type servicePageData struct {
 	// BulkStatuses are the statuses selected queue requests can move to,
 	// DeskAgents the people requests can be assigned to, and BulkNotice and
 	// BulkProblem what the last bulk action did.
-	BulkStatuses        []string
-	DeskAgents          []*models.User
-	BulkNotice          string
-	BulkProblem         string
-	ReportActions       reportActions
-	ReportCompare       bool
-	ReportComparison    map[string]string
-	Desks               []models.ServiceDesk
-	Desk                *models.ServiceDesk
-	RequestTypes        []models.ServiceRequestType
-	RequestType         *models.ServiceRequestType
-	Requests            []*models.ServiceRequest
-	Request             *models.ServiceRequest
-	Queues              []models.ServiceQueue
-	Queue               *models.ServiceQueue
-	Comments            []models.ServiceRequestComment
-	Attachments         []models.ServiceRequestAttachment
-	Links               []models.IssueLinkView
-	LinkTypes           []models.LinkType
-	Approvals           []models.ServiceApproval
-	Feedback            *models.ServiceRequestFeedback
-	Participants        []*models.User
-	Members             []*models.User
-	Agents              map[string]bool
-	Calendar            *models.ServiceCalendar
-	CalendarHolidays    []serviceCalendarHolidayView
-	Report              *models.ServiceReport
-	ReportDays          []serviceReportDayView
-	ReportFilter        models.ServiceReportFilter
-	ReportChannels      []string
-	SLAMetrics          []models.ServiceSLAMetric
-	SLAGoals            map[string][]models.ServiceSLAGoal
+	BulkStatuses     []string
+	DeskAgents       []*models.User
+	BulkNotice       string
+	BulkProblem      string
+	ReportActions    reportActions
+	ReportCompare    bool
+	ReportComparison map[string]string
+	Desks            []models.ServiceDesk
+	Desk             *models.ServiceDesk
+	RequestTypes     []models.ServiceRequestType
+	RequestType      *models.ServiceRequestType
+	Requests         []*models.ServiceRequest
+	Request          *models.ServiceRequest
+	Queues           []models.ServiceQueue
+	Queue            *models.ServiceQueue
+	Comments         []models.ServiceRequestComment
+	Attachments      []models.ServiceRequestAttachment
+	Links            []models.IssueLinkView
+	LinkTypes        []models.LinkType
+	Approvals        []models.ServiceApproval
+	Feedback         *models.ServiceRequestFeedback
+	Participants     []*models.User
+	Members          []*models.User
+	Agents           map[string]bool
+	Calendar         *models.ServiceCalendar
+	CalendarHolidays []serviceCalendarHolidayView
+	Report           *models.ServiceReport
+	ReportDays       []serviceReportDayView
+	ReportFilter     models.ServiceReportFilter
+	ReportChannels   []string
+	SLAMetrics       []models.ServiceSLAMetric
+	SLAGoals         map[string][]models.ServiceSLAGoal
+	// SLAGoalOrder says which conditional goals start and end their metric's order.
+	SLAGoalOrder        map[string]serviceSLAGoalOrder
 	SLAs                []models.ServiceSLA
 	Customers           []*models.User
 	Organizations       []models.ServiceOrganization
@@ -254,6 +259,7 @@ func (h *Handler) ServiceAgent(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			data.SLAGoals = make(map[string][]models.ServiceSLAGoal, len(data.SLAMetrics))
+			data.SLAGoalOrder = map[string]serviceSLAGoalOrder{}
 			for _, metric := range data.SLAMetrics {
 				goals, err := h.Store.ServiceSLAGoals(r.Context(), workspaceID, deskID, metric.ID)
 				if err != nil {
@@ -261,6 +267,15 @@ func (h *Handler) ServiceAgent(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 				data.SLAGoals[metric.ID] = goals
+				conditional := []string{}
+				for _, goal := range goals {
+					if goal.JQL != "" {
+						conditional = append(conditional, goal.ID)
+					}
+				}
+				for index, id := range conditional {
+					data.SLAGoalOrder[id] = serviceSLAGoalOrder{First: index == 0, Last: index == len(conditional)-1}
+				}
 			}
 			data.KnowledgeSpaces, err = h.Store.WikiSpaces(r.Context(), workspaceID, user.ID)
 			if err != nil {
@@ -963,9 +978,12 @@ func (h *Handler) ServiceSLAGoalSettings(w http.ResponseWriter, r *http.Request)
 	deskID, metricID, goalID := r.PathValue("desk"), r.PathValue("metric"), r.PostFormValue("goalId")
 	action := r.PostFormValue("action")
 	err = nil
-	if action == "delete" {
+	switch action {
+	case "delete":
 		err = h.Commands.DeleteServiceSLAGoal(r.Context(), user.ID, workspaceID, deskID, metricID, goalID)
-	} else {
+	case "move":
+		err = h.Commands.MoveServiceSLAGoal(r.Context(), user.ID, workspaceID, deskID, metricID, goalID, r.PostFormValue("direction"))
+	default:
 		goalMinutes, parseErr := strconv.ParseInt(r.PostFormValue("goalMinutes"), 10, 64)
 		if parseErr != nil || goalMinutes < 1 {
 			http.Error(w, "SLA goal must be a positive number of minutes.", http.StatusBadRequest)

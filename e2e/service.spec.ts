@@ -473,6 +473,19 @@ test('admin creates a service project with Jira Service Management request types
   await conditionalGoalCard.getByLabel('Minutes').fill('90');
   await conditionalGoalCard.getByRole('button', { name: 'Save conditional goal' }).click();
   await expect(page.locator('#sla-settings .service-conditional-goal-list article').filter({ has: page.locator(`input[value="${updatedConditionalGoalName}"]`) })).toBeVisible();
+  // A second matching goal moved above the first takes new requests first.
+  const topGoalName = `Top incident response ${String(Date.now()).slice(-6)}`;
+  const topGoalCreate = page.locator('#sla-settings .service-conditional-goals section').filter({ has: page.getByRole('heading', { name: 'Time to first response conditions', level: 3 }) }).locator('.service-conditional-goal-create');
+  await topGoalCreate.getByLabel('Goal name').fill(topGoalName);
+  await topGoalCreate.getByLabel('JQL condition').fill('labels = incident');
+  await topGoalCreate.getByLabel('Minutes').fill('30');
+  await topGoalCreate.getByRole('button', { name: 'Add conditional goal' }).click();
+  await page.locator('#sla-settings').getByRole('button', { name: `Move up ${topGoalName}` }).click();
+  const firstResponseGoalNames = page.locator('#sla-settings .service-conditional-goals section').filter({ has: page.getByRole('heading', { name: 'Time to first response conditions', level: 3 }) }).locator('.service-conditional-goal-list article input[name="name"]');
+  await expect(firstResponseGoalNames.nth(0)).toHaveValue(topGoalName);
+  await expect(firstResponseGoalNames.nth(1)).toHaveValue(updatedConditionalGoalName);
+  await expect(page.locator('#sla-settings').getByRole('button', { name: `Move up ${topGoalName}` })).toHaveCount(0);
+  await expect(page.locator('#sla-settings').getByRole('button', { name: `Move down ${updatedConditionalGoalName}` })).toHaveCount(0);
   await page.goto(`/service/portals/${desk.id}/request/${incidentRequestType.id}`);
   const conditionalRequestSummary = `Priority incident ${Date.now()}`;
   await page.getByLabel('Summary').fill(conditionalRequestSummary);
@@ -480,7 +493,7 @@ test('admin creates a service project with Jira Service Management request types
   await page.getByLabel(impactFieldName).fill('100');
   await page.getByRole('button', { name: 'Send request' }).click();
   await expect(page.getByRole('heading', { name: conditionalRequestSummary, level: 1 })).toBeVisible();
-  await expect(page.locator('.service-sla-panel')).toContainText(updatedConditionalGoalName);
+  await expect(page.locator('.service-sla-panel')).toContainText(topGoalName);
   await accessible(page);
   await page.setViewportSize({ width: 320, height: 740 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
