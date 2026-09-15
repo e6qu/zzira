@@ -6598,7 +6598,7 @@
         "internal/store/development.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Returns the currently persisted repository with its most recent current entities after ordered updates and deletes; exact response truncation ties remain."
+      "notes": "Returns the currently persisted repository with its most recent current entities after ordered updates and deletes, capped at the most recent 400 entities as documented, with entities of equal time ordered by their last update and then their ID so the cut is deterministic."
     },
     {
       "operationId": "jira-software:GET:/rest/software/1.0/board/{boardId}/backlog",
@@ -9938,7 +9938,7 @@
         "internal/api3/api3_jql_test.go",
         "docs/JQL.md"
       ],
-      "notes": "Per-query compilation and matching bounded to requested visible numeric Jira IDs are integration-tested; exact service limits remain."
+      "notes": "Per-query compilation and matching bounded to requested visible numeric Jira IDs are integration-tested; requests beyond 1,000 issue IDs or outside 1 to 20 JQL queries answer 400."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/jql/parse",
@@ -10262,7 +10262,7 @@
         "docs/JQL.md",
         "internal/api3/search_projection_test.go"
       ],
-      "notes": "Count rejects unbounded queries, uses the shared permission-filtered JQL command path and has integration evidence; approximate large-index behavior remains."
+      "notes": "Count rejects unbounded queries, uses the shared permission-filtered JQL command path and has integration evidence; the estimate is the exact current count, which a single database index always has at hand."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/search/jql",
@@ -10927,7 +10927,7 @@
         "e2e/issue_security_schemes.spec.ts",
         "docs/ISSUE_SECURITY_SCHEMES.md"
       ],
-      "notes": "Atomic holder addition across the nine Jira holder types is tested; per-holder managed administration remains."
+      "notes": "Atomic holder addition across the nine Jira holder types is tested; each holder is then removed individually through the level member delete operation."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/issuetype/{id}",
