@@ -1,4 +1,5 @@
 import { expect, test, Page } from '@playwright/test';
+import axe from 'axe-core';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -12,6 +13,12 @@ function apiAuthHeader(): string {
   const tokens = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'seed-tokens.json'), 'utf8'));
   const token = process.env.ZZIRA_API_TOKEN ?? tokens[DEMO.email];
   return 'Basic ' + Buffer.from(`${DEMO.email}:${token}`).toString('base64');
+}
+
+async function accessible(page: Page) {
+  await page.addScriptTag({ content: axe.source });
+  const violations = await page.evaluate(async () => (await (window as any).axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'] } })).violations);
+  expect(violations).toEqual([]);
 }
 
 async function login(page: Page) {
@@ -144,4 +151,43 @@ test('backlog journey creates, plans, ranks, starts, updates, and completes a sp
     if (startAt >= body.total || body.issues.length === 0) break;
   }
   expect(backlogKeys).toEqual(expect.arrayContaining([firstIssueKey, secondIssueKey]));
+
+  // The completed sprint reads back in the sprint report and velocity chart.
+  await page.goto('/board/brd_default/backlog');
+  await page.locator('.nav-reports').click();
+  await page.getByRole('link', { name: 'Open Sprint report' }).click();
+  await expect(page.getByRole('heading', { name: 'Sprint report', level: 1 })).toBeVisible();
+  await page.getByLabel('Board', { exact: true }).selectOption({ label: 'ZZ board' });
+  await page.getByRole('button', { name: 'Show board' }).click();
+  await page.getByLabel('Sprint', { exact: true }).selectOption({ label: sprintName });
+  await page.getByRole('button', { name: 'Show sprint' }).click();
+  await expect(page.getByRole('heading', { name: sprintName, level: 2 })).toBeVisible();
+  const incomplete = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Work items not completed' }) });
+  await expect(incomplete).toContainText(firstIssueKey);
+  await expect(incomplete).toContainText(secondIssueKey);
+  await expect(page.getByRole('region', { name: 'Sprint summary' })).toContainText('Completed');
+  await expect(page.locator('.agile-chart polyline')).toHaveCount(1);
+  await page.getByText('View burndown changes', { exact: true }).click();
+  const changes = page.getByRole('table', { name: 'Burndown changes' });
+  await expect(changes).toContainText('Sprint start');
+  await expect(changes).toContainText('Sprint completed');
+  await expect(changes).toContainText(secondIssueKey);
+  await accessible(page);
+  await page.setViewportSize({ width: 320, height: 740 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.setViewportSize({ width: 1280, height: 720 });
+
+  await page.goto('/board/brd_default/backlog');
+  await page.locator('.nav-reports').click();
+  await page.getByRole('link', { name: 'Open Velocity chart' }).click();
+  await expect(page.getByRole('heading', { name: 'Velocity chart', level: 1 })).toBeVisible();
+  await page.getByLabel('Board', { exact: true }).selectOption({ label: 'ZZ board' });
+  await page.getByRole('button', { name: 'Show board' }).click();
+  await expect(page.getByRole('table', { name: 'Velocity data' })).toContainText(sprintName);
+  await expect(page.locator('.chart-commitment').first()).toBeAttached();
+  await accessible(page);
+  await page.locator('[data-theme-toggle]').click();
+  await accessible(page);
+  await page.setViewportSize({ width: 320, height: 740 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
