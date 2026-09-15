@@ -128,6 +128,9 @@ func GadgetCatalog() []GadgetDefinition {
 		{"com.zzira:time-since", "Time since chart", "Work created, updated or resolved each day in a project.", ""},
 		{"com.zzira:days-remaining", "Days remaining in sprint", "How long is left in a scrum board's active sprint.", ""},
 		{"com.zzira:sprint-health", "Sprint health", "Time elapsed, work complete and scope change in a scrum board's active sprint.", ""},
+		{"com.zzira:activity-stream", "Activity stream", "Recent creations, changes and comments on work from a filter or JQL.", ""},
+		{"com.zzira:calendar", "Calendar", "This month's due work and release dates from a filter or JQL.", ""},
+		{"com.zzira:road-map", "Road map", "A project's unreleased versions due soon, with their progress.", ""},
 	}
 }
 
@@ -193,10 +196,20 @@ func ReportGadget(moduleKey string) bool {
 // over a window of days, rather than for a scrum board.
 func ProjectReportGadget(moduleKey string) bool {
 	switch moduleKey {
-	case "com.zzira:created-vs-resolved", "com.zzira:resolution-time", "com.zzira:recently-created", "com.zzira:average-age", "com.zzira:time-since":
+	case "com.zzira:created-vs-resolved", "com.zzira:resolution-time", "com.zzira:recently-created", "com.zzira:average-age", "com.zzira:time-since", "com.zzira:road-map":
 		return true
 	}
 	return false
+}
+
+// ChartGadget reports whether a gadget counts query results by a grouping.
+func ChartGadget(moduleKey string) bool {
+	return !ListGadget(moduleKey) && !ReportGadget(moduleKey) && moduleKey != "com.zzira:activity-stream" && moduleKey != "com.zzira:calendar"
+}
+
+// ChartGadget reports whether the gadget counts work by a grouping.
+func (g DashboardGadget) ChartGadget() bool {
+	return ChartGadget(g.ModuleKey)
 }
 
 // ProjectReportGadget reports whether the gadget draws a project report.

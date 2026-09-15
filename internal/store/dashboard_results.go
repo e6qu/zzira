@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/e6qu/zzira/internal/jql"
 	"github.com/e6qu/zzira/internal/models"
@@ -23,6 +24,10 @@ type GadgetResults struct {
 	JQL    string
 	// Grid is two dimensional statistics' counts.
 	Grid *GadgetGrid
+	// Activity and Calendar are the activity stream's events and the
+	// calendar's month.
+	Activity []ActivityEntry
+	Calendar *GadgetCalendar
 }
 
 func (s *Store) DashboardGadgetResults(ctx context.Context, ws, user, id string, g models.DashboardGadget) (GadgetResults, error) {
@@ -99,6 +104,14 @@ func (s *Store) DashboardGadgetResults(ctx context.Context, ws, user, id string,
 	}
 	args = append(args, user)
 	where += " AND " + VisibleIssuePredicate("i", fmt.Sprintf("$%d", len(args)))
+	switch g.ModuleKey {
+	case "com.zzira:activity-stream":
+		out.Activity, err = s.activityStream(ctx, ws, user, where, args, out.Config.Limit)
+		return out, err
+	case "com.zzira:calendar":
+		out.Calendar, err = s.gadgetCalendar(ctx, where, args, time.Now())
+		return out, err
+	}
 	// The total counts each work item once, even when it carries several labels.
 	if err = s.Pool.QueryRow(ctx, `SELECT count(*) `+searchJoin+` WHERE `+where, args...).Scan(&out.Total); err != nil {
 		return out, err

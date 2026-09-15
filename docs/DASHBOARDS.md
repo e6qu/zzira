@@ -53,6 +53,9 @@ The built-in catalog contains:
 - `com.zzira:time-since`
 - `com.zzira:days-remaining`
 - `com.zzira:sprint-health`
+- `com.zzira:activity-stream`
+- `com.zzira:calendar`
+- `com.zzira:road-map`
 
 Gadgets accept direct JQL or a saved filter through the reserved
 `zzira.config` item property. Lists return up to 50 results. Statistics, pie
@@ -67,6 +70,13 @@ Assigned-to-me adds `assignee = currentUser()` when each viewer loads it.
 Watched work items, Voted work items and Work in progress likewise add
 `issue in watchedIssues()`, `issue in votedIssues()` and
 `assignee = currentUser() AND statusCategory = indeterminate`.
+The activity stream lists, newest first and up to the result limit, the
+creation, field changes and comments of the work its JQL or filter matches that
+the viewer can see; a comment restricted to a group or project role appears
+only to its members. The calendar shows the current month, in weeks starting on
+Monday, with the matching work due each day (up to 200, with a count of the
+rest) and the release dates of unarchived versions in those work items'
+projects.
 Report gadgets draw the matching report instead of a query. Created vs.
 resolved and Resolution time keep a `projectKey`, a `days` window of 7, 30 or
 90 and, for created vs. resolved, `cumulative` running totals; Velocity and
@@ -82,7 +92,10 @@ days remaining counts whole days to the planned end, or days overdue. Sprint
 health shows the share of planned time elapsed, the share of the board's
 estimation statistic complete (by work items when nothing is estimated), and
 work added or removed after the start as a share of the work committed at the
-start. Each viewer sees the report counted from their own
+start. Road map keeps a `projectKey` and `days` window and lists up to 20 of the
+project's unreleased, unarchived versions due within the window or already
+overdue, soonest first, with how much of the fix-version work the viewer can
+see is done. Each viewer sees the report counted from their own
 access to the work, with its values as a table. A gadget not yet configured,
 a project that turned Reports off, or a board that is not a scrum board says
 so instead. The configuration form offers only projects and scrum boards the

@@ -229,6 +229,17 @@ func (r *DashboardSubscriptionRunner) gadgetSummary(ctx context.Context, ws, rec
 			parts = append(parts, fmt.Sprintf("%s %d", row.Name, row.Total))
 		}
 		return []string{fmt.Sprintf("%s: %d work items by %s and %s — %s", title, results.Total, rows, columns, strings.Join(parts, ", "))}
+	case "com.zzira:activity-stream":
+		if len(results.Activity) == 0 {
+			return []string{title + ": no recent activity on this work."}
+		}
+		latest := results.Activity[0]
+		return []string{fmt.Sprintf("%s: %d recent events, the latest by %s on %s  %s/browse/%s", title, len(results.Activity), latest.Actor, latest.IssueKey, base, latest.IssueKey)}
+	case "com.zzira:calendar":
+		if results.Calendar == nil {
+			return []string{title}
+		}
+		return []string{fmt.Sprintf("%s: %d work items due and %d release dates in %s", title, len(results.Calendar.Issues)+results.Calendar.More, len(results.Calendar.Versions), results.Calendar.Month.Format("January 2006"))}
 	case "com.zzira:issue-statistics", "com.zzira:pie-chart", "com.zzira:heat-map":
 		parts := []string{}
 		for index, count := range results.Counts {
@@ -245,7 +256,7 @@ func (r *DashboardSubscriptionRunner) gadgetSummary(ctx context.Context, ws, rec
 	}
 	now := r.now()
 	switch gadget.ModuleKey {
-	case "com.zzira:created-vs-resolved", "com.zzira:resolution-time", "com.zzira:recently-created", "com.zzira:average-age", "com.zzira:time-since":
+	case "com.zzira:created-vs-resolved", "com.zzira:resolution-time", "com.zzira:recently-created", "com.zzira:average-age", "com.zzira:time-since", "com.zzira:road-map":
 		if config.ProjectKey == "" {
 			return []string{title + ": open the dashboard to choose a project."}
 		}
@@ -261,6 +272,18 @@ func (r *DashboardSubscriptionRunner) gadgetSummary(ctx context.Context, ws, rec
 			return []string{fmt.Sprintf("%s: %d created and %d resolved in %s over the last %d days", title, report.CreatedTotal, report.ResolvedTotal, project.Key, config.Days)}
 		}
 		switch gadget.ModuleKey {
+		case "com.zzira:road-map":
+			versions, err := r.Store.RoadMap(ctx, ws, recipient, project.ID, config.Days, now)
+			if err != nil {
+				return []string{title + ": this report could not be calculated."}
+			}
+			overdue := 0
+			for _, version := range versions {
+				if version.Overdue {
+					overdue++
+				}
+			}
+			return []string{fmt.Sprintf("%s: %d unreleased versions in %s due within %d days, %d of them overdue", title, len(versions), project.Key, config.Days, overdue)}
 		case "com.zzira:recently-created":
 			report, err := r.Store.RecentlyCreated(ctx, ws, recipient, project.ID, config.Days, now)
 			if err != nil {

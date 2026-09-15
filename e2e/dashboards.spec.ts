@@ -255,3 +255,54 @@ test('chart gadgets count work across two groupings, by weight and for each view
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   expect((await page.request.delete(`/rest/api/3/dashboard/${id}`, { headers: auth })).status()).toBe(204);
 });
+
+test('activity stream, calendar and road map gadgets follow recent work, due dates and releases', async ({ page }) => {
+  await login(page);
+  const auth = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
+  const stamp = Date.now();
+  const today = new Date().toISOString().slice(0, 10);
+  const project = await (await page.request.get('/rest/api/3/project/ZZ', { headers: auth })).json();
+  const version = await page.request.post('/rest/api/3/version', { headers: auth, data: { name: `Stream release ${stamp}`, projectId: Number(project.id), releaseDate: today } });
+  expect(version.status(), await version.text()).toBe(201);
+  const versionID = (await version.json()).id;
+  const created = await page.request.post('/rest/api/3/issue', { headers: auth, data: { fields: { project: { key: 'ZZ' }, summary: `Stream work ${stamp}`, issuetype: { name: 'Task' }, duedate: today, fixVersions: [{ id: versionID }] } } });
+  expect(created.status(), await created.text()).toBe(201);
+  const key = (await created.json()).key as string;
+  const comment = await page.request.post(`/rest/api/3/issue/${key}/comment`, { headers: auth, data: { body: { type: 'doc', version: 1, content: [{ type: 'paragraph', content: [{ type: 'text', text: `Stream note ${stamp}` }] }] } } });
+  expect(comment.status(), await comment.text()).toBe(201);
+
+  const board = await page.request.post('/rest/api/3/dashboard', { headers: auth, data: { name: `Streams ${stamp}`, sharePermissions: [], editPermissions: [] } });
+  const id = (await board.json()).id as string;
+  const gadget = async (moduleKey: string, column: number, config: object) => {
+    const added = await page.request.post(`/rest/api/3/dashboard/${id}/gadget`, { headers: auth, data: { moduleKey, position: { column, row: 0 } } });
+    expect(added.status()).toBe(200);
+    const gid = (await added.json()).id;
+    expect((await page.request.put(`/rest/api/3/dashboard/${id}/items/${gid}/properties/zzira.config`, { headers: auth, data: config })).status()).toBe(201);
+  };
+  await gadget('com.zzira:activity-stream', 0, { jql: `key = ${key}`, limit: 5 });
+  await gadget('com.zzira:calendar', 1, { jql: `key = ${key}` });
+  await gadget('com.zzira:road-map', 1, { projectKey: 'ZZ', days: 30 });
+
+  await page.goto(`/dashboards/${id}`);
+  const activity = page.getByRole('region', { name: 'Activity stream', exact: true });
+  await expect(activity.getByRole('listitem').first()).toContainText(`commented on ${key}`);
+  await expect(activity.getByRole('listitem').first()).toContainText(`Stream note ${stamp}`);
+  await expect(activity).toContainText(`created ${key}`);
+  const calendar = page.getByRole('region', { name: /^Calendar, / });
+  const todayCell = calendar.locator('td[aria-current="date"]');
+  await expect(todayCell.getByRole('link', { name: new RegExp(`^${key}`) })).toBeVisible();
+  await expect(todayCell).toContainText(`ZZ Stream release ${stamp} release`);
+  const roadMap = page.locator('.dashboard-gadget').filter({ has: page.getByRole('heading', { name: 'Road map', exact: true }) });
+  const release = roadMap.getByRole('listitem').filter({ hasText: `Stream release ${stamp}` });
+  await expect(release).toContainText('0 of 1 work items done');
+  await expect(release.getByRole('progressbar', { name: `Stream release ${stamp} work done`, exact: true })).toBeVisible();
+  await accessible(page);
+
+  await page.getByRole('link', { name: 'Configure Activity stream', exact: true }).click();
+  await expect(page.getByLabel('Maximum events', { exact: true })).toHaveValue('5');
+  await expect(page.getByLabel('Group charts by', { exact: true })).toHaveCount(0);
+  await page.goto(`/dashboards/${id}`);
+  await page.setViewportSize({ width: 320, height: 740 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  expect((await page.request.delete(`/rest/api/3/dashboard/${id}`, { headers: auth })).status()).toBe(204);
+});

@@ -87,9 +87,18 @@ func TestChartGadgetsGroupAndScopeWork(t *testing.T) {
 			}
 		}
 	}
-	for _, key := range []string{"com.zzira:two-dimensional-statistics", "com.zzira:heat-map", "com.zzira:pie-chart"} {
-		if !catalog[key] || models.ListGadget(key) || models.ReportGadget(key) {
+	for _, key := range []string{"com.zzira:two-dimensional-statistics", "com.zzira:heat-map", "com.zzira:pie-chart", "com.zzira:issue-statistics"} {
+		if !catalog[key] || models.ListGadget(key) || models.ReportGadget(key) || !models.ChartGadget(key) {
 			t.Fatalf("%s is not a catalogued chart gadget", key)
 		}
+	}
+	// Streams and reports neither list nor count work by a grouping.
+	for _, key := range []string{"com.zzira:activity-stream", "com.zzira:calendar", "com.zzira:road-map", "com.zzira:filter-results", "com.zzira:velocity"} {
+		if !catalog[key] || models.ChartGadget(key) {
+			t.Fatalf("%s is counted as a chart gadget", key)
+		}
+	}
+	if !models.ProjectReportGadget("com.zzira:road-map") || models.ListGadget("com.zzira:activity-stream") || models.ReportGadget("com.zzira:calendar") {
+		t.Fatal("stream and road map gadgets are misclassified")
 	}
 }

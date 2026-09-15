@@ -33,10 +33,13 @@ type dashboardTile struct {
 	// the viewer may edit it.
 	DashboardID string
 	Writable    bool
-	Results     store.GadgetResults
-	Slices      []dashboardSlice
-	Report      *gadgetReport
-	Error       string
+	// Activity and Calendar are the activity stream and calendar for people.
+	Activity []activityView
+	Calendar *calendarView
+	Results  store.GadgetResults
+	Slices   []dashboardSlice
+	Report   *gadgetReport
+	Error    string
 }
 type customDashboardsData struct {
 	Dashboards                        []*models.Dashboard
@@ -448,6 +451,7 @@ type gadgetReport struct {
 	TimeSince       *timeSinceView
 	DaysRemaining   *daysRemainingView
 	SprintHealth    *models.SprintHealth
+	RoadMap         *roadMapView
 }
 
 // gadgetReport draws a report gadget from its configured project or board,
@@ -463,7 +467,7 @@ func (h *Handler) gadgetReport(r *http.Request, ws, userID, moduleKey string, co
 	}
 	const failed = "This report could not be calculated."
 	switch moduleKey {
-	case "com.zzira:created-vs-resolved", "com.zzira:resolution-time", "com.zzira:recently-created", "com.zzira:average-age", "com.zzira:time-since":
+	case "com.zzira:created-vs-resolved", "com.zzira:resolution-time", "com.zzira:recently-created", "com.zzira:average-age", "com.zzira:time-since", "com.zzira:road-map":
 		if config.ProjectKey == "" {
 			return nil, "Configure this gadget to choose a project."
 		}
@@ -492,6 +496,12 @@ func (h *Handler) gadgetReport(r *http.Request, ws, userID, moduleKey string, co
 				return nil, failed
 			}
 			report.RecentlyCreated = newRecentlyCreatedView(data, look.DateDay)
+		case "com.zzira:road-map":
+			data, err := h.Store.RoadMap(ctx, ws, userID, project.ID, config.Days, now)
+			if err != nil {
+				return nil, failed
+			}
+			report.RoadMap = newRoadMapView(data, look.DateDay)
 		case "com.zzira:average-age":
 			data, err := h.Store.AverageAge(ctx, ws, userID, project.ID, config.Days, now)
 			if err != nil {
@@ -584,6 +594,10 @@ func (h *Handler) dashboardTiles(r *http.Request, ws, userID, id string, gadgets
 				tile.Error = "This gadget could not load its query. Check its configuration and saved filter."
 			} else if g.ReportGadget() {
 				tile.Report, tile.Error = h.gadgetReport(r, ws, userID, g.ModuleKey, tile.Results.Config)
+			} else if tile.Results.Calendar != nil {
+				tile.Calendar = newCalendarView(tile.Results.Calendar, time.Now())
+			} else if g.ModuleKey == "com.zzira:activity-stream" {
+				tile.Activity = newActivityViews(tile.Results.Activity, h.siteLook(r, ws).DateComplete)
 			} else {
 				offset, largest := 0.0, 1
 				for _, c := range tile.Results.Counts {
