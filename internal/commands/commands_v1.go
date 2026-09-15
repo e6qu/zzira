@@ -42,6 +42,9 @@ type UpdateIssueInput struct {
 	// and generateAppEvents choices.
 	SuppressChangelog bool
 	SuppressEvents    bool
+	// SuppressNotifications leaves out the notifications the update would
+	// send, as Jira's notifyUsers=false does.
+	SuppressNotifications bool
 
 	// OriginalEstimate and RemainingEstimate change time tracking estimates in
 	// seconds: nil leaves one unchanged and store.ClearEstimate removes it.
@@ -230,8 +233,10 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 	if assigneeChanged {
 		eventID, notificationKind, notificationVerb = 3, "assigned", "assigned"
 	}
-	if err := s.deliverIssueEvent(ctx, in.WorkspaceID, in.ActorID, issue, action, eventID, notificationKind, notificationVerb); err != nil {
-		return issue, action, err
+	if !in.SuppressNotifications {
+		if err := s.deliverIssueEvent(ctx, in.WorkspaceID, in.ActorID, issue, action, eventID, notificationKind, notificationVerb); err != nil {
+			return issue, action, err
+		}
 	}
 	if in.StatusID != nil {
 		if err := s.syncServiceSLAsAfterIssueChange(ctx, in.ActorID, in.WorkspaceID, issue, time.Now().UTC()); err != nil {

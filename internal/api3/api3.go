@@ -1156,8 +1156,29 @@ func (h *Handler) putIssue(w http.ResponseWriter, r *http.Request, idOrKey strin
 			return
 		}
 	}
+	// Leaving watchers unnotified takes Administer Jira or Administer projects,
+	// as Jira requires for notifyUsers=false.
+	suppressNotifications := strings.EqualFold(r.URL.Query().Get("notifyUsers"), "false")
+	if suppressNotifications {
+		admin, adminErr := h.Store.IsAdmin(r.Context(), wsID, userID)
+		if adminErr != nil {
+			jiraError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		if !admin {
+			allowed, permissionErr := h.hasProjectPermission(r.Context(), wsID, userID, current.ProjectID, current.ID, "ADMINISTER_PROJECTS")
+			if permissionErr != nil {
+				jiraError(w, http.StatusInternalServerError, "internal error")
+				return
+			}
+			if !allowed {
+				jiraError(w, http.StatusForbidden, "To discard the user notification either admin or project admin permissions are required.")
+				return
+			}
+		}
+	}
 	if _, _, err := h.Commands.UpdateIssue(ctx, commands.UpdateIssueInput{
-		ActorID: userID, WorkspaceID: wsID, IssueIDOrKey: idOrKey,
+		ActorID: userID, WorkspaceID: wsID, IssueIDOrKey: idOrKey, SuppressNotifications: suppressNotifications,
 		Summary: up.Summary, Description: up.Description,
 		PriorityID: up.PriorityID, AssigneeID: up.AssigneeID,
 		ParentIDOrKey:   parentIDOrKey,
