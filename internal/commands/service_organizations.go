@@ -194,6 +194,43 @@ func (s *Service) SetServiceDeskAttachmentsEnabled(ctx context.Context, actorID,
 	return s.Store.SetServiceDeskAttachmentsEnabled(ctx, workspaceID, serviceDeskID, enabled)
 }
 
+// UpdateServiceHelpCenter saves the help center's branding and announcement
+// for site administrators, as Jira Service Management's help center
+// customization does: names and titles on one line, logo and banner as site
+// paths or http(s) addresses, and hex colours.
+func (s *Service) UpdateServiceHelpCenter(ctx context.Context, actorID, workspaceID string, center models.ServiceHelpCenter) error {
+	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
+		return err
+	}
+	for _, field := range []*string{&center.Name, &center.HomeTitle, &center.LogoURL, &center.BannerURL, &center.BannerColour, &center.BannerTextColour,
+		&center.NavigationBackgroundColour, &center.NavigationTextColour, &center.AnnouncementTitle, &center.AnnouncementMessage} {
+		*field = strings.TrimSpace(*field)
+	}
+	for label, value := range map[string]string{"help center name": center.Name, "home page title": center.HomeTitle, "announcement title": center.AnnouncementTitle} {
+		if len(value) > 255 || strings.ContainsAny(value, "\r\n") {
+			return fmt.Errorf("the %s must be at most 255 characters on one line", label)
+		}
+	}
+	if len(center.AnnouncementMessage) > 2000 {
+		return fmt.Errorf("the announcement message accepts at most 2000 characters")
+	}
+	if center.AnnouncementMessage != "" && center.AnnouncementTitle == "" {
+		return fmt.Errorf("an announcement needs a title")
+	}
+	for label, value := range map[string]string{"logo": center.LogoURL, "banner image": center.BannerURL} {
+		if value != "" && !lookAndFeelURL(value) {
+			return fmt.Errorf("the %s must be a site path or an http or https URL", label)
+		}
+	}
+	for label, value := range map[string]string{"banner, link and button colour": center.BannerColour, "banner text colour": center.BannerTextColour,
+		"navigation background colour": center.NavigationBackgroundColour, "navigation text colour": center.NavigationTextColour} {
+		if value != "" && !lookAndFeelColour.MatchString(value) {
+			return fmt.Errorf("the %s must be a hex colour such as #0052CC", label)
+		}
+	}
+	return s.Store.UpdateServiceHelpCenter(ctx, workspaceID, actorID, center)
+}
+
 // UpdateServiceDeskPortal changes a portal's name, introduction text and logo,
 // as Jira's portal settings do, for the desk's administrators. The logo is a
 // site path or an http(s) address, like the site's own logo.

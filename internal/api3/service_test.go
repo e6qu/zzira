@@ -1427,6 +1427,28 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if desk, err := st.ServiceDesk(ctx, workspaceID, serviceDeskID); err != nil || desk.CustomerNotificationEnabled(models.CustomerNotificationInvited) || !desk.CustomerNotificationEnabled(models.CustomerNotificationPublicComment) {
 		t.Fatalf("desk customer notifications = %+v, %v", desk, err)
 	}
+	// Site administrators brand the help center and announce news on its home page.
+	if err := handler.Commands.UpdateServiceHelpCenter(ctx, customerID, workspaceID, models.ServiceHelpCenter{Name: "Acme help"}); err == nil {
+		t.Fatal("a customer customized the help center")
+	}
+	for _, broken := range []models.ServiceHelpCenter{
+		{BannerColour: "blue"},
+		{LogoURL: "javascript:alert(1)"},
+		{AnnouncementMessage: "No title"},
+		{Name: "Two\nlines"},
+	} {
+		if err := handler.Commands.UpdateServiceHelpCenter(ctx, actorID, workspaceID, broken); err == nil {
+			t.Fatalf("invalid help center settings were accepted: %+v", broken)
+		}
+	}
+	branding := models.ServiceHelpCenter{Name: " Acme help ", HomeTitle: "Welcome to Acme support", BannerColour: "#0052CC", BannerTextColour: "#FFFFFF",
+		AnnouncementTitle: "Planned maintenance", AnnouncementMessage: "Email is offline on Saturday."}
+	if err := handler.Commands.UpdateServiceHelpCenter(ctx, actorID, workspaceID, branding); err != nil {
+		t.Fatal(err)
+	}
+	if center, err := st.ServiceHelpCenter(ctx, workspaceID); err != nil || center.Name != "Acme help" || center.HomeTitle != "Welcome to Acme support" || center.BannerColour != "#0052CC" || center.AnnouncementMessage != "Email is offline on Saturday." {
+		t.Fatalf("help center = %+v, %v", center, err)
+	}
 	// Desk administrators name the portal and give it an introduction and logo.
 	if err := handler.Commands.UpdateServiceDeskPortal(ctx, customerID, workspaceID, serviceDeskID, "Help desk", "", ""); err == nil {
 		t.Fatal("a customer changed the portal")

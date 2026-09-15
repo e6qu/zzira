@@ -247,6 +247,15 @@ func (h *Handler) writeWorkspacePageStatus(w http.ResponseWriter, r *http.Reques
 		}
 		page.WikiLook = wikiLookFor(custom)
 	}
+	if active == "service" {
+		center, err := h.Store.ServiceHelpCenter(r.Context(), workspaceID)
+		if err != nil {
+			log.Printf("render %s help center: %v", name, err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		page.ServiceLook = serviceLookFor(center)
+	}
 	writePageStatus(w, name, page, status)
 }
 

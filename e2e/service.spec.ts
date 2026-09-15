@@ -103,6 +103,27 @@ test('admin creates a service project with Jira Service Management request types
   await page.goto('/service');
   await expect(page.getByRole('heading', { name: 'How can we help?', level: 1 })).toBeVisible();
   await accessible(page);
+  // A site administrator brands the help center and announces news on its home page.
+  const helpCenterSettings = page.locator('#help-center-settings');
+  await helpCenterSettings.locator('summary').click();
+  await helpCenterSettings.getByLabel('Help center name').fill('Acme help');
+  await helpCenterSettings.getByLabel('Banner, link and button colour').fill('#0052CC');
+  await helpCenterSettings.getByLabel('Announcement title').fill('Planned maintenance');
+  await helpCenterSettings.getByLabel('Announcement message').fill('Email is offline on Saturday.');
+  await helpCenterSettings.getByRole('button', { name: 'Save help center' }).click();
+  const announcement = page.getByRole('region', { name: 'Planned maintenance' });
+  await expect(announcement).toContainText('Email is offline on Saturday.');
+  await expect(page.locator('.service-hero .eyebrow')).toHaveText('Acme help');
+  await expect(page.locator('.service-hero')).toHaveCSS('background-color', 'rgb(0, 82, 204)');
+  await accessible(page);
+  // Clearing the settings returns the help center to its defaults.
+  await page.locator('#help-center-settings summary').click();
+  for (const label of ['Help center name', 'Banner, link and button colour', 'Announcement title', 'Announcement message']) {
+    await page.locator('#help-center-settings').getByLabel(label).fill('');
+  }
+  await page.locator('#help-center-settings').getByRole('button', { name: 'Save help center' }).click();
+  await expect(page.getByRole('region', { name: 'Planned maintenance' })).toHaveCount(0);
+  await expect(page.locator('.service-hero .eyebrow')).toHaveText('Help center');
   await page.getByRole('link', { name: `Service desk ${key}` }).click();
   await expect(page.getByRole('heading', { name: `Service desk ${key}`, level: 1 })).toBeVisible();
   await page.getByRole('link', { name: /Report an incident/ }).click();

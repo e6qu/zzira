@@ -44,6 +44,15 @@ const (
 	CustomerNotificationApproval       = "approval_required"
 )
 
+// ServiceHelpCenter is the help center's branding and home page announcement.
+// Empty values keep ZZIRA's defaults.
+type ServiceHelpCenter struct {
+	Name, HomeTitle, LogoURL, BannerURL              string
+	BannerColour, BannerTextColour                   string
+	NavigationBackgroundColour, NavigationTextColour string
+	AnnouncementTitle, AnnouncementMessage           string
+}
+
 // ServiceCustomerNotification is one customer notification as Jira names it.
 type ServiceCustomerNotification struct {
 	Key, Name, Description string

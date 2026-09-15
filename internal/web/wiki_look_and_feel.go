@@ -1,6 +1,7 @@
 package web
 
 import (
+	"github.com/e6qu/zzira/internal/models"
 	"math"
 	"regexp"
 	"strconv"
@@ -62,10 +63,26 @@ func wikiLookFor(settings map[string]any) *wikiLookView {
 	return look
 }
 
-// whiteTextContrast is the WCAG contrast ratio of white text on a hex or
-// rgb() colour, or 0 when the colour cannot be read as one. Primary buttons
-// carry white labels, so a hero colour darker than 4.5:1 leaves them unreadable.
+// whiteTextContrast is the WCAG contrast ratio of white text on a colour, or
+// 0 when the colour cannot be read.
 func whiteTextContrast(colour string) float64 {
+	return colourContrast(colour, "#FFFFFF")
+}
+
+// colourContrast is the WCAG contrast ratio between two hex or rgb() colours,
+// or 0 when either cannot be read.
+func colourContrast(first, second string) float64 {
+	a, okA := relativeLuminance(first)
+	b, okB := relativeLuminance(second)
+	if !okA || !okB {
+		return 0
+	}
+	return (math.Max(a, b) + 0.05) / (math.Min(a, b) + 0.05)
+}
+
+// relativeLuminance is a hex or rgb() colour's WCAG relative luminance.
+func relativeLuminance(colour string) (float64, bool) {
+	colour = strings.TrimSpace(colour)
 	var channels [3]float64
 	switch {
 	case strings.HasPrefix(colour, "#"):
@@ -74,29 +91,29 @@ func whiteTextContrast(colour string) float64 {
 			hex = string([]byte{hex[0], hex[0], hex[1], hex[1], hex[2], hex[2]})
 		}
 		if len(hex) != 6 && len(hex) != 8 {
-			return 0
+			return 0, false
 		}
 		for index := range channels {
 			value, err := strconv.ParseUint(hex[index*2:index*2+2], 16, 8)
 			if err != nil {
-				return 0
+				return 0, false
 			}
 			channels[index] = float64(value)
 		}
 	case strings.HasPrefix(colour, "rgb"):
 		parts := strings.FieldsFunc(colour[strings.Index(colour, "(")+1:], func(r rune) bool { return r == ',' || r == ')' || r == ' ' })
 		if len(parts) < 3 {
-			return 0
+			return 0, false
 		}
 		for index := range channels {
 			value, err := strconv.ParseFloat(parts[index], 64)
 			if err != nil || value < 0 || value > 255 {
-				return 0
+				return 0, false
 			}
 			channels[index] = value
 		}
 	default:
-		return 0
+		return 0, false
 	}
 	linear := func(channel float64) float64 {
 		channel /= 255
@@ -105,6 +122,39 @@ func whiteTextContrast(colour string) float64 {
 		}
 		return math.Pow((channel+0.055)/1.055, 2.4)
 	}
-	luminance := 0.2126*linear(channels[0]) + 0.7152*linear(channels[1]) + 0.0722*linear(channels[2])
-	return 1.05 / (luminance + 0.05)
+	return 0.2126*linear(channels[0]) + 0.7152*linear(channels[1]) + 0.0722*linear(channels[2]), true
+}
+
+// serviceLookView is the help center branding service pages apply. Each
+// colour is set only when its text stays readable at WCAG AA, and the page
+// template writes these plain values into fixed CSS rules.
+type serviceLookView struct {
+	NavigationBackground, NavigationText string
+	Banner, BannerText                   string
+	Accent                               string
+}
+
+// serviceLookFor keeps the help center colours people can read: the
+// navigation and banner pairs when their text has 4.5:1 contrast, and the
+// banner, link and button colour for links and buttons when it has 4.5:1
+// against white.
+func serviceLookFor(center models.ServiceHelpCenter) *serviceLookView {
+	look := &serviceLookView{}
+	if colourContrast(center.NavigationBackgroundColour, center.NavigationTextColour) >= 4.5 {
+		look.NavigationBackground, look.NavigationText = center.NavigationBackgroundColour, center.NavigationTextColour
+	}
+	bannerText := center.BannerTextColour
+	if bannerText == "" {
+		bannerText = "#FFFFFF"
+	}
+	if colourContrast(center.BannerColour, bannerText) >= 4.5 {
+		look.Banner, look.BannerText = center.BannerColour, bannerText
+	}
+	if whiteTextContrast(center.BannerColour) >= 4.5 {
+		look.Accent = center.BannerColour
+	}
+	if *look == (serviceLookView{}) {
+		return nil
+	}
+	return look
 }

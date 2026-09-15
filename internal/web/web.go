@@ -52,6 +52,8 @@ type pageData struct {
 	Site         *render.SiteLook
 	// WikiLook is the Confluence look and feel wiki pages apply, if any.
 	WikiLook *wikiLookView
+	// ServiceLook is the help center branding service pages apply, if any.
+	ServiceLook *serviceLookView
 }
 
 // SiteLook is the look and feel the page shows.

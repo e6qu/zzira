@@ -3,7 +3,9 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/jackc/pgx/v5"
 	"strings"
 
 	"github.com/e6qu/zzira/internal/models"
@@ -287,6 +289,44 @@ func (s *Store) SetServiceDeskAttachmentsEnabled(ctx context.Context, workspaceI
 		return fmt.Errorf("service desk does not exist")
 	}
 	return err
+}
+
+// ServiceHelpCenter reads the help center's branding and announcement; a site
+// that never customized it has the zero value.
+func (s *Store) ServiceHelpCenter(ctx context.Context, workspaceID string) (models.ServiceHelpCenter, error) {
+	var center models.ServiceHelpCenter
+	err := s.Pool.QueryRow(ctx, `SELECT name,home_title,logo_url,banner_url,banner_colour,banner_text_colour,navigation_background_colour,navigation_text_colour,announcement_title,announcement_message
+		FROM service_help_centers WHERE workspace_id=$1`, workspaceID).Scan(&center.Name, &center.HomeTitle, &center.LogoURL, &center.BannerURL, &center.BannerColour, &center.BannerTextColour,
+		&center.NavigationBackgroundColour, &center.NavigationTextColour, &center.AnnouncementTitle, &center.AnnouncementMessage)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return models.ServiceHelpCenter{}, nil
+	}
+	return center, err
+}
+
+// UpdateServiceHelpCenter replaces the help center's branding and announcement.
+func (s *Store) UpdateServiceHelpCenter(ctx context.Context, workspaceID, actorID string, center models.ServiceHelpCenter) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `INSERT INTO service_help_centers(workspace_id,name,home_title,logo_url,banner_url,banner_colour,banner_text_colour,navigation_background_colour,navigation_text_colour,announcement_title,announcement_message,updated_at)
+		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,now())
+		ON CONFLICT (workspace_id) DO UPDATE SET name=EXCLUDED.name,home_title=EXCLUDED.home_title,logo_url=EXCLUDED.logo_url,banner_url=EXCLUDED.banner_url,
+		  banner_colour=EXCLUDED.banner_colour,banner_text_colour=EXCLUDED.banner_text_colour,navigation_background_colour=EXCLUDED.navigation_background_colour,
+		  navigation_text_colour=EXCLUDED.navigation_text_colour,announcement_title=EXCLUDED.announcement_title,announcement_message=EXCLUDED.announcement_message,updated_at=now()`,
+		workspaceID, center.Name, center.HomeTitle, center.LogoURL, center.BannerURL, center.BannerColour, center.BannerTextColour,
+		center.NavigationBackgroundColour, center.NavigationTextColour, center.AnnouncementTitle, center.AnnouncementMessage); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO organization_audit_events(organization_id,actor_id,action,target_type,target_id,detail)
+		SELECT si.organization_id,$2,'service.help_center.updated','service_help_center',$1,jsonb_build_object('name',$3::text,'announcementTitle',$4::text)
+		FROM sites si WHERE si.workspace_id=$1`, workspaceID, actorID, center.Name, center.AnnouncementTitle); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // UpdateServiceDeskPortal changes a portal's name, introduction text and logo.

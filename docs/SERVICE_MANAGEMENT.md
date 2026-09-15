@@ -447,9 +447,15 @@ the Portal section of the agent workspace, as Jira's portal settings do. The
 portal page shows the logo and introduction under its name, and the help
 center lists the portal with its logo and introduction. The name is one line
 of up to 255 characters, the introduction up to 1000, and the logo a site path
-or an http or https address; changes are audited. Help center branding (its
-name, announcements, and banner, button and link colours) is not yet
-configurable.
+or an http or https address; changes are audited. Site administrators customize the help center from the *Customize help center*
+section of its home page: the help center name and home page title, a logo and
+a banner image (site paths or http(s) addresses), the banner, link and button
+colour, the banner text colour, the navigation background and text colours,
+and an announcement title and message shown on the home page. Colours are hex;
+a colour pair is applied only when its text keeps 4.5:1 contrast, and the
+banner, link and button colour styles links and buttons only when white text
+stays readable on it. Changes are audited. Portal announcements that agents
+add are not yet available.
 
 ## Customer notifications
 

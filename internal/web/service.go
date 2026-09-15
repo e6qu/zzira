@@ -131,11 +131,13 @@ type servicePageData struct {
 	FieldValues          map[string]string
 	// FieldOptions are the options each select field on a portal form offers,
 	// and FieldChoices the answers a refused form keeps.
-	FieldOptions          map[string][]store.ServiceRequestFieldOption
-	FieldChoices          map[string][]string
-	Transitions           []serviceTransitionView
-	CanAdmin              bool
-	CanSiteAdmin          bool
+	FieldOptions map[string][]store.ServiceRequestFieldOption
+	FieldChoices map[string][]string
+	Transitions  []serviceTransitionView
+	CanAdmin     bool
+	CanSiteAdmin bool
+	// HelpCenter is the help center's branding and announcement.
+	HelpCenter            models.ServiceHelpCenter
 	DeploymentGate        *store.ServiceDeploymentGate
 	DeploymentProviders   []*models.AppInstallation
 	CanAgent              bool
@@ -1136,7 +1138,37 @@ func (h *Handler) ServiceHome(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load your customer organizations.", http.StatusInternalServerError)
 		return
 	}
-	h.writeWorkspacePage(w, r, "page_service_home", user, workspaceID, servicePageData{Desks: desks, Requests: requests, Organizations: organizations}, "service", "")
+	center, err := h.Store.ServiceHelpCenter(r.Context(), workspaceID)
+	if err != nil {
+		http.Error(w, "Could not load the help center.", http.StatusInternalServerError)
+		return
+	}
+	siteAdmin, err := h.Store.IsAdmin(r.Context(), workspaceID, user.ID)
+	if err != nil {
+		http.Error(w, "Could not authorize help center administration.", http.StatusInternalServerError)
+		return
+	}
+	h.writeWorkspacePage(w, r, "page_service_home", user, workspaceID, servicePageData{Desks: desks, Requests: requests, Organizations: organizations, HelpCenter: center, CanSiteAdmin: siteAdmin}, "service", "")
+}
+
+// ServiceHelpCenterSettings saves the help center's branding and announcement.
+func (h *Handler) ServiceHelpCenterSettings(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	center := models.ServiceHelpCenter{Name: r.PostFormValue("name"), HomeTitle: r.PostFormValue("homeTitle"), LogoURL: r.PostFormValue("logoUrl"), BannerURL: r.PostFormValue("bannerUrl"),
+		BannerColour: r.PostFormValue("bannerColour"), BannerTextColour: r.PostFormValue("bannerTextColour"),
+		NavigationBackgroundColour: r.PostFormValue("navigationBackgroundColour"), NavigationTextColour: r.PostFormValue("navigationTextColour"),
+		AnnouncementTitle: r.PostFormValue("announcementTitle"), AnnouncementMessage: r.PostFormValue("announcementMessage")}
+	if err := h.Commands.UpdateServiceHelpCenter(r.Context(), user.ID, workspaceID, center); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	redirectLocal(w, r, "/service#help-center-settings")
 }
 
 func (h *Handler) ServicePortal(w http.ResponseWriter, r *http.Request) {
