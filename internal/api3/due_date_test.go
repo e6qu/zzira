@@ -113,6 +113,18 @@ func TestDueDate(t *testing.T) {
 		t.Fatalf("cleared due date = %v", got)
 	}
 
+	// A transition sets it too, and refuses a value that is not a day.
+	transitions := call(http.MethodGet, "/rest/api/3/issue/"+undated+"/transitions", "", http.StatusOK)["transitions"].([]any)
+	if len(transitions) == 0 {
+		t.Fatal("no transitions available")
+	}
+	transitionID := transitions[0].(map[string]any)["id"].(string)
+	call(http.MethodPost, "/rest/api/3/issue/"+undated+"/transitions", `{"transition":{"id":"`+transitionID+`"},"fields":{"duedate":"tomorrow"}}`, http.StatusBadRequest)
+	call(http.MethodPost, "/rest/api/3/issue/"+undated+"/transitions", `{"transition":{"id":"`+transitionID+`"},"fields":{"duedate":"2026-12-24"}}`, http.StatusNoContent)
+	if got := dueDate(undated); got != "2026-12-24" {
+		t.Fatalf("transitioned due date = %v", got)
+	}
+
 	// The changelog records each change as Jira does.
 	histories := call(http.MethodGet, "/rest/api/3/issue/"+key+"/changelog", "", http.StatusOK)["values"].([]any)
 	found := false
@@ -140,7 +152,11 @@ func TestDueDate(t *testing.T) {
 	if len(issues) != 1 || issues[0].(map[string]any)["key"] != key {
 		t.Fatalf("due date search = %v", result)
 	}
-	if empty := call(http.MethodPost, "/rest/api/3/search/jql", `{"jql":"project = `+projectKey+` AND duedate is EMPTY"}`, http.StatusOK)["issues"].([]any); len(empty) != 1 {
+	// Both work items now have a due date, so none is empty.
+	if empty := call(http.MethodPost, "/rest/api/3/search/jql", `{"jql":"project = `+projectKey+` AND duedate is EMPTY"}`, http.StatusOK)["issues"].([]any); len(empty) != 0 {
 		t.Fatalf("undated search = %v", empty)
+	}
+	if dated := call(http.MethodPost, "/rest/api/3/search/jql", `{"jql":"project = `+projectKey+` AND due is not EMPTY"}`, http.StatusOK)["issues"].([]any); len(dated) != 2 {
+		t.Fatalf("dated search = %v", dated)
 	}
 }
