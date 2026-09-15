@@ -27,8 +27,8 @@ label that feeds recovery time; dedicated incident relationships and service
 configuration remain. Deployment approvals, configurable
 environment mapping, excluded-period calendars, team filters, comparison
 periods, targets, exports, subscriptions and scheduled delivery remain.
-Burnup, cumulative flow, control chart, created versus resolved and
-resolution time reports remain on the active plan.
+Created versus resolved, resolution time, epic and version reports remain on
+the active plan.
 
 ## Sprint report and velocity chart
 
@@ -55,6 +55,10 @@ starting and ending values. The burndown steps remaining estimate down as
 work completes and up as work is added, reopened or re-estimated, beside a
 guideline that falls to zero at the planned end. A table lists every change.
 
+The report also draws a burnup from the same replay: the sprint's scope as
+one step line and the work completed within it as another, so the gap between
+them is the work left.
+
 `/projects/{key}/reports/velocity` compares commitment (the estimate of the
 work in each sprint when it started) with completed work for the board's
 seven most recently completed sprints, oldest first, with the average
@@ -74,3 +78,24 @@ has an accessible text alternative and keyboard-reachable data table. SLA
 breaches are calculated with the same desk calendar and holidays used on the
 customer request and attention queue. Request-type, organization, channel and
 priority segments, comparison periods, exports and scheduled delivery remain.
+
+## Cumulative flow diagram and control chart
+
+Both read any board of a software project, scrum or kanban, over the last 14,
+30 or 90 days (30 by default; any other window is 400). The work is what the
+board's filter shows the viewer, and each item's status history comes from
+the action log.
+
+`/projects/{key}/reports/cumulative-flow` counts the board's work in each
+column at the end of each day, today included, and stacks the columns with
+the first column on top, as Jira draws the diagram. A table lists every
+day's counts.
+
+`/projects/{key}/reports/control-chart` places each work item completed in
+the window by when it was completed and how long it took: from its first move
+into an in-progress status to the move into done that completed it. Reopened
+work counts only once it is done again, and work that went straight to done
+without starting has no cycle time. The summary gives the number of items and
+the average and median cycle time, the chart marks the average, and a table
+lists each item.
+

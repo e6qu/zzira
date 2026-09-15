@@ -166,7 +166,10 @@ test('backlog journey creates, plans, ranks, starts, updates, and completes a sp
   await expect(incomplete).toContainText(firstIssueKey);
   await expect(incomplete).toContainText(secondIssueKey);
   await expect(page.getByRole('region', { name: 'Sprint summary' })).toContainText('Completed');
-  await expect(page.locator('.agile-chart polyline')).toHaveCount(1);
+  await expect(page.locator('.agile-chart .chart-remaining')).toHaveCount(1);
+  await expect(page.getByRole('heading', { name: 'Burnup', level: 2 })).toBeVisible();
+  await expect(page.locator('.agile-chart .chart-scope')).toHaveCount(1);
+  await expect(page.locator('.agile-chart .chart-completed-line')).toHaveCount(1);
   await page.getByText('View burndown changes', { exact: true }).click();
   const changes = page.getByRole('table', { name: 'Burndown changes' });
   await expect(changes).toContainText('Sprint start');
