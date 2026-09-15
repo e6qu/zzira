@@ -2415,6 +2415,10 @@ func (h *Handler) WikiPageDraftDiscard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	err := h.Commands.DiscardWikiContentDraft(r.Context(), ws, userID, "page", page.ID)
+	if err == nil {
+		// Editors still open would otherwise write the discarded text back.
+		err = h.Store.CloseWikiLiveDocument(r.Context(), ws, page.ID)
+	}
 	h.finishWikiTreeAction(w, r, err, "/wiki/spaces/"+page.SpaceID+"/pages/"+page.ID)
 }
 
