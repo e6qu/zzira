@@ -85,13 +85,16 @@ type automationEditorData struct {
 	// Triggers, ActionTypes, ConditionFields and ConditionOperators are the
 	// editor's choices.
 	Triggers, ActionTypes, ConditionFields, ConditionOperators []automationOption
-	Runs                                                       []automationRunView
-	Members                                                    []*models.User
-	Statuses                                                   []models.Status
-	CloudID                                                    string
-	IsNew                                                      bool
-	FormAction                                                 string
-	Error                                                      string
+	// Unsupported names what the editor cannot show in the rule, which turns
+	// saving there off so it is not lost.
+	Unsupported string
+	Runs        []automationRunView
+	Members     []*models.User
+	Statuses    []models.Status
+	CloudID     string
+	IsNew       bool
+	FormAction  string
+	Error       string
 }
 
 func (h *Handler) AutomationRules(w http.ResponseWriter, r *http.Request) {
@@ -208,8 +211,11 @@ func (h *Handler) AutomationUpdate(w http.ResponseWriter, r *http.Request) {
 		}
 	case "save":
 		var body json.RawMessage
-		body, err = automationPayload(r)
-		if err == nil {
+		if existing, loadErr := h.Automation.Rule(r.Context(), workspaceID, uuid); loadErr != nil {
+			err = loadErr
+		} else if missing := automationEditorUnsupported(existing.Payload); missing != "" {
+			err = fmt.Errorf("the editor does not show %s; change this rule through the Automation API", missing)
+		} else if body, err = automationPayload(r); err == nil {
 			err = h.Automation.UpdateRule(r.Context(), workspaceID, h.currentUser(r).ID, uuid, body)
 		}
 	default:
@@ -269,6 +275,7 @@ func (h *Handler) automationEditorData(r *http.Request, workspaceID string, rule
 	data.Actions = parseAutomationActions(rule.Payload)
 	data.Trigger = parseAutomationTrigger(rule.Payload)
 	data.Conditions = append(parseAutomationConditions(rule.Payload), automationConditionView{})
+	data.Unsupported = automationEditorUnsupported(rule.Payload)
 	return data, nil
 }
 
@@ -412,6 +419,35 @@ func automationComponentValue(raw json.RawMessage, value any) {
 	_ = json.Unmarshal(raw, value)
 }
 
+// automationEditorUnsupported names what the editor cannot show in a rule, so
+// saving there would lose it; it is empty when the editor shows the whole rule.
+func automationEditorUnsupported(payload json.RawMessage) string {
+	var rule struct {
+		Trigger struct {
+			Type string `json:"type"`
+		} `json:"trigger"`
+		Components []struct {
+			Component string `json:"component"`
+			Type      string `json:"type"`
+		} `json:"components"`
+	}
+	_ = json.Unmarshal(payload, &rule)
+	if automationOptionName(automationTriggers, rule.Trigger.Type) == "" {
+		return "its trigger"
+	}
+	for _, component := range rule.Components {
+		switch {
+		case component.Component == "BRANCH":
+			return "its branches"
+		case component.Component == "CONDITION" && component.Type != "jira.issue.condition":
+			return "its JQL conditions"
+		case (component.Component == "" || component.Component == "ACTION") && component.Type != "jira.issue.edit" && automationOptionName(automationActionTypes, component.Type) == "":
+			return "some of its actions"
+		}
+	}
+	return ""
+}
+
 func parseAutomationTrigger(payload json.RawMessage) automationTriggerView {
 	var rule struct {
 		CanOtherRuleTrigger bool `json:"canOtherRuleTrigger"`
@@ -469,7 +505,7 @@ func parseAutomationActions(payload json.RawMessage) []automationActionView {
 	_ = json.Unmarshal(payload, &value)
 	actions := make([]automationActionView, 0, len(value.Components))
 	for _, component := range value.Components {
-		if component.Component == "CONDITION" {
+		if component.Component == "CONDITION" || component.Component == "BRANCH" {
 			continue
 		}
 		var fields map[string]string

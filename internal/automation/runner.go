@@ -36,12 +36,24 @@ type claimedRun struct {
 	IssueID, InitiatorID string
 	RuleName             string
 	ScopeARIs            []string
+	// TriggerIssue is the work item the rule started from while branches run
+	// for related work.
+	TriggerIssue *models.Issue
 }
 
 type component struct {
 	Component string          `json:"component"`
 	Type      string          `json:"type"`
 	Value     json.RawMessage `json:"value"`
+	// Children are a branch's conditions and actions.
+	Children []component `json:"children"`
+}
+
+// branchValue is which related work items a branch runs for, and for linked
+// work, the link types to follow.
+type branchValue struct {
+	RelatedType string   `json:"relatedType"`
+	LinkTypes   []string `json:"linkTypes"`
 }
 
 func (r *Runner) Run(ctx context.Context, workspaceID string) {
@@ -271,8 +283,26 @@ func (r *Runner) eventIssue(ctx context.Context, run *claimedRun) (*models.Issue
 // a condition that does not hold stops the rule for it, and each action sees
 // the work item as the previous one left it.
 func (r *Runner) runComponents(ctx context.Context, run *claimedRun, issue *models.Issue, components []component) (bool, error) {
+	if run.TriggerIssue == nil {
+		run.TriggerIssue = issue
+		defer func() { run.TriggerIssue = nil }()
+	}
 	changed := false
 	for _, item := range components {
+		if item.Component == "BRANCH" {
+			related, err := r.relatedIssues(ctx, run, issue, item)
+			if err != nil {
+				return changed, fmt.Errorf("%s on %s: %w", item.Type, issue.Key, err)
+			}
+			for _, relatedIssue := range related {
+				didChange, err := r.runComponents(ctx, run, relatedIssue, item.Children)
+				if err != nil {
+					return changed, err
+				}
+				changed = changed || didChange
+			}
+			continue
+		}
 		if item.Component == "CONDITION" {
 			holds, err := r.condition(ctx, run, issue, item)
 			if err != nil {
@@ -340,6 +370,12 @@ var (
 	runnableConditions = map[string]bool{"jira.issue.condition": true, "jira.jql.condition": true}
 )
 
+// relatedTypes are the related work items a branch can run for.
+var relatedTypes = map[string]bool{"sub-tasks": true, "parent": true, "linked": true}
+
+// maxBranchIssues bounds how many related work items one branch runs for.
+const maxBranchIssues = 100
+
 func ruleComponents(payload json.RawMessage) ([]component, error) {
 	var rule struct {
 		Components []component `json:"components"`
@@ -347,26 +383,136 @@ func ruleComponents(payload json.RawMessage) ([]component, error) {
 	if err := json.Unmarshal(payload, &rule); err != nil {
 		return nil, err
 	}
-	actions := 0
-	for _, item := range rule.Components {
-		switch {
-		case item.Component == "CONDITION":
-			if !runnableConditions[item.Type] {
-				return nil, fmt.Errorf("unsupported condition %q", item.Type)
-			}
-		case item.Component == "" || item.Component == "ACTION":
-			if !runnableActions[item.Type] {
-				return nil, fmt.Errorf("unsupported action %q", item.Type)
-			}
-			actions++
-		default:
-			return nil, fmt.Errorf("component %q is not executable", item.Component)
-		}
+	actions, err := validateComponents(rule.Components, false)
+	if err != nil {
+		return nil, err
 	}
 	if actions == 0 {
 		return nil, errors.New("rule has no actions")
 	}
 	return rule.Components, nil
+}
+
+// validateComponents checks that the runner can execute every component and
+// counts the actions. Branches hold conditions and actions, not branches.
+func validateComponents(items []component, inBranch bool) (int, error) {
+	actions := 0
+	for _, item := range items {
+		switch item.Component {
+		case "CONDITION":
+			if !runnableConditions[item.Type] {
+				return 0, fmt.Errorf("unsupported condition %q", item.Type)
+			}
+		case "", "ACTION":
+			if !runnableActions[item.Type] {
+				return 0, fmt.Errorf("unsupported action %q", item.Type)
+			}
+			actions++
+		case "BRANCH":
+			if inBranch {
+				return 0, errors.New("branches cannot contain other branches")
+			}
+			if item.Type != "jira.issue.related" {
+				return 0, fmt.Errorf("unsupported branch %q", item.Type)
+			}
+			var value branchValue
+			if err := json.Unmarshal(decodeComponentValue(item.Value), &value); err != nil || !relatedTypes[value.RelatedType] {
+				return 0, errors.New("a related work items branch needs relatedType sub-tasks, parent or linked")
+			}
+			nested, err := validateComponents(item.Children, true)
+			if err != nil {
+				return 0, err
+			}
+			if nested == 0 {
+				return 0, errors.New("a branch needs at least one action")
+			}
+			actions += nested
+		default:
+			return 0, fmt.Errorf("component %q is not executable", item.Component)
+		}
+	}
+	return actions, nil
+}
+
+// relatedIssues finds the work items a branch runs for that the rule actor can
+// see: a work item's sub-tasks, its parent, or work linked to it by the
+// branch's link types, named as the work item reads the link (such as blocks
+// or is blocked by) or by the link type's name.
+func (r *Runner) relatedIssues(ctx context.Context, run *claimedRun, issue *models.Issue, branch component) ([]*models.Issue, error) {
+	var value branchValue
+	_ = json.Unmarshal(decodeComponentValue(branch.Value), &value)
+	candidates := []*models.Issue{}
+	switch value.RelatedType {
+	case "sub-tasks":
+		children, err := r.Service.Store.ChildIssues(ctx, run.WorkspaceID, issue.ID)
+		if err != nil {
+			return nil, err
+		}
+		candidates = children
+	case "parent":
+		if issue.Parent == nil || issue.Parent.ID == "" {
+			return nil, nil
+		}
+		parent, err := r.Service.Store.IssueByIDOrKey(ctx, run.WorkspaceID, issue.Parent.ID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		candidates = append(candidates, parent)
+	case "linked":
+		links, err := r.Service.Store.LinksByIssue(ctx, issue.ID)
+		if err != nil {
+			return nil, err
+		}
+		wanted := map[string]bool{}
+		for _, linkType := range value.LinkTypes {
+			wanted[strings.ToLower(strings.TrimSpace(linkType))] = true
+		}
+		seen := map[string]bool{}
+		for _, link := range links {
+			// A link's outward work item "blocks" its inward one.
+			other, phrase := link.InwardID, link.Outward
+			if link.InwardID == issue.ID {
+				other, phrase = link.OutwardID, link.Inward
+			}
+			if other == issue.ID || seen[other] {
+				continue
+			}
+			if len(wanted) > 0 && !wanted[strings.ToLower(phrase)] && !wanted[strings.ToLower(link.TypeName)] {
+				continue
+			}
+			seen[other] = true
+			linked, err := r.Service.Store.IssueByIDOrKey(ctx, run.WorkspaceID, other)
+			if errors.Is(err, pgx.ErrNoRows) {
+				continue
+			}
+			if err != nil {
+				return nil, err
+			}
+			candidates = append(candidates, linked)
+		}
+	default:
+		return nil, fmt.Errorf("unsupported related work items %q", value.RelatedType)
+	}
+	visible := []*models.Issue{}
+	for _, candidate := range candidates {
+		if candidate.ArchivedAt != "" {
+			continue
+		}
+		ok, err := authz.CanSeeIssue(ctx, r.Service.Store, run.WorkspaceID, candidate.ProjectID, run.ActorID, candidate.ID, candidate.SecurityLevelID)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			visible = append(visible, candidate)
+		}
+		if len(visible) == maxBranchIssues {
+			break
+		}
+	}
+	return visible, nil
 }
 
 func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue, action component) (bool, error) {

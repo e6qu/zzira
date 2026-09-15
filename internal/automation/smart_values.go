@@ -48,6 +48,11 @@ func (r *Runner) renderSmartValues(ctx context.Context, run *claimedRun, issue *
 	if issue.Priority != nil {
 		values["issue.priority.name"] = issue.Priority.Name
 	}
+	trigger := run.TriggerIssue
+	if trigger == nil {
+		trigger = issue
+	}
+	values["triggerIssue.key"], values["triggerIssue.summary"] = trigger.Key, trigger.Summary
 	if len(text) > 32768 {
 		return "", errors.New("action text is longer than 32768 characters")
 	}

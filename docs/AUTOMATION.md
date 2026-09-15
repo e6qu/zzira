@@ -85,9 +85,9 @@ therefore filters the matched set, and command-layer validation applies to
 assignment and workflow changes. Runs are capped at 1,000 matching work items;
 larger results fail before any actions run.
 
-Other triggers, components, branches, smart values and connection payloads
+Other triggers, components, branch types, smart values and connection payloads
 remain available through the rule API, but the worker records an explicit failed
-audit entry when asked to execute unsupported behavior. Branching, issue and page
+audit entry when asked to execute unsupported behavior. Issue and page
 creation, email and web requests, usage limits and the
 rest of Jira's trigger, condition and action catalog remain gaps.
 
@@ -131,13 +131,28 @@ Label, assignee, comment, edit and condition values render smart values:
 `{{issue.labels}}`, `{{issue.assignee.displayName}}`,
 `{{issue.assignee.accountId}}`, `{{issue.reporter.displayName}}`,
 `{{issue.reporter.accountId}}`, `{{initiator.displayName}}`,
-`{{initiator.accountId}}`, `{{rule.name}}`, `{{now}}` and `{{now.jiraDate}}`.
+`{{initiator.accountId}}`, `{{triggerIssue.key}}`, `{{triggerIssue.summary}}`,
+`{{rule.name}}`, `{{now}}` and `{{now.jiraDate}}`.
 The initiator is the person whose change started an event run or who invoked a
 manual rule. Unknown smart values render empty, as in Jira.
 
+A `BRANCH` component of type `jira.issue.related` runs its `children`, which
+are conditions and actions, once for each related work item the rule actor can
+see: the work item's `sub-tasks`, its `parent`, or work `linked` to it, chosen
+by `value.relatedType`. A linked branch may list `linkTypes`, matched against
+the link as the work item reads it, such as `blocks` or `is blocked by`, or
+against the link type's name; without them every link counts. A branch covers
+up to 100 work items and cannot contain another branch. Inside it, `issue`
+smart values describe the related work item and `{{triggerIssue.key}}` and
+`{{triggerIssue.summary}}` the work item the rule started from, and a condition
+that does not hold skips only that related work item.
+
 The rule editor at `/settings/automation` offers the scheduled and work item
 event triggers with their options, work item fields conditions, and the label,
-assign, transition, comment, edit summary and due date actions.
+assign, transition, comment, edit summary and due date actions. It does not show
+branches, JQL conditions, or triggers and actions it cannot edit, such as the
+manual trigger; for those rules it turns saving off so nothing is lost, and they
+are changed through the rule API.
 
 ## Manually triggered rules
 

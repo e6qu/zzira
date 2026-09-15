@@ -203,3 +203,132 @@ func TestEventRulesRunOnWorkItemEvents(t *testing.T) {
 		t.Fatalf("actions caused by rules = %d, %v", caused, err)
 	}
 }
+
+func TestBranchComponentsValidate(t *testing.T) {
+	valid := `{"components":[{"component":"BRANCH","type":"jira.issue.related","value":{"relatedType":"linked","linkTypes":["blocks"]},"children":[{"component":"CONDITION","type":"jira.jql.condition","value":{"jql":"status != Done"}},{"component":"ACTION","type":"jira.issue.comment"}]}]}`
+	if _, err := ruleComponents(json.RawMessage(valid)); err != nil {
+		t.Fatalf("a branch with an action was refused: %v", err)
+	}
+	for _, payload := range []string{
+		`{"components":[{"component":"BRANCH","type":"jira.issue.related","value":{"relatedType":"sub-tasks"},"children":[{"component":"BRANCH","type":"jira.issue.related","value":{"relatedType":"parent"},"children":[{"component":"ACTION","type":"jira.issue.comment"}]}]}]}`,
+		`{"components":[{"component":"BRANCH","type":"jira.issue.related","value":{"relatedType":"epic"},"children":[{"component":"ACTION","type":"jira.issue.comment"}]}]}`,
+		`{"components":[{"component":"BRANCH","type":"jira.issue.related","value":{"relatedType":"parent"},"children":[{"component":"CONDITION","type":"jira.jql.condition"}]}]}`,
+		`{"components":[{"component":"BRANCH","type":"jira.jql.related","value":{"relatedType":"parent"},"children":[{"component":"ACTION","type":"jira.issue.comment"}]}]}`,
+	} {
+		if _, err := ruleComponents(json.RawMessage(payload)); err == nil {
+			t.Fatalf("%s was accepted", payload)
+		}
+	}
+}
+
+func TestBranchesRunForRelatedWork(t *testing.T) {
+	fx := newAutomationFixture(t)
+	projectID := store.NewID("prj")
+	exec := func(query string, args ...any) {
+		t.Helper()
+		if _, err := fx.store.Pool.Exec(fx.ctx, query, args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	exec(`INSERT INTO projects(id,workspace_id,key,name,workflow_id,lead_account_id) VALUES($1,$2,'BRN','Branches','wf_default',$3)`, projectID, fx.ws, fx.admin)
+	exec(`SELECT provision_workspace_issue_link_types($1)`, fx.ws)
+	linkType := func(jiraID int) string {
+		t.Helper()
+		var id string
+		if err := fx.store.Pool.QueryRow(fx.ctx, `SELECT id FROM issue_link_types WHERE workspace_id=$1 AND jira_id=$2`, fx.ws, jiraID).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	create := func(summary, issueType, parentID string) *models.Issue {
+		t.Helper()
+		issue, _, err := fx.store.CreateIssue(fx.ctx, fx.admin, projectID, summary, json.RawMessage(`{"type":"doc","version":1,"content":[]}`), "st_todo", issueType, "pr_medium", "", nil, nil, "", parentID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return issue
+	}
+	train := create("Release train", "it_task", "")
+	notes := create("Write notes", "it_subtask", train.ID)
+	tag := create("Tag build", "it_subtask", train.ID)
+	deploy := create("Deploy", "it_task", "")
+	other := create("Other work", "it_task", "")
+	// The train blocks the deploy, and other work only relates to the train.
+	if _, _, err := fx.store.CreateIssueLink(fx.ctx, fx.admin, fx.ws, linkType(10000), deploy.ID, train.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := fx.store.CreateIssueLink(fx.ctx, fx.admin, fx.ws, linkType(10003), other.ID, train.ID); err != nil {
+		t.Fatal(err)
+	}
+	action := func(actionType string, value map[string]string) map[string]any {
+		return map[string]any{"component": "ACTION", "type": actionType, "value": value}
+	}
+	branch := func(value map[string]any, children ...map[string]any) map[string]any {
+		return map[string]any{"component": "BRANCH", "type": "jira.issue.related", "value": value, "children": children}
+	}
+	scheduled := func(name, query string, components ...map[string]any) string {
+		t.Helper()
+		raw, _ := json.Marshal(ruleBody(name, fx.admin, "ENABLED", query, components))
+		uuid, err := fx.service.CreateRule(fx.ctx, fx.ws, fx.admin, raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := fx.service.EnqueueNow(fx.ctx, fx.ws, uuid); err != nil {
+			t.Fatal(err)
+		}
+		return uuid
+	}
+	rules := []string{
+		scheduled("Train", "key = "+train.Key,
+			action("jira.issue.add-label", map[string]string{"label": "train"}),
+			branch(map[string]any{"relatedType": "sub-tasks"},
+				map[string]any{"component": "CONDITION", "type": "jira.issue.condition", "value": map[string]string{"field": "summary", "operator": "CONTAINS", "value": "notes"}},
+				action("jira.issue.add-label", map[string]string{"label": "from-{{triggerIssue.key}}"})),
+			branch(map[string]any{"relatedType": "linked", "linkTypes": []string{"blocks"}},
+				action("jira.issue.comment", map[string]string{"comment": "Blocked by {{triggerIssue.key}} ({{triggerIssue.summary}}), not {{issue.key}}"}))),
+		scheduled("Sub-task", "key = "+tag.Key,
+			branch(map[string]any{"relatedType": "parent"}, action("jira.issue.add-label", map[string]string{"label": "child-{{triggerIssue.key}}"})),
+			branch(map[string]any{"relatedType": "linked", "linkTypes": []string{"is blocked by"}}, action("jira.issue.add-label", map[string]string{"label": "never"}))),
+		scheduled("Deploy", "key = "+deploy.Key,
+			branch(map[string]any{"relatedType": "linked", "linkTypes": []string{"Blocks"}}, action("jira.issue.add-label", map[string]string{"label": "blocker"}))),
+	}
+	runner := &Runner{Service: fx.service}
+	for range 6 {
+		if err := runner.DrainOnce(fx.ctx, fx.ws); err != nil {
+			t.Fatal(err)
+		}
+	}
+	labels := func(issue *models.Issue) string {
+		t.Helper()
+		fresh, err := fx.store.IssueByIDOrKey(fx.ctx, fx.ws, issue.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.Join(fresh.Labels, ",")
+	}
+	if got := labels(train); !strings.Contains(got, "train") || !strings.Contains(got, "child-"+tag.Key) || !strings.Contains(got, "blocker") || strings.Contains(got, "never") {
+		t.Fatalf("train labels = %s", got)
+	}
+	if got := labels(notes); got != "from-"+train.Key {
+		t.Fatalf("notes labels = %s", got)
+	}
+	if got := labels(tag); got != "" {
+		t.Fatalf("a sub-task failing the branch condition was changed: %s", got)
+	}
+	comments := func(issue *models.Issue) int {
+		t.Helper()
+		var count int
+		if err := fx.store.Pool.QueryRow(fx.ctx, `SELECT count(*) FROM comments WHERE issue_id=$1 AND body::text LIKE '%Blocked by '||$2||' (Release train), not '||$3||'%'`, issue.ID, train.Key, issue.Key).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		return count
+	}
+	if comments(deploy) != 1 || comments(other) != 0 {
+		t.Fatalf("blocked comments: deploy %d, other %d", comments(deploy), comments(other))
+	}
+	for _, uuid := range rules {
+		if runs, err := fx.service.Runs(fx.ctx, fx.ws, uuid, 5); err != nil || len(runs) != 1 || runs[0].State != "SUCCESS" || runs[0].ChangedCount != 1 {
+			t.Fatalf("rule %s runs = %+v, %v", uuid, runs, err)
+		}
+	}
+}
