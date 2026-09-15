@@ -12516,9 +12516,10 @@
         "internal/api3/issue_operations.go",
         "internal/api3/api3.go",
         "internal/api3/issue_surface_test.go",
-        "docs/ISSUE_SURFACE.md"
+        "docs/ISSUE_SURFACE.md",
+        "internal/api3/due_date_test.go"
       ],
-      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules. Due date is a system field set on create, edit and transition, cleared with null, validated as yyyy-MM-dd, described by create and edit metadata, searchable with JQL and recorded in the changelog."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/issue/archive",
@@ -12726,9 +12727,10 @@
         "internal/api3/issue_operations.go",
         "internal/api3/api3.go",
         "internal/api3/issue_surface_test.go",
-        "docs/ISSUE_SURFACE.md"
+        "docs/ISSUE_SURFACE.md",
+        "internal/api3/due_date_test.go"
       ],
-      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules. A status with jira.issue.editable false refuses edits with 400; overrideScreenSecurity (hidden fields) and overrideEditableFlag are honoured only for Connect and Forge apps with Administer Jira, and refused with 403 for anyone else."
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules. A status with jira.issue.editable false refuses edits with 400; overrideScreenSecurity (hidden fields) and overrideEditableFlag are honoured only for Connect and Forge apps with Administer Jira, and refused with 403 for anyone else. Due date is a system field set on create, edit and transition, cleared with null, validated as yyyy-MM-dd, described by create and edit metadata, searchable with JQL and recorded in the changelog."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/issue/{issueIdOrKey}/assignee",
@@ -12837,9 +12839,10 @@
         "internal/api3/issue_operations.go",
         "internal/api3/api3.go",
         "internal/api3/issue_surface_test.go",
-        "docs/ISSUE_SURFACE.md"
+        "docs/ISSUE_SURFACE.md",
+        "internal/api3/due_date_test.go"
       ],
-      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules. Edit metadata lists no fields while the status sets jira.issue.editable false, unless a Connect or Forge app with Administer Jira passes overrideEditableFlag; overrideScreenSecurity adds the fields the field configuration hides; anyone else passing either gets 403."
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules. Edit metadata lists no fields while the status sets jira.issue.editable false, unless a Connect or Forge app with Administer Jira passes overrideEditableFlag; overrideScreenSecurity adds the fields the field configuration hides; anyone else passing either gets 403. Due date is a system field set on create, edit and transition, cleared with null, validated as yyyy-MM-dd, described by create and edit metadata, searchable with JQL and recorded in the changelog."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/issue/{issueIdOrKey}/notify",

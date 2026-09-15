@@ -762,7 +762,8 @@ SELECT i.id, i.jira_id, i.workspace_id, i.project_id, i.key, i.summary, i.descri
 	       (SELECT COALESCE(sum(w.time_spent_seconds),0) FROM worklogs w WHERE w.issue_id=i.id),
 	       (SELECT sum(t.original_estimate_seconds) FROM issues t WHERE t.id=i.id OR t.parent_id=i.id AND EXISTS(SELECT 1 FROM issue_types tt WHERE tt.id=t.issuetype_id AND tt.subtask)),
 	       (SELECT sum(t.remaining_estimate_seconds) FROM issues t WHERE t.id=i.id OR t.parent_id=i.id AND EXISTS(SELECT 1 FROM issue_types tt WHERE tt.id=t.issuetype_id AND tt.subtask)),
-	       (SELECT COALESCE(sum(w.time_spent_seconds),0) FROM worklogs w JOIN issues t ON t.id=w.issue_id WHERE t.id=i.id OR t.parent_id=i.id AND EXISTS(SELECT 1 FROM issue_types tt WHERE tt.id=t.issuetype_id AND tt.subtask))
+	       (SELECT COALESCE(sum(w.time_spent_seconds),0) FROM worklogs w JOIN issues t ON t.id=w.issue_id WHERE t.id=i.id OR t.parent_id=i.id AND EXISTS(SELECT 1 FROM issue_types tt WHERE tt.id=t.issuetype_id AND tt.subtask)),
+	       to_char(i.due_date,'YYYY-MM-DD')
 FROM issues i
 JOIN statuses st ON st.id = i.status_id
 JOIN issue_types it ON it.id = i.issuetype_id
@@ -793,6 +794,7 @@ func scanIssue(row pgx.Row) (*models.Issue, error) {
 	var resolvedAt *time.Time
 	var createdAt time.Time
 	var archivedAt *time.Time
+	var dueDate *string
 	err := row.Scan(&i.ID, &i.JiraID, &i.WorkspaceID, &i.ProjectID, &i.Key, &i.Summary, &i.Description,
 		&i.Status.ID, &i.Status.Name, &i.Status.Category, &i.Status.JiraID,
 		&i.IssueType.ID, &i.IssueType.Name, &i.IssueType.Icon, &i.IssueType.Subtask,
@@ -807,9 +809,12 @@ func scanIssue(row pgx.Row) (*models.Issue, error) {
 		&resolutionID, &resolutionJiraID, &resolutionName, &resolutionDescription, &resolvedAt,
 		&createdAt, &archivedAt,
 		&i.OriginalEstimateSeconds, &i.RemainingEstimateSeconds, &i.TimeSpentSeconds,
-		&i.AggregateOriginalEstimateSeconds, &i.AggregateRemainingEstimateSeconds, &i.AggregateTimeSpentSeconds)
+		&i.AggregateOriginalEstimateSeconds, &i.AggregateRemainingEstimateSeconds, &i.AggregateTimeSpentSeconds, &dueDate)
 	if err != nil {
 		return nil, err
+	}
+	if dueDate != nil {
+		i.DueDate = *dueDate
 	}
 	i.CreatedAt = createdAt.UTC().Format(time.RFC3339)
 	if archivedAt != nil {
@@ -880,19 +885,20 @@ func (s *Store) CreateIssue(ctx context.Context, actorID, projectID, summary str
 // CreateIssueForReporter separates the authenticated change actor from the
 // issue reporter for on-behalf-of service requests.
 func (s *Store) CreateIssueForReporter(ctx context.Context, actorID, reporterID, projectID, summary string, description json.RawMessage, statusID, issueTypeID, priorityID, assigneeID string, labels []string, fields map[string]json.RawMessage, securityLevelID, parentID string) (*models.Issue, *models.Action, error) {
-	return s.CreateEstimatedIssueForReporter(ctx, actorID, reporterID, projectID, summary, description, statusID, issueTypeID, priorityID, assigneeID, labels, fields, securityLevelID, parentID, IssueEstimates{})
+	return s.CreateEstimatedIssueForReporter(ctx, actorID, reporterID, projectID, summary, description, statusID, issueTypeID, priorityID, assigneeID, labels, fields, securityLevelID, parentID, NewIssueDetails{})
 }
 
-// IssueEstimates are a new work item's original and remaining estimates in
-// seconds; nil leaves an estimate unset.
-type IssueEstimates struct {
+// NewIssueDetails are a new work item's original and remaining estimates in
+// seconds, where nil leaves an estimate unset, and its yyyy-MM-dd due date.
+type NewIssueDetails struct {
 	Original, Remaining *int64
+	DueDate             string
 }
 
 // CreateEstimatedIssueForReporter creates a work item with its time estimates.
 // As in Jira, an original estimate without a remaining one also starts the
 // remaining estimate.
-func (s *Store) CreateEstimatedIssueForReporter(ctx context.Context, actorID, reporterID, projectID, summary string, description json.RawMessage, statusID, issueTypeID, priorityID, assigneeID string, labels []string, fields map[string]json.RawMessage, securityLevelID, parentID string, estimates IssueEstimates) (*models.Issue, *models.Action, error) {
+func (s *Store) CreateEstimatedIssueForReporter(ctx context.Context, actorID, reporterID, projectID, summary string, description json.RawMessage, statusID, issueTypeID, priorityID, assigneeID string, labels []string, fields map[string]json.RawMessage, securityLevelID, parentID string, estimates NewIssueDetails) (*models.Issue, *models.Action, error) {
 	if estimates.Remaining == nil && estimates.Original != nil {
 		remaining := *estimates.Original
 		estimates.Remaining = &remaining
@@ -956,11 +962,11 @@ func (s *Store) CreateEstimatedIssueForReporter(ctx context.Context, actorID, re
 	_, err = tx.Exec(ctx, `
 		INSERT INTO issues (id, workspace_id, project_id, key, summary, description, fields, labels,
 		                    status_id, issuetype_id, priority_id, assignee_id, reporter_id, security_level_id, parent_id, updated_seq,
-		                    original_estimate_seconds, remaining_estimate_seconds, classification_level)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,0,$16,$17,
+		                    original_estimate_seconds, remaining_estimate_seconds, due_date, classification_level)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,0,$16,$17,$18::date,
 		        (SELECT default_classification_level FROM projects WHERE id=$3))`,
 		issueID, wsID, projectID, issueKey, summary, description, fieldsJSON, labels, statusID, issueTypeID, nilIfEmpty(priorityID), nilIfEmpty(assigneeID), reporter, nilIfEmpty(securityLevelID), nilIfEmpty(parentID),
-		estimates.Original, estimates.Remaining)
+		estimates.Original, estimates.Remaining, nilIfEmpty(estimates.DueDate))
 	if err != nil {
 		return nil, nil, err
 	}

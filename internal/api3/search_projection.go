@@ -35,6 +35,7 @@ func searchFieldDefinitions(customFields []*models.CustomField) []searchFieldDef
 		{ID: "summary", Key: "summary", Name: "Summary", Schema: map[string]any{"type": "string", "system": "summary"}},
 		{ID: "description", Key: "description", Name: "Description", Schema: map[string]any{"type": "doc", "system": "description"}},
 		{ID: "labels", Key: "labels", Name: "Labels", Schema: map[string]any{"type": "array", "items": "string", "system": "labels"}},
+		{ID: "duedate", Key: "duedate", Name: "Due date", Schema: map[string]any{"type": "date", "system": "duedate"}},
 		{ID: "fixVersions", Key: "fixVersions", Name: "Fix versions", Schema: map[string]any{"type": "array", "items": "version", "system": "fixVersions"}},
 		{ID: "versions", Key: "versions", Name: "Affects versions", Schema: map[string]any{"type": "array", "items": "version", "system": "versions"}},
 		{ID: "created", Key: "created", Name: "Created", Schema: map[string]any{"type": "datetime", "system": "created"}},

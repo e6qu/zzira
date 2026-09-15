@@ -48,7 +48,8 @@ SELECT i.id, i.jira_id, i.workspace_id, i.project_id, i.key, i.summary, i.descri
 	       (SELECT COALESCE(sum(w.time_spent_seconds),0) FROM worklogs w WHERE w.issue_id=i.id),
 	       (SELECT sum(t.original_estimate_seconds) FROM issues t WHERE t.id=i.id OR t.parent_id=i.id AND EXISTS(SELECT 1 FROM issue_types tt WHERE tt.id=t.issuetype_id AND tt.subtask)),
 	       (SELECT sum(t.remaining_estimate_seconds) FROM issues t WHERE t.id=i.id OR t.parent_id=i.id AND EXISTS(SELECT 1 FROM issue_types tt WHERE tt.id=t.issuetype_id AND tt.subtask)),
-	       (SELECT COALESCE(sum(w.time_spent_seconds),0) FROM worklogs w JOIN issues t ON t.id=w.issue_id WHERE t.id=i.id OR t.parent_id=i.id AND EXISTS(SELECT 1 FROM issue_types tt WHERE tt.id=t.issuetype_id AND tt.subtask))
+	       (SELECT COALESCE(sum(w.time_spent_seconds),0) FROM worklogs w JOIN issues t ON t.id=w.issue_id WHERE t.id=i.id OR t.parent_id=i.id AND EXISTS(SELECT 1 FROM issue_types tt WHERE tt.id=t.issuetype_id AND tt.subtask)),
+	       to_char(i.due_date,'YYYY-MM-DD')
 `
 
 // Search runs a compiled JQL query within one workspace. The workspace

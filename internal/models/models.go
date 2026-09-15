@@ -219,6 +219,8 @@ type Issue struct {
 	Resolution  *Resolution     `json:"resolution,omitempty"`
 	// ResolvedAt is when the issue reached its resolution, empty while unresolved.
 	ResolvedAt string `json:"resolutiondate,omitempty"`
+	// DueDate is the yyyy-MM-dd day the work is due, empty when unset.
+	DueDate string `json:"duedate,omitempty"`
 	// ArchivedAt is when the issue was archived, empty while it is not.
 	ArchivedAt string `json:"-"`
 	// CreatedAt is when the issue was created.

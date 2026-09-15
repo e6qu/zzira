@@ -51,6 +51,7 @@ type IssueUpdate struct {
 	StatusID            *string         // transitions only; "" invalid
 	SecurityLevelID     *string         // "" = public, nil = unchanged
 	Labels              *[]string       // empty = clear, nil = unchanged
+	DueDate             *string         // yyyy-MM-dd; "" = clear, nil = unchanged
 	Fields              map[string]json.RawMessage
 	TriggeredWebhookIDs []string
 	// TriggeredAgents are agent runs the transition's post functions request.
@@ -62,6 +63,18 @@ type IssueUpdate struct {
 	// seconds; nil leaves one unchanged and ClearEstimate marks a value to clear.
 	OriginalEstimate  *int64
 	RemainingEstimate *int64
+}
+
+// dueDateChange is Jira's changelog item for a due date: the day as the value
+// and as a timestamp in its text.
+func dueDateChange(from, to string) models.ChangeItem {
+	text := func(day string) string {
+		if day == "" {
+			return ""
+		}
+		return day + " 00:00:00.0"
+	}
+	return models.ChangeItem{Field: "duedate", FieldType: "jira", From: from, FromString: text(from), To: to, ToString: text(to)}
 }
 
 // ClearEstimate is the estimate value that removes an estimate.
@@ -152,6 +165,10 @@ func (s *Store) UpdateIssue(ctx context.Context, actorID, workspaceID, issueID s
 	if up.Labels != nil && !slices.Equal(*up.Labels, current.Labels) {
 		diff["labels"] = diffItem("labels", "", strings.Join(current.Labels, ", "), "", strings.Join(*up.Labels, ", "))
 		sets = append(sets, "labels = "+arg(*up.Labels))
+	}
+	if up.DueDate != nil && *up.DueDate != current.DueDate {
+		diff["duedate"] = dueDateChange(current.DueDate, *up.DueDate)
+		sets = append(sets, "due_date = "+arg(nilIfEmpty(*up.DueDate))+"::date")
 	}
 	if up.Fields != nil {
 		for _, field := range []string{"fixVersions", "versions", "components"} {

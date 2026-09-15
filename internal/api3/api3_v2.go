@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"sort"
 	"strconv"
@@ -978,6 +979,7 @@ func (h *Handler) searchJQL(w http.ResponseWriter, r *http.Request) {
 	if cursor.SnapshotID == "" {
 		cursor.SnapshotID, err = h.Store.CreateSearchSnapshot(r.Context(), wsID, userID, cursor.QueryHash, c, time.Unix(cursor.ExpiresAt, 0))
 		if err != nil {
+			log.Printf("api3: create search snapshot: %v", err)
 			jiraError(w, http.StatusInternalServerError, "Could not create search snapshot.")
 			return
 		}

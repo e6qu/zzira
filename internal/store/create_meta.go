@@ -123,6 +123,7 @@ func (s *Store) IssueCreateMetadata(ctx context.Context, workspaceID, userID str
 			{ID: "assignee", Name: "Assignee", Type: "user", Section: "details", Options: memberOptions},
 			{ID: "priority", Name: "Priority", Type: "priority", Section: "details", Options: priorityOptions},
 			{ID: "labels", Name: "Labels", Type: "array", Description: "Separate labels with commas. Spaces are not allowed inside a label.", Section: "details"},
+			{ID: "duedate", Name: "Due date", Type: "date", Section: "details"},
 			{ID: "parent", Name: "Parent", Type: "parent", Description: "Required for sub-tasks. Choose a work item in this project.", Section: "details", Options: parentOptions},
 		}
 		if siteConfiguration.TimeTrackingEnabled {

@@ -1225,6 +1225,7 @@ func (h *Handler) CreateIssue(w http.ResponseWriter, r *http.Request) {
 		AssigneeID:       values["assignee"],
 		SecurityLevelID:  values["security"],
 		Labels:           strings.Split(values["labels"], ","),
+		DueDate:          values["duedate"],
 		Fields:           customFields,
 	})
 	if err != nil {
@@ -2185,6 +2186,8 @@ func (h *Handler) UpdateIssueField(w http.ResponseWriter, r *http.Request, key s
 			labels = []string{}
 		}
 		in.Labels = &labels
+	case "duedate":
+		in.DueDate = &value
 	default:
 		const prefix = "custom:"
 		if !strings.HasPrefix(field, prefix) || len(field) == len(prefix) {

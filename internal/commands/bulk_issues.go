@@ -564,6 +564,12 @@ func bulkIssueUpdate(issue *models.Issue, actorID string, operations []store.Bul
 			} else {
 				update.RemainingEstimate = &seconds
 			}
+		case "duedate":
+			value, err := bulkStringValue(operation.Value)
+			if err != nil {
+				return update, fmt.Errorf("duedate: %w", err)
+			}
+			update.DueDate = &value
 		case "components":
 			value, err := bulkComponentsValue(issue.Fields[operation.FieldID], operation)
 			if err != nil {
