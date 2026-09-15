@@ -56,7 +56,13 @@ agents see matching service requests in the query's requested order. Built-in
 queues cannot be edited or removed. Live counts and queue contents
 update from the canonical request issue. Agents can open the full request,
 review internal notes, assign a request to themselves, unassign it, comment,
-and execute its workflow actions. Agent access is assigned per service desk and
+and execute its workflow actions. A queue's checkboxes, with a select-all box,
+choose up to 100 requests for its action bar, which assigns them to an agent
+of the desk or leaves them unassigned, moves each to a chosen status through a
+transition its own workflow offers, or adds the same internal note or reply to
+the customer to each. Requests that cannot change, such as one already in the
+status or without a transition to it, are named with the reason while the rest
+change. Agent access is assigned per service desk and
 is shared by the queue UI, request UI, and REST permission checks. Site
 administrators can add or remove active workspace members from the desk roster.
 Revocation immediately removes queue access, all-request visibility, request
