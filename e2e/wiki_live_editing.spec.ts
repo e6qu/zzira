@@ -146,8 +146,10 @@ test('live edits made offline stay on the device and merge when back online', as
   await demo.keyboard.type(' Offline note.', { delay: 20 });
   await expect(demoStatus).toContainText('kept on this device', { timeout: 10_000 });
   await demo.reload();
+  // The reopened editor starts from the typing kept on the device; offline,
+  // its first exchange fails and the status says the changes are kept.
   await expect(demoEditor).toHaveText('Plan. Offline note.');
-  await expect(demoStatus).toContainText('Your changes from before are back');
+  await expect(demoStatus).toContainText('kept on this device');
 
   // Someone else edits the page while Demo is away.
   const ana = await browser.newPage();
