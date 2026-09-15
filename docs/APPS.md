@@ -138,8 +138,35 @@ promotes the same key to a static module removes the conflicting definition.
 The same resource is available beneath both Jira and Confluence base paths.
 Navigation web items support Jira `system.top.navigation.bar` and Confluence
 `system.header/left` or `system.header/right`. They need no data scope to
-render, open through the signed remote-page gateway, and reject unevaluated
-conditions or unsupported locations explicitly.
+render, open through the signed remote-page gateway, and reject unsupported
+locations explicitly. Dynamic web panels, web items, issue contexts and
+glances keep their conditions like static ones.
+
+## Connect conditions
+
+Web panels, general pages, byline items, web items, admin pages, project pages,
+project settings tabs, issue tab panels, issue contexts and glances, and
+dashboard items may carry Connect `conditions`. Each is one condition,
+optionally `invert`ed, or a group of conditions joined by `type` `AND` or
+`OR`; every condition at the top must hold. The evaluated conditions are:
+
+| Condition | Holds when |
+| --- | --- |
+| `user_is_logged_in` | someone is signed in |
+| `user_is_admin`, `user_is_sysadmin` | the person administers the site |
+| `has_project_permission` | the person holds `params.permission` in the project the module is shown with |
+| `has_issue_permission` | the person holds `params.permission` on the work item the module is shown with |
+| `is_issue_assigned_to_current_user` | the work item is assigned to the person |
+| `is_issue_reported_by_current_user` | the person reported the work item |
+| `is_issue_unassigned` | the work item has no assignee |
+
+A condition about a project or work item does not hold where a module is shown
+without one, such as a site navigation item. A module whose conditions do not
+hold is left out of navigation, the issue view, page bylines and the dashboard
+gadget catalog, and its page and signed frame answer 404; frames evaluate the
+project or work item their context names. A descriptor naming any other
+condition, or a permission condition without a permission, fails installation
+or dynamic registration.
 
 Connect `jiraJqlFunctions` declarations persist their key, function name,
 relative evaluation URL, ordered required/optional arguments, Jira field
@@ -182,8 +209,8 @@ single-context-per-app behavior. A standard issue property named
 `com.atlassian.jira.issue:{appKey}:{moduleKey}:status` can add a positive
 numeric badge, any of Jira's six lozenge appearances, or a signed relative
 status icon. Badges above 99 display as `99+`; malformed status data is ignored
-without hiding the context. Conditions and frontend change events remain
-explicit gaps; conditions fail installation instead of being ignored.
+without hiding the context. Their conditions are evaluated on the work item
+being viewed; frontend change events remain an explicit gap.
 Connect i18n display names and labels retain the documented 1,500-character
 validation bound; native ZZIRA module titles retain their 255-character bound.
 Legacy issue glances use the same validated icon, label and target contract.
@@ -197,8 +224,8 @@ ordering multiple tabs. Each active module joins Comments, Work log and History
 in the issue activity switcher. Selecting it hides the native activity composer
 and ledger and then loads a sandboxed signed iframe with expanded `issue.key`,
 `issue.id`, `project.key` and `project.id` context. Returning to a native filter
-restores its previous sort direction. Conditions remain an explicit gap and
-fail descriptor installation instead of being ignored.
+restores its previous sort direction. Tabs whose conditions do not hold for the
+work item are not offered.
 
 Connect project pages validate the required key, name, relative URL and
 relative `iconUrl`, and honor descriptor weight when ordering multiple app
@@ -207,22 +234,23 @@ in a project-scoped, sandboxed signed iframe. The remote request expands and
 supplies both `project.key` and `project.id`; changing projects therefore opens
 the same module with the selected project context. The project navigation
 renders `iconUrl` through the authenticated signed-asset endpoint and retains
-the built-in fallback for native modules. Project-page conditions remain an
-explicit gap.
+the built-in fallback for native modules. Pages whose conditions do not hold in
+the current project are not offered and answer 404.
 
 Connect project administration tabs validate the four standard
 `projectgroup1` through `projectgroup4` locations, preserve group and weight
 ordering, and append descriptor `params` to the signed remote URL. They appear
 only in project settings for administrators and receive the same verified
-`project.key` and `project.id` context as project pages. Conditions remain an
-explicit gap and fail descriptor installation instead of being ignored.
+`project.key` and `project.id` context as project pages, and are evaluated
+against their conditions in that project.
 
 Connect `adminPages` validate their 1–100 character key, i18n name, relative
 URL, optional parameters and weight. Active pages join the site administration
 navigation only for administrators and open in the shared sandboxed,
 JWT-signed remote frame. The default Jira administration location is supported;
-custom locations, conditions, cacheable requests, full-page presentation,
-icons and the singleton `configurePage` remain explicit gaps.
+pages evaluate their conditions; custom locations, cacheable requests,
+full-page presentation, icons and the singleton `configurePage` remain
+explicit gaps.
 
 Connect reports validate their key, name, description, relative URL, optional
 relative thumbnail and the `agile`, `issue_analysis`, `forecast_management` or
@@ -339,8 +367,7 @@ codes. This provides the storage contract required by issue-context status metad
 bulk issue-property mutations remain a separate API slice.
 
 The runtime is a ZZIRA execution contract for remotely hosted apps. Remaining
-Connect module families, dynamic webhook options, `configurePage`, custom admin-page behavior, project/page-admin, issue-tab and issue-context conditions, dashboard-item
-configuration/refresh/conditions, workflow modules, select/read-only issue
+Connect module families, dynamic webhook options, `configurePage`, custom admin-page behavior, conditions beyond the evaluated set and content-presence conditions, workflow modules, select/read-only issue
 fields and option APIs,
 descriptor-driven upgrade migrations, and Atlassian-hosted Forge compute remain
 separate future slices.
