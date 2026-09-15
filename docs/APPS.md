@@ -237,9 +237,14 @@ relative URL and thumbnail URL. They join the custom-dashboard gadget catalog
 with their descriptor metadata and use the existing add, position, copy,
 property and removal lifecycle. Remote items render in the common sandboxed
 frame with expanded and signed `dashboard.id`, `dashboardItem.id`,
-`dashboardItem.key` and `dashboardItem.viewType` context. Configuration
-callbacks, refresh opt-in and conditions remain explicit gaps; descriptors that
-request unsupported behavior fail installation. The gadget catalog renders the
+`dashboardItem.key` and `dashboardItem.viewType` context. A `configurable` item
+shows Configure to people who can edit the dashboard, which sends the item the
+`jira_dashboard_item_edit` event; a `refreshable` item shows Refresh, which
+reloads it with a newly signed frame. Items may carry `conditions`:
+`user_is_logged_in`, `user_is_admin` and `user_is_sysadmin`, each optionally
+inverted, and groups of them joined by `AND` or `OR`. An item whose
+conditions do not hold is neither offered in the catalog nor shown; a
+descriptor naming any other condition fails installation. The gadget catalog renders the
 descriptor thumbnail through the same authenticated signed-image endpoint used
 by reports.
 
@@ -339,6 +344,35 @@ configuration/refresh/conditions, workflow modules, select/read-only issue
 fields and option APIs,
 descriptor-driven upgrade migrations, and Atlassian-hosted Forge compute remain
 separate future slices.
+
+
+## Connect JavaScript API
+
+Remote Connect pages load Connect's JavaScript API from the site at
+`/atlassian-connect/all.js`, which defines `AP`. Each call is a message to the
+site page holding the frame, sent to the host named in the frame's `xdm_e`
+parameter. The site answers only messages from a frame it placed on the page
+and from that app's own origin, and answers nothing else.
+
+- `AP.resize(width, height)` sets the frame's height (40 to 4,000 pixels) and
+  `AP.sizeToParent()` fills its container.
+- `AP.context.getContext()` returns the frame's Jira context, such as
+  `jira.dashboard.id` and `jira.dashboardItem.id` for a dashboard item.
+- `AP.events.on`, `once` and `off` receive site events such as
+  `jira_dashboard_item_edit`.
+- `AP.jira.setDashboardItemTitle(title)` renames the item on the page,
+  `AP.jira.isDashboardItemEditable()` says whether the viewer can edit the
+  dashboard and the item is configurable, and
+  `AP.jira.openDashboardItemEditor()` sends it the edit event.
+- `AP.request(options)` calls a product API by path for the person using the
+  frame, with jQuery-style `success` and `error` callbacks or a promise of
+  `{body, xhr}`. The site serves it through its own routes and only when the
+  operation is a product API apps may call and the installation holds its
+  scope; managing the app's own dynamic modules still needs the app's own
+  credentials. Other paths are 400 and operations outside the app's scopes
+  are 403.
+- `AP.require(['request', 'events', 'jira', 'context'], callback)` hands older
+  apps the same parts.
 
 ## Operation scopes
 

@@ -2,6 +2,9 @@ import { expect, test, Page } from '@playwright/test';
 import axe from 'axe-core';
 
 async function checkWikiAccessibility(page: Page) {
+  // A page opened at an anchor sits scrolled under the sticky header, where
+  // axe counts the header's controls as covered; check it from the top.
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page.addScriptTag({ content: axe.source });
   const violations = await page.evaluate(async () => (await (window as any).axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'] } })).violations);
   expect(violations).toEqual([]);

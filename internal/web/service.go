@@ -46,6 +46,9 @@ type serviceReportDayView struct {
 }
 
 type servicePageData struct {
+	ReportActions         reportActions
+	ReportCompare         bool
+	ReportComparison      map[string]string
 	Desks                 []models.ServiceDesk
 	Desk                  *models.ServiceDesk
 	RequestTypes          []models.ServiceRequestType
@@ -403,10 +406,29 @@ func (h *Handler) ServiceReports(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Report channel filter is invalid.", http.StatusBadRequest)
 		return
 	}
-	report, err := h.Store.ServiceReportFiltered(r.Context(), workspaceID, deskID, filter, days, time.Now().UTC())
+	now := time.Now().UTC()
+	report, err := h.Store.ServiceReportFiltered(r.Context(), workspaceID, deskID, filter, days, now)
 	if err != nil {
 		http.Error(w, "Could not load service reports.", http.StatusInternalServerError)
 		return
+	}
+	// A comparison counts the requests created in the window before, with the
+	// same filters; open and resolved are their statuses now.
+	compare := wantsComparison(r)
+	var previous *models.ServiceReport
+	var comparison map[string]string
+	if compare {
+		if previous, err = h.Store.ServiceReportFiltered(r.Context(), workspaceID, deskID, filter, days, previousPeriod(now, days)); err != nil {
+			http.Error(w, "Could not load service reports.", http.StatusInternalServerError)
+			return
+		}
+		comparison = map[string]string{
+			"total":        compareCount(report.TotalRequests, previous.TotalRequests, days),
+			"open":         compareCount(report.OpenRequests, previous.OpenRequests, days),
+			"resolved":     compareCount(report.ResolvedRequests, previous.ResolvedRequests, days),
+			"breached":     compareCount(report.BreachedRequests, previous.BreachedRequests, days),
+			"satisfaction": compareRate(report.AverageSatisfaction, previous.AverageSatisfaction, previous.SatisfactionResponses, days, ""),
+		}
 	}
 	maximum := 1
 	for _, day := range report.Daily {
@@ -416,7 +438,28 @@ func (h *Handler) ServiceReports(w http.ResponseWriter, r *http.Request) {
 	for _, day := range report.Daily {
 		views = append(views, serviceReportDayView{Day: day.Day, Count: day.Count, Width: day.Count * 100 / maximum})
 	}
-	h.writeWorkspacePage(w, r, "page_service_reports", user, workspaceID, servicePageData{Desk: desk, RequestTypes: requestTypes, Report: report, ReportDays: views, ReportFilter: filter, ReportChannels: channels, CanAgent: true}, "service", desk.ProjectID)
+	if wantsCSV(r) {
+		header, rows := []string{"Date", "Requests created"}, serviceCSVRows(report)
+		if compare {
+			header, rows = withPeriods(header, serviceCSVRows(previous), rows)
+		}
+		writeReportCSV(w, desk.ProjectKey+" service requests", header, rows)
+		return
+	}
+	actions, actionsErr := h.reportActions(r, workspaceID, user)
+	if actionsErr != nil {
+		http.Error(w, "Could not load report emails.", http.StatusInternalServerError)
+		return
+	}
+	h.writeWorkspacePage(w, r, "page_service_reports", user, workspaceID, servicePageData{Desk: desk, RequestTypes: requestTypes, Report: report, ReportDays: views, ReportFilter: filter, ReportChannels: channels, CanAgent: true, ReportActions: actions, ReportCompare: compare, ReportComparison: comparison}, "service", desk.ProjectID)
+}
+
+func serviceCSVRows(report *models.ServiceReport) [][]string {
+	rows := make([][]string, 0, len(report.Daily))
+	for _, day := range report.Daily {
+		rows = append(rows, []string{day.Day, strconv.Itoa(day.Count)})
+	}
+	return rows
 }
 
 func (h *Handler) ServiceAgentAssign(w http.ResponseWriter, r *http.Request) {

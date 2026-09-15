@@ -14,7 +14,15 @@ function apiAuthHeader(): string {
   return 'Basic ' + Buffer.from(`${DEMO.email}:${token}`).toString('base64');
 }
 
+async function downloadCSV(page: Page): Promise<{ name: string; lines: string[] }> {
+  const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('link', { name: 'Download CSV' }).click()]);
+  return { name: download.suggestedFilename(), lines: fs.readFileSync((await download.path())!, 'utf8').trim().split('\n') };
+}
+
 async function accessible(page: Page) {
+  // Axe counts controls under the sticky header as covered, so pages are
+  // checked from the top rather than wherever an anchor scrolled them.
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page.addScriptTag({ content: axe.source });
   const violations = await page.evaluate(async () => (await (window as any).axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'] } })).violations);
   expect(violations).toEqual([]);
@@ -55,6 +63,10 @@ test('epic and version reports follow work to completion', async ({ page, reques
   await expect(page.getByRole('region', { name: 'Progress summary' })).toContainText('1 of 2 work items done');
   await expect(page.getByRole('table', { name: 'Completed work items' })).toContainText(finished);
   await expect(page.getByRole('table', { name: 'Incomplete work items' })).toContainText(open);
+  const epicCSV = await downloadCSV(page);
+  expect(epicCSV.name).toMatch(new RegExp(`^ZZ-epic-report-${epic}-\\d{4}-\\d{2}-\\d{2}\\.csv$`));
+  expect(epicCSV.lines.find((line) => line.includes(`,${finished},`))).toMatch(/^Completed/);
+  expect(epicCSV.lines.find((line) => line.includes(`,${open},`))).toMatch(/^Incomplete/);
   await expect(page.locator('.agile-chart .chart-completed-line')).toHaveCount(1);
   await accessible(page);
   await page.setViewportSize({ width: 320, height: 740 });
@@ -72,6 +84,8 @@ test('epic and version reports follow work to completion', async ({ page, reques
   await expect(page.getByRole('table', { name: 'Completed work items' })).toContainText(finished);
   await page.getByText('View daily progress', { exact: true }).click();
   await expect(page.getByRole('table', { name: 'Daily progress' })).toBeVisible();
+  const versionCSV = await downloadCSV(page);
+  expect(versionCSV.lines.some((line) => line.includes(`,${finished},`))).toBe(true);
   await accessible(page);
   await page.locator('[data-theme-toggle]').click();
   await accessible(page);

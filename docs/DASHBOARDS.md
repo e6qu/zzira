@@ -27,8 +27,9 @@ deletes, with a per-dashboard error map. Dashboards share with everyone signed
 in, people, groups, projects and project roles, and `extendAdminPermissions`
 lets a site administrator update a dashboard they neither own nor were shared.
 Searching archived or deleted dashboards answers 400, because dashboards here
-are only ever active; anonymous dashboards and REST extensions for this site's
-layout and favourite settings remain compatibility gaps.
+are only ever active. Jira Cloud no longer shares dashboards publicly, so there
+are no anonymous dashboards; REST extensions for this site's layout and
+favourite settings remain compatibility gaps.
 
 ## Native gadgets and presentation
 
@@ -67,9 +68,14 @@ descriptor description in the catalog. A remote item opens in a sandboxed,
 signed iframe with `dashboard.id`, `dashboardItem.id`, `dashboardItem.key` and
 `dashboardItem.viewType` context. The catalog renders its descriptor thumbnail
 through an authenticated endpoint that signs the validated app-relative image
-request. Configuration callbacks, refresh opt-in and conditions are not
-implemented yet, so descriptors that request behavioral options are rejected
-explicitly.
+request. A `configurable` item shows Configure to people who can edit the
+dashboard, which sends it Connect's `jira_dashboard_item_edit` event, and a
+`refreshable` item shows Refresh, which reloads it with a newly signed frame.
+Items may be offered and shown only under `user_is_logged_in`,
+`user_is_admin` or `user_is_sysadmin` conditions, inverted or grouped with
+`AND` or `OR`. Items use Connect's JavaScript API to resize, rename
+themselves and call product APIs within their app's scopes; see
+[APPS.md](APPS.md).
 
 ## Dashboard emails
 

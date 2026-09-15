@@ -56,6 +56,21 @@ type DashboardSubscription struct {
 	LastResultCount *int
 }
 
+// ReportSubscription emails a report's data on a schedule, with the choices it
+// was scheduled from, to recipients who each receive it as they see it.
+type ReportSubscription struct {
+	ID              int64
+	Report          string
+	UserID          string
+	CronExpression  string
+	Recipients      []string
+	Enabled         bool
+	NextRunAt       string
+	LastRunAt       string
+	LastError       string
+	LastResultCount *int
+}
+
 type ProjectComponent struct {
 	ID                  string `json:"id"`
 	ProjectID           string `json:"projectId"`

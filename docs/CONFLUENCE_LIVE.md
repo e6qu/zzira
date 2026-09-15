@@ -59,6 +59,24 @@ exchanged at `POST /wiki/spaces/{space}/pages/{page}/live` (or
   and keeps the caret beside the same text; source mode keeps its selection.
   Input methods finish composing before anything is merged. A status line says
   live editing is on, or that it is reconnecting and nothing typed is lost.
+- **Offline.** Typing not yet shared is kept on the device with the session,
+  revision and text it was last synced from, after every exchange, and
+  forgotten once everything is shared. An editor opened on that page, even
+  offline from the site's page cache, starts from the kept text and merges it
+  with what it missed when it connects, as it would unsent typing; kept text
+  the page already contains is discarded. Each open editor keeps its own
+  entry and refreshes it with every exchange, so another editor of the same
+  page only takes typing left by one that closed or stopped for ten seconds.
+- **Carets.** Each exchange also sends `"cursor":{"position":…,"end":…}`,
+  the editor's caret or selection in the text it sent. The server keeps it
+  only from an editor holding the latest revision, moves every kept caret
+  through each change accepted after it (a caret inside deleted text lands
+  after what replaced it), forgets them all when the session restarts, and
+  answers with `cursors`: the account, name and place of everyone else who
+  synced in the last 30 seconds. The editor draws each as a named caret over
+  the rich editor or the source textarea, moved through its own unsent typing;
+  the carets are hidden from assistive technology, which hears who is editing
+  from the status line.
 
 Only people who can edit the page or blog post may join; anyone else is 403
 or 404.

@@ -9,6 +9,9 @@ test('user chooses Atlassian sign-in and admin controls provider availability', 
   await expect(page.getByLabel('Email')).toBeVisible();
   await expect(page.getByLabel('Password')).toBeVisible();
 
+  // Axe counts controls under the sticky header as covered, so pages are
+  // checked from the top rather than wherever an anchor scrolled them.
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page.addScriptTag({ content: axe.source });
   expect((await page.evaluate(async () => (await (window as any).axe.run(document, {
     runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'] },

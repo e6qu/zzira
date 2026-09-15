@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, Page } from '@playwright/test';
 import axe from 'axe-core';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -10,9 +10,17 @@ function apiAuthHeader(): string {
 }
 
 async function accessible(page: import('@playwright/test').Page) {
+  // Axe counts controls under the sticky header as covered, so pages are
+  // checked from the top rather than wherever an anchor scrolled them.
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page.addScriptTag({ content: axe.source });
   const violations = await page.evaluate(async () => (await (window as any).axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'] } })).violations);
   expect(violations).toEqual([]);
+}
+
+async function downloadCSV(page: Page): Promise<{ name: string; lines: string[] }> {
+  const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('link', { name: 'Download CSV' }).click()]);
+  return { name: download.suggestedFilename(), lines: fs.readFileSync((await download.path())!, 'utf8').trim().split('\n') };
 }
 
 test('admin creates a service project with Jira Service Management request types', async ({ page }) => {
@@ -391,6 +399,16 @@ test('admin creates a service project with Jira Service Management request types
   await page.getByLabel('Status').selectOption('resolved');
   await page.getByRole('button', { name: 'Apply filters' }).click();
   await expect(page).toHaveURL(/status=resolved/);
+  const serviceCSV = await downloadCSV(page);
+  expect(serviceCSV.lines[0]).toBe('Date,Requests created');
+  expect(serviceCSV.lines.slice(1).reduce((sum, line) => sum + Number(line.split(',')[1]), 0)).toBe(1);
+  await page.getByLabel('Compare with previous period').check();
+  await page.getByRole('button', { name: 'Apply filters' }).click();
+  await expect(page).toHaveURL(/compare=previous/);
+  await expect(page.locator('.service-report-metrics article').filter({ hasText: 'Total requests' }).locator('.report-change')).toContainText('previous 30 days');
+  const comparedServiceCSV = await downloadCSV(page);
+  expect(comparedServiceCSV.lines[0]).toBe('Period,Date,Requests created');
+  expect(comparedServiceCSV.lines.filter((line) => line.startsWith('Current period,')).reduce((sum, line) => sum + Number(line.split(',')[2]), 0)).toBe(1);
   await expect(page.locator('.service-report-metrics article').filter({ hasText: 'Total requests' })).toContainText('1');
   await expect(page.locator('.service-report-metrics article').filter({ hasText: 'Open requests' })).toContainText('0');
   await page.getByRole('link', { name: '7 days' }).click();

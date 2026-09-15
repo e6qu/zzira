@@ -15,7 +15,15 @@ function apiAuthHeader(): string {
   return 'Basic ' + Buffer.from(`${DEMO.email}:${token}`).toString('base64');
 }
 
+async function downloadCSV(page: Page): Promise<{ name: string; lines: string[] }> {
+  const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('link', { name: 'Download CSV' }).click()]);
+  return { name: download.suggestedFilename(), lines: fs.readFileSync((await download.path())!, 'utf8').trim().split('\n') };
+}
+
 async function accessible(page: Page) {
+  // Axe counts controls under the sticky header as covered, so pages are
+  // checked from the top rather than wherever an anchor scrolled them.
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page.addScriptTag({ content: axe.source });
   const violations = await page.evaluate(async () => (await (window as any).axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'] } })).violations);
   expect(violations).toEqual([]);
@@ -175,6 +183,11 @@ test('backlog journey creates, plans, ranks, starts, updates, and completes a sp
   await expect(changes).toContainText('Sprint start');
   await expect(changes).toContainText('Sprint completed');
   await expect(changes).toContainText(secondIssueKey);
+  const sprintCSV = await downloadCSV(page);
+  expect(sprintCSV.name).toMatch(/^ZZ-sprint-report-\d{4}-\d{2}-\d{2}\.csv$/);
+  expect(sprintCSV.lines[0]).toBe('Section,Work item,Summary,Work type,Status,Estimate at start,Estimate at end,Added after start');
+  expect(sprintCSV.lines.find((line) => line.includes(`,${firstIssueKey},`))).toMatch(/^Work items not completed,/);
+  expect(sprintCSV.lines.find((line) => line.includes(`,${secondIssueKey},`))).toMatch(/^Work items not completed,/);
   await accessible(page);
   await page.setViewportSize({ width: 320, height: 740 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -187,6 +200,9 @@ test('backlog journey creates, plans, ranks, starts, updates, and completes a sp
   await page.getByLabel('Board', { exact: true }).selectOption({ label: 'ZZ board' });
   await page.getByRole('button', { name: 'Show board' }).click();
   await expect(page.getByRole('table', { name: 'Velocity data' })).toContainText(sprintName);
+  const velocityCSV = await downloadCSV(page);
+  expect(velocityCSV.lines[0]).toBe('Sprint,Commitment,Completed');
+  expect(velocityCSV.lines.some((line) => line.startsWith(`${sprintName},`))).toBe(true);
   await expect(page.locator('.chart-commitment').first()).toBeAttached();
   await accessible(page);
   await page.locator('[data-theme-toggle]').click();

@@ -163,8 +163,8 @@ func TestParseConnectDescriptorTranslatesSupportedModules(t *testing.T) {
 	if _, err := ParseDescriptor([]byte(`{"key":"connect.bad-report","name":"Bad report","baseUrl":"https://connect.example.test","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"jiraReports":[{"key":"report","name":{"value":"Report"},"description":{"value":"Report"},"url":"/report","reportCategory":"finance"}]}}`)); err == nil {
 		t.Fatal("accepted unsupported report category")
 	}
-	if _, err := ParseDescriptor([]byte(`{"key":"connect.bad-dashboard","name":"Bad dashboard","baseUrl":"https://connect.example.test","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"jiraDashboardItems":[{"key":"item","name":{"value":"Item"},"description":{"value":"Item"},"url":"/item","thumbnailUrl":"/item.svg","configurable":true}]}}`)); err == nil {
-		t.Fatal("accepted unsupported configurable dashboard item")
+	if _, err := ParseDescriptor([]byte(`{"key":"connect.bad-dashboard","name":"Bad dashboard","baseUrl":"https://connect.example.test","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"jiraDashboardItems":[{"key":"item","name":{"value":"Item"},"description":{"value":"Item"},"url":"/item","thumbnailUrl":"/item.svg","configurable":true,"conditions":[{"condition":"entity_property_equal_to"}]}]}}`)); err == nil {
+		t.Fatal("accepted an unsupported dashboard item condition")
 	}
 	if _, err := ParseDescriptor([]byte(`{"key":"connect.bad-context","name":"Bad context","baseUrl":"https://connect.example.test","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"jiraIssueContexts":[{"key":"context","name":{"value":"Context"},"icon":{"url":"/context.svg"},"content":{"type":"label","label":{"value":"Context"}},"target":{"type":"web_panel","url":"/context"},"conditions":[{"condition":"user_is_logged_in"}]}]}}`)); err == nil {
 		t.Fatal("accepted unsupported issue context conditions")

@@ -11,8 +11,11 @@ import (
 )
 
 type doraReportData struct {
-	Project *models.Project
-	Report  models.DORAReport
+	Project    *models.Project
+	Report     models.DORAReport
+	Actions    reportActions
+	Compare    bool
+	Comparison map[string]string
 }
 
 type appReportView struct {
@@ -105,10 +108,47 @@ func (h *Handler) DORAReport(w http.ResponseWriter, r *http.Request) {
 		}
 		days = parsed
 	}
-	report, err := h.Store.DORAReport(r.Context(), workspaceID, project.ID, user.ID, days, time.Now())
+	now := time.Now().UTC()
+	report, err := h.Store.DORAReport(r.Context(), workspaceID, project.ID, user.ID, days, now)
 	if err != nil {
 		http.Error(w, "Could not calculate delivery metrics.", http.StatusInternalServerError)
 		return
 	}
-	h.writeWorkspacePage(w, r, "page_dora_report", user, workspaceID, doraReportData{Project: project, Report: report}, "reports", project.Key)
+	data := doraReportData{Project: project, Report: report, Compare: wantsComparison(r)}
+	var previous models.DORAReport
+	if data.Compare {
+		if previous, err = h.Store.DORAReport(r.Context(), workspaceID, project.ID, user.ID, days, previousPeriod(now, days)); err != nil {
+			http.Error(w, "Could not calculate delivery metrics.", http.StatusInternalServerError)
+			return
+		}
+		data.Comparison = map[string]string{
+			"deployments": compareCount(report.DeploymentFrequency, previous.DeploymentFrequency, days),
+			"leadTime":    compareDuration(report.LeadTimeSeconds, previous.LeadTimeSeconds, days),
+			"failureRate": compareRate(report.ChangeFailureRate, previous.ChangeFailureRate, previous.TotalChanges, days, "%"),
+			"restore":     compareDuration(report.MTTRSeconds, previous.MTTRSeconds, days),
+		}
+	}
+	if wantsCSV(r) {
+		header, rows := []string{"Date", "Successful deployments", "Failed or rolled back"}, doraCSVRows(report)
+		if data.Compare {
+			header, rows = withPeriods(header, doraCSVRows(previous), rows)
+		}
+		writeReportCSV(w, project.Key+" DORA metrics", header, rows)
+		return
+	}
+	actions, actionsErr := h.reportActions(r, workspaceID, user)
+	if actionsErr != nil {
+		http.Error(w, "Could not load report emails.", http.StatusInternalServerError)
+		return
+	}
+	data.Actions = actions
+	h.writeWorkspacePage(w, r, "page_dora_report", user, workspaceID, data, "reports", project.Key)
+}
+
+func doraCSVRows(report models.DORAReport) [][]string {
+	rows := make([][]string, 0, len(report.Daily))
+	for _, day := range report.Daily {
+		rows = append(rows, []string{day.Date, strconv.Itoa(day.Deployments), strconv.Itoa(day.Failures)})
+	}
+	return rows
 }

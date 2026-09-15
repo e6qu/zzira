@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	appRuntime "github.com/e6qu/zzira/internal/apps"
 	"log"
 	"net/http"
 	"strconv"
@@ -24,10 +25,12 @@ type dashboardSlice struct {
 type dashboardTile struct {
 	Gadget    models.DashboardGadget
 	AppModule *models.AppModule
-	Results   store.GadgetResults
-	Slices    []dashboardSlice
-	Report    *gadgetReport
-	Error     string
+	// Configurable and Refreshable are what a Connect dashboard item offers.
+	Configurable, Refreshable bool
+	Results                   store.GadgetResults
+	Slices                    []dashboardSlice
+	Report                    *gadgetReport
+	Error                     string
 }
 type customDashboardsData struct {
 	Dashboards                        []*models.Dashboard
@@ -172,6 +175,9 @@ func (h *Handler) CustomDashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, module := range appGadgets {
+		if _, _, conditions := appRuntime.DashboardItemOptions(module.Body); !appRuntime.ConnectConditionsMet(conditions, h.appConditionFacts(r, ws, user.ID)) {
+			continue
+		}
 		description := module.AppName + " app gadget"
 		var metadata struct {
 			Description string `json:"description"`
@@ -292,6 +298,10 @@ func (h *Handler) CustomDashboard(w http.ResponseWriter, r *http.Request) {
 			tile.AppModule, err = h.Store.ActiveDashboardAppModule(r.Context(), ws, g.ModuleKey)
 			if err != nil {
 				tile.Error = "This app gadget is unavailable. Ask an administrator to resume or reinstall the app."
+			} else if configurable, refreshable, conditions := appRuntime.DashboardItemOptions(tile.AppModule.Body); !appRuntime.ConnectConditionsMet(conditions, h.appConditionFacts(r, ws, user.ID)) {
+				tile.AppModule, tile.Error = nil, "This app gadget is not available to you."
+			} else {
+				tile.Configurable, tile.Refreshable = configurable, refreshable
 			}
 		} else {
 			tile.Results, err = h.Store.DashboardGadgetResults(r.Context(), ws, user.ID, id, g)
@@ -484,4 +494,11 @@ func (h *Handler) gadgetReport(r *http.Request, ws, userID, moduleKey string, co
 		}
 	}
 	return report, ""
+}
+
+// appConditionFacts are what Connect conditions may ask about the person
+// viewing a dashboard.
+func (h *Handler) appConditionFacts(r *http.Request, workspaceID, userID string) appRuntime.ConnectConditionFacts {
+	admin, err := h.Store.IsAdmin(r.Context(), workspaceID, userID)
+	return appRuntime.ConnectConditionFacts{LoggedIn: true, SiteAdmin: err == nil && admin}
 }

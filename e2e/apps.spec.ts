@@ -4,6 +4,9 @@ import axe from 'axe-core';
 const externalBaseURL = process.env.ZZIRA_EXTERNAL_URL || 'http://localhost:8080';
 
 async function accessible(page: import('@playwright/test').Page) {
+  // Axe counts controls under the sticky header as covered, so pages are
+  // checked from the top rather than wherever an anchor scrolled them.
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page.addScriptTag({ content: axe.source });
   const violations = await page.evaluate(async () => (await (window as any).axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'] } })).violations);
   expect(violations).toEqual([]);
@@ -126,6 +129,7 @@ test('admin installs and manages a scoped host-rendered app', async ({ page }) =
 
 test('admin installs a standard Connect descriptor and opens its signed remote page', async ({ page }) => {
   let issueKey = '';
+  let connectAPI = '';
   await page.route('https://connect.example.test/**', async route => {
     const target = new URL(route.request().url());
     expect(target.searchParams.get('jwt')).toBeTruthy();
@@ -197,7 +201,17 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
       expect(target.searchParams.get('dashboardItem.key')).toBe('release-health');
       expect(target.searchParams.get('dashboardItem.viewType')).toBe('default');
       expect(target.searchParams.get('item')).toBe(target.searchParams.get('dashboardItem.id'));
-      await route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main><h1>Remote release health</h1><p>Dashboard item context received.</p></main></body></html>' });
+      // The item uses Connect's JavaScript API, loaded from this site.
+      const itemScript = `
+        AP.resize('100%', 260);
+        AP.jira.isDashboardItemEditable(function (editable) { document.body.dataset.editable = String(editable); });
+        AP.context.getContext(function (context) { document.body.dataset.item = context.jira.dashboardItem.id; });
+        AP.events.on('jira_dashboard_item_edit', function () {
+          document.querySelector('h1').textContent = 'Configure release health';
+          AP.jira.setDashboardItemTitle('Release health settings');
+          AP.request({ url: '/rest/api/3/myself', success: function (body) { document.getElementById('me').textContent = 'Signed in as ' + JSON.parse(body).displayName; } });
+        });`;
+      await route.fulfill({ contentType: 'text/html', body: `<!doctype html><html><body><main><h1>Remote release health</h1><p>Dashboard item context received.</p><p id="me"></p></main><script>${connectAPI}</script><script>${itemScript}</script></body></html>` });
       return;
     }
     if (target.pathname.endsWith('/remote-review')) {
@@ -218,6 +232,10 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
   await page.fill('#login-password', 'demo1234');
   await page.click('button[type=submit]');
 
+  const connectScript = await page.request.get('/atlassian-connect/all.js');
+  expect(connectScript.headers()['content-type']).toContain('javascript');
+  connectAPI = await connectScript.text();
+
   const suffix = String(Date.now());
   const wikiPageURL = await createWikiPageFixture(page, suffix);
   issueKey = await createIssueFixture(page, suffix);
@@ -232,6 +250,7 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
   const projectAdminTitle = `Project controls ${suffix}`;
   const reportTitle = `Delivery risk ${suffix}`;
   const dashboardItemTitle = `Release health ${suffix}`;
+  const hiddenItemTitle = `Newcomer tips ${suffix}`;
   const issueContextTitle = `Delivery context ${suffix}`;
   const issueGlanceTitle = `Legacy glance ${suffix}`;
   const issueActivityTitle = `Deployments ${suffix}`;
@@ -253,7 +272,10 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
       jiraProjectPages: [{ key: 'project-intelligence', name: { value: projectPageTitle }, url: '/remote-project?selected={project.key}', iconUrl: '/project.svg', weight: 40 }],
       jiraProjectAdminTabPanels: [{ key: 'project-controls', name: { value: projectAdminTitle }, url: '/remote-project-admin', location: 'projectgroup3', weight: 20, params: { source: 'settings' } }],
       jiraReports: [{ key: 'delivery-risk', name: { value: reportTitle }, description: { value: 'Release and incident risk from the app' }, url: '/remote-report?selected={project.key}', reportCategory: 'AGILE', thumbnailUrl: '/report.svg' }],
-      jiraDashboardItems: [{ key: 'release-health', name: { value: dashboardItemTitle }, description: { value: 'Release health from the Connect app' }, url: '/remote-dashboard?item={dashboardItem.id}', thumbnailUrl: 'dashboard.svg' }],
+      jiraDashboardItems: [
+        { key: 'release-health', name: { value: dashboardItemTitle }, description: { value: 'Release health from the Connect app' }, url: '/remote-dashboard?item={dashboardItem.id}', thumbnailUrl: 'dashboard.svg', configurable: true, refreshable: true, conditions: [{ condition: 'user_is_logged_in' }] },
+        { key: 'newcomer-tips', name: { value: hiddenItemTitle }, description: { value: 'Tips for people who do not administer the site' }, url: '/remote-tips', thumbnailUrl: 'dashboard.svg', conditions: [{ conditions: [{ condition: 'user_is_admin' }, { condition: 'user_is_sysadmin' }], type: 'OR', invert: true }] },
+      ],
       jiraIssueContexts: [{ key: 'delivery-context', name: { value: issueContextTitle }, icon: { width: 24, height: 24, url: 'context.svg' }, content: { type: 'label', label: { value: '3 linked deployments' } }, target: { type: 'web_panel', url: '/remote-context?selected={issue.key}' } }],
       jiraIssueGlances: [{ key: 'legacy-glance', name: { value: issueGlanceTitle }, icon: { width: 24, height: 24, url: 'glance.svg' }, content: { type: 'label', label: { value: 'Legacy status' } }, target: { type: 'web_panel', url: '/legacy-glance' } }],
       jiraIssueTabPanels: [{ key: 'deployment-activity', name: { value: issueActivityTitle }, url: '/remote-activity?selected={issue.key}', weight: 80, params: { source: 'activity' } }],
@@ -308,9 +330,30 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
   const gadgetChoice = page.locator('.gadget-catalog form', { has: page.getByRole('button', { name: `Add ${dashboardItemTitle}`, exact: true }) });
   await expect(gadgetChoice.getByText('Release health from the Connect app')).toBeVisible();
   await expect(gadgetChoice.locator('img.app-module-thumbnail')).toBeVisible();
+  // An item whose condition leaves out administrators is not offered to one.
+  await expect(page.getByRole('button', { name: `Add ${hiddenItemTitle}`, exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: `Add ${dashboardItemTitle}`, exact: true }).click();
   await expect(page.locator('.app-dashboard-module').frameLocator('iframe').getByRole('heading', { name: 'Remote release health' })).toBeVisible();
   await accessible(page);
+
+  // The item talks to the dashboard through Connect's JavaScript API: it
+  // sizes its frame, reads its context, opens its settings from Configure,
+  // renames itself and calls the product API as the person using it.
+  const connectItem = page.locator('.dashboard-gadget', { has: page.locator('iframe[data-app-module]') });
+  const itemFrame = connectItem.frameLocator('iframe');
+  await expect(itemFrame.locator('body')).toHaveAttribute('data-editable', 'true');
+  await expect(itemFrame.locator('body')).toHaveAttribute('data-item', /^\d+$/);
+  await expect.poll(async () => (await connectItem.locator('iframe').boundingBox())?.height).toBe(260);
+  await connectItem.getByRole('button', { name: `Configure ${dashboardItemTitle}` }).click();
+  await expect(itemFrame.getByRole('heading', { name: 'Configure release health' })).toBeVisible();
+  await expect(connectItem.getByRole('heading', { level: 2 })).toHaveText('Release health settings');
+  await expect(itemFrame.locator('#me')).toHaveText(/^Signed in as \S/);
+  await accessible(page);
+  await connectItem.getByRole('button', { name: `Refresh ${dashboardItemTitle}` }).click();
+  await expect(itemFrame.getByRole('heading', { name: 'Remote release health' })).toBeVisible();
+  // The site refuses a request outside the product APIs an app may call.
+  const refused = await page.evaluate(async (module) => (await fetch(`/app-modules/${module}/request`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: '/admin/users' }) })).status, await connectItem.locator('iframe').getAttribute('data-app-module'));
+  expect(refused).toBe(403);
 
   const issueContextStatusKey = `com.atlassian.jira.issue:${descriptor.key}:delivery-context:status`;
   const issueContextStatusURL = `/rest/api/3/issue/${issueKey}/properties/${encodeURIComponent(issueContextStatusKey)}`;

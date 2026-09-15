@@ -21,6 +21,7 @@ type agileReportBoards struct {
 
 type sprintReportData struct {
 	agileReportBoards
+	Actions reportActions
 	Sprints []*models.Sprint
 	Sprint  *models.Sprint
 	Report  *sprintReportView
@@ -28,7 +29,8 @@ type sprintReportData struct {
 
 type velocityReportData struct {
 	agileReportBoards
-	Report *velocityReportView
+	Actions reportActions
+	Report  *velocityReportView
 }
 
 type chartTick struct {
@@ -434,6 +436,22 @@ func (h *Handler) SprintReport(w http.ResponseWriter, r *http.Request) {
 			data.Report = newSprintReportView(report, siteDateLayouts{day: look.DateDay, complete: look.DateComplete})
 		}
 	}
+	if wantsCSV(r) {
+		rows := [][]string{}
+		if data.Report != nil {
+			for _, section := range data.Report.Sections {
+				rows = append(rows, workItemCSVRows(section.Title, section.Issues)...)
+			}
+		}
+		writeReportCSV(w, boards.Project.Key+" sprint report", workItemCSVHeader(), rows)
+		return
+	}
+	actions, actionsErr := h.reportActions(r, workspaceID, user)
+	if actionsErr != nil {
+		http.Error(w, "Could not load report emails.", http.StatusInternalServerError)
+		return
+	}
+	data.Actions = actions
 	h.writeWorkspacePage(w, r, "page_sprint_report", user, workspaceID, data, "reports", boards.Project.ID)
 }
 
@@ -452,6 +470,22 @@ func (h *Handler) VelocityReport(w http.ResponseWriter, r *http.Request) {
 		}
 		data.Report = newVelocityReportView(report)
 	}
+	if wantsCSV(r) {
+		rows := [][]string{}
+		if data.Report != nil {
+			for _, bar := range data.Report.Bars {
+				rows = append(rows, []string{bar.Name, bar.Commitment, bar.Completed})
+			}
+		}
+		writeReportCSV(w, boards.Project.Key+" velocity chart", []string{"Sprint", "Commitment", "Completed"}, rows)
+		return
+	}
+	actions, actionsErr := h.reportActions(r, workspaceID, user)
+	if actionsErr != nil {
+		http.Error(w, "Could not load report emails.", http.StatusInternalServerError)
+		return
+	}
+	data.Actions = actions
 	h.writeWorkspacePage(w, r, "page_velocity_report", user, workspaceID, data, "reports", boards.Project.ID)
 }
 
@@ -619,7 +653,11 @@ func newControlChartView(chart models.ControlChart, days int, now time.Time, lay
 }
 
 type flowReportData struct {
+	Compare         bool
+	Comparison      map[string]string
+	PreviousSamples []models.CycleSample
 	agileReportBoards
+	Actions reportActions
 	Days    int
 	Windows []int
 	Flow    *cumulativeFlowView
@@ -646,7 +684,7 @@ func (h *Handler) flowReport(w http.ResponseWriter, r *http.Request, page string
 		http.Error(w, "Choose a 14, 30, or 90 day window.", http.StatusBadRequest)
 		return
 	}
-	data := flowReportData{agileReportBoards: boards, Days: days, Windows: flowWindows}
+	data := flowReportData{agileReportBoards: boards, Days: days, Windows: flowWindows, Compare: page == "page_control_chart_report" && wantsComparison(r)}
 	if boards.Board != nil {
 		look := h.siteLook(r, workspaceID)
 		now := time.Now()
@@ -664,8 +702,54 @@ func (h *Handler) flowReport(w http.ResponseWriter, r *http.Request, page string
 				return
 			}
 			data.Control = newControlChartView(chart, days, now, look.DateDay, look.DateComplete)
+			if data.Compare {
+				previous, err := h.Store.ControlChart(r.Context(), boards.Board, user.ID, days, previousPeriod(now, days))
+				if err != nil {
+					http.Error(w, "Could not calculate the control chart.", http.StatusInternalServerError)
+					return
+				}
+				data.PreviousSamples = previous.Samples
+				data.Comparison = map[string]string{
+					"completed": compareCount(len(chart.Samples), len(previous.Samples), days),
+					"average":   compareDuration(chart.AverageSeconds, previous.AverageSeconds, days),
+					"median":    compareDuration(chart.MedianSeconds, previous.MedianSeconds, days),
+				}
+			}
 		}
 	}
+	if wantsCSV(r) {
+		if data.Flow != nil {
+			header := []string{"Date"}
+			for _, column := range data.Flow.Columns {
+				header = append(header, column.Name)
+			}
+			rows := [][]string{}
+			for _, day := range data.Flow.Days {
+				row := []string{day.Date}
+				for _, count := range day.Counts {
+					row = append(row, strconv.Itoa(count))
+				}
+				rows = append(rows, row)
+			}
+			writeReportCSV(w, boards.Project.Key+" cumulative flow", header, rows)
+			return
+		}
+		header, rows := []string{"Work item", "Summary", "Completed", "Cycle time (hours)"}, [][]string{}
+		if data.Control != nil {
+			rows = cycleCSVRows(data.Control.Samples)
+			if data.Compare {
+				header, rows = withPeriods(header, cycleCSVRows(data.PreviousSamples), rows)
+			}
+		}
+		writeReportCSV(w, boards.Project.Key+" control chart", header, rows)
+		return
+	}
+	actions, actionsErr := h.reportActions(r, workspaceID, user)
+	if actionsErr != nil {
+		http.Error(w, "Could not load report emails.", http.StatusInternalServerError)
+		return
+	}
+	data.Actions = actions
 	h.writeWorkspacePage(w, r, page, user, workspaceID, data, "reports", boards.Project.ID)
 }
 
@@ -728,6 +812,7 @@ type progressChoice struct {
 
 type progressReportData struct {
 	agileReportBoards
+	Actions                       reportActions
 	Kind, Title, Parameter, Empty string
 	Choices                       []progressChoice
 	Selected                      string
@@ -773,6 +858,22 @@ func (h *Handler) EpicReport(w http.ResponseWriter, r *http.Request) {
 		}
 		data.Report = newProgressReportView(report, h.siteLook(r, workspaceID).DateDay)
 	}
+	if wantsCSV(r) {
+		rows := [][]string{}
+		if data.Report != nil {
+			for _, section := range data.Report.Sections {
+				rows = append(rows, workItemCSVRows(section.Title, section.Issues)...)
+			}
+		}
+		writeReportCSV(w, boards.Project.Key+" "+data.Kind+" report "+data.Selected, workItemCSVHeader(), rows)
+		return
+	}
+	actions, actionsErr := h.reportActions(r, workspaceID, user)
+	if actionsErr != nil {
+		http.Error(w, "Could not load report emails.", http.StatusInternalServerError)
+		return
+	}
+	data.Actions = actions
 	h.writeWorkspacePage(w, r, "page_progress_report", user, workspaceID, data, "reports", boards.Project.ID)
 }
 
@@ -818,6 +919,22 @@ func (h *Handler) VersionReport(w http.ResponseWriter, r *http.Request) {
 		}
 		data.Report = newProgressReportView(report, h.siteLook(r, workspaceID).DateDay)
 	}
+	if wantsCSV(r) {
+		rows := [][]string{}
+		if data.Report != nil {
+			for _, section := range data.Report.Sections {
+				rows = append(rows, workItemCSVRows(section.Title, section.Issues)...)
+			}
+		}
+		writeReportCSV(w, boards.Project.Key+" "+data.Kind+" report "+data.Selected, workItemCSVHeader(), rows)
+		return
+	}
+	actions, actionsErr := h.reportActions(r, workspaceID, user)
+	if actionsErr != nil {
+		http.Error(w, "Could not load report emails.", http.StatusInternalServerError)
+		return
+	}
+	data.Actions = actions
 	h.writeWorkspacePage(w, r, "page_progress_report", user, workspaceID, data, "reports", boards.Project.ID)
 }
 
@@ -925,11 +1042,16 @@ func newResolutionTimeView(report models.ResolutionTimeReport, layout string) *r
 }
 
 type issueAnalysisData struct {
-	Project         *models.Project
-	Days            int
-	Windows         []int
-	CreatedResolved *createdResolvedView
-	Resolution      *resolutionTimeView
+	Compare            bool
+	Comparison         map[string]string
+	PreviousCreated    []models.CreatedResolvedDay
+	PreviousResolution []models.ResolutionDay
+	Actions            reportActions
+	Project            *models.Project
+	Days               int
+	Windows            []int
+	CreatedResolved    *createdResolvedView
+	Resolution         *resolutionTimeView
 }
 
 func analysisWindow(r *http.Request) (int, bool) {
@@ -969,22 +1091,110 @@ func (h *Handler) issueAnalysisReport(w http.ResponseWriter, r *http.Request, pa
 		http.Error(w, "Choose a 7, 30, or 90 day window.", http.StatusBadRequest)
 		return
 	}
-	data := issueAnalysisData{Project: project, Days: days, Windows: analysisWindows}
+	data := issueAnalysisData{Project: project, Days: days, Windows: analysisWindows, Compare: wantsComparison(r)}
 	layout := h.siteLook(r, workspaceID).DateDay
+	now := time.Now().UTC()
 	if page == "page_created_resolved_report" {
-		report, err := h.Store.CreatedVsResolved(r.Context(), workspaceID, user.ID, project.ID, days, time.Now())
+		report, err := h.Store.CreatedVsResolved(r.Context(), workspaceID, user.ID, project.ID, days, now)
 		if err != nil {
 			http.Error(w, "Could not count created and resolved work.", http.StatusInternalServerError)
 			return
 		}
 		data.CreatedResolved = newCreatedResolvedView(report, r.URL.Query().Get("cumulative") == "true", layout)
+		if data.Compare {
+			previous, err := h.Store.CreatedVsResolved(r.Context(), workspaceID, user.ID, project.ID, days, previousPeriod(now, days))
+			if err != nil {
+				http.Error(w, "Could not count created and resolved work.", http.StatusInternalServerError)
+				return
+			}
+			data.PreviousCreated = previous.Days
+			data.Comparison = map[string]string{
+				"created":  compareCount(report.CreatedTotal, previous.CreatedTotal, days),
+				"resolved": compareCount(report.ResolvedTotal, previous.ResolvedTotal, days),
+			}
+		}
 	} else {
-		report, err := h.Store.ResolutionTime(r.Context(), workspaceID, user.ID, project.ID, days, time.Now())
+		report, err := h.Store.ResolutionTime(r.Context(), workspaceID, user.ID, project.ID, days, now)
 		if err != nil {
 			http.Error(w, "Could not calculate resolution time.", http.StatusInternalServerError)
 			return
 		}
 		data.Resolution = newResolutionTimeView(report, layout)
+		if data.Compare {
+			previous, err := h.Store.ResolutionTime(r.Context(), workspaceID, user.ID, project.ID, days, previousPeriod(now, days))
+			if err != nil {
+				http.Error(w, "Could not calculate resolution time.", http.StatusInternalServerError)
+				return
+			}
+			data.PreviousResolution = previous.Days
+			data.Comparison = map[string]string{
+				"resolved": compareCount(report.Resolved, previous.Resolved, days),
+				"average":  compareDuration(report.AverageSeconds, previous.AverageSeconds, days),
+			}
+		}
 	}
+	if wantsCSV(r) {
+		if data.CreatedResolved != nil {
+			header, rows := []string{"Date", "Created", "Resolved", "Created in total", "Resolved in total"}, createdCSVRows(data.CreatedResolved.Days)
+			if data.Compare {
+				header, rows = withPeriods(header, createdCSVRows(data.PreviousCreated), rows)
+			}
+			writeReportCSV(w, project.Key+" created vs resolved", header, rows)
+			return
+		}
+		header, rows := []string{"Date", "Resolved", "Average resolution time (hours)"}, resolutionCSVRows(data.Resolution.Days)
+		if data.Compare {
+			header, rows = withPeriods(header, resolutionCSVRows(data.PreviousResolution), rows)
+		}
+		writeReportCSV(w, project.Key+" resolution time", header, rows)
+		return
+	}
+	actions, actionsErr := h.reportActions(r, workspaceID, user)
+	if actionsErr != nil {
+		http.Error(w, "Could not load report emails.", http.StatusInternalServerError)
+		return
+	}
+	data.Actions = actions
 	h.writeWorkspacePage(w, r, page, user, workspaceID, data, "reports", project.ID)
+}
+
+func workItemCSVHeader() []string {
+	return []string{"Section", "Work item", "Summary", "Work type", "Status", "Estimate at start", "Estimate at end", "Added after start"}
+}
+
+// workItemCSVRows lists a report section's work items as CSV rows.
+func workItemCSVRows(section string, issues []models.SprintReportIssue) [][]string {
+	rows := make([][]string, 0, len(issues))
+	for _, issue := range issues {
+		added := "No"
+		if issue.AddedAfterStart {
+			added = "Yes"
+		}
+		rows = append(rows, []string{section, issue.Key, issue.Summary, issue.IssueType, issue.Status, issue.EstimateStart, issue.EstimateEnd, added})
+	}
+	return rows
+}
+
+func cycleCSVRows(samples []models.CycleSample) [][]string {
+	rows := make([][]string, 0, len(samples))
+	for _, sample := range samples {
+		rows = append(rows, []string{sample.Key, sample.Summary, sample.CompletedAt, strconv.FormatFloat(float64(sample.CycleSeconds)/3600, 'f', 2, 64)})
+	}
+	return rows
+}
+
+func createdCSVRows(days []models.CreatedResolvedDay) [][]string {
+	rows := make([][]string, 0, len(days))
+	for _, day := range days {
+		rows = append(rows, []string{day.Date, strconv.Itoa(day.Created), strconv.Itoa(day.Resolved), strconv.Itoa(day.CreatedTotal), strconv.Itoa(day.ResolvedTotal)})
+	}
+	return rows
+}
+
+func resolutionCSVRows(days []models.ResolutionDay) [][]string {
+	rows := make([][]string, 0, len(days))
+	for _, day := range days {
+		rows = append(rows, []string{day.Date, strconv.Itoa(day.Resolved), strconv.FormatFloat(float64(day.AverageSeconds)/3600, 'f', 2, 64)})
+	}
+	return rows
 }

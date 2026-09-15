@@ -25,10 +25,47 @@ in light and dark themes and at 320 px width.
 Jira Service Management incident request types currently add the `incident`
 label that feeds recovery time; dedicated incident relationships and service
 configuration remain. Deployment approvals, configurable
-environment mapping, excluded-period calendars, team filters, comparison
-periods, targets, exports, subscriptions and scheduled delivery remain.
-Every Jira and Agile report named in the plan is now available; comparisons,
-exports and scheduled delivery remain.
+environment mapping, excluded-period calendars, and team filters and targets remain.
+Every Jira and Agile report named in the plan is now available.
+
+## Previous-period comparisons
+
+DORA metrics, the control chart, created vs. resolved, resolution time and the
+service desk report offer Compare with previous period. Each summary figure
+then says how it changed from the same length of time just before the window,
+such as "Up 2 from 3 in the previous 7 days" or "Shorter by 4h than 1d 2h in
+the previous 30 days", computed with the same access, board and filters. A
+window with nothing to measure says so rather than showing a change. The CSV
+download of a compared report adds a Period column and lists the previous
+period's rows before the current ones, and a report email keeps the
+comparison. Service requests are compared by when they were created; open and
+resolved are their statuses now.
+
+## CSV downloads
+
+Every report page, and the service desk report, has a Download CSV link. It
+downloads the data behind the chart for the board, sprint, epic, version,
+window and filters on screen, named after the project key, the report and the
+day, such as `ZZ-velocity-chart-2026-09-15.csv`. Sprint, epic and version
+reports list each work item with its section, estimates and whether it was
+added after the start; the control chart lists each work item's cycle time in
+hours; the others list one row per day or sprint. The file is sent with
+`Cache-Control: no-store`, and a cell that starts with `=`, `+`, `-`, `@`, a
+tab or a carriage return is prefixed with an apostrophe so a spreadsheet does
+not run it as a formula.
+
+## Report emails
+
+Email this report, beside Download CSV, schedules the report's data every day
+or every Monday at 08:00 UTC, with the board, sprint, epic, version, window
+and filters on the page. The same report with other choices is a separate
+email. The subscriber and every recipient must be able to open the report
+when it is scheduled. At each run the report is drawn for each recipient,
+through the same route as the download and with their own access, and
+emailed with a link back to it. A recipient who can no longer open it, or
+who left the site, fails the run; the run is retried with backoff, recipients
+already sent are not sent twice, and the reason shows under the schedule on
+the report.
 
 ## Sprint report and velocity chart
 
@@ -76,8 +113,10 @@ current open and resolved counts, requests with any breached SLA cycle, CSAT
 average and response count, and an exact daily intake series. The daily chart
 has an accessible text alternative and keyboard-reachable data table. SLA
 breaches are calculated with the same desk calendar and holidays used on the
-customer request and attention queue. Request-type, organization, channel and
-priority segments, comparison periods, exports and scheduled delivery remain.
+customer request and attention queue. The Download CSV link exports the daily
+intake series for the filters on screen, and Email this report sends it on a
+schedule, with or without a previous-period comparison. Organization and
+priority segments remain.
 
 ## Cumulative flow diagram and control chart
 

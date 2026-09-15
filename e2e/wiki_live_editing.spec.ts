@@ -10,6 +10,9 @@ function apiAuthHeader(): string {
 }
 
 async function accessible(page: Page) {
+  // Axe counts controls under the sticky header as covered, so pages are
+  // checked from the top rather than wherever an anchor scrolled them.
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page.addScriptTag({ content: axe.source });
   const violations = await page.evaluate(async () => (await (window as any).axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'] } })).violations);
   expect(violations).toEqual([]);
@@ -80,6 +83,20 @@ test('people editing the same page keep each other\'s changes as they type', asy
   await expect(demoEditor).toHaveText('Draft: Plan. Approved.', { timeout: 20_000 });
   await expect(anaEditor).toHaveText('Draft: Plan. Approved.', { timeout: 20_000 });
   await expect(ana.locator('[data-wiki-live]')).toContainText('also editing. Your changes merge as you type.', { timeout: 20_000 });
+
+  // Each sees a named caret where the other is working: Demo at the start
+  // of the text and Ana at its end.
+  await caretAt(demo, 'start');
+  await caretAt(ana, 'end');
+  const demoCaret = ana.locator('.wiki-remote-caret').filter({ hasText: /demo/i });
+  const anaCaret = demo.locator('.wiki-remote-caret').filter({ hasText: /ana/i });
+  await expect(demoCaret).toHaveCount(1, { timeout: 10_000 });
+  await expect(anaCaret).toHaveCount(1, { timeout: 10_000 });
+  const anaBox = (await anaEditor.boundingBox())!;
+  await expect.poll(async () => (await demoCaret.boundingBox())!.x - anaBox.x, { timeout: 10_000 }).toBeLessThan(60);
+  const demoBox = (await demoEditor.boundingBox())!;
+  await expect.poll(async () => (await anaCaret.boundingBox())!.x - demoBox.x, { timeout: 10_000 }).toBeGreaterThan(100);
+  await expect(ana.locator('.wiki-remote-carets')).toHaveAttribute('aria-hidden', 'true');
   await accessible(ana);
   await ana.setViewportSize({ width: 320, height: 740 });
   expect(await ana.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -96,6 +113,70 @@ test('people editing the same page keep each other\'s changes as they type', asy
   await ana.getByRole('button', { name: 'Save page', exact: true }).click();
   await expect(ana.getByRole('heading', { name: title, level: 1 })).toBeVisible();
   await expect(ana.locator('main')).toContainText('Draft: Plan. Approved. Next.');
+});
+
+test('live edits made offline stay on the device and merge when back online', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const context = await browser.newContext();
+  const demo = await context.newPage();
+  await login(demo, 'demo@zzira.dev', 'demo1234');
+  const stamp = Date.now().toString(36).toUpperCase();
+  const title = `Offline ${stamp}`;
+  await demo.goto('/wiki');
+  await demo.locator('.wiki-create-space > summary').click();
+  await demo.getByLabel('Space name').fill(`Offline ${stamp}`);
+  await demo.getByLabel('Space key').fill(`O${stamp}`);
+  await demo.getByLabel('Description', { exact: true }).fill('Offline live editing journey');
+  await demo.getByRole('button', { name: 'Create space', exact: true }).click();
+  await expect(demo).toHaveURL(/\/wiki\/spaces\/\d+$/);
+  await demo.getByRole('link', { name: 'Create page', exact: true }).click();
+  await demo.getByLabel('Page title').fill(title);
+  await demo.getByRole('textbox', { name: 'Page content' }).fill('Plan.');
+  await demo.getByRole('button', { name: 'Save page', exact: true }).click();
+  await expect(demo.getByRole('heading', { name: title, level: 1 })).toBeVisible();
+  const editURL = `${demo.url()}/edit`;
+
+  // The edit page is loaded once under the service worker, so it opens offline.
+  await demo.goto(editURL);
+  await demo.waitForFunction(() => Boolean(navigator.serviceWorker && navigator.serviceWorker.controller));
+  await demo.reload();
+  const demoEditor = demo.getByRole('textbox', { name: 'Page content' });
+  const demoStatus = demo.locator('[data-wiki-live-sync]');
+  await expect(demoStatus).toContainText('Live editing is on');
+
+  await context.setOffline(true);
+  await caretAt(demo, 'end');
+  await demo.keyboard.type(' Offline note.', { delay: 20 });
+  await expect(demoStatus).toContainText('kept on this device', { timeout: 10_000 });
+  // Another editor opened on the same page leaves the typing Demo's open
+  // editor still holds to it.
+  const second = await context.newPage();
+  await second.goto(editURL);
+  await expect(second.getByRole('textbox', { name: 'Page content' })).toHaveText('Plan.');
+  await second.close();
+  await demo.reload();
+  // The reopened editor starts from the typing kept on the device; offline,
+  // its first exchange fails and the status says the changes are kept.
+  await expect(demoEditor).toHaveText('Plan. Offline note.');
+  await expect(demoStatus).toContainText('kept on this device');
+
+  // Someone else edits the page while Demo is away.
+  const ana = await browser.newPage();
+  await login(ana, 'ana@zzira.dev', 'ana12345');
+  await ana.goto(editURL);
+  const anaEditor = ana.getByRole('textbox', { name: 'Page content' });
+  await expect(ana.locator('[data-wiki-live-sync]')).toContainText('Live editing is on');
+  await caretAt(ana, 'start');
+  await ana.keyboard.type('Draft: ', { delay: 20 });
+  await ana.waitForTimeout(1500);
+
+  await context.setOffline(false);
+  await expect(demoEditor).toHaveText('Draft: Plan. Offline note.', { timeout: 20_000 });
+  await expect(anaEditor).toHaveText('Draft: Plan. Offline note.', { timeout: 20_000 });
+  await expect(demoStatus).toContainText('Live editing is on');
+  // Once shared, nothing is left waiting on the device.
+  await expect.poll(async () => demo.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith('zzira-live:')).length), { timeout: 10_000 }).toBe(0);
+  await context.close();
 });
 
 test('people editing the same blog post keep each other\'s changes as they type', async ({ browser, request }) => {
@@ -136,6 +217,14 @@ test('people editing the same blog post keep each other\'s changes as they type'
   ]);
   await expect(demoBody).toHaveValue('<p>Draft: Notes. Approved.</p>', { timeout: 20_000 });
   await expect(anaBody).toHaveValue('<p>Draft: Notes. Approved.</p>', { timeout: 20_000 });
+  // In source mode too, each sees where the other's caret is.
+  const anaCaret = demo.locator('.wiki-remote-caret').filter({ hasText: /ana/i });
+  await expect(anaCaret).toHaveCount(1, { timeout: 10_000 });
+  const demoFieldBox = (await demoBody.boundingBox())!;
+  const anaCaretBox = (await anaCaret.boundingBox())!;
+  expect(anaCaretBox.x).toBeGreaterThan(demoFieldBox.x);
+  expect(anaCaretBox.x).toBeLessThan(demoFieldBox.x + demoFieldBox.width);
+  await expect(ana.locator('.wiki-remote-caret').filter({ hasText: /demo/i })).toHaveCount(1, { timeout: 10_000 });
   await accessible(ana);
 
   await demo.getByRole('button', { name: 'Save blog post', exact: true }).click();

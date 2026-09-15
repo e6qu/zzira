@@ -312,6 +312,32 @@ const movedOffset = (before, after, offset) => {
   return offset <= prefix ? offset : Math.max(prefix, Math.min(after.length, offset + after.length - before.length));
 };
 
+// liveMovePosition moves a place in a text through a change to it: a place
+// before the change stays, one after it moves by the change's length, and one
+// inside what it deleted lands after what it inserted.
+const liveMovePosition = (position, change) => {
+  if (position <= change.position) return position;
+  if (position >= change.position + change.delete) return position - change.delete + change.insert.length;
+  return change.position + change.insert.length;
+};
+
+// Everyone else editing shows as a named caret where they are working. The
+// carets are drawn in a layer over the page, so they never touch the text,
+// and are hidden from assistive technology, which hears who is editing from
+// the live status instead.
+const liveCursorColor = (id) => [...id].reduce((sum, character) => (sum * 31 + character.charCodeAt(0)) % 6, 0) + 1;
+
+const liveCursorLayer = () => {
+  let layer = document.querySelector('.wiki-remote-carets');
+  if (!layer) {
+    layer = document.createElement('div');
+    layer.className = 'wiki-remote-carets';
+    layer.setAttribute('aria-hidden', 'true');
+    document.body.append(layer);
+  }
+  return layer;
+};
+
 const startLiveEditing = (status, text, form) => {
   let session = '';
   let revision = -1;
@@ -321,6 +347,64 @@ const startLiveEditing = (status, text, form) => {
   let composing = false;
   let stopped = false;
   let offline = false;
+  let cursors = [];
+  // Edits not yet shared are kept on this device, so closing the page or
+  // reloading it offline loses nothing: the next editor on this page starts
+  // from them and merges them like any unsent typing.
+  // Each open editor keeps its own entry and refreshes it with every
+  // exchange, so a second editor of the same page never takes typing the
+  // first still holds: it only takes what an editor that closed, or stopped
+  // answering for ten seconds, left behind.
+  const keptPrefix = `zzira-live:${status.dataset.liveUrl}#`;
+  const keptKey = `${keptPrefix}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+  const keep = (closed = false) => {
+    try {
+      const current = text.get();
+      if (synced !== null && current !== synced) localStorage.setItem(keptKey, JSON.stringify({ session, revision, synced, text: current, at: Date.now(), closed }));
+      else if (synced !== null) localStorage.removeItem(keptKey);
+    } catch {
+      // Storage may be full or unavailable; live editing carries on without it.
+    }
+  };
+  let kept = null;
+  let keptFrom = '';
+  try {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key || !key.startsWith(keptPrefix)) continue;
+      const entry = JSON.parse(localStorage.getItem(key) || 'null');
+      if (!entry || !Number.isFinite(entry.at) || !(entry.closed || Date.now() - entry.at > 10000)) continue;
+      if (!kept || entry.at > kept.at) {
+        kept = entry;
+        keptFrom = key;
+      }
+    }
+  } catch {
+    kept = null;
+  }
+  const drawCursors = () => {
+    const layer = liveCursorLayer();
+    layer.replaceChildren();
+    if (stopped || synced === null || !cursors.length) return;
+    const local = text.get();
+    const pending = liveDiff(synced, local);
+    const positions = cursors.map((cursor) => (pending ? liveMovePosition(cursor.position, pending) : cursor.position));
+    const bounds = text.element.getBoundingClientRect();
+    text.caretRects(positions.map((position) => Math.min(position, local.length))).forEach((rect, index) => {
+      if (!rect || rect.top + rect.height < bounds.top || rect.top > bounds.bottom || rect.left < bounds.left - 2 || rect.left > bounds.right + 2) return;
+      const caret = document.createElement('span');
+      caret.className = `wiki-remote-caret wiki-remote-caret-${liveCursorColor(cursors[index].accountId || '')}`;
+      caret.style.top = `${rect.top}px`;
+      caret.style.left = `${rect.left}px`;
+      caret.style.height = `${rect.height}px`;
+      const name = document.createElement('span');
+      name.className = 'wiki-remote-caret-name';
+      name.textContent = cursors[index].displayName;
+      caret.append(name);
+      layer.append(caret);
+      if (name.getBoundingClientRect().right > window.innerWidth) name.classList.add('wiki-remote-caret-name-end');
+    });
+  };
   const say = (message) => {
     status.hidden = false;
     if (status.textContent !== message) status.textContent = message;
@@ -330,11 +414,12 @@ const startLiveEditing = (status, text, form) => {
     busy = true;
     try {
       const sent = text.get();
+      const selection = text.selection();
       const change = synced === null ? null : liveDiff(synced, sent);
       const response = await fetch(status.dataset.liveUrl, {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ session, revision, changes: change ? [change] : [] }),
+        body: JSON.stringify({ session, revision, changes: change ? [change] : [], cursor: selection }),
       });
       if (!response.ok) throw new Error(`live editing answered ${response.status}`);
       const state = await response.json();
@@ -361,6 +446,8 @@ const startLiveEditing = (status, text, form) => {
       }
       session = state.session;
       revision = state.revision;
+      cursors = Array.isArray(state.cursors) ? state.cursors : [];
+      drawCursors();
       // Publishing saves the version after the one the session started from,
       // which moves on when someone else publishes meanwhile.
       const version = form.querySelector('input[name=version]');
@@ -369,23 +456,47 @@ const startLiveEditing = (status, text, form) => {
       offline = false;
       if (liveDiff(synced, text.get())) window.setTimeout(sync, 50);
     } catch {
-      if (!offline) say('Live editing is reconnecting. Your changes are kept and merge when it is back.');
+      if (!offline) say('Live editing is reconnecting. Your changes are kept on this device and merge when it is back.');
       offline = true;
+      cursors = [];
+      drawCursors();
     } finally {
       busy = false;
+      keep();
     }
   };
+  if (kept && typeof kept.synced === 'string' && typeof kept.text === 'string' && typeof kept.session === 'string' && Number.isInteger(kept.revision)) {
+    try {
+      localStorage.removeItem(keptFrom);
+    } catch {
+      // Nothing to forget.
+    }
+    if (kept.text !== initial) {
+      session = kept.session;
+      revision = kept.revision;
+      synced = kept.synced;
+      text.set(kept.text);
+      say('Your changes from before are back and merge when live editing connects.');
+    }
+  }
   let pending = 0;
   const soon = () => {
     window.clearTimeout(pending);
     pending = window.setTimeout(sync, 250);
   };
   text.element.addEventListener('input', soon);
+  text.element.addEventListener('input', drawCursors);
+  text.element.addEventListener('scroll', drawCursors);
+  window.addEventListener('scroll', drawCursors, { passive: true });
+  window.addEventListener('resize', drawCursors);
   text.element.addEventListener('compositionstart', () => { composing = true; });
   text.element.addEventListener('compositionend', () => { composing = false; soon(); });
   const timer = window.setInterval(sync, 1000);
-  form.addEventListener('submit', () => { stopped = true; window.clearInterval(timer); });
-  window.addEventListener('pagehide', () => window.clearInterval(timer));
+  form.addEventListener('submit', () => { stopped = true; window.clearInterval(timer); drawCursors(); });
+  window.addEventListener('pagehide', () => {
+    window.clearInterval(timer);
+    keep(true);
+  });
   sync();
 };
 
@@ -399,9 +510,114 @@ const textareaText = (textarea) => ({
     textarea.value = value;
     if (focused) textarea.setSelectionRange(start, end);
   },
+  selection: () => ({ position: textarea.selectionStart, end: textarea.selectionEnd }),
+  // A textarea cannot say where a place in its text is drawn, so a hidden
+  // copy with the same box and type measures it.
+  caretRects: (positions) => {
+    const style = getComputedStyle(textarea);
+    const mirror = document.createElement('div');
+    for (const property of ['boxSizing', 'width', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'borderStyle', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'fontStyle', 'fontVariant', 'fontWeight', 'fontStretch', 'fontSize', 'lineHeight', 'fontFamily', 'textAlign', 'textTransform', 'textIndent', 'letterSpacing', 'wordSpacing', 'tabSize', 'overflowWrap', 'wordBreak']) {
+      mirror.style[property] = style[property];
+    }
+    Object.assign(mirror.style, { position: 'absolute', visibility: 'hidden', top: '0', left: '0', whiteSpace: 'pre-wrap', overflow: 'hidden' });
+    document.body.append(mirror);
+    const box = textarea.getBoundingClientRect();
+    const lineHeight = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.2;
+    const rects = positions.map((position) => {
+      const marker = document.createElement('span');
+      marker.textContent = '\u200b';
+      mirror.replaceChildren(document.createTextNode(textarea.value.slice(0, position)), marker);
+      return {
+        top: box.top + marker.offsetTop - textarea.scrollTop,
+        left: box.left + marker.offsetLeft - textarea.scrollLeft,
+        height: lineHeight,
+      };
+    });
+    mirror.remove();
+    return rects;
+  },
 });
 
-const richText = (editor, serialize) => ({
+// storagePieces lays the rich editor's storage markup out beside its nodes:
+// each text node with its escaped text, the markup between them as it is,
+// and a mention as a single piece, so a place in the storage and a place in
+// the editor can each be found from the other.
+const storagePieces = (root, serialize) => {
+  const pieces = [];
+  const walk = (node) => {
+    const storage = serialize(node);
+    if (node.nodeType === Node.TEXT_NODE) {
+      pieces.push({ node, storage, text: node.textContent });
+      return;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+    const inner = [...node.childNodes].map(serialize).join('');
+    const at = storage === inner ? 0 : inner ? storage.lastIndexOf(`${inner}</`) : -1;
+    if (at < 0) {
+      pieces.push({ node, storage, atomic: true });
+      return;
+    }
+    if (at > 0) pieces.push({ storage: storage.slice(0, at) });
+    node.childNodes.forEach(walk);
+    if (at + inner.length < storage.length) pieces.push({ storage: storage.slice(at + inner.length) });
+  };
+  root.childNodes.forEach(walk);
+  return pieces;
+};
+
+// storageOffsetOfText is the place in the storage of a place in the editor's
+// text; a place inside a mention is taken to its start.
+const storageOffsetOfText = (pieces, textOffset) => {
+  let storage = 0;
+  let text = 0;
+  for (const piece of pieces) {
+    if (piece.text !== undefined) {
+      if (textOffset <= text + piece.text.length) return storage + escapeStorage(piece.text.slice(0, textOffset - text)).length;
+      text += piece.text.length;
+    } else if (piece.atomic) {
+      const length = piece.node.textContent.length;
+      if (textOffset < text + length) return storage;
+      text += length;
+    }
+    storage += piece.storage.length;
+  }
+  return storage;
+};
+
+// domPointAtStorage is the place in the editor of a place in its storage; a
+// place inside markup is taken to the start of the text after it.
+const domPointAtStorage = (root, pieces, offset) => {
+  let storage = 0;
+  let last = null;
+  let inMarkup = false;
+  for (const piece of pieces) {
+    const end = storage + piece.storage.length;
+    if (piece.text !== undefined) {
+      if (inMarkup) return { node: piece.node, offset: 0 };
+      if (offset <= end) {
+        let raw = 0;
+        let escaped = storage;
+        while (raw < piece.text.length) {
+          const next = escaped + escapeStorage(piece.text[raw]).length;
+          if (next > offset) break;
+          escaped = next;
+          raw += 1;
+        }
+        return { node: piece.node, offset: raw };
+      }
+      last = { node: piece.node, offset: piece.text.length };
+    } else if (offset < end && offset >= storage) {
+      if (piece.atomic) return { node: piece.node.parentNode, offset: [...piece.node.parentNode.childNodes].indexOf(piece.node) };
+      inMarkup = true;
+    }
+    storage = end;
+  }
+  return last || { node: root, offset: root.childNodes.length };
+};
+
+const richText = (editor, serialize) => {
+  let lastSelection = null;
+  return {
   element: editor,
   get: () => [...editor.childNodes].map(serialize).join(''),
   set: (storage) => {
@@ -413,7 +629,51 @@ const richText = (editor, serialize) => ({
     editor.replaceChildren(...nodes);
     if (focused && offset !== null) placeCaret(editor, movedOffset(before, editor.textContent, offset));
   },
-});
+  // The caret is measured in the storage the editor sends, and the last one
+  // is kept while the editor does not have the focus.
+  selection: () => {
+    const current = document.getSelection();
+    if (current.rangeCount && editor.contains(current.anchorNode)) {
+      const range = current.getRangeAt(0);
+      const pieces = storagePieces(editor, serialize);
+      const textAt = (container, offset) => {
+        const before = document.createRange();
+        before.selectNodeContents(editor);
+        before.setEnd(container, offset);
+        return before.toString().length;
+      };
+      lastSelection = {
+        position: storageOffsetOfText(pieces, textAt(range.startContainer, range.startOffset)),
+        end: storageOffsetOfText(pieces, textAt(range.endContainer, range.endOffset)),
+      };
+    }
+    return lastSelection;
+  },
+  caretRects: (positions) => {
+    const pieces = storagePieces(editor, serialize);
+    return positions.map((position) => {
+      const point = domPointAtStorage(editor, pieces, position);
+      const range = document.createRange();
+      range.setStart(point.node, point.offset);
+      range.collapse(true);
+      const box = range.getClientRects()[0];
+      if (box && box.height) return { top: box.top, left: box.left, height: box.height };
+      // A collapsed place at the edge of a line has no box in some browsers,
+      // so the character beside it, or the element holding it, gives it.
+      if (point.node.nodeType === Node.TEXT_NODE && point.node.textContent.length) {
+        const at = Math.min(point.offset, point.node.textContent.length - 1);
+        const beside = document.createRange();
+        beside.setStart(point.node, at);
+        beside.setEnd(point.node, at + 1);
+        const character = beside.getBoundingClientRect();
+        return { top: character.top, left: point.offset > at ? character.right : character.left, height: character.height };
+      }
+      const holder = (point.node.nodeType === Node.TEXT_NODE ? point.node.parentElement : point.node).getBoundingClientRect();
+      return { top: holder.top, left: holder.left, height: Math.min(holder.height, 24) || 20 };
+    });
+  },
+  };
+};
 
 document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('[data-wiki-live]').forEach(startLive);

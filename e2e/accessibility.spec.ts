@@ -37,6 +37,9 @@ async function login(page: Page) {
 }
 
 async function expectNoWCAGViolations(page: Page) {
+  // Axe counts controls under the sticky header as covered, so pages are
+  // checked from the top rather than wherever an anchor scrolled them.
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page.addScriptTag({ content: axe.source });
   const violations = await page.evaluate(async () => {
     const result = await (window as any).axe.run(document, {

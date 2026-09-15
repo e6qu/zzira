@@ -9,7 +9,15 @@ function apiAuthHeader(): string {
   return 'Basic ' + Buffer.from(`demo@zzira.dev:${token}`).toString('base64');
 }
 
+async function downloadCSV(page: Page): Promise<{ name: string; lines: string[] }> {
+  const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('link', { name: 'Download CSV' }).click()]);
+  return { name: download.suggestedFilename(), lines: fs.readFileSync((await download.path())!, 'utf8').trim().split('\n') };
+}
+
 async function accessible(page: Page) {
+  // Axe counts controls under the sticky header as covered, so pages are
+  // checked from the top rather than wherever an anchor scrolled them.
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page.addScriptTag({ content: axe.source });
   const violations = await page.evaluate(async () => (await (window as any).axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'] } })).violations);
   expect(violations).toEqual([]);
@@ -88,6 +96,16 @@ test('plan a release, assign scope, publish notes, archive and delete', async ({
   await expect(page.locator('.dora-detail-grid')).toContainText('Production rollout');
   await page.getByText('View daily data', { exact: true }).click();
   await expect(page.getByRole('table')).toBeVisible();
+  const doraCSV = await downloadCSV(page);
+  expect(doraCSV.name).toMatch(/^ZZ-DORA-metrics-\d{4}-\d{2}-\d{2}\.csv$/);
+  expect(doraCSV.lines[0]).toBe('Date,Successful deployments,Failed or rolled back');
+  expect(doraCSV.lines.length).toBe(await page.getByRole('table').locator('tbody tr').count() + 1);
+  await page.getByLabel('Compare with previous period').check();
+  await page.getByRole('button', { name: 'Update' }).click();
+  await expect(page).toHaveURL(/compare=previous/);
+  await expect(doraSummary.locator('.report-change')).toHaveCount(4);
+  await expect(doraSummary.locator('.report-change').first()).toContainText('previous 30 days');
+  await page.getByText('View daily data', { exact: true }).click();
   await accessible(page);
   await page.locator('[data-theme-toggle]').click();
   await accessible(page);

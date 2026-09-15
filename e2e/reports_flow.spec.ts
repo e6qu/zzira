@@ -14,7 +14,15 @@ function apiAuthHeader(): string {
   return 'Basic ' + Buffer.from(`${DEMO.email}:${token}`).toString('base64');
 }
 
+async function downloadCSV(page: Page): Promise<{ name: string; lines: string[] }> {
+  const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('link', { name: 'Download CSV' }).click()]);
+  return { name: download.suggestedFilename(), lines: fs.readFileSync((await download.path())!, 'utf8').trim().split('\n') };
+}
+
 async function accessible(page: Page) {
+  // Axe counts controls under the sticky header as covered, so pages are
+  // checked from the top rather than wherever an anchor scrolled them.
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page.addScriptTag({ content: axe.source });
   const violations = await page.evaluate(async () => (await (window as any).axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'] } })).violations);
   expect(violations).toEqual([]);
@@ -67,6 +75,10 @@ test('cumulative flow and control chart follow work through the board', async ({
   const counts = page.getByRole('table', { name: 'Daily column counts' });
   await expect(counts.locator('tbody tr')).toHaveCount(14);
   await expect(counts.locator('thead')).toContainText('Done');
+  const flowCSV = await downloadCSV(page);
+  expect(flowCSV.name).toMatch(new RegExp(`^${projectKey}-cumulative-flow-\\d{4}-\\d{2}-\\d{2}\\.csv$`));
+  expect(flowCSV.lines[0]).toMatch(/^Date,.*Done/);
+  expect(flowCSV.lines).toHaveLength(15);
   await accessible(page);
   await page.setViewportSize({ width: 320, height: 740 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -78,6 +90,14 @@ test('cumulative flow and control chart follow work through the board', async ({
   await page.getByLabel('Board', { exact: true }).selectOption({ label: boardName });
   await page.getByRole('button', { name: 'Show board' }).click();
   await expect(page.getByRole('table', { name: 'Completed work cycle times' })).toContainText(key);
+  const controlCSV = await downloadCSV(page);
+  expect(controlCSV.lines[0]).toBe('Work item,Summary,Completed,Cycle time (hours)');
+  expect(controlCSV.lines.some((line) => line.startsWith(`${key},`))).toBe(true);
+  await page.getByLabel('Compare with previous period').check();
+  await page.getByRole('button', { name: 'Show window' }).click();
+  await expect(page).toHaveURL(/compare=previous/);
+  await expect(page.getByRole('region', { name: 'Cycle time summary' }).locator('.report-change')).toHaveCount(3);
+  expect((await downloadCSV(page)).lines.some((line) => line.startsWith(`Current period,${key},`))).toBe(true);
   await expect(page.getByRole('region', { name: 'Cycle time summary' })).toContainText('Average cycle time');
   await expect(page.locator('.control-point').first()).toBeAttached();
   await accessible(page);
@@ -106,6 +126,22 @@ test('cumulative flow and control chart follow work through the board', async ({
   }
   await page.getByText('View daily counts', { exact: true }).click();
   await expect(page.getByRole('table', { name: 'Created and resolved by day' }).locator('tbody tr')).toHaveCount(7);
+  const createdCSV = await downloadCSV(page);
+  expect(createdCSV.name).toMatch(new RegExp(`^${projectKey}-created-vs-resolved-`));
+  expect(createdCSV.lines[0]).toBe('Date,Created,Resolved,Created in total,Resolved in total');
+  expect(createdCSV.lines).toHaveLength(8);
+  expect(Number(createdCSV.lines[7].split(',')[3])).toBeGreaterThanOrEqual(1);
+  await page.getByLabel('Compare with previous period').check();
+  await page.getByRole('button', { name: 'Update' }).click();
+  await expect(page).toHaveURL(/compare=previous/);
+  await expect(page).toHaveURL(/cumulative=true/);
+  await expect(totals.locator('.report-change')).toHaveCount(2);
+  await expect(totals.locator('.report-change').first()).toContainText('previous 7 days');
+  const comparedCSV = await downloadCSV(page);
+  expect(comparedCSV.lines[0]).toBe('Period,Date,Created,Resolved,Created in total,Resolved in total');
+  expect(comparedCSV.lines).toHaveLength(15);
+  expect(comparedCSV.lines[1]).toMatch(/^Previous period,/);
+  expect(comparedCSV.lines[14]).toMatch(/^Current period,/);
   await accessible(page);
 
   await page.goto(`/projects/${projectKey}/reports`);
@@ -114,6 +150,9 @@ test('cumulative flow and control chart follow work through the board', async ({
   await expect(page.getByRole('region', { name: 'Resolution summary' })).toContainText('Average resolution time');
   await page.getByText('View daily resolution time', { exact: true }).click();
   await expect(page.getByRole('table', { name: 'Resolution time by day' }).locator('tbody tr')).toHaveCount(30);
+  const resolutionCSV = await downloadCSV(page);
+  expect(resolutionCSV.lines[0]).toBe('Date,Resolved,Average resolution time (hours)');
+  expect(resolutionCSV.lines).toHaveLength(31);
   await accessible(page);
   await page.setViewportSize({ width: 320, height: 740 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
