@@ -84,4 +84,7 @@ post, and one HTML file for each with its body rendered as the space shows it.
 Attachments are not included. The space page lists the administrator's latest
 five exports with their state, and a finished export downloads only for the
 person who asked for it; an email with the download link is sent when it is
-ready. Importing a space is not supported.
+ready. The export carries each page's and blog post's current attachments that the
+person exporting can see, linked from the page, up to 100 MiB of files;
+attachments past that are listed without their files. Importing a space is
+not supported.

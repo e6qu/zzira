@@ -47,6 +47,10 @@ test('space manager keeps templates, starts pages from them, reads analytics and
   await page.getByRole('button', { name: 'Save page', exact: true }).click();
   await expect(page.getByRole('heading', { name: `Restart the service ${key}`, level: 1 })).toBeVisible();
   await expect(page.getByRole('article', { name: 'Page content' })).toContainText('Check the dashboard.');
+  await page.getByText('Attach a file', { exact: true }).click();
+  await page.getByLabel('File', { exact: true }).setInputFiles({ name: 'restart-checklist.txt', mimeType: 'text/plain', buffer: Buffer.from('Drain traffic, then restart.') });
+  await page.getByRole('button', { name: 'Upload file', exact: true }).click();
+  await expect(page.getByRole('link', { name: 'restart-checklist.txt', exact: true })).toBeVisible();
 
   // Viewing the page shows in the space's analytics.
   await page.goto(spaceURL);
@@ -91,6 +95,9 @@ test('space manager keeps templates, starts pages from them, reads analytics and
   expect(zipBytes.subarray(0, 2).toString()).toBe('PK');
   expect(zipBytes.includes(Buffer.from('index.html'))).toBe(true);
   expect(zipBytes.includes(Buffer.from('pages/'))).toBe(true);
+  // The page's attachment travels with it.
+  expect(zipBytes.includes(Buffer.from('restart-checklist.txt'))).toBe(true);
+  expect(zipBytes.includes(Buffer.from('attachments/'))).toBe(true);
 
   // The space is archived and restored.
   await page.goto(spaceURL);

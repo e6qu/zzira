@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"strconv"
 	"time"
@@ -292,8 +293,16 @@ func (s *Store) CancelAPITask(ctx context.Context, workspaceID, taskID string) (
 type APITaskRunner struct {
 	Store             *Store
 	BulkIssueExecutor BulkIssueTaskExecutor
-	Logf              func(string, ...any)
-	PollInterval      time.Duration
+	// Blobs reads stored files, such as the attachments a space export
+	// carries; without it exports leave attachment files out.
+	Blobs        BlobReader
+	Logf         func(string, ...any)
+	PollInterval time.Duration
+}
+
+// BlobReader reads a stored file by its key.
+type BlobReader interface {
+	Get(ctx context.Context, key string) (io.ReadCloser, int64, error)
 }
 
 type BulkIssueTaskExecutor interface {
@@ -429,7 +438,7 @@ func (r *APITaskRunner) execute(ctx context.Context, task APITask) error {
 	case apiTaskWikiTrashPageTree:
 		return r.Store.executeWikiTrashPageTree(ctx, task)
 	case apiTaskWikiSpaceExport:
-		return r.Store.executeWikiSpaceExport(ctx, task)
+		return r.Store.executeWikiSpaceExport(ctx, task, r.Blobs)
 	case apiTaskDeleteProject:
 		var payload deleteProjectTaskPayload
 		if err := json.Unmarshal(task.Payload, &payload); err != nil {
