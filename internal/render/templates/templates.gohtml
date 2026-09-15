@@ -42,6 +42,13 @@
   <button class="icon-button nav-toggle" type="button" data-nav-toggle aria-label="Collapse sidebar" aria-expanded="true" aria-controls="workspace-navigation">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h16"/></svg>
   </button>
+  {{with .Navigation}}{{if .Products}}<details class="app-switcher">
+    <summary aria-label="Switch apps"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h3v3H5zM10.5 5h3v3h-3zM16 5h3v3h-3zM5 10.5h3v3H5zM10.5 10.5h3v3h-3zM16 10.5h3v3h-3zM5 16h3v3H5zM10.5 16h3v3h-3zM16 16h3v3h-3z"/></svg></summary>
+    <div class="user-popover app-switcher-popover">
+      <nav aria-label="Switch to"><h2 class="app-switcher-heading">Switch to</h2>{{range .Products}}<a href="{{.URL}}" {{if .Current}}aria-current="page"{{end}}>{{.Name}}</a>{{end}}{{if .CanAdmin}}<a href="/admin">Administration</a>{{end}}</nav>
+      {{if .RecentProjects}}<nav aria-label="Recent projects"><h2 class="app-switcher-heading">Recent projects</h2>{{range .RecentProjects}}<a href="/projects/{{.Key}}">{{.Name}}</a>{{end}}</nav>{{end}}
+    </div>
+  </details>{{end}}{{end}}
   <a class="logo" href="/" aria-label="{{(site $).Title}} home">{{with (site $).LogoURL}}<img class="logo-image" src="{{.}}" alt="" width="30" height="30">{{else}}<span class="logo-mark" aria-hidden="true">Z</span>{{end}}<span{{with (site $).NavigationHighlight}} style="color:{{.}}"{{end}}>{{(site $).Title}}</span></a>
   <form class="global-search" method="get" action="{{with .Navigation}}{{with .Current}}{{.WorkURL}}{{else}}/projects{{end}}{{else}}/projects{{end}}" role="search">
     <label class="sr-only" for="global-jql-query">Search issues with JQL</label>

@@ -294,18 +294,29 @@ test('admin creates a service project with Jira Service Management request types
   await accessible(page);
   await bulk.getByRole('button', { name: 'Apply to selected requests' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'requests changed' })).toHaveText(/^1 of 1 requests changed\.$/);
-  const targetStatus = await page.locator('#bulk-status option').first().getAttribute('value');
-  expect(targetStatus).toBeTruthy();
-  await page.getByRole('row').filter({ hasText: requestSummary }).getByRole('checkbox').check();
-  await page.locator('#bulk-requests').getByLabel('Action').selectOption('transition');
-  await page.locator('#bulk-requests').getByLabel('Status').selectOption(targetStatus!);
-  await page.locator('#bulk-requests').getByRole('button', { name: 'Apply to selected requests' }).click();
-  await expect(page.getByRole('status').filter({ hasText: 'requests changed' })).toHaveText(/^1 of 1 requests changed\.$/);
-  await expect(page.getByRole('row').filter({ hasText: requestSummary })).toContainText(targetStatus!);
   // Nothing selected is refused with the reason.
   await page.locator('#bulk-requests').getByRole('button', { name: 'Apply to selected requests' }).click();
   await expect(page.getByRole('alert').filter({ hasText: 'Select the requests' })).toHaveText('Select the requests to change.');
+  // Moving to a status that keeps the request open leaves it in the queue;
+  // a done status would take it out of this queue of open requests.
+  const statuses = (await page.locator('#bulk-status option').allTextContents()).map(status => status.trim());
+  const openStatus = statuses.find(status => status !== 'Done' && status !== 'Resolved' && status !== 'Closed' && status !== 'Canceled');
+  expect(openStatus, `bulk statuses ${statuses.join(', ')}`).toBeTruthy();
   await page.getByRole('row').filter({ hasText: requestSummary }).getByRole('checkbox').check();
+  await page.locator('#bulk-requests').getByLabel('Action').selectOption('transition');
+  await page.locator('#bulk-requests').getByLabel('Status').selectOption(openStatus!);
+  await page.locator('#bulk-requests').getByRole('button', { name: 'Apply to selected requests' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'requests changed' })).toHaveText(/^1 of 1 requests changed\.$/);
+  await expect(page.getByRole('row').filter({ hasText: requestSummary })).toContainText(openStatus!);
+  // A request already in the chosen status is named with the reason.
+  await page.getByRole('row').filter({ hasText: requestSummary }).getByRole('checkbox').check();
+  await page.locator('#bulk-requests').getByLabel('Action').selectOption('transition');
+  if (await page.locator('#bulk-status option', { hasText: openStatus! }).count()) {
+    await page.locator('#bulk-requests').getByLabel('Status').selectOption(openStatus!);
+    await page.locator('#bulk-requests').getByRole('button', { name: 'Apply to selected requests' }).click();
+    await expect(page.getByRole('alert').filter({ hasText: 'is already' })).toContainText(`is already ${openStatus}.`);
+    await page.getByRole('row').filter({ hasText: requestSummary }).getByRole('checkbox').check();
+  }
   await page.locator('#bulk-requests').getByLabel('Action').selectOption('assign');
   await page.locator('#bulk-requests').getByLabel('Assignee').selectOption('');
   await page.locator('#bulk-requests').getByRole('button', { name: 'Apply to selected requests' }).click();
