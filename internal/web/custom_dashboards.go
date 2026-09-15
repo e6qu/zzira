@@ -39,6 +39,8 @@ type customDashboardsData struct {
 	Roles                             []*models.ProjectRole
 	Filters                           []*models.Filter
 	Boards                            []*models.Board
+	Subscriptions                     []models.DashboardSubscription
+	CurrentUserID                     string
 	ReportWindows                     []int
 	Catalog                           []models.GadgetDefinition
 	Columns                           [][]dashboardTile
@@ -205,6 +207,15 @@ func (h *Handler) CustomDashboard(w http.ResponseWriter, r *http.Request) {
 				redirectLocal(w, r, "/dashboards")
 				return
 			}
+		case "subscribe":
+			_, opErr = h.Store.SaveDashboardSubscription(r.Context(), ws, user.ID, id, r.PostFormValue("schedule"), r.PostForm["recipient"])
+		case "unsubscribe":
+			subscriptionID, parseErr := strconv.ParseInt(r.PostFormValue("subscriptionId"), 10, 64)
+			if parseErr != nil {
+				opErr = store.ErrDashboardValidation
+			} else {
+				opErr = h.Store.DeleteDashboardSubscription(r.Context(), ws, user.ID, id, subscriptionID)
+			}
 		case "favourite":
 			opErr = h.Store.SetDashboardFavourite(r.Context(), ws, user.ID, id, r.PostFormValue("favourite") == "true")
 		case "presentation":
@@ -342,6 +353,11 @@ func (h *Handler) CustomDashboard(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	data.ReportWindows = analysisWindows
+	data.CurrentUserID = user.ID
+	if data.Subscriptions, err = h.Store.DashboardSubscriptions(r.Context(), ws, user.ID, id); err != nil {
+		http.Error(w, "Could not load dashboard emails.", 500)
+		return
+	}
 	h.writeWorkspacePageStatus(w, r, "page_custom_dashboard", user, ws, data, "dashboards", "", status)
 }
 func (d customDashboardsData) ShareSelected(kind, id string) bool {

@@ -759,3 +759,5 @@ label[for="wiki-subtype"] { display: flex; align-items: center; gap: 8px; }
 .report-toggle { display:flex !important; gap:6px; align-items:center; width:auto !important; }
 .wiki-live-sync { margin: 4px 0 0; }
 .gadget-report-chart { display:block; width:100%; height:auto; max-height:220px; }
+.dashboard-subscribe { position:relative; }.dashboard-subscribe-panel { position:absolute; right:0; z-index:5; width:min(360px, calc(100vw - 32px)); margin-top:8px; display:grid; gap:12px; }.dashboard-subscribe-panel form > span { display:flex; flex-direction:column; gap:2px; }.dashboard-subscribe-panel fieldset { display:grid; gap:4px; max-height:200px; overflow:auto; border:1px solid var(--ds-border); border-radius:var(--ds-radius); padding:8px; }
+@media(max-width:540px) { .dashboard-subscribe-panel { position:static; width:100%; } }
