@@ -1,4 +1,13 @@
 import { expect, test } from '@playwright/test';
+import fs from 'fs';
+import path from 'path';
+
+function apiAuthHeader(): string {
+  const email = 'demo@zzira.dev';
+  const tokens = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'seed-tokens.json'), 'utf8'));
+  const token = process.env.ZZIRA_API_TOKEN ?? tokens[email];
+  return 'Basic ' + Buffer.from(`${email}:${token}`).toString('base64');
+}
 
 test('create a project, use its board, and update settings through UI and API', async ({ page }) => {
   await page.goto('/login');
@@ -53,7 +62,7 @@ test('create a project, use its board, and update settings through UI and API', 
   await codeFeature().getByRole('button', { name: 'Disable' }).click();
   await expect(page.getByRole('status')).toContainText('Project feature saved.');
   await expect(codeFeature()).toContainText('DISABLED');
-  const featureIssue = await page.request.post('/rest/api/3/issue', { data: { fields: { project: { key }, summary: 'Feature toggle check', issuetype: { name: 'Task' } } } });
+  const featureIssue = await page.request.post('/rest/api/3/issue', { headers: { Authorization: apiAuthHeader() }, data: { fields: { project: { key }, summary: 'Feature toggle check', issuetype: { name: 'Task' } } } });
   expect(featureIssue.status()).toBe(201);
   const featureIssueKey = (await featureIssue.json()).key as string;
   await page.goto(`/browse/${featureIssueKey}`);
