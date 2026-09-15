@@ -180,6 +180,7 @@ func (s *Store) IssueCreateMetadata(ctx context.Context, workspaceID, userID str
 		if err != nil {
 			return nil, err
 		}
+		var teamOptions []models.CreateFieldOption
 		for _, field := range customFields {
 			fieldType, err := createFieldType(field.Type)
 			if err != nil {
@@ -205,6 +206,18 @@ func (s *Store) IssueCreateMetadata(ctx context.Context, workspaceID, userID str
 				fieldMeta.Options = projectOptions
 			case models.CustomFieldVersion, models.CustomFieldMultiVersion:
 				fieldMeta.Options = versionOptions
+			case models.CustomFieldTeam:
+				if teamOptions == nil {
+					teams, err := s.AtlassianTeams(ctx, workspaceID)
+					if err != nil {
+						return nil, err
+					}
+					teamOptions = []models.CreateFieldOption{}
+					for _, team := range teams {
+						teamOptions = append(teamOptions, models.CreateFieldOption{ID: team.ID, Name: team.Name})
+					}
+				}
+				fieldMeta.Options = teamOptions
 			}
 			fields = append(fields, fieldMeta)
 		}
@@ -252,6 +265,8 @@ func createFieldType(fieldType string) (string, error) {
 		return "version", nil
 	case models.CustomFieldMultiVersion:
 		return "versions", nil
+	case models.CustomFieldTeam:
+		return "team", nil
 	default:
 		return "", fmt.Errorf("unsupported type %q", fieldType)
 	}

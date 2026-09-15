@@ -303,6 +303,8 @@ func jqlCustomFieldReference(field *models.CustomField) jqlFieldReference {
 		reference.Types, reference.Operators, reference.Auto = []string{"LABEL"}, listOperators, "true"
 	case models.CustomFieldProject:
 		reference.Types, reference.Operators, reference.Auto = []string{"PROJECT"}, listOperators, "true"
+	case models.CustomFieldTeam:
+		reference.Types, reference.Operators, reference.Auto = []string{"com.atlassian.teams.api.team.Team"}, listOperators, "false"
 	case models.CustomFieldVersion, models.CustomFieldMultiVersion:
 		reference.Types, reference.Operators, reference.Auto = []string{"VERSION"}, append(append([]string{}, listOperators...), ">", ">=", "<", "<="), "true"
 	case models.CustomFieldNumber:

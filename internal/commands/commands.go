@@ -648,6 +648,15 @@ func (s *Service) normalizeOptionFields(ctx context.Context, workspaceID, projec
 				stored["child"] = child
 			}
 			fields[field], _ = json.Marshal(stored)
+		case models.CustomFieldTeam:
+			teamID, _, ok := scalar(raw, "id")
+			if !ok || teamID == "" {
+				return fmt.Errorf("%s must name a team by id", field)
+			}
+			if _, err := s.Store.AtlassianTeam(ctx, workspaceID, teamID); err != nil {
+				return fmt.Errorf("%s names %q, which is not a team of this site", field, teamID)
+			}
+			fields[field], _ = json.Marshal(teamID)
 		case models.CustomFieldUser, models.CustomFieldMultiUser:
 			resolve := func(item json.RawMessage) (string, error) {
 				accountID, _, ok := scalar(item, "accountId")

@@ -1010,7 +1010,7 @@ func customFieldChange(ctx context.Context, tx pgx.Tx, fieldID string, from, to 
 		}
 		switch fieldType {
 		case models.CustomFieldUser, models.CustomFieldGroup, models.CustomFieldMultiUser, models.CustomFieldMultiGroup, models.CustomFieldLabels,
-			models.CustomFieldProject, models.CustomFieldVersion, models.CustomFieldMultiVersion:
+			models.CustomFieldProject, models.CustomFieldVersion, models.CustomFieldMultiVersion, models.CustomFieldTeam:
 			var ids []string
 			var single string
 			if json.Unmarshal(raw, &single) == nil {
@@ -1029,6 +1029,8 @@ func customFieldChange(ctx context.Context, tx pgx.Tx, fieldID string, from, to 
 				query = `SELECT name FROM projects WHERE id=$1`
 			case models.CustomFieldVersion, models.CustomFieldMultiVersion:
 				query = `SELECT name FROM project_versions WHERE id=$1`
+			case models.CustomFieldTeam:
+				query = `SELECT name FROM atlassian_teams WHERE id::text=$1`
 			}
 			names := make([]string, 0, len(ids))
 			for _, id := range ids {

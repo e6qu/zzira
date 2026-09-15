@@ -38,6 +38,7 @@ var jiraFieldTypeKeys = map[string]string{
 	"com.atlassian.jira.plugin.system.customfieldtypes:project":          models.CustomFieldProject,
 	"com.atlassian.jira.plugin.system.customfieldtypes:version":          models.CustomFieldVersion,
 	"com.atlassian.jira.plugin.system.customfieldtypes:multiversion":     models.CustomFieldMultiVersion,
+	"com.atlassian.teams:rm-teams-custom-field-team":                     models.CustomFieldTeam,
 }
 
 // resolveFieldType accepts either this product's short type name or Jira's
@@ -81,6 +82,8 @@ func customFieldSchema(field *models.CustomField) map[string]any {
 		schema["type"] = "version"
 	case models.CustomFieldMultiVersion:
 		schema["type"], schema["items"] = "array", "version"
+	case models.CustomFieldTeam:
+		schema["type"] = "team"
 	default:
 		schema["type"] = field.Type
 	}
