@@ -926,16 +926,17 @@ func serviceRequestFieldSchema(field models.ServiceRequestTypeField) map[string]
 		models.CustomFieldGroup: {"group", "grouppicker"}, models.CustomFieldMultiGroup: {"array", "multigrouppicker"},
 		models.CustomFieldLabels: {"array", "labels"}, models.CustomFieldProject: {"project", "project"},
 		models.CustomFieldVersion: {"version", "version"}, models.CustomFieldMultiVersion: {"array", "multiversion"},
-		models.CustomFieldTeam: {"team", ""},
+		models.CustomFieldTeam: {"team", ""}, models.CustomFieldAsset: {"any", ""},
 	}
 	kind, ok := types[field.Type]
 	if !ok {
 		kind = [2]string{"string", field.Type}
 	}
 	schema := map[string]any{"type": kind[0], "custom": "com.atlassian.jira.plugin.system.customfieldtypes:" + kind[1]}
-	if field.Type == models.CustomFieldTeam {
-		// Jira's team field comes from Atlassian Teams, not the system field types.
-		schema["custom"] = "com.atlassian.teams:rm-teams-custom-field-team"
+	if key, ok := models.CustomFieldTypeKeys[field.Type]; ok && (field.Type == models.CustomFieldTeam || field.Type == models.CustomFieldAsset) {
+		// Jira's team and Assets fields come from their own apps, not the
+		// system field types.
+		schema["custom"] = key
 	}
 	if id, err := strconv.ParseInt(strings.TrimPrefix(field.ID, "customfield_"), 10, 64); err == nil {
 		schema["customId"] = id

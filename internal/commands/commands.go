@@ -784,6 +784,16 @@ func (s *Service) normalizeOptionFields(ctx context.Context, workspaceID, projec
 				ids = append(ids, id)
 			}
 			fields[field], _ = json.Marshal(ids)
+		case models.CustomFieldAsset:
+			ref, _, ok := scalar(raw, "id", "objectKey")
+			if !ok || ref == "" {
+				return fmt.Errorf("%s must name an Assets object by id or objectKey", field)
+			}
+			objectID, _, err := s.Store.ServiceAssetObjectInProject(ctx, workspaceID, projectID, ref)
+			if err != nil {
+				return fmt.Errorf("%s names the Assets object %q, which is not in this service project", field, ref)
+			}
+			fields[field], _ = json.Marshal(objectID)
 		case models.CustomFieldLabels:
 			labels := []string{}
 			for _, item := range list(raw) {

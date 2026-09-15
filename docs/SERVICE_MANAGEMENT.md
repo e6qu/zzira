@@ -84,7 +84,10 @@ picker takes a site member's email address and a multi-user picker several,
 separated by commas; the portal finds the member without listing the site's
 people. The request page shows the chosen options and people by name.
 
-Group, project, version and team picker fields ask for a choice instead: a
+An Assets object picker field offers the service desk's Assets objects, each
+labelled with its schema, and stores the chosen object's id; the desk's agents
+create the objects and schemas in the agent workspace. Group, project, version
+and team picker fields ask for a choice instead: a
 group picker offers the site's groups, a project picker the projects the
 requester can browse, a version picker the desk project's versions that are
 not archived, and a team picker the site's Atlassian teams; the multi-group

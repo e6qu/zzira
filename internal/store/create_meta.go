@@ -267,6 +267,9 @@ func createFieldType(fieldType string) (string, error) {
 		return "versions", nil
 	case models.CustomFieldTeam:
 		return "team", nil
+	case models.CustomFieldAsset:
+		// Jira reports CMDB object fields by their custom key, not a schema type.
+		return "any", nil
 	default:
 		return "", fmt.Errorf("unsupported type %q", fieldType)
 	}

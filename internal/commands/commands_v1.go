@@ -327,7 +327,7 @@ func (s *Service) validateCustomFields(ctx context.Context, projectID string, va
 				}
 				seen[value] = true
 			}
-		case models.CustomFieldUser, models.CustomFieldGroup, models.CustomFieldProject, models.CustomFieldVersion, models.CustomFieldTeam:
+		case models.CustomFieldUser, models.CustomFieldGroup, models.CustomFieldProject, models.CustomFieldVersion, models.CustomFieldTeam, models.CustomFieldAsset:
 			var value string
 			if err := json.Unmarshal(raw, &value); err != nil || value == "" {
 				return fmt.Errorf("custom field %q must be an id", id)

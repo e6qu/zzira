@@ -1412,7 +1412,7 @@ func encodeWebCustomField(fieldType, value string) (json.RawMessage, error) {
 		"option", models.CustomFieldSelect:
 		encoded, err := json.Marshal(value)
 		return encoded, err
-	case models.CustomFieldDate, models.CustomFieldURL, "user", models.CustomFieldUser, "group", models.CustomFieldGroup, models.CustomFieldProject, "projectpicker", models.CustomFieldVersion:
+	case models.CustomFieldDate, models.CustomFieldURL, "user", models.CustomFieldUser, "group", models.CustomFieldGroup, models.CustomFieldProject, "projectpicker", models.CustomFieldVersion, models.CustomFieldAsset:
 		return json.Marshal(value)
 	case models.CustomFieldCascadingSelect, "option-with-child":
 		parent, child, _ := strings.Cut(value, ":")

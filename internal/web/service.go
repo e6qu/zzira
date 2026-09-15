@@ -1456,7 +1456,7 @@ func encodeServicePortalField(field models.ServiceRequestTypeField, submitted []
 			return nil, true, fmt.Errorf("%s must be a date.", field.Name)
 		}
 		encoded = values[0]
-	case models.CustomFieldSelect, models.CustomFieldGroup, models.CustomFieldProject, models.CustomFieldVersion, models.CustomFieldTeam:
+	case models.CustomFieldSelect, models.CustomFieldGroup, models.CustomFieldProject, models.CustomFieldVersion, models.CustomFieldTeam, models.CustomFieldAsset:
 		if _, ok := option(values[0]); !ok {
 			return nil, true, fmt.Errorf("Choose one of the options for %s.", field.Name)
 		}
@@ -1573,7 +1573,7 @@ func serviceFieldDisplay(fieldType string, value any, catalog store.CustomFieldV
 	}
 	switch fieldType {
 	case models.CustomFieldSelect, models.CustomFieldUser, models.CustomFieldMultiSelect, models.CustomFieldMultiUser, models.CustomFieldLabels,
-		models.CustomFieldGroup, models.CustomFieldMultiGroup, models.CustomFieldProject, models.CustomFieldVersion, models.CustomFieldMultiVersion, models.CustomFieldTeam:
+		models.CustomFieldGroup, models.CustomFieldMultiGroup, models.CustomFieldProject, models.CustomFieldVersion, models.CustomFieldMultiVersion, models.CustomFieldTeam, models.CustomFieldAsset:
 		return strings.Join(names(), ", ")
 	case models.CustomFieldCascadingSelect:
 		return strings.Join(names(), " - ")
@@ -1795,7 +1795,7 @@ func (h *Handler) ServiceRequestPage(w http.ResponseWriter, r *http.Request) {
 			userIDs = append(userIDs, serviceFieldIDs(value)...)
 		case models.CustomFieldGroup, models.CustomFieldMultiGroup:
 			groupIDs = append(groupIDs, serviceFieldIDs(value)...)
-		case models.CustomFieldProject, models.CustomFieldVersion, models.CustomFieldMultiVersion, models.CustomFieldTeam:
+		case models.CustomFieldProject, models.CustomFieldVersion, models.CustomFieldMultiVersion, models.CustomFieldTeam, models.CustomFieldAsset:
 			choices, choicesErr := h.Store.ServicePortalPickerChoices(r.Context(), workspaceID, request.ServiceDesk.ID, user.ID, field.Type)
 			if choicesErr != nil {
 				http.Error(w, "Could not render request fields.", http.StatusInternalServerError)

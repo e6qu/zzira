@@ -45,6 +45,8 @@ func TestEncodeServicePortalField(t *testing.T) {
 		{models.CustomFieldMultiVersion, []string{"2", "1", "2"}, "", `["2","1"]`, ""},
 		{models.CustomFieldMultiGroup, []string{"1", "7"}, "", "", "Choose from the options for Platform."},
 		{models.CustomFieldTeam, []string{"1"}, "", `"1"`, ""},
+		{models.CustomFieldAsset, []string{"2"}, "", `"2"`, ""},
+		{models.CustomFieldAsset, []string{"7"}, "", "", "Choose one of the options for Platform."},
 		{models.CustomFieldTeam, []string{"8"}, "", "", "Choose one of the options for Platform."},
 	} {
 		field := models.ServiceRequestTypeField{ID: "customfield_1", Name: "Platform", Type: check.kind}
@@ -62,11 +64,11 @@ func TestEncodeServicePortalField(t *testing.T) {
 	}
 	catalog := store.CustomFieldValueCatalog{Options: map[string]models.CustomFieldOption{"2": {ID: "2", Value: "Mobile"}, "3": {ID: "3", Value: "iOS"}}, Users: map[string]*models.User{"usr_ana": {ID: "usr_ana", DisplayName: "Ana"}},
 		Groups: map[string]store.SiteGroup{"grp-ops": {Name: "Operations"}}}
-	pickerNames := map[string]string{"10000": "Service desk", "10010": "Release 1", "10011": "Release 2", "team-1": "Platform crew"}
+	pickerNames := map[string]string{"10000": "Service desk", "10010": "Release 1", "10011": "Release 2", "team-1": "Platform crew", "obj-1": "Checkout laptop (Laptops)"}
 	for fieldType, want := range map[string]string{models.CustomFieldCascadingSelect: "Mobile - iOS", models.CustomFieldMultiUser: "Ana", models.CustomFieldLabels: "a, b", models.CustomFieldNumber: "42.5",
-		models.CustomFieldMultiGroup: "Operations", models.CustomFieldProject: "Service desk", models.CustomFieldMultiVersion: "Release 1, Release 2", models.CustomFieldTeam: "Platform crew"} {
+		models.CustomFieldMultiGroup: "Operations", models.CustomFieldProject: "Service desk", models.CustomFieldMultiVersion: "Release 1, Release 2", models.CustomFieldTeam: "Platform crew", models.CustomFieldAsset: "Checkout laptop (Laptops)"} {
 		value := map[string]any{models.CustomFieldCascadingSelect: map[string]any{"parent": "2", "child": "3"}, models.CustomFieldMultiUser: []any{"usr_ana"}, models.CustomFieldLabels: []any{"a", "b"}, models.CustomFieldNumber: 42.5,
-			models.CustomFieldMultiGroup: []any{"grp-ops"}, models.CustomFieldProject: "10000", models.CustomFieldMultiVersion: []any{"10010", "10011"}, models.CustomFieldTeam: "team-1"}[fieldType]
+			models.CustomFieldMultiGroup: []any{"grp-ops"}, models.CustomFieldProject: "10000", models.CustomFieldMultiVersion: []any{"10010", "10011"}, models.CustomFieldTeam: "team-1", models.CustomFieldAsset: "obj-1"}[fieldType]
 		if got := serviceFieldDisplay(fieldType, value, catalog, pickerNames); got != want {
 			t.Fatalf("%s display = %q, want %q", fieldType, got, want)
 		}

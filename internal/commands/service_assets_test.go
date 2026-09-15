@@ -2,6 +2,7 @@ package commands_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"strings"
@@ -87,6 +88,19 @@ func TestServiceAssetInventoryRelationshipsAndRequestImpact(t *testing.T) {
 		t.Fatal("self relationship accepted")
 	}
 
+	// A portal Assets field offers the desk's objects, labelled with their
+	// schema, to anyone who can raise a request, and names one by id or key.
+	assetChoices, err := st.ServicePortalPickerChoices(ctx, workspaceID, deskID, adminID, models.CustomFieldAsset)
+	if err != nil || len(assetChoices) != 2 || assetChoices[0].Value != "Checkout database (Business service)" || assetChoices[1].Value != "Customer storefront (Business service)" {
+		t.Fatalf("asset choices = %+v, %v", assetChoices, err)
+	}
+	if id, label, err := st.ServiceAssetObjectInProject(ctx, workspaceID, project.ID, "database"); err != nil || id != database.ID || label != "Checkout database" {
+		t.Fatalf("asset by key = %q %q, %v", id, label, err)
+	}
+	if _, _, err := st.ServiceAssetObjectInProject(ctx, workspaceID, project.ID, "NOPE"); err == nil {
+		t.Fatal("an Assets object outside the service project resolved")
+	}
+
 	requestTypes, err := st.ServiceRequestTypes(ctx, workspaceID, deskID, "")
 	if err != nil || len(requestTypes) == 0 {
 		t.Fatalf("request types = %+v, %v", requestTypes, err)
@@ -95,6 +109,25 @@ func TestServiceAssetInventoryRelationshipsAndRequestImpact(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A request names an Assets object in a portal field, by key or id.
+	assetFieldID := "customfield_" + time.Now().UTC().Format("150405000")
+	if _, err := st.Pool.Exec(ctx, `INSERT INTO custom_fields(id,name,type,description,workspace_id) VALUES($1,'Affected asset',$2,'',$3)`, assetFieldID, models.CustomFieldAsset, workspaceID); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _, _ = st.Pool.Exec(ctx, `DELETE FROM custom_fields WHERE id=$1`, assetFieldID) })
+	if _, err := service.CreateServiceRequest(ctx, commands.CreateServiceRequestInput{ActorID: adminID, WorkspaceID: workspaceID, ServiceDeskID: deskID, RequestTypeID: requestTypes[0].ID,
+		Summary: "Laptop replacement", Fields: map[string]json.RawMessage{assetFieldID: json.RawMessage(`"NOPE"`)}}); err == nil {
+		t.Fatal("a request named an Assets object that is not in the service project")
+	}
+	assetRequest, err := service.CreateServiceRequest(ctx, commands.CreateServiceRequestInput{ActorID: adminID, WorkspaceID: workspaceID, ServiceDeskID: deskID, RequestTypeID: requestTypes[0].ID,
+		Summary: "Database upgrade", Fields: map[string]json.RawMessage{assetFieldID: json.RawMessage(`"database"`)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored := string(assetRequest.Issue.Fields[assetFieldID]); stored != `"`+database.ID+`"` {
+		t.Fatalf("stored asset field = %s, want the object id %s", stored, database.ID)
+	}
+
 	if err := service.SetServiceRequestAsset(ctx, adminID, workspaceID, request.Issue.Key, database.ID, "affected", true); err != nil {
 		t.Fatal(err)
 	}

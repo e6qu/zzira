@@ -141,6 +141,8 @@ func (s *Store) ServicePortalPickerChoices(ctx context.Context, workspaceID, ser
 		for _, project := range projects {
 			choices = append(choices, ServiceRequestFieldOption{ID: project.ID, Value: project.Name})
 		}
+	case models.CustomFieldAsset:
+		return s.ServicePortalAssetObjects(ctx, workspaceID, serviceDeskID)
 	case models.CustomFieldTeam:
 		teams, err := s.AtlassianTeams(ctx, workspaceID)
 		if err != nil {
@@ -167,11 +169,46 @@ func (s *Store) ServicePortalPickerChoices(ctx context.Context, workspaceID, ser
 	return choices, nil
 }
 
+// ServicePortalAssetObjects lists a service desk's Assets objects for a portal
+// field, newest schemas' objects by label. Customers choose from them, so this
+// read does not ask for agent access; the objects belong to the desk they are
+// shown on.
+func (s *Store) ServicePortalAssetObjects(ctx context.Context, workspaceID, serviceDeskID string) ([]ServiceRequestFieldOption, error) {
+	rows, err := s.Pool.Query(ctx, `SELECT o.id::text,o.label,s.name
+		FROM service_asset_objects o JOIN service_asset_schemas s ON s.id=o.schema_id JOIN service_desks sd ON sd.id=s.service_desk_id
+		WHERE sd.workspace_id=$1 AND sd.id=$2 ORDER BY lower(s.name),lower(o.label),o.id`, workspaceID, serviceDeskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	objects := []ServiceRequestFieldOption{}
+	for rows.Next() {
+		var option ServiceRequestFieldOption
+		var schema string
+		if err := rows.Scan(&option.ID, &option.Value, &schema); err != nil {
+			return nil, err
+		}
+		option.Value += " (" + schema + ")"
+		objects = append(objects, option)
+	}
+	return objects, rows.Err()
+}
+
+// ServiceAssetObjectInProject finds an Assets object of the service desk of a
+// project by its id or object key, and answers its label.
+func (s *Store) ServiceAssetObjectInProject(ctx context.Context, workspaceID, projectID, reference string) (string, string, error) {
+	var id, label string
+	err := s.Pool.QueryRow(ctx, `SELECT o.id::text,o.label
+		FROM service_asset_objects o JOIN service_asset_schemas s ON s.id=o.schema_id JOIN service_desks sd ON sd.id=s.service_desk_id
+		WHERE sd.workspace_id=$1 AND sd.project_id=$2 AND (o.id::text=$3 OR upper(o.object_key)=upper($3)) LIMIT 1`, workspaceID, projectID, reference).Scan(&id, &label)
+	return id, label, err
+}
+
 // IsServicePortalPicker reports a field type whose portal choices come from
 // the site's groups, projects, versions or teams rather than configured options.
 func IsServicePortalPicker(fieldType string) bool {
 	switch fieldType {
-	case models.CustomFieldGroup, models.CustomFieldMultiGroup, models.CustomFieldProject, models.CustomFieldVersion, models.CustomFieldMultiVersion, models.CustomFieldTeam:
+	case models.CustomFieldGroup, models.CustomFieldMultiGroup, models.CustomFieldProject, models.CustomFieldVersion, models.CustomFieldMultiVersion, models.CustomFieldTeam, models.CustomFieldAsset:
 		return true
 	}
 	return false
