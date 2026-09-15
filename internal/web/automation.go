@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/e6qu/zzira/internal/automation"
+	"github.com/e6qu/zzira/internal/cron"
 	"github.com/e6qu/zzira/internal/models"
 )
 
@@ -118,6 +119,10 @@ func (h *Handler) AutomationRules(w http.ResponseWriter, r *http.Request) {
 		if rule.IntervalMinutes != nil {
 			card.Trigger = "Scheduled"
 			card.Schedule = intervalLabel(*rule.IntervalMinutes)
+		}
+		if rule.CronExpression != "" {
+			card.Trigger = "Scheduled"
+			card.Schedule = "Cron " + rule.CronExpression + " in " + rule.ScheduleTimezone
 		}
 		if rule.NextRunAt != nil && rule.State == "ENABLED" {
 			card.NextRun = rule.NextRunAt.In(time.Local).Format(look.DateComplete)
@@ -280,16 +285,23 @@ func automationPayload(r *http.Request) (json.RawMessage, error) {
 	var triggerValue map[string]any
 	switch triggerType {
 	case "jira.jql.scheduled":
-		interval, err := strconv.Atoi(r.PostFormValue("interval_minutes"))
-		if err != nil || interval < 1 || interval > 43200 {
-			return nil, fmt.Errorf("schedule must be between 1 minute and 30 days")
-		}
 		timezone := strings.TrimSpace(r.PostFormValue("timezone"))
 		if timezone == "" {
 			timezone = "UTC"
 		}
 		if _, err := time.LoadLocation(timezone); err != nil {
 			return nil, fmt.Errorf("timezone is not a valid IANA timezone")
+		}
+		if expression := strings.TrimSpace(r.PostFormValue("cron_expression")); expression != "" {
+			if _, err := cron.Parse(expression); err != nil {
+				return nil, fmt.Errorf("cron expression: %w", err)
+			}
+			triggerValue = map[string]any{"timezone": timezone, "jql": query, "schedule": map[string]any{"method": "CRON_EXPRESSION", "cronExpression": expression}}
+			break
+		}
+		interval, err := strconv.Atoi(r.PostFormValue("interval_minutes"))
+		if err != nil || interval < 1 || interval > 43200 {
+			return nil, fmt.Errorf("schedule must be a cron expression or an interval between 1 minute and 30 days")
 		}
 		triggerValue = map[string]any{"intervalMinutes": interval, "timezone": timezone, "jql": query}
 	case "jira.issue.event.trigger:created", "jira.issue.event.trigger:commented":

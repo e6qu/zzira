@@ -100,7 +100,59 @@ func (r *Runner) enqueueDue(ctx context.Context, workspaceID string) error {
 		UPDATE automation_rules r SET
 		 next_run_at=GREATEST(d.next_run_at+make_interval(mins=>d.interval_minutes),now()+make_interval(mins=>d.interval_minutes))
 		FROM due d WHERE r.uuid=d.uuid`, workspaceID)
-	return err
+	if err != nil {
+		return err
+	}
+	return r.enqueueDueCron(ctx, workspaceID)
+}
+
+// enqueueDueCron queues a run for each enabled cron rule whose time has come
+// and moves the rule to its next time. Times missed while no worker ran are
+// run once, as for fixed intervals.
+func (r *Runner) enqueueDueCron(ctx context.Context, workspaceID string) error {
+	tx, err := r.Service.Store.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	rows, err := tx.Query(ctx, `SELECT uuid::text,next_run_at,cron_expression,schedule_timezone FROM automation_rules
+		WHERE workspace_id=$1 AND state='ENABLED' AND cron_expression IS NOT NULL AND next_run_at<=now()
+		FOR UPDATE SKIP LOCKED`, workspaceID)
+	if err != nil {
+		return err
+	}
+	type dueRule struct {
+		uuid, expression, timezone string
+		due                        time.Time
+	}
+	due := []dueRule{}
+	for rows.Next() {
+		var rule dueRule
+		if err := rows.Scan(&rule.uuid, &rule.due, &rule.expression, &rule.timezone); err != nil {
+			rows.Close()
+			return err
+		}
+		due = append(due, rule)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	now := time.Now()
+	for _, rule := range due {
+		id, err := NewUUIDv7()
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO automation_runs(id,rule_uuid,scheduled_for,state) VALUES($1,$2,$3,'PENDING')
+			ON CONFLICT (rule_uuid,scheduled_for) WHERE trigger_seq IS NULL DO NOTHING`, id, rule.uuid, rule.due); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `UPDATE automation_rules SET next_run_at=$2 WHERE uuid=$1`, rule.uuid, nextCronRun(rule.expression, rule.timezone, now)); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
 }
 
 func (r *Runner) claim(ctx context.Context, workspaceID string) (*claimedRun, error) {

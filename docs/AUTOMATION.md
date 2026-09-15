@@ -60,9 +60,15 @@ uses trigger type `jira.jql.scheduled` or `jira.issue.scheduled` with this value
 ```
 
 The editor and worker support fixed intervals from one minute through 30 days.
-The timezone is retained in the rule, while fixed intervals are elapsed-time
-schedules and therefore do not move at daylight-saving boundaries. Jira's Cron
-schedule form remains a gap.
+Fixed intervals are elapsed-time schedules and therefore do not move at
+daylight-saving boundaries. A rule can instead follow a Quartz cron expression,
+as Jira's scheduled trigger does, given as
+`"schedule": {"method": "CRON_EXPRESSION", "cronExpression": "0 0 9 ? * MON-FRI"}`
+or as a top-level `cronExpression`. It fires in the rule's timezone. The seconds
+field must be a single number, exactly one of the day-of-month and day-of-week
+fields must be `?`, and `L`, `W` and `#` are not supported. Local times skipped
+by a daylight-saving change do not fire, a time missed while no worker ran runs
+once, and disabling a rule clears its next time until it is enabled again.
 
 The worker executes these action component types in order:
 
@@ -81,8 +87,8 @@ larger results fail before any actions run.
 
 Other triggers, components, branches, smart values and connection payloads
 remain available through the rule API, but the worker records an explicit failed
-audit entry when asked to execute unsupported behavior. Cron schedules,
-branching, issue and page creation, email and web requests, usage limits and the
+audit entry when asked to execute unsupported behavior. Branching, issue and page
+creation, email and web requests, usage limits and the
 rest of Jira's trigger, condition and action catalog remain gaps.
 
 ## Event triggers, conditions and smart values

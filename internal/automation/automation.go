@@ -18,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/e6qu/zzira/internal/commands"
+	"github.com/e6qu/zzira/internal/cron"
 	"github.com/e6qu/zzira/internal/jql"
 	"github.com/e6qu/zzira/internal/store"
 )
@@ -42,6 +43,9 @@ type Rule struct {
 	Payload         json.RawMessage
 	Connections     json.RawMessage
 	IntervalMinutes *int
+	// CronExpression is the Quartz cron expression a scheduled rule follows
+	// instead of a fixed interval.
+	CronExpression string
 	// EventTrigger is the work item event a rule starts from: created,
 	// transitioned, field_changed or commented; empty for other triggers.
 	EventTrigger        string
@@ -93,9 +97,12 @@ type nativeTriggerValue struct {
 	IntervalMinutes int    `json:"intervalMinutes"`
 	Timezone        string `json:"timezone"`
 	JQL             string `json:"jql"`
+	CronExpression  string `json:"cronExpression"`
 	Schedule        *struct {
 		IntervalMinutes int    `json:"intervalMinutes"`
 		Timezone        string `json:"timezone"`
+		Method          string `json:"method"`
+		CronExpression  string `json:"cronExpression"`
 	} `json:"schedule"`
 }
 
@@ -228,12 +235,14 @@ func (s *Service) CreateRule(ctx context.Context, workspaceID, requesterID strin
 	}
 	_, err = s.Store.Pool.Exec(ctx, `
 		INSERT INTO automation_rules
-		(uuid,workspace_id,author_id,actor_id,name,description,labels,state,rule_scope_aris,payload,connections,interval_minutes,schedule_timezone,jql,next_run_at,event_trigger)
+		(uuid,workspace_id,author_id,actor_id,name,description,labels,state,rule_scope_aris,payload,connections,interval_minutes,schedule_timezone,jql,next_run_at,event_trigger,cron_expression)
 		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,
-		       CASE WHEN $8::text='ENABLED' AND $12::int IS NOT NULL THEN now()+make_interval(mins=>$12::int) END,NULLIF($15,''))`,
+		       CASE WHEN $8::text='ENABLED' AND $12::int IS NOT NULL THEN now()+make_interval(mins=>$12::int) WHEN $8::text='ENABLED' THEN $17::timestamptz END,
+		       NULLIF($15,''),NULLIF($16,''))`,
 		prepared.UUID, workspaceID, prepared.AuthorID, prepared.ActorID, prepared.Name, prepared.Description,
 		prepared.Labels, prepared.State, prepared.RuleScopeARIs, prepared.Payload, prepared.Connections,
-		prepared.IntervalMinutes, prepared.ScheduleTimezone, prepared.JQL, prepared.EventTrigger)
+		prepared.IntervalMinutes, prepared.ScheduleTimezone, prepared.JQL, prepared.EventTrigger,
+		prepared.CronExpression, nextCronRun(prepared.CronExpression, prepared.ScheduleTimezone, time.Now()))
 	if err != nil {
 		return "", fmt.Errorf("create rule: %w", err)
 	}
@@ -251,10 +260,12 @@ func (s *Service) UpdateRule(ctx context.Context, workspaceID, requesterID, uuid
 	tag, err := s.Store.Pool.Exec(ctx, `
 		UPDATE automation_rules SET author_id=$3,actor_id=$4,name=$5,description=$6,labels=$7,state=$8,
 		 rule_scope_aris=$9,payload=$10,connections=$11,interval_minutes=$12,schedule_timezone=$13,jql=$14,
-		 next_run_at=CASE WHEN $8::text='ENABLED' AND $12::int IS NOT NULL THEN COALESCE(next_run_at,now()+make_interval(mins=>$12::int)) END,
-		 event_trigger=NULLIF($15,''),updated_at=now() WHERE workspace_id=$1 AND uuid=$2`, workspaceID, uuid,
+		 next_run_at=CASE WHEN $8::text='ENABLED' AND $12::int IS NOT NULL THEN COALESCE(CASE WHEN cron_expression IS NULL THEN next_run_at END,now()+make_interval(mins=>$12::int))
+		                  WHEN $8::text='ENABLED' THEN $17::timestamptz END,
+		 event_trigger=NULLIF($15,''),cron_expression=NULLIF($16,''),updated_at=now() WHERE workspace_id=$1 AND uuid=$2`, workspaceID, uuid,
 		prepared.AuthorID, prepared.ActorID, prepared.Name, prepared.Description, prepared.Labels, prepared.State,
-		prepared.RuleScopeARIs, prepared.Payload, prepared.Connections, prepared.IntervalMinutes, prepared.ScheduleTimezone, prepared.JQL, prepared.EventTrigger)
+		prepared.RuleScopeARIs, prepared.Payload, prepared.Connections, prepared.IntervalMinutes, prepared.ScheduleTimezone, prepared.JQL, prepared.EventTrigger,
+		prepared.CronExpression, nextCronRun(prepared.CronExpression, prepared.ScheduleTimezone, time.Now()))
 	if err != nil {
 		return fmt.Errorf("update rule: %w", err)
 	}
@@ -268,10 +279,17 @@ func (s *Service) SetState(ctx context.Context, workspaceID, uuid, state string)
 	if state != "ENABLED" && state != "DISABLED" {
 		return fmt.Errorf("state must be ENABLED or DISABLED")
 	}
+	var next *time.Time
+	if state == "ENABLED" {
+		if rule, err := s.Rule(ctx, workspaceID, uuid); err == nil {
+			next = nextCronRun(rule.CronExpression, rule.ScheduleTimezone, time.Now())
+		}
+	}
 	tag, err := s.Store.Pool.Exec(ctx, `
 		UPDATE automation_rules SET state=$3,payload=jsonb_set(payload,'{state}',to_jsonb($3::text)),
-		 next_run_at=CASE WHEN $3='ENABLED' AND interval_minutes IS NOT NULL THEN COALESCE(next_run_at,now()+make_interval(mins=>interval_minutes)) END,
-		 updated_at=now() WHERE workspace_id=$1 AND uuid=$2`, workspaceID, uuid, state)
+		 next_run_at=CASE WHEN $3='ENABLED' AND interval_minutes IS NOT NULL THEN COALESCE(next_run_at,now()+make_interval(mins=>interval_minutes))
+		                  WHEN $3='ENABLED' AND cron_expression IS NOT NULL THEN $4::timestamptz END,
+		 updated_at=now() WHERE workspace_id=$1 AND uuid=$2`, workspaceID, uuid, state, next)
 	if err == nil && tag.RowsAffected() == 0 {
 		return pgx.ErrNoRows
 	}
@@ -444,7 +462,7 @@ func (s *Service) prepareRule(ctx context.Context, workspaceID, requesterID, for
 	if err != nil {
 		return nil, err
 	}
-	interval, timezone, query, err := nativeSchedule(payload)
+	interval, cronExpression, timezone, query, err := nativeSchedule(payload)
 	if err != nil {
 		return nil, err
 	}
@@ -460,7 +478,7 @@ func (s *Service) prepareRule(ctx context.Context, workspaceID, requesterID, for
 		Description: jsonString(write.Rule["description"]), Labels: jsonStrings(write.Rule["labels"]),
 		State: state, RuleScopeARIs: jsonStrings(write.Rule["ruleScopeARIs"]), Payload: payload,
 		Connections: write.Connections, IntervalMinutes: interval, ScheduleTimezone: timezone, JQL: query,
-		EventTrigger: event,
+		EventTrigger: event, CronExpression: cronExpression,
 	}, nil
 }
 
@@ -499,30 +517,28 @@ func ensureComponentIDs(raw json.RawMessage) (json.RawMessage, error) {
 	return json.Marshal(component)
 }
 
-func nativeSchedule(payload json.RawMessage) (*int, string, string, error) {
+// nativeSchedule reads a scheduled trigger: a fixed interval in minutes or a
+// Quartz cron expression, its timezone and its JQL.
+func nativeSchedule(payload json.RawMessage) (*int, string, string, string, error) {
 	var rule map[string]json.RawMessage
 	if err := json.Unmarshal(payload, &rule); err != nil {
-		return nil, "UTC", "", err
+		return nil, "", "UTC", "", err
 	}
 	var trigger struct {
 		Type  string          `json:"type"`
 		Value json.RawMessage `json:"value"`
 	}
 	if err := json.Unmarshal(rule["trigger"], &trigger); err != nil || trigger.Type == "" {
-		return nil, "UTC", "", nil
+		return nil, "", "UTC", "", nil
 	}
 	if trigger.Type != "jira.issue.scheduled" && trigger.Type != "jira.jql.scheduled" {
-		return nil, "UTC", "", nil
-	}
-	valueRaw := trigger.Value
-	var encoded string
-	if json.Unmarshal(valueRaw, &encoded) == nil && strings.HasPrefix(strings.TrimSpace(encoded), "{") {
-		valueRaw = json.RawMessage(encoded)
+		return nil, "", "UTC", "", nil
 	}
 	var value nativeTriggerValue
-	if err := json.Unmarshal(valueRaw, &value); err != nil {
-		return nil, "UTC", "", fmt.Errorf("scheduled trigger value must be an object")
+	if err := json.Unmarshal(decodeComponentValue(trigger.Value), &value); err != nil {
+		return nil, "", "UTC", "", fmt.Errorf("scheduled trigger value must be an object")
 	}
+	expression := strings.TrimSpace(value.CronExpression)
 	if value.Schedule != nil {
 		if value.IntervalMinutes == 0 {
 			value.IntervalMinutes = value.Schedule.IntervalMinutes
@@ -530,21 +546,52 @@ func nativeSchedule(payload json.RawMessage) (*int, string, string, error) {
 		if value.Timezone == "" {
 			value.Timezone = value.Schedule.Timezone
 		}
-	}
-	if value.IntervalMinutes < 1 || value.IntervalMinutes > 43200 {
-		return nil, "UTC", "", fmt.Errorf("scheduled trigger intervalMinutes must be between 1 and 43200")
+		if expression == "" && (value.Schedule.Method == "" || value.Schedule.Method == "CRON_EXPRESSION") {
+			expression = strings.TrimSpace(value.Schedule.CronExpression)
+		}
 	}
 	if value.Timezone == "" {
 		value.Timezone = "UTC"
 	}
 	if _, err := time.LoadLocation(value.Timezone); err != nil {
-		return nil, "UTC", "", fmt.Errorf("scheduled trigger timezone is invalid")
+		return nil, "", "UTC", "", fmt.Errorf("scheduled trigger timezone is invalid")
 	}
 	value.JQL = strings.TrimSpace(value.JQL)
 	if _, err := jql.Parse(value.JQL); err != nil {
-		return nil, "UTC", "", fmt.Errorf("scheduled trigger JQL: %w", err)
+		return nil, "", "UTC", "", fmt.Errorf("scheduled trigger JQL: %w", err)
 	}
-	return &value.IntervalMinutes, value.Timezone, value.JQL, nil
+	if expression != "" {
+		if _, err := cron.Parse(expression); err != nil {
+			return nil, "", "UTC", "", fmt.Errorf("scheduled trigger cron expression: %w", err)
+		}
+		return nil, expression, value.Timezone, value.JQL, nil
+	}
+	if value.IntervalMinutes < 1 || value.IntervalMinutes > 43200 {
+		return nil, "", "UTC", "", fmt.Errorf("scheduled trigger intervalMinutes must be between 1 and 43200")
+	}
+	return &value.IntervalMinutes, "", value.Timezone, value.JQL, nil
+}
+
+// nextCronRun is when a cron rule next runs after the given time, or nil when
+// it is not a cron rule or its schedule never fires again.
+func nextCronRun(expression, timezone string, after time.Time) *time.Time {
+	if expression == "" {
+		return nil
+	}
+	schedule, err := cron.Parse(expression)
+	if err != nil {
+		return nil
+	}
+	location, err := time.LoadLocation(timezone)
+	if err != nil {
+		location = time.UTC
+	}
+	next, ok := schedule.Next(after, location)
+	if !ok {
+		return nil
+	}
+	next = next.UTC()
+	return &next
 }
 
 // EventTriggers are Jira Automation's work item event triggers, by the event
@@ -643,7 +690,7 @@ func contains(values []string, target string) bool {
 }
 
 const ruleSelect = `SELECT uuid::text,workspace_id,author_id,actor_id,name,description,labels,state,rule_scope_aris,
- payload,connections,interval_minutes,schedule_timezone,jql,next_run_at,consecutive_failures,created_at,updated_at,COALESCE(event_trigger,'') FROM automation_rules`
+ payload,connections,interval_minutes,schedule_timezone,jql,next_run_at,consecutive_failures,created_at,updated_at,COALESCE(event_trigger,''),COALESCE(cron_expression,'') FROM automation_rules`
 
 type rowScanner interface{ Scan(...any) error }
 
@@ -651,6 +698,6 @@ func scanRule(row rowScanner) (*Rule, error) {
 	rule := &Rule{}
 	err := row.Scan(&rule.UUID, &rule.WorkspaceID, &rule.AuthorID, &rule.ActorID, &rule.Name, &rule.Description,
 		&rule.Labels, &rule.State, &rule.RuleScopeARIs, &rule.Payload, &rule.Connections, &rule.IntervalMinutes,
-		&rule.ScheduleTimezone, &rule.JQL, &rule.NextRunAt, &rule.ConsecutiveFailures, &rule.CreatedAt, &rule.UpdatedAt, &rule.EventTrigger)
+		&rule.ScheduleTimezone, &rule.JQL, &rule.NextRunAt, &rule.ConsecutiveFailures, &rule.CreatedAt, &rule.UpdatedAt, &rule.EventTrigger, &rule.CronExpression)
 	return rule, err
 }
