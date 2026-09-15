@@ -304,6 +304,16 @@ and is searchable by its name with the SLA JQL functions, for example
 `"Time to approve" = breached()`. Deleting it removes its goals and cycles.
 Creating and deleting SLAs are audited.
 
+Changing an SLA's conditions, or adding an SLA, recalculates that SLA for
+every open request of the desk from the request's history, as Jira does: its
+creation, its status, assignee, due date and resolution changes, and its
+public comments are replayed in order against the conditions, and the SLA's
+cycles are rebuilt with their historical start and stop times on its default
+goal before goals and pauses are settled again. A comment counts as for
+customers when its author manages the request now. Completed requests keep
+their cycles, and pause conditions apply from the recalculation onwards
+because they are evaluated against the request's current state.
+
 Administrators add, rename, or remove dated holidays in the same calendar
 workspace. Changes are scoped to the selected service desk and audited. SLA
 calculation, queue urgency, customer-visible goal state, and the escalation
@@ -444,6 +454,6 @@ The implemented operations are assessed as partial. JQL support follows the
 documented ZZIRA search subset, including array-aware label matching;
 Assets-backed portal pickers,
 approval workflow configuration, customer notification email templates and Organization added notifications, CSAT configuration,
-SLA goal distributions, complete public Assets object/schema/import API parity, SLA recalculation for requests that predate a new SLA, Atlassian knowledge ranking/analytics, and asset import/reconciliation and review templates
+SLA goal distributions, complete public Assets object/schema/import API parity, historical pause replay for recalculated SLAs, Atlassian knowledge ranking/analytics, and asset import/reconciliation and review templates
 remain. Customer creation grants only the
 site `atlassian/customer` role and never silently grants Jira product access.

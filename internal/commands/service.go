@@ -12,6 +12,7 @@ import (
 
 	"github.com/e6qu/zzira/internal/jql"
 	"github.com/e6qu/zzira/internal/models"
+	"github.com/e6qu/zzira/internal/store"
 )
 
 type CreateServiceRequestInput struct {
@@ -269,41 +270,175 @@ func (s *Service) applyServiceSLAEvents(ctx context.Context, actorID, workspaceI
 // meets: entering a status, and changes to its assignee, due date and
 // resolution.
 func serviceSLAEvents(before, after *models.Issue) []string {
-	events := []string{}
-	if before.Status.ID != after.Status.ID {
-		events = append(events, models.ServiceSLAEnteredStatus(after.Status.ID).Key)
-	}
 	assignee := func(issue *models.Issue) string {
 		if issue.Assignee == nil {
 			return ""
 		}
 		return issue.Assignee.ID
 	}
-	switch from, to := assignee(before), assignee(after); {
-	case from == to:
-	case from == "":
-		events = append(events, models.SLAConditionAssigneeFromUnassigned, models.SLAConditionAssigneeChanged)
-	case to == "":
-		events = append(events, models.SLAConditionAssigneeToUnassigned, models.SLAConditionAssigneeChanged)
-	default:
-		events = append(events, models.SLAConditionAssigneeChanged)
+	resolution := func(issue *models.Issue) string {
+		if issue.Resolution == nil {
+			return ""
+		}
+		return issue.Resolution.ID
 	}
-	switch from, to := before.DueDate, after.DueDate; {
-	case from == to:
-	case from == "":
-		events = append(events, models.SLAConditionDueDateSet, models.SLAConditionDueDateChanged)
-	case to == "":
-		events = append(events, models.SLAConditionDueDateCleared, models.SLAConditionDueDateChanged)
-	default:
-		events = append(events, models.SLAConditionDueDateChanged)
+	events := serviceSLAFieldEvents("status", before.Status.ID, after.Status.ID)
+	events = append(events, serviceSLAFieldEvents("assignee", assignee(before), assignee(after))...)
+	events = append(events, serviceSLAFieldEvents("duedate", before.DueDate, after.DueDate)...)
+	return append(events, serviceSLAFieldEvents("resolution", resolution(before), resolution(after))...)
+}
+
+// serviceSLAFieldEvents lists the SLA condition events one field's change
+// meets, from the value it had to the value it has.
+func serviceSLAFieldEvents(field, from, to string) []string {
+	if from == to {
+		return []string{}
 	}
-	switch {
-	case before.Resolution == nil && after.Resolution != nil:
-		events = append(events, models.SLAConditionResolutionSet)
-	case before.Resolution != nil && after.Resolution == nil:
-		events = append(events, models.SLAConditionResolutionCleared)
+	switch field {
+	case "status":
+		return []string{models.ServiceSLAEnteredStatus(to).Key}
+	case "assignee":
+		switch {
+		case from == "":
+			return []string{models.SLAConditionAssigneeFromUnassigned, models.SLAConditionAssigneeChanged}
+		case to == "":
+			return []string{models.SLAConditionAssigneeToUnassigned, models.SLAConditionAssigneeChanged}
+		}
+		return []string{models.SLAConditionAssigneeChanged}
+	case "duedate":
+		switch {
+		case from == "":
+			return []string{models.SLAConditionDueDateSet, models.SLAConditionDueDateChanged}
+		case to == "":
+			return []string{models.SLAConditionDueDateCleared, models.SLAConditionDueDateChanged}
+		}
+		return []string{models.SLAConditionDueDateChanged}
+	case "resolution":
+		if to == "" {
+			return []string{models.SLAConditionResolutionCleared}
+		}
+		return []string{models.SLAConditionResolutionSet}
 	}
-	return events
+	return []string{}
+}
+
+// serviceSLAChange is one moment in a request's history and the SLA condition
+// events it met.
+type serviceSLAChange struct {
+	At     time.Time
+	Events []string
+}
+
+// serviceSLASpans replays a request's history against an SLA's conditions the
+// way live events apply: a stop condition ends the running cycle, then a start
+// condition begins a new one when none is running.
+func serviceSLASpans(start, stop []string, changes []serviceSLAChange) []store.ServiceSLACycleSpan {
+	spans := []store.ServiceSLACycleSpan{}
+	meets := func(conditions, events []string) bool {
+		for _, event := range events {
+			if slices.Contains(conditions, event) {
+				return true
+			}
+		}
+		return false
+	}
+	for _, change := range changes {
+		running := len(spans) > 0 && spans[len(spans)-1].Stop == nil
+		if running && meets(stop, change.Events) {
+			at := change.At
+			spans[len(spans)-1].Stop = &at
+			running = false
+		}
+		if !running && meets(start, change.Events) {
+			spans = append(spans, store.ServiceSLACycleSpan{Start: change.At})
+		}
+	}
+	return spans
+}
+
+// serviceRequestSLAHistory lists a request's moments that SLA conditions can
+// meet, oldest first: its creation, its field changes and its public comments.
+// A comment counts as for customers when its author manages the request now.
+func (s *Service) serviceRequestSLAHistory(ctx context.Context, workspaceID, issueID string) ([]serviceSLAChange, error) {
+	var created time.Time
+	if err := s.Store.Pool.QueryRow(ctx, `SELECT created_at FROM service_requests WHERE workspace_id=$1 AND issue_id=$2`, workspaceID, issueID).Scan(&created); err != nil {
+		return nil, err
+	}
+	changes := []serviceSLAChange{{At: created, Events: []string{models.SLAConditionIssueCreated}}}
+	entries, err := s.Store.IssueChangelog(ctx, workspaceID, issueID)
+	if err != nil {
+		return nil, err
+	}
+	for _, entry := range entries {
+		at, parseErr := time.Parse(time.RFC3339, entry.Created)
+		if parseErr != nil {
+			return nil, parseErr
+		}
+		change := serviceSLAChange{At: at}
+		for _, item := range entry.Items {
+			change.Events = append(change.Events, serviceSLAFieldEvents(item.Field, item.From, item.To)...)
+		}
+		if len(change.Events) > 0 {
+			changes = append(changes, change)
+		}
+	}
+	comments, err := s.Store.ServiceRequestPublicComments(ctx, issueID)
+	if err != nil {
+		return nil, err
+	}
+	agents := map[string]bool{}
+	for _, comment := range comments {
+		agent, checked := agents[comment.AuthorID]
+		if !checked {
+			if agent, err = s.Store.CanManageServiceRequest(ctx, workspaceID, comment.AuthorID, issueID); err != nil {
+				return nil, err
+			}
+			agents[comment.AuthorID] = agent
+		}
+		event := models.SLAConditionCommentByCustomer
+		if agent {
+			event = models.SLAConditionCommentForCustomers
+		}
+		changes = append(changes, serviceSLAChange{At: comment.At, Events: []string{event}})
+	}
+	slices.SortStableFunc(changes, func(a, b serviceSLAChange) int { return a.At.Compare(b.At) })
+	return changes, nil
+}
+
+// recalculateServiceSLA rebuilds one SLA's cycles for every open request of
+// the desk from the requests' history, as Jira recalculates SLAs after their
+// configuration changes. Completed requests keep their cycles.
+func (s *Service) recalculateServiceSLA(ctx context.Context, actorID, workspaceID, serviceDeskID, metricID string) error {
+	metrics, err := s.Store.ServiceSLAMetrics(ctx, workspaceID, serviceDeskID)
+	if err != nil {
+		return err
+	}
+	index := slices.IndexFunc(metrics, func(metric models.ServiceSLAMetric) bool { return metric.ID == metricID })
+	if index < 0 {
+		return fmt.Errorf("SLA metric does not exist")
+	}
+	requestIDs, err := s.Store.OpenServiceRequestIDs(ctx, workspaceID, serviceDeskID)
+	if err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	for _, requestID := range requestIDs {
+		history, err := s.serviceRequestSLAHistory(ctx, workspaceID, requestID)
+		if err != nil {
+			return err
+		}
+		spans := serviceSLASpans(metrics[index].StartConditions, metrics[index].StopConditions, history)
+		if err := s.Store.ReplaceServiceSLACycles(ctx, workspaceID, serviceDeskID, metricID, requestID, spans); err != nil {
+			return err
+		}
+		if err := s.Store.ApplyServiceSLAGoals(ctx, workspaceID, actorID, serviceDeskID, requestID); err != nil {
+			return err
+		}
+		if err := s.Store.ReconcileServiceSLAPauses(ctx, workspaceID, actorID, requestID, now); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // UpdateServiceSLAConditions sets the Jira conditions that start and stop an
@@ -316,7 +451,10 @@ func (s *Service) UpdateServiceSLAConditions(ctx context.Context, actorID, works
 	if err != nil {
 		return err
 	}
-	return s.Store.UpdateServiceSLAConditions(ctx, workspaceID, actorID, serviceDeskID, metricID, start, stop)
+	if err := s.Store.UpdateServiceSLAConditions(ctx, workspaceID, actorID, serviceDeskID, metricID, start, stop); err != nil {
+		return err
+	}
+	return s.recalculateServiceSLA(ctx, actorID, workspaceID, serviceDeskID, metricID)
 }
 
 // serviceSLAConditions checks start and stop conditions against Jira's
@@ -376,7 +514,11 @@ func (s *Service) CreateServiceSLAMetric(ctx context.Context, actorID, workspace
 	if err != nil {
 		return models.ServiceSLAMetric{}, err
 	}
-	return s.Store.CreateServiceSLAMetric(ctx, workspaceID, actorID, serviceDeskID, name, goalMillis, start, stop)
+	metric, err := s.Store.CreateServiceSLAMetric(ctx, workspaceID, actorID, serviceDeskID, name, goalMillis, start, stop)
+	if err != nil {
+		return metric, err
+	}
+	return metric, s.recalculateServiceSLA(ctx, actorID, workspaceID, serviceDeskID, metric.ID)
 }
 
 // DeleteServiceSLAMetric removes a custom SLA from a service desk.

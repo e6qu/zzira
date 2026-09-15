@@ -330,6 +330,78 @@ func (s *Store) DeleteServiceSLAMetric(ctx context.Context, workspaceID, actorID
 	return tx.Commit(ctx)
 }
 
+// ServiceSLACycleSpan is one recalculated cycle: when it started and, unless
+// it is still running, when it stopped.
+type ServiceSLACycleSpan struct {
+	Start time.Time
+	Stop  *time.Time
+}
+
+// ServiceRequestPublicComment is a public comment on a request: who wrote it
+// and when.
+type ServiceRequestPublicComment struct {
+	AuthorID string
+	At       time.Time
+}
+
+// ServiceRequestPublicComments lists a request's public comments in the order
+// they were written.
+func (s *Store) ServiceRequestPublicComments(ctx context.Context, requestIssueID string) ([]ServiceRequestPublicComment, error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT c.author_id,c.created_at FROM service_request_comments src JOIN comments c ON c.id=src.comment_id
+		WHERE src.request_issue_id=$1 AND src.public ORDER BY c.created_at,c.id`, requestIssueID)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (ServiceRequestPublicComment, error) {
+		var comment ServiceRequestPublicComment
+		err := row.Scan(&comment.AuthorID, &comment.At)
+		return comment, err
+	})
+}
+
+// OpenServiceRequestIDs lists the requests of a service desk that are not done.
+func (s *Store) OpenServiceRequestIDs(ctx context.Context, workspaceID, serviceDeskID string) ([]string, error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT sr.issue_id FROM service_requests sr JOIN issues i ON i.id=sr.issue_id JOIN statuses st ON st.id=i.status_id
+		WHERE sr.workspace_id=$1 AND sr.service_desk_id=$2 AND st.category<>'done' ORDER BY sr.created_at,sr.issue_id`, workspaceID, serviceDeskID)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowTo[string])
+}
+
+// ReplaceServiceSLACycles swaps a request's cycles of one SLA for recalculated
+// ones on the SLA's default goal; their pauses go with the old cycles.
+func (s *Store) ReplaceServiceSLACycles(ctx context.Context, workspaceID, serviceDeskID, metricID, requestIssueID string, spans []ServiceSLACycleSpan) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var known bool
+	if err := tx.QueryRow(ctx, `
+		SELECT EXISTS(SELECT 1 FROM service_requests sr JOIN service_sla_metrics m ON m.service_desk_id=sr.service_desk_id
+		WHERE sr.workspace_id=$1 AND sr.service_desk_id=$2 AND sr.issue_id=$3 AND m.id=$4)`, workspaceID, serviceDeskID, requestIssueID, metricID).Scan(&known); err != nil {
+		return err
+	}
+	if !known {
+		return fmt.Errorf("SLA metric or request does not belong to the service desk")
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM service_sla_cycles WHERE request_issue_id=$1 AND metric_id=$2`, requestIssueID, metricID); err != nil {
+		return err
+	}
+	for index, span := range spans {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO service_sla_cycles(request_issue_id,metric_id,cycle_number,started_at,stopped_at,goal_id,goal_name,goal_millis)
+			SELECT $1,m.id,$3,$4,$5,g.id,g.name,g.goal_millis FROM service_sla_metrics m
+			JOIN service_sla_goals g ON g.metric_id=m.id AND g.jql='' WHERE m.id=$2`, requestIssueID, metricID, index+1, span.Start, span.Stop); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
+}
+
 // UpdateServiceSLAConditions replaces the conditions that start and stop an
 // SLA metric's clock. They apply to the events that follow.
 func (s *Store) UpdateServiceSLAConditions(ctx context.Context, workspaceID, actorID, serviceDeskID, metricID string, start, stop []string) error {

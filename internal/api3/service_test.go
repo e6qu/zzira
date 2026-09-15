@@ -1227,6 +1227,34 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 		t.Fatal("entering In Progress did not start the custom SLA")
 	}
 	searchTotalAs(customerID, `key = `+issueKey+` AND "Time in progress" = running()`, 1)
+	// Changing an SLA's conditions recalculates open requests from their history:
+	// an SLA that starts on a due date never ran, until it starts on entering In
+	// Progress, when its cycle begins at the transition rather than now.
+	lateSLA, err := handler.Commands.CreateServiceSLAMetric(ctx, actorID, workspaceID, serviceDeskID, "Time since planning", time.Hour.Milliseconds(), []string{models.SLAConditionDueDateSet}, []string{models.SLAConditionResolutionSet})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lateCycles int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM service_sla_cycles WHERE request_issue_id=$1 AND metric_id=$2`, issue.ID, lateSLA.ID).Scan(&lateCycles); err != nil || lateCycles != 0 {
+		t.Fatalf("cycles before recalculation = %d, %v", lateCycles, err)
+	}
+	var transitionedAt time.Time
+	if err := st.Pool.QueryRow(ctx, `SELECT started_at FROM service_sla_cycles WHERE request_issue_id=$1 AND metric_id=$2 AND stopped_at IS NULL`, issue.ID, customSLA.ID).Scan(&transitionedAt); err != nil {
+		t.Fatal(err)
+	}
+	if err := handler.Commands.UpdateServiceSLAConditions(ctx, actorID, workspaceID, serviceDeskID, lateSLA.ID, []string{inProgress}, []string{models.SLAConditionResolutionSet}); err != nil {
+		t.Fatal(err)
+	}
+	var recalculatedStart time.Time
+	if err := st.Pool.QueryRow(ctx, `SELECT started_at FROM service_sla_cycles WHERE request_issue_id=$1 AND metric_id=$2 AND stopped_at IS NULL`, issue.ID, lateSLA.ID).Scan(&recalculatedStart); err != nil {
+		t.Fatalf("recalculated cycle: %v", err)
+	}
+	if recalculatedStart.Sub(transitionedAt).Abs() > 2*time.Second {
+		t.Fatalf("recalculated cycle started at %s, the request entered In Progress at %s", recalculatedStart, transitionedAt)
+	}
+	if err := handler.Commands.DeleteServiceSLAMetric(ctx, actorID, workspaceID, serviceDeskID, lateSLA.ID); err != nil {
+		t.Fatal(err)
+	}
 	if err := handler.Commands.DeleteServiceSLAMetric(ctx, actorID, workspaceID, serviceDeskID, customSLA.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -1236,8 +1264,9 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if ongoingFirstResponse() != 0 {
 		t.Fatal("entering In Progress did not stop time to first response")
 	}
+	// Time to first response and the recalculated SLA each changed their conditions once.
 	var conditionAudits int
-	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM organization_audit_events WHERE actor_id=$1 AND action='service.sla.conditions.updated'`, actorID).Scan(&conditionAudits); err != nil || conditionAudits != 1 {
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM organization_audit_events WHERE actor_id=$1 AND action='service.sla.conditions.updated'`, actorID).Scan(&conditionAudits); err != nil || conditionAudits != 2 {
 		t.Fatalf("SLA condition audits = %d, %v", conditionAudits, err)
 	}
 	// Comments appear on a request only when expanded, as in Jira.

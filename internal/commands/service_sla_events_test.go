@@ -3,6 +3,7 @@ package commands
 import (
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/e6qu/zzira/internal/models"
 )
@@ -35,5 +36,27 @@ func TestServiceSLAEvents(t *testing.T) {
 		if got := serviceSLAEvents(issue(check.before), issue(check.after)); !slices.Equal(got, check.want) {
 			t.Fatalf("%s: events = %v, want %v", check.name, got, check.want)
 		}
+	}
+}
+
+func TestServiceSLASpansReplayHistory(t *testing.T) {
+	at := func(minutes int) time.Time { return time.Date(2026, 9, 16, 9, minutes, 0, 0, time.UTC) }
+	history := []serviceSLAChange{
+		{At: at(0), Events: []string{models.SLAConditionIssueCreated}},
+		{At: at(5), Events: []string{models.SLAConditionCommentByCustomer}},
+		{At: at(10), Events: []string{"entered_status:st_done", models.SLAConditionResolutionSet}},
+		{At: at(20), Events: []string{models.SLAConditionResolutionCleared}},
+		{At: at(30), Events: []string{models.SLAConditionCommentForCustomers}},
+	}
+	resolution := serviceSLASpans([]string{models.SLAConditionIssueCreated, models.SLAConditionResolutionCleared}, []string{models.SLAConditionResolutionSet}, history)
+	if len(resolution) != 2 || !resolution[0].Start.Equal(at(0)) || resolution[0].Stop == nil || !resolution[0].Stop.Equal(at(10)) || !resolution[1].Start.Equal(at(20)) || resolution[1].Stop != nil {
+		t.Fatalf("resolution spans = %+v", resolution)
+	}
+	response := serviceSLASpans([]string{models.SLAConditionIssueCreated}, []string{models.SLAConditionCommentForCustomers}, history)
+	if len(response) != 1 || response[0].Stop == nil || !response[0].Stop.Equal(at(30)) {
+		t.Fatalf("response spans = %+v", response)
+	}
+	if never := serviceSLASpans([]string{models.SLAConditionDueDateSet}, []string{models.SLAConditionResolutionSet}, history); len(never) != 0 {
+		t.Fatalf("an SLA started without its start condition: %+v", never)
 	}
 }
