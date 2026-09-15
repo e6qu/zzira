@@ -27,8 +27,8 @@ label that feeds recovery time; dedicated incident relationships and service
 configuration remain. Deployment approvals, configurable
 environment mapping, excluded-period calendars, team filters, comparison
 periods, targets, exports, subscriptions and scheduled delivery remain.
-Created versus resolved and resolution time reports remain on the active
-plan.
+Every Jira and Agile report named in the plan is now available; comparisons,
+exports and scheduled delivery remain.
 
 ## Sprint report and velocity chart
 
@@ -117,4 +117,20 @@ today:
 
 Only work the viewer can browse is included, and an epic the viewer cannot see
 answers 404.
+
+## Created vs. resolved and resolution time
+
+Every project, whatever its type, has two issue analysis reports over the
+last 7, 30 or 90 days (30 by default; any other window is 400), counting only
+work the viewer can browse.
+
+`/projects/{key}/reports/created-vs-resolved` counts the work created and the
+work resolved each day. As in Jira, resolution uses the date of the current
+resolution, so work that was reopened no longer counts as resolved. The chart
+draws both counts per day, or as running totals with `cumulative=true`, and a
+table lists the daily and running values.
+
+`/projects/{key}/reports/resolution-time` averages, for the work resolved each
+day, the time from creation to resolution, with the overall average for the
+window. Days without resolved work have no bar, and a table lists each day.
 

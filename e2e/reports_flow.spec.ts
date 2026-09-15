@@ -74,4 +74,36 @@ test('cumulative flow and control chart follow work through the board', async ({
   await page.setViewportSize({ width: 320, height: 740 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   expect((await page.goto('/projects/ZZ/reports/control-chart?days=7'))?.status()).toBe(400);
+  await page.setViewportSize({ width: 1280, height: 720 });
+
+  // The same work shows in the issue analysis reports.
+  const resolvedBean = await (await request.get(`/rest/api/3/issue/${key}`, { headers })).json();
+  await page.goto('/projects/ZZ/reports');
+  await page.getByRole('link', { name: 'Open Created vs. resolved' }).click();
+  await expect(page.getByRole('heading', { name: 'Created vs. resolved', level: 1 })).toBeVisible();
+  await page.getByLabel('Time window').selectOption('7');
+  await page.getByLabel('Running totals').check();
+  await page.getByRole('button', { name: 'Update' }).click();
+  await expect(page).toHaveURL(/days=7/);
+  await expect(page).toHaveURL(/cumulative=true/);
+  const totals = page.getByRole('region', { name: 'Created and resolved totals' });
+  await expect(totals).toContainText('Created');
+  expect(Number(await totals.locator('article').first().locator('strong').textContent())).toBeGreaterThanOrEqual(1);
+  if (resolvedBean.fields.resolutiondate) {
+    expect(Number(await totals.locator('article').nth(1).locator('strong').textContent())).toBeGreaterThanOrEqual(1);
+  }
+  await page.getByText('View daily counts', { exact: true }).click();
+  await expect(page.getByRole('table', { name: 'Created and resolved by day' }).locator('tbody tr')).toHaveCount(7);
+  await accessible(page);
+
+  await page.goto('/projects/ZZ/reports');
+  await page.getByRole('link', { name: 'Open Resolution time' }).click();
+  await expect(page.getByRole('heading', { name: 'Resolution time', level: 1 })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Resolution summary' })).toContainText('Average resolution time');
+  await page.getByText('View daily resolution time', { exact: true }).click();
+  await expect(page.getByRole('table', { name: 'Resolution time by day' }).locator('tbody tr')).toHaveCount(30);
+  await accessible(page);
+  await page.setViewportSize({ width: 320, height: 740 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  expect((await page.goto('/projects/ZZ/reports/resolution-time?days=14'))?.status()).toBe(400);
 });
