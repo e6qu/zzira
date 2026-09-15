@@ -186,9 +186,10 @@ test('the editor keeps a branched rule it cannot show by turning saving off', as
     name, state: 'ENABLED', actor: { type: 'ACCOUNT_ID', actor: me.accountId },
     trigger: { component: 'TRIGGER', type: 'jira.issue.event.trigger:created', schemaVersion: 1, value: { jql: 'project = ZZ' } },
     components: [{ component: 'BRANCH', type: 'jira.issue.related', schemaVersion: 1, value: { relatedType: 'sub-tasks' },
-      // A condition inside a branch is something the editor does not show.
-      children: [{ component: 'CONDITION', type: 'jira.jql.condition', schemaVersion: 1, value: { jql: 'status != Done' } },
-        { component: 'ACTION', type: 'jira.issue.add-label', schemaVersion: 1, value: { label: 'from-{{triggerIssue.key}}' } }] }],
+      // A condition after a branch's action is something the editor does not show,
+      // because saving it as conditions then actions would change what it does.
+      children: [{ component: 'ACTION', type: 'jira.issue.add-label', schemaVersion: 1, value: { label: 'from-{{triggerIssue.key}}' } },
+        { component: 'CONDITION', type: 'jira.jql.condition', schemaVersion: 1, value: { jql: 'status != Done' } }] }],
   }, connections: [] } });
   expect(created.status(), await created.text()).toBe(201);
   const uuid = (await created.json()).ruleUuid as string;
@@ -231,11 +232,14 @@ test('admin builds a rule with a JQL condition and a branch for linked work in t
   await page.getByLabel('Rule name').fill(name);
   await page.getByLabel('JQL query').fill(`key = ${blocker}`);
   await page.getByRole('combobox', { name: 'Condition field', exact: true }).selectOption('jql');
-  await page.getByLabel('Compared with').fill('status != Done');
+  await page.getByLabel('Compared with', { exact: true }).fill('status != Done');
   await page.getByRole('combobox', { name: 'Action', exact: true }).selectOption('jira.issue.add-label');
   await page.getByRole('combobox', { name: 'Value', exact: true }).first().fill(`blocker-${stamp}`);
   await page.getByRole('combobox', { name: 'Related work items', exact: true }).selectOption('linked');
   await page.getByLabel('Link types').fill('Blocks');
+  // Only related work that is not done is labelled.
+  await page.getByRole('combobox', { name: 'Branch condition field', exact: true }).selectOption('jql');
+  await page.getByLabel('Branch compared with').fill('status != Done');
   await page.getByRole('combobox', { name: 'Additional branch action', exact: true }).selectOption('jira.issue.add-label');
   await page.getByRole('combobox', { name: 'Branch value', exact: true }).first().fill('blocked-by-{{triggerIssue.key}}');
   await accessible(page);
@@ -249,6 +253,8 @@ test('admin builds a rule with a JQL condition and a branch for linked work in t
   await expect(page.getByRole('combobox', { name: 'Related work items', exact: true })).toHaveValue('linked');
   await expect(page.getByLabel('Link types')).toHaveValue('Blocks');
   await expect(page.getByRole('combobox', { name: 'Branch action', exact: true })).toHaveValue('jira.issue.add-label');
+  await expect(page.getByRole('combobox', { name: 'Branch condition field', exact: true }).first()).toHaveValue('jql');
+  await expect(page.getByLabel('Branch compared with').first()).toHaveValue('status != Done');
 
   await page.getByRole('button', { name: 'Run now' }).click();
   await expect.poll(async () => (await (await page.request.get(`/rest/api/3/issue/${blocked}`, { headers })).json()).fields.labels, { timeout: 15_000 }).toContain(`blocked-by-${blocker}`);

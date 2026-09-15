@@ -150,9 +150,10 @@ that does not hold skips only that related work item.
 The rule editor at `/settings/automation` offers the scheduled and work item
 event triggers with their options, work item fields and JQL conditions, the
 label, assign, transition, comment, edit summary and due date actions, and one
-related work items branch of actions placed after them. It does not show
-triggers, conditions, actions or branches it cannot edit, such as the manual
-trigger, a branch with conditions, or a branch before other components; for
+related work items branch placed after them with its own field and JQL
+conditions followed by its actions. It does not show triggers, conditions,
+actions or branches it cannot edit, such as the manual trigger, a branch whose
+conditions come after its actions, or a branch before other components; for
 those rules it turns saving off so nothing is lost, and they are changed
 through the rule API.
 
