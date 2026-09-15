@@ -212,7 +212,7 @@ test('project workflow creation, editor, transition changes, and assignment work
   await page.getByLabel('Require every attached form to be submitted').check();
   await page.selectOption('#transition-permission-validator', 'EDIT_ISSUES');
   await page.getByRole('button', { name: 'Add transition' }).click();
-  await expect(page.getByText('Ready for review', { exact: true })).toBeVisible();
+  await expect(page.locator('.workflow-node').getByText('Ready for review', { exact: true })).toBeVisible();
   await expect(page.getByText('to Done · condition, validator, post-function, trigger · screen: labels', { exact: true })).toBeVisible();
   await page.fill('#transition-name', 'Integration reopen');
   await page.selectOption('#transition-from', 'st_done');
@@ -229,7 +229,7 @@ test('project workflow creation, editor, transition changes, and assignment work
   await page.selectOption('#transition-separation-from', 'st_todo');
   await page.selectOption('#transition-separation-to', 'st_inprogress');
   await page.getByRole('button', { name: 'Add transition' }).click();
-  await expect(page.getByText('Integration reopen', { exact: true })).toBeVisible();
+  await expect(page.locator('.workflow-node').getByText('Integration reopen', { exact: true })).toBeVisible();
   await expect(page.getByText('to To Do · condition, validator', { exact: true })).toBeVisible();
   await page.fill('#transition-name', 'Close from anywhere');
   await page.selectOption('#transition-from', 'any');
