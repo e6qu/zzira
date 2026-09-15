@@ -234,6 +234,41 @@ func TestBulkWatchOperationsUseDurableTaskQueue(t *testing.T) {
 	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM actions WHERE workspace_id=$1 AND entity_type='watcher'`, workspaceID).Scan(&watcherActions); err != nil || watcherActions != 4 {
 		t.Fatalf("watcher actions = %d, %v", watcherActions, err)
 	}
+	// URL, date picker and estimate families edit through the ordinary issue
+	// update, and their values land on every selected work item.
+	familyField := func(kind string) string {
+		t.Helper()
+		number, err := st.NextCustomFieldNumber(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fieldID := fmt.Sprintf("customfield_%d", number)
+		customFieldIDs = append(customFieldIDs, fieldID)
+		exec(`INSERT INTO custom_fields(id,name,type,description,workspace_id) VALUES($1,$2,$3,'Bulk family',$4)`, fieldID, "Bulk "+kind, kind, workspaceID)
+		exec(`UPDATE custom_field_contexts SET all_projects=FALSE WHERE field_id=$1`, fieldID)
+		exec(`INSERT INTO custom_field_context_projects(context_id,project_id)
+			SELECT id,$2 FROM custom_field_contexts WHERE field_id=$1`, fieldID, projectID)
+		return fieldID
+	}
+	urlField, dateField := familyField("url"), familyField("date")
+	familiesPayload := fmt.Sprintf(`{"selectedIssueIdsOrKeys":["%s"],"selectedActions":["%s","%s","timeoriginalestimate"],"editedFieldsInput":{"urlFields":[{"fieldId":"%s","url":"https://example.test/runbook"}],"datePickerFields":[{"fieldId":"%s","date":{"formattedDate":"2026-09-20"}}],"originalEstimateField":{"originalEstimateField":"2h"}},"sendBulkNotification":false}`,
+		strings.Join(issueKeys, `","`), urlField, dateField, urlField, dateField)
+	families := call(adminID, "POST", "/rest/api/3/bulk/issues/fields", familiesPayload, 201)
+	if err := json.Unmarshal(families.Body.Bytes(), &submission); err != nil {
+		t.Fatal(err)
+	}
+	if err := runner.DrainOnce(ctx, workspaceID); err != nil {
+		t.Fatal(err)
+	}
+	if progress := call(adminID, "GET", "/rest/api/3/bulk/queue/"+submission.TaskID, "", 200); !strings.Contains(progress.Body.String(), `"status":"COMPLETE"`) || strings.Contains(progress.Body.String(), `"failedAccessibleIssues"`) {
+		t.Fatal(progress.Body.String())
+	}
+	for _, key := range issueKeys {
+		updated := call(adminID, "GET", "/rest/api/3/issue/"+key, "", 200).Body.String()
+		if !strings.Contains(updated, `"`+urlField+`":"https://example.test/runbook"`) || !strings.Contains(updated, `"`+dateField+`":"2026-09-20"`) || !strings.Contains(updated, `"timeoriginalestimate":7200`) {
+			t.Fatalf("bulk edited families on %s = %s", key, updated)
+		}
+	}
 	revoked := call(adminID, "POST", "/rest/api/3/bulk/issues/watch", payload, 201)
 	if err := json.Unmarshal(revoked.Body.Bytes(), &submission); err != nil {
 		t.Fatal(err)

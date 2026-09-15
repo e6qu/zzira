@@ -7595,9 +7595,10 @@
         "internal/api3/api3_bulk_issues.go",
         "internal/api3/bulk_issues_test.go",
         "internal/store/create_meta.go",
-        "docs/BULK_ISSUES.md"
+        "docs/BULK_ISSUES.md",
+        "internal/api3/api3_bulk_edit_families_test.go"
       ],
-      "notes": "Returns editable field types shared by all selected visible issues from the canonical project metadata, including Jira-shaped options, field search and bidirectional opaque 50-field cursor pages; cursor snapshot binding and the remaining Jira bulk field catalog remain; callers need Jira's global Bulk change permission."
+      "notes": "Returns editable field types shared by all selected visible issues from the canonical project metadata, including Jira-shaped options, field search and bidirectional opaque 50-field cursor pages; every Jira bulk edit field family is offered, with time tracking listed as its original and remaining estimates, and each cursor is bound to its selection and search, so a cursor from another query answers 400; callers need Jira's global Bulk change permission."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/bulk/issues/transition",
@@ -9541,9 +9542,11 @@
         "internal/commands/bulk_issues.go",
         "internal/api3/bulk_issues_test.go",
         "internal/commands/bulk_issues_test.go",
-        "docs/BULK_ISSUES.md"
+        "docs/BULK_ISSUES.md",
+        "internal/api3/api3_bulk_edit_families_test.go",
+        "internal/commands/bulk_estimates_test.go"
       ],
-      "notes": "Queues up to 1,000 visible issues and 200 exactly matched selected fields, strictly parses ten persisted Jira field families, delegates each item to the ordinary issue command, reports successful/inaccessible/accessible-failed IDs and preserves action-idempotent replay; sendBulkNotification (default true) sends one bulk change email per recipient in place of per-item emails; remaining Jira field families and exact rate-limit semantics remain; callers need Jira's global Bulk change permission."
+      "notes": "Queues up to 1,000 visible issues and 200 exactly matched selected fields, strictly parses every Jira bulk edit field family (cascading, multiple and single selects, single and multiple user and group pickers, version pickers, date, date-time, URL, number, text, rich text, labels, components, priority, original and remaining estimates in the site's duration format, and colour, which no zzira field type holds), sending issue type and status to the bulk move and bulk transition operations, delegates each item to the ordinary issue command, reports successful/inaccessible/accessible-failed IDs and preserves action-idempotent replay; sendBulkNotification (default true) sends one bulk change email per recipient in place of per-item emails; bulk task limits bound concurrent operations; callers need Jira's global Bulk change permission."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/bulk/issues/move",
