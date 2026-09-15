@@ -109,7 +109,9 @@ func (h *Handler) RenderReport(ctx context.Context, userID, target string) (stri
 	}
 	query, _ := url.ParseQuery(rawQuery)
 	query.Set("format", "csv")
-	request, err := http.NewRequestWithContext(context.WithValue(ctx, reportRecipientKey{}, userID), http.MethodGet, path+"?"+query.Encode(), nil)
+	// The request is served in-process by ReportRoutes and never sent over a
+	// network; its path matched the report allowlist above.
+	request, err := http.NewRequestWithContext(context.WithValue(ctx, reportRecipientKey{}, userID), http.MethodGet, path+"?"+query.Encode(), nil) // #nosec G704 -- in-process request to an allowlisted local report path, served by ReportRoutes.ServeHTTP without any network client.
 	if err != nil {
 		return "", "", err
 	}
