@@ -760,6 +760,12 @@ label[for="wiki-subtype"] { display: flex; align-items: center; gap: 8px; }
 .flow-band { stroke:var(--ds-surface); stroke-width:1; }.flow-band-0, i.flow-band-0 { fill:#6b778c; background:#6b778c; }.flow-band-1, i.flow-band-1 { fill:#0c66e4; background:#0c66e4; }.flow-band-2, i.flow-band-2 { fill:#1f845a; background:#1f845a; }.flow-band-3, i.flow-band-3 { fill:#a54800; background:#a54800; }.flow-band-4, i.flow-band-4 { fill:#6e5dc6; background:#6e5dc6; }.flow-band-5, i.flow-band-5 { fill:#c9372c; background:#c9372c; }.control-point { fill:var(--ds-danger); fill-opacity:.8; }.chart-data .table-scroll table, .sprint-report-work .table-scroll table { min-width:100%; }
 .report-toggle { display:flex !important; gap:6px; align-items:center; width:auto !important; }.report-change { display:block; color:var(--ds-text-subtle); font-size:12px; }
 .wiki-live-sync { margin: 4px 0 0; }
+.wiki-remote-carets { position: fixed; inset: 0; overflow: hidden; pointer-events: none; z-index: 30; }
+.wiki-remote-caret { position: absolute; width: 2px; background: var(--wiki-caret); }
+.wiki-remote-caret-name { position: absolute; bottom: 100%; left: 0; padding: 0 4px; border-radius: 3px 3px 3px 0; background: var(--wiki-caret); color: #fff; font-size: 11px; line-height: 16px; white-space: nowrap; }
+.wiki-remote-caret-name-end { left: auto; right: 0; border-radius: 3px 3px 0 3px; }
+.wiki-remote-caret-1 { --wiki-caret: #0055cc; } .wiki-remote-caret-2 { --wiki-caret: #5e4db2; } .wiki-remote-caret-3 { --wiki-caret: #216e4e; }
+.wiki-remote-caret-4 { --wiki-caret: #974f0c; } .wiki-remote-caret-5 { --wiki-caret: #ae2e24; } .wiki-remote-caret-6 { --wiki-caret: #44546f; }
 .gadget-report-chart { display:block; width:100%; height:auto; max-height:220px; }
 .dashboard-subscribe { position:relative; }.dashboard-subscribe-panel { position:absolute; right:0; z-index:5; width:min(360px, calc(100vw - 32px)); margin-top:8px; display:grid; gap:12px; }.dashboard-subscribe-panel form > span { display:flex; flex-direction:column; gap:2px; }.dashboard-subscribe-panel fieldset { display:grid; gap:4px; max-height:200px; overflow:auto; border:1px solid var(--ds-border); border-radius:var(--ds-radius); padding:8px; }
 @media(max-width:540px) { .dashboard-subscribe-panel { position:static; width:100%; } }

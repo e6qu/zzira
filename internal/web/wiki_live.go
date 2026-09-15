@@ -12,6 +12,8 @@ type wikiLiveRequest struct {
 	Session  string                 `json:"session"`
 	Revision int64                  `json:"revision"`
 	Changes  []store.WikiLiveChange `json:"changes"`
+	// Cursor is where the editor's caret is in the text it sent.
+	Cursor *store.WikiLiveSelection `json:"cursor"`
 }
 
 type wikiLiveResponse struct {
@@ -66,9 +68,9 @@ func (h *Handler) wikiLive(w http.ResponseWriter, r *http.Request, kind, id stri
 	var err error
 	response := wikiLiveResponse{}
 	if len(request.Changes) == 0 {
-		response.WikiLiveDocument, err = h.Store.WikiLiveDocument(r.Context(), ws, user.ID, kind, id, request.Session, request.Revision)
+		response.WikiLiveDocument, err = h.Store.WikiLiveDocument(r.Context(), ws, user.ID, kind, id, request.Session, request.Revision, request.Cursor)
 	} else {
-		response.WikiLiveDocument, err = h.Store.ApplyWikiLiveChanges(r.Context(), ws, user.ID, kind, id, request.Session, request.Revision, request.Changes)
+		response.WikiLiveDocument, err = h.Store.ApplyWikiLiveChanges(r.Context(), ws, user.ID, kind, id, request.Session, request.Revision, request.Changes, request.Cursor)
 		if errors.Is(err, store.ErrWikiLiveStale) {
 			err = nil
 		} else if err == nil {

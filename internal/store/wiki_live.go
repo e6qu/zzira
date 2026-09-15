@@ -30,6 +30,21 @@ type WikiLiveChange struct {
 	Insert   string `json:"insert"`
 }
 
+// WikiLiveSelection is where an editor's caret or selection is, in UTF-16
+// code units of the text it sent.
+type WikiLiveSelection struct {
+	Position int `json:"position"`
+	End      int `json:"end"`
+}
+
+// WikiLiveCursor is where someone else editing the live document is working.
+type WikiLiveCursor struct {
+	AccountID   string `json:"accountId"`
+	DisplayName string `json:"displayName"`
+	Position    int    `json:"position"`
+	End         int    `json:"end"`
+}
+
 // WikiLiveDocument is the shared text of a page or blog post everyone editing
 // it works on.
 // Body is set when the editor has to load the whole document; otherwise
@@ -41,6 +56,8 @@ type WikiLiveDocument struct {
 	Title    string           `json:"title"`
 	Body     *string          `json:"body,omitempty"`
 	Changes  []WikiLiveChange `json:"changes"`
+	// Cursors are where the others editing are, in the current revision.
+	Cursors []WikiLiveCursor `json:"cursors"`
 }
 
 // lockWikiLiveDocument opens, or restarts, the live document of a published
@@ -104,6 +121,9 @@ func (s *Store) lockWikiLiveDocument(ctx context.Context, tx pgx.Tx, ws, actor, 
 		if _, err = tx.Exec(ctx, `DELETE FROM wiki_live_changes WHERE content_type=$1 AND content_id=$2::bigint`, kind, contentID); err != nil {
 			return row, err
 		}
+		if _, err = tx.Exec(ctx, `DELETE FROM wiki_live_cursors WHERE content_type=$1 AND content_id=$2::bigint`, kind, contentID); err != nil {
+			return row, err
+		}
 		if _, err = tx.Exec(ctx, `UPDATE wiki_live_documents SET session_id=$3,base_version=$4,title=$5,body=$6,revision=0,updated_at=now()
 			WHERE content_type=$1 AND content_id=$2::bigint`, kind, contentID, row.session, row.version, row.title, row.body); err != nil {
 			return row, err
@@ -119,7 +139,7 @@ type liveDocumentRow struct {
 }
 
 func (row liveDocumentRow) document() WikiLiveDocument {
-	return WikiLiveDocument{Session: row.session, Revision: row.revision, Version: row.version, Title: row.title, Changes: []WikiLiveChange{}}
+	return WikiLiveDocument{Session: row.session, Revision: row.revision, Version: row.version, Title: row.title, Changes: []WikiLiveChange{}, Cursors: []WikiLiveCursor{}}
 }
 
 // wikiLiveCatchUp fills in what an editor at session and revision missed: the
@@ -159,7 +179,7 @@ func wikiLiveCatchUp(ctx context.Context, tx pgx.Tx, row liveDocumentRow, sessio
 // WikiLiveDocument returns what an editor at session and revision needs to
 // catch up with the live document of a page or blog post, opening it if it
 // is not.
-func (s *Store) WikiLiveDocument(ctx context.Context, ws, actor, kind, id, session string, revision int64) (WikiLiveDocument, error) {
+func (s *Store) WikiLiveDocument(ctx context.Context, ws, actor, kind, id, session string, revision int64, selection *WikiLiveSelection) (WikiLiveDocument, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return WikiLiveDocument{}, err
@@ -173,7 +193,48 @@ func (s *Store) WikiLiveDocument(ctx context.Context, ws, actor, kind, id, sessi
 	if err != nil {
 		return document, err
 	}
+	// Only an editor holding the current text can say where it is in it.
+	if session != row.session || revision != row.revision {
+		selection = nil
+	}
+	if document.Cursors, err = keepWikiLiveCursor(ctx, tx, row, actor, selection); err != nil {
+		return document, err
+	}
 	return document, tx.Commit(ctx)
+}
+
+// keepWikiLiveCursor records where the actor is in the live document's
+// current text, when it says, and returns where everyone else who synced in
+// the last half minute is.
+func keepWikiLiveCursor(ctx context.Context, tx pgx.Tx, row liveDocumentRow, actor string, selection *WikiLiveSelection) ([]WikiLiveCursor, error) {
+	if selection != nil {
+		length := len(utf16.Encode([]rune(row.body)))
+		start, end := min(max(selection.Position, 0), length), min(max(selection.End, 0), length)
+		if end < start {
+			start, end = end, start
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO wiki_live_cursors(content_type,content_id,user_id,position,selection_end) VALUES($1,$2::bigint,$3,$4,$5)
+			ON CONFLICT (content_type,content_id,user_id) DO UPDATE SET position=EXCLUDED.position,selection_end=EXCLUDED.selection_end,updated_at=now()`,
+			row.kind, row.contentID, actor, start, end); err != nil {
+			return nil, err
+		}
+	}
+	rows, err := tx.Query(ctx, `SELECT c.user_id,u.display_name,c.position,c.selection_end FROM wiki_live_cursors c JOIN users u ON u.id=c.user_id
+		WHERE c.content_type=$1 AND c.content_id=$2::bigint AND c.user_id<>$3 AND c.updated_at>now()-interval '30 seconds'
+		ORDER BY u.display_name,c.user_id`, row.kind, row.contentID, actor)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	cursors := []WikiLiveCursor{}
+	for rows.Next() {
+		var cursor WikiLiveCursor
+		if err := rows.Scan(&cursor.AccountID, &cursor.DisplayName, &cursor.Position, &cursor.End); err != nil {
+			return nil, err
+		}
+		cursors = append(cursors, cursor)
+	}
+	return cursors, rows.Err()
 }
 
 // applyWikiLiveChange splices one change into UTF-16 text, refusing one that
@@ -200,7 +261,7 @@ func applyWikiLiveChange(units []uint16, change WikiLiveChange) ([]uint16, error
 // it applies nothing and returns ErrWikiLiveStale with what the editor
 // missed. Whenever the merged text is valid storage it becomes the content's
 // draft, so publishing and reopening the editor keep it.
-func (s *Store) ApplyWikiLiveChanges(ctx context.Context, ws, actor, kind, id, session string, revision int64, changes []WikiLiveChange) (WikiLiveDocument, error) {
+func (s *Store) ApplyWikiLiveChanges(ctx context.Context, ws, actor, kind, id, session string, revision int64, changes []WikiLiveChange, selection *WikiLiveSelection) (WikiLiveDocument, error) {
 	if len(changes) > 100 {
 		return WikiLiveDocument{}, fmt.Errorf("%w: send at most 100 changes at a time", ErrWikiValidation)
 	}
@@ -218,13 +279,20 @@ func (s *Store) ApplyWikiLiveChanges(ctx context.Context, ws, actor, kind, id, s
 		if err != nil {
 			return document, err
 		}
+		if document.Cursors, err = keepWikiLiveCursor(ctx, tx, row, actor, nil); err != nil {
+			return document, err
+		}
 		if err := tx.Commit(ctx); err != nil {
 			return document, err
 		}
 		return document, ErrWikiLiveStale
 	}
 	if len(changes) == 0 {
-		return row.document(), tx.Commit(ctx)
+		document := row.document()
+		if document.Cursors, err = keepWikiLiveCursor(ctx, tx, row, actor, selection); err != nil {
+			return document, err
+		}
+		return document, tx.Commit(ctx)
 	}
 	units := utf16.Encode([]rune(row.body))
 	document := row.document()
@@ -237,6 +305,16 @@ func (s *Store) ApplyWikiLiveChanges(ctx context.Context, ws, actor, kind, id, s
 			row.kind, row.contentID, row.revision, actor, change.Position, change.Delete, change.Insert); err != nil {
 			return WikiLiveDocument{}, err
 		}
+		// Everyone's caret moves with the change: one before it stays, one
+		// after it moves by its length, and one inside what it deleted lands
+		// after what it inserted.
+		inserted := len(utf16.Encode([]rune(change.Insert)))
+		if _, err = tx.Exec(ctx, `UPDATE wiki_live_cursors SET
+			position=CASE WHEN position<=$3::int THEN position WHEN position>=$3::int+$4::int THEN position-$4::int+$5::int ELSE $3::int+$5::int END,
+			selection_end=CASE WHEN selection_end<=$3::int THEN selection_end WHEN selection_end>=$3::int+$4::int THEN selection_end-$4::int+$5::int ELSE $3::int+$5::int END
+			WHERE content_type=$1 AND content_id=$2::bigint`, row.kind, row.contentID, change.Position, change.Delete, inserted); err != nil {
+			return WikiLiveDocument{}, err
+		}
 		document.Changes = append(document.Changes, WikiLiveChange{Revision: row.revision, AuthorID: actor, Position: change.Position, Delete: change.Delete, Insert: change.Insert})
 	}
 	row.body = string(utf16.Decode(units))
@@ -247,6 +325,9 @@ func (s *Store) ApplyWikiLiveChanges(ctx context.Context, ws, actor, kind, id, s
 		return WikiLiveDocument{}, err
 	}
 	if _, err = tx.Exec(ctx, `DELETE FROM wiki_live_changes WHERE content_type=$1 AND content_id=$2::bigint AND revision <= $3`, row.kind, row.contentID, row.revision-wikiLiveKeptChanges); err != nil {
+		return WikiLiveDocument{}, err
+	}
+	if document.Cursors, err = keepWikiLiveCursor(ctx, tx, row, actor, selection); err != nil {
 		return WikiLiveDocument{}, err
 	}
 	if err = tx.Commit(ctx); err != nil {

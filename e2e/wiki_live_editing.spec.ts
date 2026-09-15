@@ -80,6 +80,20 @@ test('people editing the same page keep each other\'s changes as they type', asy
   await expect(demoEditor).toHaveText('Draft: Plan. Approved.', { timeout: 20_000 });
   await expect(anaEditor).toHaveText('Draft: Plan. Approved.', { timeout: 20_000 });
   await expect(ana.locator('[data-wiki-live]')).toContainText('also editing. Your changes merge as you type.', { timeout: 20_000 });
+
+  // Each sees a named caret where the other is working: Demo at the start
+  // of the text and Ana at its end.
+  await caretAt(demo, 'start');
+  await caretAt(ana, 'end');
+  const demoCaret = ana.locator('.wiki-remote-caret').filter({ hasText: /demo/i });
+  const anaCaret = demo.locator('.wiki-remote-caret').filter({ hasText: /ana/i });
+  await expect(demoCaret).toHaveCount(1, { timeout: 10_000 });
+  await expect(anaCaret).toHaveCount(1, { timeout: 10_000 });
+  const anaBox = (await anaEditor.boundingBox())!;
+  await expect.poll(async () => (await demoCaret.boundingBox())!.x - anaBox.x, { timeout: 10_000 }).toBeLessThan(60);
+  const demoBox = (await demoEditor.boundingBox())!;
+  await expect.poll(async () => (await anaCaret.boundingBox())!.x - demoBox.x, { timeout: 10_000 }).toBeGreaterThan(100);
+  await expect(ana.locator('.wiki-remote-carets')).toHaveAttribute('aria-hidden', 'true');
   await accessible(ana);
   await ana.setViewportSize({ width: 320, height: 740 });
   expect(await ana.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -136,6 +150,14 @@ test('people editing the same blog post keep each other\'s changes as they type'
   ]);
   await expect(demoBody).toHaveValue('<p>Draft: Notes. Approved.</p>', { timeout: 20_000 });
   await expect(anaBody).toHaveValue('<p>Draft: Notes. Approved.</p>', { timeout: 20_000 });
+  // In source mode too, each sees where the other's caret is.
+  const anaCaret = demo.locator('.wiki-remote-caret').filter({ hasText: /ana/i });
+  await expect(anaCaret).toHaveCount(1, { timeout: 10_000 });
+  const demoFieldBox = (await demoBody.boundingBox())!;
+  const anaCaretBox = (await anaCaret.boundingBox())!;
+  expect(anaCaretBox.x).toBeGreaterThan(demoFieldBox.x);
+  expect(anaCaretBox.x).toBeLessThan(demoFieldBox.x + demoFieldBox.width);
+  await expect(ana.locator('.wiki-remote-caret').filter({ hasText: /demo/i })).toHaveCount(1, { timeout: 10_000 });
   await accessible(ana);
 
   await demo.getByRole('button', { name: 'Save blog post', exact: true }).click();
