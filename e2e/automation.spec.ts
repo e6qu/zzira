@@ -1,5 +1,14 @@
 import { expect, test, Page } from '@playwright/test';
 import axe from 'axe-core';
+import * as fs from 'fs';
+import * as path from 'path';
+
+function apiAuthHeader(): string {
+  const email = 'demo@zzira.dev';
+  const tokens = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'seed-tokens.json'), 'utf8'));
+  const token = process.env.ZZIRA_API_TOKEN ?? tokens[email];
+  return 'Basic ' + Buffer.from(`${email}:${token}`).toString('base64');
+}
 
 async function login(page: Page, email = 'demo@zzira.dev', password = 'demo1234') {
   await page.goto('/login');
@@ -22,6 +31,10 @@ async function accessible(page: Page) {
 
 test('admin creates, runs, audits, disables and deletes scheduled automation', async ({ page, browser }) => {
   await login(page);
+  // Own the work item the rule runs on instead of relying on earlier specs.
+  const fixture = await page.request.post('/rest/api/3/issue', { headers: { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' }, data: { fields: { project: { key: 'ZZ' }, summary: `Scheduled rule work ${Date.now()}`, issuetype: { name: 'Task' } } } });
+  expect(fixture.status()).toBe(201);
+  const fixtureKey = (await fixture.json()).key as string;
   await page.getByRole('link', { name: 'Automation', exact: true }).click();
   await expect(page).toHaveURL('/settings/automation');
   await expect(page.getByRole('heading', { name: 'Automation rules', exact: true })).toBeVisible();
@@ -31,10 +44,10 @@ test('admin creates, runs, audits, disables and deletes scheduled automation', a
   const name = `E2E schedule ${Date.now()}`;
   const label = `scheduled-${Date.now()}`;
   await page.getByLabel('Rule name').fill(name);
-  await page.getByLabel('Description').fill('Marks the first demo work item through the durable runner');
+  await page.getByLabel('Description').fill('Marks a demo work item through the durable runner');
   await page.getByLabel('Run every').fill('60');
   await page.getByLabel('Timezone').fill('Europe/Bucharest');
-  await page.getByLabel('JQL query').fill('key = ZZ-1');
+  await page.getByLabel('JQL query').fill(`key = ${fixtureKey}`);
   await page.getByRole('combobox', { name: 'Action', exact: true }).selectOption('jira.issue.add-label');
   await page.getByRole('combobox', { name: 'Value', exact: true }).first().fill(label);
   await accessible(page);
@@ -49,7 +62,7 @@ test('admin creates, runs, audits, disables and deletes scheduled automation', a
     return await page.locator('.automation-audit tbody').innerText();
   }, { timeout: 15_000 }).toContain('SUCCESS');
   await expect(page.locator('.automation-audit tbody')).toContainText('1');
-  const issueResponse = await page.request.get('/rest/api/3/issue/ZZ-1');
+  const issueResponse = await page.request.get(`/rest/api/3/issue/${fixtureKey}`);
   expect(issueResponse.ok()).toBe(true);
   const issue = await issueResponse.json();
   expect(issue.fields.labels).toContain(label);
@@ -79,4 +92,51 @@ test('admin creates, runs, audits, disables and deletes scheduled automation', a
   await page.getByRole('button', { name: 'Delete rule permanently' }).click();
   await expect(page).toHaveURL('/settings/automation');
   await expect(page.getByRole('link', { name, exact: true })).toHaveCount(0);
+});
+
+
+test('admin builds an event rule with a condition and smart values that runs when work is commented', async ({ page }) => {
+  await login(page);
+  const headers = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
+  const stamp = Date.now();
+  const created = await page.request.post('/rest/api/3/issue', { headers, data: { fields: { project: { key: 'ZZ' }, summary: `Event rule work ${stamp}`, issuetype: { name: 'Task' } } } });
+  expect(created.status()).toBe(201);
+  const key = (await created.json()).key as string;
+
+  await page.goto('/settings/automation/new');
+  const name = `E2E event ${stamp}`;
+  await page.getByLabel('Rule name').fill(name);
+  await page.getByRole('combobox', { name: 'Trigger', exact: true }).selectOption('jira.issue.event.trigger:commented');
+  await page.getByLabel('JQL query').fill(`key = ${key}`);
+  await page.getByRole('combobox', { name: 'Condition field', exact: true }).selectOption('status');
+  await page.getByRole('combobox', { name: 'Comparison', exact: true }).selectOption('IS_NOT_EMPTY');
+  await page.getByRole('combobox', { name: 'Action', exact: true }).selectOption('jira.issue.add-label');
+  await page.getByRole('combobox', { name: 'Value', exact: true }).first().fill('commented-{{issue.key}}');
+  await page.getByRole('combobox', { name: 'Additional action', exact: true }).selectOption('jira.issue.comment');
+  await page.getByRole('combobox', { name: 'Value', exact: true }).nth(1).fill('Thanks {{initiator.displayName}}, {{issue.key}} is {{issue.status.name}}');
+  await accessible(page);
+  await page.getByRole('button', { name: 'Create rule' }).click();
+  await expect(page).toHaveURL(/\/settings\/automation\/[0-9a-f-]+$/);
+  const ruleURL = page.url();
+  // The editor shows the saved trigger, condition and actions.
+  await expect(page.getByRole('combobox', { name: 'Trigger', exact: true })).toHaveValue('jira.issue.event.trigger:commented');
+  await expect(page.getByRole('combobox', { name: 'Condition field', exact: true }).first()).toHaveValue('status');
+  await expect(page.getByRole('combobox', { name: 'Comparison', exact: true }).first()).toHaveValue('IS_NOT_EMPTY');
+  await expect(page.getByRole('combobox', { name: 'Action', exact: true }).nth(1)).toHaveValue('jira.issue.comment');
+  await page.goto('/settings/automation');
+  await expect(page.getByRole('article').filter({ hasText: name })).toContainText('Work item commented');
+
+  const comment = await page.request.post(`/rest/api/3/issue/${key}/comment`, { headers, data: { body: { type: 'doc', version: 1, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Please take a look' }] }] } } });
+  expect(comment.status()).toBe(201);
+  await expect.poll(async () => (await (await page.request.get(`/rest/api/3/issue/${key}`, { headers })).json()).fields.labels, { timeout: 15_000 }).toContain(`commented-${key}`);
+  const comments = await (await page.request.get(`/rest/api/3/issue/${key}/comment`, { headers })).json();
+  const texts = comments.comments.map((item: any) => JSON.stringify(item.body));
+  // The rule's own comment does not start it again.
+  expect(texts.filter((text: string) => text.includes(`Thanks Demo User, ${key} is To Do`))).toHaveLength(1);
+  await page.goto(ruleURL);
+  await expect(page.locator('.automation-audit tbody')).toContainText('SUCCESS');
+  await page.getByRole('button', { name: 'Disable' }).click();
+  await page.locator('.automation-danger').getByText('Delete rule', { exact: true }).click();
+  await page.getByRole('button', { name: 'Delete rule permanently' }).click();
+  await expect(page).toHaveURL('/settings/automation');
 });
