@@ -1,7 +1,7 @@
 {{define "page_teams"}}
 <!doctype html>
 <html lang="en">
-<head><title>Teams · ZZIRA</title>{{template "head" .}}</head>
+<head><title>Teams · {{(site $).Title}}</title>{{template "head" .}}</head>
 <body class="page-teams">
   <a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}
   <div class="app-shell">{{template "workspace_nav" .}}
@@ -25,7 +25,7 @@
 {{define "page_team"}}
 <!doctype html>
 <html lang="en">
-<head><title>{{.Data.Team.Name}} · ZZIRA</title>{{template "head" .}}</head>
+<head><title>{{.Data.Team.Name}} · {{(site $).Title}}</title>{{template "head" .}}</head>
 <body class="page-team">
   <a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}
   <div class="app-shell">{{template "workspace_nav" .}}
@@ -47,7 +47,7 @@
 {{define "page_service_registry"}}
 <!doctype html>
 <html lang="en">
-<head><title>Services · ZZIRA</title>{{template "head" .}}</head>
+<head><title>Services · {{(site $).Title}}</title>{{template "head" .}}</head>
 <body class="page-service-registry">
   <a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}
   <div class="app-shell">{{template "workspace_nav" .}}

@@ -1,5 +1,5 @@
 {{define "page_project_roles_admin"}}
-<!doctype html><html lang="en"><head><title>Project roles · ZZIRA</title>{{template "head" .}}</head>
+<!doctype html><html lang="en"><head><title>Project roles · {{(site $).Title}}</title>{{template "head" .}}</head>
 <body class="page-project-roles"><a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}
 <div class="app-shell">{{template "workspace_nav" .}}<main class="page page-fluid" id="main-content" tabindex="-1">
 <nav class="issue-breadcrumbs" aria-label="Breadcrumb"><a href="/admin">Administration</a><span aria-hidden="true">/</span><span aria-current="page">Project roles</span></nav>
@@ -15,7 +15,7 @@
 {{end}}
 
 {{define "page_project_role_assignments"}}
-<!doctype html><html lang="en"><head><title>People and access · {{.Data.Project.Name}} · ZZIRA</title>{{template "head" .}}</head>
+<!doctype html><html lang="en"><head><title>People and access · {{.Data.Project.Name}} · {{(site $).Title}}</title>{{template "head" .}}</head>
 <body class="page-project-roles"><a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}
 <div class="app-shell">{{template "workspace_nav" .}}<main class="page page-fluid" id="main-content" tabindex="-1">
 <nav class="issue-breadcrumbs" aria-label="Breadcrumb"><a href="/projects">Projects</a><span aria-hidden="true">/</span><a href="/projects/{{.Data.Project.Key}}">{{.Data.Project.Name}}</a><span aria-hidden="true">/</span><span aria-current="page">People and access</span></nav>

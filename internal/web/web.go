@@ -46,6 +46,37 @@ type pageData struct {
 	Active       string
 	Navigation   *workspaceNavigation
 	Announcement *models.AnnouncementBanner
+	Site         *render.SiteLook
+}
+
+// SiteLook is the look and feel the page shows.
+func (p pageData) SiteLook() render.SiteLook {
+	if p.Site == nil {
+		return render.DefaultSiteLook
+	}
+	return *p.Site
+}
+
+// siteLookFor is the look and feel a site's application properties set,
+// keeping ZZIRA's own for what they leave unset.
+func siteLookFor(properties map[string]string) render.SiteLook {
+	look := render.DefaultSiteLook
+	if title := strings.TrimSpace(properties["jira.title"]); title != "" {
+		look.Title = title
+	}
+	look.LogoURL, look.FaviconURL = properties["jira.lf.logo.url"], properties["jira.lf.favicon.url"]
+	look.NavigationBackground, look.NavigationHighlight = properties["jira.lf.navigation.bgcolour"], properties["jira.lf.navigation.highlightcolour"]
+	look.DateComplete, look.DateDay = models.SiteDateLayouts(properties)
+	return look
+}
+
+// siteLook loads the workspace's look and feel, falling back to ZZIRA's own.
+func (h *Handler) siteLook(r *http.Request, workspaceID string) render.SiteLook {
+	configuration, err := h.Store.JiraSiteConfiguration(r.Context(), workspaceID)
+	if err != nil {
+		return render.DefaultSiteLook
+	}
+	return siteLookFor(configuration.ApplicationProperties)
 }
 
 type createDialogData struct {

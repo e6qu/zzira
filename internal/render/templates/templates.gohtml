@@ -1,6 +1,7 @@
 {{define "head"}}
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+{{with (site $).FaviconURL}}<link rel="icon" href="{{.}}">{{end}}
 <meta name="color-scheme" content="light dark">
 <script>
   (function () {
@@ -37,11 +38,11 @@
 {{end}}
 
 {{define "header"}}
-<header class="global-header">
+<header class="global-header"{{with (site $).NavigationBackground}} style="background:{{.}}"{{end}}>
   <button class="icon-button nav-toggle" type="button" data-nav-toggle aria-label="Collapse sidebar" aria-expanded="true" aria-controls="workspace-navigation">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h16"/></svg>
   </button>
-  <a class="logo" href="/" aria-label="ZZIRA home"><span class="logo-mark" aria-hidden="true">Z</span><span>ZZIRA</span></a>
+  <a class="logo" href="/" aria-label="{{(site $).Title}} home">{{with (site $).LogoURL}}<img class="logo-image" src="{{.}}" alt="" width="30" height="30">{{else}}<span class="logo-mark" aria-hidden="true">Z</span>{{end}}<span{{with (site $).NavigationHighlight}} style="color:{{.}}"{{end}}>{{(site $).Title}}</span></a>
   <form class="global-search" method="get" action="{{with .Navigation}}{{with .Current}}{{.WorkURL}}{{else}}/projects{{end}}{{else}}/projects{{end}}" role="search">
     <label class="sr-only" for="global-jql-query">Search issues with JQL</label>
     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
@@ -89,9 +90,9 @@
     </div>
   </details>
   {{else}}
-  <a class="workspace-identity" href="/projects"><span class="workspace-avatar" aria-hidden="true">ZZ</span><span class="workspace-copy"><strong>ZZIRA</strong><small>Create a project to begin</small></span></a>
+  <a class="workspace-identity" href="/projects"><span class="workspace-avatar" aria-hidden="true">ZZ</span><span class="workspace-copy"><strong>{{(site $).Title}}</strong><small>Create a project to begin</small></span></a>
   {{end}}{{else}}
-  <a class="workspace-identity" href="/projects"><span class="workspace-avatar" aria-hidden="true">ZZ</span><span class="workspace-copy"><strong>ZZIRA</strong><small>Browse projects</small></span></a>
+  <a class="workspace-identity" href="/projects"><span class="workspace-avatar" aria-hidden="true">ZZ</span><span class="workspace-copy"><strong>{{(site $).Title}}</strong><small>Browse projects</small></span></a>
   {{end}}
   <nav aria-label="Primary">
     <a class="nav-service" href="/service" {{if eq .Active "service"}}aria-current="page"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H8l-4 4zM8 9h8M8 12h5"/></svg><span>Service</span></a>
@@ -434,7 +435,7 @@
 {{define "page_home"}}
 <!doctype html>
 <html lang="en">
-<head><title>Your work · ZZIRA</title>{{template "head" .}}</head>
+<head><title>Your work · {{(site $).Title}}</title>{{template "head" .}}</head>
 <body class="page-home">
   <a class="skip-link" href="#main-content">Skip to content</a>
   {{template "header" .}}
@@ -479,7 +480,7 @@
 {{define "page_issue"}}
 <!doctype html>
 <html lang="en">
-<head><title>{{.Data.Issue.Key}} · ZZIRA</title>{{template "head" .}}</head>
+<head><title>{{.Data.Issue.Key}} · {{(site $).Title}}</title>{{template "head" .}}</head>
 <body class="page-issue" data-current-issue="{{.Data.Issue.ID}}">
   <a class="skip-link" href="#main-content">Skip to content</a>
   {{template "header" .}}
@@ -530,7 +531,7 @@
 {{define "page_project"}}
 <!doctype html>
 <html lang="en">
-<head><title>All work · ZZIRA</title>{{template "head" .}}</head>
+<head><title>All work · {{(site $).Title}}</title>{{template "head" .}}</head>
 <body class="page-project">
   <a class="skip-link" href="#main-content">Skip to content</a>
   {{template "header" .}}
@@ -598,7 +599,7 @@
 {{define "page_bulk_issue_task"}}
 <!doctype html>
 <html lang="en">
-<head><title>Bulk operation · ZZIRA</title>{{template "head" .}}{{if or (eq .Data.Task.Status "ENQUEUED") (eq .Data.Task.Status "RUNNING")}}<meta http-equiv="refresh" content="2">{{end}}</head>
+<head><title>Bulk operation · {{(site $).Title}}</title>{{template "head" .}}{{if or (eq .Data.Task.Status "ENQUEUED") (eq .Data.Task.Status "RUNNING")}}<meta http-equiv="refresh" content="2">{{end}}</head>
 <body class="page-project">
   <a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}
   <div class="app-shell">{{template "workspace_nav" .}}<main class="page" id="main-content" tabindex="-1">
@@ -656,7 +657,7 @@
 {{define "page_board"}}
 <!doctype html>
 <html lang="en">
-<head><title>{{.Data.Board.Name}} · ZZIRA</title>{{template "head" .}}
+<head><title>{{.Data.Board.Name}} · {{(site $).Title}}</title>{{template "head" .}}
 <script src="/static/sortable.min.js" defer></script>
 </head>
 <body class="page-board" data-board="{{.Data.Board.ID}}">
@@ -699,7 +700,7 @@
 {{define "page_board_settings"}}
 <!doctype html>
 <html lang="en">
-<head><title>Configure {{.Data.Board.Name}} · ZZIRA</title>{{template "head" .}}</head>
+<head><title>Configure {{.Data.Board.Name}} · {{(site $).Title}}</title>{{template "head" .}}</head>
 <body>
   <a class="skip-link" href="#main-content">Skip to content</a>
   {{template "header" .}}
@@ -759,7 +760,7 @@
 {{define "page_backlog"}}
 <!doctype html>
 <html lang="en">
-<head><title>{{.Data.Board.ProjectName}} backlog · ZZIRA</title>{{template "head" .}}</head>
+<head><title>{{.Data.Board.ProjectName}} backlog · {{(site $).Title}}</title>{{template "head" .}}</head>
 <body class="page-backlog">
   <a class="skip-link" href="#main-content">Skip to content</a>
   {{template "header" .}}
@@ -817,7 +818,7 @@
 {{define "page_dashboard"}}
 <!doctype html>
 <html lang="en">
-<head><title>Dashboard · ZZIRA</title>{{template "head" .}}</head>
+<head><title>Dashboard · {{(site $).Title}}</title>{{template "head" .}}</head>
 <body class="page-dashboard">
   <a class="skip-link" href="#main-content">Skip to content</a>
   {{template "header" .}}
@@ -858,7 +859,7 @@
 {{define "page_projects"}}
 <!doctype html>
 <html lang="en">
-<head><title>Projects · ZZIRA</title>{{template "head" .}}</head>
+<head><title>Projects · {{(site $).Title}}</title>{{template "head" .}}</head>
 <body class="page-projects">
   <a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}
   <div class="app-shell">{{template "workspace_nav" .}}
@@ -881,7 +882,7 @@
 {{define "page_project_overview"}}
 <!doctype html>
 <html lang="en">
-<head><title>{{.Data.Project.Name}} · ZZIRA</title>{{template "head" .}}</head>
+<head><title>{{.Data.Project.Name}} · {{(site $).Title}}</title>{{template "head" .}}</head>
 <body class="page-project-overview">
   <a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}
   <div class="app-shell">{{template "workspace_nav" .}}
@@ -903,7 +904,7 @@
 {{define "page_people"}}
 <!doctype html>
 <html lang="en">
-<head><title>People · ZZIRA</title>{{template "head" .}}</head>
+<head><title>People · {{(site $).Title}}</title>{{template "head" .}}</head>
 <body class="page-people">
   <a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}
   <div class="app-shell">{{template "workspace_nav" .}}
@@ -918,7 +919,7 @@
 {{define "page_profile"}}
 <!doctype html>
 <html lang="en">
-<head><title>{{.Data.Profile.DisplayName}} · ZZIRA</title>{{template "head" .}}</head>
+<head><title>{{.Data.Profile.DisplayName}} · {{(site $).Title}}</title>{{template "head" .}}</head>
 <body class="page-profile">
   <a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}
   <div class="app-shell">{{template "workspace_nav" .}}
@@ -936,7 +937,7 @@
 {{end}}
 
 {{define "page_workflow_schemes"}}
-<!doctype html><html lang="en"><head><title>Workflow schemes · ZZIRA</title>{{template "head" .}}</head>
+<!doctype html><html lang="en"><head><title>Workflow schemes · {{(site $).Title}}</title>{{template "head" .}}</head>
 <body class="page-workflow-schemes"><a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}<div class="app-shell">{{template "workspace_nav" .}}
 <main class="page page-directory" id="main-content" tabindex="-1"><nav class="issue-breadcrumbs" aria-label="Breadcrumb"><span>Settings</span><span aria-hidden="true">/</span><span aria-current="page">Workflow schemes</span></nav>
 <header class="page-header"><div><span class="eyebrow">Work item settings</span><h1>Workflow schemes</h1><p>Choose a default workflow and override it for individual work item types.</p></div></header>
@@ -946,7 +947,7 @@
 {{end}}
 
 {{define "page_workflow_scheme"}}
-<!doctype html><html lang="en"><head><title>{{.Data.Scheme.Name}} · Workflow schemes · ZZIRA</title>{{template "head" .}}</head>
+<!doctype html><html lang="en"><head><title>{{.Data.Scheme.Name}} · Workflow schemes · {{(site $).Title}}</title>{{template "head" .}}</head>
 <body class="page-workflow-scheme"><a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}<div class="app-shell">{{template "workspace_nav" .}}
 <main class="page page-fluid" id="main-content" tabindex="-1"><nav class="issue-breadcrumbs" aria-label="Breadcrumb"><a href="/settings/workflow-schemes">Workflow schemes</a><span aria-hidden="true">/</span><span aria-current="page">{{.Data.Scheme.Name}}</span></nav>
 <header class="workflow-editor-header"><div><span class="eyebrow">Workflow scheme</span><h1>{{.Data.Scheme.Name}}</h1><p>Version {{.Data.Scheme.Version}} · Used by {{len .Data.Assigned}} project{{if ne (len .Data.Assigned) 1}}s{{end}}</p></div>{{if .Data.Scheme.HasDraft}}<span class="lozenge lozenge-current">Draft changes</span>{{else}}<span class="lozenge lozenge-success">Published</span>{{end}}</header>
@@ -961,7 +962,7 @@
 {{define "page_statuses"}}
 <!doctype html>
 <html lang="en">
-<head><title>Statuses · ZZIRA</title>{{template "head" .}}</head>
+<head><title>Statuses · {{(site $).Title}}</title>{{template "head" .}}</head>
 <body class="page-statuses">
   <a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}
   <div class="app-shell">{{template "workspace_nav" .}}
@@ -985,7 +986,7 @@
 {{define "page_workflows"}}
 <!doctype html>
 <html lang="en">
-<head><title>Workflows · ZZIRA</title>{{template "head" .}}</head>
+<head><title>Workflows · {{(site $).Title}}</title>{{template "head" .}}</head>
 <body class="page-workflows">
   <a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}
   <div class="app-shell">{{template "workspace_nav" .}}
@@ -1001,7 +1002,7 @@
 {{define "page_workflow"}}
 <!doctype html>
 <html lang="en">
-<head><title>{{.Data.Workflow.Name}} workflow · ZZIRA</title>{{template "head" .}}<script src="/static/workflow.js?v=1" defer></script></head>
+<head><title>{{.Data.Workflow.Name}} workflow · {{(site $).Title}}</title>{{template "head" .}}<script src="/static/workflow.js?v=1" defer></script></head>
 <body class="page-workflow-editor">
   <a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}
   <div class="app-shell">{{template "workspace_nav" .}}
@@ -1032,7 +1033,7 @@
 {{define "page_notifications"}}
 <!doctype html>
 <html lang="en">
-<head><title>Notifications · ZZIRA</title>{{template "head" .}}</head>
+<head><title>Notifications · {{(site $).Title}}</title>{{template "head" .}}</head>
 <body class="page-notifications" data-notification-unread="{{.Data.UnreadCount}}">
   <a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}
   <div class="app-shell">{{template "workspace_nav" .}}
@@ -1059,7 +1060,7 @@
 {{define "page_login"}}
 <!doctype html>
 <html lang="en">
-<head><title>Log in · ZZIRA</title>{{template "head" .}}</head>
+<head><title>Log in · {{(site $).Title}}</title>{{template "head" .}}</head>
 <body class="login-body">
   <main class="login-shell">
     <section class="login-story" aria-label="About ZZIRA"><a class="logo login-logo" href="/" aria-label="ZZIRA home"><span class="logo-mark" aria-hidden="true">Z</span><span>ZZIRA</span></a><div><span class="eyebrow">Local-first issue tracking</span><p class="login-display">Ship work,<br><em>not refreshes.</em></p><p>Your team’s work stays fast, available, and in sync—even when the network isn’t.</p></div><div class="login-proof"><span class="sync-dot" aria-hidden="true"></span><span><strong>Built for flow</strong><small>Jira-compatible API · Local replica</small></span></div></section>
@@ -1088,7 +1089,7 @@
 {{define "page_signed_out"}}
 <!doctype html>
 <html lang="en">
-<head><title>Signed out · ZZIRA</title>{{template "head" .}}</head>
+<head><title>Signed out · {{(site $).Title}}</title>{{template "head" .}}</head>
 <body class="login-body">
   <main class="login-card">
     <span class="logo-mark" aria-hidden="true">Z</span><h1>Signed out</h1>
@@ -1122,7 +1123,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Authenticated · ZZIRA</title>
+<title>Authenticated · {{(site $).Title}}</title>
 <style>
   body { font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 28rem; margin: 3rem auto; padding: 0 1rem; }
   dt { font-weight: 600; margin-top: .75rem; }

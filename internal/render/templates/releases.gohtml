@@ -8,7 +8,7 @@
 <div class="release-progress"><progress max="100" value="{{.Percent}}" aria-label="Release completion">{{.Percent}}%</progress><span>{{.Done}} of {{.Total}} done · {{.Percent}}%</span></div>
 {{end}}
 {{define "page_releases"}}
-<!doctype html><html lang="en"><head><title>Releases · {{.Data.Project.Name}} · ZZIRA</title>{{template "head" .}}</head>
+<!doctype html><html lang="en"><head><title>Releases · {{.Data.Project.Name}} · {{(site $).Title}}</title>{{template "head" .}}</head>
 <body><a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}<div class="app-shell">{{template "workspace_nav" .}}<main class="page page-fluid" id="main-content" tabindex="-1">
 <nav class="issue-breadcrumbs" aria-label="Breadcrumb"><a href="/projects">Projects</a><span aria-hidden="true">/</span><a href="/projects/{{.Data.Project.Key}}">{{.Data.Project.Name}}</a><span aria-hidden="true">/</span><span aria-current="page">Releases</span></nav>
 <header class="page-header"><div><h1>Releases</h1><p>Plan a version, track its scope, and share what shipped.</p></div></header>
@@ -20,7 +20,7 @@
 </main></div><div id="modal-root"></div></body></html>
 {{end}}
 {{define "page_release"}}
-<!doctype html><html lang="en"><head><title>{{.Data.Version.Name}} · Releases · ZZIRA</title>{{template "head" .}}</head>
+<!doctype html><html lang="en"><head><title>{{.Data.Version.Name}} · Releases · {{(site $).Title}}</title>{{template "head" .}}</head>
 <body><a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}<div class="app-shell">{{template "workspace_nav" .}}<main class="page page-fluid" id="main-content" tabindex="-1">
 <nav class="issue-breadcrumbs" aria-label="Breadcrumb"><a href="/projects/{{.Data.Project.Key}}">{{.Data.Project.Name}}</a><span aria-hidden="true">/</span><a href="/projects/{{.Data.Project.Key}}/releases">Releases</a><span aria-hidden="true">/</span><span aria-current="page">{{.Data.Version.Name}}</span></nav>
 <header class="page-header"><div><span class="eyebrow">{{.Data.Version.State}}</span><h1>{{.Data.Version.Name}}</h1><p>{{.Data.Version.Description}}</p></div>{{if .Data.Admin}}<a class="btn" href="?edit=1">Edit version</a>{{end}}</header>

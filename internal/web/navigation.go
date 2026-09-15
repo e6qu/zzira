@@ -189,5 +189,6 @@ func (h *Handler) writeWorkspacePageStatus(w http.ResponseWriter, r *http.Reques
 		banner := configuration.Announcement
 		announcement = &banner
 	}
-	writePageStatus(w, name, pageData{User: user, Data: data, Active: active, Navigation: navigation, Announcement: announcement}, status)
+	look := siteLookFor(configuration.ApplicationProperties)
+	writePageStatus(w, name, pageData{User: user, Data: data, Active: active, Navigation: navigation, Announcement: announcement, Site: &look}, status)
 }
