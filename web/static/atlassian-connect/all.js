@@ -12,27 +12,29 @@
   } catch (error) {
     return;
   }
-  var pending = {};
-  var listeners = {};
+  // Answers and listeners are kept in maps, so names that arrive in messages
+  // can never reach object properties.
+  var pending = new Map();
+  var listeners = new Map();
   var next = 0;
   var call = function (method, args) {
     return new Promise(function (resolve, reject) {
       next += 1;
       var id = 'ap-' + next;
-      pending[id] = { resolve: resolve, reject: reject };
+      pending.set(id, { resolve: resolve, reject: reject });
       window.parent.postMessage({ zziraConnect: 'call', id: id, method: method, args: args || [] }, hostOrigin);
     });
   };
   window.addEventListener('message', function (event) {
     var data = event.data;
     if (event.origin !== hostOrigin || event.source !== window.parent || !data) return;
-    if (data.zziraConnect === 'result' && pending[data.id]) {
-      var entry = pending[data.id];
-      delete pending[data.id];
+    if (data.zziraConnect === 'result' && pending.has(data.id)) {
+      var entry = pending.get(data.id);
+      pending.delete(data.id);
       if (data.error) entry.reject(new Error(data.error));
       else entry.resolve(data.result);
     } else if (data.zziraConnect === 'event' && typeof data.name === 'string') {
-      (listeners[data.name] || []).slice().forEach(function (listener) { listener(data.payload); });
+      (listeners.get(data.name) || []).slice().forEach(function (listener) { listener(data.payload); });
     }
   });
   var withCallback = function (promise, callback) {
@@ -71,12 +73,12 @@
       getContext: function (callback) { return withCallback(call('getContext'), callback); },
     },
     events: {
-      on: function (name, listener) { (listeners[name] = listeners[name] || []).push(listener); },
+      on: function (name, listener) { listeners.set(name, (listeners.get(name) || []).concat([listener])); },
       once: function (name, listener) {
         var wrapped = function (payload) { AP.events.off(name, wrapped); listener(payload); };
         AP.events.on(name, wrapped);
       },
-      off: function (name, listener) { listeners[name] = (listeners[name] || []).filter(function (existing) { return existing !== listener; }); },
+      off: function (name, listener) { listeners.set(name, (listeners.get(name) || []).filter(function (existing) { return existing !== listener; })); },
     },
     jira: {
       setDashboardItemTitle: function (title) { call('setDashboardItemTitle', [String(title)]); },
@@ -86,9 +88,9 @@
   };
   // Older apps ask for parts of the API by name.
   AP.require = function (names, callback) {
-    var parts = { request: AP.request, events: AP.events, jira: AP.jira, context: AP.context };
+    var parts = new Map([['request', AP.request], ['events', AP.events], ['jira', AP.jira], ['context', AP.context]]);
     var list = Array.isArray(names) ? names : [names];
-    if (typeof callback === 'function') callback.apply(null, list.map(function (name) { return parts[name]; }));
+    if (typeof callback === 'function') callback.apply(null, list.map(function (name) { return parts.get(name); }));
   };
   window.AP = AP;
 })();
