@@ -191,6 +191,13 @@ its categories and typed parameters. Site members can read the catalog.
 as is a rule home outside the site. The catalog holds templates for the actions
 the worker executes.
 
+Administrators can also browse the catalog at `/settings/automation/templates`.
+Each template shows its categories and a form to name the rule, choose the whole
+site or a project as its home, fill in its parameters (people and statuses are
+chosen from lists) and create it enabled or disabled. The page checks
+parameters as the API does and reports a missing required value, a value of the
+wrong type or a rule name already in use.
+
 ## Durability and audit behavior
 
 Due rules enqueue a unique run for each rule and scheduled timestamp. Workers

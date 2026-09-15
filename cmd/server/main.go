@@ -539,6 +539,8 @@ func main() {
 	mux.HandleFunc("GET /settings/automation", webHandler.AutomationRules)
 	mux.HandleFunc("POST /settings/automation", webHandler.AutomationCreate)
 	mux.HandleFunc("GET /settings/automation/new", webHandler.AutomationNew)
+	mux.HandleFunc("GET /settings/automation/templates", webHandler.AutomationTemplates)
+	mux.HandleFunc("POST /settings/automation/templates", webHandler.AutomationCreateFromTemplate)
 	mux.HandleFunc("GET /settings/automation/{uuid}", webHandler.AutomationRule)
 	mux.HandleFunc("POST /settings/automation/{uuid}", webHandler.AutomationUpdate)
 	mux.HandleFunc("GET /issues/new", webHandler.CreateDialog)

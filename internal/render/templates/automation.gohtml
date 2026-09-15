@@ -1,9 +1,9 @@
 {{define "page_automation_rules"}}
-<!doctype html><html lang="en"><head><title>Automation · {{(site $).Title}}</title>{{template "head" .}}<link rel="stylesheet" href="/static/css/automation.css?v=2"></head>
+<!doctype html><html lang="en"><head><title>Automation · {{(site $).Title}}</title>{{template "head" .}}<link rel="stylesheet" href="/static/css/automation.css?v=3"></head>
 <body><a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}<div class="app-shell">{{template "workspace_nav" .}}
 <main class="page page-fluid automation-directory" id="main-content" tabindex="-1">
   <nav class="issue-breadcrumbs" aria-label="Breadcrumb"><span>Settings</span><span aria-hidden="true">/</span><span aria-current="page">Automation</span></nav>
-  <header class="page-header"><div><span class="eyebrow">Workspace automation</span><h1>Automation rules</h1><p>Run repeatable work on a schedule or when work changes, and inspect every execution.</p></div><a class="btn btn-primary" href="/settings/automation/new">Create rule</a></header>
+  <header class="page-header"><div><span class="eyebrow">Workspace automation</span><h1>Automation rules</h1><p>Run repeatable work on a schedule or when work changes, and inspect every execution.</p></div><div class="automation-header-actions"><a class="btn" href="/settings/automation/templates">Browse templates</a><a class="btn btn-primary" href="/settings/automation/new">Create rule</a></div></header>
   <div class="automation-summary-strip"><span><strong>{{len .Data.Rules}}</strong> rules</span><span>Cloud ID <code>{{.Data.CloudID}}</code></span><a href="https://developer.atlassian.com/cloud/automation/rest/">Automation API reference</a></div>
   <section class="surface-card automation-rule-list" aria-label="Automation rules">
     {{range .Data.Rules}}<article class="automation-rule-row">
@@ -16,7 +16,7 @@
 {{end}}
 
 {{define "page_automation_rule"}}
-<!doctype html><html lang="en"><head><title>{{if .Data.IsNew}}Create automation rule{{else}}{{.Data.Rule.Name}}{{end}} · {{(site $).Title}}</title>{{template "head" .}}<link rel="stylesheet" href="/static/css/automation.css?v=2"></head>
+<!doctype html><html lang="en"><head><title>{{if .Data.IsNew}}Create automation rule{{else}}{{.Data.Rule.Name}}{{end}} · {{(site $).Title}}</title>{{template "head" .}}<link rel="stylesheet" href="/static/css/automation.css?v=3"></head>
 <body><a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}<div class="app-shell">{{template "workspace_nav" .}}
 <main class="page page-fluid automation-editor" id="main-content" tabindex="-1">
   <nav class="issue-breadcrumbs" aria-label="Breadcrumb"><a href="/settings/automation">Automation</a><span aria-hidden="true">/</span><span aria-current="page">{{if .Data.IsNew}}Create rule{{else}}{{.Data.Rule.Name}}{{end}}</span></nav>
@@ -66,5 +66,29 @@
   </form>
   {{if not .Data.IsNew}}<section class="surface-card automation-audit"><div class="section-heading"><div><span class="eyebrow">Audit log</span><h2>Recent runs</h2></div><span>Last 25</span></div><div class="automation-audit-table" role="region" aria-label="Automation audit log" tabindex="0"><table><thead><tr><th scope="col">Run</th><th scope="col">Status</th><th scope="col">Matched</th><th scope="col">Changed</th><th scope="col">Attempts</th><th scope="col">Duration</th></tr></thead><tbody>{{range .Data.Runs}}<tr><th scope="row">{{.When}}</th><td><span class="lozenge run-{{.Run.State}}">{{.Run.State}}</span>{{if .Run.Detail}}<details><summary>Error details</summary><code>{{.Run.Detail}}</code></details>{{end}}</td><td>{{.Run.MatchedCount}}</td><td>{{.Run.ChangedCount}}</td><td>{{.Run.Attempts}}</td><td>{{.Duration}}</td></tr>{{else}}<tr><td colspan="6">This rule has not run yet.</td></tr>{{end}}</tbody></table></div></section>
   <details class="surface-card automation-danger"><summary>Delete rule</summary><p>Disable this rule before deleting it. Its audit history will also be removed.</p><form method="post" action="{{.Data.FormAction}}"><input type="hidden" name="operation" value="delete"><button class="btn btn-danger" type="submit" {{if ne .Data.Rule.State "DISABLED"}}disabled{{end}}>Delete rule permanently</button></form></details>{{end}}
+</main></div><div id="modal-root"></div></body></html>
+{{end}}
+
+{{define "page_automation_templates"}}
+<!doctype html><html lang="en"><head><title>Rule templates · Automation · {{(site $).Title}}</title>{{template "head" .}}<link rel="stylesheet" href="/static/css/automation.css?v=3"></head>
+<body><a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}<div class="app-shell">{{template "workspace_nav" .}}
+<main class="page page-fluid automation-directory" id="main-content" tabindex="-1">
+  <nav class="issue-breadcrumbs" aria-label="Breadcrumb"><a href="/settings/automation">Automation</a><span aria-hidden="true">/</span><span aria-current="page">Templates</span></nav>
+  <header class="page-header"><div><span class="eyebrow">Workspace automation</span><h1>Rule templates</h1><p>Start from a ready-made rule and fill in what it needs.</p></div><a class="btn" href="/settings/automation/new">Create rule from scratch</a></header>
+  {{if .Data.Error}}<p class="form-error" role="alert">{{.Data.Error}}</p>{{end}}
+  <div class="automation-template-grid">
+  {{range $template := .Data.Templates}}<section class="surface-card automation-template" aria-labelledby="template-{{.ID}}">
+    <h2 id="template-{{.ID}}">{{.Name}}</h2><p>{{.Description}}</p>
+    <ul class="automation-template-categories" aria-label="{{.Name}} categories">{{range .Categories}}<li class="lozenge">{{.}}</li>{{end}}</ul>
+    <form method="post" action="/settings/automation/templates" class="automation-template-form">
+      <input type="hidden" name="template_id" value="{{.ID}}">
+      <label for="template-{{.ID}}-name">Rule name</label><input id="template-{{.ID}}-name" name="name" value="{{if and (eq $.Data.Selected .ID) $.Data.Name}}{{$.Data.Name}}{{else}}{{.Name}}{{end}}" maxlength="255" required>
+      <label for="template-{{.ID}}-home">Rule home</label><select id="template-{{.ID}}-home" name="rule_home"><option value="">Whole site</option>{{range $.Data.Projects}}<option value="{{.ID}}">{{.Name}} ({{.Key}})</option>{{end}}</select>
+      {{range .Parameters}}<label for="template-{{$template.ID}}-{{.Key}}">{{.Label}}{{if not .Required}} (optional){{end}}</label>{{if eq .Kind "member"}}<select id="template-{{$template.ID}}-{{.Key}}" name="param_{{.Key}}"{{if .Required}} required{{end}}><option value="">Choose a person</option>{{range $.Data.Members}}<option value="{{.ID}}">{{.DisplayName}}</option>{{end}}</select>{{else if eq .Kind "status"}}<select id="template-{{$template.ID}}-{{.Key}}" name="param_{{.Key}}"{{if .Required}} required{{end}}><option value="">Choose a status</option>{{range $.Data.Statuses}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select>{{else if eq .Kind "number"}}<input id="template-{{$template.ID}}-{{.Key}}" type="number" min="1" name="param_{{.Key}}"{{if .Required}} required{{end}}>{{else}}<input id="template-{{$template.ID}}-{{.Key}}" name="param_{{.Key}}" maxlength="5000"{{if .Required}} required{{end}}>{{end}}
+      {{end}}<label for="template-{{.ID}}-state">State</label><select id="template-{{.ID}}-state" name="state"><option value="ENABLED">Enabled</option><option value="DISABLED">Disabled</option></select>
+      <button class="btn btn-primary" type="submit">Create rule from {{.Name}}</button>
+    </form>
+  </section>{{end}}
+  </div>
 </main></div><div id="modal-root"></div></body></html>
 {{end}}

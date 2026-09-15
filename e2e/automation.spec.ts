@@ -264,3 +264,47 @@ test('admin builds a rule with a JQL condition and a branch for linked work in t
   await page.getByRole('button', { name: 'Delete rule permanently' }).click();
   await expect(page).toHaveURL('/settings/automation');
 });
+
+test('admin creates a rule from a template in the gallery', async ({ page }) => {
+  await login(page);
+  await page.goto('/settings/automation');
+  await page.getByRole('link', { name: 'Browse templates', exact: true }).click();
+  await expect(page).toHaveURL('/settings/automation/templates');
+  await expect(page.getByRole('heading', { name: 'Rule templates', level: 1 })).toBeVisible();
+  const card = page.getByRole('region', { name: 'Assign unassigned work', exact: true });
+  await expect(card.getByRole('list', { name: 'Assign unassigned work categories' })).toContainText('Scheduled');
+  const name = `E2E template ${Date.now()}`;
+  const fill = async () => {
+    await card.getByLabel('Rule name').fill(name);
+    await card.getByLabel('Rule home').selectOption({ label: 'ZZIRA Demo (ZZ)' });
+    await card.getByLabel('Assignee').selectOption({ label: 'Demo User' });
+    await card.getByLabel('State').selectOption('DISABLED');
+  };
+  await fill();
+  await accessible(page);
+  await card.getByRole('button', { name: 'Create rule from Assign unassigned work' }).click();
+  await expect(page).toHaveURL(/\/settings\/automation\/[0-9a-f-]+$/);
+  const ruleURL = page.url();
+  // The template's trigger, scope and action open in the editor.
+  await expect(page.getByRole('heading', { name, level: 1 })).toBeVisible();
+  await expect(page.getByText('DISABLED', { exact: true }).first()).toBeVisible();
+  await expect(page.getByLabel('JQL query')).toHaveValue('assignee is EMPTY AND statusCategory != Done');
+  await expect(page.getByLabel('Run every')).toHaveValue('60');
+  await expect(page.getByRole('combobox', { name: 'Action', exact: true })).toHaveValue('jira.issue.assign');
+  await expect(page.getByRole('button', { name: 'Save rule', exact: true })).toBeEnabled();
+
+  // A second rule with the same name is refused with the form kept.
+  await page.goto('/settings/automation/templates');
+  await fill();
+  await card.getByRole('button', { name: 'Create rule from Assign unassigned work' }).click();
+  await expect(page.getByRole('alert')).toHaveText('A rule with this name already exists.');
+  await expect(card.getByLabel('Rule name')).toHaveValue(name);
+  await page.setViewportSize({ width: 320, height: 740 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.setViewportSize({ width: 1280, height: 720 });
+
+  await page.goto(ruleURL);
+  await page.locator('.automation-danger').getByText('Delete rule', { exact: true }).click();
+  await page.getByRole('button', { name: 'Delete rule permanently' }).click();
+  await expect(page).toHaveURL('/settings/automation');
+});

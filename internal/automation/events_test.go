@@ -332,3 +332,45 @@ func TestBranchesRunForRelatedWork(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildTemplateRuleValidates(t *testing.T) {
+	cloudID := "11111111-2222-3333-4444-555555555555"
+	site, project := SiteARI(cloudID), ProjectARI(cloudID, "10000")
+	for _, check := range []struct {
+		template, home, state string
+		parameters            map[string]TemplateValue
+		code                  string
+	}{
+		{"nope", site, "", nil, "automation.template.invalid"},
+		{"manual-assign-to-me", "ari:cloud:jira::site/elsewhere", "", nil, "automation.rule_home.invalid"},
+		{"manual-assign-to-me", site, "DRAFT", nil, "automation.state.invalid"},
+		{"scheduled-assign-unassigned", site, "", nil, "automation.parameter.required"},
+		{"scheduled-label-stale-work", site, "", map[string]TemplateValue{"days": {Type: "NUMBER", Value: "5"}}, "automation.parameter.invalid"},
+		{"manual-assign-to-me", site, "", map[string]TemplateValue{"extra": {Type: "TEXT", Value: "x"}}, "automation.parameter.unknown"},
+	} {
+		if _, err := BuildTemplateRule(cloudID, check.template, check.home, check.state, "", check.parameters); err == nil || err.Code != check.code {
+			t.Fatalf("%+v: %v", check, err)
+		}
+	}
+	body, err := BuildTemplateRule(cloudID, "scheduled-label-stale-work", project, "DISABLED", " Night labels ", map[string]TemplateValue{"days": {Type: "NUMBER", Value: 5.0}, "label": {Value: "old"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var built struct {
+		Rule struct {
+			Name, State   string
+			RuleScopeARIs []string
+			Trigger       struct {
+				Type  string
+				Value struct{ JQL string }
+			}
+		}
+	}
+	if json.Unmarshal(body, &built) != nil || built.Rule.Name != "Night labels" || built.Rule.State != "DISABLED" || len(built.Rule.RuleScopeARIs) != 1 || built.Rule.RuleScopeARIs[0] != project ||
+		built.Rule.Trigger.Type != "jira.jql.scheduled" || built.Rule.Trigger.Value.JQL != "updated <= -5d AND statusCategory != Done" {
+		t.Fatalf("built rule = %s", body)
+	}
+	if len(Templates()) != len(ruleTemplates) || Templates()[0].Categories[0] != "Popular" {
+		t.Fatalf("templates = %+v", Templates())
+	}
+}

@@ -600,72 +600,13 @@ func (h *Handler) createRuleFromTemplate(w http.ResponseWriter, r *http.Request,
 	if !decodeJSON(w, r, &request) {
 		return
 	}
-	template, ok := templateByID(request.TemplateID)
-	if !ok {
-		automationError(w, http.StatusBadRequest, "automation.template.invalid", "The template does not exist", "templateId")
-		return
+	parameters := map[string]TemplateValue{}
+	for key, supplied := range request.Parameters {
+		parameters[key] = TemplateValue{Type: supplied.Type, Value: supplied.Value}
 	}
-	if !validRuleHome(cloudID, request.RuleHome) {
-		automationError(w, http.StatusBadRequest, "automation.rule_home.invalid", "The rule home must be the site or one of its projects", "ruleHome")
-		return
-	}
-	state := request.State
-	if state == "" {
-		state = "ENABLED"
-	}
-	if state != "ENABLED" && state != "DISABLED" {
-		automationError(w, http.StatusBadRequest, "automation.state.invalid", "The state must be ENABLED or DISABLED", "state")
-		return
-	}
-	values := map[string]any{}
-	for _, parameter := range template.Parameters {
-		supplied, present := request.Parameters[parameter.Key]
-		if !present {
-			if parameter.Required {
-				automationError(w, http.StatusBadRequest, "automation.parameter.required", "The parameter "+parameter.Key+" is required", "parameters."+parameter.Key)
-				return
-			}
-			continue
-		}
-		valid := false
-		switch parameter.Type {
-		case "TEXT":
-			text, isText := supplied.Value.(string)
-			valid = isText && len([]rune(text)) <= 5000
-		case "NUMBER":
-			_, valid = supplied.Value.(float64)
-		case "BOOLEAN":
-			_, valid = supplied.Value.(bool)
-		}
-		if !valid || (supplied.Type != "" && supplied.Type != parameter.Type) {
-			automationError(w, http.StatusBadRequest, "automation.parameter.invalid", "The parameter "+parameter.Key+" must be a "+parameter.Type+" value", "parameters."+parameter.Key)
-			return
-		}
-		values[parameter.Key] = supplied.Value
-	}
-	for key := range request.Parameters {
-		found := false
-		for _, parameter := range template.Parameters {
-			if parameter.Key == key {
-				found = true
-			}
-		}
-		if !found {
-			automationError(w, http.StatusBadRequest, "automation.parameter.unknown", "The template does not accept the parameter "+key, "parameters."+key)
-			return
-		}
-	}
-	trigger, components := template.Build(values)
-	scope := []string{}
-	if request.RuleHome != siteARI(cloudID) {
-		scope = []string{request.RuleHome}
-	}
-	body, err := json.Marshal(map[string]any{"rule": map[string]any{
-		"name": template.Name, "description": template.Description, "state": state,
-		"trigger": trigger, "components": components, "ruleScopeARIs": scope,
-	}})
-	if err != nil {
-		automationError(w, http.StatusInternalServerError, "automation.template.failed", "The rule could not be built", "")
+	body, templateErr := BuildTemplateRule(cloudID, request.TemplateID, request.RuleHome, request.State, "", parameters)
+	if templateErr != nil {
+		automationError(w, templateErr.Status, templateErr.Code, templateErr.Title, templateErr.Field)
 		return
 	}
 	uuid, err := h.Service.CreateRule(r.Context(), workspaceID, userID, body)
