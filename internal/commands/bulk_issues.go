@@ -352,7 +352,7 @@ func (s *Service) bulkMoveTarget(ctx context.Context, task store.APITask, issue 
 	}
 	if len(move.Fields) > 0 {
 		// Option values are stored by option id, as a create or edit stores them.
-		if err = s.normalizeOptionFields(ctx, task.WorkspaceID, item.ProjectID, issueTypeID, move.Fields); err != nil {
+		if err = s.normalizeOptionFields(ctx, task.WorkspaceID, item.ProjectID, issueTypeID, move.Fields, nil); err != nil {
 			return move, err
 		}
 		if err = s.validateCustomFields(ctx, item.ProjectID, move.Fields); err != nil {

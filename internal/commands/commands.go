@@ -48,6 +48,9 @@ type CreateIssueInput struct {
 	// seconds; nil leaves one unset.
 	OriginalEstimate  *int64
 	RemainingEstimate *int64
+	// AssetSchemas scopes an Assets object field, by field id, to one Assets
+	// schema: the scope a service request type's form gives it.
+	AssetSchemas map[string]string
 }
 
 // DeleteIssue removes the issue transactionally, then cleans up attachment
@@ -117,7 +120,7 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 	}
 	// Jira accepts an option as its id, {"id"} or {"value"}; every check below
 	// sees the option ids a work item stores.
-	if err = s.normalizeOptionFields(ctx, in.WorkspaceID, project.ID, issueType.ID, in.Fields); err != nil {
+	if err = s.normalizeOptionFields(ctx, in.WorkspaceID, project.ID, issueType.ID, in.Fields, in.AssetSchemas); err != nil {
 		return nil, nil, err
 	}
 	if err = s.enforceFieldConfiguration(ctx, in, project.ID, issueType.ID); err != nil {
@@ -528,7 +531,7 @@ func (s *Service) enforceCustomFieldContexts(ctx context.Context, workspaceID, p
 // select, account ids for user pickers ({"accountId"}), group ids for group
 // pickers ({"groupId"} or {"name"}), and lists for the multi-value fields, where
 // a single value is taken as a list of one.
-func (s *Service) normalizeOptionFields(ctx context.Context, workspaceID, projectID, issueTypeID string, fields map[string]json.RawMessage) error {
+func (s *Service) normalizeOptionFields(ctx context.Context, workspaceID, projectID, issueTypeID string, fields map[string]json.RawMessage, assetSchemas map[string]string) error {
 	if len(fields) == 0 {
 		return nil
 	}
@@ -789,7 +792,7 @@ func (s *Service) normalizeOptionFields(ctx context.Context, workspaceID, projec
 			if !ok || ref == "" {
 				return fmt.Errorf("%s must name an Assets object by id or objectKey", field)
 			}
-			objectID, _, err := s.Store.ServiceAssetObjectInProject(ctx, workspaceID, projectID, ref)
+			objectID, _, err := s.Store.ServiceAssetObjectInProject(ctx, workspaceID, projectID, ref, assetSchemas[field])
 			if err != nil {
 				return fmt.Errorf("%s names the Assets object %q, which is not in this service project", field, ref)
 			}

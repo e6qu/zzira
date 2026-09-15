@@ -38,6 +38,9 @@ type serviceRequestTypeFormView struct {
 	// ChoiceFields are the select and multi-select fields a field can be shown
 	// for, with their options.
 	ChoiceFields []serviceRequestChoiceField
+	// AssetSchemas are the service project's Assets schemas, one of which an
+	// Assets object field can offer.
+	AssetSchemas []models.ServiceAssetSchema
 }
 
 // serviceRequestChoiceField is a select or multi-select field and its options.
@@ -344,6 +347,11 @@ func (h *Handler) ServiceAgent(w http.ResponseWriter, r *http.Request) {
 				}
 				choiceFields = append(choiceFields, serviceRequestChoiceField{ID: customField.ID, Name: customField.Name, Options: options})
 			}
+			assetSchemas, err := h.Store.ServiceDeskAssetSchemas(r.Context(), workspaceID, deskID)
+			if err != nil {
+				http.Error(w, "Could not load Assets schemas.", http.StatusInternalServerError)
+				return
+			}
 			for _, requestType := range data.RequestTypes {
 				configured, err := h.Store.ServiceRequestTypeFields(r.Context(), workspaceID, deskID, requestType.ID)
 				if err != nil {
@@ -371,7 +379,7 @@ func (h *Handler) ServiceAgent(w http.ResponseWriter, r *http.Request) {
 					}
 					choices = append(choices, serviceRequestFieldChoice{ServiceRequestTypeField: field, Enabled: enabled})
 				}
-				data.RequestTypeForms = append(data.RequestTypeForms, serviceRequestTypeFormView{RequestType: requestType, Fields: choices, ChoiceFields: choiceFields})
+				data.RequestTypeForms = append(data.RequestTypeForms, serviceRequestTypeFormView{RequestType: requestType, Fields: choices, ChoiceFields: choiceFields, AssetSchemas: assetSchemas})
 			}
 		}
 		data.Queues, err = h.Store.ServiceQueues(r.Context(), workspaceID, deskID)
@@ -937,6 +945,7 @@ func (h *Handler) ServiceRequestTypeFieldSettings(w http.ResponseWriter, r *http
 				}
 			}
 		}
+		field.AssetSchemaID = strings.TrimSpace(r.PostFormValue("asset_schema_" + fieldID))
 		// A hidden field's preset is typed as the value a customer would give:
 		// JSON when it parses, otherwise text.
 		if preset := strings.TrimSpace(r.PostFormValue("preset_" + fieldID)); preset != "" {
@@ -1299,7 +1308,7 @@ func (h *Handler) ServiceRequestForm(w http.ResponseWriter, r *http.Request) {
 			data.FieldOptions[field.ID] = options
 		default:
 			if store.IsServicePortalPicker(field.Type) {
-				choices, err := h.Store.ServicePortalPickerChoices(r.Context(), workspaceID, desk.ID, user.ID, field.Type)
+				choices, err := h.Store.ServicePortalPickerChoices(r.Context(), workspaceID, desk.ID, user.ID, field.Type, field.AssetSchemaID)
 				if err != nil {
 					http.Error(w, "Could not load request field options.", http.StatusInternalServerError)
 					return
@@ -1796,7 +1805,7 @@ func (h *Handler) ServiceRequestPage(w http.ResponseWriter, r *http.Request) {
 		case models.CustomFieldGroup, models.CustomFieldMultiGroup:
 			groupIDs = append(groupIDs, serviceFieldIDs(value)...)
 		case models.CustomFieldProject, models.CustomFieldVersion, models.CustomFieldMultiVersion, models.CustomFieldTeam, models.CustomFieldAsset:
-			choices, choicesErr := h.Store.ServicePortalPickerChoices(r.Context(), workspaceID, request.ServiceDesk.ID, user.ID, field.Type)
+			choices, choicesErr := h.Store.ServicePortalPickerChoices(r.Context(), workspaceID, request.ServiceDesk.ID, user.ID, field.Type, field.AssetSchemaID)
 			if choicesErr != nil {
 				http.Error(w, "Could not render request fields.", http.StatusInternalServerError)
 				return

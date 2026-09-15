@@ -148,7 +148,7 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 			return nil, nil, fmt.Errorf("security level would hide this issue from you")
 		}
 	}
-	if err := s.normalizeOptionFields(ctx, in.WorkspaceID, issue.ProjectID, issue.IssueType.ID, in.Fields); err != nil {
+	if err := s.normalizeOptionFields(ctx, in.WorkspaceID, issue.ProjectID, issue.IssueType.ID, in.Fields, nil); err != nil {
 		return nil, nil, err
 	}
 	if err := s.validateCustomFields(ctx, issue.ProjectID, in.Fields); err != nil {
@@ -434,7 +434,7 @@ func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, worksp
 	if len(update.Description) > 1<<20 {
 		return nil, nil, fmt.Errorf("description must be at most 1 MiB")
 	}
-	if err := s.normalizeOptionFields(ctx, workspaceID, issue.ProjectID, issue.IssueType.ID, update.Fields); err != nil {
+	if err := s.normalizeOptionFields(ctx, workspaceID, issue.ProjectID, issue.IssueType.ID, update.Fields, nil); err != nil {
 		return nil, nil, err
 	}
 	if err := s.validateCustomFields(ctx, issue.ProjectID, update.Fields); err != nil {
@@ -602,7 +602,7 @@ func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, worksp
 			return nil, nil, fmt.Errorf("workflow assignee is not an active workspace member")
 		}
 	}
-	if err := s.normalizeOptionFields(ctx, workspaceID, issue.ProjectID, issue.IssueType.ID, update.Fields); err != nil {
+	if err := s.normalizeOptionFields(ctx, workspaceID, issue.ProjectID, issue.IssueType.ID, update.Fields, nil); err != nil {
 		return nil, nil, err
 	}
 	if err := s.validateCustomFields(ctx, issue.ProjectID, update.Fields); err != nil {

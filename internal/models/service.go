@@ -96,6 +96,9 @@ type ServiceRequestTypeField struct {
 	// select or multi-select field of the form has one of those options.
 	ConditionFieldID   string
 	ConditionOptionIDs []string
+	// AssetSchemaID narrows an Assets object field to one schema of the
+	// service project. An empty schema offers the desk's whole inventory.
+	AssetSchemaID string
 }
 
 // ShownFor reports whether the field is shown for the option ids chosen for

@@ -999,7 +999,7 @@ func (h *Handler) serviceRequestTypeFields(r *http.Request, workspaceID, actorID
 				validValues = append(validValues, map[string]any{"value": option.ID, "label": option.Value, "children": children})
 			}
 		} else if store.IsServicePortalPicker(field.Type) {
-			choices, err := h.Store.ServicePortalPickerChoices(r.Context(), workspaceID, serviceDeskID, actorID, field.Type)
+			choices, err := h.Store.ServicePortalPickerChoices(r.Context(), workspaceID, serviceDeskID, actorID, field.Type, field.AssetSchemaID)
 			if err != nil {
 				return nil, err
 			}

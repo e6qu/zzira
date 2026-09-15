@@ -77,10 +77,22 @@ func (s *Service) CreateServiceRequest(ctx context.Context, in CreateServiceRequ
 			}
 		}
 	}
+	// An Assets object field scoped to a schema offers only that schema's
+	// objects, so a request may name only those.
+	formFields, err := s.Store.ServiceRequestTypeFields(ctx, in.WorkspaceID, in.ServiceDeskID, in.RequestTypeID)
+	if err != nil {
+		return nil, err
+	}
+	assetSchemas := map[string]string{}
+	for _, field := range formFields {
+		if field.AssetSchemaID != "" {
+			assetSchemas[field.ID] = field.AssetSchemaID
+		}
+	}
 	issue, _, err := s.CreateIssue(ctx, CreateIssueInput{
 		ActorID: in.ActorID, ReporterID: in.CustomerID, WorkspaceID: in.WorkspaceID, ProjectIDOrKey: desk.ProjectID,
 		Summary: in.Summary, Description: in.Description, DescriptionADF: in.DescriptionADF,
-		IssueTypeID: requestType.IssueTypeID, Labels: labels, Fields: in.Fields,
+		IssueTypeID: requestType.IssueTypeID, Labels: labels, Fields: in.Fields, AssetSchemas: assetSchemas,
 	})
 	if err != nil {
 		return nil, err
@@ -954,6 +966,29 @@ func (s *Service) SetServiceRequestTypeFields(ctx context.Context, actorID, work
 	}
 	if !hasSummary {
 		return fmt.Errorf("summary is required on every request type form")
+	}
+	// An Assets object field may offer one schema of the service project
+	// rather than its whole inventory.
+	deskSchemas, err := s.Store.ServiceDeskAssetSchemas(ctx, workspaceID, serviceDeskID)
+	if err != nil {
+		return err
+	}
+	fieldTypes := map[string]string{}
+	for _, field := range customFields {
+		fieldTypes[field.ID] = field.Type
+	}
+	for index := range fields {
+		field := &fields[index]
+		field.AssetSchemaID = strings.TrimSpace(field.AssetSchemaID)
+		if field.AssetSchemaID == "" {
+			continue
+		}
+		if fieldTypes[field.ID] != models.CustomFieldAsset {
+			return fmt.Errorf("only an Assets object field can offer a schema, and %s is not one", field.ID)
+		}
+		if !slices.ContainsFunc(deskSchemas, func(schema models.ServiceAssetSchema) bool { return schema.ID == field.AssetSchemaID }) {
+			return fmt.Errorf("%s offers no Assets schema of this service project", field.ID)
+		}
 	}
 	// A field shown only for some answers waits on a visible select or
 	// multi-select field of the same form that is not conditional itself.

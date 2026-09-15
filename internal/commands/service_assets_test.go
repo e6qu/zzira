@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -90,15 +91,39 @@ func TestServiceAssetInventoryRelationshipsAndRequestImpact(t *testing.T) {
 
 	// A portal Assets field offers the desk's objects, labelled with their
 	// schema, to anyone who can raise a request, and names one by id or key.
-	assetChoices, err := st.ServicePortalPickerChoices(ctx, workspaceID, deskID, adminID, models.CustomFieldAsset)
+	assetChoices, err := st.ServicePortalPickerChoices(ctx, workspaceID, deskID, adminID, models.CustomFieldAsset, "")
 	if err != nil || len(assetChoices) != 2 || assetChoices[0].Value != "Checkout database (Business service)" || assetChoices[1].Value != "Customer storefront (Business service)" {
 		t.Fatalf("asset choices = %+v, %v", assetChoices, err)
 	}
-	if id, label, err := st.ServiceAssetObjectInProject(ctx, workspaceID, project.ID, "database"); err != nil || id != database.ID || label != "Checkout database" {
+	if id, label, err := st.ServiceAssetObjectInProject(ctx, workspaceID, project.ID, "database", ""); err != nil || id != database.ID || label != "Checkout database" {
 		t.Fatalf("asset by key = %q %q, %v", id, label, err)
 	}
-	if _, _, err := st.ServiceAssetObjectInProject(ctx, workspaceID, project.ID, "NOPE"); err == nil {
+	if _, _, err := st.ServiceAssetObjectInProject(ctx, workspaceID, project.ID, "NOPE", ""); err == nil {
 		t.Fatal("an Assets object outside the service project resolved")
+	}
+
+	// A second schema shows that a field scoped to one offers only its objects.
+	laptops, err := service.CreateServiceAssetSchema(ctx, adminID, workspaceID, deskID, models.ServiceAssetSchema{Key: "LAPTOPS", Name: "Laptops",
+		Attributes: []models.ServiceAssetAttribute{{Key: "model", Name: "Model", Type: "text", Required: true}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	laptop, err := service.SaveServiceAssetObject(ctx, adminID, workspaceID, deskID, models.ServiceAssetObject{SchemaID: laptops.ID, Key: "laptop", Label: "Design laptop", X: 100, Y: 100, Values: map[string]string{"model": "M4"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	scopedChoices, err := st.ServicePortalPickerChoices(ctx, workspaceID, deskID, adminID, models.CustomFieldAsset, laptops.ID)
+	if err != nil || len(scopedChoices) != 1 || scopedChoices[0].ID != laptop.ID || scopedChoices[0].Value != "Design laptop (Laptops)" {
+		t.Fatalf("scoped asset choices = %+v, %v", scopedChoices, err)
+	}
+	if all, err := st.ServicePortalPickerChoices(ctx, workspaceID, deskID, adminID, models.CustomFieldAsset, ""); err != nil || len(all) != 3 {
+		t.Fatalf("unscoped asset choices = %+v, %v", all, err)
+	}
+	if id, _, err := st.ServiceAssetObjectInProject(ctx, workspaceID, project.ID, "laptop", laptops.ID); err != nil || id != laptop.ID {
+		t.Fatalf("asset by key within its schema = %q, %v", id, err)
+	}
+	if _, _, err := st.ServiceAssetObjectInProject(ctx, workspaceID, project.ID, "database", laptops.ID); err == nil {
+		t.Fatal("an Assets object outside the field's schema resolved")
 	}
 
 	requestTypes, err := st.ServiceRequestTypes(ctx, workspaceID, deskID, "")
@@ -126,6 +151,50 @@ func TestServiceAssetInventoryRelationshipsAndRequestImpact(t *testing.T) {
 	}
 	if stored := string(assetRequest.Issue.Fields[assetFieldID]); stored != `"`+database.ID+`"` {
 		t.Fatalf("stored asset field = %s, want the object id %s", stored, database.ID)
+	}
+
+	// Scoping the form's Assets field to the laptop schema narrows what a
+	// request may name to that schema's objects.
+	formFields, err := st.ServiceRequestTypeFields(ctx, workspaceID, deskID, requestTypes[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scopedForm := append([]models.ServiceRequestTypeField{}, formFields...)
+	scopedForm = append(scopedForm, models.ServiceRequestTypeField{ID: assetFieldID, AssetSchemaID: laptops.ID})
+	if err := service.SetServiceRequestTypeFields(ctx, adminID, workspaceID, deskID, requestTypes[0].ID, scopedForm); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.CreateServiceRequest(ctx, commands.CreateServiceRequestInput{ActorID: adminID, WorkspaceID: workspaceID, ServiceDeskID: deskID, RequestTypeID: requestTypes[0].ID,
+		Summary: "Database upgrade", Fields: map[string]json.RawMessage{assetFieldID: json.RawMessage(`"database"`)}}); err == nil {
+		t.Fatal("a scoped Assets field accepted an object of another schema")
+	}
+	scopedRequest, err := service.CreateServiceRequest(ctx, commands.CreateServiceRequestInput{ActorID: adminID, WorkspaceID: workspaceID, ServiceDeskID: deskID, RequestTypeID: requestTypes[0].ID,
+		Summary: "Laptop replacement", Fields: map[string]json.RawMessage{assetFieldID: json.RawMessage(`"laptop"`)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored := string(scopedRequest.Issue.Fields[assetFieldID]); stored != `"`+laptop.ID+`"` {
+		t.Fatalf("stored scoped asset field = %s, want %s", stored, laptop.ID)
+	}
+	if reread, err := st.ServiceRequestTypeFields(ctx, workspaceID, deskID, requestTypes[0].ID); err != nil || !slices.ContainsFunc(reread, func(field models.ServiceRequestTypeField) bool {
+		return field.ID == assetFieldID && field.AssetSchemaID == laptops.ID
+	}) {
+		t.Fatalf("request type fields = %+v, %v", reread, err)
+	}
+	// Only an Assets field offers a schema, and only one of this desk's.
+	summaryScoped := append([]models.ServiceRequestTypeField{}, formFields...)
+	for index := range summaryScoped {
+		if summaryScoped[index].ID == "summary" {
+			summaryScoped[index].AssetSchemaID = laptops.ID
+		}
+	}
+	if err := service.SetServiceRequestTypeFields(ctx, adminID, workspaceID, deskID, requestTypes[0].ID, summaryScoped); err == nil {
+		t.Fatal("a field that holds no Assets object offered a schema")
+	}
+	strayScoped := append([]models.ServiceRequestTypeField{}, formFields...)
+	strayScoped = append(strayScoped, models.ServiceRequestTypeField{ID: assetFieldID, AssetSchemaID: "00000000-0000-0000-0000-000000000000"})
+	if err := service.SetServiceRequestTypeFields(ctx, adminID, workspaceID, deskID, requestTypes[0].ID, strayScoped); err == nil {
+		t.Fatal("a field offered an Assets schema of another service project")
 	}
 
 	if err := service.SetServiceRequestAsset(ctx, adminID, workspaceID, request.Issue.Key, database.ID, "affected", true); err != nil {

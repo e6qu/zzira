@@ -86,7 +86,10 @@ people. The request page shows the chosen options and people by name.
 
 An Assets object picker field offers the service desk's Assets objects, each
 labelled with its schema, and stores the chosen object's id; the desk's agents
-create the objects and schemas in the agent workspace. Group, project, version
+create the objects and schemas in the agent workspace. An administrator can
+scope the field to one schema in the request type's form, so it offers only
+that schema's objects, and a request that names an object of another schema is
+refused however it arrives. Group, project, version
 and team picker fields ask for a choice instead: a
 group picker offers the site's groups, a project picker the projects the
 requester can browse, a version picker the desk project's versions that are
