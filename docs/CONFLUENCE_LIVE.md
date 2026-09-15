@@ -59,6 +59,12 @@ exchanged at `POST /wiki/spaces/{space}/pages/{page}/live` (or
   and keeps the caret beside the same text; source mode keeps its selection.
   Input methods finish composing before anything is merged. A status line says
   live editing is on, or that it is reconnecting and nothing typed is lost.
+- **Offline.** Typing not yet shared is kept on the device with the session,
+  revision and text it was last synced from, after every exchange, and
+  forgotten once everything is shared. An editor opened on that page, even
+  offline from the site's page cache, starts from the kept text and merges it
+  with what it missed when it connects, as it would unsent typing; kept text
+  the page already contains is discarded.
 - **Carets.** Each exchange also sends `"cursor":{"position":…,"end":…}`,
   the editor's caret or selection in the text it sent. The server keeps it
   only from an editor holding the latest revision, moves every kept caret
