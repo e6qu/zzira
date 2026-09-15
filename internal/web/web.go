@@ -38,6 +38,8 @@ type Handler struct {
 	BaseURL                           string
 	InvitationNotificationsConfigured bool
 	DomainTXTLookup                   func(context.Context, string) ([]string, error)
+	// ReportRoutes serves the report pages that scheduled report emails draw.
+	ReportRoutes http.Handler
 }
 
 type pageData struct {
@@ -390,9 +392,15 @@ func parseForm(w http.ResponseWriter, r *http.Request) bool {
 }
 
 func (h *Handler) currentUser(r *http.Request) *models.User {
-	userID, err := authn.Identify(r.Context(), h.Store, r)
-	if err != nil {
-		return nil
+	// A report drawn in-process for a scheduled email is drawn as its
+	// recipient; no request from outside can carry this context value.
+	userID, drawn := r.Context().Value(reportRecipientKey{}).(string)
+	if !drawn {
+		identified, err := authn.Identify(r.Context(), h.Store, r)
+		if err != nil {
+			return nil
+		}
+		userID = identified
 	}
 	u, err := h.Store.UserByID(r.Context(), userID)
 	if err != nil {

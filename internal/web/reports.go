@@ -13,7 +13,7 @@ import (
 type doraReportData struct {
 	Project *models.Project
 	Report  models.DORAReport
-	CSVURL  string
+	Actions reportActions
 }
 
 type appReportView struct {
@@ -119,5 +119,10 @@ func (h *Handler) DORAReport(w http.ResponseWriter, r *http.Request) {
 		writeReportCSV(w, project.Key+" DORA metrics", []string{"Date", "Successful deployments", "Failed or rolled back"}, rows)
 		return
 	}
-	h.writeWorkspacePage(w, r, "page_dora_report", user, workspaceID, doraReportData{Project: project, Report: report, CSVURL: csvURL(r)}, "reports", project.Key)
+	actions, actionsErr := h.reportActions(r, workspaceID, user)
+	if actionsErr != nil {
+		http.Error(w, "Could not load report emails.", http.StatusInternalServerError)
+		return
+	}
+	h.writeWorkspacePage(w, r, "page_dora_report", user, workspaceID, doraReportData{Project: project, Report: report, Actions: actions}, "reports", project.Key)
 }

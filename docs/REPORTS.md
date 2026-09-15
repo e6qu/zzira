@@ -26,9 +26,9 @@ Jira Service Management incident request types currently add the `incident`
 label that feeds recovery time; dedicated incident relationships and service
 configuration remain. Deployment approvals, configurable
 environment mapping, excluded-period calendars, team filters, comparison
-periods, targets, subscriptions and scheduled delivery remain.
+periods and targets remain.
 Every Jira and Agile report named in the plan is now available; comparisons
-and scheduled delivery remain.
+remain.
 
 ## CSV downloads
 
@@ -42,6 +42,19 @@ hours; the others list one row per day or sprint. The file is sent with
 `Cache-Control: no-store`, and a cell that starts with `=`, `+`, `-`, `@`, a
 tab or a carriage return is prefixed with an apostrophe so a spreadsheet does
 not run it as a formula.
+
+## Report emails
+
+Email this report, beside Download CSV, schedules the report's data every day
+or every Monday at 08:00 UTC, with the board, sprint, epic, version, window
+and filters on the page. The same report with other choices is a separate
+email. The subscriber and every recipient must be able to open the report
+when it is scheduled. At each run the report is drawn for each recipient,
+through the same route as the download and with their own access, and
+emailed with a link back to it. A recipient who can no longer open it, or
+who left the site, fails the run; the run is retried with backoff, recipients
+already sent are not sent twice, and the reason shows under the schedule on
+the report.
 
 ## Sprint report and velocity chart
 
@@ -90,8 +103,8 @@ average and response count, and an exact daily intake series. The daily chart
 has an accessible text alternative and keyboard-reachable data table. SLA
 breaches are calculated with the same desk calendar and holidays used on the
 customer request and attention queue. The Download CSV link exports the daily
-intake series for the filters on screen. Organization and priority segments,
-comparison periods and scheduled delivery remain.
+intake series for the filters on screen, and Email this report sends it on a
+schedule. Organization and priority segments and comparison periods remain.
 
 ## Cumulative flow diagram and control chart
 

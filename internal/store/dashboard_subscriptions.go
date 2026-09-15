@@ -24,27 +24,14 @@ func (s *Store) SaveDashboardSubscription(ctx context.Context, ws, user, dashboa
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s", ErrDashboardValidation, strings.TrimPrefix(err.Error(), ErrFilterValidation.Error()+": "))
 	}
-	if len(recipients) > 50 {
-		return nil, fmt.Errorf("%w: at most 50 recipients are supported", ErrDashboardValidation)
+	clean, problem, err := s.subscriptionRecipients(ctx, ws, recipients)
+	if err != nil {
+		return nil, err
 	}
-	seen := map[string]bool{}
-	clean := make([]string, 0, len(recipients))
-	for _, id := range recipients {
-		id = strings.TrimSpace(id)
-		if id == "" || seen[id] {
-			continue
-		}
-		seen[id] = true
-		clean = append(clean, id)
+	if problem != "" {
+		return nil, fmt.Errorf("%w: %s", ErrDashboardValidation, problem)
 	}
 	for _, recipient := range clean {
-		var active bool
-		if err := s.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM memberships m JOIN users u ON u.id=m.user_id AND u.active WHERE m.workspace_id=$1 AND m.user_id=$2)`, ws, recipient).Scan(&active); err != nil {
-			return nil, err
-		}
-		if !active {
-			return nil, fmt.Errorf("%w: every recipient must be an active member of this site", ErrDashboardValidation)
-		}
 		if _, err := s.Dashboard(ctx, ws, recipient, dashboardID); errors.Is(err, pgx.ErrNoRows) {
 			return nil, fmt.Errorf("%w: every recipient must be able to view this dashboard", ErrDashboardValidation)
 		} else if err != nil {
@@ -342,14 +329,17 @@ func (r *DashboardSubscriptionRunner) execute(ctx context.Context, run *claimedD
 	gadgets := 0
 	var failures []string
 	for _, recipient := range recipients {
-		var email string
-		if err := r.Store.Pool.QueryRow(ctx, `SELECT u.email FROM users u JOIN memberships m ON m.user_id=u.id WHERE m.workspace_id=$1 AND u.id=$2 AND u.active`, run.WorkspaceID, recipient).Scan(&email); err != nil {
-			failures = append(failures, "recipient "+recipient+" is unavailable")
+		email, name, active, err := r.Store.subscriptionRecipientEmail(ctx, run.WorkspaceID, recipient)
+		if err != nil {
+			return gadgets, err
+		}
+		if !active {
+			failures = append(failures, name+" is no longer an active member of this site")
 			continue
 		}
 		dashboard, err := r.Store.Dashboard(ctx, run.WorkspaceID, recipient, run.DashboardID)
 		if err != nil {
-			failures = append(failures, "recipient "+recipient+" can no longer view the dashboard")
+			failures = append(failures, name+" can no longer view the dashboard")
 			continue
 		}
 		list, err := r.Store.DashboardGadgets(ctx, run.WorkspaceID, recipient, run.DashboardID)

@@ -20,6 +20,7 @@ func csvURL(r *http.Request) string {
 	for key, values := range r.URL.Query() {
 		query[key] = append([]string(nil), values...)
 	}
+	query.Del("emailError")
 	query.Set("format", "csv")
 	return r.URL.Path + "?" + query.Encode()
 }
@@ -44,6 +45,9 @@ func writeReportCSV(w http.ResponseWriter, name string, header []string, rows []
 	w.Header().Set("Content-Disposition", `attachment; filename="`+file+`"`)
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
+	if titled, ok := w.(interface{ setReportTitle(string) }); ok {
+		titled.setReportTitle(name)
+	}
 	writer := csv.NewWriter(w)
 	_ = writer.Write(header)
 	for _, row := range rows {

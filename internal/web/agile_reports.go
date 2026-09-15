@@ -21,7 +21,7 @@ type agileReportBoards struct {
 
 type sprintReportData struct {
 	agileReportBoards
-	CSVURL  string
+	Actions reportActions
 	Sprints []*models.Sprint
 	Sprint  *models.Sprint
 	Report  *sprintReportView
@@ -29,8 +29,8 @@ type sprintReportData struct {
 
 type velocityReportData struct {
 	agileReportBoards
-	CSVURL string
-	Report *velocityReportView
+	Actions reportActions
+	Report  *velocityReportView
 }
 
 type chartTick struct {
@@ -446,7 +446,12 @@ func (h *Handler) SprintReport(w http.ResponseWriter, r *http.Request) {
 		writeReportCSV(w, boards.Project.Key+" sprint report", workItemCSVHeader(), rows)
 		return
 	}
-	data.CSVURL = csvURL(r)
+	actions, actionsErr := h.reportActions(r, workspaceID, user)
+	if actionsErr != nil {
+		http.Error(w, "Could not load report emails.", http.StatusInternalServerError)
+		return
+	}
+	data.Actions = actions
 	h.writeWorkspacePage(w, r, "page_sprint_report", user, workspaceID, data, "reports", boards.Project.ID)
 }
 
@@ -475,7 +480,12 @@ func (h *Handler) VelocityReport(w http.ResponseWriter, r *http.Request) {
 		writeReportCSV(w, boards.Project.Key+" velocity chart", []string{"Sprint", "Commitment", "Completed"}, rows)
 		return
 	}
-	data.CSVURL = csvURL(r)
+	actions, actionsErr := h.reportActions(r, workspaceID, user)
+	if actionsErr != nil {
+		http.Error(w, "Could not load report emails.", http.StatusInternalServerError)
+		return
+	}
+	data.Actions = actions
 	h.writeWorkspacePage(w, r, "page_velocity_report", user, workspaceID, data, "reports", boards.Project.ID)
 }
 
@@ -644,7 +654,7 @@ func newControlChartView(chart models.ControlChart, days int, now time.Time, lay
 
 type flowReportData struct {
 	agileReportBoards
-	CSVURL  string
+	Actions reportActions
 	Days    int
 	Windows []int
 	Flow    *cumulativeFlowView
@@ -717,7 +727,12 @@ func (h *Handler) flowReport(w http.ResponseWriter, r *http.Request, page string
 		writeReportCSV(w, boards.Project.Key+" control chart", []string{"Work item", "Summary", "Completed", "Cycle time (hours)"}, rows)
 		return
 	}
-	data.CSVURL = csvURL(r)
+	actions, actionsErr := h.reportActions(r, workspaceID, user)
+	if actionsErr != nil {
+		http.Error(w, "Could not load report emails.", http.StatusInternalServerError)
+		return
+	}
+	data.Actions = actions
 	h.writeWorkspacePage(w, r, page, user, workspaceID, data, "reports", boards.Project.ID)
 }
 
@@ -780,7 +795,7 @@ type progressChoice struct {
 
 type progressReportData struct {
 	agileReportBoards
-	CSVURL                        string
+	Actions                       reportActions
 	Kind, Title, Parameter, Empty string
 	Choices                       []progressChoice
 	Selected                      string
@@ -836,7 +851,12 @@ func (h *Handler) EpicReport(w http.ResponseWriter, r *http.Request) {
 		writeReportCSV(w, boards.Project.Key+" "+data.Kind+" report "+data.Selected, workItemCSVHeader(), rows)
 		return
 	}
-	data.CSVURL = csvURL(r)
+	actions, actionsErr := h.reportActions(r, workspaceID, user)
+	if actionsErr != nil {
+		http.Error(w, "Could not load report emails.", http.StatusInternalServerError)
+		return
+	}
+	data.Actions = actions
 	h.writeWorkspacePage(w, r, "page_progress_report", user, workspaceID, data, "reports", boards.Project.ID)
 }
 
@@ -892,7 +912,12 @@ func (h *Handler) VersionReport(w http.ResponseWriter, r *http.Request) {
 		writeReportCSV(w, boards.Project.Key+" "+data.Kind+" report "+data.Selected, workItemCSVHeader(), rows)
 		return
 	}
-	data.CSVURL = csvURL(r)
+	actions, actionsErr := h.reportActions(r, workspaceID, user)
+	if actionsErr != nil {
+		http.Error(w, "Could not load report emails.", http.StatusInternalServerError)
+		return
+	}
+	data.Actions = actions
 	h.writeWorkspacePage(w, r, "page_progress_report", user, workspaceID, data, "reports", boards.Project.ID)
 }
 
@@ -1000,7 +1025,7 @@ func newResolutionTimeView(report models.ResolutionTimeReport, layout string) *r
 }
 
 type issueAnalysisData struct {
-	CSVURL          string
+	Actions         reportActions
 	Project         *models.Project
 	Days            int
 	Windows         []int
@@ -1078,7 +1103,12 @@ func (h *Handler) issueAnalysisReport(w http.ResponseWriter, r *http.Request, pa
 		writeReportCSV(w, project.Key+" resolution time", []string{"Date", "Resolved", "Average resolution time (hours)"}, rows)
 		return
 	}
-	data.CSVURL = csvURL(r)
+	actions, actionsErr := h.reportActions(r, workspaceID, user)
+	if actionsErr != nil {
+		http.Error(w, "Could not load report emails.", http.StatusInternalServerError)
+		return
+	}
+	data.Actions = actions
 	h.writeWorkspacePage(w, r, page, user, workspaceID, data, "reports", project.ID)
 }
 

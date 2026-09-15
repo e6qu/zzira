@@ -46,7 +46,7 @@ type serviceReportDayView struct {
 }
 
 type servicePageData struct {
-	CSVURL                string
+	ReportActions         reportActions
 	Desks                 []models.ServiceDesk
 	Desk                  *models.ServiceDesk
 	RequestTypes          []models.ServiceRequestType
@@ -425,7 +425,12 @@ func (h *Handler) ServiceReports(w http.ResponseWriter, r *http.Request) {
 		writeReportCSV(w, desk.ProjectKey+" service requests", []string{"Date", "Requests created"}, rows)
 		return
 	}
-	h.writeWorkspacePage(w, r, "page_service_reports", user, workspaceID, servicePageData{Desk: desk, RequestTypes: requestTypes, Report: report, ReportDays: views, ReportFilter: filter, ReportChannels: channels, CanAgent: true, CSVURL: csvURL(r)}, "service", desk.ProjectID)
+	actions, actionsErr := h.reportActions(r, workspaceID, user)
+	if actionsErr != nil {
+		http.Error(w, "Could not load report emails.", http.StatusInternalServerError)
+		return
+	}
+	h.writeWorkspacePage(w, r, "page_service_reports", user, workspaceID, servicePageData{Desk: desk, RequestTypes: requestTypes, Report: report, ReportDays: views, ReportFilter: filter, ReportChannels: channels, CanAgent: true, ReportActions: actions}, "service", desk.ProjectID)
 }
 
 func (h *Handler) ServiceAgentAssign(w http.ResponseWriter, r *http.Request) {

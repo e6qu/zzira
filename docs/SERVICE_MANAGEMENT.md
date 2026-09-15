@@ -376,8 +376,7 @@ documented ZZIRA search subset, including array-aware label matching;
 conditional form logic, user and
 Assets-backed portal pickers, participant notifications,
 approval workflow configuration, email delivery and notification preference administration, CSAT configuration,
-service report comparisons, SLA goal distributions, scheduled
-delivery, complete public Assets object/schema/import API parity, SLA rule reordering and advanced criteria,
+service report comparisons, SLA goal distributions, complete public Assets object/schema/import API parity, SLA rule reordering and advanced criteria,
 portal invitation email delivery, Atlassian knowledge ranking/analytics, and asset import/reconciliation and review templates
 remain. Customer creation grants only the
 site `atlassian/customer` role and never silently grants Jira product access.

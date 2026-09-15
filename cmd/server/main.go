@@ -423,6 +423,7 @@ func main() {
 	mux.HandleFunc("GET /projects/{key}/reports/version", webHandler.VersionReport)
 	mux.HandleFunc("GET /projects/{key}/reports/created-vs-resolved", webHandler.CreatedVsResolvedReport)
 	mux.HandleFunc("GET /projects/{key}/reports/resolution-time", webHandler.ResolutionTimeReport)
+	mux.HandleFunc("POST /reports/email", webHandler.ReportEmail)
 	mux.HandleFunc("GET /projects/new", webHandler.NewProject)
 	mux.HandleFunc("POST /projects/new", webHandler.NewProject)
 	mux.HandleFunc("GET /projects/{key}/settings", webHandler.ProjectSettings)
@@ -808,6 +809,11 @@ func main() {
 		w.Header().Set("Service-Worker-Allowed", "/")
 		http.ServeFile(w, r, filepath.Join(static, "sw.js"))
 	})
+
+	// Scheduled report emails draw each report through these routes, as its
+	// recipient, so an email always matches the report's CSV download.
+	webHandler.ReportRoutes = mux
+	go (&store.ReportSubscriptionRunner{Store: st, BaseURL: baseURL, Render: webHandler.RenderReport}).Run(ctx, workspaceID)
 
 	srv := &http.Server{
 		Addr:              address,
