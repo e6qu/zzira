@@ -348,6 +348,25 @@ const startLiveEditing = (status, text, form) => {
   let stopped = false;
   let offline = false;
   let cursors = [];
+  // Edits not yet shared are kept on this device, so closing the page or
+  // reloading it offline loses nothing: the next editor on this page starts
+  // from them and merges them like any unsent typing.
+  const keptKey = `zzira-live:${status.dataset.liveUrl}`;
+  const keep = () => {
+    try {
+      const current = text.get();
+      if (synced !== null && current !== synced) localStorage.setItem(keptKey, JSON.stringify({ session, revision, synced, text: current }));
+      else if (synced !== null) localStorage.removeItem(keptKey);
+    } catch {
+      // Storage may be full or unavailable; live editing carries on without it.
+    }
+  };
+  let kept = null;
+  try {
+    kept = JSON.parse(localStorage.getItem(keptKey) || 'null');
+  } catch {
+    kept = null;
+  }
   const drawCursors = () => {
     const layer = liveCursorLayer();
     layer.replaceChildren();
@@ -422,14 +441,30 @@ const startLiveEditing = (status, text, form) => {
       offline = false;
       if (liveDiff(synced, text.get())) window.setTimeout(sync, 50);
     } catch {
-      if (!offline) say('Live editing is reconnecting. Your changes are kept and merge when it is back.');
+      if (!offline) say('Live editing is reconnecting. Your changes are kept on this device and merge when it is back.');
       offline = true;
       cursors = [];
       drawCursors();
     } finally {
       busy = false;
+      keep();
     }
   };
+  if (kept && typeof kept.synced === 'string' && typeof kept.text === 'string' && typeof kept.session === 'string' && Number.isInteger(kept.revision)) {
+    if (kept.text === initial) {
+      try {
+        localStorage.removeItem(keptKey);
+      } catch {
+        // Nothing to forget.
+      }
+    } else {
+      session = kept.session;
+      revision = kept.revision;
+      synced = kept.synced;
+      text.set(kept.text);
+      say('Your changes from before are back and merge when live editing connects.');
+    }
+  }
   let pending = 0;
   const soon = () => {
     window.clearTimeout(pending);
