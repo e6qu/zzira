@@ -321,10 +321,12 @@ type IssueView struct {
 	Forms             []IssueForm
 	Development       []DevelopmentItem
 	Delivery          []DeliveryItem
-	AppPanels         []AppModule
-	AppActivityTabs   []AppModule
-	AppContexts       []AppModule
-	AppIssueContent   []AppIssueContent
+	// CodeDisabled and DeploymentsDisabled hide what a project turned off.
+	CodeDisabled, DeploymentsDisabled bool
+	AppPanels                         []AppModule
+	AppActivityTabs                   []AppModule
+	AppContexts                       []AppModule
+	AppIssueContent                   []AppIssueContent
 }
 
 // IssueActivityItem is one entry in the issue's chronological activity ledger.

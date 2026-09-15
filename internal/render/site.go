@@ -11,7 +11,7 @@ type SiteLook struct {
 }
 
 // DefaultSiteLook is ZZIRA's own look.
-var DefaultSiteLook = SiteLook{Title: "ZZIRA", DateComplete: models.DefaultCompleteDateLayout, DateDay: models.DefaultDayDateLayout}
+var DefaultSiteLook = SiteLook{Title: models.DefaultSiteTitle, DateComplete: models.DefaultCompleteDateLayout, DateDay: models.DefaultDayDateLayout}
 
 // SiteLooker is page data that carries the site's look and feel.
 type SiteLooker interface {

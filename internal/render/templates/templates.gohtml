@@ -290,15 +290,15 @@
         {{if .CanTriage}}<details class="link-create"><summary class="quiet-action">Attach form</summary><form method="post" action="/issues/{{.Issue.Key}}/forms" hx-post="/issues/{{.Issue.Key}}/forms" hx-target="#issue-root" hx-swap="outerHTML"><label for="form-template">Template ID</label><input id="form-template" name="template" maxlength="255" required placeholder="employee-onboarding"><label for="form-name">Form name</label><input id="form-name" name="name" maxlength="255" placeholder="Employee onboarding"><button type="submit" class="btn btn-primary">Attach form</button></form></details>{{end}}
       </section>
 
-      <section class="issue-section issue-development" aria-labelledby="development-title">
+      {{if not .CodeDisabled}}<section class="issue-section issue-development" aria-labelledby="development-title">
         <div class="section-heading"><h2 id="development-title">Development <span class="section-count">{{len .Development}}</span></h2></div>
         {{if .Development}}<ul class="linked-work-list" id="issue-development-list">{{range .Development}}<li><span class="link-relationship">{{if eq .Type "pullrequest"}}Pull request{{else if eq .Type "branch"}}Branch{{else}}Commit{{end}}</span>{{if .URL}}<a href="{{.URL}}" rel="noreferrer"><strong>{{.Name}}</strong></a>{{else}}<strong>{{.Name}}</strong>{{end}}<span class="muted">{{.RepositoryName}}{{if .Status}} · {{.Status}}{{end}}</span></li>{{end}}</ul>{{else}}<p class="muted">No branches, commits, or pull requests linked.</p>{{end}}
-      </section>
+      </section>{{end}}
 
-      <section class="issue-section issue-delivery" aria-labelledby="delivery-title">
+      {{if not .DeploymentsDisabled}}<section class="issue-section issue-delivery" aria-labelledby="delivery-title">
         <div class="section-heading"><h2 id="delivery-title">Builds and deployments <span class="section-count">{{len .Delivery}}</span></h2></div>
         {{if .Delivery}}<ul class="linked-work-list" id="issue-delivery-list">{{range .Delivery}}<li><span class="link-relationship">{{if eq .Kind "deployment"}}Deployment{{else}}Build{{end}}</span>{{if .URL}}<a href="{{.URL}}" rel="noreferrer"><strong>{{.DisplayName}}</strong></a>{{else}}<strong>{{.DisplayName}}</strong>{{end}}<span class="lozenge {{if eq .State "successful"}}lozenge-success{{else if eq .State "failed"}}lozenge-danger{{else}}lozenge-default{{end}}">{{.State}}</span><span class="muted">{{if .EnvironmentName}}{{.EnvironmentName}} · {{end}}{{.PipelineID}}</span></li>{{end}}</ul>{{else}}<p class="muted">No builds or deployments linked.</p>{{end}}
-      </section>
+      </section>{{end}}
 
       {{if .TimeTrackingEnabled}}<section class="issue-section issue-time-tracking" aria-labelledby="time-tracking-title">
         <div class="section-heading"><h2 id="time-tracking-title">Time tracking</h2></div>
@@ -771,14 +771,14 @@
     <header class="page-header backlog-page-header">
       <div><span class="eyebrow">{{.Data.Board.ProjectName}} · Plan</span><h1>Backlog</h1><p>Shape upcoming work, commit a sprint, and keep priorities explicit.</p></div>
       <div class="backlog-header-actions">
-        <details class="create-sprint">
+        {{if not .Data.SprintsDisabled}}<details class="create-sprint">
           <summary class="btn">Create sprint</summary>
           <form method="post" action="/board/{{.Data.Board.ID}}/backlog/sprints">
             <label for="new-sprint-name">Sprint name</label><input id="new-sprint-name" name="name" maxlength="255" required placeholder="For example: Platform sprint 12">
             <label for="new-sprint-goal">Goal</label><textarea id="new-sprint-goal" name="goal" rows="3" maxlength="2000" placeholder="What outcome should this sprint achieve?"></textarea>
             <button class="btn btn-primary" type="submit">Create sprint</button>
           </form>
-        </details>
+        </details>{{end}}
         <button type="button" class="btn btn-primary" hx-get="/issues/new?project={{.Data.Board.ProjectKey}}" hx-target="#modal-root" hx-swap="innerHTML" onclick="window.zzira.openModal(this)">Create issue</button>
       </div>
     </header>

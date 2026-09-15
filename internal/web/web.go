@@ -550,13 +550,27 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	if err != nil {
 		return nil, err
 	}
-	development, err := h.Store.DevelopmentItemsForIssue(r.Context(), wsID, issue.Key)
+	// A software project's Code and Deployments features decide whether its
+	// development and delivery evidence shows.
+	codeEnabled, err := h.Store.ProjectFeatureEnabled(r.Context(), issue.ProjectID, "jsw.classic.code")
 	if err != nil {
 		return nil, err
 	}
-	delivery, err := h.Store.DeliveryItemsForIssues(r.Context(), wsID, []string{issue.Key})
+	deploymentsEnabled, err := h.Store.ProjectFeatureEnabled(r.Context(), issue.ProjectID, "jsw.classic.deployments")
 	if err != nil {
 		return nil, err
+	}
+	var development []models.DevelopmentItem
+	if codeEnabled {
+		if development, err = h.Store.DevelopmentItemsForIssue(r.Context(), wsID, issue.Key); err != nil {
+			return nil, err
+		}
+	}
+	var delivery []models.DeliveryItem
+	if deploymentsEnabled {
+		if delivery, err = h.Store.DeliveryItemsForIssues(r.Context(), wsID, []string{issue.Key}); err != nil {
+			return nil, err
+		}
 	}
 	parentOptions := []models.CreateFieldOption{}
 	if issue.IssueType.Subtask {
@@ -708,6 +722,8 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 		Forms:               derefForms(forms),
 		Development:         development,
 		Delivery:            delivery,
+		CodeDisabled:        !codeEnabled,
+		DeploymentsDisabled: !deploymentsEnabled,
 		AppPanels:           appPanels,
 		AppActivityTabs:     appActivityTabs,
 		AppContexts:         appContexts,

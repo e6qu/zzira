@@ -345,15 +345,16 @@ func (h *Handler) projectProperties(w http.ResponseWriter, r *http.Request, proj
 	}
 }
 
-func projectFeatureBean(projectID string, feature models.ProjectFeature) map[string]any {
+func projectFeatureBean(baseURL, projectID string, feature models.ProjectFeature) map[string]any {
 	id, _ := strconv.ParseInt(projectID, 10, 64)
-	return map[string]any{"projectId": id, "feature": feature.Key, "localisedName": feature.Name, "localisedDescription": feature.Description, "state": feature.State, "prerequisites": feature.Prerequisites, "toggleLocked": feature.ToggleLocked, "imageUri": ""}
+	image := strings.TrimRight(baseURL, "/") + "/static/img/features/" + strings.TrimPrefix(feature.Key, "jsw.classic.") + ".svg"
+	return map[string]any{"projectId": id, "feature": feature.Key, "localisedName": feature.Name, "localisedDescription": feature.Description, "state": feature.State, "prerequisites": feature.Prerequisites, "toggleLocked": feature.ToggleLocked, "imageUri": image}
 }
 
-func projectFeatureContainer(projectID string, features []models.ProjectFeature) map[string]any {
+func projectFeatureContainer(baseURL, projectID string, features []models.ProjectFeature) map[string]any {
 	out := make([]map[string]any, 0, len(features))
 	for _, feature := range features {
-		out = append(out, projectFeatureBean(projectID, feature))
+		out = append(out, projectFeatureBean(baseURL, projectID, feature))
 	}
 	return map[string]any{"features": out}
 }
@@ -375,7 +376,7 @@ func (h *Handler) projectFeatures(w http.ResponseWriter, r *http.Request, projec
 			projectGovernanceError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, projectFeatureContainer(p.ID, features))
+		writeJSON(w, http.StatusOK, projectFeatureContainer(h.BaseURL, p.ID, features))
 		return
 	}
 	if len(parts) == 1 && r.Method == http.MethodPut {
@@ -398,7 +399,7 @@ func (h *Handler) projectFeatures(w http.ResponseWriter, r *http.Request, projec
 			projectGovernanceError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, projectFeatureContainer(p.ID, features))
+		writeJSON(w, http.StatusOK, projectFeatureContainer(h.BaseURL, p.ID, features))
 		return
 	}
 	jiraError(w, http.StatusMethodNotAllowed, "Method not allowed")

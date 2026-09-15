@@ -158,3 +158,6 @@ func SiteDateLayouts(properties map[string]string) (complete, day string) {
 	}
 	return complete, day
 }
+
+// DefaultSiteTitle brands pages until an administrator sets jira.title.
+const DefaultSiteTitle = "ZZIRA"

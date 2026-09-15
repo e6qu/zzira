@@ -49,6 +49,22 @@ test('create a project, use its board, and update settings through UI and API', 
   await expect(page.getByRole('status')).toContainText('Project feature saved.');
   await expect(page.locator('.project-feature-list form').filter({ hasText: 'Reports' })).toContainText('DISABLED');
   await expect(page.locator('.nav-reports')).toHaveCount(0);
+  const codeFeature = () => page.locator('.project-feature-list form').filter({ has: page.locator('strong', { hasText: /^Code$/ }) });
+  await codeFeature().getByRole('button', { name: 'Disable' }).click();
+  await expect(page.getByRole('status')).toContainText('Project feature saved.');
+  await expect(codeFeature()).toContainText('DISABLED');
+  const featureIssue = await page.request.post('/rest/api/3/issue', { data: { fields: { project: { key }, summary: 'Feature toggle check', issuetype: { name: 'Task' } } } });
+  expect(featureIssue.status()).toBe(201);
+  const featureIssueKey = (await featureIssue.json()).key as string;
+  await page.goto(`/browse/${featureIssueKey}`);
+  await expect(page.locator('.issue-delivery')).toBeVisible();
+  await expect(page.locator('.issue-development')).toHaveCount(0);
+  await page.goto(`/projects/${key}/settings`);
+  await codeFeature().getByRole('button', { name: 'Enable' }).click();
+  await expect(codeFeature()).toContainText('ENABLED');
+  await page.goto(`/browse/${featureIssueKey}`);
+  await expect(page.locator('.issue-development')).toBeVisible();
+  await page.goto(`/projects/${key}/settings`);
 
   const propertyForm = page.locator('.project-property-create');
   await propertyForm.getByLabel('Property key').fill('release.cadence');

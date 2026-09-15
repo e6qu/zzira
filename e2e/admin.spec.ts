@@ -239,6 +239,6 @@ test('site admin manages a directory group and its audited membership', async ({
   await page.getByRole('button', { name: 'Save default columns' }).click();
   await page.getByText('Advanced application properties', { exact: true }).click();
   const resetTitleProperty = page.locator('form').filter({ hasText: 'jira.title' });
-  await resetTitleProperty.getByRole('textbox').fill('Jira');
+  await resetTitleProperty.getByRole('textbox').fill('ZZIRA');
   await resetTitleProperty.getByRole('button', { name: 'Save' }).click();
 });

@@ -255,6 +255,21 @@ func (s *Store) DeleteProjectProperty(ctx context.Context, workspaceID, actorID,
 	return tx.Commit(ctx)
 }
 
+// ProjectFeatureEnabled reports whether a software project has a feature on.
+// Features belong to software projects; other projects keep every surface.
+func (s *Store) ProjectFeatureEnabled(ctx context.Context, projectID, featureKey string) (bool, error) {
+	var projectType string
+	var state *string
+	err := s.Pool.QueryRow(ctx, `
+		SELECT p.project_type_key,f.state FROM projects p
+		LEFT JOIN project_features f ON f.project_id=p.id AND f.feature_key=$2
+		WHERE p.id=$1`, projectID, featureKey).Scan(&projectType, &state)
+	if err != nil {
+		return false, err
+	}
+	return projectType != "software" || state == nil || *state == "ENABLED", nil
+}
+
 func (s *Store) ProjectFeatures(ctx context.Context, workspaceID, projectIDOrKey string) ([]models.ProjectFeature, error) {
 	p, err := s.ProjectByIDOrKey(ctx, workspaceID, projectIDOrKey)
 	if err != nil {

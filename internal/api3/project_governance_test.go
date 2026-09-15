@@ -134,10 +134,21 @@ func TestProjectGovernanceLifecycle(t *testing.T) {
 	}
 	call(memberID, http.MethodPut, "/rest/api/3/project/GOV/features/jsw.classic.reports", `{"state":"DISABLED"}`, http.StatusForbidden)
 	disabled := call(adminID, http.MethodPut, "/rest/api/3/project/GOV/features/jsw.classic.reports", `{"state":"DISABLED"}`, http.StatusOK)
-	if !strings.Contains(disabled.Body.String(), `"feature":"jsw.classic.reports","imageUri":"","localisedDescription":"Inspect project flow, delivery, and trends.","localisedName":"Reports","prerequisites":[],"projectId":`+projectPath+`,"state":"DISABLED"`) {
+	if !strings.Contains(disabled.Body.String(), `"feature":"jsw.classic.reports","imageUri":"https://zzira.test/static/img/features/reports.svg","localisedDescription":"Inspect project flow, delivery, and trends.","localisedName":"Reports","prerequisites":[],"projectId":`+projectPath+`,"state":"DISABLED"`) {
 		t.Fatal(disabled.Body.String())
 	}
 	call(adminID, http.MethodPut, "/rest/api/3/project/GOV/features/missing", `{"state":"ENABLED"}`, http.StatusBadRequest)
+	// A disabled feature reads as off, and features left alone stay on.
+	var storedProjectID string
+	if err := st.Pool.QueryRow(ctx, `SELECT id FROM projects WHERE workspace_id=$1 AND key='GOV'`, workspaceID).Scan(&storedProjectID); err != nil {
+		t.Fatal(err)
+	}
+	if enabled, err := st.ProjectFeatureEnabled(ctx, storedProjectID, "jsw.classic.reports"); err != nil || enabled {
+		t.Fatalf("disabled reports enabled=%v err=%v", enabled, err)
+	}
+	if enabled, err := st.ProjectFeatureEnabled(ctx, storedProjectID, "jsw.classic.code"); err != nil || !enabled {
+		t.Fatalf("untouched code enabled=%v err=%v", enabled, err)
+	}
 
 	defaultEmail := call(memberID, http.MethodGet, "/rest/api/3/project/"+projectPath+"/email", "", http.StatusOK)
 	if !strings.Contains(defaultEmail.Body.String(), `"emailAddress":"jira@zzira.test"`) {
