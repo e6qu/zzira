@@ -293,6 +293,7 @@ func main() {
 	mux.HandleFunc("GET /admin", webHandler.AdminPage)
 	mux.HandleFunc("GET /admin/apps/modules/{module}", webHandler.AdminAppModulePage)
 	mux.HandleFunc("GET /admin/notification-helper", webHandler.NotificationHelperPage)
+	mux.HandleFunc("GET /admin/permission-helper", webHandler.PermissionHelperPage)
 	mux.HandleFunc("POST /admin/apps", webHandler.CreateAdminApp)
 	mux.HandleFunc("POST /admin/apps/{appKey}", webHandler.UpdateAdminApp)
 	mux.HandleFunc("POST /admin/apps/{appKey}/transfers", webHandler.CreateAdminAppTransfer)

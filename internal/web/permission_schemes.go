@@ -2,9 +2,11 @@ package web
 
 import (
 	"errors"
+	"github.com/jackc/pgx/v5"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
@@ -274,4 +276,83 @@ func (h *Handler) ProjectPermissionsPage(w http.ResponseWriter, r *http.Request)
 	cards := permissionSchemeCards(catalog, []*models.PermissionScheme{scheme}, members, groups, roles)
 	data := projectPermissionsData{Project: project, Scheme: cards[0]}
 	h.writeWorkspacePage(w, r, "page_project_permissions", user, workspaceID, data, "project-permissions", project.Key)
+}
+
+type permissionHelperResult struct {
+	store.PermissionDiagnosis
+	Person, IssueKey string
+	// Grants names the held grants the way the scheme pages do.
+	Grants []string
+}
+
+type permissionHelperData struct {
+	Members     []*models.User
+	Permissions []store.PermissionDefinition
+	AccountID   string
+	IssueKey    string
+	Permission  string
+	Error       string
+	Result      *permissionHelperResult
+}
+
+// PermissionHelperPage is Jira's permission helper: an administrator picks a
+// person, a work item and a project permission and learns whether the person
+// holds it and which grants give it to them.
+func (h *Handler) PermissionHelperPage(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok {
+		return
+	}
+	ctx, query := r.Context(), r.URL.Query()
+	members, err := h.Store.MembersByWorkspace(ctx, workspaceID)
+	if err != nil {
+		http.Error(w, "Could not load the permission helper.", http.StatusInternalServerError)
+		return
+	}
+	data := permissionHelperData{Members: members, Permissions: store.ProjectPermissionDefinitions(), AccountID: query.Get("accountId"), IssueKey: strings.TrimSpace(query.Get("issueKey")), Permission: query.Get("permission")}
+	if data.AccountID != "" || data.IssueKey != "" || data.Permission != "" {
+		var person *models.User
+		for _, member := range members {
+			if member.ID == data.AccountID {
+				person = member
+			}
+		}
+		var issue *models.Issue
+		if data.IssueKey != "" {
+			if issue, err = h.Store.IssueByIDOrKey(ctx, workspaceID, data.IssueKey); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+				http.Error(w, "Could not load the permission helper.", http.StatusInternalServerError)
+				return
+			}
+		}
+		switch {
+		case person == nil:
+			data.Error = "Choose a person to check."
+		case issue == nil:
+			data.Error = "No work item has the key " + data.IssueKey + "."
+		default:
+			diagnosis, diagnoseErr := h.Store.DiagnoseProjectPermission(ctx, workspaceID, person.ID, issue.ID, data.Permission)
+			if errors.Is(diagnoseErr, store.ErrPermissionSchemeValidation) {
+				data.Error = "Choose a permission."
+				break
+			}
+			if diagnoseErr != nil {
+				http.Error(w, "Could not load the permission helper.", http.StatusInternalServerError)
+				return
+			}
+			result := &permissionHelperResult{PermissionDiagnosis: diagnosis, Person: person.DisplayName, IssueKey: issue.Key}
+			if len(diagnosis.Grants) > 0 {
+				groups, groupsErr := h.Store.GroupsByWorkspace(ctx, workspaceID)
+				roles, rolesErr := h.Store.ProjectRoles(ctx, workspaceID)
+				if err = errors.Join(groupsErr, rolesErr); err != nil {
+					http.Error(w, "Could not load the permission helper.", http.StatusInternalServerError)
+					return
+				}
+				for _, grant := range diagnosis.Grants {
+					result.Grants = append(result.Grants, permissionGrantLabel(grant, members, groups, roles))
+				}
+			}
+			data.Result = result
+		}
+	}
+	h.writeWorkspacePage(w, r, "page_permission_helper", user, workspaceID, data, "admin", "")
 }

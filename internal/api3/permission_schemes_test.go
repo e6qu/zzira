@@ -3,6 +3,7 @@ package api3
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -143,6 +144,28 @@ func TestPermissionSchemeContractAndEvaluation(t *testing.T) {
 	}
 	if allowed, permissionErr := st.CanAdministerProject(ctx, workspaceID, leadID, projectID); permissionErr != nil || !allowed {
 		t.Fatalf("delegated project admin=%t err=%v", allowed, permissionErr)
+	}
+	// The permission helper names the grants that decide the same checks, and
+	// trying grants one at a time leaves the scheme untouched.
+	var workItemID string
+	if err = st.Pool.QueryRow(ctx, `SELECT id FROM issues WHERE workspace_id=$1 AND key=$2`, workspaceID, issue.Key).Scan(&workItemID); err != nil {
+		t.Fatal(err)
+	}
+	diagnosis, err := st.DiagnoseProjectPermission(ctx, workspaceID, viewerID, workItemID, "BROWSE_PROJECTS")
+	if err != nil || !diagnosis.Allowed || diagnosis.Administrator || diagnosis.SchemeName != "Governed releases" || len(diagnosis.Grants) != 1 || diagnosis.Grants[0].HolderType != "group" {
+		t.Fatalf("viewer browse diagnosis = %+v err=%v", diagnosis, err)
+	}
+	if diagnosis, err = st.DiagnoseProjectPermission(ctx, workspaceID, outsiderID, workItemID, "BROWSE_PROJECTS"); err != nil || diagnosis.Allowed || diagnosis.Administrator || len(diagnosis.Grants) != 0 {
+		t.Fatalf("outsider browse diagnosis = %+v err=%v", diagnosis, err)
+	}
+	if diagnosis, err = st.DiagnoseProjectPermission(ctx, workspaceID, leadID, workItemID, "ADMINISTER_PROJECTS"); err != nil || !diagnosis.Allowed || len(diagnosis.Grants) != 1 || diagnosis.Grants[0].HolderType != "user" {
+		t.Fatalf("lead administer diagnosis = %+v err=%v", diagnosis, err)
+	}
+	if _, err = st.DiagnoseProjectPermission(ctx, workspaceID, viewerID, workItemID, "ADMINISTER"); !errors.Is(err, store.ErrPermissionSchemeValidation) {
+		t.Fatalf("global permission diagnosis err = %v", err)
+	}
+	if allowed, permissionErr := st.HasProjectPermission(ctx, workspaceID, viewerID, projectID, "", "BROWSE_PROJECTS"); permissionErr != nil || !allowed {
+		t.Fatalf("diagnosis changed the scheme: browse=%t err=%v", allowed, permissionErr)
 	}
 	call(viewerID, http.MethodGet, "/rest/api/3/project/"+projectKey, "", http.StatusOK)
 	call(outsiderID, http.MethodGet, "/rest/api/3/project/"+projectKey, "", http.StatusNotFound)
