@@ -245,7 +245,7 @@ func (h *Handler) writeWorkspacePageStatus(w http.ResponseWriter, r *http.Reques
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
-		page.WikiStyle = wikiLookAndFeelCSS(custom)
+		page.WikiLook = wikiLookFor(custom)
 	}
 	writePageStatus(w, name, page, status)
 }

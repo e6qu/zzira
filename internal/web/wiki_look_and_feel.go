@@ -1,7 +1,6 @@
 package web
 
 import (
-	"html/template"
 	"math"
 	"regexp"
 	"strconv"
@@ -36,40 +35,31 @@ func lookAndFeelValue(settings map[string]any, path ...string) string {
 	return colour
 }
 
-// wikiLookAndFeelCSS turns Confluence's custom look and feel into CSS for wiki
-// pages: the header's background and navigation colour always, and heading,
-// link and divider colours in the light theme, where the chosen colours were
-// designed to be read. Only plain colours are written, so a setting cannot
-// inject other CSS.
-func wikiLookAndFeelCSS(settings map[string]any) template.CSS {
+// wikiLookView is the Confluence look and feel a wiki page applies: plain
+// colours only, which the page template writes into fixed CSS rules, so a
+// stored value can never add rules of its own.
+type wikiLookView struct {
+	HeaderBackground, HeaderText, Heading, Link, Border string
+}
+
+// wikiLookFor reads the colours wiki pages apply from Confluence's custom look
+// and feel: the header's background and navigation colour, and the heading,
+// link and divider colours. Anything that is not a plain colour is dropped.
+func wikiLookFor(settings map[string]any) *wikiLookView {
 	if len(settings) == 0 {
-		return ""
+		return nil
 	}
-	var css strings.Builder
-	if background := lookAndFeelValue(settings, "header", "backgroundColor"); background != "" {
-		css.WriteString(".page-wiki .global-header{background:" + background + "}")
+	look := &wikiLookView{
+		HeaderBackground: lookAndFeelValue(settings, "header", "backgroundColor"),
+		HeaderText:       lookAndFeelValue(settings, "header", "primaryNavigation", "color"),
+		Heading:          lookAndFeelValue(settings, "headings", "color"),
+		Link:             lookAndFeelValue(settings, "links", "color"),
+		Border:           lookAndFeelValue(settings, "bordersAndDividers", "color"),
 	}
-	if navigation := lookAndFeelValue(settings, "header", "primaryNavigation", "color"); navigation != "" {
-		css.WriteString(".page-wiki .global-header a,.page-wiki .global-header .icon-button{color:" + navigation + "}")
+	if *look == (wikiLookView{}) {
+		return nil
 	}
-	var light strings.Builder
-	rule := func(selector, property, colour string) {
-		if colour != "" {
-			light.WriteString(selector + "{" + property + ":" + colour + "}")
-		}
-	}
-	for _, theme := range []string{`:root:not([data-theme="dark"])`, `:root[data-theme="light"]`} {
-		rule(theme+" .page-wiki main h1,"+theme+" .page-wiki main h2,"+theme+" .page-wiki main h3,"+theme+" .page-wiki main h4", "color", lookAndFeelValue(settings, "headings", "color"))
-		rule(theme+" .page-wiki main a:not(.btn)", "color", lookAndFeelValue(settings, "links", "color"))
-		rule(theme+" .page-wiki main hr,"+theme+" .page-wiki main th,"+theme+" .page-wiki main td", "border-color", lookAndFeelValue(settings, "bordersAndDividers", "color"))
-	}
-	if light.Len() > 0 {
-		css.WriteString("@media (prefers-color-scheme: light){" + strings.Split(light.String(), `:root[data-theme="light"]`)[0] + "}")
-		if index := strings.Index(light.String(), `:root[data-theme="light"]`); index >= 0 {
-			css.WriteString(light.String()[index:])
-		}
-	}
-	return template.CSS(css.String())
+	return look
 }
 
 // whiteTextContrast is the WCAG contrast ratio of white text on a hex or

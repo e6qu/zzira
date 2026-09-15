@@ -1,35 +1,36 @@
 package web
 
 import (
+	"bytes"
+	"html/template"
 	"strings"
 	"testing"
 )
 
-func TestWikiLookAndFeelCSS(t *testing.T) {
-	if css := wikiLookAndFeelCSS(nil); css != "" {
-		t.Fatalf("the default look wrote CSS: %s", css)
+func TestWikiLookFor(t *testing.T) {
+	if look := wikiLookFor(nil); look != nil {
+		t.Fatalf("the default look = %+v", look)
 	}
-	css := string(wikiLookAndFeelCSS(map[string]any{
+	look := wikiLookFor(map[string]any{
 		"headings":           map[string]any{"color": "#123456"},
 		"links":              map[string]any{"color": "rgb(0, 82, 204)"},
 		"bordersAndDividers": map[string]any{"color": "red;} body{display:none"},
 		"header":             map[string]any{"backgroundColor": "#0747A6", "primaryNavigation": map[string]any{"color": "white"}},
-	}))
-	for _, want := range []string{
-		".page-wiki .global-header{background:#0747A6}",
-		".page-wiki .global-header a,.page-wiki .global-header .icon-button{color:white}",
-		`@media (prefers-color-scheme: light){:root:not([data-theme="dark"]) .page-wiki main h1,`,
-		`{color:#123456}`,
-		`:root[data-theme="light"] .page-wiki main a:not(.btn){color:rgb(0, 82, 204)}`,
-	} {
-		if !strings.Contains(css, want) {
-			t.Fatalf("look and feel CSS lacks %q: %s", want, css)
-		}
+	})
+	if look == nil || *look != (wikiLookView{HeaderBackground: "#0747A6", HeaderText: "white", Heading: "#123456", Link: "rgb(0, 82, 204)"}) {
+		t.Fatalf("look = %+v", look)
 	}
-	if strings.Contains(css, "display:none") || strings.Contains(css, "border-color") {
-		t.Fatalf("a setting that is not a colour reached the CSS: %s", css)
+	if none := wikiLookFor(map[string]any{"headings": map[string]any{"color": "url(javascript:alert(1))"}}); none != nil {
+		t.Fatalf("a look with no plain colours = %+v", none)
 	}
-	if strings.Contains(strings.Split(css, `:root[data-theme="light"]`)[0], `:root[data-theme="dark"]`) {
-		t.Fatalf("dark theme rules were written: %s", css)
+	// Even a value that slipped past the colour check stays a value: the
+	// template escapes it inside the fixed rule.
+	page := template.Must(template.New("style").Parse(`<style>.page-wiki main a{color:{{.}}}</style>`))
+	var out bytes.Buffer
+	if err := page.Execute(&out, "red} body{display:none"); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out.String(), "display:none") {
+		t.Fatalf("the template wrote a stored value as CSS: %s", out.String())
 	}
 }

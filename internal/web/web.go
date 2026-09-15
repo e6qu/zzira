@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html/template"
 	"log"
 	"net/http"
 	"net/url"
@@ -51,9 +50,8 @@ type pageData struct {
 	Navigation   *workspaceNavigation
 	Announcement *models.AnnouncementBanner
 	Site         *render.SiteLook
-	// WikiStyle is the CSS that applies a Confluence look and feel to wiki
-	// pages.
-	WikiStyle template.CSS
+	// WikiLook is the Confluence look and feel wiki pages apply, if any.
+	WikiLook *wikiLookView
 }
 
 // SiteLook is the look and feel the page shows.
@@ -76,10 +74,7 @@ func siteLookFor(properties map[string]string) render.SiteLook {
 	look.ShowTitle = properties["jira.lf.logo.show.application.title"] == "true"
 	look.FaviconHiResURL = properties["jira.lf.favicon.hires.url"]
 	if colour := strings.TrimSpace(properties["jira.lf.hero.button.base.bg.colour"]); lookAndFeelColour.MatchString(colour) && whiteTextContrast(colour) >= 4.5 {
-		// The chosen colour is for the light theme; the dark theme keeps its
-		// own buttons so their text stays readable.
-		rule := " .btn-primary{background:" + colour + ";border-color:" + colour + "}"
-		look.ButtonStyle = template.CSS("@media (prefers-color-scheme: light){:root:not([data-theme=\"dark\"])" + rule + "}:root[data-theme=\"light\"]" + rule)
+		look.HeroButtonBackground = colour
 	}
 	look.DateComplete, look.DateDay = models.SiteDateLayouts(properties)
 	return look
