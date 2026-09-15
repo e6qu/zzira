@@ -239,8 +239,22 @@ type connectDashboardItemWire struct {
 }
 
 type connectDashboardItemMeta struct {
-	Description  string `json:"description"`
-	ThumbnailURL string `json:"thumbnailUrl"`
+	Description  string          `json:"description"`
+	ThumbnailURL string          `json:"thumbnailUrl"`
+	Configurable bool            `json:"configurable,omitempty"`
+	Refreshable  bool            `json:"refreshable,omitempty"`
+	Conditions   json.RawMessage `json:"conditions,omitempty"`
+}
+
+// DashboardItemOptions reads whether an installed dashboard item can be
+// configured and refreshed, and the conditions for showing it; a
+// host-rendered gadget has none of them.
+func DashboardItemOptions(body string) (configurable, refreshable bool, conditions json.RawMessage) {
+	var meta connectDashboardItemMeta
+	if json.Unmarshal([]byte(body), &meta) != nil {
+		return false, false, nil
+	}
+	return meta.Configurable, meta.Refreshable, meta.Conditions
 }
 
 type connectWebhookWire struct {
@@ -615,10 +629,11 @@ func translateConnectDashboardItem(module connectDashboardItemWire) (moduleWire,
 	if !moduleKeyPattern.MatchString(module.Key) || module.Name.Value == "" || module.Description.Value == "" || len(module.Name.Value) > 1500 || len(module.Description.Value) > 1500 || !validAppCallbackPath(module.URL) || !validAppCallbackPath(thumbnail) {
 		return moduleWire{}, fmt.Errorf("Connect dashboard item needs a valid key, name, description, relative URL, and thumbnailUrl")
 	}
-	if module.Configurable || module.Refreshable || len(module.Conditions) > 0 {
-		return moduleWire{}, fmt.Errorf("Connect dashboard item %q uses unsupported configuration, refresh, or conditions", module.Key)
+	conditions, err := connectConditions(module.Conditions)
+	if err != nil {
+		return moduleWire{}, fmt.Errorf("Connect dashboard item %q: %w", module.Key, err)
 	}
-	meta, _ := json.Marshal(connectDashboardItemMeta{Description: module.Description.Value, ThumbnailURL: module.ThumbnailURL})
+	meta, _ := json.Marshal(connectDashboardItemMeta{Description: module.Description.Value, ThumbnailURL: module.ThumbnailURL, Configurable: module.Configurable, Refreshable: module.Refreshable, Conditions: conditions})
 	return moduleWire{Key: module.Key, Type: "jira:dashboardGadget", Location: "jira.dashboard", Title: module.Name.Value, Body: string(meta), URL: module.URL}, nil
 }
 

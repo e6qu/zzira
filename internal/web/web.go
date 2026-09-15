@@ -38,8 +38,9 @@ type Handler struct {
 	BaseURL                           string
 	InvitationNotificationsConfigured bool
 	DomainTXTLookup                   func(context.Context, string) ([]string, error)
-	// ReportRoutes serves the report pages that scheduled report emails draw.
-	ReportRoutes http.Handler
+	// Routes are the application's routes, which scheduled report emails and
+	// app requests are served through in-process.
+	Routes http.Handler
 }
 
 type pageData struct {

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"slices"
 	"strconv"
@@ -226,6 +227,30 @@ func (h *Handler) APIPrincipal(next http.Handler) http.Handler {
 		ctx := ContextWithInstallation(r.Context(), installation)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+// BridgeRequestAllowed reports whether an app's frame may have the site call a
+// product API for the person using the frame, as Connect's AP.request does:
+// the operation must be a product API apps may call, other than managing the
+// app's own modules, and the installation must be active and hold its scope.
+func BridgeRequestAllowed(installation *models.AppInstallation, method, path string) error {
+	if installation.Status != "active" {
+		return fmt.Errorf("app is suspended")
+	}
+	if path == "/rest/atlassian-connect/1/app/module/dynamic" || path == "/wiki/rest/atlassian-connect/1/app/module/dynamic" {
+		return fmt.Errorf("apps manage their modules with their own credentials")
+	}
+	scope, supported := appAPIScope(&http.Request{Method: method, URL: &url.URL{Path: path}})
+	if !supported {
+		return fmt.Errorf("apps can only request product APIs")
+	}
+	if scope == appScopeInaccessible {
+		return fmt.Errorf("this operation is not available to apps")
+	}
+	if scope != "" && !appHoldsScope(installation, scope) {
+		return fmt.Errorf("%s scope is required", scope)
+	}
+	return nil
 }
 
 // appHoldsScope reports whether an installation holds a scope, directly or

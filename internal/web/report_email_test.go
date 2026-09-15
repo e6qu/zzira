@@ -26,7 +26,7 @@ func TestReportTargetKeepsOnlyReportPagesAndTheirChoices(t *testing.T) {
 
 func TestRenderReportDrawsTheDownloadAsTheRecipient(t *testing.T) {
 	var seen string
-	h := &Handler{ReportRoutes: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := &Handler{Routes: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		seen, _ = r.Context().Value(reportRecipientKey{}).(string)
 		if r.URL.Query().Get("format") != "csv" || r.URL.Query().Get("board") != "12" {
 			http.Error(w, "bad request", http.StatusBadRequest)

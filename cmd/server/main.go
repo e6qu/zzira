@@ -754,6 +754,7 @@ func main() {
 	})
 	mux.HandleFunc("GET /apps/modules/{module}", webHandler.AppModulePage)
 	mux.HandleFunc("GET /app-modules/{module}/frame", webHandler.AppModuleFrame)
+	mux.HandleFunc("POST /app-modules/{module}/request", webHandler.AppModuleRequest)
 	mux.HandleFunc("GET /app-modules/{module}/thumbnail", webHandler.AppModuleThumbnail)
 	mux.HandleFunc("GET /app-modules/{module}/icon", webHandler.AppModuleIcon)
 	mux.HandleFunc("GET /app-modules/{module}/status-icon", webHandler.AppModuleStatusIcon)
@@ -804,6 +805,12 @@ func main() {
 		http.ServeFile(w, r, filepath.Join(static, "img", "priorities", icon))
 	})
 	mux.HandleFunc("GET /secure/archived-issues-export/{file}", api.ArchivedIssuesExportFile)
+	mux.HandleFunc("GET /atlassian-connect/all.js", func(w http.ResponseWriter, r *http.Request) {
+		// Connect apps load the JavaScript API from the product they run in.
+		w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+		w.Header().Set("Cache-Control", "public, max-age=300")
+		http.ServeFile(w, r, filepath.Join(static, "atlassian-connect", "all.js"))
+	})
 	mux.HandleFunc("GET /sw.js", func(w http.ResponseWriter, r *http.Request) {
 		// Root scope is required for the service worker to control page navigations.
 		w.Header().Set("Service-Worker-Allowed", "/")
@@ -811,8 +818,9 @@ func main() {
 	})
 
 	// Scheduled report emails draw each report through these routes, as its
-	// recipient, so an email always matches the report's CSV download.
-	webHandler.ReportRoutes = mux
+	// recipient, so an email always matches the report's CSV download; app
+	// frames' AP.request calls are served through them too.
+	webHandler.Routes = mux
 	go (&store.ReportSubscriptionRunner{Store: st, BaseURL: baseURL, Render: webHandler.RenderReport}).Run(ctx, workspaceID)
 
 	srv := &http.Server{

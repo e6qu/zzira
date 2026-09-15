@@ -71,52 +71,52 @@ func reportTarget(path, rawQuery string) (string, error) {
 
 type reportRecipientKey struct{}
 
-// reportResponse keeps a report rendered in-process for an email.
-type reportResponse struct {
+// inProcessResponse keeps the answer of a request served in-process.
+type inProcessResponse struct {
 	header http.Header
 	status int
 	body   bytes.Buffer
 	title  string
 }
 
-func (r *reportResponse) Header() http.Header { return r.header }
+func (r *inProcessResponse) Header() http.Header { return r.header }
 
-func (r *reportResponse) WriteHeader(status int) {
+func (r *inProcessResponse) WriteHeader(status int) {
 	if r.status == 0 {
 		r.status = status
 	}
 }
 
-func (r *reportResponse) Write(data []byte) (int, error) {
+func (r *inProcessResponse) Write(data []byte) (int, error) {
 	r.WriteHeader(http.StatusOK)
 	return r.body.Write(data)
 }
 
-func (r *reportResponse) setReportTitle(title string) { r.title = title }
+func (r *inProcessResponse) setReportTitle(title string) { r.title = title }
 
 var errReportUnavailable = errors.New("the report could not be opened")
 
 // RenderReport draws a report's CSV as a member sees it, through the same
-// route that serves the download, and names the report. ReportRoutes must be
+// route that serves the download, and names the report. Routes must be
 // the application's routes.
 func (h *Handler) RenderReport(ctx context.Context, userID, target string) (string, string, error) {
 	path, rawQuery, _ := strings.Cut(target, "?")
 	if clean, err := reportTarget(path, rawQuery); err != nil || clean != target {
 		return "", "", errNotAReport
 	}
-	if h.ReportRoutes == nil {
+	if h.Routes == nil {
 		return "", "", errors.New("report routes are not configured")
 	}
 	query, _ := url.ParseQuery(rawQuery)
 	query.Set("format", "csv")
-	// The request is served in-process by ReportRoutes and never sent over a
+	// The request is served in-process by Routes and never sent over a
 	// network; its path matched the report allowlist above.
-	request, err := http.NewRequestWithContext(context.WithValue(ctx, reportRecipientKey{}, userID), http.MethodGet, path+"?"+query.Encode(), nil) // #nosec G704 -- in-process request to an allowlisted local report path, served by ReportRoutes.ServeHTTP without any network client.
+	request, err := http.NewRequestWithContext(context.WithValue(ctx, reportRecipientKey{}, userID), http.MethodGet, path+"?"+query.Encode(), nil) // #nosec G704 -- in-process request to an allowlisted local report path, served by Routes.ServeHTTP without any network client.
 	if err != nil {
 		return "", "", err
 	}
-	response := &reportResponse{header: http.Header{}}
-	h.ReportRoutes.ServeHTTP(response, request)
+	response := &inProcessResponse{header: http.Header{}}
+	h.Routes.ServeHTTP(response, request)
 	if response.status != http.StatusOK || !strings.HasPrefix(response.header.Get("Content-Type"), "text/csv") || response.title == "" {
 		return "", "", errReportUnavailable
 	}
