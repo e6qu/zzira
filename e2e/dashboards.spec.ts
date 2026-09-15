@@ -10,6 +10,16 @@ function apiAuthHeader(): string {
   return 'Basic ' + Buffer.from(`${email}:${token}`).toString('base64');
 }
 
+// Own the work the gadgets count instead of relying on specs that happened to
+// run earlier against the same database.
+test.beforeAll(async ({ request }) => {
+  const created = await request.post('/rest/api/3/issue', {
+    headers: { Authorization: apiAuthHeader() },
+    data: { fields: { project: { key: 'ZZ' }, summary: `Dashboard fixture ${Date.now()}`, issuetype: { name: 'Task' } } },
+  });
+  expect(created.status()).toBe(201);
+});
+
 async function login(page: Page, email = 'demo@zzira.dev', password = 'demo1234') {
   await page.goto('/login');
   await page.fill('#login-email', email);
