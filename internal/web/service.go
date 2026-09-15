@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/models"
@@ -103,11 +104,15 @@ type servicePageData struct {
 	EscalationSteps     []models.ServiceEscalationStep
 	// IncidentRoles and IncidentStakeholders are a major incident's response
 	// team and the people who follow its stakeholder updates.
-	IncidentRoles         []models.ServiceIncidentRole
-	IncidentStakeholders  []models.ServiceIncidentStakeholder
-	AssetInventory        *models.ServiceAssetInventory
-	RequestAssets         []models.ServiceRequestAsset
-	FieldValues           map[string]string
+	IncidentRoles        []models.ServiceIncidentRole
+	IncidentStakeholders []models.ServiceIncidentStakeholder
+	AssetInventory       *models.ServiceAssetInventory
+	RequestAssets        []models.ServiceRequestAsset
+	FieldValues          map[string]string
+	// FieldOptions are the options each select field on a portal form offers,
+	// and FieldChoices the answers a refused form keeps.
+	FieldOptions          map[string][]store.ServiceRequestFieldOption
+	FieldChoices          map[string][]string
 	Transitions           []serviceTransitionView
 	CanAdmin              bool
 	CanSiteAdmin          bool
@@ -1074,37 +1079,89 @@ func (h *Handler) ServiceRequestForm(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load request fields.", http.StatusInternalServerError)
 		return
 	}
-	data := servicePageData{Desk: desk, RequestType: requestType, RequestTypeFields: fields, FieldValues: map[string]string{}}
+	data := servicePageData{Desk: desk, RequestType: requestType, RequestTypeFields: fields, FieldValues: map[string]string{},
+		FieldOptions: map[string][]store.ServiceRequestFieldOption{}, FieldChoices: map[string][]string{}}
+	for _, field := range fields {
+		switch field.Type {
+		case models.CustomFieldSelect, models.CustomFieldMultiSelect, models.CustomFieldCascadingSelect:
+			options, err := h.Store.ServiceRequestFieldOptions(r.Context(), workspaceID, desk.ID, field.ID)
+			if err != nil {
+				http.Error(w, "Could not load request field options.", http.StatusInternalServerError)
+				return
+			}
+			data.FieldOptions[field.ID] = options
+		}
+	}
 	status := http.StatusOK
 	if r.Method == http.MethodPost {
 		if !parseForm(w, r) {
 			return
 		}
-		customFields := map[string]json.RawMessage{}
-		for _, field := range fields {
-			value := r.PostFormValue("field_" + field.ID)
-			data.FieldValues[field.ID] = value
-			if field.Required && strings.TrimSpace(value) == "" {
-				data.Error, status = field.Name+" is required.", http.StatusBadRequest
-				break
+		// A user picker names a member by email, so the portal never lists the
+		// site's people.
+		memberByEmail := func(email string) (string, error) {
+			id, _, _, err := h.Store.UserByEmail(r.Context(), email)
+			if err != nil {
+				id, _, _, err = h.Store.UserByEmail(r.Context(), strings.ToLower(email))
 			}
-			switch field.ID {
-			case "summary":
-				data.Summary = strings.TrimSpace(value)
-			case "description":
-				data.Description = value
-			default:
-				if strings.TrimSpace(value) == "" {
+			if err == nil {
+				if _, memberErr := h.Store.MemberByID(r.Context(), workspaceID, id); memberErr == nil {
+					return id, nil
+				}
+			}
+			return "", fmt.Errorf("No active member of this site uses %s.", email)
+		}
+		customFields := map[string]json.RawMessage{}
+		var descriptionADF json.RawMessage
+		for _, field := range fields {
+			// A hidden field takes its preset value, as REST request creation does.
+			if field.Hidden {
+				if len(field.PresetValue) == 0 || string(field.PresetValue) == "null" {
 					continue
 				}
-				encoded, encodeErr := encodeServiceRequestField(field, value)
-				if encodeErr != nil {
-					data.Error, status = encodeErr.Error(), http.StatusBadRequest
-					break
+				if field.ID == "description" {
+					var text string
+					if json.Unmarshal(field.PresetValue, &text) == nil {
+						data.Description = text
+					} else {
+						descriptionADF = field.PresetValue
+					}
+				} else if field.Custom {
+					customFields[field.ID] = field.PresetValue
 				}
-				customFields[field.ID] = encoded
+				continue
+			}
+			submitted := r.PostForm["field_"+field.ID]
+			child := r.PostFormValue("field_" + field.ID + "_child")
+			data.FieldValues[field.ID] = r.PostFormValue("field_" + field.ID)
+			data.FieldChoices[field.ID] = submitted
+			if child != "" {
+				data.FieldChoices[field.ID+"_child"] = []string{child}
+			}
+			switch field.ID {
+			case "summary", "description":
+				value := r.PostFormValue("field_" + field.ID)
+				switch {
+				case field.Required && strings.TrimSpace(value) == "":
+					data.Error = field.Name + " is required."
+				case field.ID == "summary":
+					data.Summary = strings.TrimSpace(value)
+				default:
+					data.Description = value
+				}
+			default:
+				encoded, present, err := encodeServicePortalField(field, submitted, child, data.FieldOptions[field.ID], memberByEmail)
+				switch {
+				case err != nil:
+					data.Error = err.Error()
+				case !present && field.Required:
+					data.Error = field.Name + " is required."
+				case present:
+					customFields[field.ID] = encoded
+				}
 			}
 			if data.Error != "" {
+				status = http.StatusBadRequest
 				break
 			}
 		}
@@ -1112,7 +1169,7 @@ func (h *Handler) ServiceRequestForm(w http.ResponseWriter, r *http.Request) {
 			h.writeWorkspacePageStatus(w, r, "page_service_request_form", user, workspaceID, data, "service", desk.ProjectID, status)
 			return
 		}
-		request, err := h.Commands.CreateServiceRequest(r.Context(), commands.CreateServiceRequestInput{ActorID: user.ID, WorkspaceID: workspaceID, ServiceDeskID: desk.ID, RequestTypeID: requestType.ID, Channel: "portal", Summary: data.Summary, Description: data.Description, Fields: customFields})
+		request, err := h.Commands.CreateServiceRequest(r.Context(), commands.CreateServiceRequestInput{ActorID: user.ID, WorkspaceID: workspaceID, ServiceDeskID: desk.ID, RequestTypeID: requestType.ID, Channel: "portal", Summary: data.Summary, Description: data.Description, DescriptionADF: descriptionADF, Fields: customFields})
 		if err == nil {
 			redirectLocal(w, r, "/service/requests/"+request.Issue.Key)
 			return
@@ -1122,15 +1179,170 @@ func (h *Handler) ServiceRequestForm(w http.ResponseWriter, r *http.Request) {
 	h.writeWorkspacePageStatus(w, r, "page_service_request_form", user, workspaceID, data, "service", desk.ProjectID, status)
 }
 
-func encodeServiceRequestField(field models.ServiceRequestTypeField, value string) (json.RawMessage, error) {
-	if field.Type == models.CustomFieldNumber {
-		number, err := strconv.ParseFloat(value, 64)
-		if err != nil || math.IsInf(number, 0) || math.IsNaN(number) {
-			return nil, fmt.Errorf("%s must be a finite number", field.Name)
+// Chosen reports whether a refused portal form chose a value for a field.
+func (d servicePageData) Chosen(fieldID, value string) bool {
+	for _, chosen := range d.FieldChoices[fieldID] {
+		if chosen == value {
+			return true
 		}
-		return json.Marshal(number)
 	}
-	return json.Marshal(value)
+	return false
+}
+
+// encodeServicePortalField reads a portal answer as the Jira value its field
+// stores: option ids for select fields, where a cascading select's child must
+// belong to its parent, members found by email for user pickers, and lists for
+// multi-value fields. present is false when the customer left it blank.
+func encodeServicePortalField(field models.ServiceRequestTypeField, submitted []string, child string, options []store.ServiceRequestFieldOption, memberByEmail func(string) (string, error)) (json.RawMessage, bool, error) {
+	values := []string{}
+	for _, value := range submitted {
+		if value = strings.TrimSpace(value); value != "" {
+			values = append(values, value)
+		}
+	}
+	if len(values) == 0 {
+		return nil, false, nil
+	}
+	option := func(id string) (store.ServiceRequestFieldOption, bool) {
+		for _, candidate := range options {
+			if candidate.ID == id {
+				return candidate, true
+			}
+		}
+		return store.ServiceRequestFieldOption{}, false
+	}
+	split := func(separators string) []string {
+		return strings.FieldsFunc(strings.Join(values, " "), func(r rune) bool { return unicode.IsSpace(r) || strings.ContainsRune(separators, r) })
+	}
+	var encoded any
+	switch field.Type {
+	case models.CustomFieldNumber:
+		number, err := strconv.ParseFloat(values[0], 64)
+		if err != nil || math.IsInf(number, 0) || math.IsNaN(number) {
+			return nil, true, fmt.Errorf("%s must be a finite number.", field.Name)
+		}
+		encoded = number
+	case models.CustomFieldDate:
+		if _, err := time.Parse("2006-01-02", values[0]); err != nil {
+			return nil, true, fmt.Errorf("%s must be a date.", field.Name)
+		}
+		encoded = values[0]
+	case models.CustomFieldSelect:
+		if _, ok := option(values[0]); !ok {
+			return nil, true, fmt.Errorf("Choose one of the options for %s.", field.Name)
+		}
+		encoded = values[0]
+	case models.CustomFieldMultiSelect:
+		ids, seen := []string{}, map[string]bool{}
+		for _, value := range values {
+			if _, ok := option(value); !ok {
+				return nil, true, fmt.Errorf("Choose from the options for %s.", field.Name)
+			}
+			if !seen[value] {
+				seen[value] = true
+				ids = append(ids, value)
+			}
+		}
+		encoded = ids
+	case models.CustomFieldCascadingSelect:
+		parent, ok := option(values[0])
+		if !ok {
+			return nil, true, fmt.Errorf("Choose one of the options for %s.", field.Name)
+		}
+		value := map[string]string{"parent": parent.ID}
+		if child = strings.TrimSpace(child); child != "" {
+			belongs := false
+			for _, candidate := range parent.Children {
+				belongs = belongs || candidate.ID == child
+			}
+			if !belongs {
+				return nil, true, fmt.Errorf("Choose a %s detail that belongs to %s.", field.Name, parent.Value)
+			}
+			value["child"] = child
+		}
+		encoded = value
+	case models.CustomFieldLabels:
+		encoded = split(",")
+	case models.CustomFieldUser, models.CustomFieldMultiUser:
+		emails := split(",;")
+		if field.Type == models.CustomFieldUser && len(emails) > 1 {
+			return nil, true, fmt.Errorf("Enter one email address for %s.", field.Name)
+		}
+		ids, seen := []string{}, map[string]bool{}
+		for _, email := range emails {
+			id, err := memberByEmail(email)
+			if err != nil {
+				return nil, true, err
+			}
+			if !seen[id] {
+				seen[id] = true
+				ids = append(ids, id)
+			}
+		}
+		if field.Type == models.CustomFieldUser {
+			encoded = ids[0]
+		} else {
+			encoded = ids
+		}
+	default:
+		encoded = values[0]
+	}
+	raw, err := json.Marshal(encoded)
+	return raw, true, err
+}
+
+// serviceFieldIDs lists the ids a stored field value names.
+func serviceFieldIDs(value any) []string {
+	ids := []string{}
+	switch typed := value.(type) {
+	case string:
+		ids = append(ids, typed)
+	case []any:
+		for _, item := range typed {
+			if text, ok := item.(string); ok {
+				ids = append(ids, text)
+			}
+		}
+	case map[string]any:
+		for _, key := range []string{"parent", "child"} {
+			if text, ok := typed[key].(string); ok && text != "" {
+				ids = append(ids, text)
+			}
+		}
+	}
+	return ids
+}
+
+// serviceFieldDisplay writes a stored field value for people: options and
+// members by name, and lists joined.
+func serviceFieldDisplay(fieldType string, value any, catalog store.CustomFieldValueCatalog) string {
+	name := func(id string) string {
+		if option, ok := catalog.Options[id]; ok {
+			return option.Value
+		}
+		if user, ok := catalog.Users[id]; ok {
+			return user.DisplayName
+		}
+		return id
+	}
+	names := func() []string {
+		out := []string{}
+		for _, id := range serviceFieldIDs(value) {
+			if fieldType == models.CustomFieldLabels {
+				out = append(out, id)
+			} else {
+				out = append(out, name(id))
+			}
+		}
+		return out
+	}
+	switch fieldType {
+	case models.CustomFieldSelect, models.CustomFieldUser, models.CustomFieldMultiSelect, models.CustomFieldMultiUser, models.CustomFieldLabels:
+		return strings.Join(names(), ", ")
+	case models.CustomFieldCascadingSelect:
+		return strings.Join(names(), " - ")
+	}
+	return fmt.Sprint(value)
 }
 
 func (h *Handler) serviceRequestForPage(r *http.Request, workspaceID, userID, issueIDOrKey string) (*models.ServiceRequest, bool, error) {
@@ -1323,7 +1535,8 @@ func (h *Handler) ServiceRequestPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load request fields.", http.StatusInternalServerError)
 		return
 	}
-	requestFields := make([]serviceRequestFieldValueView, 0)
+	decodedFields := map[string]any{}
+	optionIDs, userIDs := []string{}, []string{}
 	for _, field := range configuredFields {
 		if !field.Custom {
 			continue
@@ -1337,7 +1550,24 @@ func (h *Handler) ServiceRequestPage(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Could not render request fields.", http.StatusInternalServerError)
 			return
 		}
-		requestFields = append(requestFields, serviceRequestFieldValueView{Name: field.Name, Value: fmt.Sprint(value)})
+		decodedFields[field.ID] = value
+		switch field.Type {
+		case models.CustomFieldSelect, models.CustomFieldMultiSelect, models.CustomFieldCascadingSelect:
+			optionIDs = append(optionIDs, serviceFieldIDs(value)...)
+		case models.CustomFieldUser, models.CustomFieldMultiUser:
+			userIDs = append(userIDs, serviceFieldIDs(value)...)
+		}
+	}
+	fieldCatalog, err := h.Store.LoadCustomFieldValueCatalog(r.Context(), workspaceID, optionIDs, userIDs, nil)
+	if err != nil {
+		http.Error(w, "Could not render request fields.", http.StatusInternalServerError)
+		return
+	}
+	requestFields := make([]serviceRequestFieldValueView, 0)
+	for _, field := range configuredFields {
+		if value, ok := decodedFields[field.ID]; ok {
+			requestFields = append(requestFields, serviceRequestFieldValueView{Name: field.Name, Value: serviceFieldDisplay(field.Type, value, fieldCatalog)})
+		}
 	}
 	var assetInventory *models.ServiceAssetInventory
 	requestAssets := []models.ServiceRequestAsset{}

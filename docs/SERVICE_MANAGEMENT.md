@@ -75,6 +75,15 @@ customer help text. They can also be hidden from the portal with a preset value,
 which every new request takes; a hidden required field needs a preset. The
 portal UI and JSM field metadata read the same durable configuration.
 
+The portal form asks for each visible field in its own terms. Select and
+cascading select fields offer the options of the context that reaches the
+desk's project, with a cascading select's child options grouped under their
+parent, and multi-select fields offer a checkbox per option. Date, URL and
+number fields use matching inputs, and labels are separated by spaces. A user
+picker takes a site member's email address and a multi-user picker several,
+separated by commas; the portal finds the member without listing the site's
+people. The request page shows the chosen options and people by name.
+
 Field metadata gives each field's Jira schema (type, custom field type,
 `customId` and array `items`). Select, multi-select and cascading select fields
 list the options of the context that reaches the desk's project as
