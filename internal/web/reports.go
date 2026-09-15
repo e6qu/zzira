@@ -13,6 +13,7 @@ import (
 type doraReportData struct {
 	Project *models.Project
 	Report  models.DORAReport
+	CSVURL  string
 }
 
 type appReportView struct {
@@ -110,5 +111,13 @@ func (h *Handler) DORAReport(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not calculate delivery metrics.", http.StatusInternalServerError)
 		return
 	}
-	h.writeWorkspacePage(w, r, "page_dora_report", user, workspaceID, doraReportData{Project: project, Report: report}, "reports", project.Key)
+	if wantsCSV(r) {
+		rows := make([][]string, 0, len(report.Daily))
+		for _, day := range report.Daily {
+			rows = append(rows, []string{day.Date, strconv.Itoa(day.Deployments), strconv.Itoa(day.Failures)})
+		}
+		writeReportCSV(w, project.Key+" DORA metrics", []string{"Date", "Successful deployments", "Failed or rolled back"}, rows)
+		return
+	}
+	h.writeWorkspacePage(w, r, "page_dora_report", user, workspaceID, doraReportData{Project: project, Report: report, CSVURL: csvURL(r)}, "reports", project.Key)
 }

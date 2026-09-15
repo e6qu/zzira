@@ -46,6 +46,7 @@ type serviceReportDayView struct {
 }
 
 type servicePageData struct {
+	CSVURL                string
 	Desks                 []models.ServiceDesk
 	Desk                  *models.ServiceDesk
 	RequestTypes          []models.ServiceRequestType
@@ -416,7 +417,15 @@ func (h *Handler) ServiceReports(w http.ResponseWriter, r *http.Request) {
 	for _, day := range report.Daily {
 		views = append(views, serviceReportDayView{Day: day.Day, Count: day.Count, Width: day.Count * 100 / maximum})
 	}
-	h.writeWorkspacePage(w, r, "page_service_reports", user, workspaceID, servicePageData{Desk: desk, RequestTypes: requestTypes, Report: report, ReportDays: views, ReportFilter: filter, ReportChannels: channels, CanAgent: true}, "service", desk.ProjectID)
+	if wantsCSV(r) {
+		rows := make([][]string, 0, len(report.Daily))
+		for _, day := range report.Daily {
+			rows = append(rows, []string{day.Day, strconv.Itoa(day.Count)})
+		}
+		writeReportCSV(w, desk.ProjectKey+" service requests", []string{"Date", "Requests created"}, rows)
+		return
+	}
+	h.writeWorkspacePage(w, r, "page_service_reports", user, workspaceID, servicePageData{Desk: desk, RequestTypes: requestTypes, Report: report, ReportDays: views, ReportFilter: filter, ReportChannels: channels, CanAgent: true, CSVURL: csvURL(r)}, "service", desk.ProjectID)
 }
 
 func (h *Handler) ServiceAgentAssign(w http.ResponseWriter, r *http.Request) {

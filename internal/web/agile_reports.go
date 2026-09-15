@@ -21,6 +21,7 @@ type agileReportBoards struct {
 
 type sprintReportData struct {
 	agileReportBoards
+	CSVURL  string
 	Sprints []*models.Sprint
 	Sprint  *models.Sprint
 	Report  *sprintReportView
@@ -28,6 +29,7 @@ type sprintReportData struct {
 
 type velocityReportData struct {
 	agileReportBoards
+	CSVURL string
 	Report *velocityReportView
 }
 
@@ -434,6 +436,17 @@ func (h *Handler) SprintReport(w http.ResponseWriter, r *http.Request) {
 			data.Report = newSprintReportView(report, siteDateLayouts{day: look.DateDay, complete: look.DateComplete})
 		}
 	}
+	if wantsCSV(r) {
+		rows := [][]string{}
+		if data.Report != nil {
+			for _, section := range data.Report.Sections {
+				rows = append(rows, workItemCSVRows(section.Title, section.Issues)...)
+			}
+		}
+		writeReportCSV(w, boards.Project.Key+" sprint report", workItemCSVHeader(), rows)
+		return
+	}
+	data.CSVURL = csvURL(r)
 	h.writeWorkspacePage(w, r, "page_sprint_report", user, workspaceID, data, "reports", boards.Project.ID)
 }
 
@@ -452,6 +465,17 @@ func (h *Handler) VelocityReport(w http.ResponseWriter, r *http.Request) {
 		}
 		data.Report = newVelocityReportView(report)
 	}
+	if wantsCSV(r) {
+		rows := [][]string{}
+		if data.Report != nil {
+			for _, bar := range data.Report.Bars {
+				rows = append(rows, []string{bar.Name, bar.Commitment, bar.Completed})
+			}
+		}
+		writeReportCSV(w, boards.Project.Key+" velocity chart", []string{"Sprint", "Commitment", "Completed"}, rows)
+		return
+	}
+	data.CSVURL = csvURL(r)
 	h.writeWorkspacePage(w, r, "page_velocity_report", user, workspaceID, data, "reports", boards.Project.ID)
 }
 
@@ -620,6 +644,7 @@ func newControlChartView(chart models.ControlChart, days int, now time.Time, lay
 
 type flowReportData struct {
 	agileReportBoards
+	CSVURL  string
 	Days    int
 	Windows []int
 	Flow    *cumulativeFlowView
@@ -666,6 +691,33 @@ func (h *Handler) flowReport(w http.ResponseWriter, r *http.Request, page string
 			data.Control = newControlChartView(chart, days, now, look.DateDay, look.DateComplete)
 		}
 	}
+	if wantsCSV(r) {
+		if data.Flow != nil {
+			header := []string{"Date"}
+			for _, column := range data.Flow.Columns {
+				header = append(header, column.Name)
+			}
+			rows := [][]string{}
+			for _, day := range data.Flow.Days {
+				row := []string{day.Date}
+				for _, count := range day.Counts {
+					row = append(row, strconv.Itoa(count))
+				}
+				rows = append(rows, row)
+			}
+			writeReportCSV(w, boards.Project.Key+" cumulative flow", header, rows)
+			return
+		}
+		rows := [][]string{}
+		if data.Control != nil {
+			for _, sample := range data.Control.Samples {
+				rows = append(rows, []string{sample.Key, sample.Summary, sample.CompletedAt, strconv.FormatFloat(float64(sample.CycleSeconds)/3600, 'f', 2, 64)})
+			}
+		}
+		writeReportCSV(w, boards.Project.Key+" control chart", []string{"Work item", "Summary", "Completed", "Cycle time (hours)"}, rows)
+		return
+	}
+	data.CSVURL = csvURL(r)
 	h.writeWorkspacePage(w, r, page, user, workspaceID, data, "reports", boards.Project.ID)
 }
 
@@ -728,6 +780,7 @@ type progressChoice struct {
 
 type progressReportData struct {
 	agileReportBoards
+	CSVURL                        string
 	Kind, Title, Parameter, Empty string
 	Choices                       []progressChoice
 	Selected                      string
@@ -773,6 +826,17 @@ func (h *Handler) EpicReport(w http.ResponseWriter, r *http.Request) {
 		}
 		data.Report = newProgressReportView(report, h.siteLook(r, workspaceID).DateDay)
 	}
+	if wantsCSV(r) {
+		rows := [][]string{}
+		if data.Report != nil {
+			for _, section := range data.Report.Sections {
+				rows = append(rows, workItemCSVRows(section.Title, section.Issues)...)
+			}
+		}
+		writeReportCSV(w, boards.Project.Key+" "+data.Kind+" report "+data.Selected, workItemCSVHeader(), rows)
+		return
+	}
+	data.CSVURL = csvURL(r)
 	h.writeWorkspacePage(w, r, "page_progress_report", user, workspaceID, data, "reports", boards.Project.ID)
 }
 
@@ -818,6 +882,17 @@ func (h *Handler) VersionReport(w http.ResponseWriter, r *http.Request) {
 		}
 		data.Report = newProgressReportView(report, h.siteLook(r, workspaceID).DateDay)
 	}
+	if wantsCSV(r) {
+		rows := [][]string{}
+		if data.Report != nil {
+			for _, section := range data.Report.Sections {
+				rows = append(rows, workItemCSVRows(section.Title, section.Issues)...)
+			}
+		}
+		writeReportCSV(w, boards.Project.Key+" "+data.Kind+" report "+data.Selected, workItemCSVHeader(), rows)
+		return
+	}
+	data.CSVURL = csvURL(r)
 	h.writeWorkspacePage(w, r, "page_progress_report", user, workspaceID, data, "reports", boards.Project.ID)
 }
 
@@ -925,6 +1000,7 @@ func newResolutionTimeView(report models.ResolutionTimeReport, layout string) *r
 }
 
 type issueAnalysisData struct {
+	CSVURL          string
 	Project         *models.Project
 	Days            int
 	Windows         []int
@@ -986,5 +1062,39 @@ func (h *Handler) issueAnalysisReport(w http.ResponseWriter, r *http.Request, pa
 		}
 		data.Resolution = newResolutionTimeView(report, layout)
 	}
+	if wantsCSV(r) {
+		if data.CreatedResolved != nil {
+			rows := [][]string{}
+			for _, day := range data.CreatedResolved.Days {
+				rows = append(rows, []string{day.Date, strconv.Itoa(day.Created), strconv.Itoa(day.Resolved), strconv.Itoa(day.CreatedTotal), strconv.Itoa(day.ResolvedTotal)})
+			}
+			writeReportCSV(w, project.Key+" created vs resolved", []string{"Date", "Created", "Resolved", "Created in total", "Resolved in total"}, rows)
+			return
+		}
+		rows := [][]string{}
+		for _, day := range data.Resolution.Days {
+			rows = append(rows, []string{day.Date, strconv.Itoa(day.Resolved), strconv.FormatFloat(float64(day.AverageSeconds)/3600, 'f', 2, 64)})
+		}
+		writeReportCSV(w, project.Key+" resolution time", []string{"Date", "Resolved", "Average resolution time (hours)"}, rows)
+		return
+	}
+	data.CSVURL = csvURL(r)
 	h.writeWorkspacePage(w, r, page, user, workspaceID, data, "reports", project.ID)
+}
+
+func workItemCSVHeader() []string {
+	return []string{"Section", "Work item", "Summary", "Work type", "Status", "Estimate at start", "Estimate at end", "Added after start"}
+}
+
+// workItemCSVRows lists a report section's work items as CSV rows.
+func workItemCSVRows(section string, issues []models.SprintReportIssue) [][]string {
+	rows := make([][]string, 0, len(issues))
+	for _, issue := range issues {
+		added := "No"
+		if issue.AddedAfterStart {
+			added = "Yes"
+		}
+		rows = append(rows, []string{section, issue.Key, issue.Summary, issue.IssueType, issue.Status, issue.EstimateStart, issue.EstimateEnd, added})
+	}
+	return rows
 }

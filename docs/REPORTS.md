@@ -26,9 +26,22 @@ Jira Service Management incident request types currently add the `incident`
 label that feeds recovery time; dedicated incident relationships and service
 configuration remain. Deployment approvals, configurable
 environment mapping, excluded-period calendars, team filters, comparison
-periods, targets, exports, subscriptions and scheduled delivery remain.
-Every Jira and Agile report named in the plan is now available; comparisons,
-exports and scheduled delivery remain.
+periods, targets, subscriptions and scheduled delivery remain.
+Every Jira and Agile report named in the plan is now available; comparisons
+and scheduled delivery remain.
+
+## CSV downloads
+
+Every report page, and the service desk report, has a Download CSV link. It
+downloads the data behind the chart for the board, sprint, epic, version,
+window and filters on screen, named after the project key, the report and the
+day, such as `ZZ-velocity-chart-2026-09-15.csv`. Sprint, epic and version
+reports list each work item with its section, estimates and whether it was
+added after the start; the control chart lists each work item's cycle time in
+hours; the others list one row per day or sprint. The file is sent with
+`Cache-Control: no-store`, and a cell that starts with `=`, `+`, `-`, `@`, a
+tab or a carriage return is prefixed with an apostrophe so a spreadsheet does
+not run it as a formula.
 
 ## Sprint report and velocity chart
 
@@ -76,8 +89,9 @@ current open and resolved counts, requests with any breached SLA cycle, CSAT
 average and response count, and an exact daily intake series. The daily chart
 has an accessible text alternative and keyboard-reachable data table. SLA
 breaches are calculated with the same desk calendar and holidays used on the
-customer request and attention queue. Request-type, organization, channel and
-priority segments, comparison periods, exports and scheduled delivery remain.
+customer request and attention queue. The Download CSV link exports the daily
+intake series for the filters on screen. Organization and priority segments,
+comparison periods and scheduled delivery remain.
 
 ## Cumulative flow diagram and control chart
 
