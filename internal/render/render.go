@@ -10,6 +10,7 @@ import (
 	"html/template"
 	"io"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/e6qu/zzira/internal/adf"
@@ -29,6 +30,37 @@ func init() {
 		"wikiHTML": func(storage string) (template.HTML, error) {
 			value, err := wikimarkup.Render(storage)
 			return template.HTML(value), err // #nosec G203 -- strict tag/attribute validation and escaping in wikimarkup.
+		},
+		// planNumber shows a plan estimate or capacity without trailing zeros.
+		"planNumber": func(value any) string {
+			switch number := value.(type) {
+			case float64:
+				return strconv.FormatFloat(number, 'f', -1, 64)
+			case *float64:
+				if number == nil {
+					return ""
+				}
+				return strconv.FormatFloat(*number, 'f', -1, 64)
+			}
+			return fmt.Sprint(value)
+		},
+		// deref64 reads an optional whole number.
+		"deref64": func(value *int64) int64 {
+			if value == nil {
+				return 0
+			}
+			return *value
+		},
+		// planMax is the top of a capacity meter: the capacity, or the planned
+		// work when it is more.
+		"planMax": func(capacity, planned float64) float64 {
+			if planned > capacity {
+				return planned
+			}
+			if capacity <= 0 {
+				return 1
+			}
+			return capacity
 		},
 		"statusClass": func(category string) string {
 			switch category {

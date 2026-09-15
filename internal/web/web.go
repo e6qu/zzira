@@ -918,6 +918,14 @@ func (h *Handler) customFieldChoices(ctx context.Context, wsID string, issue *mo
 			for _, member := range members {
 				choices[field.ID] = append(choices[field.ID], models.CreateFieldOption{ID: member.ID, Name: member.DisplayName})
 			}
+		case models.CustomFieldTeam:
+			teams, err := h.Store.AtlassianTeams(ctx, wsID)
+			if err != nil {
+				return nil, err
+			}
+			for _, team := range teams {
+				choices[field.ID] = append(choices[field.ID], models.CreateFieldOption{ID: team.ID, Name: team.Name})
+			}
 		case models.CustomFieldGroup, models.CustomFieldMultiGroup:
 			if groups == nil {
 				siteGroups, err := h.Store.SiteGroups(ctx, wsID)

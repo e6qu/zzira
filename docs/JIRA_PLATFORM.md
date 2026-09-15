@@ -163,8 +163,48 @@ and end fields: Due date, the site's Target start and Target end fields (which
 every site has), or a chosen date field. A teams table lists each team's
 planning style, sprint length, capacity and member count. Site administrators
 and the plan lead can view and edit; View and Edit permissions grant the same
-to people and groups, and anyone else gets 404. Capacity planning, dependency
-scheduling, scenarios and editing work from the plan remain.
+to people and groups, and anyone else gets 404.
+
+Every site has Jira's **Team** field (`com.atlassian.teams:rm-teams-custom-field-team`),
+which holds an Atlassian team: work items take a team by id or `{"id"}`, read it
+back as `{id, name, title, avatarUrl, isVisible, isShared}`, and JQL matches it
+by team id or name. A work item belongs to a plan team when its Team field
+holds that team's Atlassian team.
+
+**Scenarios.** A plan is a sandbox. Every plan has a Default scenario, whose id
+is the plan's `scenarioId`, and planners with edit access create more, blank
+from the values in Jira or as a copy of another scenario, and rename, recolor
+or delete them (the default cannot be deleted). Editing a work item from the
+plan changes its summary, start and end dates, team, sprint or estimate in the
+chosen scenario only; each changed value is flagged in the scenario's color,
+and setting a value back to what Jira has forgets the change. **Review
+changes** lists the scenario's changes by work item with what changed and who
+changed it. Saving the selected changes updates the work items in Jira as the
+planner, with their permissions and field rules, optionally without
+notifications; each saved change is forgotten, and a change that cannot be
+saved stays with the reason, such as an assignment to a plan-only team, which
+exists only in the plan. Discarding forgets the selected changes.
+
+**Capacity.** Estimates are the Story point estimate field for story point
+plans, and the original estimate in hours, or in days of the site's working
+hours per day, for time plans. A Scrum team whose issue source is a board plans
+that board's active and future sprints: each sprint's capacity is the team's
+capacity per sprint in story points (30 by default), or its weekly capacity
+(200 hours by default) times the sprint length in weeks for time estimates. A
+Kanban team plans twelve one-week iterations from this week with time
+estimates. Work consumes a Scrum iteration when its team and sprint are the
+team's and the sprint, and a Kanban week by the share of its dates that fall in
+the week. Each iteration shows its capacity, the planned and completed
+estimates, the unestimated work items and whether it is over capacity, and a
+planner can give one iteration its own capacity in a scenario.
+
+**Dependencies.** Blocks links between work in the plan are its dependencies:
+the outward work item blocks the inward one. A dependency is off track when
+the blocking work ends after the blocked work starts, is planned into a later
+sprint, or into the same sprint unless the plan's "Dependent work items can be
+scheduled to the same iteration" setting (scheduling dependencies `Concurrent`)
+allows it. Work items show which work they block and are blocked by, red when
+off track.
 
 Atlassian teams are kept on the site's **People › Teams** page. Anyone can start
 a team; its members and site administrators add and remove members or delete

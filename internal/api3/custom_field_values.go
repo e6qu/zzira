@@ -46,7 +46,7 @@ func (h *Handler) decorateCustomFieldValues(ctx context.Context, workspaceID str
 		switch definition.Type {
 		case models.CustomFieldSelect, models.CustomFieldMultiSelect, models.CustomFieldCascadingSelect,
 			models.CustomFieldUser, models.CustomFieldMultiUser, models.CustomFieldGroup, models.CustomFieldMultiGroup,
-			models.CustomFieldProject, models.CustomFieldVersion, models.CustomFieldMultiVersion:
+			models.CustomFieldProject, models.CustomFieldVersion, models.CustomFieldMultiVersion, models.CustomFieldTeam:
 			types[definition.ID] = definition.Type
 		}
 	}
@@ -129,6 +129,20 @@ func (h *Handler) decorateCustomFieldValues(ctx context.Context, workspaceID str
 		}
 	}
 	version := func(id string) map[string]any { return versions[id] }
+	// A Team field value is described as Jira's Teams API describes a team.
+	var teams map[string]string
+	team := func(id string) map[string]any {
+		if teams == nil {
+			teams = map[string]string{}
+			if listed, err := h.Store.AtlassianTeams(ctx, workspaceID); err == nil {
+				for _, found := range listed {
+					teams[found.ID] = found.Name
+				}
+			}
+		}
+		name := teams[id]
+		return map[string]any{"id": id, "name": name, "title": name, "avatarUrl": "", "isVisible": true, "isShared": true}
+	}
 	option := func(id string) map[string]any {
 		bean := map[string]any{"self": h.BaseURL + "/rest/api/3/customFieldOption/" + id, "id": id}
 		if found, ok := catalog.Options[id]; ok {
@@ -206,6 +220,10 @@ func (h *Handler) decorateCustomFieldValues(ctx context.Context, workspaceID str
 				}
 			case models.CustomFieldMultiVersion:
 				fields[fieldID] = each(stringList(decoded), version)
+			case models.CustomFieldTeam:
+				if id, ok := decoded.(string); ok {
+					fields[fieldID] = team(id)
+				}
 			}
 		}
 	}

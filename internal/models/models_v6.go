@@ -26,6 +26,8 @@ const (
 	CustomFieldProject         = "project"
 	CustomFieldVersion         = "version"
 	CustomFieldMultiVersion    = "multiversion"
+	// CustomFieldTeam holds the id of an Atlassian team.
+	CustomFieldTeam = "team"
 )
 
 // CustomFieldTypeLabel names a custom field type as Jira's collapsed JQL
@@ -56,6 +58,8 @@ func CustomFieldTypeLabel(fieldType string) string {
 		return "Group Picker (multiple groups)"
 	case CustomFieldLabels:
 		return "Labels"
+	case CustomFieldTeam:
+		return "Team"
 	case CustomFieldProject:
 		return "Project Picker (single project)"
 	case CustomFieldVersion:
@@ -147,6 +151,7 @@ var CustomFieldTypeKeys = map[string]string{
 	CustomFieldProject:         "com.atlassian.jira.plugin.system.customfieldtypes:project",
 	CustomFieldVersion:         "com.atlassian.jira.plugin.system.customfieldtypes:version",
 	CustomFieldMultiVersion:    "com.atlassian.jira.plugin.system.customfieldtypes:multiversion",
+	CustomFieldTeam:            "com.atlassian.teams:rm-teams-custom-field-team",
 }
 
 // IsOptionFieldType reports whether a custom field type takes options.

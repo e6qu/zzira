@@ -1000,7 +1000,7 @@ func WithCustomFields(base FieldResolver, fields []*models.CustomField) FieldRes
 		switch f.Type {
 		case models.CustomFieldSelect, models.CustomFieldMultiSelect, models.CustomFieldCascadingSelect,
 			models.CustomFieldUser, models.CustomFieldMultiUser, models.CustomFieldGroup, models.CustomFieldMultiGroup, models.CustomFieldLabels,
-			models.CustomFieldProject, models.CustomFieldVersion, models.CustomFieldMultiVersion:
+			models.CustomFieldProject, models.CustomFieldVersion, models.CustomFieldMultiVersion, models.CustomFieldTeam:
 			if res.CustomValueFields == nil {
 				res.CustomValueFields = map[string]CustomValueField{}
 			}
@@ -2440,6 +2440,8 @@ func (c *compiler) customValueCandidates(field CustomValueField, value string) s
 		return "(" + literal + " || ARRAY(SELECT p.id FROM projects p WHERE upper(p.key)=upper(" + c.arg(value) + ")))"
 	case models.CustomFieldVersion, models.CustomFieldMultiVersion:
 		return "(" + literal + " || ARRAY(SELECT v.id FROM project_versions v WHERE v.name=" + c.arg(value) + "))"
+	case models.CustomFieldTeam:
+		return "(" + literal + " || ARRAY(SELECT t.id::text FROM atlassian_teams t WHERE lower(t.name)=lower(" + c.arg(value) + ")))"
 	}
 	return literal
 }
