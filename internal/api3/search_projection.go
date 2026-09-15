@@ -4,8 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"html"
-	"sort"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/e6qu/zzira/internal/adf"
 	"github.com/e6qu/zzira/internal/models"
@@ -219,35 +220,188 @@ func searchFieldMetadata(requested []string, defaultAll, fieldsByKeys bool, defi
 	return names, schemas
 }
 
+// renderedSearchFields is Jira's renderedFields: rich text as HTML, dates and
+// sizes as people read them, and comment and worklog bodies rendered inside
+// their beans. Fields without a rendered form are null.
 func renderedSearchFields(fields map[string]any) map[string]any {
 	result := map[string]any{}
-	keys := make([]string, 0, len(fields))
-	for key := range fields {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	for _, key := range keys {
-		value := fields[key]
-		switch key {
-		case "description":
-			if document, ok := value.(json.RawMessage); ok {
-				result[key] = adf.ToHTML(document)
-			} else {
-				result[key] = nil
-			}
-		case "summary":
+	for key, value := range fields {
+		switch {
+		case key == "summary":
 			if text, ok := value.(string); ok {
 				result[key] = html.EscapeString(text)
 			} else {
 				result[key] = nil
 			}
-		case "created", "updated":
+		case key == "description" || key == "environment":
+			result[key] = renderedRichText(value)
+		case key == "created" || key == "updated" || key == "resolutiondate" || key == "lastViewed" || key == "statuscategorychangedate":
+			result[key] = renderedDate(value, false)
+		case key == "duedate":
+			result[key] = renderedDate(value, true)
+		case key == "comment":
+			result[key] = renderedBodies(value, "comments", "body")
+		case key == "worklog":
+			result[key] = renderedBodies(value, "worklogs", "comment")
+		case key == "attachment":
+			result[key] = renderedAttachments(value)
+		case key == "timetracking":
 			result[key] = value
+		case strings.HasPrefix(key, "customfield_"):
+			result[key] = renderedCustomValue(value)
 		default:
 			result[key] = nil
 		}
 	}
 	return result
+}
+
+// renderedRichText renders an Atlassian document as HTML and escapes plain
+// text; anything else has no rendered form.
+func renderedRichText(value any) any {
+	switch typed := value.(type) {
+	case json.RawMessage:
+		if len(typed) == 0 || string(typed) == "null" {
+			return nil
+		}
+		return adf.ToHTML(typed)
+	case map[string]any:
+		raw, err := json.Marshal(typed)
+		if err != nil {
+			return nil
+		}
+		return adf.ToHTML(raw)
+	case string:
+		return html.EscapeString(typed)
+	}
+	return nil
+}
+
+// renderedCustomValue renders a custom field holding rich text.
+func renderedCustomValue(value any) any {
+	switch typed := value.(type) {
+	case json.RawMessage:
+		var document struct {
+			Type string `json:"type"`
+		}
+		if json.Unmarshal(typed, &document) == nil && document.Type == "doc" {
+			return adf.ToHTML(typed)
+		}
+	case map[string]any:
+		if typed["type"] == "doc" {
+			return renderedRichText(typed)
+		}
+	}
+	return nil
+}
+
+// renderedDate formats a stored time as Jira displays it.
+func renderedDate(value any, dateOnly bool) any {
+	text, ok := value.(string)
+	if !ok || text == "" {
+		return nil
+	}
+	for _, layout := range []string{time.RFC3339Nano, "2006-01-02T15:04:05.000-0700", "2006-01-02T15:04:05-0700", "2006-01-02 15:04:05", "2006-01-02"} {
+		if parsed, err := time.Parse(layout, text); err == nil {
+			if dateOnly || layout == "2006-01-02" {
+				return parsed.Format("02/Jan/06")
+			}
+			return parsed.UTC().Format("02/Jan/06 3:04 PM")
+		}
+	}
+	return text
+}
+
+// renderedBodies copies a paged comment or worklog field with each item's
+// rich text rendered as HTML.
+func renderedBodies(value any, listKey, bodyKey string) any {
+	page, ok := value.(map[string]any)
+	if !ok {
+		return nil
+	}
+	rendered := make(map[string]any, len(page))
+	for key, item := range page {
+		rendered[key] = item
+	}
+	items := []map[string]any{}
+	switch list := page[listKey].(type) {
+	case []map[string]any:
+		items = list
+	case []any:
+		for _, item := range list {
+			if bean, ok := item.(map[string]any); ok {
+				items = append(items, bean)
+			}
+		}
+	}
+	renderedItems := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		copied := make(map[string]any, len(item))
+		for key, field := range item {
+			copied[key] = field
+		}
+		copied[bodyKey] = renderedRichText(item[bodyKey])
+		for _, dateKey := range []string{"created", "updated", "started"} {
+			if _, present := item[dateKey]; present {
+				copied[dateKey] = renderedDate(item[dateKey], false)
+			}
+		}
+		renderedItems = append(renderedItems, copied)
+	}
+	rendered[listKey] = renderedItems
+	return rendered
+}
+
+// renderedAttachments shows each attachment's size and creation as people
+// read them.
+func renderedAttachments(value any) any {
+	var items []map[string]any
+	switch list := value.(type) {
+	case []map[string]any:
+		items = list
+	case []any:
+		for _, item := range list {
+			if bean, ok := item.(map[string]any); ok {
+				items = append(items, bean)
+			}
+		}
+	default:
+		return nil
+	}
+	rendered := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		copied := make(map[string]any, len(item))
+		for key, field := range item {
+			copied[key] = field
+		}
+		copied["created"] = renderedDate(item["created"], false)
+		copied["size"] = renderedSize(item["size"])
+		rendered = append(rendered, copied)
+	}
+	return rendered
+}
+
+// renderedSize is a byte count as Jira shows it: 512 B, 12 kB or 1.2 MB.
+func renderedSize(value any) any {
+	var size float64
+	switch typed := value.(type) {
+	case int:
+		size = float64(typed)
+	case int64:
+		size = float64(typed)
+	case float64:
+		size = typed
+	default:
+		return value
+	}
+	switch {
+	case size < 1024:
+		return strconv.FormatFloat(size, 'f', 0, 64) + " B"
+	case size < 1024*1024:
+		return strconv.FormatFloat(size/1024, 'f', 0, 64) + " kB"
+	default:
+		return strconv.FormatFloat(size/(1024*1024), 'f', 1, 64) + " MB"
+	}
 }
 
 func hasSearchExpand(options searchOptions, name string) bool {

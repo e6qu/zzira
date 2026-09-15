@@ -5878,9 +5878,10 @@
         "internal/store/jql_history_search_test.go",
         "docs/JQL.md",
         "internal/api3/search_projection_test.go",
-        "internal/api3/entity_properties_test.go"
+        "internal/api3/entity_properties_test.go",
+        "internal/api3/search_rendered_fields_test.go"
       ],
-      "notes": "Legacy GET search has pagination, strict option validation, selected fields/app keys, every documented expansion name, requested properties and permission-filtered lifecycle evidence; validateQuery strict (and true) refuses with every clause error, warn (and false) returns them as warningMessages while failing clauses match nothing, none skips validation, and malformed JQL is always refused; issue properties apps index through jiraEntityProperties are searchable and orderable by path and alias; richer rendering and historical version representations remain."
+      "notes": "Legacy GET search has pagination, strict option validation, selected fields/app keys, every documented expansion name, requested properties and permission-filtered lifecycle evidence; validateQuery strict (and true) refuses with every clause error, warn (and false) returns them as warningMessages while failing clauses match nothing, none skips validation, and malformed JQL is always refused; issue properties apps index through jiraEntityProperties are searchable and orderable by path and alias; versionedRepresentations carries each field's current value as version 1. renderedFields renders rich text, comment and worklog bodies as HTML, dates as Jira displays them and attachment sizes, leaving fields without a rendered form null."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/search",
@@ -5894,9 +5895,10 @@
         "internal/store/jql_history_search_test.go",
         "docs/JQL.md",
         "internal/api3/search_projection_test.go",
-        "internal/api3/entity_properties_test.go"
+        "internal/api3/entity_properties_test.go",
+        "internal/api3/search_rendered_fields_test.go"
       ],
-      "notes": "Legacy POST search has strict bounded JSON decoding, pagination, selected fields/app keys, every documented expansion name, requested properties and permission-filtered lifecycle evidence; validateQuery strict (and true) refuses with every clause error, warn (and false) returns them as warningMessages while failing clauses match nothing, none skips validation, and malformed JQL is always refused; issue properties apps index through jiraEntityProperties are searchable and orderable by path and alias; richer rendering and historical version representations remain."
+      "notes": "Legacy POST search has strict bounded JSON decoding, pagination, selected fields/app keys, every documented expansion name, requested properties and permission-filtered lifecycle evidence; validateQuery strict (and true) refuses with every clause error, warn (and false) returns them as warningMessages while failing clauses match nothing, none skips validation, and malformed JQL is always refused; issue properties apps index through jiraEntityProperties are searchable and orderable by path and alias; versionedRepresentations carries each field's current value as version 1. renderedFields renders rich text, comment and worklog bodies as HTML, dates as Jira displays them and attachment sizes, leaving fields without a rendered form null."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/search/approximate-count",
@@ -5925,9 +5927,10 @@
         "internal/store/jql_history_search_test.go",
         "docs/JQL.md",
         "internal/api3/search_projection_test.go",
-        "internal/api3/entity_properties_test.go"
+        "internal/api3/entity_properties_test.go",
+        "internal/api3/search_rendered_fields_test.go"
       ],
-      "notes": "Enhanced GET search has bounded-query, immutable numeric Jira IDs, selected fields/app keys, every documented expansion name, requested properties, strongly consistent reconciliation, durable expiring query/reconciliation/user/workspace-bound result snapshots and invalid-option evidence; issue properties apps index through jiraEntityProperties are searchable and orderable by path and alias; richer rendering/history remains."
+      "notes": "Enhanced GET search has bounded-query, immutable numeric Jira IDs, selected fields/app keys, every documented expansion name, requested properties, strongly consistent reconciliation, durable expiring query/reconciliation/user/workspace-bound result snapshots and invalid-option evidence; issue properties apps index through jiraEntityProperties are searchable and orderable by path and alias; versionedRepresentations carries each field's current value as version 1. renderedFields renders rich text, comment and worklog bodies as HTML, dates as Jira displays them and attachment sizes, leaving fields without a rendered form null."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/search/jql",
@@ -5941,9 +5944,10 @@
         "internal/store/jql_history_search_test.go",
         "docs/JQL.md",
         "internal/api3/search_projection_test.go",
-        "internal/api3/entity_properties_test.go"
+        "internal/api3/entity_properties_test.go",
+        "internal/api3/search_rendered_fields_test.go"
       ],
-      "notes": "Enhanced POST search has strict decoding, bounded-query, immutable numeric Jira IDs, selected fields/app keys, every documented expansion name, requested properties, strongly consistent reconciliation, durable expiring query/reconciliation/user/workspace-bound result snapshots and invalid-option evidence; issue properties apps index through jiraEntityProperties are searchable and orderable by path and alias; richer rendering/history remains."
+      "notes": "Enhanced POST search has strict decoding, bounded-query, immutable numeric Jira IDs, selected fields/app keys, every documented expansion name, requested properties, strongly consistent reconciliation, durable expiring query/reconciliation/user/workspace-bound result snapshots and invalid-option evidence; issue properties apps index through jiraEntityProperties are searchable and orderable by path and alias; versionedRepresentations carries each field's current value as version 1. renderedFields renders rich text, comment and worklog bodies as HTML, dates as Jira displays them and attachment sizes, leaving fields without a rendered form null."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/securitylevel/{id}",
