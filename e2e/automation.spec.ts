@@ -174,3 +174,38 @@ test('admin schedules a rule with a Quartz cron expression', async ({ page }) =>
   await page.getByRole('button', { name: 'Delete rule permanently' }).click();
   await expect(page).toHaveURL('/settings/automation');
 });
+
+test('the editor keeps a branched rule it cannot show by turning saving off', async ({ page }) => {
+  await login(page);
+  const headers = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
+  const tenant = await (await page.request.get('/_edge/tenant_info')).json();
+  const base = `/gateway/api/automation/public/jira/${tenant.cloudId}/rest/v1/rule`;
+  const me = await (await page.request.get('/rest/api/3/myself', { headers })).json();
+  const name = `E2E branch ${Date.now()}`;
+  const created = await page.request.post(base, { headers, data: { rule: {
+    name, state: 'ENABLED', actor: { type: 'ACCOUNT_ID', actor: me.accountId },
+    trigger: { component: 'TRIGGER', type: 'jira.issue.event.trigger:created', schemaVersion: 1, value: { jql: 'project = ZZ' } },
+    components: [{ component: 'BRANCH', type: 'jira.issue.related', schemaVersion: 1, value: { relatedType: 'sub-tasks' },
+      children: [{ component: 'ACTION', type: 'jira.issue.add-label', schemaVersion: 1, value: { label: 'from-{{triggerIssue.key}}' } }] }],
+  }, connections: [] } });
+  expect(created.status(), await created.text()).toBe(201);
+  const uuid = (await created.json()).ruleUuid as string;
+
+  await page.goto(`/settings/automation/${uuid}`);
+  await expect(page.getByRole('note')).toContainText('The editor does not show its branches, so saving here is turned off');
+  await expect(page.getByRole('button', { name: 'Save rule', exact: true })).toBeDisabled();
+  await expect(page.getByRole('combobox', { name: 'Trigger', exact: true })).toHaveValue('jira.issue.event.trigger:created');
+  await accessible(page);
+  // Saving is refused by the server too, so the branch survives.
+  // A form submitted from this page carries its origin, which session posts require.
+  const refused = await page.request.post(`/settings/automation/${uuid}`, { headers: { Origin: new URL(page.url()).origin }, form: { operation: 'save', name, trigger_type: 'jira.issue.event.trigger:created', action_type: 'jira.issue.add-label', action_value: 'flattened' } });
+  expect(refused.status()).toBe(400);
+  expect(await refused.text()).toContain('the editor does not show its branches');
+  const rule = await (await page.request.get(`${base}/${uuid}`, { headers })).json();
+  expect(rule.rule.components[0].component).toBe('BRANCH');
+
+  await page.getByRole('button', { name: 'Disable' }).click();
+  await page.locator('.automation-danger').getByText('Delete rule', { exact: true }).click();
+  await page.getByRole('button', { name: 'Delete rule permanently' }).click();
+  await expect(page).toHaveURL('/settings/automation');
+});
