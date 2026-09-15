@@ -35,12 +35,25 @@ The built-in catalog contains:
 - `com.zzira:issue-statistics`
 - `com.zzira:pie-chart`
 - `com.zzira:assigned-to-me`
+- `com.zzira:created-vs-resolved`
+- `com.zzira:resolution-time`
+- `com.zzira:velocity`
+- `com.zzira:sprint-burndown`
 
 Gadgets accept direct JQL or a saved filter through the reserved
 `zzira.config` item property. Lists return up to 50 results. Statistics and pie
 charts calculate their full permission-filtered total and group by status,
 priority, work type or assignee. Pie charts include an equivalent data table.
 Assigned-to-me adds `assignee = currentUser()` when each viewer loads it.
+Report gadgets draw the matching report instead of a query. Created vs.
+resolved and Resolution time keep a `projectKey`, a `days` window of 7, 30 or
+90 and, for created vs. resolved, `cumulative` running totals; Velocity and
+Sprint burndown keep a scrum board's `boardId`, and the burndown follows the
+board's active sprint. Each viewer sees the report counted from their own
+access to the work, with its values as a table. A gadget not yet configured,
+a project that turned Reports off, or a board that is not a scrum board says
+so instead. The configuration form offers only projects and scrum boards the
+editor can browse. See [REPORTS.md](REPORTS.md) for how each report counts.
 Active `jira:dashboardGadget` modules from installed apps also join the browser
 catalog. Their escaped host-rendered body can be placed, titled, colored,
 positioned, copied and removed like a built-in gadget. Stable module IDs keep
