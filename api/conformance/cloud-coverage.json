@@ -149,9 +149,13 @@
       "evidence": [
         "internal/api3/site_configuration_test.go",
         "e2e/admin.spec.ts",
-        "docs/JIRA_SITE_CONFIGURATION.md"
+        "docs/JIRA_SITE_CONFIGURATION.md",
+        "internal/models/date_formats.go",
+        "internal/models/date_formats_test.go",
+        "internal/render/site.go",
+        "internal/api3/search_rendered_fields_test.go"
       ],
-      "notes": "Returns the documented advanced editable property catalog to administrators; complete runtime application of look-and-feel values remains."
+      "notes": "Returns the documented advanced editable property catalog to administrators; the look and feel values are applied: the application title, logo, favicon and navigation colours brand every page, and the complete and day date formats decide displayed and rendered dates."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/application-properties/{id}",
@@ -161,9 +165,13 @@
       "evidence": [
         "internal/api3/site_configuration_test.go",
         "e2e/admin.spec.ts",
-        "docs/JIRA_SITE_CONFIGURATION.md"
+        "docs/JIRA_SITE_CONFIGURATION.md",
+        "internal/models/date_formats.go",
+        "internal/models/date_formats_test.go",
+        "internal/render/site.go",
+        "internal/api3/search_rendered_fields_test.go"
       ],
-      "notes": "Validates known IDs and allowed values, persists atomically and returns the updated Jira-shaped property; paired date-format validation and full runtime look-and-feel application remain."
+      "notes": "Validates known IDs and allowed values, persists atomically and returns the updated Jira-shaped property; values are validated by kind (display date patterns the site can show, browser picker formats with supported directives, hex colours, site or http(s) URLs, a one-line title) and applied to the site at once."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/applicationrole",
