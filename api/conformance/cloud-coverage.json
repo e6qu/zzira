@@ -8428,9 +8428,13 @@
         "docs/CLOUD_PARITY.md",
         "internal/apps/app_scopes.go",
         "internal/apps/app_scopes_test.go",
-        "internal/api3/provider_rate_limit_test.go"
+        "internal/api3/provider_rate_limit_test.go",
+        "internal/api3/deployment_gating_test.go",
+        "internal/commands/deployment_gating.go",
+        "internal/store/deployment_gating.go",
+        "migrations/208_deployment_gating.sql"
       ],
-      "notes": "Stores valid deployment snapshots with monotonic update ordering, issue-key/ID associations, per-deployment rejection, provider properties, environment metadata, issue/release UI evidence and the documented 202 result; apps need the operation's Connect scope, and bulk submissions are rate limited per caller per minute with X-RateLimit headers and 429 Retry-After."
+      "notes": "Stores valid deployment snapshots with monotonic update ordering, issue-key/ID associations, per-deployment rejection, provider properties, environment metadata, issue/release UI evidence and the documented 202 result; apps need the operation's Connect scope, and bulk submissions are rate limited per caller per minute with X-RateLimit headers and 429 Retry-After. Deployments to an environment type a service desk gates open that desk's change request, once per deployment."
     },
     {
       "operationId": "jira-software:DELETE:/rest/deployments/0.1/bulkByProperties",
@@ -8483,9 +8487,13 @@
         "internal/api3/delivery_test.go",
         "internal/api3/delivery.go",
         "internal/store/delivery.go",
-        "docs/CLOUD_PARITY.md"
+        "docs/CLOUD_PARITY.md",
+        "internal/api3/deployment_gating_test.go",
+        "internal/commands/deployment_gating.go",
+        "internal/store/deployment_gating.go",
+        "migrations/208_deployment_gating.sql"
       ],
-      "notes": "Returns the documented deployment key, timestamp, allowed status and detail array for stored deployments; configurable deployment gates and blocked issue details remain."
+      "notes": "Returns the documented deployment key, timestamp, gating status and details. A deployment is allowed when no service desk gates it. When a desk connected to its provider (an installed app, or any provider) gates its environment type, it opens one change request, and the status follows that request: awaiting while approvals are pending, prevented once one is declined, allowed once approved or completed without approvals, and invalid when the request could not be opened. Details link the change request."
     },
     {
       "operationId": "jira-software:POST:/rest/devinfo/0.10/bulk",

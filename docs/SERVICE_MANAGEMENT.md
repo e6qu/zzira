@@ -130,6 +130,17 @@ links agents manage on request pages. It includes links touching desk incidents,
 problems, or changes, labels their direction, and omits either endpoint unless
 the current agent can read both Jira issues.
 
+Service desk administrators can turn on deployment gating from the agent
+workspace. They connect a deployment provider, an installed app or any
+provider, and choose the environment types to gate. Each deployment the
+provider submits to a gated environment opens one change request in the desk,
+raised by the desk's project lead for the submitter and naming the deployment
+and its work items. The Jira Software gating status follows that request.
+It is awaiting while approvals are pending, prevented once one is declined, and
+allowed once approved or completed without approvals. It is invalid when the
+request could not be opened. The details link the request, and ungated
+deployments are allowed.
+
 Agents can declare an operations request with the incident profile to be a
 major incident. The request then gains a durable status-update timeline with
 public and internal audiences. Reporters, participants, and approvers see only

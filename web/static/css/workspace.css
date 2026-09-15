@@ -744,3 +744,6 @@ label[for="wiki-subtype"] { display: flex; align-items: center; gap: 8px; }
 .workflow-approval-form { margin-top: 1rem; }
 .workflow-approval-form fieldset { display: flex; gap: 1rem; border: 0; padding: 0; margin: 0.5rem 0; }
 .workflow-approval-form input[type="checkbox"] { width: 24px; height: 24px; }
+
+.service-deployment-gating fieldset { display: flex; flex-wrap: wrap; gap: 0.75rem 1.25rem; }
+.service-deployment-gating input[type="checkbox"] { width: 24px; height: 24px; }

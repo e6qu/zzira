@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/e6qu/zzira/internal/store"
 	"math"
 	"net/http"
 	"slices"
@@ -95,6 +96,8 @@ type servicePageData struct {
 	Transitions           []serviceTransitionView
 	CanAdmin              bool
 	CanSiteAdmin          bool
+	DeploymentGate        *store.ServiceDeploymentGate
+	DeploymentProviders   []*models.AppInstallation
 	CanAgent              bool
 	CanManageParticipants bool
 	CurrentUserID         string
@@ -178,6 +181,16 @@ func (h *Handler) ServiceAgent(w http.ResponseWriter, r *http.Request) {
 		}
 		data.DependencyNodeCount = len(dependencyNodes)
 		if deskAdmin {
+			data.DeploymentGate, err = h.Store.ServiceDeploymentGate(r.Context(), workspaceID, deskID)
+			if err != nil {
+				http.Error(w, "Could not load deployment gating.", http.StatusInternalServerError)
+				return
+			}
+			data.DeploymentProviders, err = h.Store.AppInstallations(r.Context(), workspaceID)
+			if err != nil {
+				http.Error(w, "Could not load deployment providers.", http.StatusInternalServerError)
+				return
+			}
 			data.Members, err = h.Store.MembersByWorkspace(r.Context(), workspaceID)
 			if err != nil {
 				http.Error(w, "Could not load workspace members.", http.StatusInternalServerError)
@@ -607,6 +620,20 @@ func (h *Handler) ServiceOrganizationSettings(w http.ResponseWriter, r *http.Req
 		return
 	}
 	redirectLocal(w, r, "/service/agent/"+deskID+"#organizations")
+}
+
+// ServiceDeploymentGateSettings saves the desk's deployment gating.
+func (h *Handler) ServiceDeploymentGateSettings(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	deskID := r.PathValue("desk")
+	if err := h.Commands.SetServiceDeploymentGate(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("provider"), r.PostForm["environmentType"]); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	redirectLocal(w, r, "/service/agent/"+deskID+"#deployment-gating")
 }
 
 func (h *Handler) ServiceKnowledgeSettings(w http.ResponseWriter, r *http.Request) {

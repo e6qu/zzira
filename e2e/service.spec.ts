@@ -283,6 +283,13 @@ test('admin creates a service project with Jira Service Management request types
   await expect(knowledgeSettings.getByRole('heading', { name: 'Knowledge base' })).toBeVisible();
   await knowledgeSettings.getByRole('button', { name: `Link knowledge base Support knowledge ${key}` }).click();
   await expect(page.locator('#knowledge-base').getByRole('button', { name: `Unlink knowledge base Support knowledge ${key}` })).toBeVisible();
+  // Deployments to a gated environment wait for an approved change request.
+  await page.locator('#deployment-gating').getByLabel('Production').check();
+  await page.locator('#deployment-gating').getByRole('button', { name: 'Save deployment gating' }).click();
+  await expect(page.locator('#deployment-gating').getByLabel('Production')).toBeChecked();
+  await page.locator('#deployment-gating').getByLabel('Production').uncheck();
+  await page.locator('#deployment-gating').getByRole('button', { name: 'Save deployment gating' }).click();
+  await expect(page.locator('#deployment-gating').getByLabel('Production')).not.toBeChecked();
   await page.goto(`/service/portals/${desk.id}?q=checkout`);
   await expect(page.getByRole('heading', { name: 'Suggested articles' })).toBeVisible();
   await page.getByRole('link', { name: new RegExp(`Resolve checkout errors ${key}`) }).click();
