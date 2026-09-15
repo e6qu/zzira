@@ -22,7 +22,19 @@ async function accessible(page: Page) {
 
 test('cumulative flow and control chart follow work through the board', async ({ page, request }) => {
   const headers = { Authorization: apiAuthHeader() };
-  const created = await request.post('/rest/api/3/issue', { headers, data: { fields: { project: { key: 'ZZ' }, summary: `Flowing work ${Date.now()}`, issuetype: { name: 'Task' } } } });
+  // A project of its own keeps the default workflow, whatever other journeys
+  // do to the seeded project's.
+  const stamp = Date.now();
+  const projectKey = `FL${stamp.toString(36).slice(-6).toUpperCase()}`;
+  const boardName = `Flow board ${stamp}`;
+  const me = await (await request.get('/rest/api/3/myself', { headers })).json();
+  const project = await request.post('/rest/api/3/project', { headers, data: { key: projectKey, name: `Flow ${projectKey}`, projectTypeKey: 'software', leadAccountId: me.accountId, assigneeType: 'PROJECT_LEAD' } });
+  expect(project.status(), await project.text()).toBe(201);
+  const filter = await request.post('/rest/api/3/filter', { headers, data: { name: `Flow filter ${stamp}`, jql: `project = ${projectKey}` } });
+  expect(filter.status(), await filter.text()).toBe(200);
+  const board = await request.post('/rest/agile/1.0/board', { headers, data: { name: boardName, type: 'kanban', filterId: Number((await filter.json()).id), location: { type: 'project', projectKeyOrId: projectKey } } });
+  expect(board.status(), await board.text()).toBe(201);
+  const created = await request.post('/rest/api/3/issue', { headers, data: { fields: { project: { key: projectKey }, summary: `Flowing work ${stamp}`, issuetype: { name: 'Task' } } } });
   expect(created.status(), await created.text()).toBe(201);
   const key = (await created.json()).key as string;
   const moveTo = async (category: string) => {
@@ -40,12 +52,12 @@ test('cumulative flow and control chart follow work through the board', async ({
   await page.fill('#login-password', DEMO.password);
   await page.click('button[type=submit]');
   await expect(page).toHaveURL('/');
-  await page.goto('/projects/ZZ');
+  await page.goto(`/projects/${projectKey}`);
   await page.locator('.nav-reports').click();
 
   await page.getByRole('link', { name: 'Open Cumulative flow diagram' }).click();
   await expect(page.getByRole('heading', { name: 'Cumulative flow diagram', level: 1 })).toBeVisible();
-  await page.getByLabel('Board', { exact: true }).selectOption({ label: 'ZZ board' });
+  await page.getByLabel('Board', { exact: true }).selectOption({ label: boardName });
   await page.getByRole('button', { name: 'Show board' }).click();
   await page.getByLabel('Time window').selectOption('14');
   await page.getByRole('button', { name: 'Show window' }).click();
@@ -60,10 +72,10 @@ test('cumulative flow and control chart follow work through the board', async ({
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.setViewportSize({ width: 1280, height: 720 });
 
-  await page.goto('/projects/ZZ/reports');
+  await page.goto(`/projects/${projectKey}/reports`);
   await page.getByRole('link', { name: 'Open Control chart' }).click();
   await expect(page.getByRole('heading', { name: 'Control chart', level: 1 })).toBeVisible();
-  await page.getByLabel('Board', { exact: true }).selectOption({ label: 'ZZ board' });
+  await page.getByLabel('Board', { exact: true }).selectOption({ label: boardName });
   await page.getByRole('button', { name: 'Show board' }).click();
   await expect(page.getByRole('table', { name: 'Completed work cycle times' })).toContainText(key);
   await expect(page.getByRole('region', { name: 'Cycle time summary' })).toContainText('Average cycle time');
@@ -73,12 +85,12 @@ test('cumulative flow and control chart follow work through the board', async ({
   await accessible(page);
   await page.setViewportSize({ width: 320, height: 740 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  expect((await page.goto('/projects/ZZ/reports/control-chart?days=7'))?.status()).toBe(400);
+  expect((await page.goto(`/projects/${projectKey}/reports/control-chart?days=7`))?.status()).toBe(400);
   await page.setViewportSize({ width: 1280, height: 720 });
 
   // The same work shows in the issue analysis reports.
   const resolvedBean = await (await request.get(`/rest/api/3/issue/${key}`, { headers })).json();
-  await page.goto('/projects/ZZ/reports');
+  await page.goto(`/projects/${projectKey}/reports`);
   await page.getByRole('link', { name: 'Open Created vs. resolved' }).click();
   await expect(page.getByRole('heading', { name: 'Created vs. resolved', level: 1 })).toBeVisible();
   await page.getByLabel('Time window').selectOption('7');
@@ -96,7 +108,7 @@ test('cumulative flow and control chart follow work through the board', async ({
   await expect(page.getByRole('table', { name: 'Created and resolved by day' }).locator('tbody tr')).toHaveCount(7);
   await accessible(page);
 
-  await page.goto('/projects/ZZ/reports');
+  await page.goto(`/projects/${projectKey}/reports`);
   await page.getByRole('link', { name: 'Open Resolution time' }).click();
   await expect(page.getByRole('heading', { name: 'Resolution time', level: 1 })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Resolution summary' })).toContainText('Average resolution time');
@@ -105,5 +117,5 @@ test('cumulative flow and control chart follow work through the board', async ({
   await accessible(page);
   await page.setViewportSize({ width: 320, height: 740 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  expect((await page.goto('/projects/ZZ/reports/resolution-time?days=14'))?.status()).toBe(400);
+  expect((await page.goto(`/projects/${projectKey}/reports/resolution-time?days=14`))?.status()).toBe(400);
 });
