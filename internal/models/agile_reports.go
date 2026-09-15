@@ -123,3 +123,32 @@ type ProgressReport struct {
 	Unestimated int
 	Progress    VersionProgress
 }
+
+// CreatedResolvedDay counts the work created and resolved on a day, and the
+// running totals since the window began.
+type CreatedResolvedDay struct {
+	Date              string
+	Created, Resolved int
+	CreatedTotal      int
+	ResolvedTotal     int
+}
+
+// CreatedResolvedReport is Jira's created vs. resolved issues report.
+type CreatedResolvedReport struct {
+	Days                        []CreatedResolvedDay
+	CreatedTotal, ResolvedTotal int
+}
+
+// ResolutionDay is the work resolved on a day and how long it took on average.
+type ResolutionDay struct {
+	Date           string
+	Resolved       int
+	AverageSeconds int64
+}
+
+// ResolutionTimeReport is Jira's resolution time report.
+type ResolutionTimeReport struct {
+	Days           []ResolutionDay
+	Resolved       int
+	AverageSeconds int64
+}

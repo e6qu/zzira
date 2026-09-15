@@ -109,3 +109,26 @@ func TestProgressReportDrawsTotalAndCompletedByDay(t *testing.T) {
 		t.Fatalf("view = %+v", view)
 	}
 }
+
+func TestIssueAnalysisChartsDrawDailyAndRunningSeries(t *testing.T) {
+	report := models.CreatedResolvedReport{Days: []models.CreatedResolvedDay{
+		{Date: "2026-09-10", Created: 2, Resolved: 1, CreatedTotal: 2, ResolvedTotal: 1},
+		{Date: "2026-09-11", Created: 1, Resolved: 3, CreatedTotal: 3, ResolvedTotal: 4},
+	}, CreatedTotal: 3, ResolvedTotal: 4}
+	daily := newCreatedResolvedView(report, false, "02/Jan/06")
+	if daily.Created != "48,84 624,152" || daily.Resolved != "48,152 624,16" || daily.StartLabel != "10/Sep/26" {
+		t.Fatalf("daily = %+v", daily)
+	}
+	running := newCreatedResolvedView(report, true, "02/Jan/06")
+	if running.Created != "48,118 624,67" || running.Resolved != "48,169 624,16" {
+		t.Fatalf("running = %+v", running)
+	}
+
+	resolution := newResolutionTimeView(models.ResolutionTimeReport{Days: []models.ResolutionDay{
+		{Date: "2026-09-10", Resolved: 2, AverageSeconds: 6 * 3600},
+		{Date: "2026-09-11"},
+	}, Resolved: 2, AverageSeconds: 6 * 3600}, "2006-01-02")
+	if len(resolution.Bars) != 2 || resolution.Bars[0].Height != 204 || resolution.Bars[0].Average != "6h" || resolution.Bars[1].Average != "" || resolution.BarWidth != 198.8 || resolution.Average != "6h" {
+		t.Fatalf("resolution = %+v", resolution)
+	}
+}

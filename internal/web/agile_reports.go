@@ -820,3 +820,171 @@ func (h *Handler) VersionReport(w http.ResponseWriter, r *http.Request) {
 	}
 	h.writeWorkspacePage(w, r, "page_progress_report", user, workspaceID, data, "reports", boards.Project.ID)
 }
+
+// analysisWindows are the day ranges the issue analysis reports offer.
+var analysisWindows = []int{7, 30, 90}
+
+type createdResolvedRow struct {
+	Date                                           string
+	Created, Resolved, CreatedTotal, ResolvedTotal int
+}
+
+// createdResolvedView draws created and resolved work as two lines, daily or
+// as running totals.
+type createdResolvedView struct {
+	models.CreatedResolvedReport
+	Cumulative                                bool
+	Width, Height, Left, Right, Bottom, TickX float64
+	Created, Resolved                         string
+	Ticks                                     []chartTick
+	Rows                                      []createdResolvedRow
+	StartLabel, EndLabel                      string
+}
+
+func newCreatedResolvedView(report models.CreatedResolvedReport, cumulative bool, layout string) *createdResolvedView {
+	const top = 16.0
+	view := &createdResolvedView{CreatedResolvedReport: report, Cumulative: cumulative, Width: 640, Height: 260, Left: 48, Right: 624, Bottom: 220, TickX: 40}
+	if len(report.Days) == 0 {
+		return view
+	}
+	values := func(day models.CreatedResolvedDay) (float64, float64) {
+		if cumulative {
+			return float64(day.CreatedTotal), float64(day.ResolvedTotal)
+		}
+		return float64(day.Created), float64(day.Resolved)
+	}
+	maximum := 0.0
+	for _, day := range report.Days {
+		created, resolved := values(day)
+		maximum = math.Max(maximum, math.Max(created, resolved))
+	}
+	maximum = chartScale(maximum)
+	step := (view.Right - view.Left) / math.Max(float64(len(report.Days)-1), 1)
+	x := func(index int) float64 { return math.Round((view.Left+float64(index)*step)*10) / 10 }
+	y := func(value float64) float64 { return math.Round((view.Bottom-value/maximum*(view.Bottom-top))*10) / 10 }
+	created, resolved := make([]string, 0, len(report.Days)), make([]string, 0, len(report.Days))
+	for index, day := range report.Days {
+		createdValue, resolvedValue := values(day)
+		created = append(created, fmt.Sprintf("%g,%g", x(index), y(createdValue)))
+		resolved = append(resolved, fmt.Sprintf("%g,%g", x(index), y(resolvedValue)))
+		view.Rows = append(view.Rows, createdResolvedRow{Date: displayDay(day.Date, layout), Created: day.Created, Resolved: day.Resolved, CreatedTotal: day.CreatedTotal, ResolvedTotal: day.ResolvedTotal})
+	}
+	view.Created, view.Resolved = strings.Join(created, " "), strings.Join(resolved, " ")
+	view.Ticks = chartTicks(maximum, top, view.Bottom)
+	view.StartLabel, view.EndLabel = view.Rows[0].Date, view.Rows[len(view.Rows)-1].Date
+	return view
+}
+
+type resolutionBar struct {
+	Date, Average string
+	Resolved      int
+	X, Y, Height  float64
+}
+
+// resolutionTimeView draws the average resolution time of each day as a bar.
+type resolutionTimeView struct {
+	models.ResolutionTimeReport
+	Width, Height, Left, Right, Bottom, TickX, BarWidth float64
+	Bars                                                []resolutionBar
+	Ticks                                               []chartTick
+	Average                                             string
+	StartLabel, EndLabel                                string
+}
+
+func newResolutionTimeView(report models.ResolutionTimeReport, layout string) *resolutionTimeView {
+	const top = 16.0
+	view := &resolutionTimeView{ResolutionTimeReport: report, Width: 640, Height: 260, Left: 56, Right: 624, Bottom: 220, TickX: 48}
+	if len(report.Days) == 0 {
+		return view
+	}
+	maximumHours := 1.0
+	for _, day := range report.Days {
+		maximumHours = math.Max(maximumHours, float64(day.AverageSeconds)/3600)
+	}
+	maximumHours = chartScale(maximumHours)
+	slot := (view.Right - view.Left) / float64(len(report.Days))
+	view.BarWidth = math.Round(math.Max(slot*0.7, 1)*10) / 10
+	for index, day := range report.Days {
+		height := math.Round(float64(day.AverageSeconds)/3600/maximumHours*(view.Bottom-top)*10) / 10
+		bar := resolutionBar{Date: displayDay(day.Date, layout), Resolved: day.Resolved, Height: height,
+			X: math.Round((view.Left+float64(index)*slot+(slot-view.BarWidth)/2)*10) / 10, Y: view.Bottom - height}
+		if day.Resolved > 0 {
+			bar.Average = cycleDuration(day.AverageSeconds)
+		}
+		view.Bars = append(view.Bars, bar)
+	}
+	for _, tick := range chartTicks(maximumHours, top, view.Bottom) {
+		hours, _ := strconv.ParseFloat(tick.Label, 64)
+		view.Ticks = append(view.Ticks, chartTick{Y: tick.Y, Label: cycleDuration(int64(hours * 3600))})
+	}
+	if report.Resolved > 0 {
+		view.Average = cycleDuration(report.AverageSeconds)
+	}
+	view.StartLabel, view.EndLabel = view.Bars[0].Date, view.Bars[len(view.Bars)-1].Date
+	return view
+}
+
+type issueAnalysisData struct {
+	Project         *models.Project
+	Days            int
+	Windows         []int
+	CreatedResolved *createdResolvedView
+	Resolution      *resolutionTimeView
+}
+
+func analysisWindow(r *http.Request) (int, bool) {
+	value := r.URL.Query().Get("days")
+	if value == "" {
+		return 30, true
+	}
+	for _, days := range analysisWindows {
+		if strconv.Itoa(days) == value {
+			return days, true
+		}
+	}
+	return 0, false
+}
+
+// CreatedVsResolvedReport renders the project's created vs. resolved work.
+func (h *Handler) CreatedVsResolvedReport(w http.ResponseWriter, r *http.Request) {
+	h.issueAnalysisReport(w, r, "page_created_resolved_report")
+}
+
+// ResolutionTimeReport renders how long the project's work takes to resolve.
+func (h *Handler) ResolutionTimeReport(w http.ResponseWriter, r *http.Request) {
+	h.issueAnalysisReport(w, r, "page_resolution_time_report")
+}
+
+func (h *Handler) issueAnalysisReport(w http.ResponseWriter, r *http.Request, page string) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	project, ok := h.reportProject(w, r, workspaceID)
+	if !ok {
+		return
+	}
+	days, ok := analysisWindow(r)
+	if !ok {
+		http.Error(w, "Choose a 7, 30, or 90 day window.", http.StatusBadRequest)
+		return
+	}
+	data := issueAnalysisData{Project: project, Days: days, Windows: analysisWindows}
+	layout := h.siteLook(r, workspaceID).DateDay
+	if page == "page_created_resolved_report" {
+		report, err := h.Store.CreatedVsResolved(r.Context(), workspaceID, user.ID, project.ID, days, time.Now())
+		if err != nil {
+			http.Error(w, "Could not count created and resolved work.", http.StatusInternalServerError)
+			return
+		}
+		data.CreatedResolved = newCreatedResolvedView(report, r.URL.Query().Get("cumulative") == "true", layout)
+	} else {
+		report, err := h.Store.ResolutionTime(r.Context(), workspaceID, user.ID, project.ID, days, time.Now())
+		if err != nil {
+			http.Error(w, "Could not calculate resolution time.", http.StatusInternalServerError)
+			return
+		}
+		data.Resolution = newResolutionTimeView(report, layout)
+	}
+	h.writeWorkspacePage(w, r, page, user, workspaceID, data, "reports", project.ID)
+}
