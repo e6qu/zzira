@@ -117,10 +117,11 @@ func (s *Store) ServiceRequestFieldOptions(ctx context.Context, workspaceID, ser
 	return options, rows.Err()
 }
 
-// ServicePortalPickerChoices lists what a group, project or version picker on
-// a service desk's portal offers, in the option shape select fields use: the
-// site's groups, the projects the requester can browse, and the desk project's
-// versions that are not archived. Other field types offer nothing.
+// ServicePortalPickerChoices lists what a group, project, version or team
+// picker on a service desk's portal offers, in the option shape select fields
+// use: the site's groups, the projects the requester can browse, the desk
+// project's versions that are not archived, and the site's teams. Other field
+// types offer nothing.
 func (s *Store) ServicePortalPickerChoices(ctx context.Context, workspaceID, serviceDeskID, userID, fieldType string) ([]ServiceRequestFieldOption, error) {
 	choices := []ServiceRequestFieldOption{}
 	switch fieldType {
@@ -139,6 +140,14 @@ func (s *Store) ServicePortalPickerChoices(ctx context.Context, workspaceID, ser
 		}
 		for _, project := range projects {
 			choices = append(choices, ServiceRequestFieldOption{ID: project.ID, Value: project.Name})
+		}
+	case models.CustomFieldTeam:
+		teams, err := s.AtlassianTeams(ctx, workspaceID)
+		if err != nil {
+			return nil, err
+		}
+		for _, team := range teams {
+			choices = append(choices, ServiceRequestFieldOption{ID: team.ID, Value: team.Name})
 		}
 	case models.CustomFieldVersion, models.CustomFieldMultiVersion:
 		var projectID string
@@ -159,10 +168,10 @@ func (s *Store) ServicePortalPickerChoices(ctx context.Context, workspaceID, ser
 }
 
 // IsServicePortalPicker reports a field type whose portal choices come from
-// the site's groups, projects or versions rather than configured options.
+// the site's groups, projects, versions or teams rather than configured options.
 func IsServicePortalPicker(fieldType string) bool {
 	switch fieldType {
-	case models.CustomFieldGroup, models.CustomFieldMultiGroup, models.CustomFieldProject, models.CustomFieldVersion, models.CustomFieldMultiVersion:
+	case models.CustomFieldGroup, models.CustomFieldMultiGroup, models.CustomFieldProject, models.CustomFieldVersion, models.CustomFieldMultiVersion, models.CustomFieldTeam:
 		return true
 	}
 	return false
