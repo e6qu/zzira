@@ -52,7 +52,7 @@ type customDashboardsData struct {
 	CurrentUserID                     string
 	ReportWindows                     []int
 	Catalog                           []models.GadgetDefinition
-	Groupings                         []models.GadgetGrouping
+	Groupings, TimeSinceFields        []models.GadgetGrouping
 	Columns                           [][]dashboardTile
 	ColumnOptions                     []int
 	Editing, Adding, Owner, AppGadget bool
@@ -179,7 +179,7 @@ func (h *Handler) CustomDashboard(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, msg, status)
 		return
 	}
-	data := customDashboardsData{Dashboard: d, Details: store.DashboardDetails{Name: d.Name, Description: d.Description, SharePermissions: d.SharePermissions, EditPermissions: d.EditPermissions}, Owner: d.OwnerID == user.ID, Editing: r.URL.Query().Get("edit") == "1", Adding: r.URL.Query().Get("add") == "1", Catalog: models.GadgetCatalog(), Groupings: models.GadgetGroupings}
+	data := customDashboardsData{Dashboard: d, Details: store.DashboardDetails{Name: d.Name, Description: d.Description, SharePermissions: d.SharePermissions, EditPermissions: d.EditPermissions}, Owner: d.OwnerID == user.ID, Editing: r.URL.Query().Get("edit") == "1", Adding: r.URL.Query().Get("add") == "1", Catalog: models.GadgetCatalog(), Groupings: models.GadgetGroupings, TimeSinceFields: models.TimeSinceFields}
 	appGadgets, err := h.Store.AppModulesByLocation(r.Context(), ws, "jira.dashboard")
 	if err != nil {
 		http.Error(w, "Could not load app gadgets.", 500)
@@ -419,7 +419,7 @@ func gadgetConfigForm(r *http.Request) (models.GadgetConfig, error) {
 	c := models.GadgetConfig{
 		JQL: r.PostFormValue("jql"), FilterID: r.PostFormValue("filterId"), GroupBy: r.PostFormValue("groupBy"), YGroupBy: r.PostFormValue("yGroupBy"),
 		ProjectKey: strings.TrimSpace(r.PostFormValue("projectKey")), BoardID: strings.TrimSpace(r.PostFormValue("boardId")),
-		Cumulative: r.PostFormValue("cumulative") == "true",
+		Cumulative: r.PostFormValue("cumulative") == "true", DateField: r.PostFormValue("dateField"),
 	}
 	for field, target := range map[string]*int{"limit": &c.Limit, "days": &c.Days} {
 		if value := r.PostFormValue(field); value != "" {
@@ -443,6 +443,11 @@ type gadgetReport struct {
 	Velocity        *velocityReportView
 	Sprint          *models.Sprint
 	Burndown        *sprintReportView
+	RecentlyCreated *recentlyCreatedView
+	AverageAge      *averageAgeView
+	TimeSince       *timeSinceView
+	DaysRemaining   *daysRemainingView
+	SprintHealth    *models.SprintHealth
 }
 
 // gadgetReport draws a report gadget from its configured project or board,
@@ -458,7 +463,7 @@ func (h *Handler) gadgetReport(r *http.Request, ws, userID, moduleKey string, co
 	}
 	const failed = "This report could not be calculated."
 	switch moduleKey {
-	case "com.zzira:created-vs-resolved", "com.zzira:resolution-time":
+	case "com.zzira:created-vs-resolved", "com.zzira:resolution-time", "com.zzira:recently-created", "com.zzira:average-age", "com.zzira:time-since":
 		if config.ProjectKey == "" {
 			return nil, "Configure this gadget to choose a project."
 		}
@@ -467,18 +472,38 @@ func (h *Handler) gadgetReport(r *http.Request, ws, userID, moduleKey string, co
 			return nil, "This project's reports are not available."
 		}
 		report.Project = project
-		if moduleKey == "com.zzira:created-vs-resolved" {
-			data, err := h.Store.CreatedVsResolved(ctx, ws, userID, project.ID, config.Days, time.Now())
+		now := time.Now()
+		switch moduleKey {
+		case "com.zzira:created-vs-resolved":
+			data, err := h.Store.CreatedVsResolved(ctx, ws, userID, project.ID, config.Days, now)
 			if err != nil {
 				return nil, failed
 			}
 			report.CreatedResolved = newCreatedResolvedView(data, config.Cumulative, look.DateDay)
-		} else {
-			data, err := h.Store.ResolutionTime(ctx, ws, userID, project.ID, config.Days, time.Now())
+		case "com.zzira:resolution-time":
+			data, err := h.Store.ResolutionTime(ctx, ws, userID, project.ID, config.Days, now)
 			if err != nil {
 				return nil, failed
 			}
 			report.Resolution = newResolutionTimeView(data, look.DateDay)
+		case "com.zzira:recently-created":
+			data, err := h.Store.RecentlyCreated(ctx, ws, userID, project.ID, config.Days, now)
+			if err != nil {
+				return nil, failed
+			}
+			report.RecentlyCreated = newRecentlyCreatedView(data, look.DateDay)
+		case "com.zzira:average-age":
+			data, err := h.Store.AverageAge(ctx, ws, userID, project.ID, config.Days, now)
+			if err != nil {
+				return nil, failed
+			}
+			report.AverageAge = newAverageAgeView(data, look.DateDay)
+		default:
+			data, err := h.Store.TimeSince(ctx, ws, userID, project.ID, config.DateField, config.Days, now)
+			if err != nil {
+				return nil, failed
+			}
+			report.TimeSince = newTimeSinceView(data, look.DateDay)
 		}
 	default:
 		if config.BoardID == "" {
@@ -507,11 +532,22 @@ func (h *Handler) gadgetReport(r *http.Request, ws, userID, moduleKey string, co
 				break
 			}
 		}
-		if report.Sprint != nil {
-			data, err := h.Store.SprintReport(ctx, ws, userID, board, report.Sprint, time.Now())
-			if err != nil {
-				return nil, failed
-			}
+		if report.Sprint == nil {
+			break
+		}
+		now := time.Now()
+		if moduleKey == "com.zzira:days-remaining" {
+			report.DaysRemaining = newDaysRemainingView(report.Sprint, now, look.DateDay)
+			break
+		}
+		data, err := h.Store.SprintReport(ctx, ws, userID, board, report.Sprint, now)
+		if err != nil {
+			return nil, failed
+		}
+		if moduleKey == "com.zzira:sprint-health" {
+			health := models.NewSprintHealth(data, now)
+			report.SprintHealth = &health
+		} else {
 			report.Burndown = newSprintReportView(data, siteDateLayouts{day: look.DateDay, complete: look.DateComplete})
 		}
 	}

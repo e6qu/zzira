@@ -245,7 +245,7 @@ func (r *DashboardSubscriptionRunner) gadgetSummary(ctx context.Context, ws, rec
 	}
 	now := r.now()
 	switch gadget.ModuleKey {
-	case "com.zzira:created-vs-resolved", "com.zzira:resolution-time":
+	case "com.zzira:created-vs-resolved", "com.zzira:resolution-time", "com.zzira:recently-created", "com.zzira:average-age", "com.zzira:time-since":
 		if config.ProjectKey == "" {
 			return []string{title + ": open the dashboard to choose a project."}
 		}
@@ -260,6 +260,30 @@ func (r *DashboardSubscriptionRunner) gadgetSummary(ctx context.Context, ws, rec
 			}
 			return []string{fmt.Sprintf("%s: %d created and %d resolved in %s over the last %d days", title, report.CreatedTotal, report.ResolvedTotal, project.Key, config.Days)}
 		}
+		switch gadget.ModuleKey {
+		case "com.zzira:recently-created":
+			report, err := r.Store.RecentlyCreated(ctx, ws, recipient, project.ID, config.Days, now)
+			if err != nil {
+				return []string{title + ": this report could not be calculated."}
+			}
+			return []string{fmt.Sprintf("%s: %d created in %s over the last %d days, %d of them since resolved", title, report.Created, project.Key, config.Days, report.Resolved)}
+		case "com.zzira:average-age":
+			report, err := r.Store.AverageAge(ctx, ws, recipient, project.ID, config.Days, now)
+			if err != nil || len(report.Days) == 0 {
+				return []string{title + ": this report could not be calculated."}
+			}
+			today := report.Days[len(report.Days)-1]
+			if today.Unresolved == 0 {
+				return []string{fmt.Sprintf("%s: nothing unresolved in %s", title, project.Key)}
+			}
+			return []string{fmt.Sprintf("%s: %d unresolved in %s, %s old on average", title, today.Unresolved, project.Key, summaryDuration(today.AverageSeconds))}
+		case "com.zzira:time-since":
+			report, err := r.Store.TimeSince(ctx, ws, recipient, project.ID, config.DateField, config.Days, now)
+			if err != nil {
+				return []string{title + ": this report could not be calculated."}
+			}
+			return []string{fmt.Sprintf("%s: %d work items %s in %s over the last %d days", title, report.Total, strings.ToLower(models.TimeSinceFieldName(report.Field)), project.Key, config.Days)}
+		}
 		report, err := r.Store.ResolutionTime(ctx, ws, recipient, project.ID, config.Days, now)
 		if err != nil {
 			return []string{title + ": this report could not be calculated."}
@@ -268,7 +292,7 @@ func (r *DashboardSubscriptionRunner) gadgetSummary(ctx context.Context, ws, rec
 			return []string{fmt.Sprintf("%s: nothing resolved in %s over the last %d days", title, project.Key, config.Days)}
 		}
 		return []string{fmt.Sprintf("%s: %d resolved in %s over the last %d days, taking %s on average", title, report.Resolved, project.Key, config.Days, summaryDuration(report.AverageSeconds))}
-	case "com.zzira:velocity", "com.zzira:sprint-burndown":
+	case "com.zzira:velocity", "com.zzira:sprint-burndown", "com.zzira:days-remaining", "com.zzira:sprint-health":
 		if config.BoardID == "" {
 			return []string{title + ": open the dashboard to choose a scrum board."}
 		}
@@ -298,7 +322,28 @@ func (r *DashboardSubscriptionRunner) gadgetSummary(ctx context.Context, ws, rec
 			if sprint.State != "active" {
 				continue
 			}
+			if gadget.ModuleKey == "com.zzira:days-remaining" {
+				days, overdue, ok := models.SprintDaysRemaining(*sprint, now)
+				switch {
+				case !ok:
+					return []string{fmt.Sprintf("%s: %s on %s has no end date", title, sprint.Name, board.Name)}
+				case overdue:
+					return []string{fmt.Sprintf("%s: %s on %s is %d days overdue", title, sprint.Name, board.Name, days)}
+				}
+				return []string{fmt.Sprintf("%s: %d days remaining in %s on %s", title, days, sprint.Name, board.Name)}
+			}
 			report, err := r.Store.SprintReport(ctx, ws, recipient, board, sprint, now)
+			if gadget.ModuleKey == "com.zzira:sprint-health" {
+				if err != nil {
+					return []string{title + ": this report could not be calculated."}
+				}
+				health := models.NewSprintHealth(report, now)
+				elapsed := "no end date"
+				if health.HasEnd {
+					elapsed = fmt.Sprintf("%d%% of its time elapsed", health.Elapsed)
+				}
+				return []string{fmt.Sprintf("%s: %s on %s has %s, %d%% of its work complete and a %d%% scope change", title, sprint.Name, board.Name, elapsed, health.Complete, health.ScopeChange)}
+			}
 			if err != nil || len(report.Burndown) == 0 {
 				return []string{title + ": this report could not be calculated."}
 			}

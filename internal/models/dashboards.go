@@ -123,6 +123,11 @@ func GadgetCatalog() []GadgetDefinition {
 		{"com.zzira:watched-issues", "Watched work items", "The work each viewer watches.", ""},
 		{"com.zzira:voted-issues", "Voted work items", "The work each viewer voted for.", ""},
 		{"com.zzira:in-progress", "Work in progress", "Each viewer's assigned work that is in progress.", ""},
+		{"com.zzira:recently-created", "Recently created chart", "Work created each day in a project, split by whether it is resolved.", ""},
+		{"com.zzira:average-age", "Average age chart", "How old a project's unresolved work was at the end of each day.", ""},
+		{"com.zzira:time-since", "Time since chart", "Work created, updated or resolved each day in a project.", ""},
+		{"com.zzira:days-remaining", "Days remaining in sprint", "How long is left in a scrum board's active sprint.", ""},
+		{"com.zzira:sprint-health", "Sprint health", "Time elapsed, work complete and scope change in a scrum board's active sprint.", ""},
 	}
 }
 
@@ -178,10 +183,38 @@ func (g DashboardGadget) ListGadget() bool {
 // rather than the results of a work item query.
 func ReportGadget(moduleKey string) bool {
 	switch moduleKey {
-	case "com.zzira:created-vs-resolved", "com.zzira:resolution-time", "com.zzira:velocity", "com.zzira:sprint-burndown":
+	case "com.zzira:velocity", "com.zzira:sprint-burndown", "com.zzira:days-remaining", "com.zzira:sprint-health":
+		return true
+	}
+	return ProjectReportGadget(moduleKey)
+}
+
+// ProjectReportGadget reports whether a gadget draws a report for a project
+// over a window of days, rather than for a scrum board.
+func ProjectReportGadget(moduleKey string) bool {
+	switch moduleKey {
+	case "com.zzira:created-vs-resolved", "com.zzira:resolution-time", "com.zzira:recently-created", "com.zzira:average-age", "com.zzira:time-since":
 		return true
 	}
 	return false
+}
+
+// ProjectReportGadget reports whether the gadget draws a project report.
+func (g DashboardGadget) ProjectReportGadget() bool {
+	return ProjectReportGadget(g.ModuleKey)
+}
+
+// TimeSinceFields are the dates the time since chart counts work by.
+var TimeSinceFields = []GadgetGrouping{{"created", "Created"}, {"updated", "Updated"}, {"resolved", "Resolved"}}
+
+// TimeSinceFieldName names a time since date for people, or "" when unknown.
+func TimeSinceFieldName(key string) string {
+	for _, field := range TimeSinceFields {
+		if field.Key == key {
+			return field.Name
+		}
+	}
+	return ""
 }
 
 // ReportGadget reports whether the gadget draws a report.
@@ -203,6 +236,9 @@ type GadgetConfig struct {
 	BoardID    string `json:"boardId,omitempty"`
 	Days       int    `json:"days,omitempty"`
 	Cumulative bool   `json:"cumulative,omitempty"`
+	// DateField is the date the time since chart counts: created, updated or
+	// resolved.
+	DateField string `json:"dateField,omitempty"`
 }
 
 // GroupLabel names the chart grouping for people.

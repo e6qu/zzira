@@ -48,6 +48,11 @@ The built-in catalog contains:
 - `com.zzira:watched-issues`
 - `com.zzira:voted-issues`
 - `com.zzira:in-progress`
+- `com.zzira:recently-created`
+- `com.zzira:average-age`
+- `com.zzira:time-since`
+- `com.zzira:days-remaining`
+- `com.zzira:sprint-health`
 
 Gadgets accept direct JQL or a saved filter through the reserved
 `zzira.config` item property. Lists return up to 50 results. Statistics, pie
@@ -66,7 +71,18 @@ Report gadgets draw the matching report instead of a query. Created vs.
 resolved and Resolution time keep a `projectKey`, a `days` window of 7, 30 or
 90 and, for created vs. resolved, `cumulative` running totals; Velocity and
 Sprint burndown keep a scrum board's `boardId`, and the burndown follows the
-board's active sprint. Each viewer sees the report counted from their own
+board's active sprint. Recently created, Average age and Time since also keep a
+`projectKey` and `days` window. Recently created splits each day's new work by
+whether it is resolved now. Average age averages the age of work unresolved at
+the end of each day, or now for today. Time since counts work whose `dateField`
+(`created`, `updated` or `resolved`) fell on each day. Like created vs.
+resolved, these use each item's current resolution. Days remaining in sprint and
+Sprint health keep a scrum board's `boardId` and follow its active sprint:
+days remaining counts whole days to the planned end, or days overdue. Sprint
+health shows the share of planned time elapsed, the share of the board's
+estimation statistic complete (by work items when nothing is estimated), and
+work added or removed after the start as a share of the work committed at the
+start. Each viewer sees the report counted from their own
 access to the work, with its values as a table. A gadget not yet configured,
 a project that turned Reports off, or a board that is not a scrum board says
 so instead. The configuration form offers only projects and scrum boards the

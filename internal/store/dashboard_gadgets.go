@@ -197,6 +197,12 @@ func NormalizeGadgetConfig(c *models.GadgetConfig) error {
 	if c.YGroupBy == "" {
 		c.YGroupBy = "assignee"
 	}
+	if c.DateField == "" {
+		c.DateField = "created"
+	}
+	if models.TimeSinceFieldName(c.DateField) == "" {
+		return fmt.Errorf("%w: choose the created, updated or resolved date", ErrDashboardValidation)
+	}
 	if c.Limit == 0 {
 		c.Limit = 10
 	}

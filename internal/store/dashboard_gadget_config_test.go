@@ -9,7 +9,7 @@ import (
 )
 
 func TestReportGadgetsNormalizeTheirWindow(t *testing.T) {
-	for _, key := range []string{"com.zzira:created-vs-resolved", "com.zzira:resolution-time", "com.zzira:velocity", "com.zzira:sprint-burndown"} {
+	for _, key := range []string{"com.zzira:created-vs-resolved", "com.zzira:resolution-time", "com.zzira:velocity", "com.zzira:sprint-burndown", "com.zzira:recently-created", "com.zzira:average-age", "com.zzira:time-since", "com.zzira:days-remaining", "com.zzira:sprint-health"} {
 		if !models.ReportGadget(key) {
 			t.Fatalf("%s is not a report gadget", key)
 		}
@@ -23,6 +23,23 @@ func TestReportGadgetsNormalizeTheirWindow(t *testing.T) {
 	}
 	if models.ReportGadget("com.zzira:pie-chart") {
 		t.Fatal("pie chart reported as a report gadget")
+	}
+	for key, project := range map[string]bool{"com.zzira:recently-created": true, "com.zzira:average-age": true, "com.zzira:time-since": true, "com.zzira:created-vs-resolved": true, "com.zzira:velocity": false, "com.zzira:days-remaining": false, "com.zzira:sprint-health": false} {
+		if models.ProjectReportGadget(key) != project {
+			t.Fatalf("%s project report = %v", key, !project)
+		}
+	}
+	dated := models.GadgetConfig{}
+	if err := NormalizeGadgetConfig(&dated); err != nil || dated.DateField != "created" {
+		t.Fatalf("default date field = %+v, %v", dated, err)
+	}
+	for _, field := range models.TimeSinceFields {
+		if _, ok := timeSinceColumns[field.Key]; !ok {
+			t.Fatalf("%s has no column", field.Key)
+		}
+	}
+	if err := NormalizeGadgetConfig(&models.GadgetConfig{DateField: "duedate"}); !errors.Is(err, ErrDashboardValidation) {
+		t.Fatalf("unknown date field error = %v", err)
 	}
 	config := models.GadgetConfig{ProjectKey: "ZZ"}
 	if err := NormalizeGadgetConfig(&config); err != nil || config.Days != 30 {
