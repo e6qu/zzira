@@ -9,6 +9,7 @@ import (
 	"image/jpeg"
 	"image/png"
 	"io"
+	"math"
 )
 
 // defaultThumbnailBound is the largest side of a thumbnail when the request
@@ -98,8 +99,21 @@ func scaleWithin(source image.Image, width, height int) image.Image {
 					red, green, blue, alpha, count = red+uint64(pixel.R), green+uint64(pixel.G), blue+uint64(pixel.B), alpha+uint64(pixel.A), count+1
 				}
 			}
-			scaled.SetNRGBA(x, y, color.NRGBA{R: uint8(red / count), G: uint8(green / count), B: uint8(blue / count), A: uint8(alpha / count)})
+			scaled.SetNRGBA(x, y, color.NRGBA{R: channelAverage(red, count), G: channelAverage(green, count), B: channelAverage(blue, count), A: channelAverage(alpha, count)})
 		}
 	}
 	return scaled
+}
+
+// channelAverage is the mean of summed 8-bit channel values. The mean of 8-bit
+// values never exceeds 255; the bound is checked so the conversion is safe.
+func channelAverage(sum, count uint64) uint8 {
+	if count == 0 {
+		return 0
+	}
+	average := sum / count
+	if average > math.MaxUint8 {
+		return math.MaxUint8
+	}
+	return uint8(average)
 }

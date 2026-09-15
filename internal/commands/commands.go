@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"sort"
 	"strconv"
 	"strings"
@@ -859,13 +860,11 @@ func (s *Service) runInitialTransition(ctx context.Context, in CreateIssueInput,
 		created.priorityID = *update.PriorityID
 	}
 	if len(update.Fields) > 0 {
-		fields := make(map[string]json.RawMessage, len(created.fields)+len(update.Fields))
-		for field, value := range created.fields {
-			fields[field] = value
+		fields := maps.Clone(created.fields)
+		if fields == nil {
+			fields = make(map[string]json.RawMessage, len(update.Fields))
 		}
-		for field, value := range update.Fields {
-			fields[field] = value
-		}
+		maps.Copy(fields, update.Fields)
 		created.fields = fields
 	}
 	if created.triggers.TriggeredWebhookIDs, err = initial.TriggerWebhookIDs(); err != nil {
