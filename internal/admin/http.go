@@ -29,6 +29,9 @@ type Handler struct {
 	BaseURL                           string
 	WorkspaceSlug                     string
 	InvitationNotificationsConfigured bool
+	// EventsRateLimit is how many audit event queries each user may make in a
+	// minute; zero means Atlassian's limit.
+	EventsRateLimit int
 }
 
 type adminError struct {
@@ -1197,6 +1200,38 @@ func (h *Handler) InviteUsers(w http.ResponseWriter, r *http.Request) {
 		}
 		seenRoles[key] = true
 		assignments = append(assignments, store.InviteRoleAssignment{ScopeType: scopeType, ScopeID: scopeID, Role: rule.Role, Resource: rule.Resource})
+	}
+	// Inviting needs a paid product, and may not take a free product past its
+	// plan's user limit.
+	products, err := h.Store.OrganizationProducts(r.Context(), context.Organization.ID)
+	if err != nil {
+		failure(w, http.StatusInternalServerError, "Product lookup failed.")
+		return
+	}
+	paid := false
+	byID := make(map[string]*models.Product, len(products))
+	for _, product := range products {
+		byID[product.ID] = product
+		paid = paid || (product.Enabled && product.Plan != "free")
+	}
+	if !paid {
+		failure(w, http.StatusPaymentRequired, "You don't have a paid subscription to be eligible to perform this request.")
+		return
+	}
+	for _, assignment := range assignments {
+		product := byID[assignment.ScopeID]
+		if assignment.ScopeType != "product" || product == nil || store.ProductUserLimit(product) == 0 {
+			continue
+		}
+		holders, countErr := h.Store.ProductUserCount(r.Context(), product.ID)
+		if countErr != nil {
+			failure(w, http.StatusInternalServerError, "Product user count failed.")
+			return
+		}
+		if holders+len(input.Emails) > store.ProductUserLimit(product) {
+			failure(w, http.StatusConflict, "You've exceeded your user limit for "+product.Name+".")
+			return
+		}
 	}
 	passwordHash, err := authn.UnusablePasswordHash()
 	if err != nil {

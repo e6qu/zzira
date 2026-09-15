@@ -299,6 +299,7 @@ func main() {
 	mux.HandleFunc("POST /admin/users/invite", webHandler.InviteAdminUser)
 	mux.HandleFunc("POST /admin/users/{accountId}", webHandler.UpdateAdminUserStatus)
 	mux.HandleFunc("POST /admin/users/{accountId}/profile", webHandler.UpdateAdminUserProfile)
+	mux.HandleFunc("POST /admin/products/{productId}/plan", webHandler.UpdateAdminProductPlan)
 	mux.HandleFunc("POST /admin/domains", webHandler.CreateAdminDomain)
 	mux.HandleFunc("POST /admin/domains/{domainId}", webHandler.UpdateAdminDomain)
 	mux.HandleFunc("POST /admin/policies", webHandler.CreateAdminPolicy)
@@ -682,6 +683,7 @@ func main() {
 	mux.Handle("/jira/deployments/0.1/cloud/", api)
 	mux.HandleFunc("GET /_edge/tenant_info", automationAPI.TenantInfo)
 	mux.Handle("/gateway/api/automation/public/jira/", automationAPI)
+	mux.Handle("/automation/public/jira/", automationAPI)
 	mux.HandleFunc("GET /admin/v1/orgs", adminAPI.Organizations)
 	mux.HandleFunc("GET /admin/v1/orgs/{orgId}", adminAPI.Organization)
 	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories", adminAPI.Directories)
@@ -793,7 +795,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              address,
-		Handler:           http.MaxBytesHandler(authn.SecurityHeadersDynamic(authn.ProtectCookieMutations(appAPI.APIPrincipal(mux)), identityProviders.FormActionOrigins), 34<<20),
+		Handler:           http.MaxBytesHandler(authn.SecurityHeadersDynamic(authn.ProtectCookieMutations(appAPI.APIPrincipal(store.RequestMetadataHandler(st.IPAllowlistHandler(workspaceSlug, mux)))), identityProviders.FormActionOrigins), 34<<20),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      60 * time.Second,

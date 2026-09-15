@@ -126,7 +126,11 @@ bounds, limits up to 500, and opaque paging. The polling endpoint defaults to
 ascending processing order and returns a reusable cursor even at the current
 end of the stream. Event detail and the localized action catalog use the
 published resource shapes. The administration page searches event text and
-filters by action through this shared query path.
+filters by action through this shared query path. Each event records the client
+address and user agent of the request that caused it, set on the store's
+database connection for the request and merged in by a trigger, so every audit
+writer captures them. Filtered event queries are limited to ten a minute per
+user and answer 429 with `Retry-After`; the polling endpoint is not limited.
 
 Administrators can add email-domain claims, copy the generated DNS TXT
 challenge, verify it, and remove the claim from `/admin`. Verification queries
@@ -143,7 +147,17 @@ deletion, resource add/update/remove, and validation with the published 200,
 resources must be product ARIs owned by the organization. `/admin` lets an
 administrator create a scoped policy, review its rules and application state,
 enable or disable it, and delete it. Mutations and resource changes are audited.
-Network enforcement and physical data placement remain separate runtime work.
+Enabled IP allowlists are enforced: a request to Jira Software, Jira Service
+Management or Confluence from an address outside every enabled allowlist that
+covers the product receives 403. Administration and sign-in stay reachable so
+an administrator can correct a policy. Data residency policies record the
+requested placement; ZZIRA keeps all data in its single PostgreSQL database.
+
+Each product runs on a plan (free, standard, premium or enterprise), set from
+the Products table on `/admin` and audited. Inviting users needs at least one
+enabled paid product (402 otherwise), and an invitation that would take a
+free-plan product past its user limit, ten users or three Jira Service
+Management agents, receives 409.
 
 Invitation access, group membership, optional email enqueueing, and audit
 evidence commit atomically for each account. A multi-account request returns

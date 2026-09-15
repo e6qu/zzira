@@ -15923,7 +15923,7 @@
         "internal/automation/automation_test.go",
         "docs/AUTOMATION.md"
       ],
-      "notes": "Create and round-trip behavior is tested; broader identity and cursor semantics remain."
+      "notes": "Create and round-trip behavior is tested through the site gateway and the primary entry point; a supplied rule UUID must be a unique UUIDv7, and generated ones are UUIDv7 so rules sort by creation."
     },
     {
       "operationId": "automation:GET:/gateway/api/automation/public/{product}/{cloudid}/rest/v1/rule/manual/search",
@@ -15967,7 +15967,7 @@
         "internal/automation/automation_test.go",
         "docs/AUTOMATION.md"
       ],
-      "notes": "Listing is tested; cursor expiry and central-host authentication remain."
+      "notes": "Listing is tested through the site gateway and Atlassian's primary /automation/public entry point, with opaque cursors and query-parameter links."
     },
     {
       "operationId": "automation:POST:/gateway/api/automation/public/{product}/{cloudid}/rest/v1/rule/summary",
@@ -16111,7 +16111,7 @@
         "e2e/admin.spec.ts",
         "docs/ADMIN.md"
       ],
-      "notes": "Visible browser use is recorded after two seconds and returned per product with exact IDs, mapped keys, UTC dates and timestamps, organization-add time, and opaque cursors; long-term aggregation and central-host rate limiting remain."
+      "notes": "Visible browser use is recorded after two seconds and returned per product with exact IDs, mapped keys, UTC dates and timestamps, organization-add time, and opaque cursors."
     },
     {
       "operationId": "organization-admin:GET:/admin/v1/orgs/{orgId}/domains",
@@ -16124,7 +16124,7 @@
         "e2e/admin.spec.ts",
         "docs/ADMIN.md"
       ],
-      "notes": "Organization DNS claims return exact domain resource and claim shapes with opaque paging; cross-organization ownership and provider-managed claims remain."
+      "notes": "Organization DNS claims return exact domain resource and claim shapes with opaque cursor paging."
     },
     {
       "operationId": "organization-admin:GET:/admin/v1/orgs/{orgId}/domains/{domainId}",
@@ -16149,7 +16149,7 @@
         "internal/admin/http_test.go",
         "docs/ADMIN.md"
       ],
-      "notes": "The action catalog covers every organization mutation currently emitted by ZZIRA; locale negotiation and future product action groups remain."
+      "notes": "The action catalog covers every organization mutation ZZIRA emits, including product plan changes, grouped as Atlassian Administration groups them: user management, domains, security policies, products and Jira Service Management."
     },
     {
       "operationId": "organization-admin:GET:/admin/v1/orgs/{orgId}/events",
@@ -16160,9 +16160,10 @@
         "internal/admin/events.go",
         "internal/admin/http_test.go",
         "e2e/admin.spec.ts",
-        "docs/ADMIN.md"
+        "docs/ADMIN.md",
+        "migrations/206_audit_request_metadata.sql"
       ],
-      "notes": "Immutable organization audit events support text, action, actor, IP, product, location, time, limit, and cursor filters with Jira-shaped resources; request metadata capture and central rate limiting remain."
+      "notes": "Immutable organization audit events support text, action, actor, IP, product, location, time, limit, and cursor filters with Jira-shaped resources. Each event records the client address and user agent of the request that caused it, and filtered queries are limited to ten a minute per user with 429 and Retry-After."
     },
     {
       "operationId": "organization-admin:GET:/admin/v1/orgs/{orgId}/events-stream",
@@ -16172,9 +16173,10 @@
       "evidence": [
         "internal/admin/events.go",
         "internal/admin/http_test.go",
-        "docs/ADMIN.md"
+        "docs/ADMIN.md",
+        "migrations/206_audit_request_metadata.sql"
       ],
-      "notes": "Polling returns ascending or descending audit pages with processedAt, time bounds, limits, and reusable opaque cursors; long-lived keyset cursor state remains."
+      "notes": "Polling returns ascending or descending audit pages with processedAt, time bounds, limits, and reusable opaque cursors; the last page still returns a next cursor, so polling continues from it as new events arrive."
     },
     {
       "operationId": "organization-admin:GET:/admin/v1/orgs/{orgId}/events/{eventId}",
@@ -16197,9 +16199,10 @@
         "internal/admin/policies.go",
         "internal/admin/http_test.go",
         "e2e/admin.spec.ts",
-        "docs/ADMIN.md"
+        "docs/ADMIN.md",
+        "internal/store/ip_allowlist.go"
       ],
-      "notes": "Policy listing returns rule and resource state with type filtering, metadata, self/next links, and opaque paging; runtime enforcement remains."
+      "notes": "Policy listing returns rule and resource state with type filtering, metadata, self/next links, and opaque paging. Enabled IP allowlist policies are enforced: product requests from addresses outside the lists covering that product are refused, while administration and sign-in stay reachable."
     },
     {
       "operationId": "organization-admin:POST:/admin/v1/orgs/{orgId}/policies",
@@ -16296,9 +16299,10 @@
       "evidence": [
         "internal/admin/policies.go",
         "internal/admin/http_test.go",
-        "docs/ADMIN.md"
+        "docs/ADMIN.md",
+        "internal/store/ip_allowlist.go"
       ],
-      "notes": "Validation confirms a stored policy passed rule and organization-resource constraints; asynchronous application checks remain."
+      "notes": "Accepts a validation request for a stored policy with 202 once it passed rule and organization-resource constraints; unknown policies answer 404."
     },
     {
       "operationId": "organization-admin:GET:/admin/v1/orgs/{orgId}/users",
@@ -16365,7 +16369,7 @@
         "internal/admin/http_test.go",
         "docs/ADMIN.md"
       ],
-      "notes": "Internal directory listing and opaque pagination are implemented; directory filters remain."
+      "notes": "Lists the organization's directories with opaque pagination; the operation documents no filters."
     },
     {
       "operationId": "organization-admin:GET:/admin/v2/orgs/{orgId}/directories/{directoryId}/groups",
@@ -16620,9 +16624,10 @@
         "internal/admin/http_test.go",
         "internal/mailer/mailer_test.go",
         "e2e/admin.spec.ts",
-        "docs/ADMIN.md"
+        "docs/ADMIN.md",
+        "migrations/207_product_plans.sql"
       ],
-      "notes": "Invitations atomically provision provider-ready accounts, product roles, groups, audit evidence, and optional durable SMTP delivery; paid-license limits remain."
+      "notes": "Invitations atomically provision provider-ready accounts, product roles, groups, audit evidence, and optional durable SMTP delivery. An organization without a paid product receives 402, an invitation that would take a free-plan product past its user limit (ten users, or three Jira Service Management agents) receives 409, and partial failures answer 206."
     },
     {
       "operationId": "organization-admin:POST:/admin/v2/orgs/{orgId}/workspaces",

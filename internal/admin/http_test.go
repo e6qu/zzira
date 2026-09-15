@@ -138,7 +138,7 @@ func TestOrganizationAndGroupAPIJourney(t *testing.T) {
 			req.Header.Set("Authorization", "Bearer "+token)
 		}
 		response := httptest.NewRecorder()
-		mux.ServeHTTP(response, req)
+		store.RequestMetadataHandler(mux).ServeHTTP(response, req)
 		if response.Code != want {
 			t.Fatalf("%s %s status=%d, want %d; body=%s", method, path, response.Code, want, response.Body.String())
 		}
@@ -299,6 +299,16 @@ func TestOrganizationAndGroupAPIJourney(t *testing.T) {
 	if updatedPolicy["data"].(map[string]any)["attributes"].(map[string]any)["status"] != "enabled" {
 		t.Fatalf("policy was not enabled: %#v", updatedPolicy)
 	}
+	// The enabled allowlist keeps other addresses from the product it covers.
+	if blocked, blockErr := st.IPAllowlistBlocks(ctx, workspaceID, "jira-service-management", "203.0.113.9"); blockErr != nil || !blocked {
+		t.Fatalf("an address outside the allowlist reached the product: blocked=%v err=%v", blocked, blockErr)
+	}
+	if blocked, blockErr := st.IPAllowlistBlocks(ctx, workspaceID, "jira-service-management", "192.0.2.10"); blockErr != nil || blocked {
+		t.Fatalf("an allowlisted address was blocked: blocked=%v err=%v", blocked, blockErr)
+	}
+	if blocked, blockErr := st.IPAllowlistBlocks(ctx, workspaceID, "confluence", "203.0.113.9"); blockErr != nil || blocked {
+		t.Fatalf("the allowlist blocked a product it does not cover: blocked=%v err=%v", blocked, blockErr)
+	}
 	call(http.MethodDelete, resourcePath, adminToken, nil, http.StatusNoContent)
 	call(http.MethodDelete, policyPath, adminToken, nil, http.StatusAccepted)
 	call(http.MethodGet, policyPath, adminToken, nil, http.StatusNotFound)
@@ -380,6 +390,30 @@ func TestOrganizationAndGroupAPIJourney(t *testing.T) {
 		t.Fatalf("unexpected invitation assignment response: %#v", invited)
 	}
 	call(http.MethodPost, invitePath, adminToken, inviteRequest, http.StatusPartialContent)
+	// Free plans cap product users, and inviting needs a paid product.
+	products, err := st.OrganizationProducts(ctx, organization.ID)
+	if err != nil || len(products) == 0 {
+		t.Fatalf("organization products = %v err=%v", products, err)
+	}
+	setPlans := func(plan string, only string) {
+		t.Helper()
+		for _, product := range products {
+			if only == "" || product.Key == only {
+				if err := st.SetProductPlan(ctx, workspaceID, adminID, product.ID, plan); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+	}
+	overLimit := map[string]any{
+		"emails":          []string{store.NewID("limit") + "@example.invalid", store.NewID("limit") + "@example.invalid", store.NewID("limit") + "@example.invalid"},
+		"permissionRules": []map[string]string{{"resource": resourceID, "role": "atlassian/customer"}},
+	}
+	setPlans("free", "jira-service-management")
+	call(http.MethodPost, invitePath, adminToken, overLimit, http.StatusConflict)
+	setPlans("free", "")
+	call(http.MethodPost, invitePath, adminToken, overLimit, http.StatusPaymentRequired)
+	setPlans("standard", "")
 	defer func() { _, _ = st.Pool.Exec(ctx, `DELETE FROM users WHERE id=$1`, invitedID) }()
 	invitedRoles := call(http.MethodGet, usersPath+"/"+invitedID+"/role-assignments?resourceIds="+resourceID+"&roleIds=atlassian/customer", adminToken, nil, http.StatusOK)
 	if len(invitedRoles["data"].([]any)) != 1 {
@@ -434,6 +468,10 @@ func TestOrganizationAndGroupAPIJourney(t *testing.T) {
 	if len(eventData) != 1 || eventData[0].(map[string]any)["attributes"].(map[string]any)["action"] != "group.deleted" {
 		t.Fatalf("unexpected filtered audit events: %#v", eventPage)
 	}
+	// The event records the address of the request that caused it.
+	if location, _ := eventData[0].(map[string]any)["attributes"].(map[string]any)["location"].(map[string]any); location["ip"] != "192.0.2.1" {
+		t.Fatalf("audit event did not record the request address: %#v", eventData[0])
+	}
 	eventID := eventData[0].(map[string]any)["id"].(string)
 	eventDetail := call(http.MethodGet, eventsPath+"/"+eventID, adminToken, nil, http.StatusOK)
 	if eventDetail["data"].(map[string]any)["id"] != eventID {
@@ -449,11 +487,27 @@ func TestOrganizationAndGroupAPIJourney(t *testing.T) {
 		t.Fatalf("unexpected audit action catalog: %#v", actions)
 	}
 
+	// Filtered event queries are rate limited per user.
+	handler.EventsRateLimit = 1
+	limited := false
+	for attempt := 0; attempt < 2 && !limited; attempt++ {
+		request := httptest.NewRequest(http.MethodGet, "https://zzira.example"+eventsPath, nil)
+		request.Header.Set("Authorization", "Bearer "+adminToken)
+		response := httptest.NewRecorder()
+		mux.ServeHTTP(response, request)
+		limited = response.Code == http.StatusTooManyRequests && response.Header().Get("Retry-After") != ""
+	}
+	handler.EventsRateLimit = 0
+	if !limited {
+		t.Fatal("the filtered audit event query was not rate limited")
+	}
+
 	audit, err := st.OrganizationAuditEvents(ctx, organization.ID, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(audit) != 24 {
-		t.Fatalf("audit events=%d, want 24", len(audit))
+	// Seven of the events are the product plan changes.
+	if len(audit) != 31 {
+		t.Fatalf("audit events=%d, want 31", len(audit))
 	}
 }

@@ -186,8 +186,16 @@ func matches(rule *Rule, filter SummaryFilter) bool {
 	return true
 }
 
+// cursorLifetime is how long an Automation page cursor stays usable.
+const cursorLifetime = time.Hour
+
 func encodeCursor(offset int) string {
-	return base64.RawURLEncoding.EncodeToString([]byte(strconv.Itoa(offset)))
+	return encodeCursorAt(offset, time.Now())
+}
+
+// encodeCursorAt stamps a page offset with the time its cursor was issued.
+func encodeCursorAt(offset int, issued time.Time) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(strconv.Itoa(offset) + "." + strconv.FormatInt(issued.Unix(), 10)))
 }
 
 func decodeCursor(cursor string) (int, error) {
@@ -198,9 +206,14 @@ func decodeCursor(cursor string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	offset, err := strconv.Atoi(string(raw))
-	if err != nil || offset < 0 {
+	offsetText, issuedText, stamped := strings.Cut(string(raw), ".")
+	offset, err := strconv.Atoi(offsetText)
+	issued, issuedErr := strconv.ParseInt(issuedText, 10, 64)
+	if !stamped || err != nil || issuedErr != nil || offset < 0 {
 		return 0, errors.New("invalid cursor")
+	}
+	if time.Since(time.Unix(issued, 0)) > cursorLifetime {
+		return 0, errors.New("the cursor has expired")
 	}
 	return offset, nil
 }

@@ -802,6 +802,30 @@ func (h *Handler) CreateAdminDomain(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/admin?saved="+url.QueryEscape("Domain added"), http.StatusSeeOther)
 }
 
+// UpdateAdminProductPlan changes the plan a product runs on.
+func (h *Handler) UpdateAdminProductPlan(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form", http.StatusBadRequest)
+		return
+	}
+	if err := h.Store.SetProductPlan(r.Context(), workspaceID, user.ID, r.PathValue("productId"), r.FormValue("plan")); err != nil {
+		status := http.StatusInternalServerError
+		switch {
+		case errors.Is(err, store.ErrAdminNotFound):
+			status = http.StatusNotFound
+		case errors.Is(err, store.ErrAdminValidation):
+			status = http.StatusBadRequest
+		}
+		http.Error(w, err.Error(), status)
+		return
+	}
+	http.Redirect(w, r, "/admin?saved="+url.QueryEscape("Product plan updated"), http.StatusSeeOther)
+}
+
 func (h *Handler) UpdateAdminDomain(w http.ResponseWriter, r *http.Request) {
 	user, workspaceID, ok := h.requireAdminPage(w, r)
 	if !ok {

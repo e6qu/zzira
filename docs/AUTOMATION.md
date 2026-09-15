@@ -40,11 +40,11 @@ responses use Automation's `errors[]` shape with `id`, `status`, `code`,
 secret fields in rule and connection payloads.
 
 ZZIRA stores complete rule component and connection JSON for read/write round
-trips. The central `api.atlassian.com/automation/public/...` hostname is outside
-the ZZIRA base URL and is not served. OAuth 2.0, Forge principals, Atlassian
-organization roles, and one-hour cursor expiry are not implemented. Cursors are
-opaque encoded offsets and can shift when rules are concurrently added or
-deleted.
+trips. Atlassian's primary entry point path, `/automation/public/jira/{cloudid}/rest/...`,
+is served on the ZZIRA base URL next to the site gateway path. OAuth 2.0, Forge
+principals and Atlassian organization roles are not implemented. Cursors are
+opaque encoded offsets stamped with their issue time; they expire after one hour
+(400) and can shift when rules are concurrently added or deleted.
 
 ## Executable scheduled subset
 

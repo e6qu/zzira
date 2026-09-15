@@ -54,6 +54,8 @@ func Open(ctx context.Context, dsn string) (*Store, error) {
 	// Server-side prepared statements: JSONB operators like @>/? must never
 	// pass through pgx's client-side SQL sanitizer (it rejects literal ?).
 	cfg.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeCacheStatement
+	cfg.PrepareConn = prepareRequestConnection
+	cfg.AfterRelease = releaseRequestConnection
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, err
