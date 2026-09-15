@@ -22,7 +22,10 @@ Jira Cloud-compatible REST resources.
   limits. Create returns `201`, update returns `200`, and delete returns `204`.
 - Software projects expose a stable feature catalog and persist `ENABLED` or
   `DISABLED` state. Disabling Backlog or Reports removes the corresponding
-  project navigation entry. Non-software projects reject the feature resource.
+  project navigation entry, Sprints removes sprint creation from the backlog,
+  Code hides an issue's development information, and Deployments hides builds
+  and deployments on issues and releases. Each feature bean carries a served
+  `imageUri`. Non-software projects reject the feature resource.
 - Numeric project sender-email resources return the effective site default or
   a project override. An empty update restores the default; writes return
   `204`.
@@ -71,9 +74,9 @@ project is created. The deprecated `lead` is accepted in place of
   permission evaluator.
 - Anonymous Browse Projects is not available, so project-property reads require
   an authenticated workspace member.
-- The built-in software feature catalog is fixed. App-contributed project
-  features, feature images, locked states, and runtime handling for Roadmap,
-  Code, and Deployments remain.
+- The built-in software feature catalog is fixed: Connect apps cannot
+  contribute project features. Disabling Roadmap removes the project's
+  Timeline from navigation and answers its page with 404.
 - Sender addresses are syntax validated. Custom-domain ownership, verification
   warnings, bounce handling, and outbound notification delivery remain.
 - Project types follow the site's products. `GET /project/type/accessible`

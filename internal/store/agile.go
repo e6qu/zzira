@@ -507,7 +507,10 @@ func (s *Store) SprintsByBoard(ctx context.Context, boardID string) ([]*models.S
 		`SELECT s.id, s.board_id, s.name, s.state,
 		        COALESCE(to_char(start_date AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
 		        COALESCE(to_char(end_date AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
-		        s.goal, s.jira_id, (SELECT jira_id FROM boards WHERE id=s.board_id)
+		        s.goal, s.jira_id, (SELECT jira_id FROM boards WHERE id=s.board_id),
+		        COALESCE(to_char(s.activated_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
+		        COALESCE(to_char(s.completed_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
+		        to_char(s.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"')
 			 FROM sprints s WHERE s.board_id=$1 ORDER BY s.position, s.created_at, s.id`, boardID)
 	if err != nil {
 		return nil, err
@@ -516,7 +519,7 @@ func (s *Store) SprintsByBoard(ctx context.Context, boardID string) ([]*models.S
 	var out []*models.Sprint
 	for rows.Next() {
 		sp := &models.Sprint{}
-		if err := rows.Scan(&sp.ID, &sp.BoardID, &sp.Name, &sp.State, &sp.StartDate, &sp.EndDate, &sp.Goal, &sp.JiraID, &sp.BoardJiraID); err != nil {
+		if err := rows.Scan(&sp.ID, &sp.BoardID, &sp.Name, &sp.State, &sp.StartDate, &sp.EndDate, &sp.Goal, &sp.JiraID, &sp.BoardJiraID, &sp.ActivatedDate, &sp.CompleteDate, &sp.CreatedDate); err != nil {
 			return nil, err
 		}
 		out = append(out, sp)
@@ -585,12 +588,23 @@ func (s *Store) UpdateSprint(ctx context.Context, actorID, workspaceID, sprintID
 		}
 	}
 
-	if _, err := tx.Exec(ctx, `
-		UPDATE sprints SET name=$2, goal=$3, state=$4, start_date=$5, end_date=$6
-		WHERE id=$1`, sprintID, input.Name, input.Goal, input.State, input.StartDate, input.EndDate); err != nil {
+	// The first activation and completion are stamped once and kept.
+	var activatedAt, completedAt *time.Time
+	if err := tx.QueryRow(ctx, `
+		UPDATE sprints SET name=$2, goal=$3, state=$4, start_date=$5, end_date=$6,
+		       activated_at=CASE WHEN $4 IN ('active','closed') THEN COALESCE(activated_at, now()) END,
+		       completed_at=CASE WHEN $4='closed' THEN COALESCE(completed_at, now()) END
+		WHERE id=$1
+		RETURNING activated_at, completed_at`, sprintID, input.Name, input.Goal, input.State, input.StartDate, input.EndDate).Scan(&activatedAt, &completedAt); err != nil {
 		return nil, nil, err
 	}
 	updated := &models.Sprint{ID: sprintID, BoardID: boardID, Name: input.Name, Goal: input.Goal, State: input.State}
+	if activatedAt != nil {
+		updated.ActivatedDate = activatedAt.UTC().Format(time.RFC3339)
+	}
+	if completedAt != nil {
+		updated.CompleteDate = completedAt.UTC().Format(time.RFC3339)
+	}
 	if input.StartDate != nil {
 		updated.StartDate = input.StartDate.UTC().Format(time.RFC3339)
 	}
@@ -634,9 +648,12 @@ func (s *Store) sprintByID(ctx context.Context, clause string, args ...any) (*mo
 		`SELECT s.id, s.board_id, s.name, s.state,
 		        COALESCE(to_char(s.start_date AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
 		        COALESCE(to_char(s.end_date AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
-		        s.goal, s.jira_id, (SELECT jira_id FROM boards WHERE id=s.board_id)
+		        s.goal, s.jira_id, (SELECT jira_id FROM boards WHERE id=s.board_id),
+		        COALESCE(to_char(s.activated_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
+		        COALESCE(to_char(s.completed_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
+		        to_char(s.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"')
 		 FROM sprints s `+clause, args...).
-		Scan(&sp.ID, &sp.BoardID, &sp.Name, &sp.State, &sp.StartDate, &sp.EndDate, &sp.Goal, &sp.JiraID, &sp.BoardJiraID)
+		Scan(&sp.ID, &sp.BoardID, &sp.Name, &sp.State, &sp.StartDate, &sp.EndDate, &sp.Goal, &sp.JiraID, &sp.BoardJiraID, &sp.ActivatedDate, &sp.CompleteDate, &sp.CreatedDate)
 	if err != nil {
 		return nil, err
 	}

@@ -28,6 +28,8 @@ type releasesData struct {
 	Issues   []*models.Issue
 	Progress models.VersionProgress
 	Delivery []models.DeliveryItem
+	// DeploymentsDisabled hides delivery evidence a project turned off.
+	DeploymentsDisabled bool
 	// Driver, Members and Approvers describe who is responsible for and who
 	// signs off a release; MyApproval is the signed-in person's own request.
 	Driver     *models.User
@@ -213,10 +215,18 @@ func (h *Handler) Release(w http.ResponseWriter, r *http.Request) {
 	for _, issue := range data.Issues {
 		issueKeys = append(issueKeys, issue.Key)
 	}
-	data.Delivery, err = h.Store.DeliveryItemsForIssues(r.Context(), ws, issueKeys)
+	deploymentsEnabled, err := h.Store.ProjectFeatureEnabled(r.Context(), project.ID, "jsw.classic.deployments")
 	if err != nil {
 		http.Error(w, "Could not load release delivery evidence.", 500)
 		return
+	}
+	data.DeploymentsDisabled = !deploymentsEnabled
+	if deploymentsEnabled {
+		data.Delivery, err = h.Store.DeliveryItemsForIssues(r.Context(), ws, issueKeys)
+		if err != nil {
+			http.Error(w, "Could not load release delivery evidence.", 500)
+			return
+		}
 	}
 	if data.Members, err = h.Store.MembersByWorkspace(r.Context(), ws); err != nil {
 		http.Error(w, "Could not load release people.", 500)

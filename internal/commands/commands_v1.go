@@ -35,6 +35,7 @@ type UpdateIssueInput struct {
 
 	SecurityLevelID *string                    // "" = public, nil = unchanged
 	Labels          *[]string                  // empty = clear, nil = unchanged
+	DueDate         *string                    // yyyy-MM-dd; "" = clear, nil = unchanged
 	Fields          map[string]json.RawMessage // custom fields
 
 	// SuppressChangelog and SuppressEvents carry an app's generateChangelog
@@ -157,6 +158,13 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 		}
 		in.Labels = &labels
 	}
+	if in.DueDate != nil {
+		dueDate, err := normalizeDueDate(*in.DueDate)
+		if err != nil {
+			return nil, nil, err
+		}
+		in.DueDate = &dueDate
+	}
 	currentAssigneeID := ""
 	if issue.Assignee != nil {
 		currentAssigneeID = issue.Assignee.ID
@@ -191,6 +199,7 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 		StatusID:          in.StatusID,
 		SecurityLevelID:   in.SecurityLevelID,
 		Labels:            in.Labels,
+		DueDate:           in.DueDate,
 		Fields:            in.Fields,
 		VersionOperations: in.VersionOperations,
 		SuppressChangelog: in.SuppressChangelog,
@@ -661,6 +670,18 @@ func changedTransitionFields(issue *models.Issue, update store.IssueUpdate) map[
 	return changed
 }
 
+// normalizeDueDate checks a due date is a yyyy-MM-dd day; empty clears it.
+func normalizeDueDate(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", nil
+	}
+	if _, err := time.Parse("2006-01-02", value); err != nil {
+		return "", fmt.Errorf("due date must be a date in yyyy-MM-dd form")
+	}
+	return value, nil
+}
+
 func workflowFieldRaw(issue *models.Issue, update *store.IssueUpdate, field string) json.RawMessage {
 	encode := func(value any) json.RawMessage {
 		encoded, _ := json.Marshal(value)
@@ -682,6 +703,11 @@ func workflowFieldRaw(issue *models.Issue, update *store.IssueUpdate, field stri
 			return encode(*update.Labels)
 		}
 		return encode(issue.Labels)
+	case "duedate":
+		if update.DueDate != nil {
+			return encode(*update.DueDate)
+		}
+		return encode(issue.DueDate)
 	case "assignee":
 		if update.AssigneeID != nil {
 			return encode(*update.AssigneeID)

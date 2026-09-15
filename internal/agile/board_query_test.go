@@ -213,6 +213,9 @@ func TestAgileBoardQueries(t *testing.T) {
 
 	// Sprint states.
 	call(http.MethodPost, "/rest/agile/1.0/sprint/"+current, `{"state":"closed"}`, http.StatusOK)
+	if closed := call(http.MethodGet, "/rest/agile/1.0/sprint/"+current, "", http.StatusOK); closed["completeDate"] == nil || closed["createdDate"] == nil {
+		t.Fatalf("closed sprint dates = %v", closed)
+	}
 	call(http.MethodPost, sprintPath, `{"issues":["`+backlogIssue.Key+`"]}`, http.StatusBadRequest)
 	ordered := call(http.MethodGet, boardPath+"/sprint", "", http.StatusOK)
 	if names(ordered, "values", "state") != "closed,future" {

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
+	"regexp"
 	"strings"
 	"unicode/utf8"
 
@@ -118,7 +120,50 @@ func (s *Service) UpdateApplicationProperty(ctx context.Context, workspaceID, ac
 			return validation("application property value is not allowed")
 		}
 	}
+	if err := validateApplicationPropertyValue(key, value); err != nil {
+		return err
+	}
 	return s.Store.UpdateApplicationProperty(ctx, workspaceID, actorID, key, value)
+}
+
+var lookAndFeelColour = regexp.MustCompile(`^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$`)
+
+// validateApplicationPropertyValue checks the look and feel properties the
+// site applies: date formats it can display, browser picker formats with
+// supported directives, hex colours, URLs and a one-line title.
+func validateApplicationPropertyValue(key, value string) error {
+	switch key {
+	case "jira.lf.date.time", "jira.lf.date.day", "jira.lf.date.complete", "jira.lf.date.dmy", "jira.date.picker.java.format", "jira.date.time.picker.java.format":
+		if _, ok := models.JavaDateLayout(value); !ok {
+			return validation("the date format uses a pattern Jira cannot display")
+		}
+	case "jira.date.picker.javascript.format", "jira.date.time.picker.javascript.format":
+		if !models.ValidJavaScriptDateFormat(value) {
+			return validation("the browser date format uses an unsupported directive")
+		}
+	case "jira.lf.navigation.bgcolour", "jira.lf.navigation.highlightcolour", "jira.lf.hero.button.base.bg.colour":
+		if !lookAndFeelColour.MatchString(value) {
+			return validation("the colour must be a hex colour such as #0747A6")
+		}
+	case "jira.lf.logo.url", "jira.lf.favicon.url", "jira.lf.favicon.hires.url":
+		if !lookAndFeelURL(value) {
+			return validation("the URL must be a site path or an http or https URL")
+		}
+	case "jira.title":
+		if title := strings.TrimSpace(value); title == "" || len(title) > 255 || strings.ContainsAny(value, "\r\n") {
+			return validation("the application title must be 1 to 255 characters on one line")
+		}
+	}
+	return nil
+}
+
+// lookAndFeelURL accepts a site path or an absolute http or https URL.
+func lookAndFeelURL(value string) bool {
+	if strings.HasPrefix(value, "/") && !strings.HasPrefix(value, "//") {
+		return true
+	}
+	parsed, err := url.Parse(value)
+	return err == nil && (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Host != ""
 }
 
 func (s *Service) UpdateNavigatorColumns(ctx context.Context, workspaceID, actorID string, columns []string) error {
@@ -167,7 +212,7 @@ var jiraApplicationPropertyCatalog = []models.ApplicationProperty{
 	{ID: "jira.lf.navigation.bgcolour", Key: "jira.lf.navigation.bgcolour", Name: "Navigation background", Description: "The navigation background color.", Type: "string", DefaultValue: "#0747A6"},
 	{ID: "jira.lf.navigation.highlightcolour", Key: "jira.lf.navigation.highlightcolour", Name: "Navigation highlight", Description: "The navigation text and logo color.", Type: "string", DefaultValue: "#DEEBFF"},
 	{ID: "jira.lf.hero.button.base.bg.colour", Key: "jira.lf.hero.button.base.bg.colour", Name: "Hero button background", Description: "The hero button background color.", Type: "string", DefaultValue: "#3b7fc4"},
-	{ID: "jira.title", Key: "jira.title", Name: "Application title", Description: "The title shown for the Jira application.", Type: "string", DefaultValue: "Jira"},
+	{ID: "jira.title", Key: "jira.title", Name: "Application title", Description: "The title shown for the Jira application.", Type: "string", DefaultValue: models.DefaultSiteTitle},
 	{ID: "jira.option.globalsharing", Key: "jira.option.globalsharing", Name: "Global sharing", Description: "Allow filters and dashboards to be shared with signed-in users.", Type: "boolean", DefaultValue: "true", AllowedValues: []string{"true", "false"}},
 	{ID: "xflow.product.suggestions.enabled", Key: "xflow.product.suggestions.enabled", Name: "Product suggestions", Description: "Show suggestions for other Atlassian products.", Type: "boolean", DefaultValue: "true", AllowedValues: []string{"true", "false"}},
 	{ID: "jira.issuenav.criteria.autoupdate", Key: "jira.issuenav.criteria.autoupdate", Name: "Instant search criteria updates", Description: "Update results immediately when search criteria changes.", Type: "boolean", DefaultValue: "true", AllowedValues: []string{"true", "false"}},

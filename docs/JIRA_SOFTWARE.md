@@ -100,6 +100,26 @@ representations, and everything an expression reads follows the caller's
 issue, comment and project permissions; anonymous evaluation has a null user
 and sees no issues.
 
+## Timeline
+
+Software projects have a **Timeline** at `/projects/{key}/timeline`, beside
+the backlog in project navigation. It lists the project's epics in rank order,
+each followed by its child work (sub-tasks stay with their parents), limited to
+work the viewer can browse. Every site has Jira's **Start date** date field,
+which together with the **Due date** system field schedules the work:
+
+- Months run from the earliest scheduled date to the latest, and span at least
+  three months; with nothing scheduled they start at the current month.
+- A bar runs from the start date through the due date. Work with only one of
+  them draws an open-ended, lighter bar to the edge of the timeline, and
+  unscheduled work shows no bar. A line marks today.
+- Each row's **Schedule** form sets both dates through the normal edit path,
+  so workflow editability, field configuration and permissions apply, and a
+  due date before the start date is refused.
+
+Turning the project's Roadmap feature off removes the Timeline from navigation
+and answers its page with 404.
+
 ## Evidence
 
 - `migrations/167_jira_software_agile.sql`

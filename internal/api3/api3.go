@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/e6qu/zzira/internal/attachments"
 	"github.com/e6qu/zzira/internal/authn"
@@ -654,6 +655,7 @@ type createIssueRequest struct {
 		} `json:"security"`
 		Labels       *[]string          `json:"labels"`
 		TimeTracking *timeTrackingInput `json:"timetracking"`
+		DueDate      *string            `json:"duedate"`
 	} `json:"fields"`
 }
 
@@ -855,8 +857,16 @@ func (h *Handler) createIssue(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	dueDate := ""
+	if req.Fields.DueDate != nil {
+		var fieldErrors map[string]string
+		if dueDate, fieldErrors = dueDateValue(rawRequest.Fields["duedate"]); fieldErrors != nil {
+			jiraFieldError(w, http.StatusBadRequest, fieldErrors)
+			return
+		}
+	}
 	issue, _, err := h.Commands.CreateIssue(r.Context(), commands.CreateIssueInput{
-		OriginalEstimate: originalEstimate, RemainingEstimate: remainingEstimate,
+		OriginalEstimate: originalEstimate, RemainingEstimate: remainingEstimate, DueDate: dueDate,
 		ActorID:        userID,
 		WorkspaceID:    wsID,
 		ProjectIDOrKey: projectIDOrKey,
@@ -926,7 +936,7 @@ func unsupportedCreateFields(body []byte) map[string]string {
 	supported := map[string]struct{}{
 		"project": {}, "summary": {}, "description": {}, "issuetype": {}, "priority": {},
 		"assignee": {}, "security": {}, "labels": {}, "fixVersions": {}, "versions": {}, "components": {}, "parent": {},
-		"timetracking": {},
+		"timetracking": {}, "duedate": {},
 	}
 	for field := range raw.Fields {
 		if _, ok := supported[field]; ok || customFieldIDPattern.MatchString(field) || appCustomFieldKeyPattern.MatchString(field) {
@@ -969,6 +979,23 @@ type putIssueRequest struct {
 		Labels       *[]string          `json:"labels"`
 		TimeTracking *timeTrackingInput `json:"timetracking"`
 	} `json:"fields"`
+}
+
+// dueDateValue reads Jira's duedate value: a yyyy-MM-dd day, or null to clear.
+func dueDateValue(raw json.RawMessage) (string, map[string]string) {
+	if string(raw) == "null" {
+		return "", nil
+	}
+	var value string
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return "", map[string]string{"duedate": "Error parsing date string: " + string(raw)}
+	}
+	if value = strings.TrimSpace(value); value != "" {
+		if _, err := time.Parse("2006-01-02", value); err != nil {
+			return "", map[string]string{"duedate": "Error parsing date string: " + value}
+		}
+	}
+	return value, nil
 }
 
 func (h *Handler) putIssue(w http.ResponseWriter, r *http.Request, idOrKey string) {
@@ -1067,6 +1094,37 @@ func (h *Handler) putIssue(w http.ResponseWriter, r *http.Request, idOrKey strin
 		sid := req.Fields.Security.ID
 		securityID = &sid
 	}
+	// duedate is set as a field, where null clears it, or with the update
+	// operation's set.
+	var dueDate *string
+	if raw, provided := rawFields.Fields["duedate"]; provided {
+		value, fieldErrors := dueDateValue(raw)
+		if fieldErrors != nil {
+			jiraFieldError(w, http.StatusBadRequest, fieldErrors)
+			return
+		}
+		dueDate = &value
+	}
+	if operations, provided := req.Update["duedate"]; provided {
+		delete(req.Update, "duedate")
+		if dueDate != nil {
+			jiraFieldError(w, http.StatusBadRequest, map[string]string{"duedate": "Field 'duedate' cannot appear in both 'fields' and 'update'"})
+			return
+		}
+		for _, operation := range operations {
+			raw, ok := operation["set"]
+			if !ok || len(operation) != 1 {
+				jiraFieldError(w, http.StatusBadRequest, map[string]string{"duedate": "Due date supports only the set operation."})
+				return
+			}
+			value, fieldErrors := dueDateValue(raw)
+			if fieldErrors != nil {
+				jiraFieldError(w, http.StatusBadRequest, fieldErrors)
+				return
+			}
+			dueDate = &value
+		}
+	}
 	// timetracking is set as a field or edited with the update operation.
 	timeTracking := req.Fields.TimeTracking
 	if operations, provided := req.Update["timetracking"]; provided {
@@ -1103,7 +1161,7 @@ func (h *Handler) putIssue(w http.ResponseWriter, r *http.Request, idOrKey strin
 		Summary: up.Summary, Description: up.Description,
 		PriorityID: up.PriorityID, AssigneeID: up.AssigneeID,
 		ParentIDOrKey:   parentIDOrKey,
-		SecurityLevelID: securityID, Labels: req.Fields.Labels, Fields: fields, VersionOperations: req.Update,
+		SecurityLevelID: securityID, Labels: req.Fields.Labels, DueDate: dueDate, Fields: fields, VersionOperations: req.Update,
 		OriginalEstimate: originalEstimate, RemainingEstimate: remainingEstimate,
 	}); err != nil {
 		field := "fields"
@@ -1249,6 +1307,7 @@ func (h *Handler) issueBean(i *models.Issue) map[string]any {
 		"summary":     i.Summary,
 		"description": i.Description,
 		"labels":      i.Labels,
+		"duedate":     nil,
 		"fixVersions": []any{},
 		"versions":    []any{},
 		"created":     issueCreated(i),
@@ -1265,6 +1324,9 @@ func (h *Handler) issueBean(i *models.Issue) map[string]any {
 			"statusCategory": statusCategoryBean(i.Status.Category),
 		},
 		"issuetype": h.issueTypeBean(i.IssueType),
+	}
+	if i.DueDate != "" {
+		fields["duedate"] = i.DueDate
 	}
 	if i.Parent != nil {
 		parentID := strconv.FormatInt(i.Parent.JiraID, 10)
@@ -1520,6 +1582,8 @@ func transitionFieldMetadata(field string, required bool) map[string]any {
 		name, schema = "Description", map[string]any{"type": "any", "system": "description"}
 	case "labels":
 		name, schema = "Labels", map[string]any{"type": "array", "items": "string", "system": "labels"}
+	case "duedate":
+		name, schema = "Due date", map[string]any{"type": "date", "system": "duedate"}
 	case "assignee":
 		name, schema = "Assignee", map[string]any{"type": "user", "system": "assignee"}
 	case "priority":
@@ -1548,6 +1612,13 @@ func transitionIssueUpdate(fields map[string]json.RawMessage) (store.IssueUpdate
 				errors[field] = "Labels must be an array of strings."
 			} else {
 				update.Labels = &value
+			}
+		case "duedate":
+			value, fieldErrors := dueDateValue(raw)
+			if fieldErrors != nil {
+				errors[field] = fieldErrors[field]
+			} else {
+				update.DueDate = &value
 			}
 		case "assignee", "priority":
 			value := ""

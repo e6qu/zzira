@@ -64,6 +64,7 @@ func (h *Handler) AutomationRules(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data := automationRulesData{CloudID: cloudID, Rules: make([]automationRuleCard, 0, len(page.Rules))}
+	look := h.siteLook(r, workspaceID)
 	for _, rule := range page.Rules {
 		card := automationRuleCard{Rule: rule, Trigger: "Imported trigger"}
 		if rule.IntervalMinutes != nil {
@@ -71,7 +72,7 @@ func (h *Handler) AutomationRules(w http.ResponseWriter, r *http.Request) {
 			card.Schedule = intervalLabel(*rule.IntervalMinutes)
 		}
 		if rule.NextRunAt != nil && rule.State == "ENABLED" {
-			card.NextRun = rule.NextRunAt.In(time.Local).Format("2 Jan 2006, 15:04")
+			card.NextRun = rule.NextRunAt.In(time.Local).Format(look.DateComplete)
 		}
 		data.Rules = append(data.Rules, card)
 	}
@@ -201,8 +202,9 @@ func (h *Handler) automationEditorData(r *http.Request, workspaceID string, rule
 	if err != nil {
 		return automationEditorData{}, err
 	}
+	look := h.siteLook(r, workspaceID)
 	for _, run := range runs {
-		view := automationRunView{Run: run, When: run.ScheduledFor.In(time.Local).Format("2 Jan 2006, 15:04:05")}
+		view := automationRunView{Run: run, When: run.ScheduledFor.In(time.Local).Format(look.DateComplete)}
 		if run.StartedAt != nil && run.CompletedAt != nil {
 			view.Duration = run.CompletedAt.Sub(*run.StartedAt).Round(time.Millisecond).String()
 		}

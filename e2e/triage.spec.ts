@@ -59,6 +59,15 @@ test('issue triage journey: inline fields, labels API, watchers, votes, links, a
     return (await updatedBean.json()).fields.labels;
   }).toEqual(['frontend', 'parity']);
 
+  const due = page.locator('#field-duedate');
+  await due.fill('2026-12-01');
+  await due.locator('xpath=..').getByRole('button', { name: 'Save due date' }).click();
+  await expect(page.locator('#field-duedate')).toHaveValue('2026-12-01');
+  await expect.poll(async () => {
+    const updatedBean = await request.get(`/rest/api/3/issue/${key}`, { headers: auth });
+    return (await updatedBean.json()).fields.duedate;
+  }).toBe('2026-12-01');
+
   const watchButton = page.locator(`form[action="/issues/${key}/watch"] .watch-button`);
   await page.locator('.issue-summary').click();
   await page.keyboard.press('w');

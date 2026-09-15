@@ -106,4 +106,19 @@ func TestSearchRenderedFields(t *testing.T) {
 	if value, present := rendered["labels"]; !present || value != nil {
 		t.Fatalf("labels have no rendered form: %v", rendered)
 	}
+
+	// The look and feel's complete date format decides how times render, and
+	// its values must be ones the site can apply.
+	call(http.MethodPut, "/rest/api/3/application-properties/jira.lf.date.complete", `{"id":"jira.lf.date.complete","value":"qq"}`, http.StatusBadRequest)
+	call(http.MethodPut, "/rest/api/3/application-properties/jira.lf.navigation.bgcolour", `{"id":"jira.lf.navigation.bgcolour","value":"blue; background:url(x)"}`, http.StatusBadRequest)
+	call(http.MethodPut, "/rest/api/3/application-properties/jira.lf.logo.url", `{"id":"jira.lf.logo.url","value":"javascript:alert(1)"}`, http.StatusBadRequest)
+	call(http.MethodPut, "/rest/api/3/application-properties/jira.lf.date.complete", `{"id":"jira.lf.date.complete","value":"yyyy-MM-dd HH:mm"}`, http.StatusOK)
+	body = call(http.MethodGet, "/rest/api/3/search/jql?jql="+url.QueryEscape("key = "+key)+"&fields=created&expand=renderedFields", "", http.StatusOK)
+	page.Issues = nil
+	if err = json.Unmarshal([]byte(body), &page); err != nil || len(page.Issues) != 1 {
+		t.Fatalf("search = %s err=%v", body, err)
+	}
+	if createdAt, _ := page.Issues[0].RenderedFields["created"].(string); !regexp.MustCompile(`^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$`).MatchString(createdAt) {
+		t.Fatalf("created in the configured format = %v", page.Issues[0].RenderedFields["created"])
+	}
 }

@@ -38,9 +38,8 @@ func (h *Handler) ProjectReports(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	project, err := h.Store.ProjectByIDOrKey(r.Context(), workspaceID, r.PathValue("key"))
-	if err != nil {
-		http.NotFound(w, r)
+	project, ok := h.reportProject(w, r, workspaceID)
+	if !ok {
 		return
 	}
 	modules, err := h.Store.AppModulesByLocation(r.Context(), workspaceID, "jira.report")
@@ -60,9 +59,8 @@ func (h *Handler) ProjectAppReport(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	project, err := h.Store.ProjectByIDOrKey(r.Context(), workspaceID, r.PathValue("key"))
-	if err != nil {
-		http.NotFound(w, r)
+	project, ok := h.reportProject(w, r, workspaceID)
+	if !ok {
 		return
 	}
 	module, err := h.Store.ActiveAppModule(r.Context(), workspaceID, r.PathValue("module"))
@@ -94,9 +92,8 @@ func (h *Handler) DORAReport(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	project, err := h.Store.ProjectByIDOrKey(r.Context(), workspaceID, r.PathValue("key"))
-	if err != nil {
-		http.NotFound(w, r)
+	project, ok := h.reportProject(w, r, workspaceID)
+	if !ok {
 		return
 	}
 	days := 30

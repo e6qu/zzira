@@ -1,5 +1,14 @@
 import { expect, test, Page } from '@playwright/test';
 import axe from 'axe-core';
+import * as fs from 'fs';
+import * as path from 'path';
+
+function apiAuthHeader(): string {
+  const email = 'demo@zzira.dev';
+  const tokens = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'seed-tokens.json'), 'utf8'));
+  const token = process.env.ZZIRA_API_TOKEN ?? tokens[email];
+  return 'Basic ' + Buffer.from(`${email}:${token}`).toString('base64');
+}
 
 async function login(page: Page, email = 'demo@zzira.dev', password = 'demo1234') {
   await page.goto('/login');
@@ -16,6 +25,15 @@ async function accessible(page: Page) {
 
 test('create, configure, share, refresh, copy and delete a dashboard', async ({ page, browser }) => {
   await login(page);
+  // A new dashboard starts with its owner's default sharing.
+  const shareAuth = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
+  expect((await page.request.put('/rest/api/3/filter/defaultShareScope', { headers: shareAuth, data: { scope: 'AUTHENTICATED' } })).status()).toBe(200);
+  await page.locator('.nav-dashboards').click();
+  const everyone = page.getByRole('group', { name: 'Who can view?', exact: true }).getByLabel('Everyone in this workspace', { exact: true });
+  await expect(everyone).toBeChecked();
+  expect((await page.request.put('/rest/api/3/filter/defaultShareScope', { headers: shareAuth, data: { scope: 'PRIVATE' } })).status()).toBe(200);
+  await page.reload();
+  await expect(everyone).not.toBeChecked();
   await page.locator('.nav-dashboards').click();
   const name = `Delivery ${Date.now()}`;
   await page.getByLabel('Dashboard name', { exact: true }).fill(name);

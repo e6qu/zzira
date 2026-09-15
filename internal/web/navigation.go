@@ -24,6 +24,8 @@ type projectNavigationItem struct {
 	BacklogURL     string
 	BacklogEnabled bool
 	ReportsEnabled bool
+	// RoadmapEnabled shows the timeline of a software project.
+	RoadmapEnabled bool
 }
 
 type workspaceNavigation struct {
@@ -102,6 +104,7 @@ func (h *Handler) workspaceNavigation(r *http.Request, workspaceID, preferred st
 			CreateURL:      "/issues/new?project=" + url.QueryEscape(project.Key),
 			BacklogEnabled: true,
 			ReportsEnabled: true,
+			RoadmapEnabled: project.ProjectTypeKey == "software",
 		}
 		if project.ProjectTypeKey == "software" {
 			features, featureErr := h.Store.ProjectFeatures(r.Context(), workspaceID, project.ID)
@@ -114,6 +117,8 @@ func (h *Handler) workspaceNavigation(r *http.Request, workspaceID, preferred st
 					item.BacklogEnabled = feature.State == "ENABLED"
 				case "jsw.classic.reports":
 					item.ReportsEnabled = feature.State == "ENABLED"
+				case "jsw.classic.roadmap":
+					item.RoadmapEnabled = feature.State == "ENABLED"
 				}
 			}
 		}
@@ -189,5 +194,6 @@ func (h *Handler) writeWorkspacePageStatus(w http.ResponseWriter, r *http.Reques
 		banner := configuration.Announcement
 		announcement = &banner
 	}
-	writePageStatus(w, name, pageData{User: user, Data: data, Active: active, Navigation: navigation, Announcement: announcement}, status)
+	look := siteLookFor(configuration.ApplicationProperties)
+	writePageStatus(w, name, pageData{User: user, Data: data, Active: active, Navigation: navigation, Announcement: announcement, Site: &look}, status)
 }

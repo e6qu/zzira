@@ -111,6 +111,15 @@ Unknown or hidden issues are left out.
   field configuration hides. Both are for Connect and Forge apps with Administer
   Jira; anyone else, administrators included, gets 403. The workflow editor
   locks or allows editing per status.
+- `duedate` is Jira's system Due date: a `yyyy-MM-dd` day set on create, on
+  edit as a field (where `null` clears it) or with the update operation's
+  `set`, and during a transition. Any other value answers 400 with Jira's
+  `Error parsing date string` message. The field sits on the default screen,
+  `createmeta`, `editmeta` and search field schemas describe it as
+  `{"type":"date","system":"duedate"}`, JQL `duedate`/`due` compares the
+  day, bulk edit sets it as a date picker, and each change is a `jira`
+  changelog item whose text is the day at midnight. The issue page edits it
+  inline and the create dialog offers it.
 - `DELETE /rest/api/3/issue/{issueIdOrKey}` refuses an issue with subtasks unless
   `deleteSubtasks=true`, which deletes them too.
 - `GET /issue/{key}/transitions` includes transition screen fields only with

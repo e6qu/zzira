@@ -35,6 +35,7 @@ func searchFieldDefinitions(customFields []*models.CustomField) []searchFieldDef
 		{ID: "summary", Key: "summary", Name: "Summary", Schema: map[string]any{"type": "string", "system": "summary"}},
 		{ID: "description", Key: "description", Name: "Description", Schema: map[string]any{"type": "doc", "system": "description"}},
 		{ID: "labels", Key: "labels", Name: "Labels", Schema: map[string]any{"type": "array", "items": "string", "system": "labels"}},
+		{ID: "duedate", Key: "duedate", Name: "Due date", Schema: map[string]any{"type": "date", "system": "duedate"}},
 		{ID: "fixVersions", Key: "fixVersions", Name: "Fix versions", Schema: map[string]any{"type": "array", "items": "version", "system": "fixVersions"}},
 		{ID: "versions", Key: "versions", Name: "Affects versions", Schema: map[string]any{"type": "array", "items": "version", "system": "versions"}},
 		{ID: "created", Key: "created", Name: "Created", Schema: map[string]any{"type": "datetime", "system": "created"}},
@@ -223,7 +224,12 @@ func searchFieldMetadata(requested []string, defaultAll, fieldsByKeys bool, defi
 // renderedSearchFields is Jira's renderedFields: rich text as HTML, dates and
 // sizes as people read them, and comment and worklog bodies rendered inside
 // their beans. Fields without a rendered form are null.
-func renderedSearchFields(fields map[string]any) map[string]any {
+// dateLayouts are the Go layouts rendered times and days use.
+type dateLayouts struct{ complete, day string }
+
+var defaultDateLayouts = dateLayouts{complete: models.DefaultCompleteDateLayout, day: models.DefaultDayDateLayout}
+
+func renderedSearchFields(fields map[string]any, layouts dateLayouts) map[string]any {
 	result := map[string]any{}
 	for key, value := range fields {
 		switch {
@@ -236,15 +242,15 @@ func renderedSearchFields(fields map[string]any) map[string]any {
 		case key == "description" || key == "environment":
 			result[key] = renderedRichText(value)
 		case key == "created" || key == "updated" || key == "resolutiondate" || key == "lastViewed" || key == "statuscategorychangedate":
-			result[key] = renderedDate(value, false)
+			result[key] = renderedDate(value, layouts, false)
 		case key == "duedate":
-			result[key] = renderedDate(value, true)
+			result[key] = renderedDate(value, layouts, true)
 		case key == "comment":
-			result[key] = renderedBodies(value, "comments", "body")
+			result[key] = renderedBodies(value, layouts, "comments", "body")
 		case key == "worklog":
-			result[key] = renderedBodies(value, "worklogs", "comment")
+			result[key] = renderedBodies(value, layouts, "worklogs", "comment")
 		case key == "attachment":
-			result[key] = renderedAttachments(value)
+			result[key] = renderedAttachments(value, layouts)
 		case key == "timetracking":
 			result[key] = value
 		case strings.HasPrefix(key, "customfield_"):
@@ -296,7 +302,7 @@ func renderedCustomValue(value any) any {
 }
 
 // renderedDate formats a stored time as Jira displays it.
-func renderedDate(value any, dateOnly bool) any {
+func renderedDate(value any, layouts dateLayouts, dateOnly bool) any {
 	text, ok := value.(string)
 	if !ok || text == "" {
 		return nil
@@ -304,9 +310,9 @@ func renderedDate(value any, dateOnly bool) any {
 	for _, layout := range []string{time.RFC3339Nano, "2006-01-02T15:04:05.000-0700", "2006-01-02T15:04:05-0700", "2006-01-02 15:04:05", "2006-01-02"} {
 		if parsed, err := time.Parse(layout, text); err == nil {
 			if dateOnly || layout == "2006-01-02" {
-				return parsed.Format("02/Jan/06")
+				return parsed.Format(layouts.day)
 			}
-			return parsed.UTC().Format("02/Jan/06 3:04 PM")
+			return parsed.UTC().Format(layouts.complete)
 		}
 	}
 	return text
@@ -314,7 +320,7 @@ func renderedDate(value any, dateOnly bool) any {
 
 // renderedBodies copies a paged comment or worklog field with each item's
 // rich text rendered as HTML.
-func renderedBodies(value any, listKey, bodyKey string) any {
+func renderedBodies(value any, layouts dateLayouts, listKey, bodyKey string) any {
 	page, ok := value.(map[string]any)
 	if !ok {
 		return nil
@@ -343,7 +349,7 @@ func renderedBodies(value any, listKey, bodyKey string) any {
 		copied[bodyKey] = renderedRichText(item[bodyKey])
 		for _, dateKey := range []string{"created", "updated", "started"} {
 			if _, present := item[dateKey]; present {
-				copied[dateKey] = renderedDate(item[dateKey], false)
+				copied[dateKey] = renderedDate(item[dateKey], layouts, false)
 			}
 		}
 		renderedItems = append(renderedItems, copied)
@@ -354,7 +360,7 @@ func renderedBodies(value any, listKey, bodyKey string) any {
 
 // renderedAttachments shows each attachment's size and creation as people
 // read them.
-func renderedAttachments(value any) any {
+func renderedAttachments(value any, layouts dateLayouts) any {
 	var items []map[string]any
 	switch list := value.(type) {
 	case []map[string]any:
@@ -374,7 +380,7 @@ func renderedAttachments(value any) any {
 		for key, field := range item {
 			copied[key] = field
 		}
-		copied["created"] = renderedDate(item["created"], false)
+		copied["created"] = renderedDate(item["created"], layouts, false)
 		copied["size"] = renderedSize(item["size"])
 		rendered = append(rendered, copied)
 	}
@@ -425,6 +431,12 @@ func (h *Handler) searchIssueBeans(ctx context.Context, workspaceID, userID stri
 	if err := h.decorateCustomFieldValues(ctx, workspaceID, fulls); err != nil {
 		return nil, err
 	}
+	layouts := defaultDateLayouts
+	if hasSearchExpand(options, "renderedFields") {
+		if configuration, err := h.Store.JiraSiteConfiguration(ctx, workspaceID); err == nil {
+			layouts.complete, layouts.day = models.SiteDateLayouts(configuration.ApplicationProperties)
+		}
+	}
 	for index, issue := range issues {
 		full := fulls[index]
 		if fields, ok := full["fields"].(map[string]any); ok {
@@ -439,7 +451,7 @@ func (h *Handler) searchIssueBeans(ctx context.Context, workspaceID, userID stri
 		}
 		fields, _ := bean["fields"].(map[string]any)
 		if hasSearchExpand(options, "renderedFields") {
-			bean["renderedFields"] = renderedSearchFields(fields)
+			bean["renderedFields"] = renderedSearchFields(fields, layouts)
 		}
 		if hasSearchExpand(options, "transitions") {
 			transitions, err := h.issueTransitionBeans(ctx, workspaceID, userID, issue)

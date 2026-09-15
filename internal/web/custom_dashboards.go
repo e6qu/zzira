@@ -106,6 +106,13 @@ func (h *Handler) CustomDashboards(w http.ResponseWriter, r *http.Request) {
 	}
 	data := customDashboardsData{Query: r.URL.Query().Get("q"), Filter: r.URL.Query().Get("filter")}
 	status := 200
+	if r.Method != http.MethodPost {
+		// A new dashboard starts with the owner's default sharing, as a new
+		// filter does.
+		if scope, err := h.Store.FilterDefaultShareScope(r.Context(), ws, user.ID); err == nil && scope == "AUTHENTICATED" {
+			data.Details.SharePermissions = []models.DashboardShare{{Type: "loggedin"}}
+		}
+	}
 	if r.Method == http.MethodPost {
 		if !parseForm(w, r) {
 			return

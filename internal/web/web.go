@@ -46,6 +46,37 @@ type pageData struct {
 	Active       string
 	Navigation   *workspaceNavigation
 	Announcement *models.AnnouncementBanner
+	Site         *render.SiteLook
+}
+
+// SiteLook is the look and feel the page shows.
+func (p pageData) SiteLook() render.SiteLook {
+	if p.Site == nil {
+		return render.DefaultSiteLook
+	}
+	return *p.Site
+}
+
+// siteLookFor is the look and feel a site's application properties set,
+// keeping ZZIRA's own for what they leave unset.
+func siteLookFor(properties map[string]string) render.SiteLook {
+	look := render.DefaultSiteLook
+	if title := strings.TrimSpace(properties["jira.title"]); title != "" {
+		look.Title = title
+	}
+	look.LogoURL, look.FaviconURL = properties["jira.lf.logo.url"], properties["jira.lf.favicon.url"]
+	look.NavigationBackground, look.NavigationHighlight = properties["jira.lf.navigation.bgcolour"], properties["jira.lf.navigation.highlightcolour"]
+	look.DateComplete, look.DateDay = models.SiteDateLayouts(properties)
+	return look
+}
+
+// siteLook loads the workspace's look and feel, falling back to ZZIRA's own.
+func (h *Handler) siteLook(r *http.Request, workspaceID string) render.SiteLook {
+	configuration, err := h.Store.JiraSiteConfiguration(r.Context(), workspaceID)
+	if err != nil {
+		return render.DefaultSiteLook
+	}
+	return siteLookFor(configuration.ApplicationProperties)
 }
 
 type createDialogData struct {
@@ -519,13 +550,27 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	if err != nil {
 		return nil, err
 	}
-	development, err := h.Store.DevelopmentItemsForIssue(r.Context(), wsID, issue.Key)
+	// A software project's Code and Deployments features decide whether its
+	// development and delivery evidence shows.
+	codeEnabled, err := h.Store.ProjectFeatureEnabled(r.Context(), issue.ProjectID, "jsw.classic.code")
 	if err != nil {
 		return nil, err
 	}
-	delivery, err := h.Store.DeliveryItemsForIssues(r.Context(), wsID, []string{issue.Key})
+	deploymentsEnabled, err := h.Store.ProjectFeatureEnabled(r.Context(), issue.ProjectID, "jsw.classic.deployments")
 	if err != nil {
 		return nil, err
+	}
+	var development []models.DevelopmentItem
+	if codeEnabled {
+		if development, err = h.Store.DevelopmentItemsForIssue(r.Context(), wsID, issue.Key); err != nil {
+			return nil, err
+		}
+	}
+	var delivery []models.DeliveryItem
+	if deploymentsEnabled {
+		if delivery, err = h.Store.DeliveryItemsForIssues(r.Context(), wsID, []string{issue.Key}); err != nil {
+			return nil, err
+		}
 	}
 	parentOptions := []models.CreateFieldOption{}
 	if issue.IssueType.Subtask {
@@ -677,6 +722,8 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 		Forms:               derefForms(forms),
 		Development:         development,
 		Delivery:            delivery,
+		CodeDisabled:        !codeEnabled,
+		DeploymentsDisabled: !deploymentsEnabled,
 		AppPanels:           appPanels,
 		AppActivityTabs:     appActivityTabs,
 		AppContexts:         appContexts,
@@ -1178,6 +1225,7 @@ func (h *Handler) CreateIssue(w http.ResponseWriter, r *http.Request) {
 		AssigneeID:       values["assignee"],
 		SecurityLevelID:  values["security"],
 		Labels:           strings.Split(values["labels"], ","),
+		DueDate:          values["duedate"],
 		Fields:           customFields,
 	})
 	if err != nil {
@@ -2138,6 +2186,8 @@ func (h *Handler) UpdateIssueField(w http.ResponseWriter, r *http.Request, key s
 			labels = []string{}
 		}
 		in.Labels = &labels
+	case "duedate":
+		in.DueDate = &value
 	default:
 		const prefix = "custom:"
 		if !strings.HasPrefix(field, prefix) || len(field) == len(prefix) {

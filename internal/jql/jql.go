@@ -1069,7 +1069,7 @@ func DefaultResolver() FieldResolver {
 			"parent":         "parent.key",
 			"resolution":     "COALESCE(reso.name, res.name)",
 			"resolutiondate": "i.resolved_at",
-			"due":            `NULLIF(i.fields->>'duedate','')::timestamptz`,
+			"due":            `i.due_date::timestamptz`,
 			"environment":    `i.fields->>'environment'`,
 			"component":      `i.fields->>'component'`,
 			"sprint":         `i.fields->>'sprint'`,
@@ -1085,7 +1085,7 @@ func DefaultResolver() FieldResolver {
 			"updated": "i.updated_at", "created": "i.created_at", "key": "i.key", "summary": "i.summary",
 			"status": "st.name", "priority": "COALESCE(pro.position, pr2.position)", "assignee": "a.display_name", "issuetype": "COALESCE(ito.name, it.name)",
 			"reporter": "r.display_name", "project": "pr.key", "parent": "parent.key", "resolution": "COALESCE(reso.position, res.position)",
-			"due": `NULLIF(i.fields->>'duedate','')::timestamptz`, "resolutiondate": "i.resolved_at",
+			"due": `i.due_date::timestamptz`, "resolutiondate": "i.resolved_at",
 			"originalestimate": "i.original_estimate_seconds", "remainingestimate": "i.remaining_estimate_seconds",
 			"timespent": "(SELECT COALESCE(sum(w.time_spent_seconds),0) FROM worklogs w WHERE w.issue_id=i.id)",
 			"workratio": "CASE WHEN i.original_estimate_seconds > 0 THEN (SELECT COALESCE(sum(w.time_spent_seconds),0) FROM worklogs w WHERE w.issue_id=i.id) * 100 / i.original_estimate_seconds END",
@@ -1383,12 +1383,13 @@ func (c *compiler) clause(cl Clause) string {
 	case ">", ">=", "<", "<=":
 		return col + " " + cl.Op + " " + c.arg(c.fieldValue(cl.Field, cl.Values[0]))
 	case "empty":
-		if c.res.DurationFields[cl.Field] || c.res.NumberFields[cl.Field] {
+		// A date has no text form to be blank; it is only ever absent.
+		if c.res.DurationFields[cl.Field] || c.res.NumberFields[cl.Field] || c.res.DateFields[cl.Field] {
 			return "(" + col + " IS NULL)"
 		}
 		return "(" + col + " IS NULL OR " + col + " = '')"
 	case "notempty":
-		if c.res.DurationFields[cl.Field] || c.res.NumberFields[cl.Field] {
+		if c.res.DurationFields[cl.Field] || c.res.NumberFields[cl.Field] || c.res.DateFields[cl.Field] {
 			return "(" + col + " IS NOT NULL)"
 		}
 		return "(" + col + " IS NOT NULL AND " + col + " <> '')"

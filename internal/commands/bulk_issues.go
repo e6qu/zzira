@@ -554,6 +554,22 @@ func bulkIssueUpdate(issue *models.Issue, actorID string, operations []store.Bul
 				return update, err
 			}
 			update.VersionOperations[operation.FieldID] = versionOperations
+		case "timeoriginalestimate", "timeestimate":
+			var seconds int64
+			if err := json.Unmarshal(operation.Value, &seconds); err != nil || seconds < 0 {
+				return update, fmt.Errorf("%s must be a duration in seconds", operation.FieldID)
+			}
+			if operation.FieldID == "timeoriginalestimate" {
+				update.OriginalEstimate = &seconds
+			} else {
+				update.RemainingEstimate = &seconds
+			}
+		case "duedate":
+			value, err := bulkStringValue(operation.Value)
+			if err != nil {
+				return update, fmt.Errorf("duedate: %w", err)
+			}
+			update.DueDate = &value
 		case "components":
 			value, err := bulkComponentsValue(issue.Fields[operation.FieldID], operation)
 			if err != nil {

@@ -1,5 +1,5 @@
 {{define "page_app_module"}}
-<!doctype html><html lang="en"><head><title>{{.Data.Module.Title}} · {{.Data.Module.AppName}} · ZZIRA</title>{{template "head" .}}</head>
+<!doctype html><html lang="en"><head><title>{{.Data.Module.Title}} · {{.Data.Module.AppName}} · {{(site $).Title}}</title>{{template "head" .}}</head>
 <body><a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}<div class="app-shell">{{template "workspace_nav" .}}
 <main class="page app-module-page" id="main-content" tabindex="-1"><nav class="issue-breadcrumbs" aria-label="Breadcrumb"><span>Apps</span><span aria-hidden="true">/</span><span>{{.Data.Module.AppName}}</span><span aria-hidden="true">/</span><span aria-current="page">{{.Data.Module.Title}}</span></nav>
 <header class="page-header"><div><span class="eyebrow">{{.Data.Module.AppName}} · {{.Data.Module.Type}}</span><h1>{{.Data.Module.Title}}</h1><p>{{if .Data.FrameURL}}Remote Connect module with signed workspace context.{{else}}Host-rendered app module with workspace identity and navigation.{{end}}</p></div></header>
@@ -8,7 +8,7 @@
 {{end}}
 
 {{define "page_admin_app_module"}}
-<!doctype html><html lang="en"><head><title>{{.Data.Module.Title}} · Administration · ZZIRA</title>{{template "head" .}}</head>
+<!doctype html><html lang="en"><head><title>{{.Data.Module.Title}} · Administration · {{(site $).Title}}</title>{{template "head" .}}</head>
 <body><a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}<div class="app-shell">{{template "workspace_nav" .}}<main class="page page-fluid" id="main-content" tabindex="-1">
 <nav class="issue-breadcrumbs" aria-label="Breadcrumb"><a href="/admin">Administration</a><span aria-hidden="true">/</span><span>{{.Data.Module.AppName}}</span><span aria-hidden="true">/</span><span aria-current="page">{{.Data.Module.Title}}</span></nav>
 <header class="page-header"><div><span class="eyebrow">{{.Data.Module.AppName}} · Site administration</span><h1>{{.Data.Module.Title}}</h1><p>Administrator-only app configuration for this ZZIRA site.</p></div></header>
@@ -17,7 +17,7 @@
 {{end}}
 
 {{define "page_project_admin_app_module"}}
-<!doctype html><html lang="en"><head><title>{{.Data.Module.Title}} · Project settings · ZZIRA</title>{{template "head" .}}</head>
+<!doctype html><html lang="en"><head><title>{{.Data.Module.Title}} · Project settings · {{(site $).Title}}</title>{{template "head" .}}</head>
 <body class="page-project-settings"><a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}<div class="app-shell">{{template "workspace_nav" .}}<main class="page page-fluid" id="main-content" tabindex="-1">
 <nav class="issue-breadcrumbs" aria-label="Breadcrumb"><a href="/projects">Projects</a><span aria-hidden="true">/</span><a href="/projects/{{.Data.Project.Key}}">{{.Data.Project.Name}}</a><span aria-hidden="true">/</span><a href="/projects/{{.Data.Project.Key}}/settings">Project settings</a><span aria-hidden="true">/</span><span aria-current="page">{{.Data.Module.Title}}</span></nav>
 <header class="page-header"><div><span class="eyebrow">{{.Data.Module.AppName}} · Project administration</span><h1>{{.Data.Module.Title}}</h1><p>App settings for {{.Data.Project.Name}} ({{.Data.Project.Key}}).</p></div></header>
@@ -26,7 +26,7 @@
 {{end}}
 
 {{define "page_project_app_module"}}
-<!doctype html><html lang="en"><head><title>{{.Data.Module.Title}} · {{.Data.Project.Name}} · ZZIRA</title>{{template "head" .}}</head>
+<!doctype html><html lang="en"><head><title>{{.Data.Module.Title}} · {{.Data.Project.Name}} · {{(site $).Title}}</title>{{template "head" .}}</head>
 <body class="page-app-module"><a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}<div class="app-shell">{{template "workspace_nav" .}}<main class="page page-fluid" id="main-content" tabindex="-1">
 <nav class="project-tabs" aria-label="{{.Data.Project.Name}} project"><a href="/projects/{{.Data.Project.Key}}">Overview</a><a href="/issues/{{.Data.Project.Key}}">Work items</a><a href="/projects/{{.Data.Project.Key}}/releases">Releases</a><a href="/projects/{{.Data.Project.Key}}/apps/{{.Data.Module.ID}}" aria-current="page">{{.Data.Module.Title}}</a></nav>
 <nav class="issue-breadcrumbs" aria-label="Breadcrumb"><a href="/projects">Projects</a><span aria-hidden="true">/</span><a href="/projects/{{.Data.Project.Key}}">{{.Data.Project.Name}}</a><span aria-hidden="true">/</span><span aria-current="page">{{.Data.Module.Title}}</span></nav>

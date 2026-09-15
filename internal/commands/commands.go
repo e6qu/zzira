@@ -41,7 +41,9 @@ type CreateIssueInput struct {
 	UseProjectDefaultAssignee bool
 	SecurityLevelID           string
 	Labels                    []string
-	Fields                    map[string]json.RawMessage
+	// DueDate is the yyyy-MM-dd day the work is due; empty leaves it unset.
+	DueDate string
+	Fields  map[string]json.RawMessage
 	// OriginalEstimate and RemainingEstimate are time tracking estimates in
 	// seconds; nil leaves one unset.
 	OriginalEstimate  *int64
@@ -213,6 +215,10 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 	if err != nil {
 		return nil, nil, err
 	}
+	dueDate, err := normalizeDueDate(in.DueDate)
+	if err != nil {
+		return nil, nil, err
+	}
 	description := plainTextToADF(in.Description)
 	if in.DescriptionADF != nil {
 		if len(in.DescriptionADF) > 1<<20 {
@@ -258,7 +264,7 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 	}
 	issue, action, err := s.Store.CreateEstimatedIssueForReporter(ctx, in.ActorID, in.ReporterID, project.ID, in.Summary,
 		description, wf.InitialStatus(), issueType.ID, priorityID, in.AssigneeID, labels, in.Fields, in.SecurityLevelID, parentID,
-		store.IssueEstimates{Original: in.OriginalEstimate, Remaining: in.RemainingEstimate})
+		store.NewIssueDetails{Original: in.OriginalEstimate, Remaining: in.RemainingEstimate, DueDate: dueDate})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -396,6 +402,9 @@ func issueWriteIntents(update store.IssueUpdate) map[string]fieldWriteIntent {
 	}
 	if update.Labels != nil {
 		intents["labels"] = fieldWriteIntent{touched: true, hasValue: hasNonEmptyValue(*update.Labels)}
+	}
+	if update.DueDate != nil {
+		intents["duedate"] = fieldWriteIntent{touched: true, hasValue: *update.DueDate != ""}
 	}
 	for field, raw := range update.Fields {
 		intents[field] = fieldWriteIntent{touched: true, hasValue: suppliedFieldValue(raw)}

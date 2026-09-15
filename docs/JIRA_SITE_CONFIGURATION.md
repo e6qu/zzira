@@ -40,10 +40,23 @@ underscores, and its `url` is the app admin page its `adminPageKey` names, at
 `/plugins/servlet/ac/{appKey}/{adminPageKey}`. A descriptor naming an admin page
 the app does not declare is refused. Selecting a provider enables time
 tracking; an unknown provider, or one whose app is suspended, answers 400. The editable
-application-property catalog matches the properties documented by Jira Cloud;
-some look-and-feel values are stored and returned but do not yet restyle every
-ZZIRA surface. Exact Jira validation for paired Java/JavaScript date formats
-also remains.
+application-property catalog matches the properties documented by Jira Cloud.
+The look and feel applies across the site:
+- The application title names every page and the header.
+- A configured logo and favicon replace ZZIRA's, and the navigation colours
+  style the header.
+- The complete and day date formats decide how automation runs, trash
+  deadlines and rendered search dates display.
+
+Unset properties keep ZZIRA's own look. Updates are validated by kind:
+- display date patterns must be Java patterns the site can show, and browser
+  picker formats must use supported `%` directives;
+- colours must be hex;
+- logo and favicon URLs must be site paths or http(s) URLs;
+- the title must fit on one line.
+
+The Java and browser formats of a picker pair are each validated on their own,
+so either can be changed first.
 
 ## Browser journey
 

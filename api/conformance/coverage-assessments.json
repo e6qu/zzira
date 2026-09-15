@@ -6473,7 +6473,7 @@
         "e2e/backlog.spec.ts",
         "docs/AGILE_BOARDS.md"
       ],
-      "notes": "Sprints closed, active then future with the state filter and paging."
+      "notes": "Sprints closed, active then future with the state filter and paging; each bean carries its created and completion dates."
     },
     {
       "operationId": "jira-software:GET:/rest/agile/1.0/board/{boardId}/sprint/{sprintId}/issue",
@@ -6501,7 +6501,7 @@
         "e2e/backlog.spec.ts",
         "docs/AGILE_BOARDS.md"
       ],
-      "notes": "Reading a sprint is tested through REST and the browser."
+      "notes": "Reading a sprint is tested through REST and the browser, including the createdDate and completeDate of a completed sprint."
     },
     {
       "operationId": "jira-software:GET:/rest/agile/1.0/sprint/{sprintId}/issue",
@@ -6598,7 +6598,7 @@
         "internal/store/development.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Returns the currently persisted repository with its most recent current entities after ordered updates and deletes; exact response truncation ties remain."
+      "notes": "Returns the currently persisted repository with its most recent current entities after ordered updates and deletes, capped at the most recent 400 entities as documented, with entities of equal time ordered by their last update and then their ID so the cut is deterministic."
     },
     {
       "operationId": "jira-software:GET:/rest/software/1.0/board/{boardId}/backlog",
@@ -7514,9 +7514,13 @@
       "evidence": [
         "internal/api3/site_configuration_test.go",
         "e2e/admin.spec.ts",
-        "docs/JIRA_SITE_CONFIGURATION.md"
+        "docs/JIRA_SITE_CONFIGURATION.md",
+        "internal/models/date_formats.go",
+        "internal/models/date_formats_test.go",
+        "internal/render/site.go",
+        "internal/api3/search_rendered_fields_test.go"
       ],
-      "notes": "Returns the documented advanced editable property catalog to administrators; complete runtime application of look-and-feel values remains."
+      "notes": "Returns the documented advanced editable property catalog to administrators; the look and feel values are applied: the application title, logo, favicon and navigation colours brand every page, and the complete and day date formats decide displayed and rendered dates."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/attachment/content/{id}",
@@ -7591,9 +7595,10 @@
         "internal/api3/api3_bulk_issues.go",
         "internal/api3/bulk_issues_test.go",
         "internal/store/create_meta.go",
-        "docs/BULK_ISSUES.md"
+        "docs/BULK_ISSUES.md",
+        "internal/api3/api3_bulk_edit_families_test.go"
       ],
-      "notes": "Returns editable field types shared by all selected visible issues from the canonical project metadata, including Jira-shaped options, field search and bidirectional opaque 50-field cursor pages; cursor snapshot binding and the remaining Jira bulk field catalog remain; callers need Jira's global Bulk change permission."
+      "notes": "Returns editable field types shared by all selected visible issues from the canonical project metadata, including Jira-shaped options, field search and bidirectional opaque 50-field cursor pages; every Jira bulk edit field family is offered, with time tracking listed as its original and remaining estimates, and each cursor is bound to its selection and search, so a cursor from another query answers 400; callers need Jira's global Bulk change permission."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/bulk/issues/transition",
@@ -8036,9 +8041,10 @@
       "evidence": [
         "internal/api3/api3_filters_test.go",
         "e2e/filters.spec.ts",
-        "docs/FILTERS.md"
+        "docs/FILTERS.md",
+        "internal/web/custom_dashboards.go"
       ],
-      "notes": "Per-user private/authenticated defaults and Jira GLOBAL normalization are persisted and integration-tested; cross-product dashboard default coupling remains."
+      "notes": "Per-user private/authenticated defaults and Jira GLOBAL normalization are persisted and integration-tested; the default also applies to new dashboards: the dashboard create form starts shared with everyone signed in when the default is AUTHENTICATED, while the REST dashboard create requires explicit sharePermissions as documented."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/filter/favourite",
@@ -8753,7 +8759,7 @@
         "e2e/projects.spec.ts",
         "docs/PROJECT_GOVERNANCE.md"
       ],
-      "notes": "Returns Jira-shaped state for ZZIRA built-in software features and rejects non-software projects; app features/images and the complete installed catalog remain."
+      "notes": "Returns Jira-shaped state and served feature images for ZZIRA's built-in software features and rejects non-software projects; the catalog is fixed because Connect apps cannot contribute project features."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/project/{projectIdOrKey}/properties",
@@ -9536,9 +9542,11 @@
         "internal/commands/bulk_issues.go",
         "internal/api3/bulk_issues_test.go",
         "internal/commands/bulk_issues_test.go",
-        "docs/BULK_ISSUES.md"
+        "docs/BULK_ISSUES.md",
+        "internal/api3/api3_bulk_edit_families_test.go",
+        "internal/commands/bulk_estimates_test.go"
       ],
-      "notes": "Queues up to 1,000 visible issues and 200 exactly matched selected fields, strictly parses ten persisted Jira field families, delegates each item to the ordinary issue command, reports successful/inaccessible/accessible-failed IDs and preserves action-idempotent replay; sendBulkNotification (default true) sends one bulk change email per recipient in place of per-item emails; remaining Jira field families and exact rate-limit semantics remain; callers need Jira's global Bulk change permission."
+      "notes": "Queues up to 1,000 visible issues and 200 exactly matched selected fields, strictly parses every Jira bulk edit field family (cascading, multiple and single selects, single and multiple user and group pickers, version pickers, date, date-time, URL, number, text, rich text, labels, components, priority, original and remaining estimates in the site's duration format, and colour, which no zzira field type holds), sending issue type and status to the bulk move and bulk transition operations, delegates each item to the ordinary issue command, reports successful/inaccessible/accessible-failed IDs and preserves action-idempotent replay; sendBulkNotification (default true) sends one bulk change email per recipient in place of per-item emails; bulk task limits bound concurrent operations; callers need Jira's global Bulk change permission."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/bulk/issues/move",
@@ -9561,9 +9569,10 @@
         "internal/commands/bulk_issues.go",
         "internal/api3/bulk_move_test.go",
         "e2e/v2.spec.ts",
-        "docs/BULK_ISSUES.md"
+        "docs/BULK_ISSUES.md",
+        "internal/api3/bulk_transition_permissions_test.go"
       ],
-      "notes": "Queues validated transition groups for up to 1,000 unique visible issues, rechecks execution-time visibility, delegates conditions/validators/post-functions to the ordinary REST transition engine and records transactional replay markers with per-item results; the documented input is issue ids and a transition id per workflow; sendBulkNotification (default true) sends one bulk change email per recipient in place of per-item emails; exact permission granularity remains; callers need Jira's global Bulk change permission."
+      "notes": "Queues validated transition groups for up to 1,000 unique visible issues, rechecks execution-time visibility, delegates conditions/validators/post-functions to the ordinary REST transition engine and records transactional replay markers with per-item results; the documented input is issue ids and a transition id per workflow; sendBulkNotification (default true) sends one bulk change email per recipient in place of per-item emails; a caller lacking the Transition issues permission in a selected work item's project receives 403; callers need Jira's global Bulk change permission."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/bulk/issues/unwatch",
@@ -9929,7 +9938,7 @@
         "internal/api3/api3_jql_test.go",
         "docs/JQL.md"
       ],
-      "notes": "Per-query compilation and matching bounded to requested visible numeric Jira IDs are integration-tested; exact service limits remain."
+      "notes": "Per-query compilation and matching bounded to requested visible numeric Jira IDs are integration-tested; requests beyond 1,000 issue IDs or outside 1 to 20 JQL queries answer 400."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/jql/parse",
@@ -10253,7 +10262,7 @@
         "docs/JQL.md",
         "internal/api3/search_projection_test.go"
       ],
-      "notes": "Count rejects unbounded queries, uses the shared permission-filtered JQL command path and has integration evidence; approximate large-index behavior remains."
+      "notes": "Count rejects unbounded queries, uses the shared permission-filtered JQL command path and has integration evidence; the estimate is the exact current count, which a single database index always has at hand."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/search/jql",
@@ -10524,9 +10533,13 @@
       "evidence": [
         "internal/api3/site_configuration_test.go",
         "e2e/admin.spec.ts",
-        "docs/JIRA_SITE_CONFIGURATION.md"
+        "docs/JIRA_SITE_CONFIGURATION.md",
+        "internal/models/date_formats.go",
+        "internal/models/date_formats_test.go",
+        "internal/render/site.go",
+        "internal/api3/search_rendered_fields_test.go"
       ],
-      "notes": "Validates known IDs and allowed values, persists atomically and returns the updated Jira-shaped property; paired date-format validation and full runtime look-and-feel application remain."
+      "notes": "Validates known IDs and allowed values, persists atomically and returns the updated Jira-shaped property; values are validated by kind (display date patterns the site can show, browser picker formats with supported directives, hex colours, site or http(s) URLs, a one-line title) and applied to the site at once."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/component/{id}",
@@ -10777,9 +10790,10 @@
       "evidence": [
         "internal/api3/api3_filters_test.go",
         "e2e/filters.spec.ts",
-        "docs/FILTERS.md"
+        "docs/FILTERS.md",
+        "internal/web/custom_dashboards.go"
       ],
-      "notes": "Per-user private/authenticated defaults and Jira GLOBAL normalization are persisted and integration-tested; cross-product dashboard default coupling remains."
+      "notes": "Per-user private/authenticated defaults and Jira GLOBAL normalization are persisted and integration-tested; the default also applies to new dashboards: the dashboard create form starts shared with everyone signed in when the default is AUTHENTICATED, while the REST dashboard create requires explicit sharePermissions as documented."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/filter/{id}",
@@ -10913,7 +10927,7 @@
         "e2e/issue_security_schemes.spec.ts",
         "docs/ISSUE_SECURITY_SCHEMES.md"
       ],
-      "notes": "Atomic holder addition across the nine Jira holder types is tested; per-holder managed administration remains."
+      "notes": "Atomic holder addition across the nine Jira holder types is tested; each holder is then removed individually through the level member delete operation."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/issuetype/{id}",
@@ -11129,7 +11143,7 @@
         "docs/PROJECT_GOVERNANCE.md",
         "internal/api3/project_administration_test.go"
       ],
-      "notes": "Persists ENABLED/DISABLED state for Administer Projects for the project, which Administer Jira implies, returns the complete project feature container and updates Backlog/Reports navigation; remaining runtime feature modules remain."
+      "notes": "Persists ENABLED/DISABLED state for Administer Projects for the project, which Administer Jira implies, and returns the complete project feature container. Disabling Backlog or Reports removes navigation, Sprints removes sprint creation, Code hides issue development information, and Deployments hides issue and release delivery information, and Roadmap removes the project timeline."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/project/{projectIdOrKey}/properties/{propertyKey}",
@@ -12502,9 +12516,10 @@
         "internal/api3/issue_operations.go",
         "internal/api3/api3.go",
         "internal/api3/issue_surface_test.go",
-        "docs/ISSUE_SURFACE.md"
+        "docs/ISSUE_SURFACE.md",
+        "internal/api3/due_date_test.go"
       ],
-      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules."
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules. Due date is a system field set on create, edit and transition, cleared with null, validated as yyyy-MM-dd, described by create and edit metadata, searchable with JQL and recorded in the changelog."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/issue/archive",
@@ -12712,9 +12727,10 @@
         "internal/api3/issue_operations.go",
         "internal/api3/api3.go",
         "internal/api3/issue_surface_test.go",
-        "docs/ISSUE_SURFACE.md"
+        "docs/ISSUE_SURFACE.md",
+        "internal/api3/due_date_test.go"
       ],
-      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules. A status with jira.issue.editable false refuses edits with 400; overrideScreenSecurity (hidden fields) and overrideEditableFlag are honoured only for Connect and Forge apps with Administer Jira, and refused with 403 for anyone else."
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules. A status with jira.issue.editable false refuses edits with 400; overrideScreenSecurity (hidden fields) and overrideEditableFlag are honoured only for Connect and Forge apps with Administer Jira, and refused with 403 for anyone else. Due date is a system field set on create, edit and transition, cleared with null, validated as yyyy-MM-dd, described by create and edit metadata, searchable with JQL and recorded in the changelog."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/issue/{issueIdOrKey}/assignee",
@@ -12823,9 +12839,10 @@
         "internal/api3/issue_operations.go",
         "internal/api3/api3.go",
         "internal/api3/issue_surface_test.go",
-        "docs/ISSUE_SURFACE.md"
+        "docs/ISSUE_SURFACE.md",
+        "internal/api3/due_date_test.go"
       ],
-      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules. Edit metadata lists no fields while the status sets jira.issue.editable false, unless a Connect or Forge app with Administer Jira passes overrideEditableFlag; overrideScreenSecurity adds the fields the field configuration hides; anyone else passing either gets 403."
+      "notes": "Numeric-id issue reads and writes with Jira's projection, detail fields, bulk create and fetch, paged and bulk changelogs, archiving with its error groups and export, events, limit reports, notifications, deleteSubtasks and assignee rules. Edit metadata lists no fields while the status sets jira.issue.editable false, unless a Connect or Forge app with Administer Jira passes overrideEditableFlag; overrideScreenSecurity adds the fields the field configuration hides; anyone else passing either gets 403. Due date is a system field set on create, edit and transition, cleared with null, validated as yyyy-MM-dd, described by create and edit metadata, searchable with JQL and recorded in the changelog."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/issue/{issueIdOrKey}/notify",
@@ -13967,7 +13984,7 @@
         "docs/JIRA_PLATFORM.md",
         "e2e/plans_teams.spec.ts"
       ],
-      "notes": "Creates plans with validated issue sources, scheduling, exclusion rules, releases, custom fields, lead and group or account permissions; no timeline scheduling runs from plans."
+      "notes": "Creates plans with validated issue sources, scheduling, exclusion rules, releases, custom fields, lead and group or account permissions; the plan page schedules the work its sources give on a month timeline."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/plans/plan/{planId}",

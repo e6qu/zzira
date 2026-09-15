@@ -251,7 +251,7 @@ func (h *Handler) ProjectsPage(w http.ResponseWriter, r *http.Request) {
 		}
 		if project.TrashedAt != "" {
 			if trashedAt, parseErr := time.Parse(time.RFC3339, project.TrashedAt); parseErr == nil {
-				card.DeleteAfter = trashedAt.Add(60 * 24 * time.Hour).Format("2 Jan 2006")
+				card.DeleteAfter = trashedAt.Add(60 * 24 * time.Hour).Format(h.siteLook(r, wsID).DateDay)
 			}
 		}
 		for _, board := range boards {

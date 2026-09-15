@@ -31,7 +31,7 @@ func TestSearchProjectionFieldsAliasesMetadataAndRendering(t *testing.T) {
 	if names["example.connect__risk-score"] != "Risk score" || schemas["example.connect__risk-score"].(map[string]any)["customId"] != int64(20000) {
 		t.Fatalf("metadata = %#v %#v", names, schemas)
 	}
-	rendered := renderedSearchFields(fields)
+	rendered := renderedSearchFields(fields, defaultDateLayouts)
 	if rendered["summary"] != "Risk &lt;review&gt;" || rendered["example.connect__risk-score"] != nil {
 		t.Fatalf("rendered fields = %#v", rendered)
 	}

@@ -312,6 +312,12 @@ func (h *Handler) sprintBean(s *models.Sprint) map[string]any {
 	if s.EndDate != "" {
 		bean["endDate"] = s.EndDate
 	}
+	if s.CreatedDate != "" {
+		bean["createdDate"] = s.CreatedDate
+	}
+	if s.CompleteDate != "" {
+		bean["completeDate"] = s.CompleteDate
+	}
 	return bean
 }
 

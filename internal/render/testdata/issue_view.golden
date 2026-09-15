@@ -155,6 +155,7 @@
 <span class="avatar" aria-hidden="true"><span>DU</span></span>
 <span>Demo User</span></a></dd>
         <dt><label for="field-labels">Labels</label></dt><dd><form class="inline-field" method="post" action="/issues/ZZ-1/fields" hx-post="/issues/ZZ-1/fields" hx-target="#issue-root" hx-swap="outerHTML"><input type="hidden" name="field" value="labels"><input id="field-labels" name="value" value="frontend, parity" placeholder="None" aria-describedby="labels-help"><small id="labels-help" class="sr-only">Comma-separated labels; spaces are not allowed within a label.</small><button class="field-save" type="submit">Save labels</button></form></dd>
+        <dt><label for="field-duedate">Due date</label></dt><dd><form class="inline-field" method="post" action="/issues/ZZ-1/fields" hx-post="/issues/ZZ-1/fields" hx-target="#issue-root" hx-swap="outerHTML"><input type="hidden" name="field" value="duedate"><input id="field-duedate" name="value" type="date" value=""><button class="field-save" type="submit">Save due date</button></form></dd>
 
       </dl>
 

@@ -37,6 +37,8 @@ type backlogPageData struct {
 	Sprints  []*models.Sprint
 	Total    int
 	Error    string
+	// SprintsDisabled hides sprint planning a project turned off.
+	SprintsDisabled bool
 }
 
 func backlogRows(issues []*models.Issue, boardID, sprintID string, sprints []*models.Sprint) []backlogIssueRow {
@@ -112,6 +114,11 @@ func (h *Handler) buildBacklogData(r *http.Request, user *models.User, board *mo
 	}
 	data.Backlog = backlogRows(issues, board.ID, "", planningSprints)
 	data.Total += len(issues)
+	sprintsEnabled, err := h.Store.ProjectFeatureEnabled(r.Context(), board.ProjectID, "jsw.classic.sprints")
+	if err != nil {
+		return backlogPageData{}, err
+	}
+	data.SprintsDisabled = !sprintsEnabled
 	return data, nil
 }
 
@@ -160,8 +167,19 @@ func (h *Handler) CreateBacklogSprint(w http.ResponseWriter, r *http.Request, bo
 		redirectBacklog(w, r, boardID, "Enter a sprint name.")
 		return
 	}
-	if _, err := h.Store.BoardByIDInWorkspace(r.Context(), wsID, boardID); err != nil {
+	board, err := h.Store.BoardByIDInWorkspace(r.Context(), wsID, boardID)
+	if err != nil {
 		http.NotFound(w, r)
+		return
+	}
+	sprintsEnabled, err := h.Store.ProjectFeatureEnabled(r.Context(), board.ProjectID, "jsw.classic.sprints")
+	if err != nil {
+		log.Print("backlog: sprint feature lookup failed")
+		redirectBacklog(w, r, boardID, "The sprint could not be created.")
+		return
+	}
+	if !sprintsEnabled {
+		redirectBacklog(w, r, boardID, "Sprints are turned off for this project.")
 		return
 	}
 	if _, err := h.Commands.CreateSprint(r.Context(), user.ID, wsID, boardID, name, goal); err != nil {

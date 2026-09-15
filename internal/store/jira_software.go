@@ -499,7 +499,10 @@ func (s *Store) SprintsForIssues(ctx context.Context, issueIDs []string) (map[st
 		SELECT si.issue_id, s.id, s.board_id, s.name, s.state,
 		       COALESCE(to_char(s.start_date AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
 		       COALESCE(to_char(s.end_date AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
-		       s.goal, s.jira_id, b.jira_id
+		       s.goal, s.jira_id, b.jira_id,
+		       COALESCE(to_char(s.activated_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
+		       COALESCE(to_char(s.completed_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
+		        to_char(s.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"')
 		FROM sprint_issues si JOIN sprints s ON s.id=si.sprint_id JOIN boards b ON b.id=s.board_id
 		WHERE si.issue_id=ANY($1)
 		ORDER BY si.issue_id, s.created_at, s.jira_id`, issueIDs)
@@ -510,7 +513,7 @@ func (s *Store) SprintsForIssues(ctx context.Context, issueIDs []string) (map[st
 	for rows.Next() {
 		var issueID string
 		sprint := &models.Sprint{}
-		if err := rows.Scan(&issueID, &sprint.ID, &sprint.BoardID, &sprint.Name, &sprint.State, &sprint.StartDate, &sprint.EndDate, &sprint.Goal, &sprint.JiraID, &sprint.BoardJiraID); err != nil {
+		if err := rows.Scan(&issueID, &sprint.ID, &sprint.BoardID, &sprint.Name, &sprint.State, &sprint.StartDate, &sprint.EndDate, &sprint.Goal, &sprint.JiraID, &sprint.BoardJiraID, &sprint.ActivatedDate, &sprint.CompleteDate, &sprint.CreatedDate); err != nil {
 			return nil, err
 		}
 		out[issueID] = append(out[issueID], sprint)
