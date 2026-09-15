@@ -14,9 +14,10 @@ is editing. The answer is the content's live state:
   being reported is gone within 45 seconds, and `leave=true` removes it at
   once. It is kept in an unlogged table because nothing in it needs to
   survive a restart.
-- **Editing together.** An editor is warned when someone else is editing the
-  same content. The existing optimistic version check still refuses a save
-  made against an older version, so the later save has to merge.
+- **Editing together.** An editor is told when someone else is editing the
+  same content. On a published page their changes merge as they type (see
+  below); a blog post still relies on the optimistic version check, which
+  refuses a save made against an older version.
 - **Updates.** The first report sets the version and comment count the open
   page started from.
   - A later, higher version tells a reader the content was updated, with a
@@ -27,3 +28,36 @@ is editing. The answer is the content's live state:
 
 The notices are a polite live region, so assistive technology announces them
 without interrupting.
+
+## Live editing
+
+Everyone editing a published page shares one live document, exchanged at
+`POST /wiki/spaces/{space}/pages/{page}/live` with
+`{"session":"…","revision":3,"changes":[{"position":12,"delete":0,"insert":"today"}]}`.
+
+- **Changes.** A change replaces `delete` UTF-16 code units at `position` of
+  the page's storage markup with `insert`, measured the way browsers measure
+  strings. A change that reaches past the text or splits a character is 400.
+- **Merging.** Changes are accepted only at the document's latest revision,
+  and the answer says `"applied":true`. Otherwise nothing is applied and the
+  answer carries the `changes` the editor missed, in revision order; the
+  editor applies them to the text it last synced and rebases its own change on
+  top, so an insertion at the same place goes after the one already there and
+  text someone else inserted is never deleted. An editor from another session,
+  or too far behind the 2,000 changes kept, gets the whole `body` instead.
+- **Drafts.** Every merged text that is valid storage becomes the page's
+  shared draft, so reopening the editor or publishing keeps it; text mid-way
+  through markup is shared but not drafted.
+- **Sessions.** Publishing a new version restarts the session from the page
+  (a new `session` at revision 0), and discarding the draft closes it; editors
+  still open load the new text and carry their unsent edits over. The editor
+  keeps its version field on the session's `version`, so publishing after
+  someone else published still works.
+- **The editor.** Changes are sent a quarter of a second after typing stops
+  and at least every second. The rich editor redraws merged markup in place
+  and keeps the caret beside the same text; source mode keeps its selection.
+  Input methods finish composing before anything is merged. A status line says
+  live editing is on, or that it is reconnecting and nothing typed is lost.
+
+Only people who can edit the page may join; anyone else is 403 or 404.
+
