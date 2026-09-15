@@ -105,6 +105,46 @@ func TestCustomFieldContextContract(t *testing.T) {
 	}
 	globalContext := fmt.Sprint(page.Values[0].ID)
 
+	// An Assets object field holds one object, or several when its context
+	// says so, which is how Jira configures the field's cardinality.
+	assetFieldID := decodeID(call(adminID, http.MethodPost, "/rest/api/3/field", `{"name":"Affected asset","type":"cmdb"}`, http.StatusCreated))
+	assetContextPath := "/rest/api/3/field/" + assetFieldID + "/context"
+	assetsMultiple := func(path string) bool {
+		t.Helper()
+		var contexts struct {
+			Values []struct {
+				AssetsMultiple bool `json:"assetsMultiple"`
+			} `json:"values"`
+		}
+		if err = json.Unmarshal(call(adminID, http.MethodGet, path, "", http.StatusOK).Body.Bytes(), &contexts); err != nil || len(contexts.Values) != 1 {
+			t.Fatalf("asset contexts err=%v body=%+v", err, contexts)
+		}
+		return contexts.Values[0].AssetsMultiple
+	}
+	var assetPage struct {
+		Values []struct {
+			ID int64 `json:"id"`
+		} `json:"values"`
+	}
+	if err = json.Unmarshal(call(adminID, http.MethodGet, assetContextPath, "", http.StatusOK).Body.Bytes(), &assetPage); err != nil || len(assetPage.Values) != 1 {
+		t.Fatalf("asset field contexts err=%v body=%+v", err, assetPage)
+	}
+	assetContext := fmt.Sprint(assetPage.Values[0].ID)
+	if assetsMultiple(assetContextPath) {
+		t.Fatal("a new Assets field held several objects")
+	}
+	call(adminID, http.MethodPut, assetContextPath+"/"+assetContext, `{"assetsMultiple":true}`, http.StatusNoContent)
+	if !assetsMultiple(assetContextPath) {
+		t.Fatal("the Assets field was not configured for several objects")
+	}
+	call(adminID, http.MethodPut, assetContextPath+"/"+assetContext, `{"assetsMultiple":false}`, http.StatusNoContent)
+	if assetsMultiple(assetContextPath) {
+		t.Fatal("the Assets field kept several objects")
+	}
+	// A field that holds no Assets object has no cardinality to configure.
+	call(adminID, http.MethodPut, contextPath+"/"+globalContext, `{"assetsMultiple":true}`, http.StatusBadRequest)
+	call(memberID, http.MethodPut, assetContextPath+"/"+assetContext, `{"assetsMultiple":true}`, http.StatusForbidden)
+
 	// The field applies everywhere while only the global context exists.
 	fieldsFor := func(projectKey, issueType string) []string {
 		t.Helper()

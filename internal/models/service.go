@@ -99,6 +99,9 @@ type ServiceRequestTypeField struct {
 	// AssetSchemaID narrows an Assets object field to one schema of the
 	// service project. An empty schema offers the desk's whole inventory.
 	AssetSchemaID string
+	// AssetsMultiple is the cardinality of the field's applicable custom field
+	// context: an Assets object field holds several objects when it is set.
+	AssetsMultiple bool
 }
 
 // ShownFor reports whether the field is shown for the option ids chosen for

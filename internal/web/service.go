@@ -1466,6 +1466,20 @@ func encodeServicePortalField(field models.ServiceRequestTypeField, submitted []
 		}
 		encoded = values[0]
 	case models.CustomFieldSelect, models.CustomFieldGroup, models.CustomFieldProject, models.CustomFieldVersion, models.CustomFieldTeam, models.CustomFieldAsset:
+		if field.Type == models.CustomFieldAsset && field.AssetsMultiple {
+			ids, seen := []string{}, map[string]bool{}
+			for _, value := range values {
+				if _, ok := option(value); !ok {
+					return nil, true, fmt.Errorf("Choose from the options for %s.", field.Name)
+				}
+				if !seen[value] {
+					seen[value] = true
+					ids = append(ids, value)
+				}
+			}
+			encoded = ids
+			break
+		}
 		if _, ok := option(values[0]); !ok {
 			return nil, true, fmt.Errorf("Choose one of the options for %s.", field.Name)
 		}

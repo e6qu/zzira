@@ -89,7 +89,10 @@ labelled with its schema, and stores the chosen object's id; the desk's agents
 create the objects and schemas in the agent workspace. An administrator can
 scope the field to one schema in the request type's form, so it offers only
 that schema's objects, and a request that names an object of another schema is
-refused however it arrives. Group, project, version
+refused however it arrives. The field holds one object or several, chosen in
+the custom field's context as Jira configures cardinality on the field rather
+than by using a different field type; a field holding several shows the portal
+a checkbox for each object and stores the chosen ids as a list. Group, project, version
 and team picker fields ask for a choice instead: a
 group picker offers the site's groups, a project picker the projects the
 requester can browse, a version picker the desk project's versions that are

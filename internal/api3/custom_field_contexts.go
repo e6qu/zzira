@@ -30,6 +30,7 @@ func (h *Handler) fieldContextBean(found *models.CustomFieldContext) map[string]
 	return map[string]any{
 		"id": wireNumericID(found.ID), "name": found.Name, "description": found.Description,
 		"isGlobalContext": found.AllProjects, "isAnyIssueType": found.AllIssueTypes,
+		"assetsMultiple": found.AssetsMultiple,
 	}
 }
 
@@ -179,8 +180,9 @@ func (h *Handler) fieldContextResource(w http.ResponseWriter, r *http.Request, f
 	switch r.Method {
 	case http.MethodPut:
 		var request struct {
-			Name        *string `json:"name"`
-			Description *string `json:"description"`
+			Name           *string `json:"name"`
+			Description    *string `json:"description"`
+			AssetsMultiple *bool   `json:"assetsMultiple"`
 		}
 		if !decodeProjectRequest(w, r, &request) {
 			return
@@ -188,6 +190,12 @@ func (h *Handler) fieldContextResource(w http.ResponseWriter, r *http.Request, f
 		if err := h.Store.UpdateCustomFieldContext(r.Context(), workspaceID, actorID, fieldID, contextID, request.Name, request.Description); err != nil {
 			fieldContextError(w, err)
 			return
+		}
+		if request.AssetsMultiple != nil {
+			if err := h.Store.SetCustomFieldContextAssetsMultiple(r.Context(), workspaceID, actorID, fieldID, contextID, *request.AssetsMultiple); err != nil {
+				fieldContextError(w, err)
+				return
+			}
 		}
 		w.WriteHeader(http.StatusNoContent)
 	case http.MethodDelete:

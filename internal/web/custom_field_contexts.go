@@ -162,6 +162,9 @@ func (h *Handler) CustomFieldContextMutation(w http.ResponseWriter, r *http.Requ
 		}
 		err = h.Store.SetCustomFieldContextDefault(r.Context(), workspaceID, user.ID, fieldID, contextID, value)
 		notice = "Default value saved."
+	case "assets-multiple":
+		err = h.Store.SetCustomFieldContextAssetsMultiple(r.Context(), workspaceID, user.ID, fieldID, contextID, r.PostFormValue("assetsMultiple") == "on")
+		notice = "Assets objects saved."
 	case "add-option":
 		_, err = h.Store.CreateCustomFieldOptions(r.Context(), workspaceID, user.ID, fieldID, contextID,
 			[]string{r.PostFormValue("value")})

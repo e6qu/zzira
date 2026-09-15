@@ -181,6 +181,44 @@ func TestServiceAssetInventoryRelationshipsAndRequestImpact(t *testing.T) {
 	}) {
 		t.Fatalf("request type fields = %+v, %v", reread, err)
 	}
+	// A context configured for several objects lets the field hold a list.
+	assetContexts, err := st.CustomFieldContexts(ctx, workspaceID, assetFieldID, nil)
+	if err != nil || len(assetContexts) == 0 {
+		t.Fatalf("asset field contexts = %+v, %v", assetContexts, err)
+	}
+	if err := st.SetCustomFieldContextAssetsMultiple(ctx, workspaceID, adminID, assetFieldID, assetContexts[0].ID, true); err != nil {
+		t.Fatal(err)
+	}
+	severalForm, err := st.ServiceRequestTypeFields(ctx, workspaceID, deskID, requestTypes[0].ID)
+	if err != nil || !slices.ContainsFunc(severalForm, func(field models.ServiceRequestTypeField) bool {
+		return field.ID == assetFieldID && field.AssetsMultiple
+	}) {
+		t.Fatalf("the form did not carry the context's cardinality: %+v, %v", severalForm, err)
+	}
+	if _, err := service.CreateServiceRequest(ctx, commands.CreateServiceRequestInput{ActorID: adminID, WorkspaceID: workspaceID, ServiceDeskID: deskID, RequestTypeID: requestTypes[0].ID,
+		Summary: "Two laptops", Fields: map[string]json.RawMessage{assetFieldID: json.RawMessage(`["laptop","database"]`)}}); err == nil {
+		t.Fatal("a scoped Assets field accepted a list naming another schema's object")
+	}
+	severalRequest, err := service.CreateServiceRequest(ctx, commands.CreateServiceRequestInput{ActorID: adminID, WorkspaceID: workspaceID, ServiceDeskID: deskID, RequestTypeID: requestTypes[0].ID,
+		Summary: "Laptop refresh", Fields: map[string]json.RawMessage{assetFieldID: json.RawMessage(`["laptop"]`)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored := string(severalRequest.Issue.Fields[assetFieldID]); stored != `["`+laptop.ID+`"]` {
+		t.Fatalf("stored Assets list = %s, want [%s]", stored, laptop.ID)
+	}
+	if _, err := service.CreateServiceRequest(ctx, commands.CreateServiceRequestInput{ActorID: adminID, WorkspaceID: workspaceID, ServiceDeskID: deskID, RequestTypeID: requestTypes[0].ID,
+		Summary: "Repeated laptop", Fields: map[string]json.RawMessage{assetFieldID: json.RawMessage(`["laptop","laptop"]`)}}); err == nil {
+		t.Fatal("an Assets field listed the same object twice")
+	}
+	// Only an Assets object field holds several objects.
+	summaryContexts, err := st.CustomFieldContexts(ctx, workspaceID, "customfield_10000", nil)
+	if err == nil && len(summaryContexts) > 0 {
+		if err := st.SetCustomFieldContextAssetsMultiple(ctx, workspaceID, adminID, "customfield_10000", summaryContexts[0].ID, true); err == nil {
+			t.Fatal("a field that holds no Assets object was configured for several")
+		}
+	}
+
 	// Only an Assets field offers a schema, and only one of this desk's.
 	summaryScoped := append([]models.ServiceRequestTypeField{}, formFields...)
 	for index := range summaryScoped {

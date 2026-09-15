@@ -62,6 +62,14 @@ func TestEncodeServicePortalField(t *testing.T) {
 	if _, present, err := encodeServicePortalField(models.ServiceRequestTypeField{Type: models.CustomFieldMultiSelect}, []string{" ", ""}, "", options, member); present || err != nil {
 		t.Fatalf("a blank answer was present: %v, %v", present, err)
 	}
+	// An Assets field whose context holds several objects takes a list.
+	several := models.ServiceRequestTypeField{ID: "customfield_1", Name: "Platform", Type: models.CustomFieldAsset, AssetsMultiple: true}
+	if raw, _, err := encodeServicePortalField(several, []string{"1", "2", "1"}, "", options, member); err != nil || string(raw) != `["1","2"]` {
+		t.Fatalf("several Assets objects = %s, %v", raw, err)
+	}
+	if _, _, err := encodeServicePortalField(several, []string{"1", "7"}, "", options, member); err == nil || err.Error() != "Choose from the options for Platform." {
+		t.Fatalf("an Assets object that is not offered was accepted: %v", err)
+	}
 	catalog := store.CustomFieldValueCatalog{Options: map[string]models.CustomFieldOption{"2": {ID: "2", Value: "Mobile"}, "3": {ID: "3", Value: "iOS"}}, Users: map[string]*models.User{"usr_ana": {ID: "usr_ana", DisplayName: "Ana"}},
 		Groups: map[string]store.SiteGroup{"grp-ops": {Name: "Operations"}}}
 	pickerNames := map[string]string{"10000": "Service desk", "10010": "Release 1", "10011": "Release 2", "team-1": "Platform crew", "obj-1": "Checkout laptop (Laptops)"}

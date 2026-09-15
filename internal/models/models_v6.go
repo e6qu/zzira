@@ -351,6 +351,10 @@ type CustomFieldContext struct {
 	ProjectIDs    []string `json:"-"`
 	IssueTypeIDs  []string `json:"-"`
 	DefaultValue  string   `json:"-"`
+	// AssetsMultiple lets an Assets object field in this context hold several
+	// objects, which Jira configures on the field rather than by giving it a
+	// different type.
+	AssetsMultiple bool `json:"-"`
 }
 
 // CustomFieldOption is one choice a select custom field offers within the

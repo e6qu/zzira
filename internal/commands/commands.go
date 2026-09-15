@@ -788,13 +788,34 @@ func (s *Service) normalizeOptionFields(ctx context.Context, workspaceID, projec
 			}
 			fields[field], _ = json.Marshal(ids)
 		case models.CustomFieldAsset:
-			ref, _, ok := scalar(raw, "id", "objectKey")
-			if !ok || ref == "" {
-				return fmt.Errorf("%s must name an Assets object by id or objectKey", field)
+			resolve := func(item json.RawMessage) (string, error) {
+				ref, _, ok := scalar(item, "id", "objectKey")
+				if !ok || ref == "" {
+					return "", fmt.Errorf("%s must name an Assets object by id or objectKey", field)
+				}
+				objectID, _, err := s.Store.ServiceAssetObjectInProject(ctx, workspaceID, projectID, ref, assetSchemas[field])
+				if err != nil {
+					return "", fmt.Errorf("%s names the Assets object %q, which is not in this service project", field, ref)
+				}
+				return objectID, nil
 			}
-			objectID, _, err := s.Store.ServiceAssetObjectInProject(ctx, workspaceID, projectID, ref, assetSchemas[field])
+			// A field configured to hold several objects takes a list, as
+			// Jira's Assets field does with its multiple cardinality.
+			if len(raw) > 0 && raw[0] == '[' {
+				ids := []string{}
+				for _, item := range list(raw) {
+					id, err := resolve(item)
+					if err != nil {
+						return err
+					}
+					ids = append(ids, id)
+				}
+				fields[field], _ = json.Marshal(ids)
+				continue
+			}
+			objectID, err := resolve(raw)
 			if err != nil {
-				return fmt.Errorf("%s names the Assets object %q, which is not in this service project", field, ref)
+				return err
 			}
 			fields[field], _ = json.Marshal(objectID)
 		case models.CustomFieldLabels:

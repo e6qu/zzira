@@ -327,10 +327,31 @@ func (s *Service) validateCustomFields(ctx context.Context, projectID string, va
 				}
 				seen[value] = true
 			}
-		case models.CustomFieldUser, models.CustomFieldGroup, models.CustomFieldProject, models.CustomFieldVersion, models.CustomFieldTeam, models.CustomFieldAsset:
+		case models.CustomFieldUser, models.CustomFieldGroup, models.CustomFieldProject, models.CustomFieldVersion, models.CustomFieldTeam:
 			var value string
 			if err := json.Unmarshal(raw, &value); err != nil || value == "" {
 				return fmt.Errorf("custom field %q must be an id", id)
+			}
+		case models.CustomFieldAsset:
+			// An Assets object field holds one object, or several when its
+			// context is configured for them.
+			var value string
+			if json.Unmarshal(raw, &value) == nil {
+				if value == "" {
+					return fmt.Errorf("custom field %q must be an id", id)
+				}
+				break
+			}
+			var values []string
+			if err := json.Unmarshal(raw, &values); err != nil || len(values) == 0 {
+				return fmt.Errorf("custom field %q must be an id, or a list of them", id)
+			}
+			seen := map[string]bool{}
+			for _, value := range values {
+				if value == "" || seen[value] {
+					return fmt.Errorf("custom field %q must list each Assets object once", id)
+				}
+				seen[value] = true
 			}
 		case models.CustomFieldCascadingSelect:
 			var value struct {
