@@ -233,7 +233,21 @@ func (h *Handler) writeWorkspacePageStatus(w http.ResponseWriter, r *http.Reques
 		announcement = &banner
 	}
 	look := siteLookFor(configuration.ApplicationProperties)
-	writePageStatus(w, name, pageData{User: user, Data: data, Active: active, Navigation: navigation, Announcement: announcement, Site: &look}, status)
+	page := pageData{User: user, Data: data, Active: active, Navigation: navigation, Announcement: announcement, Site: &look}
+	if active == "wiki" {
+		spaceID := ""
+		if spaced, ok := data.(interface{ lookAndFeelSpaceID() string }); ok {
+			spaceID = spaced.lookAndFeelSpaceID()
+		}
+		custom, err := h.Store.EffectiveWikiLookAndFeel(r.Context(), workspaceID, spaceID)
+		if err != nil {
+			log.Printf("render %s look and feel: %v", name, err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		page.WikiStyle = wikiLookAndFeelCSS(custom)
+	}
+	writePageStatus(w, name, page, status)
 }
 
 // productSwitcherItem is an app the switcher offers.

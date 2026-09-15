@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html/template"
 	"log"
 	"net/http"
 	"net/url"
@@ -50,6 +51,9 @@ type pageData struct {
 	Navigation   *workspaceNavigation
 	Announcement *models.AnnouncementBanner
 	Site         *render.SiteLook
+	// WikiStyle is the CSS that applies a Confluence look and feel to wiki
+	// pages.
+	WikiStyle template.CSS
 }
 
 // SiteLook is the look and feel the page shows.

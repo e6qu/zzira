@@ -52,6 +52,17 @@ test('space manager keeps templates, starts pages from them, reads analytics and
   await page.getByRole('button', { name: 'Upload file', exact: true }).click();
   await expect(page.getByRole('link', { name: 'restart-checklist.txt', exact: true })).toBeVisible();
 
+  // The site's custom look and feel colours the wiki page's headings.
+  const origin = new URL(page.url()).origin;
+  const customLook = await page.request.post('/wiki/rest/api/settings/lookandfeel/custom', { headers: { Origin: origin }, data: { headings: { color: '#0065FF' } } });
+  expect(customLook.status()).toBe(200);
+  await page.reload();
+  await expect(page.getByRole('heading', { name: `Restart the service ${key}`, level: 1 })).toHaveCSS('color', 'rgb(0, 101, 255)');
+  await accessible(page);
+  expect((await page.request.delete('/wiki/rest/api/settings/lookandfeel/custom', { headers: { Origin: origin } })).status()).toBe(204);
+  await page.reload();
+  await expect(page.getByRole('heading', { name: `Restart the service ${key}`, level: 1 })).not.toHaveCSS('color', 'rgb(0, 101, 255)');
+
   // Viewing the page shows in the space's analytics.
   await page.goto(spaceURL);
   await page.getByRole('link', { name: 'Analytics', exact: true }).click();
